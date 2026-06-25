@@ -1,0 +1,527 @@
+# PostDee
+
+PostDee is a cross-platform mobile app and backend scaffold for Thai e-commerce sellers, affiliate marketers, and creators. The product is Thai-first, but is built to be global-ready so sellers in other countries can use it comfortably with localized language, timezone, currency, phone, billing, and compliance support. Currently, the app supports 8 languages: Thai (th), English (en), Vietnamese (vi), Chinese (zh), Indonesian (id), Malay (ms), Tagalog (tl), and Japanese (ja). The first milestone focuses on project structure, an ultra-dark Flutter UI scaffold, and an Express + Prisma backend foundation.
+
+## Project Structure
+
+```text
+apps/
+  api/      Node.js, Express, TypeScript, Prisma, PostgreSQL scaffold
+  mobile/   Flutter source scaffold for iOS and Android
+```
+
+## Backend
+
+Path: `apps/api`
+
+Current backend pieces:
+
+- `GET /health`
+- Mock-safe route implementations for uploads, posts, captions, templates,
+  analytics, and billing
+- In-memory stores for posts, templates, and publish queue placeholders
+- Optional BullMQ publish queue adapter selectable with `PUBLISH_QUEUE=bullmq`
+- Optional Cloudflare R2 video storage adapter selectable with `VIDEO_STORAGE=r2`, including signed upload and signed download access scaffolds
+- Optional Gemini caption adapter selectable with `CAPTION_PROVIDER=gemini`
+- Optional Groq transcription adapter selectable with `TRANSCRIPTION_PROVIDER=groq`
+- Legacy S3/OpenAI adapters remain available with `VIDEO_STORAGE=s3` and `CAPTION_PROVIDER=openai`
+- Mock/Firebase auth middleware selectable with `AUTH_PROVIDER=firebase`
+- RevenueCat webhook receiver for Starter and Pro subscription entitlements
+- Legacy store subscription verification scaffold for Apple App Store and Google Play purchases
+- Store notification handler that updates paid entitlement state for known verified store purchases
+- Mock publish worker scaffold for the `publish-posts` queue
+- Prisma schema for users, posts, platform publishing records, saved templates, and subscriptions
+- Prisma schema and repository for persistent real-clip AI caption usage
+  counts
+- `.env.example` with required environment variables
+
+Run backend checks:
+
+```powershell
+cd apps/api
+npm.cmd install
+npm.cmd run test
+npm.cmd run build
+$env:DATABASE_URL='postgresql://postdee:postdee_password@localhost:5432/postdee?schema=public'; npm.cmd run prisma:validate
+```
+
+Prepare a local PostgreSQL database after `DATABASE_URL` is set:
+
+```powershell
+cd apps/api
+npm.cmd run prisma:generate
+npm.cmd run prisma:migrate:dev
+npm.cmd run prisma:seed
+```
+
+The seed command upserts the mock auth user from `MOCK_USER_ID`, `SEED_USER_EMAIL`, and `SEED_USER_DISPLAY_NAME`.
+
+Start the backend in development:
+
+```powershell
+cd apps/api
+npm.cmd run dev
+```
+
+The API listens on port `4000` by default.
+
+Start the publish worker scaffold after Redis is available and `PUBLISH_QUEUE=bullmq`, `POST_STORE=prisma`, and `DATABASE_URL` are configured:
+
+```powershell
+cd apps/api
+npm.cmd run worker:publish
+```
+
+The worker currently uses mock platform publishing and mock video cleanup by default. When `ANALYTICS_STORE=prisma`, it records platform publish results into `PlatformPublish` so the analytics summary can read them from PostgreSQL. It claims posts with `QUEUED -> PUBLISHING` before calling external publishers, skips jobs for posts that are already running or finished, skips stale scheduled jobs whose `runAt` no longer matches the post's current schedule, and treats optional R2/S3 cleanup failures as best-effort cleanup results instead of changing a successfully published post to failed. It is the handoff point for real TikTok, YouTube Shorts, Instagram Reels, Facebook Reels, and R2/S3 cleanup integrations.
+
+### Backend API
+
+All endpoints are scaffold implementations. They are useful for frontend integration and local flow testing, but they do not call production services yet.
+
+#### `GET /health`
+
+Returns service status.
+
+```json
+{
+  "status": "ok",
+  "service": "postdee-api"
+}
+```
+
+#### `GET /auth/me`
+
+Returns the current scaffold auth user. With `AUTH_PROVIDER=mock`, the API uses `MOCK_USER_ID` by default and supports development headers such as `x-postdee-user-id`, `x-postdee-email`, `x-postdee-display-name`, `x-postdee-phone-verified`, and `x-postdee-phone-number`.
+`AUTH_PROVIDER=mock` is for local development only; startup rejects it when
+`NODE_ENV=production`.
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "user": {
+    "id": "local-dev-user",
+    "provider": "mock"
+  }
+}
+```
+
+#### `POST /uploads`
+
+Creates a mock upload record from video metadata and returns a temporary object key.
+This route requires the current authenticated user. In local mock mode, the
+mobile app sends `x-postdee-user-id`; in Firebase mode, it sends a bearer token.
+
+Request:
+
+```json
+{
+  "fileName": "demo reel.mp4",
+  "contentType": "video/mp4",
+  "sizeBytes": 12345678,
+  "width": 1080,
+  "height": 1920
+}
+```
+
+Response includes `upload.videoS3Key`, the existing legacy field name for the temporary object key that can be passed to `POST /posts`. New upload keys are scoped to the authenticated user, for example `uploads/<user-id>/<upload-id>/<file>`.
+When `width` and `height` are provided, the backend validates that the metadata describes a vertical 9:16 video, such as `1080x1920`.
+When `VIDEO_STORAGE=r2` or `VIDEO_STORAGE=s3`, the response also includes `upload.uploadUrl`, `upload.uploadMethod`, `upload.uploadHeaders`, and `upload.uploadExpiresAt`. The mobile app should upload the video file to `uploadUrl` before creating the post.
+
+#### `POST /captions/generate`
+
+Generates a local Thai affiliate caption template from 1 or 2 keywords. This route requires a paid plan, either Starter or Pro.
+
+Current product direction: AI captioning should start from a selected real
+clip. Starter uses audio-only understanding, while Pro can combine audio with
+selected visual frames. The app should let AI detect the spoken language and
+best caption direction from the clip automatically; if a seller wants a
+different language, market, or style, they can write that in optional guidance.
+The keyword endpoint remains a temporary scaffold and should not be the main
+paid package promise.
+
+Request:
+
+```json
+{
+  "keywords": ["กันแดด", "ผิวใส"]
+}
+```
+
+Response includes `caption`, `hashtags`, and `[ใส่ลิงก์ Affiliate ที่นี่]`.
+
+If the authenticated user is Basic, the API returns `402` with code `PRO_REQUIRED`.
+
+#### `POST /captions/generate-from-clip`
+
+Generates the new mock-safe real-clip AI caption package after a clip is
+selected. This route accepts `videoS3Key`, optional `guidance`, optional
+`selectedFrameKeys`, and optional `deleteAfterUse`. The mobile upload flow sends
+`deleteAfterUse: true` for AI-only clip/frame uploads so the backend attempts
+R2/S3 cleanup after the caption request. The route also checks that media keys
+belong to the authenticated user and reserves monthly quota before calling the
+AI provider.
+
+- Starter uses audio-only mode and has 50 generations/month.
+- Pro uses audio plus selected-frame mode and has 120 generations/month.
+- Each successful generate/change request counts as one generation.
+- The current scaffold returns caption options, hooks, hashtags, SEO keywords,
+  a search title, auto language/market context, source mode, and remaining
+  quota.
+- Local development can keep usage in memory with `CAPTION_USAGE_STORE=memory`;
+  production should use `CAPTION_USAGE_STORE=prisma` after the Prisma migration
+  is applied.
+- In local mode, `TRANSCRIPTION_PROVIDER=mock` returns a safe Thai transcript.
+  In production, `TRANSCRIPTION_PROVIDER=groq` or `openai` downloads the stored
+  clip through signed storage access and sends it to the speech provider.
+- It still does not sample real frames from the uploaded video.
+
+#### Removed: `POST /clip-reviews`
+
+The legacy AI Clip Review endpoint is no longer mounted. Requests to
+`/clip-reviews` return `404`.
+
+Reason: it overlaps with AI caption from the real clip and made the package
+copy confusing. Useful ideas from the old mock review output should move into
+AI caption from the real clip or the future Pro Groq Whisper auto editing flow.
+
+#### `GET /templates` and `POST /templates`
+
+Stores reusable text templates for the current authenticated user. Template
+lists and creates are scoped by `userId`.
+
+Create request:
+
+```json
+{
+  "title": "Affiliate disclosure",
+  "body": "ลิงก์นี้เป็นลิงก์ Affiliate"
+}
+```
+
+#### `GET /posts` and `POST /posts`
+
+Stores queued posts in memory and creates a publish job placeholder.
+The scaffold can still accept `subscriptionPlan` as a temporary request override
+only in local mock development. When `NODE_ENV=production`, the backend rejects
+request-body plan overrides and uses the configured subscription store instead.
+If no plan is available, the request is treated as `BASIC`.
+Posts are scoped to the current auth user. With `AUTH_PROVIDER=mock`, use `x-postdee-user-id` to simulate different sellers during development.
+With the memory subscription store, use `x-postdee-subscription-plan: STARTER` or `PRO` to simulate a paid seller.
+
+Create request:
+
+```json
+{
+  "caption": "ของดีต้องลอง #ของดีบอกต่อ",
+  "videoS3Key": "uploads/demo-video.mp4",
+  "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
+  "subscriptionPlan": "PRO",
+  "scheduledAt": "2026-06-02T10:00:00.000Z"
+}
+```
+
+Response includes `post` and `publishJob`. If `scheduledAt` is present, the job status is `SCHEDULED`; otherwise it is `READY`.
+Cloud Scheduling requires Starter or Pro. The `BASIC` scaffold path supports
+real-time posting only after phone verification and is limited to 3 post units
+per month. Starter is limited to 120 post units per month, and Pro is limited
+to 250 post units per month. A post unit is counted per selected platform, so
+one video posted to four platforms uses four units.
+
+#### `GET /queue/jobs`
+
+Lists publish job placeholders created by `POST /posts` for the current
+authenticated user.
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "jobs": [
+    {
+      "id": "mock-job-id",
+      "queueName": "publish-posts",
+      "postId": "mock-post-id",
+      "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
+      "runAt": "2026-06-02T10:00:00.000Z",
+      "status": "SCHEDULED",
+      "createdAt": "2026-06-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+#### `GET /analytics/summary`
+
+Returns a unified analytics summary for the 4 supported platforms. This route requires the Pro plan.
+In local mock mode, use `x-postdee-subscription-plan: PRO` or call `POST /billing/mock-success` for the same mock user before requesting analytics.
+
+- TikTok
+- YouTube Shorts
+- Instagram Reels
+- Facebook Reels
+
+#### `GET /billing/subscription`
+
+Returns the current authenticated user's plan status and feature flags for the mobile Home screen.
+
+Basic response example:
+
+```json
+{
+  "status": "ok",
+  "subscription": {
+    "userId": "local-dev-user",
+    "plan": "BASIC",
+    "status": "INACTIVE",
+    "monthlyPostLimit": 3,
+    "usedPostsThisMonth": 0,
+    "remainingPostsThisMonth": 0,
+    "phoneVerified": false,
+    "requiresPhoneVerification": true,
+    "canUseFreePostQuota": false,
+    "canSchedule": false,
+    "canUseAiCaptions": false,
+    "canUseAnalytics": false,
+    "canUseAiAudioReview": false,
+    "canUseAiVideoReview": false
+  }
+}
+```
+
+After phone verification, Basic keeps `monthlyPostLimit` at `3`, sets `remainingPostsThisMonth` from current-month usage, and sets `canUseFreePostQuota` to `true`.
+Starter response sets `plan` to `STARTER`, `status` to `ACTIVE`,
+`monthlyPostLimit` to `120`, enables AI captions and scheduling, and keeps
+analytics locked.
+Pro response sets `plan` to `PRO`, `status` to `ACTIVE`, `monthlyPostLimit` to
+`250`, enables scheduling, analytics, and the higher AI caption tier.
+Compatibility AI review flags may still appear for older clients, but they
+remain `false` and should not be shown in package copy.
+
+#### `POST /billing/revenuecat/webhooks`
+
+Receives RevenueCat subscription lifecycle events when `BILLING_PROVIDER=revenuecat`.
+The webhook requires `Authorization: Bearer <REVENUECAT_WEBHOOK_AUTH_TOKEN>`.
+RevenueCat `app_user_id` must match the PostDee user id, which should be the
+Firebase uid in production. The backend maps RevenueCat entitlement or product
+ids to Starter or Pro, then updates the configured subscription store.
+
+Request shape:
+
+```json
+{
+  "event": {
+    "type": "INITIAL_PURCHASE",
+    "app_user_id": "firebase-user-id",
+    "product_id": "postdee_pro_monthly",
+    "entitlement_ids": ["pro"],
+    "expiration_at_ms": 1780531200000
+  }
+}
+```
+
+Active purchase and renewal events activate the mapped plan. `EXPIRATION`
+removes paid access. `CANCELLATION`, `SUBSCRIPTION_PAUSED`, and `BILLING_ISSUE`
+are acknowledged without revoking access immediately because the subscription
+can still be active until the paid period actually expires.
+
+#### `POST /billing/store/verify`
+
+Legacy direct Apple/Google store verification scaffold. It can verify a Starter
+or Pro subscription purchase from the mobile store flow and activates the
+matching plan for the authenticated user based on `productId`. In
+`BILLING_PROVIDER=mock`, `provider` is `mock-store`. In `BILLING_PROVIDER=store`,
+Android purchases use Google Play verification when Google credentials are
+configured, and iOS purchases use App Store Server API verification with Apple
+signed transaction verification when Apple credentials and root certificates are
+configured. Production billing should use RevenueCat instead of this custom
+store verifier.
+
+Request:
+
+```json
+{
+  "platform": "ANDROID",
+  "productId": "postdee_pro_monthly",
+  "purchaseToken": "google-play-purchase-token"
+}
+```
+
+Use `productId: "postdee_starter_monthly"` for Starter 199 THB/month and `productId: "postdee_pro_monthly"` for Pro 299 THB/month. For iOS, send `platform: "IOS"` with `transactionId`. When the App Store verifier decodes `originalTransactionId`, the backend uses it as the durable Apple billing id so renewal notifications can match the same subscription even when later transaction ids change.
+
+Response includes the verified store purchase metadata and the activated subscription:
+
+```json
+{
+  "status": "ok",
+  "purchase": {
+    "provider": "mock-store",
+    "platform": "ANDROID",
+    "productId": "postdee_pro_monthly",
+    "verifiedAt": "2026-06-04T00:00:00.000Z"
+  },
+  "subscription": {
+    "userId": "local-dev-user",
+    "plan": "PRO",
+    "status": "ACTIVE"
+  }
+}
+```
+
+#### `POST /billing/mock-success`
+
+Activates the Starter or Pro plan for the authenticated mock user. This endpoint exists only for local scaffold testing before real Apple/Google store receipt verification is connected.
+It is disabled when `NODE_ENV=production` or when real store billing mode is enabled.
+Startup also rejects `BILLING_PROVIDER=mock` when `NODE_ENV=production`.
+
+Request:
+
+```json
+{
+  "plan": "STARTER"
+}
+```
+
+#### `POST /billing/google-play/notifications`
+
+Receives Google Play Real-time Developer Notifications through a Pub/Sub push payload. The scaffold decodes the Pub/Sub `message.data`, supports subscription, test, and voided purchase notifications, maps clear subscription events to local entitlement status, and returns an acknowledgement. It updates only subscriptions that were previously bound through `POST /billing/store/verify`.
+
+Current Google status mapping:
+
+- `1`, `2`, `4`, `6`, `7` -> `ACTIVE`
+- `5` -> `PAST_DUE`
+- `12`, `13`, `20` -> `CANCELED`
+- `voidedPurchaseNotification` with `productType: 1` -> `CANCELED`
+- `3` is intentionally ignored because user cancellation can still leave entitlement active until the paid period ends.
+
+#### `POST /billing/apple/notifications`
+
+Receives App Store Server Notification V2 payloads. The scaffold requires `signedPayload` verification through Apple `SignedDataVerifier` or an injected test decoder, extracts the decoded transaction id and original transaction id when available, maps clear subscription events to local entitlement status, and returns an acknowledgement. It updates only subscriptions that were previously bound through `POST /billing/store/verify`.
+
+Current Apple status mapping:
+
+- `SUBSCRIBED`, `DID_RENEW`, `DID_RECOVER`, `REFUND_REVERSED` -> `ACTIVE`
+- `DID_FAIL_TO_RENEW` with subtype `GRACE_PERIOD` -> `ACTIVE`
+- `DID_FAIL_TO_RENEW` without subtype `GRACE_PERIOD` -> `PAST_DUE`
+- `EXPIRED`, `REFUND`, `REVOKE`, `GRACE_PERIOD_EXPIRED` -> `CANCELED`
+
+Response includes the parsed notification event and `status: "ok"` after the handler finishes.
+
+## Mobile
+
+Path: `apps/mobile`
+
+Current mobile pieces:
+
+- Ultra-dark Flutter theme
+- Generated Android and iOS platform folders with app display name `PostDee`
+- Home dashboard with manual refresh for total views and likes from `GET /analytics/summary`, plus automatic analytics refresh after the plan becomes Pro
+- Universal uploader screen with 9:16 metadata form, client/server 9:16 metadata validation, upload plan status refresh with remaining Basic post units, video file picker scaffold, saved template insertion for captions, Starter/Pro pre-check for scheduled posts, optional local file path upload to R2/S3 signed URLs, platform toggles, and backend calls to `POST /uploads` then `POST /posts`
+- Calendar tab for scheduled posts, plus AI caption entry points from Upload after a clip is selected
+- Mobile API client and Upload UI call `POST /captions/generate-from-clip` for
+  the new real-clip caption scaffold after a clip is selected.
+- Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
+  mock/provider code have been removed from the active app path.
+- Saved templates wired to `GET /templates` and `POST /templates`
+- Unified analytics wired to `GET /analytics/summary`
+- Home API connection check wired to `GET /health`, a local Gemini caption smoke check, plan status refresh wired to `GET /billing/subscription`, Basic Phone OTP UI for unlocking the 3-post free quota, and one automatic analytics refresh after Pro is unlocked
+- Upload AI captions keep the customer flow simple: select a clip, optionally add guidance, then let AI infer language and market from the clip.
+- Starter and Pro CTAs on Home can use the legacy Flutter `in_app_purchase` scaffold by default, or the RevenueCat `purchases_flutter` path when `ENABLE_REVENUECAT_BILLING=true`; RevenueCat entitlement updates come from `POST /billing/revenuecat/webhooks`
+
+Local API config can be passed with Dart defines:
+
+```powershell
+flutter run --dart-define=API_BASE_URL=http://localhost:4000 --dart-define=POSTDEE_MOCK_USER_ID=local-dev-user
+```
+
+Use `STORE_STARTER_MONTHLY_PRODUCT_ID=postdee_starter_monthly` and `STORE_PRO_MONTHLY_PRODUCT_ID=postdee_pro_monthly` when testing non-default store subscription product ids.
+Use `POSTDEE_MOCK_SUBSCRIPTION_PLAN=STARTER` or `PRO` when testing scheduled posts against the mock backend.
+For local RevenueCat Test Store billing, run from `apps/mobile` with `--dart-define-from-file=revenuecat.local.json`. That ignored file contains the RevenueCat Test Store SDK key and must not be used for App Store or Google Play release builds.
+
+A local Flutter SDK is available at `.tools/flutter` for this workspace and is ignored by Git. If you do not add Flutter to the system `PATH`, run mobile checks through the local SDK:
+
+```powershell
+cd apps/mobile
+..\..\.tools\flutter\bin\flutter.bat pub get
+..\..\.tools\flutter\bin\flutter.bat analyze
+..\..\.tools\flutter\bin\flutter.bat test
+```
+
+Android build/run still requires Android Studio and the Android SDK. Production iOS build/run requires Xcode on macOS.
+
+If platform folders ever need to be regenerated:
+
+```powershell
+cd apps/mobile
+..\..\.tools\flutter\bin\flutter.bat create --platforms=android,ios .
+```
+
+## Required Environment Variables
+
+Copy `apps/api/.env.example` to `apps/api/.env` and replace the placeholder values before connecting real services.
+
+Required services for later milestones:
+
+- PostgreSQL for app data
+- Redis for BullMQ scheduling
+- Cloudflare R2 for temporary video storage
+- Firebase Auth for Google Sign-In and Phone OTP verification
+- Gemini API for Thai caption generation
+- PostPeer for real TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels publishing
+- RevenueCat subscriptions for Starter and Pro, backed by Apple App Store and Google Play products
+
+See `FIREBASE_SETUP.md` for the Firebase Auth and Google Sign-In setup checklist.
+
+Queue/storage scaffold switches:
+
+- `TEMPLATE_STORE=memory` keeps saved templates in memory; `TEMPLATE_STORE=prisma` uses PostgreSQL through Prisma.
+- `POST_STORE=memory` keeps posts in memory; `POST_STORE=prisma` uses PostgreSQL through Prisma and upserts the current auth user before creating posts.
+- `SUBSCRIPTION_STORE=memory` reads mock subscription headers and local mock billing activations; `SUBSCRIPTION_STORE=prisma` reads and upserts active subscriptions through PostgreSQL.
+- `BILLING_PROVIDER=mock` keeps the local billing scaffold; `BILLING_PROVIDER=store` keeps the legacy direct Apple/Google verifier; `BILLING_PROVIDER=revenuecat` receives RevenueCat webhooks and is the production billing path.
+- `REVENUECAT_WEBHOOK_AUTH_TOKEN` is required when `BILLING_PROVIDER=revenuecat` in production.
+- `REVENUECAT_STARTER_ENTITLEMENT_ID` and `REVENUECAT_PRO_ENTITLEMENT_ID` map RevenueCat entitlements to PostDee plans.
+- `REVENUECAT_STARTER_PRODUCT_ID` and `REVENUECAT_PRO_PRODUCT_ID` map RevenueCat products to PostDee plans when entitlement ids are not present in the webhook.
+- `GOOGLE_PLAY_PACKAGE_NAME` is the Android package name registered in Google Play Console.
+- `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_JSON` is the preferred production credential source for Android Publisher API OAuth.
+- `GOOGLE_PLAY_ACCESS_TOKEN` is a temporary scaffold access token fallback for Android Publisher API calls.
+- `APPLE_APP_BUNDLE_ID` is the iOS bundle id registered in App Store Connect.
+- `APPLE_APP_STORE_ISSUER_ID`, `APPLE_APP_STORE_KEY_ID`, and `APPLE_APP_STORE_PRIVATE_KEY` are used to sign App Store Server API JWTs.
+- `APPLE_APP_STORE_ROOT_CERTIFICATES_BASE64` is a comma-separated list of DER root certificates encoded as base64 for Apple's signed transaction verifier.
+- `APPLE_APP_APPLE_ID` is the numeric App Store app id. It is optional for sandbox but should be set for production verification.
+- `APPLE_APP_STORE_ENVIRONMENT=sandbox|production` selects the App Store Server API base URL. Keep sandbox for development.
+- `ANALYTICS_STORE=memory` returns in-memory analytics metrics; `ANALYTICS_STORE=prisma` reads platform publish metrics from PostgreSQL through Prisma and lets the publish worker record platform results.
+- `CAPTION_USAGE_STORE=memory` keeps real-clip AI caption usage in memory;
+  `CAPTION_USAGE_STORE=prisma` persists monthly usage in PostgreSQL through
+  Prisma.
+- `PUBLISH_QUEUE=memory` keeps publish jobs in memory; `PUBLISH_QUEUE=bullmq` uses Redis/BullMQ. If the publish queue is unavailable while creating or rescheduling a post, the API returns `503 PUBLISH_QUEUE_UNAVAILABLE` instead of leaving the post state ahead of the queue.
+- `PUBLISH_QUEUE=bullmq` requires `POST_STORE=prisma` and `DATABASE_URL` so the API and separate worker process share the same post records.
+- Publish workers claim only `QUEUED` posts before calling a publisher. Duplicate
+  retry jobs for posts already `PUBLISHING`, `PUBLISHED`,
+  `PARTIAL_PUBLISHED`, or `FAILED` are skipped. Scheduled jobs whose `runAt`
+  no longer matches the post's current `scheduledAt` are also skipped.
+- `SOCIAL_PUBLISHER=mock` keeps publishing safe for local development; `SOCIAL_PUBLISHER=postpeer` calls PostPeer for real posting and requires `POSTPEER_API_KEY`, `VIDEO_STORAGE=r2|s3`, and the selected platform's PostPeer account id.
+- `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`, `POSTPEER_INSTAGRAM_ACCOUNT_ID`, and `POSTPEER_FACEBOOK_ACCOUNT_ID` are PostPeer integration ids from `/v1/connect/integrations`, not usernames or channel handles.
+- `VIDEO_STORAGE=mock` creates mock S3-style upload keys and mock read placeholders; `VIDEO_STORAGE=r2` uses Cloudflare R2 through the S3-compatible API for signed upload and signed download access; `VIDEO_STORAGE=s3` remains available as a legacy AWS S3 path.
+- `CLOUDFLARE_R2_BUCKET`, `CLOUDFLARE_R2_ACCOUNT_ID`, `CLOUDFLARE_R2_ACCESS_KEY_ID`, and `CLOUDFLARE_R2_SECRET_ACCESS_KEY` configure R2 uploads.
+- `CLOUDFLARE_R2_ENDPOINT` can override the default `https://<accountId>.r2.cloudflarestorage.com` endpoint when needed.
+- `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS=900` controls how long R2 signed upload URLs remain usable.
+- `AWS_S3_UPLOAD_EXPIRES_SECONDS=900` controls how long legacy S3 signed upload URLs remain usable.
+- `CAPTION_PROVIDER=mock` uses the local Thai template; `CAPTION_PROVIDER=gemini` calls Gemini with `GEMINI_CAPTION_MODEL` and `GEMINI_API_KEY`; `CAPTION_PROVIDER=openai` remains available as a legacy path.
+- `TRANSCRIPTION_PROVIDER=mock` uses the local Thai transcript for AI caption language detection and AI editing; `TRANSCRIPTION_PROVIDER=groq` calls Groq with `GROQ_TRANSCRIPTION_MODEL` and `GROQ_API_KEY`; `TRANSCRIPTION_PROVIDER=openai` remains available as a legacy path.
+- `AUTH_PROVIDER=mock` uses development headers; `AUTH_PROVIDER=firebase` verifies Firebase ID tokens with Google Secure Token certificates and requires `FIREBASE_PROJECT_ID`.
+- The mobile app has an auth session store, Google Sign-In UI, and Firebase/Google auth gateway. `PostDeeApiClient` can send `Authorization: Bearer <Firebase ID token>` from that session; without a token it keeps using local mock headers. If Firebase auth is enabled before project files are configured, startup falls back to a readable sign-in setup message.
+
+Seed helpers:
+
+- `MOCK_USER_ID` controls the default local auth user.
+- `SEED_USER_EMAIL` and `SEED_USER_DISPLAY_NAME` control the Prisma seed user.
+
+## Roadmap
+
+See `ROADMAP.md` for the build roadmap. It includes the current Phase 1 core app work, planned pricing with Basic, Starter 199, and Pro 299, AI caption from the real clip, Pro Groq Whisper auto editing, and Phase 2 growth features such as Link in Bio, EP tools, watermarking, hashtag radar, AI comment center, viral alerts, and Team and Editor Access.
+
+## Current Limits
+
+This is scaffolding only. The current backend uses mock-safe implementations and in-memory stores by default, with optional Prisma persistence for real-clip AI caption usage. PostPeer publishing is wired behind `SOCIAL_PUBLISHER=postpeer`, but it should stay on `mock` until connected account ids are present and a real provider-level publish test is approved. Production real-clip audio/frame understanding, Pro Groq Whisper auto editing, and full database persistence are not verified for production yet. Real-clip AI captioning can now reuse the configured transcription provider for spoken-language detection, but still needs R2/Groq provider-level testing with real clips before production use. Firebase ID token verification exists for `AUTH_PROVIDER=firebase`, and the mobile app has a token handoff plus Firebase/Google auth gateway, but it still needs mobile device testing before production use. The backend now has a RevenueCat webhook foundation for Starter and Pro entitlements, and the mobile app has a `purchases_flutter` gateway behind `ENABLE_REVENUECAT_BILLING=true`; production still needs real App Store / Google Play products, real platform RevenueCat SDK keys, sandbox/device purchase testing, and renewal/refund/cancel event verification. The legacy direct Apple/Google store verifier remains available as a scaffold, not the preferred production path. BullMQ, R2, Gemini, Groq, PostPeer, RevenueCat, and Firebase auth still need provider-level integration testing before production use.

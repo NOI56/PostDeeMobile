@@ -1,0 +1,117 @@
+# LAUNCH_CHECKLIST.md
+
+เช็กลิสต์ก่อนเปิดใช้งานจริง / ทดสอบกับผู้ใช้จริง สำหรับ PostDee
+
+> ภาพรวม: โค้ดและสถาปัตยกรรมพร้อมแล้ว (บั๊กระดับสูงอุดครบ, เทสต์เขียวทั้ง API
+> และ mobile) เหลือขั้นตอน "เสียบคีย์ + ตั้งค่าโครงสร้างจริง + ทดสอบบนเครื่อง"
+> ตามลำดับด้านล่าง
+
+---
+
+## 1) สลับ provider เป็นของจริง (ตัวแปร env ของ API)
+
+ค่าเริ่มต้นทั้งหมดเป็น `mock`/`memory` และใน `NODE_ENV=production` เซิร์ฟเวอร์จะไม่
+ยอมสตาร์ทถ้า `AUTH_PROVIDER=mock` หรือ `BILLING_PROVIDER=mock`
+
+| ตัวแปร | จาก → เป็น | คีย์/สิ่งที่ต้องมี |
+|---|---|---|
+| `NODE_ENV` | `development` → `production` | — |
+| `AUTH_PROVIDER` | `mock` → `firebase` | `FIREBASE_PROJECT_ID` |
+| `BILLING_PROVIDER` | `mock` → `store` หรือ `revenuecat` | (ดูข้อ 6) |
+| `VIDEO_STORAGE` | `mock` → `r2` | `CLOUDFLARE_R2_*` |
+| `CAPTION_PROVIDER` | `mock` → `gemini` | `GEMINI_API_KEY` |
+| `TRANSCRIPTION_PROVIDER` | `mock` → `groq` | `GROQ_API_KEY` |
+| `EDIT_PLAN_PROVIDER` | `mock` → `groq` (หรือ `openai`) | `GROQ_API_KEY` |
+| `SOCIAL_PUBLISHER` | `mock` → `postpeer` | (ดูข้อ 5) |
+| `PUBLISH_QUEUE` | `memory` → `bullmq` | `REDIS_URL` (Upstash) |
+| `*_STORE` (post/subscription/analytics/template/captionUsage/aiEditUsage) | `memory` → `prisma` | `DATABASE_URL` |
+
+> ✅ ทดสอบแล้วว่าคีย์ใช้ได้จริง: **Gemini, Cloudflare R2, Groq**
+
+---
+
+## 2) ฐานข้อมูล (Render PostgreSQL)
+
+- [ ] สร้าง Render PostgreSQL, ตั้ง `DATABASE_URL`
+- [ ] รัน migration: `npm run prisma:migrate:deploy`
+      (รวม migration ใหม่ `*_add_partial_published_status` สำหรับสถานะ
+      `PARTIAL_PUBLISHED` ที่เพิ่งเพิ่ม)
+- [ ] ตั้ง `*_STORE=prisma` ทุกตัว แล้วทดสอบ `GET /posts`, `POST /posts`,
+      `GET /billing/subscription`
+
+---
+
+## 3) Worker แยก (สำคัญ — จำเป็นเมื่อ `PUBLISH_QUEUE=bullmq`)
+
+- [ ] Deploy **worker service แยก** ที่รัน `npm run worker:publish`
+- ⚠️ ถ้าไม่มี worker: โพสต์ทันทีและตั้งเวลา **จะค้างสถานะ QUEUED** ไม่ถูกประมวลผล
+- worker ตัวนี้เป็นคนอัปเดตสถานะโพสต์ (QUEUED → PUBLISHED/PARTIAL_PUBLISHED/FAILED)
+  และมี idempotency กันโพสต์ซ้ำตอน retry แล้ว
+
+---
+
+## 4) การลบวิดีโอชั่วคราว (R2 lifecycle) — เปลี่ยนวิธีแล้ว
+
+- การลบวิดีโอทันทีหลังโพสต์ถูก **ปิดเป็นค่าเริ่มต้น** (กัน PostPeer ดึงไฟล์ไม่ทันแล้ว
+  โพสต์หลุดเงียบ)
+- [ ] ตั้ง **R2 lifecycle rule** ให้ลบ object ใน prefix `uploads/` อัตโนมัติหลัง N วัน
+      (เช่น 7 วัน) แทน — เพื่อไม่ให้พื้นที่ R2 โตไม่จำกัด
+- signed download URL ตั้งอายุขั้นต่ำ 1 ชม. แล้ว (ให้ PostPeer/Gemini ดึงทัน)
+
+---
+
+## 5) PostPeer (การโพสต์จริง — หัวใจของแอป)
+
+- [ ] `SOCIAL_PUBLISHER=postpeer`, ตั้ง `POSTPEER_API_KEY`
+- [ ] ตั้ง account id ของแต่ละแพลตฟอร์มที่เชื่อมไว้:
+      `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`,
+      `POSTPEER_INSTAGRAM_ACCOUNT_ID`, `POSTPEER_FACEBOOK_ACCOUNT_ID`
+- [ ] ทดสอบโพสต์จริง 1 คลิป ครบทุกแพลตฟอร์ม (ใช้บัญชีทดสอบ)
+- หมายเหตุ: Shopee/Lazada ยังไม่รองรับใน PostPeer mapping (เพิ่มภายหลัง)
+
+---
+
+## 6) Subscription / การเก็บเงิน
+
+- [ ] เลือกทางเดียวให้ตรงกันทั้งมือถือและ backend:
+  - **Store IAP**: มือถือใช้ `in_app_purchase` + backend `BILLING_PROVIDER=store`
+    (`/billing/store/verify`)
+  - **RevenueCat**: มือถือใช้ `purchases_flutter` + backend
+    `BILLING_PROVIDER=revenuecat` + `REVENUECAT_WEBHOOK_AUTH_TOKEN`
+  - ⚠️ ถ้าไม่ตรงกัน การซื้อจะ fail (501)
+- [ ] ตั้ง product ใน App Store Connect / Google Play, ทดสอบซื้อบน sandbox device
+- ✅ มีตาข่ายกันหมดอายุแล้ว: ถ้า webhook พลาด ระบบจะตัดเป็น BASIC เมื่อเลย
+      `currentPeriodEnd`
+
+---
+
+## 7) Firebase (Auth + Phone + Push)
+
+- [x] ไฟล์ config มีครบแล้ว (`google-services.json`, `GoogleService-Info.plist`)
+- [ ] เปิด provider ใน Firebase Console: **Google, Apple, Phone, Cloud Messaging**
+- [ ] iOS: เพิ่ม capability "Sign in with Apple" + "Push Notifications" + อัป APNs key
+- [ ] build ด้วย `--dart-define=ENABLE_FIREBASE_AUTH=true` (+ `GOOGLE_SERVER_CLIENT_ID`)
+- ✅ token รีเฟรชอัตโนมัติ + กู้ session ตอนเปิดแอปแล้ว (ไม่หลุดล็อกอินทุกครั้ง)
+- ⏳ FCM ส่ง push จริงยังต้องทำ: endpoint เก็บ device token + ตัวส่งฝั่ง backend
+
+---
+
+## 8) ทดสอบบนเครื่องจริง (smoke test ปลายทาง)
+
+- [ ] ล็อกอิน Google + Apple + ยืนยันเบอร์ (OTP) สำเร็จ บนมือถือจริง
+- [ ] อัปคลิป → โพสต์ทันที → ขึ้นจริงทุกแพลตฟอร์ม → สถานะอัปเป็น PUBLISHED
+- [ ] ตั้งเวลาโพสต์ → ปฏิทินแสดง → ถึงเวลาแล้วโพสต์จริง
+- [ ] AI แคปชั่นจากคลิป (Starter ฟัง / Pro ฟัง+ดูเฟรม)
+- [ ] AI ตัดต่อ/ซับ (Pro) + export บนเครื่อง
+- [ ] ซื้อแพ็กเกจ (sandbox) → ปลดล็อกฟีเจอร์
+- [ ] ลบบัญชี → ข้อมูลหายจริง
+
+---
+
+## 9) ภายหลัง (ไม่บล็อกการเปิด)
+
+- [ ] Sentry (error tracking) — API, worker, mobile
+- [ ] FCM backend sender + device token endpoint
+- [ ] Analytics: ตัวดึง views/likes จริงจากแพลตฟอร์ม (ตอนนี้แสดง 0)
+- [ ] PostPeer: รองรับ Shopee/Lazada + ยิงรวมหลายแพลตฟอร์มในคอลเดียว
+- [ ] รองรับ Shopee/Lazada ครบทั้ง backend (validation/Prisma enum) + โลโก้จริง

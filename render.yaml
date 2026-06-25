@@ -1,0 +1,97 @@
+services:
+  - type: web
+    name: postdee-api
+    runtime: node
+    rootDir: apps/api
+    region: singapore
+    # Keep at 1 instance: PUBLISH_QUEUE=memory uses an in-process scheduler, so
+    # multiple instances would each publish the same post. For >1 instance,
+    # switch to PUBLISH_QUEUE=bullmq + REDIS_URL and add a separate `type: worker`
+    # service running `npm run worker:publish`.
+    numInstances: 1
+    buildCommand: npm ci && npm run prisma:generate && npm run build
+    preDeployCommand: npm run prisma:migrate:deploy
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: postdee-postgres
+          property: connectionString
+      - key: TEMPLATE_STORE
+        value: prisma
+      - key: POST_STORE
+        value: prisma
+      - key: SUBSCRIPTION_STORE
+        value: prisma
+      - key: ANALYTICS_STORE
+        value: prisma
+      - key: CAPTION_USAGE_STORE
+        value: prisma
+      - key: AI_EDIT_USAGE_STORE
+        value: prisma
+      - key: PUBLISH_QUEUE
+        value: memory
+      - key: VIDEO_STORAGE
+        value: r2
+      - key: CLOUDFLARE_R2_BUCKET
+        sync: false
+      - key: CLOUDFLARE_R2_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_ENDPOINT
+        sync: false
+      # --- AI caption: Gemini (listens to clip; Pro also sees frames) ---
+      - key: CAPTION_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      # --- Transcription + edit planning: Groq (AI auto-editing) ---
+      - key: TRANSCRIPTION_PROVIDER
+        value: groq
+      - key: EDIT_PLAN_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      # --- Social posting: PostPeer ---
+      # Flip SOCIAL_PUBLISHER to "postpeer" only after the POSTPEER_* values are
+      # set and a controlled real publish test is approved.
+      - key: SOCIAL_PUBLISHER
+        value: mock
+      - key: POSTPEER_API_KEY
+        sync: false
+      - key: POSTPEER_TIKTOK_ACCOUNT_ID
+        sync: false
+      - key: POSTPEER_YOUTUBE_ACCOUNT_ID
+        sync: false
+      - key: POSTPEER_INSTAGRAM_ACCOUNT_ID
+        sync: false
+      - key: POSTPEER_FACEBOOK_ACCOUNT_ID
+        sync: false
+      - key: AUTH_PROVIDER
+        value: firebase
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: BILLING_PROVIDER
+        value: revenuecat
+      - key: REVENUECAT_WEBHOOK_AUTH_TOKEN
+        sync: false
+      - key: REVENUECAT_STARTER_ENTITLEMENT_ID
+        value: starter
+      - key: REVENUECAT_PRO_ENTITLEMENT_ID
+        value: pro
+      - key: REVENUECAT_STARTER_PRODUCT_ID
+        value: postdee_starter_monthly
+      - key: REVENUECAT_PRO_PRODUCT_ID
+        value: postdee_pro_monthly
+
+databases:
+  - name: postdee-postgres
+    region: singapore
+    databaseName: postdee
+    user: postdee

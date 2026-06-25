@@ -9,9 +9,9 @@ services:
     # switch to PUBLISH_QUEUE=bullmq + REDIS_URL and add a separate `type: worker`
     # service running `npm run worker:publish`.
     numInstances: 1
-    buildCommand: npm ci && npm run prisma:generate && npm run build
-    preDeployCommand: npm run prisma:migrate:deploy
-    startCommand: npm run start
+    buildCommand: if [ -f package-lock.json ]; then npm ci && npm run prisma:generate && npm run build; else cd apps/api && npm ci && npm run prisma:generate && npm run build; fi
+    preDeployCommand: if [ -f package.json ]; then npm run prisma:migrate:deploy; else cd apps/api && npm run prisma:migrate:deploy; fi
+    startCommand: if [ -f dist/server.js ]; then node dist/server.js; else cd apps/api && node dist/server.js; fi
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

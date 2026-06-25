@@ -9,7 +9,7 @@ services:
     # switch to PUBLISH_QUEUE=bullmq + REDIS_URL and add a separate `type: worker`
     # service running `npm run worker:publish`.
     numInstances: 1
-    buildCommand: (npm ci || (cd apps/api && npm ci)) && (npm run prisma:generate || (cd apps/api && npm run prisma:generate)) && (npm run build || (cd apps/api && npm run build))
+    buildCommand: (npm install --include=dev && npm run prisma:generate && npm run build) || (cd apps/api && npm install --include=dev && npm run prisma:generate && npm run build)
     preDeployCommand: npm run prisma:migrate:deploy || (cd apps/api && npm run prisma:migrate:deploy)
     startCommand: npm run start || (cd apps/api && npm run start)
     healthCheckPath: /health

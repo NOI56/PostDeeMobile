@@ -49,10 +49,15 @@ describe('render.yaml production config', () => {
     expect(source).toMatch(/numInstances: 1/);
   });
 
-  it('runs deploy commands from the API workspace even if Render starts at the repo root', async () => {
+  it('installs build dependencies without assuming Render can see the lockfile', async () => {
     const source = await readRenderConfig();
 
-    expect(source).toContain('buildCommand: (npm ci || (cd apps/api && npm ci))');
+    expect(source).toContain(
+      'buildCommand: (npm install --include=dev && npm run prisma:generate && npm run build)',
+    );
+    expect(source).toContain(
+      '|| (cd apps/api && npm install --include=dev && npm run prisma:generate && npm run build)',
+    );
     expect(source).toContain(
       'preDeployCommand: npm run prisma:migrate:deploy || (cd apps/api',
     );

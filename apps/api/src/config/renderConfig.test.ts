@@ -52,13 +52,10 @@ describe('render.yaml production config', () => {
   it('runs deploy commands from the API workspace even if Render starts at the repo root', async () => {
     const source = await readRenderConfig();
 
-    expect(source).toContain('buildCommand: if [ -f package-lock.json ]; then');
-    expect(source).toContain('else cd apps/api && npm ci');
+    expect(source).toContain('buildCommand: (npm ci || (cd apps/api && npm ci))');
     expect(source).toContain(
-      'preDeployCommand: if [ -f package.json ]; then npm run prisma:migrate:deploy; else cd apps/api',
+      'preDeployCommand: npm run prisma:migrate:deploy || (cd apps/api',
     );
-    expect(source).toContain(
-      'startCommand: if [ -f dist/server.js ]; then node dist/server.js; else cd apps/api',
-    );
+    expect(source).toContain('startCommand: npm run start || (cd apps/api');
   });
 });

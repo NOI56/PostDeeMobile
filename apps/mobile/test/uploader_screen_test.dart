@@ -1119,6 +1119,72 @@ void main() {
     expect(notifiedPost?.id, 'post-scheduled');
   });
 
+  testWidgets('rejects a scheduled post whose time is already in the past',
+      (tester) async {
+    var createPostCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            // Pin "now" far in the future so the default tomorrow 18:30 schedule
+            // counts as being in the past at submit time.
+            now: () => DateTime(2100),
+            pickVideo: () async =>
+                _createPickedVideoFixture('past-scheduled.mp4'),
+            loadSubscription: () async => const SubscriptionStatusResult(
+              userId: 'seller-starter',
+              plan: 'STARTER',
+              status: 'ACTIVE',
+              phoneVerified: true,
+              requiresPhoneVerification: false,
+              canUseFreePostQuota: false,
+              canSchedule: true,
+              canUseAiCaptions: true,
+              canUseAnalytics: false,
+            ),
+            createUpload: (_) async => const UploadResult(
+              id: 'upload-1',
+              videoS3Key: 'uploads/past-scheduled.mp4',
+              storageProvider: 'mock',
+            ),
+            uploadVideoFile: (_, __) async {},
+            createPost: (request) async {
+              createPostCalls += 1;
+
+              return QueuedPostResult(
+                id: 'post-past',
+                videoS3Key: request.videoS3Key,
+                platforms: request.platforms,
+                status: 'QUEUED',
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await _pickVideoFromPreview(tester);
+
+    final scheduleButton =
+        find.byKey(const ValueKey('uploader-schedule-later'));
+    await tester.scrollUntilVisible(
+      scheduleButton,
+      300,
+      scrollable: uploaderScroll,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(scheduleButton);
+    await tester.pumpAndSettle();
+    await _enterUploadCaption(tester);
+
+    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await tester.pumpAndSettle();
+
+    expect(createPostCalls, 0);
+    expect(find.text('เวลาตั้งโพสต์ต้องเป็นเวลาในอนาคต'), findsOneWidget);
+  });
+
   testWidgets('keeps plan status hidden before posting', (tester) async {
     var subscriptionChecks = 0;
 

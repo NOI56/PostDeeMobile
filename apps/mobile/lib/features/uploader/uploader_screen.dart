@@ -44,6 +44,7 @@ class UploaderScreen extends StatefulWidget {
     this.createPost,
     this.onScheduledPostCreated,
     this.watermarkVideo,
+    this.now = DateTime.now,
     this.extractFrames,
     this.growthToolSettingsStore =
         const SharedPreferencesGrowthToolSettingsStore(),
@@ -64,6 +65,10 @@ class UploaderScreen extends StatefulWidget {
   final UploaderPostCreator? createPost;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
   final UploaderWatermarkVideoProcessor? watermarkVideo;
+
+  // Wall clock used to reject schedules in the past. Injectable so tests can
+  // pin "now" instead of depending on the real time of day.
+  final DateTime Function() now;
 
   // Extracts still frames from the clip for Pro AI captioning (Gemini "sees"
   // them). Injectable so tests don't touch the native FFmpeg plugin.
@@ -707,6 +712,14 @@ class _UploaderScreenState extends State<UploaderScreen> {
     if (_scheduledAtController.text.trim().isNotEmpty && scheduledAt == null) {
       setState(() {
         _errorMessage = 'เวลาตั้งโพสต์ต้องเป็นรูปแบบ ISO ที่ถูกต้อง';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    if (scheduledAt != null && !scheduledAt.isAfter(widget.now())) {
+      setState(() {
+        _errorMessage = 'เวลาตั้งโพสต์ต้องเป็นเวลาในอนาคต';
         _successMessage = null;
       });
       return;

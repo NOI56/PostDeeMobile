@@ -305,14 +305,32 @@ List<SilenceCutRange> buildStyleCutRanges({
   return cuts;
 }
 
-/// Estimated final length after cuts and speed change. Pure + testable.
+/// Estimated final length after trim, cuts and speed change. [cutRanges] are in
+/// the original clip timeline; only the slice of each cut that falls inside the
+/// [trimStartSec]..[trimEndSec] window counts toward the removed length. With no
+/// trim the whole clip is the window. Pure + testable.
 double estimateResultSeconds({
   required double durationSeconds,
   required List<SilenceCutRange> cutRanges,
   double speed = 1.0,
+  double? trimStartSec,
+  double? trimEndSec,
 }) {
-  final cut = cutRanges.fold<double>(0, (sum, r) => sum + (r.end - r.start));
-  final kept = (durationSeconds - cut).clamp(0.0, durationSeconds);
+  if (durationSeconds <= 0) {
+    return 0;
+  }
+
+  final windowStart = (trimStartSec ?? 0).clamp(0.0, durationSeconds);
+  final windowEnd =
+      (trimEndSec ?? durationSeconds).clamp(windowStart, durationSeconds);
+  final windowLength = windowEnd - windowStart;
+
+  final cut = cutRanges.fold<double>(0, (sum, r) {
+    final start = r.start.clamp(windowStart, windowEnd);
+    final end = r.end.clamp(windowStart, windowEnd);
+    return sum + (end - start);
+  });
+  final kept = (windowLength - cut).clamp(0.0, windowLength);
   final effectiveSpeed = speed <= 0 ? 1.0 : speed;
 
   return kept / effectiveSpeed;

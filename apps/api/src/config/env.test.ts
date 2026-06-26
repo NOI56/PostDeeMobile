@@ -205,6 +205,33 @@ describe('readServerConfig', () => {
     ).toThrow('BILLING_PROVIDER=mock is not allowed when NODE_ENV=production');
   });
 
+  it('rejects mock social publisher and video storage in production', () => {
+    const productionBase = {
+      NODE_ENV: 'production',
+      AUTH_PROVIDER: 'firebase',
+      FIREBASE_PROJECT_ID: 'postdee-prod',
+      BILLING_PROVIDER: 'store'
+    };
+
+    expect(() =>
+      readServerConfig({
+        ...productionBase,
+        VIDEO_STORAGE: 'r2',
+        CLOUDFLARE_R2_BUCKET: 'postdee-r2-temp'
+        // SOCIAL_PUBLISHER left at its mock default.
+      })
+    ).toThrow('SOCIAL_PUBLISHER=mock is not allowed when NODE_ENV=production');
+
+    expect(() =>
+      readServerConfig({
+        ...productionBase,
+        SOCIAL_PUBLISHER: 'postpeer',
+        POSTPEER_API_KEY: 'postpeer-key'
+        // VIDEO_STORAGE left at its mock default.
+      })
+    ).toThrow('VIDEO_STORAGE=mock is not allowed when NODE_ENV=production');
+  });
+
   it('allows RevenueCat billing in production', () => {
     const config = readServerConfig({
       NODE_ENV: 'production',
@@ -215,7 +242,11 @@ describe('readServerConfig', () => {
       REVENUECAT_STARTER_ENTITLEMENT_ID: 'starter',
       REVENUECAT_PRO_ENTITLEMENT_ID: 'pro',
       REVENUECAT_STARTER_PRODUCT_ID: 'postdee_starter_monthly',
-      REVENUECAT_PRO_PRODUCT_ID: 'postdee_pro_monthly'
+      REVENUECAT_PRO_PRODUCT_ID: 'postdee_pro_monthly',
+      SOCIAL_PUBLISHER: 'postpeer',
+      POSTPEER_API_KEY: 'postpeer-key',
+      VIDEO_STORAGE: 'r2',
+      CLOUDFLARE_R2_BUCKET: 'postdee-r2-temp'
     });
 
     expect(config).toMatchObject({

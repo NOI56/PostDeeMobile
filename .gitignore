@@ -9,6 +9,7 @@ build/
 coverage/
 .DS_Store
 .superpowers/
+.worktrees/
 *.log
 .claude/
 .idea/

@@ -3,12 +3,13 @@ import {
   type SocialConnectionPlatform,
   type SocialConnectionStore,
   type UpsertSocialConnectionInput,
+  isSocialConnectionPlatform,
   supportedSocialConnectionPlatforms
 } from './socialConnectionStore.js';
 
 type PrismaSocialConnection = {
   userId: string;
-  platform: SocialConnectionPlatform;
+  platform: string;
   postPeerAccountId: string;
   displayName: string | null;
   externalAccountId: string | null;
@@ -32,7 +33,12 @@ type SocialConnectionWriteData = {
 
 type SocialConnectionDelegate = {
   findMany: (args: {
-    where: { userId: string };
+    where: {
+      userId: string;
+      platform?: {
+        in: SocialConnectionPlatform[];
+      };
+    };
     select: SocialConnectionSelect;
   }) => Promise<PrismaSocialConnection[]>;
   findUnique: (args: {
@@ -93,17 +99,29 @@ const disconnectedConnection = ({
   status: 'DISCONNECTED'
 });
 
-const mapConnection = (record: PrismaSocialConnection): SocialConnection => ({
-  userId: record.userId,
-  platform: record.platform,
-  status: 'CONNECTED',
-  postPeerAccountId: record.postPeerAccountId,
-  ...(record.displayName !== null ? { displayName: record.displayName } : {}),
-  ...(record.externalAccountId !== null
-    ? { externalAccountId: record.externalAccountId }
-    : {}),
-  connectedAt: record.connectedAt.toISOString()
-});
+const normalizeOptionalMetadata = (value?: string | null): string | undefined =>
+  value === undefined || value === null || value.trim() === '' ? undefined : value;
+
+const mapConnection = (
+  record: PrismaSocialConnection
+): SocialConnection | undefined => {
+  if (!isSocialConnectionPlatform(record.platform)) {
+    return undefined;
+  }
+
+  const displayName = normalizeOptionalMetadata(record.displayName);
+  const externalAccountId = normalizeOptionalMetadata(record.externalAccountId);
+
+  return {
+    userId: record.userId,
+    platform: record.platform,
+    status: 'CONNECTED',
+    postPeerAccountId: record.postPeerAccountId,
+    ...(displayName ? { displayName } : {}),
+    ...(externalAccountId ? { externalAccountId } : {}),
+    connectedAt: record.connectedAt.toISOString()
+  };
+};
 
 const writeData = ({
   postPeerAccountId,
@@ -111,8 +129,8 @@ const writeData = ({
   externalAccountId
 }: UpsertSocialConnectionInput): SocialConnectionWriteData => ({
   postPeerAccountId,
-  displayName: displayName ?? null,
-  externalAccountId: externalAccountId ?? null
+  displayName: normalizeOptionalMetadata(displayName) ?? null,
+  externalAccountId: normalizeOptionalMetadata(externalAccountId) ?? null
 });
 
 export const createPrismaSocialConnectionRepository = ({
@@ -123,13 +141,22 @@ export const createPrismaSocialConnectionRepository = ({
   listForUser: async (userId) => {
     const records = await prisma.socialConnection.findMany({
       where: {
-        userId
+        userId,
+        platform: {
+          in: supportedSocialConnectionPlatforms
+        }
       },
       select: socialConnectionSelect
     });
-    const connectedByPlatform = new Map(
-      records.map((record) => [record.platform, mapConnection(record)])
-    );
+    const connectedByPlatform = new Map<SocialConnectionPlatform, SocialConnection>();
+
+    for (const record of records) {
+      const connection = mapConnection(record);
+
+      if (connection) {
+        connectedByPlatform.set(connection.platform, connection);
+      }
+    }
 
     return supportedSocialConnectionPlatforms.map(
       (platform) =>
@@ -169,7 +196,13 @@ export const createPrismaSocialConnectionRepository = ({
       select: socialConnectionSelect
     });
 
-    return mapConnection(record);
+    const connection = mapConnection(record);
+
+    if (!connection) {
+      throw new Error('Unsupported social connection platform returned from Prisma');
+    }
+
+    return connection;
   },
   disconnect: async ({ userId, platform }) => {
     await prisma.socialConnection.deleteMany({

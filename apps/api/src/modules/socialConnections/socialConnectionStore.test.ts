@@ -94,6 +94,59 @@ describe('createInMemorySocialConnectionStore', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('preserves the original connected time when updating an existing connection', async () => {
+    let currentTime = '2026-06-26T02:00:00.000Z';
+    const store = createInMemorySocialConnectionStore({
+      now: () => currentTime
+    });
+
+    await store.upsert({
+      userId: 'seller-1',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'postpeer-tiktok-1',
+      displayName: 'Old TikTok'
+    });
+    currentTime = '2026-06-26T03:00:00.000Z';
+
+    await expect(
+      store.upsert({
+        userId: 'seller-1',
+        platform: 'TIKTOK',
+        postPeerAccountId: 'postpeer-tiktok-updated',
+        displayName: 'Updated TikTok'
+      })
+    ).resolves.toEqual({
+      userId: 'seller-1',
+      platform: 'TIKTOK',
+      status: 'CONNECTED',
+      postPeerAccountId: 'postpeer-tiktok-updated',
+      displayName: 'Updated TikTok',
+      connectedAt: '2026-06-26T02:00:00.000Z'
+    });
+  });
+
+  it('omits blank optional metadata when storing a connection', async () => {
+    const store = createInMemorySocialConnectionStore({
+      now: () => '2026-06-26T02:00:00.000Z'
+    });
+
+    await expect(
+      store.upsert({
+        userId: 'seller-1',
+        platform: 'TIKTOK',
+        postPeerAccountId: 'postpeer-tiktok-1',
+        displayName: '',
+        externalAccountId: '   '
+      })
+    ).resolves.toEqual({
+      userId: 'seller-1',
+      platform: 'TIKTOK',
+      status: 'CONNECTED',
+      postPeerAccountId: 'postpeer-tiktok-1',
+      connectedAt: '2026-06-26T02:00:00.000Z'
+    });
+  });
+
   it('disconnects one platform and deletes every connection for a user', async () => {
     const store = createInMemorySocialConnectionStore({
       now: () => '2026-06-26T02:00:00.000Z'

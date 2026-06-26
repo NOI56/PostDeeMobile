@@ -83,6 +83,9 @@ const disconnectedConnection = ({
   status: 'DISCONNECTED'
 });
 
+const normalizeOptionalMetadata = (value?: string): string | undefined =>
+  value === undefined || value.trim() === '' ? undefined : value;
+
 const connectedConnection = ({
   userId,
   platform,
@@ -90,15 +93,22 @@ const connectedConnection = ({
   displayName,
   externalAccountId,
   connectedAt
-}: UpsertSocialConnectionInput & { connectedAt: string }): SocialConnection => ({
-  userId,
-  platform,
-  status: 'CONNECTED',
-  postPeerAccountId,
-  ...(displayName ? { displayName } : {}),
-  ...(externalAccountId ? { externalAccountId } : {}),
-  connectedAt
-});
+}: UpsertSocialConnectionInput & { connectedAt: string }): SocialConnection => {
+  const normalizedDisplayName = normalizeOptionalMetadata(displayName);
+  const normalizedExternalAccountId = normalizeOptionalMetadata(externalAccountId);
+
+  return {
+    userId,
+    platform,
+    status: 'CONNECTED',
+    postPeerAccountId,
+    ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {}),
+    ...(normalizedExternalAccountId
+      ? { externalAccountId: normalizedExternalAccountId }
+      : {}),
+    connectedAt
+  };
+};
 
 export const createInMemorySocialConnectionStore = ({
   now = () => new Date().toISOString()
@@ -117,12 +127,14 @@ export const createInMemorySocialConnectionStore = ({
     getAccountId: async (input) =>
       connections.get(connectionKey(input))?.postPeerAccountId,
     upsert: async (input) => {
+      const key = connectionKey(input);
+      const existingConnection = connections.get(key);
       const record = connectedConnection({
         ...input,
-        connectedAt: now()
+        connectedAt: existingConnection?.connectedAt ?? now()
       });
 
-      connections.set(connectionKey(input), record);
+      connections.set(key, record);
       return record;
     },
     disconnect: async (input) => {

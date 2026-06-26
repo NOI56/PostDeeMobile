@@ -10,6 +10,7 @@ export type VideoStorageKind = 'mock' | 's3' | 'r2';
 export type CaptionProviderKind = 'mock' | 'openai' | 'gemini';
 export type AuthProviderKind = 'mock' | 'firebase';
 export type BillingProviderKind = 'mock' | 'store' | 'revenuecat';
+export type PushSenderKind = 'mock' | 'firebase';
 export type SocialPublisherKind = 'mock' | 'postpeer';
 export type TranscriptionProviderKind = 'mock' | 'openai' | 'groq';
 export type EditPlanProviderKind = 'mock' | 'openai' | 'groq';
@@ -51,6 +52,8 @@ export type ServerConfig = {
   appleAppAppleId?: number;
   appleAppStoreEnvironment: AppleAppStoreEnvironmentKind;
   firebaseProjectId?: string;
+  pushSender: PushSenderKind;
+  firebaseServiceAccountJson?: string;
   templateStore: TemplateStoreKind;
   templateStoreUserId: string;
   postStore: PostStoreKind;
@@ -223,6 +226,16 @@ const readBillingProvider = (env: EnvSource): BillingProviderKind => {
   return value;
 };
 
+const readPushSender = (env: EnvSource): PushSenderKind => {
+  const value = readOptional(env, 'PUSH_SENDER') ?? 'mock';
+
+  if (value !== 'mock' && value !== 'firebase') {
+    throw new Error('PUSH_SENDER must be mock or firebase');
+  }
+
+  return value;
+};
+
 const readAiEditUsageStore = (env: EnvSource): AiEditUsageStoreKind => {
   const value = readOptional(env, 'AI_EDIT_USAGE_STORE') ?? 'memory';
 
@@ -360,6 +373,8 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     appleAppAppleId: readOptionalPositiveInteger(env, 'APPLE_APP_APPLE_ID'),
     appleAppStoreEnvironment: readAppleAppStoreEnvironment(env),
     firebaseProjectId: readOptional(env, 'FIREBASE_PROJECT_ID'),
+    pushSender: readPushSender(env),
+    firebaseServiceAccountJson: readOptional(env, 'FIREBASE_SERVICE_ACCOUNT_JSON'),
     templateStore: readTemplateStore(env),
     templateStoreUserId: readOptional(env, 'TEMPLATE_STORE_USER_ID') ?? 'local-dev-user',
     postStore: readPostStore(env),

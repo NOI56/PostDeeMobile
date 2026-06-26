@@ -92,7 +92,13 @@
 - [ ] iOS: เพิ่ม capability "Sign in with Apple" + "Push Notifications" + อัป APNs key
 - [ ] build ด้วย `--dart-define=ENABLE_FIREBASE_AUTH=true` (+ `GOOGLE_SERVER_CLIENT_ID`)
 - ✅ token รีเฟรชอัตโนมัติ + กู้ session ตอนเปิดแอปแล้ว (ไม่หลุดล็อกอินทุกครั้ง)
-- ⏳ FCM ส่ง push จริงยังต้องทำ: endpoint เก็บ device token + ตัวส่งฝั่ง backend
+- ✅ มือถือส่ง device token ขึ้น `POST /devices` แล้ว (เก็บราย user, ลบตอนลบบัญชี)
+- ✅ backend ยิงแจ้งเตือนผลโพสต์ (สำเร็จ/บางส่วน/ล้มเหลว) ไปยัง device ของ user หลังโพสต์เสร็จ ผ่าน `PublishNotifier` + `PushSender`
+- ✅ เขียน adapter ส่งจริงด้วย firebase-admin ไว้แล้ว (`createFirebasePushSender`, โหลดแบบ dynamic import — ยังไม่ต้อง install)
+- ⏳ **เปิดใช้ push จริง** เมื่อพร้อม:
+  1. `npm install firebase-admin` (ใน `apps/api`)
+  2. ตั้ง `PUSH_SENDER=firebase` + `FIREBASE_SERVICE_ACCOUNT_JSON` (service account key จาก Firebase Console → Project Settings → Service Accounts, เก็บเป็นความลับ)
+  3. ทดสอบส่ง push จริงบนเครื่อง
 
 ---
 

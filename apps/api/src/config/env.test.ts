@@ -42,6 +42,8 @@ describe('readServerConfig', () => {
       appleAppAppleId: undefined,
       appleAppStoreEnvironment: 'sandbox',
       firebaseProjectId: undefined,
+      pushSender: 'mock',
+      firebaseServiceAccountJson: undefined,
       templateStore: 'memory',
       templateStoreUserId: 'local-dev-user',
       postStore: 'memory',

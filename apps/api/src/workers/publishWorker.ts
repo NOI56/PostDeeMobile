@@ -1,5 +1,9 @@
 import type { Platform, PostStatus, PostStore } from '../modules/posts/postStore.js';
 import {
+  type PublishNotifier,
+  createNoopPublishNotifier
+} from '../modules/notifications/publishNotifier.js';
+import {
   type PlatformPublishStore,
   createInMemoryPlatformPublishStore
 } from '../modules/platformPublishes/platformPublishStore.js';
@@ -197,6 +201,7 @@ export const processPublishJobForPost = async ({
   publisher = createMockPlatformPublisher(),
   storage = createMockVideoStorageCleaner(),
   platformPublishStore = createInMemoryPlatformPublishStore(),
+  notifier = createNoopPublishNotifier(),
   deleteVideoAfterPublish = false,
   now = () => new Date().toISOString()
 }: {
@@ -205,6 +210,7 @@ export const processPublishJobForPost = async ({
   publisher?: PlatformPublisher;
   storage?: VideoStorageCleaner;
   platformPublishStore?: PlatformPublishStore;
+  notifier?: PublishNotifier;
   deleteVideoAfterPublish?: boolean;
   now?: () => string;
 }): Promise<PublishWorkerResult> => {
@@ -216,6 +222,19 @@ export const processPublishJobForPost = async ({
   if (!claimed) {
     return createSkippedPublishResult(jobData);
   }
+
+  // Best-effort push: never let a notification failure affect publishing.
+  const notify = async (outcome: PostStatus) => {
+    try {
+      await notifier.notifyPublishResult({
+        userId: jobData.userId,
+        postId: jobData.postId,
+        outcome: outcome as 'PUBLISHED' | 'PARTIAL_PUBLISHED' | 'FAILED'
+      });
+    } catch {
+      // Swallow: the post status is already persisted; push is non-critical.
+    }
+  };
 
   try {
     const result = await processPublishJob({
@@ -234,9 +253,12 @@ export const processPublishJobForPost = async ({
       publishedAt: postStatus === 'FAILED' ? undefined : now()
     });
 
+    await notify(postStatus);
+
     return result;
   } catch (error) {
     await postStore.updateStatus({ postId: jobData.postId, status: 'FAILED' });
+    await notify('FAILED');
     throw error;
   }
 };

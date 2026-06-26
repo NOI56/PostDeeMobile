@@ -1,4 +1,8 @@
 import type { PlatformPublishStore } from '../modules/platformPublishes/platformPublishStore.js';
+import {
+  type PublishNotifier,
+  createNoopPublishNotifier
+} from '../modules/notifications/publishNotifier.js';
 import type { PostStore } from '../modules/posts/postStore.js';
 import {
   type PlatformPublisher,
@@ -27,6 +31,7 @@ export const createPublishScheduler = ({
   platformPublishStore,
   publisher = createMockPlatformPublisher(),
   storage = createMockVideoStorageCleaner(),
+  notifier = createNoopPublishNotifier(),
   intervalMs = 5000,
   now = () => new Date().toISOString()
 }: {
@@ -34,6 +39,7 @@ export const createPublishScheduler = ({
   platformPublishStore: PlatformPublishStore;
   publisher?: PlatformPublisher;
   storage?: VideoStorageCleaner;
+  notifier?: PublishNotifier;
   intervalMs?: number;
   now?: () => string;
 }): PublishScheduler => {
@@ -54,6 +60,7 @@ export const createPublishScheduler = ({
         try {
           await processPublishJobForPost({
             jobData: {
+              userId: post.userId,
               postId: post.id,
               caption: post.caption,
               videoS3Key: post.videoS3Key,
@@ -65,6 +72,7 @@ export const createPublishScheduler = ({
             publisher,
             storage,
             platformPublishStore,
+            notifier,
             now
           });
         } catch {

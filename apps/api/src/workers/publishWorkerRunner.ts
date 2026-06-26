@@ -4,6 +4,10 @@ import { Worker } from 'bullmq';
 
 import { readServerConfig } from '../config/env.js';
 import { createPrismaClient } from '../config/prisma.js';
+import { createDeviceTokenStore } from '../modules/devices/deviceTokenStoreFactory.js';
+import type { PrismaDeviceTokenClient } from '../modules/devices/prismaDeviceTokenRepository.js';
+import { createPublishNotifier } from '../modules/notifications/publishNotifier.js';
+import { createPushSenderFromConfig } from '../modules/notifications/pushSenderFactory.js';
 import { createInMemoryPlatformPublishStore } from '../modules/platformPublishes/platformPublishStore.js';
 import {
   createPrismaPlatformPublishRepository,
@@ -39,6 +43,14 @@ const platformPublishStore = prisma
       prisma: prisma as unknown as PrismaPlatformPublishClient
     })
   : createInMemoryPlatformPublishStore();
+const deviceTokenStore = createDeviceTokenStore({
+  prisma: prisma as unknown as PrismaDeviceTokenClient | undefined
+});
+// Real FCM sender when PUSH_SENDER=firebase, otherwise a no-op mock.
+const notifier = createPublishNotifier({
+  deviceTokenStore,
+  pushSender: createPushSenderFromConfig({ config })
+});
 
 const worker = new Worker<BullMqPublishJobData>(
   publishQueueName,
@@ -48,7 +60,8 @@ const worker = new Worker<BullMqPublishJobData>(
       postStore,
       publisher,
       storage,
-      platformPublishStore
+      platformPublishStore,
+      notifier
     }),
   {
     connection: parseRedisConnection(config.redisUrl)

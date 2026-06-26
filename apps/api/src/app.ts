@@ -76,6 +76,8 @@ import { createUserStoreForPostStore } from './modules/users/userStoreFactory.js
 import { registerDeviceRoutes } from './modules/devices/deviceRoutes.js';
 import { createDeviceTokenStore } from './modules/devices/deviceTokenStoreFactory.js';
 import type { PrismaDeviceTokenClient } from './modules/devices/prismaDeviceTokenRepository.js';
+import { createPublishNotifier } from './modules/notifications/publishNotifier.js';
+import { createPushSenderFromConfig } from './modules/notifications/pushSenderFactory.js';
 import { registerPlannedRoutes } from './routes/plannedRoutes.js';
 
 type AppPrismaClient = PrismaTemplateClient &
@@ -335,7 +337,13 @@ export const createApp = (options: AppOptions = {}) => {
       postStore,
       platformPublishStore,
       publisher: createPlatformPublisherFromConfig({ config, videoStorage }),
-      storage: videoStorage
+      storage: videoStorage,
+      // Push a publish-result notification to the user's devices. Uses the real
+      // FCM sender when PUSH_SENDER=firebase, otherwise a no-op mock.
+      notifier: createPublishNotifier({
+        deviceTokenStore,
+        pushSender: createPushSenderFromConfig({ config })
+      })
     });
   }
 

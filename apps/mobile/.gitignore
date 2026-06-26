@@ -37,6 +37,12 @@ migrate_working_dir/
 # accidentally committed, especially RevenueCat Test Store keys.
 *.local.json
 
+# Accidental browser-download duplicates of the Firebase config files
+# (e.g. "google-services (1).json"). The real ones live at
+# android/app/google-services.json and ios/Runner/GoogleService-Info.plist.
+google-services (*).json
+GoogleService-Info (*).plist
+
 # Symbolication related
 app.*.symbols
 

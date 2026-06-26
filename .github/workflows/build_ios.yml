@@ -1,0 +1,47 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: |
+          cd apps/mobile
+          flutter pub get
+
+      - name: Build iOS App (No Codesign)
+        run: |
+          cd apps/mobile
+          flutter build ios --release --no-codesign
+
+      - name: Create IPA payload
+        run: |
+          cd apps/mobile
+          mkdir Payload
+          mv build/ios/iphoneos/Runner.app Payload/
+          zip -qq -r PostDee_iOS.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PostDee_iOS
+          path: apps/mobile/PostDee_iOS.ipa

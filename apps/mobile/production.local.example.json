@@ -1,0 +1,11 @@
+{
+  "API_BASE_URL": "https://postdee-api.onrender.com",
+  "ENABLE_FIREBASE_AUTH": true,
+  "ALLOW_LOCAL_MOCK_AUTH": false,
+  "GOOGLE_SERVER_CLIENT_ID": "121898224944-1hkh1mrfb5lc1ltraapu10lj1ib465vj.apps.googleusercontent.com",
+  "ENABLE_REVENUECAT_BILLING": true,
+  "STORE_STARTER_MONTHLY_PRODUCT_ID": "postdee_starter_monthly",
+  "STORE_PRO_MONTHLY_PRODUCT_ID": "postdee_pro_monthly",
+  "REVENUECAT_ANDROID_API_KEY": "replace_with_revenuecat_android_public_sdk_key",
+  "REVENUECAT_IOS_API_KEY": "replace_with_revenuecat_ios_public_sdk_key"
+}

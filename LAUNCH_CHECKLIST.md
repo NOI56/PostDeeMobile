@@ -94,10 +94,11 @@
 - ✅ token รีเฟรชอัตโนมัติ + กู้ session ตอนเปิดแอปแล้ว (ไม่หลุดล็อกอินทุกครั้ง)
 - ✅ มือถือส่ง device token ขึ้น `POST /devices` แล้ว (เก็บราย user, ลบตอนลบบัญชี)
 - ✅ backend ยิงแจ้งเตือนผลโพสต์ (สำเร็จ/บางส่วน/ล้มเหลว) ไปยัง device ของ user หลังโพสต์เสร็จ ผ่าน `PublishNotifier` + `PushSender`
-- ✅ เขียน adapter ส่งจริงด้วย firebase-admin ไว้แล้ว (`createFirebasePushSender`, โหลดแบบ dynamic import — ยังไม่ต้อง install)
+- ✅ เขียน adapter ส่งจริงด้วย firebase-admin ไว้แล้ว (`createFirebasePushSender`, โหลดแบบ dynamic import)
+- ✅ ติดตั้ง `firebase-admin` ใน `apps/api` แล้ว (test/build ผ่าน, default ยังเป็น mock)
 - ⏳ **เปิดใช้ push จริง** เมื่อพร้อม:
-  1. `npm install firebase-admin` (ใน `apps/api`)
-  2. ตั้ง `PUSH_SENDER=firebase` + `FIREBASE_SERVICE_ACCOUNT_JSON` (service account key จาก Firebase Console → Project Settings → Service Accounts, เก็บเป็นความลับ)
+  1. ตั้ง `FIREBASE_SERVICE_ACCOUNT_JSON` ใน Render (service account key จาก Firebase Console → Project Settings → Service Accounts, เก็บเป็นความลับ)
+  2. สลับ `PUSH_SENDER=firebase` (ทำหลังใส่ key แล้วเท่านั้น ไม่งั้น API จะ crash ตอนเริ่ม)
   3. ทดสอบส่ง push จริงบนเครื่อง
 
 ---

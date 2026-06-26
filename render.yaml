@@ -78,8 +78,9 @@ services:
       - key: FIREBASE_PROJECT_ID
         sync: false
       # --- Push notifications (publish results) ---
-      # Keep PUSH_SENDER=mock until firebase-admin is installed and a service
-      # account key is set; then flip to "firebase".
+      # firebase-admin is installed. To go live: set FIREBASE_SERVICE_ACCOUNT_JSON
+      # (below) to the service account key, THEN flip PUSH_SENDER to "firebase".
+      # Flipping before the key is set crashes the API on startup.
       - key: PUSH_SENDER
         value: mock
       - key: FIREBASE_SERVICE_ACCOUNT_JSON

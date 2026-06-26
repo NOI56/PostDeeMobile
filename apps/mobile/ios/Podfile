@@ -1,6 +1,8 @@
-# ffmpeg_kit_flutter_new_video requires iOS 14.0+; keep this in sync with
-# IPHONEOS_DEPLOYMENT_TARGET in Runner.xcodeproj/project.pbxproj.
-platform :ios, '14.0'
+# Minimum iOS is driven by the Firebase Swift packages (firebase-ios-sdk
+# 12.x requires iOS 15.0+); ffmpeg_kit_flutter_new_video needs 14.0+, so 15.0
+# satisfies both. Keep this in sync with IPHONEOS_DEPLOYMENT_TARGET in
+# Runner.xcodeproj/project.pbxproj.
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -42,9 +44,9 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
     target.build_configurations.each do |config|
-      # Force every pod to the app's minimum so ffmpeg_kit_flutter_new_video
-      # (and any transitive pod defaulting lower) builds against iOS 14.0.
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+      # Force every pod to the app's minimum so pods defaulting lower build
+      # against iOS 15.0.
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
     end
   end
 end

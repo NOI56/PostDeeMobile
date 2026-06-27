@@ -59,14 +59,43 @@ describe('createPostPeerPublisher', () => {
     });
   });
 
-  it('does not fall back to operator account ids when a user resolver is present', async () => {
+  it('falls back to the operator account id when the post owner has no connection', async () => {
+    const calls: { body: unknown }[] = [];
     const publisher = createPostPeerPublisher({
       apiKey: 'pp-key',
       baseUrl: 'https://api.postpeer.test',
       accountIds: { TIKTOK: 'operator-tiktok' },
       resolveAccountId: async () => undefined,
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 'postpeer-post-1' })
+        };
+      }
+    });
+
+    await publisher.publish({
+      userId: 'seller-2',
+      postId: 'post-1',
+      caption: 'hello',
+      videoS3Key: 'https://cdn.test/video.mp4',
+      platform: 'TIKTOK'
+    });
+
+    expect(calls[0].body).toMatchObject({
+      platforms: [{ platform: 'tiktok', accountId: 'operator-tiktok' }]
+    });
+  });
+
+  it('requires an operator account id when the owner has no connection and none is configured', async () => {
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      resolveAccountId: async () => undefined,
       fetchImpl: async () => {
-        throw new Error('fetch should not run when the user connection is missing');
+        throw new Error('fetch should not run when no account id is available');
       }
     });
 
@@ -78,7 +107,7 @@ describe('createPostPeerPublisher', () => {
         videoS3Key: 'https://cdn.test/video.mp4',
         platform: 'TIKTOK'
       })
-    ).rejects.toThrow(/Connected PostPeer account is required/);
+    ).rejects.toThrow(/POSTPEER_TIKTOK_ACCOUNT_ID is required/);
   });
 
   it('posts to PostPeer and returns the external post id', async () => {

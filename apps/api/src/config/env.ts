@@ -308,6 +308,18 @@ const assertProductionSafeConfig = (config: ServerConfig) => {
       'REVENUECAT_WEBHOOK_AUTH_TOKEN is required when BILLING_PROVIDER=revenuecat in production'
     );
   }
+
+  // The mock publisher reports a fake PUBLISHED result without posting anywhere,
+  // so shipping it to production would silently drop every post. Guard against it.
+  if (config.socialPublisher === 'mock') {
+    throw new Error('SOCIAL_PUBLISHER=mock is not allowed when NODE_ENV=production');
+  }
+
+  // The mock storage never persists the uploaded video, so a real publish would
+  // have nothing to fetch. Require real object storage in production.
+  if (config.videoStorage === 'mock') {
+    throw new Error('VIDEO_STORAGE=mock is not allowed when NODE_ENV=production');
+  }
 };
 
 const usesPrismaBackedStore = (config: ServerConfig) =>

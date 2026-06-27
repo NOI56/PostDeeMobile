@@ -597,6 +597,20 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
     _syncPlayback();
   }
 
+  /// The trim window in absolute seconds, with null on a side that is not
+  /// trimmed (start at 0 / end at the clip end). Shared by the export call and
+  /// the length estimate so both agree on the kept window.
+  ({double? start, double? end}) _trimWindowSeconds() {
+    final start = (_durationSeconds > 0 && _trimStart > 0)
+        ? _trimStart * _durationSeconds
+        : null;
+    final end = (_durationSeconds > 0 && _trimEnd < 1)
+        ? _trimEnd * _durationSeconds
+        : null;
+
+    return (start: start, end: end);
+  }
+
   /// All cut ranges that will be removed on export: manual silence toggles,
   /// removed split segments, style cuts, then a target-length tail cut.
   List<SilenceCutRange> _activeCutRanges() {
@@ -707,11 +721,14 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
 
   Widget _buildStyleBanner() {
     final style = _appliedStyle!;
+    final trim = _trimWindowSeconds();
     final estimate = _durationSeconds > 0
         ? estimateResultSeconds(
             durationSeconds: _durationSeconds,
             cutRanges: _activeCutRanges(),
             speed: _speed,
+            trimStartSec: trim.start,
+            trimEndSec: trim.end,
           )
         : null;
 
@@ -764,12 +781,9 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
 
   Future<void> _export() async {
     final file = widget.videoFile;
-    final trimStartSec = (_durationSeconds > 0 && _trimStart > 0)
-        ? _trimStart * _durationSeconds
-        : null;
-    final trimEndSec = (_durationSeconds > 0 && _trimEnd < 1)
-        ? _trimEnd * _durationSeconds
-        : null;
+    final trim = _trimWindowSeconds();
+    final trimStartSec = trim.start;
+    final trimEndSec = trim.end;
     // Manual silence + removed split segments + style cuts + target-length
     // trim, all riding the same FFmpeg select() pipeline.
     final silenceRanges = _activeCutRanges();
@@ -810,6 +824,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
             durationSeconds: _durationSeconds,
             cutRanges: silenceRanges,
             speed: _speed,
+            trimStartSec: trimStartSec,
+            trimEndSec: trimEndSec,
           )
         : null;
 

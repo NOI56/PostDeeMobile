@@ -109,4 +109,33 @@ void main() {
     // kept = 10 - (3 + 1) = 6, then /2 = 3.
     expect(estimate, closeTo(3, 0.001));
   });
+
+  test('estimate subtracts the trimmed-away head and tail', () {
+    final estimate = estimateResultSeconds(
+      durationSeconds: 30,
+      cutRanges: const [],
+      trimStartSec: 5,
+      trimEndSec: 15,
+    );
+
+    // Only the 5..15 window survives, no cuts, speed 1 -> 10 seconds.
+    expect(estimate, closeTo(10, 0.001));
+  });
+
+  test('estimate counts only the cut slice inside the trim window', () {
+    final estimate = estimateResultSeconds(
+      durationSeconds: 30,
+      cutRanges: const [
+        // Half inside the 5..15 window (8..15 -> outside part 15..20 ignored).
+        SilenceCutRange(start: 8, end: 20),
+        // Fully outside the window -> ignored.
+        SilenceCutRange(start: 0, end: 4),
+      ],
+      trimStartSec: 5,
+      trimEndSec: 15,
+    );
+
+    // window = 10, removed inside window = (15 - 8) = 7, kept = 3.
+    expect(estimate, closeTo(3, 0.001));
+  });
 }

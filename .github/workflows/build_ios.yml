@@ -3,6 +3,12 @@ name: Build iOS IPA
 on:
   push:
     branches: [ "master", "main" ]
+    # Only rebuild the iOS app when mobile code (or this workflow) changes,
+    # so API/docs-only pushes don't burn CI minutes. workflow_dispatch below
+    # still lets you trigger a build manually any time.
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/build_ios.yml"
   workflow_dispatch:
 
 jobs:

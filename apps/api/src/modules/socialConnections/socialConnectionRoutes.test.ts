@@ -203,6 +203,51 @@ describe('social connection routes', () => {
     });
   });
 
+  it('removes stale connections that are missing from PostPeer integrations', async () => {
+    const store = createInMemorySocialConnectionStore({
+      now: () => '2026-06-26T09:00:00.000Z'
+    });
+    await store.setProfileId({ userId: 'seller-social', profileId: 'profile-1' });
+    await store.upsert({
+      userId: 'seller-social',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'acct-tiktok-1'
+    });
+    await store.upsert({
+      userId: 'seller-social',
+      platform: 'YOUTUBE_SHORTS',
+      postPeerAccountId: 'acct-youtube-stale'
+    });
+    const connectClient = createFakeConnectClient({
+      listIntegrations: vi.fn(async () => [
+        {
+          id: 'acct-tiktok-1',
+          platform: 'TIKTOK'
+        }
+      ])
+    });
+    const { app } = createTestApp({ store, connectClient });
+
+    const response = await request(app)
+      .post('/social-connections/refresh')
+      .expect(200);
+
+    await expect(
+      store.getAccountId({ userId: 'seller-social', platform: 'TIKTOK' })
+    ).resolves.toBe('acct-tiktok-1');
+    await expect(
+      store.getAccountId({ userId: 'seller-social', platform: 'YOUTUBE_SHORTS' })
+    ).resolves.toBeUndefined();
+    expect(
+      response.body.connections.find(
+        (connection: { platform: string }) => connection.platform === 'YOUTUBE_SHORTS'
+      )
+    ).toMatchObject({
+      platform: 'YOUTUBE_SHORTS',
+      connected: false
+    });
+  });
+
   it('skips polling when the user has no PostPeer profile yet', async () => {
     const { app, connectClient } = createTestApp();
 

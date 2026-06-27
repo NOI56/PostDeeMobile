@@ -40,7 +40,7 @@ The backend currently supports safe scaffold flows for:
 - Store subscription verification scaffold for Apple App Store and Google Play
 - Store server notification routes for renewal, cancel, refund, and grace-period handoff
 
-The backend does not yet publish to TikTok, YouTube Shorts, Instagram Reels, or Facebook Reels in production until PostPeer connected account ids are configured and a controlled provider test is approved.
+Real PostPeer publishing should only be enabled after the per-user connect/refresh flow is verified with a connected test account and a controlled provider test is approved.
 
 ## Authentication
 
@@ -1087,10 +1087,10 @@ PostgreSQL.
 | `SOCIAL_PUBLISHER` | `mock`, `postpeer` | Social publishing adapter |
 | `POSTPEER_API_KEY` | `...` | PostPeer API key for real social publishing |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | Optional PostPeer API host override |
-| `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | PostPeer integration id for TikTok publishing |
-| `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | PostPeer integration id for YouTube Shorts publishing |
-| `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | PostPeer integration id for Instagram Reels publishing |
-| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Fallback PostPeer integration id for Facebook Reels when a user has no connection |
+| `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | Optional legacy/operator PostPeer integration id for TikTok when no per-user connection resolver is wired |
+| `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | Optional legacy/operator PostPeer integration id for YouTube Shorts when no per-user connection resolver is wired |
+| `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | Optional legacy/operator PostPeer integration id for Instagram Reels when no per-user connection resolver is wired |
+| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Optional legacy/operator PostPeer integration id for Facebook Reels when no per-user connection resolver is wired |
 | `MOCK_USER_ID` | `local-dev-user` | Default mock user id |
 
 ## Production Gaps

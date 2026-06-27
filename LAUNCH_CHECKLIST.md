@@ -63,10 +63,9 @@
 ## 5) PostPeer (การโพสต์จริง — หัวใจของแอป)
 
 - [ ] `SOCIAL_PUBLISHER=postpeer`, ตั้ง `POSTPEER_API_KEY`
-- [ ] ตั้ง account id ของแต่ละแพลตฟอร์มที่เชื่อมไว้:
-      `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`,
-      `POSTPEER_INSTAGRAM_ACCOUNT_ID`, `POSTPEER_FACEBOOK_ACCOUNT_ID`
-- [ ] ทดสอบโพสต์จริง 1 คลิป ครบทุกแพลตฟอร์ม (ใช้บัญชีทดสอบ)
+- [ ] ในแอป ให้ผู้ใช้ทดสอบเชื่อมบัญชีผ่าน PostPeer แล้วกด refresh จนสถานะขึ้น connected
+- [ ] `POSTPEER_*_ACCOUNT_ID` เป็น optional legacy/operator id เท่านั้น สำหรับ setup ที่ไม่มี per-user connection store
+- [ ] ทดสอบโพสต์จริง 1 คลิป ครบทุกแพลตฟอร์มด้วยบัญชีทดสอบที่เชื่อมแล้ว
 - หมายเหตุ: Shopee/Lazada ยังไม่รองรับใน PostPeer mapping (เพิ่มภายหลัง)
 
 ---

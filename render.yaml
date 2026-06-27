@@ -59,8 +59,10 @@ services:
       - key: GROQ_API_KEY
         sync: false
       # --- Social posting: PostPeer ---
-      # Flip SOCIAL_PUBLISHER to "postpeer" only after the POSTPEER_* values are
-      # set and a controlled real publish test is approved.
+      # Flip SOCIAL_PUBLISHER to "postpeer" only after POSTPEER_API_KEY is set,
+      # the per-user connect/refresh flow is verified, and a controlled real
+      # publish test is approved. POSTPEER_*_ACCOUNT_ID values are optional
+      # legacy/operator ids for setups without the per-user connection store.
       - key: SOCIAL_PUBLISHER
         value: mock
       - key: POSTPEER_API_KEY

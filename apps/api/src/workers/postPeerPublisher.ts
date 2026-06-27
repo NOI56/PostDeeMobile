@@ -58,21 +58,23 @@ const readPostPeerAccountId = async ({
 }) => {
   if (resolveAccountId) {
     const normalizedUserId = userId?.trim();
-    const resolvedAccountId = normalizedUserId
-      ? (
-          await resolveAccountId({
-            userId: normalizedUserId,
-            platform
-          })
-        )?.trim()
-      : undefined;
+
+    if (!normalizedUserId) {
+      throw new Error(`User id is required to resolve a connected PostPeer account for ${platform}`);
+    }
+
+    const resolvedAccountId = (
+      await resolveAccountId({
+        userId: normalizedUserId,
+        platform
+      })
+    )?.trim();
 
     if (resolvedAccountId) {
       return resolvedAccountId;
     }
 
-    // The post owner has not connected their own PostPeer account yet, so fall
-    // back to the shared operator account id below to keep publishing working.
+    throw new Error(`Connected PostPeer account is required to publish ${platform}`);
   }
 
   const accountId = accountIds[platform]?.trim();

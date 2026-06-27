@@ -59,7 +59,7 @@ describe('createPostPeerPublisher', () => {
     });
   });
 
-  it('falls back to the operator account id when the post owner has no connection', async () => {
+  it('requires the post owner to connect an account instead of falling back to the operator id', async () => {
     const calls: { body: unknown }[] = [];
     const publisher = createPostPeerPublisher({
       apiKey: 'pp-key',
@@ -76,20 +76,20 @@ describe('createPostPeerPublisher', () => {
       }
     });
 
-    await publisher.publish({
-      userId: 'seller-2',
-      postId: 'post-1',
-      caption: 'hello',
-      videoS3Key: 'https://cdn.test/video.mp4',
-      platform: 'TIKTOK'
-    });
+    await expect(
+      publisher.publish({
+        userId: 'seller-2',
+        postId: 'post-1',
+        caption: 'hello',
+        videoS3Key: 'https://cdn.test/video.mp4',
+        platform: 'TIKTOK'
+      })
+    ).rejects.toThrow(/Connected PostPeer account is required to publish TIKTOK/);
 
-    expect(calls[0].body).toMatchObject({
-      platforms: [{ platform: 'tiktok', accountId: 'operator-tiktok' }]
-    });
+    expect(calls).toEqual([]);
   });
 
-  it('requires an operator account id when the owner has no connection and none is configured', async () => {
+  it('requires a connected owner account when the resolver finds none', async () => {
     const publisher = createPostPeerPublisher({
       apiKey: 'pp-key',
       baseUrl: 'https://api.postpeer.test',
@@ -107,7 +107,7 @@ describe('createPostPeerPublisher', () => {
         videoS3Key: 'https://cdn.test/video.mp4',
         platform: 'TIKTOK'
       })
-    ).rejects.toThrow(/POSTPEER_TIKTOK_ACCOUNT_ID is required/);
+    ).rejects.toThrow(/Connected PostPeer account is required to publish TIKTOK/);
   });
 
   it('posts to PostPeer and returns the external post id', async () => {

@@ -8,6 +8,7 @@ import {
 } from './postPeerConnectClient.js';
 import {
   isSocialConnectionPlatform,
+  supportedSocialConnectionPlatforms,
   type SocialConnectionStore
 } from './socialConnectionStore.js';
 
@@ -137,6 +138,7 @@ export const registerSocialConnectionRoutes = (
 
       if (profileId) {
         const integrations = await connectClient.listIntegrations({ profileId });
+        const connectedPlatforms = new Set(integrations.map(({ platform }) => platform));
 
         for (const integration of integrations) {
           await store.upsert({
@@ -146,6 +148,12 @@ export const registerSocialConnectionRoutes = (
             displayName: integration.displayName,
             externalAccountId: integration.platformUserId
           });
+        }
+
+        for (const platform of supportedSocialConnectionPlatforms) {
+          if (!connectedPlatforms.has(platform)) {
+            await store.disconnect({ userId: authUser.id, platform });
+          }
         }
       }
 

@@ -63,10 +63,6 @@ describe('readServerConfig', () => {
       postPeerYoutubeAccountId: undefined,
       postPeerInstagramAccountId: undefined,
       postPeerFacebookAccountId: undefined,
-      postPeerConnectCreatePath: undefined,
-      postPeerConnectCallbackUrl: undefined,
-      postPeerConnectStateSecret: undefined,
-      postPeerConnectCallbackSecret: undefined,
       transcriptionProvider: 'mock',
       whisperModel: 'whisper-1',
       groqTranscriptionModel: 'whisper-large-v3',
@@ -129,11 +125,6 @@ describe('readServerConfig', () => {
       POSTPEER_YOUTUBE_ACCOUNT_ID: 'postpeer-youtube',
       POSTPEER_INSTAGRAM_ACCOUNT_ID: 'postpeer-instagram',
       POSTPEER_FACEBOOK_ACCOUNT_ID: 'postpeer-facebook',
-      POSTPEER_CONNECT_CREATE_PATH: '/v1/connect/links',
-      POSTPEER_CONNECT_CALLBACK_URL:
-        'https://postdee-api.onrender.com/social-connections/postpeer/callback',
-      POSTPEER_CONNECT_STATE_SECRET: 'state-secret',
-      POSTPEER_CONNECT_CALLBACK_SECRET: 'callback-secret',
       TRANSCRIPTION_PROVIDER: 'groq',
       GROQ_TRANSCRIPTION_MODEL: 'whisper-large-v3',
       MOCK_USER_ID: 'mock-user-1'
@@ -189,11 +180,6 @@ describe('readServerConfig', () => {
       postPeerYoutubeAccountId: 'postpeer-youtube',
       postPeerInstagramAccountId: 'postpeer-instagram',
       postPeerFacebookAccountId: 'postpeer-facebook',
-      postPeerConnectCreatePath: '/v1/connect/links',
-      postPeerConnectCallbackUrl:
-        'https://postdee-api.onrender.com/social-connections/postpeer/callback',
-      postPeerConnectStateSecret: 'state-secret',
-      postPeerConnectCallbackSecret: 'callback-secret',
       transcriptionProvider: 'groq',
       groqTranscriptionModel: 'whisper-large-v3',
       mockUserId: 'mock-user-1'
@@ -286,23 +272,6 @@ describe('readServerConfig', () => {
     ).toThrow(
       'REVENUECAT_WEBHOOK_AUTH_TOKEN is required when BILLING_PROVIDER=revenuecat in production'
     );
-  });
-
-  it('reads optional PostPeer connect configuration', () => {
-    const config = readServerConfig({
-      POSTPEER_CONNECT_CREATE_PATH: '/v1/connect/links',
-      POSTPEER_CONNECT_CALLBACK_URL:
-        'https://postdee-api.onrender.com/social-connections/postpeer/callback',
-      POSTPEER_CONNECT_STATE_SECRET: 'state-secret',
-      POSTPEER_CONNECT_CALLBACK_SECRET: 'callback-secret'
-    });
-
-    expect(config.postPeerConnectCreatePath).toBe('/v1/connect/links');
-    expect(config.postPeerConnectCallbackUrl).toBe(
-      'https://postdee-api.onrender.com/social-connections/postpeer/callback'
-    );
-    expect(config.postPeerConnectStateSecret).toBe('state-secret');
-    expect(config.postPeerConnectCallbackSecret).toBe('callback-secret');
   });
 
   it('does not expose legacy clip review config values', () => {

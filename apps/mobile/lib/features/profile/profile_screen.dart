@@ -1155,13 +1155,35 @@ class _ConnectedPlatformsCardState extends State<_ConnectedPlatformsCard> {
       final link =
           await _apiClient.createSocialConnectionLink(platform.apiValue);
       await _launch(link.connectUrl);
-      await _loadConnections();
+      // PostPeer OAuth happens in an external browser, so prompt the user to
+      // refresh once they return instead of polling immediately.
+      _showMessage('เปิดหน้าเชื่อมบัญชีแล้ว — เมื่อเสร็จในเบราว์เซอร์ กดปุ่มรีเฟรช');
     } on ApiException catch (error) {
       _showMessage(error.message);
     } catch (_) {
       _showMessage('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
       if (mounted) setState(() => _busyPlatform = null);
+    }
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    try {
+      final results = await _apiClient.refreshSocialConnections();
+      if (!mounted) return;
+      setState(() {
+        _statuses = {for (final result in results) result.platform: result};
+        _loading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage(error.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage('รีเฟรชสถานะไม่สำเร็จ ลองใหม่อีกครั้ง');
     }
   }
 
@@ -1280,7 +1302,7 @@ class _ConnectedPlatformsCardState extends State<_ConnectedPlatformsCard> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              else
+              else ...[
                 Text(
                   '$_connectedCount/${_connectablePlatforms.length}',
                   style: textTheme.labelMedium?.copyWith(
@@ -1288,6 +1310,15 @@ class _ConnectedPlatformsCardState extends State<_ConnectedPlatformsCard> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                const SizedBox(width: 4),
+                IconButton(
+                  key: const ValueKey('profile-platforms-refresh'),
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh, size: 20),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'รีเฟรชสถานะการเชื่อม',
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 6),

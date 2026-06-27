@@ -1,4 +1,4 @@
-import type { Request, RequestHandler, Response, Router } from 'express';
+import type { RequestHandler, Response, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
 import {
@@ -6,59 +6,14 @@ import {
   PostPeerConnectUnavailableError,
   type PostPeerConnectClient
 } from './postPeerConnectClient.js';
-import type { VerifiedPostPeerConnectState } from './postPeerConnectState.js';
 import {
   isSocialConnectionPlatform,
-  type SocialConnectionPlatform,
   type SocialConnectionStore
 } from './socialConnectionStore.js';
-
-export type PostPeerConnectStateManager = {
-  create: (input: {
-    userId: string;
-    platform: SocialConnectionPlatform;
-  }) => { token: string; expiresAt: string };
-  verify: (token: string) => VerifiedPostPeerConnectState;
-};
 
 export type SocialConnectionRouteDependencies = {
   store: SocialConnectionStore;
   connectClient: PostPeerConnectClient;
-  callbackUrl?: string;
-  callbackSecret?: string;
-  stateManager?: PostPeerConnectStateManager;
-};
-
-const accountLinkingUnavailableMessage =
-  'PostPeer account linking is not configured yet';
-
-const readString = (value: unknown): string | undefined => {
-  if (Array.isArray(value)) {
-    return readString(value[0]);
-  }
-
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-};
-
-const readObject = (value: unknown): Record<string, unknown> =>
-  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
-
-const readPayloadValue = (
-  request: Request,
-  keys: string[]
-): string | undefined => {
-  const body = readObject(request.body);
-  const query = readObject(request.query);
-
-  for (const key of keys) {
-    const value = readString(body[key]) ?? readString(query[key]);
-
-    if (value) {
-      return value;
-    }
-  }
-
-  return undefined;
 };
 
 const sendUnauthorized = (response: Response) => {
@@ -75,23 +30,47 @@ const sendUnsupportedPlatform = (response: Response) => {
   });
 };
 
-const sendAccountLinkingUnavailable = (response: Response) => {
-  response.status(503).json({
-    status: 'error',
-    message: accountLinkingUnavailableMessage
-  });
+// Maps PostPeer connect failures to API responses. Returns true when handled.
+const sendConnectError = (response: Response, error: unknown): boolean => {
+  if (error instanceof PostPeerConnectUnavailableError) {
+    response.status(503).json({ status: 'error', message: error.message });
+    return true;
+  }
+
+  if (error instanceof PostPeerConnectProviderError) {
+    response.status(502).json({
+      status: 'error',
+      message: 'PostPeer account linking provider failed'
+    });
+    return true;
+  }
+
+  return false;
+};
+
+// PostPeer groups a user's connected accounts under one profile id. Create it
+// once per user and reuse it for connect URLs and integration polling.
+const ensureProfileId = async (
+  store: SocialConnectionStore,
+  connectClient: PostPeerConnectClient,
+  userId: string
+): Promise<string> => {
+  const existing = await store.getProfileId(userId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const { profileId } = await connectClient.createProfile();
+  await store.setProfileId({ userId, profileId });
+
+  return profileId;
 };
 
 export const registerSocialConnectionRoutes = (
   router: Router,
   authMiddleware: RequestHandler,
-  {
-    store,
-    connectClient,
-    callbackUrl,
-    callbackSecret,
-    stateManager
-  }: SocialConnectionRouteDependencies
+  { store, connectClient }: SocialConnectionRouteDependencies
 ) => {
   router.get('/social-connections', authMiddleware, async (_request, response) => {
     const authUser = readAuthUser(response.locals);
@@ -124,39 +103,16 @@ export const registerSocialConnectionRoutes = (
         return;
       }
 
-      if (!stateManager || !callbackUrl) {
-        sendAccountLinkingUnavailable(response);
-        return;
-      }
-
-      const state = stateManager.create({
-        userId: authUser.id,
-        platform
-      });
-
       try {
-        const { connectUrl } = await connectClient.createConnectLink({
+        const profileId = await ensureProfileId(store, connectClient, authUser.id);
+        const { connectUrl } = await connectClient.createConnectUrl({
           platform,
-          state: state.token,
-          callbackUrl
+          profileId
         });
 
-        response.json({
-          status: 'ok',
-          connectUrl,
-          expiresAt: state.expiresAt
-        });
+        response.json({ status: 'ok', connectUrl });
       } catch (error) {
-        if (error instanceof PostPeerConnectUnavailableError) {
-          sendAccountLinkingUnavailable(response);
-          return;
-        }
-
-        if (error instanceof PostPeerConnectProviderError) {
-          response.status(502).json({
-            status: 'error',
-            message: 'PostPeer account linking provider failed'
-          });
+        if (sendConnectError(response, error)) {
           return;
         }
 
@@ -165,66 +121,46 @@ export const registerSocialConnectionRoutes = (
     }
   );
 
-  const handleCallback: RequestHandler = async (request, response) => {
-    if (callbackSecret) {
-      const providedSecret = readString(
-        request.header('x-postpeer-callback-secret')
-      );
+  // Called after the user finishes the PostPeer OAuth flow in the browser.
+  // PostPeer does not call back, so the backend polls the profile's
+  // integrations and stores each connected account id.
+  router.post('/social-connections/refresh', authMiddleware, async (_request, response) => {
+    const authUser = readAuthUser(response.locals);
 
-      if (providedSecret !== callbackSecret) {
-        response.status(401).json({
-          status: 'error',
-          message: 'Invalid PostPeer callback secret'
-        });
-        return;
-      }
-    }
-
-    if (!stateManager) {
-      sendAccountLinkingUnavailable(response);
+    if (!authUser) {
+      sendUnauthorized(response);
       return;
     }
-
-    const state = readPayloadValue(request, ['state']);
-    const postPeerAccountId = readPayloadValue(request, [
-      'accountId',
-      'postPeerAccountId',
-      'integrationId'
-    ]);
-
-    if (!state || !postPeerAccountId) {
-      response.status(400).json({
-        status: 'error',
-        message: 'state and account id are required'
-      });
-      return;
-    }
-
-    let verifiedState: VerifiedPostPeerConnectState;
 
     try {
-      verifiedState = stateManager.verify(state);
-    } catch {
-      response.status(400).json({
-        status: 'error',
-        message: 'Invalid PostPeer connect state'
+      const profileId = await store.getProfileId(authUser.id);
+
+      if (profileId) {
+        const integrations = await connectClient.listIntegrations({ profileId });
+
+        for (const integration of integrations) {
+          await store.upsert({
+            userId: authUser.id,
+            platform: integration.platform,
+            postPeerAccountId: integration.id,
+            displayName: integration.displayName,
+            externalAccountId: integration.platformUserId
+          });
+        }
+      }
+
+      response.json({
+        status: 'ok',
+        connections: await store.listForUser(authUser.id)
       });
-      return;
+    } catch (error) {
+      if (sendConnectError(response, error)) {
+        return;
+      }
+
+      throw error;
     }
-
-    await store.upsert({
-      userId: verifiedState.userId,
-      platform: verifiedState.platform,
-      postPeerAccountId,
-      displayName: readPayloadValue(request, ['displayName']),
-      externalAccountId: readPayloadValue(request, ['externalAccountId'])
-    });
-
-    response.json({ status: 'ok' });
-  };
-
-  router.get('/social-connections/postpeer/callback', handleCallback);
-  router.post('/social-connections/postpeer/callback', handleCallback);
+  });
 
   router.delete(
     '/social-connections/:platform',
@@ -243,10 +179,7 @@ export const registerSocialConnectionRoutes = (
         return;
       }
 
-      await store.disconnect({
-        userId: authUser.id,
-        platform
-      });
+      await store.disconnect({ userId: authUser.id, platform });
 
       response.json({ status: 'ok' });
     }

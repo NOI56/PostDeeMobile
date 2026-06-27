@@ -4,41 +4,33 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
 import { registerSocialConnectionRoutes } from './socialConnectionRoutes.js';
-import {
-  createInMemorySocialConnectionStore,
-  type SocialConnectionPlatform
-} from './socialConnectionStore.js';
+import { createInMemorySocialConnectionStore } from './socialConnectionStore.js';
 import {
   PostPeerConnectProviderError,
   PostPeerConnectUnavailableError,
   type PostPeerConnectClient
 } from './postPeerConnectClient.js';
 
+const createFakeConnectClient = (
+  overrides: Partial<PostPeerConnectClient> = {}
+): PostPeerConnectClient => ({
+  createProfile: vi.fn(async () => ({ profileId: 'profile-1' })),
+  createConnectUrl: vi.fn(async () => ({
+    connectUrl: 'https://postpeer.test/connect/tiktok'
+  })),
+  listIntegrations: vi.fn(async () => []),
+  ...overrides
+});
+
 const createTestApp = ({
   userId = 'seller-social',
-  connectClient,
-  callbackSecret,
-  callbackUrl = 'https://api.postdee.test/social-connections/postpeer/callback',
-  stateManager,
+  connectClient = createFakeConnectClient(),
   store = createInMemorySocialConnectionStore({
     now: () => '2026-06-26T09:00:00.000Z'
   })
 }: {
   userId?: string;
   connectClient?: PostPeerConnectClient;
-  callbackSecret?: string;
-  callbackUrl?: string;
-  stateManager?: {
-    create: (input: {
-      userId: string;
-      platform: SocialConnectionPlatform;
-    }) => { token: string; expiresAt: string };
-    verify: (token: string) => {
-      userId: string;
-      platform: SocialConnectionPlatform;
-      expiresAt: string;
-    };
-  };
   store?: ReturnType<typeof createInMemorySocialConnectionStore>;
 } = {}) => {
   const app = express();
@@ -51,36 +43,12 @@ const createTestApp = ({
       response.locals.authUser = { id: userId, provider: 'mock' };
       next();
     },
-    {
-      store,
-      connectClient:
-        connectClient ??
-        ({
-          createConnectLink: vi.fn(async () => ({
-            connectUrl: 'https://postpeer.test/connect/tiktok'
-          }))
-        } satisfies PostPeerConnectClient),
-      callbackSecret,
-      callbackUrl,
-      stateManager:
-        stateManager ??
-        ({
-          create: vi.fn(() => ({
-            token: 'signed-state',
-            expiresAt: '2026-06-26T09:10:00.000Z'
-          })),
-          verify: vi.fn(() => ({
-            userId,
-            platform: 'TIKTOK',
-            expiresAt: '2026-06-26T09:10:00.000Z'
-          }))
-        })
-    }
+    { store, connectClient }
   );
 
   app.use(router);
 
-  return { app, store };
+  return { app, store, connectClient };
 };
 
 describe('social connection routes', () => {
@@ -91,12 +59,7 @@ describe('social connection routes', () => {
       .expect(200);
 
     expect(response.body.connections).toEqual(
-      expect.arrayContaining([
-        {
-          platform: 'TIKTOK',
-          connected: false
-        }
-      ])
+      expect.arrayContaining([{ platform: 'TIKTOK', connected: false }])
     );
   });
 
@@ -114,88 +77,69 @@ describe('social connection routes', () => {
     const response = await request(app).get('/social-connections').expect(200);
 
     expect(response.body.status).toBe('ok');
-    expect(response.body.connections.find(
-      (connection: { platform: string }) => connection.platform === 'TIKTOK'
-    )).toEqual({
+    expect(
+      response.body.connections.find(
+        (connection: { platform: string }) => connection.platform === 'TIKTOK'
+      )
+    ).toEqual({
       platform: 'TIKTOK',
       connected: true,
       displayName: '@seller_one',
       externalAccountId: 'external-tiktok',
       connectedAt: '2026-06-26T09:00:00.000Z'
     });
-    expect(response.body.connections.find(
-      (connection: { platform: string }) => connection.platform === 'YOUTUBE_SHORTS'
-    )).toEqual({
-      platform: 'YOUTUBE_SHORTS',
-      connected: false
-    });
     expect(JSON.stringify(response.body)).not.toContain('acct-tiktok-private');
   });
 
-  it('creates a PostPeer connect link for a supported platform', async () => {
-    const connectClient: PostPeerConnectClient = {
-      createConnectLink: vi.fn(async () => ({
-        connectUrl: 'https://postpeer.test/connect/tiktok'
-      }))
-    };
-    const stateManager = {
-      create: vi.fn(() => ({
-        token: 'signed-state',
-        expiresAt: '2026-06-26T09:10:00.000Z'
-      })),
-      verify: vi.fn()
-    };
-    const { app } = createTestApp({ connectClient, stateManager });
+  it('creates a PostPeer profile and returns the OAuth connect URL', async () => {
+    const { app, store, connectClient } = createTestApp();
 
     const response = await request(app)
       .post('/social-connections/TIKTOK/connect')
       .expect(200);
 
-    expect(stateManager.create).toHaveBeenCalledWith({
-      userId: 'seller-social',
-      platform: 'TIKTOK'
-    });
-    expect(connectClient.createConnectLink).toHaveBeenCalledWith({
+    expect(connectClient.createProfile).toHaveBeenCalledTimes(1);
+    await expect(store.getProfileId('seller-social')).resolves.toBe('profile-1');
+    expect(connectClient.createConnectUrl).toHaveBeenCalledWith({
       platform: 'TIKTOK',
-      state: 'signed-state',
-      callbackUrl: 'https://api.postdee.test/social-connections/postpeer/callback'
+      profileId: 'profile-1'
     });
     expect(response.body).toEqual({
       status: 'ok',
-      connectUrl: 'https://postpeer.test/connect/tiktok',
-      expiresAt: '2026-06-26T09:10:00.000Z'
+      connectUrl: 'https://postpeer.test/connect/tiktok'
     });
   });
 
-  it('returns a clear error when connect-link configuration is missing', async () => {
-    const { app } = createTestApp({
-      callbackUrl: ''
+  it('reuses an existing PostPeer profile instead of creating a new one', async () => {
+    const store = createInMemorySocialConnectionStore({
+      now: () => '2026-06-26T09:00:00.000Z'
     });
+    await store.setProfileId({ userId: 'seller-social', profileId: 'existing-profile' });
+    const { app, connectClient } = createTestApp({ store });
 
-    const response = await request(app)
-      .post('/social-connections/TIKTOK/connect')
-      .expect(503);
+    await request(app).post('/social-connections/TIKTOK/connect').expect(200);
 
-    expect(response.body).toEqual({
-      status: 'error',
-      message: 'PostPeer account linking is not configured yet'
+    expect(connectClient.createProfile).not.toHaveBeenCalled();
+    expect(connectClient.createConnectUrl).toHaveBeenCalledWith({
+      platform: 'TIKTOK',
+      profileId: 'existing-profile'
     });
   });
 
   it('maps PostPeer connect-client failures to API errors', async () => {
     const unavailableApp = createTestApp({
-      connectClient: {
-        createConnectLink: async () => {
+      connectClient: createFakeConnectClient({
+        createProfile: async () => {
           throw new PostPeerConnectUnavailableError();
         }
-      }
+      })
     }).app;
     const providerFailureApp = createTestApp({
-      connectClient: {
-        createConnectLink: async () => {
+      connectClient: createFakeConnectClient({
+        createConnectUrl: async () => {
           throw new PostPeerConnectProviderError(500);
         }
-      }
+      })
     }).app;
 
     await request(unavailableApp)
@@ -206,11 +150,8 @@ describe('social connection routes', () => {
       .expect(502);
   });
 
-  it('rejects unsupported platforms before creating a connect link', async () => {
-    const connectClient: PostPeerConnectClient = {
-      createConnectLink: vi.fn()
-    };
-    const { app } = createTestApp({ connectClient });
+  it('rejects unsupported platforms before contacting PostPeer', async () => {
+    const { app, connectClient } = createTestApp();
 
     const response = await request(app)
       .post('/social-connections/LAZADA_VIDEO/connect')
@@ -220,61 +161,57 @@ describe('social connection routes', () => {
       status: 'error',
       message: 'Unsupported social connection platform'
     });
-    expect(connectClient.createConnectLink).not.toHaveBeenCalled();
+    expect(connectClient.createProfile).not.toHaveBeenCalled();
+    expect(connectClient.createConnectUrl).not.toHaveBeenCalled();
   });
 
-  it('stores a connection from a PostPeer POST callback', async () => {
-    const { app, store } = createTestApp({
-      callbackSecret: 'callback-secret'
+  it('refreshes connections by polling PostPeer integrations', async () => {
+    const store = createInMemorySocialConnectionStore({
+      now: () => '2026-06-26T09:00:00.000Z'
     });
+    await store.setProfileId({ userId: 'seller-social', profileId: 'profile-1' });
+    const connectClient = createFakeConnectClient({
+      listIntegrations: vi.fn(async () => [
+        {
+          id: 'acct-tiktok-1',
+          platform: 'TIKTOK',
+          platformUserId: 'tt-1',
+          displayName: '@seller_one'
+        }
+      ])
+    });
+    const { app } = createTestApp({ store, connectClient });
 
-    await request(app)
-      .post('/social-connections/postpeer/callback')
-      .set('x-postpeer-callback-secret', 'callback-secret')
-      .send({
-        state: 'signed-state',
-        accountId: 'acct-tiktok-1',
-        displayName: '@seller_one',
-        externalAccountId: 'external-tiktok'
-      })
+    const response = await request(app)
+      .post('/social-connections/refresh')
       .expect(200);
 
+    expect(connectClient.listIntegrations).toHaveBeenCalledWith({
+      profileId: 'profile-1'
+    });
     await expect(
       store.getAccountId({ userId: 'seller-social', platform: 'TIKTOK' })
     ).resolves.toBe('acct-tiktok-1');
+    expect(
+      response.body.connections.find(
+        (connection: { platform: string }) => connection.platform === 'TIKTOK'
+      )
+    ).toMatchObject({
+      platform: 'TIKTOK',
+      connected: true,
+      displayName: '@seller_one'
+    });
   });
 
-  it('stores a connection from a PostPeer GET callback', async () => {
-    const { app, store } = createTestApp({
-      userId: 'seller-query'
-    });
+  it('skips polling when the user has no PostPeer profile yet', async () => {
+    const { app, connectClient } = createTestApp();
 
-    await request(app)
-      .get('/social-connections/postpeer/callback')
-      .query({
-        state: 'signed-state',
-        postPeerAccountId: 'acct-query-tiktok'
-      })
+    const response = await request(app)
+      .post('/social-connections/refresh')
       .expect(200);
 
-    await expect(
-      store.getAccountId({ userId: 'seller-query', platform: 'TIKTOK' })
-    ).resolves.toBe('acct-query-tiktok');
-  });
-
-  it('rejects callbacks with an invalid callback secret', async () => {
-    const { app } = createTestApp({
-      callbackSecret: 'callback-secret'
-    });
-
-    await request(app)
-      .post('/social-connections/postpeer/callback')
-      .set('x-postpeer-callback-secret', 'wrong-secret')
-      .send({
-        state: 'signed-state',
-        accountId: 'acct-tiktok-1'
-      })
-      .expect(401);
+    expect(connectClient.listIntegrations).not.toHaveBeenCalled();
+    expect(response.body.status).toBe('ok');
   });
 
   it('disconnects a linked platform for the authenticated user', async () => {

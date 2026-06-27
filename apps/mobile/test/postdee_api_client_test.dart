@@ -243,7 +243,7 @@ void main() {
     });
 
     expect(result.connectUrl.toString(), 'https://postpeer.test/connect/youtube');
-    expect(result.expiresAt.toUtc().toIso8601String(),
+    expect(result.expiresAt?.toUtc().toIso8601String(),
         '2026-06-26T09:10:00.000Z');
   });
 

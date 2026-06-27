@@ -82,12 +82,8 @@ import {
   createPostPeerConnectClient,
   type PostPeerConnectClient
 } from './modules/socialConnections/postPeerConnectClient.js';
-import { createPostPeerConnectStateManager } from './modules/socialConnections/postPeerConnectState.js';
 import type { PrismaSocialConnectionClient } from './modules/socialConnections/prismaSocialConnectionRepository.js';
-import {
-  type PostPeerConnectStateManager,
-  registerSocialConnectionRoutes
-} from './modules/socialConnections/socialConnectionRoutes.js';
+import { registerSocialConnectionRoutes } from './modules/socialConnections/socialConnectionRoutes.js';
 import type { SocialConnectionStore } from './modules/socialConnections/socialConnectionStore.js';
 import { createSocialConnectionStore } from './modules/socialConnections/socialConnectionStoreFactory.js';
 import { registerPlannedRoutes } from './routes/plannedRoutes.js';
@@ -120,7 +116,6 @@ type AppOptions = {
   appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
   socialConnectionStore?: SocialConnectionStore;
   postPeerConnectClient?: PostPeerConnectClient;
-  postPeerConnectStateManager?: PostPeerConnectStateManager;
 };
 
 const readFileNameFromStorageKey = (videoS3Key: string) =>
@@ -338,23 +333,12 @@ export const createApp = (options: AppOptions = {}) => {
     options.postPeerConnectClient ??
     createPostPeerConnectClient({
       apiKey: config.postPeerApiKey,
-      baseUrl: config.postPeerApiBaseUrl,
-      createPath: config.postPeerConnectCreatePath
+      baseUrl: config.postPeerApiBaseUrl
     });
-  const postPeerConnectStateManager =
-    options.postPeerConnectStateManager ??
-    (config.postPeerConnectStateSecret
-      ? createPostPeerConnectStateManager({
-          secret: config.postPeerConnectStateSecret
-        })
-      : undefined);
   registerDeviceRoutes(router, authMiddleware, deviceTokenStore);
   registerSocialConnectionRoutes(router, authMiddleware, {
     store: socialConnectionStore,
-    connectClient: postPeerConnectClient,
-    callbackUrl: config.postPeerConnectCallbackUrl,
-    callbackSecret: config.postPeerConnectCallbackSecret,
-    stateManager: postPeerConnectStateManager
+    connectClient: postPeerConnectClient
   });
   registerAccountRoutes(router, authMiddleware, {
     postStore,

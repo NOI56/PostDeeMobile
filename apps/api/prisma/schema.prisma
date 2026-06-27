@@ -58,6 +58,7 @@ model User {
   aiEditUsages       AiEditUsage[]
   deviceTokens       DeviceToken[]
   socialConnections  SocialConnection[]
+  postPeerProfile    PostPeerProfile?
   billingCustomerId  String?       @unique
   monthlyPostCount   Int           @default(0)
   monthlyPostResetAt DateTime?
@@ -173,4 +174,13 @@ model SocialConnection {
 
   @@unique([userId, platform])
   @@index([userId])
+}
+
+model PostPeerProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  profileId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

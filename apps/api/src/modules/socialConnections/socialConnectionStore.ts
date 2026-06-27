@@ -66,6 +66,10 @@ export type SocialConnectionStore = {
   ) => Promise<string | undefined>;
   upsert: (input: UpsertSocialConnectionInput) => Promise<SocialConnection>;
   disconnect: (input: DisconnectSocialConnectionInput) => Promise<boolean>;
+  // The PostPeer profile id groups all of a user's connected accounts. It is
+  // created once per user and reused for connect URLs and integration polling.
+  getProfileId: (userId: string) => Promise<string | undefined>;
+  setProfileId: (input: { userId: string; profileId: string }) => Promise<void>;
   deleteAllForUser?: (userId: string) => Promise<void>;
 };
 
@@ -136,6 +140,7 @@ export const createInMemorySocialConnectionStore = ({
   now?: () => string;
 } = {}): SocialConnectionStore => {
   const connections = new Map<string, SocialConnection>();
+  const profiles = new Map<string, string>();
 
   return {
     listForUser: async (userId) =>
@@ -161,7 +166,12 @@ export const createInMemorySocialConnectionStore = ({
     disconnect: async (input) => {
       return connections.delete(connectionKey(input));
     },
+    getProfileId: async (userId) => profiles.get(userId),
+    setProfileId: async ({ userId, profileId }) => {
+      profiles.set(userId, profileId);
+    },
     deleteAllForUser: async (userId) => {
+      profiles.delete(userId);
       for (const [key, record] of connections) {
         if (record.userId === userId) {
           connections.delete(key);

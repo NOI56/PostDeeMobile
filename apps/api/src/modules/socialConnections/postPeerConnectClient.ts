@@ -8,11 +8,19 @@ type FetchResponse = {
 
 type FetchImpl = (url: string, init: RequestInit) => Promise<FetchResponse>;
 
-const postPeerPlatform: Record<SocialConnectionPlatform, string> = {
+// PostPeer platform slugs used in /v1/connect/{slug} and the integrations list.
+const postPeerPlatformSlug: Record<SocialConnectionPlatform, string> = {
   TIKTOK: 'tiktok',
   YOUTUBE_SHORTS: 'youtube',
   INSTAGRAM_REELS: 'instagram',
   FACEBOOK_REELS: 'facebook'
+};
+
+const socialPlatformBySlug: Record<string, SocialConnectionPlatform> = {
+  tiktok: 'TIKTOK',
+  youtube: 'YOUTUBE_SHORTS',
+  instagram: 'INSTAGRAM_REELS',
+  facebook: 'FACEBOOK_REELS'
 };
 
 export class PostPeerConnectUnavailableError extends Error {
@@ -27,64 +35,123 @@ export class PostPeerConnectProviderError extends Error {
   }
 }
 
+export type PostPeerIntegration = {
+  id: string;
+  platform: SocialConnectionPlatform;
+  platformUserId?: string;
+  displayName?: string;
+};
+
+/**
+ * Adapter for PostPeer's real connect API (https://api.postpeer.dev):
+ * - `POST /v1/profiles` creates a profile that groups a user's accounts.
+ * - `GET /v1/connect/{slug}?profileId=` returns the OAuth URL to open.
+ * - `GET /v1/connect/integrations?profileId=` lists connected accounts so the
+ *   backend can resolve each platform's account id after OAuth (PostPeer does
+ *   not call back, so the backend polls this instead).
+ */
 export type PostPeerConnectClient = {
-  createConnectLink: (input: {
+  createProfile: () => Promise<{ profileId: string }>;
+  createConnectUrl: (input: {
     platform: SocialConnectionPlatform;
-    state: string;
-    callbackUrl: string;
+    profileId: string;
   }) => Promise<{ connectUrl: string }>;
+  listIntegrations: (input: { profileId: string }) => Promise<PostPeerIntegration[]>;
 };
 
-const readConnectUrl = (payload: unknown) => {
-  if (typeof payload !== 'object' || payload === null) {
-    return undefined;
-  }
+const readRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 
-  const body = payload as Record<string, unknown>;
-  const value = body.connectUrl ?? body.url ?? body.authorizeUrl;
-
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-};
+const readString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
 export const createPostPeerConnectClient = ({
   apiKey,
   baseUrl,
-  createPath,
   fetchImpl = fetch as unknown as FetchImpl
 }: {
   apiKey?: string;
   baseUrl: string;
-  createPath?: string;
   fetchImpl?: FetchImpl;
-}): PostPeerConnectClient => ({
-  createConnectLink: async ({ platform, state, callbackUrl }) => {
-    if (!apiKey || !createPath) {
+}): PostPeerConnectClient => {
+  const root = baseUrl.replace(/\/$/, '');
+
+  const request = async (
+    path: string,
+    init: { method: string; body?: string } = { method: 'GET' }
+  ): Promise<unknown> => {
+    if (!apiKey) {
       throw new PostPeerConnectUnavailableError();
     }
 
-    const response = await fetchImpl(`${baseUrl.replace(/\/$/, '')}${createPath}`, {
-      method: 'POST',
-      headers: {
-        'x-access-key': apiKey,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        platform: postPeerPlatform[platform],
-        state,
-        callbackUrl
-      })
+    const headers: Record<string, string> = { 'x-access-key': apiKey };
+
+    if (init.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    const response = await fetchImpl(`${root}${path}`, {
+      method: init.method,
+      headers,
+      ...(init.body !== undefined ? { body: init.body } : {})
     });
 
     if (!response.ok) {
       throw new PostPeerConnectProviderError(response.status);
     }
 
-    const connectUrl = readConnectUrl(await response.json());
+    return response.json();
+  };
 
-    if (!connectUrl) {
-      throw new PostPeerConnectProviderError(response.status);
+  return {
+    createProfile: async () => {
+      const payload = readRecord(await request('/v1/profiles', { method: 'POST', body: '{}' }));
+      const profileId = readString(payload.id) ?? readString(readRecord(payload.profile).id);
+
+      if (!profileId) {
+        throw new PostPeerConnectProviderError();
+      }
+
+      return { profileId };
+    },
+    createConnectUrl: async ({ platform, profileId }) => {
+      const slug = postPeerPlatformSlug[platform];
+      const payload = readRecord(
+        await request(`/v1/connect/${slug}?profileId=${encodeURIComponent(profileId)}`)
+      );
+      const connectUrl = readString(payload.url) ?? readString(payload.connectUrl);
+
+      if (!connectUrl) {
+        throw new PostPeerConnectProviderError();
+      }
+
+      return { connectUrl };
+    },
+    listIntegrations: async ({ profileId }) => {
+      const payload = readRecord(
+        await request(`/v1/connect/integrations?profileId=${encodeURIComponent(profileId)}`)
+      );
+      const integrations = Array.isArray(payload.integrations) ? payload.integrations : [];
+
+      return integrations.flatMap((entry) => {
+        const record = readRecord(entry);
+        const id = readString(record.id);
+        const slug = readString(record.platform);
+        const platform = slug ? socialPlatformBySlug[slug] : undefined;
+
+        if (!id || !platform) {
+          return [];
+        }
+
+        return [
+          {
+            id,
+            platform,
+            platformUserId: readString(record.platformUserId),
+            displayName: readString(record.displayName) ?? readString(record.username)
+          }
+        ];
+      });
     }
-
-    return { connectUrl };
-  }
-});
+  };
+};

@@ -876,16 +876,18 @@ class SocialConnectionResult {
 class SocialConnectLinkResult {
   const SocialConnectLinkResult({
     required this.connectUrl,
-    required this.expiresAt,
+    this.expiresAt,
   });
 
   final Uri connectUrl;
-  final DateTime expiresAt;
+  final DateTime? expiresAt;
 
   factory SocialConnectLinkResult.fromJson(Map<String, Object?> json) =>
       SocialConnectLinkResult(
         connectUrl: Uri.parse(json['connectUrl'] as String),
-        expiresAt: DateTime.parse(json['expiresAt'] as String),
+        expiresAt: json['expiresAt'] is String
+            ? DateTime.tryParse(json['expiresAt'] as String)
+            : null,
       );
 }
 
@@ -1004,6 +1006,21 @@ class PostDeeApiClient {
 
   Future<void> disconnectSocialConnection(String platform) async {
     await _deleteJson('/social-connections/$platform');
+  }
+
+  Future<List<SocialConnectionResult>> refreshSocialConnections() async {
+    final response = await _postJson('/social-connections/refresh', {});
+    final connections = response['connections'];
+
+    if (connections is! List<dynamic>) {
+      throw const ApiException(
+          'Social connections response is missing connections');
+    }
+
+    return connections
+        .map((connection) => SocialConnectionResult.fromJson(
+            connection as Map<String, Object?>))
+        .toList();
   }
 
   Future<AiEditQuota> fetchAiEditQuota() async {

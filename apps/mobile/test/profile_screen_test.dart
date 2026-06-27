@@ -140,6 +140,51 @@ void main() {
     expect(launched, Uri.parse('https://postpeer.test/connect/tiktok'));
   });
 
+  testWidgets('refreshing pulls connected status from PostPeer',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [
+        SocialConnectionResult(platform: 'TIKTOK', connected: false),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+      refreshedConnections: const [
+        SocialConnectionResult(
+          platform: 'TIKTOK',
+          connected: true,
+          displayName: '@seller_one',
+        ),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+    );
+
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+
+    final refreshButton =
+        find.byKey(const ValueKey('profile-platforms-refresh'));
+    await tester.scrollUntilVisible(
+      refreshButton,
+      500,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(refreshButton);
+    await tester.pumpAndSettle();
+
+    expect(apiClient.refreshCalls, 1);
+    expect(
+      find.byKey(const ValueKey('profile-platform-disconnect-TIKTOK')),
+      findsOneWidget,
+    );
+    expect(find.text('@seller_one'), findsOneWidget);
+  });
+
   testWidgets('shows the signed-in account instead of test profile copy',
       (tester) async {
     final sessionStore = PostDeeAuthSessionStore.instance;
@@ -250,16 +295,29 @@ Widget _hostProfile({
 }
 
 class _FakeSocialApiClient extends PostDeeApiClient {
-  _FakeSocialApiClient({required this.connections, this.connectLink});
+  _FakeSocialApiClient({
+    required this.connections,
+    this.connectLink,
+    this.refreshedConnections,
+  });
 
   List<SocialConnectionResult> connections;
   final SocialConnectLinkResult? connectLink;
+  final List<SocialConnectionResult>? refreshedConnections;
   final List<String> connectCalls = [];
   final List<String> disconnectCalls = [];
+  int refreshCalls = 0;
 
   @override
   Future<List<SocialConnectionResult>> listSocialConnections() async =>
       connections;
+
+  @override
+  Future<List<SocialConnectionResult>> refreshSocialConnections() async {
+    refreshCalls++;
+    connections = refreshedConnections ?? connections;
+    return connections;
+  }
 
   @override
   Future<SocialConnectLinkResult> createSocialConnectionLink(

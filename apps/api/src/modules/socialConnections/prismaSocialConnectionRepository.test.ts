@@ -7,7 +7,8 @@ import {
 import { supportedSocialConnectionPlatforms } from './socialConnectionStore.js';
 
 const createPrisma = (
-  delegate: Partial<PrismaSocialConnectionClient['socialConnection']>
+  delegate: Partial<PrismaSocialConnectionClient['socialConnection']>,
+  profileDelegate: Partial<PrismaSocialConnectionClient['postPeerProfile']> = {}
 ): PrismaSocialConnectionClient => ({
   socialConnection: {
     findMany: vi
@@ -21,6 +22,18 @@ const createPrisma = (
       .fn<PrismaSocialConnectionClient['socialConnection']['deleteMany']>()
       .mockResolvedValue({ count: 0 }),
     ...delegate
+  },
+  postPeerProfile: {
+    findUnique: vi
+      .fn<PrismaSocialConnectionClient['postPeerProfile']['findUnique']>()
+      .mockResolvedValue(null),
+    upsert: vi
+      .fn<PrismaSocialConnectionClient['postPeerProfile']['upsert']>()
+      .mockResolvedValue({ profileId: 'profile-1' }),
+    deleteMany: vi
+      .fn<PrismaSocialConnectionClient['postPeerProfile']['deleteMany']>()
+      .mockResolvedValue({ count: 0 }),
+    ...profileDelegate
   }
 });
 
@@ -298,5 +311,37 @@ describe('createPrismaSocialConnectionRepository', () => {
         platform: 'TIKTOK'
       })
     ).resolves.toBe(true);
+  });
+
+  it('reads the stored PostPeer profile id for a user', async () => {
+    const prisma = createPrisma(
+      {},
+      {
+        findUnique: vi
+          .fn<PrismaSocialConnectionClient['postPeerProfile']['findUnique']>()
+          .mockResolvedValue({ profileId: 'profile-1' })
+      }
+    );
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+
+    await expect(repository.getProfileId('seller-1')).resolves.toBe('profile-1');
+    expect(prisma.postPeerProfile.findUnique).toHaveBeenCalledWith({
+      where: { userId: 'seller-1' },
+      select: { profileId: true }
+    });
+  });
+
+  it('upserts the PostPeer profile id for a user', async () => {
+    const prisma = createPrisma({});
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+
+    await repository.setProfileId({ userId: 'seller-1', profileId: 'profile-1' });
+
+    expect(prisma.postPeerProfile.upsert).toHaveBeenCalledWith({
+      where: { userId: 'seller-1' },
+      update: { profileId: 'profile-1' },
+      create: { userId: 'seller-1', profileId: 'profile-1' },
+      select: { profileId: true }
+    });
   });
 });

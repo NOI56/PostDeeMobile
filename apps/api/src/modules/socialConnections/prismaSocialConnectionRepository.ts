@@ -77,8 +77,25 @@ type SocialConnectionDelegate = {
   }) => Promise<{ count: number }>;
 };
 
+type PostPeerProfileDelegate = {
+  findUnique: (args: {
+    where: { userId: string };
+    select: { profileId: true };
+  }) => Promise<{ profileId: string } | null>;
+  upsert: (args: {
+    where: { userId: string };
+    update: { profileId: string };
+    create: { userId: string; profileId: string };
+    select: { profileId: true };
+  }) => Promise<{ profileId: string }>;
+  deleteMany: (args: {
+    where: { userId: string };
+  }) => Promise<{ count: number }>;
+};
+
 export type PrismaSocialConnectionClient = {
   socialConnection: SocialConnectionDelegate;
+  postPeerProfile: PostPeerProfileDelegate;
 };
 
 const socialConnectionSelect = {
@@ -227,8 +244,29 @@ export const createPrismaSocialConnectionRepository = ({
 
     return result.count > 0;
   },
+  getProfileId: async (userId) => {
+    const record = await prisma.postPeerProfile.findUnique({
+      where: { userId },
+      select: { profileId: true }
+    });
+
+    return record?.profileId;
+  },
+  setProfileId: async ({ userId, profileId }) => {
+    await prisma.postPeerProfile.upsert({
+      where: { userId },
+      update: { profileId },
+      create: { userId, profileId },
+      select: { profileId: true }
+    });
+  },
   deleteAllForUser: async (userId) => {
     await prisma.socialConnection.deleteMany({
+      where: {
+        userId
+      }
+    });
+    await prisma.postPeerProfile.deleteMany({
       where: {
         userId
       }

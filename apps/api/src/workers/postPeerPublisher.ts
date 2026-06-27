@@ -9,6 +9,10 @@ type FetchResponse = {
 
 type FetchImpl = (url: string, init: RequestInit) => Promise<FetchResponse>;
 type ResolveVideoUrl = (videoS3Key: string) => string | Promise<string>;
+type ResolveAccountId = (input: {
+  userId: string;
+  platform: Platform;
+}) => string | undefined | Promise<string | undefined>;
 export type PostPeerAccountIds = Partial<Record<Platform, string>>;
 
 type PostPeerPlatformResult = {
@@ -41,7 +45,36 @@ const postPeerAccountIdEnv: Record<Platform, string> = {
   FACEBOOK_REELS: 'POSTPEER_FACEBOOK_ACCOUNT_ID'
 };
 
-const readPostPeerAccountId = (accountIds: PostPeerAccountIds, platform: Platform) => {
+const readPostPeerAccountId = async ({
+  accountIds,
+  resolveAccountId,
+  userId,
+  platform
+}: {
+  accountIds: PostPeerAccountIds;
+  resolveAccountId?: ResolveAccountId;
+  userId?: string;
+  platform: Platform;
+}) => {
+  if (resolveAccountId) {
+    const normalizedUserId = userId?.trim();
+
+    if (!normalizedUserId) {
+      throw new Error(`Connected PostPeer account is required to publish ${platform}`);
+    }
+
+    const resolvedAccountId = (await resolveAccountId({
+      userId: normalizedUserId,
+      platform
+    }))?.trim();
+
+    if (!resolvedAccountId) {
+      throw new Error(`Connected PostPeer account is required to publish ${platform}`);
+    }
+
+    return resolvedAccountId;
+  }
+
   const accountId = accountIds[platform]?.trim();
 
   if (!accountId) {
@@ -70,6 +103,7 @@ export const createPostPeerPublisher = ({
   apiKey,
   baseUrl,
   accountIds = {},
+  resolveAccountId,
   resolveVideoUrl,
   now = () => new Date().toISOString(),
   fetchImpl = fetch as unknown as FetchImpl
@@ -77,12 +111,18 @@ export const createPostPeerPublisher = ({
   apiKey: string;
   baseUrl: string;
   accountIds?: PostPeerAccountIds;
+  resolveAccountId?: ResolveAccountId;
   resolveVideoUrl?: ResolveVideoUrl;
   now?: () => string;
   fetchImpl?: FetchImpl;
 }): PlatformPublisher => ({
-  publish: async ({ postId, caption, videoS3Key, platform }) => {
-    const accountId = readPostPeerAccountId(accountIds, platform);
+  publish: async ({ userId, postId, caption, videoS3Key, platform }) => {
+    const accountId = await readPostPeerAccountId({
+      accountIds,
+      resolveAccountId,
+      userId,
+      platform
+    });
     const videoUrl = videoS3Key
       ? resolveVideoUrl
         ? await resolveVideoUrl(videoS3Key)

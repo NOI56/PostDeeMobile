@@ -1,8 +1,13 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from './app.js';
+import { readServerConfig } from './config/env.js';
+import { createInMemorySocialConnectionStore } from './modules/socialConnections/socialConnectionStore.js';
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 describe('PostDee mock publishing flow', () => {
   it('creates an upload, generates a caption, queues a post, and exposes the queue job', async () => {
     const app = createApp();
@@ -259,5 +264,75 @@ describe('PostDee mock publishing flow', () => {
         ]
       }
     });
+  });
+  it('publishes with the post owner social connection account id', async () => {
+    const postPeerCalls: { body: { platforms?: Array<{ accountId?: string }> } }[] = [];
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      postPeerCalls.push({
+        body: JSON.parse(String(init.body))
+      });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ externalPostId: 'pp-seller-a-post' })
+      };
+    });
+
+    const socialConnectionStore = createInMemorySocialConnectionStore();
+    await socialConnectionStore.upsert({
+      userId: 'seller-a',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'acct-seller-a-tiktok'
+    });
+    await socialConnectionStore.upsert({
+      userId: 'seller-b',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'acct-seller-b-tiktok'
+    });
+
+    const app = createApp({
+      config: readServerConfig({
+        SOCIAL_PUBLISHER: 'postpeer',
+        POSTPEER_API_KEY: 'pp-key',
+        VIDEO_STORAGE: 'r2',
+        CLOUDFLARE_R2_BUCKET: 'postdee-test-videos',
+        CLOUDFLARE_R2_ACCOUNT_ID: 'account-id',
+        CLOUDFLARE_R2_ACCESS_KEY_ID: 'access-key',
+        CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'secret-key'
+      }),
+      socialConnectionStore,
+      r2Client: {
+        createPresignedUploadUrl: async () => 'https://r2.test/upload',
+        createPresignedDownloadUrl: async ({ key }) =>
+          `https://r2.test/signed/${encodeURIComponent(key)}`,
+        deleteObject: async () => undefined
+      }
+    });
+
+    const postResponse = await request(app)
+      .post('/posts')
+      .set('x-postdee-user-id', 'seller-a')
+      .send({
+        caption: 'seller A launch',
+        videoS3Key: 'uploads/seller-a/clip.mp4',
+        platforms: ['TIKTOK'],
+        subscriptionPlan: 'PRO'
+      })
+      .expect(201);
+
+    await app.locals.publishScheduler.runOnce();
+
+    expect(postPeerCalls).toHaveLength(1);
+    expect(postPeerCalls[0].body.platforms?.[0]?.accountId).toBe(
+      'acct-seller-a-tiktok'
+    );
+
+    const postsResponse = await request(app)
+      .get('/posts')
+      .set('x-postdee-user-id', 'seller-a')
+      .expect(200);
+    expect(postsResponse.body.posts.find(
+      (post: { id: string }) => post.id === postResponse.body.post.id
+    )?.status).toBe('PUBLISHED');
   });
 });

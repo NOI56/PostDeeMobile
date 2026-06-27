@@ -20,20 +20,30 @@ import {
   publishQueueName
 } from '../modules/queue/bullMqPublishQueue.js';
 import { createPostStoreFromConfig } from '../modules/posts/postStoreFactory.js';
+import type { PrismaSocialConnectionClient } from '../modules/socialConnections/prismaSocialConnectionRepository.js';
+import { createSocialConnectionStore } from '../modules/socialConnections/socialConnectionStoreFactory.js';
 import { createVideoStorageFromConfig } from '../modules/storage/videoStorageFactory.js';
 import { createPlatformPublisherFromConfig } from './platformPublisherFactory.js';
 import { processPublishJobForPost } from './publishWorker.js';
 
 const config = readServerConfig();
 const storage = createVideoStorageFromConfig({ config });
-const publisher = createPlatformPublisherFromConfig({ config, videoStorage: storage });
-// Create Prisma when the post store or analytics store needs it, so the worker
-// can advance post status (QUEUED -> PUBLISHED/PARTIAL_PUBLISHED/FAILED) after
-// publishing — otherwise BullMQ-published posts would stay QUEUED forever.
+// Create Prisma when the post store or analytics store needs it, and also when
+// real PostPeer publishing is enabled so the worker can read user connections.
 const prisma =
-  config.postStore === 'prisma' || config.analyticsStore === 'prisma'
+  config.postStore === 'prisma' ||
+  config.analyticsStore === 'prisma' ||
+  config.socialPublisher === 'postpeer'
     ? createPrismaClient()
     : undefined;
+const socialConnectionStore = createSocialConnectionStore({
+  prisma: prisma as unknown as PrismaSocialConnectionClient | undefined
+});
+const publisher = createPlatformPublisherFromConfig({
+  config,
+  videoStorage: storage,
+  socialConnectionStore
+});
 const postStore = createPostStoreFromConfig({
   config,
   prisma: prisma as unknown as PrismaPostClient | undefined

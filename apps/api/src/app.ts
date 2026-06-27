@@ -375,13 +375,17 @@ export const createApp = (options: AppOptions = {}) => {
   app.use(router);
 
   // In-memory queue has no external worker, so attach an in-process scheduler.
-  // It is created but NOT started here — server.ts starts it so tests that only
+  // It is created but NOT started here; server.ts starts it so tests that only
   // build the app never leave a timer running. (BullMQ uses a separate worker.)
   if (config.publishQueue === 'memory') {
     app.locals.publishScheduler = createPublishScheduler({
       postStore,
       platformPublishStore,
-      publisher: createPlatformPublisherFromConfig({ config, videoStorage }),
+      publisher: createPlatformPublisherFromConfig({
+        config,
+        videoStorage,
+        socialConnectionStore
+      }),
       storage: videoStorage,
       // Push a publish-result notification to the user's devices. Uses the real
       // FCM sender when PUSH_SENDER=firebase, otherwise a no-op mock.

@@ -78,6 +78,18 @@ import { createDeviceTokenStore } from './modules/devices/deviceTokenStoreFactor
 import type { PrismaDeviceTokenClient } from './modules/devices/prismaDeviceTokenRepository.js';
 import { createPublishNotifier } from './modules/notifications/publishNotifier.js';
 import { createPushSenderFromConfig } from './modules/notifications/pushSenderFactory.js';
+import {
+  createPostPeerConnectClient,
+  type PostPeerConnectClient
+} from './modules/socialConnections/postPeerConnectClient.js';
+import { createPostPeerConnectStateManager } from './modules/socialConnections/postPeerConnectState.js';
+import type { PrismaSocialConnectionClient } from './modules/socialConnections/prismaSocialConnectionRepository.js';
+import {
+  type PostPeerConnectStateManager,
+  registerSocialConnectionRoutes
+} from './modules/socialConnections/socialConnectionRoutes.js';
+import type { SocialConnectionStore } from './modules/socialConnections/socialConnectionStore.js';
+import { createSocialConnectionStore } from './modules/socialConnections/socialConnectionStoreFactory.js';
 import { registerPlannedRoutes } from './routes/plannedRoutes.js';
 
 type AppPrismaClient = PrismaTemplateClient &
@@ -87,7 +99,8 @@ type AppPrismaClient = PrismaTemplateClient &
   PrismaAnalyticsClient &
   PrismaRealClipCaptionUsageClient &
   PrismaAiEditUsageClient &
-  PrismaDeviceTokenClient;
+  PrismaDeviceTokenClient &
+  PrismaSocialConnectionClient;
 
 type AppOptions = {
   config?: ServerConfig;
@@ -105,6 +118,9 @@ type AppOptions = {
   editPlanProvider?: EditPlanProvider;
   storePurchaseVerifier?: StorePurchaseVerifier;
   appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
+  socialConnectionStore?: SocialConnectionStore;
+  postPeerConnectClient?: PostPeerConnectClient;
+  postPeerConnectStateManager?: PostPeerConnectStateManager;
 };
 
 const readFileNameFromStorageKey = (videoS3Key: string) =>
@@ -311,7 +327,35 @@ export const createApp = (options: AppOptions = {}) => {
       ? (prismaClient as unknown as PrismaDeviceTokenClient)
       : undefined
   });
+  const socialConnectionStore =
+    options.socialConnectionStore ??
+    createSocialConnectionStore({
+      prisma: prismaClient
+        ? (prismaClient as unknown as PrismaSocialConnectionClient)
+        : undefined
+    });
+  const postPeerConnectClient =
+    options.postPeerConnectClient ??
+    createPostPeerConnectClient({
+      apiKey: config.postPeerApiKey,
+      baseUrl: config.postPeerApiBaseUrl,
+      createPath: config.postPeerConnectCreatePath
+    });
+  const postPeerConnectStateManager =
+    options.postPeerConnectStateManager ??
+    (config.postPeerConnectStateSecret
+      ? createPostPeerConnectStateManager({
+          secret: config.postPeerConnectStateSecret
+        })
+      : undefined);
   registerDeviceRoutes(router, authMiddleware, deviceTokenStore);
+  registerSocialConnectionRoutes(router, authMiddleware, {
+    store: socialConnectionStore,
+    connectClient: postPeerConnectClient,
+    callbackUrl: config.postPeerConnectCallbackUrl,
+    callbackSecret: config.postPeerConnectCallbackSecret,
+    stateManager: postPeerConnectStateManager
+  });
   registerAccountRoutes(router, authMiddleware, {
     postStore,
     templateStore,
@@ -320,6 +364,7 @@ export const createApp = (options: AppOptions = {}) => {
     realClipCaptionUsageStore,
     aiEditUsageStore,
     deviceTokenStore,
+    socialConnectionStore,
     userStore,
     publishQueue,
     prisma: prismaClient

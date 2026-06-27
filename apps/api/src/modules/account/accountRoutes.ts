@@ -7,6 +7,7 @@ import type { RealClipCaptionUsageStore } from '../captions/captionUsageStore.js
 import type { DeviceTokenStore } from '../devices/deviceTokenStore.js';
 import type { PostStore } from '../posts/postStore.js';
 import type { PublishQueue } from '../queue/publishQueue.js';
+import type { SocialConnectionStore } from '../socialConnections/socialConnectionStore.js';
 import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import type { TemplateStore } from '../templates/templateStore.js';
 import type { UserStore } from '../users/userStore.js';
@@ -30,6 +31,7 @@ export type AccountRouteDependencies = {
   realClipCaptionUsageStore: RealClipCaptionUsageStore;
   aiEditUsageStore: AiEditUsageStore;
   deviceTokenStore: DeviceTokenStore;
+  socialConnectionStore?: SocialConnectionStore;
   userStore: UserStore;
   publishQueue: PublishQueue;
   prisma?: PrismaAccountClient;
@@ -52,6 +54,7 @@ export const registerAccountRoutes = (
     realClipCaptionUsageStore,
     aiEditUsageStore,
     deviceTokenStore,
+    socialConnectionStore,
     userStore,
     publishQueue,
     prisma
@@ -91,6 +94,7 @@ export const registerAccountRoutes = (
       realClipCaptionUsageStore.deleteAllForUser,
       aiEditUsageStore.deleteAllForUser,
       deviceTokenStore.deleteAllForUser,
+      socialConnectionStore?.deleteAllForUser,
       userStore.deleteAllForUser
     ];
 

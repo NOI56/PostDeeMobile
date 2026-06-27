@@ -73,6 +73,10 @@ export type ServerConfig = {
   postPeerYoutubeAccountId?: string;
   postPeerInstagramAccountId?: string;
   postPeerFacebookAccountId?: string;
+  postPeerConnectCreatePath?: string;
+  postPeerConnectCallbackUrl?: string;
+  postPeerConnectStateSecret?: string;
+  postPeerConnectCallbackSecret?: string;
   transcriptionProvider: TranscriptionProviderKind;
   whisperModel: string;
   groqTranscriptionModel: string;
@@ -395,6 +399,10 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     postPeerYoutubeAccountId: readOptional(env, 'POSTPEER_YOUTUBE_ACCOUNT_ID'),
     postPeerInstagramAccountId: readOptional(env, 'POSTPEER_INSTAGRAM_ACCOUNT_ID'),
     postPeerFacebookAccountId: readOptional(env, 'POSTPEER_FACEBOOK_ACCOUNT_ID'),
+    postPeerConnectCreatePath: readOptional(env, 'POSTPEER_CONNECT_CREATE_PATH'),
+    postPeerConnectCallbackUrl: readOptional(env, 'POSTPEER_CONNECT_CALLBACK_URL'),
+    postPeerConnectStateSecret: readOptional(env, 'POSTPEER_CONNECT_STATE_SECRET'),
+    postPeerConnectCallbackSecret: readOptional(env, 'POSTPEER_CONNECT_CALLBACK_SECRET'),
     transcriptionProvider: readTranscriptionProvider(env),
     whisperModel: readOptional(env, 'WHISPER_MODEL') ?? 'whisper-1',
     groqTranscriptionModel: readOptional(env, 'GROQ_TRANSCRIPTION_MODEL') ?? 'whisper-large-v3',

@@ -1091,6 +1091,10 @@ PostgreSQL.
 | `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | PostPeer integration id for YouTube Shorts publishing |
 | `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | PostPeer integration id for Instagram Reels publishing |
 | `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | PostPeer integration id for Facebook Reels publishing |
+| `POSTPEER_CONNECT_CREATE_PATH` | `/v1/connect/links` | Optional PostPeer API path for creating user account-link URLs |
+| `POSTPEER_CONNECT_CALLBACK_URL` | `https://postdee-api.onrender.com/social-connections/postpeer/callback` | Public backend callback URL PostPeer should return to after account linking |
+| `POSTPEER_CONNECT_STATE_SECRET` | `...` | Backend-only HMAC secret for signing account-link state tokens |
+| `POSTPEER_CONNECT_CALLBACK_SECRET` | `...` | Optional shared secret used to verify PostPeer connect callbacks |
 | `MOCK_USER_ID` | `local-dev-user` | Default mock user id |
 
 ## Production Gaps

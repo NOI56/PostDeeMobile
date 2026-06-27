@@ -34,7 +34,7 @@ describe('render.yaml production config', () => {
     expectEnvValue(source, 'TRANSCRIPTION_PROVIDER', 'groq');
     expectEnvValue(source, 'EDIT_PLAN_PROVIDER', 'groq');
     expectEnvSecret(source, 'GROQ_API_KEY');
-    expectEnvValue(source, 'SOCIAL_PUBLISHER', 'mock');
+    expectEnvValue(source, 'SOCIAL_PUBLISHER', 'postpeer');
     expectEnvSecret(source, 'POSTPEER_API_KEY');
     expectEnvSecret(source, 'POSTPEER_TIKTOK_ACCOUNT_ID');
     expectEnvSecret(source, 'POSTPEER_YOUTUBE_ACCOUNT_ID');

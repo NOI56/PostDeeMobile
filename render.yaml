@@ -59,10 +59,11 @@ services:
       - key: GROQ_API_KEY
         sync: false
       # --- Social posting: PostPeer ---
-      # Flip SOCIAL_PUBLISHER to "postpeer" only after the POSTPEER_* values are
-      # set and a controlled real publish test is approved.
+      # Live: posts publish through PostPeer using the POSTPEER_*_ACCOUNT_ID
+      # operator accounts below. Until per-user social connections ship, every
+      # user posts to these same shared connected accounts.
       - key: SOCIAL_PUBLISHER
-        value: mock
+        value: postpeer
       - key: POSTPEER_API_KEY
         sync: false
       - key: POSTPEER_TIKTOK_ACCOUNT_ID

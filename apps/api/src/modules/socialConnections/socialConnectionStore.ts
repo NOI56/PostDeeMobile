@@ -23,13 +23,19 @@ export const isPublishableSocialPlatform = (
   platform: Platform
 ): platform is SocialConnectionPlatform => isSocialConnectionPlatform(platform);
 
-export type SocialConnectionStatus = 'CONNECTED' | 'DISCONNECTED';
-
 export type SocialConnection = {
   userId: string;
   platform: SocialConnectionPlatform;
-  status: SocialConnectionStatus;
-  postPeerAccountId?: string;
+  postPeerAccountId: string;
+  displayName?: string;
+  externalAccountId?: string;
+  connectedAt: string;
+  updatedAt: string;
+};
+
+export type SocialConnectionStatus = {
+  platform: SocialConnectionPlatform;
+  connected: boolean;
   displayName?: string;
   externalAccountId?: string;
   connectedAt?: string;
@@ -54,13 +60,13 @@ export type DisconnectSocialConnectionInput = {
 };
 
 export type SocialConnectionStore = {
-  listForUser: (userId: string) => Promise<SocialConnection[]>;
+  listForUser: (userId: string) => Promise<SocialConnectionStatus[]>;
   getAccountId: (
     input: GetSocialConnectionAccountIdInput
   ) => Promise<string | undefined>;
   upsert: (input: UpsertSocialConnectionInput) => Promise<SocialConnection>;
-  disconnect: (input: DisconnectSocialConnectionInput) => Promise<void>;
-  deleteAllForUser: (userId: string) => Promise<void>;
+  disconnect: (input: DisconnectSocialConnectionInput) => Promise<boolean>;
+  deleteAllForUser?: (userId: string) => Promise<void>;
 };
 
 const connectionKey = ({
@@ -71,16 +77,9 @@ const connectionKey = ({
   platform: SocialConnectionPlatform;
 }) => `${userId}:${platform}`;
 
-const disconnectedConnection = ({
-  userId,
-  platform
-}: {
-  userId: string;
-  platform: SocialConnectionPlatform;
-}): SocialConnection => ({
-  userId,
+const disconnectedStatus = (platform: SocialConnectionPlatform): SocialConnectionStatus => ({
   platform,
-  status: 'DISCONNECTED'
+  connected: false
 });
 
 const normalizeOptionalMetadata = (value?: string): string | undefined =>
@@ -92,21 +91,42 @@ const connectedConnection = ({
   postPeerAccountId,
   displayName,
   externalAccountId,
-  connectedAt
-}: UpsertSocialConnectionInput & { connectedAt: string }): SocialConnection => {
+  connectedAt,
+  updatedAt
+}: UpsertSocialConnectionInput & {
+  connectedAt: string;
+  updatedAt: string;
+}): SocialConnection => {
   const normalizedDisplayName = normalizeOptionalMetadata(displayName);
   const normalizedExternalAccountId = normalizeOptionalMetadata(externalAccountId);
 
   return {
     userId,
     platform,
-    status: 'CONNECTED',
     postPeerAccountId,
     ...(normalizedDisplayName ? { displayName: normalizedDisplayName } : {}),
     ...(normalizedExternalAccountId
       ? { externalAccountId: normalizedExternalAccountId }
       : {}),
-    connectedAt
+    connectedAt,
+    updatedAt
+  };
+};
+
+const connectionStatus = (
+  platform: SocialConnectionPlatform,
+  connection?: SocialConnection
+): SocialConnectionStatus => {
+  if (!connection) {
+    return disconnectedStatus(platform);
+  }
+
+  return {
+    platform,
+    connected: true,
+    displayName: connection.displayName,
+    externalAccountId: connection.externalAccountId,
+    connectedAt: connection.connectedAt
   };
 };
 
@@ -121,24 +141,25 @@ export const createInMemorySocialConnectionStore = ({
     listForUser: async (userId) =>
       supportedSocialConnectionPlatforms.map(
         (platform) =>
-          connections.get(connectionKey({ userId, platform })) ??
-          disconnectedConnection({ userId, platform })
+          connectionStatus(platform, connections.get(connectionKey({ userId, platform })))
       ),
     getAccountId: async (input) =>
       connections.get(connectionKey(input))?.postPeerAccountId,
     upsert: async (input) => {
       const key = connectionKey(input);
       const existingConnection = connections.get(key);
+      const timestamp = now();
       const record = connectedConnection({
         ...input,
-        connectedAt: existingConnection?.connectedAt ?? now()
+        connectedAt: existingConnection?.connectedAt ?? timestamp,
+        updatedAt: timestamp
       });
 
       connections.set(key, record);
       return record;
     },
     disconnect: async (input) => {
-      connections.delete(connectionKey(input));
+      return connections.delete(connectionKey(input));
     },
     deleteAllForUser: async (userId) => {
       for (const [key, record] of connections) {

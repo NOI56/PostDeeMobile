@@ -27,6 +27,7 @@ const createPrisma = (
 describe('createPrismaSocialConnectionRepository', () => {
   it('lists connected social accounts with disconnected defaults', async () => {
     const connectedAt = new Date('2026-06-26T02:00:00.000Z');
+    const updatedAt = new Date('2026-06-26T03:00:00.000Z');
     const prisma = createPrisma({
       findMany: vi
         .fn<PrismaSocialConnectionClient['socialConnection']['findMany']>()
@@ -37,7 +38,8 @@ describe('createPrismaSocialConnectionRepository', () => {
             postPeerAccountId: 'postpeer-tiktok-1',
             displayName: 'Seller TikTok',
             externalAccountId: '@seller-1',
-            connectedAt
+            connectedAt,
+            updatedAt
           }
         ])
     });
@@ -45,28 +47,23 @@ describe('createPrismaSocialConnectionRepository', () => {
 
     await expect(repository.listForUser('seller-1')).resolves.toEqual([
       {
-        userId: 'seller-1',
         platform: 'TIKTOK',
-        status: 'CONNECTED',
-        postPeerAccountId: 'postpeer-tiktok-1',
+        connected: true,
         displayName: 'Seller TikTok',
         externalAccountId: '@seller-1',
         connectedAt: '2026-06-26T02:00:00.000Z'
       },
       {
-        userId: 'seller-1',
         platform: 'YOUTUBE_SHORTS',
-        status: 'DISCONNECTED'
+        connected: false
       },
       {
-        userId: 'seller-1',
         platform: 'INSTAGRAM_REELS',
-        status: 'DISCONNECTED'
+        connected: false
       },
       {
-        userId: 'seller-1',
         platform: 'FACEBOOK_REELS',
-        status: 'DISCONNECTED'
+        connected: false
       }
     ]);
     expect(prisma.socialConnection.findMany).toHaveBeenCalledWith({
@@ -82,13 +79,15 @@ describe('createPrismaSocialConnectionRepository', () => {
         postPeerAccountId: true,
         displayName: true,
         externalAccountId: true,
-        connectedAt: true
+        connectedAt: true,
+        updatedAt: true
       }
     });
   });
 
   it('does not map unsupported Prisma platform rows into domain connections', async () => {
     const connectedAt = new Date('2026-06-26T02:00:00.000Z');
+    const updatedAt = new Date('2026-06-26T03:00:00.000Z');
     const prisma = createPrisma({
       findMany: vi
         .fn<PrismaSocialConnectionClient['socialConnection']['findMany']>()
@@ -99,38 +98,24 @@ describe('createPrismaSocialConnectionRepository', () => {
             postPeerAccountId: 'postpeer-shopee-1',
             displayName: 'Seller Shopee',
             externalAccountId: 'seller-shopee',
-            connectedAt
+            connectedAt,
+            updatedAt
           }
         ])
     });
     const repository = createPrismaSocialConnectionRepository({ prisma });
 
-    await expect(repository.listForUser('seller-1')).resolves.toEqual([
-      {
-        userId: 'seller-1',
-        platform: 'TIKTOK',
-        status: 'DISCONNECTED'
-      },
-      {
-        userId: 'seller-1',
-        platform: 'YOUTUBE_SHORTS',
-        status: 'DISCONNECTED'
-      },
-      {
-        userId: 'seller-1',
-        platform: 'INSTAGRAM_REELS',
-        status: 'DISCONNECTED'
-      },
-      {
-        userId: 'seller-1',
-        platform: 'FACEBOOK_REELS',
-        status: 'DISCONNECTED'
-      }
-    ]);
+    await expect(repository.listForUser('seller-1')).resolves.toEqual(
+      supportedSocialConnectionPlatforms.map((platform) => ({
+        platform,
+        connected: false
+      }))
+    );
   });
 
   it('upserts a social connection by user and platform', async () => {
     const connectedAt = new Date('2026-06-26T02:00:00.000Z');
+    const updatedAt = new Date('2026-06-26T03:00:00.000Z');
     const prisma = createPrisma({
       upsert: vi
         .fn<PrismaSocialConnectionClient['socialConnection']['upsert']>()
@@ -140,7 +125,8 @@ describe('createPrismaSocialConnectionRepository', () => {
           postPeerAccountId: 'postpeer-tiktok-1',
           displayName: 'Seller TikTok',
           externalAccountId: '@seller-1',
-          connectedAt
+          connectedAt,
+          updatedAt
         })
     });
     const repository = createPrismaSocialConnectionRepository({ prisma });
@@ -156,11 +142,11 @@ describe('createPrismaSocialConnectionRepository', () => {
     ).resolves.toEqual({
       userId: 'seller-1',
       platform: 'TIKTOK',
-      status: 'CONNECTED',
       postPeerAccountId: 'postpeer-tiktok-1',
       displayName: 'Seller TikTok',
       externalAccountId: '@seller-1',
-      connectedAt: '2026-06-26T02:00:00.000Z'
+      connectedAt: '2026-06-26T02:00:00.000Z',
+      updatedAt: '2026-06-26T03:00:00.000Z'
     });
     expect(prisma.socialConnection.upsert).toHaveBeenCalledWith({
       where: {
@@ -187,13 +173,15 @@ describe('createPrismaSocialConnectionRepository', () => {
         postPeerAccountId: true,
         displayName: true,
         externalAccountId: true,
-        connectedAt: true
+        connectedAt: true,
+        updatedAt: true
       }
     });
   });
 
   it('normalizes empty optional metadata to null before upserting', async () => {
     const connectedAt = new Date('2026-06-26T02:00:00.000Z');
+    const updatedAt = new Date('2026-06-26T03:00:00.000Z');
     const prisma = createPrisma({
       upsert: vi
         .fn<PrismaSocialConnectionClient['socialConnection']['upsert']>()
@@ -203,7 +191,8 @@ describe('createPrismaSocialConnectionRepository', () => {
           postPeerAccountId: 'postpeer-tiktok-1',
           displayName: null,
           externalAccountId: null,
-          connectedAt
+          connectedAt,
+          updatedAt
         })
     });
     const repository = createPrismaSocialConnectionRepository({ prisma });
@@ -219,9 +208,9 @@ describe('createPrismaSocialConnectionRepository', () => {
     ).resolves.toEqual({
       userId: 'seller-1',
       platform: 'TIKTOK',
-      status: 'CONNECTED',
       postPeerAccountId: 'postpeer-tiktok-1',
-      connectedAt: '2026-06-26T02:00:00.000Z'
+      connectedAt: '2026-06-26T02:00:00.000Z',
+      updatedAt: '2026-06-26T03:00:00.000Z'
     });
     expect(prisma.socialConnection.upsert).toHaveBeenCalledWith({
       where: {
@@ -248,13 +237,15 @@ describe('createPrismaSocialConnectionRepository', () => {
         postPeerAccountId: true,
         displayName: true,
         externalAccountId: true,
-        connectedAt: true
+        connectedAt: true,
+        updatedAt: true
       }
     });
   });
 
   it('omits null optional metadata returned from Prisma', async () => {
     const connectedAt = new Date('2026-06-26T02:00:00.000Z');
+    const updatedAt = new Date('2026-06-26T03:00:00.000Z');
     const prisma = createPrisma({
       findMany: vi
         .fn<PrismaSocialConnectionClient['socialConnection']['findMany']>()
@@ -265,7 +256,8 @@ describe('createPrismaSocialConnectionRepository', () => {
             postPeerAccountId: 'postpeer-tiktok-1',
             displayName: null,
             externalAccountId: null,
-            connectedAt
+            connectedAt,
+            updatedAt
           }
         ])
     });
@@ -273,27 +265,38 @@ describe('createPrismaSocialConnectionRepository', () => {
 
     await expect(repository.listForUser('seller-1')).resolves.toEqual([
       {
-        userId: 'seller-1',
         platform: 'TIKTOK',
-        status: 'CONNECTED',
-        postPeerAccountId: 'postpeer-tiktok-1',
+        connected: true,
         connectedAt: '2026-06-26T02:00:00.000Z'
       },
       {
-        userId: 'seller-1',
         platform: 'YOUTUBE_SHORTS',
-        status: 'DISCONNECTED'
+        connected: false
       },
       {
-        userId: 'seller-1',
         platform: 'INSTAGRAM_REELS',
-        status: 'DISCONNECTED'
+        connected: false
       },
       {
-        userId: 'seller-1',
         platform: 'FACEBOOK_REELS',
-        status: 'DISCONNECTED'
+        connected: false
       }
     ]);
+  });
+
+  it('returns whether disconnect removed a connection', async () => {
+    const prisma = createPrisma({
+      deleteMany: vi
+        .fn<PrismaSocialConnectionClient['socialConnection']['deleteMany']>()
+        .mockResolvedValue({ count: 1 })
+    });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+
+    await expect(
+      repository.disconnect({
+        userId: 'seller-1',
+        platform: 'TIKTOK'
+      })
+    ).resolves.toBe(true);
   });
 });

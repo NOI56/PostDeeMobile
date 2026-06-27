@@ -1,6 +1,7 @@
 import {
   type SocialConnection,
   type SocialConnectionPlatform,
+  type SocialConnectionStatus,
   type SocialConnectionStore,
   type UpsertSocialConnectionInput,
   isSocialConnectionPlatform,
@@ -14,6 +15,7 @@ type PrismaSocialConnection = {
   displayName: string | null;
   externalAccountId: string | null;
   connectedAt: Date;
+  updatedAt: Date;
 };
 
 type SocialConnectionSelect = {
@@ -23,6 +25,7 @@ type SocialConnectionSelect = {
   displayName: true;
   externalAccountId: true;
   connectedAt: true;
+  updatedAt: true;
 };
 
 type SocialConnectionWriteData = {
@@ -84,19 +87,13 @@ const socialConnectionSelect = {
   postPeerAccountId: true,
   displayName: true,
   externalAccountId: true,
-  connectedAt: true
+  connectedAt: true,
+  updatedAt: true
 } satisfies SocialConnectionSelect;
 
-const disconnectedConnection = ({
-  userId,
-  platform
-}: {
-  userId: string;
-  platform: SocialConnectionPlatform;
-}): SocialConnection => ({
-  userId,
+const disconnectedStatus = (platform: SocialConnectionPlatform): SocialConnectionStatus => ({
   platform,
-  status: 'DISCONNECTED'
+  connected: false
 });
 
 const normalizeOptionalMetadata = (value?: string | null): string | undefined =>
@@ -115,11 +112,28 @@ const mapConnection = (
   return {
     userId: record.userId,
     platform: record.platform,
-    status: 'CONNECTED',
     postPeerAccountId: record.postPeerAccountId,
     ...(displayName ? { displayName } : {}),
     ...(externalAccountId ? { externalAccountId } : {}),
-    connectedAt: record.connectedAt.toISOString()
+    connectedAt: record.connectedAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString()
+  };
+};
+
+const mapStatus = (
+  platform: SocialConnectionPlatform,
+  connection?: SocialConnection
+): SocialConnectionStatus => {
+  if (!connection) {
+    return disconnectedStatus(platform);
+  }
+
+  return {
+    platform,
+    connected: true,
+    displayName: connection.displayName,
+    externalAccountId: connection.externalAccountId,
+    connectedAt: connection.connectedAt
   };
 };
 
@@ -158,9 +172,8 @@ export const createPrismaSocialConnectionRepository = ({
       }
     }
 
-    return supportedSocialConnectionPlatforms.map(
-      (platform) =>
-        connectedByPlatform.get(platform) ?? disconnectedConnection({ userId, platform })
+    return supportedSocialConnectionPlatforms.map((platform) =>
+      mapStatus(platform, connectedByPlatform.get(platform))
     );
   },
   getAccountId: async ({ userId, platform }) => {
@@ -205,12 +218,14 @@ export const createPrismaSocialConnectionRepository = ({
     return connection;
   },
   disconnect: async ({ userId, platform }) => {
-    await prisma.socialConnection.deleteMany({
+    const result = await prisma.socialConnection.deleteMany({
       where: {
         userId,
         platform
       }
     });
+
+    return result.count > 0;
   },
   deleteAllForUser: async (userId) => {
     await prisma.socialConnection.deleteMany({

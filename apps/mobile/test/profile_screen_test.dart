@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/localization/language_controller.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
+import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
 import 'package:postdee_mobile/features/profile/profile_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,32 +62,67 @@ void main() {
         find.byKey(const ValueKey('profile-team-access-pro')), findsOneWidget);
   });
 
-  testWidgets('does not fake social platform connections before OAuth exists',
-      (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('th'),
-        localizationsDelegates: const [
-          PostDeeLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: PostDeeLocalizations.supportedLocales,
-        home: Scaffold(
-          body: ProfileScreen(
-            languageController: PostDeeLanguageController(),
-            themeController: PostDeeThemeController(),
-            onOpenTemplates: () {},
-            onDeleteAccount: () {},
-          ),
+  testWidgets('shows connected social platforms from the API', (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [
+        SocialConnectionResult(
+          platform: 'TIKTOK',
+          connected: true,
+          displayName: '@seller_one',
         ),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+    );
+
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+
+    final tiktokDisconnect =
+        find.byKey(const ValueKey('profile-platform-disconnect-TIKTOK'));
+    await tester.scrollUntilVisible(
+      tiktokDisconnect,
+      500,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.pumpAndSettle();
+
+    expect(tiktokDisconnect, findsOneWidget);
+    expect(find.text('@seller_one'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle), findsWidgets);
+  });
+
+  testWidgets('connecting a platform opens its PostPeer connect URL',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [
+        SocialConnectionResult(platform: 'TIKTOK', connected: false),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+      connectLink: SocialConnectLinkResult(
+        connectUrl: Uri.parse('https://postpeer.test/connect/tiktok'),
+        expiresAt: DateTime.utc(2026, 6, 26, 9, 10),
       ),
     );
+    Uri? launched;
+
+    await tester.pumpWidget(
+      _hostProfile(
+        apiClient: apiClient,
+        launchConnectUrl: (uri) async {
+          launched = uri;
+          return true;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
 
     final tiktokConnect =
         find.byKey(const ValueKey('profile-platform-connect-TIKTOK'));
-
     await tester.scrollUntilVisible(
       tiktokConnect,
       500,
@@ -95,9 +131,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(tiktokConnect, findsOneWidget);
-    expect(tester.widget<OutlinedButton>(tiktokConnect).onPressed, isNull);
-    expect(find.byIcon(Icons.check_circle), findsNothing);
+    expect(tester.widget<OutlinedButton>(tiktokConnect).onPressed, isNotNull);
+
+    await tester.tap(tiktokConnect);
+    await tester.pumpAndSettle();
+
+    expect(apiClient.connectCalls, ['TIKTOK']);
+    expect(launched, Uri.parse('https://postpeer.test/connect/tiktok'));
   });
 
   testWidgets('shows the signed-in account instead of test profile copy',
@@ -181,4 +221,69 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('320'), findsNothing);
   });
+}
+
+Widget _hostProfile({
+  PostDeeApiClient? apiClient,
+  Future<bool> Function(Uri uri)? launchConnectUrl,
+}) {
+  return MaterialApp(
+    locale: const Locale('th'),
+    localizationsDelegates: const [
+      PostDeeLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ],
+    supportedLocales: PostDeeLocalizations.supportedLocales,
+    home: Scaffold(
+      body: ProfileScreen(
+        languageController: PostDeeLanguageController(),
+        themeController: PostDeeThemeController(),
+        onOpenTemplates: () {},
+        onDeleteAccount: () {},
+        apiClient: apiClient,
+        launchConnectUrl: launchConnectUrl,
+      ),
+    ),
+  );
+}
+
+class _FakeSocialApiClient extends PostDeeApiClient {
+  _FakeSocialApiClient({required this.connections, this.connectLink});
+
+  List<SocialConnectionResult> connections;
+  final SocialConnectLinkResult? connectLink;
+  final List<String> connectCalls = [];
+  final List<String> disconnectCalls = [];
+
+  @override
+  Future<List<SocialConnectionResult>> listSocialConnections() async =>
+      connections;
+
+  @override
+  Future<SocialConnectLinkResult> createSocialConnectionLink(
+      String platform) async {
+    connectCalls.add(platform);
+    final link = connectLink;
+    if (link == null) {
+      throw const ApiException(
+        'PostPeer account linking is not configured yet',
+        statusCode: 503,
+      );
+    }
+    return link;
+  }
+
+  @override
+  Future<void> disconnectSocialConnection(String platform) async {
+    disconnectCalls.add(platform);
+    connections = [
+      for (final connection in connections)
+        if (connection.platform == platform)
+          SocialConnectionResult(platform: platform, connected: false)
+        else
+          connection,
+    ];
+  }
 }

@@ -218,6 +218,35 @@ void main() {
     expect(post.status, 'QUEUED');
   });
 
+
+  test('SocialConnectionResult parses connected platform status', () {
+    final result = SocialConnectionResult.fromJson({
+      'platform': 'TIKTOK',
+      'connected': true,
+      'displayName': '@seller_one',
+      'externalAccountId': 'external-tiktok',
+      'connectedAt': '2026-06-26T09:00:00.000Z',
+    });
+
+    expect(result.platform, 'TIKTOK');
+    expect(result.connected, isTrue);
+    expect(result.displayName, '@seller_one');
+    expect(result.externalAccountId, 'external-tiktok');
+    expect(result.connectedAt?.toUtc().toIso8601String(),
+        '2026-06-26T09:00:00.000Z');
+  });
+
+  test('SocialConnectLinkResult parses connect URLs', () {
+    final result = SocialConnectLinkResult.fromJson({
+      'connectUrl': 'https://postpeer.test/connect/youtube',
+      'expiresAt': '2026-06-26T09:10:00.000Z',
+    });
+
+    expect(result.connectUrl.toString(), 'https://postpeer.test/connect/youtube');
+    expect(result.expiresAt.toUtc().toIso8601String(),
+        '2026-06-26T09:10:00.000Z');
+  });
+
   test(
       'PostDeeApiAuthHeaders sends a Firebase bearer token when one is available',
       () async {

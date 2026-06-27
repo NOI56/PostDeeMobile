@@ -846,6 +846,49 @@ class PostSummaryResult {
   }
 }
 
+class SocialConnectionResult {
+  const SocialConnectionResult({
+    required this.platform,
+    required this.connected,
+    this.displayName,
+    this.externalAccountId,
+    this.connectedAt,
+  });
+
+  final String platform;
+  final bool connected;
+  final String? displayName;
+  final String? externalAccountId;
+  final DateTime? connectedAt;
+
+  factory SocialConnectionResult.fromJson(Map<String, Object?> json) =>
+      SocialConnectionResult(
+        platform: json['platform'] as String,
+        connected: json['connected'] as bool? ?? false,
+        displayName: json['displayName'] as String?,
+        externalAccountId: json['externalAccountId'] as String?,
+        connectedAt: json['connectedAt'] is String
+            ? DateTime.tryParse(json['connectedAt'] as String)
+            : null,
+      );
+}
+
+class SocialConnectLinkResult {
+  const SocialConnectLinkResult({
+    required this.connectUrl,
+    required this.expiresAt,
+  });
+
+  final Uri connectUrl;
+  final DateTime expiresAt;
+
+  factory SocialConnectLinkResult.fromJson(Map<String, Object?> json) =>
+      SocialConnectLinkResult(
+        connectUrl: Uri.parse(json['connectUrl'] as String),
+        expiresAt: DateTime.parse(json['expiresAt'] as String),
+      );
+}
+
 class PostDeeApiClient {
   PostDeeApiClient({
     HttpClient? httpClient,
@@ -935,6 +978,32 @@ class PostDeeApiClient {
       'token': token,
       if (platform != null) 'platform': platform,
     });
+  }
+  Future<List<SocialConnectionResult>> listSocialConnections() async {
+    final response = await _getJson('/social-connections');
+    final connections = response['connections'];
+
+    if (connections is! List<dynamic>) {
+      throw const ApiException(
+          'Social connections response is missing connections');
+    }
+
+    return connections
+        .map((connection) => SocialConnectionResult.fromJson(
+            connection as Map<String, Object?>))
+        .toList();
+  }
+
+  Future<SocialConnectLinkResult> createSocialConnectionLink(
+      String platform) async {
+    final response =
+        await _postJson('/social-connections/$platform/connect', {});
+
+    return SocialConnectLinkResult.fromJson(response);
+  }
+
+  Future<void> disconnectSocialConnection(String platform) async {
+    await _deleteJson('/social-connections/$platform');
   }
 
   Future<AiEditQuota> fetchAiEditQuota() async {

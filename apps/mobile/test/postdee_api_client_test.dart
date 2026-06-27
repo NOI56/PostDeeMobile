@@ -134,6 +134,24 @@ void main() {
     expect(subscription.canUseAiVideoReview, isFalse);
   });
 
+  test('UploadResult tolerates hidden storage provider details', () {
+    final result = UploadResult.fromJson({
+      'id': 'upload-1',
+      'videoS3Key': 'uploads/seller/upload-1/demo.mp4',
+      'uploadUrl': 'https://uploads.postdee.test/upload',
+      'uploadMethod': 'PUT',
+      'uploadHeaders': {'Content-Type': 'video/mp4'},
+      'uploadExpiresAt': '2026-06-27T12:00:00.000Z',
+    });
+
+    expect(result.id, 'upload-1');
+    expect(result.videoS3Key, 'uploads/seller/upload-1/demo.mp4');
+    expect(result.storageProvider, 'private');
+    expect(result.uploadMethod, 'PUT');
+    expect(result.uploadHeaders, {'Content-Type': 'video/mp4'});
+    expect(result.uploadExpiresAt?.toUtc().toIso8601String(),
+        '2026-06-27T12:00:00.000Z');
+  });
   test('GenerateRealClipCaptionRequest serializes selected clip context only',
       () {
     expect(

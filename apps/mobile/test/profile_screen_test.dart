@@ -326,7 +326,7 @@ class _FakeSocialApiClient extends PostDeeApiClient {
     final link = connectLink;
     if (link == null) {
       throw const ApiException(
-        'PostPeer account linking is not configured yet',
+        'Social account linking is not available. Please try again later.',
         statusCode: 503,
       );
     }

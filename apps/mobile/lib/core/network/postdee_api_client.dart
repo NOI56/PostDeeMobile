@@ -257,7 +257,7 @@ class UploadResult {
     return UploadResult(
       id: json['id'] as String,
       videoS3Key: json['videoS3Key'] as String,
-      storageProvider: json['storageProvider'] as String,
+      storageProvider: json['storageProvider'] as String? ?? 'private',
       uploadUrl: json['uploadUrl'] as String?,
       uploadMethod: json['uploadMethod'] as String?,
       uploadHeaders: rawHeaders is Map

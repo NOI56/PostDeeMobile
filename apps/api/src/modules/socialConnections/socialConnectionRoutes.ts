@@ -34,14 +34,19 @@ const sendUnsupportedPlatform = (response: Response) => {
 // Maps PostPeer connect failures to API responses. Returns true when handled.
 const sendConnectError = (response: Response, error: unknown): boolean => {
   if (error instanceof PostPeerConnectUnavailableError) {
-    response.status(503).json({ status: 'error', message: error.message });
+    response.status(503).json({
+      status: 'error',
+      code: 'SOCIAL_CONNECTION_UNAVAILABLE',
+      message: 'Social account linking is not available. Please try again later.'
+    });
     return true;
   }
 
   if (error instanceof PostPeerConnectProviderError) {
     response.status(502).json({
       status: 'error',
-      message: 'PostPeer account linking provider failed'
+      code: 'SOCIAL_CONNECTION_FAILED',
+      message: 'Social account linking failed. Please try again later.'
     });
     return true;
   }

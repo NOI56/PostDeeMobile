@@ -49,10 +49,10 @@ describe('upload routes', () => {
         sizeBytes: 12_345_678,
         width: 1080,
         height: 1920,
-        aspectRatio: '9:16',
-        storageProvider: 'mock-s3'
+        aspectRatio: '9:16'
       }
     });
+    expect(response.body.upload.storageProvider).toBe('private');
     expect(response.body.upload.id).toEqual(expect.any(String));
     expect(response.body.upload.videoS3Key).toMatch(
       /^uploads\/seller-upload\/.+\/demo-reel\.mp4$/
@@ -83,7 +83,6 @@ describe('upload routes', () => {
 
     expect(response.body.upload).toMatchObject({
       fileName: 's3 reel.mp4',
-      storageProvider: 's3',
       uploadUrl: 'https://s3.local/upload-url',
       uploadMethod: 'PUT',
       uploadHeaders: {
@@ -91,6 +90,7 @@ describe('upload routes', () => {
       },
       uploadExpiresAt: expect.any(String)
     });
+    expect(response.body.upload.storageProvider).toBe('private');
     expect(response.body.upload.videoS3Key).toMatch(
       /^uploads\/local-dev-user\/.+\/s3-reel\.mp4$/
     );

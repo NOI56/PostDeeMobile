@@ -87,6 +87,7 @@ import { registerSocialConnectionRoutes } from './modules/socialConnections/soci
 import type { SocialConnectionStore } from './modules/socialConnections/socialConnectionStore.js';
 import { createSocialConnectionStore } from './modules/socialConnections/socialConnectionStoreFactory.js';
 import { registerPlannedRoutes } from './routes/plannedRoutes.js';
+import { createRateLimitMiddleware } from './modules/security/rateLimit.js';
 
 type AppPrismaClient = PrismaTemplateClient &
   PrismaPostClient &
@@ -189,6 +190,26 @@ export const createApp = (options: AppOptions = {}) => {
   });
 
   const router = express.Router();
+  const authRateLimit = createRateLimitMiddleware({
+    bucket: 'auth',
+    windowMs: 10 * 60 * 1000,
+    maxRequests: 30
+  });
+  const uploadRateLimit = createRateLimitMiddleware({
+    bucket: 'uploads',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 60
+  });
+  const aiRateLimit = createRateLimitMiddleware({
+    bucket: 'ai',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 60
+  });
+  const socialConnectionRateLimit = createRateLimitMiddleware({
+    bucket: 'social-connections',
+    windowMs: 10 * 60 * 1000,
+    maxRequests: 20
+  });
   const firebaseVerifier =
     options.firebaseVerifier ??
     createFirebaseTokenVerifierFromConfig({
@@ -256,6 +277,12 @@ export const createApp = (options: AppOptions = {}) => {
       config,
       prisma: prismaClient as unknown as PrismaAnalyticsClient | undefined
     });
+  router.use('/auth', authRateLimit);
+  router.use('/uploads', uploadRateLimit);
+  router.use('/captions', aiRateLimit);
+  router.use('/ai-edits', aiRateLimit);
+  router.use('/social-connections', socialConnectionRateLimit);
+
   registerAuthRoutes(router, authMiddleware);
   registerUploadRoutes(router, authMiddleware, videoStorage);
   registerCaptionRoutes(

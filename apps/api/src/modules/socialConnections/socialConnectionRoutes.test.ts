@@ -142,12 +142,25 @@ describe('social connection routes', () => {
       })
     }).app;
 
-    await request(unavailableApp)
+    const unavailableResponse = await request(unavailableApp)
       .post('/social-connections/TIKTOK/connect')
       .expect(503);
-    await request(providerFailureApp)
+    const providerFailureResponse = await request(providerFailureApp)
       .post('/social-connections/TIKTOK/connect')
       .expect(502);
+
+    expect(unavailableResponse.body).toEqual({
+      status: 'error',
+      code: 'SOCIAL_CONNECTION_UNAVAILABLE',
+      message: 'Social account linking is not available. Please try again later.'
+    });
+    expect(providerFailureResponse.body).toEqual({
+      status: 'error',
+      code: 'SOCIAL_CONNECTION_FAILED',
+      message: 'Social account linking failed. Please try again later.'
+    });
+    expect(JSON.stringify(unavailableResponse.body)).not.toContain('PostPeer');
+    expect(JSON.stringify(providerFailureResponse.body)).not.toContain('PostPeer');
   });
 
   it('rejects unsupported platforms before contacting PostPeer', async () => {

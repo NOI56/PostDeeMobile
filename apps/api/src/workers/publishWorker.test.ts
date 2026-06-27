@@ -119,7 +119,7 @@ describe('processPublishJobForPost', () => {
     expect(result.cleanup).toEqual({
       status: 'FAILED',
       videoS3Key: 'uploads/video.mp4',
-      errorMessage: 'r2 cleanup down'
+      errorMessage: 'Video cleanup failed. Please try again later.'
     });
   });
 
@@ -336,7 +336,7 @@ describe('processPublishJob', () => {
         {
           platform: 'YOUTUBE_SHORTS',
           status: 'FAILED',
-          errorMessage: 'YouTube API unavailable'
+          errorMessage: 'Publishing to this platform failed. Please try again later.'
         }
       ],
       cleanup: {
@@ -375,7 +375,7 @@ describe('processPublishJob', () => {
       cleanup: {
         status: 'FAILED',
         videoS3Key: 'uploads/video.mp4',
-        errorMessage: 'r2 cleanup down'
+        errorMessage: 'Video cleanup failed. Please try again later.'
       }
     });
   });

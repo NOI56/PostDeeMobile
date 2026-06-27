@@ -54,6 +54,14 @@ export type PublishWorkerResult = {
 const readErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Unknown publish error';
 
+const publicPlatformPublishErrorMessage =
+  'Publishing to this platform failed. Please try again later.';
+const publicCleanupErrorMessage = 'Video cleanup failed. Please try again later.';
+
+const logWorkerError = (message: string, error: unknown) => {
+  console.error(message, readErrorMessage(error));
+};
+
 const getWorkerStatus = (platformResults: PlatformPublishResult[]): PublishWorkerResult['status'] => {
   const publishedCount = platformResults.filter((result) => result.status === 'PUBLISHED').length;
 
@@ -109,10 +117,11 @@ export const processPublishJob = async ({
           platform
         });
       } catch (error) {
+        logWorkerError('Platform publish failed:', error);
         return {
           platform,
           status: 'FAILED',
-          errorMessage: readErrorMessage(error)
+          errorMessage: publicPlatformPublishErrorMessage
         };
       }
     })
@@ -138,6 +147,7 @@ export const processPublishJob = async ({
         }
       };
     } catch (error) {
+      logWorkerError('Video cleanup failed:', error);
       return {
         postId: jobData.postId,
         status,
@@ -145,7 +155,7 @@ export const processPublishJob = async ({
         cleanup: {
           status: 'FAILED',
           videoS3Key: jobData.videoS3Key,
-          errorMessage: readErrorMessage(error)
+          errorMessage: publicCleanupErrorMessage
         }
       };
     }

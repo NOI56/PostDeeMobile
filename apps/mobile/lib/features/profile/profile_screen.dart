@@ -1323,7 +1323,7 @@ class _ConnectedPlatformsCardState extends State<_ConnectedPlatformsCard> {
           ),
           const SizedBox(height: 6),
           Text(
-            'เชื่อมบัญชีโซเชียลของคุณผ่าน PostPeer เพื่อให้โพสต์ขึ้นบัญชีตัวเอง',
+            'เชื่อมบัญชีโซเชียลของคุณเพื่อให้โพสต์ขึ้นบัญชีตัวเอง',
             style: textTheme.bodySmall?.copyWith(
               color: AppTheme.textSecondary,
               height: 1.25,

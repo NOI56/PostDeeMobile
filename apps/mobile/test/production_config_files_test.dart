@@ -55,15 +55,27 @@ void main() {
     final clients = config['client'] as List<dynamic>;
     final firstClient = clients.first as Map<String, Object?>;
     final oauthClients = firstClient['oauth_client'] as List<dynamic>;
+    final androidOAuthClients = oauthClients
+        .where(
+          (client) =>
+              client is Map<String, Object?> &&
+              client['client_type'] == 1 &&
+              client['android_info'] is Map<String, Object?>,
+        )
+        .toList();
 
-    expect(
-      oauthClients.any(
-        (client) =>
-            client is Map<String, Object?> &&
-            client['client_type'] == 1 &&
-            client['android_info'] is Map<String, Object?>,
-      ),
-      isTrue,
-    );
+    expect(androidOAuthClients, hasLength(greaterThanOrEqualTo(2)));
+  });
+  test('Android release builds use release signing properties', () async {
+    final appGradle = File('android/app/build.gradle.kts');
+
+    expect(appGradle.existsSync(), isTrue);
+
+    final contents = await appGradle.readAsString();
+
+    expect(contents, contains('rootProject.file("key.properties")'));
+    expect(contents, contains('create("release")'));
+    expect(contents, contains('signingConfigs.getByName("release")'));
+    expect(contents, isNot(contains('signingConfigs.getByName("debug")')));
   });
 }

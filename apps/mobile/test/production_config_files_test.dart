@@ -78,4 +78,24 @@ void main() {
     expect(contents, contains('signingConfigs.getByName("release")'));
     expect(contents, isNot(contains('signingConfigs.getByName("debug")')));
   });
+  test('Android release builds keep FFmpegKit native methods', () async {
+    final appGradle = File('android/app/build.gradle.kts');
+    final proguardRules = File('android/app/proguard-rules.pro');
+
+    expect(appGradle.existsSync(), isTrue);
+    expect(proguardRules.existsSync(), isTrue);
+
+    final gradleContents = await appGradle.readAsString();
+    final rulesContents = await proguardRules.readAsString();
+
+    expect(
+      gradleContents,
+      contains(
+        'proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")',
+      ),
+    );
+    expect(rulesContents,
+        contains('-keep class com.antonkarpenko.ffmpegkit.** { *; }'));
+    expect(rulesContents, contains('native <methods>;'));
+  });
 }

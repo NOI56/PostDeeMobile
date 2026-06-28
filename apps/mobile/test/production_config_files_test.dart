@@ -45,4 +45,25 @@ void main() {
       contains('id("com.google.gms.google-services")'),
     );
   });
+  test('Android Firebase config includes an Android OAuth client', () async {
+    final googleServicesFile = File('android/app/google-services.json');
+
+    expect(googleServicesFile.existsSync(), isTrue);
+
+    final config = jsonDecode(await googleServicesFile.readAsString())
+        as Map<String, Object?>;
+    final clients = config['client'] as List<dynamic>;
+    final firstClient = clients.first as Map<String, Object?>;
+    final oauthClients = firstClient['oauth_client'] as List<dynamic>;
+
+    expect(
+      oauthClients.any(
+        (client) =>
+            client is Map<String, Object?> &&
+            client['client_type'] == 1 &&
+            client['android_info'] is Map<String, Object?>,
+      ),
+      isTrue,
+    );
+  });
 }

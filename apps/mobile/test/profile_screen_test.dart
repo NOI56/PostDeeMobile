@@ -94,6 +94,76 @@ void main() {
     expect(find.byIcon(Icons.check_circle), findsWidgets);
   });
 
+  testWidgets('shows the live connected count in the account summary pill',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [
+        SocialConnectionResult(
+          platform: 'TIKTOK',
+          connected: true,
+          displayName: '@seller_one',
+        ),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+    );
+
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('profile-connected-summary-pill')),
+      findsOneWidget,
+    );
+    expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
+  });
+
+  testWidgets('updates the summary pill after refreshing connections',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [
+        SocialConnectionResult(platform: 'TIKTOK', connected: false),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+      refreshedConnections: const [
+        SocialConnectionResult(
+          platform: 'TIKTOK',
+          connected: true,
+          displayName: '@seller_one',
+        ),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+    );
+
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+
+    expect(find.text('0/4 เชื่อมต่อ'), findsOneWidget);
+
+    final refreshButton =
+        find.byKey(const ValueKey('profile-platforms-refresh'));
+    await tester.scrollUntilVisible(
+      refreshButton,
+      500,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(refreshButton);
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 2000));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
+  });
+
   testWidgets('connecting a platform opens its PostPeer connect URL',
       (tester) async {
     final apiClient = _FakeSocialApiClient(

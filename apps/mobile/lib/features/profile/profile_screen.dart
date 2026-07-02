@@ -15,7 +15,7 @@ import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/postdee_card.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     required this.languageController,
     required this.themeController,
@@ -32,6 +32,45 @@ class ProfileScreen extends StatelessWidget {
   final VoidCallback onDeleteAccount;
   final PostDeeApiClient? apiClient;
   final Future<bool> Function(Uri uri)? launchConnectUrl;
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  late final PostDeeApiClient _apiClient =
+      widget.apiClient ?? PostDeeApiClient();
+
+  int _connectedCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // The platforms card lives near the bottom of the ListView and may not be
+    // built until scrolled into view, so the summary pill loads its own count.
+    _loadConnectedCount();
+  }
+
+  Future<void> _loadConnectedCount() async {
+    try {
+      final results = await _apiClient.listSocialConnections();
+      if (!mounted) return;
+      final statuses = {for (final result in results) result.platform: result};
+      _updateConnectedCount(
+        _connectablePlatforms
+            .where(
+                (platform) => statuses[platform.apiValue]?.connected ?? false)
+            .length,
+      );
+    } catch (_) {
+      // Keep the pill at 0 connected if the status call fails.
+    }
+  }
+
+  void _updateConnectedCount(int count) {
+    if (!mounted || count == _connectedCount) return;
+    setState(() => _connectedCount = count);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,8 +176,11 @@ class ProfileScreen extends StatelessWidget {
                           color: AppTheme.accent,
                         ),
                         _ProfileSummaryPill(
+                          key: const ValueKey(
+                              'profile-connected-summary-pill'),
                           icon: Icons.hub_outlined,
-                          label: '0/4 เชื่อมต่อ',
+                          label:
+                              '$_connectedCount/${_connectablePlatforms.length} เชื่อมต่อ',
                           color: AppTheme.accentCyanInk,
                         ),
                       ],
@@ -150,9 +192,9 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppTheme.spaceLg),
-        _LanguagePickerCard(languageController: languageController),
+        _LanguagePickerCard(languageController: widget.languageController),
         const SizedBox(height: AppTheme.spaceLg),
-        _ThemeModeCard(themeController: themeController),
+        _ThemeModeCard(themeController: widget.themeController),
         const SizedBox(height: AppTheme.spaceLg),
         const _PackageComparisonCard(),
         const SizedBox(height: AppTheme.spaceLg),
@@ -163,7 +205,7 @@ class ProfileScreen extends StatelessWidget {
           label: 'เปิดเทมเพลต',
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: onOpenTemplates,
+            onTap: widget.onOpenTemplates,
             child: PostDeeCard(
               glowColor: AppTheme.accentPink,
               child: Column(
@@ -181,7 +223,7 @@ class ProfileScreen extends StatelessWidget {
                         ),
                       ),
                       OutlinedButton.icon(
-                        onPressed: onOpenTemplates,
+                        onPressed: widget.onOpenTemplates,
                         icon: const Icon(Icons.text_snippet_outlined, size: 18),
                         label: const Text('เปิด'),
                       ),
@@ -201,8 +243,9 @@ class ProfileScreen extends StatelessWidget {
         ),
         const SizedBox(height: AppTheme.spaceLg),
         _ConnectedPlatformsCard(
-          apiClient: apiClient,
-          launchConnectUrl: launchConnectUrl,
+          apiClient: _apiClient,
+          launchConnectUrl: widget.launchConnectUrl,
+          onConnectionsChanged: _updateConnectedCount,
         ),
         const SizedBox(height: AppTheme.spaceLg),
         PostDeeCard(
@@ -257,7 +300,7 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppTheme.spaceLg),
-        _DeleteAccountButton(onDeleteAccount: onDeleteAccount),
+        _DeleteAccountButton(onDeleteAccount: widget.onDeleteAccount),
       ],
     );
   }
@@ -935,6 +978,7 @@ class _ProfileSummaryPill extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.color,
+    super.key,
   });
 
   final IconData icon;
@@ -1095,10 +1139,15 @@ const List<SocialPlatform> _connectablePlatforms = [
 ];
 
 class _ConnectedPlatformsCard extends StatefulWidget {
-  const _ConnectedPlatformsCard({this.apiClient, this.launchConnectUrl});
+  const _ConnectedPlatformsCard({
+    this.apiClient,
+    this.launchConnectUrl,
+    this.onConnectionsChanged,
+  });
 
   final PostDeeApiClient? apiClient;
   final _ConnectUrlLauncher? launchConnectUrl;
+  final ValueChanged<int>? onConnectionsChanged;
 
   @override
   State<_ConnectedPlatformsCard> createState() =>
@@ -1129,6 +1178,7 @@ class _ConnectedPlatformsCardState extends State<_ConnectedPlatformsCard> {
         _statuses = {for (final result in results) result.platform: result};
         _loading = false;
       });
+      widget.onConnectionsChanged?.call(_connectedCount);
     } catch (_) {
       // Keep platforms shown as disconnected if the status call fails.
       if (!mounted) return;
@@ -1176,6 +1226,7 @@ class _ConnectedPlatformsCardState extends State<_ConnectedPlatformsCard> {
         _statuses = {for (final result in results) result.platform: result};
         _loading = false;
       });
+      widget.onConnectionsChanged?.call(_connectedCount);
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);

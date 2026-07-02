@@ -112,6 +112,28 @@ describe('upload routes', () => {
     expect(response.body.upload.contentType).toBe('image/jpeg');
   });
 
+  it('rejects upload metadata larger than the configured upload limit', async () => {
+    const app = createApp({
+      config: readServerConfig({
+        UPLOAD_MAX_SIZE_BYTES: '1000'
+      })
+    });
+
+    const response = await request(app)
+      .post('/uploads')
+      .send({
+        fileName: 'too large.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 1001
+      })
+      .expect(400);
+
+    expect(response.body).toEqual({
+      status: 'error',
+      message: 'File is larger than the configured upload limit of 1000 bytes.'
+    });
+  });
+
   it('rejects upload metadata with an unsupported content type', async () => {
     const app = createApp();
 

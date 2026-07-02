@@ -30,6 +30,9 @@ export type ServerConfig = {
   cloudflareR2SecretAccessKey?: string;
   cloudflareR2Endpoint?: string;
   cloudflareR2UploadExpiresSeconds: number;
+  uploadMaxSizeBytes: number;
+  rateLimitWindowMs: number;
+  rateLimitMaxRequests: number;
   openAiApiKey?: string;
   groqApiKey?: string;
   geminiApiKey?: string;
@@ -44,6 +47,7 @@ export type ServerConfig = {
   googlePlayPackageName?: string;
   googlePlayServiceAccountKeyJson?: string;
   googlePlayAccessToken?: string;
+  googlePlayNotificationAuthToken?: string;
   appleAppBundleId?: string;
   appleAppStoreIssuerId?: string;
   appleAppStoreKeyId?: string;
@@ -316,6 +320,19 @@ const assertProductionSafeConfig = (config: ServerConfig) => {
   if (config.videoStorage === 'mock') {
     throw new Error('VIDEO_STORAGE=mock is not allowed when NODE_ENV=production');
   }
+
+  const postPeerAccountIds = [
+    config.postPeerTiktokAccountId,
+    config.postPeerYoutubeAccountId,
+    config.postPeerInstagramAccountId,
+    config.postPeerFacebookAccountId
+  ];
+
+  if (config.socialPublisher === 'postpeer' && postPeerAccountIds.some(Boolean)) {
+    throw new Error(
+      'POSTPEER_*_ACCOUNT_ID cannot be used in production; use user-owned social connections instead'
+    );
+  }
 };
 
 const usesPrismaBackedStore = (config: ServerConfig) =>
@@ -355,6 +372,9 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
       'CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS',
       900
     ),
+    uploadMaxSizeBytes: readPositiveInteger(env, 'UPLOAD_MAX_SIZE_BYTES', 500 * 1024 * 1024),
+    rateLimitWindowMs: readPositiveInteger(env, 'RATE_LIMIT_WINDOW_MS', 60_000),
+    rateLimitMaxRequests: readPositiveInteger(env, 'RATE_LIMIT_MAX_REQUESTS', 300),
     openAiApiKey: readOptional(env, 'OPENAI_API_KEY'),
     groqApiKey: readOptional(env, 'GROQ_API_KEY'),
     geminiApiKey: readOptional(env, 'GEMINI_API_KEY'),
@@ -374,6 +394,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     googlePlayPackageName: readOptional(env, 'GOOGLE_PLAY_PACKAGE_NAME'),
     googlePlayServiceAccountKeyJson: readOptional(env, 'GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_JSON'),
     googlePlayAccessToken: readOptional(env, 'GOOGLE_PLAY_ACCESS_TOKEN'),
+    googlePlayNotificationAuthToken: readOptional(env, 'GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN'),
     appleAppBundleId: readOptional(env, 'APPLE_APP_BUNDLE_ID'),
     appleAppStoreIssuerId: readOptional(env, 'APPLE_APP_STORE_ISSUER_ID'),
     appleAppStoreKeyId: readOptional(env, 'APPLE_APP_STORE_KEY_ID'),

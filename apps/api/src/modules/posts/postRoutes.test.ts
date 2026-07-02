@@ -12,6 +12,8 @@ import { registerPostRoutes } from './postRoutes.js';
 
 describe('post routes', () => {
   const allPlatforms = ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'];
+  const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
+    `uploads/${encodeURIComponent(userId)}/${uploadId}/${fileName}`;
 
   it('lists posts from the in-memory store', async () => {
     const app = createApp();
@@ -31,7 +33,7 @@ describe('post routes', () => {
       .post('/posts')
       .send({
         caption: 'ของดีต้องลอง #ของดีบอกต่อ',
-        videoS3Key: 'uploads/demo-video.mp4',
+        videoS3Key: ownedUploadKey('local-dev-user', 'demo-video.mp4'),
         platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
         subscriptionPlan: 'PRO',
         scheduledAt: '2026-06-02T10:00:00.000Z'
@@ -40,7 +42,7 @@ describe('post routes', () => {
 
     expect(createResponse.body.post).toMatchObject({
       caption: 'ของดีต้องลอง #ของดีบอกต่อ',
-      videoS3Key: 'uploads/demo-video.mp4',
+      videoS3Key: ownedUploadKey('local-dev-user', 'demo-video.mp4'),
       platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
       scheduledAt: '2026-06-02T10:00:00.000Z',
       status: 'QUEUED'
@@ -59,6 +61,26 @@ describe('post routes', () => {
     const listResponse = await request(app).get('/posts').expect(200);
 
     expect(listResponse.body.posts).toEqual([createResponse.body.post]);
+  });
+
+  it('rejects post creation with media owned by another user', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/posts')
+      .set('x-postdee-user-id', 'seller-a')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        caption: 'Do not publish another seller media',
+        videoS3Key: ownedUploadKey('seller-b', 'other-seller.mp4'),
+        platforms: ['TIKTOK']
+      })
+      .expect(403);
+
+    expect(response.body).toEqual({
+      status: 'error',
+      message: 'Selected media does not belong to the authenticated user'
+    });
   });
 
   it('does not leave a queued post behind when publish queue enqueue fails', async () => {
@@ -96,7 +118,7 @@ describe('post routes', () => {
       .post('/posts')
       .send({
         caption: 'Queue should fail after post create',
-        videoS3Key: 'uploads/queue-down.mp4',
+        videoS3Key: ownedUploadKey('seller-queue-down', 'queue-down.mp4'),
         platforms: ['TIKTOK'],
         scheduledAt: '2026-06-02T10:00:00.000Z'
       })
@@ -133,7 +155,7 @@ describe('post routes', () => {
     const post = await postStore.create({
       userId: 'seller-reschedule-down',
       caption: 'Original schedule',
-      videoS3Key: 'uploads/original.mp4',
+      videoS3Key: ownedUploadKey('seller-reschedule-down', 'original.mp4'),
       platforms: ['TIKTOK'],
       scheduledAt: originalRunAt
     });
@@ -177,7 +199,7 @@ describe('post routes', () => {
       .set('x-postdee-phone-verified', 'true')
       .send({
         caption: 'Do not trust client plan',
-        videoS3Key: 'uploads/client-plan.mp4',
+        videoS3Key: ownedUploadKey('local-dev-user', 'client-plan.mp4'),
         platforms: ['TIKTOK'],
         subscriptionPlan: 'PRO',
         scheduledAt: '2026-06-02T10:00:00.000Z'
@@ -200,7 +222,7 @@ describe('post routes', () => {
       .set('x-postdee-subscription-plan', 'PRO')
       .send({
         caption: 'Immediate clip',
-        videoS3Key: 'uploads/immediate-video.mp4',
+        videoS3Key: ownedUploadKey('calendar-seller', 'immediate-video.mp4'),
         platforms: ['TIKTOK']
       })
       .expect(201);
@@ -211,7 +233,7 @@ describe('post routes', () => {
       .set('x-postdee-subscription-plan', 'PRO')
       .send({
         caption: 'Scheduled calendar clip',
-        videoS3Key: 'uploads/scheduled-video.mp4',
+        videoS3Key: ownedUploadKey('calendar-seller', 'scheduled-video.mp4'),
         platforms: ['YOUTUBE_SHORTS', 'INSTAGRAM_REELS'],
         scheduledAt: '2026-06-07T11:30:00.000Z'
       })
@@ -235,7 +257,7 @@ describe('post routes', () => {
         .set('x-postdee-phone-verified', 'true')
         .send({
           caption: `Seller A post ${index + 1}`,
-          videoS3Key: `uploads/seller-a-video-${index + 1}.mp4`,
+          videoS3Key: ownedUploadKey('seller-a', `seller-a-video-${index + 1}.mp4`),
           platforms: ['TIKTOK']
         })
         .expect(201);
@@ -247,7 +269,7 @@ describe('post routes', () => {
       .set('x-postdee-phone-verified', 'true')
       .send({
         caption: 'Seller A post 4',
-        videoS3Key: 'uploads/seller-a-video-4.mp4',
+        videoS3Key: ownedUploadKey('seller-a', 'seller-a-video-4.mp4'),
         platforms: ['TIKTOK']
       })
       .expect(402);
@@ -258,7 +280,7 @@ describe('post routes', () => {
       .set('x-postdee-phone-verified', 'true')
       .send({
         caption: 'Seller B first post',
-        videoS3Key: 'uploads/seller-b-video-1.mp4',
+        videoS3Key: ownedUploadKey('seller-b', 'seller-b-video-1.mp4'),
         platforms: ['INSTAGRAM_REELS']
       })
       .expect(201);
@@ -303,7 +325,7 @@ describe('post routes', () => {
           id: 'post-1',
           userId: 'seller-prisma',
           caption: 'Prisma post',
-          videoS3Key: 'uploads/prisma-video.mp4',
+          videoS3Key: ownedUploadKey('seller-prisma', 'prisma-video.mp4'),
           selectedPlatforms: ['TIKTOK'],
           scheduledAt: null,
           status: 'QUEUED',
@@ -330,7 +352,7 @@ describe('post routes', () => {
       .set('x-postdee-phone-verified', 'true')
       .send({
         caption: 'Prisma post',
-        videoS3Key: 'uploads/prisma-video.mp4',
+        videoS3Key: ownedUploadKey('seller-prisma', 'prisma-video.mp4'),
         platforms: ['TIKTOK']
       })
       .expect(201);
@@ -361,14 +383,14 @@ describe('post routes', () => {
       .set('x-postdee-phone-verified', 'true')
       .send({
         caption: 'Basic real-time post',
-        videoS3Key: 'uploads/basic-video.mp4',
+        videoS3Key: ownedUploadKey('local-dev-user', 'basic-video.mp4'),
         platforms: ['FACEBOOK_REELS']
       })
       .expect(201);
 
     expect(createResponse.body.post).toMatchObject({
       caption: 'Basic real-time post',
-      videoS3Key: 'uploads/basic-video.mp4',
+      videoS3Key: ownedUploadKey('local-dev-user', 'basic-video.mp4'),
       platforms: ['FACEBOOK_REELS'],
       status: 'QUEUED'
     });
@@ -388,7 +410,7 @@ describe('post routes', () => {
       .set('x-postdee-phone-verified', 'true')
       .send({
         caption: 'Basic scheduled post',
-        videoS3Key: 'uploads/basic-video.mp4',
+        videoS3Key: ownedUploadKey('local-dev-user', 'basic-video.mp4'),
         platforms: ['TIKTOK'],
         scheduledAt: '2026-06-02T10:00:00.000Z'
       })
@@ -410,7 +432,7 @@ describe('post routes', () => {
       .set('x-postdee-subscription-plan', 'STARTER')
       .send({
         caption: 'Scheduled from Starter subscription',
-        videoS3Key: 'uploads/starter-video.mp4',
+        videoS3Key: ownedUploadKey('seller-starter', 'starter-video.mp4'),
         platforms: ['YOUTUBE_SHORTS'],
         scheduledAt: '2026-06-02T10:00:00.000Z'
       })
@@ -434,7 +456,7 @@ describe('post routes', () => {
       .set('x-postdee-subscription-plan', 'PRO')
       .send({
         caption: 'Scheduled from subscription store',
-        videoS3Key: 'uploads/pro-video.mp4',
+        videoS3Key: ownedUploadKey('seller-pro', 'pro-video.mp4'),
         platforms: ['YOUTUBE_SHORTS'],
         scheduledAt: '2026-06-02T10:00:00.000Z'
       })
@@ -458,7 +480,7 @@ describe('post routes', () => {
         .set('x-postdee-phone-verified', 'true')
         .send({
           caption: `Basic post ${index + 1}`,
-          videoS3Key: `uploads/basic-video-${index + 1}.mp4`,
+          videoS3Key: ownedUploadKey('local-dev-user', `basic-video-${index + 1}.mp4`),
           platforms: ['TIKTOK']
         })
         .expect(201);
@@ -469,7 +491,7 @@ describe('post routes', () => {
       .set('x-postdee-phone-verified', 'true')
       .send({
         caption: 'Basic post 4',
-        videoS3Key: 'uploads/basic-video-4.mp4',
+        videoS3Key: ownedUploadKey('local-dev-user', 'basic-video-4.mp4'),
         platforms: ['TIKTOK']
       })
       .expect(402);
@@ -490,7 +512,7 @@ describe('post routes', () => {
       .set('x-postdee-phone-verified', 'true')
       .send({
         caption: 'Basic two-unit post',
-        videoS3Key: 'uploads/basic-two-unit-video.mp4',
+        videoS3Key: ownedUploadKey('seller-basic-units', 'basic-two-unit-video.mp4'),
         platforms: ['TIKTOK', 'YOUTUBE_SHORTS']
       })
       .expect(201);
@@ -501,7 +523,7 @@ describe('post routes', () => {
       .set('x-postdee-phone-verified', 'true')
       .send({
         caption: 'Basic would exceed units',
-        videoS3Key: 'uploads/basic-over-unit-video.mp4',
+        videoS3Key: ownedUploadKey('seller-basic-units', 'basic-over-unit-video.mp4'),
         platforms: ['INSTAGRAM_REELS', 'FACEBOOK_REELS']
       })
       .expect(402);
@@ -524,7 +546,7 @@ describe('post routes', () => {
         .set('x-postdee-subscription-plan', 'STARTER')
         .send({
           caption: `Starter four-unit post ${index + 1}`,
-          videoS3Key: `uploads/starter-four-unit-${index + 1}.mp4`,
+          videoS3Key: ownedUploadKey(userId, `starter-four-unit-${index + 1}.mp4`),
           platforms: allPlatforms
         })
         .expect(201);
@@ -536,7 +558,7 @@ describe('post routes', () => {
       .set('x-postdee-subscription-plan', 'STARTER')
       .send({
         caption: 'Starter three-unit post',
-        videoS3Key: 'uploads/starter-three-unit.mp4',
+        videoS3Key: ownedUploadKey(userId, 'starter-three-unit.mp4'),
         platforms: ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS']
       })
       .expect(201);
@@ -547,7 +569,7 @@ describe('post routes', () => {
       .set('x-postdee-subscription-plan', 'STARTER')
       .send({
         caption: 'Starter would exceed units',
-        videoS3Key: 'uploads/starter-over-unit.mp4',
+        videoS3Key: ownedUploadKey(userId, 'starter-over-unit.mp4'),
         platforms: ['TIKTOK', 'YOUTUBE_SHORTS']
       })
       .expect(402);
@@ -570,7 +592,7 @@ describe('post routes', () => {
         .set('x-postdee-subscription-plan', 'PRO')
         .send({
           caption: `Pro four-unit post ${index + 1}`,
-          videoS3Key: `uploads/pro-four-unit-${index + 1}.mp4`,
+          videoS3Key: ownedUploadKey(userId, `pro-four-unit-${index + 1}.mp4`),
           platforms: allPlatforms
         })
         .expect(201);
@@ -582,7 +604,7 @@ describe('post routes', () => {
       .set('x-postdee-subscription-plan', 'PRO')
       .send({
         caption: 'Pro would exceed units',
-        videoS3Key: 'uploads/pro-over-unit.mp4',
+        videoS3Key: ownedUploadKey(userId, 'pro-over-unit.mp4'),
         platforms: ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS']
       })
       .expect(402);
@@ -601,7 +623,7 @@ describe('post routes', () => {
       .post('/posts')
       .send({
         caption: 'Unverified Basic post',
-        videoS3Key: 'uploads/basic-unverified-video.mp4',
+        videoS3Key: ownedUploadKey('local-dev-user', 'basic-unverified-video.mp4'),
         platforms: ['TIKTOK']
       })
       .expect(403);
@@ -630,7 +652,7 @@ describe('post routes', () => {
           .set('x-postdee-phone-verified', 'true')
           .send({
             caption: `May post ${index + 1}`,
-            videoS3Key: `uploads/may-video-${index + 1}.mp4`,
+            videoS3Key: ownedUploadKey('seller-monthly-reset', `may-video-${index + 1}.mp4`),
             platforms: ['TIKTOK']
           })
           .expect(201);
@@ -644,7 +666,7 @@ describe('post routes', () => {
         .set('x-postdee-phone-verified', 'true')
         .send({
           caption: 'June post 1',
-          videoS3Key: 'uploads/june-video-1.mp4',
+          videoS3Key: ownedUploadKey('seller-monthly-reset', 'june-video-1.mp4'),
           platforms: ['TIKTOK']
         })
         .expect(201);
@@ -676,7 +698,7 @@ describe('post routes', () => {
       .post('/posts')
       .send({
         caption: '',
-        videoS3Key: 'uploads/demo-video.mp4',
+        videoS3Key: ownedUploadKey('local-dev-user', 'demo-video.mp4'),
         platforms: []
       })
       .expect(400);
@@ -692,7 +714,7 @@ describe('post routes', () => {
       .post('/posts')
       .send({
         caption: 'scheduled clip',
-        videoS3Key: 'uploads/scheduled.mp4',
+        videoS3Key: ownedUploadKey('local-dev-user', 'scheduled.mp4'),
         platforms: ['TIKTOK'],
         subscriptionPlan: 'PRO',
         scheduledAt: '2026-06-10T10:00:00.000Z'

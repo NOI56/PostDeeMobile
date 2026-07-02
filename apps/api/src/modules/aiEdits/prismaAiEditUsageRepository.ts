@@ -1,4 +1,8 @@
-import type { AiEditUsageRecord, AiEditUsageStore } from './aiEditUsageStore.js';
+import type {
+  AiEditUsageRecord,
+  AiEditUsageReservation,
+  AiEditUsageStore
+} from './aiEditUsageStore.js';
 
 type PrismaAiEditUsage = {
   userId: string;
@@ -20,7 +24,18 @@ type AiEditUsageDelegate = {
 
 export type PrismaAiEditUsageClient = {
   aiEditUsage: AiEditUsageDelegate;
+  $transaction?: <T>(
+    callback: (client: { aiEditUsage: AiEditUsageDelegate }) => Promise<T>,
+    options?: { isolationLevel: 'Serializable' }
+  ) => Promise<T>;
 };
+
+const mapUsageRecord = (record: PrismaAiEditUsage): AiEditUsageRecord => ({
+  userId: record.userId,
+  monthKey: record.monthKey,
+  minutes: record.minutes,
+  createdAt: record.createdAt.toISOString()
+});
 
 export const createPrismaAiEditUsageRepository = ({
   prisma
@@ -33,6 +48,44 @@ export const createPrismaAiEditUsageRepository = ({
     minutes: true,
     createdAt: true
   } as const;
+  const reserveWithClient = async (
+    client: { aiEditUsage: AiEditUsageDelegate },
+    {
+      userId,
+      monthKey,
+      minutes,
+      limit
+    }: {
+      userId: string;
+      monthKey: string;
+      minutes: number;
+      limit: number;
+    }
+  ): Promise<AiEditUsageReservation> => {
+    const result = await client.aiEditUsage.aggregate({
+      where: { userId, monthKey },
+      _sum: { minutes: true }
+    });
+    const usedMinutes = result._sum.minutes ?? 0;
+
+    if (usedMinutes + minutes > limit) {
+      return {
+        ok: false,
+        usedMinutes
+      };
+    }
+
+    const record = await client.aiEditUsage.create({
+      data: { userId, monthKey, minutes },
+      select: usageSelect
+    });
+
+    return {
+      ok: true,
+      usedMinutes: usedMinutes + minutes,
+      record: mapUsageRecord(record)
+    };
+  };
 
   return {
     sumMinutesForMonth: async ({ userId, monthKey }) => {
@@ -49,12 +102,16 @@ export const createPrismaAiEditUsageRepository = ({
         select: usageSelect
       });
 
-      return {
-        userId: record.userId,
-        monthKey: record.monthKey,
-        minutes: record.minutes,
-        createdAt: record.createdAt.toISOString()
-      } satisfies AiEditUsageRecord;
+      return mapUsageRecord(record);
+    },
+    reserve: async (input) => {
+      if (prisma.$transaction) {
+        return prisma.$transaction((client) => reserveWithClient(client, input), {
+          isolationLevel: 'Serializable'
+        });
+      }
+
+      return reserveWithClient(prisma, input);
     }
   };
 };

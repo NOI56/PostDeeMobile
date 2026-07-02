@@ -59,21 +59,14 @@ services:
       - key: GROQ_API_KEY
         sync: false
       # --- Social posting: PostPeer ---
-      # Production cannot use the mock publisher. POSTPEER_API_KEY must be set;
-      # per-user connected accounts are resolved from the social connection store.
-      # POSTPEER_*_ACCOUNT_ID values are optional legacy/operator ids for setups
-      # without the per-user connection store.
+      # Per-user connected accounts are resolved from the social connection
+      # store. Shared POSTPEER_*_ACCOUNT_ID values are forbidden in production
+      # (startup fails if set) — they are non-production/operator smoke-test ids
+      # only. Users without a connection fail closed instead of posting to an
+      # operator account.
       - key: SOCIAL_PUBLISHER
         value: postpeer
       - key: POSTPEER_API_KEY
-        sync: false
-      - key: POSTPEER_TIKTOK_ACCOUNT_ID
-        sync: false
-      - key: POSTPEER_YOUTUBE_ACCOUNT_ID
-        sync: false
-      - key: POSTPEER_INSTAGRAM_ACCOUNT_ID
-        sync: false
-      - key: POSTPEER_FACEBOOK_ACCOUNT_ID
         sync: false
       - key: AUTH_PROVIDER
         value: firebase
@@ -90,6 +83,8 @@ services:
       - key: BILLING_PROVIDER
         value: revenuecat
       - key: REVENUECAT_WEBHOOK_AUTH_TOKEN
+        sync: false
+      - key: GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN
         sync: false
       - key: REVENUECAT_STARTER_ENTITLEMENT_ID
         value: starter

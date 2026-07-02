@@ -105,6 +105,99 @@ describe('ai edit routes', () => {
     });
   });
 
+  it('does not let concurrent transcriptions exceed the monthly minute quota', async () => {
+    let transcribeCalls = 0;
+    let concurrentCalls = 0;
+    let resolveBothConcurrentCalls: () => void = () => undefined;
+    let releaseConcurrentTranscriptions: () => void = () => undefined;
+    const bothConcurrentCallsStarted = new Promise<void>((resolve) => {
+      resolveBothConcurrentCalls = resolve;
+    });
+    const concurrentTranscriptionsCanFinish = new Promise<void>((resolve) => {
+      releaseConcurrentTranscriptions = resolve;
+    });
+    const transcribe = vi.fn(async () => {
+      transcribeCalls += 1;
+
+      if (transcribeCalls === 1) {
+        return {
+          text: 'already used 199 minutes',
+          language: 'en',
+          durationSeconds: 199 * 60,
+          segments: [],
+          words: [],
+          model: 'test-whisper'
+        };
+      }
+
+      concurrentCalls += 1;
+
+      if (concurrentCalls === 2) {
+        resolveBothConcurrentCalls();
+      }
+
+      await concurrentTranscriptionsCanFinish;
+
+      return {
+        text: 'one more minute',
+        language: 'en',
+        durationSeconds: 60,
+        segments: [],
+        words: [],
+        model: 'test-whisper'
+      };
+    });
+    const app = createApp({ transcriptionProvider: { transcribe } });
+    const headers = { 'x-postdee-subscription-plan': 'PRO' };
+
+    await request(app)
+      .post('/ai-edits/transcribe')
+      .set(headers)
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'already-used.mp4'),
+        durationSeconds: 199 * 60
+      })
+      .expect(200);
+
+    const firstRequest = request(app)
+      .post('/ai-edits/transcribe')
+      .set(headers)
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'concurrent-1.mp4'),
+        durationSeconds: 60
+      })
+      .then((response) => response);
+    const secondRequest = request(app)
+      .post('/ai-edits/transcribe')
+      .set(headers)
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'concurrent-2.mp4'),
+        durationSeconds: 60
+      })
+      .then((response) => response);
+
+    await bothConcurrentCallsStarted;
+    releaseConcurrentTranscriptions();
+
+    const responses = await Promise.all([firstRequest, secondRequest]);
+    const statuses = responses.map((response) => response.status).sort();
+    expect(statuses).toEqual([200, 402]);
+    expect(responses.find((response) => response.status === 402)?.body).toMatchObject({
+      status: 'error',
+      code: 'AI_EDIT_QUOTA_EXCEEDED'
+    });
+
+    const quotaResponse = await request(app)
+      .get('/ai-edits/quota')
+      .set(headers)
+      .expect(200);
+    expect(quotaResponse.body.quota).toEqual({
+      limitMinutes: 200,
+      usedMinutes: 200,
+      remainingMinutes: 0
+    });
+  });
+
   it('rejects transcription for a clip owned by another user', async () => {
     const transcribe = vi.fn(async () => ({
       text: 'hello',

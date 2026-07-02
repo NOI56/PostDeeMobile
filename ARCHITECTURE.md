@@ -212,7 +212,7 @@ This keeps the schema usable for Apple App Store, Google Play, or other future b
 | AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | `TRANSCRIPTION_PROVIDER=groq` with Groq Whisper transcription on backend, FFmpeg export on mobile |
 | Auth | `AUTH_PROVIDER=mock` | `AUTH_PROVIDER=firebase` |
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
-| Social publishing | `SOCIAL_PUBLISHER=mock` | `SOCIAL_PUBLISHER=postpeer` with PostPeer account ids and signed R2/S3 media URLs |
+| Social publishing | `SOCIAL_PUBLISHER=mock` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
 
 ## Upload And Scheduling Flow
 
@@ -249,6 +249,8 @@ Rules:
 - Starter is limited to 120 post units per month.
 - Pro is limited to 250 post units per month.
 - Post units count by selected platform, not post row.
+- Upload metadata is capped by `UPLOAD_MAX_SIZE_BYTES`; R2 signed uploads also sign the declared content length and content type.
+- Every route except `GET /health` sits behind a global per-IP rate limit (`RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS`); auth, upload, AI, and social-connection routes add tighter fixed per-IP buckets.
 - Starter unlocks real-clip AI captioning from audio.
 - Pro unlocks analytics, hashtag radar, AI comment center, team/editor access,
   AI captioning from audio plus selected frames, and Groq Whisper auto
@@ -316,7 +318,7 @@ sequenceDiagram
 
 Current local mode has two caption routes:
 
-- `POST /captions/generate` remains the legacy keyword scaffold.
+- `POST /captions/generate` remains the legacy keyword scaffold, but paid users still spend monthly AI caption quota and each keyword is capped at 80 characters.
 - `POST /captions/generate-from-clip` is the new clip-first scaffold with
   Starter audio-only mode, Pro audio plus selected-frame mode, SEO fields, hook
   ideas, transcription-backed language/market context, authenticated media-key
@@ -404,7 +406,9 @@ sequenceDiagram
 ```
 
 This is planned for Pro. Backend handles auth, quota, temporary storage, and
-Groq Whisper transcription. Mobile handles subtitle editing, FFmpeg subtitle
+Groq Whisper transcription. The API pre-checks estimated duration, then reserves
+actual transcribed minutes before a successful response so parallel requests do
+not exceed the monthly quota. Mobile handles subtitle editing, FFmpeg subtitle
 burn-in, silence cutting, watermarking where needed, and final MP4 export.
 
 ## Analytics Flow
@@ -461,8 +465,10 @@ Firebase path:
 - Verify Firebase ID tokens before trusting user identity.
 - Require phone verification before granting the Basic free post quota.
 - Verify RevenueCat webhook authorization before changing subscription state.
+- Verify Google Play notification bearer authorization before changing subscription state.
 - Keep legacy store receipt and notification verification enabled only for the legacy direct-store path.
 - Use signed R2/S3 URLs or a controlled upload endpoint.
+- Only allow post creation from upload keys owned by the authenticated user.
 - Do not allow a scheduled job to publish another user's post.
 - Keep cancel/reschedule actions synchronized with the backing publish queue so
   stale jobs cannot publish at the old time. Queue handoff failures return
@@ -491,9 +497,9 @@ cd apps/mobile
 
 ## Current Limits
 
-- Social platform publishing defaults to mock. The PostPeer path is wired but
-  still needs connected account ids and a real provider-level publish test
-  before enabling `SOCIAL_PUBLISHER=postpeer`.
+- Social platform publishing defaults to mock. The PostPeer path is wired, but
+  production must use per-user social connections and a real provider-level
+  publish test before user publishing is enabled. Shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production.
 - The publish worker claims only `QUEUED` posts before calling PostPeer or the
   mock publisher. Jobs for posts already `PUBLISHING`, `PUBLISHED`,
   `PARTIAL_PUBLISHED`, or `FAILED` are skipped to avoid duplicate provider

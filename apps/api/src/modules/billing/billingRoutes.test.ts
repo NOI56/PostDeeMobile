@@ -8,6 +8,9 @@ const encodeGoogleNotification = (payload: Record<string, unknown>) =>
   Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
 
 describe('billing routes', () => {
+  const googlePlayNotificationAuthToken = 'google-play-notification-token';
+  const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
+    'uploads/' + encodeURIComponent(userId) + '/' + uploadId + '/' + fileName;
   it('returns the current Basic subscription status', async () => {
     const app = createApp();
 
@@ -68,7 +71,7 @@ describe('billing routes', () => {
         .set('x-postdee-phone-verified', 'true')
         .send({
           caption: `Usage post ${index + 1}`,
-          videoS3Key: `uploads/usage-video-${index + 1}.mp4`,
+          videoS3Key: ownedUploadKey('seller-usage', `usage-video-${index + 1}.mp4`),
           platforms: ['TIKTOK']
         })
         .expect(201);
@@ -197,7 +200,7 @@ describe('billing routes', () => {
       .set('x-postdee-user-id', 'seller-starter-unit-status')
       .send({
         caption: 'Starter multi-platform post',
-        videoS3Key: 'uploads/starter-unit-status.mp4',
+        videoS3Key: ownedUploadKey('seller-starter-unit-status', 'starter-unit-status.mp4'),
         platforms: ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS']
       })
       .expect(201);
@@ -261,7 +264,7 @@ describe('billing routes', () => {
       .set('x-postdee-user-id', 'seller-pro')
       .send({
         caption: 'Scheduled after mock Pro activation',
-        videoS3Key: 'uploads/pro-after-billing.mp4',
+        videoS3Key: ownedUploadKey('seller-pro', 'pro-after-billing.mp4'),
         platforms: ['TIKTOK'],
         scheduledAt: '2026-06-02T10:00:00.000Z'
       })
@@ -305,7 +308,7 @@ describe('billing routes', () => {
       .set('x-postdee-user-id', 'seller-android-store')
       .send({
         caption: 'Scheduled after Android store subscription',
-        videoS3Key: 'uploads/pro-after-android-store.mp4',
+        videoS3Key: ownedUploadKey('seller-android-store', 'pro-after-android-store.mp4'),
         platforms: ['TIKTOK'],
         scheduledAt: '2026-06-02T10:00:00.000Z'
       })
@@ -317,8 +320,68 @@ describe('billing routes', () => {
     });
   });
 
+  it('rejects Google Play notifications without the configured bearer token', async () => {
+    const app = createApp({
+      config: readServerConfig({
+        GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN: googlePlayNotificationAuthToken
+      })
+    });
+
+    await request(app)
+      .post('/billing/store/verify')
+      .set('x-postdee-user-id', 'seller-android-unauthorized-notification')
+      .send({
+        platform: 'ANDROID',
+        productId: 'postdee_pro_monthly',
+        purchaseToken: 'android-unauthorized-notification-token'
+      })
+      .expect(200);
+
+    const response = await request(app)
+      .post('/billing/google-play/notifications')
+      .send({
+        message: {
+          messageId: 'pubsub-message-unauthorized',
+          data: encodeGoogleNotification({
+            version: '1.0',
+            packageName: 'com.postdee',
+            eventTimeMillis: '1780531200000',
+            subscriptionNotification: {
+              version: '1.0',
+              notificationType: 13,
+              purchaseToken: 'android-unauthorized-notification-token',
+              subscriptionId: 'postdee_pro_monthly'
+            }
+          })
+        },
+        subscription: 'projects/postdee/subscriptions/play-rtdn'
+      })
+      .expect(401);
+
+    expect(response.body).toEqual({
+      status: 'error',
+      code: 'GOOGLE_PLAY_NOTIFICATION_UNAUTHORIZED',
+      message: 'Google Play notification authorization is invalid'
+    });
+
+    const subscriptionResponse = await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', 'seller-android-unauthorized-notification')
+      .expect(200);
+
+    expect(subscriptionResponse.body.subscription).toMatchObject({
+      userId: 'seller-android-unauthorized-notification',
+      plan: 'PRO',
+      status: 'ACTIVE'
+    });
+  });
+
   it('moves a verified Android store subscription back to Basic after an expired Google Play notification', async () => {
-    const app = createApp();
+    const app = createApp({
+      config: readServerConfig({
+        GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN: googlePlayNotificationAuthToken
+      })
+    });
 
     await request(app)
       .post('/billing/store/verify')
@@ -332,6 +395,7 @@ describe('billing routes', () => {
 
     await request(app)
       .post('/billing/google-play/notifications')
+      .set('Authorization', 'Bearer ' + googlePlayNotificationAuthToken)
       .send({
         message: {
           messageId: 'pubsub-message-expired',
@@ -364,7 +428,11 @@ describe('billing routes', () => {
   });
 
   it('moves a verified Android store subscription back to Basic after a Google Play voided purchase notification', async () => {
-    const app = createApp();
+    const app = createApp({
+      config: readServerConfig({
+        GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN: googlePlayNotificationAuthToken
+      })
+    });
 
     await request(app)
       .post('/billing/store/verify')
@@ -378,6 +446,7 @@ describe('billing routes', () => {
 
     await request(app)
       .post('/billing/google-play/notifications')
+      .set('Authorization', 'Bearer ' + googlePlayNotificationAuthToken)
       .send({
         message: {
           messageId: 'pubsub-message-voided',

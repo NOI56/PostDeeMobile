@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 
 import { type ServerConfig, readServerConfig } from './config/env.js';
@@ -171,8 +172,27 @@ export const createApp = (options: AppOptions = {}) => {
   const config = options.config ?? readServerConfig();
   const app = express();
 
+  // Render terminates TLS at a single proxy layer; trust it so req.ip (and the
+  // per-IP rate limit key) is the real client address, not the proxy's.
+  app.set('trust proxy', 1);
   app.use(helmet());
   app.use(cors());
+  app.use(
+    rateLimit({
+      windowMs: config.rateLimitWindowMs,
+      limit: config.rateLimitMaxRequests,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: (request) => request.path === '/health',
+      handler: (_request, response) => {
+        response.status(429).json({
+          status: 'error',
+          code: 'RATE_LIMITED',
+          message: 'Too many requests. Please try again shortly.'
+        });
+      }
+    })
+  );
   app.use(
     express.json({
       limit: '1mb',
@@ -284,7 +304,9 @@ export const createApp = (options: AppOptions = {}) => {
   router.use('/social-connections', socialConnectionRateLimit);
 
   registerAuthRoutes(router, authMiddleware);
-  registerUploadRoutes(router, authMiddleware, videoStorage);
+  registerUploadRoutes(router, authMiddleware, videoStorage, {
+    uploadMaxSizeBytes: config.uploadMaxSizeBytes
+  });
   registerCaptionRoutes(
     router,
     captionGenerator,

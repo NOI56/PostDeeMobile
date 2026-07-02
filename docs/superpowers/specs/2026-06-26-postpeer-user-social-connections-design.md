@@ -6,7 +6,7 @@ Let each PostDee user connect their own TikTok, YouTube Shorts, Instagram Reels,
 
 ## Scope
 
-This design covers backend routes, storage, PostPeer adapter boundaries, publish-time account lookup, and the mobile profile connection UI. It keeps the existing environment account ids as an operator-only fallback for early smoke tests, but user-owned connections take priority whenever a post belongs to a user with stored connections.
+This design covers backend routes, storage, PostPeer adapter boundaries, publish-time account lookup, and the mobile profile connection UI. It keeps the existing environment account ids only as a non-production operator smoke-test fallback; production user publishing must use user-owned connections and rejects shared environment account ids.
 
 Shopee Video and Lazada Video stay out of scope until the provider supports them through the same connection model. Direct TikTok, YouTube, Instagram, or Facebook OAuth integrations stay out of scope; PostPeer remains the only social publishing provider for this phase.
 

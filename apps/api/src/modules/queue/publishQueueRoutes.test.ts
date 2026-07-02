@@ -5,6 +5,8 @@ import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
 
 describe('publish queue routes', () => {
+  const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
+    'uploads/' + encodeURIComponent(userId) + '/' + uploadId + '/' + fileName;
   it('requires authentication before listing queue jobs in Firebase mode', async () => {
     const app = createApp({
       config: readServerConfig({
@@ -27,7 +29,7 @@ describe('publish queue routes', () => {
       .set('x-postdee-phone-verified', 'true')
       .send({
         caption: 'Ready to publish',
-        videoS3Key: 'uploads/demo-video.mp4',
+        videoS3Key: ownedUploadKey('local-dev-user', 'demo-video.mp4'),
         platforms: ['INSTAGRAM_REELS']
       })
       .expect(201);

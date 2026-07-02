@@ -36,10 +36,11 @@ describe('render.yaml production config', () => {
     expectEnvSecret(source, 'GROQ_API_KEY');
     expectEnvValue(source, 'SOCIAL_PUBLISHER', 'postpeer');
     expectEnvSecret(source, 'POSTPEER_API_KEY');
-    expectEnvSecret(source, 'POSTPEER_TIKTOK_ACCOUNT_ID');
-    expectEnvSecret(source, 'POSTPEER_YOUTUBE_ACCOUNT_ID');
-    expectEnvSecret(source, 'POSTPEER_INSTAGRAM_ACCOUNT_ID');
-    expectEnvSecret(source, 'POSTPEER_FACEBOOK_ACCOUNT_ID');
+    expectEnvSecret(source, 'GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN');
+    expect(source).not.toContain('POSTPEER_TIKTOK_ACCOUNT_ID');
+    expect(source).not.toContain('POSTPEER_YOUTUBE_ACCOUNT_ID');
+    expect(source).not.toContain('POSTPEER_INSTAGRAM_ACCOUNT_ID');
+    expect(source).not.toContain('POSTPEER_FACEBOOK_ACCOUNT_ID');
   });
 
   it('keeps one web instance while the deploy uses the in-process memory queue', async () => {

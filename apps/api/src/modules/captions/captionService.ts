@@ -1,5 +1,6 @@
 const affiliateLinkPlaceholder = '[ใส่ลิงก์ Affiliate ที่นี่]';
 const trendingHashtags = ['#ของดีบอกต่อ', '#ช้อปออนไลน์', '#โปรดีบอกต่อ', '#รีวิวจริง', '#สายช้อป'];
+const captionKeywordMaxLength = 80;
 
 export type GeneratedCaption = {
   caption: string;
@@ -27,6 +28,13 @@ export const validateCaptionKeywords = (keywords: unknown) => {
     return {
       ok: false as const,
       message: 'keywords must contain 1 or 2 non-empty values'
+    };
+  }
+
+  if (normalized.some((keyword) => keyword.length > captionKeywordMaxLength)) {
+    return {
+      ok: false as const,
+      message: `keywords must be ${captionKeywordMaxLength} characters or fewer`
     };
   }
 

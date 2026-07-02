@@ -4,6 +4,10 @@ import { readAuthUser } from '../auth/authTypes.js';
 import type { VideoStorage } from '../storage/videoStorage.js';
 import { readUploadMetadata } from './uploadService.js';
 
+type UploadRouteOptions = {
+  uploadMaxSizeBytes: number;
+};
+
 type PublicUpload = Omit<Awaited<ReturnType<VideoStorage['createUpload']>>, 'storageProvider'> & {
   storageProvider: 'private';
 };
@@ -22,7 +26,8 @@ const toPublicUpload = (
 export const registerUploadRoutes = (
   router: Router,
   authMiddleware: RequestHandler,
-  storage: VideoStorage
+  storage: VideoStorage,
+  options: UploadRouteOptions
 ) => {
   router.post('/uploads', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
@@ -35,7 +40,9 @@ export const registerUploadRoutes = (
       return;
     }
 
-    const result = readUploadMetadata(request.body);
+    const result = readUploadMetadata(request.body, {
+      maxSizeBytes: options.uploadMaxSizeBytes
+    });
 
     if (!result.ok) {
       response.status(400).json({

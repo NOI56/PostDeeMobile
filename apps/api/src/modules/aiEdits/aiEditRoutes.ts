@@ -82,6 +82,14 @@ const sendMediaDownloadErrorResponse = (response: Response, error: MediaDownload
   });
 };
 
+const sendAiEditQuotaExceededResponse = (response: Response) => {
+  response.status(402).json({
+    status: 'error',
+    code: 'AI_EDIT_QUOTA_EXCEEDED',
+    message: `AI editing is limited to ${aiEditMonthlyMinuteLimit} minutes per month`
+  });
+};
+
 export const registerAiEditRoutes = (
   router: Router,
   transcriptionProvider: TranscriptionProvider,
@@ -161,11 +169,7 @@ export const registerAiEditRoutes = (
     });
 
     if (usedMinutes + estimatedMinutes > aiEditMonthlyMinuteLimit) {
-      response.status(402).json({
-        status: 'error',
-        code: 'AI_EDIT_QUOTA_EXCEEDED',
-        message: `AI editing is limited to ${aiEditMonthlyMinuteLimit} minutes per month`
-      });
+      sendAiEditQuotaExceededResponse(response);
       return;
     }
 
@@ -188,16 +192,22 @@ export const registerAiEditRoutes = (
         ? Math.ceil(transcript.durationSeconds / 60)
         : estimatedMinutes;
 
-    await aiEditUsageStore.record({
+    const reservation = await aiEditUsageStore.reserve({
       userId: authUser.id,
       monthKey,
-      minutes: billedMinutes
+      minutes: billedMinutes,
+      limit: aiEditMonthlyMinuteLimit
     });
+
+    if (!reservation.ok) {
+      sendAiEditQuotaExceededResponse(response);
+      return;
+    }
 
     response.json({
       status: 'ok',
       transcript,
-      quota: buildQuota(usedMinutes + billedMinutes)
+      quota: buildQuota(reservation.usedMinutes)
     });
   });
 

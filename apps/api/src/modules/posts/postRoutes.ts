@@ -2,6 +2,7 @@ import type { RequestHandler, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
 import type { PublishQueue } from '../queue/publishQueue.js';
+import { isStorageKeyOwnedByUser } from '../storage/storageKeyPolicy.js';
 import {
   canSchedulePosts,
   monthlyPostUnitLimits,
@@ -124,6 +125,14 @@ export const registerPostRoutes = (
       response.status(400).json({
         status: 'error',
         message: 'caption, videoS3Key, and at least one valid platform are required'
+      });
+      return;
+    }
+
+    if (!isStorageKeyOwnedByUser({ videoS3Key, userId: authUser.id })) {
+      response.status(403).json({
+        status: 'error',
+        message: 'Selected media does not belong to the authenticated user'
       });
       return;
     }

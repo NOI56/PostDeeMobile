@@ -14,7 +14,7 @@ third-party accounts.
 | Database (Postgres/Prisma) | ✅ **Live** | `*_STORE=prisma` + `DATABASE_URL` |
 | Scheduling worker | ✅ **Live** (in-process, DB-backed) | none — runs with `PUBLISH_QUEUE=memory` |
 | Caption from keywords (Gemini) | ⚙️ ready | Render sets `CAPTION_PROVIDER=gemini`; add `GEMINI_API_KEY` |
-| Social publishing (PostPeer) | ⚙️ code ready | `SOCIAL_PUBLISHER=postpeer` + key + connected account ids |
+| Social publishing (PostPeer) | blocked for production user publishing | `SOCIAL_PUBLISHER=postpeer` + key; per-user social connections still required |
 | Video upload (Cloudflare R2) | ⚙️ ready | `VIDEO_STORAGE=r2` + R2 creds |
 | Auth (Firebase) | ⚙️ ready | `AUTH_PROVIDER=firebase` + project |
 | Subscriptions (RevenueCat / App Store / Play) | ⚙️ ready | `BILLING_PROVIDER=revenuecat` + webhook token |
@@ -33,11 +33,7 @@ third-party accounts.
 - `SOCIAL_PUBLISHER=postpeer`
 - `POSTPEER_API_KEY=...`
 - Optional: `POSTPEER_API_BASE_URL` (default `https://api.postpeer.dev`)
-- Add the connected account integration ids from PostPeer:
-  `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`,
-  `POSTPEER_INSTAGRAM_ACCOUNT_ID`, and `POSTPEER_FACEBOOK_ACCOUNT_ID`.
-  These are PostPeer integration ids from `/v1/connect/integrations`, not the
-  public social usernames.
+- Do not add shared `POSTPEER_*_ACCOUNT_ID` values to production. They are allowed only for non-production/operator smoke tests; production user publishing must wait for the per-user social connection flow.
 - The backend calls `POST /v1/posts` with the `x-access-key` header, sends
   `content`, `platforms`, `mediaItems`, and `publishNow`, and resolves uploaded
   video keys to signed R2/S3 download URLs before calling PostPeer.
@@ -62,6 +58,7 @@ third-party accounts.
 
 - `BILLING_PROVIDER=revenuecat`
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN=...`
+- `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN=...` if the legacy direct Google Play notification path is enabled
 - `REVENUECAT_STARTER_ENTITLEMENT_ID=starter`
 - `REVENUECAT_PRO_ENTITLEMENT_ID=pro`
 - `REVENUECAT_STARTER_PRODUCT_ID=postdee_starter_monthly`

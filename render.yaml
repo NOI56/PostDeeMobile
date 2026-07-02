@@ -59,9 +59,11 @@ services:
       - key: GROQ_API_KEY
         sync: false
       # --- Social posting: PostPeer ---
-      # Production must not use shared POSTPEER_*_ACCOUNT_ID values. Real user
-      # publishing requires the per-user social connection flow; without one,
-      # PostPeer publish attempts fail closed instead of posting to an operator account.
+      # Per-user connected accounts are resolved from the social connection
+      # store. Shared POSTPEER_*_ACCOUNT_ID values are forbidden in production
+      # (startup fails if set) — they are non-production/operator smoke-test ids
+      # only. Users without a connection fail closed instead of posting to an
+      # operator account.
       - key: SOCIAL_PUBLISHER
         value: postpeer
       - key: POSTPEER_API_KEY

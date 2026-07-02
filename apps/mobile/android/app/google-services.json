@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "121898224944-96aoadvl55244t0h1f1glkmqeng5vbss.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.postdee.postdee_mobile",
+            "certificate_hash": "b9be6a4b13ed6a321c12c8bfc4cab5a3a96bf954"
+          }
+        },
+        {
+          "client_id": "121898224944-h2tf349k58a72dev5b7lqbdmh7bq02bi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.postdee.postdee_mobile",
+            "certificate_hash": "fca0c22ed78e82053a3b77bf7171e9f6789e45bb"
+          }
+        },
+        {
           "client_id": "121898224944-1hkh1mrfb5lc1ltraapu10lj1ib465vj.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -29,6 +45,13 @@
             {
               "client_id": "121898224944-1hkh1mrfb5lc1ltraapu10lj1ib465vj.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "121898224944-dp1q36t40ff6pgsejkgtkrkjipfijvjr.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.postdee.postdeeMobile"
+              }
             }
           ]
         }

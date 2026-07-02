@@ -250,7 +250,7 @@ Rules:
 - Pro is limited to 250 post units per month.
 - Post units count by selected platform, not post row.
 - Upload metadata is capped by `UPLOAD_MAX_SIZE_BYTES`; R2 signed uploads also sign the declared content length and content type.
-- Every route except `GET /health` sits behind a per-IP rate limit (`RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS`).
+- Every route except `GET /health` sits behind a global per-IP rate limit (`RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS`); auth, upload, AI, and social-connection routes add tighter fixed per-IP buckets.
 - Starter unlocks real-clip AI captioning from audio.
 - Pro unlocks analytics, hashtag radar, AI comment center, team/editor access,
   AI captioning from audio plus selected frames, and Groq Whisper auto

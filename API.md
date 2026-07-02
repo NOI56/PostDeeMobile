@@ -40,7 +40,7 @@ The backend currently supports safe scaffold flows for:
 - Store subscription verification scaffold for Apple App Store and Google Play
 - Store server notification routes for renewal, cancel, refund, and grace-period handoff
 
-The backend must not publish to TikTok, YouTube Shorts, Instagram Reels, or Facebook Reels through shared PostPeer account ids in production. Production publishing requires per-user social connections plus a controlled provider test.
+The backend must not publish to TikTok, YouTube Shorts, Instagram Reels, or Facebook Reels through shared PostPeer account ids in production (startup rejects them). Production publishing resolves per-user social connections, and real PostPeer publishing should only be enabled after the per-user connect/refresh flow is verified with a connected test account and a controlled provider test is approved.
 
 ## Authentication
 
@@ -1062,7 +1062,7 @@ PostgreSQL.
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `900` | Signed upload URL lifetime |
 | `UPLOAD_MAX_SIZE_BYTES` | `524288000` | Maximum declared upload size accepted by `POST /uploads` |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Per-IP rate limit window in milliseconds |
-| `RATE_LIMIT_MAX_REQUESTS` | `300` | Max requests per IP per window; exceeding returns `429` with code `RATE_LIMIT_EXCEEDED` (`GET /health` is exempt) |
+| `RATE_LIMIT_MAX_REQUESTS` | `300` | Max requests per IP per window; exceeding returns `429` with code `RATE_LIMITED` (`GET /health` is exempt). Tighter fixed per-IP buckets also cover `/auth` (30/10min), `/uploads` (60/hr), `/captions` + `/ai-edits` (60/hr), and `/social-connections` (20/10min) |
 | `AWS_REGION` | `ap-southeast-1` | Legacy S3 region |
 | `AWS_S3_BUCKET` | `postdee-video-temp` | Legacy S3 bucket |
 | `AWS_S3_UPLOAD_EXPIRES_SECONDS` | `900` | Legacy S3 signed upload URL lifetime |
@@ -1106,17 +1106,17 @@ PostgreSQL.
 | `SOCIAL_PUBLISHER` | `mock`, `postpeer` | Social publishing adapter |
 | `POSTPEER_API_KEY` | `...` | PostPeer API key for real social publishing |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | Optional PostPeer API host override |
-| `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | Non-production/operator smoke-test PostPeer TikTok integration id; forbidden in production |
-| `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | Non-production/operator smoke-test PostPeer YouTube Shorts integration id; forbidden in production |
-| `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | Non-production/operator smoke-test PostPeer Instagram Reels integration id; forbidden in production |
-| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Non-production/operator smoke-test PostPeer Facebook Reels integration id; forbidden in production |
+| `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | Operator PostPeer TikTok integration id used only when no per-user connection resolver is wired; forbidden in production |
+| `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | Operator PostPeer YouTube Shorts integration id used only when no per-user connection resolver is wired; forbidden in production |
+| `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | Operator PostPeer Instagram Reels integration id used only when no per-user connection resolver is wired; forbidden in production |
+| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Reels integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `MOCK_USER_ID` | `local-dev-user` | Default mock user id |
 
 ## Production Gaps
 
 The following work is still required before production launch:
 
-- Implement per-user PostPeer social connections before enabling production user publishing; do not use shared `POSTPEER_*_ACCOUNT_ID` values in production.
+- Verify the per-user PostPeer connect/refresh flow with a connected test account before enabling production user publishing; do not use shared `POSTPEER_*_ACCOUNT_ID` values in production.
 - Store social access tokens securely only if direct platform APIs replace the
   PostPeer provider later.
 - Complete provider-level R2 upload and cleanup testing.

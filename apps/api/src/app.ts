@@ -79,7 +79,16 @@ import { createDeviceTokenStore } from './modules/devices/deviceTokenStoreFactor
 import type { PrismaDeviceTokenClient } from './modules/devices/prismaDeviceTokenRepository.js';
 import { createPublishNotifier } from './modules/notifications/publishNotifier.js';
 import { createPushSenderFromConfig } from './modules/notifications/pushSenderFactory.js';
+import {
+  createPostPeerConnectClient,
+  type PostPeerConnectClient
+} from './modules/socialConnections/postPeerConnectClient.js';
+import type { PrismaSocialConnectionClient } from './modules/socialConnections/prismaSocialConnectionRepository.js';
+import { registerSocialConnectionRoutes } from './modules/socialConnections/socialConnectionRoutes.js';
+import type { SocialConnectionStore } from './modules/socialConnections/socialConnectionStore.js';
+import { createSocialConnectionStore } from './modules/socialConnections/socialConnectionStoreFactory.js';
 import { registerPlannedRoutes } from './routes/plannedRoutes.js';
+import { createRateLimitMiddleware } from './modules/security/rateLimit.js';
 
 type AppPrismaClient = PrismaTemplateClient &
   PrismaPostClient &
@@ -88,7 +97,8 @@ type AppPrismaClient = PrismaTemplateClient &
   PrismaAnalyticsClient &
   PrismaRealClipCaptionUsageClient &
   PrismaAiEditUsageClient &
-  PrismaDeviceTokenClient;
+  PrismaDeviceTokenClient &
+  PrismaSocialConnectionClient;
 
 type AppOptions = {
   config?: ServerConfig;
@@ -106,6 +116,8 @@ type AppOptions = {
   editPlanProvider?: EditPlanProvider;
   storePurchaseVerifier?: StorePurchaseVerifier;
   appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
+  socialConnectionStore?: SocialConnectionStore;
+  postPeerConnectClient?: PostPeerConnectClient;
 };
 
 const readFileNameFromStorageKey = (videoS3Key: string) =>
@@ -175,8 +187,8 @@ export const createApp = (options: AppOptions = {}) => {
       handler: (_request, response) => {
         response.status(429).json({
           status: 'error',
-          code: 'RATE_LIMIT_EXCEEDED',
-          message: 'Too many requests; please try again later'
+          code: 'RATE_LIMITED',
+          message: 'Too many requests. Please try again shortly.'
         });
       }
     })
@@ -198,6 +210,26 @@ export const createApp = (options: AppOptions = {}) => {
   });
 
   const router = express.Router();
+  const authRateLimit = createRateLimitMiddleware({
+    bucket: 'auth',
+    windowMs: 10 * 60 * 1000,
+    maxRequests: 30
+  });
+  const uploadRateLimit = createRateLimitMiddleware({
+    bucket: 'uploads',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 60
+  });
+  const aiRateLimit = createRateLimitMiddleware({
+    bucket: 'ai',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 60
+  });
+  const socialConnectionRateLimit = createRateLimitMiddleware({
+    bucket: 'social-connections',
+    windowMs: 10 * 60 * 1000,
+    maxRequests: 20
+  });
   const firebaseVerifier =
     options.firebaseVerifier ??
     createFirebaseTokenVerifierFromConfig({
@@ -265,6 +297,12 @@ export const createApp = (options: AppOptions = {}) => {
       config,
       prisma: prismaClient as unknown as PrismaAnalyticsClient | undefined
     });
+  router.use('/auth', authRateLimit);
+  router.use('/uploads', uploadRateLimit);
+  router.use('/captions', aiRateLimit);
+  router.use('/ai-edits', aiRateLimit);
+  router.use('/social-connections', socialConnectionRateLimit);
+
   registerAuthRoutes(router, authMiddleware);
   registerUploadRoutes(router, authMiddleware, videoStorage, {
     uploadMaxSizeBytes: config.uploadMaxSizeBytes
@@ -333,7 +371,24 @@ export const createApp = (options: AppOptions = {}) => {
       ? (prismaClient as unknown as PrismaDeviceTokenClient)
       : undefined
   });
+  const socialConnectionStore =
+    options.socialConnectionStore ??
+    createSocialConnectionStore({
+      prisma: prismaClient
+        ? (prismaClient as unknown as PrismaSocialConnectionClient)
+        : undefined
+    });
+  const postPeerConnectClient =
+    options.postPeerConnectClient ??
+    createPostPeerConnectClient({
+      apiKey: config.postPeerApiKey,
+      baseUrl: config.postPeerApiBaseUrl
+    });
   registerDeviceRoutes(router, authMiddleware, deviceTokenStore);
+  registerSocialConnectionRoutes(router, authMiddleware, {
+    store: socialConnectionStore,
+    connectClient: postPeerConnectClient
+  });
   registerAccountRoutes(router, authMiddleware, {
     postStore,
     templateStore,
@@ -342,6 +397,7 @@ export const createApp = (options: AppOptions = {}) => {
     realClipCaptionUsageStore,
     aiEditUsageStore,
     deviceTokenStore,
+    socialConnectionStore,
     userStore,
     publishQueue,
     prisma: prismaClient
@@ -352,13 +408,17 @@ export const createApp = (options: AppOptions = {}) => {
   app.use(router);
 
   // In-memory queue has no external worker, so attach an in-process scheduler.
-  // It is created but NOT started here — server.ts starts it so tests that only
+  // It is created but NOT started here; server.ts starts it so tests that only
   // build the app never leave a timer running. (BullMQ uses a separate worker.)
   if (config.publishQueue === 'memory') {
     app.locals.publishScheduler = createPublishScheduler({
       postStore,
       platformPublishStore,
-      publisher: createPlatformPublisherFromConfig({ config, videoStorage }),
+      publisher: createPlatformPublisherFromConfig({
+        config,
+        videoStorage,
+        socialConnectionStore
+      }),
       storage: videoStorage,
       // Push a publish-result notification to the user's devices. Uses the real
       // FCM sender when PUSH_SENDER=firebase, otherwise a no-op mock.

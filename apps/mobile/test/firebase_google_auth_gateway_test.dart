@@ -1,16 +1,25 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:postdee_mobile/core/auth/firebase_bootstrap.dart';
 import 'package:postdee_mobile/features/auth/auth_controller.dart';
 import 'package:postdee_mobile/features/auth/firebase_google_auth_gateway.dart';
 
 class FakeGoogleIdentityClient implements GoogleIdentityClient {
-  FakeGoogleIdentityClient(this.account);
+  FakeGoogleIdentityClient(this.account, {this.error});
 
   final GoogleAccountSnapshot account;
+  final Object? error;
   var didSignOut = false;
 
   @override
-  Future<GoogleAccountSnapshot> signIn() async => account;
+  Future<GoogleAccountSnapshot> signIn() async {
+    final error = this.error;
+    if (error != null) {
+      throw error;
+    }
+
+    return account;
+  }
 
   @override
   Future<void> signOut() async {
@@ -89,6 +98,35 @@ void main() {
     );
   });
 
+  test('FirebaseGoogleAuthGateway explains Google account reauth failures',
+      () async {
+    final gateway = FirebaseGoogleAuthGateway(
+      googleClient: FakeGoogleIdentityClient(
+        const GoogleAccountSnapshot(),
+        error: const GoogleSignInException(
+          code: GoogleSignInExceptionCode.canceled,
+          description: '[16] Account reauth failed',
+        ),
+      ),
+      firebaseAuthClient: FakeFirebaseAuthClient(
+        const FirebaseUserSnapshot(idToken: 'firebase-id-token'),
+      ),
+    );
+
+    expect(
+      gateway.signIn,
+      throwsA(
+        isA<AuthUnavailableException>().having(
+          (error) => error.message,
+          'message',
+          allOf(
+            contains('Google account signed in again'),
+            contains('Google Play'),
+          ),
+        ),
+      ),
+    );
+  });
   test('FirebaseGoogleAuthGateway signs out from Firebase and Google',
       () async {
     final googleClient = FakeGoogleIdentityClient(

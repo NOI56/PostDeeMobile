@@ -134,6 +134,24 @@ void main() {
     expect(subscription.canUseAiVideoReview, isFalse);
   });
 
+  test('UploadResult tolerates hidden storage provider details', () {
+    final result = UploadResult.fromJson({
+      'id': 'upload-1',
+      'videoS3Key': 'uploads/seller/upload-1/demo.mp4',
+      'uploadUrl': 'https://uploads.postdee.test/upload',
+      'uploadMethod': 'PUT',
+      'uploadHeaders': {'Content-Type': 'video/mp4'},
+      'uploadExpiresAt': '2026-06-27T12:00:00.000Z',
+    });
+
+    expect(result.id, 'upload-1');
+    expect(result.videoS3Key, 'uploads/seller/upload-1/demo.mp4');
+    expect(result.storageProvider, 'private');
+    expect(result.uploadMethod, 'PUT');
+    expect(result.uploadHeaders, {'Content-Type': 'video/mp4'});
+    expect(result.uploadExpiresAt?.toUtc().toIso8601String(),
+        '2026-06-27T12:00:00.000Z');
+  });
   test('GenerateRealClipCaptionRequest serializes selected clip context only',
       () {
     expect(
@@ -216,6 +234,35 @@ void main() {
     expect(
         post.scheduledAt.toUtc().toIso8601String(), '2026-06-07T11:30:00.000Z');
     expect(post.status, 'QUEUED');
+  });
+
+
+  test('SocialConnectionResult parses connected platform status', () {
+    final result = SocialConnectionResult.fromJson({
+      'platform': 'TIKTOK',
+      'connected': true,
+      'displayName': '@seller_one',
+      'externalAccountId': 'external-tiktok',
+      'connectedAt': '2026-06-26T09:00:00.000Z',
+    });
+
+    expect(result.platform, 'TIKTOK');
+    expect(result.connected, isTrue);
+    expect(result.displayName, '@seller_one');
+    expect(result.externalAccountId, 'external-tiktok');
+    expect(result.connectedAt?.toUtc().toIso8601String(),
+        '2026-06-26T09:00:00.000Z');
+  });
+
+  test('SocialConnectLinkResult parses connect URLs', () {
+    final result = SocialConnectLinkResult.fromJson({
+      'connectUrl': 'https://postpeer.test/connect/youtube',
+      'expiresAt': '2026-06-26T09:10:00.000Z',
+    });
+
+    expect(result.connectUrl.toString(), 'https://postpeer.test/connect/youtube');
+    expect(result.expiresAt?.toUtc().toIso8601String(),
+        '2026-06-26T09:10:00.000Z');
   });
 
   test(

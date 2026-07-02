@@ -2,6 +2,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import { createApp } from '../../app.js';
+import { createInMemorySocialConnectionStore } from '../socialConnections/socialConnectionStore.js';
 
 describe('account routes', () => {
   const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
@@ -78,5 +79,28 @@ describe('account routes', () => {
       .set('x-postdee-user-id', 'seller-b')
       .expect(200);
     expect(sellerBPosts.body.posts).toHaveLength(1);
+  });
+
+  it('removes social connections when the account is deleted', async () => {
+    const socialConnectionStore = createInMemorySocialConnectionStore();
+    const app = createApp({ socialConnectionStore });
+
+    await socialConnectionStore.upsert({
+      userId: 'seller-social-delete',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'acct-tiktok-delete'
+    });
+
+    await request(app)
+      .delete('/account')
+      .set('x-postdee-user-id', 'seller-social-delete')
+      .expect(200);
+
+    await expect(
+      socialConnectionStore.getAccountId({
+        userId: 'seller-social-delete',
+        platform: 'TIKTOK'
+      })
+    ).resolves.toBeUndefined();
   });
 });

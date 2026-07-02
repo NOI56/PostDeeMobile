@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { readServerConfig } from '../config/env.js';
+import { createInMemorySocialConnectionStore } from '../modules/socialConnections/socialConnectionStore.js';
 import type { VideoStorage } from '../modules/storage/videoStorage.js';
 import { createPlatformPublisherFromConfig } from './platformPublisherFactory.js';
 import { createPostPeerPublisher } from './postPeerPublisher.js';
@@ -25,6 +26,90 @@ afterEach(() => {
 });
 
 describe('createPostPeerPublisher', () => {
+  it('resolves a PostPeer account id from the post owner before publishing', async () => {
+    const calls: { body: unknown }[] = [];
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      resolveAccountId: async ({ userId, platform }) => {
+        expect(userId).toBe('seller-1');
+        expect(platform).toBe('TIKTOK');
+        return 'acct-user-tiktok';
+      },
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 'postpeer-post-1' })
+        };
+      }
+    });
+
+    await publisher.publish({
+      userId: 'seller-1',
+      postId: 'post-1',
+      caption: 'hello',
+      videoS3Key: 'https://cdn.test/video.mp4',
+      platform: 'TIKTOK'
+    });
+
+    expect(calls[0].body).toMatchObject({
+      platforms: [{ platform: 'tiktok', accountId: 'acct-user-tiktok' }]
+    });
+  });
+
+  it('requires the post owner to connect an account instead of falling back to the operator id', async () => {
+    const calls: { body: unknown }[] = [];
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'operator-tiktok' },
+      resolveAccountId: async () => undefined,
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 'postpeer-post-1' })
+        };
+      }
+    });
+
+    await expect(
+      publisher.publish({
+        userId: 'seller-2',
+        postId: 'post-1',
+        caption: 'hello',
+        videoS3Key: 'https://cdn.test/video.mp4',
+        platform: 'TIKTOK'
+      })
+    ).rejects.toThrow(/Connected PostPeer account is required to publish TIKTOK/);
+
+    expect(calls).toEqual([]);
+  });
+
+  it('requires a connected owner account when the resolver finds none', async () => {
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      resolveAccountId: async () => undefined,
+      fetchImpl: async () => {
+        throw new Error('fetch should not run when no account id is available');
+      }
+    });
+
+    await expect(
+      publisher.publish({
+        userId: 'seller-2',
+        postId: 'post-1',
+        caption: 'hello',
+        videoS3Key: 'https://cdn.test/video.mp4',
+        platform: 'TIKTOK'
+      })
+    ).rejects.toThrow(/Connected PostPeer account is required to publish TIKTOK/);
+  });
+
   it('posts to PostPeer and returns the external post id', async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     const publisher = createPostPeerPublisher({
@@ -57,6 +142,7 @@ describe('createPostPeerPublisher', () => {
     });
 
     const result = await publisher.publish({
+      userId: 'seller-1',
       postId: 'post-1',
       caption: 'hello',
       videoS3Key: 'uploads/clip.mp4',
@@ -94,7 +180,11 @@ describe('createPostPeerPublisher', () => {
     });
 
     await expect(
-      publisher.publish({ postId: 'post-1', platform: 'YOUTUBE_SHORTS' })
+      publisher.publish({
+        userId: 'seller-1',
+        postId: 'post-1',
+        platform: 'YOUTUBE_SHORTS'
+      })
     ).rejects.toThrow(/PostPeer publish to YOUTUBE_SHORTS failed with status 502/);
   });
 
@@ -124,7 +214,11 @@ describe('createPostPeerPublisher', () => {
     });
 
     await expect(
-      publisher.publish({ postId: 'post-1', platform: 'TIKTOK' })
+      publisher.publish({
+        userId: 'seller-1',
+        postId: 'post-1',
+        platform: 'TIKTOK'
+      })
     ).rejects.toThrow(
       /PostPeer publish to TIKTOK failed: Video URL is not publicly accessible/
     );
@@ -198,6 +292,7 @@ describe('createPlatformPublisherFromConfig', () => {
     });
 
     await publisher.publish({
+      userId: 'seller-1',
       postId: 'post-1',
       caption: 'hello',
       videoS3Key: 'uploads/clip.mp4',
@@ -210,6 +305,50 @@ describe('createPlatformPublisherFromConfig', () => {
     ]);
   });
 
+  it('uses the social connection store account id for PostPeer publishing', async () => {
+    const calls: { body: unknown }[] = [];
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      calls.push({ body: JSON.parse(String(init.body)) });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ externalPostId: 'pp-123' })
+      };
+    });
+
+    const socialConnectionStore = createInMemorySocialConnectionStore();
+    await socialConnectionStore.upsert({
+      userId: 'seller-a',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'acct-seller-a-tiktok'
+    });
+    await socialConnectionStore.upsert({
+      userId: 'seller-b',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'acct-seller-b-tiktok'
+    });
+
+    const publisher = createPlatformPublisherFromConfig({
+      config: readServerConfig({
+        SOCIAL_PUBLISHER: 'postpeer',
+        POSTPEER_API_KEY: 'pp-key'
+      }),
+      videoStorage: createTestVideoStorage(),
+      socialConnectionStore
+    });
+
+    await publisher.publish({
+      userId: 'seller-a',
+      postId: 'post-1',
+      videoS3Key: 'uploads/clip.mp4',
+      platform: 'TIKTOK'
+    });
+
+    expect(calls[0].body).toMatchObject({
+      platforms: [{ platform: 'tiktok', accountId: 'acct-seller-a-tiktok' }]
+    });
+  });
+
   it('requires a PostPeer account id for the selected platform', async () => {
     const publisher = createPostPeerPublisher({
       apiKey: 'pp-key',
@@ -218,7 +357,11 @@ describe('createPlatformPublisherFromConfig', () => {
     });
 
     await expect(
-      publisher.publish({ postId: 'post-1', platform: 'TIKTOK' })
+      publisher.publish({
+        userId: 'seller-1',
+        postId: 'post-1',
+        platform: 'TIKTOK'
+      })
     ).rejects.toThrow(/POSTPEER_TIKTOK_ACCOUNT_ID is required/);
   });
 });

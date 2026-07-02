@@ -1,4 +1,8 @@
 import type { ServerConfig } from '../config/env.js';
+import {
+  isPublishableSocialPlatform,
+  type SocialConnectionStore
+} from '../modules/socialConnections/socialConnectionStore.js';
 import type { VideoStorage } from '../modules/storage/videoStorage.js';
 import { createPostPeerPublisher } from './postPeerPublisher.js';
 import { type PlatformPublisher, createMockPlatformPublisher } from './publishWorker.js';
@@ -20,10 +24,12 @@ const createSignedVideoUrlResolver =
  */
 export const createPlatformPublisherFromConfig = ({
   config,
-  videoStorage
+  videoStorage,
+  socialConnectionStore
 }: {
   config: ServerConfig;
   videoStorage?: VideoStorage;
+  socialConnectionStore?: SocialConnectionStore;
 }): PlatformPublisher => {
   if (config.socialPublisher === 'postpeer') {
     if (!config.postPeerApiKey) {
@@ -43,6 +49,12 @@ export const createPlatformPublisherFromConfig = ({
         INSTAGRAM_REELS: config.postPeerInstagramAccountId,
         FACEBOOK_REELS: config.postPeerFacebookAccountId
       },
+      resolveAccountId: socialConnectionStore
+        ? async ({ userId, platform }) =>
+            isPublishableSocialPlatform(platform)
+              ? socialConnectionStore.getAccountId({ userId, platform })
+              : undefined
+        : undefined,
       resolveVideoUrl: createSignedVideoUrlResolver(videoStorage)
     });
   }

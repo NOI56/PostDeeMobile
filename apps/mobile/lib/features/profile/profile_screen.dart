@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/localization/language_controller.dart';
@@ -20,6 +21,8 @@ class ProfileScreen extends StatelessWidget {
     required this.themeController,
     required this.onOpenTemplates,
     required this.onDeleteAccount,
+    this.apiClient,
+    this.launchConnectUrl,
     super.key,
   });
 
@@ -27,6 +30,8 @@ class ProfileScreen extends StatelessWidget {
   final PostDeeThemeController themeController;
   final VoidCallback onOpenTemplates;
   final VoidCallback onDeleteAccount;
+  final PostDeeApiClient? apiClient;
+  final Future<bool> Function(Uri uri)? launchConnectUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -195,7 +200,10 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppTheme.spaceLg),
-        const _ConnectedPlatformsCard(),
+        _ConnectedPlatformsCard(
+          apiClient: apiClient,
+          launchConnectUrl: launchConnectUrl,
+        ),
         const SizedBox(height: AppTheme.spaceLg),
         PostDeeCard(
           child: Column(
@@ -1075,8 +1083,22 @@ class _AiEditingQuotaCardState extends State<_AiEditingQuotaCard> {
   }
 }
 
+typedef _ConnectUrlLauncher = Future<bool> Function(Uri uri);
+
+/// Platforms PostPeer can connect a user account for. Shopee/Lazada are listed
+/// in the app but not yet supported by the connect API, so they stay disabled.
+const List<SocialPlatform> _connectablePlatforms = [
+  SocialPlatform.tiktok,
+  SocialPlatform.youtubeShorts,
+  SocialPlatform.instagramReels,
+  SocialPlatform.facebookReels,
+];
+
 class _ConnectedPlatformsCard extends StatefulWidget {
-  const _ConnectedPlatformsCard();
+  const _ConnectedPlatformsCard({this.apiClient, this.launchConnectUrl});
+
+  final PostDeeApiClient? apiClient;
+  final _ConnectUrlLauncher? launchConnectUrl;
 
   @override
   State<_ConnectedPlatformsCard> createState() =>
@@ -1084,6 +1106,179 @@ class _ConnectedPlatformsCard extends StatefulWidget {
 }
 
 class _ConnectedPlatformsCardState extends State<_ConnectedPlatformsCard> {
+  late final PostDeeApiClient _apiClient =
+      widget.apiClient ?? PostDeeApiClient();
+  late final _ConnectUrlLauncher _launch = widget.launchConnectUrl ??
+      ((uri) => launchUrl(uri, mode: LaunchMode.externalApplication));
+
+  Map<String, SocialConnectionResult> _statuses = {};
+  bool _loading = true;
+  String? _busyPlatform;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConnections();
+  }
+
+  Future<void> _loadConnections() async {
+    try {
+      final results = await _apiClient.listSocialConnections();
+      if (!mounted) return;
+      setState(() {
+        _statuses = {for (final result in results) result.platform: result};
+        _loading = false;
+      });
+    } catch (_) {
+      // Keep platforms shown as disconnected if the status call fails.
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  SocialConnectionResult? _statusFor(SocialPlatform platform) =>
+      _statuses[platform.apiValue];
+
+  int get _connectedCount => _connectablePlatforms
+      .where((platform) => _statusFor(platform)?.connected ?? false)
+      .length;
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _connect(SocialPlatform platform) async {
+    setState(() => _busyPlatform = platform.apiValue);
+    try {
+      final link =
+          await _apiClient.createSocialConnectionLink(platform.apiValue);
+      await _launch(link.connectUrl);
+      // PostPeer OAuth happens in an external browser, so prompt the user to
+      // refresh once they return instead of polling immediately.
+      _showMessage('เปิดหน้าเชื่อมบัญชีแล้ว — เมื่อเสร็จในเบราว์เซอร์ กดปุ่มรีเฟรช');
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง');
+    } finally {
+      if (mounted) setState(() => _busyPlatform = null);
+    }
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    try {
+      final results = await _apiClient.refreshSocialConnections();
+      if (!mounted) return;
+      setState(() {
+        _statuses = {for (final result in results) result.platform: result};
+        _loading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage(error.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showMessage('รีเฟรชสถานะไม่สำเร็จ ลองใหม่อีกครั้ง');
+    }
+  }
+
+  Future<void> _disconnect(SocialPlatform platform) async {
+    setState(() => _busyPlatform = platform.apiValue);
+    try {
+      await _apiClient.disconnectSocialConnection(platform.apiValue);
+      await _loadConnections();
+    } catch (_) {
+      _showMessage('ยกเลิกการเชื่อมไม่สำเร็จ ลองใหม่อีกครั้ง');
+    } finally {
+      if (mounted) setState(() => _busyPlatform = null);
+    }
+  }
+
+  ButtonStyle get _actionStyle => OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        minimumSize: Size.zero,
+        side: BorderSide(color: AppTheme.border.withValues(alpha: 0.5)),
+      );
+
+  Widget _buildAction(SocialPlatform platform) {
+    if (!_connectablePlatforms.contains(platform)) {
+      return OutlinedButton(
+        key: ValueKey('profile-platform-soon-${platform.apiValue}'),
+        onPressed: null,
+        style: _actionStyle,
+        child: const Text('เร็วๆ นี้'),
+      );
+    }
+
+    if (_busyPlatform == platform.apiValue) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    if (_statusFor(platform)?.connected ?? false) {
+      return OutlinedButton(
+        key: ValueKey('profile-platform-disconnect-${platform.apiValue}'),
+        onPressed: () => _disconnect(platform),
+        style: _actionStyle,
+        child: const Text('ยกเลิก'),
+      );
+    }
+
+    return OutlinedButton(
+      key: ValueKey('profile-platform-connect-${platform.apiValue}'),
+      onPressed: () => _connect(platform),
+      style: _actionStyle,
+      child: const Text('เชื่อม'),
+    );
+  }
+
+  Widget _buildRow(BuildContext context, SocialPlatform platform) {
+    final status = _statusFor(platform);
+    final connected = status?.connected ?? false;
+    final displayName = connected ? status?.displayName : null;
+
+    return Row(
+      children: [
+        SocialPlatformLogo(platform: platform, size: 26),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(child: Text(platform.label)),
+                  if (connected) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.check_circle,
+                        size: 16, color: AppTheme.accent),
+                  ],
+                ],
+              ),
+              if (displayName != null && displayName.isNotEmpty)
+                Text(
+                  displayName,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppTheme.textSecondary,
+                      ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        _buildAction(platform),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -1101,18 +1296,34 @@ class _ConnectedPlatformsCardState extends State<_ConnectedPlatformsCard> {
                       ?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
-              Text(
-                '0/${SocialPlatform.values.length}',
-                style: textTheme.labelMedium?.copyWith(
-                  color: AppTheme.textSecondary,
-                  fontWeight: FontWeight.w800,
+              if (_loading)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else ...[
+                Text(
+                  '$_connectedCount/${_connectablePlatforms.length}',
+                  style: textTheme.labelMedium?.copyWith(
+                    color: AppTheme.textSecondary,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
+                const SizedBox(width: 4),
+                IconButton(
+                  key: const ValueKey('profile-platforms-refresh'),
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh, size: 20),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'รีเฟรชสถานะการเชื่อม',
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 6),
           Text(
-            'ต้องเชื่อม PostPeer/OAuth จริงก่อน จึงจะแสดงสถานะเชื่อมต่อ',
+            'เชื่อมบัญชีโซเชียลของคุณเพื่อให้โพสต์ขึ้นบัญชีตัวเอง',
             style: textTheme.bodySmall?.copyWith(
               color: AppTheme.textSecondary,
               height: 1.25,
@@ -1122,28 +1333,7 @@ class _ConnectedPlatformsCardState extends State<_ConnectedPlatformsCard> {
           for (final platform in SocialPlatform.values)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  SocialPlatformLogo(platform: platform, size: 26),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(platform.label)),
-                  OutlinedButton(
-                    key: ValueKey(
-                      'profile-platform-connect-${platform.apiValue}',
-                    ),
-                    onPressed: null,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      minimumSize: Size.zero,
-                      side: BorderSide(
-                        color: AppTheme.border.withValues(alpha: 0.5),
-                      ),
-                    ),
-                    child: const Text('รอระบบจริง'),
-                  ),
-                ],
-              ),
+              child: _buildRow(context, platform),
             ),
         ],
       ),

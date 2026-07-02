@@ -257,7 +257,7 @@ class UploadResult {
     return UploadResult(
       id: json['id'] as String,
       videoS3Key: json['videoS3Key'] as String,
-      storageProvider: json['storageProvider'] as String,
+      storageProvider: json['storageProvider'] as String? ?? 'private',
       uploadUrl: json['uploadUrl'] as String?,
       uploadMethod: json['uploadMethod'] as String?,
       uploadHeaders: rawHeaders is Map
@@ -846,6 +846,51 @@ class PostSummaryResult {
   }
 }
 
+class SocialConnectionResult {
+  const SocialConnectionResult({
+    required this.platform,
+    required this.connected,
+    this.displayName,
+    this.externalAccountId,
+    this.connectedAt,
+  });
+
+  final String platform;
+  final bool connected;
+  final String? displayName;
+  final String? externalAccountId;
+  final DateTime? connectedAt;
+
+  factory SocialConnectionResult.fromJson(Map<String, Object?> json) =>
+      SocialConnectionResult(
+        platform: json['platform'] as String,
+        connected: json['connected'] as bool? ?? false,
+        displayName: json['displayName'] as String?,
+        externalAccountId: json['externalAccountId'] as String?,
+        connectedAt: json['connectedAt'] is String
+            ? DateTime.tryParse(json['connectedAt'] as String)
+            : null,
+      );
+}
+
+class SocialConnectLinkResult {
+  const SocialConnectLinkResult({
+    required this.connectUrl,
+    this.expiresAt,
+  });
+
+  final Uri connectUrl;
+  final DateTime? expiresAt;
+
+  factory SocialConnectLinkResult.fromJson(Map<String, Object?> json) =>
+      SocialConnectLinkResult(
+        connectUrl: Uri.parse(json['connectUrl'] as String),
+        expiresAt: json['expiresAt'] is String
+            ? DateTime.tryParse(json['expiresAt'] as String)
+            : null,
+      );
+}
+
 class PostDeeApiClient {
   PostDeeApiClient({
     HttpClient? httpClient,
@@ -935,6 +980,47 @@ class PostDeeApiClient {
       'token': token,
       if (platform != null) 'platform': platform,
     });
+  }
+  Future<List<SocialConnectionResult>> listSocialConnections() async {
+    final response = await _getJson('/social-connections');
+    final connections = response['connections'];
+
+    if (connections is! List<dynamic>) {
+      throw const ApiException(
+          'Social connections response is missing connections');
+    }
+
+    return connections
+        .map((connection) => SocialConnectionResult.fromJson(
+            connection as Map<String, Object?>))
+        .toList();
+  }
+
+  Future<SocialConnectLinkResult> createSocialConnectionLink(
+      String platform) async {
+    final response =
+        await _postJson('/social-connections/$platform/connect', {});
+
+    return SocialConnectLinkResult.fromJson(response);
+  }
+
+  Future<void> disconnectSocialConnection(String platform) async {
+    await _deleteJson('/social-connections/$platform');
+  }
+
+  Future<List<SocialConnectionResult>> refreshSocialConnections() async {
+    final response = await _postJson('/social-connections/refresh', {});
+    final connections = response['connections'];
+
+    if (connections is! List<dynamic>) {
+      throw const ApiException(
+          'Social connections response is missing connections');
+    }
+
+    return connections
+        .map((connection) => SocialConnectionResult.fromJson(
+            connection as Map<String, Object?>))
+        .toList();
   }
 
   Future<AiEditQuota> fetchAiEditQuota() async {

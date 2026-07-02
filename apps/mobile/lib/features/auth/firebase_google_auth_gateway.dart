@@ -54,7 +54,14 @@ class FirebaseGoogleAuthGateway implements GoogleAuthGateway {
 
   @override
   Future<AuthSession> signIn() async {
-    final googleAccount = await _googleClient.signIn();
+    final GoogleAccountSnapshot googleAccount;
+
+    try {
+      googleAccount = await _googleClient.signIn();
+    } on GoogleSignInException catch (error) {
+      throw AuthUnavailableException(_describeGoogleSignInFailure(error));
+    }
+
     final googleIdToken = googleAccount.idToken?.trim();
 
     if (googleIdToken == null || googleIdToken.isEmpty) {
@@ -223,4 +230,23 @@ GoogleAuthGateway createGoogleAuthGatewayFromConfig({
 String? _readOptional(String? value) {
   final trimmed = value?.trim();
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}
+
+String _describeGoogleSignInFailure(GoogleSignInException error) {
+  final description = error.description?.toLowerCase() ?? '';
+
+  if (error.code == GoogleSignInExceptionCode.canceled) {
+    if (description.contains('reauth')) {
+      return 'Google sign-in could not continue because this device needs the Google account signed in again. Open Google Play or Android Settings, confirm the Google account, then try again.';
+    }
+
+    return 'Google sign-in was canceled. Please try again.';
+  }
+
+  if (error.code == GoogleSignInExceptionCode.clientConfigurationError ||
+      error.code == GoogleSignInExceptionCode.providerConfigurationError) {
+    return 'Google sign-in is not configured correctly. Please contact support.';
+  }
+
+  return 'Google sign-in is not available right now. Please try again.';
 }

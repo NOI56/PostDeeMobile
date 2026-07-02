@@ -119,7 +119,7 @@ describe('processPublishJobForPost', () => {
     expect(result.cleanup).toEqual({
       status: 'FAILED',
       videoS3Key: 'uploads/video.mp4',
-      errorMessage: 'r2 cleanup down'
+      errorMessage: 'Video cleanup failed. Please try again later.'
     });
   });
 
@@ -161,6 +161,38 @@ const baseJobData = {
 };
 
 describe('processPublishJob', () => {
+  it('passes the post owner id to the platform publisher', async () => {
+    const publisher = {
+      publish: vi.fn(async ({ platform }) => ({
+        platform,
+        status: 'PUBLISHED' as const,
+        externalPostId: `mock-${platform}`,
+        publishedAt: '2026-06-01T00:00:00.000Z'
+      }))
+    };
+
+    await processPublishJob({
+      jobData: {
+        ...baseJobData,
+        userId: 'seller-owner'
+      },
+      publisher,
+      platformPublishStore: { recordResults: vi.fn(async () => []) }
+    });
+
+    expect(publisher.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'seller-owner',
+        platform: 'TIKTOK'
+      })
+    );
+    expect(publisher.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'seller-owner',
+        platform: 'YOUTUBE_SHORTS'
+      })
+    );
+  });
   it('publishes to every selected platform and cleans up the uploaded video after all succeed', async () => {
     const publisher = {
       publish: vi.fn(async ({ platform }) => ({
@@ -304,7 +336,7 @@ describe('processPublishJob', () => {
         {
           platform: 'YOUTUBE_SHORTS',
           status: 'FAILED',
-          errorMessage: 'YouTube API unavailable'
+          errorMessage: 'Publishing to this platform failed. Please try again later.'
         }
       ],
       cleanup: {
@@ -343,7 +375,7 @@ describe('processPublishJob', () => {
       cleanup: {
         status: 'FAILED',
         videoS3Key: 'uploads/video.mp4',
-        errorMessage: 'r2 cleanup down'
+        errorMessage: 'Video cleanup failed. Please try again later.'
       }
     });
   });

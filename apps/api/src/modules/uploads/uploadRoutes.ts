@@ -8,6 +8,21 @@ type UploadRouteOptions = {
   uploadMaxSizeBytes: number;
 };
 
+type PublicUpload = Omit<Awaited<ReturnType<VideoStorage['createUpload']>>, 'storageProvider'> & {
+  storageProvider: 'private';
+};
+
+const toPublicUpload = (
+  upload: Awaited<ReturnType<VideoStorage['createUpload']>>
+): PublicUpload => {
+  const { storageProvider: _storageProvider, ...publicUpload } = upload;
+
+  return {
+    ...publicUpload,
+    storageProvider: 'private'
+  };
+};
+
 export const registerUploadRoutes = (
   router: Router,
   authMiddleware: RequestHandler,
@@ -37,9 +52,11 @@ export const registerUploadRoutes = (
       return;
     }
 
+    const upload = await storage.createUpload(result.metadata, authUser.id);
+
     response.status(201).json({
       status: 'ok',
-      upload: await storage.createUpload(result.metadata, authUser.id)
+      upload: toPublicUpload(upload)
     });
   });
 };

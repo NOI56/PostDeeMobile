@@ -17,8 +17,8 @@ describe('API rate limiting', () => {
 
     expect(limitedResponse.body).toEqual({
       status: 'error',
-      code: 'RATE_LIMIT_EXCEEDED',
-      message: 'Too many requests; please try again later'
+      code: 'RATE_LIMITED',
+      message: 'Too many requests. Please try again shortly.'
     });
   });
 

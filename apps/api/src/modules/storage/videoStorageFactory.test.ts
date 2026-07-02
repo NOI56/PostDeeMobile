@@ -97,6 +97,7 @@ describe('createVideoStorageFromConfig', () => {
       bucket: 'postdee-video-temp',
       key: upload.videoS3Key,
       contentType: 'video/mp4',
+      sizeBytes: 8_000_000,
       expiresInSeconds: 1200
     });
     expect(downloadAccess).toMatchObject({
@@ -163,6 +164,7 @@ describe('createVideoStorageFromConfig', () => {
       bucket: 'postdee-r2-temp',
       key: upload.videoS3Key,
       contentType: 'video/mp4',
+      sizeBytes: 8_000_000,
       expiresInSeconds: 1500
     });
     expect(downloadAccess).toMatchObject({
@@ -239,6 +241,9 @@ describe('createVideoStorageFromConfig', () => {
     });
     expect(upload.uploadUrl).toContain('r2.cloudflarestorage.com');
     expect(upload.uploadUrl).toContain('X-Amz-Signature=');
+    const signedUrl = new URL(upload.uploadUrl ?? '');
+    expect(signedUrl.searchParams.get('X-Amz-SignedHeaders')).toContain('content-length');
+    expect(signedUrl.searchParams.get('X-Amz-SignedHeaders')).toContain('content-type');
   });
 
   it('requires R2 credentials when R2 storage is configured without an injected client', () => {

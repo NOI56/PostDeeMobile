@@ -1,4 +1,4 @@
-import type { Response, Router } from 'express';
+import type { Request, Response, Router } from 'express';
 
 import { StorePurchaseVerificationError } from './storePurchaseService.js';
 
@@ -52,6 +52,16 @@ const readNumberOrString = (value: unknown) => {
   }
 
   return undefined;
+};
+
+const readAuthorizationToken = (request: Request) => {
+  const authorization = readString(request.headers.authorization);
+
+  if (!authorization?.startsWith('Bearer ')) {
+    return undefined;
+  }
+
+  return authorization.slice('Bearer '.length).trim();
 };
 
 const decodePubSubData = (body: unknown) => {
@@ -199,9 +209,28 @@ export const registerStoreNotificationRoutes = (
   handler: StoreNotificationHandler,
   options: {
     appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
+    googlePlayNotificationAuthToken?: string;
   } = {}
 ) => {
   router.post('/billing/google-play/notifications', async (request, response) => {
+    if (!options.googlePlayNotificationAuthToken) {
+      response.status(501).json({
+        status: 'error',
+        code: 'GOOGLE_PLAY_NOTIFICATION_AUTH_NOT_CONFIGURED',
+        message: 'Google Play notification authorization token is not configured'
+      });
+      return;
+    }
+
+    if (readAuthorizationToken(request) !== options.googlePlayNotificationAuthToken) {
+      response.status(401).json({
+        status: 'error',
+        code: 'GOOGLE_PLAY_NOTIFICATION_UNAUTHORIZED',
+        message: 'Google Play notification authorization is invalid'
+      });
+      return;
+    }
+
     try {
       const event = readGooglePlayNotificationEvent(request.body);
       await handler.handle(event);

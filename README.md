@@ -127,11 +127,12 @@ Request:
 
 Response includes `upload.videoS3Key`, the existing legacy field name for the temporary object key that can be passed to `POST /posts`. New upload keys are scoped to the authenticated user, for example `uploads/<user-id>/<upload-id>/<file>`.
 When `width` and `height` are provided, the backend validates that the metadata describes a vertical 9:16 video, such as `1080x1920`.
+The backend rejects uploads above `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB). When `VIDEO_STORAGE=r2`, the signed `PUT` URL also signs the declared content length and content type.
 When `VIDEO_STORAGE=r2` or `VIDEO_STORAGE=s3`, the response also includes `upload.uploadUrl`, `upload.uploadMethod`, `upload.uploadHeaders`, and `upload.uploadExpiresAt`. The mobile app should upload the video file to `uploadUrl` before creating the post.
 
 #### `POST /captions/generate`
 
-Generates a local Thai affiliate caption template from 1 or 2 keywords. This route requires a paid plan, either Starter or Pro.
+Generates a local Thai affiliate caption template from 1 or 2 keywords. This route requires a paid plan, either Starter or Pro, limits each keyword to 80 characters, and consumes the same monthly AI caption generation quota used by paid caption features.
 
 Current product direction: AI captioning should start from a selected real
 clip. Starter uses audio-only understanding, while Pro can combine audio with
@@ -149,9 +150,9 @@ Request:
 }
 ```
 
-Response includes `caption`, `hashtags`, and `[ใส่ลิงก์ Affiliate ที่นี่]`.
+Response includes `caption`, `hashtags`, `[ใส่ลิงก์ Affiliate ที่นี่]`, and the remaining monthly `quota`.
 
-If the authenticated user is Basic, the API returns `402` with code `PRO_REQUIRED`.
+If the authenticated user is Basic, the API returns `402` with code `PRO_REQUIRED`. If the monthly caption quota is exhausted, it returns `429` with code `AI_CAPTION_QUOTA_REACHED`.
 
 #### `POST /captions/generate-from-clip`
 
@@ -215,7 +216,7 @@ Create request:
 ```json
 {
   "caption": "ของดีต้องลอง #ของดีบอกต่อ",
-  "videoS3Key": "uploads/demo-video.mp4",
+  "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
   "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
   "subscriptionPlan": "PRO",
   "scheduledAt": "2026-06-02T10:00:00.000Z"
@@ -223,6 +224,7 @@ Create request:
 ```
 
 Response includes `post` and `publishJob`. If `scheduledAt` is present, the job status is `SCHEDULED`; otherwise it is `READY`.
+`videoS3Key` must come from `POST /uploads` for the same authenticated user; the backend rejects media keys owned by another user.
 Cloud Scheduling requires Starter or Pro. The `BASIC` scaffold path supports
 real-time posting only after phone verification and is limited to 3 post units
 per month. Starter is limited to 120 post units per month, and Pro is limited
@@ -386,7 +388,7 @@ Request:
 
 #### `POST /billing/google-play/notifications`
 
-Receives Google Play Real-time Developer Notifications through a Pub/Sub push payload. The scaffold decodes the Pub/Sub `message.data`, supports subscription, test, and voided purchase notifications, maps clear subscription events to local entitlement status, and returns an acknowledgement. It updates only subscriptions that were previously bound through `POST /billing/store/verify`.
+Receives Google Play Real-time Developer Notifications through a Pub/Sub push payload. The endpoint requires `Authorization: Bearer <GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN>`, decodes the Pub/Sub `message.data`, supports subscription, test, and voided purchase notifications, maps clear subscription events to local entitlement status, and returns an acknowledgement. It updates only subscriptions that were previously bound through `POST /billing/store/verify`.
 
 Current Google status mapping:
 
@@ -486,6 +488,7 @@ Queue/storage scaffold switches:
 - `GOOGLE_PLAY_PACKAGE_NAME` is the Android package name registered in Google Play Console.
 - `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_JSON` is the preferred production credential source for Android Publisher API OAuth.
 - `GOOGLE_PLAY_ACCESS_TOKEN` is a temporary scaffold access token fallback for Android Publisher API calls.
+- `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN` is required by the Google Play Real-time Developer Notifications endpoint.
 - `APPLE_APP_BUNDLE_ID` is the iOS bundle id registered in App Store Connect.
 - `APPLE_APP_STORE_ISSUER_ID`, `APPLE_APP_STORE_KEY_ID`, and `APPLE_APP_STORE_PRIVATE_KEY` are used to sign App Store Server API JWTs.
 - `APPLE_APP_STORE_ROOT_CERTIFICATES_BASE64` is a comma-separated list of DER root certificates encoded as base64 for Apple's signed transaction verifier.
@@ -501,12 +504,14 @@ Queue/storage scaffold switches:
   retry jobs for posts already `PUBLISHING`, `PUBLISHED`,
   `PARTIAL_PUBLISHED`, or `FAILED` are skipped. Scheduled jobs whose `runAt`
   no longer matches the post's current `scheduledAt` are also skipped.
-- `SOCIAL_PUBLISHER=mock` keeps publishing safe for local development; `SOCIAL_PUBLISHER=postpeer` calls PostPeer for real posting and requires `POSTPEER_API_KEY`, `VIDEO_STORAGE=r2|s3`, and the selected platform's PostPeer account id.
-- `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`, `POSTPEER_INSTAGRAM_ACCOUNT_ID`, and `POSTPEER_FACEBOOK_ACCOUNT_ID` are PostPeer integration ids from `/v1/connect/integrations`, not usernames or channel handles.
+- `SOCIAL_PUBLISHER=mock` keeps publishing safe for local development; `SOCIAL_PUBLISHER=postpeer` calls PostPeer and requires `POSTPEER_API_KEY` plus `VIDEO_STORAGE=r2|s3`.
+- `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`, `POSTPEER_INSTAGRAM_ACCOUNT_ID`, and `POSTPEER_FACEBOOK_ACCOUNT_ID` are non-production/operator smoke-test integration ids only. Production rejects them and must publish through per-user social connections.
 - `VIDEO_STORAGE=mock` creates mock S3-style upload keys and mock read placeholders; `VIDEO_STORAGE=r2` uses Cloudflare R2 through the S3-compatible API for signed upload and signed download access; `VIDEO_STORAGE=s3` remains available as a legacy AWS S3 path.
 - `CLOUDFLARE_R2_BUCKET`, `CLOUDFLARE_R2_ACCOUNT_ID`, `CLOUDFLARE_R2_ACCESS_KEY_ID`, and `CLOUDFLARE_R2_SECRET_ACCESS_KEY` configure R2 uploads.
 - `CLOUDFLARE_R2_ENDPOINT` can override the default `https://<accountId>.r2.cloudflarestorage.com` endpoint when needed.
 - `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS=900` controls how long R2 signed upload URLs remain usable.
+- `UPLOAD_MAX_SIZE_BYTES=524288000` controls the maximum declared upload size accepted by `POST /uploads`.
+- `RATE_LIMIT_WINDOW_MS=60000` and `RATE_LIMIT_MAX_REQUESTS=300` cap requests per IP per window; exceeding the cap returns `429` with code `RATE_LIMIT_EXCEEDED` (`GET /health` is exempt).
 - `AWS_S3_UPLOAD_EXPIRES_SECONDS=900` controls how long legacy S3 signed upload URLs remain usable.
 - `CAPTION_PROVIDER=mock` uses the local Thai template; `CAPTION_PROVIDER=gemini` calls Gemini with `GEMINI_CAPTION_MODEL` and `GEMINI_API_KEY`; `CAPTION_PROVIDER=openai` remains available as a legacy path.
 - `TRANSCRIPTION_PROVIDER=mock` uses the local Thai transcript for AI caption language detection and AI editing; `TRANSCRIPTION_PROVIDER=groq` calls Groq with `GROQ_TRANSCRIPTION_MODEL` and `GROQ_API_KEY`; `TRANSCRIPTION_PROVIDER=openai` remains available as a legacy path.
@@ -524,4 +529,4 @@ See `ROADMAP.md` for the build roadmap. It includes the current Phase 1 core app
 
 ## Current Limits
 
-This is scaffolding only. The current backend uses mock-safe implementations and in-memory stores by default, with optional Prisma persistence for real-clip AI caption usage. PostPeer publishing is wired behind `SOCIAL_PUBLISHER=postpeer`, but it should stay on `mock` until connected account ids are present and a real provider-level publish test is approved. Production real-clip audio/frame understanding, Pro Groq Whisper auto editing, and full database persistence are not verified for production yet. Real-clip AI captioning can now reuse the configured transcription provider for spoken-language detection, but still needs R2/Groq provider-level testing with real clips before production use. Firebase ID token verification exists for `AUTH_PROVIDER=firebase`, and the mobile app has a token handoff plus Firebase/Google auth gateway, but it still needs mobile device testing before production use. The backend now has a RevenueCat webhook foundation for Starter and Pro entitlements, and the mobile app has a `purchases_flutter` gateway behind `ENABLE_REVENUECAT_BILLING=true`; production still needs real App Store / Google Play products, real platform RevenueCat SDK keys, sandbox/device purchase testing, and renewal/refund/cancel event verification. The legacy direct Apple/Google store verifier remains available as a scaffold, not the preferred production path. BullMQ, R2, Gemini, Groq, PostPeer, RevenueCat, and Firebase auth still need provider-level integration testing before production use.
+This is scaffolding only. The current backend uses mock-safe implementations and in-memory stores by default, with optional Prisma persistence for real-clip AI caption usage. PostPeer publishing is wired behind `SOCIAL_PUBLISHER=postpeer`, but production rejects shared `POSTPEER_*_ACCOUNT_ID` values and should only publish after per-user social connections are implemented and a real provider-level publish test is approved. Production real-clip audio/frame understanding, Pro Groq Whisper auto editing, and full database persistence are not verified for production yet. Real-clip AI captioning can now reuse the configured transcription provider for spoken-language detection, but still needs R2/Groq provider-level testing with real clips before production use. Firebase ID token verification exists for `AUTH_PROVIDER=firebase`, and the mobile app has a token handoff plus Firebase/Google auth gateway, but it still needs mobile device testing before production use. The backend now has a RevenueCat webhook foundation for Starter and Pro entitlements, and the mobile app has a `purchases_flutter` gateway behind `ENABLE_REVENUECAT_BILLING=true`; production still needs real App Store / Google Play products, real platform RevenueCat SDK keys, sandbox/device purchase testing, and renewal/refund/cancel event verification. The legacy direct Apple/Google store verifier remains available as a scaffold, not the preferred production path. BullMQ, R2, Gemini, Groq, PostPeer, RevenueCat, and Firebase auth still need provider-level integration testing before production use.

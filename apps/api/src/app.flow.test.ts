@@ -60,6 +60,7 @@ describe('PostDee mock publishing flow', () => {
 
     const uploadResponse = await request(app)
       .post('/uploads')
+      .set('x-postdee-user-id', 'seller-basic-flow')
       .send({
         fileName: 'basic launch.mp4',
         contentType: 'video/mp4',
@@ -116,6 +117,7 @@ describe('PostDee mock publishing flow', () => {
 
     const uploadResponse = await request(app)
       .post('/uploads')
+      .set('x-postdee-user-id', userId)
       .send({
         fileName: 'pro scheduled launch.mp4',
         contentType: 'video/mp4',

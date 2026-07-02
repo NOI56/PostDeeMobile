@@ -40,7 +40,7 @@ The backend currently supports safe scaffold flows for:
 - Store subscription verification scaffold for Apple App Store and Google Play
 - Store server notification routes for renewal, cancel, refund, and grace-period handoff
 
-The backend does not yet publish to TikTok, YouTube Shorts, Instagram Reels, or Facebook Reels in production until PostPeer connected account ids are configured and a controlled provider test is approved.
+The backend must not publish to TikTok, YouTube Shorts, Instagram Reels, or Facebook Reels through shared PostPeer account ids in production. Production publishing requires per-user social connections plus a controlled provider test.
 
 ## Authentication
 
@@ -185,9 +185,9 @@ Request:
 Validation:
 
 - `fileName` is required.
-- `contentType` must start with `video/`.
-- `sizeBytes` must be positive.
-- If `width` and `height` are provided, the video must be vertical 9:16 within a 2 percent tolerance.
+- `contentType` must start with `video/` or `image/`.
+- `sizeBytes` must be positive and no larger than `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
+- If `width` and `height` are provided, the media must be vertical 9:16 within a 2 percent tolerance.
 
 Mock response:
 
@@ -222,6 +222,8 @@ R2 or S3 response may also include:
 }
 ```
 
+The bundled R2 signed `PUT` URL signs `Content-Type` and `Content-Length` so the uploaded object must match the declared metadata. Clients should upload the same file whose byte length was sent as `sizeBytes`.
+
 ## Posts
 
 Supported platform values:
@@ -255,7 +257,7 @@ Request:
 ```json
 {
   "caption": "Try this product today. #PostDee",
-  "videoS3Key": "uploads/upload-id/demo-video.mp4",
+  "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
   "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
   "scheduledAt": "2026-06-06T10:00:00.000Z"
 }
@@ -264,6 +266,7 @@ Request:
 Rules:
 
 - `caption`, `videoS3Key`, and at least one valid platform are required.
+- `videoS3Key` must be an upload key owned by the authenticated user, using the `uploads/<user-id>/<upload-id>/<file>` shape returned by `POST /uploads`.
 - If `scheduledAt` is present, the user must be Starter or Pro.
 - Basic users must have a verified phone number before using the free quota.
 - Basic is limited to 3 post units per month after phone verification.
@@ -377,7 +380,9 @@ Success response:
 
 Generates a Thai affiliate-style caption from 1 or 2 keywords.
 
-Requires Starter or Pro.
+Requires Starter or Pro. Each keyword must be 80 characters or fewer. Successful
+generations reserve one monthly AI caption generation from the Starter/Pro
+quota; quota exhaustion returns `429` with code `AI_CAPTION_QUOTA_REACHED`.
 
 Current note: this endpoint is still the legacy prompt/keyword caption
 scaffold. New UI should prefer `POST /captions/generate-from-clip` after a
@@ -400,7 +405,12 @@ Response:
   "caption": "Generated caption text",
   "hashtags": ["#PostDee", "#Affiliate"],
   "affiliateLinkPlaceholder": "[Affiliate link placeholder]",
-  "model": "gemini-2.5-flash-lite"
+  "model": "gemini-2.5-flash-lite",
+  "quota": {
+    "limit": 50,
+    "usedThisMonth": 1,
+    "remainingThisMonth": 49
+  }
 }
 ```
 
@@ -571,7 +581,10 @@ All `/ai-edits/*` endpoints require auth and the `PRO` plan (otherwise `402` wit
 ### `POST /ai-edits/transcribe`
 
 Transcribes an uploaded clip (Thai). Meters usage against a monthly minute quota
-(`200` min); returns `402` `AI_EDIT_QUOTA_EXCEEDED` when exhausted. Request:
+(`200` min); returns `402` `AI_EDIT_QUOTA_EXCEEDED` when exhausted. The client
+`durationSeconds` is only a pre-check estimate; the backend reserves the actual
+transcribed minutes before returning success so concurrent requests cannot push
+usage past the configured store limit. Request:
 `{ "videoS3Key": "uploads/clip.mp4", "durationSeconds": 18 }`. Response includes
 `transcript` (text, language, durationSeconds, segments[]) and `quota`.
 
@@ -592,16 +605,16 @@ Request (one of `styleId` or `prompt` is required):
 ```json
 {
   "styleId": "flash_sale",
-  "prompt": "ตัดคำหยาบออกแล้วเหลือ 15 วิ",
+  "prompt": "เธ•เธฑเธ”เธเธณเธซเธขเธฒเธเธญเธญเธเนเธฅเนเธงเน€เธซเธฅเธทเธญ 15 เธงเธด",
   "durationSeconds": 30,
-  "segments": [{ "text": "ราคา 99 บาท", "start": 3, "end": 6 }]
+  "segments": [{ "text": "เธฃเธฒเธเธฒ 99 เธเธฒเธ—", "start": 3, "end": 6 }]
 }
 ```
 
-- `styleId` — a mobile edit-style id (e.g. `flash_sale`, `qa`, `before_after`,
+- `styleId` โ€” a mobile edit-style id (e.g. `flash_sale`, `qa`, `before_after`,
   `tutorial`, `comedy`); keeps keyword-relevant segments, cuts the rest.
-- `prompt` — free-form Thai instruction. The mock understands a target length
-  ("เหลือ 45 วิ") and profanity removal ("ตัดคำหยาบ").
+- `prompt` โ€” free-form Thai instruction. The mock understands a target length
+  ("เน€เธซเธฅเธทเธญ 45 เธงเธด") and profanity removal ("เธ•เธฑเธ”เธเธณเธซเธขเธฒเธ").
 
 Response:
 
@@ -610,7 +623,7 @@ Response:
   "status": "ok",
   "plan": {
     "cuts": [{ "start": 10, "end": 12 }, { "start": 17, "end": 30 }],
-    "summary": "ตัดคำหยาบ · ย่อเหลือ ~15 วิ",
+    "summary": "เธ•เธฑเธ”เธเธณเธซเธขเธฒเธ ยท เธขเนเธญเน€เธซเธฅเธทเธญ ~15 เธงเธด",
     "model": "mock-rule"
   }
 }
@@ -934,6 +947,8 @@ preferred production billing path is RevenueCat.
 
 Receives Google Play Real-time Developer Notifications through a Pub/Sub push payload.
 
+Requires `Authorization: Bearer <GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN>`.
+
 Supported scaffold event types:
 
 - `subscriptionNotification`
@@ -1045,6 +1060,9 @@ PostgreSQL.
 | `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | `...` | R2 S3-compatible secret access key |
 | `CLOUDFLARE_R2_ENDPOINT` | `https://<account>.r2.cloudflarestorage.com` | Optional custom R2 endpoint |
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `900` | Signed upload URL lifetime |
+| `UPLOAD_MAX_SIZE_BYTES` | `524288000` | Maximum declared upload size accepted by `POST /uploads` |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Per-IP rate limit window in milliseconds |
+| `RATE_LIMIT_MAX_REQUESTS` | `300` | Max requests per IP per window; exceeding returns `429` with code `RATE_LIMIT_EXCEEDED` (`GET /health` is exempt) |
 | `AWS_REGION` | `ap-southeast-1` | Legacy S3 region |
 | `AWS_S3_BUCKET` | `postdee-video-temp` | Legacy S3 bucket |
 | `AWS_S3_UPLOAD_EXPIRES_SECONDS` | `900` | Legacy S3 signed upload URL lifetime |
@@ -1071,6 +1089,7 @@ PostgreSQL.
 | `GOOGLE_PLAY_PACKAGE_NAME` | `com.postdee` | Android package name |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_JSON` | `{...}` | Google Play verifier service account JSON |
 | `GOOGLE_PLAY_ACCESS_TOKEN` | `...` | Optional Google Play access token |
+| `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN` | `...` | Bearer token required by the Google Play RTDN endpoint |
 | `APPLE_APP_BUNDLE_ID` | `com.postdee` | iOS bundle id |
 | `APPLE_APP_STORE_ISSUER_ID` | `...` | App Store Server API issuer id |
 | `APPLE_APP_STORE_KEY_ID` | `...` | App Store Server API key id |
@@ -1087,18 +1106,17 @@ PostgreSQL.
 | `SOCIAL_PUBLISHER` | `mock`, `postpeer` | Social publishing adapter |
 | `POSTPEER_API_KEY` | `...` | PostPeer API key for real social publishing |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | Optional PostPeer API host override |
-| `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | PostPeer integration id for TikTok publishing |
-| `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | PostPeer integration id for YouTube Shorts publishing |
-| `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | PostPeer integration id for Instagram Reels publishing |
-| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | PostPeer integration id for Facebook Reels publishing |
+| `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | Non-production/operator smoke-test PostPeer TikTok integration id; forbidden in production |
+| `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | Non-production/operator smoke-test PostPeer YouTube Shorts integration id; forbidden in production |
+| `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | Non-production/operator smoke-test PostPeer Instagram Reels integration id; forbidden in production |
+| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Non-production/operator smoke-test PostPeer Facebook Reels integration id; forbidden in production |
 | `MOCK_USER_ID` | `local-dev-user` | Default mock user id |
 
 ## Production Gaps
 
 The following work is still required before production launch:
 
-- Connect PostPeer social accounts and add the integration ids before setting
-  `SOCIAL_PUBLISHER=postpeer`.
+- Implement per-user PostPeer social connections before enabling production user publishing; do not use shared `POSTPEER_*_ACCOUNT_ID` values in production.
 - Store social access tokens securely only if direct platform APIs replace the
   PostPeer provider later.
 - Complete provider-level R2 upload and cleanup testing.
@@ -1118,4 +1136,5 @@ The following work is still required before production launch:
 - Add full RevenueCat renewal, cancel, refund, billing-issue, and notification
   replay coverage.
 - Replace mock analytics with real platform analytics fetchers.
-- Add rate limits, audit logging, and production monitoring.
+- Add audit logging and production monitoring (per-IP rate limiting is live via
+  `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS`).

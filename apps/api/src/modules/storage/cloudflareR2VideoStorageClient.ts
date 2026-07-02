@@ -27,16 +27,24 @@ export const createCloudflareR2VideoStorageClient = ({
   });
 
   return {
-    createPresignedUploadUrl: async ({ bucket, key, contentType, expiresInSeconds }) =>
+    createPresignedUploadUrl: async ({
+      bucket,
+      key,
+      contentType,
+      sizeBytes,
+      expiresInSeconds
+    }) =>
       getSignedUrl(
         client,
         new PutObjectCommand({
           Bucket: bucket,
           Key: key,
-          ContentType: contentType
+          ContentType: contentType,
+          ContentLength: sizeBytes
         }),
         {
-          expiresIn: expiresInSeconds
+          expiresIn: expiresInSeconds,
+          signableHeaders: new Set(['content-length', 'content-type'])
         }
       ),
     createPresignedDownloadUrl: async ({ bucket, key, expiresInSeconds }) =>

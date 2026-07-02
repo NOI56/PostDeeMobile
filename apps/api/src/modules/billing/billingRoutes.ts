@@ -67,14 +67,19 @@ const buildSubscriptionStatus = ({
 
 type BillingRoutesConfig = Pick<
   ServerConfig,
-  'nodeEnv' | 'billingProvider' | 'storeStarterMonthlyProductId' | 'storeProMonthlyProductId'
+  | 'nodeEnv'
+  | 'billingProvider'
+  | 'storeStarterMonthlyProductId'
+  | 'storeProMonthlyProductId'
+  | 'googlePlayNotificationAuthToken'
 >;
 
 const defaultBillingRoutesConfig: BillingRoutesConfig = {
   nodeEnv: 'development',
   billingProvider: 'mock',
   storeStarterMonthlyProductId: 'postdee_starter_monthly',
-  storeProMonthlyProductId: 'postdee_pro_monthly'
+  storeProMonthlyProductId: 'postdee_pro_monthly',
+  googlePlayNotificationAuthToken: undefined
 };
 
 type StorePurchaseRequestResult =
@@ -371,7 +376,8 @@ export const registerBillingRoutes = (
     router,
     createStoreNotificationSubscriptionHandler({ subscriptionStore }),
     {
-      appleSignedNotificationDecoder: options.appleSignedNotificationDecoder
+      appleSignedNotificationDecoder: options.appleSignedNotificationDecoder,
+      googlePlayNotificationAuthToken: config.googlePlayNotificationAuthToken
     }
   );
 };

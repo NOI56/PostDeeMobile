@@ -20,6 +20,9 @@ describe('readServerConfig', () => {
       cloudflareR2SecretAccessKey: undefined,
       cloudflareR2Endpoint: undefined,
       cloudflareR2UploadExpiresSeconds: 900,
+      uploadMaxSizeBytes: 524_288_000,
+      rateLimitWindowMs: 60_000,
+      rateLimitMaxRequests: 300,
       openAiApiKey: undefined,
       groqApiKey: undefined,
       geminiApiKey: undefined,
@@ -34,6 +37,7 @@ describe('readServerConfig', () => {
       googlePlayPackageName: undefined,
       googlePlayServiceAccountKeyJson: undefined,
       googlePlayAccessToken: undefined,
+      googlePlayNotificationAuthToken: undefined,
       appleAppBundleId: undefined,
       appleAppStoreIssuerId: undefined,
       appleAppStoreKeyId: undefined,
@@ -77,7 +81,7 @@ describe('readServerConfig', () => {
   it('reads configured service values from the environment', () => {
     const config = readServerConfig({
       PORT: '4500',
-      NODE_ENV: 'production',
+      NODE_ENV: 'development',
       DATABASE_URL: 'postgresql://user:pass@localhost:5432/postdee',
       REDIS_URL: 'redis://redis:6379',
       AWS_REGION: 'ap-southeast-7',
@@ -89,6 +93,9 @@ describe('readServerConfig', () => {
       CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'cloudflare-secret-key',
       CLOUDFLARE_R2_ENDPOINT: 'https://custom-r2-endpoint.local',
       CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS: '1500',
+      UPLOAD_MAX_SIZE_BYTES: '123456789',
+      RATE_LIMIT_WINDOW_MS: '30000',
+      RATE_LIMIT_MAX_REQUESTS: '50',
       OPENAI_API_KEY: 'openai-key',
       GROQ_API_KEY: 'groq-key',
       GEMINI_API_KEY: 'gemini-key',
@@ -98,6 +105,7 @@ describe('readServerConfig', () => {
       GOOGLE_PLAY_PACKAGE_NAME: 'com.postdee',
       GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_JSON: '{"client_email":"play@example.com"}',
       GOOGLE_PLAY_ACCESS_TOKEN: 'google-play-access-token',
+      GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN: 'google-play-notification-token',
       APPLE_APP_BUNDLE_ID: 'com.postdee',
       APPLE_APP_STORE_ISSUER_ID: 'apple-issuer-id',
       APPLE_APP_STORE_KEY_ID: 'apple-key-id',
@@ -132,7 +140,7 @@ describe('readServerConfig', () => {
 
     expect(config).toMatchObject({
       port: 4500,
-      nodeEnv: 'production',
+      nodeEnv: 'development',
       databaseUrl: 'postgresql://user:pass@localhost:5432/postdee',
       redisUrl: 'redis://redis:6379',
       awsRegion: 'ap-southeast-7',
@@ -144,6 +152,9 @@ describe('readServerConfig', () => {
       cloudflareR2SecretAccessKey: 'cloudflare-secret-key',
       cloudflareR2Endpoint: 'https://custom-r2-endpoint.local',
       cloudflareR2UploadExpiresSeconds: 1500,
+      uploadMaxSizeBytes: 123456789,
+      rateLimitWindowMs: 30000,
+      rateLimitMaxRequests: 50,
       openAiApiKey: 'openai-key',
       groqApiKey: 'groq-key',
       geminiApiKey: 'gemini-key',
@@ -153,6 +164,7 @@ describe('readServerConfig', () => {
       googlePlayPackageName: 'com.postdee',
       googlePlayServiceAccountKeyJson: '{"client_email":"play@example.com"}',
       googlePlayAccessToken: 'google-play-access-token',
+      googlePlayNotificationAuthToken: 'google-play-notification-token',
       appleAppBundleId: 'com.postdee',
       appleAppStoreIssuerId: 'apple-issuer-id',
       appleAppStoreKeyId: 'apple-key-id',
@@ -259,6 +271,23 @@ describe('readServerConfig', () => {
       revenueCatStarterProductId: 'postdee_starter_monthly',
       revenueCatProProductId: 'postdee_pro_monthly'
     });
+  });
+
+  it('rejects shared PostPeer account ids in production', () => {
+    expect(() =>
+      readServerConfig({
+        NODE_ENV: 'production',
+        AUTH_PROVIDER: 'firebase',
+        FIREBASE_PROJECT_ID: 'postdee-prod',
+        BILLING_PROVIDER: 'revenuecat',
+        REVENUECAT_WEBHOOK_AUTH_TOKEN: 'revenuecat-webhook-token',
+        SOCIAL_PUBLISHER: 'postpeer',
+        POSTPEER_API_KEY: 'postpeer-key',
+        POSTPEER_TIKTOK_ACCOUNT_ID: 'shared-postpeer-tiktok',
+        VIDEO_STORAGE: 'r2',
+        CLOUDFLARE_R2_BUCKET: 'postdee-r2-temp'
+      })
+    ).toThrow('POSTPEER_*_ACCOUNT_ID cannot be used in production; use user-owned social connections instead');
   });
 
   it('requires a RevenueCat webhook token in production RevenueCat billing mode', () => {
@@ -370,6 +399,24 @@ describe('readServerConfig', () => {
   it('rejects invalid AWS_S3_UPLOAD_EXPIRES_SECONDS values', () => {
     expect(() => readServerConfig({ AWS_S3_UPLOAD_EXPIRES_SECONDS: '0' })).toThrow(
       'AWS_S3_UPLOAD_EXPIRES_SECONDS must be a positive number'
+    );
+  });
+
+  it('rejects invalid UPLOAD_MAX_SIZE_BYTES values', () => {
+    expect(() => readServerConfig({ UPLOAD_MAX_SIZE_BYTES: '0' })).toThrow(
+      'UPLOAD_MAX_SIZE_BYTES must be a positive number'
+    );
+  });
+
+  it('rejects invalid RATE_LIMIT_WINDOW_MS values', () => {
+    expect(() => readServerConfig({ RATE_LIMIT_WINDOW_MS: '0' })).toThrow(
+      'RATE_LIMIT_WINDOW_MS must be a positive number'
+    );
+  });
+
+  it('rejects invalid RATE_LIMIT_MAX_REQUESTS values', () => {
+    expect(() => readServerConfig({ RATE_LIMIT_MAX_REQUESTS: '-5' })).toThrow(
+      'RATE_LIMIT_MAX_REQUESTS must be a positive number'
     );
   });
 

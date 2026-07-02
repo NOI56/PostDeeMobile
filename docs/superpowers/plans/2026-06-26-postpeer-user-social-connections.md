@@ -4,7 +4,7 @@
 
 **Goal:** Add user-owned PostPeer social account connections so each authenticated PostDee user publishes to their own connected social accounts.
 
-**Architecture:** Add a `SocialConnection` store backed by Prisma in production and memory in tests/local development. Authenticated API routes create PostPeer connect links, receive provider callbacks, and expose connection status to the mobile app. The publish worker resolves the PostPeer account id from the post owner's stored connection before falling back to operator env account ids.
+**Architecture:** Add a `SocialConnection` store backed by Prisma in production and memory in tests/local development. Authenticated API routes create PostPeer connect links, receive provider callbacks, and expose connection status to the mobile app. The publish worker resolves the PostPeer account id from the post owner's stored connection; operator env account ids are allowed only for non-production smoke tests.
 
 **Tech Stack:** Express, TypeScript, Vitest, Prisma, Flutter, Dart, url_launcher, PostPeer API.
 
@@ -2099,7 +2099,7 @@ Keep `SOCIAL_PUBLISHER` unchanged until provider-level testing confirms real pos
 Document these facts in `README.md`, `API.md`, `ARCHITECTURE.md`, `ROADMAP.md`, `LAUNCH_CHECKLIST.md`, and `docs/GO_LIVE.md`:
 
 ```text
-PostPeer social publishing now supports user-owned social connections. The old POSTPEER_*_ACCOUNT_ID env vars remain as operator smoke-test fallback only. Production user publishing requires the /social-connections connect flow and PostPeer connect-link configuration.
+PostPeer social publishing now supports user-owned social connections. The old POSTPEER_*_ACCOUNT_ID env vars remain as non-production operator smoke-test fallback only. Production rejects shared env account ids and requires the /social-connections connect flow plus PostPeer connect-link configuration.
 ```
 
 Add the new API routes to `API.md`:

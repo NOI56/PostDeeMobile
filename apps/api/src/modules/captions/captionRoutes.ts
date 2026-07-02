@@ -69,6 +69,29 @@ const sendQuotaReachedResponse = ({
   });
 };
 
+const sendKeywordCaptionQuotaReachedResponse = ({
+  response,
+  plan,
+  limit,
+  usedThisMonth
+}: {
+  response: Response;
+  plan: Parameters<typeof readPlanLabel>[0];
+  limit: number;
+  usedThisMonth: number;
+}) => {
+  response.status(429).json({
+    status: 'error',
+    code: 'AI_CAPTION_QUOTA_REACHED',
+    message: `${readPlanLabel(plan)} is limited to ${limit} AI caption generations per month`,
+    quota: {
+      limit,
+      usedThisMonth,
+      remainingThisMonth: 0
+    }
+  });
+};
+
 const readCleanupKeys = ({
   videoS3Key,
   selectedFrameKeys,
@@ -114,7 +137,9 @@ export const registerCaptionRoutes = (
       return;
     }
 
-    if ((await subscriptionStore.getPlan(authUser)) === 'BASIC') {
+    const plan = await subscriptionStore.getPlan(authUser);
+
+    if (plan === 'BASIC') {
       response.status(402).json({
         status: 'error',
         code: 'PRO_REQUIRED',
@@ -129,6 +154,24 @@ export const registerCaptionRoutes = (
       response.status(400).json({
         status: 'error',
         message: validation.message
+      });
+      return;
+    }
+
+    const monthKey = readCurrentRealClipCaptionMonthKey();
+    const limit = monthlyAiCaptionGenerationLimits[plan];
+    const reservation = await realClipCaptionUsageStore.reserve({
+      userId: authUser.id,
+      monthKey,
+      limit
+    });
+
+    if (!reservation.ok) {
+      sendKeywordCaptionQuotaReachedResponse({
+        response,
+        plan,
+        limit,
+        usedThisMonth: reservation.usedThisMonth
       });
       return;
     }
@@ -152,7 +195,12 @@ export const registerCaptionRoutes = (
 
     response.json({
       status: 'ok',
-      ...caption
+      ...caption,
+      quota: {
+        limit,
+        usedThisMonth: reservation.usedThisMonth,
+        remainingThisMonth: Math.max(limit - reservation.usedThisMonth, 0)
+      }
     });
   });
 

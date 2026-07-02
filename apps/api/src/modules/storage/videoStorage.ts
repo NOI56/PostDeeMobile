@@ -42,6 +42,7 @@ export type S3VideoStorageClient = {
     bucket: string;
     key: string;
     contentType: string;
+    sizeBytes: number;
     expiresInSeconds: number;
   }) => Promise<string>;
   createPresignedDownloadUrl: (input: {
@@ -124,6 +125,7 @@ const createObjectVideoStorage = ({
       bucket,
       key: upload.videoS3Key,
       contentType: metadata.contentType,
+      sizeBytes: metadata.sizeBytes,
       expiresInSeconds: uploadExpiresSeconds
     });
 

@@ -5,6 +5,10 @@ const isPositiveNumber = (value: unknown): value is number =>
 
 const readOptionalPositiveNumber = (value: unknown) => (isPositiveNumber(value) ? value : undefined);
 
+type ReadUploadMetadataOptions = {
+  maxSizeBytes: number;
+};
+
 const isVerticalNineBySixteen = ({ width, height }: { width: number; height: number }) => {
   if (height <= width) {
     return false;
@@ -16,7 +20,7 @@ const isVerticalNineBySixteen = ({ width, height }: { width: number; height: num
   return Math.abs(height - expectedHeight) <= tolerance;
 };
 
-export const readUploadMetadata = (body: unknown) => {
+export const readUploadMetadata = (body: unknown, { maxSizeBytes }: ReadUploadMetadataOptions) => {
   const payload = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const fileName = typeof payload.fileName === 'string' ? payload.fileName.trim() : '';
   const contentType = typeof payload.contentType === 'string' ? payload.contentType.trim() : '';
@@ -32,6 +36,13 @@ export const readUploadMetadata = (body: unknown) => {
     return {
       ok: false as const,
       message: 'fileName, a video or image contentType, and positive sizeBytes are required'
+    };
+  }
+
+  if (sizeBytes > maxSizeBytes) {
+    return {
+      ok: false as const,
+      message: `File is larger than the configured upload limit of ${maxSizeBytes} bytes.`
     };
   }
 

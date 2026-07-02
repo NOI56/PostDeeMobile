@@ -59,20 +59,12 @@ services:
       - key: GROQ_API_KEY
         sync: false
       # --- Social posting: PostPeer ---
-      # Live: posts publish through PostPeer using the POSTPEER_*_ACCOUNT_ID
-      # operator accounts below. Until per-user social connections ship, every
-      # user posts to these same shared connected accounts.
+      # Production must not use shared POSTPEER_*_ACCOUNT_ID values. Real user
+      # publishing requires the per-user social connection flow; without one,
+      # PostPeer publish attempts fail closed instead of posting to an operator account.
       - key: SOCIAL_PUBLISHER
         value: postpeer
       - key: POSTPEER_API_KEY
-        sync: false
-      - key: POSTPEER_TIKTOK_ACCOUNT_ID
-        sync: false
-      - key: POSTPEER_YOUTUBE_ACCOUNT_ID
-        sync: false
-      - key: POSTPEER_INSTAGRAM_ACCOUNT_ID
-        sync: false
-      - key: POSTPEER_FACEBOOK_ACCOUNT_ID
         sync: false
       - key: AUTH_PROVIDER
         value: firebase
@@ -89,6 +81,8 @@ services:
       - key: BILLING_PROVIDER
         value: revenuecat
       - key: REVENUECAT_WEBHOOK_AUTH_TOKEN
+        sync: false
+      - key: GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN
         sync: false
       - key: REVENUECAT_STARTER_ENTITLEMENT_ID
         value: starter

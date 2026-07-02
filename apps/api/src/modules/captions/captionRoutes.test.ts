@@ -79,6 +79,101 @@ describe('caption routes', () => {
     });
   });
 
+  it('meters keyword captions against the monthly AI caption quota', async () => {
+    const userId = 'seller-keyword-caption-quota';
+    const generate = vi.fn(async () => ({
+      model: 'local-template' as const,
+      caption: 'Generated caption',
+      hashtags: ['#one'],
+      affiliateLinkPlaceholder: '[link]'
+    }));
+    const usageStore = {
+      countForMonth: vi.fn(async () => 0),
+      record: vi.fn(async () => ({
+        userId,
+        monthKey: '2026-06',
+        createdAt: '2026-06-25T00:00:00.000Z'
+      })),
+      reserve: vi.fn(async () => ({
+        ok: true as const,
+        usedThisMonth: 1,
+        record: {
+          userId,
+          monthKey: '2026-06',
+          createdAt: '2026-06-25T00:00:00.000Z'
+        }
+      }))
+    };
+    const appWithQuota = createApp({
+      captionGenerator: { generate },
+      realClipCaptionUsageStore: usageStore
+    });
+
+    const response = await request(appWithQuota)
+      .post('/captions/generate')
+      .set('x-postdee-user-id', userId)
+      .set('x-postdee-subscription-plan', 'STARTER')
+      .send({ keywords: ['skincare'] })
+      .expect(200);
+
+    expect(generate).toHaveBeenCalledWith(['skincare']);
+    expect(usageStore.reserve).toHaveBeenCalledWith({
+      userId,
+      monthKey: expect.any(String),
+      limit: 50
+    });
+    expect(response.body.quota).toEqual({
+      limit: 50,
+      usedThisMonth: 1,
+      remainingThisMonth: 49
+    });
+  });
+
+  it('rejects keyword captions when the monthly AI caption quota is exhausted', async () => {
+    const userId = 'seller-keyword-caption-over-quota';
+    const generate = vi.fn(async () => ({
+      model: 'local-template' as const,
+      caption: 'Generated caption',
+      hashtags: ['#one'],
+      affiliateLinkPlaceholder: '[link]'
+    }));
+    const usageStore = {
+      countForMonth: vi.fn(async () => 50),
+      record: vi.fn(async () => ({
+        userId,
+        monthKey: '2026-06',
+        createdAt: '2026-06-25T00:00:00.000Z'
+      })),
+      reserve: vi.fn(async () => ({
+        ok: false as const,
+        usedThisMonth: 50
+      }))
+    };
+    const appWithQuota = createApp({
+      captionGenerator: { generate },
+      realClipCaptionUsageStore: usageStore
+    });
+
+    const response = await request(appWithQuota)
+      .post('/captions/generate')
+      .set('x-postdee-user-id', userId)
+      .set('x-postdee-subscription-plan', 'STARTER')
+      .send({ keywords: ['skincare'] })
+      .expect(429);
+
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'AI_CAPTION_QUOTA_REACHED',
+      quota: {
+        limit: 50,
+        usedThisMonth: 50,
+        remainingThisMonth: 0
+      }
+    });
+    expect(generate).not.toHaveBeenCalled();
+    expect(usageStore.record).not.toHaveBeenCalled();
+  });
+
   it('rejects requests without one or two keywords', async () => {
     const response = await request(app)
       .post('/captions/generate')
@@ -90,6 +185,28 @@ describe('caption routes', () => {
       status: 'error',
       message: 'keywords must contain 1 or 2 non-empty values'
     });
+  });
+
+  it('rejects keyword captions with a keyword longer than 80 characters', async () => {
+    const generate = vi.fn(async () => ({
+      model: 'local-template' as const,
+      caption: 'Generated caption',
+      hashtags: ['#one'],
+      affiliateLinkPlaceholder: '[link]'
+    }));
+    const appWithGenerator = createApp({ captionGenerator: { generate } });
+
+    const response = await request(appWithGenerator)
+      .post('/captions/generate')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({ keywords: ['x'.repeat(81)] })
+      .expect(400);
+
+    expect(response.body).toEqual({
+      status: 'error',
+      message: 'keywords must be 80 characters or fewer'
+    });
+    expect(generate).not.toHaveBeenCalled();
   });
 
   it('generates a real-clip caption for Starter from audio only', async () => {

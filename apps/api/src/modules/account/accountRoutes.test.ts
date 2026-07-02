@@ -4,13 +4,15 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../../app.js';
 
 describe('account routes', () => {
+  const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
+    'uploads/' + encodeURIComponent(userId) + '/' + uploadId + '/' + fileName;
   const createPostAs = (app: ReturnType<typeof createApp>, userId: string) =>
     request(app)
       .post('/posts')
       .set('x-postdee-user-id', userId)
       .send({
         caption: 'ของดีบอกต่อ',
-        videoS3Key: 'uploads/demo.mp4',
+        videoS3Key: ownedUploadKey(userId, 'demo.mp4'),
         platforms: ['TIKTOK'],
         subscriptionPlan: 'PRO'
       })

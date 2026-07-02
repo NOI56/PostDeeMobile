@@ -5,6 +5,17 @@ export type AiEditUsageRecord = {
   createdAt: string;
 };
 
+export type AiEditUsageReservation =
+  | {
+      ok: true;
+      usedMinutes: number;
+      record: AiEditUsageRecord;
+    }
+  | {
+      ok: false;
+      usedMinutes: number;
+    };
+
 export type AiEditUsageStore = {
   sumMinutesForMonth: (input: {
     userId: string;
@@ -15,6 +26,12 @@ export type AiEditUsageStore = {
     monthKey: string;
     minutes: number;
   }) => Promise<AiEditUsageRecord>;
+  reserve: (input: {
+    userId: string;
+    monthKey: string;
+    minutes: number;
+    limit: number;
+  }) => Promise<AiEditUsageReservation>;
   // Hard-deletes every usage record owned by userId. Used by account deletion.
   // Optional because the Prisma store relies on the User cascade instead.
   deleteAllForUser?: (userId: string) => Promise<void>;
@@ -32,22 +49,48 @@ export const createInMemoryAiEditUsageStore = ({
   now?: () => string;
 } = {}): AiEditUsageStore => {
   const records: AiEditUsageRecord[] = [];
+  const sumMinutes = ({ userId, monthKey }: { userId: string; monthKey: string }) =>
+    records
+      .filter((record) => record.userId === userId && record.monthKey === monthKey)
+      .reduce((sum, record) => sum + record.minutes, 0);
+  const createRecord = ({
+    userId,
+    monthKey,
+    minutes
+  }: {
+    userId: string;
+    monthKey: string;
+    minutes: number;
+  }) => {
+    const record: AiEditUsageRecord = {
+      userId,
+      monthKey,
+      minutes,
+      createdAt: now()
+    };
+
+    records.push(record);
+    return record;
+  };
 
   return {
-    sumMinutesForMonth: async ({ userId, monthKey }) =>
-      records
-        .filter((record) => record.userId === userId && record.monthKey === monthKey)
-        .reduce((sum, record) => sum + record.minutes, 0),
-    record: async ({ userId, monthKey, minutes }) => {
-      const record: AiEditUsageRecord = {
-        userId,
-        monthKey,
-        minutes,
-        createdAt: now()
-      };
+    sumMinutesForMonth: async (input) => sumMinutes(input),
+    record: async ({ userId, monthKey, minutes }) => createRecord({ userId, monthKey, minutes }),
+    reserve: async ({ userId, monthKey, minutes, limit }) => {
+      const usedMinutes = sumMinutes({ userId, monthKey });
 
-      records.push(record);
-      return record;
+      if (usedMinutes + minutes > limit) {
+        return {
+          ok: false,
+          usedMinutes
+        };
+      }
+
+      return {
+        ok: true,
+        usedMinutes: usedMinutes + minutes,
+        record: createRecord({ userId, monthKey, minutes })
+      };
     },
     deleteAllForUser: async (userId) => {
       for (let index = records.length - 1; index >= 0; index -= 1) {

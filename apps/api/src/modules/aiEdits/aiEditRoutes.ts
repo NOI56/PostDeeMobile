@@ -9,6 +9,11 @@ import {
   readCurrentAiEditMonthKey,
   type AiEditUsageStore
 } from './aiEditUsageStore.js';
+import {
+  buildAiEditRecipe,
+  readAiEditCapabilities,
+  readAiEditRecipeSettings
+} from './aiEditRecipe.js';
 import type {
   EditPlanProvider,
   EditPlanSegment
@@ -211,6 +216,117 @@ export const registerAiEditRoutes = (
     });
   });
 
+  // Builds the UI-facing edit recipe in one call: transcript, cut suggestions,
+  // overlays, render hints, and capability status for the mobile FFmpeg editor.
+  router.post('/ai-edits/prepare', authMiddleware, async (request, response) => {
+    const authUser = readAuthUser(response.locals);
+
+    if (!authUser) {
+      response.status(401).json({
+        status: 'error',
+        message: 'Authenticated user is required'
+      });
+      return;
+    }
+
+    const videoS3Key = readRequiredString(request.body?.videoS3Key);
+
+    if (!videoS3Key) {
+      response.status(400).json({
+        status: 'error',
+        message: 'videoS3Key is required'
+      });
+      return;
+    }
+
+    const userPlan = await subscriptionStore.getPlan(authUser);
+
+    if (userPlan !== 'PRO') {
+      response.status(402).json({
+        status: 'error',
+        code: 'PRO_REQUIRED',
+        message: 'AI auto editing requires the Pro plan'
+      });
+      return;
+    }
+
+    if (!isStorageKeyOwnedByUser({ videoS3Key, userId: authUser.id })) {
+      sendForbiddenMediaKeyResponse(response);
+      return;
+    }
+
+    const estimatedDurationSeconds = readPositiveNumber(request.body?.durationSeconds) ?? 60;
+    const estimatedMinutes = Math.max(1, Math.ceil(estimatedDurationSeconds / 60));
+    const monthKey = readCurrentAiEditMonthKey();
+    const usedMinutes = await aiEditUsageStore.sumMinutesForMonth({
+      userId: authUser.id,
+      monthKey
+    });
+
+    if (usedMinutes + estimatedMinutes > aiEditMonthlyMinuteLimit) {
+      sendAiEditQuotaExceededResponse(response);
+      return;
+    }
+
+    let transcript;
+
+    try {
+      transcript = await transcriptionProvider.transcribe({ videoS3Key });
+    } catch (error) {
+      if (error instanceof MediaDownloadError) {
+        sendMediaDownloadErrorResponse(response, error);
+        return;
+      }
+
+      throw error;
+    }
+
+    const billedMinutes =
+      transcript.durationSeconds > 0
+        ? Math.ceil(transcript.durationSeconds / 60)
+        : estimatedMinutes;
+
+    const reservation = await aiEditUsageStore.reserve({
+      userId: authUser.id,
+      monthKey,
+      minutes: billedMinutes,
+      limit: aiEditMonthlyMinuteLimit
+    });
+
+    if (!reservation.ok) {
+      sendAiEditQuotaExceededResponse(response);
+      return;
+    }
+
+    const styleId = readRequiredString(request.body?.styleId);
+    const prompt = readRequiredString(request.body?.prompt);
+    const durationSeconds =
+      transcript.durationSeconds > 0 ? transcript.durationSeconds : estimatedDurationSeconds;
+    const editPlan =
+      styleId || prompt
+        ? await editPlanProvider.plan({
+            segments: transcript.segments,
+            durationSeconds,
+            styleId,
+            prompt
+          })
+        : undefined;
+
+    const recipe = buildAiEditRecipe({
+      transcript,
+      capabilities: readAiEditCapabilities(request.body?.capabilities),
+      settings: readAiEditRecipeSettings(request.body?.settings),
+      styleId,
+      prompt,
+      plan: editPlan
+    });
+
+    response.json({
+      status: 'ok',
+      recipe,
+      quota: buildQuota(reservation.usedMinutes)
+    });
+  });
   // Returns a structured cut plan for a style or a free-form prompt. Operates on
   // an already-transcribed clip, so it is Pro-gated but does not meter minutes.
   router.post('/ai-edits/plan', authMiddleware, async (request, response) => {

@@ -83,7 +83,9 @@ third-party accounts.
 
 ## 6. AI auto editing — Groq Whisper transcription
 
-Backend transcription is ready (`POST /ai-edits/transcribe`, Pro-gated). Local
+Backend transcription is ready (`POST /ai-edits/transcribe`, Pro-gated), and the
+UI-facing recipe endpoint is ready (`POST /ai-edits/prepare`, Pro-gated and
+minute-metered). Local
 defaults return a mock Thai transcript; the Render blueprint sets Groq providers
 and needs `GROQ_API_KEY` before real transcription tests.
 
@@ -94,7 +96,9 @@ and needs `GROQ_API_KEY` before real transcription tests.
 - Keep `VIDEO_STORAGE=r2` configured so the backend can create a signed download URL
   and pass the uploaded media bytes to Groq.
 
-Mobile flow is wired: the Edit tab picks a real clip, calls `/ai-edits/transcribe`,
+Mobile flow is wired: the Edit tab picks a real clip, can call
+`/ai-edits/transcribe` for captions or `/ai-edits/prepare` for the full UI
+capability recipe,
 and on export burns the transcript subtitles into the real clip on-device with
 FFmpeg (`subtitle_burn_video_processor.dart`) → a real subtitled MP4.
 
@@ -108,14 +112,17 @@ The render now also applies color presets + brightness/contrast (`eq`,
 `colorbalance`, `hue`) and centered text overlays (`drawtext` with the bundled
 Prompt font). Color grade is applied before subtitles so captions stay crisp.
 
-A per-minute Pro quota ledger is live: `POST /ai-edits/transcribe` meters
+A per-minute Pro quota ledger is live: `POST /ai-edits/transcribe` and
+`POST /ai-edits/prepare` meter
 minutes (200/month) and `GET /ai-edits/quota` reports usage; the Profile quota
 card reads it. The ledger persists when `AI_EDIT_USAGE_STORE=prisma` (add it to
 `.env` alongside the other `*_STORE=prisma` settings; default is memory). The
 `AiEditUsage` table migration is already applied.
 
 Still TODO for full AI editing: finer silence detection from Groq word
-timing (segment gaps are the conservative first pass); sticker image overlays;
+timing (segment gaps are the conservative first pass); turning planned recipe
+capabilities such as beat sync, auto-reframe, audio cleanup, SFX/music, and
+translation into real processors; sticker image overlays;
 real top-up purchase through RevenueCat; and verifying FFmpeg on real low-end devices.
 
 ## 7. Durable queue — Upstash Redis + BullMQ (optional)

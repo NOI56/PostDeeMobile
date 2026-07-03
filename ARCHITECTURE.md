@@ -393,23 +393,26 @@ sequenceDiagram
   participant W as Groq Whisper
   participant F as Mobile FFmpeg
 
-  M->>A: Request transcript for selected clip
+  M->>A: Request transcript or prepare recipe for selected clip
   A->>Sub: Check Pro plan and editing minutes
   alt User is Pro with minutes
     A->>W: Transcribe audio with word timestamps
     W-->>A: transcript + word timing
-    A-->>M: editable transcript data
-    M->>F: Burn subtitles / cut silence / export MP4
+    A-->>M: editable transcript data or mobile render recipe
+    M->>F: Burn subtitles / cut silence / overlays / export MP4
   else Basic or Starter
     A-->>M: 402 PRO_REQUIRED
   end
 ```
 
 This is planned for Pro. Backend handles auth, quota, temporary storage, and
-Groq Whisper transcription. The API pre-checks estimated duration, then reserves
+Groq Whisper transcription. `POST /ai-edits/prepare` combines the AI editing UI
+capability toggles, selected style/prompt, transcript, cut plan, overlay hints,
+and quota into one mobile render recipe. The API pre-checks estimated duration, then reserves
 actual transcribed minutes before a successful response so parallel requests do
 not exceed the monthly quota. Mobile handles subtitle editing, FFmpeg subtitle
-burn-in, silence cutting, watermarking where needed, and final MP4 export.
+burn-in, silence cutting, CTA/price/watermark overlays where supported, and
+final MP4 export.
 
 ## Analytics Flow
 

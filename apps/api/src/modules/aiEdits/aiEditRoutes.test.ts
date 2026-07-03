@@ -226,6 +226,101 @@ describe('ai edit routes', () => {
     expect(transcribe).not.toHaveBeenCalled();
   });
 
+  it('prepares a mobile render recipe from the AI editing UI capabilities', async () => {
+    const transcribe = vi.fn(async () => ({
+      text: 'ราคา 99 บาท ส่งฟรีวันนี้ กดตะกร้าได้เลย',
+      language: 'th',
+      durationSeconds: 65,
+      segments: [
+        { text: 'สวัสดีค่ะ', start: 0, end: 2 },
+        { text: 'ราคา 99 บาท ส่งฟรีวันนี้', start: 4, end: 7 },
+        { text: 'กดตะกร้าได้เลย', start: 10, end: 13 }
+      ],
+      words: [
+        { word: 'ราคา', start: 4, end: 4.4 },
+        { word: '99', start: 4.5, end: 4.8 },
+        { word: 'บาท', start: 4.9, end: 5.2 }
+      ],
+      model: 'test-whisper'
+    }));
+    const app = createApp({ transcriptionProvider: { transcribe } });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'ui-recipe.mp4'),
+        durationSeconds: 65,
+        styleId: 'flash_sale',
+        capabilities: {
+          subtitle: true,
+          silence: true,
+          filler: true,
+          hook: true,
+          beatsync: true,
+          reframe: true,
+          zoom: true,
+          color: true,
+          sfx: true,
+          audio: true,
+          translate: true,
+          pricetag: true,
+          cta: true,
+          watermark: true
+        },
+        settings: {
+          ctaText: 'กดตะกร้าเลย',
+          priceText: '99 บาท',
+          watermarkText: 'Meena Shop',
+          toneFilter: 'warm',
+          zoomLevel: 'medium'
+        }
+      })
+      .expect(200);
+
+    expect(response.body.status).toBe('ok');
+    expect(response.body.quota).toEqual({
+      limitMinutes: 200,
+      usedMinutes: 2,
+      remainingMinutes: 198
+    });
+    expect(response.body.recipe).toMatchObject({
+      version: 1,
+      status: 'ready',
+      renderMode: 'mobile-ffmpeg',
+      styleId: 'flash_sale',
+      transcript: {
+        text: 'ราคา 99 บาท ส่งฟรีวันนี้ กดตะกร้าได้เลย',
+        language: 'th',
+        durationSeconds: 65
+      },
+      subtitles: {
+        enabled: true,
+        segments: [
+          { text: 'สวัสดีค่ะ', start: 0, end: 2 },
+          { text: 'ราคา 99 บาท ส่งฟรีวันนี้', start: 4, end: 7 },
+          { text: 'กดตะกร้าได้เลย', start: 10, end: 13 }
+        ]
+      },
+      overlays: {
+        cta: { enabled: true, text: 'กดตะกร้าเลย', design: 'button' },
+        priceTag: { enabled: true, text: '99 บาท' },
+        watermark: { enabled: true, text: 'Meena Shop' }
+      },
+      renderHints: {
+        toneFilter: 'warm',
+        zoomLevel: 'medium'
+      }
+    });
+    expect(response.body.recipe.cutRanges).toContainEqual({ start: 0, end: 4 });
+    expect(response.body.recipe.cutRanges).toContainEqual({ start: 7, end: 65 });
+    expect(response.body.recipe.cutRanges).toContainEqual({ start: 2, end: 4 });
+    expect(response.body.recipe.capabilities.subtitle.state).toBe('applied');
+    expect(response.body.recipe.capabilities.silence.state).toBe('applied');
+    expect(response.body.recipe.capabilities.cta.state).toBe('hinted');
+    expect(response.body.recipe.capabilities.beatsync.state).toBe('planned');
+    expect(response.body.recipe.capabilities.translate.state).toBe('planned');
+  });
   it('returns a cut plan for a style', async () => {
     const app = createApp();
 
@@ -281,3 +376,4 @@ describe('ai edit routes', () => {
       .expect(400);
   });
 });
+

@@ -3,6 +3,8 @@
 > Status: mobile editing UI built as a **scaffold** (2026-06-17) in `apps/mobile/lib/features/ai_editing/`, on its own bottom-nav "ตัดต่อ" tab. The tab (`ai_editing_screen.dart`) is a thin entry that opens a single **unified CapCut-style editor** (`capcut_editor_screen.dart`): preview + timeline (trim handles, split, playhead) + a bottom tool bar mixing manual tools (trim, split, speed, volume, text, sticker, filter, adjust) with AI helpers (auto caption + silence-cut with per-segment toggles). The user chooses per tool — let AI cut/caption, or do it by hand. This extends beyond the original AI-auto scope (a general editor) because users are familiar with CapCut.
 >
 > Original plan name referenced Whisper-1. The current production direction is Groq `whisper-large-v3` for transcription, with the same quota ledger and mobile FFmpeg export flow.
+>
+> 2026-07-03 update: `POST /ai-edits/prepare` now turns the Claude Design AI editing UI toggles, style/prompt, transcript, cut suggestions, overlays, and render hints into a mobile FFmpeg recipe. Server-side video rendering remains out of scope.
 
 ## Goal
 
@@ -76,7 +78,7 @@ Mobile subtitle editor should support:
 - Store temporary media/audio in Cloudflare R2 or existing video storage adapter.
 - Send audio to Groq `whisper-large-v3`.
 - Save transcript result and usage.
-- Return transcript/timing data to mobile.
+- Return transcript/timing data or a UI-facing mobile render recipe to mobile.
 - Track quota minutes and top-up minutes.
 
 Backend should not render video in the first version. Rendering video server-side is intentionally out of scope to keep cost low.
@@ -127,7 +129,7 @@ These numbers are planning estimates. Before implementation or launch, verify cu
 
 - Add a mock transcription provider first.
 - Add Groq `whisper-large-v3` provider behind config.
-- Add API route such as `POST /ai-edits/transcribe`.
+- Add API routes such as `POST /ai-edits/transcribe` and `POST /ai-edits/prepare`.
 - Add quota checks for Pro and top-up minutes.
 - Add tests for Basic blocked, Pro allowed, quota exceeded, and failed transcription.
 

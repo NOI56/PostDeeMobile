@@ -94,7 +94,7 @@ The backend reads `phone_number` from the verified Firebase ID token and treats 
 | Cloud scheduling | No | Yes | Yes |
 | Calendar for scheduled posts | No | Yes | Yes |
 | AI caption from real clip | No | Audio-only, 50 generations/month scaffolded | Audio + selected frames, 120 generations/month scaffolded |
-| AI auto editing with Groq Whisper | No | No | 200 minutes/month planned |
+| AI auto editing with Groq Whisper | No | No | 200 minutes/month scaffolded |
 | AI audio review as a separate feature | No | No | No |
 | Unified Analytics | No | No | Yes |
 | Hashtag radar and AI comment center | No | No | Yes |
@@ -109,7 +109,7 @@ Important rules:
 - Starter users can post immediately, schedule posts, use the calendar, and use
   real-clip AI captioning from audio after a selected clip.
 - Pro users unlock analytics, hashtag radar, AI comment center, team/editor
-  access, visual-frame AI captioning, and planned Groq Whisper auto editing.
+  access, visual-frame AI captioning, and Groq Whisper auto editing scaffolds.
 - Prompt-only caption generation may still exist in the API while the app
   transitions, but it should not be the main paid package promise.
 - Secret provider keys must stay on the backend, never inside the Flutter app.
@@ -591,6 +591,69 @@ usage past the configured store limit. Request:
 ### `GET /ai-edits/quota`
 
 Reports `{ limitMinutes, usedMinutes, remainingMinutes }` for the current month.
+
+### `POST /ai-edits/prepare`
+
+Builds the UI-facing mobile render recipe for the AI editing screen. This is the
+backend contract for the Claude Design flow: the app sends the selected clip,
+chosen style/prompt, and capability toggles such as `subtitle`, `silence`,
+`filler`, `hook`, `zoom`, `color`, `cta`, `pricetag`, and `watermark`.
+
+This endpoint is Pro-gated and minute-metered like `/ai-edits/transcribe`: the
+client `durationSeconds` is a pre-check estimate, the backend transcribes the
+stored clip, then reserves the actual transcribed minutes before returning the
+recipe. It does **not** render video on the server; mobile still renders/export
+with FFmpeg.
+
+Request:
+
+```json
+{
+  "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
+  "durationSeconds": 65,
+  "styleId": "flash_sale",
+  "prompt": "เหลือ 45 วิ เน้นตอนพูดราคา",
+  "capabilities": {
+    "subtitle": true,
+    "silence": true,
+    "filler": true,
+    "hook": true,
+    "beatsync": true,
+    "reframe": true,
+    "zoom": true,
+    "color": true,
+    "sfx": true,
+    "audio": true,
+    "translate": true,
+    "pricetag": true,
+    "cta": true,
+    "watermark": true
+  },
+  "settings": {
+    "ctaText": "กดตะกร้าเลย",
+    "priceText": "99 บาท",
+    "watermarkText": "Meena Shop",
+    "toneFilter": "warm",
+    "zoomLevel": "medium"
+  }
+}
+```
+
+Response includes:
+
+- `recipe.renderMode: "mobile-ffmpeg"`
+- `recipe.transcript` with text, language, duration, segments, words, and model
+- `recipe.subtitles` for mobile subtitle burn-in
+- `recipe.cutRanges`, `silenceRanges`, and `fillerRanges`
+- `recipe.overlays` for CTA, price tag, and watermark hints
+- `recipe.renderHints` for hook, tone, and zoom settings
+- `recipe.capabilities`, where each requested UI capability is marked
+  `applied`, `hinted`, `planned`, or `skipped`
+- `quota` with `{ limitMinutes, usedMinutes, remainingMinutes }`
+
+Capabilities that need future audio/visual analysis, such as beat sync,
+auto-reframe, SFX/music choice, audio cleanup, and subtitle translation, are
+accepted in the recipe but marked `planned` so the UI can stay honest.
 
 ### `POST /ai-edits/plan`
 

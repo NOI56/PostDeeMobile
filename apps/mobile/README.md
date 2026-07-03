@@ -65,7 +65,8 @@ Android release builds also require a local signing key. Copy
 `android/key.properties.example` to `android/key.properties`, create or place the
 matching keystore file under `android/`, and keep both files out of Git. Missing
 `storeFile` means the production flags are valid, but the APK cannot be packaged
-for release until Android signing is configured.
+for release until Android signing is configured. See
+`../../docs/ANDROID_SIGNING_KEYS.md` for the safety checklist.
 
 ## Store Subscription
 

@@ -1,0 +1,7 @@
+# Copy this file to apps/mobile/android/key.properties for Android release builds.
+# Do not commit the real key.properties file or keystore.
+
+storePassword=replace-with-keystore-password
+keyPassword=replace-with-key-password
+keyAlias=upload
+storeFile=upload-keystore.jks

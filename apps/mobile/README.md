@@ -61,6 +61,12 @@ Build a release Android APK with the same production flags:
 powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-production.ps1 -Command build-apk
 ```
 
+Android release builds also require a local signing key. Copy
+`android/key.properties.example` to `android/key.properties`, create or place the
+matching keystore file under `android/`, and keep both files out of Git. Missing
+`storeFile` means the production flags are valid, but the APK cannot be packaged
+for release until Android signing is configured.
+
 ## Store Subscription
 
 The Home Starter/Pro CTAs can run in two modes:

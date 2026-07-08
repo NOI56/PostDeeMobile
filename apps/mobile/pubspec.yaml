@@ -34,6 +34,16 @@ flutter:
     - assets/images/brand/
     - assets/images/platforms/
   fonts:
+    - family: Anuphan
+      fonts:
+        - asset: assets/fonts/anuphan/Anuphan-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/anuphan/Anuphan-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/anuphan/Anuphan-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/anuphan/Anuphan-Bold.ttf
+          weight: 700
     - family: Prompt
       fonts:
         - asset: assets/fonts/prompt/Prompt-Regular.ttf

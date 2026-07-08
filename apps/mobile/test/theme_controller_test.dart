@@ -14,6 +14,15 @@ void main() {
     AppTheme.applyThemeMode(ThemeMode.dark);
   });
 
+  test('defaults to the Claude light theme when no preference exists', () {
+    final controller = PostDeeThemeController(
+      preferenceStore: const SharedPreferencesThemePreferenceStore(),
+    );
+    addTearDown(controller.dispose);
+
+    expect(controller.themeMode, ThemeMode.light);
+    expect(AppTheme.isLightMode, isTrue);
+  });
   test('loads a saved light theme from local preferences', () async {
     SharedPreferences.setMockInitialValues({
       SharedPreferencesThemePreferenceStore.themeModeKey: 'light',
@@ -35,14 +44,14 @@ void main() {
     );
     addTearDown(controller.dispose);
 
-    await controller.setThemeMode(ThemeMode.light);
+    await controller.setThemeMode(ThemeMode.dark);
 
     final preferences = await SharedPreferences.getInstance();
     expect(
       preferences.getString(
         SharedPreferencesThemePreferenceStore.themeModeKey,
       ),
-      'light',
+      'dark',
     );
   });
 }

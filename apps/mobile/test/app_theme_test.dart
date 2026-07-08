@@ -17,43 +17,47 @@ void main() {
     final theme = AppTheme.dark;
     final bodyStyle = theme.textTheme.bodyMedium;
 
-    expect(bodyStyle?.fontFamily, 'Prompt');
+    // Anuphan is the handoff design font; Prompt stays bundled as fallback.
+    expect(bodyStyle?.fontFamily, 'Anuphan');
+    expect(bodyStyle?.fontFamilyFallback, contains('Prompt'));
     expect(bodyStyle?.fontFamilyFallback, contains('Noto Sans Thai'));
   });
 
-  test('keeps panels on a quiet dark surface', () {
+  test('uses the Claude quiet dark surfaces', () {
     expect(
       AppTheme.panelGradient.colors,
       const [
-        Color(0xFF0E131D),
-        Color(0xFF080B12),
+        Color(0xFF19221D),
+        Color(0xFF212C25),
       ],
     );
   });
 
-  test('switches shared theme colors to the light palette', () {
+  test('switches shared theme colors to the Claude mint palette', () {
     AppTheme.applyThemeMode(ThemeMode.light);
 
     expect(AppTheme.isLightMode, isTrue);
     expect(AppTheme.light.brightness, Brightness.light);
-    expect(AppTheme.pitchBlack, const Color(0xFFF7F8FC));
+    expect(AppTheme.pitchBlack, const Color(0xFFF2F5F2));
+    expect(AppTheme.textPrimary, const Color(0xFF15211A));
+    expect(AppTheme.navActive, const Color(0xFF0E9F6E));
     expect(
       AppTheme.panelGradient.colors,
       const [
         Color(0xFFFFFFFF),
-        Color(0xFFF3F6FB),
+        Color(0xFFF2F7F3),
       ],
     );
   });
 
-  test('bundles Prompt font assets for consistent Thai rendering', () {
+  test('bundles Anuphan font assets for consistent Thai rendering', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
 
-    expect(pubspec, contains('family: Prompt'));
+    expect(pubspec, contains('family: Anuphan'));
     expect(
-      File('assets/fonts/prompt/Prompt-Regular.ttf').existsSync(),
+      File('assets/fonts/anuphan/Anuphan-Regular.ttf').existsSync(),
       isTrue,
     );
-    expect(File('assets/fonts/prompt/Prompt-Bold.ttf').existsSync(), isTrue);
+    expect(File('assets/fonts/anuphan/Anuphan-Bold.ttf').existsSync(), isTrue);
   });
 }

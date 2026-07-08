@@ -46,7 +46,7 @@ class SharedPreferencesThemePreferenceStore
 
 class PostDeeThemeController extends ChangeNotifier {
   PostDeeThemeController({
-    ThemeMode initialMode = ThemeMode.dark,
+    ThemeMode initialMode = ThemeMode.light,
     PostDeeThemePreferenceStore? preferenceStore,
   })  : _themeMode = initialMode,
         _preferenceStore = preferenceStore {

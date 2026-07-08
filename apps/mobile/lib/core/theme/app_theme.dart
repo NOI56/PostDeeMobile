@@ -4,10 +4,10 @@ import 'package:flutter/services.dart';
 class AppTheme {
   const AppTheme._();
 
-  static const accent = Color(0xFF8B5CF6);
-  static const accentCyan = Color(0xFF22D3EE);
-  static const accentPink = Color(0xFFFF4FD8);
-  static const success = Color(0xFF22C55E);
+  static const accent = Color(0xFF0E9F6E);
+  static const accentCyan = Color(0xFF36D6A0);
+  static const accentPink = Color(0xFFF59E0B);
+  static const success = Color(0xFF0E9F6E);
 
   // Fixed light-on-dark foreground colors for surfaces that stay dark in both
   // themes (e.g. the video preview placeholder). Content there must not inherit
@@ -18,12 +18,12 @@ class AppTheme {
   // Deeper "ink" shades of the brand colors used for light mode. The vivid
   // brand hues are tuned for dark surfaces and wash out as text/icons on white,
   // so [accentCyanInk] etc. fade to these in light mode (see the getters below).
-  static const _accentCyanInkLight = Color(0xFF0E7490);
-  static const _accentPinkInkLight = Color(0xFFC026A3);
-  static const _successInkLight = Color(0xFF15803D);
+  static const _accentCyanInkLight = Color(0xFF0E9F6E);
+  static const _accentPinkInkLight = Color(0xFFC2410C);
+  static const _successInkLight = Color(0xFF0E9F6E);
 
-  static const cardRadius = 14.0;
-  static const tileRadius = 10.0;
+  static const cardRadius = 18.0;
+  static const tileRadius = 14.0;
   static const pillRadius = 999.0;
 
   // Shared spacing scale — use these instead of ad-hoc numbers so every
@@ -39,78 +39,82 @@ class AppTheme {
   static const screenPadding =
       EdgeInsets.fromLTRB(spaceLg, spaceMd, spaceLg, spaceXl);
 
+  // The capsule nav floats over tab content (extendBody), so tab screens must
+  // reserve this much bottom space for their scroll views to clear it.
+  static const navOverlap = 96.0;
+  static const tabScreenPadding =
+      EdgeInsets.fromLTRB(spaceLg, spaceMd, spaceLg, navOverlap);
+
   static const brandGradient = LinearGradient(
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
-    colors: [accentPink, accent, accentCyan],
+    colors: [accent, accentCyan],
   );
 
   static var _isLightMode = false;
 
   static const _darkPalette = _AppThemePalette(
-    pitchBlack: Color(0xFF050507),
-    ink: Color(0xFF070A10),
-    midnight: Color(0xFF090D16),
-    charcoal: Color(0xFF0E131D),
-    glass: Color(0xFF111722),
-    glassDeep: Color(0xFF080B12),
-    border: Color(0xFF273044),
-    borderSoft: Color(0xFF1B2434),
-    textPrimary: Color(0xFFF5F5F5),
-    textSecondary: Color(0xFFA7AABD),
-    textMuted: Color(0xFF74798B),
-    navSurface: Color(0xFF030407),
-    navBorder: Color(0xFF171B25),
-    navActive: Color(0xFFA855F7),
-    navInactive: Color(0xFFA8ACB8),
+    pitchBlack: Color(0xFF0E1411),
+    ink: Color(0xFF101812),
+    midnight: Color(0xFF151D18),
+    charcoal: Color(0xFF19221D),
+    glass: Color(0xFF19221D),
+    glassDeep: Color(0xFF212C25),
+    border: Color(0xFF2B362F),
+    borderSoft: Color(0xFF26302A),
+    textPrimary: Color(0xFFECF2ED),
+    textSecondary: Color(0xFFA0B3A7),
+    textMuted: Color(0xFF7C9085),
+    navSurface: Color(0xFF151D18),
+    navBorder: Color(0xFF26302A),
+    navActive: Color(0xFF36D6A0),
+    navInactive: Color(0xFFA0B3A7),
     panelGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFF0E131D), Color(0xFF080B12)],
+      colors: [Color(0xFF19221D), Color(0xFF212C25)],
     ),
     screenGradient: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        Color(0xFF070B13),
-        Color(0xFF05070D),
-        Color(0xFF030407),
+        Color(0xFF0E1411),
+        Color(0xFF101812),
+        Color(0xFF0E1411),
       ],
     ),
   );
-
   static const _lightPalette = _AppThemePalette(
-    pitchBlack: Color(0xFFF7F8FC),
+    pitchBlack: Color(0xFFF2F5F2),
     ink: Color(0xFFFFFFFF),
-    midnight: Color(0xFFF3F6FB),
+    midnight: Color(0xFFF2F7F3),
     charcoal: Color(0xFFFFFFFF),
     glass: Color(0xFFFFFFFF),
-    glassDeep: Color(0xFFF1F4FA),
-    border: Color(0xFFD8DEEA),
-    borderSoft: Color(0xFFE8ECF4),
-    textPrimary: Color(0xFF111827),
-    textSecondary: Color(0xFF5B6472),
-    textMuted: Color(0xFF8B94A6),
-    navSurface: Color(0xFFEFF3FA),
-    navBorder: Color(0xFFE5E7EF),
-    navActive: Color(0xFFA855F7),
-    navInactive: Color(0xFF6B7280),
+    glassDeep: Color(0xFFF2F7F3),
+    border: Color(0xFFE3EAE4),
+    borderSoft: Color(0xFFEEF2EF),
+    textPrimary: Color(0xFF15211A),
+    textSecondary: Color(0xFF566A5E),
+    textMuted: Color(0xFF93A099),
+    navSurface: Color(0xFFFFFFFF),
+    navBorder: Color(0xFFE8EDE9),
+    navActive: Color(0xFF0E9F6E),
+    navInactive: Color(0xFF93A099),
     panelGradient: LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [Color(0xFFFFFFFF), Color(0xFFF3F6FB)],
+      colors: [Color(0xFFFFFFFF), Color(0xFFF2F7F3)],
     ),
     screenGradient: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        Color(0xFFF9FAFF),
-        Color(0xFFF4F7FC),
-        Color(0xFFEFF3FA),
+        Color(0xFFF2F5F2),
+        Color(0xFFF2F5F2),
+        Color(0xFFE7ECE7),
       ],
     ),
   );
-
   // Transition progress between dark (0) and light (1). Shared colors are
   // interpolated by this value so the whole custom UI fades smoothly when the
   // display mode changes (driven by PostDeeApp's animation controller).
@@ -168,6 +172,22 @@ class AppTheme {
   static LinearGradient get screenGradient =>
       _lerpGradient(_darkPalette.screenGradient, _lightPalette.screenGradient);
 
+  // Soft brand-tinted surfaces from the design handoff. `mint` backs accent
+  // cards (plan card, avatar, icon boxes); `sel` backs selected rows/choices.
+  static const _mintDark = Color(0x330E9F6E); // rgba(14,159,110,.20)
+  static const _mintLight = Color(0xFFE2F3EA);
+  static const _selDark = Color(0x240E9F6E); // rgba(14,159,110,.14)
+  static const _selLight = Color(0xFFF1FAF5);
+
+  static Color get mint => _lerp(_mintDark, _mintLight);
+  static Color get sel => _lerp(_selDark, _selLight);
+
+  // Off-state toggle track color (--track in the design handoff).
+  static const _trackDark = Color(0xFF39443D);
+  static const _trackLight = Color(0xFFCFD8D1);
+
+  static Color get track => _lerp(_trackDark, _trackLight);
+
   // Readable foreground variants of the brand colors. Dark mode keeps the vivid
   // hue (interpolation factor 0); light mode shifts to the deeper ink shade so
   // the same hue stays legible as text/icons on light surfaces.
@@ -205,8 +225,9 @@ class AppTheme {
         .apply(
       bodyColor: palette.textPrimary,
       displayColor: palette.textPrimary,
-      fontFamily: 'Prompt',
+      fontFamily: 'Anuphan',
       fontFamilyFallback: const [
+        'Prompt',
         'Noto Sans Thai',
         'NotoSansThai',
         'Segoe UI',

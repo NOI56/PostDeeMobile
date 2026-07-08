@@ -37,29 +37,42 @@ void main() {
       ),
     );
 
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -420));
-    await tester.pumpAndSettle();
+    // Three tier cards with the real prices from the design handoff. The list
+    // is lazy, so scroll to each card, then read nearby texts with
+    // skipOffstage: false (cards can sit partially outside the viewport).
+    Finder cachedText(String text) => find.text(text, skipOffstage: false);
 
-    expect(find.byKey(const ValueKey('profile-package-comparison')),
-        findsOneWidget);
-    expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
-    expect(find.byKey(const ValueKey('profile-plan-starter')), findsOneWidget);
-    expect(find.byKey(const ValueKey('profile-plan-pro')), findsOneWidget);
-    expect(find.byKey(const ValueKey('profile-quota-grid')), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('profile-plan-quota-starter')),
-      findsOneWidget,
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('profile-plan-free'), skipOffstage: false),
+      300,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
     );
-    expect(
-      find.byKey(const ValueKey('profile-plan-quota-pro')),
-      findsOneWidget,
+    await tester.pumpAndSettle();
+    expect(cachedText('แพ็กเกจ PostDee'), findsOneWidget);
+    expect(cachedText('0 บาท'), findsOneWidget);
+    // Free is the current tier by default.
+    expect(cachedText('แพ็กเกจปัจจุบัน'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('profile-plan-starter'), skipOffstage: false),
+      300,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
     );
-    expect(find.byKey(const ValueKey('profile-post-quota-summary')),
-        findsOneWidget);
-    expect(find.byKey(const ValueKey('profile-ai-caption-quota-summary')),
-        findsOneWidget);
-    expect(
-        find.byKey(const ValueKey('profile-team-access-pro')), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(cachedText('199 ฿/ด.'), findsOneWidget);
+    expect(cachedText('แนะนำ'), findsOneWidget);
+    expect(cachedText('อัปเกรด'), findsWidgets);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('profile-plan-pro'), skipOffstage: false),
+      300,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.pumpAndSettle();
+    expect(cachedText('299 ฿/ด.'), findsOneWidget);
   });
 
   testWidgets('shows connected social platforms from the API', (tester) async {
@@ -79,17 +92,13 @@ void main() {
     await tester.pumpWidget(_hostProfile(apiClient: apiClient));
     await tester.pumpAndSettle();
 
-    final tiktokDisconnect =
-        find.byKey(const ValueKey('profile-platform-disconnect-TIKTOK'));
-    await tester.scrollUntilVisible(
-      tiktokDisconnect,
-      500,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 30,
-    );
-    await tester.pumpAndSettle();
+    // Connections now live on their own screen behind the profile menu row.
+    await _openConnectionsScreen(tester);
 
-    expect(tiktokDisconnect, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('profile-platform-disconnect-TIKTOK')),
+      findsOneWidget,
+    );
     expect(find.text('@seller_one'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle), findsWidgets);
   });
@@ -145,20 +154,13 @@ void main() {
 
     expect(find.text('0/4 เชื่อมต่อ'), findsOneWidget);
 
-    final refreshButton =
-        find.byKey(const ValueKey('profile-platforms-refresh'));
-    await tester.scrollUntilVisible(
-      refreshButton,
-      500,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 30,
-    );
+    await _openConnectionsScreen(tester);
+
+    await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
     await tester.pumpAndSettle();
 
-    await tester.tap(refreshButton);
-    await tester.pumpAndSettle();
-
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, 2000));
+    // Back on the profile tab, the summary pill reflects the new count.
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
 
     expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
@@ -191,17 +193,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _openConnectionsScreen(tester);
+
     final tiktokConnect =
         find.byKey(const ValueKey('profile-platform-connect-TIKTOK'));
-    await tester.scrollUntilVisible(
-      tiktokConnect,
-      500,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 30,
-    );
-    await tester.pumpAndSettle();
-
-    expect(tester.widget<OutlinedButton>(tiktokConnect).onPressed, isNotNull);
+    expect(tester.widget<FilledButton>(tiktokConnect).onPressed, isNotNull);
 
     await tester.tap(tiktokConnect);
     await tester.pumpAndSettle();
@@ -234,17 +230,9 @@ void main() {
     await tester.pumpWidget(_hostProfile(apiClient: apiClient));
     await tester.pumpAndSettle();
 
-    final refreshButton =
-        find.byKey(const ValueKey('profile-platforms-refresh'));
-    await tester.scrollUntilVisible(
-      refreshButton,
-      500,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 30,
-    );
-    await tester.pumpAndSettle();
+    await _openConnectionsScreen(tester);
 
-    await tester.tap(refreshButton);
+    await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
     await tester.pumpAndSettle();
 
     expect(apiClient.refreshCalls, 1);
@@ -336,6 +324,12 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('320'), findsNothing);
   });
+}
+
+/// Taps the "เชื่อมต่อช่องทาง" menu row to push the connections screen.
+Future<void> _openConnectionsScreen(WidgetTester tester) async {
+  await tester.tap(find.text('เชื่อมต่อช่องทาง'));
+  await tester.pumpAndSettle();
 }
 
 Widget _hostProfile({

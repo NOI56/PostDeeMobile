@@ -6,7 +6,21 @@ import 'package:postdee_mobile/core/localization/language_controller.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
+Finder _referenceNav() =>
+    find.byKey(const ValueKey('postdee-reference-bottom-nav'));
 
+Finder _referenceNavButton(String label) => find.descendant(
+      of: _referenceNav(),
+      matching: find.bySemanticsLabel(label),
+    );
+
+Future<void> _tapReferenceNavButton(
+  WidgetTester tester,
+  String label,
+) async {
+  await tester.tap(_referenceNavButton(label));
+  await tester.pumpAndSettle();
+}
 void main() {
   testWidgets('configures supported app locales', (tester) async {
     final sessionStore = PostDeeAuthSessionStore.instance;
@@ -37,34 +51,15 @@ void main() {
     addTearDown(sessionStore.clear);
 
     await tester.pumpWidget(const PostDeeApp(locale: Locale('en')));
-    final bottomNav = find.byType(BottomNavigationBar);
+    await tester.pumpAndSettle();
 
     expect(find.bySemanticsLabel('Notifications'), findsOneWidget);
-    expect(find.bySemanticsLabel('User account'), findsOneWidget);
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('Home')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('Upload')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('Calendar')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('Analytics')),
-      findsOneWidget,
-    );
-    // Profile moved out of the bottom nav to the top-right account icon.
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('Profile')),
-      findsNothing,
-    );
-    expect(find.bySemanticsLabel('User account'), findsOneWidget);
+    expect(find.byType(BottomNavigationBar), findsNothing);
+    expect(_referenceNav(), findsOneWidget);
+    for (final label in ['Home', 'Calendar', 'Create post', 'Analytics', 'Profile']) {
+      expect(_referenceNavButton(label), findsOneWidget);
+    }
   });
-
   testWidgets('uses English login labels when app locale is English',
       (tester) async {
     final sessionStore = PostDeeAuthSessionStore.instance;
@@ -103,21 +98,19 @@ void main() {
     addTearDown(sessionStore.clear);
 
     await tester.pumpWidget(const PostDeeApp(locale: Locale('en')));
-    // Home now loads analytics and recent posts on init; let those settle (they
-    // fail gracefully to empty in tests) before checking the resting UI.
     await tester.pumpAndSettle();
 
-    expect(find.text('Hello, PostDee Seller'), findsOneWidget);
-    expect(find.text("Today's posting overview"), findsOneWidget);
-    expect(find.byKey(const ValueKey('home-plan-title')), findsOneWidget);
+    expect(find.text('Home'), findsWidgets);
+    expect(find.text('Free package'), findsOneWidget);
+    expect(find.text('AI editing'), findsOneWidget);
+    expect(find.text('Views this month'), findsOneWidget);
+    expect(find.text('Likes this month'), findsOneWidget);
+    expect(find.text('Create a new post'), findsOneWidget);
+    expect(find.text('Latest post status'), findsOneWidget);
+    expect(find.text('View all'), findsNothing);
     expect(find.text('Pro package'), findsNothing);
     expect(find.text('23 days left'), findsNothing);
-    expect(find.text('View package'), findsOneWidget);
-    expect(find.text('Total views'), findsOneWidget);
     expect(find.text('+12% from last week'), findsNothing);
-    expect(find.text('Refresh views'), findsOneWidget);
-    expect(find.text('Latest post status'), findsOneWidget);
-    expect(find.text('View all'), findsOneWidget);
     expect(find.text('Posted today 2'), findsNothing);
     expect(find.text('Published'), findsNothing);
     expect(find.text('Processing'), findsNothing);
@@ -134,7 +127,6 @@ void main() {
     expect(find.widgetWithText(TextButton, 'Upload'), findsNothing);
     expect(find.widgetWithText(TextButton, 'Templates'), findsNothing);
   });
-
   testWidgets('keeps home shortcuts hidden on a phone viewport',
       (tester) async {
     tester.view.physicalSize = const Size(1080, 1920);
@@ -188,14 +180,9 @@ void main() {
     await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
     await tester.pumpAndSettle();
 
-    expect(tester.getSize(find.byType(AppBar).first).height,
-        lessThanOrEqualTo(52));
-    expect(
-      tester.getSize(find.byType(BottomNavigationBar)).height,
-      lessThanOrEqualTo(66),
-    );
+    expect(find.byType(AppBar), findsNothing);
+    expect(tester.getSize(_referenceNav()).height, lessThanOrEqualTo(58));
   });
-
   testWidgets(
       'keeps upload schedule controls above bottom nav on a phone viewport',
       (tester) async {
@@ -219,10 +206,9 @@ void main() {
     await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.cloud_upload_outlined).last);
-    await tester.pumpAndSettle();
+    await _tapReferenceNavButton(tester, 'สร้างโพสต์');
 
-    final bottomNavTop = tester.getTopLeft(find.byType(BottomNavigationBar)).dy;
+    final bottomNavTop = tester.getTopLeft(_referenceNav()).dy;
     final schedulePanel = find.byKey(
       const ValueKey('uploader-schedule-panel'),
     );
@@ -291,8 +277,7 @@ void main() {
     await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.cloud_upload_outlined).last);
-    await tester.pumpAndSettle();
+    await _tapReferenceNavButton(tester, 'สร้างโพสต์');
 
     final videoPreview = find.byKey(
       const ValueKey('uploader-video-preview-picker'),
@@ -325,10 +310,9 @@ void main() {
     await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.cloud_upload_outlined).last);
-    await tester.pumpAndSettle();
+    await _tapReferenceNavButton(tester, 'สร้างโพสต์');
 
-    final bottomNavTop = tester.getTopLeft(find.byType(BottomNavigationBar)).dy;
+    final bottomNavTop = tester.getTopLeft(_referenceNav()).dy;
     final stickyPostButton = find.byKey(
       const ValueKey('uploader-sticky-post-button'),
     );
@@ -361,15 +345,28 @@ void main() {
     await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
     await tester.pumpAndSettle();
 
-    final bottomNav = tester.widget<BottomNavigationBar>(
-      find.byType(BottomNavigationBar),
+    // The capsule is translucent (card color at 70%) with a soft border, per
+    // the design handoff, and blurs the content scrolling behind it.
+    final capsule = tester.widget<Container>(
+      find.descendant(
+        of: _referenceNav(),
+        matching: find.byType(Container),
+      ).first,
     );
+    final decoration = capsule.decoration! as BoxDecoration;
+    final border = decoration.border! as Border;
 
-    expect(bottomNav.selectedItemColor, const Color(0xFFA855F7));
-    expect(bottomNav.unselectedItemColor, const Color(0xFFA8ACB8));
-    expect(bottomNav.backgroundColor, Colors.transparent);
+    expect(decoration.color, AppTheme.glass.withValues(alpha: 0.70));
+    expect(border.top.color, AppTheme.border.withValues(alpha: 0.70));
+    expect(
+      find.descendant(
+        of: _referenceNav(),
+        matching: find.byType(BackdropFilter),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(BottomNavigationBar), findsNothing);
   });
-
   testWidgets('switches between dark and light mode from profile',
       (tester) async {
     final languageController = PostDeeLanguageController(
@@ -399,24 +396,30 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(themeController.themeMode, ThemeMode.dark);
-    expect(AppTheme.isLightMode, isFalse);
-
-    await tester.tap(find.bySemanticsLabel('User account'));
-    await tester.pumpAndSettle();
-
-    final lightModeButton = find.byIcon(Icons.light_mode).last;
-    await tester.ensureVisible(lightModeButton);
-    await tester.tap(lightModeButton);
-    await tester.pumpAndSettle();
-
     expect(themeController.themeMode, ThemeMode.light);
     expect(AppTheme.isLightMode, isTrue);
-    expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
-        ThemeMode.light);
 
-    final darkModeButton = find.byIcon(Icons.dark_mode).last;
-    await tester.ensureVisible(darkModeButton);
+    await _tapReferenceNavButton(tester, 'Profile');
+
+    final darkModeButton = find.text('มืด');
+    await tester.scrollUntilVisible(
+      darkModeButton,
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    // The floating capsule nav overlays the bottom of the list; nudge the
+    // button above it so the tap doesn't land on the nav.
+    final viewportBottom =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    final overlap = tester.getRect(darkModeButton).bottom - (viewportBottom - 96);
+    if (overlap > 0) {
+      await tester.drag(
+        find.byType(Scrollable).first,
+        Offset(0, -(overlap + 10)),
+      );
+      await tester.pumpAndSettle();
+    }
     await tester.tap(darkModeButton);
     await tester.pumpAndSettle();
 
@@ -424,6 +427,15 @@ void main() {
     expect(AppTheme.isLightMode, isFalse);
     expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
         ThemeMode.dark);
+
+    final lightModeButton = find.text('สว่าง');
+    await tester.tap(lightModeButton);
+    await tester.pumpAndSettle();
+
+    expect(themeController.themeMode, ThemeMode.light);
+    expect(AppTheme.isLightMode, isTrue);
+    expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
+        ThemeMode.light);
   });
 
   testWidgets('switches from English to Thai from the profile language picker',
@@ -444,15 +456,11 @@ void main() {
     await tester.pumpWidget(
       PostDeeApp(languageController: languageController),
     );
-    final bottomNav = find.byType(BottomNavigationBar);
-
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('Home')),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.bySemanticsLabel('User account'));
     await tester.pumpAndSettle();
+
+    expect(_referenceNavButton('Home'), findsOneWidget);
+
+    await _tapReferenceNavButton(tester, 'Profile');
 
     expect(find.text('Language'), findsOneWidget);
 
@@ -472,9 +480,14 @@ void main() {
 
     await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
 
-    expect(find.text('เข้าสู่ระบบ PostDee'), findsOneWidget);
-    expect(find.text('เชื่อมอีเมลก่อนเข้าใช้งาน'), findsOneWidget);
     expect(find.text('เข้าสู่ระบบด้วย Google'), findsOneWidget);
+    expect(find.text('ลงครั้งเดียว ขายได้ทุกที่'), findsOneWidget);
+    expect(
+      find.text('โพสต์วิดีโอเดียวไป TikTok, Shorts,\nReels และ Facebook พร้อมกัน'),
+      findsOneWidget,
+    );
+    expect(find.text('เข้าสู่ระบบด้วย Google'), findsOneWidget);
+    expect(find.text('เข้าสู่ระบบด้วยอีเมล'), findsOneWidget);
     expect(find.byType(BottomNavigationBar), findsNothing);
     expect(find.text('หน้าแรก'), findsNothing);
   });
@@ -492,90 +505,50 @@ void main() {
     addTearDown(sessionStore.clear);
 
     await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
-    final bottomNav = find.byType(BottomNavigationBar);
+    await tester.pumpAndSettle();
 
-    expect(find.bySemanticsLabel('PostDee logo'), findsOneWidget);
+    expect(find.text('หน้าแรก'), findsOneWidget);
     expect(find.bySemanticsLabel('แจ้งเตือน'), findsOneWidget);
-    expect(find.bySemanticsLabel('บัญชีผู้ใช้'), findsOneWidget);
+    expect(find.byType(BottomNavigationBar), findsNothing);
     expect(find.text('Google'), findsNothing);
     expect(find.text('เข้าสู่ระบบ Google'), findsNothing);
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('หน้าแรก')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('อัปโหลด')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('ปฏิทิน')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('วิเคราะห์')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('โปรไฟล์')),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: bottomNav, matching: find.text('เทมเพลต')),
-      findsNothing,
-    );
+    expect(_referenceNavButton('หน้าแรก'), findsOneWidget);
+    expect(_referenceNavButton('สร้างโพสต์'), findsOneWidget);
+    expect(_referenceNavButton('ปฏิทิน'), findsOneWidget);
+    expect(_referenceNavButton('วิเคราะห์'), findsOneWidget);
+    expect(_referenceNavButton('โปรไฟล์'), findsOneWidget);
+    expect(find.text('เทมเพลต'), findsNothing);
 
-    await tester.tap(
-      find.descendant(of: bottomNav, matching: find.text('อัปโหลด')),
-    );
-    await tester.pumpAndSettle();
+    await _tapReferenceNavButton(tester, 'สร้างโพสต์');
 
-    expect(find.bySemanticsLabel('PostDee logo'), findsNothing);
-    expect(find.bySemanticsLabel('แจ้งเตือน'), findsNothing);
-    expect(find.bySemanticsLabel('บัญชีผู้ใช้'), findsOneWidget);
-    expect(find.text('อัปโหลด'), findsWidgets);
-    expect(find.text('บันทึกฉบับร่าง'), findsOneWidget);
-    expect(find.text('เลือกวิดีโอ'), findsOneWidget);
+    expect(find.text('สร้างโพสต์ใหม่'), findsOneWidget);
+    expect(find.text('1 · เลือกวิดีโอ'), findsOneWidget);
 
-    await tester.tap(
-      find.descendant(of: bottomNav, matching: find.text('ปฏิทิน')),
-    );
-    await tester.pumpAndSettle();
+    await _tapReferenceNavButton(tester, 'ปฏิทิน');
 
-    expect(find.bySemanticsLabel('PostDee logo'), findsNothing);
-    expect(find.bySemanticsLabel('บัญชีผู้ใช้'), findsOneWidget);
-    expect(find.text('ปฏิทิน'), findsWidgets);
     expect(find.text('ประวัติ'), findsNothing);
     expect(find.text('ปฏิทินโพสต์'), findsOneWidget);
     expect(find.text('รีวิวคลิปด้วย AI'), findsNothing);
 
-    await tester.tap(
-      find.descendant(of: bottomNav, matching: find.text('วิเคราะห์')),
-    );
-    await tester.pumpAndSettle();
+    await _tapReferenceNavButton(tester, 'วิเคราะห์');
 
-    expect(find.bySemanticsLabel('PostDee logo'), findsNothing);
-    expect(find.bySemanticsLabel('บัญชีผู้ใช้'), findsOneWidget);
     expect(find.text('วิเคราะห์'), findsWidgets);
 
-    // Profile opens from the top-right account icon on every shell tab.
-    await tester.tap(find.bySemanticsLabel('บัญชีผู้ใช้'));
-    await tester.pumpAndSettle();
+    await _tapReferenceNavButton(tester, 'โปรไฟล์');
 
     expect(find.text('บัญชีและโปรไฟล์'), findsOneWidget);
-    expect(find.text('สถานะบัญชี'), findsOneWidget);
     expect(find.text('PostDee Seller'), findsOneWidget);
     expect(find.text('seller@example.com'), findsOneWidget);
     expect(find.text('โหมดทดสอบ'), findsNothing);
     expect(find.text('0/4 เชื่อมต่อ'), findsOneWidget);
     expect(find.text('พร้อมลอง UI'), findsNothing);
-    final templatesAction = find.widgetWithText(OutlinedButton, 'เปิด');
+    final templatesAction = find.text('เทมเพลตแคปชั่น');
     await tester.scrollUntilVisible(
       templatesAction,
       180,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    expect(find.text('เทมเพลต'), findsWidgets);
     await tester.tap(templatesAction);
     await tester.pumpAndSettle();
 

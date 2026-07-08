@@ -135,7 +135,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('แพ็กเกจ Starter'), findsOneWidget);
-    expect(find.text('เหลือ 8 โพสต์เดือนนี้'), findsOneWidget);
+    expect(find.text('เหลือ 8/120 หน่วย'), findsOneWidget);
     expect(find.text('แพ็กเกจโปร'), findsNothing);
     expect(find.text('คงเหลือ 23 วัน'), findsNothing);
   });
@@ -163,15 +163,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('สวัสดี'), findsOneWidget);
-    expect(find.text('ภาพรวมการโพสต์ของคุณวันนี้'), findsOneWidget);
-    expect(find.text('ดูแพ็กเกจ'), findsOneWidget);
-    expect(find.text('ยอดวิวรวม'), findsOneWidget);
+    expect(find.text('หน้าแรก'), findsOneWidget);
+    expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
+    expect(find.text('ตัดต่อด้วย AI'), findsOneWidget);
+    expect(find.text('ยอดวิวเดือนนี้'), findsOneWidget);
+    expect(find.text('ไลก์เดือนนี้'), findsOneWidget);
     expect(find.text('128'), findsNothing);
-    expect(find.text('+12% จากสัปดาห์ที่แล้ว'), findsNothing);
-    expect(find.text('รีเฟรชยอดวิว'), findsOneWidget);
-    expect(find.text('สถานะโพสต์ล่าสุด'), findsOneWidget);
-    expect(find.text('ดูทั้งหมด'), findsOneWidget);
+    expect(find.text('โพสต์ล่าสุด'), findsOneWidget);
+    expect(find.text('ดูทั้งหมด'), findsNothing);
     expect(find.text('TikTok'), findsNothing);
     expect(find.text('YouTube Shorts'), findsNothing);
     expect(find.text('Instagram Reels'), findsNothing);
@@ -196,6 +195,57 @@ void main() {
     _expectNoDeveloperTools();
   });
 
+  testWidgets('matches the reference home first screen', (tester) async {
+    await tester.pumpWidget(
+      _homeTestApp(
+        HomeScreen(
+          loadAnalytics: () async => const AnalyticsSummaryResult(
+            totalViews: 1240,
+            totalLikes: 328,
+            platforms: [],
+          ),
+          loadSubscription: () async => const SubscriptionStatusResult(
+            userId: 'seller',
+            plan: 'BASIC',
+            status: 'ACTIVE',
+            remainingPostsThisMonth: 1,
+            canSchedule: false,
+            canUseAiCaptions: false,
+            canUseAnalytics: false,
+          ),
+          loadRecentPosts: () async => const [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('หน้าแรก'), findsOneWidget);
+    expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
+    expect(find.text('เหลือ 1/3 หน่วย'), findsOneWidget);
+    final planProgress = tester.widget<FractionallySizedBox>(
+      find.byKey(const ValueKey('home-plan-progress-fill')),
+    );
+    expect(planProgress.widthFactor, moreOrLessEquals(2 / 3));
+    expect(find.text('อัปเกรด'), findsOneWidget);
+    expect(find.text('ตัดต่อด้วย AI'), findsOneWidget);
+    expect(
+      find.text('ให้ AI ตัดคลิปให้กระชับ ใส่ซับ เป็นสไตล์ไวรัลอัตโนมัติ'),
+      findsOneWidget,
+    );
+    expect(find.text('ยอดวิวเดือนนี้'), findsOneWidget);
+    expect(find.text('ไลก์เดือนนี้'), findsOneWidget);
+    expect(find.text('สร้างโพสต์ใหม่'), findsOneWidget);
+    expect(find.text('โพสต์ล่าสุด'), findsOneWidget);
+    expect(find.text('ยังไม่มีโพสต์'), findsOneWidget);
+    expect(
+      find.text('เริ่มสร้างโพสต์แรกของร้านคุณ\nโพสต์คลิปเดียวไปได้ทุกช่องทาง'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(FilledButton, 'สร้างโพสต์'), findsOneWidget);
+
+    await _expectHomeTextAfterScrolling(tester, 'เครื่องมือเติบโต');
+    expect(find.text('ช่วยให้ขายดี'), findsOneWidget);
+  });
   testWidgets('loads and displays total views on the home dashboard',
       (tester) async {
     final analyticsCompleter = Completer<AnalyticsSummaryResult>();
@@ -220,7 +270,7 @@ void main() {
     // without a manual refresh tap.
     await tester.pump();
 
-    expect(find.text('กำลังโหลด...'), findsOneWidget);
+    expect(find.text('...'), findsNWidgets(2));
 
     analyticsCompleter.complete(
       const AnalyticsSummaryResult(
@@ -239,7 +289,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('1200'), findsOneWidget);
-    expect(find.text('140 ไลก์'), findsOneWidget);
+    expect(find.text('140'), findsOneWidget);
+    expect(find.text('ไลก์เดือนนี้'), findsOneWidget);
   });
 
   testWidgets('shows real latest posts on the home dashboard', (tester) async {
@@ -278,7 +329,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('โปรโมตสินค้าใหม่'), findsOneWidget);
-    expect(find.text('โพสต์แล้ว'), findsOneWidget);
+    expect(find.text('เผยแพร่'), findsOneWidget);
+    expect(find.text('TikTok · YouTube Shorts'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('home-latest-posts-empty')),
       findsNothing,
@@ -292,15 +344,17 @@ void main() {
     );
 
     await _expectHomeTextAfterScrolling(tester, 'เครื่องมือเติบโต');
+    // Home shows two growth tools per the design handoff; "team" moved into
+    // the growth detail screen.
     final toolTitles = [
       'ลิงก์หน้าโปรไฟล์',
-      'ทีมและผู้ช่วย',
       'แจ้งเตือนคลิปไวรัล',
     ];
 
     for (final title in toolTitles) {
       await _expectHomeTextAfterScrolling(tester, title);
     }
+    expect(find.text('ทีมและผู้ช่วย'), findsNothing);
   });
 
   testWidgets('keeps upload and analytics growth tools off home dashboard',
@@ -348,7 +402,6 @@ void main() {
     );
 
     final toolTitles = [
-      'ทีมและผู้ช่วย',
       'แจ้งเตือนคลิปไวรัล',
     ];
 

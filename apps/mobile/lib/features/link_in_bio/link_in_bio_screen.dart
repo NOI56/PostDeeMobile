@@ -186,8 +186,6 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
     return Scaffold(
       body: DecoratedBox(
         decoration: AppTheme.screenBackground,
@@ -207,15 +205,30 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                       'สร้างหน้า Link in Bio',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
                   ),
-                  PostDeeSoftPill(
-                    label: '199 / 299',
-                    icon: Icons.workspace_premium_outlined,
-                    color: AppTheme.accentCyanInk,
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppTheme.mint,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      child: Text(
+                        '199 / 299',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.accentCyanInk,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -227,7 +240,14 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 enabledLinkIds: _enabledLinkIds,
               ),
               const SizedBox(height: AppTheme.spaceLg),
-              const PostDeeSectionHeader(title: 'ข้อมูลหน้าร้าน'),
+              Text(
+                'ข้อมูลหน้าร้าน',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
               const SizedBox(height: AppTheme.spaceSm),
               PostDeeCard(
                 padding: const EdgeInsets.all(AppTheme.spaceMd),
@@ -258,12 +278,12 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 ),
               ),
               const SizedBox(height: AppTheme.spaceLg),
-              PostDeeSectionHeader(
-                title: 'ลิงก์สินค้าและแคมเปญ',
-                trailing: PostDeeSoftPill(
-                  label: 'ร่าง',
-                  icon: Icons.edit_note_outlined,
-                  color: AppTheme.accentPinkInk,
+              Text(
+                'ลิงก์สินค้าและแคมเปญ',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
                 ),
               ),
               const SizedBox(height: AppTheme.spaceSm),
@@ -272,7 +292,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 icon: Icons.shopping_bag_outlined,
                 title: 'สินค้าแนะนำ',
                 subtitle: 'ลิงก์ Shopee, Lazada หรือ affiliate หลัก',
-                color: AppTheme.accentPinkInk,
+                color: const Color(0xFFEC4899),
                 enabled: _isLinkEnabled(_recommendedProductLinkId),
                 onChanged: _setLinkEnabled,
               ),
@@ -281,8 +301,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 id: _dailyCampaignLinkId,
                 icon: Icons.local_fire_department_outlined,
                 title: 'แคมเปญวันนี้',
-                subtitle: 'ลิงก์โปรโมชันที่อยากดันจากโพสต์ล่าสุด',
-                color: const Color(0xFFFFD166),
+                subtitle: 'โปรโมชันที่อยากดันจากโพสต์ล่าสุด',
+                color: const Color(0xFFF59E0B),
                 enabled: _isLinkEnabled(_dailyCampaignLinkId),
                 onChanged: _setLinkEnabled,
               ),
@@ -291,8 +311,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 id: _scheduledClipLinkId,
                 icon: Icons.video_library_outlined,
                 title: 'คลิปที่ตั้งเวลาไว้',
-                subtitle: 'ให้หน้าโปรไฟล์อัปเดตลิงก์เมื่อคลิปถูกตั้งเวลา',
-                color: AppTheme.accentCyanInk,
+                subtitle: 'ให้หน้าโปรไฟล์อัปเดตลิงก์อัตโนมัติ',
+                color: const Color(0xFF0EA5B7),
                 enabled: _isLinkEnabled(_scheduledClipLinkId),
                 onChanged: _setLinkEnabled,
               ),
@@ -303,19 +323,15 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                   icon: Icons.link,
                   title: customLink.title,
                   subtitle: customLink.url,
-                  color: AppTheme.successInk,
+                  color: AppTheme.accentCyanInk,
                   enabled: _isLinkEnabled(customLink.id),
                   onChanged: _setLinkEnabled,
                   onEdit: () => _showEditLinkSheet(customLink),
                   onDelete: () => _deleteCustomLink(customLink.id),
                 ),
               ],
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: _showAddLinkSheet,
-                icon: const Icon(Icons.add_link_outlined),
-                label: const Text('เพิ่มลิงก์'),
-              ),
+              const SizedBox(height: 11),
+              _AddLinkButton(onTap: _showAddLinkSheet),
               const SizedBox(height: 14),
               _AutoUpdateCard(
                 value: _autoUpdateFromScheduledPosts,
@@ -327,20 +343,52 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showDraftMessage(
-                        'พรีวิวหน้า Link in Bio จะเชื่อมเว็บจริงในขั้นต่อไป',
+                    child: SizedBox(
+                      height: 50,
+                      child: OutlinedButton(
+                        onPressed: () => _showDraftMessage(
+                          'พรีวิวหน้า Link in Bio จะเชื่อมเว็บจริงในขั้นต่อไป',
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: AppTheme.border),
+                          foregroundColor: AppTheme.textPrimary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        child: const Text('ดูตัวอย่างหน้า'),
                       ),
-                      icon: const Icon(Icons.visibility_outlined),
-                      label: const Text('ดูตัวอย่างหน้า'),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: PostDeeGradientButton(
-                      label: _isSaving ? 'กำลังบันทึก...' : 'บันทึกแบบร่าง',
-                      icon: Icons.save_outlined,
-                      onPressed: _isSaving ? null : _saveDraft,
+                    child: SizedBox(
+                      height: 50,
+                      child: FilledButton.icon(
+                        onPressed: _isSaving ? null : _saveDraft,
+                        icon: const Icon(Icons.save_outlined, size: 19),
+                        label: Text(
+                            _isSaving ? 'กำลังบันทึก...' : 'บันทึกแบบร่าง'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.accent,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor:
+                              AppTheme.accent.withValues(alpha: 0.55),
+                          disabledForegroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -368,34 +416,46 @@ class _BioPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
     final displayName = storeName.trim().isEmpty ? 'ร้านของคุณ' : storeName;
     final displaySlug = slug.trim().isEmpty ? 'ร้านของคุณ' : slug;
 
-    return PostDeeCard(
-      padding: const EdgeInsets.all(14),
-      glowColor: AppTheme.accent,
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0E9F6E), Color(0xFF0A7A55)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B7A55).withValues(alpha: 0.55),
+            blurRadius: 30,
+            spreadRadius: -16,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              DecoratedBox(
-                decoration: const BoxDecoration(
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: AppTheme.brandGradient,
+                  color: Colors.white.withValues(alpha: 0.2),
                 ),
-                child: const SizedBox(
-                  width: 46,
-                  height: 46,
-                  child: Icon(
-                    Icons.storefront_outlined,
-                    color: Colors.white,
-                    size: 24,
-                  ),
+                child: const Icon(
+                  Icons.storefront_outlined,
+                  color: Colors.white,
+                  size: 25,
                 ),
               ),
-              const SizedBox(width: AppTheme.spaceMd),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,56 +464,63 @@ class _BioPreviewCard extends StatelessWidget {
                       displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
                       ),
                     ),
                     Text(
                       'postdee.link/$displaySlug',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: AppTheme.accentCyanInk,
-                        fontWeight: FontWeight.w800,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.85),
                       ),
                     ),
                   ],
                 ),
               ),
-              const PostDeeSoftPill(
-                label: 'Preview',
-                icon: Icons.phone_iphone,
-                color: AppTheme.accent,
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  child: Text(
+                    'Preview',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          _PreviewLinkButton(
-            label: 'ดูสินค้าจากคลิปล่าสุด',
-            icon: Icons.play_circle_outline,
-            color: AppTheme.accentPinkInk,
-          ),
-          const SizedBox(height: AppTheme.spaceSm),
-          _PreviewLinkButton(
-            label: 'โปรโมชันและคูปอง',
-            icon: Icons.sell_outlined,
-            color: AppTheme.accentCyanInk,
-          ),
-          const SizedBox(height: AppTheme.spaceSm),
-          _PreviewLinkButton(
-            label: 'ช่องทางติดต่อร้าน',
-            icon: Icons.chat_bubble_outline,
-            color: AppTheme.successInk,
-          ),
+          const SizedBox(height: 15),
+          if (enabledLinkIds.contains('recommended_product'))
+            const _PreviewLinkButton(
+              label: 'สินค้าแนะนำ',
+              icon: Icons.shopping_bag_outlined,
+            ),
+          if (enabledLinkIds.contains('daily_campaign'))
+            const _PreviewLinkButton(
+              label: 'แคมเปญวันนี้',
+              icon: Icons.local_fire_department_outlined,
+            ),
+          if (enabledLinkIds.contains('scheduled_clip'))
+            const _PreviewLinkButton(
+              label: 'คลิปที่ตั้งเวลาไว้',
+              icon: Icons.video_library_outlined,
+            ),
           for (final customLink in customLinks)
-            if (enabledLinkIds.contains(customLink.id)) ...[
-              const SizedBox(height: AppTheme.spaceSm),
-              _PreviewLinkButton(
-                label: customLink.title,
-                icon: Icons.link,
-                color: AppTheme.successInk,
-              ),
-            ],
+            if (enabledLinkIds.contains(customLink.id))
+              _PreviewLinkButton(label: customLink.title, icon: Icons.link),
         ],
       ),
     );
@@ -461,46 +528,45 @@ class _BioPreviewCard extends StatelessWidget {
 }
 
 class _PreviewLinkButton extends StatelessWidget {
-  const _PreviewLinkButton({
-    required this.label,
-    required this.icon,
-    required this.color,
-  });
+  const _PreviewLinkButton({required this.label, required this.icon});
 
   final String label;
   final IconData icon;
-  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-        color: color.withValues(alpha: 0.1),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(width: AppTheme.spaceSm),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(11),
+          color: Colors.white.withValues(alpha: 0.16),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          child: Row(
+            children: [
+              Icon(icon, color: Colors.white, size: 18),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
               ),
-            ),
-            Icon(
-              Icons.open_in_new,
-              color: AppTheme.textSecondary,
-              size: 16,
-            ),
-          ],
+              Icon(
+                Icons.open_in_new,
+                color: Colors.white.withValues(alpha: 0.7),
+                size: 15,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -532,72 +598,128 @@ class _BioLinkTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PostDeeCard(
-      padding: const EdgeInsets.all(AppTheme.spaceMd),
-      glowColor: color,
-      child: Row(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-              color: color.withValues(alpha: 0.14),
-              border: Border.all(color: color.withValues(alpha: 0.32)),
-            ),
-            child: SizedBox(
-              width: 38,
-              height: 38,
-              child: Icon(icon, color: color, size: 20),
-            ),
+    return Semantics(
+      label: title,
+      toggled: enabled,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(15),
+        onTap: () => onChanged(id, !enabled),
+        child: Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: AppTheme.glass,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF122018).withValues(alpha: 0.04),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(11),
+                  color: color.withValues(alpha: 0.14),
                 ),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textSecondary,
-                        height: 1.25,
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
                       ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(width: AppTheme.spaceSm),
+              if (onEdit != null) ...[
+                _LinkActionButton(
+                  tooltip: 'แก้ไขลิงก์',
+                  icon: Icons.edit_outlined,
+                  color: AppTheme.textSecondary,
+                  onPressed: onEdit!,
+                ),
+                const SizedBox(width: AppTheme.spaceXs),
               ],
-            ),
+              if (onDelete != null) ...[
+                _LinkActionButton(
+                  tooltip: 'ลบลิงก์',
+                  icon: Icons.delete_outline,
+                  color: const Color(0xFFEF4444),
+                  onPressed: onDelete!,
+                ),
+                const SizedBox(width: AppTheme.spaceXs),
+              ],
+              ExcludeSemantics(child: _BioSwitch(isOn: enabled)),
+            ],
           ),
-          const SizedBox(width: AppTheme.spaceSm),
-          if (onEdit != null) ...[
-            _LinkActionButton(
-              tooltip: 'แก้ไขลิงก์',
-              icon: Icons.edit_outlined,
-              color: color,
-              onPressed: onEdit!,
-            ),
-            const SizedBox(width: AppTheme.spaceXs),
-          ],
-          if (onDelete != null) ...[
-            _LinkActionButton(
-              tooltip: 'ลบลิงก์',
-              icon: Icons.delete_outline,
-              color: AppTheme.accentPinkInk,
-              onPressed: onDelete!,
-            ),
-            const SizedBox(width: AppTheme.spaceXs),
-          ],
-          Switch(
-            value: enabled,
-            onChanged: (value) => onChanged(id, value),
+        ),
+      ),
+    );
+  }
+}
+
+/// 46x27 pill switch with a 21px white knob, per the design handoff.
+class _BioSwitch extends StatelessWidget {
+  const _BioSwitch({required this.isOn});
+
+  final bool isOn;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      width: 46,
+      height: 27,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: isOn ? AppTheme.accent : AppTheme.track,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: AnimatedAlign(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        alignment: isOn ? Alignment.centerRight : Alignment.centerLeft,
+        child: const DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x33122018),
+                blurRadius: 2,
+                offset: Offset(0, 1),
+              ),
+            ],
           ),
-        ],
+          child: SizedBox.square(dimension: 21),
+        ),
       ),
     );
   }
@@ -643,45 +765,160 @@ class _AutoUpdateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PostDeeCard(
-      padding: const EdgeInsets.all(AppTheme.spaceMd),
-      glowColor: AppTheme.accentCyan,
-      child: Row(
-        children: [
-          Icon(
-            Icons.event_repeat_outlined,
-            color: AppTheme.accentCyanInk,
+    return Semantics(
+      label: 'อัปเดตจากโพสต์ที่ตั้งเวลา',
+      toggled: value,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(15),
+        onTap: () => onChanged(!value),
+        child: Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: AppTheme.glass,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF122018).withValues(alpha: 0.04),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'อัปเดตจากโพสต์ที่ตั้งเวลา',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
+          child: Row(
+            children: [
+              Icon(
+                Icons.event_repeat_outlined,
+                size: 21,
+                color: AppTheme.accentCyanInk,
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'อัปเดตจากโพสต์ที่ตั้งเวลา',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
                       ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      'เตรียมลิงก์สินค้าให้หน้าโปรไฟล์อัตโนมัติ',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(width: AppTheme.spaceSm),
+              ExcludeSemantics(child: _BioSwitch(isOn: value)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddLinkButton extends StatelessWidget {
+  const _AddLinkButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'เพิ่มลิงก์',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(13),
+        onTap: onTap,
+        child: CustomPaint(
+          foregroundPainter: _DashedRRectBorderPainter(
+            color: AppTheme.border,
+            radius: 13,
+          ),
+          child: SizedBox(
+            height: 46,
+            width: double.infinity,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add_link, size: 19, color: AppTheme.accentCyanInk),
+                const SizedBox(width: 7),
                 Text(
-                  'เมื่อมีคลิปตั้งเวลาไว้ ระบบจะเตรียมลิงก์สินค้าให้หน้าโปรไฟล์',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textSecondary,
-                        height: 1.25,
-                      ),
+                  'เพิ่มลิงก์',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.accentCyanInk,
+                  ),
                 ),
               ],
             ),
           ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-          ),
-        ],
+        ),
       ),
     );
+  }
+}
+
+class _DashedRRectBorderPainter extends CustomPainter {
+  const _DashedRRectBorderPainter({
+    required this.color,
+    required this.radius,
+  })  : dash = 7,
+        gap = 6,
+        strokeWidth = 1;
+
+  final Color color;
+  final double radius;
+  final double dash;
+  final double gap;
+  final double strokeWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(
+      strokeWidth / 2,
+      strokeWidth / 2,
+      size.width - strokeWidth,
+      size.height - strokeWidth,
+    );
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + dash;
+        canvas.drawPath(
+          metric.extractPath(
+            distance,
+            next > metric.length ? metric.length : next,
+          ),
+          paint,
+        );
+        distance += dash + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedRRectBorderPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.radius != radius;
   }
 }
 

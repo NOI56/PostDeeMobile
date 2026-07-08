@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../billing/paywall_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/growth_tool_detail_sheet.dart';
@@ -45,13 +46,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       (_summary?.platforms ?? const [])
           .any((platform) => platform.views > 0 || platform.likes > 0);
 
-  int get _baseViews => _summary?.totalViews ?? 0;
-
-  int get _baseLikes => _summary?.totalLikes ?? 0;
-
-  List<PlatformAnalyticsResult> get _basePlatforms =>
-      _summary?.platforms ?? const [];
-
   Future<void> _loadAnalytics() async {
     setState(() {
       _isLoading = true;
@@ -79,234 +73,271 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     }
   }
 
-  SocialPlatform? _socialPlatformFor(String platform) {
-    for (final p in SocialPlatform.values) {
-      if (p.apiValue == platform) return p;
+  @override
+  Widget build(BuildContext context) {
+    final views = _summary?.totalViews ?? 0;
+    final likes = _summary?.totalLikes ?? 0;
+
+    return RefreshIndicator(
+      onRefresh: _loadAnalytics,
+      color: AppTheme.accent,
+      child: ListView(
+        key: const ValueKey('analytics-scroll'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, AppTheme.navOverlap),
+        children: [
+          if (widget.showTitle) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'วิเคราะห์',
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
+                if (_isLoading)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppTheme.accent),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'ยอดรวมจากโพสต์ที่ซิงก์แล้วทั้งหมด',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 13),
+          ],
+          if (_isLoading)
+            const _AnalyticsSkeleton()
+          else if (!_hasAnalyticsData)
+            PostDeeNotice(
+              message: 'ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด',
+              color: AppTheme.accentCyanInk,
+              icon: Icons.hourglass_empty,
+            )
+          else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(label: 'ยอดวิวรวม', value: views),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: _StatCard(label: 'ไลก์รวม', value: likes),
+                ),
+              ],
+            ),
+            const SizedBox(height: 13),
+            _PlatformPerformanceCard(
+              metrics: _summary?.platforms ?? const [],
+            ),
+          ],
+          const SizedBox(height: 13),
+          const _ProInsightLockCard(),
+          const SizedBox(height: 15),
+          Text(
+            'เครื่องมือวิเคราะห์ด้วย AI',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _AiToolCard(
+            id: 'hashtag_radar',
+            title: 'เรดาร์แฮชแท็กฮิต',
+            subtitle: 'ดูแฮชแท็ก/คีย์เวิร์ดที่กำลังขึ้น เพื่อใช้กับคลิปต่อไป',
+            status: 'SEO',
+            icon: Icons.tag,
+            color: AppTheme.accentCyanInk,
+            tint: AppTheme.mint,
+            settings: const [
+              GrowthToolSettingOption(
+                id: 'content_category',
+                label: 'เลือกหมวดสินค้าหรือกลุ่มคอนเทนต์',
+              ),
+              GrowthToolSettingOption(
+                id: 'next_clip_hashtags',
+                label: 'ดูแฮชแท็กที่น่าลองใช้กับคลิปถัดไป',
+              ),
+              GrowthToolSettingOption(
+                id: 'team_keywords',
+                label: 'บันทึกชุดคีย์เวิร์ดสำหรับทีม',
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _AiToolCard(
+            id: 'ai_comment_center',
+            title: 'ศูนย์คอมเมนต์ AI',
+            subtitle: 'สรุปคอมเมนต์และร่างคำตอบให้ลูกค้า รออนุมัติก่อนตอบ',
+            status: 'ต้องอนุมัติ',
+            icon: Icons.forum_outlined,
+            color: const Color(0xFF6366F1),
+            tint: const Color(0xFF6366F1).withValues(alpha: 0.13),
+            settings: const [
+              GrowthToolSettingOption(
+                id: 'sentiment_summary',
+                label: 'ดูสรุปคอมเมนต์บวก ลบ และคำถามที่พบบ่อย',
+              ),
+              GrowthToolSettingOption(
+                id: 'reply_drafts',
+                label: 'ให้ AI ร่างคำตอบไว้รอตรวจ',
+              ),
+              GrowthToolSettingOption(
+                id: 'owner_approval',
+                label: 'บังคับให้เจ้าของร้านอนุมัติก่อนเผยแพร่ทุกครั้ง',
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const _CommentApprovalNotice(),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: AppTheme.spaceMd),
+            PostDeeNotice(
+              message: _errorMessage!,
+              color: Theme.of(context).colorScheme.error,
+              icon: Icons.error_outline,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({required this.label, required this.value});
+
+  final String label;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF122018).withValues(alpha: 0.05),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _fmtNumber(value),
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlatformPerformanceCard extends StatelessWidget {
+  const _PlatformPerformanceCard({required this.metrics});
+
+  final List<PlatformAnalyticsResult> metrics;
+
+  static SocialPlatform? _platformFor(String apiValue) {
+    for (final platform in SocialPlatform.values) {
+      if (platform.apiValue == apiValue) return platform;
     }
     return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final views = _baseViews;
-    final likes = _baseLikes;
+    final sorted = [...metrics]..sort((a, b) => b.views.compareTo(a.views));
+    final maxViews =
+        sorted.fold<int>(1, (c, m) => m.views > c ? m.views : c);
 
-    return ListView(
-      key: const ValueKey('analytics-scroll'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      children: [
-        if (widget.showTitle) ...[
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'วิเคราะห์',
-                  style: textTheme.headlineSmall?.copyWith(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              if (_isLoading)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: AppTheme.accent),
-                ),
-            ],
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF122018).withValues(alpha: 0.05),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
           ),
-          const SizedBox(height: AppTheme.spaceMd),
         ],
-        Row(
-          children: [
-            Expanded(
-              child: Text('ภาพรวม',
-                  style:
-                      textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ช่องทางที่ทำผลงานดีสุด',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
             ),
-            IconButton(
-              onPressed: _isLoading ? null : _loadAnalytics,
-              icon: const Icon(Icons.refresh, size: 18),
-              tooltip: 'โหลดข้อมูลวิเคราะห์',
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < sorted.length; i += 1) ...[
+            if (i > 0) const SizedBox(height: 12),
+            _PlatformPerfRow(
+              metric: sorted[i],
+              platform: _platformFor(sorted[i].platform),
+              maxViews: maxViews,
             ),
           ],
-        ),
-        Text(
-          'ยอดรวมจากโพสต์ที่ซิงก์แล้วทั้งหมด',
-          style: textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary),
-        ),
-        const SizedBox(height: 10),
-        if (_isLoading)
-          const _AnalyticsSkeleton()
-        else if (!_hasAnalyticsData)
-          PostDeeNotice(
-            message: 'ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด',
-            color: AppTheme.accentCyanInk,
-            icon: Icons.hourglass_empty,
-          )
-        else ...[
-          _KpiGrid(
-            cards: [
-              _KpiData('ยอดวิว', views, AppTheme.accent),
-              _KpiData('ไลก์', likes, AppTheme.accentCyan),
-            ],
-          ),
-          const SizedBox(height: AppTheme.spaceLg),
-          PostDeeCard(
-            child: _PlatformComparisonPanel(
-              metrics: _basePlatforms,
-              platformFor: _socialPlatformFor,
-            ),
-          ),
         ],
-        const SizedBox(height: AppTheme.spaceLg),
-        const _AnalyticsGrowthToolsPanel(),
-        if (_errorMessage != null) ...[
-          const SizedBox(height: AppTheme.spaceMd),
-          PostDeeNotice(
-            message: _errorMessage!,
-            color: Theme.of(context).colorScheme.error,
-            icon: Icons.error_outline,
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _KpiData {
-  const _KpiData(this.label, this.value, this.color);
-  final String label;
-  final int value;
-  final Color color;
-}
-
-class _KpiGrid extends StatelessWidget {
-  const _KpiGrid({required this.cards});
-
-  final List<_KpiData> cards;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cardWidth = (constraints.maxWidth - 12) / 2;
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: cards
-              .map((card) =>
-                  SizedBox(width: cardWidth, child: _KpiCard(data: card)))
-              .toList(),
-        );
-      },
-    );
-  }
-}
-
-class _KpiCard extends StatelessWidget {
-  const _KpiCard({required this.data});
-
-  final _KpiData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return PostDeeCard(
-      glowColor: data.color,
-      padding: const EdgeInsets.all(14),
-      child: SizedBox(
-        height: 88,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              data.label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
-            const Spacer(),
-            Text(
-              _fmtNumber(data.value),
-              style: Theme.of(context)
-                  .textTheme
-                  .headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: AppTheme.spaceXs),
-            Text(
-              'จากข้อมูลจริงที่ซิงก์แล้ว',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textMuted,
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
-          ],
-        ),
       ),
     );
   }
 }
 
-class _PlatformComparisonPanel extends StatelessWidget {
-  const _PlatformComparisonPanel({
-    required this.metrics,
-    required this.platformFor,
-  });
-
-  final List<PlatformAnalyticsResult> metrics;
-  final SocialPlatform? Function(String platform) platformFor;
-
-  @override
-  Widget build(BuildContext context) {
-    final maxViews =
-        metrics.fold<int>(1, (c, m) => m.views > c ? m.views : c);
-    final topViews = metrics.fold<int>(0, (c, m) => m.views > c ? m.views : c);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('เปรียบเทียบแพลตฟอร์ม',
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 14),
-        for (final m in metrics)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: _PlatformBar(
-              metric: m,
-              platform: platformFor(m.platform),
-              maxViews: maxViews,
-              isTop: m.views > 0 && m.views == topViews,
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _PlatformBar extends StatelessWidget {
-  const _PlatformBar({
+class _PlatformPerfRow extends StatelessWidget {
+  const _PlatformPerfRow({
     required this.metric,
     required this.platform,
     required this.maxViews,
-    required this.isTop,
   });
 
   final PlatformAnalyticsResult metric;
   final SocialPlatform? platform;
   final int maxViews;
-  final bool isTop;
 
   @override
   Widget build(BuildContext context) {
-    final color = platform?.color ?? const Color(0xFF6B7280);
-    final factor = (metric.views / maxViews).clamp(0.04, 1.0);
+    final color = platform?.displayColor ?? AppTheme.textMuted;
+    final factor = (metric.views / maxViews).clamp(0.04, 1.0).toDouble();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -314,146 +345,165 @@ class _PlatformBar extends StatelessWidget {
         Row(
           children: [
             if (platform != null) ...[
-              SocialPlatformLogo(platform: platform!, size: 20),
-              const SizedBox(width: AppTheme.spaceSm),
+              SocialPlatformLogo(platform: platform!, size: 22),
+              const SizedBox(width: 8),
             ],
-            Expanded(child: Text(metric.label)),
-            if (isTop) ...[
-              const PostDeeSoftPill(label: 'เด่นสุด', color: AppTheme.success),
-              const SizedBox(width: AppTheme.spaceSm),
-            ],
-            Text('${metric.views}',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w800)),
+            Expanded(
+              child: Text(
+                metric.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+            Text(
+              '${metric.views}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 6),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppTheme.pitchBlack.withValues(alpha: 0.65),
-            borderRadius: BorderRadius.circular(AppTheme.pillRadius),
-          ),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
           child: SizedBox(
-            height: 10,
-            child: FractionallySizedBox(
-              alignment: Alignment.centerLeft,
-              widthFactor: factor,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppTheme.pillRadius),
-                  gradient:
-                      LinearGradient(colors: [color, AppTheme.accentPink]),
+            height: 7,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: AppTheme.borderSoft),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: factor,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
         ),
-        const SizedBox(height: AppTheme.spaceXs),
-        Text('${metric.likes} ไลก์',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: AppTheme.textSecondary)),
+        const SizedBox(height: 4),
+        Text(
+          '${metric.likes} ไลก์',
+          style: TextStyle(
+            fontSize: 11,
+            color: AppTheme.textMuted,
+          ),
+        ),
       ],
     );
   }
 }
 
-class _AnalyticsGrowthToolsPanel extends StatelessWidget {
-  const _AnalyticsGrowthToolsPanel();
+class _ProInsightLockCard extends StatelessWidget {
+  const _ProInsightLockCard();
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        PostDeeSectionHeader(
-          title: 'เครื่องมือวิเคราะห์เพิ่ม',
-          trailing: PostDeeSoftPill(
-            label: 'เฟส 2',
-            icon: Icons.insights,
-            color: AppTheme.accentCyanInk,
+    return Semantics(
+      button: true,
+      label: 'รายงานเชิงลึก (Pro)',
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => const PaywallScreen(),
           ),
         ),
-        SizedBox(height: AppTheme.spaceSm),
-        _AnalyticsGrowthToolCard(
-          id: 'hashtag_radar',
-          title: 'เรดาร์แฮชแท็กฮิต',
-          description:
-              'ดูแฮชแท็กและคีย์เวิร์ดที่กำลังขึ้น เพื่อนำไปใช้กับคลิปถัดไป',
-          status: 'SEO',
-          icon: Icons.trending_up,
-          color: AppTheme.accentPinkInk,
-          settings: [
-            GrowthToolSettingOption(
-              id: 'content_category',
-              label: 'เลือกหมวดสินค้าหรือกลุ่มคอนเทนต์',
-            ),
-            GrowthToolSettingOption(
-              id: 'next_clip_hashtags',
-              label: 'ดูแฮชแท็กที่น่าลองใช้กับคลิปถัดไป',
-            ),
-            GrowthToolSettingOption(
-              id: 'team_keywords',
-              label: 'บันทึกชุดคีย์เวิร์ดสำหรับทีม',
-            ),
-          ],
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppTheme.glass,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF122018).withValues(alpha: 0.05),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.mint,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.lock_outline,
+                  size: 21,
+                  color: AppTheme.accentCyanInk,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'รายงานเชิงลึก (Pro)',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'ยอดวิวรายชั่วโมง · จุดที่คนเลื่อนผ่าน',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 20, color: AppTheme.textMuted),
+            ],
+          ),
         ),
-        SizedBox(height: AppTheme.spaceSm),
-        _AnalyticsGrowthToolCard(
-          id: 'ai_comment_center',
-          title: 'ศูนย์คอมเมนต์ AI',
-          description: 'สรุปอารมณ์คอมเมนต์และร่างคำตอบให้เจ้าของร้านตรวจ',
-          status: 'ต้องอนุมัติ',
-          icon: Icons.forum_outlined,
-          color: AppTheme.accent,
-          settings: [
-            GrowthToolSettingOption(
-              id: 'sentiment_summary',
-              label: 'ดูสรุปคอมเมนต์บวก ลบ และคำถามที่พบบ่อย',
-            ),
-            GrowthToolSettingOption(
-              id: 'reply_drafts',
-              label: 'ให้ AI ร่างคำตอบไว้รอตรวจ',
-            ),
-            GrowthToolSettingOption(
-              id: 'owner_approval',
-              label: 'บังคับให้เจ้าของร้านอนุมัติก่อนเผยแพร่ทุกครั้ง',
-            ),
-          ],
-        ),
-        SizedBox(height: AppTheme.spaceSm),
-        _CommentApprovalNotice(),
-      ],
+      ),
     );
   }
 }
 
-class _AnalyticsGrowthToolCard extends StatelessWidget {
-  const _AnalyticsGrowthToolCard({
+class _AiToolCard extends StatelessWidget {
+  const _AiToolCard({
     required this.id,
     required this.title,
-    required this.description,
+    required this.subtitle,
     required this.status,
     required this.icon,
     required this.color,
+    required this.tint,
     required this.settings,
   });
 
   final String id;
   final String title;
-  final String description;
+  final String subtitle;
   final String status;
   final IconData icon;
   final Color color;
+  final Color tint;
   final List<GrowthToolSettingOption> settings;
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
     return Semantics(
       button: true,
       label: title,
@@ -463,58 +513,68 @@ class _AnalyticsGrowthToolCard extends StatelessWidget {
           GrowthToolDetail(
             id: id,
             title: title,
-            description: description,
+            description: subtitle,
             status: status,
             icon: icon,
             color: color,
             settings: settings,
           ),
         ),
-        child: PostDeeCard(
-          padding: const EdgeInsets.all(AppTheme.spaceMd),
-          glowColor: color,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppTheme.glass,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF122018).withValues(alpha: 0.04),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-                      color: color.withValues(alpha: 0.14),
-                      border: Border.all(color: color.withValues(alpha: 0.32)),
-                    ),
-                    child: SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: Icon(icon, color: color, size: 20),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: tint,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 22, color: color),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w900),
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: AppTheme.spaceSm),
-                  PostDeeSoftPill(label: status, color: color),
-                ],
-              ),
-              const SizedBox(height: AppTheme.spaceSm),
-              Text(
-                description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.bodySmall?.copyWith(
-                  color: AppTheme.textSecondary,
-                  height: 1.25,
-                  fontWeight: FontWeight.w600,
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.4,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              Icon(Icons.chevron_right, size: 20, color: AppTheme.textMuted),
             ],
           ),
         ),
@@ -528,30 +588,28 @@ class _CommentApprovalNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PostDeeCard(
-      padding: const EdgeInsets.all(AppTheme.spaceMd),
-      glowColor: AppTheme.accentPink,
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppTheme.glassDeep,
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: Row(
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppTheme.accentPink.withValues(alpha: 0.16),
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(AppTheme.spaceSm),
-              child: Icon(Icons.verified_user_outlined,
-                  color: AppTheme.accentPinkInk, size: 18),
-            ),
+          Icon(
+            Icons.verified_user_outlined,
+            size: 20,
+            color: AppTheme.accentCyanInk,
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               'คอมเมนต์และคำตอบต้องให้เจ้าของร้านอนุมัติก่อนเผยแพร่',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary,
+              ),
             ),
           ),
         ],
@@ -559,7 +617,6 @@ class _CommentApprovalNotice extends StatelessWidget {
     );
   }
 }
-
 
 class _AnalyticsSkeleton extends StatelessWidget {
   const _AnalyticsSkeleton();
@@ -570,12 +627,12 @@ class _AnalyticsSkeleton extends StatelessWidget {
       children: [
         Row(
           children: const [
-            Expanded(child: _SkeletonKpiCard()),
-            SizedBox(width: AppTheme.spaceMd),
-            Expanded(child: _SkeletonKpiCard()),
+            Expanded(child: _SkeletonStatCard()),
+            SizedBox(width: 11),
+            Expanded(child: _SkeletonStatCard()),
           ],
         ),
-        const SizedBox(height: AppTheme.spaceLg),
+        const SizedBox(height: 13),
         PostDeeCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -595,8 +652,8 @@ class _AnalyticsSkeleton extends StatelessWidget {
   }
 }
 
-class _SkeletonKpiCard extends StatelessWidget {
-  const _SkeletonKpiCard();
+class _SkeletonStatCard extends StatelessWidget {
+  const _SkeletonStatCard();
 
   @override
   Widget build(BuildContext context) {

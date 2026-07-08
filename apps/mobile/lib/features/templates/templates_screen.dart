@@ -166,26 +166,28 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             children: [
               Row(
                 children: [
-                  DecoratedBox(
+                  Container(
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
-                      color: AppTheme.accent.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(8),
+                      color: AppTheme.mint,
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Padding(
-                      padding: EdgeInsets.all(AppTheme.spaceSm),
-                      child: Icon(
-                        Icons.text_snippet_outlined,
-                        color: AppTheme.accent,
-                      ),
+                    child: Icon(
+                      Icons.text_snippet_outlined,
+                      size: 19,
+                      color: AppTheme.accentCyanInk,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 9),
                   Expanded(
                     child: Text(
                       'สร้างเทมเพลตใหม่',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
                     ),
                   ),
                 ],
@@ -213,10 +215,29 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: _GradientTemplateButton(
-                      onPressed: _isSaving ? null : _saveTemplate,
-                      icon: Icons.save_outlined,
-                      label: _isSaving ? 'กำลังบันทึก...' : 'บันทึกเทมเพลต',
+                    child: SizedBox(
+                      height: 46,
+                      child: FilledButton.icon(
+                        onPressed: _isSaving ? null : _saveTemplate,
+                        icon: const Icon(Icons.save_outlined, size: 19),
+                        label: Text(
+                            _isSaving ? 'กำลังบันทึก...' : 'บันทึกเทมเพลต'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.accent,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor:
+                              AppTheme.accent.withValues(alpha: 0.55),
+                          disabledForegroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: AppTheme.spaceMd),
@@ -264,108 +285,51 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
   }
 }
 
-class _GradientTemplateButton extends StatelessWidget {
-  const _GradientTemplateButton({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final isEnabled = onPressed != null;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        gradient: LinearGradient(
-          colors: isEnabled
-              ? const [
-                  AppTheme.accentPink,
-                  AppTheme.accent,
-                  AppTheme.accentCyan,
-                ]
-              : const [
-                  Color(0xFF2A2D36),
-                  Color(0xFF20232B),
-                ],
-        ),
-        boxShadow: isEnabled
-            ? [
-                BoxShadow(
-                  color: AppTheme.accent.withValues(alpha: 0.16),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : const [],
-      ),
-      child: TextButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, color: Colors.white, size: 18),
-        label: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 8),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      ),
-    );
-  }
-}
-
-
 class _EmptyTemplateCard extends StatelessWidget {
   const _EmptyTemplateCard();
 
   @override
   Widget build(BuildContext context) {
-    return PostDeeCard(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 26, 20, 26),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
         children: [
-          DecoratedBox(
+          Container(
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              color: AppTheme.accentCyan.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(8),
+              color: AppTheme.glassDeep,
+              borderRadius: BorderRadius.circular(15),
             ),
-            child: Padding(
-              padding: EdgeInsets.all(10),
-              child: Icon(
-                Icons.library_books_outlined,
-                color: AppTheme.accentCyanInk,
-              ),
+            child: Icon(
+              Icons.text_snippet_outlined,
+              size: 27,
+              color: AppTheme.textMuted,
             ),
           ),
-          const SizedBox(width: AppTheme.spaceMd),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'ยังไม่มีเทมเพลตที่โหลด',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'กดโหลดเทมเพลต หรือสร้างรายการใหม่เพื่อใช้ซ้ำตอนอัปโหลด',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textSecondary,
-                      ),
-                ),
-              ],
+          const SizedBox(height: 12),
+          Text(
+            'ยังไม่มีเทมเพลตที่โหลด',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'บันทึกแคปชั่นที่ใช้บ่อยไว้ด้านบน\nแล้วหยิบมาใช้ตอนสร้างโพสต์ได้ทันที',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.5,
+              color: AppTheme.textMuted,
             ),
           ),
         ],
@@ -381,64 +345,53 @@ class _SavedTemplateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PostDeeCard(
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF122018).withValues(alpha: 0.04),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Icon(
-                Icons.notes_outlined,
+                Icons.notes,
+                size: 18,
                 color: AppTheme.accentCyanInk,
-                size: 20,
               ),
-              const SizedBox(width: AppTheme.spaceSm),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   template.title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
                 ),
               ),
-              const _TemplateStatusPill(label: 'พร้อมใช้'),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             template.body,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.textSecondary,
-                ),
+            style: TextStyle(
+              fontSize: 12.5,
+              height: 1.5,
+              color: AppTheme.textSecondary,
+            ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _TemplateStatusPill extends StatelessWidget {
-  const _TemplateStatusPill({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppTheme.success.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.success.withValues(alpha: 0.35)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        child: Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: AppTheme.successInk,
-                fontWeight: FontWeight.w800,
-              ),
-        ),
       ),
     );
   }

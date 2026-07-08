@@ -151,6 +151,9 @@ void main() {
     );
     expect(tester.widget<TextButton>(postButton).onPressed, isNotNull);
     await tester.tap(postButton);
+    // Confirm on the publish-review screen (design screen #7).
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
     await _pumpUntilFound(
       tester,
       find.textContaining('ใส่ลายน้ำแล้ว'),

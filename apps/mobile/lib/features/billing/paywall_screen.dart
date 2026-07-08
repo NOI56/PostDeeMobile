@@ -2,17 +2,25 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
-import '../shared/postdee_card.dart';
 import 'store_subscription_service.dart';
 
 typedef PaywallSubscriptionLoader = Future<SubscriptionStatusResult> Function();
+
+class _PlanFeature {
+  const _PlanFeature(this.text, {this.included = true});
+
+  final String text;
+
+  /// Limitations render with a gray dash — never a green check, per the
+  /// design handoff.
+  final bool included;
+}
 
 class _PlanOption {
   const _PlanOption({
     required this.id,
     required this.name,
     required this.price,
-    required this.color,
     required this.features,
     this.isCurrent = false,
     this.isRecommended = false,
@@ -21,8 +29,7 @@ class _PlanOption {
   final String id;
   final String name;
   final String price;
-  final Color color;
-  final List<String> features;
+  final List<_PlanFeature> features;
   final bool isCurrent;
   final bool isRecommended;
 }
@@ -98,39 +105,36 @@ class _PaywallScreenState extends State<PaywallScreen> {
         id: 'basic',
         name: 'Basic',
         price: 'ฟรี',
-        color: AppTheme.textSecondary,
         isCurrent: currentPlanId == 'basic',
-        features: [
-          'โพสต์ฟรี 3 ครั้ง/เดือนหลังยืนยันเบอร์',
-          'ต้องยืนยันเบอร์ก่อนโพสต์',
-          'ไม่มี AI แคปชั่นและการตั้งเวลา',
+        features: const [
+          _PlanFeature('โพสต์ฟรี 3 ครั้ง/เดือนหลังยืนยันเบอร์'),
+          _PlanFeature('ต้องยืนยันเบอร์ก่อนโพสต์', included: false),
+          _PlanFeature('ไม่มี AI แคปชั่นและการตั้งเวลา', included: false),
         ],
       ),
       _PlanOption(
         id: 'starter',
         name: 'Starter',
-        price: '199 บาท/เดือน',
-        color: AppTheme.accentPinkInk,
+        price: '199 ฿/เดือน',
         isCurrent: currentPlanId == 'starter',
-        features: [
-          'โพสต์หลายช่องทาง 120 หน่วย/เดือน',
-          'ตั้งเวลาโพสต์ + ปฏิทิน + เทมเพลต',
-          'AI แคปชั่นจากเสียงคลิป 50 ครั้ง/เดือน',
-          'ลายน้ำอัตโนมัติ + ตัดคลิปเป็น EP',
+        features: const [
+          _PlanFeature('โพสต์หลายช่องทาง 120 หน่วย/เดือน'),
+          _PlanFeature('ตั้งเวลาโพสต์ + ปฏิทิน + เทมเพลต'),
+          _PlanFeature('AI แคปชั่นจากเสียงคลิป 50 ครั้ง/เดือน'),
+          _PlanFeature('ลายน้ำอัตโนมัติ + ตัดคลิปเป็น EP'),
         ],
       ),
       _PlanOption(
         id: 'pro',
         name: 'Pro',
-        price: '299 บาท/เดือน',
-        color: AppTheme.accentCyanInk,
+        price: '299 ฿/เดือน',
         isCurrent: currentPlanId == 'pro',
         isRecommended: true,
-        features: [
-          'โพสต์หลายช่องทาง 250 หน่วย/เดือน',
-          'ทุกอย่างใน Starter + วิเคราะห์เต็มรูปแบบ',
-          'AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน',
-          'เรดาร์แฮชแท็ก, แจ้งเตือนไวรัล, ทีมและผู้ช่วย',
+        features: const [
+          _PlanFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
+          _PlanFeature('ทุกอย่างใน Starter + วิเคราะห์เต็มรูปแบบ'),
+          _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน'),
+          _PlanFeature('เรดาร์แฮชแท็ก, แจ้งเตือนไวรัล, ทีมและผู้ช่วย'),
         ],
       ),
     ];
@@ -206,7 +210,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       appBar: AppBar(
         title: const Text(
           'เลือกแพ็กเกจ',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       body: SafeArea(
@@ -216,28 +220,31 @@ class _PaywallScreenState extends State<PaywallScreen> {
             padding: AppTheme.screenPadding,
             children: [
               Text(
-                'อัปเกรดเพื่อปลดล็อกการตั้งเวลา AI และวิเคราะห์',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.textSecondary,
-                      fontWeight: FontWeight.w600,
-                    ),
+                'อัปเกรดเพื่อปลดล็อกการตั้งเวลา AI แคปชั่น และวิเคราะห์เต็มรูปแบบ',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.45,
+                  color: AppTheme.textSecondary,
+                ),
               ),
-              const SizedBox(height: AppTheme.spaceLg),
+              const SizedBox(height: 16),
               for (var index = 0; index < _plans.length; index += 1) ...[
                 _PlanCard(
                   plan: _plans[index],
                   onSubscribe: () => _subscribe(_plans[index]),
                 ),
-                if (index < _plans.length - 1)
-                  const SizedBox(height: AppTheme.spaceMd),
+                if (index < _plans.length - 1) const SizedBox(height: 13),
               ],
-              const SizedBox(height: AppTheme.spaceMd),
+              const SizedBox(height: 16),
               Text(
-                'ราคาจริงจะแสดงตามร้านค้าของแต่ละประเทศ ยกเลิกได้ทุกเมื่อ',
+                'ราคาจริงจะแสดงตามร้านค้าของแต่ละประเทศ · ยกเลิกได้ทุกเมื่อ',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppTheme.textMuted,
-                    ),
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.5,
+                  color: AppTheme.textMuted,
+                ),
               ),
             ],
           ),
@@ -255,58 +262,89 @@ class _PlanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return PostDeeCard(
-      glowColor: plan.color,
-      borderColor: plan.isRecommended ? plan.color.withValues(alpha: 0.6) : null,
+    return Container(
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(18),
+        border: plan.isRecommended
+            ? Border.all(color: AppTheme.accent, width: 2)
+            : Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF122018).withValues(alpha: 0.05),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  plan.name,
-                  style:
-                      textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+              Text(
+                plan.name,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
                 ),
               ),
-              if (plan.isRecommended)
-                PostDeeSoftPill(label: 'แนะนำ', color: plan.color),
-              if (plan.isCurrent)
-                Text(
-                  'แพ็กเกจปัจจุบัน',
-                  style: textTheme.labelSmall?.copyWith(
-                    color: AppTheme.textSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
+              if (plan.isRecommended) ...[
+                const SizedBox(width: 8),
+                const _PlanBadge(
+                  label: 'แนะนำ',
+                  background: AppTheme.accent,
+                  foreground: Colors.white,
                 ),
+              ],
+              if (plan.isCurrent) ...[
+                const SizedBox(width: 8),
+                _PlanBadge(
+                  label: 'แพ็กเกจปัจจุบัน',
+                  background: AppTheme.borderSoft,
+                  foreground: AppTheme.textMuted,
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: AppTheme.spaceXs),
+          const SizedBox(height: 4),
           Text(
             plan.price,
-            style: textTheme.titleLarge?.copyWith(
-              color: plan.color,
-              fontWeight: FontWeight.w900,
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w700,
+              color: plan.id == 'basic'
+                  ? AppTheme.textSecondary
+                  : AppTheme.accentCyanInk,
             ),
           ),
-          const SizedBox(height: AppTheme.spaceMd),
+          const SizedBox(height: 13),
           for (final feature in plan.features)
             Padding(
-              padding: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.check_circle, color: plan.color, size: 15),
-                  const SizedBox(width: 7),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Icon(
+                      feature.included ? Icons.check_circle : Icons.remove,
+                      color: feature.included
+                          ? AppTheme.accentCyanInk
+                          : AppTheme.textMuted,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      feature,
-                      style: textTheme.bodySmall?.copyWith(
+                      feature.text,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
                         color: AppTheme.textSecondary,
-                        height: 1.25,
                       ),
                     ),
                   ),
@@ -314,14 +352,62 @@ class _PlanCard extends StatelessWidget {
               ),
             ),
           if (!plan.isCurrent && plan.id != 'basic') ...[
-            const SizedBox(height: AppTheme.spaceMd),
-            PostDeeGradientButton(
-              label: 'สมัคร ${plan.name}',
-              icon: Icons.workspace_premium_outlined,
-              onPressed: onSubscribe,
+            const SizedBox(height: 7),
+            SizedBox(
+              height: 48,
+              child: FilledButton.icon(
+                onPressed: onSubscribe,
+                icon: const Icon(Icons.workspace_premium_outlined, size: 19),
+                label: Text('สมัคร ${plan.name}'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.accent,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _PlanBadge extends StatelessWidget {
+  const _PlanBadge({
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
+
+  final String label;
+  final Color background;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+            color: foreground,
+          ),
+        ),
       ),
     );
   }

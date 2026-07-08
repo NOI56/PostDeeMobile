@@ -73,21 +73,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('วิเคราะห์'), findsOneWidget);
-    expect(find.text('ภาพรวม'), findsOneWidget);
     expect(find.text('ยอดรวมจากโพสต์ที่ซิงก์แล้วทั้งหมด'), findsOneWidget);
     // The fake per-range date filter chips are gone (no simulated numbers).
     expect(find.text('30 วัน'), findsNothing);
     expect(find.text('แนวโน้มยอดวิว'), findsNothing);
 
     await tester.scrollUntilVisible(
-      find.text('เปรียบเทียบแพลตฟอร์ม'),
+      find.text('ช่องทางที่ทำผลงานดีสุด'),
       500,
       scrollable: analyticsScroll,
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('เปรียบเทียบแพลตฟอร์ม'), findsOneWidget);
+    expect(find.text('ช่องทางที่ทำผลงานดีสุด'), findsOneWidget);
     expect(find.text('TikTok'), findsOneWidget);
+    expect(find.text('รายงานเชิงลึก (Pro)'), findsOneWidget);
   });
 
   testWidgets('does not fall back to demo analytics when summary is empty',
@@ -210,7 +210,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.text('ภาพรวม'),
+      find.text('ยอดวิวรวม'),
       -500,
       scrollable: analyticsScroll,
     );
@@ -218,11 +218,11 @@ void main() {
 
     expect(find.text('150'), findsWidgets);
     expect(find.text('15'), findsOneWidget);
-    expect(find.text('ยอดวิว'), findsWidgets);
-    expect(find.text('ไลก์'), findsWidgets);
+    expect(find.text('ยอดวิวรวม'), findsOneWidget);
+    expect(find.text('ไลก์รวม'), findsOneWidget);
 
     await tester.scrollUntilVisible(
-      find.text('เปรียบเทียบแพลตฟอร์ม'),
+      find.text('ช่องทางที่ทำผลงานดีสุด'),
       500,
       scrollable: analyticsScroll,
     );

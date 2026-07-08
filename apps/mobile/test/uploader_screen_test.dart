@@ -76,14 +76,28 @@ Future<void> _enterUploadCaption(
   WidgetTester tester, {
   String caption = 'Real caption from seller',
 }) async {
+  // Caption (step 3) sits above schedule (step 4), so jump back to the top
+  // before scrolling down to it — callers may already be past it.
+  await tester.drag(find.byType(Scrollable).first, const Offset(0, 3000));
+  await tester.pumpAndSettle();
+
   final captionField = find.byKey(const ValueKey('uploader-caption-field'));
   await tester.scrollUntilVisible(
     captionField,
-    500,
+    300,
     scrollable: find.byType(Scrollable).first,
   );
   await tester.pumpAndSettle();
   await tester.enterText(captionField, caption);
+  await tester.pumpAndSettle();
+}
+
+
+/// The publish flow now shows a review screen first (design screen #7);
+/// confirm it so the real post request fires.
+Future<void> _confirmPublishReview(WidgetTester tester) async {
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
   await tester.pumpAndSettle();
 }
 
@@ -126,8 +140,9 @@ void main() {
       ),
     );
 
-    expect(find.text('รอเลือกวิดีโอ 9:16'), findsOneWidget);
-    expect(find.text('บันทึกฉบับร่าง'), findsNothing);
+    expect(find.text('สร้างโพสต์ใหม่'), findsOneWidget);
+    expect(find.text('บันทึกร่าง'), findsOneWidget);
+    expect(find.text('เลือกวิดีโอ 9:16'), findsOneWidget);
     expect(find.text('สถานะแพ็กเกจ'), findsNothing);
     expect(find.text('รีเฟรชแพ็กเกจ'), findsNothing);
     expect(find.byKey(const ValueKey('uploader-step-video')), findsOneWidget);
@@ -139,17 +154,17 @@ void main() {
     expect(find.text('1'), findsNothing);
 
     await tester.scrollUntilVisible(
-      find.text('เลือกแพลตฟอร์ม'),
+      find.text('2 · เลือกช่องทาง'),
       500,
       scrollable: uploaderScroll,
     );
     await tester.pumpAndSettle();
-    expect(find.text('เลือกแพลตฟอร์ม'), findsOneWidget);
+    expect(find.text('2 · เลือกช่องทาง'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('uploader-step-platforms')),
       findsNothing,
     );
-    expect(find.text('เลือกช่องทาง'), findsNothing);
+    expect(find.text('เชื่อมต่อบัญชีโซเชียลก่อนเริ่มโพสต์'), findsOneWidget);
     expect(
       find.text('เลือกว่าจะลง TikTok, Shorts, Reels หรือ Facebook'),
       findsNothing,
@@ -157,6 +172,22 @@ void main() {
     expect(find.text('2'), findsNothing);
     expect(find.text('พร้อมโพสต์'), findsNothing);
     expect(find.text('ปิดไว้'), findsNothing);
+
+    // The prototype orders caption (step 3) before schedule (step 4).
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('uploader-step-caption')),
+      500,
+      scrollable: uploaderScroll,
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-step-caption')), findsOneWidget);
+    expect(find.text('เขียนแคปชั่นของคุณ...'), findsOneWidget);
+    expect(find.text('ให้ AI ช่วยเขียน'), findsOneWidget);
+    expect(
+      find.text('ให้ AI คิดจากคลิปจริง หรือแก้แคปชั่นเองก่อนโพสต์'),
+      findsNothing,
+    );
+    expect(find.text('3'), findsNothing);
 
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('uploader-step-schedule')),
@@ -168,12 +199,12 @@ void main() {
     expect(
         find.byKey(const ValueKey('uploader-step-schedule')), findsOneWidget);
     expect(
-      find.text('เวลาไทย (GMT+7) · ตั้งเวลาได้ใน Starter/Pro'),
+      find.text('ตั้งเวลาได้ในแพ็กเกจ Starter ขึ้นไป'),
       findsOneWidget,
     );
     expect(find.text('ตั้งเวลาใช้ได้ใน Starter/Pro'), findsNothing);
     expect(find.text('โพสต์เลยหรือเลือกวันเวลาที่ต้องการ'), findsNothing);
-    expect(find.text('3'), findsNothing);
+    expect(find.text('4'), findsNothing);
 
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('uploader-advanced-tools-section')),
@@ -185,6 +216,13 @@ void main() {
       find.byKey(const ValueKey('uploader-advanced-tools-section')),
       findsOneWidget,
     );
+    expect(find.text('ตัดต่อเอง'), findsOneWidget);
+    expect(
+      find.text('ไทม์ไลน์ ซับ สติกเกอร์ ฟิลเตอร์ ครบเหมือน CapCut'),
+      findsOneWidget,
+    );
+    expect(find.text('ป้องกันคนก๊อปคลิป'), findsOneWidget);
+    expect(find.text('โหมดตั้งค่าขั้นสูง'), findsOneWidget);
     expect(find.text('UI ก่อน'), findsNothing);
     expect(
       find.text(
@@ -192,19 +230,6 @@ void main() {
       ),
       findsNothing,
     );
-
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('uploader-step-caption')),
-      500,
-      scrollable: uploaderScroll,
-    );
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('uploader-step-caption')), findsOneWidget);
-    expect(
-      find.text('ให้ AI คิดจากคลิปจริง หรือแก้แคปชั่นเองก่อนโพสต์'),
-      findsNothing,
-    );
-    expect(find.text('4'), findsNothing);
 
     await tester.scrollUntilVisible(
       find.text('โพสต์'),
@@ -295,7 +320,7 @@ void main() {
     }
   });
 
-  testWidgets('shows platform choices as a compact single row on phones',
+  testWidgets('shows platform choices as a stacked toggle list on phones',
       (tester) async {
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 2.75;
@@ -313,23 +338,31 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final platformTiles = [
-      find.byKey(const ValueKey('uploader-platform-TIKTOK')),
-      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
-      find.byKey(const ValueKey('uploader-platform-INSTAGRAM_REELS')),
-      find.byKey(const ValueKey('uploader-platform-FACEBOOK_REELS')),
+    await tester.drag(uploaderScroll, const Offset(0, -320));
+    await tester.pumpAndSettle();
+
+    // The prototype lists platforms as full-width rows with toggles.
+    final platformRows = [
+      find.byKey(const ValueKey('uploader-platform-TIKTOK'),
+          skipOffstage: false),
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS'),
+          skipOffstage: false),
+      find.byKey(const ValueKey('uploader-platform-INSTAGRAM_REELS'),
+          skipOffstage: false),
+      find.byKey(const ValueKey('uploader-platform-FACEBOOK_REELS'),
+          skipOffstage: false),
     ];
 
-    for (final tile in platformTiles) {
-      expect(tile, findsOneWidget);
+    for (final row in platformRows) {
+      expect(row, findsOneWidget);
     }
 
-    final firstTop = tester.getTopLeft(platformTiles.first).dy;
-    for (final tile in platformTiles.skip(1)) {
-      expect(
-        (tester.getTopLeft(tile).dy - firstTop).abs(),
-        lessThanOrEqualTo(8),
-      );
+    final firstLeft = tester.getTopLeft(platformRows.first).dx;
+    var previousTop = tester.getTopLeft(platformRows.first).dy;
+    for (final row in platformRows.skip(1)) {
+      expect(tester.getTopLeft(row).dx, firstLeft);
+      expect(tester.getTopLeft(row).dy, greaterThan(previousTop));
+      previousTop = tester.getTopLeft(row).dy;
     }
   });
 
@@ -965,7 +998,7 @@ void main() {
     await tester.ensureVisible(postButtonFinder);
     await tester.pumpAndSettle();
     await tester.tap(postButtonFinder);
-    await tester.pumpAndSettle();
+    await _confirmPublishReview(tester);
 
     expect(subscriptionChecks, 1);
     expect(
@@ -1046,7 +1079,7 @@ void main() {
     await _enterUploadCaption(tester);
 
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
-    await tester.pumpAndSettle();
+    await _confirmPublishReview(tester);
 
     expect(createdPostRequest?.scheduledAt, isNotNull);
     expect(createdPostRequest?.scheduledAt?.toLocal().hour, 18);
@@ -1113,7 +1146,7 @@ void main() {
     await tester.pumpAndSettle();
     await _enterUploadCaption(tester);
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
-    await tester.pumpAndSettle();
+    await _confirmPublishReview(tester);
 
     expect(createdPostRequest?.scheduledAt, isNotNull);
     expect(notifiedPost?.id, 'post-scheduled');
@@ -1179,7 +1212,7 @@ void main() {
     await _enterUploadCaption(tester);
 
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
-    await tester.pumpAndSettle();
+    await _confirmPublishReview(tester);
 
     expect(createPostCalls, 0);
     expect(find.text('เวลาตั้งโพสต์ต้องเป็นเวลาในอนาคต'), findsOneWidget);
@@ -1305,7 +1338,7 @@ void main() {
     await tester.ensureVisible(postButtonFinder);
     await tester.pumpAndSettle();
     await tester.tap(postButtonFinder);
-    await tester.pumpAndSettle();
+    await _confirmPublishReview(tester);
 
     expect(subscriptionChecks, 1);
     expect(
@@ -1343,7 +1376,7 @@ void main() {
     await tester.ensureVisible(postButtonFinder);
     await tester.pumpAndSettle();
     await tester.tap(postButtonFinder);
-    await tester.pumpAndSettle();
+    await _confirmPublishReview(tester);
 
     expect(find.text('เชื่อมต่อ PostDee API ไม่ได้'), findsOneWidget);
     expect(find.textContaining('SocketException'), findsNothing);
@@ -1412,7 +1445,7 @@ void main() {
     await tester.ensureVisible(postButtonFinder);
     await tester.pump();
     await tester.tap(postButtonFinder);
-    await tester.pump();
+    await _confirmPublishReview(tester);
 
     expect(
       find.text('ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920'),
@@ -1480,7 +1513,7 @@ void main() {
 
     await _enterUploadCaption(tester, caption: 'แคปชั่นคลิปที่ตัดแล้ว');
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
-    await tester.pumpAndSettle();
+    await _confirmPublishReview(tester);
 
     expect(postRequest, isNotNull);
     expect(postRequest!.videoS3Key, 'uploads/edited.mp4');

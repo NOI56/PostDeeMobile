@@ -1,5 +1,6 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/localization/language_controller.dart';
@@ -10,9 +11,8 @@ import '../../core/theme/theme_controller.dart';
 import '../auth/phone_verification_screen.dart';
 import '../billing/paywall_screen.dart';
 import '../legal/legal_document_screen.dart';
-import '../notifications/notifications_screen.dart';
-import '../platforms/social_platform.dart';
-import '../platforms/social_platform_logo.dart';
+import '../link_in_bio/link_in_bio_screen.dart';
+import '../platforms/connections_screen.dart';
 import '../shared/postdee_card.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -21,6 +21,7 @@ class ProfileScreen extends StatefulWidget {
     required this.themeController,
     required this.onOpenTemplates,
     required this.onDeleteAccount,
+    this.onSignOut,
     this.apiClient,
     this.launchConnectUrl,
     super.key,
@@ -30,8 +31,9 @@ class ProfileScreen extends StatefulWidget {
   final PostDeeThemeController themeController;
   final VoidCallback onOpenTemplates;
   final VoidCallback onDeleteAccount;
+  final VoidCallback? onSignOut;
   final PostDeeApiClient? apiClient;
-  final Future<bool> Function(Uri uri)? launchConnectUrl;
+  final ConnectUrlLauncher? launchConnectUrl;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -42,13 +44,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       widget.apiClient ?? PostDeeApiClient();
 
   int _connectedCount = 0;
+  SubscriptionStatusResult? _subscription;
 
   @override
   void initState() {
     super.initState();
-    // The platforms card lives near the bottom of the ListView and may not be
-    // built until scrolled into view, so the summary pill loads its own count.
     _loadConnectedCount();
+    _loadSubscription();
   }
 
   Future<void> _loadConnectedCount() async {
@@ -57,7 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       final statuses = {for (final result in results) result.platform: result};
       _updateConnectedCount(
-        _connectablePlatforms
+        connectablePlatforms
             .where(
                 (platform) => statuses[platform.apiValue]?.connected ?? false)
             .length,
@@ -67,9 +69,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _loadSubscription() async {
+    try {
+      final subscription = await _apiClient.loadCurrentSubscription();
+      if (!mounted) return;
+      setState(() => _subscription = subscription);
+    } on SocketException {
+      // Offline: keep the default free-tier display.
+    } catch (_) {
+      // Keep the default free-tier display if the plan call fails.
+    }
+  }
+
   void _updateConnectedCount(int count) {
     if (!mounted || count == _connectedCount) return;
     setState(() => _connectedCount = count);
+  }
+
+  void _openConnections() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => ConnectionsScreen(
+          apiClient: widget.apiClient,
+          launchConnectUrl: widget.launchConnectUrl,
+          onConnectionsChanged: _updateConnectedCount,
+        ),
+      ),
+    );
+  }
+
+  String get _currentTierId {
+    final plan = _subscription?.plan.toUpperCase();
+    return switch (plan) {
+      'PRO' => 'pro',
+      'STARTER' => 'starter',
+      _ => 'free',
+    };
   }
 
   @override
@@ -81,227 +116,647 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final accountDetail = accountEmail == null || accountEmail.isEmpty
         ? 'เชื่อมอีเมลก่อนใช้งานจริง'
         : accountEmail;
-    final accountBadge =
-        session.isSignedIn ? 'เชื่อมบัญชีแล้ว' : 'ยังไม่เชื่อมบัญชี';
-    final emailPillLabel = accountEmail == null || accountEmail.isEmpty
-        ? 'ยังไม่เชื่อมอีเมล'
-        : 'เชื่อมอีเมลแล้ว';
+    final phoneVerified = _subscription?.phoneVerified ?? false;
 
     return ListView(
-      padding: AppTheme.screenPadding,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, AppTheme.navOverlap),
       children: [
         Row(
           children: [
             Expanded(
               child: Text(
                 'บัญชีและโปรไฟล์',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: AppTheme.textPrimary,
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
               ),
             ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppTheme.accent.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.accent),
-              ),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                child: Text(
-                  accountBadge,
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: AppTheme.textPrimary,
-                        fontWeight: FontWeight.w800,
+            if (widget.onSignOut != null)
+              Semantics(
+                button: true,
+                label: 'ออกจากระบบ',
+                child: ExcludeSemantics(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: widget.onSignOut,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 13, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: AppTheme.glass,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: AppTheme.border),
                       ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.logout,
+                              size: 17, color: AppTheme.textSecondary),
+                          const SizedBox(width: 5),
+                          Text(
+                            'ออก',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 13),
+        _ProfileHeaderCard(
+          name: accountName,
+          email: accountDetail,
+          emailVerified: accountEmail != null && accountEmail.isNotEmpty,
+          connectedLabel:
+              '$_connectedCount/${connectablePlatforms.length} เชื่อมต่อ',
+          onOpenConnections: _openConnections,
+        ),
+        const SizedBox(height: 13),
+        _ProfileMenuCard(
+          rows: [
+            _ProfileMenuRow(
+              icon: Icons.hub_outlined,
+              label: 'เชื่อมต่อช่องทาง',
+              trailing: _StatusPill(
+                label: '$_connectedCount/${connectablePlatforms.length}',
+                background: AppTheme.glassDeep,
+                foreground: AppTheme.textSecondary,
+              ),
+              onTap: _openConnections,
+            ),
+            _ProfileMenuRow(
+              icon: Icons.smartphone,
+              label: 'ยืนยันเบอร์โทร',
+              trailing: _subscription == null
+                  ? null
+                  : _StatusPill(
+                      label: phoneVerified ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน',
+                      background:
+                          phoneVerified ? AppTheme.mint : AppTheme.glassDeep,
+                      foreground: phoneVerified
+                          ? AppTheme.accentCyanInk
+                          : AppTheme.textSecondary,
+                    ),
+              onTap: () => _openPhoneVerification(context),
+            ),
+            _ProfileMenuRow(
+              icon: Icons.text_snippet_outlined,
+              label: 'เทมเพลตแคปชั่น',
+              onTap: widget.onOpenTemplates,
+            ),
+            _ProfileMenuRow(
+              icon: Icons.link,
+              label: 'ลิงก์หน้าโปรไฟล์',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (context) => const LinkInBioScreen(),
                 ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        PostDeeCard(
-          glowColor: AppTheme.accentCyan,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  gradient: const LinearGradient(
-                    colors: [AppTheme.accent, AppTheme.accentCyan],
-                  ),
-                ),
-                child: const Padding(
-                  padding: EdgeInsets.all(AppTheme.spaceMd),
-                  child: Icon(Icons.person, color: Colors.white, size: 28),
-                ),
-              ),
-              const SizedBox(width: AppTheme.spaceMd),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'สถานะบัญชี',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: AppTheme.textSecondary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      accountName,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      accountDetail,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textSecondary,
-                          ),
-                    ),
-                    const SizedBox(height: AppTheme.spaceMd),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _ProfileSummaryPill(
-                          icon: Icons.verified_user_outlined,
-                          label: emailPillLabel,
-                          color: AppTheme.accent,
-                        ),
-                        _ProfileSummaryPill(
-                          key: const ValueKey(
-                              'profile-connected-summary-pill'),
-                          icon: Icons.hub_outlined,
-                          label:
-                              '$_connectedCount/${_connectablePlatforms.length} เชื่อมต่อ',
-                          color: AppTheme.accentCyanInk,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppTheme.spaceLg),
+        const SizedBox(height: 13),
         _LanguagePickerCard(languageController: widget.languageController),
-        const SizedBox(height: AppTheme.spaceLg),
+        const SizedBox(height: 13),
         _ThemeModeCard(themeController: widget.themeController),
-        const SizedBox(height: AppTheme.spaceLg),
-        const _PackageComparisonCard(),
-        const SizedBox(height: AppTheme.spaceLg),
+        const SizedBox(height: 15),
+        Row(
+          children: [
+            Icon(Icons.workspace_premium_outlined,
+                size: 20, color: AppTheme.accentCyanInk),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'แพ็กเกจ PostDee',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+            Text(
+              '1 ช่องทาง = 1 หน่วย',
+              style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        for (final tier in _tiers) ...[
+          _TierCard(
+            key: ValueKey('profile-plan-${tier.id}'),
+            tier: tier,
+            isCurrent: tier.id == _currentTierId,
+            onTap: () => _openPaywall(context),
+          ),
+          const SizedBox(height: 10),
+        ],
+        const SizedBox(height: 3),
         const _AiEditingQuotaCard(),
-        const SizedBox(height: AppTheme.spaceLg),
-        Semantics(
-          button: true,
-          label: 'เปิดเทมเพลต',
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onOpenTemplates,
-            child: PostDeeCard(
-              glowColor: AppTheme.accentPink,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'เทมเพลต',
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                        ),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: widget.onOpenTemplates,
-                        icon: const Icon(Icons.text_snippet_outlined, size: 18),
-                        label: const Text('เปิด'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppTheme.spaceSm),
-                  Text(
-                    'จัดการแคปชั่นที่บันทึกไว้ได้จากที่นี่ ฟีเจอร์เดิมยังอยู่ครบ',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textSecondary,
-                        ),
-                  ),
-                ],
+        const SizedBox(height: 13),
+        _ProfileMenuCard(
+          rows: [
+            _ProfileMenuRow(
+              icon: Icons.security,
+              label: 'ความปลอดภัย',
+              plainIcon: true,
+              onTap: () => _openLegal(context, _securityInfo),
+            ),
+            _ProfileMenuRow(
+              icon: Icons.help_outline,
+              label: 'ช่วยเหลือ',
+              plainIcon: true,
+              onTap: () => _openLegal(context, _helpInfo),
+            ),
+            _ProfileMenuRow(
+              icon: Icons.privacy_tip_outlined,
+              label: 'นโยบายความเป็นส่วนตัว',
+              plainIcon: true,
+              onTap: () =>
+                  _openLegal(context, PostDeeLegalDocuments.privacyPolicy),
+            ),
+            _ProfileMenuRow(
+              icon: Icons.description_outlined,
+              label: 'ข้อกำหนดการใช้งาน',
+              plainIcon: true,
+              onTap: () =>
+                  _openLegal(context, PostDeeLegalDocuments.termsOfService),
+            ),
+          ],
+        ),
+        const SizedBox(height: 13),
+        _DeleteAccountButton(onDeleteAccount: widget.onDeleteAccount),
+      ],
+    );
+  }
+}
+
+class _ProfileHeaderCard extends StatelessWidget {
+  const _ProfileHeaderCard({
+    required this.name,
+    required this.email,
+    required this.emailVerified,
+    required this.connectedLabel,
+    required this.onOpenConnections,
+  });
+
+  final String name;
+  final String email;
+  final bool emailVerified;
+  final String connectedLabel;
+  final VoidCallback onOpenConnections;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial =
+        name.trim().isEmpty ? 'P' : name.trim().characters.first.toUpperCase();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF122018).withValues(alpha: 0.05),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF34D399), Color(0xFF0E9F6E)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.accent.withValues(alpha: 0.5),
+                  blurRadius: 18,
+                  spreadRadius: -8,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                initial,
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _StatusPill(
+                      label:
+                          emailVerified ? 'ยืนยันอีเมลแล้ว' : 'ยังไม่เชื่อมอีเมล',
+                      icon: Icons.verified,
+                      background: AppTheme.mint,
+                      foreground: AppTheme.accentCyanInk,
+                    ),
+                    Semantics(
+                      button: true,
+                      label: connectedLabel,
+                      child: GestureDetector(
+                        key: const ValueKey('profile-connected-summary-pill'),
+                        onTap: onOpenConnections,
+                        child: _StatusPill(
+                          label: connectedLabel,
+                          icon: Icons.hub_outlined,
+                          background: AppTheme.glassDeep,
+                          foreground: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({
+    required this.label,
+    required this.background,
+    required this.foreground,
+    this.icon,
+  });
+
+  final String label;
+  final Color background;
+  final Color foreground;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 13, color: foreground),
+              const SizedBox(width: 3),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: foreground,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: AppTheme.spaceLg),
-        _ConnectedPlatformsCard(
-          apiClient: _apiClient,
-          launchConnectUrl: widget.launchConnectUrl,
-          onConnectionsChanged: _updateConnectedCount,
-        ),
-        const SizedBox(height: AppTheme.spaceLg),
-        PostDeeCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      ),
+    );
+  }
+}
+
+class _ProfileMenuCard extends StatelessWidget {
+  const _ProfileMenuCard({required this.rows});
+
+  final List<_ProfileMenuRow> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF122018).withValues(alpha: 0.05),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i += 1) ...[
+            if (i > 0) Divider(height: 1, color: AppTheme.borderSoft),
+            rows[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileMenuRow extends StatelessWidget {
+  const _ProfileMenuRow({
+    required this.icon,
+    required this.label,
+    this.trailing,
+    this.plainIcon = false,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Widget? trailing;
+
+  /// Legal/support rows show a bare muted icon instead of the mint icon box.
+  final bool plainIcon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+          child: Row(
             children: [
-              _ProfileSettingRow(
-                icon: Icons.verified_user_outlined,
-                label: 'ยืนยันเบอร์โทร',
-                onTap: () => _openPhoneVerification(context),
+              if (plainIcon)
+                Icon(icon, size: 20, color: AppTheme.textSecondary)
+              else
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppTheme.mint,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child:
+                      Icon(icon, size: 19, color: AppTheme.accentCyanInk),
+                ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
               ),
-              const SizedBox(height: AppTheme.spaceMd),
-              _ProfileSettingRow(
-                icon: Icons.notifications_none,
-                label: 'การแจ้งเตือน',
-                onTap: () => _openNotifications(context),
+              if (trailing != null) ...[
+                trailing!,
+                const SizedBox(width: 6),
+              ],
+              Icon(Icons.chevron_right, size: 20, color: AppTheme.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TierData {
+  const _TierData({
+    required this.id,
+    required this.name,
+    required this.price,
+    required this.features,
+    this.badge,
+  });
+
+  final String id;
+  final String name;
+  final String price;
+  final List<String> features;
+  final String? badge;
+}
+
+// Real tier prices from the design handoff (also used by the paywall).
+const _tiers = [
+  _TierData(
+    id: 'free',
+    name: 'ฟรี',
+    price: '0 บาท',
+    features: [
+      'โพสต์ฟรี 3 หน่วย/เดือน',
+      'ต้องยืนยันเบอร์ก่อนโพสต์',
+      'ไม่มี AI แคปชั่นจากคลิปจริง',
+    ],
+  ),
+  _TierData(
+    id: 'starter',
+    name: 'Starter',
+    price: '199 ฿/ด.',
+    badge: 'แนะนำ',
+    features: [
+      'โพสต์หลายช่องทาง 120 หน่วย/เดือน',
+      'AI แคปชั่นจากเสียงคลิป 50 ครั้ง/เดือน',
+      'ตั้งเวลาโพสต์และปฏิทิน',
+    ],
+  ),
+  _TierData(
+    id: 'pro',
+    name: 'Pro',
+    price: '299 ฿/ด.',
+    features: [
+      'ทุกอย่างใน Starter',
+      'โพสต์หลายช่องทาง 250 หน่วย/เดือน',
+      'AI ตัดต่อ + แคปชั่น 120 ครั้ง/เดือน',
+      'รายงานวิเคราะห์เชิงลึก',
+    ],
+  ),
+];
+
+class _TierCard extends StatelessWidget {
+  const _TierCard({
+    required this.tier,
+    required this.isCurrent,
+    required this.onTap,
+    super.key,
+  });
+
+  final _TierData tier;
+  final bool isCurrent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'แพ็กเกจ ${tier.name}',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isCurrent ? AppTheme.sel : AppTheme.glass,
+            borderRadius: BorderRadius.circular(18),
+            border: isCurrent
+                ? Border.all(color: AppTheme.accent, width: 2)
+                : Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF122018).withValues(alpha: 0.04),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
               ),
-              const SizedBox(height: AppTheme.spaceMd),
-              _ProfileSettingRow(
-                icon: Icons.security,
-                label: 'ความปลอดภัย',
-                onTap: () => _openLegal(context, _securityInfo),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    tier.name,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  if (tier.badge != null) ...[
+                    const SizedBox(width: 8),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 2),
+                        child: Text(
+                          tier.badge!,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  Text(
+                    tier.price,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: tier.id == 'free'
+                          ? AppTheme.textSecondary
+                          : AppTheme.accentCyanInk,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: AppTheme.spaceMd),
-              _ProfileSettingRow(
-                icon: Icons.help_outline,
-                label: 'ช่วยเหลือ',
-                onTap: () => _openLegal(context, _helpInfo),
+              const SizedBox(height: 11),
+              for (final feature in tier.features)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 7),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Icon(
+                          Icons.check_circle,
+                          size: 17,
+                          color: AppTheme.accentCyanInk,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          feature,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            height: 1.4,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 6),
+              Container(
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isCurrent ? AppTheme.glassDeep : AppTheme.mint,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  isCurrent ? 'แพ็กเกจปัจจุบัน' : 'อัปเกรด',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: isCurrent
+                        ? AppTheme.textMuted
+                        : AppTheme.accentCyanInk,
+                  ),
+                ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: AppTheme.spaceLg),
-        PostDeeCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _ProfileSettingRow(
-                icon: Icons.privacy_tip_outlined,
-                label: 'นโยบายความเป็นส่วนตัว',
-                onTap: () =>
-                    _openLegal(context, PostDeeLegalDocuments.privacyPolicy),
-              ),
-              const SizedBox(height: AppTheme.spaceMd),
-              _ProfileSettingRow(
-                icon: Icons.description_outlined,
-                label: 'ข้อกำหนดการใช้งาน',
-                onTap: () =>
-                    _openLegal(context, PostDeeLegalDocuments.termsOfService),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppTheme.spaceLg),
-        _DeleteAccountButton(onDeleteAccount: widget.onDeleteAccount),
-      ],
+      ),
     );
   }
 }
@@ -318,14 +773,6 @@ void _openPhoneVerification(BuildContext context) {
   Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (context) => const PhoneVerificationScreen(),
-    ),
-  );
-}
-
-void _openNotifications(BuildContext context) {
-  Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (context) => const NotificationsScreen(),
     ),
   );
 }
@@ -398,345 +845,30 @@ class _DeleteAccountButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final errorColor = Theme.of(context).colorScheme.error;
+    const errorColor = Color(0xFFEF4444);
 
     return Semantics(
       button: true,
       label: 'ลบบัญชี',
       child: OutlinedButton.icon(
         onPressed: () => _confirm(context),
-        icon: Icon(Icons.delete_outline, color: errorColor, size: 18),
-        label: Text(
+        icon: const Icon(Icons.delete_outline, color: errorColor, size: 19),
+        label: const Text(
           'ลบบัญชี',
-          style: TextStyle(color: errorColor, fontWeight: FontWeight.w800),
+          style: TextStyle(
+            color: errorColor,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         style: OutlinedButton.styleFrom(
-          side: BorderSide(color: errorColor.withValues(alpha: 0.5)),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-        ),
-      ),
-    );
-  }
-}
-
-class _PackageComparisonCard extends StatelessWidget {
-  const _PackageComparisonCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return PostDeeCard(
-      key: const ValueKey('profile-package-comparison'),
-      glowColor: AppTheme.accent,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.workspace_premium,
-                color: AppTheme.accent,
-                size: 20,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'แพ็กเกจ PostDee',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-              ),
-              PostDeeSoftPill(
-                label: 'ฟรี / 199 / 299',
-                icon: Icons.compare_arrows,
-                color: AppTheme.accentCyanInk,
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'คิดโควต้าแบบ 1 ช่องทาง = 1 หน่วย เช่น ลง 4 ช่องทางใช้ 4 หน่วย',
-          ),
-          const SizedBox(height: AppTheme.spaceMd),
-          _PlanCompareTile(
-            key: ValueKey('profile-plan-free'),
-            name: 'ฟรี',
-            price: '0 บาท',
-            color: AppTheme.textSecondary,
-            lines: [
-              'โพสต์ฟรี 3 หน่วย/เดือน',
-              'ต้องยืนยันเบอร์ก่อนโพสต์',
-              'ไม่มี AI แคปชั่นจากคลิปจริง',
-            ],
-          ),
-          const SizedBox(height: AppTheme.spaceSm),
-          _PlanCompareTile(
-            key: ValueKey('profile-plan-starter'),
-            name: 'Starter',
-            price: '199 บาท/เดือน',
-            color: AppTheme.accentPinkInk,
-            lines: [
-              'โพสต์หลายช่องทาง 120 หน่วย/เดือน',
-              'AI แคปชั่นจากเสียงคลิป 50 ครั้ง/เดือน',
-              'ตั้งเวลาโพสต์และปฏิทิน',
-            ],
-          ),
-          const SizedBox(height: AppTheme.spaceSm),
-          _PlanCompareTile(
-            key: ValueKey('profile-plan-pro'),
-            name: 'Pro',
-            price: '299 บาท/เดือน',
-            color: AppTheme.accentCyanInk,
-            lines: [
-              'โพสต์หลายช่องทาง 250 หน่วย/เดือน',
-              'AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน',
-              'วิเคราะห์, เรดาร์แฮชแท็ก, คอมเมนต์ AI',
-            ],
-          ),
-          const SizedBox(height: AppTheme.spaceMd),
-          const _PackageQuotaGrid(),
-          const SizedBox(height: AppTheme.spaceMd),
-          const _QuotaSummaryRow(
-            key: ValueKey('profile-post-quota-summary'),
-            icon: Icons.cloud_upload_outlined,
-            label: 'โควต้าโพสต์',
-            value: 'ฟรี 3 / Starter 120 / Pro 250 หน่วย',
-          ),
-          const SizedBox(height: AppTheme.spaceSm),
-          const _QuotaSummaryRow(
-            key: ValueKey('profile-ai-caption-quota-summary'),
-            icon: Icons.auto_awesome,
-            label: 'AI แคปชั่นจากคลิปจริง',
-            value: 'Starter 50 / Pro 120 ครั้งต่อเดือน',
-          ),
-          const SizedBox(height: AppTheme.spaceSm),
-          const _QuotaSummaryRow(
-            key: ValueKey('profile-team-access-pro'),
-            icon: Icons.groups_2_outlined,
-            label: 'Team & Editor Access',
-            value: 'อยู่ใน Pro 299: เชิญผู้ช่วยได้โดยไม่เห็นรหัสผ่าน',
-          ),
-          const SizedBox(height: AppTheme.spaceMd),
-          PostDeeGradientButton(
-            label: 'อัปเกรดแพ็กเกจ',
-            icon: Icons.workspace_premium_outlined,
-            onPressed: () => _openPaywall(context),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlanCompareTile extends StatelessWidget {
-  const _PlanCompareTile({
-    required this.name,
-    required this.price,
-    required this.color,
-    required this.lines,
-    super.key,
-  });
-
-  final String name;
-  final String price;
-  final Color color;
-  final List<String> lines;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-        color: color.withValues(alpha: 0.09),
-        border: Border.all(color: color.withValues(alpha: 0.32)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    name,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                  ),
-                ),
-                Text(
-                  price,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 7),
-            for (final line in lines) ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.check_circle, color: color, size: 14),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      line,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.textSecondary,
-                            height: 1.24,
-                            fontWeight: FontWeight.w400,
-                          ),
-                    ),
-                  ),
-                ],
-              ),
-              if (line != lines.last) const SizedBox(height: 5),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PackageQuotaGrid extends StatelessWidget {
-  const _PackageQuotaGrid();
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      key: const ValueKey('profile-quota-grid'),
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _QuotaMiniTile(
-          key: const ValueKey('profile-plan-quota-free'),
-          label: 'Free',
-          posts: '3 โพสต์',
-          ai: 'ไม่มี AI',
-          color: AppTheme.textSecondary,
-        ),
-        _QuotaMiniTile(
-          key: ValueKey('profile-plan-quota-starter'),
-          label: '199 Starter',
-          posts: '120 หน่วย',
-          ai: 'AI 50 ครั้ง',
-          color: AppTheme.accentPinkInk,
-        ),
-        _QuotaMiniTile(
-          key: ValueKey('profile-plan-quota-pro'),
-          label: '299 Pro',
-          posts: '250 หน่วย',
-          ai: 'AI 120 ครั้ง',
-          color: AppTheme.accentCyanInk,
-        ),
-      ],
-    );
-  }
-}
-
-class _QuotaMiniTile extends StatelessWidget {
-  const _QuotaMiniTile({
-    required this.label,
-    required this.posts,
-    required this.ai,
-    required this.color,
-    super.key,
-  });
-
-  final String label;
-  final String posts;
-  final String ai;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 148,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-          color: color.withValues(alpha: 0.08),
-          border: Border.all(color: color.withValues(alpha: 0.26)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: color,
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                posts,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                ai,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textSecondary,
-                      fontWeight: FontWeight.w400,
-                    ),
-              ),
-            ],
+          side: BorderSide(color: errorColor.withValues(alpha: 0.45)),
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
           ),
         ),
       ),
-    );
-  }
-}
-
-class _QuotaSummaryRow extends StatelessWidget {
-  const _QuotaSummaryRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    super.key,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: AppTheme.accent, size: 18),
-        const SizedBox(width: AppTheme.spaceSm),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textSecondary,
-                      height: 1.25,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
@@ -753,110 +885,33 @@ class _ThemeModeCard extends StatelessWidget {
       builder: (context, _) {
         final isLightMode = themeController.isLightMode;
 
-        return PostDeeCard(
-          glowColor: isLightMode ? AppTheme.accentCyan : AppTheme.accentPink,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        return _SettingCard(
+          icon: Icons.dark_mode_outlined,
+          title: 'โหมดการแสดงผล',
+          subtitle: 'สลับหน้าตาแอประหว่างสว่างกับมืด',
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Icon(
-                    isLightMode
-                        ? Icons.light_mode_outlined
-                        : Icons.dark_mode_outlined,
-                    color:
-                        isLightMode ? AppTheme.accentCyan : AppTheme.accentPink,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'โหมดการแสดงผล',
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                        ),
-                        Text(
-                          'สลับหน้าตาแอประหว่างมืดกับสว่าง',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: AppTheme.textSecondary,
-                                  ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              Expanded(
+                child: _ChoiceButton(
+                  label: 'สว่าง',
+                  icon: Icons.light_mode_outlined,
+                  isSelected: isLightMode,
+                  onPressed: () => themeController.setLightMode(true),
+                ),
               ),
-              const SizedBox(height: AppTheme.spaceMd),
-              Row(
-                children: [
-                  Expanded(
-                    child: _ThemeOptionButton(
-                      label: 'มืด',
-                      icon: Icons.dark_mode,
-                      isSelected: !isLightMode,
-                      onPressed: () => themeController.setLightMode(false),
-                    ),
-                  ),
-                  const SizedBox(width: AppTheme.spaceSm),
-                  Expanded(
-                    child: _ThemeOptionButton(
-                      label: 'สว่าง',
-                      icon: Icons.light_mode,
-                      isSelected: isLightMode,
-                      onPressed: () => themeController.setLightMode(true),
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 9),
+              Expanded(
+                child: _ChoiceButton(
+                  label: 'มืด',
+                  icon: Icons.dark_mode_outlined,
+                  isSelected: !isLightMode,
+                  onPressed: () => themeController.setLightMode(false),
+                ),
               ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-class _ThemeOptionButton extends StatelessWidget {
-  const _ThemeOptionButton({
-    required this.label,
-    required this.icon,
-    required this.isSelected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool isSelected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(
-        icon,
-        size: 16,
-        color: isSelected ? AppTheme.accentCyan : AppTheme.textSecondary,
-      ),
-      label: Text(
-        label,
-        style: TextStyle(
-          color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-      style: OutlinedButton.styleFrom(
-        backgroundColor:
-            isSelected ? AppTheme.accent.withValues(alpha: 0.18) : null,
-        side: BorderSide(
-          color: isSelected ? AppTheme.accentCyan : AppTheme.border,
-        ),
-      ),
     );
   }
 }
@@ -876,61 +931,28 @@ class _LanguagePickerCard extends StatelessWidget {
         final currentLocale =
             languageController.locale ?? Localizations.localeOf(context);
 
-        return PostDeeCard(
-          glowColor: AppTheme.accentCyan,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        return _SettingCard(
+          icon: Icons.language,
+          title: l10n.profileLanguageTitle,
+          subtitle: l10n.profileLanguageDescription,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Icon(Icons.language, color: AppTheme.accentCyanInk),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          l10n.profileLanguageTitle,
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                        ),
-                        Text(
-                          l10n.profileLanguageDescription,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: AppTheme.textSecondary,
-                                  ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              Expanded(
+                child: _ChoiceButton(
+                  label: l10n.languageEnglish,
+                  isSelected: currentLocale.languageCode == 'en',
+                  onPressed: () =>
+                      languageController.setLocale(const Locale('en')),
+                ),
               ),
-              const SizedBox(height: AppTheme.spaceMd),
-              Row(
-                children: [
-                  Expanded(
-                    child: _LanguageOptionButton(
-                      label: l10n.languageEnglish,
-                      isSelected: currentLocale.languageCode == 'en',
-                      onPressed: () => languageController.setLocale(
-                        const Locale('en'),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppTheme.spaceSm),
-                  Expanded(
-                    child: _LanguageOptionButton(
-                      label: l10n.languageThai,
-                      isSelected: currentLocale.languageCode == 'th',
-                      onPressed: () => languageController.setLocale(
-                        const Locale('th'),
-                      ),
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 9),
+              Expanded(
+                child: _ChoiceButton(
+                  label: l10n.languageThai,
+                  isSelected: currentLocale.languageCode == 'th',
+                  onPressed: () =>
+                      languageController.setLocale(const Locale('th')),
+                ),
               ),
             ],
           ),
@@ -940,72 +962,125 @@ class _LanguagePickerCard extends StatelessWidget {
   }
 }
 
-class _LanguageOptionButton extends StatelessWidget {
-  const _LanguageOptionButton({
-    required this.label,
-    required this.isSelected,
-    required this.onPressed,
+class _SettingCard extends StatelessWidget {
+  const _SettingCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.child,
   });
 
-  final String label;
-  final bool isSelected;
-  final VoidCallback onPressed;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        backgroundColor:
-            isSelected ? AppTheme.accent.withValues(alpha: 0.18) : null,
-        side: BorderSide(
-          color: isSelected ? AppTheme.accentCyan : AppTheme.border,
-        ),
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF122018).withValues(alpha: 0.05),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
-          fontWeight: FontWeight.w800,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: AppTheme.accentCyanInk),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
       ),
     );
   }
 }
 
-class _ProfileSummaryPill extends StatelessWidget {
-  const _ProfileSummaryPill({
-    required this.icon,
+class _ChoiceButton extends StatelessWidget {
+  const _ChoiceButton({
     required this.label,
-    required this.color,
-    super.key,
+    required this.isSelected,
+    required this.onPressed,
+    this.icon,
   });
 
-  final IconData icon;
   final String label;
-  final Color color;
+  final bool isSelected;
+  final VoidCallback onPressed;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.34)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    return SizedBox(
+      height: 44,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: isSelected ? AppTheme.mint : AppTheme.glass,
+          side: isSelected
+              ? const BorderSide(color: AppTheme.accent, width: 1.5)
+              : BorderSide(color: AppTheme.border),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: EdgeInsets.zero,
+        ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 14),
-            const SizedBox(width: 5),
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 17,
+                color: isSelected
+                    ? AppTheme.accentCyanInk
+                    : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 6),
+            ],
             Text(
               label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                color: isSelected
+                    ? AppTheme.accentCyanInk
+                    : AppTheme.textSecondary,
+              ),
             ),
           ],
         ),
@@ -1064,22 +1139,21 @@ class _AiEditingQuotaCardState extends State<_AiEditingQuotaCard> {
     final progress = _total == 0 ? 0.0 : _remaining / _total;
 
     return PostDeeCard(
-      glowColor: AppTheme.accent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_fix_high, color: AppTheme.accent, size: 20),
+              Icon(Icons.auto_fix_high, color: AppTheme.accentCyanInk, size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   'โควต้าตัดต่อ AI',
                   style: textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w800),
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
-              const PostDeeSoftPill(label: 'Pro', color: AppTheme.accentCyan),
+              const PostDeeSoftPill(label: 'Pro', color: AppTheme.accent),
             ],
           ),
           const SizedBox(height: AppTheme.spaceMd),
@@ -1090,7 +1164,7 @@ class _AiEditingQuotaCardState extends State<_AiEditingQuotaCard> {
               Text(
                 '$_remaining',
                 style: textTheme.headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.w900),
+                    ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(width: AppTheme.spaceXs),
               Text(
@@ -1122,312 +1196,6 @@ class _AiEditingQuotaCardState extends State<_AiEditingQuotaCard> {
             label: const Text('เติม 120 นาที · 49 บาท'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-typedef _ConnectUrlLauncher = Future<bool> Function(Uri uri);
-
-/// Platforms PostPeer can connect a user account for. Shopee/Lazada are listed
-/// in the app but not yet supported by the connect API, so they stay disabled.
-const List<SocialPlatform> _connectablePlatforms = [
-  SocialPlatform.tiktok,
-  SocialPlatform.youtubeShorts,
-  SocialPlatform.instagramReels,
-  SocialPlatform.facebookReels,
-];
-
-class _ConnectedPlatformsCard extends StatefulWidget {
-  const _ConnectedPlatformsCard({
-    this.apiClient,
-    this.launchConnectUrl,
-    this.onConnectionsChanged,
-  });
-
-  final PostDeeApiClient? apiClient;
-  final _ConnectUrlLauncher? launchConnectUrl;
-  final ValueChanged<int>? onConnectionsChanged;
-
-  @override
-  State<_ConnectedPlatformsCard> createState() =>
-      _ConnectedPlatformsCardState();
-}
-
-class _ConnectedPlatformsCardState extends State<_ConnectedPlatformsCard> {
-  late final PostDeeApiClient _apiClient =
-      widget.apiClient ?? PostDeeApiClient();
-  late final _ConnectUrlLauncher _launch = widget.launchConnectUrl ??
-      ((uri) => launchUrl(uri, mode: LaunchMode.externalApplication));
-
-  Map<String, SocialConnectionResult> _statuses = {};
-  bool _loading = true;
-  String? _busyPlatform;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadConnections();
-  }
-
-  Future<void> _loadConnections() async {
-    try {
-      final results = await _apiClient.listSocialConnections();
-      if (!mounted) return;
-      setState(() {
-        _statuses = {for (final result in results) result.platform: result};
-        _loading = false;
-      });
-      widget.onConnectionsChanged?.call(_connectedCount);
-    } catch (_) {
-      // Keep platforms shown as disconnected if the status call fails.
-      if (!mounted) return;
-      setState(() => _loading = false);
-    }
-  }
-
-  SocialConnectionResult? _statusFor(SocialPlatform platform) =>
-      _statuses[platform.apiValue];
-
-  int get _connectedCount => _connectablePlatforms
-      .where((platform) => _statusFor(platform)?.connected ?? false)
-      .length;
-
-  void _showMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _connect(SocialPlatform platform) async {
-    setState(() => _busyPlatform = platform.apiValue);
-    try {
-      final link =
-          await _apiClient.createSocialConnectionLink(platform.apiValue);
-      await _launch(link.connectUrl);
-      // PostPeer OAuth happens in an external browser, so prompt the user to
-      // refresh once they return instead of polling immediately.
-      _showMessage('เปิดหน้าเชื่อมบัญชีแล้ว — เมื่อเสร็จในเบราว์เซอร์ กดปุ่มรีเฟรช');
-    } on ApiException catch (error) {
-      _showMessage(error.message);
-    } catch (_) {
-      _showMessage('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง');
-    } finally {
-      if (mounted) setState(() => _busyPlatform = null);
-    }
-  }
-
-  Future<void> _refresh() async {
-    setState(() => _loading = true);
-    try {
-      final results = await _apiClient.refreshSocialConnections();
-      if (!mounted) return;
-      setState(() {
-        _statuses = {for (final result in results) result.platform: result};
-        _loading = false;
-      });
-      widget.onConnectionsChanged?.call(_connectedCount);
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      _showMessage(error.message);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      _showMessage('รีเฟรชสถานะไม่สำเร็จ ลองใหม่อีกครั้ง');
-    }
-  }
-
-  Future<void> _disconnect(SocialPlatform platform) async {
-    setState(() => _busyPlatform = platform.apiValue);
-    try {
-      await _apiClient.disconnectSocialConnection(platform.apiValue);
-      await _loadConnections();
-    } catch (_) {
-      _showMessage('ยกเลิกการเชื่อมไม่สำเร็จ ลองใหม่อีกครั้ง');
-    } finally {
-      if (mounted) setState(() => _busyPlatform = null);
-    }
-  }
-
-  ButtonStyle get _actionStyle => OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        minimumSize: Size.zero,
-        side: BorderSide(color: AppTheme.border.withValues(alpha: 0.5)),
-      );
-
-  Widget _buildAction(SocialPlatform platform) {
-    if (!_connectablePlatforms.contains(platform)) {
-      return OutlinedButton(
-        key: ValueKey('profile-platform-soon-${platform.apiValue}'),
-        onPressed: null,
-        style: _actionStyle,
-        child: const Text('เร็วๆ นี้'),
-      );
-    }
-
-    if (_busyPlatform == platform.apiValue) {
-      return const SizedBox(
-        width: 18,
-        height: 18,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
-
-    if (_statusFor(platform)?.connected ?? false) {
-      return OutlinedButton(
-        key: ValueKey('profile-platform-disconnect-${platform.apiValue}'),
-        onPressed: () => _disconnect(platform),
-        style: _actionStyle,
-        child: const Text('ยกเลิก'),
-      );
-    }
-
-    return OutlinedButton(
-      key: ValueKey('profile-platform-connect-${platform.apiValue}'),
-      onPressed: () => _connect(platform),
-      style: _actionStyle,
-      child: const Text('เชื่อม'),
-    );
-  }
-
-  Widget _buildRow(BuildContext context, SocialPlatform platform) {
-    final status = _statusFor(platform);
-    final connected = status?.connected ?? false;
-    final displayName = connected ? status?.displayName : null;
-
-    return Row(
-      children: [
-        SocialPlatformLogo(platform: platform, size: 26),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Flexible(child: Text(platform.label)),
-                  if (connected) ...[
-                    const SizedBox(width: 6),
-                    const Icon(Icons.check_circle,
-                        size: 16, color: AppTheme.accent),
-                  ],
-                ],
-              ),
-              if (displayName != null && displayName.isNotEmpty)
-                Text(
-                  displayName,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppTheme.textSecondary,
-                      ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 10),
-        _buildAction(platform),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return PostDeeCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'แพลตฟอร์มที่เชื่อมต่อ',
-                  style: textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ),
-              if (_loading)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else ...[
-                Text(
-                  '$_connectedCount/${_connectablePlatforms.length}',
-                  style: textTheme.labelMedium?.copyWith(
-                    color: AppTheme.textSecondary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  key: const ValueKey('profile-platforms-refresh'),
-                  onPressed: _refresh,
-                  icon: const Icon(Icons.refresh, size: 20),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'รีเฟรชสถานะการเชื่อม',
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'เชื่อมบัญชีโซเชียลของคุณเพื่อให้โพสต์ขึ้นบัญชีตัวเอง',
-            style: textTheme.bodySmall?.copyWith(
-              color: AppTheme.textSecondary,
-              height: 1.25,
-            ),
-          ),
-          const SizedBox(height: AppTheme.spaceMd),
-          for (final platform in SocialPlatform.values)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _buildRow(context, platform),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileSettingRow extends StatelessWidget {
-  const _ProfileSettingRow({
-    required this.icon,
-    required this.label,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final row = Row(
-      children: [
-        Icon(icon, color: AppTheme.textSecondary),
-        const SizedBox(width: 10),
-        Expanded(child: Text(label)),
-        Icon(Icons.chevron_right, color: AppTheme.textSecondary),
-      ],
-    );
-
-    if (onTap == null) {
-      return row;
-    }
-
-    return Semantics(
-      button: true,
-      label: label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: row,
-        ),
       ),
     );
   }

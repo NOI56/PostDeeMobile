@@ -28,6 +28,34 @@ PickedVideoFile _createPickedVideoFixture(String name) {
 }
 
 void main() {
+  testWidgets('matches the Claude AI editing entry copy', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AiEditingScreen(),
+        ),
+      ),
+    );
+
+    expect(find.text('ตัดต่อด้วย AI'), findsOneWidget);
+    expect(find.text('เพิ่มวิดีโอ'), findsOneWidget);
+    expect(
+      find.text('แตะเพื่อเลือกคลิปแนวตั้ง 9:16 ที่จะให้ AI ตัดต่อ'),
+      findsOneWidget,
+    );
+    expect(find.text('ให้ AI จัดการให้'), findsOneWidget);
+    expect(find.text('🔥 เน้นยอดขาย'), findsOneWidget);
+
+    // Styles are grouped like the prototype's gallery.
+    await tester.scrollUntilVisible(
+      find.text('สร้างตัวตน · เล่าเรื่อง', skipOffstage: false),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('สร้างตัวตน · เล่าเรื่อง'), findsOneWidget);
+  });
+
   testWidgets('uploads the picked clip before opening the editor',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('editor-real.mp4');
@@ -70,7 +98,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byIcon(Icons.video_library_outlined));
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
 
     expect(createdUploadRequest?.fileName, 'editor-real.mp4');
@@ -112,7 +140,13 @@ void main() {
       ),
     );
 
-    // The 10 style examples are listed on the entry screen.
+    // The 10 style examples remain reachable below the quick setup section.
+    await tester.scrollUntilVisible(
+      find.text('ป้ายยาฉับไว'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('ป้ายยาฉับไว'), findsOneWidget);
 
     await tester.tap(find.text('ป้ายยาฉับไว'));

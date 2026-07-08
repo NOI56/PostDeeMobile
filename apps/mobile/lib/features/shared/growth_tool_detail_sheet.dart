@@ -176,14 +176,11 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppTheme.pitchBlack,
+        color: AppTheme.glass,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-        border: Border(
-          top: BorderSide(color: detail.color.withValues(alpha: 0.42)),
-        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.28),
+            color: const Color(0xFF0A120E).withValues(alpha: 0.3),
             blurRadius: 22,
             offset: const Offset(0, -10),
           ),
@@ -215,16 +212,14 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
               children: [
                 DecoratedBox(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-                    color: detail.color.withValues(alpha: 0.15),
-                    border: Border.all(
-                      color: detail.color.withValues(alpha: 0.34),
-                    ),
+                    borderRadius: BorderRadius.circular(15),
+                    color: detail.color.withValues(alpha: 0.14),
                   ),
                   child: SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: Icon(detail.icon, color: AppTheme.inkFor(detail.color), size: 23),
+                    width: 48,
+                    height: 48,
+                    child: Icon(detail.icon,
+                        color: AppTheme.inkFor(detail.color), size: 25),
                   ),
                 ),
                 const SizedBox(width: AppTheme.spaceMd),
@@ -322,30 +317,35 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
               ),
             ),
             const SizedBox(height: 10),
-            PostDeeCard(
+            DecoratedBox(
               key: const ValueKey('growth-tool-real-status-note'),
-              padding: const EdgeInsets.all(AppTheme.spaceMd),
-              glowColor: AppTheme.accentPink,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: AppTheme.accentPinkInk,
-                    size: 18,
-                  ),
-                  const SizedBox(width: AppTheme.spaceSm),
-                  Expanded(
-                    child: Text(
-                      detail.note,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textSecondary,
-                        fontWeight: FontWeight.w500,
-                        height: 1.3,
+              decoration: BoxDecoration(
+                color: AppTheme.mint,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(13),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.lightbulb_outline,
+                      color: AppTheme.accentCyanInk,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        detail.note,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.45,
+                          color: AppTheme.textSecondary,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: AppTheme.spaceMd),
@@ -360,10 +360,29 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: PostDeeGradientButton(
-                    label: _isSaving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า',
-                    icon: Icons.save_outlined,
-                    onPressed: _isSaving ? null : _saveSettings,
+                  child: SizedBox(
+                    height: 48,
+                    child: FilledButton.icon(
+                      onPressed: _isSaving ? null : _saveSettings,
+                      icon: const Icon(Icons.save_outlined, size: 18),
+                      label: Text(
+                          _isSaving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppTheme.accent,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor:
+                            AppTheme.accent.withValues(alpha: 0.55),
+                        disabledForegroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],

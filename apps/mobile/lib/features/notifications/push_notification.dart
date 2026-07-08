@@ -37,9 +37,27 @@ class PostDeeNotificationCenter extends ChangeNotifier {
 
   final List<PostDeeNotification> _items = <PostDeeNotification>[];
 
+  // Notifications received after this moment count as unread. markAllRead()
+  // advances the cursor instead of mutating the immutable items.
+  DateTime _lastReadAt = DateTime.fromMillisecondsSinceEpoch(0);
+
   List<PostDeeNotification> get items => List.unmodifiable(_items);
 
   bool get isEmpty => _items.isEmpty;
+
+  bool isUnread(PostDeeNotification notification) =>
+      notification.receivedAt.isAfter(_lastReadAt);
+
+  bool get hasUnread => _items.any(isUnread);
+
+  void markAllRead() {
+    if (!hasUnread) {
+      return;
+    }
+
+    _lastReadAt = DateTime.now();
+    notifyListeners();
+  }
 
   void add(PostDeeNotification notification) {
     _items.insert(0, notification);
@@ -52,6 +70,7 @@ class PostDeeNotificationCenter extends ChangeNotifier {
     }
 
     _items.clear();
+    _lastReadAt = DateTime.fromMillisecondsSinceEpoch(0);
     notifyListeners();
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../platforms/connections_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/growth_tool_detail_sheet.dart';
@@ -11,6 +12,7 @@ import '../shared/growth_tool_settings_store.dart';
 import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
 import 'clip_frame_extractor.dart';
+import 'publish_review_screen.dart';
 import 'video_picker_service.dart';
 import 'watermark_video_processor.dart';
 
@@ -107,6 +109,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
   bool _isSubmitting = false;
   bool _isLoadingTemplates = false;
   bool _isGeneratingCaption = false;
+  bool _isAdvancedModeEnabled = true;
   String? _successMessage;
   String? _errorMessage;
   String? _templateErrorMessage;
@@ -669,6 +672,39 @@ class _UploaderScreenState extends State<UploaderScreen> {
     }
   }
 
+  /// Design screen #7: show the review summary before actually posting. When
+  /// no clip is selected yet, skip straight to [_createPost] so its validation
+  /// message shows instead of reviewing an empty post.
+  Future<void> _reviewThenPost() async {
+    final selectedVideoName = (_selectedVideoName ?? '').trim();
+
+    if (selectedVideoName.isEmpty) {
+      await _createPost();
+      return;
+    }
+
+    final watermarkEnabled = await _shouldApplyAutoWatermark();
+    if (!mounted) return;
+
+    final confirmed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (context) => PublishReviewScreen(
+          videoName: selectedVideoName,
+          caption: _captionController.text,
+          platforms: SocialPlatform.values
+              .where(_selectedPlatforms.contains)
+              .toList(),
+          scheduledAt: _readScheduledAt(),
+          watermarkEnabled: watermarkEnabled,
+        ),
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _createPost();
+    }
+  }
+
   Future<void> _createPost() async {
     final caption = _captionController.text.trim();
     final localFilePath = _localFilePathController.text.trim();
@@ -884,14 +920,6 @@ class _UploaderScreenState extends State<UploaderScreen> {
     });
   }
 
-  void _selectEveryPlatform() {
-    setState(() {
-      _selectedPlatforms
-        ..clear()
-        ..addAll(SocialPlatform.values);
-    });
-  }
-
   void _clearSchedule() {
     setState(() {
       _selectedScheduleDate = null;
@@ -917,9 +945,11 @@ class _UploaderScreenState extends State<UploaderScreen> {
             key: const ValueKey('uploader-scroll'),
             padding: const EdgeInsets.fromLTRB(16, AppTheme.spaceMd, 16, 116),
             children: [
+              const _UploadPageHeader(),
+              const SizedBox(height: AppTheme.spaceLg),
               const _UploadStepHeader(
                 key: ValueKey('uploader-step-video'),
-                title: 'เลือกคลิป',
+                title: '1 · เลือกวิดีโอ',
               ),
               const SizedBox(height: AppTheme.spaceSm),
               _VideoPreviewCard(
@@ -931,12 +961,18 @@ class _UploaderScreenState extends State<UploaderScreen> {
               _PlatformSelectorSection(
                 selectedPlatforms: _selectedPlatforms,
                 onPlatformChanged: _setPlatformSelected,
-                onSelectAll: _selectEveryPlatform,
               ),
               const SizedBox(height: AppTheme.spaceXl),
               const _UploadStepHeader(
+                key: ValueKey('uploader-step-caption'),
+                title: '3 · แคปชั่น',
+              ),
+              const SizedBox(height: AppTheme.spaceSm),
+              _buildCaptionCard(context),
+              const SizedBox(height: AppTheme.spaceXl),
+              const _UploadStepHeader(
                 key: ValueKey('uploader-step-schedule'),
-                title: 'ตั้งเวลา',
+                title: '4 · เวลาโพสต์',
               ),
               const SizedBox(height: AppTheme.spaceSm),
               SizedBox(
@@ -959,14 +995,25 @@ class _UploaderScreenState extends State<UploaderScreen> {
                 ),
               ),
               const SizedBox(height: AppTheme.spaceLg),
-              const _AdvancedUploadToolsSection(),
-              const SizedBox(height: AppTheme.spaceXl),
-              const _UploadStepHeader(
-                key: ValueKey('uploader-step-caption'),
-                title: 'แคปชั่น',
+              _AdvancedUploadToolsSection(
+                advancedModeEnabled: _isAdvancedModeEnabled,
+                onAdvancedModeChanged: (value) {
+                  setState(() {
+                    _isAdvancedModeEnabled = value;
+                  });
+                },
               ),
-              const SizedBox(height: AppTheme.spaceSm),
-              PostDeeCard(
+              const SizedBox(height: AppTheme.spaceLg),
+            ],
+          ),
+        ),
+        _buildStickyActionBar(context),
+      ],
+    );
+  }
+
+  Widget _buildCaptionCard(BuildContext context) {
+    return PostDeeCard(
                 glowColor: AppTheme.accent,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -986,7 +1033,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
                       maxLines: 5,
                       decoration: const InputDecoration(
                         labelText: 'แคปชั่น',
-                        hintText: 'เขียนแคปชั่นหรือใส่จากเทมเพลต',
+                        hintText: 'เขียนแคปชั่นของคุณ...',
                       ),
                     ),
                     const SizedBox(height: AppTheme.spaceMd),
@@ -1060,72 +1107,118 @@ class _UploaderScreenState extends State<UploaderScreen> {
                     ],
                   ],
                 ),
+    );
+  }
+
+  // Solid card footer with a hairline top border, per the prototype's
+  // publish bar (no dark gradient).
+  Widget _buildStickyActionBar(BuildContext context) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: DecoratedBox(
+        key: const ValueKey('uploader-sticky-action-bar'),
+        decoration: BoxDecoration(
+          color: AppTheme.glass,
+          border: Border(
+            top: BorderSide(color: AppTheme.borderSoft),
+          ),
+        ),
+        child: Padding(
+          // extendBody lets the floating capsule nav overlap the body, so
+          // lift the sticky actions above it via the ambient bottom inset.
+          padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            10 + MediaQuery.paddingOf(context).bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_errorMessage != null) ...[
+                PostDeeNotice(
+                  message: _errorMessage!,
+                  color: Theme.of(context).colorScheme.error,
+                  icon: Icons.error_outline,
+                ),
+                const SizedBox(height: AppTheme.spaceSm),
+              ],
+              if (_successMessage != null) ...[
+                PostDeeNotice(
+                  message: _successMessage!,
+                  color: AppTheme.successInk,
+                  icon: Icons.check_circle_outline,
+                ),
+                const SizedBox(height: AppTheme.spaceSm),
+              ],
+              _GradientActionButton(
+                key: const ValueKey('uploader-sticky-post-button'),
+                label: _isSubmitting ? 'กำลังโพสต์...' : 'โพสต์',
+                icon: Icons.send_rounded,
+                onPressed: _selectedPlatforms.isEmpty || _isSubmitting
+                    ? null
+                    : _reviewThenPost,
               ),
-              const SizedBox(height: AppTheme.spaceLg),
             ],
           ),
         ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: DecoratedBox(
-            key: const ValueKey('uploader-sticky-action-bar'),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AppTheme.pitchBlack.withValues(alpha: 0),
-                  AppTheme.pitchBlack,
-                  AppTheme.pitchBlack,
-                ],
-                stops: const [0, 0.46, 1],
+      ),
+    );
+  }
+}
+
+class _UploadPageHeader extends StatelessWidget {
+  const _UploadPageHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'สร้างโพสต์ใหม่',
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
               ),
-              border: Border(
-                top: BorderSide(color: AppTheme.navBorder, width: 0.6),
+              const SizedBox(height: 2),
+              Text(
+                'อัปโหลดครั้งเดียว แล้วเตรียมโพสต์ไปทุกช่องทาง',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: AppTheme.textSecondary,
+                ),
               ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_errorMessage != null) ...[
-                    PostDeeNotice(
-                      message: _errorMessage!,
-                      color: Theme.of(context).colorScheme.error,
-                      icon: Icons.error_outline,
-                    ),
-                    const SizedBox(height: AppTheme.spaceSm),
-                  ],
-                  if (_successMessage != null) ...[
-                    PostDeeNotice(
-                      message: _successMessage!,
-                      color: AppTheme.successInk,
-                      icon: Icons.check_circle_outline,
-                    ),
-                    const SizedBox(height: AppTheme.spaceSm),
-                  ],
-                  _GradientActionButton(
-                    key: const ValueKey('uploader-sticky-post-button'),
-                    label: _isSubmitting ? 'กำลังโพสต์...' : 'โพสต์',
-                    icon: Icons.send_rounded,
-                    onPressed: _selectedPlatforms.isEmpty || _isSubmitting
-                        ? null
-                        : _createPost,
-                  ),
-                ],
-              ),
+            ],
+          ),
+        ),
+        TextButton(
+          onPressed: () {},
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            foregroundColor: AppTheme.accentCyanInk,
+            textStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
           ),
+          child: const Text('บันทึกร่าง'),
         ),
       ],
     );
   }
 }
-
 class _UploadStepHeader extends StatelessWidget {
   const _UploadStepHeader({
     required this.title,
@@ -1136,19 +1229,25 @@ class _UploadStepHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
     return Text(
       title,
-      style: textTheme.titleSmall?.copyWith(
-        fontWeight: FontWeight.w800,
+      style: TextStyle(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w700,
+        color: AppTheme.textPrimary,
       ),
     );
   }
 }
 
 class _AdvancedUploadToolsSection extends StatelessWidget {
-  const _AdvancedUploadToolsSection();
+  const _AdvancedUploadToolsSection({
+    required this.advancedModeEnabled,
+    required this.onAdvancedModeChanged,
+  });
+
+  final bool advancedModeEnabled;
+  final ValueChanged<bool> onAdvancedModeChanged;
 
   static const _epTrimmerDetail = GrowthToolDetail(
     id: 'ep_trimmer',
@@ -1173,11 +1272,34 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
     ],
   );
 
+  static const _manualEditorDetail = GrowthToolDetail(
+    id: 'manual_editor',
+    title: 'ตัดต่อเอง',
+    description: 'ไทม์ไลน์ ซับ สติกเกอร์ ฟิลเตอร์ ครบเหมือน CapCut',
+    status: 'Manual',
+    icon: Icons.video_settings_outlined,
+    color: AppTheme.accentCyan,
+    settings: [
+      GrowthToolSettingOption(
+        id: 'timeline_layers',
+        label: 'จัดไทม์ไลน์และเลเยอร์ข้อความ',
+      ),
+      GrowthToolSettingOption(
+        id: 'subtitle_sticker_filter',
+        label: 'ซับ สติกเกอร์ และฟิลเตอร์ในคลิปเดียว',
+      ),
+      GrowthToolSettingOption(
+        id: 'cta_card',
+        label: 'ปรับ CTA ก่อนส่งไปโพสต์',
+      ),
+    ],
+  );
+
   static const _watermarkDetail = GrowthToolDetail(
     id: 'auto_watermark',
     title: 'ใส่ลายน้ำอัตโนมัติ',
     description: 'ฝังโลโก้ร้านลงในวิดีโอก่อนโพสต์',
-    status: 'แบรนด์',
+    status: 'ป้องกันคนก๊อปคลิป',
     icon: Icons.shield_outlined,
     color: AppTheme.success,
     settings: [
@@ -1219,7 +1341,7 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
               ),
             ),
             Text(
-              'เลือกใช้ได้',
+              'เลือกได้หลายอย่าง',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppTheme.textSecondary,
                     fontWeight: FontWeight.w700,
@@ -1245,11 +1367,58 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: AppTheme.spaceSm),
+        const _WideUploadToolButton(
+          key: ValueKey('uploader-tool-manual-editor'),
+          detail: _manualEditorDetail,
+        ),
+        const SizedBox(height: AppTheme.spaceSm),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppTheme.glass.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+            border: Border.all(color: AppTheme.borderSoft.withValues(alpha: 0.84)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'โหมดตั้งค่าขั้นสูง',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        advancedModeEnabled
+                            ? 'ซับ/โทนสี/CTA · ให้ปรับใต้การ์ดทันที'
+                            : 'ปิดไว้เพื่อใช้ค่าพื้นฐานของ PostDee',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppTheme.textSecondary,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch.adaptive(
+                  value: advancedModeEnabled,
+                  activeThumbColor: AppTheme.accent,
+                  activeTrackColor: AppTheme.accent.withValues(alpha: 0.24),
+                  onChanged: onAdvancedModeChanged,
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
 }
-
 class _CompactUploadToolButton extends StatelessWidget {
   const _CompactUploadToolButton({
     required this.detail,
@@ -1297,14 +1466,30 @@ class _CompactUploadToolButton extends StatelessWidget {
                 ),
                 const SizedBox(width: 9),
                 Expanded(
-                  child: Text(
-                    detail.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          height: 1.15,
-                        ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        detail.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              height: 1.15,
+                            ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        detail.status,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: AppTheme.textSecondary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ],
                   ),
                 ),
                 Icon(
@@ -1321,6 +1506,81 @@ class _CompactUploadToolButton extends StatelessWidget {
   }
 }
 
+class _WideUploadToolButton extends StatelessWidget {
+  const _WideUploadToolButton({
+    required this.detail,
+    super.key,
+  });
+
+  final GrowthToolDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = detail.color;
+
+    return Semantics(
+      button: true,
+      label: detail.title,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        onTap: () => showGrowthToolDetailSheet(context, detail),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppTheme.glass.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+            border: Border.all(color: AppTheme.borderSoft.withValues(alpha: 0.84)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+                  ),
+                  child: SizedBox(
+                    width: 38,
+                    height: 38,
+                    child: Icon(
+                      detail.icon,
+                      color: AppTheme.inkFor(color),
+                      size: 20,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppTheme.spaceSm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        detail.title,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                            ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        detail.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppTheme.textSecondary,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: AppTheme.textMuted, size: 18),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 class _VideoPreviewCard extends StatelessWidget {
   const _VideoPreviewCard({
     required this.videoName,
@@ -1337,140 +1597,199 @@ class _VideoPreviewCard extends StatelessWidget {
     final hasVideo = videoName != null;
 
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 136),
-        child: AspectRatio(
-          aspectRatio: 9 / 16,
-          child: InkWell(
-            key: const ValueKey('uploader-video-preview-picker'),
-            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-            onTap: isSubmitting ? null : onPickVideo,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-                border: Border.all(color: AppTheme.border),
-                gradient: const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF263755),
-                    Color(0xFF11131B),
-                    Color(0xFF050507),
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.accentCyan.withValues(alpha: 0.18),
-                    blurRadius: 28,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: _PreviewGlowPainter(),
-                    ),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: _SmallPill(
-                      icon: Icons.crop_portrait,
-                      label: '9:16',
-                      color: AppTheme.accentCyan,
-                    ),
-                  ),
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppTheme.spaceMd),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            hasVideo
-                                ? Icons.play_circle_fill
-                                : Icons.cloud_upload_outlined,
-                            color: hasVideo
-                                ? AppTheme.accentCyan
-                                : AppTheme.onDarkSecondary,
-                            size: 34,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            videoName ?? 'รอเลือกวิดีโอ 9:16',
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(
-                                  color: AppTheme.onDarkPrimary,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            hasVideo
-                                ? 'พร้อมเลือกแพลตฟอร์มและตั้งเวลา'
-                                : 'เหมาะกับ Reels, Shorts และ TikTok',
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: AppTheme.onDarkSecondary,
-                                    ),
-                          ),
-                          const SizedBox(height: 6),
-                          FilledButton.tonalIcon(
-                            onPressed: isSubmitting ? null : onPickVideo,
-                            style: FilledButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 10),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              textStyle: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            icon: const Icon(Icons.video_library_outlined),
-                            label: Text(
-                              hasVideo ? 'เปลี่ยนวิดีโอ' : 'เลือกวิดีโอ',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (hasVideo)
-                    Positioned(
-                      bottom: 8,
-                      left: 8,
-                      right: 8,
-                      child: FilledButton.icon(
-                        onPressed: isSubmitting ? null : onPickVideo,
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          textStyle: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        icon: const Icon(Icons.edit, size: 15),
-                        label: const Text('แก้ไขภาพปก'),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+      child: SizedBox(
+        width: 150,
+        height: 230,
+        child: InkWell(
+          key: const ValueKey('uploader-video-preview-picker'),
+          borderRadius: BorderRadius.circular(18),
+          onTap: isSubmitting ? null : onPickVideo,
+          child: hasVideo ? _buildSelected(context) : _buildEmpty(context),
         ),
       ),
     );
+  }
+
+  // Dashed placeholder inviting a 9:16 pick, per the prototype.
+  Widget _buildEmpty(BuildContext context) {
+    return CustomPaint(
+      foregroundPainter: _DashedRRectBorderPainter(
+        color: AppTheme.border,
+        radius: 18,
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppTheme.glass,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: AppTheme.mint,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.add_rounded,
+                size: 28,
+                color: AppTheme.accentCyanInk,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'เลือกวิดีโอ 9:16',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Reels · Shorts\nTikTok',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.4,
+                color: AppTheme.textMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Selected clip: green gradient stand-in with the 9:16 check badge.
+  Widget _buildSelected(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1F3A2C), Color(0xFF0E9F6E)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.accent.withValues(alpha: 0.5),
+            blurRadius: 26,
+            spreadRadius: -12,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Center(
+            child: Icon(
+              Icons.play_circle_rounded,
+              size: 46,
+              color: Colors.white.withValues(alpha: 0.92),
+            ),
+          ),
+          Positioned(
+            top: 10,
+            left: 10,
+            right: 10,
+            child: Text(
+              videoName ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 10,
+            left: 10,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check, size: 13, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text(
+                      '9:16',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashedRRectBorderPainter extends CustomPainter {
+  const _DashedRRectBorderPainter({
+    required this.color,
+    required this.radius,
+  })  : dash = 7,
+        gap = 6,
+        strokeWidth = 1.5;
+
+  final Color color;
+  final double radius;
+  final double dash;
+  final double gap;
+  final double strokeWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(
+      strokeWidth / 2,
+      strokeWidth / 2,
+      size.width - strokeWidth,
+      size.height - strokeWidth,
+    );
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + dash;
+        canvas.drawPath(
+          metric.extractPath(
+            distance,
+            next > metric.length ? metric.length : next,
+          ),
+          paint,
+        );
+        distance += dash + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedRRectBorderPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.radius != radius;
   }
 }
 
@@ -1478,13 +1797,21 @@ class _PlatformSelectorSection extends StatelessWidget {
   const _PlatformSelectorSection({
     required this.selectedPlatforms,
     required this.onPlatformChanged,
-    required this.onSelectAll,
   });
 
   final Set<SocialPlatform> selectedPlatforms;
   final void Function(SocialPlatform platform, bool isSelected)
       onPlatformChanged;
-  final VoidCallback onSelectAll;
+
+  // Short per-platform descriptions from the prototype's connection list.
+  static const _subLabels = {
+    SocialPlatform.tiktok: 'โพสต์คลิปสั้นไป TikTok อัตโนมัติ',
+    SocialPlatform.youtubeShorts: 'อัปขึ้น YouTube Shorts จากคลิปเดียว',
+    SocialPlatform.instagramReels: 'แชร์ Reels ไป Instagram',
+    SocialPlatform.facebookReels: 'โพสต์ Reels ลงเพจ Facebook',
+    SocialPlatform.shopeeVideo: 'โพสต์วิดีโอขึ้น Shopee Video',
+    SocialPlatform.lazadaVideo: 'โพสต์วิดีโอขึ้น Lazada Video',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -1495,108 +1822,188 @@ class _PlatformSelectorSection extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'เลือกแพลตฟอร์ม',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-            ),
-            TextButton(
-              onPressed: onSelectAll,
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                textStyle: const TextStyle(
-                  fontSize: 12,
+                '2 · เลือกช่องทาง',
+                style: TextStyle(
+                  fontSize: 13.5,
                   fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
                 ),
               ),
-              child: const Text('เลือกทั้งหมด'),
+            ),
+            Text(
+              'เลือกแล้ว ${selectedPlatforms.length} ช่องทาง',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.accentCyanInk,
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            for (var index = 0;
-                index < SocialPlatform.values.length;
-                index += 1) ...[
-              Expanded(
-                child: SizedBox(
-                  height: 68,
-                  child: _PlatformTile(
-                    platform: SocialPlatform.values[index],
-                    isSelected: selectedPlatforms.contains(
-                      SocialPlatform.values[index],
-                    ),
-                    onChanged: (next) => onPlatformChanged(
-                      SocialPlatform.values[index],
-                      next,
-                    ),
-                  ),
+        const SizedBox(height: 10),
+        Semantics(
+          button: true,
+          label: 'ยังไม่ได้เชื่อมต่อช่องทาง',
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => const ConnectionsScreen(),
+              ),
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
                 ),
               ),
-              if (index < SocialPlatform.values.length - 1)
-                const SizedBox(width: AppTheme.spaceSm),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.link_off,
+                    color: Color(0xFFB5740B),
+                    size: 22,
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'ยังไม่ได้เชื่อมต่อช่องทาง',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.isLightMode
+                                ? const Color(0xFF8A5908)
+                                : const Color(0xFFF3C173),
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          'เชื่อมต่อบัญชีโซเชียลก่อนเริ่มโพสต์',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.isLightMode
+                                ? const Color(0xFFA06A12)
+                                : const Color(0xFFD9AC5E),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFFB5740B),
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: AppTheme.glass,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF122018).withValues(alpha: 0.04),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
             ],
-          ],
+          ),
+          child: Column(
+            children: [
+              for (var index = 0;
+                  index < SocialPlatform.values.length;
+                  index += 1) ...[
+                if (index > 0)
+                  Divider(height: 1, color: AppTheme.borderSoft),
+                _PlatformRow(
+                  platform: SocialPlatform.values[index],
+                  subLabel: _subLabels[SocialPlatform.values[index]] ?? '',
+                  isSelected: selectedPlatforms.contains(
+                    SocialPlatform.values[index],
+                  ),
+                  onChanged: (next) => onPlatformChanged(
+                    SocialPlatform.values[index],
+                    next,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ],
     );
   }
 }
 
-class _PlatformTile extends StatelessWidget {
-  const _PlatformTile({
+class _PlatformRow extends StatelessWidget {
+  const _PlatformRow({
     required this.platform,
+    required this.subLabel,
     required this.isSelected,
     required this.onChanged,
   });
 
   final SocialPlatform platform;
+  final String subLabel;
   final bool isSelected;
   final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = isSelected ? platform.color : AppTheme.border;
-
     return Semantics(
       label: platform.label,
       button: true,
       selected: isSelected,
       child: InkWell(
         key: ValueKey('uploader-platform-${platform.apiValue}'),
-        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
         onTap: () => onChanged(!isSelected),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppTheme.glass.withValues(alpha: isSelected ? 0.86 : 0.72),
-            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-            border: Border.all(
-              color: isSelected
-                  ? borderColor.withValues(alpha: 0.72)
-                  : AppTheme.border.withValues(alpha: 0.72),
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SocialPlatformLogo(
-                  platform: platform,
-                  size: 28,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              SocialPlatformLogo(platform: platform, size: 36),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      platform.label,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      subLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 6),
-                ExcludeSemantics(
-                  child: _CompactPlatformSwitch(
-                    isSelected: isSelected,
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 10),
+              ExcludeSemantics(
+                child: _PrototypeSwitch(isOn: isSelected),
+              ),
+            ],
           ),
         ),
       ),
@@ -1604,37 +2011,40 @@ class _PlatformTile extends StatelessWidget {
   }
 }
 
-class _CompactPlatformSwitch extends StatelessWidget {
-  const _CompactPlatformSwitch({
-    required this.isSelected,
-  });
+/// 46x27 pill switch with a 21px white knob, per the design handoff.
+class _PrototypeSwitch extends StatelessWidget {
+  const _PrototypeSwitch({required this.isOn});
 
-  final bool isSelected;
+  final bool isOn;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      width: 46,
+      height: 27,
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: isSelected ? AppTheme.navActive : AppTheme.textMuted,
-        borderRadius: BorderRadius.circular(AppTheme.pillRadius),
+        color: isOn ? AppTheme.accent : AppTheme.track,
+        borderRadius: BorderRadius.circular(999),
       ),
-      child: SizedBox(
-        width: 28,
-        height: 16,
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
-          alignment: isSelected ? Alignment.centerRight : Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.all(2),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white : AppTheme.glassDeep,
-                shape: BoxShape.circle,
+      child: AnimatedAlign(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        alignment: isOn ? Alignment.centerRight : Alignment.centerLeft,
+        child: const DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x33122018),
+                blurRadius: 2,
+                offset: Offset(0, 1),
               ),
-              child: const SizedBox.square(dimension: 12),
-            ),
+            ],
           ),
+          child: SizedBox.square(dimension: 21),
         ),
       ),
     );
@@ -1739,7 +2149,7 @@ class _AiCaptionPanel extends StatelessWidget {
             PostDeeGradientButton(
               key: const ValueKey('uploader-ai-generate-button'),
               label:
-                  isGenerating ? 'AI กำลังฟังคลิป...' : 'ให้ AI คิดจากคลิปนี้',
+                  isGenerating ? 'AI กำลังฟังคลิป...' : 'ให้ AI ช่วยเขียน',
               icon: Icons.auto_awesome,
               onPressed: isGenerating ? null : onGenerate,
             ),
@@ -2079,7 +2489,7 @@ class _SchedulePanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'เวลาไทย (GMT+7) · ตั้งเวลาได้ใน Starter/Pro',
+                    'ตั้งเวลาได้ในแพ็กเกจ Starter ขึ้นไป',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -2223,79 +2633,3 @@ class _GradientActionButton extends StatelessWidget {
   }
 }
 
-class _SmallPill extends StatelessWidget {
-  const _SmallPill({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.38),
-        borderRadius: BorderRadius.circular(AppTheme.pillRadius),
-        border: Border.all(color: color.withValues(alpha: 0.7)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: AppTheme.spaceXs),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: AppTheme.onDarkPrimary,
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PreviewGlowPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final topGlow = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          AppTheme.accentCyan.withValues(alpha: 0.42),
-          Colors.transparent,
-        ],
-      ).createShader(
-        Rect.fromCircle(
-          center: Offset(size.width * 0.52, size.height * 0.28),
-          radius: size.width * 0.65,
-        ),
-      );
-
-    final bottomGlow = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          AppTheme.accentPink.withValues(alpha: 0.34),
-          Colors.transparent,
-        ],
-      ).createShader(
-        Rect.fromCircle(
-          center: Offset(size.width * 0.42, size.height * 0.8),
-          radius: size.width * 0.75,
-        ),
-      );
-
-    canvas.drawRect(Offset.zero & size, topGlow);
-    canvas.drawRect(Offset.zero & size, bottomGlow);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}

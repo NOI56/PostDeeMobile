@@ -66,21 +66,22 @@ class LegalDocumentScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text(
           document.title,
-          style: const TextStyle(fontWeight: FontWeight.w800),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       body: SafeArea(
         child: DecoratedBox(
           decoration: AppTheme.screenBackground,
           child: ListView(
-            padding: AppTheme.screenPadding,
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
             children: [
               Text(
                 document.body,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.textSecondary,
-                      height: 1.6,
-                    ),
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.7,
+                  color: AppTheme.textSecondary,
+                ),
               ),
             ],
           ),

@@ -224,7 +224,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       appBar: AppBar(
         title: const Text(
           'ยืนยันเบอร์โทร',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       body: SafeArea(
@@ -246,21 +246,43 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   }
 
   Widget _buildEnterPhone(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
     return PostDeeCard(
-      glowColor: AppTheme.accent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: AppTheme.mint,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                Icons.smartphone,
+                size: 28,
+                color: AppTheme.accentCyanInk,
+              ),
+            ),
+          ),
+          const SizedBox(height: 15),
           Text(
             'ยืนยันเบอร์เพื่อปลดล็อกโพสต์ฟรี',
-            style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
+            ),
           ),
-          const SizedBox(height: AppTheme.spaceSm),
+          const SizedBox(height: 7),
           Text(
             'แพ็กเกจ Basic ต้องยืนยันเบอร์โทรก่อนใช้สิทธิ์โพสต์ฟรี 3 ครั้งต่อเดือน',
-            style: textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary),
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: AppTheme.textSecondary,
+            ),
           ),
           const SizedBox(height: AppTheme.spaceLg),
           TextField(
@@ -284,7 +306,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             ),
           ],
           const SizedBox(height: AppTheme.spaceLg),
-          PostDeeGradientButton(
+          _GreenActionButton(
             key: const ValueKey('phone-verification-send-code'),
             label: _isLoading ? 'กำลังส่งรหัส...' : 'ส่งรหัส OTP',
             icon: Icons.sms_outlined,
@@ -296,22 +318,70 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   }
 
   Widget _buildEnterCode(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final showsDemoHint =
+        !widget.enableFirebaseAuth && widget.allowLocalMockVerification;
 
     return PostDeeCard(
-      glowColor: AppTheme.accentCyan,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             'กรอกรหัส OTP',
-            style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
+            ),
           ),
-          const SizedBox(height: AppTheme.spaceSm),
+          const SizedBox(height: 7),
           Text(
             'ส่งรหัส 6 หลักไปที่ ${_phoneController.text.trim()}',
-            style: textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary),
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: AppTheme.textSecondary,
+            ),
           ),
+          if (showsDemoHint) ...[
+            const SizedBox(height: 13),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppTheme.mint,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 18, color: AppTheme.accentCyanInk),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            const TextSpan(text: 'โหมดทดสอบ: ใช้รหัส '),
+                            TextSpan(
+                              text: DevMockPhoneVerification.demoCode,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: AppTheme.spaceLg),
           TextField(
             key: const ValueKey('phone-verification-code-field'),
@@ -334,17 +404,24 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             ),
           ],
           const SizedBox(height: AppTheme.spaceLg),
-          PostDeeGradientButton(
+          _GreenActionButton(
             key: const ValueKey('phone-verification-confirm-code'),
             label: _isLoading ? 'กำลังยืนยัน...' : 'ยืนยัน',
             icon: Icons.verified_outlined,
             onPressed: _isLoading ? null : _confirmCode,
           ),
-          const SizedBox(height: AppTheme.spaceSm),
+          const SizedBox(height: 6),
           TextButton(
             onPressed: _isLoading
                 ? null
                 : () => setState(() => _step = _PhoneStep.enterPhone),
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.accentCyanInk,
+              textStyle: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             child: const Text('เปลี่ยนเบอร์ / ส่งรหัสอีกครั้ง'),
           ),
         ],
@@ -353,33 +430,91 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   }
 
   Widget _buildDone(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
     return PostDeeCard(
-      glowColor: AppTheme.success,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(Icons.check_circle, color: AppTheme.successInk, size: 40),
-          const SizedBox(height: AppTheme.spaceMd),
+          Center(
+            child: Container(
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
+                color: AppTheme.mint,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.check,
+                size: 46,
+                color: AppTheme.accentCyanInk,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           Text(
             'ยืนยันเบอร์เรียบร้อย',
             textAlign: TextAlign.center,
-            style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
+            ),
           ),
-          const SizedBox(height: AppTheme.spaceSm),
+          const SizedBox(height: 8),
           Text(
             'ตอนนี้คุณใช้สิทธิ์โพสต์ฟรีของแพ็กเกจ Basic ได้แล้ว',
             textAlign: TextAlign.center,
-            style: textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary),
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: AppTheme.textSecondary,
+            ),
           ),
-          const SizedBox(height: AppTheme.spaceLg),
-          PostDeeGradientButton(
+          const SizedBox(height: 22),
+          _GreenActionButton(
             label: 'เสร็จสิ้น',
             icon: Icons.done,
             onPressed: () => Navigator.of(context).maybePop(),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GreenActionButton extends StatelessWidget {
+  const _GreenActionButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    super.key,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: FilledButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          backgroundColor: AppTheme.accent,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: AppTheme.accent.withValues(alpha: 0.55),
+          disabledForegroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 15.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }

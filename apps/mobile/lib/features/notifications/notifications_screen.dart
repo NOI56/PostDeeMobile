@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../shared/postdee_card.dart';
 import 'push_notification.dart';
 
 class NotificationItem {
@@ -11,6 +10,7 @@ class NotificationItem {
     required this.title,
     required this.body,
     required this.time,
+    this.isUnread = false,
   });
 
   final IconData icon;
@@ -18,6 +18,7 @@ class NotificationItem {
   final String title;
   final String body;
   final String time;
+  final bool isUnread;
 }
 
 class NotificationsScreen extends StatefulWidget {
@@ -70,12 +71,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return _center.items.map(_toItem).toList();
   }
 
-  NotificationItem _toItem(PostDeeNotification notification) => NotificationItem(
+  bool get _hasUnread => _usesLiveCenter
+      ? _center.hasUnread
+      : _resolveItems().any((item) => item.isUnread);
+
+  NotificationItem _toItem(PostDeeNotification notification) =>
+      NotificationItem(
         icon: Icons.notifications_none,
-        color: AppTheme.accent,
+        color: AppTheme.accentCyanInk,
         title: notification.title,
         body: notification.body,
         time: _relativeTime(notification.receivedAt),
+        isUnread: _center.isUnread(notification),
       );
 
   String _relativeTime(DateTime time) {
@@ -95,8 +102,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       appBar: AppBar(
         title: const Text(
           'การแจ้งเตือน',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
+        actions: [
+          if (_hasUnread && _usesLiveCenter)
+            TextButton(
+              onPressed: _center.markAllRead,
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.accentCyanInk,
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              child: const Text('อ่านทั้งหมด'),
+            ),
+        ],
       ),
       body: SafeArea(
         child: DecoratedBox(
@@ -104,10 +125,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           child: data.isEmpty
               ? const _NotificationsEmptyState()
               : ListView.separated(
-                  padding: AppTheme.screenPadding,
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
                   itemCount: data.length,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(height: AppTheme.spaceSm),
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) =>
                       _NotificationTile(item: data[index]),
                 ),
@@ -124,53 +144,84 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return PostDeeCard(
-      padding: const EdgeInsets.all(AppTheme.spaceMd),
-      glowColor: item.color,
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF122018).withValues(alpha: 0.04),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DecoratedBox(
+          Container(
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               color: item.color.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-              border: Border.all(color: item.color.withValues(alpha: 0.3)),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: SizedBox(
-              width: 38,
-              height: 38,
-              child: Icon(item.icon, color: item.color, size: 20),
-            ),
+            child: Icon(item.icon, color: item.color, size: 21),
           ),
-          const SizedBox(width: AppTheme.spaceMd),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    if (item.isUnread) ...[
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: AppTheme.accent,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                    ],
                     Expanded(
                       child: Text(
                         item.title,
-                        style: textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w800),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: item.isUnread
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                          color: item.isUnread
+                              ? AppTheme.textPrimary
+                              : AppTheme.textSecondary,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Text(
                       item.time,
-                      style: textTheme.labelSmall
-                          ?.copyWith(color: AppTheme.textMuted),
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: AppTheme.textMuted,
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: AppTheme.spaceXs),
+                const SizedBox(height: 4),
                 Text(
                   item.body,
-                  style: textTheme.bodySmall?.copyWith(
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.45,
                     color: AppTheme.textSecondary,
-                    height: 1.3,
                   ),
                 ),
               ],
@@ -187,28 +238,43 @@ class _NotificationsEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spaceXl),
+        padding: const EdgeInsets.fromLTRB(24, 50, 24, 50),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.notifications_off_outlined,
-                color: AppTheme.textMuted, size: 40),
-            const SizedBox(height: AppTheme.spaceMd),
-            Text(
-              'ยังไม่มีการแจ้งเตือน',
-              style:
-                  textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            Container(
+              width: 66,
+              height: 66,
+              decoration: BoxDecoration(
+                color: AppTheme.glassDeep,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                Icons.notifications_off_outlined,
+                color: AppTheme.textMuted,
+                size: 34,
+              ),
             ),
-            const SizedBox(height: AppTheme.spaceXs),
+            const SizedBox(height: 15),
             Text(
-              'เมื่อมีโพสต์เผยแพร่หรือคลิปมาแรง จะแจ้งให้ทราบที่นี่',
+              'ไม่มีการแจ้งเตือน',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'เมื่อมีคลิปมาแรง โพสต์เผยแพร่\nหรือใกล้ถึงคิวตั้งเวลา จะแจ้งที่นี่',
               textAlign: TextAlign.center,
-              style:
-                  textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary),
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.5,
+                color: AppTheme.textMuted,
+              ),
             ),
           ],
         ),

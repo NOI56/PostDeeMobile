@@ -37,9 +37,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('calendar-loading')), findsNothing);
+    // The first scheduled day is auto-selected, so its posts show below the
+    // grid with the prototype's "status · time" line.
     expect(find.text('Launch clip'), findsOneWidget);
-    expect(find.text('TikTok'), findsOneWidget);
-    expect(find.text('YouTube Shorts'), findsOneWidget);
+    expect(find.text('7 มิ.ย. 2026'), findsOneWidget);
+    expect(find.text('ตั้งเวลา · 18:30'), findsOneWidget);
     expect(find.byKey(const ValueKey('calendar-empty')), findsNothing);
   });
 

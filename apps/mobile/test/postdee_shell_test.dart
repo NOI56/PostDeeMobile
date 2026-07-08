@@ -11,11 +11,16 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+Finder _referenceNav() =>
+    find.byKey(const ValueKey('postdee-reference-bottom-nav'));
 
+Finder _referenceNavButton(String label) => find.descendant(
+      of: _referenceNav(),
+      matching: find.bySemanticsLabel(label),
+    );
 void main() {
-  testWidgets('orders bottom navigation with Edit before Upload',
-      (tester) async {
-    SharedPreferences.setMockInitialValues({});
+  testWidgets('uses the reference pill bottom navigation', (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
 
     final sessionStore = PostDeeAuthSessionStore.instance;
     final languageController = PostDeeLanguageController(
@@ -48,77 +53,67 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final bottomNav = tester.widget<BottomNavigationBar>(
-      find.byType(BottomNavigationBar),
-    );
-
-    expect(
-      bottomNav.items.map((item) => item.label).toList(),
-      ['Home', 'Edit', 'Upload', 'Calendar', 'Analytics'],
-    );
-  });
-
-  testWidgets('keeps the profile action available on every shell tab',
-      (tester) async {
-    SharedPreferences.setMockInitialValues({});
-
-    final sessionStore = PostDeeAuthSessionStore.instance;
-    final languageController = PostDeeLanguageController(
-      initialLocale: const Locale('en'),
-    );
-
-    sessionStore.signIn(
-      const AuthSession(
-        idToken: 'firebase-id-token',
-        email: 'seller@example.com',
-        displayName: 'PostDee Seller',
-      ),
-    );
-    addTearDown(sessionStore.clear);
-    addTearDown(languageController.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark,
-        locale: const Locale('en'),
-        localizationsDelegates: const [
-          PostDeeLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: PostDeeLocalizations.supportedLocales,
-        home: PostDeeShell(languageController: languageController),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final bottomNav = find.byType(BottomNavigationBar);
-    const tabLabels = ['Home', 'Edit', 'Upload', 'Calendar', 'Analytics'];
-
-    for (final label in tabLabels) {
-      await tester.tap(
-        find.descendant(of: bottomNav, matching: find.text(label)),
-      );
-      await tester.pumpAndSettle();
-
+    expect(find.byType(BottomNavigationBar), findsNothing);
+    final referenceNav = find.byKey(const ValueKey('postdee-reference-bottom-nav'));
+    expect(referenceNav, findsOneWidget);
+    for (final label in ['Home', 'Calendar', 'Create post', 'Analytics', 'Profile']) {
       expect(
-        find.bySemanticsLabel('User account'),
+        find.descendant(
+          of: referenceNav,
+          matching: find.bySemanticsLabel(label),
+        ),
         findsOneWidget,
-        reason: 'The profile action should be visible on the $label tab.',
       );
     }
+  });
+  testWidgets('opens profile from the reference bottom navigation',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
 
-    await tester.tap(find.bySemanticsLabel('User account'));
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+
+    sessionStore.signIn(
+      const AuthSession(
+        idToken: 'firebase-id-token',
+        email: 'seller@example.com',
+        displayName: 'PostDee Seller',
+      ),
+    );
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: PostDeeShell(languageController: languageController),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('Profile'), findsOneWidget);
+    expect(_referenceNavButton('Profile'), findsOneWidget);
+    await tester.tap(_referenceNavButton('Profile'));
+    await tester.pumpAndSettle();
+
+    // Profile is now a tab, so its content shows with the nav still visible.
+    expect(find.text('บัญชีและโปรไฟล์'), findsOneWidget);
     expect(find.text('PostDee Seller'), findsOneWidget);
+    expect(_referenceNavButton('Profile'), findsOneWidget);
   });
 
   testWidgets('deletes the account then returns to the login gate',
       (tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
 
     final sessionStore = PostDeeAuthSessionStore.instance;
     final languageController = PostDeeLanguageController(
@@ -157,7 +152,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.bySemanticsLabel('User account'));
+    await tester.tap(_referenceNavButton('Profile'));
     await tester.pumpAndSettle();
 
     final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
@@ -178,8 +173,9 @@ void main() {
     expect(find.text('Sign in to PostDee'), findsOneWidget);
   });
 
-  testWidgets('keeps home header icon buttons the same size', (tester) async {
-    SharedPreferences.setMockInitialValues({});
+  testWidgets('keeps reference bottom nav buttons touch-friendly',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
 
     final sessionStore = PostDeeAuthSessionStore.instance;
     final languageController = PostDeeLanguageController(
@@ -212,18 +208,21 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final notificationsSize =
-        tester.getSize(find.bySemanticsLabel('Notifications'));
-    final accountSize = tester.getSize(find.bySemanticsLabel('User account'));
+    final homeSize = tester.getSize(_referenceNavButton('Home'));
+    final createSize = tester.getSize(_referenceNavButton('Create post'));
+    final profileSize = tester.getSize(_referenceNavButton('Profile'));
 
-    expect(notificationsSize, accountSize);
-    expect(accountSize.width, greaterThanOrEqualTo(44));
-    expect(accountSize.height, greaterThanOrEqualTo(44));
+    expect(homeSize.width, greaterThanOrEqualTo(44));
+    expect(homeSize.height, greaterThanOrEqualTo(44));
+    expect(createSize.width, greaterThanOrEqualTo(44));
+    expect(createSize.height, greaterThanOrEqualTo(44));
+    expect(profileSize.width, greaterThanOrEqualTo(44));
+    expect(profileSize.height, greaterThanOrEqualTo(44));
   });
 
   testWidgets('opens and refreshes calendar after a scheduled post succeeds',
       (tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
 
     final sessionStore = PostDeeAuthSessionStore.instance;
     final languageController = PostDeeLanguageController(
@@ -316,11 +315,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-
-    final bottomNav = find.byType(BottomNavigationBar);
-    await tester.tap(
-      find.descendant(of: bottomNav, matching: find.text('Upload')),
-    );
+    await tester.tap(_referenceNavButton('Create post'));
     await tester.pumpAndSettle();
     final pickVideoButton =
         find.byKey(const ValueKey('uploader-video-preview-picker'));
@@ -352,9 +347,68 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
     await tester.pumpAndSettle();
+    // Confirm on the publish-review screen (design screen #7).
+    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
+    await tester.pumpAndSettle();
 
     expect(createdPostRequest?.scheduledAt, isNotNull);
     expect(calendarLoadCount, greaterThanOrEqualTo(2));
     expect(find.text('Scheduled shell clip'), findsOneWidget);
+  });
+
+  testWidgets('shows first-run onboarding once, then goes to home',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+
+    sessionStore.signIn(
+      const AuthSession(
+        idToken: 'firebase-id-token',
+        email: 'seller@example.com',
+        displayName: 'PostDee Seller',
+      ),
+    );
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: PostDeeShell(languageController: languageController),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // First run: the three-step intro shows before the main shell.
+    expect(find.text('เชื่อมช่องทางครั้งเดียว'), findsOneWidget);
+    expect(_referenceNav(), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('onboarding-next')));
+    await tester.pumpAndSettle();
+    expect(find.text('คลิปเดียว โพสต์ได้ทุกที่'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('onboarding-next')));
+    await tester.pumpAndSettle();
+    expect(find.text('ตั้งเวลา + ดูยอดที่เดียว'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('onboarding-next')));
+    await tester.pumpAndSettle();
+
+    // "เริ่มใช้งาน" lands on the main shell and persists the seen flag.
+    expect(_referenceNav(), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('postdee_onboarding_seen'), isTrue);
   });
 }

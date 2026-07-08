@@ -4,44 +4,61 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/app.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
 
 void main() {
   tearDown(() {
-    AppTheme.applyThemeMode(ThemeMode.dark);
+    PostDeeAuthSessionStore.instance.clear();
+    AppTheme.applyThemeMode(ThemeMode.light);
   });
 
   testWidgets('renders PostDee app smoke test', (tester) async {
+    _signInForShell();
+
     await tester.pumpWidget(const PostDeeApp());
+    await tester.pumpAndSettle();
 
-    expect(find.bySemanticsLabel('PostDee logo'), findsOneWidget);
-  });
-
-  testWidgets('uses the dark logo asset in dark mode', (tester) async {
-    final themeController = PostDeeThemeController();
-    addTearDown(themeController.dispose);
-
-    await tester.pumpWidget(PostDeeApp(themeController: themeController));
-
+    expect(find.text('หน้าแรก'), findsOneWidget);
     expect(
-      _postDeeLogoAssetName(tester),
-      'assets/images/brand/postdee_logo_dark.png',
+      find.byKey(const ValueKey('postdee-reference-bottom-nav')),
+      findsOneWidget,
     );
   });
 
-  testWidgets('uses the original logo asset in light mode', (tester) async {
+  testWidgets('uses dark theme mode when requested', (tester) async {
+    _signInForShell();
+    final themeController = PostDeeThemeController(
+      initialMode: ThemeMode.dark,
+    );
+    addTearDown(themeController.dispose);
+
+    await tester.pumpWidget(PostDeeApp(themeController: themeController));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
+      ThemeMode.dark,
+    );
+    expect(AppTheme.isLightMode, isFalse);
+  });
+
+  testWidgets('uses light theme mode when requested', (tester) async {
+    _signInForShell();
     final themeController = PostDeeThemeController(
       initialMode: ThemeMode.light,
     );
     addTearDown(themeController.dispose);
 
     await tester.pumpWidget(PostDeeApp(themeController: themeController));
+    await tester.pumpAndSettle();
 
     expect(
-      _postDeeLogoAssetName(tester),
-      'assets/images/brand/postdee_logo.png',
+      tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
+      ThemeMode.light,
     );
+    expect(AppTheme.isLightMode, isTrue);
   });
 
   test('keeps dark and light logo image canvases the same size', () {
@@ -56,14 +73,14 @@ void main() {
   });
 }
 
-String _postDeeLogoAssetName(WidgetTester tester) {
-  final logo = find.bySemanticsLabel('PostDee logo');
-  final image = tester.widget<Image>(
-    find.descendant(of: logo, matching: find.byType(Image)).first,
+void _signInForShell() {
+  PostDeeAuthSessionStore.instance.signIn(
+    const AuthSession(
+      idToken: 'firebase-id-token',
+      email: 'seller@example.com',
+      displayName: 'PostDee Seller',
+    ),
   );
-  final assetImage = image.image as AssetImage;
-
-  return assetImage.assetName;
 }
 
 Size _pngSize(Uint8List bytes) {

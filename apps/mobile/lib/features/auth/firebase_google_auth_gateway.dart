@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../core/auth/auth_session.dart';
@@ -84,6 +85,47 @@ class FirebaseGoogleAuthGateway implements GoogleAuthGateway {
     await _firebaseAuthClient.signOut();
     await _googleClient.signOut();
   }
+}
+
+/// Uses Firebase's web popup flow directly. The mobile Google Sign-In package
+/// is retained below for Android and iOS, where it uses the native account UI.
+class FirebaseWebGoogleAuthGateway implements GoogleAuthGateway {
+  FirebaseWebGoogleAuthGateway({
+    firebase_auth.FirebaseAuth? firebaseAuth,
+  }) : _firebaseAuth = firebaseAuth ?? firebase_auth.FirebaseAuth.instance;
+
+  final firebase_auth.FirebaseAuth _firebaseAuth;
+
+  @override
+  Future<AuthSession> signIn() async {
+    final credential = await _firebaseAuth.signInWithPopup(
+      firebase_auth.GoogleAuthProvider(),
+    );
+    final user = credential.user ?? _firebaseAuth.currentUser;
+
+    if (user == null) {
+      throw const AuthUnavailableException(
+        'Firebase Auth did not return a signed-in user',
+      );
+    }
+
+    final idToken = (await user.getIdToken())?.trim();
+
+    if (idToken == null || idToken.isEmpty) {
+      throw const AuthUnavailableException(
+        'Firebase Auth did not return an ID token',
+      );
+    }
+
+    return AuthSession(
+      idToken: idToken,
+      email: user.email,
+      displayName: user.displayName,
+    );
+  }
+
+  @override
+  Future<void> signOut() => _firebaseAuth.signOut();
 }
 
 class GoogleSignInPackageClient implements GoogleIdentityClient {
@@ -216,6 +258,10 @@ GoogleAuthGateway createGoogleAuthGatewayFromConfig({
     return UnavailableGoogleAuthGateway(
       message: bootstrap.errorMessage ?? 'Firebase Auth is not initialized',
     );
+  }
+
+  if (kIsWeb) {
+    return FirebaseWebGoogleAuthGateway();
   }
 
   return FirebaseGoogleAuthGateway(

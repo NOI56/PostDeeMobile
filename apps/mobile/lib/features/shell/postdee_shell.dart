@@ -16,6 +16,7 @@ import '../ai_editing/ai_editing_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../auth/auth_controller.dart';
 import '../auth/firebase_apple_auth_gateway.dart';
+import '../auth/firebase_email_auth_gateway.dart';
 import '../auth/firebase_google_auth_gateway.dart';
 import '../auth/firebase_id_token_refresher.dart';
 import '../calendar/calendar_screen.dart';
@@ -84,6 +85,9 @@ class _PostDeeShellState extends State<PostDeeShell> {
         firebaseBootstrapResult: widget.firebaseBootstrapResult,
       ),
       googleAuthGateway: createGoogleAuthGatewayFromConfig(
+        firebaseBootstrapResult: widget.firebaseBootstrapResult,
+      ),
+      emailAuthGateway: createEmailAuthGatewayFromConfig(
         firebaseBootstrapResult: widget.firebaseBootstrapResult,
       ),
       appleAuthGateway: createAppleAuthGatewayFromConfig(
@@ -489,8 +493,7 @@ class _ReferenceCreateNavButton extends StatelessWidget {
                           // capsule behind it (box-shadow 0 0 0 5px var(--card)).
                           BoxShadow(color: AppTheme.glass, spreadRadius: 5),
                           BoxShadow(
-                            color:
-                                AppTheme.accent.withValues(alpha: 0.65),
+                            color: AppTheme.accent.withValues(alpha: 0.65),
                             blurRadius: 26,
                             spreadRadius: -8,
                             offset: const Offset(0, 14),
@@ -525,6 +528,7 @@ class _ReferenceCreateNavButton extends StatelessWidget {
     );
   }
 }
+
 class _LoginGate extends StatelessWidget {
   const _LoginGate({required this.controller});
 
@@ -601,8 +605,7 @@ class _LoginGate extends StatelessWidget {
                             ),
                             TextSpan(
                               text: 'Dee',
-                              style:
-                                  TextStyle(color: AppTheme.accentCyanInk),
+                              style: TextStyle(color: AppTheme.accentCyanInk),
                             ),
                           ],
                         ),
@@ -643,12 +646,14 @@ class _LoginGate extends StatelessWidget {
                       border: Border.all(color: AppTheme.border),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF122018).withValues(alpha: 0.04),
+                          color:
+                              const Color(0xFF122018).withValues(alpha: 0.04),
                           blurRadius: 2,
                           offset: const Offset(0, 1),
                         ),
                         BoxShadow(
-                          color: const Color(0xFF12281C).withValues(alpha: 0.18),
+                          color:
+                              const Color(0xFF12281C).withValues(alpha: 0.18),
                           blurRadius: 40,
                           spreadRadius: -22,
                           offset: const Offset(0, 18),
@@ -748,7 +753,16 @@ class _LoginGate extends StatelessWidget {
                           SizedBox(
                             height: 54,
                             child: OutlinedButton.icon(
-                              onPressed: controller.isSigningIn ? null : () {},
+                              key: const ValueKey('login-email-sign-in'),
+                              onPressed: controller.isSigningIn
+                                  ? null
+                                  : () => showDialog<void>(
+                                        context: context,
+                                        builder: (context) =>
+                                            _EmailSignInDialog(
+                                          controller: controller,
+                                        ),
+                                      ),
                               icon: Icon(
                                 Icons.mail_outline,
                                 size: 21,
@@ -837,6 +851,142 @@ class _LoginGate extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _EmailSignInDialog extends StatefulWidget {
+  const _EmailSignInDialog({required this.controller});
+
+  final PostDeeAuthController controller;
+
+  @override
+  State<_EmailSignInDialog> createState() => _EmailSignInDialogState();
+}
+
+class _EmailSignInDialogState extends State<_EmailSignInDialog> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  var _createAccount = false;
+  var _isSubmitting = false;
+  String? _validationMessage;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (!email.contains('@')) {
+      setState(() => _validationMessage = 'กรอกอีเมลให้ถูกต้อง');
+      return;
+    }
+
+    if (password.length < 6) {
+      setState(() => _validationMessage = 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _validationMessage = null;
+    });
+
+    await widget.controller.signInWithEmail(
+      email: email,
+      password: password,
+      createAccount: _createAccount,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (widget.controller.session.isSignedIn) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = false;
+      _validationMessage = widget.controller.errorMessage;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title =
+        _createAccount ? 'สร้างบัญชีด้วยอีเมล' : 'เข้าสู่ระบบด้วยอีเมล';
+    final submitLabel = _createAccount ? 'สร้างบัญชี' : 'เข้าสู่ระบบ';
+
+    return AlertDialog(
+      key: const ValueKey('email-sign-in-form'),
+      title: Text(title),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _emailController,
+              enabled: !_isSubmitting,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              decoration: const InputDecoration(
+                labelText: 'อีเมล',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _passwordController,
+              enabled: !_isSubmitting,
+              obscureText: true,
+              autofillHints: const [AutofillHints.password],
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(
+                labelText: 'รหัสผ่าน',
+              ),
+            ),
+            if (_validationMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _validationMessage!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: _isSubmitting
+                  ? null
+                  : () => setState(() => _createAccount = !_createAccount),
+              child: Text(
+                _createAccount
+                    ? 'มีบัญชีอยู่แล้ว? เข้าสู่ระบบ'
+                    : 'ยังไม่มีบัญชี? สร้างบัญชีใหม่',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('ยกเลิก'),
+        ),
+        FilledButton(
+          onPressed: _isSubmitting ? null : _submit,
+          child: Text(_isSubmitting ? 'กำลังดำเนินการ...' : submitLabel),
+        ),
+      ],
     );
   }
 }

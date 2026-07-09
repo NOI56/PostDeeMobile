@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
+import '../../core/monitoring/postdee_analytics.dart';
 import '../../core/theme/app_theme.dart';
 import '../platforms/connections_screen.dart';
 import '../platforms/social_platform.dart';
@@ -45,6 +47,7 @@ class UploaderScreen extends StatefulWidget {
     this.uploadVideoFile,
     this.createPost,
     this.onScheduledPostCreated,
+    this.analytics,
     this.watermarkVideo,
     this.now = DateTime.now,
     this.extractFrames,
@@ -66,6 +69,7 @@ class UploaderScreen extends StatefulWidget {
   final UploaderVideoUploader? uploadVideoFile;
   final UploaderPostCreator? createPost;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
+  final PostDeeAnalytics? analytics;
   final UploaderWatermarkVideoProcessor? watermarkVideo;
 
   // Wall clock used to reject schedules in the past. Injectable so tests can
@@ -91,6 +95,8 @@ class UploaderScreen extends StatefulWidget {
 
 class _UploaderScreenState extends State<UploaderScreen> {
   final _apiClient = PostDeeApiClient();
+  PostDeeAnalytics get _analytics =>
+      widget.analytics ?? PostDeeAnalytics.instance;
   final _captionController = TextEditingController();
   final _fileNameController = TextEditingController();
   final _localFilePathController = TextEditingController();
@@ -310,16 +316,14 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
     if (localVideoFile == null) {
       setState(() {
-        _aiCaptionErrorMessage =
-            'เลือกคลิปจริงจากเครื่องก่อนให้ AI คิดแคปชั่น';
+        _aiCaptionErrorMessage = 'เลือกคลิปจริงจากเครื่องก่อนให้ AI คิดแคปชั่น';
       });
       return null;
     }
 
     if (!localVideoFile.existsSync()) {
       setState(() {
-        _aiCaptionErrorMessage =
-            'ไม่พบไฟล์วิดีโอในเครื่อง';
+        _aiCaptionErrorMessage = 'ไม่พบไฟล์วิดีโอในเครื่อง';
       });
       return null;
     }
@@ -328,8 +332,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
     if (fileName.isEmpty || sizeBytes < 1) {
       setState(() {
-        _aiCaptionErrorMessage =
-            'ไฟล์วิดีโอที่เลือกมีข้อมูลไม่ครบ';
+        _aiCaptionErrorMessage = 'ไฟล์วิดีโอที่เลือกมีข้อมูลไม่ครบ';
       });
       return null;
     }
@@ -338,8 +341,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         height != null &&
         !_isVerticalNineBySixteen(width: width, height: height)) {
       setState(() {
-        _aiCaptionErrorMessage =
-            'ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920';
+        _aiCaptionErrorMessage = 'ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920';
       });
       return null;
     }
@@ -543,8 +545,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
       // Pro lets Gemini also "see" the clip: extract a few frames and upload
       // them so the backend can pass them to the model. Starter is audio-only.
-      final selectedFrameKeys =
-          subscription.isPro ? await _uploadAiCaptionFrames() : const <String>[];
+      final selectedFrameKeys = subscription.isPro
+          ? await _uploadAiCaptionFrames()
+          : const <String>[];
 
       final guidance = _aiGuidanceController.text.trim();
       final generator =
@@ -664,6 +667,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = null;
         _successMessage = null;
       });
+      unawaited(_analytics.logVideoSelected(
+        hasDimensions: video.width != null && video.height != null,
+      ));
     } catch (error) {
       setState(() {
         _errorMessage = 'เลือกวิดีโอไม่ได้: $error';
@@ -701,9 +707,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
         builder: (context) => PublishReviewScreen(
           videoName: selectedVideoName,
           caption: _captionController.text,
-          platforms: SocialPlatform.values
-              .where(_selectedPlatforms.contains)
-              .toList(),
+          platforms:
+              SocialPlatform.values.where(_selectedPlatforms.contains).toList(),
           scheduledAt: _readScheduledAt(),
           watermarkEnabled: watermarkEnabled,
         ),
@@ -828,6 +833,11 @@ class _UploaderScreenState extends State<UploaderScreen> {
       var uploadSizeBytes = sizeBytes;
       var didApplyWatermark = false;
       final shouldApplyWatermark = await _shouldApplyAutoWatermark();
+      unawaited(_analytics.logPublishStarted(
+        platformCount: _selectedPlatforms.length,
+        isScheduled: scheduledAt != null,
+        watermarkEnabled: shouldApplyWatermark,
+      ));
 
       if (shouldApplyWatermark) {
         if (!mounted) {
@@ -873,6 +883,11 @@ class _UploaderScreenState extends State<UploaderScreen> {
         ),
       );
 
+      unawaited(_analytics.logPublishSucceeded(
+        platformCount: post.platforms.length,
+        isScheduled: scheduledAt != null,
+      ));
+
       if (!mounted) {
         return;
       }
@@ -887,6 +902,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
             '$watermarkTextจัดคิวโพสต์ ${post.platforms.length} แพลตฟอร์มแล้ว: ${post.id}';
       });
     } on WatermarkVideoException catch (error) {
+      unawaited(_analytics.logPublishFailed(reason: 'watermark'));
       if (!mounted) {
         return;
       }
@@ -896,6 +912,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _successMessage = null;
       });
     } on ApiException catch (error) {
+      unawaited(_analytics.logPublishFailed(reason: 'api'));
       if (!mounted) {
         return;
       }
@@ -904,6 +921,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = error.message;
       });
     } on SocketException {
+      unawaited(_analytics.logPublishFailed(reason: 'network'));
       if (!mounted) {
         return;
       }
@@ -912,6 +930,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = 'เชื่อมต่อ PostDee API ไม่ได้';
       });
     } catch (error) {
+      unawaited(_analytics.logPublishFailed(reason: 'unknown'));
       if (!mounted) {
         return;
       }
@@ -1032,99 +1051,93 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
   Widget _buildCaptionCard(BuildContext context) {
     return PostDeeCard(
-                glowColor: AppTheme.accent,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+      glowColor: AppTheme.accent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _AiCaptionPanel(
+            guidanceController: _aiGuidanceController,
+            selectedVideoName: _selectedVideoName,
+            isGenerating: _isGeneratingCaption,
+            errorMessage: _aiCaptionErrorMessage,
+            onGenerate: _generateAiCaption,
+          ),
+          const SizedBox(height: AppTheme.spaceMd),
+          TextField(
+            key: const ValueKey('uploader-caption-field'),
+            controller: _captionController,
+            minLines: 3,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              labelText: 'แคปชั่น',
+              hintText: 'เขียนแคปชั่นของคุณ...',
+            ),
+          ),
+          const SizedBox(height: AppTheme.spaceMd),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'เทมเพลต',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+              OutlinedButton(
+                onPressed: _isLoadingTemplates ? null : _loadTemplates,
+                child: Text(_isLoadingTemplates
+                    ? 'กำลังโหลดเทมเพลต...'
+                    : 'โหลดเทมเพลต'),
+              ),
+            ],
+          ),
+          if (_templateErrorMessage != null) ...[
+            const SizedBox(height: AppTheme.spaceSm),
+            Text(
+              _templateErrorMessage!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+          if (_templates.isNotEmpty) ...[
+            const SizedBox(height: AppTheme.spaceSm),
+            ..._templates.map(
+              (template) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _AiCaptionPanel(
-                      guidanceController: _aiGuidanceController,
-                      selectedVideoName: _selectedVideoName,
-                      isGenerating: _isGeneratingCaption,
-                      errorMessage: _aiCaptionErrorMessage,
-                      onGenerate: _generateAiCaption,
+                    Icon(
+                      Icons.text_snippet_outlined,
+                      color: Theme.of(context).colorScheme.secondary,
                     ),
-                    const SizedBox(height: AppTheme.spaceMd),
-                    TextField(
-                      key: const ValueKey('uploader-caption-field'),
-                      controller: _captionController,
-                      minLines: 3,
-                      maxLines: 5,
-                      decoration: const InputDecoration(
-                        labelText: 'แคปชั่น',
-                        hintText: 'เขียนแคปชั่นของคุณ...',
-                      ),
-                    ),
-                    const SizedBox(height: AppTheme.spaceMd),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'เทมเพลต',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(template.title),
+                          const SizedBox(height: AppTheme.spaceXs),
+                          Text(
+                            template.body,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
-                        ),
-                        OutlinedButton(
-                          onPressed:
-                              _isLoadingTemplates ? null : _loadTemplates,
-                          child: Text(_isLoadingTemplates
-                              ? 'กำลังโหลดเทมเพลต...'
-                              : 'โหลดเทมเพลต'),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                    if (_templateErrorMessage != null) ...[
-                      const SizedBox(height: AppTheme.spaceSm),
-                      Text(
-                        _templateErrorMessage!,
-                        style: TextStyle(
-                            color: Theme.of(context).colorScheme.error),
-                      ),
-                    ],
-                    if (_templates.isNotEmpty) ...[
-                      const SizedBox(height: AppTheme.spaceSm),
-                      ..._templates.map(
-                        (template) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                Icons.text_snippet_outlined,
-                                color: Theme.of(context).colorScheme.secondary,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(template.title),
-                                    const SizedBox(height: AppTheme.spaceXs),
-                                    Text(
-                                      template.body,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style:
-                                          Theme.of(context).textTheme.bodySmall,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: () => _insertTemplate(template),
-                                child: const Text('ใส่แคปชั่น'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+                    TextButton(
+                      onPressed: () => _insertTemplate(template),
+                      child: const Text('ใส่แคปชั่น'),
+                    ),
                   ],
                 ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1237,6 +1250,7 @@ class _UploadPageHeader extends StatelessWidget {
     );
   }
 }
+
 class _UploadStepHeader extends StatelessWidget {
   const _UploadStepHeader({
     required this.title,
@@ -1395,7 +1409,8 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppTheme.glass.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-            border: Border.all(color: AppTheme.borderSoft.withValues(alpha: 0.84)),
+            border:
+                Border.all(color: AppTheme.borderSoft.withValues(alpha: 0.84)),
           ),
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -1437,6 +1452,7 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
     );
   }
 }
+
 class _CompactUploadToolButton extends StatelessWidget {
   const _CompactUploadToolButton({
     required this.detail,
@@ -1492,10 +1508,11 @@ class _CompactUploadToolButton extends StatelessWidget {
                         detail.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              height: 1.15,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.15,
+                                ),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -1546,7 +1563,8 @@ class _WideUploadToolButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppTheme.glass.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-            border: Border.all(color: AppTheme.borderSoft.withValues(alpha: 0.84)),
+            border:
+                Border.all(color: AppTheme.borderSoft.withValues(alpha: 0.84)),
           ),
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -1599,6 +1617,7 @@ class _WideUploadToolButton extends StatelessWidget {
     );
   }
 }
+
 class _VideoPreviewCard extends StatelessWidget {
   const _VideoPreviewCard({
     required this.videoName,
@@ -1942,8 +1961,7 @@ class _PlatformSelectorSection extends StatelessWidget {
               for (var index = 0;
                   index < SocialPlatform.values.length;
                   index += 1) ...[
-                if (index > 0)
-                  Divider(height: 1, color: AppTheme.borderSoft),
+                if (index > 0) Divider(height: 1, color: AppTheme.borderSoft),
                 _PlatformRow(
                   platform: SocialPlatform.values[index],
                   subLabel: _subLabels[SocialPlatform.values[index]] ?? '',
@@ -2166,8 +2184,7 @@ class _AiCaptionPanel extends StatelessWidget {
             const SizedBox(height: 10),
             PostDeeGradientButton(
               key: const ValueKey('uploader-ai-generate-button'),
-              label:
-                  isGenerating ? 'AI กำลังฟังคลิป...' : 'ให้ AI ช่วยเขียน',
+              label: isGenerating ? 'AI กำลังฟังคลิป...' : 'ให้ AI ช่วยเขียน',
               icon: Icons.auto_awesome,
               onPressed: isGenerating ? null : onGenerate,
             ),
@@ -2650,4 +2667,3 @@ class _GradientActionButton extends StatelessWidget {
     );
   }
 }
-

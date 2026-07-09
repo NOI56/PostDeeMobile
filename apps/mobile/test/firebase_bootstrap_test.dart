@@ -80,6 +80,6 @@ void main() {
     expect(result.isEnabled, isTrue);
     expect(result.isInitialized, isFalse);
     expect(result.errorMessage, contains('Firebase Auth is enabled'));
-    expect(result.errorMessage, contains('google-services.json'));
+    expect(result.errorMessage, contains('active platform'));
   });
 }

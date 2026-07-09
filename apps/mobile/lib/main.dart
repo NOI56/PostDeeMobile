@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 import 'core/auth/firebase_bootstrap.dart';
 import 'core/config/app_config.dart';
+import 'core/monitoring/postdee_firebase_monitoring.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/auth/firebase_session_restorer.dart';
 
@@ -19,6 +20,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await PostDeeThemeController.instance.loadSavedThemeMode();
   final firebaseBootstrapResult = await initializeFirebaseForPostDee();
+  await configurePostDeeFirebaseMonitoring(
+    firebaseBootstrapResult: firebaseBootstrapResult,
+  );
 
   // Register the FCM background handler only once Firebase is really set up, so
   // default (Firebase-off) builds are unaffected.

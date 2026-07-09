@@ -1,6 +1,8 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
+import 'firebase_web_options.dart';
 
 typedef FirebaseInitializedAppsChecker = bool Function();
 typedef FirebaseAppInitializer = Future<void> Function();
@@ -82,13 +84,19 @@ Future<FirebaseBootstrapResult> initializeFirebaseForPostDee({
   }
 
   try {
-    await (initializeApp ?? Firebase.initializeApp)();
+    await (initializeApp ?? _initializeFirebaseApp)();
     return FirebaseBootstrapResult.initialized;
   } catch (error) {
     return FirebaseBootstrapResult.setupError(
       'Firebase Auth is enabled but Firebase is not configured. '
-      'Add android/app/google-services.json and ios/Runner/GoogleService-Info.plist, '
+      'Add Android, iOS, or Web Firebase configuration for the active platform, '
       'then test Google Sign-In on a real device. Original error: $error',
     );
   }
+}
+
+Future<void> _initializeFirebaseApp() async {
+  await Firebase.initializeApp(
+    options: kIsWeb ? PostDeeFirebaseWebOptions.currentPlatform : null,
+  );
 }

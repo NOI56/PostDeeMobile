@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
+import 'package:postdee_mobile/core/monitoring/postdee_analytics.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -91,7 +92,6 @@ Future<void> _enterUploadCaption(
   await tester.enterText(captionField, caption);
   await tester.pumpAndSettle();
 }
-
 
 /// The publish flow now shows a review screen first (design screen #7);
 /// confirm it so the real post request fires.
@@ -656,7 +656,8 @@ void main() {
     final createUploadRequests = <CreateUploadRequest>[];
     final pickedVideo = _createPickedVideoFixture('pro-demo.mp4');
 
-    final frameDir = Directory.systemTemp.createTempSync('postdee-test-frames-');
+    final frameDir =
+        Directory.systemTemp.createTempSync('postdee-test-frames-');
     addTearDown(() => frameDir.deleteSync(recursive: true));
     final frame1 = File('${frameDir.path}${Platform.pathSeparator}f1.jpg')
       ..writeAsBytesSync([1, 2, 3, 4]);
@@ -679,7 +680,8 @@ void main() {
               canUseAiCaptions: true,
               canUseAnalytics: true,
             ),
-            extractFrames: (file, {int maxFrames = 3}) async => [frame1, frame2],
+            extractFrames: (file, {int maxFrames = 3}) async =>
+                [frame1, frame2],
             createUpload: (request) async {
               createUploadRequests.add(request);
               final isImage = request.contentType.startsWith('image/');
@@ -1218,6 +1220,81 @@ void main() {
     expect(find.text('เวลาตั้งโพสต์ต้องเป็นเวลาในอนาคต'), findsOneWidget);
   });
 
+  testWidgets('logs safe analytics events when publishing a post',
+      (tester) async {
+    final events = <RecordedAnalyticsEvent>[];
+    final analytics = PostDeeAnalytics(
+      isEnabled: true,
+      logEvent: (event) async => events.add(event),
+    );
+    final pickedVideo = _createPickedVideoFixture('analytics-post.mp4');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            analytics: analytics,
+            pickVideo: () async => pickedVideo,
+            loadSubscription: () async => const SubscriptionStatusResult(
+              userId: 'seller-basic',
+              plan: 'BASIC',
+              status: 'ACTIVE',
+              phoneVerified: true,
+              requiresPhoneVerification: false,
+              canUseFreePostQuota: true,
+              canSchedule: false,
+              canUseAiCaptions: false,
+              canUseAnalytics: false,
+            ),
+            createUpload: (_) async => const UploadResult(
+              id: 'upload-analytics',
+              videoS3Key: 'uploads/analytics-post.mp4',
+              storageProvider: 'mock',
+            ),
+            uploadVideoFile: (_, __) async {},
+            createPost: (request) async => QueuedPostResult(
+              id: 'post-analytics',
+              videoS3Key: request.videoS3Key,
+              platforms: request.platforms,
+              status: 'QUEUED',
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await _pickVideoFromPreview(tester);
+    await _enterUploadCaption(tester);
+    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await _confirmPublishReview(tester);
+
+    expect(
+      events.map((event) => event.name),
+      containsAllInOrder([
+        'video_selected',
+        'post_publish_started',
+        'post_publish_succeeded',
+      ]),
+    );
+    expect(events.first.parameters, {'has_dimensions': true});
+
+    final started = events.firstWhere(
+      (event) => event.name == 'post_publish_started',
+    );
+    expect(started.parameters, {
+      'platform_count': 2,
+      'is_scheduled': false,
+      'watermark_enabled': false,
+    });
+
+    final succeeded = events.firstWhere(
+      (event) => event.name == 'post_publish_succeeded',
+    );
+    expect(succeeded.parameters, {
+      'platform_count': 2,
+      'is_scheduled': false,
+    });
+  });
   testWidgets('keeps plan status hidden before posting', (tester) async {
     var subscriptionChecks = 0;
 

@@ -11,6 +11,7 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 Finder _referenceNav() =>
     find.byKey(const ValueKey('postdee-reference-bottom-nav'));
 
@@ -19,6 +20,40 @@ Finder _referenceNavButton(String label) => find.descendant(
       matching: find.bySemanticsLabel(label),
     );
 void main() {
+  testWidgets('opens the email sign-in form from the login gate',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+    sessionStore.clear();
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: PostDeeShell(languageController: languageController),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('login-email-sign-in')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('email-sign-in-form')), findsOneWidget);
+  });
+
   testWidgets('uses the reference pill bottom navigation', (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
 
@@ -54,9 +89,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(BottomNavigationBar), findsNothing);
-    final referenceNav = find.byKey(const ValueKey('postdee-reference-bottom-nav'));
+    final referenceNav =
+        find.byKey(const ValueKey('postdee-reference-bottom-nav'));
     expect(referenceNav, findsOneWidget);
-    for (final label in ['Home', 'Calendar', 'Create post', 'Analytics', 'Profile']) {
+    for (final label in [
+      'Home',
+      'Calendar',
+      'Create post',
+      'Analytics',
+      'Profile'
+    ]) {
       expect(
         find.descendant(
           of: referenceNav,

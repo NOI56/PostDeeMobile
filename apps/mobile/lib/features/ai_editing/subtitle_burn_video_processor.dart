@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit_config.dart';
+import 'package:ffmpeg_kit_flutter_new_video/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
 import 'package:flutter/services.dart';
 
@@ -536,16 +537,41 @@ Future<int> purgeEditTempDirs(
   return removed;
 }
 
+/// Probes a rendered file and returns its stream types (e.g. `['video',
+/// 'audio']`), or null when the file can't be read.
+typedef RenderedStreamTypesProbe = Future<List<String?>?> Function(String path);
+
+/// Whether a rendered output actually contains a video stream. Hardware
+/// encoders can exit 0 while writing an audio-only file (seen with
+/// h264_mediacodec on the Android emulator), so a successful FFmpeg return
+/// code alone doesn't prove the render worked. Pure + testable.
+bool renderedOutputHasVideo(Iterable<String?>? streamTypes) =>
+    streamTypes != null && streamTypes.contains('video');
+
+/// Default [RenderedStreamTypesProbe]: FFprobe on the rendered file.
+Future<List<String?>?> ffprobeStreamTypes(String path) async {
+  final session = await FFprobeKit.getMediaInformation(path);
+  final information = session.getMediaInformation();
+  if (information == null) return null;
+  return [
+    for (final stream in information.getStreams()) stream.getType(),
+  ];
+}
+
 /// Renders an edited clip on-device with FFmpeg (trim + subtitles + speed +
 /// volume). Produces a new MP4 ready for the existing upload/post flow.
 class FfmpegSubtitleBurnVideoProcessor {
   const FfmpegSubtitleBurnVideoProcessor({
     this.assetBundle,
     this.fontAssetPath = 'assets/fonts/prompt/Prompt-Bold.ttf',
+    this.probeStreamTypes = ffprobeStreamTypes,
   });
 
   final AssetBundle? assetBundle;
   final String fontAssetPath;
+
+  /// Injectable so tests can fake the post-render stream check.
+  final RenderedStreamTypesProbe probeStreamTypes;
 
   Future<BurnedSubtitleResult> call(BurnSubtitleRequest request) async {
     if (!await request.inputFile.exists()) {
@@ -647,7 +673,7 @@ class FfmpegSubtitleBurnVideoProcessor {
       });
     }
 
-    ReturnCode? returnCode;
+    var renderedOk = false;
     String? failureLogs;
     try {
       render:
@@ -675,11 +701,20 @@ class FfmpegSubtitleBurnVideoProcessor {
               scaleEvenDimensions: encoder.scaleEvenDimensions,
             ),
           );
-          returnCode = await session.getReturnCode();
+          final returnCode = await session.getReturnCode();
 
           if (ReturnCode.isSuccess(returnCode)) {
-            failureLogs = null;
-            break render;
+            // Trust but verify: some hardware encoders exit 0 while writing an
+            // audio-only file. Only accept output with a real video stream.
+            if (renderedOutputHasVideo(
+                await probeStreamTypes(outputFile.path))) {
+              renderedOk = true;
+              failureLogs = null;
+              break render;
+            }
+            failureLogs =
+                'encoder ${encoder.codec} exited 0 but wrote no video stream';
+            continue;
           }
 
           // A cancel aborts the whole export — don't fall back to other paths.
@@ -698,7 +733,7 @@ class FfmpegSubtitleBurnVideoProcessor {
       FFmpegKitConfig.enableStatisticsCallback();
     }
 
-    if (!ReturnCode.isSuccess(returnCode)) {
+    if (!renderedOk) {
       throw SubtitleBurnException('เรนเดอร์วิดีโอไม่สำเร็จ: $failureLogs');
     }
 

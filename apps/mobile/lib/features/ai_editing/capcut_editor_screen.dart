@@ -944,7 +944,10 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
   }
 
   void _showExportSuccess(BurnedSubtitleResult result) {
-    final sizeMb = (result.sizeBytes / (1024 * 1024)).toStringAsFixed(1);
+    // Small renders would show as "0.0 MB", so switch to KB below 1 MB.
+    final sizeLabel = result.sizeBytes >= 1024 * 1024
+        ? '${(result.sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB'
+        : '${(result.sizeBytes / 1024).toStringAsFixed(0)} KB';
 
     showDialog<void>(
       context: context,
@@ -952,7 +955,7 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
         backgroundColor: AppTheme.charcoal,
         title: const Text('ส่งออกวิดีโอสำเร็จ'),
         content: Text(
-          'เรนเดอร์คลิปที่ตัดแล้ว: ${result.fileName} ($sizeMb MB)\n'
+          'เรนเดอร์คลิปที่ตัดแล้ว: ${result.fileName} ($sizeLabel)\n'
           'นำไปโพสต์หรือตั้งเวลาต่อได้เลย',
         ),
         actions: [

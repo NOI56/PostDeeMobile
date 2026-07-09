@@ -317,4 +317,14 @@ void main() {
     expect(vf, contains('Fontsize=24'));
     expect(vf, contains('Alignment=8'));
   });
+
+  test('accepts a rendered output only when it has a video stream', () {
+    // h264_mediacodec on some devices exits 0 while writing an audio-only
+    // file; the render loop must reject that output and try the fallback.
+    expect(renderedOutputHasVideo(['video', 'audio']), isTrue);
+    expect(renderedOutputHasVideo(['audio']), isFalse);
+    expect(renderedOutputHasVideo(['audio', null]), isFalse);
+    expect(renderedOutputHasVideo([]), isFalse);
+    expect(renderedOutputHasVideo(null), isFalse);
+  });
 }

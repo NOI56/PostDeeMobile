@@ -683,6 +683,16 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return;
     }
 
+    // The backend requires a caption, so catch it here instead of letting the
+    // user confirm the review only to have the post bounce back.
+    if (_captionController.text.trim().isEmpty) {
+      setState(() {
+        _errorMessage = 'เพิ่มแคปชั่นก่อนโพสต์';
+        _successMessage = null;
+      });
+      return;
+    }
+
     final watermarkEnabled = await _shouldApplyAutoWatermark();
     if (!mounted) return;
 
@@ -737,9 +747,17 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
     sizeBytes ??= localVideoFile.lengthSync();
 
-    if (caption.isEmpty || fileName.isEmpty) {
+    if (caption.isEmpty) {
       setState(() {
-        _errorMessage = 'ต้องมีแคปชั่น ชื่อไฟล์ และขนาดไฟล์ที่ถูกต้อง';
+        _errorMessage = 'เพิ่มแคปชั่นก่อนโพสต์';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    if (fileName.isEmpty) {
+      setState(() {
+        _errorMessage = 'ไฟล์วิดีโอไม่ถูกต้อง เลือกคลิปใหม่อีกครั้ง';
         _successMessage = null;
       });
       return;

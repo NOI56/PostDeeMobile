@@ -980,20 +980,33 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
       appBar: AppBar(
         title: const Text(
           'ตัดต่อด้วยมือ',
-          style: TextStyle(fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
         actions: [
           IconButton(
             tooltip: 'สไตล์อัตโนมัติ',
             onPressed: _openStyleGallery,
-            icon: const Icon(Icons.movie_filter),
+            icon: Icon(Icons.movie_filter, color: AppTheme.accentCyanInk),
           ),
           Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: TextButton.icon(
+            padding: const EdgeInsets.only(right: 10, top: 8, bottom: 8),
+            child: FilledButton.icon(
               onPressed: _export,
               icon: const Icon(Icons.ios_share, size: 18),
               label: const Text('ส่งออก'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ),
         ],
@@ -1335,7 +1348,7 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
       child: switch (_tool!) {
         _Tool.caption => _captionPanel(),
         _Tool.silence => _silencePanel(),
-        _Tool.trim => _hint('ลากที่จับสีม่วงสองข้างบนไทม์ไลน์ เพื่อตัดต้น-ท้ายคลิป'),
+        _Tool.trim => _hint('ลากที่จับสีเขียวสองข้างบนไทม์ไลน์ เพื่อตัดต้น-ท้ายคลิป'),
         _Tool.split => _splitPanel(),
         _Tool.speed => _speedPanel(),
         _Tool.volume => _volumePanel(),

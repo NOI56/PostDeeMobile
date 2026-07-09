@@ -33,13 +33,9 @@ class PostDeeApp extends StatefulWidget {
   State<PostDeeApp> createState() => _PostDeeAppState();
 }
 
-class _PostDeeAppState extends State<PostDeeApp>
-    with SingleTickerProviderStateMixin {
-  static const _themeTransition = Duration(milliseconds: 320);
-
+class _PostDeeAppState extends State<PostDeeApp> {
   late final PostDeeLanguageController _languageController;
   late final PostDeeThemeController _themeController;
-  late final AnimationController _themeAnimation;
 
   @override
   void initState() {
@@ -48,26 +44,6 @@ class _PostDeeAppState extends State<PostDeeApp>
         widget.languageController ?? PostDeeLanguageController.instance;
     _themeController =
         widget.themeController ?? PostDeeThemeController.instance;
-    _themeAnimation = AnimationController(
-      vsync: this,
-      duration: _themeTransition,
-      value: _themeController.isLightMode ? 1 : 0,
-    );
-    _themeController.addListener(_handleThemeChanged);
-  }
-
-  void _handleThemeChanged() {
-    _themeAnimation.animateTo(
-      _themeController.isLightMode ? 1 : 0,
-      curve: Curves.easeInOut,
-    );
-  }
-
-  @override
-  void dispose() {
-    _themeController.removeListener(_handleThemeChanged);
-    _themeAnimation.dispose();
-    super.dispose();
   }
 
   Widget _wrapWithSplash(Widget child) =>
@@ -79,13 +55,13 @@ class _PostDeeAppState extends State<PostDeeApp>
       animation: Listenable.merge([
         _languageController,
         _themeController,
-        _themeAnimation,
       ]),
       builder: (context, _) {
-        // Keep the target mode in sync, then override the snap with the
-        // animated progress so shared colors fade smoothly between modes.
+        // Snap the shared custom-theme colors to the active mode. The design
+        // handoff requires an *instant* switch — a cross-fade transition
+        // leaves colors stuck because const/kept-alive subtrees don't repaint
+        // every animation frame.
         AppTheme.applyThemeMode(_themeController.themeMode);
-        AppTheme.transitionProgress = _themeAnimation.value;
 
         return MaterialApp(
           title: 'PostDee',
@@ -93,8 +69,7 @@ class _PostDeeAppState extends State<PostDeeApp>
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: _themeController.themeMode,
-          themeAnimationDuration: _themeTransition,
-          themeAnimationCurve: Curves.easeInOut,
+          themeAnimationDuration: Duration.zero,
           locale: widget.locale ?? _languageController.locale,
           localizationsDelegates: const [
             PostDeeLocalizations.delegate,

@@ -261,7 +261,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 10),
         ],
         const SizedBox(height: 3),
-        const _AiEditingQuotaCard(),
+        _AiEditingQuotaCard(),
         const SizedBox(height: 13),
         _ProfileMenuCard(
           rows: [
@@ -571,6 +571,16 @@ class _ProfileMenuRow extends StatelessWidget {
   }
 }
 
+class _TierFeature {
+  const _TierFeature(this.text, {this.included = true});
+
+  final String text;
+
+  /// Limitations render with a gray dash, never a green check — a hard rule
+  /// from the design handoff README.
+  final bool included;
+}
+
 class _TierData {
   const _TierData({
     required this.id,
@@ -583,7 +593,7 @@ class _TierData {
   final String id;
   final String name;
   final String price;
-  final List<String> features;
+  final List<_TierFeature> features;
   final String? badge;
 }
 
@@ -594,9 +604,9 @@ const _tiers = [
     name: 'ฟรี',
     price: '0 บาท',
     features: [
-      'โพสต์ฟรี 3 หน่วย/เดือน',
-      'ต้องยืนยันเบอร์ก่อนโพสต์',
-      'ไม่มี AI แคปชั่นจากคลิปจริง',
+      _TierFeature('โพสต์ฟรี 3 หน่วย/เดือน'),
+      _TierFeature('ต้องยืนยันเบอร์ก่อนโพสต์', included: false),
+      _TierFeature('ไม่มี AI แคปชั่นจากคลิปจริง', included: false),
     ],
   ),
   _TierData(
@@ -605,9 +615,9 @@ const _tiers = [
     price: '199 ฿/ด.',
     badge: 'แนะนำ',
     features: [
-      'โพสต์หลายช่องทาง 120 หน่วย/เดือน',
-      'AI แคปชั่นจากเสียงคลิป 50 ครั้ง/เดือน',
-      'ตั้งเวลาโพสต์และปฏิทิน',
+      _TierFeature('โพสต์หลายช่องทาง 120 หน่วย/เดือน'),
+      _TierFeature('AI แคปชั่นจากเสียงคลิป 50 ครั้ง/เดือน'),
+      _TierFeature('ตั้งเวลาโพสต์และปฏิทิน'),
     ],
   ),
   _TierData(
@@ -615,10 +625,10 @@ const _tiers = [
     name: 'Pro',
     price: '299 ฿/ด.',
     features: [
-      'ทุกอย่างใน Starter',
-      'โพสต์หลายช่องทาง 250 หน่วย/เดือน',
-      'AI ตัดต่อ + แคปชั่น 120 ครั้ง/เดือน',
-      'รายงานวิเคราะห์เชิงลึก',
+      _TierFeature('ทุกอย่างใน Starter'),
+      _TierFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
+      _TierFeature('AI ตัดต่อ + แคปชั่น 120 ครั้ง/เดือน'),
+      _TierFeature('รายงานวิเคราะห์เชิงลึก'),
     ],
   ),
 ];
@@ -715,15 +725,17 @@ class _TierCard extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(top: 1),
                         child: Icon(
-                          Icons.check_circle,
+                          feature.included ? Icons.check_circle : Icons.remove,
                           size: 17,
-                          color: AppTheme.accentCyanInk,
+                          color: feature.included
+                              ? AppTheme.accentCyanInk
+                              : AppTheme.textMuted,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          feature,
+                          feature.text,
                           style: TextStyle(
                             fontSize: 12.5,
                             height: 1.4,

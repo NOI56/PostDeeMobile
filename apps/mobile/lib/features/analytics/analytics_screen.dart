@@ -119,7 +119,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             const SizedBox(height: 13),
           ],
           if (_isLoading)
-            const _AnalyticsSkeleton()
+            _AnalyticsSkeleton()
           else if (!_hasAnalyticsData)
             PostDeeNotice(
               message: 'ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด',
@@ -144,7 +144,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ),
           ],
           const SizedBox(height: 13),
-          const _ProInsightLockCard(),
+          // Not const: kept-alive tab subtrees skip const rebuilds and keep
+          // stale colors when the theme flips.
+          _ProInsightLockCard(),
           const SizedBox(height: 15),
           Text(
             'เครื่องมือวิเคราะห์ด้วย AI',
@@ -203,7 +205,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          const _CommentApprovalNotice(),
+          _CommentApprovalNotice(),
           if (_errorMessage != null) ...[
             const SizedBox(height: AppTheme.spaceMd),
             PostDeeNotice(

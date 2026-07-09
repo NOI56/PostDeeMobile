@@ -299,7 +299,10 @@ class _HomeScreenState extends State<HomeScreen> {
           onOpenPost: _openPostDetail,
         ),
         const SizedBox(height: 18),
-        const _GrowthToolsPreview(),
+        // Not const: a kept-alive const subtree is skipped on rebuild and
+        // keeps stale colors when the theme flips (AppTheme reads are
+        // imperative, not inherited).
+        _GrowthToolsPreview(),
         const SizedBox(height: AppTheme.spaceSm),
       ],
     );

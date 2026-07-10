@@ -37,7 +37,10 @@ jobs:
       - name: Build iOS App (No Codesign)
         run: |
           cd apps/mobile
-          flutter build ios --release --no-codesign
+          flutter build ios --release --no-codesign \
+            --dart-define=ENABLE_FIREBASE_AUTH=true \
+            --dart-define=ALLOW_LOCAL_MOCK_AUTH=false \
+            --dart-define=GOOGLE_SERVER_CLIENT_ID=121898224944-1hkh1mrfb5lc1ltraapu10lj1ib465vj.apps.googleusercontent.com
 
       - name: Create IPA payload
         run: |

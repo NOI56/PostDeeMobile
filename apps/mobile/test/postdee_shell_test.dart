@@ -107,6 +107,17 @@ void main() {
         findsOneWidget,
       );
     }
+
+    final createButton = _referenceNavButton('Create post');
+    expect(
+      find.ancestor(
+        of: createButton,
+        matching: find.byType(ClipRRect),
+      ),
+      findsNothing,
+      reason:
+          'The raised circular create button must not be clipped by the nav.',
+    );
   });
   testWidgets('opens profile from the reference bottom navigation',
       (tester) async {

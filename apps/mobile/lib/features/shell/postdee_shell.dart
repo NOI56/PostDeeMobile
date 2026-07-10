@@ -327,60 +327,70 @@ class _PostDeeBottomNav extends StatelessWidget {
               ),
             ],
           ),
-          // Translucent capsule: content scrolls behind it, blurred, per the
-          // design handoff (card 70% + backdrop blur 12).
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                height: 58,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  color: AppTheme.glass.withValues(alpha: 0.70),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: AppTheme.border.withValues(alpha: 0.70),
+          // Clip only the translucent capsule background. The raised create
+          // button remains outside this clip so its circular edge stays whole.
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Container(
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: AppTheme.glass.withValues(alpha: 0.70),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: AppTheme.border.withValues(alpha: 0.70),
+                      ),
+                    ),
                   ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _ReferenceNavButton(
-                      label: l10n.homeTab,
-                      icon: Icons.home_rounded,
-                      selected: currentIndex == 0,
-                      onPressed: onHome,
-                    ),
-                    _ReferenceNavButton(
-                      label: l10n.captionTab,
-                      icon: Icons.calendar_month_rounded,
-                      selected: currentIndex == 3,
-                      onPressed: onCalendar,
-                    ),
-                    _ReferenceCreateNavButton(
-                      label: l10n.locale.languageCode == 'th'
-                          ? 'สร้างโพสต์'
-                          : 'Create post',
-                      selected: currentIndex == 2,
-                      onPressed: onCreate,
-                    ),
-                    _ReferenceNavButton(
-                      label: l10n.analyticsTab,
-                      icon: Icons.bar_chart_rounded,
-                      selected: currentIndex == 4,
-                      onPressed: onAnalytics,
-                    ),
-                    _ReferenceNavButton(
-                      label: l10n.profileTab,
-                      icon: Icons.person_rounded,
-                      selected: currentIndex == 5,
-                      onPressed: onProfile,
-                    ),
-                  ],
+              ),
+              SizedBox(
+                height: 58,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _ReferenceNavButton(
+                        label: l10n.homeTab,
+                        icon: Icons.home_rounded,
+                        selected: currentIndex == 0,
+                        onPressed: onHome,
+                      ),
+                      _ReferenceNavButton(
+                        label: l10n.captionTab,
+                        icon: Icons.calendar_month_rounded,
+                        selected: currentIndex == 3,
+                        onPressed: onCalendar,
+                      ),
+                      _ReferenceCreateNavButton(
+                        label: l10n.locale.languageCode == 'th'
+                            ? 'สร้างโพสต์'
+                            : 'Create post',
+                        selected: currentIndex == 2,
+                        onPressed: onCreate,
+                      ),
+                      _ReferenceNavButton(
+                        label: l10n.analyticsTab,
+                        icon: Icons.bar_chart_rounded,
+                        selected: currentIndex == 4,
+                        onPressed: onAnalytics,
+                      ),
+                      _ReferenceNavButton(
+                        label: l10n.profileTab,
+                        icon: Icons.person_rounded,
+                        selected: currentIndex == 5,
+                        onPressed: onProfile,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),

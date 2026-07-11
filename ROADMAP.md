@@ -22,14 +22,15 @@ Core items:
 - Universal uploader for one 9:16 video.
 - Scheduling through Upstash Redis and BullMQ.
 - Unified social posting via PostPeer API (postpeer.dev) for TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels. Direct platform API integrations are deferred until post-launch.
-- Unified analytics summary for Pro users.
+- Unified analytics summary for Pro users, with backend-backed date ranges and
+  a publish-date daily series.
 
 Current status:
 
 - Mobile UI refresh has a first-pass shared dark theme, glass cards, Thai
   bottom navigation labels, auth bar copy, and Home dashboard direction.
-  Upload, Calendar, Analytics, Profile, and package/paywall surfaces still need
-  iterative reference-screen polish.
+  Upload, Calendar, Analytics, Profile, and package/paywall surfaces have the
+  approved design structure; final device-specific visual polish remains.
 - Gemini backend smoke test passed.
 - R2 is configured for signed upload/download URLs, with provider-level smoke
   tests still needed in the full app flow.

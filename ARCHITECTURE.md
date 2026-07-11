@@ -132,7 +132,7 @@ Main route groups:
 - `POST /captions/generate`
 - `GET /templates`
 - `POST /templates`
-- `GET /analytics/summary`
+- `GET /analytics/summary?range=today|7d|30d|90d|year`
 - `GET /billing/subscription`
 - `POST /billing/revenuecat/webhooks`
 - `POST /billing/store/verify`

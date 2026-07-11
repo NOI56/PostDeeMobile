@@ -1,4 +1,5 @@
 import type { Platform } from '../posts/postStore.js';
+import type { AnalyticsRange } from './analyticsService.js';
 import { summarizePlatformMetrics } from './analyticsService.js';
 import type { AnalyticsStore } from './analyticsStore.js';
 
@@ -6,6 +7,8 @@ type PrismaPlatformMetric = {
   platform: Platform;
   views: number;
   likes: number;
+  publishedAt: Date | null;
+  createdAt: Date;
 };
 
 type PlatformPublishDelegate = {
@@ -19,6 +22,8 @@ type PlatformPublishDelegate = {
       platform: true;
       views: true;
       likes: true;
+      publishedAt: true;
+      createdAt: true;
     };
   }) => Promise<PrismaPlatformMetric[]>;
 };
@@ -32,7 +37,7 @@ export const createPrismaAnalyticsRepository = ({
 }: {
   prisma: PrismaAnalyticsClient;
 }): AnalyticsStore => ({
-  summaryForUser: async (userId) => {
+  summaryForUser: async (userId, range: AnalyticsRange = '30d') => {
     const metrics = await prisma.platformPublish.findMany({
       where: {
         post: {
@@ -42,10 +47,18 @@ export const createPrismaAnalyticsRepository = ({
       select: {
         platform: true,
         views: true,
-        likes: true
+        likes: true,
+        publishedAt: true,
+        createdAt: true
       }
     });
 
-    return summarizePlatformMetrics(metrics);
+    return summarizePlatformMetrics(
+      metrics.map(({ publishedAt, createdAt, ...metric }) => ({
+        ...metric,
+        occurredAt: publishedAt ?? createdAt
+      })),
+      { range }
+    );
   }
 });

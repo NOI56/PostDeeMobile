@@ -256,6 +256,7 @@ describe('PostDee mock publishing flow', () => {
     expect(proResponse.body).toEqual({
       status: 'ok',
       summary: {
+        range: '30d',
         totalViews: 0,
         totalLikes: 0,
         platforms: [
@@ -263,7 +264,8 @@ describe('PostDee mock publishing flow', () => {
           { platform: 'YOUTUBE_SHORTS', label: 'YouTube Shorts', views: 0, likes: 0 },
           { platform: 'INSTAGRAM_REELS', label: 'Instagram Reels', views: 0, likes: 0 },
           { platform: 'FACEBOOK_REELS', label: 'Facebook Reels', views: 0, likes: 0 }
-        ]
+        ],
+        daily: []
       }
     });
   });

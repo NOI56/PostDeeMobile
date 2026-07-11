@@ -1,5 +1,6 @@
 import type { Platform } from '../posts/postStore.js';
 import {
+  type AnalyticsRange,
   type AnalyticsSummary,
   type PlatformMetricInput,
   summarizePlatformMetrics
@@ -10,7 +11,7 @@ export type UserPlatformMetric = PlatformMetricInput & {
 };
 
 export type AnalyticsStore = {
-  summaryForUser: (userId: string) => Promise<AnalyticsSummary>;
+  summaryForUser: (userId: string, range?: AnalyticsRange) => Promise<AnalyticsSummary>;
   // Hard-deletes every metric owned by userId. Used by account deletion.
   // Optional because the Prisma store derives metrics from cascaded posts.
   deleteAllForUser?: (userId: string) => Promise<void>;
@@ -24,15 +25,17 @@ export const createInMemoryAnalyticsStore = ({
   const metrics = [...initialMetrics];
 
   return {
-    summaryForUser: async (userId) =>
+    summaryForUser: async (userId, range = '30d') =>
       summarizePlatformMetrics(
         metrics
           .filter((metric) => metric.userId === userId)
-          .map(({ platform, views, likes }) => ({
+          .map(({ platform, views, likes, occurredAt }) => ({
             platform: platform as Platform,
             views,
-            likes
-          }))
+            likes,
+            occurredAt
+          })),
+        { range }
       ),
     deleteAllForUser: async (userId) => {
       for (let index = metrics.length - 1; index >= 0; index -= 1) {

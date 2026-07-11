@@ -740,14 +740,18 @@ Response:
 
 ## Analytics
 
-### `GET /analytics/summary`
+### `GET /analytics/summary?range=30d`
 
 Returns a unified analytics summary for the authenticated user.
 
 Requires Pro.
 
-This is an overall (all-synced-posts) summary; there is no per-date-range
-filtering yet, so the app shows these totals directly without simulating ranges.
+Supported `range` values are `today`, `7d`, `30d`, `90d`, and `year`.
+The default is `30d`. Platform publish metrics are filtered by their publish
+time (falling back to record creation time) and grouped into UTC date buckets.
+The `daily` series therefore attributes the current synchronized totals to the
+day each platform publish was created/published; it is not a provider-level
+hourly history or a synthetic trend.
 
 Response:
 
@@ -755,12 +759,20 @@ Response:
 {
   "status": "ok",
   "summary": {
+    "range": "30d",
     "totalViews": 0,
     "totalLikes": 0,
     "platforms": [
       {
         "platform": "TIKTOK",
         "label": "TikTok",
+        "views": 0,
+        "likes": 0
+      }
+    ],
+    "daily": [
+      {
+        "date": "2026-07-10",
         "views": 0,
         "likes": 0
       }
@@ -778,6 +790,8 @@ If the user is not Pro:
   "message": "Unified Analytics requires the Pro plan"
 }
 ```
+
+An unsupported range returns `400 INVALID_ANALYTICS_RANGE`.
 
 ## Billing And Subscriptions
 

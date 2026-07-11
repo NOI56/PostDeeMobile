@@ -255,10 +255,14 @@ Response:
 }
 ```
 
-#### `GET /analytics/summary`
+#### `GET /analytics/summary?range=30d`
 
 Returns a unified analytics summary for the 4 supported platforms. This route requires the Pro plan.
 In local mock mode, use `x-postdee-subscription-plan: PRO` or call `POST /billing/mock-success` for the same mock user before requesting analytics.
+Supported ranges are `today`, `7d`, `30d`, `90d`, and `year`. The response
+includes platform totals plus a UTC `daily` series grouped by platform publish
+date, so the mobile date filters and chart use backend data instead of sample
+numbers.
 
 - TikTok
 - YouTube Shorts
@@ -431,7 +435,8 @@ Current mobile pieces:
 - Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
   mock/provider code have been removed from the active app path.
 - Saved templates wired to `GET /templates` and `POST /templates`
-- Unified analytics wired to `GET /analytics/summary`
+- Unified analytics wired to `GET /analytics/summary?range=...`, including real
+  range selection and a publish-date daily chart without simulated numbers
 - Home API connection check wired to `GET /health`, a local Gemini caption smoke check, plan status refresh wired to `GET /billing/subscription`, Basic Phone OTP UI for unlocking the 3-post free quota, and one automatic analytics refresh after Pro is unlocked
 - Upload AI captions keep the customer flow simple: select a clip, optionally add guidance, then let AI infer language and market from the clip.
 - Starter and Pro CTAs on Home can use the legacy Flutter `in_app_purchase` scaffold by default, or the RevenueCat `purchases_flutter` path when `ENABLE_REVENUECAT_BILLING=true`; RevenueCat entitlement updates come from `POST /billing/revenuecat/webhooks`

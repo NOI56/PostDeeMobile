@@ -2,6 +2,7 @@ import type { RequestHandler, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
 import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
+import { analyticsRanges, type AnalyticsRange } from './analyticsService.js';
 import type { AnalyticsStore } from './analyticsStore.js';
 
 export const registerAnalyticsRoutes = (
@@ -10,7 +11,7 @@ export const registerAnalyticsRoutes = (
   subscriptionStore: SubscriptionStore,
   analyticsStore: AnalyticsStore
 ) => {
-  router.get('/analytics/summary', authMiddleware, async (_request, response) => {
+  router.get('/analytics/summary', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
 
     if (!authUser) {
@@ -30,9 +31,25 @@ export const registerAnalyticsRoutes = (
       return;
     }
 
+    const requestedRange = request.query.range ?? '30d';
+    if (
+      typeof requestedRange !== 'string' ||
+      !analyticsRanges.includes(requestedRange as AnalyticsRange)
+    ) {
+      response.status(400).json({
+        status: 'error',
+        code: 'INVALID_ANALYTICS_RANGE',
+        message: 'Analytics range must be today, 7d, 30d, 90d, or year'
+      });
+      return;
+    }
+
     response.json({
       status: 'ok',
-      summary: await analyticsStore.summaryForUser(authUser.id)
+      summary: await analyticsStore.summaryForUser(
+        authUser.id,
+        requestedRange as AnalyticsRange
+      )
     });
   });
 };

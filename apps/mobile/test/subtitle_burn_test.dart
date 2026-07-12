@@ -95,7 +95,7 @@ void main() {
     expect(ranges.first.end, 5);
   });
 
-  test('builds select/aselect filters that remove silence ranges', () {
+  test('builds video select and compact audio concat for silence ranges', () {
     final args = buildEditFfmpegArguments(
       inputPath: '/in.mp4',
       outputPath: '/out.mp4',
@@ -106,10 +106,70 @@ void main() {
     );
     final joined = args.join(' ');
 
-    expect(joined, contains("select='not(between(t,3.000,5.000)+"
-        "between(t,12.000,14.000))'"));
-    expect(joined, contains('aselect='));
+    expect(
+        joined,
+        contains("select='not(between(t,3.000,5.000)+"
+            "between(t,12.000,14.000))'"));
+    expect(joined, contains('[0:a]atrim=start=0.000:end=3.000'));
+    expect(joined, contains('[0:a]atrim=start=5.000:end=12.000'));
+    expect(joined, contains('[0:a]atrim=start=14.000'));
+    expect(joined, contains('concat=n=3:v=0:a=1[aout]'));
+    expect(joined, contains('-map 0:v:0? -map [aout]'));
+    expect(joined, isNot(contains('aselect=')));
     expect(joined, contains('-c:a aac'));
+  });
+
+  test('gives libass the bundled subtitle font directory and family', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      subtitlePath: '/work/captions.srt',
+      subtitleFontsDirectory: '/work/fonts',
+      subtitleFontName: 'Prompt',
+    );
+    final vf = args[args.indexOf('-vf') + 1];
+
+    expect(vf, contains("fontsdir='/work/fonts'"));
+    expect(vf, contains('FontName=Prompt'));
+  });
+
+  test('combines silence, sticker, speed and volume in one mapped graph', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      silenceRanges: const [SilenceCutRange(start: 3, end: 5)],
+      stickerImagePaths: const ['/sticker.png'],
+      speed: 1.5,
+      volume: 0.8,
+    );
+    final joined = args.join(' ');
+
+    expect(joined, contains('overlay='));
+    expect(joined, contains('[0:a]atrim=start=0.000:end=3.000'));
+    expect(joined, contains('[0:a]atrim=start=5.000'));
+    expect(joined, contains('concat=n=2:v=0:a=1'));
+    expect(joined, contains('atempo=1.500'));
+    expect(joined, contains('volume=0.800'));
+    expect(joined, contains('-map [vout] -map [aout]'));
+    expect(joined, isNot(contains(' -af ')));
+    expect(joined, isNot(contains('aselect=')));
+  });
+
+  test('sorts and merges overlapping silence ranges before rendering', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      silenceRanges: const [
+        SilenceCutRange(start: 5, end: 8),
+        SilenceCutRange(start: 3, end: 6),
+      ],
+    );
+    final joined = args.join(' ');
+
+    expect(joined, contains("select='not(between(t,3.000,8.000))'"));
+    expect(joined, contains('[0:a]atrim=start=0.000:end=3.000'));
+    expect(joined, contains('[0:a]atrim=start=8.000'));
+    expect(joined, contains('concat=n=2:v=0:a=1'));
   });
 
   test('builds color filter for presets and adjustments', () {
@@ -120,6 +180,14 @@ void main() {
       'eq=brightness=0.250:contrast=1.400',
     );
     expect(buildColorFilter(filterIndex: 4), contains('colorbalance'));
+  });
+
+  test('retries a requested color filter without color as a safe fallback', () {
+    expect(
+      buildColorFilterFallbacks('eq=saturation=1.400'),
+      ['eq=saturation=1.400', ''],
+    );
+    expect(buildColorFilterFallbacks(''), ['']);
   });
 
   test('builds drawtext filters and sanitizes risky characters', () {
@@ -152,8 +220,10 @@ void main() {
       stickerCount: 1,
       positions: const [(0.3, 0.7)],
     );
-    expect(fc, contains('overlay=main_w*0.300-overlay_w/2:'
-        'main_h*0.700-overlay_h/2:eof_action=repeat'));
+    expect(
+        fc,
+        contains('overlay=main_w*0.300-overlay_w/2:'
+            'main_h*0.700-overlay_h/2:eof_action=repeat'));
   });
 
   test('color grade comes before subtitles in the filter chain', () {
@@ -266,7 +336,8 @@ void main() {
       if (base.existsSync()) base.deleteSync(recursive: true);
     });
     final sep = Platform.pathSeparator;
-    final stale1 = Directory('${base.path}${sep}postdee-edit-old')..createSync();
+    final stale1 = Directory('${base.path}${sep}postdee-edit-old')
+      ..createSync();
     final stale2 = Directory('${base.path}${sep}postdee-sticker-old')
       ..createSync();
     final keep = Directory('${base.path}${sep}postdee-edit-keep')..createSync();
@@ -279,6 +350,51 @@ void main() {
     expect(stale2.existsSync(), isFalse);
     expect(keep.existsSync(), isTrue);
     expect(other.existsSync(), isTrue);
+  });
+
+  test('renderer keeps its input temp dir while removing other stale dirs',
+      () async {
+    final base =
+        Directory.systemTemp.createTempSync('postdee-purge-call-test-');
+    addTearDown(() {
+      if (base.existsSync()) base.deleteSync(recursive: true);
+    });
+    final sep = Platform.pathSeparator;
+    final inputDir = Directory('${base.path}${sep}postdee-edit-current')
+      ..createSync();
+    final inputFile = File('${inputDir.path}${sep}previous-render.mp4')
+      ..writeAsBytesSync([0, 1, 2]);
+    final acceptedResult = Directory('${base.path}${sep}postdee-edit-accepted')
+      ..createSync();
+    final acceptedFile = File('${acceptedResult.path}${sep}accepted.mp4')
+      ..writeAsBytesSync([2, 1, 0]);
+    final staleEdit = Directory('${base.path}${sep}postdee-edit-stale')
+      ..createSync();
+    final staleSticker = Directory('${base.path}${sep}postdee-sticker-stale')
+      ..createSync();
+
+    final processor = FfmpegSubtitleBurnVideoProcessor(
+      renderTempDirectory: base,
+    );
+
+    await expectLater(
+      processor(
+        BurnSubtitleRequest(
+          inputFile: inputFile,
+          fileName: 'previous-render.mp4',
+          segments: const [],
+          preserveTempDirectoryPaths: {acceptedResult.path},
+        ),
+      ),
+      throwsA(isA<SubtitleBurnException>()),
+    );
+
+    expect(inputDir.existsSync(), isTrue);
+    expect(inputFile.existsSync(), isTrue);
+    expect(acceptedResult.existsSync(), isTrue);
+    expect(acceptedFile.existsSync(), isTrue);
+    expect(staleEdit.existsSync(), isFalse);
+    expect(staleSticker.existsSync(), isFalse);
   });
 
   test('keeps the simple -vf path when there are no stickers', () {

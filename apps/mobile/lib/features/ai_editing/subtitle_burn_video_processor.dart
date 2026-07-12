@@ -43,6 +43,7 @@ class BurnSubtitleRequest {
     this.stickerPositions = const [],
     this.subtitleFontSize = 18,
     this.subtitleAtBottom = true,
+    this.preserveTempDirectoryPaths = const {},
     this.outputDurationSeconds,
     this.onProgress,
   });
@@ -69,6 +70,10 @@ class BurnSubtitleRequest {
   final double subtitleFontSize;
   final bool subtitleAtBottom;
 
+  /// Render-result directories that must remain available until this render
+  /// succeeds. This lets review flows keep the last accepted video on failure.
+  final Set<String> preserveTempDirectoryPaths;
+
   /// Expected length of the rendered output (after cuts/speed), used to turn
   /// FFmpeg's processed-time statistics into a 0..1 progress fraction.
   final double? outputDurationSeconds;
@@ -85,11 +90,13 @@ class BurnedSubtitleResult {
     required this.file,
     required this.fileName,
     required this.sizeBytes,
+    this.colorFilterSkipped = false,
   });
 
   final File file;
   final String fileName;
   final int sizeBytes;
+  final bool colorFilterSkipped;
 }
 
 typedef SubtitleBurnVideoProcessor = Future<BurnedSubtitleResult> Function(
@@ -141,11 +148,17 @@ String buildSrtContent(List<SubtitleSegment> segments) {
 
 /// Builds the libass `force_style` for burned subtitles. [atBottom] uses
 /// Alignment=2 (bottom-center) or 8 (top-center). Pure + testable.
-String buildSubtitleForceStyle({double fontSize = 18, bool atBottom = true}) {
+String buildSubtitleForceStyle({
+  double fontSize = 18,
+  bool atBottom = true,
+  String fontName = 'Prompt',
+}) {
   final size = fontSize.round();
   final alignment = atBottom ? 2 : 8;
+  final safeFontName = fontName.replaceAll(RegExp(r"[',:]"), '').trim();
 
-  return 'Fontsize=$size,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,'
+  return 'FontName=${safeFontName.isEmpty ? 'Prompt' : safeFontName},'
+      'Fontsize=$size,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,'
       'BorderStyle=1,Outline=2,Alignment=$alignment';
 }
 
@@ -309,6 +322,11 @@ String buildColorFilter({
   return filters.join(',');
 }
 
+/// Tries the requested grade first, then preserves the source colors when the
+/// device FFmpeg build does not include a required color filter such as `eq`.
+List<String> buildColorFilterFallbacks(String requestedColorFilter) =>
+    requestedColorFilter.isEmpty ? const [''] : [requestedColorFilter, ''];
+
 String _sanitizeDrawText(String text) => text
     .replaceAll('\\', ' ')
     .replaceAll("'", '’')
@@ -390,15 +408,95 @@ String buildStickerFilterComplex({
   return segments.join(';');
 }
 
+List<SilenceCutRange> _normalizeSilenceRanges(
+  List<SilenceCutRange> ranges,
+) {
+  final sorted = [
+    for (final range in ranges)
+      if (range.start.isFinite && range.end.isFinite && range.end > range.start)
+        SilenceCutRange(
+          start: range.start < 0 ? 0 : range.start,
+          end: range.end,
+        ),
+  ]..sort((left, right) => left.start.compareTo(right.start));
+  final merged = <SilenceCutRange>[];
+
+  for (final range in sorted) {
+    if (merged.isEmpty || range.start > merged.last.end) {
+      merged.add(range);
+      continue;
+    }
+    final previous = merged.removeLast();
+    merged.add(
+      SilenceCutRange(
+        start: previous.start,
+        end: range.end > previous.end ? range.end : previous.end,
+      ),
+    );
+  }
+
+  return merged;
+}
+
+String _buildAudioSilenceConcatFilter(
+  List<SilenceCutRange> silenceRanges, {
+  List<String> trailingFilters = const [],
+}) {
+  final keepRanges = <(double, double?)>[];
+  var cursor = 0.0;
+
+  for (final range in silenceRanges) {
+    if (range.start > cursor) {
+      keepRanges.add((cursor, range.start));
+    }
+    if (range.end > cursor) {
+      cursor = range.end;
+    }
+  }
+  keepRanges.add((cursor, null));
+
+  if (keepRanges.length == 1) {
+    final keep = keepRanges.single;
+    final filters = <String>[
+      'atrim=start=${keep.$1.toStringAsFixed(3)}',
+      'asetpts=PTS-STARTPTS',
+      ...trailingFilters,
+    ];
+    return '[0:a]${filters.join(',')}[aout]';
+  }
+
+  final segments = <String>[];
+  final labels = <String>[];
+  for (var index = 0; index < keepRanges.length; index += 1) {
+    final keep = keepRanges[index];
+    final end = keep.$2 == null ? '' : ':end=${keep.$2!.toStringAsFixed(3)}';
+    final label = 'akeep$index';
+    segments.add(
+      '[0:a]atrim=start=${keep.$1.toStringAsFixed(3)}$end,'
+      'asetpts=PTS-STARTPTS[$label]',
+    );
+    labels.add('[$label]');
+  }
+
+  final trailing =
+      trailingFilters.isEmpty ? '' : ',${trailingFilters.join(',')}';
+  segments.add(
+    '${labels.join()}concat=n=${labels.length}:v=0:a=1$trailing[aout]',
+  );
+  return segments.join(';');
+}
+
 /// Builds the FFmpeg argument list for an edit render: color grade, trim
 /// (`-ss`/`-to`), burned subtitles, text overlays, sticker overlays, silence
-/// removal (`select`/`aselect`), speed (`setpts` + `atempo`) and volume.
+/// removal (video `select` + compact audio `concat`), speed and volume.
 /// Subtitles are burned BEFORE the silence cut so the burned-in pixels travel
 /// with their frames — no subtitle re-timing needed. Pure + testable.
 List<String> buildEditFfmpegArguments({
   required String inputPath,
   required String outputPath,
   String? subtitlePath,
+  String? subtitleFontsDirectory,
+  String subtitleFontName = 'Prompt',
   String colorFilter = '',
   List<String> drawTextFilters = const [],
   double speed = 1.0,
@@ -428,9 +526,10 @@ List<String> buildEditFfmpegArguments({
     args.addAll(['-to', trimEndSec.toStringAsFixed(3)]);
   }
 
-  final hasSilence = silenceRanges.isNotEmpty;
+  final normalizedSilenceRanges = _normalizeSilenceRanges(silenceRanges);
+  final hasSilence = normalizedSilenceRanges.isNotEmpty;
   // Single-quoted so the commas inside between(t,..) survive filtergraph parsing.
-  final keepExpr = silenceRanges
+  final keepExpr = normalizedSilenceRanges
       .map((range) =>
           'between(t,${range.start.toStringAsFixed(3)},${range.end.toStringAsFixed(3)})')
       .join('+');
@@ -446,11 +545,19 @@ List<String> buildEditFfmpegArguments({
   if (subtitlePath != null) {
     final escaped =
         subtitlePath.replaceAll('\\', '\\\\').replaceAll(':', '\\:');
+    final escapedFontsDirectory =
+        subtitleFontsDirectory?.replaceAll('\\', '\\\\').replaceAll(':', '\\:');
     final forceStyle = buildSubtitleForceStyle(
       fontSize: subtitleFontSize,
       atBottom: subtitleAtBottom,
+      fontName: subtitleFontName,
     );
-    videoFilters.add("subtitles='$escaped':force_style='$forceStyle'");
+    final fontsDirectoryOption = escapedFontsDirectory == null
+        ? ''
+        : ":fontsdir='$escapedFontsDirectory'";
+    videoFilters.add(
+      "subtitles='$escaped'$fontsDirectoryOption:force_style='$forceStyle'",
+    );
   }
   videoFilters.addAll(drawTextFilters);
   if (hasSilence) {
@@ -462,10 +569,6 @@ List<String> buildEditFfmpegArguments({
   }
 
   final audioFilters = <String>[];
-  if (hasSilence) {
-    audioFilters.add("aselect='not($keepExpr)'");
-    audioFilters.add('asetpts=N/SR/TB');
-  }
   if (speed != 1.0) {
     audioFilters.add('atempo=${speed.toStringAsFixed(3)}');
   }
@@ -473,28 +576,53 @@ List<String> buildEditFfmpegArguments({
     audioFilters.add('volume=${volume.toStringAsFixed(3)}');
   }
 
-  // Stickers need multiple inputs, so they go through filter_complex with an
-  // explicit stream map; everything else stays on the simpler -vf path.
+  final complexFilters = <String>[];
   if (stickerImagePaths.isNotEmpty) {
-    args.addAll([
-      '-filter_complex',
+    complexFilters.add(
       buildStickerFilterComplex(
         videoFilters: videoFilters,
         stickerCount: stickerImagePaths.length,
         positions: stickerPositions,
       ),
+    );
+  }
+  if (hasSilence) {
+    complexFilters.add(
+      _buildAudioSilenceConcatFilter(
+        normalizedSilenceRanges,
+        trailingFilters: audioFilters,
+      ),
+    );
+  }
+
+  // Silence removal needs audio segments concatenated so both streams become
+  // shorter together. `aselect` alone leaves the original audio timestamps.
+  if (complexFilters.isNotEmpty) {
+    args.addAll([
+      '-filter_complex',
+      complexFilters.join(';'),
     ]);
-    args.addAll(['-map', '[vout]', '-map', '0:a?']);
+    if (stickerImagePaths.isNotEmpty) {
+      args.addAll(['-map', '[vout]']);
+    } else {
+      if (videoFilters.isNotEmpty) {
+        args.addAll(['-vf', videoFilters.join(',')]);
+      }
+      args.addAll(['-map', '0:v:0?']);
+    }
+    args.addAll(['-map', hasSilence ? '[aout]' : '0:a?']);
   } else if (videoFilters.isNotEmpty) {
     args.addAll(['-vf', videoFilters.join(',')]);
   }
 
-  if (audioFilters.isNotEmpty) {
+  if (!hasSilence && audioFilters.isNotEmpty) {
     args.addAll(['-af', audioFilters.join(',')]);
   }
 
   args.addAll(['-c:v', videoCodec, ...videoEncoderArgs]);
-  args.addAll(audioFilters.isEmpty ? ['-c:a', 'copy'] : ['-c:a', 'aac']);
+  args.addAll(hasSilence || audioFilters.isNotEmpty
+      ? ['-c:a', 'aac']
+      : ['-c:a', 'copy']);
   args.addAll(['-movflags', '+faststart', outputPath]);
 
   return args;
@@ -565,6 +693,7 @@ class FfmpegSubtitleBurnVideoProcessor {
     this.assetBundle,
     this.fontAssetPath = 'assets/fonts/prompt/Prompt-Bold.ttf',
     this.probeStreamTypes = ffprobeStreamTypes,
+    this.renderTempDirectory,
   });
 
   final AssetBundle? assetBundle;
@@ -573,15 +702,21 @@ class FfmpegSubtitleBurnVideoProcessor {
   /// Injectable so tests can fake the post-render stream check.
   final RenderedStreamTypesProbe probeStreamTypes;
 
+  /// Overrides the render temp root in tests. Production uses the platform
+  /// system temp directory.
+  final Directory? renderTempDirectory;
+
   Future<BurnedSubtitleResult> call(BurnSubtitleRequest request) async {
     if (!await request.inputFile.exists()) {
       throw const SubtitleBurnException('ไม่พบไฟล์วิดีโอสำหรับใส่ซับ');
     }
 
-    // Reclaim disk from earlier exports, but keep this render's sticker dirs.
+    // Reclaim earlier exports while keeping this input and its sticker dirs.
     await purgeEditTempDirs(
-      Directory.systemTemp,
+      renderTempDirectory ?? Directory.systemTemp,
       keepPaths: {
+        ...request.preserveTempDirectoryPaths,
+        request.inputFile.parent.path,
         for (final path in request.stickerImagePaths) File(path).parent.path,
       },
     );
@@ -623,6 +758,16 @@ class FfmpegSubtitleBurnVideoProcessor {
         await Directory.systemTemp.createTemp('postdee-edit-');
     final separator = Platform.pathSeparator;
 
+    String? renderFontPath;
+    if (hasSubtitles || hasText) {
+      final bundle = assetBundle ?? rootBundle;
+      final fontData = await bundle.load(fontAssetPath);
+      final fontFile =
+          File('${workingDirectory.path}${separator}Prompt-Bold.ttf');
+      await fontFile.writeAsBytes(fontData.buffer.asUint8List());
+      renderFontPath = fontFile.path;
+    }
+
     String? subtitlePath;
     if (hasSubtitles) {
       final srtFile = File('${workingDirectory.path}${separator}captions.srt');
@@ -632,13 +777,10 @@ class FfmpegSubtitleBurnVideoProcessor {
 
     var drawTextFilters = const <String>[];
     if (hasText) {
-      final bundle = assetBundle ?? rootBundle;
-      final fontData = await bundle.load(fontAssetPath);
-      final fontFile =
-          File('${workingDirectory.path}${separator}overlay-font.ttf');
-      await fontFile.writeAsBytes(fontData.buffer.asUint8List());
-      drawTextFilters =
-          buildDrawTextFilters(request.textOverlays, fontPath: fontFile.path);
+      drawTextFilters = buildDrawTextFilters(
+        request.textOverlays,
+        fontPath: renderFontPath!,
+      );
     }
 
     final outputFile = File(
@@ -674,58 +816,67 @@ class FfmpegSubtitleBurnVideoProcessor {
     }
 
     var renderedOk = false;
+    var colorFilterSkipped = false;
     String? failureLogs;
     try {
       render:
-      for (final stickerPaths in stickerVariants) {
-        for (final encoder in encoders) {
-          final session = await FFmpegKit.executeWithArguments(
-            buildEditFfmpegArguments(
-              inputPath: request.inputFile.path,
-              outputPath: outputFile.path,
-              subtitlePath: subtitlePath,
-              colorFilter: colorFilter,
-              drawTextFilters: drawTextFilters,
-              speed: request.speed,
-              volume: request.volume,
-              trimStartSec: request.trimStartSec,
-              trimEndSec: request.trimEndSec,
-              silenceRanges: trimmedSilence,
-              stickerImagePaths: stickerPaths,
-              stickerPositions:
-                  stickerPaths.isEmpty ? const [] : request.stickerPositions,
-              subtitleFontSize: request.subtitleFontSize,
-              subtitleAtBottom: request.subtitleAtBottom,
-              videoCodec: encoder.codec,
-              videoEncoderArgs: encoder.encoderArgs,
-              scaleEvenDimensions: encoder.scaleEvenDimensions,
-            ),
-          );
-          final returnCode = await session.getReturnCode();
+      for (final attemptedColorFilter
+          in buildColorFilterFallbacks(colorFilter)) {
+        for (final stickerPaths in stickerVariants) {
+          for (final encoder in encoders) {
+            final session = await FFmpegKit.executeWithArguments(
+              buildEditFfmpegArguments(
+                inputPath: request.inputFile.path,
+                outputPath: outputFile.path,
+                subtitlePath: subtitlePath,
+                subtitleFontsDirectory:
+                    hasSubtitles ? workingDirectory.path : null,
+                subtitleFontName: 'Prompt',
+                colorFilter: attemptedColorFilter,
+                drawTextFilters: drawTextFilters,
+                speed: request.speed,
+                volume: request.volume,
+                trimStartSec: request.trimStartSec,
+                trimEndSec: request.trimEndSec,
+                silenceRanges: trimmedSilence,
+                stickerImagePaths: stickerPaths,
+                stickerPositions:
+                    stickerPaths.isEmpty ? const [] : request.stickerPositions,
+                subtitleFontSize: request.subtitleFontSize,
+                subtitleAtBottom: request.subtitleAtBottom,
+                videoCodec: encoder.codec,
+                videoEncoderArgs: encoder.encoderArgs,
+                scaleEvenDimensions: encoder.scaleEvenDimensions,
+              ),
+            );
+            final returnCode = await session.getReturnCode();
 
-          if (ReturnCode.isSuccess(returnCode)) {
-            // Trust but verify: some hardware encoders exit 0 while writing an
-            // audio-only file. Only accept output with a real video stream.
-            if (renderedOutputHasVideo(
-                await probeStreamTypes(outputFile.path))) {
-              renderedOk = true;
-              failureLogs = null;
-              break render;
+            if (ReturnCode.isSuccess(returnCode)) {
+              // Trust but verify: some hardware encoders exit 0 while writing an
+              // audio-only file. Only accept output with a real video stream.
+              if (renderedOutputHasVideo(
+                  await probeStreamTypes(outputFile.path))) {
+                renderedOk = true;
+                colorFilterSkipped =
+                    colorFilter.isNotEmpty && attemptedColorFilter.isEmpty;
+                failureLogs = null;
+                break render;
+              }
+              failureLogs =
+                  'encoder ${encoder.codec} exited 0 but wrote no video stream';
+              continue;
             }
-            failureLogs =
-                'encoder ${encoder.codec} exited 0 but wrote no video stream';
-            continue;
-          }
 
-          // A cancel aborts the whole export — don't fall back to other paths.
-          if (ReturnCode.isCancel(returnCode)) {
-            throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
-          }
+            // A cancel aborts the whole export — don't fall back to other paths.
+            if (ReturnCode.isCancel(returnCode)) {
+              throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
+            }
 
-          final logs = await session.getAllLogsAsString();
-          failureLogs = logs == null || logs.trim().isEmpty
-              ? 'FFmpeg return code: $returnCode'
-              : logs.trim();
+            final logs = await session.getAllLogsAsString();
+            failureLogs = logs == null || logs.trim().isEmpty
+                ? 'FFmpeg return code: $returnCode'
+                : logs.trim();
+          }
         }
       }
     } finally {
@@ -745,6 +896,7 @@ class FfmpegSubtitleBurnVideoProcessor {
       file: outputFile,
       fileName: outputFile.uri.pathSegments.last,
       sizeBytes: await outputFile.length(),
+      colorFilterSkipped: colorFilterSkipped,
     );
   }
 

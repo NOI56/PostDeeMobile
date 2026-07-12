@@ -125,7 +125,12 @@ class _PostDeeShellState extends State<PostDeeShell> {
           onOpenAi: () => _selectTab(1),
           userName: _authController.session.displayName,
         ),
-        const AiEditingScreen(),
+        AiEditingScreen(
+          onBack: () => _selectTab(0),
+          pickVideo: widget.pickVideo,
+          createUpload: widget.createUpload,
+          uploadVideoFile: widget.uploadVideoFile,
+        ),
         UploaderScreen(
           loadSubscription: widget.loadSubscription,
           pickVideo: widget.pickVideo,
@@ -275,15 +280,17 @@ class _PostDeeShellState extends State<PostDeeShell> {
             children: _buildScreens(),
           ),
         ),
-        bottomNavigationBar: _PostDeeBottomNav(
-          currentIndex: _selectedIndex,
-          onHome: () => _selectTab(0),
-          onCalendar: () => _selectTab(3),
-          onCreate: () => _selectTab(2),
-          onAnalytics: () => _selectTab(4),
-          onProfile: () => _selectTab(5),
-          l10n: l10n,
-        ),
+        bottomNavigationBar: _selectedIndex == 1
+            ? null
+            : _PostDeeBottomNav(
+                currentIndex: _selectedIndex,
+                onHome: () => _selectTab(0),
+                onCalendar: () => _selectTab(3),
+                onCreate: () => _selectTab(2),
+                onAnalytics: () => _selectTab(4),
+                onProfile: () => _selectTab(5),
+                l10n: l10n,
+              ),
       ),
     );
   }

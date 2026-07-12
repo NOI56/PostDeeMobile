@@ -122,6 +122,413 @@ class AiEditPlanRequest {
       };
 }
 
+class AiEditMusicDuckingSettings {
+  const AiEditMusicDuckingSettings({
+    this.enabled = true,
+    this.musicVolumeDuringSpeech = 0.12,
+  });
+
+  final bool enabled;
+  final double musicVolumeDuringSpeech;
+
+  Map<String, Object?> toJson() => {
+        'enabled': enabled,
+        'musicVolumeDuringSpeech': musicVolumeDuringSpeech,
+      };
+}
+
+class AiEditMusicSettings {
+  const AiEditMusicSettings({
+    required this.source,
+    this.genre,
+    this.trackId,
+    this.beatIntensity = 'balanced',
+    this.volume = 0.25,
+    this.ducking = const AiEditMusicDuckingSettings(),
+  });
+
+  final String source;
+  final String? genre;
+  final String? trackId;
+  final String beatIntensity;
+  final double volume;
+  final AiEditMusicDuckingSettings ducking;
+
+  Map<String, Object?> toJson() => {
+        'source': source,
+        if (genre != null) 'genre': genre,
+        if (trackId != null) 'trackId': trackId,
+        'beatIntensity': beatIntensity,
+        'volume': volume,
+        'ducking': ducking.toJson(),
+      };
+}
+
+class AiEditPrepareSettings {
+  const AiEditPrepareSettings({
+    this.subtitleStyle,
+    this.subtitleColor,
+    this.subtitleWordsPerLine,
+    this.subtitlePosition,
+    this.ctaText,
+    this.ctaDesign,
+    this.priceText,
+    this.watermarkText,
+    this.toneFilter,
+    this.zoomLevel,
+    this.silencePreset,
+    this.fillerWords,
+    this.music,
+  });
+
+  final String? subtitleStyle;
+  final String? subtitleColor;
+  final int? subtitleWordsPerLine;
+  final String? subtitlePosition;
+  final String? ctaText;
+  final String? ctaDesign;
+  final String? priceText;
+  final String? watermarkText;
+  final String? toneFilter;
+  final String? zoomLevel;
+  final String? silencePreset;
+  final List<String>? fillerWords;
+  final AiEditMusicSettings? music;
+
+  Map<String, Object?> toJson() => {
+        if (subtitleStyle != null) 'subtitleStyle': subtitleStyle,
+        if (subtitleColor != null) 'subtitleColor': subtitleColor,
+        if (subtitleWordsPerLine != null)
+          'subtitleWordsPerLine': subtitleWordsPerLine,
+        if (subtitlePosition != null) 'subtitlePosition': subtitlePosition,
+        if (ctaText != null) 'ctaText': ctaText,
+        if (ctaDesign != null) 'ctaDesign': ctaDesign,
+        if (priceText != null) 'priceText': priceText,
+        if (watermarkText != null) 'watermarkText': watermarkText,
+        if (toneFilter != null) 'toneFilter': toneFilter,
+        if (zoomLevel != null) 'zoomLevel': zoomLevel,
+        if (silencePreset != null) 'silencePreset': silencePreset,
+        if (fillerWords != null) 'fillerWords': fillerWords,
+        if (music != null) 'music': music!.toJson(),
+      };
+}
+
+class AiEditPrepareRequest {
+  const AiEditPrepareRequest({
+    required this.videoS3Key,
+    required this.durationSeconds,
+    this.styleId,
+    this.prompt,
+    this.capabilities = const <String, bool>{},
+    this.settings = const AiEditPrepareSettings(),
+  });
+
+  final String videoS3Key;
+  final double durationSeconds;
+  final String? styleId;
+  final String? prompt;
+  final Map<String, bool> capabilities;
+  final AiEditPrepareSettings settings;
+
+  Map<String, Object?> toJson() => {
+        'videoS3Key': videoS3Key,
+        'durationSeconds': durationSeconds,
+        if (styleId != null) 'styleId': styleId,
+        if (prompt != null) 'prompt': prompt,
+        'capabilities': capabilities,
+        'settings': settings.toJson(),
+      };
+}
+
+class AiEditTranscriptWordResult {
+  const AiEditTranscriptWordResult({
+    required this.word,
+    required this.start,
+    required this.end,
+  });
+
+  final String word;
+  final double start;
+  final double end;
+
+  factory AiEditTranscriptWordResult.fromJson(Map<String, Object?> json) {
+    return AiEditTranscriptWordResult(
+      word: json['word'] as String? ?? '',
+      start: (json['start'] as num?)?.toDouble() ?? 0,
+      end: (json['end'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
+class AiEditTranscriptResult {
+  const AiEditTranscriptResult({
+    required this.text,
+    required this.language,
+    required this.durationSeconds,
+    required this.segments,
+    required this.words,
+    required this.model,
+  });
+
+  final String text;
+  final String language;
+  final double durationSeconds;
+  final List<ClipTranscriptSegment> segments;
+  final List<AiEditTranscriptWordResult> words;
+  final String model;
+
+  factory AiEditTranscriptResult.fromJson(Map<String, Object?> json) {
+    final rawSegments = json['segments'];
+    final rawWords = json['words'];
+
+    return AiEditTranscriptResult(
+      text: json['text'] as String? ?? '',
+      language: json['language'] as String? ?? '',
+      durationSeconds: (json['durationSeconds'] as num?)?.toDouble() ?? 0,
+      segments: rawSegments is List<dynamic>
+          ? rawSegments
+              .whereType<Map<String, Object?>>()
+              .map(ClipTranscriptSegment.fromJson)
+              .toList()
+          : <ClipTranscriptSegment>[],
+      words: rawWords is List<dynamic>
+          ? rawWords
+              .whereType<Map<String, Object?>>()
+              .map(AiEditTranscriptWordResult.fromJson)
+              .toList()
+          : <AiEditTranscriptWordResult>[],
+      model: json['model'] as String? ?? '',
+    );
+  }
+}
+
+class AiEditSubtitleStyleResult {
+  const AiEditSubtitleStyleResult({
+    required this.mode,
+    required this.color,
+    required this.wordsPerLine,
+    required this.position,
+  });
+
+  final String mode;
+  final String color;
+  final int wordsPerLine;
+  final String position;
+
+  factory AiEditSubtitleStyleResult.fromJson(Map<String, Object?> json) {
+    return AiEditSubtitleStyleResult(
+      mode: json['mode'] as String? ?? 'bold',
+      color: json['color'] as String? ?? '#FFFFFF',
+      wordsPerLine: (json['wordsPerLine'] as num?)?.round() ?? 2,
+      position: json['position'] as String? ?? 'bottom',
+    );
+  }
+}
+
+class AiEditSubtitlesResult {
+  const AiEditSubtitlesResult({
+    required this.enabled,
+    required this.segments,
+    required this.style,
+  });
+
+  final bool enabled;
+  final List<ClipTranscriptSegment> segments;
+  final AiEditSubtitleStyleResult style;
+
+  factory AiEditSubtitlesResult.fromJson(Map<String, Object?> json) {
+    final rawSegments = json['segments'];
+    final rawStyle = json['style'];
+
+    return AiEditSubtitlesResult(
+      enabled: json['enabled'] as bool? ?? false,
+      segments: rawSegments is List<dynamic>
+          ? rawSegments
+              .whereType<Map<String, Object?>>()
+              .map(ClipTranscriptSegment.fromJson)
+              .toList()
+          : <ClipTranscriptSegment>[],
+      style: AiEditSubtitleStyleResult.fromJson(
+        rawStyle is Map<String, Object?> ? rawStyle : const <String, Object?>{},
+      ),
+    );
+  }
+}
+
+class AiEditCapabilityStatusResult {
+  const AiEditCapabilityStatusResult({
+    required this.enabled,
+    required this.state,
+    required this.message,
+  });
+
+  final bool enabled;
+  final String state;
+  final String message;
+
+  bool get isApplied => state == 'applied';
+
+  factory AiEditCapabilityStatusResult.fromJson(Map<String, Object?> json) {
+    return AiEditCapabilityStatusResult(
+      enabled: json['enabled'] as bool? ?? false,
+      state: json['state'] as String? ?? 'skipped',
+      message: json['message'] as String? ?? '',
+    );
+  }
+}
+
+class AiEditMusicDuckingResult {
+  const AiEditMusicDuckingResult({
+    required this.enabled,
+    required this.musicVolumeDuringSpeech,
+  });
+
+  final bool enabled;
+  final double musicVolumeDuringSpeech;
+
+  factory AiEditMusicDuckingResult.fromJson(Map<String, Object?> json) {
+    return AiEditMusicDuckingResult(
+      enabled: json['enabled'] as bool? ?? true,
+      musicVolumeDuringSpeech:
+          (json['musicVolumeDuringSpeech'] as num?)?.toDouble() ??
+              (json['speechVolume'] as num?)?.toDouble() ??
+              0.12,
+    );
+  }
+}
+
+class AiEditMusicResult {
+  const AiEditMusicResult({
+    required this.source,
+    required this.beatIntensity,
+    required this.volume,
+    required this.ducking,
+    this.genre,
+    this.trackId,
+  });
+
+  final String source;
+  final String? genre;
+  final String? trackId;
+  final String beatIntensity;
+  final double volume;
+  final AiEditMusicDuckingResult ducking;
+
+  factory AiEditMusicResult.fromJson(Map<String, Object?> json) {
+    final rawDucking = json['ducking'];
+    return AiEditMusicResult(
+      source: json['source'] as String? ?? 'original',
+      genre: json['genre'] as String?,
+      trackId: json['trackId'] as String?,
+      beatIntensity: json['beatIntensity'] as String? ?? 'balanced',
+      volume: (json['volume'] as num?)?.toDouble() ?? 0.25,
+      ducking: AiEditMusicDuckingResult.fromJson(
+        rawDucking is Map<String, Object?>
+            ? rawDucking
+            : const <String, Object?>{},
+      ),
+    );
+  }
+}
+
+class AiEditRecipeResult {
+  const AiEditRecipeResult({
+    required this.version,
+    required this.status,
+    required this.renderMode,
+    required this.transcript,
+    required this.subtitles,
+    required this.cutRanges,
+    required this.silenceRanges,
+    required this.fillerRanges,
+    required this.capabilities,
+    this.music = const AiEditMusicResult(
+      source: 'original',
+      beatIntensity: 'balanced',
+      volume: 0.25,
+      ducking: AiEditMusicDuckingResult(
+        enabled: true,
+        musicVolumeDuringSpeech: 0.12,
+      ),
+    ),
+    this.styleId,
+    this.prompt,
+  });
+
+  final int version;
+  final String status;
+  final String renderMode;
+  final String? styleId;
+  final String? prompt;
+  final AiEditTranscriptResult transcript;
+  final AiEditSubtitlesResult subtitles;
+  final List<AiEditCut> cutRanges;
+  final List<AiEditCut> silenceRanges;
+  final List<AiEditCut> fillerRanges;
+  final AiEditMusicResult music;
+  final Map<String, AiEditCapabilityStatusResult> capabilities;
+
+  factory AiEditRecipeResult.fromJson(Map<String, Object?> json) {
+    List<AiEditCut> parseRanges(Object? value) => value is List<dynamic>
+        ? value
+            .whereType<Map<String, Object?>>()
+            .map(AiEditCut.fromJson)
+            .toList()
+        : <AiEditCut>[];
+
+    final rawTranscript = json['transcript'];
+    final rawSubtitles = json['subtitles'];
+    final rawCapabilities = json['capabilities'];
+    final rawMusic = json['music'];
+    final capabilities = <String, AiEditCapabilityStatusResult>{};
+
+    if (rawCapabilities is Map<String, Object?>) {
+      for (final entry in rawCapabilities.entries) {
+        final status = entry.value;
+        if (status is Map<String, Object?>) {
+          capabilities[entry.key] =
+              AiEditCapabilityStatusResult.fromJson(status);
+        }
+      }
+    }
+
+    return AiEditRecipeResult(
+      version: (json['version'] as num?)?.round() ?? 1,
+      status: json['status'] as String? ?? '',
+      renderMode: json['renderMode'] as String? ?? '',
+      styleId: json['styleId'] as String?,
+      prompt: json['prompt'] as String?,
+      transcript: AiEditTranscriptResult.fromJson(
+        rawTranscript is Map<String, Object?>
+            ? rawTranscript
+            : const <String, Object?>{},
+      ),
+      subtitles: AiEditSubtitlesResult.fromJson(
+        rawSubtitles is Map<String, Object?>
+            ? rawSubtitles
+            : const <String, Object?>{},
+      ),
+      cutRanges: parseRanges(json['cutRanges']),
+      silenceRanges: parseRanges(json['silenceRanges']),
+      fillerRanges: parseRanges(json['fillerRanges']),
+      music: AiEditMusicResult.fromJson(
+        rawMusic is Map<String, Object?> ? rawMusic : const <String, Object?>{},
+      ),
+      capabilities: capabilities,
+    );
+  }
+}
+
+class AiEditPrepareResult {
+  const AiEditPrepareResult({
+    required this.recipe,
+    required this.quota,
+  });
+
+  final AiEditRecipeResult recipe;
+  final AiEditQuota quota;
+}
+
 class ClipTranscriptResult {
   const ClipTranscriptResult({
     required this.text,
@@ -1046,6 +1453,29 @@ class PostDeeApiClient {
     }
 
     return ClipTranscriptResult.fromJson(transcript);
+  }
+
+  Future<AiEditPrepareResult> prepareAiEdit(
+    AiEditPrepareRequest request,
+  ) async {
+    final response = await _postJson('/ai-edits/prepare', request.toJson());
+    final recipe = response['recipe'];
+    final quota = response['quota'];
+
+    if (recipe is! Map<String, Object?>) {
+      throw const ApiException(
+          'AI edit prepare response is missing recipe data');
+    }
+
+    if (quota is! Map<String, Object?>) {
+      throw const ApiException(
+          'AI edit prepare response is missing quota data');
+    }
+
+    return AiEditPrepareResult(
+      recipe: AiEditRecipeResult.fromJson(recipe),
+      quota: AiEditQuota.fromJson(quota),
+    );
   }
 
   Future<AiEditPlanResult> requestAiEditPlan(AiEditPlanRequest request) async {

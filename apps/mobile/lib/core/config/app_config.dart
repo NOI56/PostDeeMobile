@@ -51,6 +51,24 @@ class AppConfig {
     defaultValue: false,
   );
 
+  /// Enables the internal-only beat-sync setup UI.
+  ///
+  /// This flag does not enable beat analysis or music rendering. Keep it off in
+  /// production until the renderer and music-rights flow are complete.
+  static const enableExperimentalBeatSync = bool.fromEnvironment(
+    'ENABLE_EXPERIMENTAL_BEAT_SYNC',
+    defaultValue: false,
+  );
+
+  /// Enables the internal-only AI hook setup UI.
+  ///
+  /// Keep this off in production until highlight selection and timeline
+  /// rendering are implemented end to end.
+  static const enableExperimentalAiHook = bool.fromEnvironment(
+    'ENABLE_EXPERIMENTAL_AI_HOOK',
+    defaultValue: false,
+  );
+
   static const revenueCatApiKey = String.fromEnvironment(
     'REVENUECAT_API_KEY',
     defaultValue: '',

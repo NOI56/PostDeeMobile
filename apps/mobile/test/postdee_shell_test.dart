@@ -119,6 +119,59 @@ void main() {
           'The raised circular create button must not be clipped by the nav.',
     );
   });
+
+  testWidgets(
+      'opens AI editing as a child screen and restores home nav on back',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+
+    sessionStore.signIn(
+      const AuthSession(
+        idToken: 'firebase-id-token',
+        email: 'seller@example.com',
+        displayName: 'PostDee Seller',
+      ),
+    );
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: PostDeeShell(languageController: languageController),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_referenceNav(), findsOneWidget);
+    final aiShortcut = find.text('AI editing').first;
+    await tester.ensureVisible(aiShortcut);
+    await tester.tap(aiShortcut);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('ai-editing-back')), findsOneWidget);
+    expect(_referenceNav(), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('ai-editing-back')));
+    await tester.pumpAndSettle();
+
+    expect(_referenceNav(), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-editing-back')), findsNothing);
+  });
+
   testWidgets('opens profile from the reference bottom navigation',
       (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/config/app_config.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
@@ -300,5 +303,204 @@ void main() {
   test('AppConfig leaves development auth overrides empty by default', () {
     expect(AppConfig.mockUserId, isEmpty);
     expect(AppConfig.mockSubscriptionPlan, isEmpty);
+  });
+
+  test('AiEditPrepareRequest serializes UI capabilities and recipe settings',
+      () {
+    expect(
+      const AiEditPrepareRequest(
+        videoS3Key: 'uploads/seller/video.mp4',
+        durationSeconds: 65,
+        styleId: 'flash_sale',
+        prompt: 'เน้นสินค้าให้เด่น',
+        capabilities: {
+          'subtitle': true,
+          'silence': false,
+        },
+        settings: AiEditPrepareSettings(
+          subtitleStyle: 'bold',
+          subtitleColor: '#FFFFFF',
+          subtitleWordsPerLine: 2,
+          subtitlePosition: 'bottom',
+          ctaText: 'กดตะกร้าเลย',
+          silencePreset: 'natural',
+          fillerWords: ['เอ่อ', 'แบบว่า'],
+          music: AiEditMusicSettings(
+            source: 'library',
+            genre: 'fun',
+            trackId: 'postdee-sale-01',
+            beatIntensity: 'energetic',
+            volume: 0.25,
+            ducking: AiEditMusicDuckingSettings(
+              enabled: true,
+              musicVolumeDuringSpeech: 0.12,
+            ),
+          ),
+        ),
+      ).toJson(),
+      {
+        'videoS3Key': 'uploads/seller/video.mp4',
+        'durationSeconds': 65.0,
+        'styleId': 'flash_sale',
+        'prompt': 'เน้นสินค้าให้เด่น',
+        'capabilities': {
+          'subtitle': true,
+          'silence': false,
+        },
+        'settings': {
+          'subtitleStyle': 'bold',
+          'subtitleColor': '#FFFFFF',
+          'subtitleWordsPerLine': 2,
+          'subtitlePosition': 'bottom',
+          'ctaText': 'กดตะกร้าเลย',
+          'silencePreset': 'natural',
+          'fillerWords': ['เอ่อ', 'แบบว่า'],
+          'music': {
+            'source': 'library',
+            'genre': 'fun',
+            'trackId': 'postdee-sale-01',
+            'beatIntensity': 'energetic',
+            'volume': 0.25,
+            'ducking': {
+              'enabled': true,
+              'musicVolumeDuringSpeech': 0.12,
+            },
+          },
+        },
+      },
+    );
+  });
+
+  test('prepareAiEdit posts the request and parses the mobile recipe',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final apiClient = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        authHeaders: PostDeeApiAuthHeaders(
+          authTokenProvider: () async => null,
+          mockUserId: 'seller-test',
+          mockSubscriptionPlan: 'PRO',
+        ),
+      );
+      final resultFuture = apiClient.prepareAiEdit(
+        const AiEditPrepareRequest(
+          videoS3Key: 'uploads/seller-test/video.mp4',
+          durationSeconds: 12,
+          capabilities: {
+            'subtitle': true,
+            'silence': true,
+          },
+        ),
+      );
+      final request = await server.first;
+      final body = jsonDecode(await utf8.decoder.bind(request).join())
+          as Map<String, dynamic>;
+
+      expect(request.method, 'POST');
+      expect(request.uri.path, '/ai-edits/prepare');
+      expect(request.headers.value('x-postdee-user-id'), 'seller-test');
+      expect(body['videoS3Key'], 'uploads/seller-test/video.mp4');
+      expect(body['capabilities'], {
+        'subtitle': true,
+        'silence': true,
+      });
+
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode({
+          'status': 'ok',
+          'recipe': {
+            'version': 1,
+            'status': 'ready',
+            'renderMode': 'mobile-ffmpeg',
+            'transcript': {
+              'text': 'สวัสดี เว้นช่วง แล้วไปต่อ',
+              'language': 'th',
+              'durationSeconds': 12,
+              'segments': [
+                {'text': 'สวัสดี', 'start': 0, 'end': 2},
+                {'text': 'แล้วไปต่อ', 'start': 3, 'end': 5},
+              ],
+              'words': [
+                {'word': 'สวัสดี', 'start': 0, 'end': 1},
+              ],
+              'model': 'test-whisper',
+            },
+            'subtitles': {
+              'enabled': true,
+              'segments': [
+                {'text': 'สวัสดี', 'start': 0, 'end': 2},
+              ],
+              'style': {
+                'mode': 'bold',
+                'color': '#FFFFFF',
+                'wordsPerLine': 2,
+                'position': 'bottom',
+              },
+            },
+            'cutRanges': [
+              {'start': 2, 'end': 3},
+            ],
+            'silenceRanges': [
+              {'start': 2, 'end': 3},
+            ],
+            'fillerRanges': <Object?>[],
+            'music': {
+              'source': 'original',
+              'beatIntensity': 'balanced',
+              'volume': 0.25,
+              'ducking': {
+                'enabled': true,
+                'musicVolumeDuringSpeech': 0.12,
+              },
+            },
+            'capabilities': {
+              'subtitle': {
+                'enabled': true,
+                'state': 'applied',
+                'message': 'สร้างซับแล้ว',
+              },
+              'silence': {
+                'enabled': true,
+                'state': 'applied',
+                'message': 'พบช่วงเงียบแล้ว',
+              },
+            },
+          },
+          'quota': {
+            'limitMinutes': 200,
+            'usedMinutes': 12,
+            'remainingMinutes': 188,
+          },
+        }));
+      await request.response.close();
+
+      final result = await resultFuture;
+
+      expect(result.quota.remainingMinutes, 188);
+      expect(result.recipe.transcript.language, 'th');
+      expect(result.recipe.transcript.segments, hasLength(2));
+      expect(result.recipe.transcript.words.single.word, 'สวัสดี');
+      expect(result.recipe.cutRanges.single.start, 2);
+      expect(result.recipe.silenceRanges.single.end, 3);
+      expect(result.recipe.fillerRanges, isEmpty);
+      expect(result.recipe.subtitles.style.mode, 'bold');
+      expect(result.recipe.subtitles.style.wordsPerLine, 2);
+      expect(result.recipe.music.source, 'original');
+      expect(result.recipe.music.beatIntensity, 'balanced');
+      expect(result.recipe.music.volume, 0.25);
+      expect(result.recipe.music.ducking.enabled, isTrue);
+      expect(
+        result.recipe.music.ducking.musicVolumeDuringSpeech,
+        0.12,
+      );
+      expect(result.recipe.capabilities['subtitle']?.state, 'applied');
+      expect(result.recipe.capabilities['silence']?.message, 'พบช่วงเงียบแล้ว');
+    } finally {
+      await server.close(force: true);
+    }
   });
 }

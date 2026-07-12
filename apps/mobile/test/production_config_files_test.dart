@@ -16,6 +16,8 @@ void main() {
     expect(defines['API_BASE_URL'], 'https://postdee-api.onrender.com');
     expect(defines['ENABLE_FIREBASE_AUTH'], isTrue);
     expect(defines['ALLOW_LOCAL_MOCK_AUTH'], isFalse);
+    expect(defines['ENABLE_EXPERIMENTAL_BEAT_SYNC'], isFalse);
+    expect(defines['ENABLE_EXPERIMENTAL_AI_HOOK'], isFalse);
     expect(defines['ENABLE_REVENUECAT_BILLING'], isTrue);
     expect(defines['GOOGLE_SERVER_CLIENT_ID'], isNot(isEmpty));
     expect(

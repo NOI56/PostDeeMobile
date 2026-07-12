@@ -7,6 +7,7 @@ import 'package:postdee_mobile/app.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
+import 'package:postdee_mobile/features/splash/postdee_splash_screen.dart';
 
 void main() {
   tearDown(() {
@@ -70,6 +71,28 @@ void main() {
     );
 
     expect(darkLogoSize, lightLogoSize);
+  });
+
+  testWidgets('uses the current PostDee brand mark on the splash screen', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: PostDeeSplashGate(
+          minimumDuration: Duration(minutes: 1),
+          child: SizedBox.shrink(),
+        ),
+      ),
+    );
+
+    final image = tester.widget<Image>(
+      find.byKey(const ValueKey('postdee-splash-mark')),
+    );
+
+    expect(
+      (image.image as AssetImage).assetName,
+      'assets/images/brand/postdee_mark.png',
+    );
   });
 }
 

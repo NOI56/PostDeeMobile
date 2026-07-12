@@ -48,6 +48,22 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    final brandMark = tester.widget<Image>(
+      find.byKey(const ValueKey('login-brand-mark')),
+    );
+    expect(
+      (brandMark.image as AssetImage).assetName,
+      'assets/images/brand/postdee_mark.png',
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('login-brand-mark-box'))),
+      const Size.square(64),
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('login-brand-gap'))).width,
+      4,
+    );
+
     await tester.tap(find.byKey(const ValueKey('login-email-sign-in')));
     await tester.pumpAndSettle();
 

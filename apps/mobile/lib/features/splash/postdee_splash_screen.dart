@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 
 /// Wraps the app so a branded splash shows briefly at cold start, then fades to
 /// [child]. The splash continues seamlessly from the white Android system splash
-/// (same white background + logo) and adds a light band sweeping across the logo
-/// from left to right while the app warms up.
+/// (same white background + brand mark) and adds a light band sweeping across
+/// the mark from left to right while the app warms up.
 class PostDeeSplashGate extends StatefulWidget {
   const PostDeeSplashGate({
     required this.child,
@@ -82,13 +82,13 @@ class _SplashScreenState extends State<_SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Match the white Android system splash and its colored logo for a seamless
-    // hand-off regardless of the app's light/dark theme.
+    // Match the white Android system splash and its colored brand mark for a
+    // seamless hand-off regardless of the app's light/dark theme.
     return ColoredBox(
       color: Colors.white,
       child: Center(
         child: SizedBox(
-          width: 132,
+          width: 176,
           child: AnimatedBuilder(
             animation: _controller,
             builder: (context, child) {
@@ -114,7 +114,8 @@ class _SplashScreenState extends State<_SplashScreen>
               );
             },
             child: Image.asset(
-              'assets/images/brand/postdee_logo.png',
+              'assets/images/brand/postdee_mark.png',
+              key: const ValueKey('postdee-splash-mark'),
               fit: BoxFit.contain,
               filterQuality: FilterQuality.high,
             ),

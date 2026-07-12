@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -584,35 +583,24 @@ class _LoginGate extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: AppTheme.accent,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.accent.withValues(alpha: 0.55),
-                              blurRadius: 24,
-                              spreadRadius: -8,
-                              offset: const Offset(0, 12),
-                            ),
-                          ],
-                        ),
-                        child: SizedBox(
-                          width: 54,
-                          height: 54,
-                          child: Center(
-                            child: Transform.rotate(
-                              angle: -20 * math.pi / 180,
-                              child: const Icon(
-                                Icons.send_rounded,
-                                color: Colors.white,
-                                size: 30,
-                              ),
-                            ),
+                      SizedBox(
+                        key: const ValueKey('login-brand-mark-box'),
+                        width: 64,
+                        height: 64,
+                        child: Transform.scale(
+                          scale: 1.55,
+                          child: Image.asset(
+                            'assets/images/brand/postdee_mark.png',
+                            key: const ValueKey('login-brand-mark'),
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.high,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(
+                        key: ValueKey('login-brand-gap'),
+                        width: 4,
+                      ),
                       Text.rich(
                         TextSpan(
                           children: [

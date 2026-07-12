@@ -111,7 +111,6 @@ class _PostDeeShellState extends State<PostDeeShell> {
             PostDeeApiClient().registerDeviceToken(token).catchError((_) {}),
           ),
         );
-    unawaited(_pushMessagingGateway.initialize());
   }
 
   List<Widget> _buildScreens() => [
@@ -163,6 +162,15 @@ class _PostDeeShellState extends State<PostDeeShell> {
   }
 
   void _openNotifications() {
+    unawaited(_openNotificationsAfterPermission());
+  }
+
+  Future<void> _openNotificationsAfterPermission() async {
+    // Ask for notification permission only after the user taps the bell. This
+    // gives the system prompt clear context instead of interrupting sign-in.
+    await _pushMessagingGateway.initialize();
+    if (!mounted) return;
+
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => const NotificationsScreen(),

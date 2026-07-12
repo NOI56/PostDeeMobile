@@ -9,6 +9,7 @@ import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
+import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,6 +21,50 @@ Finder _referenceNavButton(String label) => find.descendant(
       matching: find.bySemanticsLabel(label),
     );
 void main() {
+  testWidgets('requests notification permission only after tapping the bell',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+    final pushGateway = _FakePushMessagingGateway();
+    sessionStore.signIn(
+      const AuthSession(
+        idToken: 'firebase-id-token',
+        email: 'seller@example.com',
+        displayName: 'PostDee Seller',
+      ),
+    );
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: PostDeeShell(
+          languageController: languageController,
+          pushMessagingGateway: pushGateway,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(pushGateway.initializeCalls, 0);
+    await tester.tap(find.bySemanticsLabel('Notifications'));
+    await tester.pumpAndSettle();
+    expect(pushGateway.initializeCalls, 1);
+    expect(find.text('การแจ้งเตือน'), findsOneWidget);
+  });
+
   testWidgets('opens the email sign-in form from the login gate',
       (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
@@ -533,4 +578,14 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('postdee_onboarding_seen'), isTrue);
   });
+}
+
+class _FakePushMessagingGateway implements PushMessagingGateway {
+  int initializeCalls = 0;
+
+  @override
+  Future<void> initialize() async => initializeCalls += 1;
+
+  @override
+  Future<void> dispose() async {}
 }

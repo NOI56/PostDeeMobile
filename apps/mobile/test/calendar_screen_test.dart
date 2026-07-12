@@ -43,6 +43,13 @@ void main() {
     expect(find.text('7 มิ.ย. 2026'), findsOneWidget);
     expect(find.text('ตั้งเวลา · 18:30'), findsOneWidget);
     expect(find.byKey(const ValueKey('calendar-empty')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('calendar-platform-filters')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
+    expect(find.text('Shopee'), findsNothing);
+    expect(find.text('Lazada'), findsNothing);
   });
 
   testWidgets('reloads scheduled posts when the refresh token changes',

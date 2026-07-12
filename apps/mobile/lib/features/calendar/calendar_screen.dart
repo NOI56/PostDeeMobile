@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../platforms/connections_screen.dart' show connectablePlatforms;
 import '../platforms/social_platform.dart';
 import '../shared/postdee_notice.dart';
 
@@ -171,7 +172,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              leading:
+                  const Icon(Icons.delete_outline, color: Colors.redAccent),
               title: const Text('ยกเลิกโพสต์',
                   style: TextStyle(color: Colors.redAccent)),
               onTap: () {
@@ -202,8 +204,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
     if (time == null || !mounted) return;
 
-    final next = DateTime(
-        date.year, date.month, date.day, time.hour, time.minute);
+    final next =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
     try {
       await _apiClient.reschedulePost(post.id, next);
@@ -221,7 +223,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('เลื่อนเป็น ${_formatThaiDate(next)} ${_formatTime(next)}')),
+      SnackBar(
+          content:
+              Text('เลื่อนเป็น ${_formatThaiDate(next)} ${_formatTime(next)}')),
     );
   }
 
@@ -494,7 +498,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               color: AppTheme.textMuted,
             ),
           ),
-          for (final platform in SocialPlatform.values)
+          for (final platform in connectablePlatforms)
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -524,23 +528,50 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget _buildPlatformFilter() {
     return SizedBox(
       height: 37,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
+      child: Stack(
         children: [
-          _FilterChip(
-            label: 'ทั้งหมด',
-            selected: _platformFilter == 'all',
-            onTap: () => setState(() => _platformFilter = 'all'),
+          ListView(
+            key: const ValueKey('calendar-platform-filters'),
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(right: 38),
+            children: [
+              _FilterChip(
+                label: 'ทั้งหมด',
+                selected: _platformFilter == 'all',
+                onTap: () => setState(() => _platformFilter = 'all'),
+              ),
+              for (final platform in connectablePlatforms) ...[
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: platform.shortLabel,
+                  selected: _platformFilter == platform.apiValue,
+                  onTap: () =>
+                      setState(() => _platformFilter = platform.apiValue),
+                ),
+              ],
+            ],
           ),
-          for (final platform in SocialPlatform.values) ...[
-            const SizedBox(width: 8),
-            _FilterChip(
-              label: platform.shortLabel,
-              selected: _platformFilter == platform.apiValue,
-              onTap: () =>
-                  setState(() => _platformFilter = platform.apiValue),
+          Positioned(
+            top: 0,
+            right: 0,
+            bottom: 0,
+            child: IgnorePointer(
+              child: Container(
+                width: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppTheme.glass.withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: AppTheme.borderSoft),
+                ),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
             ),
-          ],
+          ),
         ],
       ),
     );

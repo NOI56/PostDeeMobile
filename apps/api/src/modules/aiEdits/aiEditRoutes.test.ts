@@ -273,7 +273,18 @@ describe('ai edit routes', () => {
           priceText: '99 บาท',
           watermarkText: 'Meena Shop',
           toneFilter: 'warm',
-          zoomLevel: 'medium'
+          zoomLevel: 'medium',
+          music: {
+            source: 'library',
+            genre: 'fun',
+            trackId: 'postdee-sale-01',
+            beatIntensity: 'energetic',
+            volume: 0.25,
+            ducking: {
+              enabled: true,
+              musicVolumeDuringSpeech: 0.12
+            }
+          }
         }
       })
       .expect(200);
@@ -310,6 +321,17 @@ describe('ai edit routes', () => {
       renderHints: {
         toneFilter: 'warm',
         zoomLevel: 'medium'
+      },
+      music: {
+        source: 'library',
+        genre: 'fun',
+        trackId: 'postdee-sale-01',
+        beatIntensity: 'energetic',
+        volume: 0.25,
+        ducking: {
+          enabled: true,
+          musicVolumeDuringSpeech: 0.12
+        }
       }
     });
     expect(response.body.recipe.cutRanges).toContainEqual({ start: 0, end: 4 });
@@ -320,6 +342,45 @@ describe('ai edit routes', () => {
     expect(response.body.recipe.capabilities.cta.state).toBe('hinted');
     expect(response.body.recipe.capabilities.beatsync.state).toBe('planned');
     expect(response.body.recipe.capabilities.translate.state).toBe('planned');
+  });
+
+  it('sanitizes unsupported beat music settings without claiming they were applied', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'invalid-music.mp4'),
+        durationSeconds: 12,
+        capabilities: { beatsync: true },
+        settings: {
+          music: {
+            source: 'spotify',
+            genre: 123,
+            trackId: 'private-track-that-must-not-survive',
+            trackStorageKey: 'uploads/another-user/private-song.mp3',
+            beatIntensity: 'hyper',
+            volume: 9,
+            ducking: {
+              enabled: 'yes',
+              musicVolumeDuringSpeech: -2
+            }
+          }
+        }
+      })
+      .expect(200);
+
+    expect(response.body.recipe.music).toEqual({
+      source: 'original',
+      beatIntensity: 'balanced',
+      volume: 0.25,
+      ducking: {
+        enabled: true,
+        musicVolumeDuringSpeech: 0.12
+      }
+    });
+    expect(response.body.recipe.capabilities.beatsync.state).toBe('planned');
   });
   it('returns a cut plan for a style', async () => {
     const app = createApp();

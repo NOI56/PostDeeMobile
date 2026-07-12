@@ -32,6 +32,22 @@ export type AiEditCapabilityStatus = {
   message: string;
 };
 
+export type AiEditMusicSource = 'auto' | 'library' | 'device' | 'original';
+export type AiEditBeatIntensity = 'smooth' | 'balanced' | 'energetic';
+export type AiEditSilencePreset = 'natural' | 'balanced' | 'compact';
+
+export type AiEditMusicSettings = {
+  source: AiEditMusicSource;
+  genre?: string;
+  trackId?: string;
+  beatIntensity: AiEditBeatIntensity;
+  volume: number;
+  ducking: {
+    enabled: boolean;
+    musicVolumeDuringSpeech: number;
+  };
+};
+
 export type AiEditRecipeSettings = {
   subtitleStyle?: string;
   subtitleColor?: string;
@@ -43,6 +59,9 @@ export type AiEditRecipeSettings = {
   watermarkText?: string;
   toneFilter?: string;
   zoomLevel?: string;
+  silencePreset?: AiEditSilencePreset;
+  fillerWords?: string[];
+  music?: AiEditMusicSettings;
 };
 
 export type AiEditRecipe = {
@@ -83,10 +102,10 @@ export type AiEditRecipe = {
     watermark: { enabled: boolean; text: string };
   };
   renderHints: {
-    hookSeconds?: number;
     toneFilter?: string;
     zoomLevel?: string;
   };
+  music: AiEditMusicSettings;
   capabilities: Record<AiEditCapabilityKey, AiEditCapabilityStatus>;
 };
 
@@ -108,6 +127,7 @@ const defaultCapabilities: AiEditCapabilityFlags = {
 };
 
 const plannedCapabilities = new Set<AiEditCapabilityKey>([
+  'hook',
   'beatsync',
   'reframe',
   'sfx',
@@ -115,7 +135,29 @@ const plannedCapabilities = new Set<AiEditCapabilityKey>([
   'translate'
 ]);
 
-const fillerWords = ['เอ่อ', 'อ่า', 'แบบว่า', 'คือว่า', 'ประมาณว่า'];
+const defaultFillerWords = ['เอ่อ', 'อ่า', 'แบบว่า', 'คือว่า', 'ประมาณว่า'];
+const supportedFillerWords = new Set(defaultFillerWords);
+const silencePresets = new Set<AiEditSilencePreset>([
+  'natural',
+  'balanced',
+  'compact'
+]);
+const silenceMinGapSeconds: Record<AiEditSilencePreset, number> = {
+  natural: 1,
+  balanced: 0.6,
+  compact: 0.4
+};
+const musicSources = new Set<AiEditMusicSource>(['auto', 'library', 'device', 'original']);
+const beatIntensities = new Set<AiEditBeatIntensity>(['smooth', 'balanced', 'energetic']);
+const defaultMusicSettings: AiEditMusicSettings = {
+  source: 'original',
+  beatIntensity: 'balanced',
+  volume: 0.25,
+  ducking: {
+    enabled: true,
+    musicVolumeDuringSpeech: 0.12
+  }
+};
 
 const readString = (value: unknown): string | undefined => {
   if (typeof value !== 'string') {
@@ -132,6 +174,80 @@ const readPositiveInteger = (value: unknown): number | undefined => {
   }
 
   return value;
+};
+
+const normalizeFillerWord = (value: string): string =>
+  value
+    .normalize('NFC')
+    .trim()
+    .replace(/^[\p{P}\p{S}\s]+|[\p{P}\p{S}\s]+$/gu, '');
+
+const readFillerWords = (value: unknown): string[] | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      value.flatMap((item) => {
+        if (typeof item !== 'string') {
+          return [];
+        }
+
+        const normalized = normalizeFillerWord(item);
+        return supportedFillerWords.has(normalized) ? [normalized] : [];
+      })
+    )
+  ];
+};
+
+const readRatio = (value: unknown, fallback: number): number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : fallback;
+
+const readAiEditMusicSettings = (value: unknown): AiEditMusicSettings => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { ...defaultMusicSettings, ducking: { ...defaultMusicSettings.ducking } };
+  }
+
+  const record = value as Record<string, unknown>;
+  const rawSource = readString(record.source);
+  const source = rawSource && musicSources.has(rawSource as AiEditMusicSource)
+    ? rawSource as AiEditMusicSource
+    : defaultMusicSettings.source;
+  const rawIntensity = readString(record.beatIntensity);
+  const beatIntensity = rawIntensity && beatIntensities.has(rawIntensity as AiEditBeatIntensity)
+    ? rawIntensity as AiEditBeatIntensity
+    : defaultMusicSettings.beatIntensity;
+  const rawDucking = typeof record.ducking === 'object' &&
+    record.ducking !== null &&
+    !Array.isArray(record.ducking)
+    ? record.ducking as Record<string, unknown>
+    : {};
+
+  return {
+    source,
+    genre: source === 'auto' || source === 'library'
+      ? readString(record.genre)
+      : undefined,
+    trackId: source === 'library' ? readString(record.trackId) : undefined,
+    beatIntensity,
+    volume: readRatio(record.volume, defaultMusicSettings.volume),
+    ducking: {
+      enabled: typeof rawDucking.enabled === 'boolean'
+        ? rawDucking.enabled
+        : defaultMusicSettings.ducking.enabled,
+      musicVolumeDuringSpeech: readRatio(
+        rawDucking.musicVolumeDuringSpeech ?? rawDucking.speechVolume,
+        defaultMusicSettings.ducking.musicVolumeDuringSpeech
+      )
+    }
+  };
 };
 
 export const readAiEditCapabilities = (value: unknown): AiEditCapabilityFlags => {
@@ -158,6 +274,11 @@ export const readAiEditRecipeSettings = (value: unknown): AiEditRecipeSettings =
   }
 
   const record = value as Record<string, unknown>;
+  const rawSilencePreset = readString(record.silencePreset);
+  const silencePreset = rawSilencePreset &&
+    silencePresets.has(rawSilencePreset as AiEditSilencePreset)
+    ? rawSilencePreset as AiEditSilencePreset
+    : undefined;
 
   return {
     subtitleStyle: readString(record.subtitleStyle),
@@ -169,7 +290,10 @@ export const readAiEditRecipeSettings = (value: unknown): AiEditRecipeSettings =
     priceText: readString(record.priceText),
     watermarkText: readString(record.watermarkText),
     toneFilter: readString(record.toneFilter),
-    zoomLevel: readString(record.zoomLevel)
+    zoomLevel: readString(record.zoomLevel),
+    silencePreset,
+    fillerWords: readFillerWords(record.fillerWords),
+    music: readAiEditMusicSettings(record.music)
   };
 };
 
@@ -195,11 +319,17 @@ const findSilenceRanges = (segments: TranscriptSegment[], minGapSeconds = 0.6): 
   return ranges;
 };
 
-const findFillerRanges = (words: TranscriptWord[]): EditPlanCut[] =>
-  words
-    .filter((word) => fillerWords.some((filler) => word.word.includes(filler)))
+const findFillerRanges = (
+  words: TranscriptWord[],
+  fillerWords: readonly string[]
+): EditPlanCut[] => {
+  const selectedWords = new Set(fillerWords.map(normalizeFillerWord));
+
+  return words
+    .filter((word) => selectedWords.has(normalizeFillerWord(word.word)))
     .map((word) => ({ start: word.start, end: word.end }))
     .filter((range) => range.end > range.start);
+};
 
 const inferPriceText = (transcriptText: string): string => {
   const match = transcriptText.match(/(?:ราคา\s*)?(\d[\d,]*(?:\.\d+)?)\s*(บาท|฿)/u);
@@ -260,8 +390,16 @@ export const buildAiEditRecipe = ({
   plan?: EditPlanResult;
 }): AiEditRecipe => {
   const subtitleSegments = capabilities.subtitle ? transcript.segments : [];
-  const silenceRanges = capabilities.silence ? findSilenceRanges(transcript.segments) : [];
-  const fillerRanges = capabilities.filler ? findFillerRanges(transcript.words) : [];
+  const silencePreset = settings.silencePreset ?? 'balanced';
+  const silenceRanges = capabilities.silence
+    ? findSilenceRanges(transcript.segments, silenceMinGapSeconds[silencePreset])
+    : [];
+  const fillerRanges = capabilities.filler
+    ? findFillerRanges(
+        transcript.words,
+        settings.fillerWords ?? defaultFillerWords
+      )
+    : [];
   const planCuts = plan?.cuts ?? [];
   const priceText = settings.priceText ?? inferPriceText(transcript.text);
   const ctaText = settings.ctaText ?? 'กดตะกร้าเลย';
@@ -315,9 +453,12 @@ export const buildAiEditRecipe = ({
       }
     },
     renderHints: {
-      hookSeconds: capabilities.hook ? 3 : undefined,
       toneFilter: capabilities.color ? settings.toneFilter ?? 'auto-bright' : undefined,
       zoomLevel: capabilities.zoom ? settings.zoomLevel ?? 'subtle' : undefined
+    },
+    music: settings.music ?? {
+      ...defaultMusicSettings,
+      ducking: { ...defaultMusicSettings.ducking }
     },
     capabilities: {
       subtitle: buildCapabilityStatus({
@@ -329,8 +470,10 @@ export const buildAiEditRecipe = ({
       silence: buildCapabilityStatus({
         key: 'silence',
         enabled: capabilities.silence,
-        state: 'applied',
-        message: 'หาช่วงเงียบจากช่องว่างของ transcript แล้ว'
+        state: silenceRanges.length > 0 ? 'applied' : 'hinted',
+        message: silenceRanges.length > 0
+          ? 'หาช่วงเงียบจากช่องว่างของ transcript แล้ว'
+          : 'รับค่าไว้แล้ว แต่ยังไม่พบช่วงเงียบจาก transcript รอบนี้'
       }),
       filler: buildCapabilityStatus({
         key: 'filler',

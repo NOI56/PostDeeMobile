@@ -95,7 +95,12 @@ describe('transcription provider', () => {
   });
 
   it('calls Groq with the fetched audio and top transcription model', async () => {
-    const calls: { url: string; auth?: string }[] = [];
+    const calls: {
+      url: string;
+      auth?: string;
+      responseFormat?: string;
+      timestampGranularities: string[];
+    }[] = [];
     const provider = createGroqTranscriptionProvider({
       apiKey: 'groq-key',
       model: 'whisper-large-v3',
@@ -105,9 +110,14 @@ describe('transcription provider', () => {
         contentType: 'video/mp4'
       }),
       fetchImpl: async (url, init) => {
+        const form = init.body as FormData;
         calls.push({
           url,
-          auth: (init.headers as Record<string, string>).Authorization
+          auth: (init.headers as Record<string, string>).Authorization,
+          responseFormat: form.get('response_format')?.toString(),
+          timestampGranularities: form
+            .getAll('timestamp_granularities[]')
+            .map((value) => value.toString())
         });
         return {
           ok: true,
@@ -127,7 +137,9 @@ describe('transcription provider', () => {
 
     expect(calls[0]).toEqual({
       url: 'https://api.groq.com/openai/v1/audio/transcriptions',
-      auth: 'Bearer groq-key'
+      auth: 'Bearer groq-key',
+      responseFormat: 'verbose_json',
+      timestampGranularities: ['word', 'segment']
     });
     expect(result).toMatchObject({
       text: 'สวัสดีค่ะ',

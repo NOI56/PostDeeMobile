@@ -84,6 +84,7 @@ const createOpenAiCompatibleTranscriptionProvider = ({
     form.append('model', model);
     form.append('response_format', 'verbose_json');
     form.append('timestamp_granularities[]', 'word');
+    form.append('timestamp_granularities[]', 'segment');
 
     const response = await fetchImpl(endpointUrl, {
       method: 'POST',

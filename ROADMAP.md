@@ -64,7 +64,7 @@ Primary backend choices:
 | Video storage | Cloudflare R2 | Store temporary upload videos and signed upload/download URLs | R2 adapter exists | Use `VIDEO_STORAGE=r2`. Keep videos temporary and delete after successful publishing where possible. |
 | Auth | Firebase Auth | Google Sign-In, Firebase ID token verification, and Phone Auth for Basic quota unlock | Mobile and backend scaffolds exist | Use `AUTH_PROVIDER=firebase` after Firebase project files and mobile sign-in are tested on device. |
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to Gemini (retry + model fallback + local template fallback); media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`); legacy Groq/Whisper path kept for when no Gemini is configured | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
-| AI auto editing | Groq Whisper large-v3 + mobile FFmpeg | Pro subtitle transcription, optional silence cuts, UI capability recipe, subtitle burn-in, and phone-side video export | Backend route, `/ai-edits/prepare` recipe contract, quota ledger, and mobile FFmpeg flow exist | Re-check Groq pricing/docs before production launch. Backend handles transcription, quota, and recipe hints; mobile renders first to control cost. |
+| AI auto editing | Groq Whisper large-v3 + mobile FFmpeg | Pro subtitle transcription, optional silence/filler cuts, UI capability recipe, subtitle burn-in, phone-side review, and video export | Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, exact filler allowlist, detected count/time summary, reversible supported capabilities with automatic preview re-render, accordion settings, and Post/manual-editor exits exist. Production beat sync and the 3-second hook are locked as `เร็ว ๆ นี้` behind default-off compile-time flags. | Re-check Groq pricing/docs before production launch. Backend handles transcription, quota, and recipe hints; mobile renders and reviews locally to control cost. `ENABLE_EXPERIMENTAL_BEAT_SYNC=true` and `ENABLE_EXPERIMENTAL_AI_HOOK=true` are internal setup-UI QA flags only and do not make either renderer real. |
 | Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Backend webhook scaffold prepared; mobile SDK gateway behind flag | Prefer RevenueCat webhooks over maintaining custom Apple/Google subscription verification for the MVP. |
 | Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels through one provider | Publisher code wired; worker claims only queued posts, skips already-running/finished retry jobs and stale rescheduled jobs, and keeps successful posts successful if optional media cleanup fails; account ids and provider-level publish test still needed | Use PostPeer first to reduce platform integration risk. Direct platform APIs are deferred until after launch. |
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
@@ -180,7 +180,7 @@ when product direction changes, update both the detailed plan and this file.
 | Plan file | ROADMAP sync status | Notes |
 | --- | --- | --- |
 | `docs/superpowers/plans/2026-06-13-subscription-packages-plan.md` | Synced into Planned Pricing below | Current source of truth for Basic, Starter 199, Pro 299, package limits, paused AI audio review, and Team & Editor Access positioning. |
-| `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md` | Referenced in pricing, backend services, Phase 2, and next steps | Original planning doc. Pro AI auto editing now uses Groq Whisper large-v3 for transcription and mobile-side FFmpeg for subtitle/cut/export. |
+| `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md` | Referenced in pricing, backend services, Phase 2, and next steps | Pro AI auto editing uses Groq Whisper large-v3 for transcription and mobile-side FFmpeg for setup, result review, reversible supported edits, and post/manual-editor exits. |
 | `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md` | Reflected in the Mobile UI Refresh Plan | Older task checklist for the approved Thai ultra-dark mobile UI. Some details may need another sync after the Calendar/Profile navigation changes. |
 | `docs/superpowers/plans/2026-06-04-store-subscription-billing.md` | Reflected in backend services and store compliance | Store subscription scaffold is represented here, while RevenueCat remains the preferred production subscription management direction. |
 
@@ -262,9 +262,15 @@ Recommended order:
    - Use role-based access around connected OAuth accounts.
 
 8. AI Auto Editing With Groq Whisper
-   - Pro users can request Thai transcription, edit subtitles, cut silence, burn in subtitles, and export the video from the phone.
-   - Backend handles auth, quota, temporary storage, and Groq Whisper transcription.
-   - Mobile handles subtitle editing and FFmpeg export first to keep server costs low.
+   - Pro users can request Thai transcription, cut silence, burn in subtitles, review the phone-rendered result, and remove supported AI edits they do not want.
+   - Backend handles auth, quota, temporary storage, and Groq Whisper transcription with both word and segment timestamps so filler cuts, subtitles, and silence detection receive the timing data they need.
+   - Mobile re-renders accepted capabilities from the original clip, then lets the user continue to posting or open the manual editor.
+   - The AI editing header shows exact Pro minutes remaining/used, refreshes from `GET /ai-edits/quota`, and adopts the latest `prepare` quota immediately after a metered analysis.
+   - Android FFmpeg rendering supplies the bundled Prompt font to libass and compacts kept audio ranges alongside silence-cut video, preventing missing burned subtitles or audio that outlives the final video frame.
+   - Silence cleanup uses `natural` (1.0 s), `balanced` (0.6 s default), or `compact` (0.4 s) transcript-gap thresholds. Filler cleanup uses an exact five-word allowlist; missing legacy input selects all five, while explicit empty input selects none.
+   - Result review reports detected silence/filler counts and their combined pre-render time. It does not claim that the exported clip saves exactly that duration.
+   - The 3-second hook remains `planned` with no renderer. Production keeps `ENABLE_EXPERIMENTAL_AI_HOOK=false`; `true` is internal setup-UI QA only.
+   - Beat-sync setup can keep original audio or select an owned MP3/M4A/WAV file with a rights confirmation, plus cut intensity, music volume, and voice ducking. Production keeps this capability locked as `เร็ว ๆ นี้` because a verified cross-platform music catalog, beat detection, and real music mixing remain future work. Internal QA may expose only the setup UI with `ENABLE_EXPERIMENTAL_BEAT_SYNC=true`.
 
 ## Guardrails
 
@@ -272,6 +278,8 @@ Recommended order:
 - Do not post comments or replies without explicit user approval.
 - Do not add TikTok auto-comment support until official API support and policy review are clear.
 - Keep secret keys only in backend environment variables, never in the Flutter app.
+- Keep `ENABLE_EXPERIMENTAL_AI_HOOK` and `ENABLE_EXPERIMENTAL_BEAT_SYNC` absent or
+  `false` in production until their real analyzers/renderers pass device tests.
 - Keep Phase 2 behind Pro or future Agency plan gates where appropriate.
 - Do not market separate AI audio review while real-clip AI captioning and
   Groq Whisper auto editing cover that user need.

@@ -431,7 +431,52 @@ Current mobile pieces:
 - Pro AI editing backend exposes `POST /ai-edits/prepare`, which turns the
   selected clip, UI capability toggles, style/prompt, and settings into a
   mobile FFmpeg render recipe. It meters the same 200 monthly AI editing minutes
-  as transcription and does not render video server-side.
+  as transcription and does not render video server-side. Groq transcription
+  requests both word and segment timestamps: words support precise filler cuts,
+  while segments drive subtitle timing and silence-gap detection.
+- After the first phone-side render, the mobile app stays on the AI editing
+  screen so the user can preview the result, remove supported AI edits they do
+  not want, or add them back. Each review checkbox automatically re-renders a
+  new preview from the original clip without another metered prepare call while
+  keeping the last successful preview safe on failure. The accepted result can
+  then go directly to Upload/Post or open in the manual editor for further changes.
+- The AI editing header loads `GET /ai-edits/quota` and shows the authenticated
+  user's exact remaining and used Pro minutes. It updates immediately from the
+  metered `prepare` response and can be tapped to refresh without consuming a
+  minute.
+- Android subtitle export gives libass the bundled Prompt font explicitly so
+  subtitles are burned into the actual MP4 even when the device has no usable
+  system font provider. Silence removal compacts kept audio ranges with
+  `atrim` + `concat` so the audio ends with the shortened video instead of
+  continuing after the final frame.
+- Pace cleanup settings are real recipe inputs. `silencePreset` maps to transcript
+  segment gap thresholds of `natural` = 1.0 s, `balanced` = 0.6 s (the default),
+  and `compact` = 0.4 s. `fillerWords` is an exact allowlist containing only
+  `เอ่อ`, `อ่า`, `แบบว่า`, `คือว่า`, and `ประมาณว่า`; matching trims surrounding
+  whitespace/punctuation instead of using substring matches. A missing
+  `fillerWords` field keeps the legacy all-five default, while an explicit empty
+  array means no filler-word cuts. Mobile requires at least one selected word
+  while the filler capability is enabled.
+- Result review shows the number of detected silence and filler ranges plus
+  their combined detected time from the prepare recipe. These are pre-render
+  detections, not a promise that the exported clip saves exactly that duration.
+- Beat-sync advanced settings now let the user keep the original audio or pick
+  an owned MP3/M4A/WAV file through Flutter's `file_selector`, confirm usage rights, choose
+  cut intensity, music volume, and voice ducking, and send those choices in the
+  prepare recipe. The licensed PostDee catalog and the real beat-analysis/music
+  mixing renderer are still pending, so the UI does not claim beat sync was
+  applied to the exported clip yet. Catalog tracks remain unavailable until
+  their license explicitly covers all six PostDee publishing destinations.
+- Production keeps beat sync locked off with a `เร็ว ๆ นี้` state through the
+  compile-time `ENABLE_EXPERIMENTAL_BEAT_SYNC` flag, whose default is `false`.
+  Internal QA may set it to `true` to inspect the setup-only UI; the flag does
+  not enable beat analysis, music mixing, ducking, or any other renderer work.
+- Production also keeps the 3-second hook/highlight capability locked as
+  `เร็ว ๆ นี้` through default-false `ENABLE_EXPERIMENTAL_AI_HOOK`. An internal
+  QA build may expose the control, but the API still marks it `planned` and the
+  mobile renderer does not reorder the opening timeline.
+- AI editing advanced settings use an accordion so only one capability section
+  is expanded at a time. No section is expanded by default.
 - Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
   mock/provider code have been removed from the active app path.
 - Saved templates wired to `GET /templates` and `POST /templates`
@@ -450,6 +495,8 @@ flutter run --dart-define=API_BASE_URL=http://localhost:4000 --dart-define=POSTD
 Use `STORE_STARTER_MONTHLY_PRODUCT_ID=postdee_starter_monthly` and `STORE_PRO_MONTHLY_PRODUCT_ID=postdee_pro_monthly` when testing non-default store subscription product ids.
 Use `POSTDEE_MOCK_SUBSCRIPTION_PLAN=STARTER` or `PRO` when testing scheduled posts against the mock backend.
 For local RevenueCat Test Store billing, run from `apps/mobile` with `--dart-define-from-file=revenuecat.local.json`. That ignored file contains the RevenueCat Test Store SDK key and must not be used for App Store or Google Play release builds.
+For internal beat-sync UI QA only, add `--dart-define=ENABLE_EXPERIMENTAL_BEAT_SYNC=true`. Keep this define absent or `false` in production builds until the renderer is implemented and verified.
+For internal hook UI QA only, add `--dart-define=ENABLE_EXPERIMENTAL_AI_HOOK=true`. Keep it absent or `false` in production; this flag does not add highlight analysis or timeline rendering.
 
 A local Flutter SDK is available at `.tools/flutter` for this workspace and is ignored by Git. If you do not add Flutter to the system `PATH`, run mobile checks through the local SDK:
 

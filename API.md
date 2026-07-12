@@ -575,8 +575,10 @@ frames where useful.
 
 ## AI Auto Editing
 
-All `/ai-edits/*` endpoints require auth and the `PRO` plan (otherwise `402` with
-`code: "PRO_REQUIRED"`).
+All `/ai-edits/*` endpoints require auth. `POST /ai-edits/transcribe`,
+`POST /ai-edits/prepare`, and `POST /ai-edits/plan` require the `PRO` plan
+(otherwise `402` with `code: "PRO_REQUIRED"`); `GET /ai-edits/quota` is
+available to any authenticated user.
 
 ### `POST /ai-edits/transcribe`
 
@@ -585,8 +587,10 @@ Transcribes an uploaded clip (Thai). Meters usage against a monthly minute quota
 `durationSeconds` is only a pre-check estimate; the backend reserves the actual
 transcribed minutes before returning success so concurrent requests cannot push
 usage past the configured store limit. Request:
-`{ "videoS3Key": "uploads/clip.mp4", "durationSeconds": 18 }`. Response includes
-`transcript` (text, language, durationSeconds, segments[]) and `quota`.
+`{ "videoS3Key": "uploads/<user-id>/<upload-id>/clip.mp4", "durationSeconds": 18 }`. Response includes
+`transcript` (text, language, durationSeconds, segments[], words[]) and `quota`.
+The Groq adapter requests both `word` and `segment` timestamp granularities;
+omitting segment timestamps would prevent subtitle timing and silence-gap cuts.
 
 ### `GET /ai-edits/quota`
 
@@ -617,8 +621,8 @@ Request:
     "subtitle": true,
     "silence": true,
     "filler": true,
-    "hook": true,
-    "beatsync": true,
+    "hook": false,
+    "beatsync": false,
     "reframe": true,
     "zoom": true,
     "color": true,
@@ -630,11 +634,22 @@ Request:
     "watermark": true
   },
   "settings": {
+    "silencePreset": "balanced",
+    "fillerWords": ["เอ่อ", "อ่า", "แบบว่า", "คือว่า", "ประมาณว่า"],
     "ctaText": "กดตะกร้าเลย",
     "priceText": "99 บาท",
     "watermarkText": "Meena Shop",
     "toneFilter": "warm",
-    "zoomLevel": "medium"
+    "zoomLevel": "medium",
+    "music": {
+      "source": "original",
+      "beatIntensity": "balanced",
+      "volume": 0.25,
+      "ducking": {
+        "enabled": true,
+        "musicVolumeDuringSpeech": 0.12
+      }
+    }
   }
 }
 ```
@@ -646,14 +661,61 @@ Response includes:
 - `recipe.subtitles` for mobile subtitle burn-in
 - `recipe.cutRanges`, `silenceRanges`, and `fillerRanges`
 - `recipe.overlays` for CTA, price tag, and watermark hints
-- `recipe.renderHints` for hook, tone, and zoom settings
+- `recipe.renderHints` for tone and zoom settings. Hook removal is not emitted
+  by the current recipe builder yet.
+- `recipe.music` with the validated source (`auto`, `library`, `device`, or
+  `original`), optional genre/library track reference, beat intensity, volume,
+  and voice-ducking preferences
 - `recipe.capabilities`, where each requested UI capability is marked
   `applied`, `hinted`, `planned`, or `skipped`
 - `quota` with `{ limitMinutes, usedMinutes, remainingMinutes }`
 
 Capabilities that need future audio/visual analysis, such as beat sync,
-auto-reframe, SFX/music choice, audio cleanup, and subtitle translation, are
+the opening hook/highlight, auto-reframe, SFX/music choice, audio cleanup, and subtitle translation, are
 accepted in the recipe but marked `planned` so the UI can stay honest.
+
+`settings.silencePreset` accepts three values and changes the minimum gap
+between transcript segments that becomes a silence range:
+
+- `natural`: 1.0 second
+- `balanced`: 0.6 second (also used when the field is missing or invalid)
+- `compact`: 0.4 second
+
+`settings.fillerWords` is an exact allowlist. Supported values are `เอ่อ`,
+`อ่า`, `แบบว่า`, `คือว่า`, and `ประมาณว่า`. The backend normalizes NFC and
+removes surrounding whitespace, punctuation, and symbols before comparing a
+transcript word; it never uses a substring match. Omitting the field preserves
+legacy behavior and checks all five words. Sending `[]`, a non-array value, or
+an array that sanitizes to no supported values fails closed and produces no
+filler ranges; it does not fall back to the legacy list.
+
+Production mobile builds send `hook: false` because
+`ENABLE_EXPERIMENTAL_AI_HOOK` defaults to `false`. If an internal or legacy
+client sends `hook: true`, the response still marks it `planned`, emits no hook
+render hint, and mobile does not reorder the first three seconds. The compile-time
+flag exposes setup UI only; it does not enable a renderer.
+
+`settings.music` is additive and optional. Requests that omit it default to
+`source: "original"`. A library track is referenced only by an opaque `trackId`.
+The current API validates and passes this reference through; a production
+catalog resolver with ownership/licensing checks is still required before a
+library track can be rendered.
+Clients must never send a storage key or absolute device file path to this API.
+Receiving music settings does not mean the current renderer has mixed music or
+cut on detected beats.
+
+The response is an editable review recipe, not a final server-rendered video.
+Mobile may disable recipe capabilities and re-render locally from the original
+clip before the user accepts the result. That review loop must reuse the
+successful recipe instead of calling this minute-metered endpoint again.
+Capabilities marked `planned`, `hinted`, or `skipped` must not be presented as
+already applied to the preview.
+
+Mobile derives the review's detected counts from `silenceRanges.length` and
+`fillerRanges.length`, then merges overlapping/clamped ranges before displaying
+the detected time.
+That summary describes pre-render detections and must not be presented as the
+exact duration removed from the exported clip.
 
 ### `POST /ai-edits/plan`
 
@@ -1179,6 +1241,7 @@ PostgreSQL.
 | `SUBSCRIPTION_STORE` | `memory`, `prisma` | Subscription persistence |
 | `ANALYTICS_STORE` | `memory`, `prisma` | Analytics persistence |
 | `CAPTION_USAGE_STORE` | `memory`, `prisma` | Real-clip AI caption monthly usage persistence |
+| `AI_EDIT_USAGE_STORE` | `memory`, `prisma` | AI editing monthly minute usage persistence |
 | `PUBLISH_QUEUE` | `memory`, `bullmq` | Publish queue adapter; `bullmq` requires `POST_STORE=prisma` and `DATABASE_URL` |
 | `SOCIAL_PUBLISHER` | `mock`, `postpeer` | Social publishing adapter |
 | `POSTPEER_API_KEY` | `...` | PostPeer API key for real social publishing |

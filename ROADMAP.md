@@ -32,12 +32,12 @@ Current status:
   Upload, Calendar, Analytics, Profile, and package/paywall surfaces have the
   approved design structure; final device-specific visual polish remains.
 - Gemini backend smoke test passed.
-- Legacy R2 signed upload and account-deletion cleanup passed a
-  disposable-account production API smoke test. Managed multipart sessions,
-  per-part retry, server completion/abort, R2 size-based completion recovery,
-  compare-and-set transitions, and deletion/worker barriers are now in code;
-  full production multipart, mobile-to-worker, and slow-network tests still
-  remain.
+- Legacy signed upload and managed R2 multipart both passed disposable-account
+  production API smoke tests. The managed test covered session creation,
+  just-in-time part upload, completion/status, Firebase deletion readiness,
+  account cleanup, deleted-account retry semantics, and zero leftover smoke
+  sessions/objects in PostgreSQL and R2. Full mobile-to-worker real-video and
+  slow-network tests still remain.
 - Backend RevenueCat webhook scaffold is prepared; mobile `purchases_flutter`
   gateway is wired behind `ENABLE_REVENUECAT_BILLING=true`. Real App Store /
   Google Play product setup, platform SDK keys, and sandbox/device purchase
@@ -295,7 +295,7 @@ Recommended order:
 To ensure the app passes store review guidelines, the following must be implemented before the first production release:
 1. **Payments**: Use RevenueCat to process all digital subscriptions natively through Apple and Google to comply with in-app purchase rules.
 2. **Authentication**: If Google Sign-In is offered, Apple Sign-In MUST also be implemented in the mobile UI (supported natively by Firebase Auth). Done in code: `FirebaseAppleAuthGateway` uses Firebase `signInWithProvider('apple.com')`. Still needs the Apple provider enabled in Firebase and the iOS "Sign in with Apple" capability before it works on device.
-3. **Account Deletion**: Implemented in code. The Profile screen warns that store subscriptions must be managed separately, iOS/macOS Apple users pass a backend readiness check then reauthenticate and revoke Apple access, and `DELETE /account` requires recent Firebase authentication. It sets a durable deletion barrier before cleanup, blocks later authenticated mutations and worker claims, drains or reconciles an in-flight completion, aborts persisted and orphan R2 multipart sessions, disconnects PostPeer integrations, removes queued jobs/R2 objects/database data, and deletes the Firebase identity last. Late RevenueCat events cannot recreate a missing user, and an account-only verifier supports a lost-response retry only after Firebase confirms the UID is gone. Apple Sign-In remains unavailable on Android/web until server-side token revocation exists there. The legacy production API/R2/Firebase disposable-account smoke test passes. Launch completion still requires physical-device and production managed-multipart tests, plus a lifecycle rule scoped only after temporary and scheduled media use separate prefixes. Production remains in `dual` rollout mode; the signed-`PUT` replay path is fully closed only after old clients are retired and strict `multipart` mode is enabled.
+3. **Account Deletion**: Implemented in code. The Profile screen warns that store subscriptions must be managed separately, iOS/macOS Apple users pass a backend readiness check then reauthenticate and revoke Apple access, and `DELETE /account` requires recent Firebase authentication. It sets a durable deletion barrier before cleanup, blocks later authenticated mutations and worker claims, drains or reconciles an in-flight completion, aborts persisted and orphan R2 multipart sessions, disconnects PostPeer integrations, removes queued jobs/R2 objects/database data, and deletes the Firebase identity last. Late RevenueCat events cannot recreate a missing user, and an account-only verifier supports a lost-response retry only after Firebase confirms the UID is gone. Apple Sign-In remains unavailable on Android/web until server-side token revocation exists there. Legacy and managed-multipart production API/R2/Firebase disposable-account smoke tests pass. Launch completion still requires physical-device end-to-end and slow-network tests, plus a lifecycle rule scoped only after temporary and scheduled media use separate prefixes. Production remains in `dual` rollout mode; the signed-`PUT` replay path is fully closed only after old clients are retired and strict `multipart` mode is enabled.
 4. **Content & Safety**: Rely on Gemini's built-in safety filters to prevent abusive or explicit AI generation.
 5. **Policies**: Host and link a valid Privacy Policy and Terms of Service inside the app.
 

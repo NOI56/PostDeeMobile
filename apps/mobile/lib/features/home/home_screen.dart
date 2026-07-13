@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../analytics/analytics_error_message.dart';
 import '../billing/paywall_screen.dart';
 import '../link_in_bio/link_in_bio_screen.dart';
 import '../notifications/push_notification.dart';
@@ -169,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        _analyticsErrorMessage = error.message;
+        _analyticsErrorMessage = analyticsErrorMessage(error);
       });
     } on SocketException {
       if (!mounted) {

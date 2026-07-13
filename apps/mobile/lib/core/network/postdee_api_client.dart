@@ -5,10 +5,11 @@ import '../auth/auth_session.dart';
 import '../config/app_config.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message, {this.statusCode});
+  const ApiException(this.message, {this.statusCode, this.code});
 
   final String message;
   final int? statusCode;
+  final String? code;
 
   @override
   String toString() => 'ApiException($statusCode): $message';
@@ -950,16 +951,39 @@ class PlatformAnalyticsResult {
       );
 }
 
+class DailyAnalyticsResult {
+  const DailyAnalyticsResult({
+    required this.date,
+    required this.views,
+    required this.likes,
+  });
+
+  final DateTime date;
+  final int views;
+  final int likes;
+
+  factory DailyAnalyticsResult.fromJson(Map<String, Object?> json) =>
+      DailyAnalyticsResult(
+        date: DateTime.parse(json['date'] as String),
+        views: json['views'] as int,
+        likes: json['likes'] as int,
+      );
+}
+
 class AnalyticsSummaryResult {
   const AnalyticsSummaryResult({
     required this.totalViews,
     required this.totalLikes,
     required this.platforms,
+    this.range = '30d',
+    this.daily = const [],
   });
 
+  final String range;
   final int totalViews;
   final int totalLikes;
   final List<PlatformAnalyticsResult> platforms;
+  final List<DailyAnalyticsResult> daily;
 
   factory AnalyticsSummaryResult.fromJson(Map<String, Object?> json) {
     final platforms = json['platforms'];
@@ -970,11 +994,16 @@ class AnalyticsSummaryResult {
     }
 
     return AnalyticsSummaryResult(
+      range: json['range'] as String? ?? '30d',
       totalViews: json['totalViews'] as int,
       totalLikes: json['totalLikes'] as int,
       platforms: platforms
           .map((platform) => PlatformAnalyticsResult.fromJson(
               platform as Map<String, Object?>))
+          .toList(),
+      daily: (json['daily'] as List<dynamic>? ?? const [])
+          .map((metric) =>
+              DailyAnalyticsResult.fromJson(metric as Map<String, Object?>))
           .toList(),
     );
   }
@@ -1577,8 +1606,10 @@ class PostDeeApiClient {
     return TextTemplateResult.fromJson(template);
   }
 
-  Future<AnalyticsSummaryResult> loadAnalyticsSummary() async {
-    final response = await _getJson('/analytics/summary');
+  Future<AnalyticsSummaryResult> loadAnalyticsSummary({
+    String range = '30d',
+  }) async {
+    final response = await _getJson('/analytics/summary?range=$range');
     final summary = response['summary'];
 
     if (summary is! Map<String, Object?>) {
@@ -1700,6 +1731,7 @@ class PostDeeApiClient {
       throw ApiException(
         decoded['message'] as String? ?? 'Request failed',
         statusCode: response.statusCode,
+        code: decoded['code'] as String?,
       );
     }
 

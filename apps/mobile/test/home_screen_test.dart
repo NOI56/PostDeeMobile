@@ -87,6 +87,25 @@ Widget _homeTestApp(Widget child) {
 }
 
 void main() {
+  testWidgets('replaces the raw Pro analytics error with Thai UI copy',
+      (tester) async {
+    await tester.pumpWidget(
+      _homeTestApp(
+        HomeScreen(
+          loadAnalytics: () async => throw const ApiException(
+            'Unified Analytics requires the Pro plan',
+            statusCode: 402,
+            code: 'PRO_REQUIRED',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('เฉพาะแพ็กเกจ Pro'), findsOneWidget);
+    expect(find.textContaining('Unified Analytics'), findsNothing);
+  });
+
   testWidgets('does not show demo home metrics when no real data exists',
       (tester) async {
     await tester.pumpWidget(

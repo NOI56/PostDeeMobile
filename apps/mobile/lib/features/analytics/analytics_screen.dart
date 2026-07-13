@@ -11,18 +11,41 @@ import '../shared/growth_tool_detail_sheet.dart';
 import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/postdee_skeleton.dart';
+import 'analytics_error_message.dart';
 
 typedef AnalyticsLoader = Future<AnalyticsSummaryResult> Function();
+typedef AnalyticsRangeLoader = Future<AnalyticsSummaryResult> Function(
+  String range,
+);
+typedef AnalyticsSubscriptionLoader = Future<SubscriptionStatusResult>
+    Function();
+
+enum AnalyticsRangeOption {
+  today('today', 'วันนี้'),
+  sevenDays('7d', '7 วัน'),
+  thirtyDays('30d', '30 วัน'),
+  ninetyDays('90d', '90 วัน'),
+  year('year', 'ปีนี้');
+
+  const AnalyticsRangeOption(this.apiValue, this.label);
+
+  final String apiValue;
+  final String label;
+}
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({
     super.key,
     this.showTitle = true,
     this.loadAnalytics,
+    this.loadAnalyticsForRange,
+    this.loadSubscription,
   });
 
   final bool showTitle;
   final AnalyticsLoader? loadAnalytics;
+  final AnalyticsRangeLoader? loadAnalyticsForRange;
+  final AnalyticsSubscriptionLoader? loadSubscription;
 
   @override
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
@@ -33,6 +56,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   bool _isLoading = false;
   AnalyticsSummaryResult? _summary;
   String? _errorMessage;
+  bool _isProLocked = false;
+  AnalyticsRangeOption _selectedRange = AnalyticsRangeOption.thirtyDays;
 
   @override
   void initState() {
@@ -50,27 +75,63 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _isProLocked = false;
     });
 
     try {
-      final loader = widget.loadAnalytics ?? _apiClient.loadAnalyticsSummary;
-      final summary = await loader();
+      final shouldPreflightSubscription = widget.loadSubscription != null ||
+          (widget.loadAnalytics == null &&
+              widget.loadAnalyticsForRange == null);
+      if (shouldPreflightSubscription) {
+        final subscription = widget.loadSubscription != null
+            ? await widget.loadSubscription!()
+            : await _apiClient.loadCurrentSubscription();
+        if (!subscription.canUseAnalytics) {
+          if (!mounted) return;
+          setState(() {
+            _summary = null;
+            _isProLocked = true;
+          });
+          return;
+        }
+      }
+
+      final summary = widget.loadAnalyticsForRange != null
+          ? await widget.loadAnalyticsForRange!(_selectedRange.apiValue)
+          : widget.loadAnalytics != null
+              ? await widget.loadAnalytics!()
+              : await _apiClient.loadAnalyticsSummary(
+                  range: _selectedRange.apiValue,
+                );
       if (!mounted) return;
-      setState(() => _summary = summary);
+      setState(() {
+        _summary = summary;
+        _isProLocked = false;
+      });
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _errorMessage = error.message);
+      setState(() {
+        _isProLocked = isAnalyticsPlanRequired(error);
+        _errorMessage = _isProLocked ? null : analyticsErrorMessage(error);
+      });
     } on SocketException {
       if (!mounted) return;
       setState(() => _errorMessage = 'เชื่อมต่อ PostDee API ไม่ได้');
     } catch (_) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'เกิดข้อผิดพลาดระหว่างโหลดข้อมูลวิเคราะห์');
+      setState(
+          () => _errorMessage = 'เกิดข้อผิดพลาดระหว่างโหลดข้อมูลวิเคราะห์');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _selectRange(AnalyticsRangeOption range) async {
+    if (_selectedRange == range || _isLoading) return;
+    setState(() => _selectedRange = range);
+    await _loadAnalytics();
   }
 
   @override
@@ -110,7 +171,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ),
             const SizedBox(height: 2),
             Text(
-              'ยอดรวมจากโพสต์ที่ซิงก์แล้วทั้งหมด',
+              _rangeLabel(_selectedRange, DateTime.now()),
               style: TextStyle(
                 fontSize: 12.5,
                 color: AppTheme.textSecondary,
@@ -118,27 +179,63 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ),
             const SizedBox(height: 13),
           ],
+          SizedBox(
+            height: 38,
+            child: ListView.separated(
+              key: const ValueKey('analytics-range-filters'),
+              scrollDirection: Axis.horizontal,
+              itemCount: AnalyticsRangeOption.values.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final range = AnalyticsRangeOption.values[index];
+                return _RangeChip(
+                  key: ValueKey('analytics-range-${range.apiValue}'),
+                  range: range,
+                  selected: range == _selectedRange,
+                  onTap: () => _selectRange(range),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 13),
           if (_isLoading)
             _AnalyticsSkeleton()
           else if (!_hasAnalyticsData)
             PostDeeNotice(
-              message: 'ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด',
+              message: _isProLocked
+                  ? 'ข้อมูลวิเคราะห์รวมเปิดให้ใช้ในแพ็กเกจ Pro'
+                  : 'ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด',
               color: AppTheme.accentCyanInk,
-              icon: Icons.hourglass_empty,
+              icon: _isProLocked ? Icons.lock_outline : Icons.hourglass_empty,
             )
           else ...[
             Row(
               children: [
                 Expanded(
-                  child: _StatCard(label: 'ยอดวิวรวม', value: views),
+                  child: _StatCard(
+                    label: 'ยอดวิวรวม',
+                    value: _fmtNumber(views),
+                  ),
                 ),
                 const SizedBox(width: 11),
                 Expanded(
-                  child: _StatCard(label: 'ไลก์รวม', value: likes),
+                  child: _StatCard(
+                    label: 'เอนเกจเมนต์',
+                    value: views == 0
+                        ? '0%'
+                        : '${(likes * 100 / views).toStringAsFixed(1)}%',
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 13),
+            if ((_summary?.daily ?? const []).isNotEmpty) ...[
+              _DailyViewsChart(
+                metrics: _summary!.daily,
+                rangeLabel: _selectedRange.label,
+              ),
+              const SizedBox(height: 13),
+            ],
             _PlatformPerformanceCard(
               metrics: _summary?.platforms ?? const [],
             ),
@@ -224,7 +321,7 @@ class _StatCard extends StatelessWidget {
   const _StatCard({required this.label, required this.value});
 
   final String label;
-  final int value;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
@@ -254,7 +351,7 @@ class _StatCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            _fmtNumber(value),
+            value,
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -263,6 +360,192 @@ class _StatCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RangeChip extends StatelessWidget {
+  const _RangeChip({
+    required this.range,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+
+  final AnalyticsRangeOption range;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 17),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.accent : AppTheme.glass,
+          borderRadius: BorderRadius.circular(999),
+          border: selected ? null : Border.all(color: AppTheme.border),
+        ),
+        child: Text(
+          range.label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppTheme.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DailyViewsChart extends StatelessWidget {
+  const _DailyViewsChart({
+    required this.metrics,
+    required this.rangeLabel,
+  });
+
+  final List<DailyAnalyticsResult> metrics;
+  final String rangeLabel;
+
+  List<DailyAnalyticsResult> get _points {
+    if (metrics.length <= 7) return metrics;
+
+    final bucketSize = (metrics.length / 7).ceil();
+    final buckets = <DailyAnalyticsResult>[];
+    for (var start = 0; start < metrics.length; start += bucketSize) {
+      final end = (start + bucketSize).clamp(0, metrics.length).toInt();
+      final slice = metrics.sublist(start, end);
+      buckets.add(
+        DailyAnalyticsResult(
+          date: slice.last.date,
+          views: slice.fold(0, (sum, metric) => sum + metric.views),
+          likes: slice.fold(0, (sum, metric) => sum + metric.likes),
+        ),
+      );
+    }
+    return buckets.take(7).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final points = _points;
+    final maxViews = points.fold<int>(1, (max, point) {
+      return point.views > max ? point.views : max;
+    });
+
+    return Container(
+      key: const ValueKey('analytics-daily-chart'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF122018).withValues(alpha: 0.05),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'ยอดวิวรายวัน',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+              Text(
+                rangeLabel,
+                style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 142,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var index = 0; index < points.length; index += 1) ...[
+                  if (index > 0) const SizedBox(width: 7),
+                  Expanded(
+                    child: _DailyBar(
+                      metric: points[index],
+                      maxViews: maxViews,
+                      highlighted: index == points.length - 1,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DailyBar extends StatelessWidget {
+  const _DailyBar({
+    required this.metric,
+    required this.maxViews,
+    required this.highlighted,
+  });
+
+  final DailyAnalyticsResult metric;
+  final int maxViews;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final factor = (metric.views / maxViews).clamp(0.08, 1.0).toDouble();
+    final barHeight = 88 * factor;
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text(
+          _fmtCompact(metric.views),
+          maxLines: 1,
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w600,
+            color: highlighted ? AppTheme.accentCyanInk : AppTheme.textMuted,
+          ),
+        ),
+        const SizedBox(height: 4),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: barHeight,
+          decoration: BoxDecoration(
+            color: highlighted
+                ? AppTheme.accent
+                : AppTheme.accent.withValues(alpha: 0.28),
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(7),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${metric.date.day}',
+          style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
+        ),
+      ],
     );
   }
 }
@@ -282,8 +565,7 @@ class _PlatformPerformanceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sorted = [...metrics]..sort((a, b) => b.views.compareTo(a.views));
-    final maxViews =
-        sorted.fold<int>(1, (c, m) => m.views > c ? m.views : c);
+    final maxViews = sorted.fold<int>(1, (c, m) => m.views > c ? m.views : c);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -677,4 +959,37 @@ String _fmtNumber(int n) {
   if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
   if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
   return '$n';
+}
+
+String _fmtCompact(int n) => _fmtNumber(n).replaceAll('.0', '');
+
+String _rangeLabel(AnalyticsRangeOption range, DateTime now) {
+  final today = DateTime(now.year, now.month, now.day);
+  final start = switch (range) {
+    AnalyticsRangeOption.today => today,
+    AnalyticsRangeOption.sevenDays => today.subtract(const Duration(days: 6)),
+    AnalyticsRangeOption.thirtyDays => today.subtract(const Duration(days: 29)),
+    AnalyticsRangeOption.ninetyDays => today.subtract(const Duration(days: 89)),
+    AnalyticsRangeOption.year => DateTime(today.year),
+  };
+  const months = [
+    'ม.ค.',
+    'ก.พ.',
+    'มี.ค.',
+    'เม.ย.',
+    'พ.ค.',
+    'มิ.ย.',
+    'ก.ค.',
+    'ส.ค.',
+    'ก.ย.',
+    'ต.ค.',
+    'พ.ย.',
+    'ธ.ค.',
+  ];
+
+  if (range == AnalyticsRangeOption.today) {
+    return '${today.day} ${months[today.month - 1]} ${today.year}';
+  }
+  return '${start.day} ${months[start.month - 1]} – '
+      '${today.day} ${months[today.month - 1]} ${today.year}';
 }

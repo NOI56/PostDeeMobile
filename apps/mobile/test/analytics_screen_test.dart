@@ -48,13 +48,74 @@ void main() {
     ),
   );
 
+  testWidgets('shows a Thai Pro lock instead of the raw backend error',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnalyticsScreen(
+            loadAnalytics: () async => throw const ApiException(
+              'Unified Analytics requires the Pro plan',
+              statusCode: 402,
+              code: 'PRO_REQUIRED',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('ข้อมูลวิเคราะห์รวมเปิดให้ใช้ในแพ็กเกจ Pro'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Unified Analytics'), findsNothing);
+  });
+
+  testWidgets('locks Basic users before requesting analytics', (tester) async {
+    var analyticsCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnalyticsScreen(
+            loadSubscription: () async => const SubscriptionStatusResult(
+              userId: 'basic-user',
+              plan: 'BASIC',
+              status: 'INACTIVE',
+              canSchedule: false,
+              canUseAiCaptions: false,
+              canUseAnalytics: false,
+            ),
+            loadAnalytics: () async {
+              analyticsCalls += 1;
+              return const AnalyticsSummaryResult(
+                totalViews: 0,
+                totalLikes: 0,
+                platforms: [],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(analyticsCalls, 0);
+    expect(
+      find.text('ข้อมูลวิเคราะห์รวมเปิดให้ใช้ในแพ็กเกจ Pro'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('โหลดข้อมูลวิเคราะห์ไม่สำเร็จ'), findsNothing);
+  });
+
   testWidgets('shows the refreshed analytics dashboard sections',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: AnalyticsScreen(
-            loadAnalytics: () async => const AnalyticsSummaryResult(
+            loadAnalytics: () async => AnalyticsSummaryResult(
               totalViews: 150,
               totalLikes: 15,
               platforms: [
@@ -65,6 +126,18 @@ void main() {
                   likes: 15,
                 ),
               ],
+              daily: [
+                DailyAnalyticsResult(
+                  date: DateTime(2026, 7, 9),
+                  views: 50,
+                  likes: 5,
+                ),
+                DailyAnalyticsResult(
+                  date: DateTime(2026, 7, 10),
+                  views: 100,
+                  likes: 10,
+                ),
+              ],
             ),
           ),
         ),
@@ -73,10 +146,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('วิเคราะห์'), findsOneWidget);
-    expect(find.text('ยอดรวมจากโพสต์ที่ซิงก์แล้วทั้งหมด'), findsOneWidget);
-    // The fake per-range date filter chips are gone (no simulated numbers).
-    expect(find.text('30 วัน'), findsNothing);
-    expect(find.text('แนวโน้มยอดวิว'), findsNothing);
+    expect(find.byKey(const ValueKey('analytics-range-30d')), findsOneWidget);
+    expect(find.text('ยอดวิวรายวัน'), findsOneWidget);
+    expect(find.byKey(const ValueKey('analytics-daily-chart')), findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.text('ช่องทางที่ทำผลงานดีสุด'),
@@ -88,6 +160,36 @@ void main() {
     expect(find.text('ช่องทางที่ทำผลงานดีสุด'), findsOneWidget);
     expect(find.text('TikTok'), findsOneWidget);
     expect(find.text('รายงานเชิงลึก (Pro)'), findsOneWidget);
+  });
+
+  testWidgets('reloads real analytics when the date range changes',
+      (tester) async {
+    final requestedRanges = <String>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnalyticsScreen(
+            loadAnalyticsForRange: (range) async {
+              requestedRanges.add(range);
+              return AnalyticsSummaryResult(
+                range: range,
+                totalViews: 10,
+                totalLikes: 1,
+                platforms: const [],
+                daily: const [],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(requestedRanges, ['30d']);
+    await tester.tap(find.byKey(const ValueKey('analytics-range-7d')));
+    await tester.pumpAndSettle();
+    expect(requestedRanges, ['30d', '7d']);
   });
 
   testWidgets('does not fall back to demo analytics when summary is empty',
@@ -217,9 +319,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('150'), findsWidgets);
-    expect(find.text('15'), findsOneWidget);
+    expect(find.text('10.0%'), findsOneWidget);
     expect(find.text('ยอดวิวรวม'), findsOneWidget);
-    expect(find.text('ไลก์รวม'), findsOneWidget);
+    expect(find.text('เอนเกจเมนต์'), findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.text('ช่องทางที่ทำผลงานดีสุด'),

@@ -1,6 +1,6 @@
 # Render Environment Keys
 
-Last checked from repository files: 2026-07-03.
+Last checked from repository files and the live Render service: 2026-07-13.
 
 This file is the shared checklist for PostDee Render environment variables.
 Do not paste real secret values into this file. Store real values only in the
@@ -52,6 +52,7 @@ These are present in `render.yaml` with fixed values or a Render-managed source.
 | `EDIT_PLAN_PROVIDER` | Blueprint value | `groq` | Uses the same `GROQ_API_KEY`. |
 | `SOCIAL_PUBLISHER` | Blueprint value | `postpeer` | Requires `POSTPEER_API_KEY`. |
 | `AUTH_PROVIDER` | Blueprint value | `firebase` | Requires `FIREBASE_PROJECT_ID`. |
+| `FIREBASE_AUTH_DELETE_ENABLED` | Blueprint value | `true` | Keeps Firebase UID deletion and revoked-token checks enabled; requires `FIREBASE_SERVICE_ACCOUNT_JSON`. |
 | `PUSH_SENDER` | Blueprint value | `mock` | Safe until Firebase service account push is ready. |
 | `BILLING_PROVIDER` | Blueprint value | `revenuecat` | Requires `REVENUECAT_WEBHOOK_AUTH_TOKEN`. |
 | `REVENUECAT_STARTER_ENTITLEMENT_ID` | Blueprint value | `starter` | Maps RevenueCat entitlement to Starter. |
@@ -76,7 +77,7 @@ Render Dashboard.
 | `GROQ_API_KEY` | AI auto editing transcription and edit planning | Yes | Required because `TRANSCRIPTION_PROVIDER=groq` and `EDIT_PLAN_PROVIDER=groq`. |
 | `POSTPEER_API_KEY` | Social publishing | Yes | Required because `SOCIAL_PUBLISHER=postpeer`. |
 | `FIREBASE_PROJECT_ID` | Firebase Auth token verification | Yes | Project id, not a private key. |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase Cloud Messaging push sender | Not while `PUSH_SENDER=mock` | Add before changing `PUSH_SENDER` to `firebase`. |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase account deletion and future push sender | Yes | Present in the live service. Keep secret; it is required while `FIREBASE_AUTH_DELETE_ENABLED=true` and before changing `PUSH_SENDER` to `firebase`. |
 | `REVENUECAT_WEBHOOK_AUTH_TOKEN` | RevenueCat webhook auth | Yes | Production startup fails without this when `BILLING_PROVIDER=revenuecat`. |
 | `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN` | Legacy Google Play RTDN endpoint | Only if that endpoint is used | Blueprint declares it; RevenueCat is still the preferred billing path. |
 

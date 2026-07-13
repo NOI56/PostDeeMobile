@@ -532,6 +532,18 @@ Required services for later milestones:
 
 See `FIREBASE_SETUP.md` for the Firebase Auth and Google Sign-In setup checklist.
 
+Complete production account deletion also requires
+`FIREBASE_AUTH_DELETE_ENABLED=true` and `FIREBASE_SERVICE_ACCOUNT_JSON`. When
+enabled, `DELETE /account` disconnects the user's PostPeer integrations, removes
+the R2 owner prefix (or an S3-compatible client that implements owner-prefix
+listing), deletes local data, and deletes the Firebase identity last. Active
+Firebase users must have signed in within five minutes. A dedicated
+account-only retry path accepts a still-valid token only when Firebase confirms
+the UID is already gone; revoked tokens remain rejected. RevenueCat webhooks do
+not recreate users that no longer exist. PostPeer cleanup follows every page of
+the profile's integrations and fails before local deletion when provider cleanup
+is unavailable or any external disconnect fails.
+
 Queue/storage scaffold switches:
 
 - `TEMPLATE_STORE=memory` keeps saved templates in memory; `TEMPLATE_STORE=prisma` uses PostgreSQL through Prisma.
@@ -571,7 +583,10 @@ Queue/storage scaffold switches:
 - `AWS_S3_UPLOAD_EXPIRES_SECONDS=900` controls how long legacy S3 signed upload URLs remain usable.
 - `CAPTION_PROVIDER=mock` uses the local Thai template; `CAPTION_PROVIDER=gemini` calls Gemini with `GEMINI_CAPTION_MODEL` and `GEMINI_API_KEY`; `CAPTION_PROVIDER=openai` remains available as a legacy path.
 - `TRANSCRIPTION_PROVIDER=mock` uses the local Thai transcript for AI caption language detection and AI editing; `TRANSCRIPTION_PROVIDER=groq` calls Groq with `GROQ_TRANSCRIPTION_MODEL` and `GROQ_API_KEY`; `TRANSCRIPTION_PROVIDER=openai` remains available as a legacy path.
-- `AUTH_PROVIDER=mock` uses development headers; `AUTH_PROVIDER=firebase` verifies Firebase ID tokens with Google Secure Token certificates and requires `FIREBASE_PROJECT_ID`.
+- `AUTH_PROVIDER=mock` uses development headers; `AUTH_PROVIDER=firebase`
+  requires `FIREBASE_PROJECT_ID`. It verifies Google Secure Token certificates
+  by default, or Firebase Admin revocation/user existence when
+  `FIREBASE_AUTH_DELETE_ENABLED=true`.
 - The mobile app has an auth session store, Google Sign-In UI, and Firebase/Google auth gateway. `PostDeeApiClient` can send `Authorization: Bearer <Firebase ID token>` from that session; without a token it keeps using local mock headers. If Firebase auth is enabled before project files are configured, startup falls back to a readable sign-in setup message.
 
 Seed helpers:

@@ -17,6 +17,7 @@ third-party accounts.
 | Social publishing (PostPeer) | blocked for production user publishing | `SOCIAL_PUBLISHER=postpeer` + key; per-user social connections still required |
 | Video upload (Cloudflare R2) | ⚙️ ready | `VIDEO_STORAGE=r2` + R2 creds |
 | Auth (Firebase) | ⚙️ ready | `AUTH_PROVIDER=firebase` + project |
+| Account deletion | ⚙️ ready, deployment test required | `FIREBASE_AUTH_DELETE_ENABLED=true` + service account; verify R2 prefix and Firebase UID deletion |
 | Subscriptions (RevenueCat / App Store / Play) | ⚙️ ready | `BILLING_PROVIDER=revenuecat` + webhook token |
 | Durable queue (Redis/BullMQ) | ⚙️ optional | `PUBLISH_QUEUE=bullmq` + `POST_STORE=prisma` + `DATABASE_URL` + `REDIS_URL` + run worker |
 
@@ -51,8 +52,24 @@ third-party accounts.
 - Create a Firebase project, enable Google + Apple + Phone sign-in.
 - `AUTH_PROVIDER=firebase`
 - `FIREBASE_PROJECT_ID=...`
+- `FIREBASE_SERVICE_ACCOUNT_JSON=...`
+- `FIREBASE_AUTH_DELETE_ENABLED=true` enables Firebase UID deletion and Admin
+  token revocation/user-existence checks. Keep it false until the service
+  account is installed; the delete endpoint fails closed without mutating data.
 - Mobile: build with `--dart-define=ENABLE_FIREBASE_AUTH=true` and add the real
   `google-services.json` / Firebase config. See `FIREBASE_SETUP.md`.
+- Set an R2 lifecycle rule for `uploads/` as a race-condition safety net, then
+  test that deleting one account removes only that encoded UID prefix and the
+  Firebase Authentication user.
+- Test that every PostPeer integration under the user's stored profile is
+  disconnected across multiple list pages, and that a late RevenueCat renewal
+  is ignored instead of recreating the deleted user.
+- Test the recent-login guard: a Firebase session older than five minutes must
+  ask the user to sign in again, while a lost response after UID deletion must
+  complete through the account-only retry path.
+- On iOS/macOS, test an Apple-linked account too: readiness must pass before the
+  app shows Apple reauthentication and revokes access. Keep Apple Sign-In off on
+  Android/web until server-side Apple token revocation is implemented.
 
 ## 5. Subscriptions — RevenueCat
 

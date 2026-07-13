@@ -112,4 +112,25 @@ void main() {
       ),
     );
   });
+
+  test(
+      'keeps Apple Sign-In unavailable where native token revocation is unsupported',
+      () async {
+    final gateway = createAppleAuthGatewayFromConfig(
+      enableFirebaseAuth: true,
+      firebaseBootstrapResult: FirebaseBootstrapResult.initialized,
+      supportsNativeAppleTokenRevocation: false,
+    );
+
+    await expectLater(
+      gateway.signIn(),
+      throwsA(
+        isA<AuthUnavailableException>().having(
+          (error) => error.message,
+          'message',
+          contains('iPhone'),
+        ),
+      ),
+    );
+  });
 }

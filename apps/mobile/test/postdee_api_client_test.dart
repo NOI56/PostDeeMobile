@@ -503,4 +503,60 @@ void main() {
       await server.close(force: true);
     }
   });
+
+  test('checkAccountDeletionReady returns identity deletion retry state',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final apiClient = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        authHeaders: PostDeeApiAuthHeaders(
+          authTokenProvider: () async => null,
+          mockUserId: 'seller-test',
+        ),
+      );
+      final resultFuture = apiClient.checkAccountDeletionReady();
+      final request = await server.first;
+
+      expect(request.method, 'GET');
+      expect(request.uri.path, '/account/deletion-readiness');
+
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode({
+          'status': 'ok',
+          'identityAlreadyDeleted': true,
+        }));
+      await request.response.close();
+
+      expect(await resultFuture, isTrue);
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  test('checkAccountDeletionReady defaults missing retry state to false',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final apiClient = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+      );
+      final resultFuture = apiClient.checkAccountDeletionReady();
+      final request = await server.first;
+
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode({'status': 'ok'}));
+      await request.response.close();
+
+      expect(await resultFuture, isFalse);
+    } finally {
+      await server.close(force: true);
+    }
+  });
 }

@@ -58,6 +58,7 @@ export type ServerConfig = {
   firebaseProjectId?: string;
   pushSender: PushSenderKind;
   firebaseServiceAccountJson?: string;
+  firebaseAuthDeleteEnabled: boolean;
   templateStore: TemplateStoreKind;
   templateStoreUserId: string;
   postStore: PostStoreKind;
@@ -90,6 +91,24 @@ export type ServerConfig = {
 const readOptional = (env: EnvSource, key: string) => {
   const value = env[key]?.trim();
   return value && value.length > 0 ? value : undefined;
+};
+
+const readBoolean = (env: EnvSource, key: string, fallback: boolean) => {
+  const value = readOptional(env, key)?.toLowerCase();
+
+  if (!value) {
+    return fallback;
+  }
+
+  if (value === 'true') {
+    return true;
+  }
+
+  if (value === 'false') {
+    return false;
+  }
+
+  throw new Error(`${key} must be true or false`);
 };
 
 const readPort = (env: EnvSource) => {
@@ -408,6 +427,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     firebaseProjectId: readOptional(env, 'FIREBASE_PROJECT_ID'),
     pushSender: readPushSender(env),
     firebaseServiceAccountJson: readOptional(env, 'FIREBASE_SERVICE_ACCOUNT_JSON'),
+    firebaseAuthDeleteEnabled: readBoolean(env, 'FIREBASE_AUTH_DELETE_ENABLED', false),
     templateStore: readTemplateStore(env),
     templateStoreUserId: readOptional(env, 'TEMPLATE_STORE_USER_ID') ?? 'local-dev-user',
     postStore: readPostStore(env),

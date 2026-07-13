@@ -7,6 +7,8 @@ export type AuthUser = {
   displayName?: string;
   phoneNumber?: string;
   phoneVerified?: boolean;
+  authenticatedAtSeconds?: number;
+  identityAlreadyDeleted?: boolean;
   subscriptionPlan?: 'BASIC' | 'STARTER' | 'PRO';
 };
 

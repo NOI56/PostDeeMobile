@@ -37,6 +37,8 @@ describe('render.yaml production config', () => {
     expectEnvValue(source, 'SOCIAL_PUBLISHER', 'postpeer');
     expectEnvSecret(source, 'POSTPEER_API_KEY');
     expectEnvSecret(source, 'GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN');
+    expectEnvSecret(source, 'FIREBASE_SERVICE_ACCOUNT_JSON');
+    expectEnvValue(source, 'FIREBASE_AUTH_DELETE_ENABLED', '"false"');
     expect(source).not.toContain('POSTPEER_TIKTOK_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_YOUTUBE_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_INSTAGRAM_ACCOUNT_ID');

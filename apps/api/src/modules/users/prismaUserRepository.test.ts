@@ -7,6 +7,7 @@ describe('createPrismaUserRepository', () => {
     const now = new Date('2026-06-01T00:00:00.000Z');
     const prisma = {
       user: {
+        findUnique: vi.fn(),
         upsert: vi.fn().mockResolvedValue({
           id: 'firebase-user-1',
           firebaseUid: 'firebase-user-1',
@@ -53,6 +54,7 @@ describe('createPrismaUserRepository', () => {
     const now = new Date('2026-06-01T00:00:00.000Z');
     const prisma = {
       user: {
+        findUnique: vi.fn(),
         upsert: vi.fn().mockResolvedValue({
           id: 'seller-a',
           firebaseUid: 'mock:seller-a',
@@ -83,5 +85,30 @@ describe('createPrismaUserRepository', () => {
         displayName: undefined
       }
     });
+  });
+
+  it('checks whether a user exists without creating one', async () => {
+    const prisma = {
+      user: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({ id: 'firebase-user-1' })
+          .mockResolvedValueOnce(null),
+        upsert: vi.fn()
+      }
+    };
+    const repository = createPrismaUserRepository({ prisma });
+
+    await expect(repository.exists('firebase-user-1')).resolves.toBe(true);
+    await expect(repository.exists('deleted-user')).resolves.toBe(false);
+    expect(prisma.user.findUnique).toHaveBeenNthCalledWith(1, {
+      where: { id: 'firebase-user-1' },
+      select: { id: true }
+    });
+    expect(prisma.user.findUnique).toHaveBeenNthCalledWith(2, {
+      where: { id: 'deleted-user' },
+      select: { id: true }
+    });
+    expect(prisma.user.upsert).not.toHaveBeenCalled();
   });
 });

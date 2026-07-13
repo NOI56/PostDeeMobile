@@ -29,6 +29,7 @@ describe('userSeedService', () => {
 
   it('upserts the seed user through the provided user store', async () => {
     const userStore = {
+      exists: vi.fn(async () => false),
       ensure: vi.fn(async (authUser) => ({
         id: authUser.id,
         firebaseUid: `mock:${authUser.id}`,

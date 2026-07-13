@@ -222,6 +222,27 @@ This keeps the schema usable for Apple App Store, Google Play, or other future b
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
 | Social publishing | `SOCIAL_PUBLISHER=mock` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
 
+Firebase production account deletion additionally requires
+`FIREBASE_AUTH_DELETE_ENABLED=true` and `FIREBASE_SERVICE_ACCOUNT_JSON`. The API
+uses Firebase Admin token verification with revocation checks in this mode.
+
+Account deletion is an idempotent saga: queued jobs are removed, PostPeer
+integration pages are listed and every external integration id is disconnected,
+every R2 object under the user's exact encoded owner prefix is attempted,
+user-scoped database records are deleted, and the Firebase identity is deleted
+last. External cleanup failure stops before database deletion and can be
+retried; external deletion is not transactional, so some already-deleted
+objects or integrations may remain deleted after a retryable response. Late
+RevenueCat active events are ignored when their local user no longer exists and
+cannot recreate the account.
+Firebase deletion also requires a token authenticated within the last five
+minutes. The account-only retry verifier accepts a valid token for a UID that
+Firebase confirms is already missing, while still rejecting revoked tokens.
+On iOS/macOS, the mobile app first checks `GET /account/deletion-readiness`, then
+reauthenticates and revokes Apple access before calling the delete endpoint.
+Apple Sign-In must not be exposed on Android/web until server-side Apple token
+revocation is implemented for those platforms.
+
 ## Upload And Scheduling Flow
 
 ```mermaid

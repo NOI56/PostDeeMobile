@@ -48,6 +48,7 @@ describe('readServerConfig', () => {
       firebaseProjectId: undefined,
       pushSender: 'mock',
       firebaseServiceAccountJson: undefined,
+      firebaseAuthDeleteEnabled: false,
       templateStore: 'memory',
       templateStoreUserId: 'local-dev-user',
       postStore: 'memory',
@@ -114,6 +115,7 @@ describe('readServerConfig', () => {
       APPLE_APP_APPLE_ID: '1234567890',
       APPLE_APP_STORE_ENVIRONMENT: 'production',
       FIREBASE_PROJECT_ID: 'postdee-firebase',
+      FIREBASE_AUTH_DELETE_ENABLED: 'true',
       TEMPLATE_STORE: 'prisma',
       TEMPLATE_STORE_USER_ID: 'user-1',
       POST_STORE: 'prisma',
@@ -173,6 +175,7 @@ describe('readServerConfig', () => {
       appleAppAppleId: 1234567890,
       appleAppStoreEnvironment: 'production',
       firebaseProjectId: 'postdee-firebase',
+      firebaseAuthDeleteEnabled: true,
       templateStore: 'prisma',
       templateStoreUserId: 'user-1',
       postStore: 'prisma',
@@ -196,6 +199,12 @@ describe('readServerConfig', () => {
       groqTranscriptionModel: 'whisper-large-v3',
       mockUserId: 'mock-user-1'
     });
+  });
+
+  it('rejects invalid Firebase account deletion flags', () => {
+    expect(() =>
+      readServerConfig({ FIREBASE_AUTH_DELETE_ENABLED: 'yes' })
+    ).toThrow('FIREBASE_AUTH_DELETE_ENABLED must be true or false');
   });
 
   it('rejects mock auth and billing shortcuts in production', () => {

@@ -80,6 +80,10 @@ services:
         value: mock
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
+      # Flip to true only after the service account is installed and a dedicated
+      # account-deletion smoke test passes. The API fails closed while disabled.
+      - key: FIREBASE_AUTH_DELETE_ENABLED
+        value: "false"
       - key: BILLING_PROVIDER
         value: revenuecat
       - key: REVENUECAT_WEBHOOK_AUTH_TOKEN

@@ -184,7 +184,16 @@ export const registerRevenueCatWebhookRoutes = ({
     const billingSubscriptionId = revenueCatBillingSubscriptionId(event.appUserId);
 
     if (activeEventTypes.has(event.type)) {
-      await userStore.ensure(authUser);
+      if (!(await userStore.exists(event.appUserId))) {
+        response.status(202).json({
+          status: 'ok',
+          ignored: true,
+          code: 'REVENUECAT_USER_NOT_FOUND',
+          message: 'RevenueCat event belongs to a PostDee user that no longer exists'
+        });
+        return;
+      }
+
       const subscription = await subscriptionStore.activatePlan(authUser, plan, {
         billingSubscriptionId,
         currentPeriodEnd: readExpiration(event.expirationAtMs)

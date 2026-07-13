@@ -142,10 +142,16 @@ export const registerSocialConnectionRoutes = (
       const profileId = await store.getProfileId(authUser.id);
 
       if (profileId) {
-        const integrations = await connectClient.listIntegrations({ profileId });
+        const integrations = (await connectClient.listIntegrations({ profileId })).filter(
+          (integration) => integration.platform !== undefined
+        );
         const connectedPlatforms = new Set(integrations.map(({ platform }) => platform));
 
         for (const integration of integrations) {
+          if (!integration.platform) {
+            continue;
+          }
+
           await store.upsert({
             userId: authUser.id,
             platform: integration.platform,

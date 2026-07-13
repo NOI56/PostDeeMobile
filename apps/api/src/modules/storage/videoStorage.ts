@@ -32,9 +32,11 @@ export type VideoDownloadAccess = {
 };
 
 export type VideoStorage = {
+  supportsOwnerCleanup?: boolean;
   createUpload: (metadata: UploadMetadata, ownerId?: string) => Promise<VideoUpload>;
   createDownloadAccess: (videoS3Key: string) => Promise<VideoDownloadAccess>;
   deleteVideo: (videoS3Key: string) => Promise<void>;
+  deleteAllVideosForOwner: (ownerId: string) => Promise<void>;
 };
 
 export type S3VideoStorageClient = {
@@ -50,6 +52,10 @@ export type S3VideoStorageClient = {
     key: string;
     expiresInSeconds: number;
   }) => Promise<string>;
+  listObjectKeysByPrefix?: (input: {
+    bucket: string;
+    prefix: string;
+  }) => Promise<string[]>;
   deleteObject: (input: { bucket: string; key: string }) => Promise<void>;
 };
 
@@ -85,6 +91,7 @@ const createVideoUpload = ({
 };
 
 export const createMockVideoStorage = (): VideoStorage => ({
+  supportsOwnerCleanup: true,
   createUpload: async (metadata, ownerId) =>
     createVideoUpload({
       metadata,
@@ -96,7 +103,8 @@ export const createMockVideoStorage = (): VideoStorage => ({
     storageProvider: 'mock-s3',
     accessType: 'mock-placeholder'
   }),
-  deleteVideo: async () => undefined
+  deleteVideo: async () => undefined,
+  deleteAllVideosForOwner: async () => undefined
 });
 
 // Downloads need to outlive the short upload window: a unified publisher
@@ -115,6 +123,7 @@ const createObjectVideoStorage = ({
   storageProvider: Extract<VideoUpload['storageProvider'], 's3' | 'r2'>;
   uploadExpiresSeconds: number;
 }): VideoStorage => ({
+  supportsOwnerCleanup: Boolean(client.listObjectKeysByPrefix),
   createUpload: async (metadata, ownerId) => {
     const upload = createVideoUpload({
       metadata,
@@ -166,6 +175,32 @@ const createObjectVideoStorage = ({
       bucket,
       key: videoS3Key
     });
+  },
+  deleteAllVideosForOwner: async (ownerId) => {
+    if (!client.listObjectKeysByPrefix) {
+      throw new Error('Configured object storage does not support owner cleanup');
+    }
+
+    const prefix = `uploads/${encodeStorageOwnerId(ownerId)}/`;
+    const keys = await client.listObjectKeysByPrefix({ bucket, prefix });
+    const failures: unknown[] = [];
+
+    for (const key of new Set(keys)) {
+      try {
+        await client.deleteObject({ bucket, key });
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        `Could not delete ${failures.length} account media object${
+          failures.length === 1 ? '' : 's'
+        }`
+      );
+    }
   }
 });
 

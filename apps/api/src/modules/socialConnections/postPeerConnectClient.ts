@@ -37,7 +37,7 @@ export class PostPeerConnectProviderError extends Error {
 
 export type PostPeerIntegration = {
   id: string;
-  platform: SocialConnectionPlatform;
+  platform?: SocialConnectionPlatform;
   platformUserId?: string;
   displayName?: string;
 };
@@ -49,14 +49,17 @@ export type PostPeerIntegration = {
  * - `GET /v1/connect/integrations?profileId=` lists connected accounts so the
  *   backend can resolve each platform's account id after OAuth (PostPeer does
  *   not call back, so the backend polls this instead).
+ * - `DELETE /v1/connect/integrations/{id}` removes an external connection.
  */
 export type PostPeerConnectClient = {
+  supportsIntegrationCleanup?: boolean;
   createProfile: () => Promise<{ profileId: string }>;
   createConnectUrl: (input: {
     platform: SocialConnectionPlatform;
     profileId: string;
   }) => Promise<{ connectUrl: string }>;
   listIntegrations: (input: { profileId: string }) => Promise<PostPeerIntegration[]>;
+  disconnectIntegration?: (input: { integrationId: string }) => Promise<void>;
 };
 
 const readRecord = (value: unknown): Record<string, unknown> =>
@@ -64,6 +67,9 @@ const readRecord = (value: unknown): Record<string, unknown> =>
 
 const readString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() ? value.trim() : undefined;
+
+const readNonNegativeInteger = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
 
 export const createPostPeerConnectClient = ({
   apiKey,
@@ -78,7 +84,12 @@ export const createPostPeerConnectClient = ({
 
   const request = async (
     path: string,
-    init: { method: string; body?: string } = { method: 'GET' }
+    init: {
+      method: string;
+      body?: string;
+      allowNotFound?: boolean;
+      parseJson?: boolean;
+    } = { method: 'GET' }
   ): Promise<unknown> => {
     if (!apiKey) {
       throw new PostPeerConnectUnavailableError();
@@ -96,14 +107,15 @@ export const createPostPeerConnectClient = ({
       ...(init.body !== undefined ? { body: init.body } : {})
     });
 
-    if (!response.ok) {
+    if (!response.ok && !(init.allowNotFound && response.status === 404)) {
       throw new PostPeerConnectProviderError(response.status);
     }
 
-    return response.json();
+    return init.parseJson === false ? undefined : response.json();
   };
 
   return {
+    supportsIntegrationCleanup: Boolean(apiKey),
     createProfile: async () => {
       const payload = readRecord(await request('/v1/profiles', { method: 'POST', body: '{}' }));
       const profileId = readString(payload.id) ?? readString(readRecord(payload.profile).id);
@@ -128,30 +140,78 @@ export const createPostPeerConnectClient = ({
       return { connectUrl };
     },
     listIntegrations: async ({ profileId }) => {
-      const payload = readRecord(
-        await request(`/v1/connect/integrations?profileId=${encodeURIComponent(profileId)}`)
-      );
-      const integrations = Array.isArray(payload.integrations) ? payload.integrations : [];
+      const pageLimit = 100;
+      const listedIntegrations: PostPeerIntegration[] = [];
+      let offset = 0;
 
-      return integrations.flatMap((entry) => {
-        const record = readRecord(entry);
-        const id = readString(record.id);
-        const slug = readString(record.platform);
-        const platform = slug ? socialPlatformBySlug[slug] : undefined;
+      while (true) {
+        const payload = readRecord(
+          await request(
+            `/v1/connect/integrations?profileId=${encodeURIComponent(profileId)}` +
+              `&limit=${pageLimit}&offset=${offset}`
+          )
+        );
+        const integrations = Array.isArray(payload.integrations) ? payload.integrations : [];
 
-        if (!id || !platform) {
-          return [];
+        listedIntegrations.push(
+          ...integrations.flatMap((entry) => {
+            const record = readRecord(entry);
+            const id = readString(record.id);
+            const slug = readString(record.platform);
+            const platform = slug ? socialPlatformBySlug[slug] : undefined;
+
+            if (!id) {
+              return [];
+            }
+
+            const platformUserId = readString(record.platformUserId);
+            const displayName =
+              readString(record.displayName) ?? readString(record.username);
+
+            return [
+              {
+                id,
+                ...(platform ? { platform } : {}),
+                ...(platformUserId ? { platformUserId } : {}),
+                ...(displayName ? { displayName } : {})
+              }
+            ];
+          })
+        );
+
+        const pagination = readRecord(payload.pagination);
+        const total =
+          readNonNegativeInteger(payload.total) ?? readNonNegativeInteger(pagination.total);
+        const responseOffset =
+          readNonNegativeInteger(payload.offset) ??
+          readNonNegativeInteger(pagination.offset) ??
+          offset;
+        const nextOffset = responseOffset + integrations.length;
+
+        if (total === undefined || responseOffset !== offset) {
+          throw new PostPeerConnectProviderError();
         }
 
-        return [
-          {
-            id,
-            platform,
-            platformUserId: readString(record.platformUserId),
-            displayName: readString(record.displayName) ?? readString(record.username)
-          }
-        ];
-      });
+        if (nextOffset >= total) {
+          return listedIntegrations;
+        }
+
+        if (integrations.length === 0 || nextOffset <= offset) {
+          throw new PostPeerConnectProviderError();
+        }
+
+        offset = nextOffset;
+      }
+    },
+    disconnectIntegration: async ({ integrationId }) => {
+      await request(
+        `/v1/connect/integrations/${encodeURIComponent(integrationId)}`,
+        {
+          method: 'DELETE',
+          allowNotFound: true,
+          parseJson: false
+        }
+      );
     }
   };
 };

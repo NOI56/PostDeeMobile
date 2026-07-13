@@ -9,6 +9,10 @@ import {
   type PrismaAccountClient,
   registerAccountRoutes
 } from './modules/account/accountRoutes.js';
+import {
+  type AccountIdentityDeleter,
+  createFirebaseIdentityDeleterFromConfig
+} from './modules/account/firebaseIdentityDeleter.js';
 import { registerAnalyticsRoutes } from './modules/analytics/analyticsRoutes.js';
 import { createAnalyticsStoreFromConfig } from './modules/analytics/analyticsStoreFactory.js';
 import type { AnalyticsStore } from './modules/analytics/analyticsStore.js';
@@ -16,6 +20,11 @@ import type { PrismaAnalyticsClient } from './modules/analytics/prismaAnalyticsR
 import { createAuthMiddlewareFromConfig } from './modules/auth/authMiddlewareFactory.js';
 import { registerAuthRoutes } from './modules/auth/authRoutes.js';
 import type { FirebaseTokenVerifier } from './modules/auth/authTypes.js';
+import {
+  createFirebaseAdminAuth,
+  type FirebaseAdminAuth
+} from './modules/auth/firebaseAdminAuth.js';
+import { createFirebaseAdminTokenVerifier } from './modules/auth/firebaseAdminTokenVerifier.js';
 import {
   createFirebaseTokenVerifierFromConfig,
   type FirebaseCertificatesFetch
@@ -41,7 +50,10 @@ import {
 import type { PrismaRealClipCaptionUsageClient } from './modules/captions/prismaRealClipCaptionUsageRepository.js';
 import { registerPostRoutes } from './modules/posts/postRoutes.js';
 import type { PrismaPostClient } from './modules/posts/prismaPostRepository.js';
-import { createInMemoryPlatformPublishStore } from './modules/platformPublishes/platformPublishStore.js';
+import {
+  createInMemoryPlatformPublishStore,
+  type PlatformPublishStore
+} from './modules/platformPublishes/platformPublishStore.js';
 import {
   type PrismaPlatformPublishClient,
   createPrismaPlatformPublishRepository
@@ -106,6 +118,7 @@ type AppOptions = {
   s3Client?: S3VideoStorageClient;
   r2Client?: S3VideoStorageClient;
   firebaseVerifier?: FirebaseTokenVerifier;
+  accountDeletionFirebaseVerifier?: FirebaseTokenVerifier;
   firebaseCertsFetch?: FirebaseCertificatesFetch;
   analyticsStore?: AnalyticsStore;
   captionGenerator?: CaptionGenerator;
@@ -118,6 +131,10 @@ type AppOptions = {
   appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
   socialConnectionStore?: SocialConnectionStore;
   postPeerConnectClient?: PostPeerConnectClient;
+  videoStorage?: VideoStorage;
+  firebaseAdminAuth?: FirebaseAdminAuth;
+  accountIdentityDeleter?: AccountIdentityDeleter;
+  platformPublishStore?: PlatformPublishStore;
 };
 
 const readFileNameFromStorageKey = (videoS3Key: string) =>
@@ -230,15 +247,38 @@ export const createApp = (options: AppOptions = {}) => {
     windowMs: 10 * 60 * 1000,
     maxRequests: 20
   });
+  const shouldCreateFirebaseAdminAuth =
+    config.firebaseAuthDeleteEnabled &&
+    (!options.firebaseVerifier || !options.accountIdentityDeleter);
+  const firebaseAdminAuth =
+    options.firebaseAdminAuth ??
+    (shouldCreateFirebaseAdminAuth && config.firebaseServiceAccountJson
+      ? createFirebaseAdminAuth({
+          serviceAccountJson: config.firebaseServiceAccountJson
+        })
+      : undefined);
   const firebaseVerifier =
     options.firebaseVerifier ??
-    createFirebaseTokenVerifierFromConfig({
-      config,
-      fetchCertificates: options.firebaseCertsFetch
-    });
+    (firebaseAdminAuth
+      ? createFirebaseAdminTokenVerifier(firebaseAdminAuth)
+      : createFirebaseTokenVerifierFromConfig({
+          config,
+          fetchCertificates: options.firebaseCertsFetch
+        }));
   const authMiddleware = createAuthMiddlewareFromConfig({
     config,
     firebaseVerifier
+  });
+  const accountDeletionFirebaseVerifier =
+    options.accountDeletionFirebaseVerifier ??
+    (firebaseAdminAuth
+      ? createFirebaseAdminTokenVerifier(firebaseAdminAuth, {
+          allowDeletedIdentityRetry: true
+        })
+      : firebaseVerifier);
+  const accountDeletionAuthMiddleware = createAuthMiddlewareFromConfig({
+    config,
+    firebaseVerifier: accountDeletionFirebaseVerifier
   });
   const prismaClient =
     options.prisma ??
@@ -263,11 +303,13 @@ export const createApp = (options: AppOptions = {}) => {
     prisma: prismaClient
   });
   const publishQueue = createPublishQueueFromConfig({ config });
-  const platformPublishStore = prismaClient
-    ? createPrismaPlatformPublishRepository({
-        prisma: prismaClient as unknown as PrismaPlatformPublishClient
-      })
-    : createInMemoryPlatformPublishStore();
+  const platformPublishStore =
+    options.platformPublishStore ??
+    (prismaClient
+      ? createPrismaPlatformPublishRepository({
+          prisma: prismaClient as unknown as PrismaPlatformPublishClient
+        })
+      : createInMemoryPlatformPublishStore());
   const captionGenerator =
     options.captionGenerator ?? createCaptionGeneratorFromConfig({ config });
   const realClipCaptionUsageStore =
@@ -276,11 +318,13 @@ export const createApp = (options: AppOptions = {}) => {
       config,
       prisma: prismaClient as unknown as PrismaRealClipCaptionUsageClient | undefined
     });
-  const videoStorage = createVideoStorageFromConfig({
-    config,
-    s3Client: options.s3Client,
-    r2Client: options.r2Client
-  });
+  const videoStorage =
+    options.videoStorage ??
+    createVideoStorageFromConfig({
+      config,
+      s3Client: options.s3Client,
+      r2Client: options.r2Client
+    });
   const transcriptionProvider =
     options.transcriptionProvider ??
     createTranscriptionProviderFromConfig({
@@ -389,7 +433,7 @@ export const createApp = (options: AppOptions = {}) => {
     store: socialConnectionStore,
     connectClient: postPeerConnectClient
   });
-  registerAccountRoutes(router, authMiddleware, {
+  registerAccountRoutes(router, accountDeletionAuthMiddleware, {
     postStore,
     templateStore,
     subscriptionStore,
@@ -398,8 +442,17 @@ export const createApp = (options: AppOptions = {}) => {
     aiEditUsageStore,
     deviceTokenStore,
     socialConnectionStore,
+    postPeerConnectClient,
     userStore,
     publishQueue,
+    platformPublishStore,
+    videoStorage,
+    accountIdentityDeleter:
+      options.accountIdentityDeleter ??
+      createFirebaseIdentityDeleterFromConfig({
+        config,
+        firebaseAuth: firebaseAdminAuth
+      }),
     prisma: prismaClient
       ? (prismaClient as unknown as PrismaAccountClient)
       : undefined

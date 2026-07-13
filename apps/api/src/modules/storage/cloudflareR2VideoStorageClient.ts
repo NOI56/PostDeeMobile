@@ -1,4 +1,10 @@
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import type { S3VideoStorageClient } from './videoStorage.js';
@@ -10,21 +16,25 @@ export const createCloudflareR2VideoStorageClient = ({
   accountId,
   accessKeyId,
   secretAccessKey,
-  endpoint
+  endpoint,
+  s3Client
 }: {
   accountId: string;
   accessKeyId: string;
   secretAccessKey: string;
   endpoint?: string;
+  s3Client?: S3Client;
 }): S3VideoStorageClient => {
-  const client = new S3Client({
-    region: 'auto',
-    endpoint: endpoint ?? buildR2Endpoint(accountId),
-    credentials: {
-      accessKeyId,
-      secretAccessKey
-    }
-  });
+  const client =
+    s3Client ??
+    new S3Client({
+      region: 'auto',
+      endpoint: endpoint ?? buildR2Endpoint(accountId),
+      credentials: {
+        accessKeyId,
+        secretAccessKey
+      }
+    });
 
   return {
     createPresignedUploadUrl: async ({
@@ -58,6 +68,36 @@ export const createCloudflareR2VideoStorageClient = ({
           expiresIn: expiresInSeconds
         }
       ),
+    listObjectKeysByPrefix: async ({ bucket, prefix }) => {
+      const keys: string[] = [];
+      let continuationToken: string | undefined;
+
+      do {
+        const page = await client.send(
+          new ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: prefix,
+            ContinuationToken: continuationToken
+          })
+        );
+
+        for (const object of page.Contents ?? []) {
+          if (object.Key) {
+            keys.push(object.Key);
+          }
+        }
+
+        if (page.IsTruncated && !page.NextContinuationToken) {
+          throw new Error('R2 object listing was truncated without a continuation token');
+        }
+
+        continuationToken = page.IsTruncated
+          ? page.NextContinuationToken
+          : undefined;
+      } while (continuationToken);
+
+      return keys;
+    },
     deleteObject: async ({ bucket, key }) => {
       await client.send(
         new DeleteObjectCommand({

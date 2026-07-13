@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/localization/language_controller.dart';
@@ -27,6 +28,8 @@ class ProfileScreen extends StatefulWidget {
     this.onSignOut,
     this.apiClient,
     this.launchConnectUrl,
+    this.onManageSubscription,
+    this.isDeletingAccount = false,
     this.profileDraftStore = const SharedPreferencesProfileDraftStore(),
     super.key,
   });
@@ -38,6 +41,8 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback? onSignOut;
   final PostDeeApiClient? apiClient;
   final ConnectUrlLauncher? launchConnectUrl;
+  final Future<void> Function()? onManageSubscription;
+  final bool isDeletingAccount;
   final ProfileDraftStore profileDraftStore;
 
   @override
@@ -92,6 +97,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     } catch (_) {
       // Keep the pill at 0 connected if the status call fails.
+    }
+  }
+
+  Future<void> _openSubscriptionManagement() async {
+    final uri = Uri.parse(
+      Platform.isIOS
+          ? 'https://apps.apple.com/account/subscriptions'
+          : 'https://play.google.com/store/account/subscriptions',
+    );
+    var launched = false;
+
+    try {
+      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      launched = false;
+    }
+
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'เปิดหน้าจัดการสมาชิกไม่ได้ กรุณาเปิดจาก App Store หรือ Google Play'),
+        ),
+      );
     }
   }
 
@@ -372,7 +401,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         const SizedBox(height: 13),
-        _DeleteAccountButton(onDeleteAccount: widget.onDeleteAccount),
+        _DeleteAccountButton(
+          onDeleteAccount: widget.onDeleteAccount,
+          onManageSubscription:
+              widget.onManageSubscription ?? _openSubscriptionManagement,
+          isDeleting: widget.isDeletingAccount,
+        ),
       ],
     );
   }
@@ -932,32 +966,184 @@ const _helpInfo = LegalDocument(
 );
 
 class _DeleteAccountButton extends StatelessWidget {
-  const _DeleteAccountButton({required this.onDeleteAccount});
+  const _DeleteAccountButton({
+    required this.onDeleteAccount,
+    required this.onManageSubscription,
+    required this.isDeleting,
+  });
 
   final VoidCallback onDeleteAccount;
+  final Future<void> Function() onManageSubscription;
+  final bool isDeleting;
 
   Future<void> _confirm(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('ลบบัญชี'),
-        content: const Text(
-          'การลบบัญชีจะลบข้อมูลทั้งหมดของคุณออกอย่างถาวร '
-          'และไม่สามารถกู้คืนได้ ต้องการดำเนินการต่อหรือไม่?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('ยกเลิก'),
+      backgroundColor: Colors.transparent,
+      barrierColor: const Color(0xFF0A120E).withValues(alpha: 0.5),
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.all(18),
+        child: Container(
+          key: const ValueKey('delete-account-confirm-sheet'),
+          padding: const EdgeInsets.all(22),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.9,
           ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(dialogContext).colorScheme.error,
+          decoration: BoxDecoration(
+            color: AppTheme.glass,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x550A120E),
+                blurRadius: 50,
+                spreadRadius: -16,
+                offset: Offset(0, 24),
+              ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.delete_forever_rounded,
+                    size: 28,
+                    color: Color(0xFFEF4444),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'ก่อนลบบัญชี',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'ระบบจะลบโปรไฟล์ โพสต์ วิดีโอ เทมเพลต การเชื่อมต่อโซเชียล '
+                  'และประวัติการใช้งานของคุณอย่างถาวร ข้อมูลจะกู้คืนไม่ได้',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.55,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7E8),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFF2C66D)),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 20,
+                        color: Color(0xFF9A6700),
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'การลบบัญชี PostDee ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro '
+                          'ที่ซื้อผ่าน App Store หรือ Google Play หากไม่ต้องการให้ต่ออายุ '
+                          'กรุณายกเลิกสมาชิกในร้านค้าก่อนลบบัญชี',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            height: 1.45,
+                            color: Color(0xFF6B4F00),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await onManageSubscription();
+                    },
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: const Text('จัดการสมาชิก'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.accentCyanInk,
+                      side: BorderSide(color: AppTheme.border),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 50),
+                        child: OutlinedButton(
+                          onPressed: () =>
+                              Navigator.of(sheetContext).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.textPrimary,
+                            side: BorderSide(color: AppTheme.border),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text('ยกเลิก'),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 50),
+                        child: FilledButton(
+                          onPressed: isDeleting
+                              ? null
+                              : () => Navigator.of(sheetContext).pop(true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFEF4444),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: isDeleting
+                              ? const SizedBox.square(
+                                  dimension: 20,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('ลบบัญชีถาวร'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            child: const Text('ลบบัญชีถาวร'),
           ),
-        ],
+        ),
       ),
     );
 
@@ -974,7 +1160,7 @@ class _DeleteAccountButton extends StatelessWidget {
       button: true,
       label: 'ลบบัญชี',
       child: OutlinedButton.icon(
-        onPressed: () => _confirm(context),
+        onPressed: isDeleting ? null : () => _confirm(context),
         icon: const Icon(Icons.delete_outline, color: errorColor, size: 19),
         label: const Text(
           'ลบบัญชี',

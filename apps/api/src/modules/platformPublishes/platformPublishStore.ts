@@ -21,6 +21,7 @@ export type PlatformPublishStore = {
   recordResults: (
     input: RecordPlatformPublishResultsInput
   ) => Promise<RecordedPlatformPublish[]>;
+  deleteAllForPosts?: (postIds: string[]) => Promise<void>;
 };
 
 const mapResult = (
@@ -61,6 +62,15 @@ export const createInMemoryPlatformPublishStore = (): PlatformPublishStore => {
       }
 
       return recordedResults;
+    },
+    deleteAllForPosts: async (postIds) => {
+      const ownedPostIds = new Set(postIds);
+
+      for (const [key, record] of records) {
+        if (ownedPostIds.has(record.postId)) {
+          records.delete(key);
+        }
+      }
     }
   };
 };

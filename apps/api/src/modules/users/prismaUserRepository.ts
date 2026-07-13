@@ -15,6 +15,10 @@ type PrismaUser = {
 };
 
 type UserDelegate = {
+  findUnique: (args: {
+    where: { id: string };
+    select: { id: true };
+  }) => Promise<{ id: string } | null>;
   upsert: (args: {
     where: { id: string };
     update: {
@@ -48,6 +52,13 @@ export const createPrismaUserRepository = ({
 }: {
   prisma: PrismaUserClient;
 }): UserStore => ({
+  exists: async (userId) =>
+    Boolean(
+      await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true }
+      })
+    ),
   ensure: async (authUser: AuthUser) => {
     const user = normalizeAuthUserForStorage(authUser);
     const persistedUser = await prisma.user.upsert({

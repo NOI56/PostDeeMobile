@@ -10,6 +10,7 @@ export type AppUser = {
 };
 
 export type UserStore = {
+  exists: (userId: string) => Promise<boolean>;
   ensure: (authUser: AuthUser) => Promise<AppUser>;
   // Hard-deletes the user record for userId. Used by account deletion. Optional
   // because the Prisma store deletes the user (and cascades) elsewhere.
@@ -46,6 +47,7 @@ export const createUserStore = ({
   const users = new Map<string, AppUser>();
 
   return {
+    exists: async (userId) => users.has(userId),
     ensure: async (authUser) => {
       const normalizedUser = normalizeAuthUserForStorage(authUser);
       const existingUser = users.get(authUser.id);

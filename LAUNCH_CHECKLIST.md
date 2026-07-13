@@ -56,6 +56,8 @@
   โพสต์หลุดเงียบ)
 - [ ] ตั้ง **R2 lifecycle rule** ให้ลบ object ใน prefix `uploads/` อัตโนมัติหลัง N วัน
       (เช่น 7 วัน) แทน — เพื่อไม่ให้พื้นที่ R2 โตไม่จำกัด
+- ✅ ตอนผู้ใช้ลบบัญชี API จะไล่ลบทุก object ใต้ owner prefix ของ Firebase UID
+      ก่อนลบฐานข้อมูล; lifecycle ยังจำเป็นเป็นตาข่ายสำหรับ signed upload ที่มาช้า
 - signed download URL ตั้งอายุขั้นต่ำ 1 ชม. แล้ว (ให้ PostPeer/Gemini ดึงทัน)
 
 ---
@@ -99,6 +101,9 @@
   1. ตั้ง `FIREBASE_SERVICE_ACCOUNT_JSON` ใน Render (service account key จาก Firebase Console → Project Settings → Service Accounts, เก็บเป็นความลับ)
   2. สลับ `PUSH_SENDER=firebase` (ทำหลังใส่ key แล้วเท่านั้น ไม่งั้น API จะ crash ตอนเริ่ม)
   3. ทดสอบส่ง push จริงบนเครื่อง
+- [ ] ตั้ง `FIREBASE_AUTH_DELETE_ENABLED=true` หลังใส่ service account แล้ว
+      จากนั้นทดสอบลบบัญชีจริง; โหมดนี้ใช้ Firebase Admin ตรวจ token ที่ถูก
+      revoke/ลบแล้วด้วย
 
 ---
 
@@ -110,7 +115,8 @@
 - [ ] AI แคปชั่นจากคลิป (Starter ฟัง / Pro ฟัง+ดูเฟรม)
 - [ ] AI ตัดต่อ/ซับ (Pro) + export บนเครื่อง
 - [ ] ซื้อแพ็กเกจ (sandbox) → ปลดล็อกฟีเจอร์
-- [ ] ลบบัญชี → ข้อมูลหายจริง
+- [ ] ลบบัญชี → โปรไฟล์/โพสต์/R2/Firebase UID หายจริง และแพ็กเกจใน Store
+      ยังแสดงขั้นตอนจัดการสมาชิกแยกอย่างถูกต้อง
 
 ---
 

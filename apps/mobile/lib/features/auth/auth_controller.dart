@@ -163,12 +163,18 @@ class PostDeeAuthController extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    await _googleAuthGateway.signOut();
-    await _appleAuthGateway.signOut();
-    _sessionStore.signOut();
-    await _analytics.logSignOut();
-    _errorMessage = null;
-    notifyListeners();
+    try {
+      await _googleAuthGateway.signOut();
+    } finally {
+      try {
+        await _appleAuthGateway.signOut();
+      } finally {
+        _sessionStore.signOut();
+        await _analytics.logSignOut();
+        _errorMessage = null;
+        notifyListeners();
+      }
+    }
   }
 
   void _handleSessionChanged() {

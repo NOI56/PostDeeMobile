@@ -124,6 +124,10 @@ describe('createVideoStorageFromConfig', () => {
     const r2Client = {
       createPresignedUploadUrl: vi.fn(async () => 'https://r2.local/upload-url'),
       createPresignedDownloadUrl: vi.fn(async () => 'https://r2.local/download-url'),
+      listObjectKeysByPrefix: vi.fn(async () => [
+        'uploads/seller%2Fone/first/video.mp4',
+        'uploads/seller%2Fone/second/video.mp4'
+      ]),
       deleteObject: vi.fn(async () => undefined)
     };
     const storage = createVideoStorageFromConfig({
@@ -148,6 +152,7 @@ describe('createVideoStorageFromConfig', () => {
     });
     const downloadAccess = await storage.createDownloadAccess(upload.videoS3Key);
     await storage.deleteVideo(upload.videoS3Key);
+    await storage.deleteAllVideosForOwner('seller/one');
 
     expect(upload).toMatchObject({
       fileName: 'r2 launch video.mp4',
@@ -185,6 +190,74 @@ describe('createVideoStorageFromConfig', () => {
       bucket: 'postdee-r2-temp',
       key: upload.videoS3Key
     });
+    expect(r2Client.listObjectKeysByPrefix).toHaveBeenCalledWith({
+      bucket: 'postdee-r2-temp',
+      prefix: 'uploads/seller%2Fone/'
+    });
+    expect(r2Client.deleteObject).toHaveBeenCalledWith({
+      bucket: 'postdee-r2-temp',
+      key: 'uploads/seller%2Fone/first/video.mp4'
+    });
+    expect(r2Client.deleteObject).toHaveBeenCalledWith({
+      bucket: 'postdee-r2-temp',
+      key: 'uploads/seller%2Fone/second/video.mp4'
+    });
+  });
+
+  it('fails account media cleanup when an object client cannot list owner files', async () => {
+    const storage = createVideoStorageFromConfig({
+      config: {
+        videoStorage: 's3',
+        awsS3Bucket: 'postdee-video-temp',
+        awsS3UploadExpiresSeconds: 900
+      },
+      s3Client: {
+        createPresignedUploadUrl: async () => 'https://s3.local/upload-url',
+        createPresignedDownloadUrl: async () => 'https://s3.local/download-url',
+        deleteObject: async () => undefined
+      }
+    });
+
+    await expect(storage.deleteAllVideosForOwner('seller-a')).rejects.toThrow(
+      'does not support owner cleanup'
+    );
+  });
+
+  it('attempts every owner object before reporting a partial cleanup failure', async () => {
+    const keys = [
+      'uploads/seller-a/first/video.mp4',
+      'uploads/seller-a/second/video.mp4',
+      'uploads/seller-a/third/video.mp4'
+    ];
+    const deleteObject = vi.fn(async ({ key }: { bucket: string; key: string }) => {
+      if (key === keys[1]) {
+        throw new Error('R2 transient failure');
+      }
+    });
+    const storage = createVideoStorageFromConfig({
+      config: {
+        videoStorage: 'r2',
+        awsS3Bucket: undefined,
+        awsS3UploadExpiresSeconds: 900,
+        cloudflareR2Bucket: 'postdee-r2-temp',
+        cloudflareR2AccountId: undefined,
+        cloudflareR2AccessKeyId: undefined,
+        cloudflareR2SecretAccessKey: undefined,
+        cloudflareR2Endpoint: undefined,
+        cloudflareR2UploadExpiresSeconds: 900
+      },
+      r2Client: {
+        createPresignedUploadUrl: async () => 'https://r2.local/upload-url',
+        createPresignedDownloadUrl: async () => 'https://r2.local/download-url',
+        listObjectKeysByPrefix: async () => keys,
+        deleteObject
+      }
+    });
+
+    await expect(storage.deleteAllVideosForOwner('seller-a')).rejects.toThrow(
+      'Could not delete 1 account media object'
+    );
+    expect(deleteObject).toHaveBeenCalledTimes(3);
   });
 
   it('requires an R2 bucket when R2 storage is configured', () => {

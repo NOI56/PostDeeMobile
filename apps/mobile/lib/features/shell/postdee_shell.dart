@@ -15,6 +15,7 @@ import '../ai_editing/ai_editing_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../auth/auth_controller.dart';
 import '../auth/firebase_apple_auth_gateway.dart';
+import '../auth/firebase_account_access_revoker.dart';
 import '../auth/firebase_email_auth_gateway.dart';
 import '../auth/firebase_google_auth_gateway.dart';
 import '../auth/firebase_id_token_refresher.dart';
@@ -30,6 +31,7 @@ import '../uploader/uploader_screen.dart';
 import '../uploader/video_picker_service.dart';
 
 typedef AccountDeleter = Future<void> Function();
+typedef AccountDeletionReadinessChecker = Future<bool> Function();
 
 class PostDeeShell extends StatefulWidget {
   const PostDeeShell({
@@ -45,6 +47,8 @@ class PostDeeShell extends StatefulWidget {
     this.createPost,
     this.loadSocialConnections,
     this.deleteAccount,
+    this.checkAccountDeletionReady,
+    this.accountAccessRevoker,
     this.pushMessagingGateway,
   });
 
@@ -59,6 +63,8 @@ class PostDeeShell extends StatefulWidget {
   final UploaderPostCreator? createPost;
   final UploaderConnectionsLoader? loadSocialConnections;
   final AccountDeleter? deleteAccount;
+  final AccountDeletionReadinessChecker? checkAccountDeletionReady;
+  final AccountAccessRevoker? accountAccessRevoker;
   final PushMessagingGateway? pushMessagingGateway;
 
   @override
@@ -69,9 +75,11 @@ class _PostDeeShellState extends State<PostDeeShell> {
   static const _onboardingStore = OnboardingSeenStore();
 
   late final PostDeeAuthController _authController;
+  late final AccountAccessRevoker _accountAccessRevoker;
   late final PushMessagingGateway _pushMessagingGateway;
   int _selectedIndex = 0;
   int _calendarRefreshToken = 0;
+  bool _isDeletingAccount = false;
 
   // null = still loading; the main shell shows meanwhile so the flow never
   // blocks startup. true only on a genuine first run.
@@ -95,6 +103,10 @@ class _PostDeeShellState extends State<PostDeeShell> {
         firebaseBootstrapResult: widget.firebaseBootstrapResult,
       ),
     );
+    _accountAccessRevoker = widget.accountAccessRevoker ??
+        createAccountAccessRevokerFromConfig(
+          firebaseBootstrapResult: widget.firebaseBootstrapResult,
+        );
     // With Firebase enabled, fetch a fresh ID token per request so API calls
     // never carry an expired token (Firebase tokens expire ~1 hour after sign
     // in). In mock/dev the cached session token is used instead.
@@ -155,6 +167,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
               widget.themeController ?? PostDeeThemeController.instance,
           onOpenTemplates: _openTemplates,
           onDeleteAccount: _handleDeleteAccount,
+          isDeletingAccount: _isDeletingAccount,
           onSignOut: _authController.signOut,
         ),
       ];
@@ -215,34 +228,72 @@ class _PostDeeShellState extends State<PostDeeShell> {
   }
 
   Future<void> _handleDeleteAccount() async {
+    if (_isDeletingAccount) {
+      return;
+    }
+
+    setState(() => _isDeletingAccount = true);
     // Permanently deletes the account via DELETE /account, then signs out so the
     // user lands back on the login gate. Only sign out after the delete succeeds.
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    final deleteAccount =
-        widget.deleteAccount ?? PostDeeApiClient().deleteAccount;
+    final apiClient = PostDeeApiClient();
+    final deleteAccount = widget.deleteAccount ?? apiClient.deleteAccount;
+    final checkAccountDeletionReady = widget.checkAccountDeletionReady ??
+        (widget.deleteAccount == null
+            ? apiClient.checkAccountDeletionReady
+            : () async => false);
 
     try {
+      final identityAlreadyDeleted = await checkAccountDeletionReady();
+      if (!identityAlreadyDeleted) {
+        await _accountAccessRevoker.revokeBeforeAccountDeletion();
+      }
       await deleteAccount();
-    } on ApiException catch (error) {
+
+      if (!mounted) {
+        return;
+      }
+
+      navigator.popUntil((route) => route.isFirst);
+      try {
+        await _authController.signOut();
+      } catch (_) {
+        // The controller always clears the local session in a finally block.
+      }
+      messenger.showSnackBar(
+        const SnackBar(content: Text('ลบบัญชีและออกจากระบบแล้ว')),
+      );
+    } on AccountAccessRevocationException catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(error.message)));
-      return;
+    } on ApiException catch (error) {
+      final message = switch (error.code) {
+        'ACCOUNT_DELETION_UNAVAILABLE' =>
+          'ระบบลบบัญชียังไม่พร้อม กรุณาลองใหม่ภายหลัง',
+        'ACCOUNT_MEDIA_CLEANUP_UNAVAILABLE' =>
+          'ระบบลบวิดีโอยังไม่พร้อม กรุณาลองใหม่ภายหลัง',
+        'ACCOUNT_MEDIA_CLEANUP_FAILED' =>
+          'ลบวิดีโอยังไม่สำเร็จ บัญชีของคุณยังอยู่ กรุณาลองใหม่',
+        'ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE' =>
+          'ระบบถอนการเชื่อมต่อโซเชียลยังไม่พร้อม กรุณาลองใหม่ภายหลัง',
+        'ACCOUNT_SOCIAL_CLEANUP_FAILED' =>
+          'ถอนการเชื่อมต่อโซเชียลยังไม่ครบ บัญชียังไม่ถูกลบ กรุณาลองใหม่',
+        'ACCOUNT_IDENTITY_DELETE_FAILED' =>
+          'ลบข้อมูลแล้ว แต่ยังปิดการเข้าสู่ระบบไม่สำเร็จ กรุณากดลบบัญชีอีกครั้ง',
+        'ACCOUNT_REAUTHENTICATION_REQUIRED' =>
+          'กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ จากนั้นลบบัญชีภายใน 5 นาที',
+        _ => error.message,
+      };
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
       messenger.showSnackBar(
         const SnackBar(content: Text('ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง')),
       );
-      return;
+    } finally {
+      if (mounted) {
+        setState(() => _isDeletingAccount = false);
+      }
     }
-
-    if (!mounted) {
-      return;
-    }
-
-    navigator.popUntil((route) => route.isFirst);
-    _authController.signOut();
-    messenger.showSnackBar(
-      const SnackBar(content: Text('ลบบัญชีและออกจากระบบแล้ว')),
-    );
   }
 
   Future<void> _loadOnboardingSeen() async {

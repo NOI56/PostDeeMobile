@@ -1403,6 +1403,14 @@ class PostDeeApiClient {
     await _deleteJson('/posts/$postId');
   }
 
+  /// Checks deletion prerequisites and reports whether Firebase identity
+  /// deletion already completed during an earlier request.
+  Future<bool> checkAccountDeletionReady() async {
+    final response = await _getJson('/account/deletion-readiness');
+
+    return response['identityAlreadyDeleted'] == true;
+  }
+
   /// Permanently deletes the signed-in user's account and all of their data.
   /// Backed by `DELETE /account`. Used by the profile account-deletion flow.
   Future<void> deleteAccount() async {

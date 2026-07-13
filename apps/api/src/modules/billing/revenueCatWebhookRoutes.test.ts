@@ -24,6 +24,12 @@ const postRevenueCatWebhook = (app: ReturnType<typeof createRevenueCatApp>, body
     .set('Authorization', `Bearer ${revenueCatToken}`)
     .send(body);
 
+const createKnownUser = (app: ReturnType<typeof createRevenueCatApp>, userId: string) =>
+  request(app)
+    .get('/billing/subscription')
+    .set('x-postdee-user-id', userId)
+    .expect(200);
+
 describe('RevenueCat webhooks', () => {
   it('rejects webhook requests without the configured bearer token', async () => {
     const app = createRevenueCatApp();
@@ -48,6 +54,7 @@ describe('RevenueCat webhooks', () => {
 
   it('activates Starter for a RevenueCat Starter entitlement event', async () => {
     const app = createRevenueCatApp();
+    await createKnownUser(app, 'seller-revenuecat-starter');
 
     const activationResponse = await postRevenueCatWebhook(app, {
       event: {
@@ -83,6 +90,7 @@ describe('RevenueCat webhooks', () => {
 
   it('activates Pro for a RevenueCat Pro product event', async () => {
     const app = createRevenueCatApp();
+    await createKnownUser(app, 'seller-revenuecat-pro');
 
     const activationResponse = await postRevenueCatWebhook(app, {
       event: {
@@ -104,6 +112,7 @@ describe('RevenueCat webhooks', () => {
 
   it('marks an existing RevenueCat subscription as canceled after expiration', async () => {
     const app = createRevenueCatApp();
+    await createKnownUser(app, 'seller-revenuecat-expired');
 
     await postRevenueCatWebhook(app, {
       event: {
@@ -146,6 +155,7 @@ describe('RevenueCat webhooks', () => {
 
     for (const eventType of ['CANCELLATION', 'SUBSCRIPTION_PAUSED', 'BILLING_ISSUE']) {
       const userId = `seller-revenuecat-${eventType.toLowerCase().replace(/_/g, '-')}`;
+      await createKnownUser(app, userId);
 
       await postRevenueCatWebhook(app, {
         event: {
@@ -200,6 +210,47 @@ describe('RevenueCat webhooks', () => {
       status: 'ok',
       ignored: true,
       code: 'REVENUECAT_PRODUCT_NOT_MAPPED'
+    });
+  });
+
+  it('ignores active events for users that do not exist instead of recreating them', async () => {
+    const app = createRevenueCatApp();
+
+    const response = await postRevenueCatWebhook(app, {
+      event: {
+        type: 'RENEWAL',
+        app_user_id: 'seller-revenuecat-deleted',
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly'
+      }
+    }).expect(202);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      ignored: true,
+      code: 'REVENUECAT_USER_NOT_FOUND'
+    });
+  });
+
+  it('does not recreate a user from a late active event after account deletion', async () => {
+    const app = createRevenueCatApp();
+    const userId = 'seller-revenuecat-deleted-late-event';
+    await createKnownUser(app, userId);
+    await request(app).delete('/account').set('x-postdee-user-id', userId).expect(200);
+
+    const response = await postRevenueCatWebhook(app, {
+      event: {
+        type: 'RENEWAL',
+        app_user_id: userId,
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly'
+      }
+    }).expect(202);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      ignored: true,
+      code: 'REVENUECAT_USER_NOT_FOUND'
     });
   });
 

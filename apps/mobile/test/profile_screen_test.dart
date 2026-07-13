@@ -348,6 +348,69 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('320'), findsNothing);
   });
+
+  testWidgets(
+      'warns that deleting PostDee does not cancel a store subscription',
+      (tester) async {
+    var manageSubscriptionCalls = 0;
+    await tester.pumpWidget(
+      _hostProfile(
+        onManageSubscription: () async {
+          manageSubscriptionCalls += 1;
+        },
+      ),
+    );
+
+    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    await tester.scrollUntilVisible(
+      deleteButton,
+      500,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('ก่อนลบบัญชี'), findsOneWidget);
+    expect(
+      find.textContaining('ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro'),
+      findsOneWidget,
+    );
+    expect(find.text('ลบบัญชีถาวร'), findsOneWidget);
+
+    await tester.tap(find.text('จัดการสมาชิก'));
+    await tester.pump();
+    expect(manageSubscriptionCalls, 1);
+  });
+
+  testWidgets('keeps delete actions usable with large accessibility text',
+      (tester) async {
+    await tester.pumpWidget(
+      _hostProfile(textScaler: const TextScaler.linear(2)),
+    );
+    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    await tester.scrollUntilVisible(
+      deleteButton,
+      500,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+
+    final sheetScrollable = find.descendant(
+      of: find.byKey(const ValueKey('delete-account-confirm-sheet')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('ลบบัญชีถาวร'),
+      200,
+      scrollable: sheetScrollable,
+    );
+
+    expect(find.text('ลบบัญชีถาวร'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 /// Taps the "เชื่อมต่อช่องทาง" menu row to push the connections screen.
@@ -359,8 +422,14 @@ Future<void> _openConnectionsScreen(WidgetTester tester) async {
 Widget _hostProfile({
   PostDeeApiClient? apiClient,
   Future<bool> Function(Uri uri)? launchConnectUrl,
+  Future<void> Function()? onManageSubscription,
+  TextScaler textScaler = TextScaler.noScaling,
 }) {
   return MaterialApp(
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+      child: child!,
+    ),
     locale: const Locale('th'),
     localizationsDelegates: const [
       PostDeeLocalizations.delegate,
@@ -377,6 +446,7 @@ Widget _hostProfile({
         onDeleteAccount: () {},
         apiClient: apiClient,
         launchConnectUrl: launchConnectUrl,
+        onManageSubscription: onManageSubscription,
       ),
     ),
   );

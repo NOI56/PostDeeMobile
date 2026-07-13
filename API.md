@@ -352,19 +352,59 @@ Post limit reached:
 
 ## Account
 
+### `GET /account/deletion-readiness`
+
+Checks that Firebase identity deletion, owner-prefix media cleanup, and any
+stored PostPeer profile cleanup are configured before the mobile app starts
+Apple reauthentication. Returns
+`{ "status": "ok", "identityAlreadyDeleted": false }` or a retryable `503`
+without changing account data. `identityAlreadyDeleted=true` lets the mobile
+app finish an idempotent retry without repeating Apple reauthentication.
+If a stored PostPeer profile exists but provider cleanup is not configured,
+the endpoint returns `503 ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE`.
+
 ### `DELETE /account`
 
-Permanently deletes the authenticated user's account and all of their data
-(posts, templates, subscription, analytics metrics, and AI usage records). This
-backs the App Store / Google Play required "Delete Account" flow in the profile
-screen.
+Permanently deletes the authenticated user's account, owned upload objects,
+Firebase identity, and user-scoped application data. This backs the App Store /
+Google Play required "Delete Account" flow in the profile screen.
 
 Behavior:
 
 - Cancels any queued or scheduled publish jobs for the user's posts first.
+- Lists every paginated integration in the user's PostPeer profile and
+  disconnects each one through the provider before deleting local records.
+  This includes integration ids for platforms PostDee does not yet recognize.
+  Provider cleanup failure returns `503 ACCOUNT_SOCIAL_CLEANUP_FAILED` so the
+  request can retry without losing local account data.
+- Deletes every object under the exact owner prefix
+  `uploads/<encoded-firebase-uid>/` before deleting database records. A storage
+  cleanup failure returns `503 ACCOUNT_MEDIA_CLEANUP_FAILED`, leaving the
+  account records available for retry. Cleanup attempts every listed object;
+  because external object deletion is not transactional, some objects may
+  already be gone when a retryable error is returned.
 - With Prisma stores, deletes the `User` row; `onDelete: Cascade` removes every
   related row in one step.
 - With in-memory stores, each store drops the user's records.
+- When Firebase auth is used, `FIREBASE_AUTH_DELETE_ENABLED=true` and
+  `FIREBASE_SERVICE_ACCOUNT_JSON` are required. Firebase identity is deleted
+  last. Active identities must present an ID token whose `auth_time` is no more
+  than five minutes old or receive `403 ACCOUNT_REAUTHENTICATION_REQUIRED`.
+- `auth/user-not-found` is treated as an idempotent success. Other Firebase
+  failures return `503 ACCOUNT_IDENTITY_DELETE_FAILED`; retrying the same
+  request completes identity deletion after the already-idempotent data cleanup.
+  The account-only verifier accepts a still-valid signed token when (and only
+  when) Firebase Admin confirms that the UID is already missing; revoked tokens
+  remain rejected.
+- If Firebase identity deletion is not enabled, the endpoint returns
+  `503 ACCOUNT_DELETION_UNAVAILABLE` before changing any data.
+- On iOS/macOS, the mobile flow calls the readiness endpoint, reauthenticates
+  Apple-linked users, and calls Firebase `revokeTokenWithAuthorizationCode`
+  before deletion. Apple Sign-In must remain unavailable on Android/web until a
+  server-side Apple token revocation flow is implemented there.
+- Late active RevenueCat webhooks are acknowledged and ignored when the
+  PostDee user row no longer exists, so a renewal cannot recreate a deleted
+  account.
 
 Success response:
 
@@ -1192,6 +1232,8 @@ PostgreSQL.
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string for BullMQ |
 | `AUTH_PROVIDER` | `mock`, `firebase` | Auth adapter |
 | `FIREBASE_PROJECT_ID` | `postdee-prod` | Firebase project id |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | `{...}` | Firebase Admin service account JSON for account deletion and revoked-token checks; keep secret |
+| `FIREBASE_AUTH_DELETE_ENABLED` | `false`, `true` | Enables complete Firebase account deletion and revoked/deleted-token checks; requires the Firebase service account |
 | `VIDEO_STORAGE` | `mock`, `r2`, `s3` | Temporary video storage adapter |
 | `CLOUDFLARE_R2_BUCKET` | `postdee-video-temp` | R2 bucket name |
 | `CLOUDFLARE_R2_ACCOUNT_ID` | `...` | Cloudflare account id |

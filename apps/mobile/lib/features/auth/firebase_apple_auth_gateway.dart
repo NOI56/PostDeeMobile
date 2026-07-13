@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 import '../../core/auth/auth_session.dart';
@@ -110,6 +112,7 @@ AppleAuthGateway createAppleAuthGatewayFromConfig({
   bool enableFirebaseAuth = AppConfig.enableFirebaseAuth,
   bool allowLocalMockAuth = AppConfig.allowLocalMockAuth,
   FirebaseBootstrapResult? firebaseBootstrapResult,
+  bool? supportsNativeAppleTokenRevocation,
 }) {
   if (!enableFirebaseAuth) {
     if (allowLocalMockAuth) {
@@ -127,6 +130,16 @@ AppleAuthGateway createAppleAuthGatewayFromConfig({
   if (!bootstrap.isInitialized) {
     return UnavailableAppleAuthGateway(
       message: bootstrap.errorMessage ?? 'Firebase Auth is not initialized',
+    );
+  }
+
+  final supportsAppleDeletion = supportsNativeAppleTokenRevocation ??
+      (Platform.isIOS || Platform.isMacOS);
+
+  if (!supportsAppleDeletion) {
+    return const UnavailableAppleAuthGateway(
+      message:
+          'Apple Sign-In is available on iPhone, iPad, and Mac while secure account deletion is being completed for other platforms.',
     );
   }
 

@@ -427,18 +427,27 @@ class _UploaderScreenState extends State<UploaderScreen> {
     }
 
     final createUpload = widget.createUpload ?? _apiClient.createUpload;
-    final upload = await createUpload(
-      CreateUploadRequest(
+    final uploadVideoFile =
+        widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
+    final upload = await createAndUploadFileWithRetry(
+      request: CreateUploadRequest(
         fileName: fileName,
         contentType: 'video/mp4',
         sizeBytes: sizeBytes,
         width: width,
         height: height,
       ),
+      file: localVideoFile,
+      createUpload: createUpload,
+      uploadFile: uploadVideoFile,
+      onRetry: () {
+        if (mounted) {
+          setState(() {
+            _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+          });
+        }
+      },
     );
-    final uploadVideoFile =
-        widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-    await uploadVideoFile(upload, localVideoFile);
 
     return upload.videoS3Key;
   }
@@ -486,14 +495,16 @@ class _UploaderScreenState extends State<UploaderScreen> {
           continue;
         }
 
-        final upload = await createUpload(
-          CreateUploadRequest(
+        final upload = await createAndUploadFileWithRetry(
+          request: CreateUploadRequest(
             fileName: 'frame_${index + 1}.jpg',
             contentType: 'image/jpeg',
             sizeBytes: sizeBytes,
           ),
+          file: frame,
+          createUpload: createUpload,
+          uploadFile: uploadVideoFile,
         );
-        await uploadVideoFile(upload, frame);
         frameKeys.add(upload.videoS3Key);
       }
 
@@ -1018,18 +1029,27 @@ class _UploaderScreenState extends State<UploaderScreen> {
       }
 
       final createUpload = widget.createUpload ?? _apiClient.createUpload;
-      final upload = await createUpload(
-        CreateUploadRequest(
+      final uploadVideoFile =
+          widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
+      final upload = await createAndUploadFileWithRetry(
+        request: CreateUploadRequest(
           fileName: uploadFileName,
           contentType: 'video/mp4',
           sizeBytes: uploadSizeBytes,
           width: width,
           height: height,
         ),
+        file: uploadVideoFileForRequest,
+        createUpload: createUpload,
+        uploadFile: uploadVideoFile,
+        onRetry: () {
+          if (mounted) {
+            setState(() {
+              _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+            });
+          }
+        },
       );
-      final uploadVideoFile =
-          widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-      await uploadVideoFile(upload, uploadVideoFileForRequest);
       final createPost = widget.createPost ?? _apiClient.createPost;
       final post = await createPost(
         CreatePostRequest(

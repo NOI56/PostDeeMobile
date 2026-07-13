@@ -155,6 +155,177 @@ void main() {
     expect(result.uploadExpiresAt?.toUtc().toIso8601String(),
         '2026-06-27T12:00:00.000Z');
   });
+
+  test('uploadVideoFile rejects a signed URL that is about to expire',
+      () async {
+    final directory =
+        await Directory.systemTemp.createTemp('postdee-expired-upload-');
+    final file = File('${directory.path}/probe.mp4');
+    await file.writeAsBytes(const [1, 2, 3]);
+
+    try {
+      final client = PostDeeApiClient();
+
+      await expectLater(
+        client.uploadVideoFile(
+          UploadResult(
+            id: 'expired-upload',
+            videoS3Key: 'uploads/seller/expired/probe.mp4',
+            storageProvider: 'private',
+            uploadUrl: 'https://uploads.postdee.test/expired',
+            uploadMethod: 'PUT',
+            uploadExpiresAt:
+                DateTime.now().toUtc().add(const Duration(seconds: 10)),
+          ),
+          file,
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.code,
+            'code',
+            'UPLOAD_URL_EXPIRED',
+          ),
+        ),
+      );
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('uploadVideoFile maps an expired R2 response to a retryable error',
+      () async {
+    final directory =
+        await Directory.systemTemp.createTemp('postdee-r2-expired-response-');
+    final file = File('${directory.path}/probe.mp4');
+    await file.writeAsBytes(const [1, 2, 3]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final client = PostDeeApiClient();
+      final uploadFuture = client.uploadVideoFile(
+        UploadResult(
+          id: 'expired-response-upload',
+          videoS3Key: 'uploads/seller/expired-response/probe.mp4',
+          storageProvider: 'private',
+          uploadUrl: 'http://${server.address.address}:${server.port}/upload',
+          uploadMethod: 'PUT',
+        ),
+        file,
+      );
+      final uploadExpectation = expectLater(
+        uploadFuture,
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.code,
+            'code',
+            'UPLOAD_URL_EXPIRED',
+          ),
+        ),
+      );
+      final request = await server.first;
+
+      expect(request.method, 'PUT');
+      await request.drain<void>();
+      request.response
+        ..statusCode = HttpStatus.forbidden
+        ..headers.contentType = ContentType('application', 'xml')
+        ..write('<Error><Code>ExpiredRequest</Code></Error>');
+      await request.response.close();
+
+      await uploadExpectation;
+    } finally {
+      await server.close(force: true);
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('createAndUploadFileWithRetry requests one fresh URL after expiry',
+      () async {
+    final directory =
+        await Directory.systemTemp.createTemp('postdee-upload-retry-');
+    final file = File('${directory.path}/probe.mp4');
+    await file.writeAsBytes(const [1, 2, 3]);
+    var createCalls = 0;
+    var uploadCalls = 0;
+
+    try {
+      final result = await createAndUploadFileWithRetry(
+        request: const CreateUploadRequest(
+          fileName: 'probe.mp4',
+          contentType: 'video/mp4',
+          sizeBytes: 3,
+        ),
+        file: file,
+        createUpload: (_) async {
+          createCalls += 1;
+          return UploadResult(
+            id: 'upload-$createCalls',
+            videoS3Key: 'uploads/seller/upload-$createCalls/probe.mp4',
+            storageProvider: 'private',
+          );
+        },
+        uploadFile: (upload, _) async {
+          uploadCalls += 1;
+          if (uploadCalls == 1) {
+            throw const ApiException(
+              'Upload URL expired',
+              statusCode: HttpStatus.forbidden,
+              code: 'UPLOAD_URL_EXPIRED',
+            );
+          }
+        },
+      );
+
+      expect(createCalls, 2);
+      expect(uploadCalls, 2);
+      expect(result.id, 'upload-2');
+      expect(result.videoS3Key, 'uploads/seller/upload-2/probe.mp4');
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('createAndUploadFileWithRetry does not retry unrelated failures',
+      () async {
+    final directory =
+        await Directory.systemTemp.createTemp('postdee-upload-no-retry-');
+    final file = File('${directory.path}/probe.mp4');
+    await file.writeAsBytes(const [1, 2, 3]);
+    var createCalls = 0;
+
+    try {
+      await expectLater(
+        createAndUploadFileWithRetry(
+          request: const CreateUploadRequest(
+            fileName: 'probe.mp4',
+            contentType: 'video/mp4',
+            sizeBytes: 3,
+          ),
+          file: file,
+          createUpload: (_) async {
+            createCalls += 1;
+            return const UploadResult(
+              id: 'upload-1',
+              videoS3Key: 'uploads/seller/upload-1/probe.mp4',
+              storageProvider: 'private',
+            );
+          },
+          uploadFile: (_, __) async {
+            throw const ApiException(
+              'R2 unavailable',
+              statusCode: HttpStatus.serviceUnavailable,
+            );
+          },
+        ),
+        throwsA(isA<ApiException>()),
+      );
+
+      expect(createCalls, 1);
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('GenerateRealClipCaptionRequest serializes selected clip context only',
       () {
     expect(

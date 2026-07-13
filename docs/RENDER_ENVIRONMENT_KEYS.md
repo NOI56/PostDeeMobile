@@ -91,7 +91,7 @@ intentionally want a different value.
 | `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3` | AI editing transcription model. |
 | `GROQ_EDIT_PLAN_MODEL` | `llama-3.3-70b-versatile` | AI edit-plan model. |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | PostPeer API host. |
-| `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `900` | Signed upload URL lifetime. |
+| `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Five-minute signed upload URL lifetime; mobile retries once only when the URL explicitly expires. |
 | `UPLOAD_MAX_SIZE_BYTES` | `524288000` | 500 MiB upload metadata limit. |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Global rate limit window. |
 | `RATE_LIMIT_MAX_REQUESTS` | `300` | Global rate limit max requests. |

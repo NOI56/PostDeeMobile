@@ -463,20 +463,31 @@ void main() {
     String? uploadedFilePath;
     AiEditPrepareRequest? prepareRequest;
     BurnSubtitleRequest? renderRequest;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
 
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
           pickVideo: () async => pickedVideo,
           createUpload: (request) async {
+            createUploadCalls += 1;
             createdUploadRequest = request;
-            return const UploadResult(
-              id: 'editor-upload-1',
-              videoS3Key: 'uploads/editor-real.mp4',
+            return UploadResult(
+              id: 'editor-upload-$createUploadCalls',
+              videoS3Key: 'uploads/editor-real-$createUploadCalls.mp4',
               storageProvider: 's3',
             );
           },
           uploadVideoFile: (_, file) async {
+            uploadCalls += 1;
+            if (uploadCalls == 1) {
+              throw const ApiException(
+                'Upload URL expired',
+                statusCode: HttpStatus.forbidden,
+                code: 'UPLOAD_URL_EXPIRED',
+              );
+            }
             uploadedFilePath = file.path;
           },
           prepareEdit: (request) async {
@@ -504,7 +515,9 @@ void main() {
     expect(createdUploadRequest?.width, 1080);
     expect(createdUploadRequest?.height, 1920);
     expect(uploadedFilePath, pickedVideo.path);
-    expect(prepareRequest?.videoS3Key, 'uploads/editor-real.mp4');
+    expect(createUploadCalls, 2);
+    expect(uploadCalls, 2);
+    expect(prepareRequest?.videoS3Key, 'uploads/editor-real-2.mp4');
     expect(renderRequest?.inputFile.path, pickedVideo.path);
     expect(find.byType(CapCutEditorScreen), findsNothing);
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);

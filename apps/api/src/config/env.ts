@@ -389,7 +389,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     cloudflareR2UploadExpiresSeconds: readPositiveInteger(
       env,
       'CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS',
-      900
+      300
     ),
     uploadMaxSizeBytes: readPositiveInteger(env, 'UPLOAD_MAX_SIZE_BYTES', 500 * 1024 * 1024),
     rateLimitWindowMs: readPositiveInteger(env, 'RATE_LIMIT_WINDOW_MS', 60_000),

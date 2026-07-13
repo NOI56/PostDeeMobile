@@ -577,7 +577,7 @@ Queue/storage scaffold switches:
 - `VIDEO_STORAGE=mock` creates mock S3-style upload keys and mock read placeholders; `VIDEO_STORAGE=r2` uses Cloudflare R2 through the S3-compatible API for signed upload and signed download access; `VIDEO_STORAGE=s3` remains available as a legacy AWS S3 path.
 - `CLOUDFLARE_R2_BUCKET`, `CLOUDFLARE_R2_ACCOUNT_ID`, `CLOUDFLARE_R2_ACCESS_KEY_ID`, and `CLOUDFLARE_R2_SECRET_ACCESS_KEY` configure R2 uploads.
 - `CLOUDFLARE_R2_ENDPOINT` can override the default `https://<accountId>.r2.cloudflarestorage.com` endpoint when needed.
-- `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS=900` controls how long R2 signed upload URLs remain usable.
+- `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS=300` keeps R2 signed upload URLs usable for five minutes. The mobile client checks the expiry and requests one fresh URL when R2 explicitly reports that the first URL expired.
 - `UPLOAD_MAX_SIZE_BYTES=524288000` controls the maximum declared upload size accepted by `POST /uploads`.
 - `RATE_LIMIT_WINDOW_MS=60000` and `RATE_LIMIT_MAX_REQUESTS=300` cap requests per IP per window; exceeding the cap returns `429` with code `RATE_LIMITED` (`GET /health` is exempt). Auth, upload, AI, and social-connection routes also have tighter fixed per-IP buckets.
 - `AWS_S3_UPLOAD_EXPIRES_SECONDS=900` controls how long legacy S3 signed upload URLs remain usable.

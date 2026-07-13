@@ -279,6 +279,14 @@ Rules:
 - Pro is limited to 250 post units per month.
 - Post units count by selected platform, not post row.
 - Upload metadata is capped by `UPLOAD_MAX_SIZE_BYTES`; R2 signed uploads also sign the declared content length and content type.
+- R2 signed upload URLs default to five minutes. Mobile rejects a URL within
+  30 seconds of expiry and requests one fresh URL only after an explicit expiry
+  response, without retrying ambiguous network failures that could duplicate an
+  object.
+- A single-part presigned `PUT` remains a bearer URL that cannot be revoked
+  individually. Account deletion sweeps the owner prefix, but a URL reused
+  before expiry can recreate an orphan afterward; managed multipart sessions
+  with server-side completion/abort are the long-term closure for this race.
 - Every route except `GET /health` sits behind a global per-IP rate limit (`RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS`); auth, upload, AI, and social-connection routes add tighter fixed per-IP buckets.
 - Starter unlocks real-clip AI captioning from audio.
 - Pro unlocks analytics, hashtag radar, AI comment center, team/editor access,

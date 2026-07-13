@@ -610,8 +610,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       var upload = _uploadedVideo;
       if (upload == null) {
         final createUpload = widget.createUpload ?? _apiClient.createUpload;
-        upload = await createUpload(
-          CreateUploadRequest(
+        final uploadVideoFile =
+            widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
+        upload = await createAndUploadFileWithRetry(
+          request: CreateUploadRequest(
             fileName: fileName,
             contentType: 'video/mp4',
             sizeBytes:
@@ -619,10 +621,17 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             width: picked.width,
             height: picked.height,
           ),
+          file: file,
+          createUpload: createUpload,
+          uploadFile: uploadVideoFile,
+          onRetry: () {
+            if (mounted) {
+              setState(() {
+                _processingTitle = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+              });
+            }
+          },
         );
-        final uploadVideoFile =
-            widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-        await uploadVideoFile(upload, file);
 
         if (!mounted) {
           return;

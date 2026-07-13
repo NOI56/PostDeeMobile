@@ -98,6 +98,10 @@ connected, supported destinations to be selected. A successful `POST /posts`
 response means the post was accepted as `QUEUED` (or scheduled); the mobile UI
 must describe that state as queued, not as proof that every platform has already
 published it. Final platform success or failure comes from the publish worker.
+Signed R2 upload URLs are checked with a 30-second safety margin. When R2
+explicitly reports expiry, the app requests one fresh URL and retries the file
+once; unrelated or ambiguous failures are not retried to avoid duplicate
+objects or posts.
 
 ## Profile Draft
 

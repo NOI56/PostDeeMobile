@@ -46,6 +46,10 @@ services:
         sync: false
       - key: CLOUDFLARE_R2_ENDPOINT
         sync: false
+      # Keep direct-to-R2 bearer upload URLs short-lived. The mobile app retries
+      # once with a fresh URL when R2 reports that the first URL expired.
+      - key: CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS
+        value: "300"
       # --- AI caption: Gemini (listens to clip; Pro also sees frames) ---
       - key: CAPTION_PROVIDER
         value: gemini

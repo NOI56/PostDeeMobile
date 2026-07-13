@@ -678,6 +678,48 @@ class UploadResult {
   }
 }
 
+const _uploadUrlExpirySafetyMargin = Duration(seconds: 30);
+const _uploadUrlExpiredCode = 'UPLOAD_URL_EXPIRED';
+
+typedef UploadCreator = Future<UploadResult> Function(
+  CreateUploadRequest request,
+);
+typedef UploadFileSender = Future<void> Function(
+  UploadResult upload,
+  File file,
+);
+
+/// Creates a signed upload and retries once with a fresh URL only when R2 says
+/// that the first URL expired. Other failures are surfaced without retrying so
+/// a lost success response cannot create duplicate uploaded objects.
+Future<UploadResult> createAndUploadFileWithRetry({
+  required CreateUploadRequest request,
+  required File file,
+  required UploadCreator createUpload,
+  required UploadFileSender uploadFile,
+  void Function()? onRetry,
+}) async {
+  for (var attempt = 0; attempt < 2; attempt += 1) {
+    final upload = await createUpload(request);
+
+    try {
+      await uploadFile(upload, file);
+      return upload;
+    } on ApiException catch (error) {
+      if (error.code != _uploadUrlExpiredCode || attempt > 0) {
+        rethrow;
+      }
+
+      onRetry?.call();
+    }
+  }
+
+  throw const ApiException(
+    'ลิงก์อัปโหลดหมดอายุ กรุณาลองอีกครั้ง',
+    code: _uploadUrlExpiredCode,
+  );
+}
+
 class CreatePostRequest {
   const CreatePostRequest({
     required this.caption,
@@ -1659,6 +1701,18 @@ class PostDeeApiClient {
       throw ApiException('Unsupported upload method: ${upload.uploadMethod}');
     }
 
+    final expiresAt = upload.uploadExpiresAt?.toUtc();
+    if (expiresAt != null &&
+        !expiresAt.isAfter(
+          DateTime.now().toUtc().add(_uploadUrlExpirySafetyMargin),
+        )) {
+      throw const ApiException(
+        'ลิงก์อัปโหลดหมดอายุ กรุณาลองอีกครั้ง',
+        statusCode: HttpStatus.forbidden,
+        code: _uploadUrlExpiredCode,
+      );
+    }
+
     final request = await _httpClient.putUrl(Uri.parse(upload.uploadUrl!));
 
     for (final header in upload.uploadHeaders.entries) {
@@ -1672,9 +1726,20 @@ class PostDeeApiClient {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final responseBody = await response.transform(utf8.decoder).join();
+      final normalizedBody = responseBody.toLowerCase();
+      final isExpired = (response.statusCode == HttpStatus.badRequest ||
+              response.statusCode == HttpStatus.forbidden) &&
+          (normalizedBody.contains('expiredrequest') ||
+              normalizedBody.contains('requestexpired') ||
+              normalizedBody.contains('request has expired') ||
+              normalizedBody.contains('expiredtoken'));
+
       throw ApiException(
-        responseBody.isEmpty ? 'Video upload failed' : responseBody,
+        isExpired
+            ? 'ลิงก์อัปโหลดหมดอายุ กรุณาลองอีกครั้ง'
+            : (responseBody.isEmpty ? 'Video upload failed' : responseBody),
         statusCode: response.statusCode,
+        code: isExpired ? _uploadUrlExpiredCode : null,
       );
     }
   }

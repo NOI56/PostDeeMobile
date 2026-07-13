@@ -1079,6 +1079,9 @@ void main() {
       'uses quick day chips and custom time control for scheduled posts',
       (tester) async {
     CreatePostRequest? createdPostRequest;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
+    var createPostCalls = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -1098,13 +1101,26 @@ void main() {
               canUseAiCaptions: true,
               canUseAnalytics: false,
             ),
-            createUpload: (_) async => const UploadResult(
-              id: 'upload-1',
-              videoS3Key: 'uploads/quick-scheduled.mp4',
-              storageProvider: 'mock',
-            ),
-            uploadVideoFile: (_, __) async {},
+            createUpload: (_) async {
+              createUploadCalls += 1;
+              return UploadResult(
+                id: 'upload-$createUploadCalls',
+                videoS3Key: 'uploads/quick-scheduled-$createUploadCalls.mp4',
+                storageProvider: 'mock',
+              );
+            },
+            uploadVideoFile: (_, __) async {
+              uploadCalls += 1;
+              if (uploadCalls == 1) {
+                throw const ApiException(
+                  'Upload URL expired',
+                  statusCode: HttpStatus.forbidden,
+                  code: 'UPLOAD_URL_EXPIRED',
+                );
+              }
+            },
             createPost: (request) async {
+              createPostCalls += 1;
               createdPostRequest = request;
 
               return QueuedPostResult(
@@ -1152,6 +1168,10 @@ void main() {
     expect(createdPostRequest?.scheduledAt, isNotNull);
     expect(createdPostRequest?.scheduledAt?.toLocal().hour, 18);
     expect(createdPostRequest?.scheduledAt?.toLocal().minute, 30);
+    expect(createdPostRequest?.videoS3Key, 'uploads/quick-scheduled-2.mp4');
+    expect(createUploadCalls, 2);
+    expect(uploadCalls, 2);
+    expect(createPostCalls, 1);
   });
 
   testWidgets('notifies when a Starter scheduled post is created successfully',

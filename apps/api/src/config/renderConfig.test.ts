@@ -45,6 +45,12 @@ describe('render.yaml production config', () => {
     expect(source).not.toContain('POSTPEER_FACEBOOK_ACCOUNT_ID');
   });
 
+  it('limits production R2 signed upload URLs to five minutes', async () => {
+    const source = await readRenderConfig();
+
+    expectEnvValue(source, 'CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS', '"300"');
+  });
+
   it('keeps one web instance while the deploy uses the in-process memory queue', async () => {
     const source = await readRenderConfig();
 

@@ -19,7 +19,7 @@ describe('readServerConfig', () => {
       cloudflareR2AccessKeyId: undefined,
       cloudflareR2SecretAccessKey: undefined,
       cloudflareR2Endpoint: undefined,
-      cloudflareR2UploadExpiresSeconds: 900,
+      cloudflareR2UploadExpiresSeconds: 300,
       uploadMaxSizeBytes: 524_288_000,
       rateLimitWindowMs: 60_000,
       rateLimitMaxRequests: 300,

@@ -347,6 +347,28 @@ void main() {
     expect(deletionCalls, ['ready', 'revoke', 'delete']);
     // Back on the login gate after the account is removed.
     expect(find.text('Sign in to PostDee'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('postdee-undo-toast')),
+      findsOneWidget,
+    );
+    final toastRect = tester.getRect(
+      find.byKey(const ValueKey('postdee-undo-toast')),
+    );
+    final viewSize = tester.view.physicalSize / tester.view.devicePixelRatio;
+    expect(toastRect.width, greaterThan(0));
+    expect(toastRect.height, greaterThan(0));
+    expect(toastRect.left, greaterThanOrEqualTo(0));
+    expect(toastRect.top, greaterThanOrEqualTo(0));
+    expect(toastRect.right, lessThanOrEqualTo(viewSize.width));
+    expect(toastRect.bottom, lessThanOrEqualTo(viewSize.height));
+    final toast = tester.widget<SnackBar>(
+      find.byKey(const ValueKey('postdee-undo-toast')),
+    );
+    expect(toast.behavior, SnackBarBehavior.floating);
+    expect(toast.action, isNull);
+    expect(find.text('ลบบัญชีและออกจากระบบแล้ว'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+    expect(find.text('เลิกทำ'), findsNothing);
   });
 
   testWidgets('retries deletion without revoking Apple when identity is gone',

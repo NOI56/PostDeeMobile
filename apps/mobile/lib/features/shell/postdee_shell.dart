@@ -26,6 +26,7 @@ import '../notifications/notifications_screen.dart';
 import '../notifications/push_messaging_gateway.dart';
 import '../onboarding/onboarding_flow.dart';
 import '../profile/profile_screen.dart';
+import '../shared/postdee_undo_toast.dart';
 import '../templates/templates_screen.dart';
 import '../uploader/uploader_screen.dart';
 import '../uploader/video_picker_service.dart';
@@ -261,8 +262,19 @@ class _PostDeeShellState extends State<PostDeeShell> {
       } catch (_) {
         // The controller always clears the local session in a finally block.
       }
-      messenger.showSnackBar(
-        const SnackBar(content: Text('ลบบัญชีและออกจากระบบแล้ว')),
+      if (!mounted) {
+        return;
+      }
+      // The auth change swaps the signed-in Scaffold for the login Scaffold.
+      // Wait until that frame is mounted so the success toast attaches to the
+      // screen the user actually lands on instead of the Scaffold being removed.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) {
+        return;
+      }
+      showPostDeeUndoToast(
+        context,
+        message: 'ลบบัญชีและออกจากระบบแล้ว',
       );
     } on AccountAccessRevocationException catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(error.message)));

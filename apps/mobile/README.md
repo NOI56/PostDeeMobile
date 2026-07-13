@@ -90,3 +90,11 @@ The current RevenueCat SDK key is a Test Store key, so do not submit an App
 Store or Google Play release with this local file. Production still needs real
 Apple App Store / Google Play subscription products, RevenueCat offerings,
 sandbox/device purchase testing, and renewal/cancel/refund webhook verification.
+
+## Publishing Status
+
+The uploader loads the authenticated user's social connections and only allows
+connected, supported destinations to be selected. A successful `POST /posts`
+response means the post was accepted as `QUEUED` (or scheduled); the mobile UI
+must describe that state as queued, not as proof that every platform has already
+published it. Final platform success or failure comes from the publish worker.

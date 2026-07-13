@@ -429,6 +429,13 @@ void main() {
         supportedLocales: PostDeeLocalizations.supportedLocales,
         home: PostDeeShell(
           languageController: languageController,
+          loadSocialConnections: () async => const [
+            SocialConnectionResult(platform: 'TIKTOK', connected: true),
+            SocialConnectionResult(
+              platform: 'YOUTUBE_SHORTS',
+              connected: true,
+            ),
+          ],
           loadSubscription: () async => const SubscriptionStatusResult(
             userId: 'seller-pro',
             plan: 'PRO',
@@ -519,6 +526,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(createdPostRequest?.scheduledAt, isNotNull);
+    expect(find.text('จัดคิวตั้งเวลาแล้ว'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('publish-flow-finish')));
+    await tester.pumpAndSettle();
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pumpAndSettle();
+
     expect(calendarLoadCount, greaterThanOrEqualTo(2));
     expect(find.text('Scheduled shell clip'), findsOneWidget);
   });

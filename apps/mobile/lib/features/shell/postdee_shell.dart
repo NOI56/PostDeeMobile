@@ -43,6 +43,7 @@ class PostDeeShell extends StatefulWidget {
     this.createUpload,
     this.uploadVideoFile,
     this.createPost,
+    this.loadSocialConnections,
     this.deleteAccount,
     this.pushMessagingGateway,
   });
@@ -56,6 +57,7 @@ class PostDeeShell extends StatefulWidget {
   final UploaderUploadCreator? createUpload;
   final UploaderVideoUploader? uploadVideoFile;
   final UploaderPostCreator? createPost;
+  final UploaderConnectionsLoader? loadSocialConnections;
   final AccountDeleter? deleteAccount;
   final PushMessagingGateway? pushMessagingGateway;
 
@@ -135,7 +137,10 @@ class _PostDeeShellState extends State<PostDeeShell> {
           createUpload: widget.createUpload,
           uploadVideoFile: widget.uploadVideoFile,
           createPost: widget.createPost,
+          loadSocialConnections: widget.loadSocialConnections,
           onScheduledPostCreated: _handleScheduledPostCreated,
+          onPublishFinished: () => _selectTab(0),
+          onViewAnalytics: () => _selectTab(4),
         ),
         CalendarScreen(
           refreshToken: _calendarRefreshToken,

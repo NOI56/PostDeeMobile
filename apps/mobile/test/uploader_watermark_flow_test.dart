@@ -8,6 +8,12 @@ import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:postdee_mobile/features/uploader/watermark_video_processor.dart';
 
+Future<List<SocialConnectionResult>> _loadConnectedSocialConnections() async =>
+    const [
+      SocialConnectionResult(platform: 'TIKTOK', connected: true),
+      SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: true),
+    ];
+
 Future<void> _pumpUntilFound(
   WidgetTester tester,
   Finder finder, {
@@ -71,6 +77,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             growthToolSettingsStore: _EnabledWatermarkSettingsStore(
               onLoad: (toolId) => loadedToolId = toolId,
             ),

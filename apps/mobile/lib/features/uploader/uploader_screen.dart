@@ -13,7 +13,9 @@ import '../shared/growth_tool_detail_sheet.dart';
 import '../shared/growth_tool_settings_store.dart';
 import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
+import '../shared/postdee_status_sheet.dart';
 import 'clip_frame_extractor.dart';
+import 'publish_flow_screen.dart';
 import 'publish_review_screen.dart';
 import 'video_picker_service.dart';
 import 'watermark_video_processor.dart';
@@ -34,6 +36,8 @@ typedef UploaderVideoUploader = Future<void> Function(
 typedef UploaderPostCreator = Future<QueuedPostResult> Function(
     CreatePostRequest request);
 typedef UploaderScheduledPostCreated = void Function(QueuedPostResult post);
+typedef UploaderConnectionsLoader = Future<List<SocialConnectionResult>>
+    Function();
 
 class UploaderScreen extends StatefulWidget {
   const UploaderScreen({
@@ -46,7 +50,10 @@ class UploaderScreen extends StatefulWidget {
     this.createUpload,
     this.uploadVideoFile,
     this.createPost,
+    this.loadSocialConnections,
     this.onScheduledPostCreated,
+    this.onPublishFinished,
+    this.onViewAnalytics,
     this.analytics,
     this.watermarkVideo,
     this.now = DateTime.now,
@@ -68,7 +75,10 @@ class UploaderScreen extends StatefulWidget {
   final UploaderUploadCreator? createUpload;
   final UploaderVideoUploader? uploadVideoFile;
   final UploaderPostCreator? createPost;
+  final UploaderConnectionsLoader? loadSocialConnections;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
+  final VoidCallback? onPublishFinished;
+  final VoidCallback? onViewAnalytics;
   final PostDeeAnalytics? analytics;
   final UploaderWatermarkVideoProcessor? watermarkVideo;
 
@@ -107,25 +117,95 @@ class _UploaderScreenState extends State<UploaderScreen> {
   final _aiGuidanceController = TextEditingController();
   DateTime? _selectedScheduleDate;
   TimeOfDay? _selectedScheduleTime;
-  final Set<SocialPlatform> _selectedPlatforms = {
-    SocialPlatform.tiktok,
-    SocialPlatform.youtubeShorts,
-  };
+  final Set<SocialPlatform> _selectedPlatforms = {};
+  final Set<SocialPlatform> _connectedPlatforms = {};
   final List<TextTemplateResult> _templates = [];
   bool _isSubmitting = false;
   bool _isLoadingTemplates = false;
   bool _isGeneratingCaption = false;
   bool _isAdvancedModeEnabled = true;
+  bool _isLoadingConnections = true;
+  String? _connectionsErrorMessage;
   String? _successMessage;
   String? _errorMessage;
   String? _templateErrorMessage;
   String? _aiCaptionErrorMessage;
   String? _selectedVideoName;
+  PostDeeStatusSheetData? _pendingStatusSheet;
+  bool _pickVideoAfterStatus = false;
+  String? _pendingInlineError;
 
   @override
   void initState() {
     super.initState();
     _prefillInitialVideo();
+    unawaited(_loadConnections());
+  }
+
+  Future<void> _loadConnections() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingConnections = true;
+        _connectionsErrorMessage = null;
+      });
+    }
+
+    try {
+      final loader =
+          widget.loadSocialConnections ?? _apiClient.listSocialConnections;
+      final results = await loader();
+      if (!mounted) return;
+
+      final connected = results
+          .where((result) => result.connected)
+          .map((result) => _platformFromApiValue(result.platform))
+          .whereType<SocialPlatform>()
+          .toSet();
+
+      setState(() {
+        _connectedPlatforms
+          ..clear()
+          ..addAll(connected);
+        _selectedPlatforms.removeWhere(
+          (platform) => !_connectedPlatforms.contains(platform),
+        );
+        if (_selectedPlatforms.isEmpty) {
+          _selectedPlatforms.addAll(_connectedPlatforms.take(2));
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _connectedPlatforms.clear();
+        _selectedPlatforms.clear();
+        _connectionsErrorMessage =
+            'ตรวจสอบช่องทางที่เชื่อมต่อไม่สำเร็จ ลองใหม่อีกครั้ง';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingConnections = false);
+      }
+    }
+  }
+
+  SocialPlatform? _platformFromApiValue(String apiValue) {
+    for (final platform in SocialPlatform.values) {
+      if (platform.apiValue == apiValue.toUpperCase()) {
+        return platform;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openConnections() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => const ConnectionsScreen(),
+      ),
+    );
+    if (mounted) {
+      await _loadConnections();
+    }
   }
 
   /// Loads an injected clip (e.g. the rendered output handed over from the
@@ -682,6 +762,44 @@ class _UploaderScreenState extends State<UploaderScreen> {
   /// no clip is selected yet, skip straight to [_createPost] so its validation
   /// message shows instead of reviewing an empty post.
   Future<void> _reviewThenPost() async {
+    if (_isLoadingConnections) {
+      setState(() {
+        _errorMessage = 'กำลังตรวจสอบช่องทางที่เชื่อมต่อ กรุณารอสักครู่';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    if (_selectedPlatforms.isEmpty) {
+      final hasConnectionError = _connectionsErrorMessage != null;
+      final shouldContinue = await showPostDeeStatusSheet(
+        context,
+        data: PostDeeStatusSheetData(
+          icon: hasConnectionError
+              ? Icons.cloud_off_rounded
+              : Icons.link_off_rounded,
+          iconColor: const Color(0xFFF59E0B),
+          iconTint: const Color(0x24F59E0B),
+          title: hasConnectionError
+              ? 'ตรวจสอบช่องทางไม่ได้'
+              : 'ยังไม่ได้เชื่อมช่องทาง',
+          body: _connectionsErrorMessage ??
+              'ต้องเชื่อมอย่างน้อย 1 ช่องทางก่อนจึงจะเริ่มโพสต์ได้',
+          primaryLabel: hasConnectionError ? 'ลองใหม่' : 'ไปเชื่อมช่องทาง',
+          secondaryLabel: 'ไว้ก่อน',
+        ),
+      );
+
+      if (shouldContinue == true && mounted) {
+        if (hasConnectionError) {
+          await _loadConnections();
+        } else {
+          await _openConnections();
+        }
+      }
+      return;
+    }
+
     final selectedVideoName = (_selectedVideoName ?? '').trim();
 
     if (selectedVideoName.isEmpty) {
@@ -715,12 +833,41 @@ class _UploaderScreenState extends State<UploaderScreen> {
       ),
     );
 
-    if (confirmed == true && mounted) {
-      await _createPost();
+    if (confirmed != true || !mounted) return;
+
+    final selectedPlatforms =
+        SocialPlatform.values.where(_selectedPlatforms.contains).toList();
+    final action = await Navigator.of(context).push<PublishFlowAction>(
+      MaterialPageRoute<PublishFlowAction>(
+        builder: (context) => PublishFlowScreen(
+          platforms: selectedPlatforms,
+          isScheduled: _readScheduledAt() != null,
+          publish: _createPost,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (action == null && _pendingStatusSheet != null) {
+      await _showPendingStatus();
+      return;
+    }
+
+    switch (action) {
+      case PublishFlowAction.finish:
+        widget.onPublishFinished?.call();
+      case PublishFlowAction.analytics:
+        widget.onViewAnalytics?.call();
+      case null:
+        break;
     }
   }
 
-  Future<void> _createPost() async {
+  Future<QueuedPostResult?> _createPost() async {
+    _pendingStatusSheet = null;
+    _pickVideoAfterStatus = false;
+    _pendingInlineError = null;
     final caption = _captionController.text.trim();
     final localFilePath = _localFilePathController.text.trim();
     final localVideoFile = localFilePath.isEmpty ? null : File(localFilePath);
@@ -739,7 +886,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = 'เลือกวิดีโอจริงจากเครื่องก่อนโพสต์';
         _successMessage = null;
       });
-      return;
+      return null;
     }
 
     if (!localVideoFile.existsSync()) {
@@ -747,7 +894,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = 'ไม่พบไฟล์วิดีโอในเครื่อง';
         _successMessage = null;
       });
-      return;
+      return null;
     }
 
     sizeBytes ??= localVideoFile.lengthSync();
@@ -757,7 +904,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = 'เพิ่มแคปชั่นก่อนโพสต์';
         _successMessage = null;
       });
-      return;
+      return null;
     }
 
     if (fileName.isEmpty) {
@@ -765,7 +912,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = 'ไฟล์วิดีโอไม่ถูกต้อง เลือกคลิปใหม่อีกครั้ง';
         _successMessage = null;
       });
-      return;
+      return null;
     }
 
     if (_scheduledAtController.text.trim().isNotEmpty && scheduledAt == null) {
@@ -773,7 +920,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = 'เวลาตั้งโพสต์ต้องเป็นรูปแบบ ISO ที่ถูกต้อง';
         _successMessage = null;
       });
-      return;
+      return null;
     }
 
     if (scheduledAt != null && !scheduledAt.isAfter(widget.now())) {
@@ -781,17 +928,28 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = 'เวลาตั้งโพสต์ต้องเป็นเวลาในอนาคต';
         _successMessage = null;
       });
-      return;
+      return null;
     }
 
     if (width != null &&
         height != null &&
         !_isVerticalNineBySixteen(width: width, height: height)) {
       setState(() {
-        _errorMessage = 'ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920';
+        _errorMessage = null;
         _successMessage = null;
       });
-      return;
+      _pendingInlineError = 'ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920';
+      _pendingStatusSheet = const PostDeeStatusSheetData(
+        icon: Icons.crop_portrait_rounded,
+        iconColor: Color(0xFFEC4899),
+        iconTint: Color(0x24EC4899),
+        title: 'สัดส่วนวิดีโอไม่ใช่ 9:16',
+        body: 'ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920',
+        primaryLabel: 'เลือกวิดีโอใหม่',
+        secondaryLabel: 'ปิด',
+      );
+      _pickVideoAfterStatus = true;
+      return null;
     }
 
     setState(() {
@@ -806,26 +964,26 @@ class _UploaderScreenState extends State<UploaderScreen> {
       if (scheduledAt != null) {
         if (!subscription.canSchedule) {
           if (!mounted) {
-            return;
+            return null;
           }
 
           setState(() {
             _errorMessage =
                 'การตั้งเวลาโพสต์ต้องใช้แพ็กเกจ Starter 199 หรือ Pro 299';
           });
-          return;
+          return null;
         }
       }
 
       if (subscription.requiresPhoneVerification) {
         if (!mounted) {
-          return;
+          return null;
         }
 
         setState(() {
           _errorMessage = 'ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 ครั้งต่อเดือน';
         });
-        return;
+        return null;
       }
 
       var uploadVideoFileForRequest = localVideoFile;
@@ -841,7 +999,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
       if (shouldApplyWatermark) {
         if (!mounted) {
-          return;
+          return null;
         }
 
         setState(() {
@@ -889,7 +1047,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       ));
 
       if (!mounted) {
-        return;
+        return null;
       }
 
       if (scheduledAt != null) {
@@ -901,43 +1059,52 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _successMessage =
             '$watermarkTextจัดคิวโพสต์ ${post.platforms.length} แพลตฟอร์มแล้ว: ${post.id}';
       });
+      return post;
     } on WatermarkVideoException catch (error) {
       unawaited(_analytics.logPublishFailed(reason: 'watermark'));
       if (!mounted) {
-        return;
+        return null;
       }
 
       setState(() {
-        _errorMessage = error.message;
+        _errorMessage = null;
         _successMessage = null;
       });
+      _setUploadStatus(error.message);
+      return null;
     } on ApiException catch (error) {
       unawaited(_analytics.logPublishFailed(reason: 'api'));
       if (!mounted) {
-        return;
+        return null;
       }
 
       setState(() {
-        _errorMessage = error.message;
+        _errorMessage = null;
       });
+      _setUploadStatus(error.message);
+      return null;
     } on SocketException {
       unawaited(_analytics.logPublishFailed(reason: 'network'));
       if (!mounted) {
-        return;
+        return null;
       }
 
       setState(() {
-        _errorMessage = 'เชื่อมต่อ PostDee API ไม่ได้';
+        _errorMessage = null;
       });
+      _setUploadStatus('เชื่อมต่อ PostDee API ไม่ได้');
+      return null;
     } catch (error) {
       unawaited(_analytics.logPublishFailed(reason: 'unknown'));
       if (!mounted) {
-        return;
+        return null;
       }
 
       setState(() {
-        _errorMessage = 'เกิดข้อผิดพลาดระหว่างสร้างโพสต์';
+        _errorMessage = null;
       });
+      _setUploadStatus('เกิดข้อผิดพลาดระหว่างสร้างโพสต์');
+      return null;
     } finally {
       if (mounted) {
         setState(() {
@@ -947,9 +1114,41 @@ class _UploaderScreenState extends State<UploaderScreen> {
     }
   }
 
+  void _setUploadStatus(String message) {
+    _pendingInlineError = message;
+    _pendingStatusSheet = PostDeeStatusSheetData(
+      icon: Icons.cloud_off_rounded,
+      iconColor: const Color(0xFFEF4444),
+      iconTint: const Color(0x1FEF4444),
+      title: 'อัปโหลด/คิวโพสต์ขัดข้อง',
+      body: message,
+      primaryLabel: 'กลับไปตรวจสอบ',
+      secondaryLabel: null,
+    );
+    _pickVideoAfterStatus = false;
+  }
+
+  Future<void> _showPendingStatus() async {
+    final data = _pendingStatusSheet;
+    final shouldPickVideo = _pickVideoAfterStatus;
+    final inlineError = _pendingInlineError;
+    _pendingStatusSheet = null;
+    _pickVideoAfterStatus = false;
+    _pendingInlineError = null;
+    if (data == null || !mounted) return;
+
+    final confirmed = await showPostDeeStatusSheet(context, data: data);
+    if (mounted && inlineError != null) {
+      setState(() => _errorMessage = inlineError);
+    }
+    if (confirmed == true && shouldPickVideo && mounted) {
+      await _pickVideoFile();
+    }
+  }
+
   void _setPlatformSelected(SocialPlatform platform, bool isSelected) {
     setState(() {
-      if (isSelected) {
+      if (isSelected && _connectedPlatforms.contains(platform)) {
         _selectedPlatforms.add(platform);
       } else {
         _selectedPlatforms.remove(platform);
@@ -997,7 +1196,12 @@ class _UploaderScreenState extends State<UploaderScreen> {
               const SizedBox(height: AppTheme.spaceLg),
               _PlatformSelectorSection(
                 selectedPlatforms: _selectedPlatforms,
+                connectedPlatforms: _connectedPlatforms,
+                isLoadingConnections: _isLoadingConnections,
+                connectionsErrorMessage: _connectionsErrorMessage,
                 onPlatformChanged: _setPlatformSelected,
+                onOpenConnections: _openConnections,
+                onRetryConnections: _loadConnections,
               ),
               const SizedBox(height: AppTheme.spaceXl),
               const _UploadStepHeader(
@@ -1189,9 +1393,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
                 key: const ValueKey('uploader-sticky-post-button'),
                 label: _isSubmitting ? 'กำลังโพสต์...' : 'โพสต์',
                 icon: Icons.send_rounded,
-                onPressed: _selectedPlatforms.isEmpty || _isSubmitting
-                    ? null
-                    : _reviewThenPost,
+                onPressed: _isSubmitting ? null : _reviewThenPost,
               ),
             ],
           ),
@@ -1833,12 +2035,22 @@ class _DashedRRectBorderPainter extends CustomPainter {
 class _PlatformSelectorSection extends StatelessWidget {
   const _PlatformSelectorSection({
     required this.selectedPlatforms,
+    required this.connectedPlatforms,
+    required this.isLoadingConnections,
+    required this.connectionsErrorMessage,
     required this.onPlatformChanged,
+    required this.onOpenConnections,
+    required this.onRetryConnections,
   });
 
   final Set<SocialPlatform> selectedPlatforms;
+  final Set<SocialPlatform> connectedPlatforms;
+  final bool isLoadingConnections;
+  final String? connectionsErrorMessage;
   final void Function(SocialPlatform platform, bool isSelected)
       onPlatformChanged;
+  final VoidCallback onOpenConnections;
+  final VoidCallback onRetryConnections;
 
   // Short per-platform descriptions from the prototype's connection list.
   static const _subLabels = {
@@ -1852,6 +2064,11 @@ class _PlatformSelectorSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasConnectedPlatforms = connectedPlatforms.isNotEmpty;
+    final statusColor = hasConnectedPlatforms
+        ? AppTheme.accentCyanInk
+        : const Color(0xFFB5740B);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1880,27 +2097,33 @@ class _PlatformSelectorSection extends StatelessWidget {
         const SizedBox(height: 10),
         Semantics(
           button: true,
-          label: 'ยังไม่ได้เชื่อมต่อช่องทาง',
+          label: isLoadingConnections
+              ? 'กำลังตรวจสอบช่องทาง'
+              : connectedPlatforms.isEmpty
+                  ? 'ยังไม่ได้เชื่อมต่อช่องทาง'
+                  : 'เชื่อมต่อแล้ว ${connectedPlatforms.length} ช่องทาง',
           child: GestureDetector(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const ConnectionsScreen(),
-              ),
-            ),
+            onTap: connectionsErrorMessage != null
+                ? onRetryConnections
+                : onOpenConnections,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF59E0B).withValues(alpha: 0.10),
+                color: statusColor.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                  color: statusColor.withValues(alpha: 0.35),
                 ),
               ),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.link_off,
-                    color: Color(0xFFB5740B),
+                  Icon(
+                    isLoadingConnections
+                        ? Icons.sync_rounded
+                        : connectedPlatforms.isEmpty
+                            ? Icons.link_off_rounded
+                            : Icons.check_circle_outline_rounded,
+                    color: statusColor,
                     size: 22,
                   ),
                   const SizedBox(width: 11),
@@ -1909,23 +2132,34 @@ class _PlatformSelectorSection extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'ยังไม่ได้เชื่อมต่อช่องทาง',
+                          isLoadingConnections
+                              ? 'กำลังตรวจสอบช่องทาง...'
+                              : connectionsErrorMessage ??
+                                  (connectedPlatforms.isEmpty
+                                      ? 'ยังไม่ได้เชื่อมต่อช่องทาง'
+                                      : 'เชื่อมต่อแล้ว ${connectedPlatforms.length} ช่องทาง'),
                           style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
-                            color: AppTheme.isLightMode
-                                ? const Color(0xFF8A5908)
-                                : const Color(0xFFF3C173),
+                            color: hasConnectedPlatforms
+                                ? AppTheme.accentCyanInk
+                                : AppTheme.isLightMode
+                                    ? const Color(0xFF8A5908)
+                                    : const Color(0xFFF3C173),
                           ),
                         ),
                         const SizedBox(height: 1),
                         Text(
-                          'เชื่อมต่อบัญชีโซเชียลก่อนเริ่มโพสต์',
+                          connectedPlatforms.isEmpty
+                              ? 'เชื่อมต่อบัญชีโซเชียลก่อนเริ่มโพสต์'
+                              : 'เลือกเฉพาะช่องทางที่ต้องการโพสต์รอบนี้',
                           style: TextStyle(
                             fontSize: 11,
-                            color: AppTheme.isLightMode
-                                ? const Color(0xFFA06A12)
-                                : const Color(0xFFD9AC5E),
+                            color: hasConnectedPlatforms
+                                ? AppTheme.textSecondary
+                                : AppTheme.isLightMode
+                                    ? const Color(0xFFA06A12)
+                                    : const Color(0xFFD9AC5E),
                           ),
                         ),
                       ],
@@ -1964,10 +2198,25 @@ class _PlatformSelectorSection extends StatelessWidget {
                 if (index > 0) Divider(height: 1, color: AppTheme.borderSoft),
                 _PlatformRow(
                   platform: SocialPlatform.values[index],
-                  subLabel: _subLabels[SocialPlatform.values[index]] ?? '',
+                  subLabel: connectedPlatforms.contains(
+                    SocialPlatform.values[index],
+                  )
+                      ? _subLabels[SocialPlatform.values[index]] ?? ''
+                      : connectablePlatforms.contains(
+                          SocialPlatform.values[index],
+                        )
+                          ? 'ยังไม่ได้เชื่อมต่อ'
+                          : 'ยังไม่รองรับการเชื่อมต่อ',
+                  isConnected: connectedPlatforms.contains(
+                    SocialPlatform.values[index],
+                  ),
+                  isConnectable: connectablePlatforms.contains(
+                    SocialPlatform.values[index],
+                  ),
                   isSelected: selectedPlatforms.contains(
                     SocialPlatform.values[index],
                   ),
+                  onConnect: onOpenConnections,
                   onChanged: (next) => onPlatformChanged(
                     SocialPlatform.values[index],
                     next,
@@ -1986,13 +2235,19 @@ class _PlatformRow extends StatelessWidget {
   const _PlatformRow({
     required this.platform,
     required this.subLabel,
+    required this.isConnected,
+    required this.isConnectable,
     required this.isSelected,
+    required this.onConnect,
     required this.onChanged,
   });
 
   final SocialPlatform platform;
   final String subLabel;
+  final bool isConnected;
+  final bool isConnectable;
   final bool isSelected;
+  final VoidCallback onConnect;
   final ValueChanged<bool> onChanged;
 
   @override
@@ -2000,15 +2255,19 @@ class _PlatformRow extends StatelessWidget {
     return Semantics(
       label: platform.label,
       button: true,
+      enabled: isConnected,
       selected: isSelected,
       child: InkWell(
         key: ValueKey('uploader-platform-${platform.apiValue}'),
-        onTap: () => onChanged(!isSelected),
+        onTap: isConnected ? () => onChanged(!isSelected) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              SocialPlatformLogo(platform: platform, size: 36),
+              Opacity(
+                opacity: isConnectable ? 1 : 0.5,
+                child: SocialPlatformLogo(platform: platform, size: 36),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -2019,7 +2278,9 @@ class _PlatformRow extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
+                        color: isConnectable
+                            ? AppTheme.textPrimary
+                            : AppTheme.textMuted,
                       ),
                     ),
                     const SizedBox(height: 1),
@@ -2036,9 +2297,45 @@ class _PlatformRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              ExcludeSemantics(
-                child: _PrototypeSwitch(isOn: isSelected),
-              ),
+              if (!isConnectable)
+                Container(
+                  key: ValueKey('uploader-soon-${platform.apiValue}'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.glassDeep,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'เร็ว ๆ นี้',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                )
+              else if (!isConnected)
+                TextButton(
+                  key: ValueKey('uploader-connect-${platform.apiValue}'),
+                  onPressed: onConnect,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.accentCyanInk,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(44, 44),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'เชื่อมต่อ',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                )
+              else
+                ExcludeSemantics(
+                  child: _PrototypeSwitch(isOn: isSelected),
+                ),
             ],
           ),
         ),

@@ -64,6 +64,14 @@ PickedVideoFile _createPickedVideoFixture(
   );
 }
 
+Future<List<SocialConnectionResult>> _loadConnectedSocialConnections() async =>
+    const [
+      SocialConnectionResult(platform: 'TIKTOK', connected: true),
+      SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: true),
+      SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+      SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+    ];
+
 Future<void> _pickVideoFromPreview(WidgetTester tester) async {
   final pickVideoButton =
       find.byKey(const ValueKey('uploader-video-preview-picker'));
@@ -107,6 +115,54 @@ void main() {
   });
 
   final uploaderScroll = find.byType(Scrollable).first;
+
+  testWidgets('allows selecting only platforms connected by the real status',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: () async => const [
+              SocialConnectionResult(platform: 'TIKTOK', connected: false),
+              SocialConnectionResult(
+                platform: 'YOUTUBE_SHORTS',
+                connected: false,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('uploader-platform-TIKTOK')),
+      400,
+      scrollable: uploaderScroll,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('uploader-connect-TIKTOK')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('uploader-soon-SHOPEE_VIDEO')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('uploader-soon-LAZADA_VIDEO')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('uploader-platform-TIKTOK')));
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('ยังไม่ได้เชื่อมช่องทาง'), findsOneWidget);
+  });
 
   RealClipCaptionResult buildRealClipCaptionResult({
     String caption = 'Generated SEO caption',
@@ -374,6 +430,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'seller-pro',
               plan: 'PRO',
@@ -446,6 +503,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => const PickedVideoFile(
               name: 'real-demo.mp4',
               path: r'C:\videos\real-demo.mp4',
@@ -516,6 +574,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             loadTemplates: () => loadCompleter.future,
           ),
         ),
@@ -577,6 +636,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => pickedVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'starter-user',
@@ -668,6 +728,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => pickedVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'pro-user',
@@ -738,6 +799,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => pickedVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'starter-user',
@@ -845,6 +907,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'starter-user',
               plan: 'STARTER',
@@ -893,6 +956,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => const PickedVideoFile(
               name: 'real-demo.mp4',
               path: r'C:\videos\real-demo.mp4',
@@ -950,6 +1014,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async =>
                 _createPickedVideoFixture('basic-scheduled.mp4'),
             loadSubscription: () async {
@@ -1019,6 +1084,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async =>
                 _createPickedVideoFixture('quick-scheduled.mp4'),
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1097,6 +1163,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async =>
                 _createPickedVideoFixture('starter-scheduled.mp4'),
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1162,6 +1229,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             // Pin "now" far in the future so the default tomorrow 18:30 schedule
             // counts as being in the past at submit time.
             now: () => DateTime(2100),
@@ -1233,6 +1301,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             analytics: analytics,
             pickVideo: () async => pickedVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1302,6 +1371,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             loadSubscription: () async {
               subscriptionChecks += 1;
 
@@ -1340,6 +1410,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             loadSubscription: () async {
               subscriptionChecks += 1;
 
@@ -1378,6 +1449,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => _createPickedVideoFixture('phone-basic.mp4'),
             loadSubscription: () async {
               subscriptionChecks += 1;
@@ -1430,6 +1502,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => _createPickedVideoFixture('plan-error.mp4'),
             loadSubscription: () async {
               throw const SocketException('Connection refused');
@@ -1468,6 +1541,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'seller-starter',
               plan: 'STARTER',
@@ -1550,6 +1624,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
             initialVideoPath: videoFile.path,
             initialVideoName: 'edited.mp4',
             initialVideoSizeBytes: 2048,

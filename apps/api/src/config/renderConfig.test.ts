@@ -51,6 +51,14 @@ describe('render.yaml production config', () => {
     expectEnvValue(source, 'CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS', '"300"');
   });
 
+  it('rolls out managed multipart uploads without breaking installed clients', async () => {
+    const source = await readRenderConfig();
+
+    expectEnvValue(source, 'UPLOAD_PROTOCOL_MODE', 'dual');
+    expectEnvValue(source, 'MULTIPART_UPLOAD_PART_SIZE_BYTES', '"16777216"');
+    expectEnvValue(source, 'MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS', '"3600"');
+  });
+
   it('keeps one web instance while the deploy uses the in-process memory queue', async () => {
     const source = await readRenderConfig();
 

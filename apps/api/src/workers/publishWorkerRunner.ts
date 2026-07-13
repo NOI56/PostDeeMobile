@@ -23,17 +23,22 @@ import { createPostStoreFromConfig } from '../modules/posts/postStoreFactory.js'
 import type { PrismaSocialConnectionClient } from '../modules/socialConnections/prismaSocialConnectionRepository.js';
 import { createSocialConnectionStore } from '../modules/socialConnections/socialConnectionStoreFactory.js';
 import { createVideoStorageFromConfig } from '../modules/storage/videoStorageFactory.js';
+import {
+  createPrismaUploadSessionRepository,
+  type PrismaUploadSessionClient
+} from '../modules/uploads/prismaUploadSessionRepository.js';
 import { createPlatformPublisherFromConfig } from './platformPublisherFactory.js';
 import { processPublishJobForPost } from './publishWorker.js';
 
 const config = readServerConfig();
 const storage = createVideoStorageFromConfig({ config });
-// Create Prisma when the post store or analytics store needs it, and also when
-// real PostPeer publishing is enabled so the worker can read user connections.
+// Create Prisma when a configured store needs it, when real PostPeer publishing
+// needs user connections, or when the worker must enforce deletion barriers.
 const prisma =
   config.postStore === 'prisma' ||
   config.analyticsStore === 'prisma' ||
-  config.socialPublisher === 'postpeer'
+  config.socialPublisher === 'postpeer' ||
+  config.uploadProtocolMode !== 'legacy'
     ? createPrismaClient()
     : undefined;
 const socialConnectionStore = createSocialConnectionStore({
@@ -48,6 +53,12 @@ const postStore = createPostStoreFromConfig({
   config,
   prisma: prisma as unknown as PrismaPostClient | undefined
 });
+const uploadSessionStore =
+  prisma && config.uploadProtocolMode !== 'legacy'
+    ? createPrismaUploadSessionRepository({
+        prisma: prisma as unknown as PrismaUploadSessionClient
+      })
+    : undefined;
 const platformPublishStore = prisma
   ? createPrismaPlatformPublishRepository({
       prisma: prisma as unknown as PrismaPlatformPublishClient
@@ -71,7 +82,8 @@ const worker = new Worker<BullMqPublishJobData>(
       publisher,
       storage,
       platformPublishStore,
-      notifier
+      notifier,
+      assertOwnerActive: uploadSessionStore?.assertOwnerActive
     }),
   {
     connection: parseRedisConnection(config.redisUrl)

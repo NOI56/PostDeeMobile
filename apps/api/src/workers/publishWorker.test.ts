@@ -34,6 +34,7 @@ const publishedResult = (platform: string) => ({
 
 describe('processPublishJobForPost', () => {
   const jobData = {
+    userId: 'seller-1',
     postId: 'post-1',
     caption: 'Caption',
     videoS3Key: 'uploads/video.mp4',
@@ -41,6 +42,27 @@ describe('processPublishJobForPost', () => {
     runAt: '2026-06-01T00:00:00.000Z',
     status: 'READY' as const
   };
+
+  it('does not claim or publish a post after account deletion starts', async () => {
+    const { store, statuses } = makeFakePostStore();
+    const publisher = { publish: vi.fn(async ({ platform }) => publishedResult(platform)) };
+
+    await expect(
+      processPublishJobForPost({
+        jobData,
+        postStore: store,
+        publisher,
+        storage: { deleteVideo: async () => undefined },
+        platformPublishStore: { recordResults: async () => [] },
+        assertOwnerActive: async () => {
+          throw new Error('account deletion in progress');
+        }
+      })
+    ).rejects.toThrow('account deletion in progress');
+
+    expect(statuses).toEqual([]);
+    expect(publisher.publish).not.toHaveBeenCalled();
+  });
 
   it('advances the post to PUBLISHED when every platform succeeds', async () => {
     const { store, statuses } = makeFakePostStore();

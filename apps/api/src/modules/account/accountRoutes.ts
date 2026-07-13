@@ -14,6 +14,10 @@ import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import type { TemplateStore } from '../templates/templateStore.js';
 import type { UserStore } from '../users/userStore.js';
 import type { VideoStorage } from '../storage/videoStorage.js';
+import {
+  ManagedUploadServiceError,
+  type ManagedUploadService
+} from '../uploads/managedUploadService.js';
 import type { AccountIdentityDeleter } from './firebaseIdentityDeleter.js';
 
 /**
@@ -42,6 +46,10 @@ export type AccountRouteDependencies = {
   platformPublishStore: PlatformPublishStore;
   videoStorage: VideoStorage;
   accountIdentityDeleter?: AccountIdentityDeleter;
+  managedUploadService?: Pick<
+    ManagedUploadService,
+    'prepareOwnerDeletion' | 'finishOwnerDeletion'
+  >;
   prisma?: PrismaAccountClient;
   nowSeconds?: () => number;
 };
@@ -73,6 +81,7 @@ export const registerAccountRoutes = (
     platformPublishStore,
     videoStorage,
     accountIdentityDeleter,
+    managedUploadService,
     prisma,
     nowSeconds = () => Math.floor(Date.now() / 1000)
   } = dependencies;
@@ -197,6 +206,33 @@ export const registerAccountRoutes = (
       return;
     }
 
+    // Seal the owner before draining queued/external work so concurrent upload
+    // and post requests cannot recreate work after the cleanup snapshots it.
+    if (managedUploadService) {
+      try {
+        await managedUploadService.prepareOwnerDeletion(userId);
+      } catch (error) {
+        if (
+          error instanceof ManagedUploadServiceError &&
+          error.code === 'ACCOUNT_UPLOADS_DRAINING'
+        ) {
+          response.status(409).json({
+            status: 'error',
+            code: error.code,
+            message: error.message
+          });
+          return;
+        }
+
+        response.status(503).json({
+          status: 'error',
+          code: 'ACCOUNT_MEDIA_CLEANUP_FAILED',
+          message: 'Could not stop active account uploads. Please try again.'
+        });
+        return;
+      }
+    }
+
     // Stop queued work before external cleanup so a worker cannot publish while
     // deletion is in progress. Posts remain intact until cleanup succeeds.
     const posts = await postStore.list({ userId });
@@ -285,6 +321,19 @@ export const registerAccountRoutes = (
           code: 'ACCOUNT_IDENTITY_DELETE_FAILED',
           message:
             'Account data was removed, but sign-in removal is not complete. Please try again.'
+        });
+        return;
+      }
+    }
+
+    if (managedUploadService) {
+      try {
+        await managedUploadService.finishOwnerDeletion(userId);
+      } catch {
+        response.status(503).json({
+          status: 'error',
+          code: 'ACCOUNT_UPLOAD_STATE_CLEANUP_FAILED',
+          message: 'Account deletion is almost complete. Please try again.'
         });
         return;
       }

@@ -24,7 +24,8 @@ The backend currently supports safe scaffold flows for:
 
 - Health checks
 - Mock or Firebase authentication
-- Upload metadata validation and mock/R2/S3 signed upload plus signed read access scaffolding
+- Upload metadata validation, legacy mock/R2/S3 signed upload, managed R2
+  multipart sessions, and signed read access scaffolding
 - Post creation and queue handoff
 - Caption generation through mock, Gemini, or legacy OpenAI providers. The
   product direction is real-clip captioning after a video is selected. Remote
@@ -166,9 +167,9 @@ Response:
 
 ### `POST /uploads`
 
-Creates an upload record and, when using R2 or S3, returns a signed `PUT` upload URL.
-Requires authentication. Upload URLs are created for the current authenticated
-user's flow; unauthenticated Firebase-mode requests return `401`.
+Creates either a legacy signed-`PUT` upload or a managed multipart session.
+Requires authentication. Uploads are scoped to the current authenticated user;
+unauthenticated Firebase-mode requests return `401`.
 
 Request:
 
@@ -178,7 +179,8 @@ Request:
   "contentType": "video/mp4",
   "sizeBytes": 12345678,
   "width": 1080,
-  "height": 1920
+  "height": 1920,
+  "uploadProtocol": "multipart-v1"
 }
 ```
 
@@ -188,6 +190,7 @@ Validation:
 - `contentType` must start with `video/` or `image/`.
 - `sizeBytes` must be positive and no larger than `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
 - If `width` and `height` are provided, the media must be vertical 9:16 within a 2 percent tolerance.
+- `uploadProtocol`, when present, must be `multipart-v1`.
 
 Mock response:
 
@@ -209,7 +212,7 @@ Mock response:
 }
 ```
 
-R2 or S3 response may also include:
+The legacy R2 or S3 response may also include:
 
 ```json
 {
@@ -222,7 +225,78 @@ R2 or S3 response may also include:
 }
 ```
 
-The bundled R2 signed `PUT` URL signs `Content-Type` and `Content-Length` so the uploaded object must match the declared metadata. Clients should upload the same file whose byte length was sent as `sizeBytes`.
+The legacy R2 signed `PUT` URL signs `Content-Type` and `Content-Length` so the
+uploaded object must match the declared metadata. Clients should upload the
+same file whose byte length was sent as `sizeBytes`.
+
+When `UPLOAD_PROTOCOL_MODE=dual|multipart` and the client requests
+`multipart-v1`, the response instead contains a managed session:
+
+```json
+{
+  "status": "ok",
+  "upload": {
+    "id": "opaque-session-id",
+    "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
+    "fileName": "demo-video.mp4",
+    "contentType": "video/mp4",
+    "sizeBytes": 12345678,
+    "uploadProtocol": "multipart-v1",
+    "partSizeBytes": 16777216,
+    "partCount": 1,
+    "sessionExpiresAt": "2026-06-05T09:00:00.000Z",
+    "storageProvider": "private"
+  }
+}
+```
+
+`UPLOAD_PROTOCOL_MODE` defaults to `legacy`. Production uses `dual` during the
+client rollout, so opted-in clients receive managed multipart sessions while
+old clients keep receiving the legacy response. In strict `multipart` mode, a
+request without the opt-in returns `426 UPLOAD_CLIENT_UPGRADE_REQUIRED`.
+
+### `POST /uploads/:uploadId/parts/:partNumber`
+
+Returns a short-lived signed `PUT` URL for one part of an owned, unexpired
+managed session. The server calculates the exact byte length; the response
+includes `partNumber`, `sizeBytes`, `uploadUrl`, `uploadMethod`,
+`uploadHeaders`, and `uploadExpiresAt`. The client must upload that exact byte
+range and retain the storage ETag.
+
+### `POST /uploads/:uploadId/complete`
+
+Completes the managed upload. Every part must be present once, using consecutive
+part numbers and the lowercase API field `etag`:
+
+```json
+{
+  "parts": [
+    { "partNumber": 1, "etag": "\"part-etag\"" }
+  ]
+}
+```
+
+Successful completion changes the session to `COMPLETED` and returns the upload
+metadata. Only then may its `videoS3Key` be used to create a post.
+
+### `GET /uploads/:uploadId`
+
+Returns the authenticated owner's managed upload metadata and `sessionStatus`
+(`UPLOADING`, `COMPLETING`, `COMPLETED`, or `ABORTED`). Clients use this to
+resolve an ambiguous completion response without starting a second session. If
+R2 completed the object but the database acknowledgement failed, the API checks
+the object's exact byte size and safely reconciles the session to `COMPLETED`.
+
+### `DELETE /uploads/:uploadId`
+
+Aborts an owned unfinished multipart session. Account deletion also blocks new
+sessions, returns `409 ACCOUNT_UPLOADS_DRAINING` while a fresh completion gets
+its drain window, and aborts persisted and R2 orphan multipart uploads before
+sweeping the owner's stored objects. Completion and abort state changes use
+compare-and-set rules so neither terminal result can overwrite the other.
+
+Legacy signed `PUT` remains available during `legacy`/`dual` rollout and still
+has a replay window until strict `multipart` mode is enabled for all clients.
 
 ## Posts
 
@@ -267,6 +341,9 @@ Rules:
 
 - `caption`, `videoS3Key`, and at least one valid platform are required.
 - `videoS3Key` must be an upload key owned by the authenticated user, using the `uploads/<user-id>/<upload-id>/<file>` shape returned by `POST /uploads`.
+- A managed multipart upload must have status `COMPLETED` before its
+  `videoS3Key` can be used. Legacy owner-scoped keys remain accepted only while
+  the server is in `legacy` or `dual` rollout mode.
 - If `scheduledAt` is present, the user must be Starter or Pro.
 - Basic users must have a verified phone number before using the free quota.
 - Basic is limited to 3 post units per month after phone verification.
@@ -371,12 +448,20 @@ Google Play required "Delete Account" flow in the profile screen.
 
 Behavior:
 
-- Cancels any queued or scheduled publish jobs for the user's posts first.
+- Marks the owner as deleting before cleanup starts. Later authenticated
+  mutations are rejected, post creation cannot enqueue new work, and the
+  publish worker checks the same barrier before claiming a job.
+- Cancels any queued or scheduled publish jobs for the user's posts.
 - Lists every paginated integration in the user's PostPeer profile and
   disconnects each one through the provider before deleting local records.
   This includes integration ids for platforms PostDee does not yet recognize.
   Provider cleanup failure returns `503 ACCOUNT_SOCIAL_CLEANUP_FAILED` so the
   request can retry without losing local account data.
+- A fresh multipart completion gets a short drain window and returns
+  `409 ACCOUNT_UPLOADS_DRAINING` so the caller can retry. A stale completion is
+  reconciled against the R2 object's exact size before persisted and orphan
+  multipart sessions are aborted.
+  Another upload cleanup failure returns `503 ACCOUNT_MEDIA_CLEANUP_FAILED`.
 - Deletes every object under the exact owner prefix
   `uploads/<encoded-firebase-uid>/` before deleting database records. A storage
   cleanup failure returns `503 ACCOUNT_MEDIA_CLEANUP_FAILED`, leaving the
@@ -1240,7 +1325,10 @@ PostgreSQL.
 | `CLOUDFLARE_R2_ACCESS_KEY_ID` | `...` | R2 S3-compatible access key id |
 | `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | `...` | R2 S3-compatible secret access key |
 | `CLOUDFLARE_R2_ENDPOINT` | `https://<account>.r2.cloudflarestorage.com` | Optional custom R2 endpoint |
-| `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `900` | Signed upload URL lifetime |
+| `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Signed upload URL lifetime; legacy retries request one fresh URL after explicit expiry, while multipart retries refresh only the affected part URL |
+| `UPLOAD_PROTOCOL_MODE` | `legacy`, `dual`, `multipart` | Upload rollout mode; defaults to `legacy`, production uses `dual` during client migration, and strict `multipart` rejects old clients without the opt-in |
+| `MULTIPART_UPLOAD_PART_SIZE_BYTES` | `16777216` | Server-selected managed multipart part size in bytes (16 MiB default) |
+| `MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS` | `3600` | Managed multipart session lifetime in seconds |
 | `UPLOAD_MAX_SIZE_BYTES` | `524288000` | Maximum declared upload size accepted by `POST /uploads` |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Per-IP rate limit window in milliseconds |
 | `RATE_LIMIT_MAX_REQUESTS` | `300` | Max requests per IP per window; exceeding returns `429` with code `RATE_LIMITED` (`GET /health` is exempt). Tighter fixed per-IP buckets also cover `/auth` (30/10min), `/uploads` (60/hr), `/captions` + `/ai-edits` (60/hr), and `/social-connections` (20/10min) |

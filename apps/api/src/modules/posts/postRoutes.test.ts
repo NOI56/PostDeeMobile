@@ -7,6 +7,7 @@ import { readServerConfig } from '../../config/env.js';
 import { createInMemoryPublishQueue } from '../queue/publishQueue.js';
 import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import { createUserStore } from '../users/userStore.js';
+import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
 import { createPostStore } from './postStore.js';
 import { registerPostRoutes } from './postRoutes.js';
 
@@ -81,6 +82,60 @@ describe('post routes', () => {
       status: 'error',
       message: 'Selected media does not belong to the authenticated user'
     });
+  });
+
+  it('does not queue a post until a managed upload is completed', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const publishQueue = createInMemoryPublishQueue();
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: 'seller-uploading',
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+
+    app.use(express.json());
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      {
+        assertUploadReady: vi.fn(async () => {
+          throw new ManagedUploadServiceError(
+            409,
+            'UPLOAD_NOT_READY',
+            'Wait for the upload to finish before creating a post.'
+          );
+        })
+      }
+    );
+    app.use(router);
+
+    await request(app)
+      .post('/posts')
+      .send({
+        caption: 'Do not queue incomplete media',
+        videoS3Key: ownedUploadKey('seller-uploading', 'uploading.mp4'),
+        platforms: ['TIKTOK']
+      })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body.code).toBe('UPLOAD_NOT_READY');
+      });
+
+    expect(await postStore.list({ userId: 'seller-uploading' })).toEqual([]);
   });
 
   it('does not leave a queued post behind when publish queue enqueue fails', async () => {

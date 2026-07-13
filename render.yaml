@@ -46,10 +46,18 @@ services:
         sync: false
       - key: CLOUDFLARE_R2_ENDPOINT
         sync: false
-      # Keep direct-to-R2 bearer upload URLs short-lived. The mobile app retries
-      # once with a fresh URL when R2 reports that the first URL expired.
+      # Keep direct-to-R2 bearer upload URLs short-lived. Legacy uploads request
+      # one fresh URL; multipart uploads request a fresh URL per retried part.
       - key: CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS
         value: "300"
+      # Dual mode keeps legacy app releases working while current releases opt
+      # in to revocable managed multipart sessions.
+      - key: UPLOAD_PROTOCOL_MODE
+        value: dual
+      - key: MULTIPART_UPLOAD_PART_SIZE_BYTES
+        value: "16777216"
+      - key: MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS
+        value: "3600"
       # --- AI caption: Gemini (listens to clip; Pro also sees frames) ---
       - key: CAPTION_PROVIDER
         value: gemini

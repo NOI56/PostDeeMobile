@@ -635,6 +635,7 @@ class CreateUploadRequest {
         'fileName': fileName,
         'contentType': contentType,
         'sizeBytes': sizeBytes,
+        'uploadProtocol': _multipartUploadProtocol,
         if (width != null) 'width': width,
         if (height != null) 'height': height,
       };
@@ -649,6 +650,10 @@ class UploadResult {
     this.uploadMethod,
     this.uploadHeaders = const {},
     this.uploadExpiresAt,
+    this.uploadProtocol,
+    this.partSizeBytes,
+    this.partCount,
+    this.sessionExpiresAt,
   });
 
   final String id;
@@ -658,6 +663,10 @@ class UploadResult {
   final String? uploadMethod;
   final Map<String, String> uploadHeaders;
   final DateTime? uploadExpiresAt;
+  final String? uploadProtocol;
+  final int? partSizeBytes;
+  final int? partCount;
+  final DateTime? sessionExpiresAt;
 
   factory UploadResult.fromJson(Map<String, Object?> json) {
     final rawHeaders = json['uploadHeaders'];
@@ -674,12 +683,92 @@ class UploadResult {
       uploadExpiresAt: json['uploadExpiresAt'] is String
           ? DateTime.tryParse(json['uploadExpiresAt'] as String)
           : null,
+      uploadProtocol: json['uploadProtocol'] as String?,
+      partSizeBytes: (json['partSizeBytes'] as num?)?.toInt(),
+      partCount: (json['partCount'] as num?)?.toInt(),
+      sessionExpiresAt: json['sessionExpiresAt'] is String
+          ? DateTime.tryParse(json['sessionExpiresAt'] as String)
+          : null,
     );
   }
 }
 
 const _uploadUrlExpirySafetyMargin = Duration(seconds: 30);
 const _uploadUrlExpiredCode = 'UPLOAD_URL_EXPIRED';
+const _uploadCompletionInProgressCode = 'UPLOAD_COMPLETION_IN_PROGRESS';
+const _multipartUploadProtocol = 'multipart-v1';
+const _multipartPartMaxAttempts = 3;
+const _multipartCompletionPollDelays = <Duration>[
+  Duration(seconds: 1),
+  Duration(seconds: 2),
+  Duration(seconds: 4),
+];
+
+enum _MultipartCompletionResolution {
+  completed,
+  stillCompleting,
+  notCompleted,
+}
+
+class _MultipartCompletionStillInProgress implements Exception {
+  const _MultipartCompletionStillInProgress({
+    required this.originalError,
+    required this.originalStackTrace,
+  });
+
+  final Object originalError;
+  final StackTrace originalStackTrace;
+}
+
+class _MultipartUploadPart {
+  const _MultipartUploadPart({
+    required this.partNumber,
+    required this.sizeBytes,
+    required this.uploadUrl,
+    required this.uploadMethod,
+    required this.uploadHeaders,
+    this.uploadExpiresAt,
+  });
+
+  final int partNumber;
+  final int sizeBytes;
+  final String uploadUrl;
+  final String uploadMethod;
+  final Map<String, String> uploadHeaders;
+  final DateTime? uploadExpiresAt;
+
+  factory _MultipartUploadPart.fromJson(Map<String, Object?> json) {
+    final rawHeaders = json['uploadHeaders'];
+
+    return _MultipartUploadPart(
+      partNumber: (json['partNumber'] as num?)?.toInt() ?? 0,
+      sizeBytes: (json['sizeBytes'] as num?)?.toInt() ?? 0,
+      uploadUrl: json['uploadUrl'] as String? ?? '',
+      uploadMethod: json['uploadMethod'] as String? ?? '',
+      uploadHeaders: rawHeaders is Map
+          ? rawHeaders.map((key, value) => MapEntry('$key', '$value'))
+          : const {},
+      uploadExpiresAt: json['uploadExpiresAt'] is String
+          ? DateTime.tryParse(json['uploadExpiresAt'] as String)
+          : null,
+    );
+  }
+}
+
+class _CompletedMultipartPart {
+  const _CompletedMultipartPart({
+    required this.partNumber,
+    required this.etag,
+  });
+
+  final int partNumber;
+  final String etag;
+
+  Map<String, Object?> toJson() => {
+        'partNumber': partNumber,
+        'etag': etag,
+      };
+}
 
 typedef UploadCreator = Future<UploadResult> Function(
   CreateUploadRequest request,
@@ -689,9 +778,9 @@ typedef UploadFileSender = Future<void> Function(
   File file,
 );
 
-/// Creates a signed upload and retries once with a fresh URL only when R2 says
-/// that the first URL expired. Other failures are surfaced without retrying so
-/// a lost success response cannot create duplicate uploaded objects.
+/// Creates an upload and retries a legacy signed URL once only when R2 says
+/// that the first URL expired. Managed multipart uploads refresh and retry each
+/// part inside [PostDeeApiClient.uploadVideoFile] instead.
 Future<UploadResult> createAndUploadFileWithRetry({
   required CreateUploadRequest request,
   required File file,
@@ -706,7 +795,9 @@ Future<UploadResult> createAndUploadFileWithRetry({
       await uploadFile(upload, file);
       return upload;
     } on ApiException catch (error) {
-      if (error.code != _uploadUrlExpiredCode || attempt > 0) {
+      if (upload.uploadProtocol == _multipartUploadProtocol ||
+          error.code != _uploadUrlExpiredCode ||
+          attempt > 0) {
         rethrow;
       }
 
@@ -1375,12 +1466,15 @@ class PostDeeApiClient {
     String baseUrl = AppConfig.apiBaseUrl,
     AuthTokenProvider? authTokenProvider,
     PostDeeApiAuthHeaders? authHeaders,
+    Future<void> Function(Duration)? multipartCompletionPollDelay,
   })  : _customHttpClient = httpClient,
         _baseUri = Uri.parse(baseUrl),
         _authHeaders = authHeaders ??
             PostDeeApiAuthHeaders(
               authTokenProvider: authTokenProvider,
-            );
+            ),
+        _multipartCompletionPollDelay = multipartCompletionPollDelay ??
+            ((duration) => Future<void>.delayed(duration));
 
   final HttpClient? _customHttpClient;
   HttpClient? _lazyHttpClient;
@@ -1398,6 +1492,7 @@ class PostDeeApiClient {
 
   final Uri _baseUri;
   final PostDeeApiAuthHeaders _authHeaders;
+  final Future<void> Function(Duration) _multipartCompletionPollDelay;
 
   Future<ApiHealthResult> checkHealth() async {
     final response = await _getJson('/health');
@@ -1693,6 +1788,364 @@ class PostDeeApiClient {
   }
 
   Future<void> uploadVideoFile(UploadResult upload, File videoFile) async {
+    if (upload.uploadProtocol == _multipartUploadProtocol) {
+      await _uploadMultipartVideoFile(upload, videoFile);
+      return;
+    }
+
+    await _uploadLegacyVideoFile(upload, videoFile);
+  }
+
+  Future<void> _uploadMultipartVideoFile(
+    UploadResult upload,
+    File videoFile,
+  ) async {
+    try {
+      final partSizeBytes = upload.partSizeBytes;
+      final partCount = upload.partCount;
+      final fileSizeBytes = await videoFile.length();
+      final sessionExpiresAt = upload.sessionExpiresAt?.toUtc();
+
+      if (sessionExpiresAt != null &&
+          !sessionExpiresAt.isAfter(
+            DateTime.now().toUtc().add(_uploadUrlExpirySafetyMargin),
+          )) {
+        throw const ApiException(
+          'Upload session has expired',
+          statusCode: HttpStatus.conflict,
+          code: 'UPLOAD_SESSION_EXPIRED',
+        );
+      }
+
+      if (partSizeBytes == null ||
+          partSizeBytes <= 0 ||
+          partCount == null ||
+          partCount <= 0 ||
+          fileSizeBytes <= 0) {
+        throw const ApiException('Multipart upload metadata is invalid');
+      }
+
+      final expectedPartCount =
+          (fileSizeBytes + partSizeBytes - 1) ~/ partSizeBytes;
+      if (expectedPartCount != partCount) {
+        throw ApiException(
+          'Multipart upload expected $partCount parts but the file requires '
+          '$expectedPartCount',
+        );
+      }
+
+      final completedParts = <_CompletedMultipartPart>[];
+      for (var partNumber = 1; partNumber <= partCount; partNumber += 1) {
+        final start = (partNumber - 1) * partSizeBytes;
+        final proposedEnd = start + partSizeBytes;
+        final end = proposedEnd < fileSizeBytes ? proposedEnd : fileSizeBytes;
+
+        completedParts.add(
+          await _uploadMultipartPartWithRetry(
+            upload: upload,
+            videoFile: videoFile,
+            partNumber: partNumber,
+            start: start,
+            end: end,
+          ),
+        );
+      }
+
+      await _completeMultipartUpload(upload, completedParts);
+    } on _MultipartCompletionStillInProgress catch (pendingCompletion) {
+      Error.throwWithStackTrace(
+        pendingCompletion.originalError,
+        pendingCompletion.originalStackTrace,
+      );
+    } catch (_) {
+      await _abortMultipartUpload(upload.id);
+      rethrow;
+    }
+  }
+
+  Future<_CompletedMultipartPart> _uploadMultipartPartWithRetry({
+    required UploadResult upload,
+    required File videoFile,
+    required int partNumber,
+    required int start,
+    required int end,
+  }) async {
+    for (var attempt = 0; attempt < _multipartPartMaxAttempts; attempt += 1) {
+      try {
+        final part = await _createMultipartPart(upload.id, partNumber);
+        final expectedSizeBytes = end - start;
+
+        if (part.partNumber != partNumber ||
+            part.sizeBytes != expectedSizeBytes) {
+          throw ApiException(
+            'Multipart part $partNumber has unexpected metadata',
+          );
+        }
+
+        final etag = await _putMultipartPart(
+          part: part,
+          videoFile: videoFile,
+          start: start,
+          end: end,
+        );
+
+        return _CompletedMultipartPart(
+          partNumber: partNumber,
+          etag: etag,
+        );
+      } catch (error) {
+        final canRetry = _isRetryableMultipartFailure(error);
+        final hasAttemptRemaining = attempt + 1 < _multipartPartMaxAttempts;
+        if (!canRetry || !hasAttemptRemaining) {
+          rethrow;
+        }
+      }
+    }
+
+    throw ApiException('Multipart part $partNumber could not be uploaded');
+  }
+
+  Future<_MultipartUploadPart> _createMultipartPart(
+    String uploadId,
+    int partNumber,
+  ) async {
+    final response = await _postJson(
+      '${_managedUploadPath(uploadId)}/parts/$partNumber',
+      const <String, Object?>{},
+    );
+    final rawPart = response['part'];
+
+    if (rawPart is! Map<String, Object?>) {
+      throw const ApiException('Upload part response is missing part data');
+    }
+
+    final part = _MultipartUploadPart.fromJson(rawPart);
+    final uploadUri = Uri.tryParse(part.uploadUrl);
+    if (part.partNumber <= 0 ||
+        part.sizeBytes <= 0 ||
+        uploadUri == null ||
+        !uploadUri.hasScheme ||
+        part.uploadMethod.toUpperCase() != 'PUT') {
+      throw const ApiException('Upload part response is invalid');
+    }
+
+    return part;
+  }
+
+  Future<String> _putMultipartPart({
+    required _MultipartUploadPart part,
+    required File videoFile,
+    required int start,
+    required int end,
+  }) async {
+    final expiresAt = part.uploadExpiresAt?.toUtc();
+    if (expiresAt != null &&
+        !expiresAt.isAfter(
+          DateTime.now().toUtc().add(_uploadUrlExpirySafetyMargin),
+        )) {
+      throw const ApiException(
+        'Upload part URL has expired',
+        statusCode: HttpStatus.forbidden,
+        code: _uploadUrlExpiredCode,
+      );
+    }
+
+    final request = await _httpClient.openUrl(
+      part.uploadMethod.toUpperCase(),
+      Uri.parse(part.uploadUrl),
+    );
+    for (final header in part.uploadHeaders.entries) {
+      request.headers.set(header.key, header.value);
+    }
+
+    request
+      ..contentLength = end - start
+      ..bufferOutput = false;
+    await request.addStream(videoFile.openRead(start, end));
+
+    final response = await request.close();
+    final etag = response.headers.value(HttpHeaders.etagHeader)?.trim();
+    final responseBody = await response.transform(utf8.decoder).join();
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final isExpired = _isExpiredUploadResponse(
+        response.statusCode,
+        responseBody,
+      );
+      throw ApiException(
+        isExpired
+            ? 'Upload part URL has expired'
+            : (responseBody.isEmpty
+                ? 'Multipart part upload failed'
+                : responseBody),
+        statusCode: response.statusCode,
+        code: isExpired ? _uploadUrlExpiredCode : null,
+      );
+    }
+
+    if (etag == null || etag.isEmpty) {
+      throw const ApiException('Multipart part response is missing ETag');
+    }
+
+    return etag;
+  }
+
+  Future<void> _completeMultipartUpload(
+    UploadResult upload,
+    List<_CompletedMultipartPart> completedParts,
+  ) async {
+    try {
+      final response = await _postJson(
+        '${_managedUploadPath(upload.id)}/complete',
+        {
+          'parts': [
+            for (final part in completedParts) part.toJson(),
+          ],
+        },
+      );
+      final completedUpload = _readMultipartUploadResponse(
+        response,
+        'Complete upload response is missing upload data',
+      );
+
+      if (completedUpload.id != upload.id) {
+        throw const ApiException('Complete upload response has the wrong id');
+      }
+    } catch (error, stackTrace) {
+      if (!_shouldResolveMultipartCompletion(error)) {
+        rethrow;
+      }
+
+      final resolution = await _resolveMultipartCompletion(
+        upload.id,
+        completionAlreadyInProgress: _isMultipartCompletionInProgress(error),
+      );
+      if (resolution == _MultipartCompletionResolution.completed) {
+        return;
+      }
+      if (resolution == _MultipartCompletionResolution.stillCompleting) {
+        throw _MultipartCompletionStillInProgress(
+          originalError: error,
+          originalStackTrace: stackTrace,
+        );
+      }
+
+      rethrow;
+    }
+  }
+
+  Future<_MultipartCompletionResolution> _resolveMultipartCompletion(
+    String uploadId, {
+    required bool completionAlreadyInProgress,
+  }) async {
+    var lastResolution = completionAlreadyInProgress
+        ? _MultipartCompletionResolution.stillCompleting
+        : _MultipartCompletionResolution.notCompleted;
+
+    for (var attempt = 0;
+        attempt <= _multipartCompletionPollDelays.length;
+        attempt += 1) {
+      Map<String, Object?>? response;
+      try {
+        response = await _getJson(_managedUploadPath(uploadId));
+      } catch (_) {
+        if (lastResolution != _MultipartCompletionResolution.stillCompleting) {
+          return _MultipartCompletionResolution.notCompleted;
+        }
+      }
+
+      if (response != null) {
+        final sessionStatus = response['sessionStatus'];
+        if (sessionStatus == 'COMPLETED') {
+          try {
+            final completedUpload = _readMultipartUploadResponse(
+              response,
+              'Upload status response is missing upload data',
+            );
+            return completedUpload.id == uploadId
+                ? _MultipartCompletionResolution.completed
+                : lastResolution;
+          } catch (_) {
+            return lastResolution;
+          }
+        }
+        if (sessionStatus != 'COMPLETING') {
+          return lastResolution;
+        }
+
+        lastResolution = _MultipartCompletionResolution.stillCompleting;
+      }
+
+      if (attempt < _multipartCompletionPollDelays.length) {
+        await _multipartCompletionPollDelay(
+          _multipartCompletionPollDelays[attempt],
+        );
+      }
+    }
+
+    return lastResolution;
+  }
+
+  UploadResult _readMultipartUploadResponse(
+    Map<String, Object?> response,
+    String missingMessage,
+  ) {
+    final rawUpload = response['upload'];
+    if (rawUpload is! Map<String, Object?>) {
+      throw ApiException(missingMessage);
+    }
+
+    return UploadResult.fromJson(rawUpload);
+  }
+
+  Future<void> _abortMultipartUpload(String uploadId) async {
+    try {
+      await _deleteJson(_managedUploadPath(uploadId));
+    } catch (_) {
+      // Best effort only: preserve the upload error that triggered the abort.
+    }
+  }
+
+  String _managedUploadPath(String uploadId) =>
+      '/uploads/${Uri.encodeComponent(uploadId)}';
+
+  bool _isRetryableMultipartFailure(Object error) {
+    if (error is ApiException) {
+      final statusCode = error.statusCode;
+      return error.code == _uploadUrlExpiredCode ||
+          statusCode == HttpStatus.requestTimeout ||
+          statusCode == HttpStatus.tooManyRequests ||
+          (statusCode != null && statusCode >= 500 && statusCode < 600);
+    }
+
+    return error is SocketException ||
+        error is HttpException ||
+        error is HandshakeException;
+  }
+
+  bool _isMultipartCompletionInProgress(Object error) =>
+      error is ApiException &&
+      error.statusCode == HttpStatus.conflict &&
+      error.code == _uploadCompletionInProgressCode;
+
+  bool _shouldResolveMultipartCompletion(Object error) =>
+      _isRetryableMultipartFailure(error) ||
+      _isMultipartCompletionInProgress(error);
+
+  bool _isExpiredUploadResponse(int statusCode, String responseBody) {
+    final normalizedBody = responseBody.toLowerCase();
+    return (statusCode == HttpStatus.badRequest ||
+            statusCode == HttpStatus.forbidden) &&
+        (normalizedBody.contains('expiredrequest') ||
+            normalizedBody.contains('requestexpired') ||
+            normalizedBody.contains('request has expired') ||
+            normalizedBody.contains('expiredtoken'));
+  }
+
+  Future<void> _uploadLegacyVideoFile(
+    UploadResult upload,
+    File videoFile,
+  ) async {
     if (upload.uploadUrl == null) {
       return;
     }
@@ -1726,13 +2179,10 @@ class PostDeeApiClient {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final responseBody = await response.transform(utf8.decoder).join();
-      final normalizedBody = responseBody.toLowerCase();
-      final isExpired = (response.statusCode == HttpStatus.badRequest ||
-              response.statusCode == HttpStatus.forbidden) &&
-          (normalizedBody.contains('expiredrequest') ||
-              normalizedBody.contains('requestexpired') ||
-              normalizedBody.contains('request has expired') ||
-              normalizedBody.contains('expiredtoken'));
+      final isExpired = _isExpiredUploadResponse(
+        response.statusCode,
+        responseBody,
+      );
 
       throw ApiException(
         isExpired
@@ -1792,8 +2242,19 @@ class PostDeeApiClient {
       HttpClientRequest request) async {
     final response = await request.close();
     final responseBody = await response.transform(utf8.decoder).join();
-    final decoded =
-        responseBody.isEmpty ? <String, Object?>{} : jsonDecode(responseBody);
+    Object? decoded;
+
+    try {
+      decoded =
+          responseBody.isEmpty ? <String, Object?>{} : jsonDecode(responseBody);
+    } on FormatException {
+      throw ApiException(
+        response.statusCode < 200 || response.statusCode >= 300
+            ? 'Request failed'
+            : 'Unexpected API response',
+        statusCode: response.statusCode,
+      );
+    }
 
     if (decoded is! Map<String, Object?>) {
       throw ApiException('Unexpected API response',

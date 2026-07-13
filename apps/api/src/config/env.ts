@@ -7,6 +7,7 @@ export type CaptionUsageStoreKind = 'memory' | 'prisma';
 export type AiEditUsageStoreKind = 'memory' | 'prisma';
 export type PublishQueueKind = 'memory' | 'bullmq';
 export type VideoStorageKind = 'mock' | 's3' | 'r2';
+export type UploadProtocolMode = 'legacy' | 'dual' | 'multipart';
 export type CaptionProviderKind = 'mock' | 'openai' | 'gemini';
 export type AuthProviderKind = 'mock' | 'firebase';
 export type BillingProviderKind = 'mock' | 'store' | 'revenuecat';
@@ -31,6 +32,9 @@ export type ServerConfig = {
   cloudflareR2Endpoint?: string;
   cloudflareR2UploadExpiresSeconds: number;
   uploadMaxSizeBytes: number;
+  uploadProtocolMode: UploadProtocolMode;
+  multipartUploadPartSizeBytes: number;
+  multipartUploadSessionExpiresSeconds: number;
   rateLimitWindowMs: number;
   rateLimitMaxRequests: number;
   openAiApiKey?: string;
@@ -219,6 +223,16 @@ const readVideoStorage = (env: EnvSource): VideoStorageKind => {
   return value;
 };
 
+const readUploadProtocolMode = (env: EnvSource): UploadProtocolMode => {
+  const value = readOptional(env, 'UPLOAD_PROTOCOL_MODE') ?? 'legacy';
+
+  if (value !== 'legacy' && value !== 'dual' && value !== 'multipart') {
+    throw new Error('UPLOAD_PROTOCOL_MODE must be legacy, dual, or multipart');
+  }
+
+  return value;
+};
+
 const readCaptionProvider = (env: EnvSource): CaptionProviderKind => {
   const value = readOptional(env, 'CAPTION_PROVIDER') ?? 'mock';
 
@@ -392,6 +406,25 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
       300
     ),
     uploadMaxSizeBytes: readPositiveInteger(env, 'UPLOAD_MAX_SIZE_BYTES', 500 * 1024 * 1024),
+    uploadProtocolMode: readUploadProtocolMode(env),
+    multipartUploadPartSizeBytes: (() => {
+      const value = readPositiveInteger(
+        env,
+        'MULTIPART_UPLOAD_PART_SIZE_BYTES',
+        16 * 1024 * 1024
+      );
+
+      if (value < 5 * 1024 * 1024) {
+        throw new Error('MULTIPART_UPLOAD_PART_SIZE_BYTES must be at least 5242880');
+      }
+
+      return value;
+    })(),
+    multipartUploadSessionExpiresSeconds: readPositiveInteger(
+      env,
+      'MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS',
+      3600
+    ),
     rateLimitWindowMs: readPositiveInteger(env, 'RATE_LIMIT_WINDOW_MS', 60_000),
     rateLimitMaxRequests: readPositiveInteger(env, 'RATE_LIMIT_MAX_REQUESTS', 300),
     openAiApiKey: readOptional(env, 'OPENAI_API_KEY'),

@@ -121,14 +121,33 @@ Request:
   "contentType": "video/mp4",
   "sizeBytes": 12345678,
   "width": 1080,
-  "height": 1920
+  "height": 1920,
+  "uploadProtocol": "multipart-v1"
 }
 ```
 
 Response includes `upload.videoS3Key`, the existing legacy field name for the temporary object key that can be passed to `POST /posts`. New upload keys are scoped to the authenticated user, for example `uploads/<user-id>/<upload-id>/<file>`.
 When `width` and `height` are provided, the backend validates that the metadata describes a vertical 9:16 video, such as `1080x1920`.
-The backend rejects uploads above `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB). When `VIDEO_STORAGE=r2`, the signed `PUT` URL also signs the declared content length and content type.
-When `VIDEO_STORAGE=r2` or `VIDEO_STORAGE=s3`, the response also includes `upload.uploadUrl`, `upload.uploadMethod`, `upload.uploadHeaders`, and `upload.uploadExpiresAt`. The mobile app should upload the video file to `uploadUrl` before creating the post.
+The backend rejects uploads above `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
+
+New mobile clients opt in with `"uploadProtocol": "multipart-v1"`. In `dual`
+or `multipart` mode, the response contains an opaque session `id`,
+`partSizeBytes`, `partCount`, and `sessionExpiresAt`. The client requests each
+part URL just in time from `POST /uploads/:uploadId/parts/:partNumber`, uploads
+that exact byte range, and sends the returned ETags to
+`POST /uploads/:uploadId/complete`. A managed `videoS3Key` can be used by
+`POST /posts` only after the session reaches `COMPLETED`; status and abort are
+available through `GET /uploads/:uploadId` and `DELETE /uploads/:uploadId`.
+Ambiguous completion responses are polled with bounded backoff, and the API can
+reconcile a `COMPLETING` session by checking the completed R2 object's exact
+size before marking it `COMPLETED`.
+
+`UPLOAD_PROTOCOL_MODE` defaults to `legacy`, so existing clients still receive
+the original signed `PUT` fields (`uploadUrl`, `uploadMethod`, `uploadHeaders`,
+and `uploadExpiresAt`). Production uses `dual` during rollout: opted-in clients
+use managed multipart while older clients keep working. The legacy URL remains
+a replay risk until all supported clients are upgraded and production can move
+to strict `multipart` mode.
 
 #### `POST /captions/generate`
 
@@ -542,7 +561,9 @@ account-only retry path accepts a still-valid token only when Firebase confirms
 the UID is already gone; revoked tokens remain rejected. RevenueCat webhooks do
 not recreate users that no longer exist. PostPeer cleanup follows every page of
 the profile's integrations and fails before local deletion when provider cleanup
-is unavailable or any external disconnect fails.
+is unavailable or any external disconnect fails. The deletion barrier is set
+before queue and provider cleanup, blocks later authenticated mutations, and is
+also checked by the publish worker before it claims a post.
 
 Queue/storage scaffold switches:
 
@@ -577,7 +598,15 @@ Queue/storage scaffold switches:
 - `VIDEO_STORAGE=mock` creates mock S3-style upload keys and mock read placeholders; `VIDEO_STORAGE=r2` uses Cloudflare R2 through the S3-compatible API for signed upload and signed download access; `VIDEO_STORAGE=s3` remains available as a legacy AWS S3 path.
 - `CLOUDFLARE_R2_BUCKET`, `CLOUDFLARE_R2_ACCOUNT_ID`, `CLOUDFLARE_R2_ACCESS_KEY_ID`, and `CLOUDFLARE_R2_SECRET_ACCESS_KEY` configure R2 uploads.
 - `CLOUDFLARE_R2_ENDPOINT` can override the default `https://<accountId>.r2.cloudflarestorage.com` endpoint when needed.
-- `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS=300` keeps R2 signed upload URLs usable for five minutes. The mobile client checks the expiry and requests one fresh URL when R2 explicitly reports that the first URL expired.
+- `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS=300` keeps R2 signed upload URLs usable for five minutes. Legacy upload retries request one fresh URL after explicit expiry; managed multipart retries request a fresh URL only for the affected part.
+- `UPLOAD_PROTOCOL_MODE=legacy|dual|multipart` selects the upload rollout. It
+  defaults to `legacy`; production uses `dual` while old clients are upgraded,
+  then can move to strict `multipart` to remove the legacy signed-URL replay
+  window.
+- `MULTIPART_UPLOAD_PART_SIZE_BYTES=16777216` sets the server-selected managed
+  part size (16 MiB by default).
+- `MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS=3600` sets how long an unfinished
+  managed upload session remains usable.
 - `UPLOAD_MAX_SIZE_BYTES=524288000` controls the maximum declared upload size accepted by `POST /uploads`.
 - `RATE_LIMIT_WINDOW_MS=60000` and `RATE_LIMIT_MAX_REQUESTS=300` cap requests per IP per window; exceeding the cap returns `429` with code `RATE_LIMITED` (`GET /health` is exempt). Auth, upload, AI, and social-connection routes also have tighter fixed per-IP buckets.
 - `AWS_S3_UPLOAD_EXPIRES_SECONDS=900` controls how long legacy S3 signed upload URLs remain usable.

@@ -32,6 +32,7 @@ export const createPublishScheduler = ({
   publisher = createMockPlatformPublisher(),
   storage = createMockVideoStorageCleaner(),
   notifier = createNoopPublishNotifier(),
+  assertOwnerActive,
   intervalMs = 5000,
   now = () => new Date().toISOString()
 }: {
@@ -40,6 +41,7 @@ export const createPublishScheduler = ({
   publisher?: PlatformPublisher;
   storage?: VideoStorageCleaner;
   notifier?: PublishNotifier;
+  assertOwnerActive?: (ownerId: string) => Promise<void>;
   intervalMs?: number;
   now?: () => string;
 }): PublishScheduler => {
@@ -73,6 +75,7 @@ export const createPublishScheduler = ({
             storage,
             platformPublishStore,
             notifier,
+            assertOwnerActive,
             now
           });
         } catch {

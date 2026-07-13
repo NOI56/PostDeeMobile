@@ -6,6 +6,10 @@ import { readServerConfig } from '../../config/env.js';
 import type { PostPeerConnectClient } from '../socialConnections/postPeerConnectClient.js';
 import { createInMemorySocialConnectionStore } from '../socialConnections/socialConnectionStore.js';
 import type { VideoStorage } from '../storage/videoStorage.js';
+import {
+  ManagedUploadServiceError,
+  type ManagedUploadService
+} from '../uploads/managedUploadService.js';
 
 describe('account routes', () => {
   const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
@@ -70,6 +74,43 @@ describe('account routes', () => {
     listIntegrations: vi.fn(async () => []),
     disconnectIntegration: vi.fn(async () => undefined),
     ...overrides
+  });
+
+  const createManagedUploadCleanupService = ({
+    assertOwnerActive = vi.fn(async () => undefined),
+    prepareOwnerDeletion = vi.fn(async () => undefined),
+    finishOwnerDeletion = vi.fn(async () => undefined)
+  } = {}) =>
+    ({
+      assertOwnerActive,
+      prepareOwnerDeletion,
+      finishOwnerDeletion
+    }) as unknown as ManagedUploadService;
+
+  it('blocks authenticated mutations after the account deletion barrier is set', async () => {
+    const assertOwnerActive = vi.fn(async () => {
+      throw new ManagedUploadServiceError(
+        409,
+        'ACCOUNT_DELETION_IN_PROGRESS',
+        'Account deletion is in progress.'
+      );
+    });
+    const app = createApp({
+      managedUploadService: createManagedUploadCleanupService({
+        assertOwnerActive
+      })
+    });
+
+    await request(app)
+      .post('/templates')
+      .set('x-postdee-user-id', 'seller-deleting')
+      .send({ title: 'Late template', body: 'Must not be created' })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body.code).toBe('ACCOUNT_DELETION_IN_PROGRESS');
+      });
+
+    expect(assertOwnerActive).toHaveBeenCalledWith('seller-deleting');
   });
 
   it('permanently deletes all data for the authenticated user', async () => {
@@ -231,9 +272,15 @@ describe('account routes', () => {
         calls.push(`disconnect:${integrationId}`);
       })
     });
+    const managedUploadService = createManagedUploadCleanupService({
+      prepareOwnerDeletion: vi.fn(async () => {
+        calls.push('barrier');
+      })
+    });
     const app = createApp({
       socialConnectionStore,
       postPeerConnectClient,
+      managedUploadService,
       videoStorage: createTestVideoStorage(
         vi.fn(async () => {
           calls.push('media');
@@ -245,6 +292,7 @@ describe('account routes', () => {
     await request(app).delete('/account').set('x-postdee-user-id', userId).expect(200);
 
     expect(calls).toEqual([
+      'barrier',
       'list',
       'disconnect:int-tiktok',
       'disconnect:int-future-platform',
@@ -516,6 +564,63 @@ describe('account routes', () => {
       .set('authorization', 'Bearer firebase-token')
       .expect(200);
     expect(accountIdentityDeleter.deleteIdentity).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops managed uploads before sweeping owner objects and seals the owner after deletion', async () => {
+    const calls: string[] = [];
+    const managedUploadService = createManagedUploadCleanupService({
+      prepareOwnerDeletion: vi.fn(async () => {
+        calls.push('prepare-uploads');
+      }),
+      finishOwnerDeletion: vi.fn(async () => {
+        calls.push('finish-uploads');
+      })
+    });
+    const videoStorage = createTestVideoStorage(
+      vi.fn(async () => {
+        calls.push('delete-owner-objects');
+      })
+    );
+    const app = createApp({ videoStorage, managedUploadService });
+
+    await request(app)
+      .delete('/account')
+      .set('x-postdee-user-id', 'seller-managed-delete')
+      .expect(200);
+
+    expect(calls).toEqual([
+      'prepare-uploads',
+      'delete-owner-objects',
+      'finish-uploads'
+    ]);
+  });
+
+  it('waits for an in-flight multipart completion before deleting account data', async () => {
+    const deleteAllVideosForOwner = vi.fn(async () => undefined);
+    const managedUploadService = createManagedUploadCleanupService({
+      prepareOwnerDeletion: vi.fn(async () => {
+        throw new ManagedUploadServiceError(
+          409,
+          'ACCOUNT_UPLOADS_DRAINING',
+          'Upload completion is still in progress.'
+        );
+      })
+    });
+    const app = createApp({
+      videoStorage: createTestVideoStorage(deleteAllVideosForOwner),
+      managedUploadService
+    });
+
+    await request(app)
+      .delete('/account')
+      .set('x-postdee-user-id', 'seller-upload-draining')
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body.code).toBe('ACCOUNT_UPLOADS_DRAINING');
+      });
+
+    expect(deleteAllVideosForOwner).not.toHaveBeenCalled();
+    expect(managedUploadService.finishOwnerDeletion).not.toHaveBeenCalled();
   });
 
   it('returns a retryable error when Firebase identity deletion fails', async () => {

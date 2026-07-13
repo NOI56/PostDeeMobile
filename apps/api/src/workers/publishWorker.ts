@@ -214,6 +214,7 @@ export const processPublishJobForPost = async ({
   storage = createMockVideoStorageCleaner(),
   platformPublishStore = createInMemoryPlatformPublishStore(),
   notifier = createNoopPublishNotifier(),
+  assertOwnerActive,
   deleteVideoAfterPublish = false,
   now = () => new Date().toISOString()
 }: {
@@ -223,9 +224,14 @@ export const processPublishJobForPost = async ({
   storage?: VideoStorageCleaner;
   platformPublishStore?: PlatformPublishStore;
   notifier?: PublishNotifier;
+  assertOwnerActive?: (ownerId: string) => Promise<void>;
   deleteVideoAfterPublish?: boolean;
   now?: () => string;
 }): Promise<PublishWorkerResult> => {
+  if (assertOwnerActive && jobData.userId) {
+    await assertOwnerActive(jobData.userId);
+  }
+
   const claimed = await postStore.claimForPublish({
     postId: jobData.postId,
     expectedRunAt: jobData.runAt

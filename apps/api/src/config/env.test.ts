@@ -21,6 +21,9 @@ describe('readServerConfig', () => {
       cloudflareR2Endpoint: undefined,
       cloudflareR2UploadExpiresSeconds: 300,
       uploadMaxSizeBytes: 524_288_000,
+      uploadProtocolMode: 'legacy',
+      multipartUploadPartSizeBytes: 16_777_216,
+      multipartUploadSessionExpiresSeconds: 3600,
       rateLimitWindowMs: 60_000,
       rateLimitMaxRequests: 300,
       openAiApiKey: undefined,
@@ -95,6 +98,9 @@ describe('readServerConfig', () => {
       CLOUDFLARE_R2_ENDPOINT: 'https://custom-r2-endpoint.local',
       CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS: '1500',
       UPLOAD_MAX_SIZE_BYTES: '123456789',
+      UPLOAD_PROTOCOL_MODE: 'dual',
+      MULTIPART_UPLOAD_PART_SIZE_BYTES: '8388608',
+      MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS: '7200',
       RATE_LIMIT_WINDOW_MS: '30000',
       RATE_LIMIT_MAX_REQUESTS: '50',
       OPENAI_API_KEY: 'openai-key',
@@ -155,6 +161,9 @@ describe('readServerConfig', () => {
       cloudflareR2Endpoint: 'https://custom-r2-endpoint.local',
       cloudflareR2UploadExpiresSeconds: 1500,
       uploadMaxSizeBytes: 123456789,
+      uploadProtocolMode: 'dual',
+      multipartUploadPartSizeBytes: 8_388_608,
+      multipartUploadSessionExpiresSeconds: 7200,
       rateLimitWindowMs: 30000,
       rateLimitMaxRequests: 50,
       openAiApiKey: 'openai-key',
@@ -415,6 +424,18 @@ describe('readServerConfig', () => {
     expect(() => readServerConfig({ UPLOAD_MAX_SIZE_BYTES: '0' })).toThrow(
       'UPLOAD_MAX_SIZE_BYTES must be a positive number'
     );
+  });
+
+  it('rejects invalid managed upload settings', () => {
+    expect(() => readServerConfig({ UPLOAD_PROTOCOL_MODE: 'automatic' })).toThrow(
+      'UPLOAD_PROTOCOL_MODE must be legacy, dual, or multipart'
+    );
+    expect(() =>
+      readServerConfig({ MULTIPART_UPLOAD_PART_SIZE_BYTES: '1048576' })
+    ).toThrow('MULTIPART_UPLOAD_PART_SIZE_BYTES must be at least 5242880');
+    expect(() =>
+      readServerConfig({ MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS: '0' })
+    ).toThrow('MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS must be a positive number');
   });
 
   it('rejects invalid RATE_LIMIT_WINDOW_MS values', () => {

@@ -10,6 +10,7 @@ import {
 } from '../subscriptions/subscriptionEntitlements.js';
 import type { SubscriptionPlan, SubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import type { UserStore } from '../users/userStore.js';
+import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
 import { type PostStore, isValidPlatform } from './postStore.js';
 import { countCurrentMonthPostUnits } from './postUsage.js';
 
@@ -81,6 +82,7 @@ export const registerPostRoutes = (
   subscriptionStore: SubscriptionStore,
   options: {
     allowSubscriptionPlanOverride?: boolean;
+    assertUploadReady?: (ownerId: string, videoS3Key: string) => Promise<void>;
   } = {}
 ) => {
   const allowSubscriptionPlanOverride = options.allowSubscriptionPlanOverride ?? true;
@@ -135,6 +137,23 @@ export const registerPostRoutes = (
         message: 'Selected media does not belong to the authenticated user'
       });
       return;
+    }
+
+    if (options.assertUploadReady) {
+      try {
+        await options.assertUploadReady(authUser.id, videoS3Key);
+      } catch (error) {
+        if (!(error instanceof ManagedUploadServiceError)) {
+          throw error;
+        }
+
+        response.status(error.statusCode).json({
+          status: 'error',
+          code: error.code,
+          message: error.message
+        });
+        return;
+      }
     }
 
     if (!subscriptionPlanOverride.ok) {

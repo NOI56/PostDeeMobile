@@ -92,6 +92,9 @@ intentionally want a different value.
 | `GROQ_EDIT_PLAN_MODEL` | `llama-3.3-70b-versatile` | AI edit-plan model. |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | PostPeer API host. |
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Five-minute signed upload URL lifetime; mobile retries once only when the URL explicitly expires. |
+| `UPLOAD_PROTOCOL_MODE` | `legacy` | Use `dual` during the mobile rollout; use `multipart` only after old app versions are blocked. |
+| `MULTIPART_UPLOAD_PART_SIZE_BYTES` | `16777216` | Uniform 16 MiB R2 parts; the final part may be smaller. |
+| `MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS` | `3600` | One-hour server-managed upload session lifetime. |
 | `UPLOAD_MAX_SIZE_BYTES` | `524288000` | 500 MiB upload metadata limit. |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Global rate limit window. |
 | `RATE_LIMIT_MAX_REQUESTS` | `300` | Global rate limit max requests. |

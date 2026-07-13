@@ -214,7 +214,7 @@ This keeps the schema usable for Apple App Store, Google Play, or other future b
 | Subscription | `SUBSCRIPTION_STORE=memory` | `SUBSCRIPTION_STORE=prisma` |
 | Analytics | `ANALYTICS_STORE=memory` | `ANALYTICS_STORE=prisma` |
 | Queue | `PUBLISH_QUEUE=memory` | `PUBLISH_QUEUE=bullmq` (Upstash) with `POST_STORE=prisma` and `DATABASE_URL` |
-| Video storage | `VIDEO_STORAGE=mock` | `VIDEO_STORAGE=r2` (Cloudflare) |
+| Video storage | `VIDEO_STORAGE=mock`, `UPLOAD_PROTOCOL_MODE=legacy` | `VIDEO_STORAGE=r2`, with `UPLOAD_PROTOCOL_MODE=dual` during rollout and strict `multipart` after old clients are retired |
 | Captions | `CAPTION_PROVIDER=mock` | Real-clip caption provider using backend AI |
 | Caption usage | `CAPTION_USAGE_STORE=memory` | `CAPTION_USAGE_STORE=prisma` |
 | AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | `TRANSCRIPTION_PROVIDER=groq` with Groq Whisper transcription on backend, FFmpeg export on mobile |
@@ -226,15 +226,20 @@ Firebase production account deletion additionally requires
 `FIREBASE_AUTH_DELETE_ENABLED=true` and `FIREBASE_SERVICE_ACCOUNT_JSON`. The API
 uses Firebase Admin token verification with revocation checks in this mode.
 
-Account deletion is an idempotent saga: queued jobs are removed, PostPeer
-integration pages are listed and every external integration id is disconnected,
-every R2 object under the user's exact encoded owner prefix is attempted,
-user-scoped database records are deleted, and the Firebase identity is deleted
-last. External cleanup failure stops before database deletion and can be
-retried; external deletion is not transactional, so some already-deleted
-objects or integrations may remain deleted after a retryable response. Late
-RevenueCat active events are ignored when their local user no longer exists and
-cannot recreate the account.
+Account deletion is an idempotent saga: the durable owner barrier is set first,
+later authenticated mutations are rejected, and the publish worker checks the
+same barrier before claiming a post. Queued jobs are then removed and PostPeer
+integration pages are listed so every external integration id can be
+disconnected. An active completion is allowed a short drain window; a stale
+completion is reconciled against the R2 object size before persisted and orphan
+multipart sessions are aborted. Every R2 object under the user's exact encoded
+owner prefix is attempted, user-scoped database records are deleted, and the
+Firebase identity is deleted last.
+External cleanup failure stops before database deletion and can be retried;
+external deletion is not transactional, so some already-deleted objects or
+integrations may remain deleted after a retryable response. Late RevenueCat
+active events are ignored when their local user no longer exists and cannot
+recreate the account.
 Firebase deletion also requires a token authenticated within the last five
 minutes. The account-only retry verifier accepts a valid token for a UID that
 Firebase confirms is already missing, while still rejecting revoked tokens.
@@ -256,10 +261,23 @@ sequenceDiagram
   participant P as Social Platforms
 
   U->>M: Select vertical video
-  M->>A: POST /uploads
-  A->>S: Create upload key / signed URL
-  A-->>M: videoS3Key + optional uploadUrl
-  M->>S: PUT video file when signed URL exists
+  M->>A: POST /uploads (uploadProtocol: multipart-v1)
+  alt Managed multipart in dual/multipart mode
+    A->>S: Initiate multipart upload
+    A-->>M: Session id + videoS3Key + part plan
+    loop Every part
+      M->>A: POST /uploads/:id/parts/:number
+      A-->>M: Just-in-time signed part URL
+      M->>S: PUT exact byte range
+    end
+    M->>A: POST /uploads/:id/complete + ETags
+    A->>S: Complete multipart upload
+    A-->>M: Upload status COMPLETED
+  else Legacy mode or old client during dual rollout
+    A->>S: Create upload key / signed URL
+    A-->>M: videoS3Key + uploadUrl
+    M->>S: PUT full video file
+  end
   M->>A: POST /posts
   A->>Q: Enqueue publish job
   A-->>M: post + publishJob
@@ -278,15 +296,21 @@ Rules:
 - Starter is limited to 120 post units per month.
 - Pro is limited to 250 post units per month.
 - Post units count by selected platform, not post row.
-- Upload metadata is capped by `UPLOAD_MAX_SIZE_BYTES`; R2 signed uploads also sign the declared content length and content type.
-- R2 signed upload URLs default to five minutes. Mobile rejects a URL within
-  30 seconds of expiry and requests one fresh URL only after an explicit expiry
-  response, without retrying ambiguous network failures that could duplicate an
-  object.
-- A single-part presigned `PUT` remains a bearer URL that cannot be revoked
-  individually. Account deletion sweeps the owner prefix, but a URL reused
-  before expiry can recreate an orphan afterward; managed multipart sessions
-  with server-side completion/abort are the long-term closure for this race.
+- Upload metadata is capped by `UPLOAD_MAX_SIZE_BYTES`. Managed multipart part
+  sizes are selected by the server, and a post can reference the key only after
+  its session reaches `COMPLETED`.
+- New clients opt in with `multipart-v1`. `UPLOAD_PROTOCOL_MODE` defaults to
+  `legacy`; production uses `dual` during rollout, and moves to strict
+  `multipart` only after old clients are retired.
+- Managed part URLs are issued just in time and can be retried per part. The
+  server owns completion and abort, which lets account deletion invalidate
+  unfinished sessions before object cleanup.
+- Completion and abort transitions use compare-and-set rules. If R2 completes
+  an object before the database acknowledgement survives, `GET /uploads/:id`
+  verifies its exact size with `HEAD` and reconciles the session.
+- The legacy single-file signed `PUT` remains a bearer URL that cannot be
+  revoked individually. It keeps a replay window while `legacy` or `dual` mode
+  accepts old clients; strict `multipart` closes that remaining path.
 - Every route except `GET /health` sits behind a global per-IP rate limit (`RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS`); auth, upload, AI, and social-connection routes add tighter fixed per-IP buckets.
 - Starter unlocks real-clip AI captioning from audio.
 - Pro unlocks analytics, hashtag radar, AI comment center, team/editor access,
@@ -597,7 +621,8 @@ cd apps/mobile
 - Social platform publishing defaults to mock. The PostPeer path is wired, but
   production must use per-user social connections and a real provider-level
   publish test before user publishing is enabled. Shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production.
-- The publish worker claims only `QUEUED` posts before calling PostPeer or the
+- The publish worker checks the durable account-deletion barrier, then claims
+  only `QUEUED` posts before calling PostPeer or the
   mock publisher. Jobs for posts already `PUBLISHING`, `PUBLISHED`,
   `PARTIAL_PUBLISHED`, or `FAILED` are skipped to avoid duplicate provider
   calls. Scheduled jobs whose `runAt` no longer matches the post's current

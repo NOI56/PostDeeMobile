@@ -31,15 +31,91 @@ export type VideoDownloadAccess = {
   downloadExpiresAt?: string;
 };
 
+export type MultipartVideoUpload = {
+  storageUploadId: string;
+  videoS3Key: string;
+  createdAt: string;
+};
+
+export type MultipartUploadPart = {
+  partNumber: number;
+  eTag: string;
+};
+
+export type MultipartVideoStorage = {
+  createUpload: (
+    metadata: UploadMetadata,
+    ownerId: string
+  ) => Promise<MultipartVideoUpload>;
+  createPartUpload: (input: {
+    storageUploadId: string;
+    videoS3Key: string;
+    partNumber: number;
+    sizeBytes: number;
+  }) => Promise<{
+    uploadUrl: string;
+    uploadExpiresAt: string;
+    uploadHeaders: Record<string, string>;
+  }>;
+  completeUpload: (input: {
+    storageUploadId: string;
+    videoS3Key: string;
+    parts: MultipartUploadPart[];
+  }) => Promise<void>;
+  abortUpload: (input: {
+    storageUploadId: string;
+    videoS3Key: string;
+  }) => Promise<void>;
+  getCompletedObjectSize: (videoS3Key: string) => Promise<number | undefined>;
+  listUploadsForOwner: (ownerId: string) => Promise<MultipartVideoUpload[]>;
+};
+
 export type VideoStorage = {
   supportsOwnerCleanup?: boolean;
+  multipart?: MultipartVideoStorage;
   createUpload: (metadata: UploadMetadata, ownerId?: string) => Promise<VideoUpload>;
   createDownloadAccess: (videoS3Key: string) => Promise<VideoDownloadAccess>;
   deleteVideo: (videoS3Key: string) => Promise<void>;
   deleteAllVideosForOwner: (ownerId: string) => Promise<void>;
 };
 
+export type S3MultipartVideoStorageClient = {
+  createUpload: (input: {
+    bucket: string;
+    key: string;
+    contentType: string;
+  }) => Promise<{ storageUploadId: string }>;
+  createPartUpload: (input: {
+    bucket: string;
+    key: string;
+    storageUploadId: string;
+    partNumber: number;
+    sizeBytes: number;
+    expiresInSeconds: number;
+  }) => Promise<string>;
+  completeUpload: (input: {
+    bucket: string;
+    key: string;
+    storageUploadId: string;
+    parts: MultipartUploadPart[];
+  }) => Promise<void>;
+  abortUpload: (input: {
+    bucket: string;
+    key: string;
+    storageUploadId: string;
+  }) => Promise<void>;
+  getObjectSize: (input: {
+    bucket: string;
+    key: string;
+  }) => Promise<number | undefined>;
+  listUploadsByPrefix: (input: {
+    bucket: string;
+    prefix: string;
+  }) => Promise<MultipartVideoUpload[]>;
+};
+
 export type S3VideoStorageClient = {
+  multipart?: S3MultipartVideoStorageClient;
   createPresignedUploadUrl: (input: {
     bucket: string;
     key: string;
@@ -112,6 +188,87 @@ export const createMockVideoStorage = (): VideoStorage => ({
 // signed URL, so downloads get at least an hour regardless of the upload expiry.
 const minimumDownloadExpiresSeconds = 3600;
 
+const createMultipartVideoStorage = ({
+  bucket,
+  client,
+  storageProvider,
+  uploadExpiresSeconds
+}: {
+  bucket: string;
+  client: S3MultipartVideoStorageClient;
+  storageProvider: Extract<VideoUpload['storageProvider'], 's3' | 'r2'>;
+  uploadExpiresSeconds: number;
+}): MultipartVideoStorage => ({
+  createUpload: async (metadata, ownerId) => {
+    const upload = createVideoUpload({
+      metadata,
+      ownerId,
+      storageProvider
+    });
+    const { storageUploadId } = await client.createUpload({
+      bucket,
+      key: upload.videoS3Key,
+      contentType: metadata.contentType
+    });
+
+    return {
+      storageUploadId,
+      videoS3Key: upload.videoS3Key,
+      createdAt: upload.createdAt
+    };
+  },
+  createPartUpload: async ({
+    storageUploadId,
+    videoS3Key,
+    partNumber,
+    sizeBytes
+  }) => {
+    const uploadUrl = await client.createPartUpload({
+      bucket,
+      key: videoS3Key,
+      storageUploadId,
+      partNumber,
+      sizeBytes,
+      expiresInSeconds: uploadExpiresSeconds
+    });
+
+    return {
+      uploadUrl,
+      uploadExpiresAt: new Date(
+        Date.now() + uploadExpiresSeconds * 1000
+      ).toISOString(),
+      uploadHeaders: {
+        'Content-Length': String(sizeBytes)
+      }
+    };
+  },
+  completeUpload: async ({ storageUploadId, videoS3Key, parts }) => {
+    await client.completeUpload({
+      bucket,
+      key: videoS3Key,
+      storageUploadId,
+      parts
+    });
+  },
+  abortUpload: async ({ storageUploadId, videoS3Key }) => {
+    await client.abortUpload({
+      bucket,
+      key: videoS3Key,
+      storageUploadId
+    });
+  },
+  getCompletedObjectSize: async (videoS3Key) =>
+    client.getObjectSize({
+      bucket,
+      key: videoS3Key
+    }),
+  listUploadsForOwner: async (ownerId) =>
+    client.listUploadsByPrefix({
+      bucket,
+      prefix: `uploads/${encodeStorageOwnerId(ownerId)}/`
+    })
+});
+
 const createObjectVideoStorage = ({
   bucket,
   client,
@@ -124,6 +281,14 @@ const createObjectVideoStorage = ({
   uploadExpiresSeconds: number;
 }): VideoStorage => ({
   supportsOwnerCleanup: Boolean(client.listObjectKeysByPrefix),
+  multipart: client.multipart
+    ? createMultipartVideoStorage({
+        bucket,
+        client: client.multipart,
+        storageProvider,
+        uploadExpiresSeconds
+      })
+    : undefined,
   createUpload: async (metadata, ownerId) => {
     const upload = createVideoUpload({
       metadata,

@@ -98,10 +98,19 @@ connected, supported destinations to be selected. A successful `POST /posts`
 response means the post was accepted as `QUEUED` (or scheduled); the mobile UI
 must describe that state as queued, not as proof that every platform has already
 published it. Final platform success or failure comes from the publish worker.
-Signed R2 upload URLs are checked with a 30-second safety margin. When R2
-explicitly reports expiry, the app requests one fresh URL and retries the file
-once; unrelated or ambiguous failures are not retried to avoid duplicate
-objects or posts.
+The app requests `multipart-v1` from `POST /uploads`. When the server runs in
+`dual` or `multipart` mode, it uploads exact file ranges to just-in-time part
+URLs, retries the same failed part up to three times, retains each ETag, and
+calls the completion endpoint before creating a post. It checks upload status
+after an ambiguous completion response with bounded 1s/2s/4s backoff instead of
+creating a second session. If the server still reports `COMPLETING`, the app
+preserves that session and never sends a competing abort request.
+
+The server defaults to `legacy`, and production uses `dual` while older clients
+are upgraded. If the server returns the legacy signed-`PUT` response, the app
+keeps the existing 30-second expiry safety margin and requests one fresh URL
+only after an explicit expiry response. The legacy path remains replayable
+until production switches to strict `multipart` mode.
 
 ## Profile Draft
 

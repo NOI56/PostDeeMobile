@@ -5,6 +5,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/config/app_config.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 
+Future<Map<String, Object?>> _readJsonRequest(HttpRequest request) async {
+  final body = utf8.decode(await _readRequestBytes(request));
+  if (body.isEmpty) {
+    return <String, Object?>{};
+  }
+
+  return jsonDecode(body) as Map<String, Object?>;
+}
+
+Future<List<int>> _readRequestBytes(HttpRequest request) => request.fold(
+      <int>[],
+      (bytes, chunk) => bytes..addAll(chunk),
+    );
+
+void _writeJsonResponse(
+  HttpResponse response,
+  Map<String, Object?> body, {
+  int statusCode = HttpStatus.ok,
+}) {
+  response
+    ..statusCode = statusCode
+    ..headers.contentType = ContentType.json
+    ..write(jsonEncode(body));
+}
+
 void main() {
   test('ApiHealthResult parses backend health payload', () {
     final health = ApiHealthResult.fromJson({
@@ -156,6 +181,623 @@ void main() {
         '2026-06-27T12:00:00.000Z');
   });
 
+  test('upload models advertise and parse multipart-v1 session metadata', () {
+    expect(
+      const CreateUploadRequest(
+        fileName: 'clip.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 10,
+      ).toJson(),
+      {
+        'fileName': 'clip.mp4',
+        'contentType': 'video/mp4',
+        'sizeBytes': 10,
+        'uploadProtocol': 'multipart-v1',
+      },
+    );
+
+    final result = UploadResult.fromJson({
+      'id': 'upload-multipart',
+      'videoS3Key': 'uploads/seller/upload-multipart/clip.mp4',
+      'storageProvider': 'private',
+      'uploadProtocol': 'multipart-v1',
+      'partSizeBytes': 5,
+      'partCount': 2,
+      'sessionExpiresAt': '2026-07-13T12:00:00.000Z',
+    });
+
+    expect(result.uploadProtocol, 'multipart-v1');
+    expect(result.partSizeBytes, 5);
+    expect(result.partCount, 2);
+    expect(result.sessionExpiresAt?.toUtc().toIso8601String(),
+        '2026-07-13T12:00:00.000Z');
+  });
+
+  final multipartCases = <({
+    String name,
+    List<int> bytes,
+    int partSizeBytes,
+    List<List<int>> expectedParts,
+  })>[
+    (
+      name: 'one part',
+      bytes: <int>[0, 1, 2, 3],
+      partSizeBytes: 8,
+      expectedParts: <List<int>>[
+        <int>[0, 1, 2, 3],
+      ],
+    ),
+    (
+      name: 'two parts with an exact final byte boundary',
+      bytes: <int>[0, 1, 2, 3, 4, 5, 6],
+      partSizeBytes: 4,
+      expectedParts: <List<int>>[
+        <int>[0, 1, 2, 3],
+        <int>[4, 5, 6],
+      ],
+    ),
+  ];
+
+  for (final uploadCase in multipartCases) {
+    test('uploadVideoFile uploads ${uploadCase.name} and completes with ETags',
+        () async {
+      final directory =
+          await Directory.systemTemp.createTemp('postdee-multipart-upload-');
+      final file = File('${directory.path}/clip.mp4');
+      await file.writeAsBytes(uploadCase.bytes);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final baseUrl = 'http://${server.address.address}:${server.port}';
+      final uploadId = 'upload-${uploadCase.expectedParts.length}';
+      final uploadedParts = <int, List<int>>{};
+      Map<String, Object?>? completeBody;
+      var aborted = false;
+
+      final serverTask = () async {
+        await for (final request in server) {
+          final partMatch = RegExp(
+            '^/uploads/$uploadId/parts/([0-9]+)\$',
+          ).firstMatch(request.uri.path);
+          final objectMatch = RegExp(
+            '^/objects/$uploadId/([0-9]+)\$',
+          ).firstMatch(request.uri.path);
+
+          if (partMatch != null) {
+            final partNumber = int.parse(partMatch.group(1)!);
+            await _readJsonRequest(request);
+            _writeJsonResponse(request.response, {
+              'status': 'ok',
+              'part': {
+                'partNumber': partNumber,
+                'sizeBytes': uploadCase.expectedParts[partNumber - 1].length,
+                'uploadUrl': '$baseUrl/objects/$uploadId/$partNumber',
+                'uploadMethod': 'PUT',
+                'uploadHeaders': {
+                  'Content-Length':
+                      '${uploadCase.expectedParts[partNumber - 1].length}',
+                  'x-postdee-part': '$partNumber',
+                },
+                'uploadExpiresAt': '2099-01-01T00:00:00.000Z',
+              },
+            });
+          } else if (objectMatch != null) {
+            final partNumber = int.parse(objectMatch.group(1)!);
+            uploadedParts[partNumber] = await _readRequestBytes(request);
+            request.response
+              ..statusCode = HttpStatus.ok
+              ..headers.set(HttpHeaders.etagHeader, '"etag-$partNumber"');
+          } else if (request.uri.path == '/uploads/$uploadId/complete') {
+            completeBody = await _readJsonRequest(request);
+            _writeJsonResponse(request.response, {
+              'status': 'ok',
+              'upload': {
+                'id': uploadId,
+                'videoS3Key': 'uploads/seller/$uploadId/clip.mp4',
+                'storageProvider': 'private',
+                'uploadProtocol': 'multipart-v1',
+                'partSizeBytes': uploadCase.partSizeBytes,
+                'partCount': uploadCase.expectedParts.length,
+                'sessionExpiresAt': '2099-01-01T00:00:00.000Z',
+              },
+            });
+          } else if (request.uri.path == '/uploads/$uploadId') {
+            aborted = true;
+            await request.drain<void>();
+            request.response.statusCode = HttpStatus.noContent;
+          } else {
+            await request.drain<void>();
+            request.response.statusCode = HttpStatus.notFound;
+          }
+
+          await request.response.close();
+        }
+      }();
+
+      try {
+        final client = PostDeeApiClient(baseUrl: baseUrl);
+        await client.uploadVideoFile(
+          UploadResult(
+            id: uploadId,
+            videoS3Key: 'uploads/seller/$uploadId/clip.mp4',
+            storageProvider: 'private',
+            uploadProtocol: 'multipart-v1',
+            partSizeBytes: uploadCase.partSizeBytes,
+            partCount: uploadCase.expectedParts.length,
+            sessionExpiresAt: DateTime.utc(2099),
+          ),
+          file,
+        );
+
+        expect(
+          <List<int>>[
+            for (var partNumber = 1;
+                partNumber <= uploadCase.expectedParts.length;
+                partNumber += 1)
+              uploadedParts[partNumber]!,
+          ],
+          uploadCase.expectedParts,
+        );
+        expect(completeBody, {
+          'parts': [
+            for (var partNumber = 1;
+                partNumber <= uploadCase.expectedParts.length;
+                partNumber += 1)
+              {
+                'partNumber': partNumber,
+                'etag': '"etag-$partNumber"',
+              },
+          ],
+        });
+        expect(aborted, isFalse);
+      } finally {
+        await server.close(force: true);
+        await serverTask;
+        await directory.delete(recursive: true);
+      }
+    });
+  }
+
+  test('uploadVideoFile retries a failed part with a fresh signed URL',
+      () async {
+    final directory =
+        await Directory.systemTemp.createTemp('postdee-multipart-retry-');
+    final file = File('${directory.path}/clip.mp4');
+    await file.writeAsBytes(const <int>[1, 2, 3]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final baseUrl = 'http://${server.address.address}:${server.port}';
+    var partRequestCount = 0;
+    final objectPaths = <String>[];
+    var completed = false;
+
+    final serverTask = () async {
+      await for (final request in server) {
+        if (request.uri.path == '/uploads/retry-upload/parts/1') {
+          partRequestCount += 1;
+          await _readJsonRequest(request);
+          if (partRequestCount == 1) {
+            request.response
+              ..statusCode = HttpStatus.serviceUnavailable
+              ..write('temporary signing outage');
+          } else {
+            _writeJsonResponse(request.response, {
+              'status': 'ok',
+              'part': {
+                'partNumber': 1,
+                'sizeBytes': 3,
+                'uploadUrl': '$baseUrl/objects/attempt-$partRequestCount',
+                'uploadMethod': 'PUT',
+                'uploadHeaders': <String, String>{},
+                'uploadExpiresAt': '2099-01-01T00:00:00.000Z',
+              },
+            });
+          }
+        } else if (request.uri.path.startsWith('/objects/attempt-')) {
+          objectPaths.add(request.uri.path);
+          await request.drain<void>();
+          if (objectPaths.length == 1) {
+            request.response
+              ..statusCode = HttpStatus.serviceUnavailable
+              ..write('temporary outage');
+          } else {
+            request.response
+              ..statusCode = HttpStatus.ok
+              ..headers.set(HttpHeaders.etagHeader, '"retry-etag"');
+          }
+        } else if (request.uri.path == '/uploads/retry-upload/complete') {
+          completed = true;
+          await _readJsonRequest(request);
+          _writeJsonResponse(request.response, {
+            'status': 'ok',
+            'upload': {
+              'id': 'retry-upload',
+              'videoS3Key': 'uploads/retry-upload/clip.mp4',
+              'storageProvider': 'private',
+            },
+          });
+        } else {
+          await request.drain<void>();
+          request.response.statusCode = HttpStatus.notFound;
+        }
+
+        await request.response.close();
+      }
+    }();
+
+    try {
+      final client = PostDeeApiClient(baseUrl: baseUrl);
+      await client.uploadVideoFile(
+        UploadResult(
+          id: 'retry-upload',
+          videoS3Key: 'uploads/retry-upload/clip.mp4',
+          storageProvider: 'private',
+          uploadProtocol: 'multipart-v1',
+          partSizeBytes: 3,
+          partCount: 1,
+          sessionExpiresAt: DateTime.utc(2099),
+        ),
+        file,
+      );
+
+      expect(partRequestCount, 3);
+      expect(objectPaths, ['/objects/attempt-2', '/objects/attempt-3']);
+      expect(completed, isTrue);
+    } finally {
+      await server.close(force: true);
+      await serverTask;
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('uploadVideoFile aborts after three retryable failures', () async {
+    final directory =
+        await Directory.systemTemp.createTemp('postdee-multipart-abort-');
+    final file = File('${directory.path}/clip.mp4');
+    await file.writeAsBytes(const <int>[1, 2, 3]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final baseUrl = 'http://${server.address.address}:${server.port}';
+    var partRequestCount = 0;
+    var objectRequestCount = 0;
+    var abortRequestCount = 0;
+
+    final serverTask = () async {
+      await for (final request in server) {
+        if (request.uri.path == '/uploads/failed-upload/parts/1') {
+          partRequestCount += 1;
+          await _readJsonRequest(request);
+          _writeJsonResponse(request.response, {
+            'status': 'ok',
+            'part': {
+              'partNumber': 1,
+              'sizeBytes': 3,
+              'uploadUrl': '$baseUrl/objects/failure-$partRequestCount',
+              'uploadMethod': 'PUT',
+              'uploadHeaders': <String, String>{},
+              'uploadExpiresAt': '2099-01-01T00:00:00.000Z',
+            },
+          });
+        } else if (request.uri.path.startsWith('/objects/failure-')) {
+          objectRequestCount += 1;
+          await request.drain<void>();
+          request.response
+            ..statusCode = HttpStatus.serviceUnavailable
+            ..write('still unavailable');
+        } else if (request.uri.path == '/uploads/failed-upload' &&
+            request.method == 'DELETE') {
+          abortRequestCount += 1;
+          await request.drain<void>();
+          request.response.statusCode = HttpStatus.noContent;
+        } else {
+          await request.drain<void>();
+          request.response.statusCode = HttpStatus.notFound;
+        }
+
+        await request.response.close();
+      }
+    }();
+
+    try {
+      final client = PostDeeApiClient(baseUrl: baseUrl);
+      await expectLater(
+        client.uploadVideoFile(
+          UploadResult(
+            id: 'failed-upload',
+            videoS3Key: 'uploads/failed-upload/clip.mp4',
+            storageProvider: 'private',
+            uploadProtocol: 'multipart-v1',
+            partSizeBytes: 3,
+            partCount: 1,
+            sessionExpiresAt: DateTime.utc(2099),
+          ),
+          file,
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.statusCode,
+            'statusCode',
+            HttpStatus.serviceUnavailable,
+          ),
+        ),
+      );
+
+      expect(partRequestCount, 3);
+      expect(objectRequestCount, 3);
+      expect(abortRequestCount, 1);
+    } finally {
+      await server.close(force: true);
+      await serverTask;
+      await directory.delete(recursive: true);
+    }
+  });
+
+  test('uploadVideoFile requires an ETag and aborts when it is missing',
+      () async {
+    final directory =
+        await Directory.systemTemp.createTemp('postdee-multipart-etag-');
+    final file = File('${directory.path}/clip.mp4');
+    await file.writeAsBytes(const <int>[1, 2, 3]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final baseUrl = 'http://${server.address.address}:${server.port}';
+    var aborted = false;
+
+    final serverTask = () async {
+      await for (final request in server) {
+        if (request.uri.path == '/uploads/missing-etag/parts/1') {
+          await _readJsonRequest(request);
+          _writeJsonResponse(request.response, {
+            'status': 'ok',
+            'part': {
+              'partNumber': 1,
+              'sizeBytes': 3,
+              'uploadUrl': '$baseUrl/objects/missing-etag',
+              'uploadMethod': 'PUT',
+              'uploadHeaders': <String, String>{},
+              'uploadExpiresAt': '2099-01-01T00:00:00.000Z',
+            },
+          });
+        } else if (request.uri.path == '/objects/missing-etag') {
+          await request.drain<void>();
+          request.response.statusCode = HttpStatus.ok;
+        } else if (request.uri.path == '/uploads/missing-etag' &&
+            request.method == 'DELETE') {
+          aborted = true;
+          await request.drain<void>();
+          request.response.statusCode = HttpStatus.noContent;
+        } else {
+          await request.drain<void>();
+          request.response.statusCode = HttpStatus.notFound;
+        }
+
+        await request.response.close();
+      }
+    }();
+
+    try {
+      final client = PostDeeApiClient(baseUrl: baseUrl);
+      await expectLater(
+        client.uploadVideoFile(
+          UploadResult(
+            id: 'missing-etag',
+            videoS3Key: 'uploads/missing-etag/clip.mp4',
+            storageProvider: 'private',
+            uploadProtocol: 'multipart-v1',
+            partSizeBytes: 3,
+            partCount: 1,
+          ),
+          file,
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.message,
+            'message',
+            contains('ETag'),
+          ),
+        ),
+      );
+      expect(aborted, isTrue);
+    } finally {
+      await server.close(force: true);
+      await serverTask;
+      await directory.delete(recursive: true);
+    }
+  });
+
+  final ambiguousCompletionCases = <({
+    String name,
+    List<String> sessionStatuses,
+    bool shouldSucceed,
+  })>[
+    (
+      name: 'resolves 409 completion in progress after status completes',
+      sessionStatuses: const ['COMPLETING', 'COMPLETED'],
+      shouldSucceed: true,
+    ),
+    (
+      name: 'uses bounded backoff without aborting an in-progress completion',
+      sessionStatuses: const [
+        'COMPLETING',
+        'COMPLETING',
+        'COMPLETING',
+        'COMPLETING',
+      ],
+      shouldSucceed: false,
+    ),
+  ];
+
+  for (final completionCase in ambiguousCompletionCases) {
+    test('uploadVideoFile ${completionCase.name}', () async {
+      final directory =
+          await Directory.systemTemp.createTemp('postdee-multipart-complete-');
+      final file = File('${directory.path}/clip.mp4');
+      await file.writeAsBytes(const <int>[1, 2, 3]);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final baseUrl = 'http://${server.address.address}:${server.port}';
+      final uploadId = completionCase.shouldSucceed
+          ? 'eventual-complete'
+          : 'pending-complete';
+      final pollDelays = <Duration>[];
+      var statusRequestCount = 0;
+      var aborted = false;
+
+      final serverTask = () async {
+        await for (final request in server) {
+          if (request.uri.path == '/uploads/$uploadId/parts/1') {
+            await _readJsonRequest(request);
+            _writeJsonResponse(request.response, {
+              'status': 'ok',
+              'part': {
+                'partNumber': 1,
+                'sizeBytes': 3,
+                'uploadUrl': '$baseUrl/objects/$uploadId',
+                'uploadMethod': 'PUT',
+                'uploadHeaders': <String, String>{},
+                'uploadExpiresAt': '2099-01-01T00:00:00.000Z',
+              },
+            });
+          } else if (request.uri.path == '/objects/$uploadId') {
+            await request.drain<void>();
+            request.response
+              ..statusCode = HttpStatus.ok
+              ..headers.set(HttpHeaders.etagHeader, '"complete-etag"');
+          } else if (request.uri.path == '/uploads/$uploadId/complete') {
+            await _readJsonRequest(request);
+            _writeJsonResponse(
+              request.response,
+              {
+                'status': 'error',
+                if (completionCase.shouldSucceed)
+                  'code': 'UPLOAD_COMPLETION_IN_PROGRESS',
+                'message': completionCase.shouldSucceed
+                    ? 'Upload completion is still in progress.'
+                    : 'Completion response was lost',
+              },
+              statusCode: completionCase.shouldSucceed
+                  ? HttpStatus.conflict
+                  : HttpStatus.serviceUnavailable,
+            );
+          } else if (request.uri.path == '/uploads/$uploadId' &&
+              request.method == 'GET') {
+            final statusIndex =
+                statusRequestCount < completionCase.sessionStatuses.length
+                    ? statusRequestCount
+                    : completionCase.sessionStatuses.length - 1;
+            final sessionStatus = completionCase.sessionStatuses[statusIndex];
+            statusRequestCount += 1;
+            _writeJsonResponse(request.response, {
+              'status': 'ok',
+              'sessionStatus': sessionStatus,
+              'upload': {
+                'id': uploadId,
+                'videoS3Key': 'uploads/$uploadId/clip.mp4',
+                'storageProvider': 'private',
+              },
+            });
+          } else if (request.uri.path == '/uploads/$uploadId' &&
+              request.method == 'DELETE') {
+            aborted = true;
+            await request.drain<void>();
+            request.response.statusCode = HttpStatus.noContent;
+          } else {
+            await request.drain<void>();
+            request.response.statusCode = HttpStatus.notFound;
+          }
+
+          await request.response.close();
+        }
+      }();
+
+      try {
+        final client = PostDeeApiClient(
+          baseUrl: baseUrl,
+          multipartCompletionPollDelay: (duration) async {
+            pollDelays.add(duration);
+          },
+        );
+        final uploadFuture = client.uploadVideoFile(
+          UploadResult(
+            id: uploadId,
+            videoS3Key: 'uploads/$uploadId/clip.mp4',
+            storageProvider: 'private',
+            uploadProtocol: 'multipart-v1',
+            partSizeBytes: 3,
+            partCount: 1,
+          ),
+          file,
+        );
+
+        if (completionCase.shouldSucceed) {
+          await uploadFuture;
+        } else {
+          await expectLater(
+            uploadFuture,
+            throwsA(
+              isA<ApiException>().having(
+                (error) => error.statusCode,
+                'statusCode',
+                HttpStatus.serviceUnavailable,
+              ),
+            ),
+          );
+        }
+
+        final expectedStatusRequestCount = completionCase.shouldSucceed ? 2 : 4;
+        expect(statusRequestCount, expectedStatusRequestCount);
+        expect(
+          pollDelays,
+          completionCase.shouldSucceed
+              ? const [Duration(seconds: 1)]
+              : const [
+                  Duration(seconds: 1),
+                  Duration(seconds: 2),
+                  Duration(seconds: 4),
+                ],
+        );
+        expect(aborted, isFalse);
+      } finally {
+        await server.close(force: true);
+        await serverTask;
+        await directory.delete(recursive: true);
+      }
+    });
+  }
+
+  test('uploadVideoFile keeps legacy direct PUT uploads working', () async {
+    final directory =
+        await Directory.systemTemp.createTemp('postdee-legacy-upload-');
+    final file = File('${directory.path}/clip.mp4');
+    await file.writeAsBytes(const <int>[4, 5, 6]);
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    List<int>? uploadedBytes;
+    String? contentType;
+
+    try {
+      final client = PostDeeApiClient();
+      final uploadFuture = client.uploadVideoFile(
+        UploadResult(
+          id: 'legacy-upload',
+          videoS3Key: 'uploads/legacy-upload/clip.mp4',
+          storageProvider: 'private',
+          uploadUrl:
+              'http://${server.address.address}:${server.port}/legacy-upload',
+          uploadMethod: 'PUT',
+          uploadHeaders: const {'Content-Type': 'video/mp4'},
+        ),
+        file,
+      );
+      final request = await server.first;
+      contentType = request.headers.value(HttpHeaders.contentTypeHeader);
+      uploadedBytes = await _readRequestBytes(request);
+      request.response.statusCode = HttpStatus.ok;
+      await request.response.close();
+      await uploadFuture;
+
+      expect(request.method, 'PUT');
+      expect(uploadedBytes, <int>[4, 5, 6]);
+      expect(contentType, 'video/mp4');
+    } finally {
+      await server.close(force: true);
+      await directory.delete(recursive: true);
+    }
+  });
+
   test('uploadVideoFile rejects a signed URL that is about to expire',
       () async {
     final directory =
@@ -283,6 +925,44 @@ void main() {
     } finally {
       await directory.delete(recursive: true);
     }
+  });
+
+  test('createAndUploadFileWithRetry leaves multipart retries to the session',
+      () async {
+    final file = File('unused-multipart-upload.mp4');
+    var createCalls = 0;
+
+    await expectLater(
+      createAndUploadFileWithRetry(
+        request: const CreateUploadRequest(
+          fileName: 'clip.mp4',
+          contentType: 'video/mp4',
+          sizeBytes: 3,
+        ),
+        file: file,
+        createUpload: (_) async {
+          createCalls += 1;
+          return const UploadResult(
+            id: 'managed-upload',
+            videoS3Key: 'uploads/managed-upload/clip.mp4',
+            storageProvider: 'private',
+            uploadProtocol: 'multipart-v1',
+            partSizeBytes: 3,
+            partCount: 1,
+          );
+        },
+        uploadFile: (_, __) async {
+          throw const ApiException(
+            'Part URL expired after retry limit',
+            statusCode: HttpStatus.forbidden,
+            code: 'UPLOAD_URL_EXPIRED',
+          );
+        },
+      ),
+      throwsA(isA<ApiException>()),
+    );
+
+    expect(createCalls, 1);
   });
 
   test('createAndUploadFileWithRetry does not retry unrelated failures',

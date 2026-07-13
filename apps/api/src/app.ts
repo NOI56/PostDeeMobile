@@ -1,5 +1,5 @@
 import cors from 'cors';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 
@@ -19,6 +19,7 @@ import type { AnalyticsStore } from './modules/analytics/analyticsStore.js';
 import type { PrismaAnalyticsClient } from './modules/analytics/prismaAnalyticsRepository.js';
 import { createAuthMiddlewareFromConfig } from './modules/auth/authMiddlewareFactory.js';
 import { registerAuthRoutes } from './modules/auth/authRoutes.js';
+import { readAuthUser } from './modules/auth/authTypes.js';
 import type { FirebaseTokenVerifier } from './modules/auth/authTypes.js';
 import {
   createFirebaseAdminAuth,
@@ -84,6 +85,19 @@ import { registerTemplateRoutes } from './modules/templates/templateRoutes.js';
 import type { PrismaTemplateClient } from './modules/templates/prismaTemplateRepository.js';
 import { createTemplateStoreFromConfig } from './modules/templates/templateStoreFactory.js';
 import { registerUploadRoutes } from './modules/uploads/uploadRoutes.js';
+import {
+  ManagedUploadServiceError,
+  createManagedUploadService,
+  type ManagedUploadService
+} from './modules/uploads/managedUploadService.js';
+import {
+  createInMemoryUploadSessionStore,
+  type UploadSessionStore
+} from './modules/uploads/uploadSessionStore.js';
+import {
+  createPrismaUploadSessionRepository,
+  type PrismaUploadSessionClient
+} from './modules/uploads/prismaUploadSessionRepository.js';
 import type { PrismaUserClient } from './modules/users/prismaUserRepository.js';
 import { createUserStoreForPostStore } from './modules/users/userStoreFactory.js';
 import { registerDeviceRoutes } from './modules/devices/deviceRoutes.js';
@@ -110,7 +124,8 @@ type AppPrismaClient = PrismaTemplateClient &
   PrismaRealClipCaptionUsageClient &
   PrismaAiEditUsageClient &
   PrismaDeviceTokenClient &
-  PrismaSocialConnectionClient;
+  PrismaSocialConnectionClient &
+  PrismaUploadSessionClient;
 
 type AppOptions = {
   config?: ServerConfig;
@@ -135,10 +150,61 @@ type AppOptions = {
   firebaseAdminAuth?: FirebaseAdminAuth;
   accountIdentityDeleter?: AccountIdentityDeleter;
   platformPublishStore?: PlatformPublishStore;
+  uploadSessionStore?: UploadSessionStore;
+  managedUploadService?: ManagedUploadService;
 };
 
 const readFileNameFromStorageKey = (videoS3Key: string) =>
   videoS3Key.split('/').filter(Boolean).at(-1) ?? 'clip.mp4';
+
+const createAccountAwareAuthMiddleware = ({
+  authMiddleware,
+  managedUploadService
+}: {
+  authMiddleware: RequestHandler;
+  managedUploadService?: ManagedUploadService;
+}): RequestHandler => {
+  if (!managedUploadService) {
+    return authMiddleware;
+  }
+
+  return (request, response, next) => {
+    authMiddleware(request, response, (authError?: unknown) => {
+      if (authError) {
+        next(authError);
+        return;
+      }
+
+      if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
+        next();
+        return;
+      }
+
+      const authUser = readAuthUser(response.locals);
+
+      if (!authUser) {
+        next();
+        return;
+      }
+
+      void managedUploadService.assertOwnerActive(authUser.id).then(
+        () => next(),
+        (error: unknown) => {
+          if (error instanceof ManagedUploadServiceError) {
+            response.status(error.statusCode).json({
+              status: 'error',
+              code: error.code,
+              message: error.message
+            });
+            return;
+          }
+
+          next(error);
+        }
+      );
+    });
+  };
+};
 
 const createFetchAudioFromVideoStorage =
   (videoStorage: VideoStorage): FetchAudio =>
@@ -287,7 +353,8 @@ export const createApp = (options: AppOptions = {}) => {
     config.subscriptionStore === 'prisma' ||
     config.analyticsStore === 'prisma' ||
     config.captionUsageStore === 'prisma' ||
-    config.aiEditUsageStore === 'prisma'
+    config.aiEditUsageStore === 'prisma' ||
+    config.uploadProtocolMode !== 'legacy'
       ? createPrismaClient()
       : undefined);
   const postStore = createPostStoreFromConfig({
@@ -325,6 +392,33 @@ export const createApp = (options: AppOptions = {}) => {
       s3Client: options.s3Client,
       r2Client: options.r2Client
     });
+  const uploadSessionStore =
+    options.uploadSessionStore ??
+    (prismaClient
+      ? createPrismaUploadSessionRepository({
+          prisma: prismaClient as unknown as PrismaUploadSessionClient
+        })
+      : createInMemoryUploadSessionStore());
+  const managedUploadService =
+    options.managedUploadService ??
+    (videoStorage.multipart
+      ? createManagedUploadService({
+          storage: videoStorage.multipart,
+          store: uploadSessionStore,
+          partSizeBytes: config.multipartUploadPartSizeBytes,
+          sessionExpiresSeconds: config.multipartUploadSessionExpiresSeconds
+        })
+      : undefined);
+
+  if (config.uploadProtocolMode !== 'legacy' && !managedUploadService) {
+    throw new Error(
+      'UPLOAD_PROTOCOL_MODE requires multipart-capable object storage'
+    );
+  }
+  const accountAwareAuthMiddleware = createAccountAwareAuthMiddleware({
+    authMiddleware,
+    managedUploadService
+  });
   const transcriptionProvider =
     options.transcriptionProvider ??
     createTranscriptionProviderFromConfig({
@@ -347,14 +441,16 @@ export const createApp = (options: AppOptions = {}) => {
   router.use('/ai-edits', aiRateLimit);
   router.use('/social-connections', socialConnectionRateLimit);
 
-  registerAuthRoutes(router, authMiddleware);
-  registerUploadRoutes(router, authMiddleware, videoStorage, {
-    uploadMaxSizeBytes: config.uploadMaxSizeBytes
+  registerAuthRoutes(router, accountAwareAuthMiddleware);
+  registerUploadRoutes(router, accountAwareAuthMiddleware, videoStorage, {
+    uploadMaxSizeBytes: config.uploadMaxSizeBytes,
+    uploadProtocolMode: config.uploadProtocolMode,
+    managedUploadService
   });
   registerCaptionRoutes(
     router,
     captionGenerator,
-    authMiddleware,
+    accountAwareAuthMiddleware,
     subscriptionStore,
     transcriptionProvider,
     realClipCaptionUsageStore,
@@ -372,7 +468,7 @@ export const createApp = (options: AppOptions = {}) => {
   registerAiEditRoutes(
     router,
     transcriptionProvider,
-    authMiddleware,
+    accountAwareAuthMiddleware,
     subscriptionStore,
     aiEditUsageStore,
     editPlanProvider
@@ -381,20 +477,31 @@ export const createApp = (options: AppOptions = {}) => {
     router,
     postStore,
     publishQueue,
-    authMiddleware,
+    accountAwareAuthMiddleware,
     userStore,
     subscriptionStore,
     {
       allowSubscriptionPlanOverride:
-        config.nodeEnv !== 'production' && config.authProvider === 'mock'
+        config.nodeEnv !== 'production' && config.authProvider === 'mock',
+      assertUploadReady: managedUploadService
+        ? (ownerId, videoS3Key) =>
+            managedUploadService.assertReadyForUse(ownerId, videoS3Key, {
+              allowLegacy: config.uploadProtocolMode !== 'multipart'
+            })
+        : undefined
     }
   );
-  registerPublishQueueRoutes(router, authMiddleware, publishQueue);
-  registerTemplateRoutes(router, authMiddleware, templateStore, userStore);
-  registerAnalyticsRoutes(router, authMiddleware, subscriptionStore, analyticsStore);
+  registerPublishQueueRoutes(router, accountAwareAuthMiddleware, publishQueue);
+  registerTemplateRoutes(router, accountAwareAuthMiddleware, templateStore, userStore);
+  registerAnalyticsRoutes(
+    router,
+    accountAwareAuthMiddleware,
+    subscriptionStore,
+    analyticsStore
+  );
   registerBillingRoutes(
     router,
-    authMiddleware,
+    accountAwareAuthMiddleware,
     userStore,
     subscriptionStore,
     postStore,
@@ -428,8 +535,8 @@ export const createApp = (options: AppOptions = {}) => {
       apiKey: config.postPeerApiKey,
       baseUrl: config.postPeerApiBaseUrl
     });
-  registerDeviceRoutes(router, authMiddleware, deviceTokenStore);
-  registerSocialConnectionRoutes(router, authMiddleware, {
+  registerDeviceRoutes(router, accountAwareAuthMiddleware, deviceTokenStore);
+  registerSocialConnectionRoutes(router, accountAwareAuthMiddleware, {
     store: socialConnectionStore,
     connectClient: postPeerConnectClient
   });
@@ -447,6 +554,7 @@ export const createApp = (options: AppOptions = {}) => {
     publishQueue,
     platformPublishStore,
     videoStorage,
+    managedUploadService,
     accountIdentityDeleter:
       options.accountIdentityDeleter ??
       createFirebaseIdentityDeleterFromConfig({
@@ -478,7 +586,8 @@ export const createApp = (options: AppOptions = {}) => {
       notifier: createPublishNotifier({
         deviceTokenStore,
         pushSender: createPushSenderFromConfig({ config })
-      })
+      }),
+      assertOwnerActive: managedUploadService?.assertOwnerActive
     });
   }
 

@@ -45,6 +45,19 @@ enum SubscriptionStatus {
   INCOMPLETE
 }
 
+enum ManagedUploadOwnerStatus {
+  ACTIVE
+  DELETING
+  DELETED
+}
+
+enum ManagedUploadSessionStatus {
+  UPLOADING
+  COMPLETING
+  COMPLETED
+  ABORTED
+}
+
 model User {
   id                 String        @id @default(cuid())
   firebaseUid        String        @unique
@@ -183,4 +196,36 @@ model PostPeerProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Kept separate from User so a DELETED marker survives a failed Firebase
+// identity cleanup and stale credentials cannot start another upload session.
+model ManagedUploadOwner {
+  ownerId   String                   @id
+  status    ManagedUploadOwnerStatus @default(ACTIVE)
+  sessions  ManagedUploadSession[]
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
+}
+
+model ManagedUploadSession {
+  id                 String                     @id
+  ownerId            String
+  storageUploadId    String                     @unique
+  videoS3Key         String                     @unique
+  fileName           String
+  contentType        String
+  sizeBytes          Int
+  partSizeBytes      Int
+  partCount          Int
+  status             ManagedUploadSessionStatus @default(UPLOADING)
+  expiresAt          DateTime
+  operationStartedAt DateTime?
+  completedAt        DateTime?
+  owner               ManagedUploadOwner         @relation(fields: [ownerId], references: [ownerId], onDelete: Cascade)
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  @@index([ownerId, status])
+  @@index([expiresAt, status])
 }

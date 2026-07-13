@@ -14,6 +14,9 @@ import '../legal/legal_document_screen.dart';
 import '../link_in_bio/link_in_bio_screen.dart';
 import '../platforms/connections_screen.dart';
 import '../shared/postdee_card.dart';
+import '../shared/postdee_undo_toast.dart';
+import 'edit_profile_screen.dart';
+import 'profile_draft_store.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -24,6 +27,7 @@ class ProfileScreen extends StatefulWidget {
     this.onSignOut,
     this.apiClient,
     this.launchConnectUrl,
+    this.profileDraftStore = const SharedPreferencesProfileDraftStore(),
     super.key,
   });
 
@@ -34,6 +38,7 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback? onSignOut;
   final PostDeeApiClient? apiClient;
   final ConnectUrlLauncher? launchConnectUrl;
+  final ProfileDraftStore profileDraftStore;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -45,12 +50,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   int _connectedCount = 0;
   SubscriptionStatusResult? _subscription;
+  ProfileDraft? _profileDraft;
 
   @override
   void initState() {
     super.initState();
     _loadConnectedCount();
     _loadSubscription();
+    _loadProfileDraft();
+  }
+
+  Future<void> _loadProfileDraft() async {
+    final draft = await widget.profileDraftStore.load();
+    if (!mounted || draft == null) return;
+
+    final sessionEmail =
+        PostDeeAuthSessionStore.instance.session.email?.trim().toLowerCase() ??
+            '';
+    if (draft.accountEmail.isNotEmpty &&
+        sessionEmail.isNotEmpty &&
+        draft.accountEmail != sessionEmail) {
+      return;
+    }
+
+    setState(() => _profileDraft = draft);
+    if (draft.displayName.isNotEmpty) {
+      PostDeeAuthSessionStore.instance.updateDisplayName(draft.displayName);
+    }
   }
 
   Future<void> _loadConnectedCount() async {
@@ -98,6 +124,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _openEditProfile() async {
+    final session = PostDeeAuthSessionStore.instance.session;
+    final email = session.email?.trim() ?? '';
+    final savedDraft = _profileDraft;
+    final previous = ProfileDraft(
+      displayName: savedDraft?.displayName ?? session.displayLabel,
+      storeName: savedDraft?.storeName ?? '',
+      accountEmail: email.toLowerCase(),
+    );
+    final updated = await Navigator.of(context).push<ProfileDraft>(
+      MaterialPageRoute<ProfileDraft>(
+        builder: (context) => EditProfileScreen(
+          initialDraft: previous,
+          email: email.isEmpty ? 'ยังไม่ได้เชื่อมอีเมล' : email,
+          emailVerified: session.emailVerified,
+        ),
+      ),
+    );
+
+    if (updated == null || !mounted) return;
+
+    await widget.profileDraftStore.save(updated);
+    if (!mounted) return;
+
+    setState(() => _profileDraft = updated);
+    PostDeeAuthSessionStore.instance.updateDisplayName(updated.displayName);
+
+    showPostDeeUndoToast(
+      context,
+      message: 'บันทึกโปรไฟล์แล้ว',
+      onUndo: () async {
+        if (previous.displayName.isEmpty && previous.storeName.isEmpty) {
+          await widget.profileDraftStore.clear();
+        } else {
+          await widget.profileDraftStore.save(previous);
+        }
+        if (!mounted) return;
+        setState(() => _profileDraft = previous);
+        PostDeeAuthSessionStore.instance
+            .updateDisplayName(previous.displayName);
+      },
+    );
+  }
+
   String get _currentTierId {
     final plan = _subscription?.plan.toUpperCase();
     return switch (plan) {
@@ -110,8 +180,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final session = PostDeeAuthSessionStore.instance.session;
-    final accountName =
-        session.isSignedIn ? session.displayLabel : 'ยังไม่ได้เชื่อมบัญชี';
+    final savedDisplayName = _profileDraft?.displayName.trim();
+    final accountName = savedDisplayName != null && savedDisplayName.isNotEmpty
+        ? savedDisplayName
+        : session.isSignedIn
+            ? session.displayLabel
+            : 'ยังไม่ได้เชื่อมบัญชี';
     final accountEmail = session.email?.trim();
     final accountDetail = accountEmail == null || accountEmail.isEmpty
         ? 'เชื่อมอีเมลก่อนใช้งานจริง'
@@ -175,10 +249,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _ProfileHeaderCard(
           name: accountName,
           email: accountDetail,
-          emailVerified: accountEmail != null && accountEmail.isNotEmpty,
+          hasEmail: accountEmail != null && accountEmail.isNotEmpty,
+          emailVerified: session.emailVerified,
           connectedLabel:
               '$_connectedCount/${connectablePlatforms.length} เชื่อมต่อ',
           onOpenConnections: _openConnections,
+          onEdit: _openEditProfile,
         ),
         const SizedBox(height: 13),
         _ProfileMenuCard(
@@ -260,9 +336,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 10),
         ],
-        const SizedBox(height: 3),
-        _AiEditingQuotaCard(),
-        const SizedBox(height: 13),
+        if (_subscription?.isPro ?? false) ...[
+          const SizedBox(height: 3),
+          _AiEditingQuotaCard(apiClient: _apiClient),
+          const SizedBox(height: 13),
+        ],
         _ProfileMenuCard(
           rows: [
             _ProfileMenuRow(
@@ -304,16 +382,20 @@ class _ProfileHeaderCard extends StatelessWidget {
   const _ProfileHeaderCard({
     required this.name,
     required this.email,
+    required this.hasEmail,
     required this.emailVerified,
     required this.connectedLabel,
     required this.onOpenConnections,
+    required this.onEdit,
   });
 
   final String name;
   final String email;
+  final bool hasEmail;
   final bool emailVerified;
   final String connectedLabel;
   final VoidCallback onOpenConnections;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -398,8 +480,11 @@ class _ProfileHeaderCard extends StatelessWidget {
                   runSpacing: 6,
                   children: [
                     _StatusPill(
-                      label:
-                          emailVerified ? 'ยืนยันอีเมลแล้ว' : 'ยังไม่เชื่อมอีเมล',
+                      label: emailVerified
+                          ? 'ยืนยันอีเมลแล้ว'
+                          : hasEmail
+                              ? 'อีเมลยังไม่ยืนยัน'
+                              : 'ยังไม่เชื่อมอีเมล',
                       icon: Icons.verified,
                       background: AppTheme.mint,
                       foreground: AppTheme.accentCyanInk,
@@ -421,6 +506,31 @@ class _ProfileHeaderCard extends StatelessWidget {
                   ],
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Semantics(
+            button: true,
+            label: 'แก้ไขโปรไฟล์',
+            child: InkWell(
+              key: const ValueKey('profile-edit-button'),
+              borderRadius: BorderRadius.circular(11),
+              onTap: onEdit,
+              child: Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppTheme.glassDeep,
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Icon(
+                  Icons.edit_outlined,
+                  size: 19,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
             ),
           ),
         ],
@@ -627,7 +737,8 @@ const _tiers = [
     features: [
       _TierFeature('ทุกอย่างใน Starter'),
       _TierFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
-      _TierFeature('AI ตัดต่อ + แคปชั่น 120 ครั้ง/เดือน'),
+      _TierFeature('AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน'),
+      _TierFeature('AI ตัดต่อ 200 นาที/เดือน'),
       _TierFeature('รายงานวิเคราะห์เชิงลึก'),
     ],
   ),
@@ -1102,14 +1213,15 @@ class _ChoiceButton extends StatelessWidget {
 }
 
 class _AiEditingQuotaCard extends StatefulWidget {
-  const _AiEditingQuotaCard();
+  const _AiEditingQuotaCard({required this.apiClient});
+
+  final PostDeeApiClient apiClient;
 
   @override
   State<_AiEditingQuotaCard> createState() => _AiEditingQuotaCardState();
 }
 
 class _AiEditingQuotaCardState extends State<_AiEditingQuotaCard> {
-  final _apiClient = PostDeeApiClient();
   int _limitMinutes = 200;
   int _usedMinutes = 0;
   final int _extraMinutes = 0;
@@ -1126,7 +1238,7 @@ class _AiEditingQuotaCardState extends State<_AiEditingQuotaCard> {
 
   Future<void> _loadQuota() async {
     try {
-      final quota = await _apiClient.fetchAiEditQuota();
+      final quota = await widget.apiClient.fetchAiEditQuota();
       if (!mounted) return;
       setState(() {
         _limitMinutes = quota.limitMinutes;

@@ -137,6 +137,7 @@ class FirebasePhoneVerificationGateway {
       idToken: idToken,
       email: refreshedUser.email,
       displayName: refreshedUser.displayName,
+      emailVerified: refreshedUser.emailVerified,
     );
   }
 }

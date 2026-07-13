@@ -98,3 +98,10 @@ connected, supported destinations to be selected. A successful `POST /posts`
 response means the post was accepted as `QUEUED` (or scheduled); the mobile UI
 must describe that state as queued, not as proof that every platform has already
 published it. Final platform success or failure comes from the publish worker.
+
+## Profile Draft
+
+Display name and store name edits are currently saved only on the user's
+device; they are not yet synchronized to Firebase or the PostDee backend. Email
+verification badges come from Firebase's real `emailVerified` value and must
+not be inferred merely because an email address is present.

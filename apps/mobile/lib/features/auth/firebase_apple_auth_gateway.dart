@@ -32,6 +32,7 @@ class FirebaseAppleAuthGateway implements AppleAuthGateway {
       idToken: firebaseUser.idToken,
       email: firebaseUser.email,
       displayName: firebaseUser.displayName,
+      emailVerified: firebaseUser.emailVerified,
     );
   }
 
@@ -74,6 +75,7 @@ class FirebaseAppleAuthPackageClient implements FirebaseAppleAuthClient {
       idToken: idToken,
       email: user.email,
       displayName: user.displayName,
+      emailVerified: user.emailVerified,
     );
   }
 

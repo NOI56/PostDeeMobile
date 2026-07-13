@@ -38,7 +38,8 @@ void main() {
     expect(await store.currentIdToken(), 'fresh-token');
   });
 
-  test('currentIdToken falls back to the cached token when refresher returns null',
+  test(
+      'currentIdToken falls back to the cached token when refresher returns null',
       () async {
     final store = PostDeeAuthSessionStore()
       ..signIn(const AuthSession(idToken: 'cached-token'))
@@ -62,5 +63,21 @@ void main() {
     final store = PostDeeAuthSessionStore();
 
     expect(await store.currentIdToken(), isNull);
+  });
+
+  test('updating the display name preserves real email verification', () {
+    final store = PostDeeAuthSessionStore(
+      initialSession: const AuthSession(
+        idToken: 'firebase-id-token',
+        email: 'seller@example.com',
+        displayName: 'Old name',
+        emailVerified: true,
+      ),
+    );
+
+    store.updateDisplayName('New name');
+
+    expect(store.session.displayName, 'New name');
+    expect(store.session.emailVerified, isTrue);
   });
 }

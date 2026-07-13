@@ -5,6 +5,7 @@ class AuthSession {
     this.idToken,
     this.email,
     this.displayName,
+    this.emailVerified = false,
   });
 
   static const unauthenticated = AuthSession();
@@ -12,6 +13,7 @@ class AuthSession {
   final String? idToken;
   final String? email;
   final String? displayName;
+  final bool emailVerified;
 
   bool get isSignedIn => idToken != null && idToken!.trim().isNotEmpty;
 
@@ -78,6 +80,22 @@ class PostDeeAuthSessionStore extends ChangeNotifier {
 
   void signIn(AuthSession session) {
     _session = session;
+    notifyListeners();
+  }
+
+  void updateDisplayName(String displayName) {
+    if (!_session.isSignedIn) {
+      return;
+    }
+
+    final normalizedName = displayName.trim();
+    _session = AuthSession(
+      idToken: _session.idToken,
+      email: _session.email,
+      displayName:
+          normalizedName.isEmpty ? _session.displayName : normalizedName,
+      emailVerified: _session.emailVerified,
+    );
     notifyListeners();
   }
 

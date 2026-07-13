@@ -73,6 +73,35 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(cachedText('299 ฿/ด.'), findsOneWidget);
+    expect(cachedText('โควต้าตัดต่อ AI'), findsNothing);
+  });
+
+  testWidgets('shows AI editing quota only for the Pro plan', (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      subscription: const SubscriptionStatusResult(
+        userId: 'pro-user',
+        plan: 'PRO',
+        status: 'ACTIVE',
+        canSchedule: true,
+        canUseAiCaptions: true,
+        canUseAnalytics: true,
+      ),
+    );
+
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('โควต้าตัดต่อ AI'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('โควต้าตัดต่อ AI'), findsOneWidget);
+    expect(find.text('175'), findsOneWidget);
+    expect(find.text('/ 200 นาที'), findsOneWidget);
   });
 
   testWidgets('shows connected social platforms from the API', (tester) async {
@@ -287,21 +316,16 @@ void main() {
   testWidgets('does not add fake AI editing minutes from top-up',
       (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('th'),
-        localizationsDelegates: const [
-          PostDeeLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: PostDeeLocalizations.supportedLocales,
-        home: Scaffold(
-          body: ProfileScreen(
-            languageController: PostDeeLanguageController(),
-            themeController: PostDeeThemeController(),
-            onOpenTemplates: () {},
-            onDeleteAccount: () {},
+      _hostProfile(
+        apiClient: _FakeSocialApiClient(
+          connections: const [],
+          subscription: const SubscriptionStatusResult(
+            userId: 'pro-user',
+            plan: 'PRO',
+            status: 'ACTIVE',
+            canSchedule: true,
+            canUseAiCaptions: true,
+            canUseAnalytics: true,
           ),
         ),
       ),
@@ -363,14 +387,35 @@ class _FakeSocialApiClient extends PostDeeApiClient {
     required this.connections,
     this.connectLink,
     this.refreshedConnections,
+    this.subscription,
   });
 
   List<SocialConnectionResult> connections;
   final SocialConnectLinkResult? connectLink;
   final List<SocialConnectionResult>? refreshedConnections;
+  final SubscriptionStatusResult? subscription;
   final List<String> connectCalls = [];
   final List<String> disconnectCalls = [];
   int refreshCalls = 0;
+
+  @override
+  Future<SubscriptionStatusResult> loadCurrentSubscription() async =>
+      subscription ??
+      const SubscriptionStatusResult(
+        userId: 'basic-user',
+        plan: 'BASIC',
+        status: 'INACTIVE',
+        canSchedule: false,
+        canUseAiCaptions: false,
+        canUseAnalytics: false,
+      );
+
+  @override
+  Future<AiEditQuota> fetchAiEditQuota() async => const AiEditQuota(
+        limitMinutes: 200,
+        usedMinutes: 25,
+        remainingMinutes: 175,
+      );
 
   @override
   Future<List<SocialConnectionResult>> listSocialConnections() async =>

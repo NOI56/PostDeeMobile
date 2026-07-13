@@ -24,11 +24,13 @@ class FirebaseUserSnapshot {
     required this.idToken,
     this.email,
     this.displayName,
+    this.emailVerified = false,
   });
 
   final String idToken;
   final String? email;
   final String? displayName;
+  final bool emailVerified;
 }
 
 abstract class GoogleIdentityClient {
@@ -77,6 +79,7 @@ class FirebaseGoogleAuthGateway implements GoogleAuthGateway {
       idToken: firebaseUser.idToken,
       email: firebaseUser.email ?? googleAccount.email,
       displayName: firebaseUser.displayName ?? googleAccount.displayName,
+      emailVerified: firebaseUser.emailVerified,
     );
   }
 
@@ -121,6 +124,7 @@ class FirebaseWebGoogleAuthGateway implements GoogleAuthGateway {
       idToken: idToken,
       email: user.email,
       displayName: user.displayName,
+      emailVerified: user.emailVerified,
     );
   }
 
@@ -213,6 +217,7 @@ class FirebaseAuthPackageClient implements FirebaseAuthClient {
       idToken: idToken,
       email: user.email,
       displayName: user.displayName,
+      emailVerified: user.emailVerified,
     );
   }
 

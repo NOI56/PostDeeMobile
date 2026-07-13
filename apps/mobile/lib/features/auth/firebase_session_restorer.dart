@@ -27,6 +27,7 @@ Future<void> restoreFirebaseSession({
       idToken: token,
       email: user.email,
       displayName: user.displayName,
+      emailVerified: user.emailVerified,
     ),
   );
 }

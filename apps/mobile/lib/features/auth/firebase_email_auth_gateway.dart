@@ -48,6 +48,7 @@ class FirebaseEmailAuthGateway implements EmailAuthGateway {
         idToken: idToken,
         email: user.email,
         displayName: user.displayName,
+        emailVerified: user.emailVerified,
       );
     } on firebase_auth.FirebaseAuthException catch (error) {
       throw AuthUnavailableException(

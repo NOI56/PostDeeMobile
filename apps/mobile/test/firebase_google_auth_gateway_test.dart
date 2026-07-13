@@ -63,6 +63,7 @@ void main() {
         idToken: 'firebase-id-token',
         email: 'firebase-seller@example.com',
         displayName: 'Firebase Seller',
+        emailVerified: true,
       ),
     );
     final gateway = FirebaseGoogleAuthGateway(
@@ -76,6 +77,7 @@ void main() {
     expect(session.idToken, 'firebase-id-token');
     expect(session.email, 'firebase-seller@example.com');
     expect(session.displayName, 'Firebase Seller');
+    expect(session.emailVerified, isTrue);
   });
 
   test('FirebaseGoogleAuthGateway rejects Google sign-in without an ID token',

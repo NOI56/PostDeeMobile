@@ -32,6 +32,7 @@ void main() {
         idToken: 'firebase-id-token',
         email: 'apple-seller@example.com',
         displayName: 'Apple Seller',
+        emailVerified: true,
       ),
     );
     final gateway =
@@ -43,6 +44,7 @@ void main() {
     expect(session.idToken, 'firebase-id-token');
     expect(session.email, 'apple-seller@example.com');
     expect(session.displayName, 'Apple Seller');
+    expect(session.emailVerified, isTrue);
   });
 
   test('FirebaseAppleAuthGateway signs out from Firebase', () async {

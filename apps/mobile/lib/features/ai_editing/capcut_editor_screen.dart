@@ -93,6 +93,8 @@ class CapCutEditorScreen extends StatefulWidget {
     this.rasterizeSticker,
     this.requestEditPlan,
     this.initialStyle,
+    this.initialOptions,
+    this.initialCaptionEnabled = false,
     this.cancelRender,
   });
 
@@ -119,6 +121,14 @@ class CapCutEditorScreen extends StatefulWidget {
   /// A style chosen on the editing entry screen, applied as soon as the editor
   /// opens (custom prompt opens the style sheet so the user can type).
   final EditStyleSelection? initialStyle;
+
+  /// Fine-tuning chosen before entering the editor. When an [initialStyle] is
+  /// also supplied, the style is used as the base and these values override it.
+  final EditStyleOptions? initialOptions;
+
+  /// Automatically transcribes and enables subtitles when the AI setup screen
+  /// has the subtitle capability turned on.
+  final bool initialCaptionEnabled;
 
   /// Cancels the in-flight render. Defaults to cancelling all FFmpeg sessions;
   /// injectable for tests.
@@ -180,26 +190,52 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
     Color(0x33FF8A3D),
     Color(0x3340A9FF),
   ];
-  static const _stickerChoices = ['😍', '🔥', '💯', '🛒', '✨', '👍', '🎉', '❤️'];
+  static const _stickerChoices = [
+    '😍',
+    '🔥',
+    '💯',
+    '🛒',
+    '✨',
+    '👍',
+    '🎉',
+    '❤️'
+  ];
 
   @override
   void initState() {
     super.initState();
+
+    final initialOptions = widget.initialOptions;
+    if (initialOptions != null) {
+      _options = initialOptions;
+      _speed = initialOptions.speed ?? _speed;
+      _filterIndex = initialOptions.filterIndex ?? _filterIndex;
+      _brightness = initialOptions.brightness ?? _brightness;
+      _contrast = initialOptions.contrast ?? _contrast;
+    }
+
     _loadDuration();
     _initVideo();
 
     final initialStyle = widget.initialStyle;
-    if (initialStyle != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (initialStyle != null || widget.initialCaptionEnabled) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) {
           return;
         }
-        // Custom prompt needs the user's words, so open the sheet; otherwise
-        // apply the chosen style straight away.
-        if (initialStyle.style.plan.isCustomPrompt) {
-          _openStyleGallery();
-        } else {
-          _applyStyle(initialStyle);
+
+        if (initialStyle != null) {
+          // Custom prompt needs the user's words, so open the sheet; otherwise
+          // apply the chosen style straight away.
+          if (initialStyle.style.plan.isCustomPrompt) {
+            await _openStyleGallery();
+          } else {
+            await _applyStyle(initialStyle, optionOverrides: initialOptions);
+          }
+        }
+
+        if (widget.initialCaptionEnabled && mounted) {
+          await _enableInitialCaption();
         }
       });
     }
@@ -278,7 +314,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
       return;
     }
 
-    final probe = widget.probeDuration ?? const FfprobeVideoDurationProbe().call;
+    final probe =
+        widget.probeDuration ?? const FfprobeVideoDurationProbe().call;
     final seconds = await probe(file);
 
     if (!mounted || seconds == null || seconds <= 0) {
@@ -335,7 +372,10 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
     }
   }
 
-  Future<void> _applyStyle(EditStyleSelection selection) async {
+  Future<void> _applyStyle(
+    EditStyleSelection selection, {
+    EditStyleOptions? optionOverrides,
+  }) async {
     final style = selection.style;
     final plan = style.plan;
     final messenger = ScaffoldMessenger.of(context);
@@ -372,8 +412,9 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
       if (!hasTranscript) {
         messenger.showSnackBar(
           const SnackBar(
-            content: Text('อัปโหลดคลิปจริงก่อน เพื่อให้สไตล์นี้วิเคราะห์เนื้อหาได้ '
-                '· ตอนนี้ปรับจังหวะให้ก่อน'),
+            content:
+                Text('อัปโหลดคลิปจริงก่อน เพื่อให้สไตล์นี้วิเคราะห์เนื้อหาได้ '
+                    '· ตอนนี้ปรับจังหวะให้ก่อน'),
           ),
         );
       }
@@ -387,8 +428,10 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
     setState(() {
       _appliedStyle = style;
       _styleCutRanges = styleCuts;
-      _speed = plan.speed;
-      _filterIndex = plan.filterIndex;
+      _speed = optionOverrides?.speed ?? plan.speed;
+      _filterIndex = optionOverrides?.filterIndex ?? plan.filterIndex;
+      _brightness = optionOverrides?.brightness ?? _brightness;
+      _contrast = optionOverrides?.contrast ?? _contrast;
       _volume = plan.volume;
 
       final gap = _options.silenceMinGapSec ?? plan.silenceMinGapSec;
@@ -407,7 +450,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
         _silence
           ..clear()
           ..addAll([
-            for (final range in ranges) _SilenceSeg(range.start, range.end, true),
+            for (final range in ranges)
+              _SilenceSeg(range.start, range.end, true),
           ]);
         _silenceFound = true;
       }
@@ -651,9 +695,7 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
     ];
     final maxChars = _options.subtitleMaxChars;
 
-    return maxChars != null
-        ? rechunkSubtitleByMaxChars(base, maxChars)
-        : base;
+    return maxChars != null ? rechunkSubtitleByMaxChars(base, maxChars) : base;
   }
 
   void _redetectSilence(double minGapSec) {
@@ -711,7 +753,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
     });
 
     // Re-run silence detection with the new pacing when we have a transcript.
-    final gap = _options.silenceMinGapSec ?? _appliedStyle?.plan.silenceMinGapSec;
+    final gap =
+        _options.silenceMinGapSec ?? _appliedStyle?.plan.silenceMinGapSec;
     if (gap != null && _transcriptSegments.isNotEmpty) {
       _redetectSilence(gap);
     }
@@ -810,7 +853,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
 
     if (!hasEdits) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('ปรับแก้คลิปอย่างน้อยหนึ่งอย่างก่อนส่งออก')),
+        const SnackBar(
+            content: Text('ปรับแก้คลิปอย่างน้อยหนึ่งอย่างก่อนส่งออก')),
       );
       return;
     }
@@ -1115,9 +1159,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
                       ColoredBox(color: _filterTints[_filterIndex]),
                       if (_brightness != 0)
                         ColoredBox(
-                          color:
-                              (_brightness > 0 ? Colors.white : Colors.black)
-                                  .withValues(alpha: (_brightness.abs()) * 0.4),
+                          color: (_brightness > 0 ? Colors.white : Colors.black)
+                              .withValues(alpha: (_brightness.abs()) * 0.4),
                         ),
                       if (_contrast != 0)
                         ColoredBox(
@@ -1192,7 +1235,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
                           left: 8,
                           right: 8,
                           top: (_options.subtitleAtBottom ?? true) ? null : 18,
-                          bottom: (_options.subtitleAtBottom ?? true) ? 18 : null,
+                          bottom:
+                              (_options.subtitleAtBottom ?? true) ? 18 : null,
                           child: Text(
                             _captionText,
                             textAlign: TextAlign.center,
@@ -1201,7 +1245,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
                               fontWeight: FontWeight.w900,
                               // Scale the burn font size (14/18/24) into the
                               // smaller preview so it matches what's exported.
-                              fontSize: (_options.subtitleFontSize ?? 18) * 0.83,
+                              fontSize:
+                                  (_options.subtitleFontSize ?? 18) * 0.83,
                               shadows: const [
                                 Shadow(blurRadius: 6, color: Colors.black),
                               ],
@@ -1271,7 +1316,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
                         bottom: 0,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            color: AppTheme.accentPinkInk.withValues(alpha: 0.35),
+                            color:
+                                AppTheme.accentPinkInk.withValues(alpha: 0.35),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Center(
@@ -1331,8 +1377,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
             color: AppTheme.accent,
             borderRadius: BorderRadius.circular(4),
           ),
-          child: const Icon(Icons.drag_indicator,
-              color: Colors.white, size: 14),
+          child:
+              const Icon(Icons.drag_indicator, color: Colors.white, size: 14),
         ),
       ),
     );
@@ -1342,8 +1388,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(minHeight: 96),
-      padding: const EdgeInsets.fromLTRB(
-          AppTheme.spaceLg, AppTheme.spaceMd, AppTheme.spaceLg, AppTheme.spaceMd),
+      padding: const EdgeInsets.fromLTRB(AppTheme.spaceLg, AppTheme.spaceMd,
+          AppTheme.spaceLg, AppTheme.spaceMd),
       decoration: BoxDecoration(
         color: AppTheme.charcoal,
         border: Border(top: BorderSide(color: AppTheme.borderSoft)),
@@ -1351,7 +1397,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
       child: switch (_tool!) {
         _Tool.caption => _captionPanel(),
         _Tool.silence => _silencePanel(),
-        _Tool.trim => _hint('ลากที่จับสีเขียวสองข้างบนไทม์ไลน์ เพื่อตัดต้น-ท้ายคลิป'),
+        _Tool.trim =>
+          _hint('ลากที่จับสีเขียวสองข้างบนไทม์ไลน์ เพื่อตัดต้น-ท้ายคลิป'),
         _Tool.split => _splitPanel(),
         _Tool.speed => _speedPanel(),
         _Tool.volume => _volumePanel(),
@@ -1368,11 +1415,22 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
           Icon(Icons.info_outline, color: AppTheme.textSecondary, size: 18),
           const SizedBox(width: AppTheme.spaceSm),
           Expanded(
-            child: Text(text,
-                style: TextStyle(color: AppTheme.textSecondary)),
+            child: Text(text, style: TextStyle(color: AppTheme.textSecondary)),
           ),
         ],
       );
+
+  Future<void> _enableInitialCaption() async {
+    if (_transcriptSegments.isEmpty) {
+      await _runCaption();
+      return;
+    }
+
+    setState(() {
+      _captionText = _transcriptSegments.first.text;
+      _captionOn = true;
+    });
+  }
 
   Future<void> _runCaption() async {
     setState(() => _captionBusy = true);
@@ -1554,7 +1612,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('เลื่อนหัวอ่านให้ห่างจากรอยแบ่งเดิมก่อนแบ่ง')),
+      const SnackBar(
+          content: Text('เลื่อนหัวอ่านให้ห่างจากรอยแบ่งเดิมก่อนแบ่ง')),
     );
   }
 
@@ -1601,9 +1660,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
                       color: _segments[i].keep
                           ? AppTheme.textPrimary
                           : AppTheme.textMuted,
-                      decoration: _segments[i].keep
-                          ? null
-                          : TextDecoration.lineThrough,
+                      decoration:
+                          _segments[i].keep ? null : TextDecoration.lineThrough,
                     ),
                   ),
                 ),
@@ -1766,7 +1824,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('ความสว่าง ${(_brightness * 100).round()}',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           Slider(
             value: _brightness,
             min: -1,
@@ -1774,7 +1833,8 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
             onChanged: (v) => setState(() => _brightness = v),
           ),
           Text('คอนทราสต์ ${(_contrast * 100).round()}',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           Slider(
             value: _contrast,
             min: -1,
@@ -1811,12 +1871,12 @@ class _CapCutEditorScreenState extends State<CapCutEditorScreen> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: AppTheme.spaceLg),
             itemCount: tools.length,
-            separatorBuilder: (_, __) => const SizedBox(width: AppTheme.spaceXl),
+            separatorBuilder: (_, __) =>
+                const SizedBox(width: AppTheme.spaceXl),
             itemBuilder: (context, i) {
               final (tool, icon, label) = tools[i];
               final selected = _tool == tool;
-              final color =
-                  selected ? AppTheme.accent : AppTheme.navInactive;
+              final color = selected ? AppTheme.accent : AppTheme.navInactive;
               return InkWell(
                 onTap: () => _selectTool(tool),
                 child: Column(

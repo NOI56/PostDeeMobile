@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/ai_editing/capcut_editor_screen.dart';
 import 'package:postdee_mobile/features/ai_editing/edit_styles.dart';
+import 'package:postdee_mobile/features/ai_editing/style_options.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 
 File _createVideoFixture(String name) {
@@ -517,7 +518,8 @@ void main() {
     expect(cancelCalls, 1);
 
     // Let the hung render unwind so teardown is clean.
-    completer.completeError(const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว'));
+    completer
+        .completeError(const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว'));
     await tester.pumpAndSettle();
   });
 
@@ -538,5 +540,67 @@ void main() {
     // Honest message shown; the style banner ("จะเหลือ ...") is NOT applied.
     expect(find.textContaining('เร็วๆ นี้'), findsWidgets);
     expect(find.textContaining('จะเหลือ'), findsNothing);
+  });
+
+  testWidgets('initial options override the initial style on export',
+      (tester) async {
+    final videoFile = _createVideoFixture('initial-options.mp4');
+    final fastReview =
+        editStyles.firstWhere((style) => style.id == 'fast_review');
+    BurnSubtitleRequest? captured;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CapCutEditorScreen(
+          videoName: 'initial-options.mp4',
+          videoS3Key: 'uploads/initial-options.mp4',
+          videoFile: videoFile,
+          probeDuration: (_) async => 10,
+          transcribeClip: (_) async => const ClipTranscriptResult(
+            text: 'รีวิวสินค้า',
+            segments: [
+              ClipTranscriptSegment(
+                text: 'รีวิวสินค้า',
+                start: 0,
+                end: 10,
+              ),
+            ],
+            durationSeconds: 10,
+          ),
+          initialStyle: EditStyleSelection(style: fastReview),
+          initialCaptionEnabled: true,
+          initialOptions: const EditStyleOptions(
+            speed: 1.5,
+            filterIndex: 5,
+            subtitleFontSize: 24,
+            subtitleAtBottom: false,
+            brightness: 0.25,
+            contrast: -0.3,
+          ),
+          burnVideo: (request) async {
+            captured = request;
+            return BurnedSubtitleResult(
+              file: videoFile,
+              fileName: 'initial-options_subtitled.mp4',
+              sizeBytes: 2048,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.ios_share));
+    await tester.pumpAndSettle();
+
+    expect(captured, isNotNull);
+    expect(captured!.speed, 1.5);
+    expect(captured!.filterIndex, 5);
+    expect(captured!.subtitleFontSize, 24);
+    expect(captured!.subtitleAtBottom, isFalse);
+    expect(captured!.brightness, 0.25);
+    expect(captured!.contrast, -0.3);
+    expect(captured!.segments, hasLength(1));
+    expect(captured!.segments.single.text, 'รีวิวสินค้า');
   });
 }

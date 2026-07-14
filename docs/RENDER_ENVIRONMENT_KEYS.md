@@ -6,6 +6,11 @@ This file is the shared checklist for PostDee Render environment variables.
 Do not paste real secret values into this file. Store real values only in the
 Render Dashboard or another approved secret manager.
 
+Production uses `render.yaml`. Staging uses `render.staging.yaml` with separate
+resource names and separate provider credentials; see `docs/STAGING.md`. Never
+copy `DATABASE_URL`, R2 bucket credentials, Firebase service-account JSON,
+RevenueCat webhook tokens, or PostPeer user connections between environments.
+
 ## What Was Checked
 
 - `render.yaml`
@@ -112,6 +117,7 @@ These values either fail startup in production or are intentionally not in
 | `BILLING_PROVIDER=mock` | Production startup rejects mock billing. |
 | `VIDEO_STORAGE=mock` | Production startup rejects mock storage. |
 | `SOCIAL_PUBLISHER=mock` | Production startup rejects mock publishing. |
+| `SOCIAL_PUBLISHER=disabled` | Explicit fail-closed mode for initial Staging or maintenance; it never reports fake publish success. Production launch still requires `postpeer`. |
 | `POSTPEER_TIKTOK_ACCOUNT_ID` | Shared operator account ids are forbidden in production. |
 | `POSTPEER_YOUTUBE_ACCOUNT_ID` | Shared operator account ids are forbidden in production. |
 | `POSTPEER_INSTAGRAM_ACCOUNT_ID` | Shared operator account ids are forbidden in production. |

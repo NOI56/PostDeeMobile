@@ -12,7 +12,7 @@ export type CaptionProviderKind = 'mock' | 'openai' | 'gemini';
 export type AuthProviderKind = 'mock' | 'firebase';
 export type BillingProviderKind = 'mock' | 'store' | 'revenuecat';
 export type PushSenderKind = 'mock' | 'firebase';
-export type SocialPublisherKind = 'mock' | 'postpeer';
+export type SocialPublisherKind = 'mock' | 'disabled' | 'postpeer';
 export type TranscriptionProviderKind = 'mock' | 'openai' | 'groq';
 export type EditPlanProviderKind = 'mock' | 'openai' | 'groq';
 export type AppleAppStoreEnvironmentKind = 'sandbox' | 'production';
@@ -306,8 +306,8 @@ const readEditPlanProvider = (env: EnvSource): EditPlanProviderKind => {
 const readSocialPublisher = (env: EnvSource): SocialPublisherKind => {
   const value = readOptional(env, 'SOCIAL_PUBLISHER') ?? 'mock';
 
-  if (value !== 'mock' && value !== 'postpeer') {
-    throw new Error('SOCIAL_PUBLISHER must be mock or postpeer');
+  if (value !== 'mock' && value !== 'disabled' && value !== 'postpeer') {
+    throw new Error('SOCIAL_PUBLISHER must be mock, disabled, or postpeer');
   }
 
   return value;

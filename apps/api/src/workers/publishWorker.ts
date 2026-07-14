@@ -85,6 +85,12 @@ export const createMockPlatformPublisher = ({
   })
 });
 
+export const createDisabledPlatformPublisher = (): PlatformPublisher => ({
+  publish: async () => {
+    throw new Error('Social publishing is disabled for this environment');
+  }
+});
+
 export const createMockVideoStorageCleaner = (): VideoStorageCleaner => ({
   deleteVideo: async () => undefined
 });

@@ -45,6 +45,10 @@ Current status:
 - Render PostgreSQL and the API service have been created and the live health
   endpoint responds successfully. Secret/provider state remains a dated
   operational check and must be rechecked in the Render dashboard before launch.
+- A separate `render.staging.yaml` now defines an isolated free-tier staging API
+  and database with production safety guards. It has not been created in Render
+  yet; the workspace free-database limit and staging-only provider secrets must
+  be confirmed first.
 - Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
   mock/provider code have been removed from the active app path. Subscription
   compatibility flags remain false for older clients.
@@ -79,19 +83,22 @@ Primary backend choices:
 Recommended activation order:
 
 1. Keep backend/mobile build, analyze, and tests green as changes land.
-2. Recheck Render secrets and Prisma migrations against the live database.
-3. Add Upstash Redis and run the publish worker as a separate Render worker service when durable scheduling is needed.
-4. Test Cloudflare R2 managed multipart upload/download in the full
+2. Create the isolated Staging Blueprint from `render.staging.yaml`, fill only
+   staging credentials, and pass `docs/STAGING.md` smoke tests.
+3. Recheck Render secrets and Prisma migrations against the live database only
+   after the same release candidate passes Staging.
+4. Add Upstash Redis and run the publish worker as a separate Render worker service when durable scheduling is needed.
+5. Test Cloudflare R2 managed multipart upload/download in the full
    mobile-to-worker flow, including per-part retry, completion recovery, abort,
    and account deletion while an upload is active.
-5. Enable Firebase Auth and phone verification with real mobile project config.
-6. Configure RevenueCat real App Store / Google Play products, replace the local
+6. Enable Firebase Auth and phone verification with real mobile project config.
+7. Configure RevenueCat real App Store / Google Play products, replace the local
    Test Store key with platform SDK keys, and test Starter/Pro purchases on
    sandbox devices.
-7. Add Sentry to the API, worker, and mobile app.
-8. Connect a per-user PostPeer account, refresh its integration state, and run a controlled real publish test.
-9. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
-10. Harden Pro AI auto editing with persistent job/session recovery, top-up handling, and real-device tests of the setup-to-review-to-post/manual-editor flow before production launch.
+8. Add Sentry to the API, worker, and mobile app.
+9. Connect a per-user PostPeer account, refresh its integration state, and run a controlled real publish test.
+10. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
+11. Harden Pro AI auto editing with persistent job/session recovery, top-up handling, and real-device tests of the setup-to-review-to-post/manual-editor flow before production launch.
 
 ## Mobile UI Refresh Plan
 

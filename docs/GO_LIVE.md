@@ -8,6 +8,17 @@ ingestion, Sentry, beat/hook rendering, and AI minute top-ups still need code.
 Default values keep everything in mock/local mode so the app runs without any
 third-party accounts.
 
+## Staging Gate
+
+`render.staging.yaml` now defines a separate free-tier staging API/database with
+production safety guards, staging-only secret placeholders, mock push, and
+Firebase deletion disabled initially. Social publishing also starts in explicit
+fail-closed `disabled` mode; enable PostPeer only for a controlled test account.
+It has not been created in Render yet.
+Complete `docs/STAGING.md` before deploying this release candidate to Production;
+never point Staging at the Production database, R2 bucket, Firebase project, or
+user-owned PostPeer connections.
+
 ## Status
 
 | Area | Status | Switch |

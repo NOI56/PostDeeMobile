@@ -15,6 +15,15 @@ apps/
   mobile/   Flutter source scaffold for iOS and Android
 ```
 
+## Deployment Environments
+
+- `render.yaml` จัดการ Production (`postdee-api` และ `postdee-postgres`)
+- `render.staging.yaml` เป็น Blueprint แยกสำหรับ Staging แบบต้นทุนต่ำ และต้องใช้
+  database, R2 bucket, Firebase project, RevenueCat webhook และ PostPeer account
+  ชุดทดสอบเท่านั้น
+- ขั้นตอนและข้อจำกัดค่าใช้จ่ายอยู่ใน `docs/STAGING.md` ปัจจุบัน Blueprint พร้อมใน
+  repository แล้ว แต่ยังไม่ได้สร้างทรัพยากร Staging บน Render
+
 ## Backend
 
 Path: `apps/api`
@@ -620,7 +629,10 @@ Queue/storage scaffold switches:
   retry jobs for posts already `PUBLISHING`, `PUBLISHED`,
   `PARTIAL_PUBLISHED`, or `FAILED` are skipped. Scheduled jobs whose `runAt`
   no longer matches the post's current `scheduledAt` are also skipped.
-- `SOCIAL_PUBLISHER=mock` keeps publishing safe for local development; `SOCIAL_PUBLISHER=postpeer` calls PostPeer and requires `POSTPEER_API_KEY` plus `VIDEO_STORAGE=r2|s3`.
+- `SOCIAL_PUBLISHER=mock` returns fake success only in local development;
+  `SOCIAL_PUBLISHER=disabled` fails closed without contacting a platform and is
+  the initial Staging setting; `SOCIAL_PUBLISHER=postpeer` calls PostPeer and
+  requires `POSTPEER_API_KEY` plus `VIDEO_STORAGE=r2|s3`.
 - `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`, `POSTPEER_INSTAGRAM_ACCOUNT_ID`, and `POSTPEER_FACEBOOK_ACCOUNT_ID` are non-production/operator smoke-test integration ids only. Production rejects them and must publish through per-user social connections.
 - `VIDEO_STORAGE=mock` creates mock S3-style upload keys and mock read placeholders; `VIDEO_STORAGE=r2` uses Cloudflare R2 through the S3-compatible API for signed upload and signed download access; `VIDEO_STORAGE=s3` remains available as a legacy AWS S3 path.
 - `CLOUDFLARE_R2_BUCKET`, `CLOUDFLARE_R2_ACCOUNT_ID`, `CLOUDFLARE_R2_ACCESS_KEY_ID`, and `CLOUDFLARE_R2_SECRET_ACCESS_KEY` configure R2 uploads.

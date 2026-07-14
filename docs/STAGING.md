@@ -1,0 +1,90 @@
+# PostDee Staging
+
+สถานะ ณ 15 กรกฎาคม 2026: **เตรียม Blueprint และเทสต์แล้ว แต่ยังไม่ได้สร้างทรัพยากรใน Render**
+
+Staging ใช้ทดสอบโค้ดและผู้ให้บริการจริงก่อนส่งเข้า Production โดยต้องไม่ใช้ฐานข้อมูล
+bucket วิดีโอ Firebase project หรือ webhook token ชุดเดียวกับผู้ใช้จริง
+
+## โครงสร้างที่เตรียมไว้
+
+ไฟล์ `render.staging.yaml` สร้างทรัพยากรแยกดังนี้:
+
+- Web Service: `postdee-api-staging`
+- PostgreSQL: `postdee-postgres-staging`
+- Database/User: `postdee_staging`
+- Region: Singapore
+- Branch ชั่วคราว: `codex/ai-edit-thai-timing-staging`
+- Web/Database plan: `free`
+- Production safety guards ยังเปิดผ่าน `NODE_ENV=production`
+- Push และ Firebase account deletion ยังปิดไว้ในรอบแรก
+
+หลัง PR ผ่าน Staging และ merge แล้ว ให้เปลี่ยน branch ของ Staging เป็น `main` เพื่อให้
+Staging เป็นด่านตรวจเวอร์ชันถัดไปต่อเนื่อง
+
+## ค่าใช้จ่ายและข้อจำกัด
+
+- Web Service แบบ Free มีค่า compute เริ่มต้น $0 แต่จะหยุดเมื่อไม่มี traffic 15 นาที
+  และการปลุกกลับอาจใช้เวลาประมาณหนึ่งนาที
+- PostgreSQL แบบ Free มีพื้นที่ 1 GB, ไม่มี backup และหมดอายุ 30 วัน
+- Render อนุญาต Free PostgreSQL ที่ active ได้หนึ่งตัวต่อ workspace เท่านั้น
+- หาก Production ใช้โควตา Free PostgreSQL อยู่แล้ว **ให้หยุดก่อนสร้าง** ห้ามชี้
+  Staging ไปฐาน Production วิธีแยกที่ถูกต้องถัดไปคือ Basic-256mb ประมาณ $6/เดือน
+  หรือสร้าง Staging ใน workspace ทดสอบที่แยกจริง
+- Bandwidth และ build minutes ยังนับตามโควตา workspace
+
+อ้างอิง: [Render Free instances](https://render.com/docs/free) และ
+[Render pricing](https://render.com/pricing)
+
+## Secrets ที่ต้องเป็นชุดทดสอบ
+
+กรอกค่า `sync: false` ใน Render Dashboard เท่านั้น ห้ามใส่ค่าจริงใน Git หรือแชต:
+
+- `CLOUDFLARE_R2_*`: ใช้ bucket สำหรับ Staging เท่านั้น
+- `FIREBASE_PROJECT_ID`: ใช้ Firebase project สำหรับ Staging เท่านั้น
+- `REVENUECAT_WEBHOOK_AUTH_TOKEN`: ใช้ RevenueCat Test Store/webhook ของ Staging
+- `GEMINI_API_KEY` และ `GROQ_API_KEY`: ควรใช้ key จำกัดโควตาสำหรับ Staging
+
+ในรอบแรกไม่มี `FIREBASE_SERVICE_ACCOUNT_JSON`, ใช้ `PUSH_SENDER=mock` และ
+`FIREBASE_AUTH_DELETE_ENABLED=false` เพื่อป้องกันการลบผู้ใช้หรือยิง Push ผิดระบบ
+รวมถึงใช้ `SOCIAL_PUBLISHER=disabled` ซึ่งจะล้มเหลวแบบชัดเจนและไม่สร้างโพสต์ปลอม
+เมื่อจะทดสอบ Social จริง ให้เพิ่ม `POSTPEER_API_KEY` ชุดทดสอบใน Dashboard แล้ว
+สลับเป็น `SOCIAL_PUBLISHER=postpeer` เฉพาะช่วงทดสอบแบบควบคุม
+
+## ขั้นตอนสร้างใน Render Dashboard
+
+1. เปิด Render Dashboard แล้วตรวจ Billing/Usage ก่อนว่ามี Free PostgreSQL อยู่หรือไม่
+2. เลือก **New → Blueprint** และ repository `NOI56/PostDeeMobile`
+3. เลือก branch `codex/ai-edit-thai-timing-staging`
+4. กำหนด Blueprint path เป็น `render.staging.yaml`
+5. ตรวจชื่อให้เป็น `postdee-api-staging` และ `postdee-postgres-staging` เท่านั้น
+6. กรอก secrets ชุดทดสอบตามรายการข้างบนโดยไม่คัดลอกค่ากลับเข้า repository
+7. สร้าง Blueprint และรอ migration/deploy สำเร็จ
+8. เปิด `https://<staging-host>/health` และต้องได้ `status: ok`
+9. สร้าง mobile build ที่ตั้ง `API_BASE_URL=https://<staging-host>` แล้วทดสอบด้วย
+   บัญชีและวิดีโอทดสอบเท่านั้น
+
+ก่อนทดสอบ Firebase ต้องสร้าง mobile staging Firebase config ที่ตรงกับ
+`FIREBASE_PROJECT_ID` ของ Staging ด้วย หากแอปยังใช้ Firebase project เดิม token จะ
+อยู่คนละ project และ backend จะตอบ 401 ห้ามแก้ด้วยการชี้ Staging กลับไป project ผู้ใช้จริง
+
+ถ้าหน้าสรุปก่อนสร้างแสดงทรัพยากร Production หรือยอดเงินที่ไม่คาดไว้ ให้ยกเลิกและ
+ตรวจ Blueprint path/ชื่อ service ใหม่ก่อนเสมอ
+
+## Smoke test ก่อนอนุญาตให้ merge
+
+- Firebase Email/Google login ด้วยบัญชี Staging
+- อัปโหลดไฟล์ไป bucket Staging และยืนยันว่าไม่มี object ใน bucket Production
+- AI caption และ AI edit ใช้โควตา/ข้อมูลของบัญชีทดสอบ
+- เปิด/ปิดความสามารถ AI แล้ว preview และเวลาใน timeline ถูกต้อง
+- RevenueCat Test Store ให้ entitlement Starter/Pro กับ Firebase UID ทดสอบ
+- หลังสลับ `SOCIAL_PUBLISHER=postpeer` แบบตั้งใจแล้ว PostPeer ต้องเชื่อมต่อและ
+  โพสต์เฉพาะช่องทางทดสอบ จากนั้นสลับกลับ `disabled`
+- ตั้งเวลา, retry และสถานะล้มเหลวไม่ค้างผิดปกติ
+- ลบบัญชีเปิดทดสอบภายหลังเมื่อมี Firebase service account ของ Staging เท่านั้น
+
+## การล้างข้อมูล
+
+- ลบบัญชีทดสอบและ object ใน R2 Staging หลัง smoke test
+- ห้ามนำ dump หรือข้อมูลผู้ใช้ Production มา seed
+- ก่อนฐาน Free หมดอายุ ให้ export เฉพาะข้อมูลจำลองที่จำเป็นหรือสร้างฐานใหม่
+- หากยกเลิก Staging ให้ลบ Blueprint, service, database และ revoke keys ชุดทดสอบ

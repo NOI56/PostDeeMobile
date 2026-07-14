@@ -5,7 +5,11 @@ import {
 } from '../modules/socialConnections/socialConnectionStore.js';
 import type { VideoStorage } from '../modules/storage/videoStorage.js';
 import { createPostPeerPublisher } from './postPeerPublisher.js';
-import { type PlatformPublisher, createMockPlatformPublisher } from './publishWorker.js';
+import {
+  type PlatformPublisher,
+  createDisabledPlatformPublisher,
+  createMockPlatformPublisher
+} from './publishWorker.js';
 
 const createSignedVideoUrlResolver =
   (videoStorage: VideoStorage) => async (videoS3Key: string) => {
@@ -31,6 +35,10 @@ export const createPlatformPublisherFromConfig = ({
   videoStorage?: VideoStorage;
   socialConnectionStore?: SocialConnectionStore;
 }): PlatformPublisher => {
+  if (config.socialPublisher === 'disabled') {
+    return createDisabledPlatformPublisher();
+  }
+
   if (config.socialPublisher === 'postpeer') {
     if (!config.postPeerApiKey) {
       throw new Error('POSTPEER_API_KEY is required when SOCIAL_PUBLISHER is postpeer');

@@ -206,7 +206,7 @@ Mock response:
     "height": 1920,
     "aspectRatio": "9:16",
     "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
-    "storageProvider": "mock-s3",
+    "storageProvider": "private",
     "createdAt": "2026-06-05T08:00:00.000Z"
   }
 }
@@ -389,7 +389,7 @@ Success response:
     "id": "post-id",
     "userId": "local-dev-user",
     "caption": "Try this product today. #PostDee",
-    "videoS3Key": "uploads/upload-id/demo-video.mp4",
+    "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
     "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
     "scheduledAt": "2026-06-06T10:00:00.000Z",
     "status": "QUEUED",
@@ -423,9 +423,54 @@ Post limit reached:
 {
   "status": "error",
   "code": "POST_LIMIT_REACHED",
-  "message": "Basic plan is limited to 3 posts per month"
+  "message": "Basic plan is limited to 3 post units per month"
 }
 ```
+
+### `PATCH /posts/:id`
+
+Reschedules an authenticated user's queued post. Body:
+`{ "scheduledAt": "<ISO-8601 date>" }`. The route returns the updated `post`,
+returns `404` for a missing/non-queued user-owned post, and returns `503` when
+the publish queue cannot be rescheduled.
+
+### `DELETE /posts/:id`
+
+Deletes an authenticated user's scheduled/queued post and removes its publish
+job. Returns `{ "status": "ok" }` or `404` when no user-owned post is found.
+
+## Devices And Social Connections
+
+### `POST /devices`
+
+Registers the authenticated user's FCM token. Body:
+`{ "token": "...", "platform": "IOS|ANDROID|WEB" }`; `platform` is optional.
+
+### `GET /social-connections`
+
+Lists the authenticated user's saved PostPeer connections.
+
+### `POST /social-connections/:platform/connect`
+
+Creates/loads the user's PostPeer profile and returns `{ connectUrl }` for the
+requested supported platform.
+
+### `POST /social-connections/refresh`
+
+Polls the user's PostPeer profile integrations after the browser OAuth flow,
+then upserts connected platforms and removes stale local connections. PostPeer
+does not call a signed-state callback in the current implementation.
+
+### `DELETE /social-connections/:platform`
+
+Disconnects the authenticated user's platform using the stored, user-scoped
+PostPeer integration id. The provider integration is removed first and the
+local record is deleted only after provider success; provider `404` and a
+repeated request with no local record are treated as successful idempotent
+cleanup. If provider cleanup is unavailable or fails, the route returns
+`503 SOCIAL_CONNECTION_UNAVAILABLE` or `502 SOCIAL_CONNECTION_FAILED` and
+keeps the local record so a refresh cannot silently recreate a connection the
+user believed was removed.
 
 ## Account
 
@@ -714,8 +759,15 @@ transcribed minutes before returning success so concurrent requests cannot push
 usage past the configured store limit. Request:
 `{ "videoS3Key": "uploads/<user-id>/<upload-id>/clip.mp4", "durationSeconds": 18 }`. Response includes
 `transcript` (text, language, durationSeconds, segments[], words[]) and `quota`.
-The Groq adapter requests both `word` and `segment` timestamp granularities;
-omitting segment timestamps would prevent subtitle timing and silence-gap cuts.
+The Groq adapter sends `language=th` and requests both `word` and `segment`
+timestamp granularities. It also sends the concise Thai spelling context
+`PostDee` → `โพสต์ดี` through Groq's transcription prompt; the OpenAI adapter
+does not receive this provider-specific prompt.
+Validated word timing is preferred for subtitle timing and silence-gap cuts,
+while segments remain the conservative fallback when timing coverage is partial
+or Groq returns Thai character-level tokens that are not readable subtitle words.
+Whitespace-only/punctuation-only timing tokens are ignored, while invalid tokens
+that contain transcript text invalidate word-level timing and trigger fallback.
 
 ### `GET /ai-edits/quota`
 
@@ -748,15 +800,15 @@ Request:
     "filler": true,
     "hook": false,
     "beatsync": false,
-    "reframe": true,
-    "zoom": true,
+    "reframe": false,
+    "zoom": false,
     "color": true,
-    "sfx": true,
-    "audio": true,
-    "translate": true,
-    "pricetag": true,
-    "cta": true,
-    "watermark": true
+    "sfx": false,
+    "audio": false,
+    "translate": false,
+    "pricetag": false,
+    "cta": false,
+    "watermark": false
   },
   "settings": {
     "silencePreset": "balanced",
@@ -785,9 +837,10 @@ Response includes:
 - `recipe.transcript` with text, language, duration, segments, words, and model
 - `recipe.subtitles` for mobile subtitle burn-in
 - `recipe.cutRanges`, `silenceRanges`, and `fillerRanges`
-- `recipe.overlays` for CTA, price tag, and watermark hints
-- `recipe.renderHints` for tone and zoom settings. Hook removal is not emitted
-  by the current recipe builder yet.
+- `recipe.overlays` for future CTA, price tag, and watermark processors; the
+  current production mobile renderer does not apply these hints.
+- `recipe.renderHints` for tone and future zoom settings. Hook removal is not
+  emitted by the current recipe builder yet.
 - `recipe.music` with the validated source (`auto`, `library`, `device`, or
   `original`), optional genre/library track reference, beat intensity, volume,
   and voice-ducking preferences
@@ -795,12 +848,21 @@ Response includes:
   `applied`, `hinted`, `planned`, or `skipped`
 - `quota` with `{ limitMinutes, usedMinutes, remainingMinutes }`
 
-Capabilities that need future audio/visual analysis, such as beat sync,
-the opening hook/highlight, auto-reframe, SFX/music choice, audio cleanup, and subtitle translation, are
-accepted in the recipe but marked `planned` so the UI can stay honest.
+Production mobile enables only `subtitle`, `silence`, `filler`, and `color`,
+because those four have a real local renderer. The setup UI locks auto-reframe,
+zoom, audio cleanup, subtitle translation, price tag, CTA, and the AI-page
+watermark as `เร็ว ๆ นี้` and sends them as `false`.
+
+Capabilities that need future analysis or rendering, including beat sync, the
+opening hook/highlight, auto-reframe, zoom, SFX/music choice, audio cleanup,
+subtitle translation, price tag, CTA, and the AI-page watermark, are accepted
+from older/internal clients but marked `planned` so the UI can stay honest.
 
 `settings.silencePreset` accepts three values and changes the minimum gap
-between transcript segments that becomes a silence range:
+between validated word timings that becomes a silence range. The recipe falls
+back to transcript segment gaps when word timing is missing or incomplete. It
+also returns qualifying leading and trailing silence; trailing silence requires
+a finite `transcript.durationSeconds`:
 
 - `natural`: 1.0 second
 - `balanced`: 0.6 second (also used when the field is missing or invalid)
@@ -809,8 +871,13 @@ between transcript segments that becomes a silence range:
 `settings.fillerWords` is an exact allowlist. Supported values are `เอ่อ`,
 `อ่า`, `แบบว่า`, `คือว่า`, and `ประมาณว่า`. The backend normalizes NFC and
 removes surrounding whitespace, punctuation, and symbols before comparing a
-transcript word; it never uses a substring match. Omitting the field preserves
-legacy behavior and checks all five words. Sending `[]`, a non-array value, or
+normal transcript word; `เออ` is an exact transcription alias for `เอ่อ` but a
+longer token such as `เออแล้ว` does not match. When Groq returns a validated Thai
+character-token stream, the backend may conservatively reassemble adjacent
+fragments that equal an allowlisted filler. Reassembly cannot cross a timing
+gap and requires a real gap or verified Thai word/text boundaries; short
+prefixes remain stricter. Omitting the field preserves legacy behavior and checks all
+five words. Sending `[]`, a non-array value, or
 an array that sanitizes to no supported values fails closed and produces no
 filler ranges; it does not fall back to the legacy list.
 
@@ -1319,6 +1386,7 @@ PostgreSQL.
 | `FIREBASE_PROJECT_ID` | `postdee-prod` | Firebase project id |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | `{...}` | Firebase Admin service account JSON for account deletion and revoked-token checks; keep secret |
 | `FIREBASE_AUTH_DELETE_ENABLED` | `false`, `true` | Enables complete Firebase account deletion and revoked/deleted-token checks; requires the Firebase service account |
+| `PUSH_SENDER` | `mock`, `firebase` | Push sender adapter; keep `mock` until the Firebase sender is verified with the installed Admin SDK |
 | `VIDEO_STORAGE` | `mock`, `r2`, `s3` | Temporary video storage adapter |
 | `CLOUDFLARE_R2_BUCKET` | `postdee-video-temp` | R2 bucket name |
 | `CLOUDFLARE_R2_ACCOUNT_ID` | `...` | Cloudflare account id |
@@ -1355,11 +1423,11 @@ PostgreSQL.
 | `REVENUECAT_PRO_PRODUCT_ID` | `postdee_pro_monthly` | RevenueCat product mapped to Pro |
 | `STORE_STARTER_MONTHLY_PRODUCT_ID` | `postdee_starter_monthly` | Starter store product id |
 | `STORE_PRO_MONTHLY_PRODUCT_ID` | `postdee_pro_monthly` | Pro store product id |
-| `GOOGLE_PLAY_PACKAGE_NAME` | `com.postdee` | Android package name |
+| `GOOGLE_PLAY_PACKAGE_NAME` | `com.postdee.postdee_mobile` | Android package name |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_JSON` | `{...}` | Google Play verifier service account JSON |
 | `GOOGLE_PLAY_ACCESS_TOKEN` | `...` | Optional Google Play access token |
 | `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN` | `...` | Bearer token required by the Google Play RTDN endpoint |
-| `APPLE_APP_BUNDLE_ID` | `com.postdee` | iOS bundle id |
+| `APPLE_APP_BUNDLE_ID` | `com.postdee.postdeeMobile` | iOS bundle id |
 | `APPLE_APP_STORE_ISSUER_ID` | `...` | App Store Server API issuer id |
 | `APPLE_APP_STORE_KEY_ID` | `...` | App Store Server API key id |
 | `APPLE_APP_STORE_PRIVATE_KEY` | `...` | App Store Server API private key |
@@ -1391,7 +1459,8 @@ The following work is still required before production launch:
   PostPeer provider later.
 - Complete provider-level R2 upload and cleanup testing.
 - Test real-clip caption transcription with real R2 videos and Groq before
-  production launch; frame sampling is still not implemented.
+  production launch. Mobile frame extraction/upload (up to 3 frames) is
+  implemented and still needs real-device/provider verification.
 - Apply and verify the Prisma `RealClipCaptionUsage` migration in production
   before selling paid AI caption quotas.
 - Keep legacy AI review compatibility flags false while building real-clip AI

@@ -32,7 +32,8 @@
 
 ## 2) ฐานข้อมูล (Render PostgreSQL)
 
-- [ ] สร้าง Render PostgreSQL, ตั้ง `DATABASE_URL`
+- [x] สร้าง Render PostgreSQL และ API แล้ว; ต้องตรวจ `DATABASE_URL` และ secrets
+      ใน Dashboard ซ้ำก่อนเปิดจริง เพราะสถานะที่บันทึกไว้เป็น snapshot แบบลงวันที่
 - [ ] รัน migration: `npm run prisma:migrate:deploy`
       (รวม migration ใหม่ `*_add_partial_published_status` สำหรับสถานะ
       `PARTIAL_PUBLISHED` ที่เพิ่งเพิ่ม)
@@ -90,6 +91,8 @@
 ## 7) Firebase (Auth + Phone + Push)
 
 - [x] ไฟล์ config มีครบแล้ว (`google-services.json`, `GoogleService-Info.plist`)
+- [x] เพิ่ม SHA-1 และ SHA-256 ของ release keystore ใน Firebase และอัปเดต
+      `google-services.json` ให้มี Android OAuth client ของ Release แล้ว (14 ก.ค. 2026)
 - [ ] เปิด provider ใน Firebase Console: **Google, Apple, Phone, Cloud Messaging**
 - [ ] iOS: เพิ่ม capability "Sign in with Apple" + "Push Notifications" + อัป APNs key
 - [ ] build ด้วย `--dart-define=ENABLE_FIREBASE_AUTH=true` (+ `GOOGLE_SERVER_CLIENT_ID`)
@@ -110,6 +113,12 @@
 
 ## 8) ทดสอบบนเครื่องจริง (smoke test ปลายทาง)
 
+- [x] อัปเดต `ffmpeg_kit_flutter_new_video` เป็น `2.3.2` ซึ่งรวม FFmpeg 8.1.2
+      และการแก้ CVE-2026-8461 สำหรับ Android/iOS แล้ว
+- [x] Android API 34 Emulator: เลือกคลิป 720×1280, อ่าน metadata, เรนเดอร์ AI
+      เป็น MP4 และเปิด preview/เลื่อนเวลาได้ด้วย FFmpeg 8.1.2
+- [ ] ทดสอบ export ด้วย FFmpeg 8.1.2 บน Android และ iPhone จริงก่อนรับไฟล์
+      จากผู้ใช้ทั่วไป ระหว่างนี้ให้ทดสอบเฉพาะคลิปที่ทีมสร้างหรือเชื่อถือได้
 - [ ] ล็อกอิน Google + Apple + ยืนยันเบอร์ (OTP) สำเร็จ บนมือถือจริง
 - [ ] อัปคลิป → โพสต์ทันที → ขึ้นจริงทุกแพลตฟอร์ม → สถานะอัปเป็น PUBLISHED
 - [ ] ตั้งเวลาโพสต์ → ปฏิทินแสดง → ถึงเวลาแล้วโพสต์จริง
@@ -124,7 +133,8 @@
 ## 9) ภายหลัง (ไม่บล็อกการเปิด)
 
 - [ ] Sentry (error tracking) — API, worker, mobile
-- [ ] FCM backend sender + device token endpoint
+- [x] FCM backend sender + device token endpoint มีในโค้ดแล้ว; งานที่เหลือคือ
+      ใส่ service account, ตั้ง `PUSH_SENDER=firebase`, ตั้ง APNs และทดสอบเครื่องจริง
 - [ ] Analytics: ตัวดึง views/likes จริงจากแพลตฟอร์ม (ตอนนี้แสดง 0)
 - [ ] PostPeer: รองรับ Shopee/Lazada + ยิงรวมหลายแพลตฟอร์มในคอลเดียว
 - [ ] รองรับ Shopee/Lazada ครบทั้ง backend (validation/Prisma enum) + โลโก้จริง

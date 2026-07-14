@@ -43,8 +43,8 @@ flowchart LR
   Worker --> Social["PostPeer API (Unified)"]
   Worker --> Storage
   Worker --> DB
-  API -.-> Sentry["Sentry Error Tracking"]
-  Worker -.-> Sentry
+  API -.-> PlannedSentry["Sentry (planned)"]
+  Worker -.-> PlannedSentry
 ```
 
 ## Mobile App
@@ -57,7 +57,7 @@ apps/mobile
 
 Current mobile pieces:
 
-- Ultra-dark Flutter UI theme.
+- Light and dark Flutter themes; light is the current default.
 - Home dashboard with total views, total likes, subscription status, Basic Phone OTP verification, and Starter/Pro CTAs.
 - Universal uploader screen with 9:16 metadata validation and platform toggles.
 - Calendar tab for scheduled posts and refresh after scheduling.
@@ -123,15 +123,21 @@ Backend stack:
 - Gemini caption provider scaffold
 - Groq Whisper AI auto editing scaffold
 - RevenueCat webhook receiver scaffold
-- Sentry error tracking integration
+- Sentry error tracking is planned; it is not integrated yet
 
 Main route groups:
 
 - `GET /health`
 - `GET /auth/me`
 - `POST /uploads`
+- `POST /uploads/:uploadId/parts/:partNumber`
+- `POST /uploads/:uploadId/complete`
+- `GET /uploads/:uploadId`
+- `DELETE /uploads/:uploadId`
 - `GET /posts`
 - `POST /posts`
+- `PATCH /posts/:id`
+- `DELETE /posts/:id`
 - `POST /captions/generate`
 - `GET /ai-edits/quota`
 - `POST /ai-edits/transcribe`
@@ -146,6 +152,11 @@ Main route groups:
 - `POST /billing/mock-success`
 - `POST /billing/google-play/notifications`
 - `POST /billing/apple/notifications`
+- `POST /devices`
+- `GET /social-connections`
+- `POST /social-connections/:platform/connect`
+- `POST /social-connections/refresh`
+- `DELETE /social-connections/:platform`
 - `GET /queue/jobs`
 
 ## Module Layout
@@ -197,6 +208,9 @@ Important models:
 - `Subscription`: Basic/Starter/Pro entitlement state.
 - `RealClipCaptionUsage`: monthly usage ledger for paid AI caption generations
   from selected clips.
+- `AiEditUsage`: monthly minute ledger for Pro AI editing.
+- `DeviceToken`: per-user FCM registration token.
+- `SocialConnection` and `PostPeerProfile`: per-user provider connection state.
 
 Subscription fields are provider-neutral:
 
@@ -283,7 +297,9 @@ sequenceDiagram
   A-->>M: post + publishJob
   Q->>W: Run job immediately or at scheduled time
   W->>P: Publish to selected platforms
-  W->>S: Delete temporary video after success
+  opt Cleanup enabled or storage lifecycle policy
+    W->>S: Delete temporary video after success
+  end
   W->>A: Record publish/analytics result
 ```
 
@@ -492,6 +508,11 @@ available if a new render fails. The user can then continue either to
 Upload/Post or the manual editor. Mobile handles FFmpeg
 subtitle burn-in, silence cutting, supported visual adjustments, and final MP4
 export; capabilities marked `planned` are not shown as already applied.
+The production capability allowlist is currently `subtitle`, `silence`,
+`filler`, and `color`. Auto-reframe, zoom, audio cleanup, translation, price
+tags, CTA cards, and the AI-page watermark remain `planned`; mobile locks them
+as `เร็ว ๆ นี้` and sends them disabled instead of implying that their recipe
+hints changed the exported file.
 The AI header independently reads the authenticated monthly quota and replaces
 that value with `prepare.quota` as soon as a metered recipe succeeds. Local
 preview re-renders and manual quota refreshes do not call the metered endpoint.
@@ -500,12 +521,26 @@ and passes that directory to libass. For silence cuts, video frames use the
 selected keep timeline while audio keep ranges are reset and concatenated, so
 both streams finish together after local preview re-renders.
 
-Pace cleanup is an end-to-end recipe input. `silencePreset` selects the minimum
-gap between transcript segments: `natural` = 1.0 s, `balanced` = 0.6 s, and
-`compact` = 0.4 s. Missing or invalid values use `balanced`. `fillerWords` is an
+Pace cleanup is an end-to-end recipe input. The backend first validates that
+word timings cover the transcript text and timeline, then `silencePreset`
+selects their minimum gap: `natural` = 1.0 s, `balanced` = 0.6 s, and
+`compact` = 0.4 s. Missing/incomplete word timing falls back to segment gaps.
+The same threshold applies before the first range and after the last range when
+the transcript has a finite media duration. Overlapping ranges are merged before
+gaps are calculated. Groq Thai character-level timings remain useful for gap
+detection, while subtitle text falls back to segments instead of being split
+into individual characters. The Groq request carries a concise Thai spelling
+hint for `PostDee` → `โพสต์ดี`; this prompt is not sent through the OpenAI
+provider path.
+Whitespace-only provider tokens do not invalidate an otherwise complete timing
+stream; malformed tokens containing transcript text still fail closed.
+Missing or invalid preset values use `balanced`. `fillerWords` is an
 exact, normalized allowlist limited to `เอ่อ`, `อ่า`, `แบบว่า`, `คือว่า`, and
-`ประมาณว่า`. A missing field keeps the legacy all-five behavior, while an
-explicit empty or fully invalid list fails closed with no filler cuts. The API
+`ประมาณว่า`; `เออ` is an exact alias of `เอ่อ`, and validated fragmented Thai
+tokens are reassembled only across tight timing and verified Thai word/text
+boundaries. A missing field keeps the legacy
+all-five behavior, while an explicit empty or fully invalid list fails closed
+with no filler cuts. The API
 returns detected silence/filler ranges and mobile renders the supported cuts.
 The review summarizes range counts and their combined detected time before
 rendering; it does not claim that the final clip duration changes by exactly the
@@ -631,6 +666,11 @@ cd apps/mobile
   to `FAILED`.
 - Direct social OAuth/token storage is not implemented because the MVP
   production path uses PostPeer first.
+- Per-platform disconnect is provider-first and user-scoped: PostPeer must
+  confirm the saved integration is gone before the local connection row is
+  removed. Missing integrations are idempotent; provider failures keep local
+  state so later refreshes cannot silently recreate a supposedly disconnected
+  account.
 - Real Gemini calls require credentials and provider testing.
 - Real-clip AI captioning can use the transcription provider for audio
   language detection, but still needs real R2/Groq clip testing, visual-frame
@@ -643,7 +683,8 @@ cd apps/mobile
   handling, and real-device export/review testing.
 - Real R2 upload requires Cloudflare credentials and integration testing.
 - Redis/BullMQ scheduling needs infrastructure testing.
-- Firebase auth needs real project files and device testing.
+- Firebase project files are present; auth still needs provider/capability setup
+  and real-device testing.
 - RevenueCat subscriptions need real Apple/Google products, platform SDK keys,
   sandbox testing, and fuller renewal/cancel/refund webhook coverage. The
   legacy direct store verifier remains a scaffold.

@@ -1,5 +1,11 @@
 # PostPeer User Social Connections Design
 
+> Historical design note (superseded by the implemented flow): the runtime now
+> uses a PostPeer profile plus explicit `POST /social-connections/refresh`
+> polling after connect. It does not expose the signed-state callback routes
+> proposed below. Use `API.md`, `ARCHITECTURE.md`, and the current route code as
+> the source of truth.
+
 ## Goal
 
 Let each PostDee user connect their own TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels accounts through PostPeer from inside the mobile app. Publishing must use the connected account owned by the post's authenticated user, not a shared environment-level account id.
@@ -38,7 +44,7 @@ Because the currently verified PostPeer API only exposes `GET /v1/connect/integr
 
 `GET /social-connections/postpeer/callback` and `POST /social-connections/postpeer/callback` both run the same callback handler so the backend can support either browser redirects or server-to-server provider callbacks. The handler validates the callback signature or shared secret when present, validates the state token, maps the PostPeer platform to a PostDee platform, and upserts the connection for the original user. The callback never trusts a user id sent directly by the provider unless it matches the signed state.
 
-`DELETE /social-connections/:platform` removes the saved PostDee connection for the authenticated user. Provider-side revocation is best-effort and may be added later if PostPeer exposes a revoke endpoint.
+`DELETE /social-connections/:platform` resolves the saved integration by the authenticated user and platform, removes that integration through PostPeer first, and only then removes the local PostDee connection. Provider `404` and a repeated request with no local record are idempotent successes. Provider unavailability or failure leaves the local record intact and returns a retryable error so refresh cannot recreate an account the user believed was disconnected.
 
 ## Mobile Components
 

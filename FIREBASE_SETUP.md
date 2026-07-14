@@ -37,8 +37,17 @@ Firebase mobile project config files are allowed in the mobile app, but producti
    a no-op until Firebase is enabled. To deliver pushes you also need:
    - iOS: an APNs auth key uploaded to Firebase and the "Push Notifications"
      capability on the Runner target.
-   - A backend that stores each device's FCM token (exposed via the gateway's
-     `onToken` callback) and sends messages — not built yet.
+   - Current backend status: `POST /devices` stores per-user tokens and the
+     firebase-admin sender is implemented. Securely set
+     `FIREBASE_SERVICE_ACCOUNT_JSON`, switch `PUSH_SENDER=firebase`, and test on
+     a real device. The default remains `mock`.
+   - For complete in-app account deletion, also set
+     `FIREBASE_AUTH_DELETE_ENABLED=true`. This makes the backend delete the
+     Firebase UID last and reject deleted/revoked ID tokens through Firebase
+     Admin. Test with a dedicated account before production.
+   - Native Apple token revocation is available only on iOS/macOS. Do not expose
+     Apple Sign-In on Android/web until PostDee has a server-side Apple token
+     revocation flow.
 4b. Enable Apple as a sign-in provider (App Store policy requires Apple Sign-In
    whenever Google Sign-In is offered). The mobile code is already wired
    (`FirebaseAppleAuthGateway` via `signInWithProvider('apple.com')`); it only
@@ -52,6 +61,24 @@ Firebase mobile project config files are allowed in the mobile app, but producti
 ```text
 com.postdee.postdee_mobile
 ```
+
+5a. Register the certificate fingerprints from the exact keystore used to sign
+the release build. The current PostDee upload/release certificate is:
+
+```text
+SHA-1   42:1E:22:8A:13:03:5C:D1:5F:54:83:07:69:76:BB:BD:25:44:68:07
+SHA-256 1B:75:C5:A9:24:D1:2E:F0:76:50:DD:2A:EC:5D:C7:3A:A5:58:AE:04:C5:0A:C5:8E:F1:4F:7D:3D:28:C1:6C:9D
+```
+
+After adding or changing a fingerprint, download `google-services.json` again.
+Google Sign-In can reject an otherwise valid release APK when its signing
+certificate is missing from Firebase/OAuth.
+
+Completed on 2026-07-14: both Release fingerprints are registered in Firebase,
+and the local Android config includes the generated Release OAuth client
+`121898224944-6rcv02n4mq2a33tbem8leeptvoisb1ir.apps.googleusercontent.com` for
+package `com.postdee.postdee_mobile` and certificate hash
+`421e228a13035cd15f5483076976bbbd25446807`.
 
 6. Download Android config to:
 

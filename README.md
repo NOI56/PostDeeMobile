@@ -1,6 +1,11 @@
 # PostDee
 
-PostDee is a cross-platform mobile app and backend scaffold for Thai e-commerce sellers, affiliate marketers, and creators. The product is Thai-first, but is built to be global-ready so sellers in other countries can use it comfortably with localized language, timezone, currency, phone, billing, and compliance support. Currently, the app supports 8 languages: Thai (th), English (en), Vietnamese (vi), Chinese (zh), Indonesian (id), Malay (ms), Tagalog (tl), and Japanese (ja). The first milestone focuses on project structure, an ultra-dark Flutter UI scaffold, and an Express + Prisma backend foundation.
+PostDee is a cross-platform mobile app and backend for Thai e-commerce sellers,
+affiliate marketers, and creators. The product is Thai-first and has an
+8-locale foundation (th, en, vi, zh, id, ms, tl, ja), but many active screens
+still contain Thai copy and are not fully localized. The Flutter app supports
+light and dark palettes (light is the current default), backed by Express,
+Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
 ## Project Structure
 
@@ -76,7 +81,10 @@ The worker currently uses mock platform publishing and mock video cleanup by def
 
 ### Backend API
 
-All endpoints are scaffold implementations. They are useful for frontend integration and local flow testing, but they do not call production services yet.
+The API defaults to mock-safe/local adapters. When explicitly configured, it
+can call real R2, Gemini, Groq, Firebase, PostPeer, and RevenueCat services.
+Having an adapter in code does not mean its provider-level production test has
+passed; see `docs/GO_LIVE.md` for the current activation checklist.
 
 #### `GET /health`
 
@@ -109,7 +117,8 @@ Response:
 
 #### `POST /uploads`
 
-Creates a mock upload record from video metadata and returns a temporary object key.
+Creates upload metadata and returns a temporary object key; local mock storage
+keeps this flow provider-safe during development.
 This route requires the current authenticated user. In local mock mode, the
 mobile app sends `x-postdee-user-id`; in Firebase mode, it sends a bearer token.
 
@@ -440,7 +449,7 @@ Path: `apps/mobile`
 
 Current mobile pieces:
 
-- Ultra-dark Flutter theme
+- Light and dark Flutter themes (light is the current default)
 - Generated Android and iOS platform folders with app display name `PostDee`
 - Home dashboard with manual refresh for total views and likes from `GET /analytics/summary`, plus automatic analytics refresh after the plan becomes Pro
 - Universal uploader screen with 9:16 metadata form, client/server 9:16 metadata validation, upload plan status refresh with remaining Basic post units, video file picker scaffold, saved template insertion for captions, Starter/Pro pre-check for scheduled posts, optional local file path upload to R2/S3 signed URLs, platform toggles, and backend calls to `POST /uploads` then `POST /posts`
@@ -451,8 +460,15 @@ Current mobile pieces:
   selected clip, UI capability toggles, style/prompt, and settings into a
   mobile FFmpeg render recipe. It meters the same 200 monthly AI editing minutes
   as transcription and does not render video server-side. Groq transcription
-  requests both word and segment timestamps: words support precise filler cuts,
-  while segments drive subtitle timing and silence-gap detection.
+  sends the ISO-639-1 Thai hint (`th`) and requests both word and segment
+  timestamps. It also sends Groq a concise Thai spelling hint for
+  `PostDee` → `โพสต์ดี`; the shared OpenAI provider does not receive that
+  Groq-specific prompt. The backend validates word timing
+  coverage before using it for precise silence/filler cuts and subtitle timing;
+  incomplete timing falls back to segments. Groq Thai character-level tokens
+  still drive precise gaps, but subtitle text falls back to readable segments.
+  Whitespace-only provider tokens are ignored during validation; malformed
+  tokens containing real transcript text still fail closed.
 - After the first phone-side render, the mobile app stays on the AI editing
   screen so the user can preview the result, remove supported AI edits they do
   not want, or add them back. Each review checkbox automatically re-renders a
@@ -468,17 +484,28 @@ Current mobile pieces:
   system font provider. Silence removal compacts kept audio ranges with
   `atrim` + `concat` so the audio ends with the shortened video instead of
   continuing after the final frame.
-- Pace cleanup settings are real recipe inputs. `silencePreset` maps to transcript
-  segment gap thresholds of `natural` = 1.0 s, `balanced` = 0.6 s (the default),
-  and `compact` = 0.4 s. `fillerWords` is an exact allowlist containing only
+- Pace cleanup settings are real recipe inputs. `silencePreset` maps to validated
+  word-timing gaps, falling back to transcript segments, with thresholds of
+  `natural` = 1.0 s, `balanced` = 0.6 s (the default), and `compact` = 0.4 s.
+  A qualifying gap before the first spoken range or after the last spoken range
+  is included when the provider returns a valid media duration.
+  `fillerWords` is an exact allowlist containing only
   `เอ่อ`, `อ่า`, `แบบว่า`, `คือว่า`, and `ประมาณว่า`; matching trims surrounding
-  whitespace/punctuation instead of using substring matches. A missing
+  whitespace/punctuation instead of using substring matches on normal word
+  tokens. The exact transcript alias `เออ` maps to `เอ่อ`; a detected Thai
+  character-token stream may be conservatively reassembled for the same
+  allowlist only across tight timing and verified Thai word/text boundaries. A missing
   `fillerWords` field keeps the legacy all-five default, while an explicit empty
   array means no filler-word cuts. Mobile requires at least one selected word
   while the filler capability is enabled.
 - Result review shows the number of detected silence and filler ranges plus
   their combined detected time from the prepare recipe. These are pre-render
   detections, not a promise that the exported clip saves exactly that duration.
+- Production exposes only the AI editing capabilities with a real mobile
+  renderer: subtitle, silence, filler-word cuts, and color/light adjustment.
+  Auto-reframe, zoom, audio cleanup, translation, price tags, CTA cards, and
+  the AI-page watermark are locked as `เร็ว ๆ นี้` and sent to the API as
+  disabled until their exported-video processors pass real-device tests.
 - Beat-sync advanced settings now let the user keep the original audio or pick
   an owned MP3/M4A/WAV file through Flutter's `file_selector`, confirm usage rights, choose
   cut intensity, music volume, and voice ducking, and send those choices in the
@@ -629,4 +656,14 @@ See `ROADMAP.md` for the build roadmap. It includes the current Phase 1 core app
 
 ## Current Limits
 
-This is scaffolding only. The current backend uses mock-safe implementations and in-memory stores by default, with optional Prisma persistence for real-clip AI caption usage. PostPeer publishing is wired behind `SOCIAL_PUBLISHER=postpeer`, but production rejects shared `POSTPEER_*_ACCOUNT_ID` values and should only publish after per-user social connections are implemented and a real provider-level publish test is approved. Production real-clip audio/frame understanding, Pro Groq Whisper auto editing, and full database persistence are not verified for production yet. Real-clip AI captioning can now reuse the configured transcription provider for spoken-language detection, but still needs R2/Groq provider-level testing with real clips before production use. Firebase ID token verification exists for `AUTH_PROVIDER=firebase`, and the mobile app has a token handoff plus Firebase/Google auth gateway, but it still needs mobile device testing before production use. The backend now has a RevenueCat webhook foundation for Starter and Pro entitlements, and the mobile app has a `purchases_flutter` gateway behind `ENABLE_REVENUECAT_BILLING=true`; production still needs real App Store / Google Play products, real platform RevenueCat SDK keys, sandbox/device purchase testing, and renewal/refund/cancel event verification. The legacy direct Apple/Google store verifier remains available as a scaffold, not the preferred production path. BullMQ, R2, Gemini, Groq, PostPeer, RevenueCat, and Firebase auth still need provider-level integration testing before production use.
+The backend defaults to mock-safe adapters and in-memory stores for local work,
+while production can use Prisma and real provider adapters. Per-user PostPeer
+social connections and the connect/refresh/provider-first disconnect API flow
+are implemented;
+production publishing still requires a controlled provider-level test and never
+uses shared `POSTPEER_*_ACCOUNT_ID` values. Real-clip AI captioning/editing,
+Firebase device auth, RevenueCat purchases, R2 media flow, and renewal/refund/
+cancel handling still need their listed real-device/provider checks. Platform
+views/likes ingestion, Sentry, beat/hook rendering, and AI minute top-ups are not
+complete production features yet. See `docs/GO_LIVE.md` and
+`LAUNCH_CHECKLIST.md` for the operational truth.

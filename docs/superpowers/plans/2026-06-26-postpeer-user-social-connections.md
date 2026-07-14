@@ -1,5 +1,11 @@
 # PostPeer User Social Connections Implementation Plan
 
+> Historical implementation plan: the final runtime diverged from the proposed
+> signed-state callback architecture. It uses PostPeer profile state and
+> explicit `POST /social-connections/refresh` polling. Unchecked steps below do
+> not describe current completion status; use `API.md`, `ARCHITECTURE.md`, and
+> the current route code as the source of truth.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add user-owned PostPeer social account connections so each authenticated PostDee user publishes to their own connected social accounts.

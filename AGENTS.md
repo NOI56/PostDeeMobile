@@ -56,11 +56,11 @@ Current Stack:
 - TypeScript
 - Prisma
 - PostgreSQL schema
-- Redis + BullMQ scaffold
-- Mock/S3 video storage scaffold
-- Mock/OpenAI caption scaffold
-- Mock/Firebase auth scaffold
-- Mock/Prisma stores
+- Redis + BullMQ queue adapters
+- Mock, Cloudflare R2, and legacy S3 video storage adapters
+- Mock, Gemini, Groq, and legacy OpenAI AI adapters
+- Mock/Firebase auth plus Firebase Admin push adapter
+- Memory/Prisma stores, PostPeer publisher, and RevenueCat billing adapters
 
 Main verification commands:
 
@@ -84,9 +84,9 @@ Location: `apps/mobile`
 
 Current Stack:
 
-- Flutter source scaffold
-- Ultra-dark theme
-- Home, uploader, calendar, caption assistant, templates, analytics, and profile screens
+- Flutter mobile app with light/dark themes (light is the default)
+- Home, uploader, AI editing/review, calendar, caption assistant, templates,
+  analytics, profile, billing, and publishing flows
 
 Note: In the current environment, Flutter might not be in `PATH` yet. Do not claim `flutter analyze` or `flutter test` passed if they haven't been actually run.
 

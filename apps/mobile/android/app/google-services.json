@@ -30,6 +30,14 @@
           }
         },
         {
+          "client_id": "121898224944-6rcv02n4mq2a33tbem8leeptvoisb1ir.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.postdee.postdee_mobile",
+            "certificate_hash": "421e228a13035cd15f5483076976bbbd25446807"
+          }
+        },
+        {
           "client_id": "121898224944-1hkh1mrfb5lc1ltraapu10lj1ib465vj.apps.googleusercontent.com",
           "client_type": 3
         }

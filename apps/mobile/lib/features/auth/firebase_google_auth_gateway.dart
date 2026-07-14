@@ -286,6 +286,11 @@ String? _readOptional(String? value) {
 String _describeGoogleSignInFailure(GoogleSignInException error) {
   final description = error.description?.toLowerCase() ?? '';
 
+  if (error.code == GoogleSignInExceptionCode.unknownError &&
+      description.contains('no credential')) {
+    return 'ยังไม่พบบัญชี Google บนอุปกรณ์นี้ กรุณาเพิ่มหรือลงชื่อเข้าใช้บัญชี Google ผ่าน Google Play หรือการตั้งค่า Android แล้วลองอีกครั้ง';
+  }
+
   if (error.code == GoogleSignInExceptionCode.canceled) {
     if (description.contains('reauth')) {
       return 'Google sign-in could not continue because this device needs the Google account signed in again. Open Google Play or Android Settings, confirm the Google account, then try again.';

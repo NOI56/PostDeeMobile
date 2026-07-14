@@ -21,8 +21,10 @@ apps/
 - `render.staging.yaml` เป็น Blueprint แยกสำหรับ Staging แบบต้นทุนต่ำ และต้องใช้
   database, R2 bucket, Firebase project, RevenueCat webhook และ PostPeer account
   ชุดทดสอบเท่านั้น
-- ขั้นตอนและข้อจำกัดค่าใช้จ่ายอยู่ใน `docs/STAGING.md` ปัจจุบัน Blueprint พร้อมใน
-  repository แล้ว แต่ยังไม่ได้สร้างทรัพยากร Staging บน Render
+- ขั้นตอนและข้อจำกัดค่าใช้จ่ายอยู่ใน `docs/STAGING.md` ปัจจุบันสร้างทรัพยากร
+  Staging บน Render แล้วและ `/health` ผ่านแบบ health-only แต่ provider credentials
+  ยังเป็น dummy staging-only จึงต้องใส่ค่าจริงของ Staging และผ่าน functional smoke
+  tests ก่อนใช้เป็น release gate
 
 ## Backend
 

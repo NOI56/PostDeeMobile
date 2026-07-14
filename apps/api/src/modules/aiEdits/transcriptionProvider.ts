@@ -24,6 +24,27 @@ export type AudioSource = {
   contentType: string;
 };
 
+/** Normalizes provider language labels without changing unknown languages. */
+export const normalizeTranscriptionLanguage = (value?: string): string => {
+  const language = value?.trim();
+  if (!language) {
+    return 'th';
+  }
+
+  const normalized = language.toLowerCase();
+  if (
+    normalized === 'th' ||
+    normalized === 'tha' ||
+    normalized === 'thai' ||
+    normalized.startsWith('th-') ||
+    normalized.startsWith('th_')
+  ) {
+    return 'th';
+  }
+
+  return language;
+};
+
 /** Downloads the clip audio/video bytes for a stored key (e.g. from R2). */
 export type FetchAudio = (videoS3Key: string) => Promise<AudioSource>;
 
@@ -42,6 +63,9 @@ type TranscriptionApiResponse = {
   segments?: Array<{ text?: string; start?: number; end?: number }>;
   words?: Array<{ word?: string; start?: number; end?: number }>;
 };
+
+const groqThaiTranscriptionPrompt =
+  'คำศัพท์เฉพาะ: ชื่อแอปให้เขียนเป็นภาษาไทยว่า โพสต์ดี';
 
 export const createMockTranscriptionProvider = (): TranscriptionProvider => ({
   transcribe: async () => ({
@@ -64,7 +88,8 @@ const createOpenAiCompatibleTranscriptionProvider = ({
   fetchAudio,
   fetchImpl = fetch as unknown as FetchImpl,
   endpointUrl,
-  failureLabel
+  failureLabel,
+  prompt
 }: {
   apiKey: string;
   model: string;
@@ -72,6 +97,7 @@ const createOpenAiCompatibleTranscriptionProvider = ({
   fetchImpl?: FetchImpl;
   endpointUrl: string;
   failureLabel: string;
+  prompt?: string;
 }): TranscriptionProvider => ({
   transcribe: async ({ videoS3Key }) => {
     const audio = await fetchAudio(videoS3Key);
@@ -82,6 +108,12 @@ const createOpenAiCompatibleTranscriptionProvider = ({
       audio.filename
     );
     form.append('model', model);
+    // PostDee transcription is Thai-first. The compatible speech APIs accept
+    // an ISO-639-1 hint; Groq documents improved accuracy and latency from it.
+    form.append('language', 'th');
+    if (prompt?.trim()) {
+      form.append('prompt', prompt.trim());
+    }
     form.append('response_format', 'verbose_json');
     form.append('timestamp_granularities[]', 'word');
     form.append('timestamp_granularities[]', 'segment');
@@ -102,7 +134,7 @@ const createOpenAiCompatibleTranscriptionProvider = ({
 
     return {
       text: payload.text ?? '',
-      language: payload.language ?? 'th',
+      language: normalizeTranscriptionLanguage(payload.language),
       durationSeconds: payload.duration ?? 0,
       segments: (payload.segments ?? []).map((segment) => ({
         text: (segment.text ?? '').trim(),
@@ -166,7 +198,8 @@ export const createGroqTranscriptionProvider = ({
     fetchAudio,
     fetchImpl,
     endpointUrl: 'https://api.groq.com/openai/v1/audio/transcriptions',
-    failureLabel: 'Groq transcription'
+    failureLabel: 'Groq transcription',
+    prompt: groqThaiTranscriptionPrompt
   });
 
 export const createTranscriptionProviderFromConfig = ({

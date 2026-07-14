@@ -43,7 +43,7 @@ describe('transcription provider', () => {
   });
 
   it('calls Whisper with the fetched audio and parses word timing', async () => {
-    const calls: { url: string }[] = [];
+    const calls: { url: string; prompt?: string }[] = [];
     const provider = createWhisperTranscriptionProvider({
       apiKey: 'oa-key',
       model: 'whisper-1',
@@ -52,14 +52,18 @@ describe('transcription provider', () => {
         filename: `${key}.mp4`,
         contentType: 'video/mp4'
       }),
-      fetchImpl: async (url) => {
-        calls.push({ url });
+      fetchImpl: async (url, init) => {
+        const form = init.body as FormData;
+        calls.push({
+          url,
+          prompt: form.get('prompt')?.toString()
+        });
         return {
           ok: true,
           status: 200,
           json: async () => ({
             text: 'สวัสดีค่ะ',
-            language: 'th',
+            language: 'Thai',
             duration: 3.2,
             segments: [{ text: ' สวัสดีค่ะ ', start: 0, end: 3.2 }],
             words: [{ word: 'สวัสดีค่ะ', start: 0.1, end: 1.2 }]
@@ -71,7 +75,9 @@ describe('transcription provider', () => {
     const result = await provider.transcribe({ videoS3Key: 'uploads/clip' });
 
     expect(calls[0].url).toBe('https://api.openai.com/v1/audio/transcriptions');
+    expect(calls[0].prompt).toBeUndefined();
     expect(result.text).toBe('สวัสดีค่ะ');
+    expect(result.language).toBe('th');
     expect(result.durationSeconds).toBe(3.2);
     expect(result.segments[0]).toEqual({ text: 'สวัสดีค่ะ', start: 0, end: 3.2 });
     expect(result.words[0]).toEqual({ word: 'สวัสดีค่ะ', start: 0.1, end: 1.2 });
@@ -98,6 +104,8 @@ describe('transcription provider', () => {
     const calls: {
       url: string;
       auth?: string;
+      language?: string;
+      prompt?: string;
       responseFormat?: string;
       timestampGranularities: string[];
     }[] = [];
@@ -114,6 +122,8 @@ describe('transcription provider', () => {
         calls.push({
           url,
           auth: (init.headers as Record<string, string>).Authorization,
+          language: form.get('language')?.toString(),
+          prompt: form.get('prompt')?.toString(),
           responseFormat: form.get('response_format')?.toString(),
           timestampGranularities: form
             .getAll('timestamp_granularities[]')
@@ -124,7 +134,7 @@ describe('transcription provider', () => {
           status: 200,
           json: async () => ({
             text: 'สวัสดีค่ะ',
-            language: 'th',
+            language: 'Thai',
             duration: 2.5,
             segments: [{ text: ' สวัสดีค่ะ ', start: 0, end: 2.5 }],
             words: [{ word: 'สวัสดีค่ะ', start: 0.2, end: 1.8 }]
@@ -138,6 +148,8 @@ describe('transcription provider', () => {
     expect(calls[0]).toEqual({
       url: 'https://api.groq.com/openai/v1/audio/transcriptions',
       auth: 'Bearer groq-key',
+      language: 'th',
+      prompt: 'คำศัพท์เฉพาะ: ชื่อแอปให้เขียนเป็นภาษาไทยว่า โพสต์ดี',
       responseFormat: 'verbose_json',
       timestampGranularities: ['word', 'segment']
     });

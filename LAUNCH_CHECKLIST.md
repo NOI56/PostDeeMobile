@@ -16,11 +16,16 @@
       `codex/ai-edit-thai-timing-staging`
 - [x] ใส่ dummy staging-only values สำหรับ health-only โดยไม่ใช้ Production credentials
 - [x] API deploy, Prisma migration และ `GET /health` ผ่านบน Render Staging
-- [ ] เปลี่ยนเป็น R2/Firebase/RevenueCat/Gemini/Groq ของ Staging จริงก่อน functional
-      smoke test
+- [x] สร้าง Firebase Staging, เปิด Email/Google, จำกัด Android API key และตั้ง
+      `FIREBASE_PROJECT_ID` บน Render ให้ตรงกัน
+- [x] ตั้ง RevenueCat Test Store products/entitlements/current offering และ
+      authenticated sandbox webhook; transport/auth smoke ได้ HTTP 202 ตามคาด
+- [ ] เปลี่ยน R2/Gemini/Groq เป็น credentials ของ Staging จริงก่อน functional smoke
 - [x] ตั้ง Staging เริ่มต้นเป็น `SOCIAL_PUBLISHER=disabled`; สลับ PostPeer เฉพาะ
       controlled test ด้วยบัญชีทดสอบแล้วสลับกลับ
-- [ ] เตรียม Firebase mobile config แยกที่ตรงกับ Staging project ก่อนทดสอบ login
+- [x] เตรียม Android Debug Firebase config แยกด้วย application id
+      `com.postdee.postdee_mobile.staging`; Release ยังใช้ Production
+- [x] Android Emulator ผ่าน Google Sign-In → Firebase ID token → Render Staging API
 - [ ] ผ่าน smoke test ใน `docs/STAGING.md` ก่อน merge หรือ deploy Production
 
 ---
@@ -93,12 +98,11 @@
 
 ## 6) Subscription / การเก็บเงิน
 
-- [ ] เลือกทางเดียวให้ตรงกันทั้งมือถือและ backend:
-  - **Store IAP**: มือถือใช้ `in_app_purchase` + backend `BILLING_PROVIDER=store`
-    (`/billing/store/verify`)
-  - **RevenueCat**: มือถือใช้ `purchases_flutter` + backend
-    `BILLING_PROVIDER=revenuecat` + `REVENUECAT_WEBHOOK_AUTH_TOKEN`
-  - ⚠️ ถ้าไม่ตรงกัน การซื้อจะ fail (501)
+- [x] เลือก RevenueCat เป็นเส้นทางหลัก: มือถือใช้ `purchases_flutter` + backend
+      `BILLING_PROVIDER=revenuecat` + `REVENUECAT_WEBHOOK_AUTH_TOKEN`
+- [x] สร้าง Test Store products `postdee_starter_monthly` / `postdee_pro_monthly`,
+      entitlements, current offering และ webhook ของ Staging
+- [ ] ทดสอบซื้อ/restore/renew/cancel/refund ด้วย Test Store และ Firebase UID จริง
 - [ ] ตั้ง product ใน App Store Connect / Google Play, ทดสอบซื้อบน sandbox device
 - ✅ มีตาข่ายกันหมดอายุแล้ว: ถ้า webhook พลาด ระบบจะตัดเป็น BASIC เมื่อเลย
       `currentPeriodEnd`
@@ -110,9 +114,12 @@
 - [x] ไฟล์ config มีครบแล้ว (`google-services.json`, `GoogleService-Info.plist`)
 - [x] เพิ่ม SHA-1 และ SHA-256 ของ release keystore ใน Firebase และอัปเดต
       `google-services.json` ให้มี Android OAuth client ของ Release แล้ว (14 ก.ค. 2026)
-- [ ] เปิด provider ใน Firebase Console: **Google, Apple, Phone, Cloud Messaging**
+- [x] Staging: เปิด Email/Password และ Google, เพิ่ม Debug SHA-1/SHA-256 และผ่าน
+      Google Sign-In/token/API smoke บน Android Emulator
+- [ ] Production: เปิด/ยืนยัน provider **Google, Apple, Phone, Cloud Messaging**
 - [ ] iOS: เพิ่ม capability "Sign in with Apple" + "Push Notifications" + อัป APNs key
-- [ ] build ด้วย `--dart-define=ENABLE_FIREBASE_AUTH=true` (+ `GOOGLE_SERVER_CLIENT_ID`)
+- [x] Android Debug Staging build ด้วย `staging.local.json`; ห้ามใช้ไฟล์นี้กับ
+      Profile/Release ซึ่งยังผูก Firebase Production
 - ✅ token รีเฟรชอัตโนมัติ + กู้ session ตอนเปิดแอปแล้ว (ไม่หลุดล็อกอินทุกครั้ง)
 - ✅ มือถือส่ง device token ขึ้น `POST /devices` แล้ว (เก็บราย user, ลบตอนลบบัญชี)
 - ✅ backend ยิงแจ้งเตือนผลโพสต์ (สำเร็จ/บางส่วน/ล้มเหลว) ไปยัง device ของ user หลังโพสต์เสร็จ ผ่าน `PublishNotifier` + `PushSender`

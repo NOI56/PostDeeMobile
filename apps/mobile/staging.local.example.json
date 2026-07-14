@@ -1,0 +1,11 @@
+{
+  "API_BASE_URL": "https://postdee-api-staging.onrender.com",
+  "ENABLE_FIREBASE_AUTH": true,
+  "ALLOW_LOCAL_MOCK_AUTH": false,
+  "GOOGLE_SERVER_CLIENT_ID": "948899042298-bv81r98dc6tjt7m14bnnjn45e1ebocgl.apps.googleusercontent.com",
+  "ENABLE_REVENUECAT_BILLING": false,
+  "ENABLE_EXPERIMENTAL_BEAT_SYNC": false,
+  "ENABLE_EXPERIMENTAL_AI_HOOK": false,
+  "STORE_STARTER_MONTHLY_PRODUCT_ID": "postdee_starter_monthly",
+  "STORE_PRO_MONTHLY_PRODUCT_ID": "postdee_pro_monthly"
+}

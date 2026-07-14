@@ -14,9 +14,11 @@ Run commands from this folder with the workspace-local Flutter SDK:
 
 ## Platform Folders
 
-The current Android application id is `com.postdee.postdee_mobile` and the iOS
-bundle id is `com.postdee.postdeeMobile`. Keep Firebase, RevenueCat, Google Play,
-and App Store configuration aligned with these exact identifiers.
+The Android Release application id is `com.postdee.postdee_mobile`; Android
+Debug uses `com.postdee.postdee_mobile.staging` so Firebase Staging can be
+installed alongside Production. The iOS bundle id is
+`com.postdee.postdeeMobile`. Keep Firebase, RevenueCat, Google Play, and App
+Store configuration aligned with the build being tested.
 Android builds still require Android Studio and the Android SDK.
 Production iOS builds require Xcode on macOS.
 
@@ -32,12 +34,28 @@ Firebase auth is off by default for local scaffold runs. To enable the real gate
 ..\..\.tools\flutter\bin\flutter.bat run --dart-define=ENABLE_FIREBASE_AUTH=true --dart-define=GOOGLE_SERVER_CLIENT_ID=121898224944-1hkh1mrfb5lc1ltraapu10lj1ib465vj.apps.googleusercontent.com
 ```
 
-The Firebase project files are installed locally. The next Firebase milestone is
-testing Google Sign-In on an actual Android/iOS device.
+The Firebase project files are installed locally. Android Emulator Google
+Sign-In, Firebase ID token verification, and the authenticated Staging API/Home
+response pass. Physical Android/iOS and Phone Auth tests remain.
 
 If `ENABLE_FIREBASE_AUTH=true` is used before Firebase project files are available, the app keeps running and the Google Sign-In button reports the setup issue instead of crashing during startup.
 
 See `../../FIREBASE_SETUP.md` for the full Firebase Auth and Google Sign-In checklist.
+
+### Android Debug Staging
+
+`android/app/src/debug/google-services.json` is the dedicated Firebase Staging
+config. Copy the checked-in non-secret example to the ignored local file, then
+run Debug only:
+
+```powershell
+Copy-Item staging.local.example.json staging.local.json
+..\..\.tools\flutter\bin\flutter.bat run --debug --dart-define-from-file=staging.local.json
+```
+
+Do not pass `staging.local.json` to `--profile` or `--release`; those build types
+still use Firebase Production. A different machine/CI debug keystore also needs
+its SHA-1 and SHA-256 registered in Firebase Staging.
 
 ## Production / Sandbox Run
 
@@ -90,7 +108,7 @@ For local RevenueCat Test Store testing, use the ignored
 `revenuecat.local.json` file that contains the dashboard SDK key:
 
 ```powershell
-..\..\.tools\flutter\bin\flutter.bat run --dart-define=ENABLE_FIREBASE_AUTH=true --dart-define=GOOGLE_SERVER_CLIENT_ID=121898224944-1hkh1mrfb5lc1ltraapu10lj1ib465vj.apps.googleusercontent.com --dart-define-from-file=revenuecat.local.json
+..\..\.tools\flutter\bin\flutter.bat run --debug --dart-define-from-file=staging.local.json --dart-define-from-file=revenuecat.local.json
 ```
 
 Use `STORE_STARTER_MONTHLY_PRODUCT_ID=postdee_starter_monthly` and

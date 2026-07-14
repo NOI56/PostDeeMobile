@@ -100,9 +100,8 @@ void main() {
 
     final releaseOAuthClient = androidOAuthClients.singleWhere(
       (client) {
-        final androidInfo =
-            (client as Map<String, Object?>)['android_info']
-                as Map<String, Object?>;
+        final androidInfo = (client as Map<String, Object?>)['android_info']
+            as Map<String, Object?>;
         return androidInfo['certificate_hash'] ==
             '421e228a13035cd15f5483076976bbbd25446807';
       },
@@ -117,6 +116,83 @@ void main() {
     expect(
       releaseAndroidInfo['package_name'],
       'com.postdee.postdee_mobile',
+    );
+  });
+  test('Android debug builds use the isolated Firebase Staging app', () async {
+    final appGradle = File('android/app/build.gradle.kts');
+    final stagingGoogleServicesFile =
+        File('android/app/src/debug/google-services.json');
+    final productionGoogleServicesFile =
+        File('android/app/google-services.json');
+    final stagingDefinesFile = File('staging.local.example.json');
+
+    expect(appGradle.existsSync(), isTrue);
+    expect(stagingGoogleServicesFile.existsSync(), isTrue);
+    expect(productionGoogleServicesFile.existsSync(), isTrue);
+    expect(stagingDefinesFile.existsSync(), isTrue);
+
+    final gradleContents = await appGradle.readAsString();
+    expect(
+      gradleContents,
+      contains('applicationIdSuffix = ".staging"'),
+    );
+    expect(
+      gradleContents,
+      contains('versionNameSuffix = "-staging"'),
+    );
+
+    final config = jsonDecode(await stagingGoogleServicesFile.readAsString())
+        as Map<String, Object?>;
+    final projectInfo = config['project_info'] as Map<String, Object?>;
+    final clients = config['client'] as List<dynamic>;
+    final stagingClient = clients.singleWhere(
+      (client) =>
+          client is Map<String, Object?> &&
+          (client['client_info'] as Map<String, Object?>)['android_client_info']
+              is Map<String, Object?> &&
+          ((client['client_info']
+                      as Map<String, Object?>)['android_client_info']
+                  as Map<String, Object?>)['package_name'] ==
+              'com.postdee.postdee_mobile.staging',
+    ) as Map<String, Object?>;
+    final oauthClients = stagingClient['oauth_client'] as List<dynamic>;
+    final stagingWebClient = oauthClients.singleWhere(
+      (client) => client is Map<String, Object?> && client['client_type'] == 3,
+    ) as Map<String, Object?>;
+    final stagingDefines = jsonDecode(await stagingDefinesFile.readAsString())
+        as Map<String, Object?>;
+    final productionConfig =
+        jsonDecode(await productionGoogleServicesFile.readAsString())
+            as Map<String, Object?>;
+    final productionProjectInfo =
+        productionConfig['project_info'] as Map<String, Object?>;
+
+    expect(projectInfo['project_id'], 'project-798caf7e-85b8-45e3-af7');
+    expect(
+      stagingDefines['API_BASE_URL'],
+      'https://postdee-api-staging.onrender.com',
+    );
+    expect(stagingDefines['ENABLE_FIREBASE_AUTH'], isTrue);
+    expect(stagingDefines['ALLOW_LOCAL_MOCK_AUTH'], isFalse);
+    expect(
+      stagingDefines['GOOGLE_SERVER_CLIENT_ID'],
+      stagingWebClient['client_id'],
+    );
+    expect(productionProjectInfo['project_id'], 'postdee-3c163');
+    expect(
+      await productionGoogleServicesFile.readAsString(),
+      isNot(contains('com.postdee.postdee_mobile.staging')),
+    );
+    expect(
+      oauthClients.where(
+        (client) =>
+            client is Map<String, Object?> &&
+            client['client_type'] == 1 &&
+            (client['android_info']
+                    as Map<String, Object?>)['certificate_hash'] ==
+                'fca0c22ed78e82053a3b77bf7171e9f6789e45bb',
+      ),
+      isNotEmpty,
     );
   });
   test('Android release builds use release signing properties', () async {

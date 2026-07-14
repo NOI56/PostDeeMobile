@@ -22,9 +22,11 @@ apps/
   database, R2 bucket, Firebase project, RevenueCat webhook และ PostPeer account
   ชุดทดสอบเท่านั้น
 - ขั้นตอนและข้อจำกัดค่าใช้จ่ายอยู่ใน `docs/STAGING.md` ปัจจุบันสร้างทรัพยากร
-  Staging บน Render แล้วและ `/health` ผ่านแบบ health-only แต่ provider credentials
-  ยังเป็น dummy staging-only จึงต้องใส่ค่าจริงของ Staging และผ่าน functional smoke
-  tests ก่อนใช้เป็น release gate
+  Staging บน Render แล้ว, `/health` ผ่าน และ Android Debug ใช้ Firebase project
+  แยกพร้อมผ่าน Google Sign-In → Firebase token → Staging API บน Emulator แล้ว
+  RevenueCat Test Store/offering/webhook ตั้งค่าแล้วและ transport/auth smoke ผ่าน
+  แต่การซื้อจริงยังไม่ผ่าน ส่วน R2, Gemini/Groq และ Social ยังต้องใส่ค่าทดสอบจริง
+  และผ่าน functional smoke tests ก่อนใช้เป็น release gate
 
 ## Backend
 

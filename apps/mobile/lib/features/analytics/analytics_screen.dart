@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
-import '../billing/paywall_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/growth_tool_detail_sheet.dart';
@@ -240,10 +239,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               metrics: _summary?.platforms ?? const [],
             ),
           ],
-          const SizedBox(height: 13),
-          // Not const: kept-alive tab subtrees skip const rebuilds and keep
-          // stale colors when the theme flips.
-          _ProInsightLockCard(),
           const SizedBox(height: 15),
           Text(
             'เครื่องมือวิเคราะห์ด้วย AI',
@@ -258,7 +253,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             id: 'hashtag_radar',
             title: 'เรดาร์แฮชแท็กฮิต',
             subtitle: 'ดูแฮชแท็ก/คีย์เวิร์ดที่กำลังขึ้น เพื่อใช้กับคลิปต่อไป',
-            status: 'SEO',
+            status: 'เร็ว ๆ นี้',
             icon: Icons.tag,
             color: AppTheme.accentCyanInk,
             tint: AppTheme.mint,
@@ -271,18 +266,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 id: 'next_clip_hashtags',
                 label: 'ดูแฮชแท็กที่น่าลองใช้กับคลิปถัดไป',
               ),
-              GrowthToolSettingOption(
-                id: 'team_keywords',
-                label: 'บันทึกชุดคีย์เวิร์ดสำหรับทีม',
-              ),
             ],
           ),
           const SizedBox(height: 10),
           _AiToolCard(
             id: 'ai_comment_center',
             title: 'ศูนย์คอมเมนต์ AI',
-            subtitle: 'สรุปคอมเมนต์และร่างคำตอบให้ลูกค้า รออนุมัติก่อนตอบ',
-            status: 'ต้องอนุมัติ',
+            subtitle: 'สรุปคอมเมนต์และเตรียมร่างคำตอบให้ตรวจภายหลัง',
+            status: 'เร็ว ๆ นี้',
             icon: Icons.forum_outlined,
             color: const Color(0xFF6366F1),
             tint: const Color(0xFF6366F1).withValues(alpha: 0.13),
@@ -295,14 +286,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 id: 'reply_drafts',
                 label: 'ให้ AI ร่างคำตอบไว้รอตรวจ',
               ),
-              GrowthToolSettingOption(
-                id: 'owner_approval',
-                label: 'บังคับให้เจ้าของร้านอนุมัติก่อนเผยแพร่ทุกครั้ง',
-              ),
             ],
           ),
-          const SizedBox(height: 10),
-          _CommentApprovalNotice(),
           if (_errorMessage != null) ...[
             const SizedBox(height: AppTheme.spaceMd),
             PostDeeNotice(
@@ -689,82 +674,6 @@ class _PlatformPerfRow extends StatelessWidget {
   }
 }
 
-class _ProInsightLockCard extends StatelessWidget {
-  const _ProInsightLockCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'รายงานเชิงลึก (Pro)',
-      child: GestureDetector(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (context) => const PaywallScreen(),
-          ),
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.border),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF122018).withValues(alpha: 0.05),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppTheme.mint,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.lock_outline,
-                  size: 21,
-                  color: AppTheme.accentCyanInk,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'รายงานเชิงลึก (Pro)',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'ยอดวิวรายชั่วโมง · จุดที่คนเลื่อนผ่าน',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: AppTheme.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, size: 20, color: AppTheme.textMuted),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _AiToolCard extends StatelessWidget {
   const _AiToolCard({
     required this.id,
@@ -802,6 +711,7 @@ class _AiToolCard extends StatelessWidget {
             icon: icon,
             color: color,
             settings: settings,
+            prototypeOnly: true,
           ),
         ),
         child: Container(
@@ -834,15 +744,23 @@ class _AiToolCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PostDeeSoftPill(label: status, color: color),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -862,41 +780,6 @@ class _AiToolCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _CommentApprovalNotice extends StatelessWidget {
-  const _CommentApprovalNotice();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: AppTheme.glassDeep,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.verified_user_outlined,
-            size: 20,
-            color: AppTheme.accentCyanInk,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'คอมเมนต์และคำตอบต้องให้เจ้าของร้านอนุมัติก่อนเผยแพร่',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

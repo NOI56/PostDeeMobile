@@ -54,6 +54,16 @@ void main() {
     expect(find.text('แก้ไขโปรไฟล์'), findsOneWidget);
     expect(find.text('อีเมลยังไม่ยืนยัน'), findsOneWidget);
     expect(find.text('บันทึกเฉพาะในอุปกรณ์นี้'), findsOneWidget);
+    expect(
+      find.text(
+        'ชื่อที่แก้จะใช้เฉพาะในเครื่องนี้ และยังไม่ซิงก์กับบัญชีหรืออุปกรณ์อื่น',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('จะแสดงบนหน้าโปรไฟล์ลิงก์'),
+      findsNothing,
+    );
     expect(find.text('ยืนยันแล้ว'), findsNothing);
     await tester.enterText(
       find.byKey(const ValueKey('edit-profile-display-name')),

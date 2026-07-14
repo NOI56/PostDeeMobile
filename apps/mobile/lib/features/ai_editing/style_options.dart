@@ -130,8 +130,9 @@ List<SilenceCutRange> withTargetLength(
   return cuts;
 }
 
-/// Splits a line into pieces no longer than [maxChars], preferring to break at
-/// spaces but hard-splitting long unbroken runs (Thai). Pure.
+/// Splits a line into pieces near [maxChars], preferring to break at spaces.
+/// Long Thai runs are kept intact because an arbitrary character boundary can
+/// split a word or combining character. Other long runs are hard-split. Pure.
 List<String> splitLineByMaxChars(String text, int maxChars) {
   final trimmed = text.trim();
   if (maxChars <= 0 || trimmed.length <= maxChars) {
@@ -161,7 +162,7 @@ List<String> splitLineByMaxChars(String text, int maxChars) {
 
     flush();
 
-    if (word.length <= maxChars) {
+    if (word.length <= maxChars || RegExp(r'[\u0E00-\u0E7F]').hasMatch(word)) {
       current = word;
     } else {
       var rest = word;

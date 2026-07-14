@@ -1090,7 +1090,6 @@ void main() {
     expect(post.status, 'QUEUED');
   });
 
-
   test('SocialConnectionResult parses connected platform status', () {
     final result = SocialConnectionResult.fromJson({
       'platform': 'TIKTOK',
@@ -1114,7 +1113,8 @@ void main() {
       'expiresAt': '2026-06-26T09:10:00.000Z',
     });
 
-    expect(result.connectUrl.toString(), 'https://postpeer.test/connect/youtube');
+    expect(
+        result.connectUrl.toString(), 'https://postpeer.test/connect/youtube');
     expect(result.expiresAt?.toUtc().toIso8601String(),
         '2026-06-26T09:10:00.000Z');
   });
@@ -1294,11 +1294,19 @@ void main() {
             },
             'cutRanges': [
               {'start': 2, 'end': 3},
+              {'start': 6, 'end': 7},
             ],
             'silenceRanges': [
               {'start': 2, 'end': 3},
             ],
             'fillerRanges': <Object?>[],
+            'plan': {
+              'cuts': [
+                {'start': 6, 'end': 7},
+              ],
+              'summary': 'ตัดช่วงท้ายตามคำสั่ง',
+              'model': 'test-editor',
+            },
             'music': {
               'source': 'original',
               'beatIntensity': 'balanced',
@@ -1335,9 +1343,12 @@ void main() {
       expect(result.recipe.transcript.language, 'th');
       expect(result.recipe.transcript.segments, hasLength(2));
       expect(result.recipe.transcript.words.single.word, 'สวัสดี');
-      expect(result.recipe.cutRanges.single.start, 2);
+      expect(result.recipe.cutRanges, hasLength(2));
       expect(result.recipe.silenceRanges.single.end, 3);
       expect(result.recipe.fillerRanges, isEmpty);
+      expect(result.recipe.plan.cuts.single.start, 6);
+      expect(result.recipe.plan.summary, 'ตัดช่วงท้ายตามคำสั่ง');
+      expect(result.recipe.plan.model, 'test-editor');
       expect(result.recipe.subtitles.style.mode, 'bold');
       expect(result.recipe.subtitles.style.wordsPerLine, 2);
       expect(result.recipe.music.source, 'original');

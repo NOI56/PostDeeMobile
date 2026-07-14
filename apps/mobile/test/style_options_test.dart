@@ -34,6 +34,20 @@ void main() {
     expect(splitLineByMaxChars('aaaaaaaaaa', 4), ['aaaa', 'aaaa', 'aa']);
   });
 
+  test('preserves an unspaced Thai run instead of splitting mid-word', () {
+    const thaiCue = 'คลิปตัดไทย';
+
+    expect(splitLineByMaxChars(thaiCue, 4), [thaiCue]);
+  });
+
+  test('splits Thai cues only at explicit spaces', () {
+    expect(splitLineByMaxChars('คลิป ตัด ไทย', 5), [
+      'คลิป',
+      'ตัด',
+      'ไทย',
+    ]);
+  });
+
   test('copyWith overrides speed and filter, keeps the rest', () {
     const base = EditStyleOptions(targetSeconds: 30, subtitleMaxChars: 24);
     final updated = base.copyWith(speed: 2.0, filterIndex: 4);
@@ -56,5 +70,19 @@ void main() {
     expect(out[0].end, closeTo(5, 0.01));
     expect(out[1].text, 'bbbb');
     expect(out[1].end, 10);
+  });
+
+  test('keeps the timing of an unspaced Thai cue intact', () {
+    final out = rechunkSubtitleByMaxChars(
+      const [
+        SubtitleSegment(text: 'คลิปตัดไทย', start: 2, end: 8),
+      ],
+      4,
+    );
+
+    expect(out, hasLength(1));
+    expect(out.single.text, 'คลิปตัดไทย');
+    expect(out.single.start, 2);
+    expect(out.single.end, 8);
   });
 }

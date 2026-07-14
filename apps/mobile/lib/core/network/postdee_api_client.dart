@@ -443,6 +443,11 @@ class AiEditRecipeResult {
     required this.silenceRanges,
     required this.fillerRanges,
     required this.capabilities,
+    this.plan = const AiEditPlanResult(
+      cuts: [],
+      summary: '',
+      model: 'none',
+    ),
     this.music = const AiEditMusicResult(
       source: 'original',
       beatIntensity: 'balanced',
@@ -466,6 +471,7 @@ class AiEditRecipeResult {
   final List<AiEditCut> cutRanges;
   final List<AiEditCut> silenceRanges;
   final List<AiEditCut> fillerRanges;
+  final AiEditPlanResult plan;
   final AiEditMusicResult music;
   final Map<String, AiEditCapabilityStatusResult> capabilities;
 
@@ -480,6 +486,7 @@ class AiEditRecipeResult {
     final rawTranscript = json['transcript'];
     final rawSubtitles = json['subtitles'];
     final rawCapabilities = json['capabilities'];
+    final rawPlan = json['plan'];
     final rawMusic = json['music'];
     final capabilities = <String, AiEditCapabilityStatusResult>{};
 
@@ -512,6 +519,11 @@ class AiEditRecipeResult {
       cutRanges: parseRanges(json['cutRanges']),
       silenceRanges: parseRanges(json['silenceRanges']),
       fillerRanges: parseRanges(json['fillerRanges']),
+      plan: AiEditPlanResult.fromJson(
+        rawPlan is Map<String, Object?>
+            ? rawPlan
+            : const <String, Object?>{},
+      ),
       music: AiEditMusicResult.fromJson(
         rawMusic is Map<String, Object?> ? rawMusic : const <String, Object?>{},
       ),
@@ -1562,6 +1574,7 @@ class PostDeeApiClient {
       if (platform != null) 'platform': platform,
     });
   }
+
   Future<List<SocialConnectionResult>> listSocialConnections() async {
     final response = await _getJson('/social-connections');
     final connections = response['connections'];
@@ -1572,8 +1585,8 @@ class PostDeeApiClient {
     }
 
     return connections
-        .map((connection) => SocialConnectionResult.fromJson(
-            connection as Map<String, Object?>))
+        .map((connection) =>
+            SocialConnectionResult.fromJson(connection as Map<String, Object?>))
         .toList();
   }
 
@@ -1599,8 +1612,8 @@ class PostDeeApiClient {
     }
 
     return connections
-        .map((connection) => SocialConnectionResult.fromJson(
-            connection as Map<String, Object?>))
+        .map((connection) =>
+            SocialConnectionResult.fromJson(connection as Map<String, Object?>))
         .toList();
   }
 

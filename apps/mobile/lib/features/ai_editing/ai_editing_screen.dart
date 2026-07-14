@@ -16,6 +16,7 @@ import '../uploader/video_picker_service.dart';
 import 'beat_music_picker.dart';
 import 'capcut_editor_screen.dart';
 import 'edit_styles.dart';
+import 'review_video_timeline.dart';
 import 'style_options.dart';
 import 'subtitle_burn_video_processor.dart';
 
@@ -35,6 +36,9 @@ typedef AiVideoRenderer = Future<BurnedSubtitleResult> Function(
 );
 typedef EditorSubscriptionLoader = Future<SubscriptionStatusResult> Function();
 typedef AiEditQuotaLoader = Future<AiEditQuota> Function();
+typedef ReviewVideoControllerFactory = VideoPlayerController Function(
+  File file,
+);
 
 enum _AiDurationMode { seconds30, seconds60, custom }
 
@@ -309,6 +313,7 @@ class AiEditingScreen extends StatefulWidget {
     this.musicCatalog = const [],
     this.enableExperimentalBeatSync = AppConfig.enableExperimentalBeatSync,
     this.enableExperimentalAiHook = AppConfig.enableExperimentalAiHook,
+    this.reviewVideoControllerFactory,
     this.onBack,
   });
 
@@ -324,6 +329,7 @@ class AiEditingScreen extends StatefulWidget {
   final List<PostDeeMusicTrack> musicCatalog;
   final bool enableExperimentalBeatSync;
   final bool enableExperimentalAiHook;
+  final ReviewVideoControllerFactory? reviewVideoControllerFactory;
   final VoidCallback? onBack;
 
   @override
@@ -346,10 +352,14 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   _AiEditingStage _stage = _AiEditingStage.setup;
   final Map<String, bool> _reviewCapabilities = {};
   final Map<String, bool> _appliedReviewCapabilities = {};
+  final Map<String, Duration> _reviewVideoDurations = {};
+  ReviewVideoSource _reviewVideoSource = ReviewVideoSource.ai;
+  int _reviewResultRevision = 0;
   bool _advancedMode = false;
   String? _expandedAdvancedCapabilityId;
   bool _processing = false;
   bool _updatingReviewPreview = false;
+  bool _reviewPreviewLoading = false;
   bool _isPickingVideo = false;
   bool _isLoadingAiEditQuota = false;
   bool _aiEditQuotaLoadFailed = false;
@@ -364,17 +374,17 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     'filler': true,
     'hook': false,
     'beatsync': false,
-    'zoom': true,
-    'reframe': true,
+    'zoom': false,
+    'reframe': false,
     'color': true,
-    'audio': true,
+    'audio': false,
     'translate': false,
-    'pricetag': true,
-    'cta': true,
+    'pricetag': false,
+    'cta': false,
     'watermark': false,
   };
 
-  String _subtitleStyle = 'bold';
+  String _subtitleStyle = 'large';
   Color _subtitleColor = Colors.white;
   String _subtitleWords = 'few';
   String _subtitlePosition = 'bottom';
@@ -469,6 +479,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _acceptedSetup = null;
         _reviewCapabilities.clear();
         _appliedReviewCapabilities.clear();
+        _reviewVideoDurations.clear();
+        _reviewVideoSource = ReviewVideoSource.ai;
+        _reviewResultRevision = 0;
+        _reviewPreviewLoading = false;
         _stage = _AiEditingStage.setup;
       });
     } on ApiException catch (error) {
@@ -492,7 +506,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   bool _isCapabilityAvailable(String id) => switch (id) {
         'beatsync' => widget.enableExperimentalBeatSync,
         'hook' => widget.enableExperimentalAiHook,
-        _ => true,
+        'subtitle' || 'silence' || 'filler' || 'color' => true,
+        _ => false,
       };
 
   bool _isCapabilityEnabled(String id) =>
@@ -683,6 +698,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         setState(() {
           _preparedEdit = preparedResult;
           _renderedResult = result;
+          _prepareReviewForResult(result);
           _acceptedSetup = acceptedSetup;
           _reviewCapabilities
             ..clear()
@@ -721,10 +737,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         'sfx': false,
       },
       settings: AiEditPrepareSettings(
-        subtitleStyle: _subtitleStyle,
-        subtitleColor: _colorToHex(_subtitleColor),
+        subtitleStyle: 'outline',
+        subtitleColor: '#FFFFFF',
         subtitleWordsPerLine: _subtitleWordsPerLine,
-        subtitlePosition: _subtitlePosition,
+        subtitlePosition: _effectiveSubtitlePosition,
         ctaText: _ctaController.text.trim(),
         ctaDesign: _ctaDesign,
         priceText: _priceNowController.text.trim(),
@@ -819,6 +835,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final originalFile = File(picked.path);
     final options = _buildEditOptions(capabilities);
     var cutRanges = <SilenceCutRange>[
+      // Style/free-prompt cuts come from the AI plan and are independent of
+      // the silence/filler review toggles below.
+      for (final range in recipe.plan.cuts)
+        SilenceCutRange(start: range.start, end: range.end),
       if (capabilities['silence'] ?? false)
         for (final range in recipe.silenceRanges)
           SilenceCutRange(start: range.start, end: range.end),
@@ -914,8 +934,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _ => 18,
     };
     final subtitleFontSize = switch (_subtitleStyle) {
-      'clean' => 17.0,
-      'highlight' => 19.0,
+      'small' => 17.0,
+      'medium' => 19.0,
       _ => 22.0,
     };
     final filterIndex = switch (_toneFilter) {
@@ -939,7 +959,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       speed: 1,
       filterIndex: colorOn ? filterIndex : 0,
       subtitleFontSize: subtitleOn ? subtitleFontSize : null,
-      subtitleAtBottom: subtitleOn ? _subtitlePosition == 'bottom' : null,
+      subtitleAtBottom:
+          subtitleOn ? _effectiveSubtitlePosition == 'bottom' : null,
       brightness: colorOn ? 0.12 * _toneStrength : 0,
       contrast: colorOn ? 0.08 * _toneStrength : 0,
     );
@@ -951,10 +972,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _ => 4,
       };
 
-  String _colorToHex(Color color) {
-    final value = color.toARGB32() & 0xFFFFFF;
-    return '#${value.toRadixString(16).padLeft(6, '0').toUpperCase()}';
-  }
+  String get _effectiveSubtitlePosition =>
+      _subtitlePosition == 'top' ? 'top' : 'bottom';
 
   _AiSetupSnapshot _captureSetupSnapshot() {
     return _AiSetupSnapshot(
@@ -1057,6 +1076,66 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     );
   }
 
+  void _prepareReviewForResult(BurnedSubtitleResult result) {
+    final originalPath = _selectedVideo?.path;
+    _reviewVideoDurations.removeWhere((path, _) => path != originalPath);
+    _reviewVideoDurations.remove(result.file.path);
+    _reviewVideoSource = ReviewVideoSource.ai;
+    _reviewResultRevision++;
+    _reviewPreviewLoading = true;
+  }
+
+  bool _isCurrentReviewVideo({
+    required ReviewVideoSource source,
+    required String path,
+    required int revision,
+  }) =>
+      switch (source) {
+        ReviewVideoSource.original => _selectedVideo?.path == path,
+        ReviewVideoSource.ai => _renderedResult?.file.path == path &&
+            _reviewResultRevision == revision,
+      };
+
+  void _rememberReviewVideoDuration({
+    required ReviewVideoSource source,
+    required String path,
+    required int revision,
+    required Duration duration,
+  }) {
+    if (!mounted || duration <= Duration.zero) {
+      return;
+    }
+
+    final isCurrent = _isCurrentReviewVideo(
+      source: source,
+      path: path,
+      revision: revision,
+    );
+    if (!isCurrent || _reviewVideoDurations[path] == duration) {
+      return;
+    }
+
+    setState(() => _reviewVideoDurations[path] = duration);
+  }
+
+  void _setReviewPreviewLoading({
+    required ReviewVideoSource source,
+    required String path,
+    required int revision,
+    required bool isLoading,
+  }) {
+    if (!mounted ||
+        !_isCurrentReviewVideo(
+          source: source,
+          path: path,
+          revision: revision,
+        ) ||
+        _reviewPreviewLoading == isLoading) {
+      return;
+    }
+    setState(() => _reviewPreviewLoading = isLoading);
+  }
+
   Future<void> _updateReviewVideo() async {
     final prepared = _preparedEdit;
     if (prepared == null ||
@@ -1080,6 +1159,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       }
       setState(() {
         _renderedResult = result;
+        _prepareReviewForResult(result);
         if (result.colorFilterSkipped) {
           _reviewCapabilities.remove('color');
         }
@@ -1376,6 +1456,52 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       );
     }
 
+    final selectedVideo = _selectedVideo;
+    final originalFile =
+        selectedVideo == null ? null : File(selectedVideo.path);
+    final resultUsesOriginal = originalFile != null &&
+        originalFile.existsSync() &&
+        originalFile.path == result.file.path;
+    final canCompare = originalFile != null &&
+        originalFile.existsSync() &&
+        !resultUsesOriginal;
+    final selectedSource = resultUsesOriginal
+        ? ReviewVideoSource.original
+        : canCompare
+            ? _reviewVideoSource
+            : ReviewVideoSource.ai;
+    final showingOriginal =
+        resultUsesOriginal || selectedSource == ReviewVideoSource.original;
+    final previewFile = showingOriginal ? originalFile! : result.file;
+    final previewRevision = resultUsesOriginal
+        ? _reviewResultRevision
+        : showingOriginal
+            ? 0
+            : _reviewResultRevision;
+    final previewSourceLabel = showingOriginal ? 'ต้นฉบับ' : 'ผล AI';
+    final originalName = selectedVideo == null
+        ? ''
+        : selectedVideo.name.trim().isNotEmpty
+            ? selectedVideo.name.trim()
+            : _readFileNameFromPath(selectedVideo.path);
+    final previewName = showingOriginal ? originalName : result.fileName;
+    final previewSizeBytes = showingOriginal
+        ? selectedVideo!.sizeBytes > 0
+            ? selectedVideo.sizeBytes
+            : originalFile!.lengthSync()
+        : result.sizeBytes;
+    final transcriptDurationSeconds =
+        _preparedEdit?.recipe.transcript.durationSeconds ?? 0;
+    final transcriptDuration = transcriptDurationSeconds > 0
+        ? Duration(
+            milliseconds: (transcriptDurationSeconds * 1000).round(),
+          )
+        : null;
+    final originalDuration = selectedVideo == null
+        ? null
+        : _reviewVideoDurations[selectedVideo.path] ?? transcriptDuration;
+    final aiDuration = _reviewVideoDurations[result.file.path];
+
     final appliedDefinitions = [
       for (final definition in _capabilityDefinitions)
         if (_reviewCapabilities.containsKey(definition.id)) definition,
@@ -1419,7 +1545,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'AI ตัดต่อให้แล้ว',
+                      resultUsesOriginal
+                          ? 'คลิปนี้ไม่ต้องแก้เพิ่ม'
+                          : 'AI ตัดต่อให้แล้ว',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -1428,7 +1556,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'ลองดูผลงาน แล้วปิดสิ่งที่ไม่ชอบได้ก่อนนำไปใช้',
+                      resultUsesOriginal
+                          ? 'ไม่พบช่วงที่ต้องเปลี่ยน จึงใช้ไฟล์ต้นฉบับ'
+                          : 'ลองดูผลงาน แล้วปิดสิ่งที่ไม่ชอบได้ก่อนนำไปใช้',
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.4,
@@ -1485,10 +1615,49 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           decoration: _cardDecoration(radius: 18),
           child: Column(
             children: [
+              if (canCompare) ...[
+                ReviewVideoCompareHeader(
+                  selectedSource: selectedSource,
+                  originalDuration: originalDuration,
+                  aiDuration: aiDuration,
+                  enabled: !_updatingReviewPreview && !_reviewPreviewLoading,
+                  onSourceSelected: (source) {
+                    if (_updatingReviewPreview ||
+                        _reviewPreviewLoading ||
+                        source == _reviewVideoSource) {
+                      return;
+                    }
+                    setState(() {
+                      _reviewVideoSource = source;
+                      _reviewPreviewLoading = true;
+                    });
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
               _ReviewVideoPreview(
-                key: ValueKey('ai-review-preview-${result.file.path}'),
-                file: result.file,
+                key: const ValueKey('ai-review-preview'),
+                file: previewFile,
+                revision: previewRevision,
+                sourceLabel: previewSourceLabel,
                 isUpdating: _updatingReviewPreview,
+                controllerFactory: widget.reviewVideoControllerFactory,
+                onLoadingChanged: (isLoading) {
+                  _setReviewPreviewLoading(
+                    source: selectedSource,
+                    path: previewFile.path,
+                    revision: previewRevision,
+                    isLoading: isLoading,
+                  );
+                },
+                onDurationReady: (duration) {
+                  _rememberReviewVideoDuration(
+                    source: selectedSource,
+                    path: previewFile.path,
+                    revision: previewRevision,
+                    duration: duration,
+                  );
+                },
               ),
               const SizedBox(height: 10),
               Row(
@@ -1496,9 +1665,30 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                   Icon(Icons.movie_outlined,
                       size: 18, color: AppTheme.accentCyanInk),
                   const SizedBox(width: 7),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.mint,
+                      borderRadius: BorderRadius.circular(7),
+                      border: Border.all(
+                        color: AppTheme.accent.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: Text(
+                      previewSourceLabel,
+                      key: const ValueKey('ai-review-file-source'),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.accentCyanInk,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 7),
                   Expanded(
                     child: Text(
-                      result.fileName,
+                      previewName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -1509,7 +1699,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                     ),
                   ),
                   Text(
-                    _formatBytes(result.sizeBytes),
+                    _formatBytes(previewSizeBytes),
                     style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                   ),
                 ],
@@ -1634,6 +1824,16 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final recipe = _preparedEdit?.recipe;
     final silenceRanges = recipe?.silenceRanges ?? const <AiEditCut>[];
     final fillerRanges = recipe?.fillerRanges ?? const <AiEditCut>[];
+    final silenceStatus = _analysisDetectionStatus(
+      capabilityId: 'silence',
+      count: silenceRanges.length,
+      unit: 'ช่วง',
+    );
+    final fillerStatus = _analysisDetectionStatus(
+      capabilityId: 'filler',
+      count: fillerRanges.length,
+      unit: 'คำ',
+    );
     final detectedSeconds = _mergedDetectedSeconds(
       [...silenceRanges, ...fillerRanges],
       maxSeconds: recipe?.transcript.durationSeconds,
@@ -1657,7 +1857,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               const SizedBox(width: 7),
               Expanded(
                 child: Text(
-                  'สรุปที่ AI ตรวจพบ',
+                  'ผลการตรวจของ AI',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
@@ -1669,15 +1869,25 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           ),
           const SizedBox(height: 10),
           _analysisSummaryRow(
+            key: ValueKey(
+              silenceStatus.isNotDetected
+                  ? 'ai-review-not-detected-silence'
+                  : 'ai-review-analysis-silence-status',
+            ),
             icon: Icons.content_cut,
             label: 'ช่วงเงียบ',
-            value: 'พบ ${silenceRanges.length} ช่วง',
+            value: silenceStatus.text,
           ),
           const SizedBox(height: 8),
           _analysisSummaryRow(
+            key: ValueKey(
+              fillerStatus.isNotDetected
+                  ? 'ai-review-not-detected-filler'
+                  : 'ai-review-analysis-filler-status',
+            ),
             icon: Icons.voice_over_off_outlined,
             label: 'คำฟุ่มเฟือย',
-            value: 'พบ ${fillerRanges.length} คำ',
+            value: fillerStatus.text,
           ),
           const SizedBox(height: 10),
           Text(
@@ -1702,12 +1912,39 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     );
   }
 
+  ({String text, bool isNotDetected}) _analysisDetectionStatus({
+    required String capabilityId,
+    required int count,
+    required String unit,
+  }) {
+    if (count > 0) {
+      return (text: 'พบ $count $unit', isNotDetected: false);
+    }
+
+    final status = _preparedEdit?.recipe.capabilities[capabilityId];
+    if (status == null) {
+      return (text: 'ไม่มีข้อมูลผลตรวจ', isNotDetected: false);
+    }
+    if (!status.enabled || status.state == 'skipped') {
+      return (text: 'ไม่ได้เลือก', isNotDetected: false);
+    }
+    if (status.state == 'planned') {
+      return (text: 'ยังไม่ได้ตรวจ', isNotDetected: false);
+    }
+    if (status.state == 'hinted' || status.state == 'applied') {
+      return (text: 'ตรวจแล้ว · ไม่พบ', isNotDetected: true);
+    }
+    return (text: 'ไม่มีข้อมูลผลตรวจ', isNotDetected: false);
+  }
+
   Widget _analysisSummaryRow({
+    Key? key,
     required IconData icon,
     required String label,
     required String value,
   }) {
     return Row(
+      key: key,
       children: [
         Icon(icon, size: 17, color: AppTheme.accentCyanInk),
         const SizedBox(width: 8),
@@ -2129,6 +2366,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                   _acceptedSetup = null;
                   _reviewCapabilities.clear();
                   _appliedReviewCapabilities.clear();
+                  _reviewVideoDurations.clear();
+                  _reviewVideoSource = ReviewVideoSource.ai;
+                  _reviewResultRevision = 0;
+                  _reviewPreviewLoading = false;
                   _stage = _AiEditingStage.setup;
                 });
               },
@@ -2281,6 +2522,17 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             ? switch (definition.id) {
                 'beatsync' => 'ระบบวิเคราะห์บีตและใส่เพลงลงคลิปจริงกำลังพัฒนา',
                 'hook' => 'ระบบค้นหาช่วงเด่นและย้ายขึ้นต้นกำลังพัฒนา',
+                'reframe' => 'ระบบครอปและติดตามวัตถุในคลิปจริงกำลังพัฒนา',
+                'zoom' => 'ระบบวิเคราะห์จุดสำคัญและซูมลงในคลิปจริงกำลังพัฒนา',
+                'audio' =>
+                  'ระบบลดเสียงรบกวนและปรับเสียงพูดในคลิปจริงกำลังพัฒนา',
+                'translate' =>
+                  'ระบบแปลและเรนเดอร์ซับหลายภาษาในคลิปจริงกำลังพัฒนา',
+                'pricetag' =>
+                  'ระบบตรวจราคาและเรนเดอร์ป้ายลงในคลิปจริงกำลังพัฒนา',
+                'cta' => 'ระบบเรนเดอร์การ์ด CTA ลงในคลิปจริงกำลังพัฒนา',
+                'watermark' =>
+                  'ระบบเรนเดอร์ลายน้ำจากหน้านี้ลงในคลิปจริงกำลังพัฒนา',
                 _ => definition.description,
               }
             : definition.description;
@@ -2556,17 +2808,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Widget _buildSubtitleAdvanced() {
-    const subtitleColors = [
-      Colors.white,
-      Color(0xFFFFE14D),
-      Color(0xFFFF5C8A),
-      Color(0xFF5FE3A1),
-    ];
-    final alignment = switch (_subtitlePosition) {
-      'top' => Alignment.topCenter,
-      'center' => Alignment.center,
-      _ => Alignment.bottomCenter,
-    };
+    final alignment = _effectiveSubtitlePosition == 'top'
+        ? Alignment.topCenter
+        : Alignment.bottomCenter;
     final previewText = switch (_subtitleWords) {
       'karaoke' => 'ลด',
       'full' => 'ลดแรง 50% ส่งฟรีทั้งร้าน',
@@ -2599,77 +2843,82 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        _advancedLabel('ฟอนต์ซับ'),
+        _advancedLabel('ขนาดตัวอักษร'),
         Wrap(
           spacing: 7,
           runSpacing: 7,
           children: [
             _choiceChip(
-              label: 'หนาใหญ่',
-              selected: _subtitleStyle == 'bold',
-              onTap: () => setState(() => _subtitleStyle = 'bold'),
+              key: const ValueKey('ai-subtitle-size-large'),
+              label: 'ใหญ่',
+              selected: _subtitleStyle == 'large',
+              onTap: () => setState(() => _subtitleStyle = 'large'),
             ),
             _choiceChip(
-              label: 'ขอบดำ',
-              selected: _subtitleStyle == 'outline',
-              onTap: () => setState(() => _subtitleStyle = 'outline'),
+              key: const ValueKey('ai-subtitle-size-medium'),
+              label: 'กลาง',
+              selected: _subtitleStyle == 'medium',
+              onTap: () => setState(() => _subtitleStyle = 'medium'),
             ),
             _choiceChip(
-              label: 'ไฮไลต์พื้น',
-              selected: _subtitleStyle == 'highlight',
-              onTap: () => setState(() => _subtitleStyle = 'highlight'),
-            ),
-            _choiceChip(
-              label: 'คลีนบาง',
-              selected: _subtitleStyle == 'clean',
-              onTap: () => setState(() => _subtitleStyle = 'clean'),
+              key: const ValueKey('ai-subtitle-size-small'),
+              label: 'เล็ก',
+              selected: _subtitleStyle == 'small',
+              onTap: () => setState(() => _subtitleStyle = 'small'),
             ),
           ],
         ),
         const SizedBox(height: 13),
-        _advancedLabel('สีตัวอักษร'),
-        Wrap(
-          spacing: 10,
-          children: [
-            for (final color in subtitleColors)
-              InkWell(
-                onTap: () => setState(() => _subtitleColor = color),
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      width: _subtitleColor == color ? 3 : 1,
-                      color: _subtitleColor == color
-                          ? AppTheme.accent
-                          : AppTheme.border,
-                    ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppTheme.glass,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.borderSoft),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 17,
+                color: AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'สีซับเป็นสีขาวพร้อมขอบดำในเวอร์ชันนี้',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                    height: 1.35,
                   ),
                 ),
               ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 13),
-        _advancedLabel('จำนวนคำที่แสดง'),
+        _advancedLabel('ความยาวต่อช่วงซับ'),
         Wrap(
           spacing: 7,
           runSpacing: 7,
           children: [
             _choiceChip(
-              label: 'ทีละคำ (คาราโอเกะ)',
+              key: const ValueKey('ai-subtitle-length-short'),
+              label: 'สั้น (ไม่เกิน 8 ตัวอักษร)',
               selected: _subtitleWords == 'karaoke',
               onTap: () => setState(() => _subtitleWords = 'karaoke'),
             ),
             _choiceChip(
-              label: '3–4 คำ',
+              key: const ValueKey('ai-subtitle-length-medium'),
+              label: 'กลาง (ไม่เกิน 18 ตัวอักษร)',
               selected: _subtitleWords == 'few',
               onTap: () => setState(() => _subtitleWords = 'few'),
             ),
             _choiceChip(
-              label: 'ทั้งประโยค',
+              key: const ValueKey('ai-subtitle-length-long'),
+              label: 'ยาว (ไม่เกิน 36 ตัวอักษร)',
               selected: _subtitleWords == 'full',
               onTap: () => setState(() => _subtitleWords = 'full'),
             ),
@@ -2682,12 +2931,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           children: [
             for (final option in const [
               ('top', 'บน'),
-              ('center', 'กลาง'),
               ('bottom', 'ล่าง'),
             ])
               _choiceChip(
+                key: ValueKey('ai-subtitle-position-${option.$1}'),
                 label: option.$2,
-                selected: _subtitlePosition == option.$1,
+                selected: _effectiveSubtitlePosition == option.$1,
                 onTap: () => setState(() => _subtitlePosition = option.$1),
               ),
           ],
@@ -2698,33 +2947,18 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   Widget _subtitlePreview(String text) {
     final textStyle = TextStyle(
-      color: _subtitleStyle == 'highlight'
-          ? (_subtitleColor == Colors.white ||
-                  _subtitleColor == const Color(0xFFFFE14D)
-              ? Colors.black
-              : Colors.white)
-          : _subtitleColor,
-      fontSize: 15,
-      fontWeight: _subtitleStyle == 'clean' ? FontWeight.w600 : FontWeight.w900,
-      shadows: _subtitleStyle == 'outline'
-          ? const [
-              Shadow(color: Colors.black, blurRadius: 1, offset: Offset(1, 1)),
-              Shadow(
-                  color: Colors.black, blurRadius: 1, offset: Offset(-1, -1)),
-            ]
-          : const [Shadow(color: Colors.black87, blurRadius: 6)],
+      color: Colors.white,
+      fontSize: switch (_subtitleStyle) {
+        'small' => 13,
+        'medium' => 15,
+        _ => 17,
+      },
+      fontWeight: FontWeight.w800,
+      shadows: const [
+        Shadow(color: Colors.black, blurRadius: 1, offset: Offset(1, 1)),
+        Shadow(color: Colors.black, blurRadius: 1, offset: Offset(-1, -1)),
+      ],
     );
-
-    if (_subtitleStyle == 'highlight') {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
-        decoration: BoxDecoration(
-          color: _subtitleColor,
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: Text(text, textAlign: TextAlign.center, style: textStyle),
-      );
-    }
     return Text(text, textAlign: TextAlign.center, style: textStyle);
   }
 
@@ -4359,179 +4593,723 @@ class _DesignSwitch extends StatelessWidget {
   }
 }
 
+enum _ReviewVideoLoadState { loading, ready, error }
+
 class _ReviewVideoPreview extends StatefulWidget {
   const _ReviewVideoPreview({
     super.key,
     required this.file,
+    required this.sourceLabel,
+    this.revision = 0,
     this.isUpdating = false,
+    this.controllerFactory,
+    this.onLoadingChanged,
+    this.onDurationReady,
   });
 
   final File file;
+  final String sourceLabel;
+  final int revision;
   final bool isUpdating;
+  final ReviewVideoControllerFactory? controllerFactory;
+  final ValueChanged<bool>? onLoadingChanged;
+  final ValueChanged<Duration>? onDurationReady;
 
   @override
   State<_ReviewVideoPreview> createState() => _ReviewVideoPreviewState();
 }
 
 class _ReviewVideoPreviewState extends State<_ReviewVideoPreview> {
+  static const _liveSeekThrottle = Duration(milliseconds: 120);
+
   VideoPlayerController? _controller;
-  bool _ready = false;
+  VideoPlayerController? _initializingController;
+  _ReviewVideoLoadState _loadState = _ReviewVideoLoadState.loading;
+  Duration? _dragPosition;
+  Duration? _pendingLiveSeekPosition;
+  Duration? _lastLiveSeekPosition;
+  bool _resumeAfterSeek = false;
+  bool _liveSeekDisabledForSession = false;
+  Future<void>? _pauseForSeekFuture;
+  Future<void>? _activeSeekFuture;
+  Timer? _liveSeekTimer;
+  double? _pendingNormalizedPosition;
+  bool _playbackCommandInProgress = false;
+  Future<void> _disposalBarrier = Future<void>.value();
+  final List<VideoPlayerController> _controllersQueuedForDisposal = [];
+  int _initializationVersion = 0;
+  int _seekVersion = 0;
+
+  bool get _ready => _loadState == _ReviewVideoLoadState.ready;
 
   @override
   void initState() {
     super.initState();
-    _initialize();
+    _startInitialization();
   }
 
   @override
   void didUpdateWidget(covariant _ReviewVideoPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.file.path != widget.file.path) {
-      _controller?.dispose();
-      _controller = null;
-      _ready = false;
-      _initialize();
+    final videoChanged = oldWidget.file.path != widget.file.path ||
+        oldWidget.revision != widget.revision;
+    if (videoChanged) {
+      _replaceController();
+      return;
+    }
+
+    if (!oldWidget.isUpdating && widget.isUpdating) {
+      final controller = _controller;
+      _resetSeekState();
+      if (controller?.value.isPlaying ?? false) {
+        unawaited(_pauseControllerSafely(controller!));
+      }
     }
   }
 
-  Future<void> _initialize() async {
+  void _capturePlaybackPosition(VideoPlayerController? controller) {
+    if (controller == null || !controller.value.isInitialized) {
+      _pendingNormalizedPosition = null;
+      return;
+    }
+
+    final durationMilliseconds = controller.value.duration.inMilliseconds;
+    _pendingNormalizedPosition = durationMilliseconds > 0
+        ? (controller.value.position.inMilliseconds / durationMilliseconds)
+            .clamp(0.0, 1.0)
+        : 0;
+  }
+
+  void _replaceController() {
+    final previousController = _controller;
+    final initializingController = _initializingController;
+    _capturePlaybackPosition(previousController);
+    _controller = null;
+    _initializingController = null;
+    _loadState = _ReviewVideoLoadState.loading;
+    final seekBarrier = _resetSeekState();
+    _playbackCommandInProgress = false;
+    _startInitialization(
+      disposeFirst: [previousController, initializingController],
+      waitForSeek: seekBarrier,
+    );
+  }
+
+  void _startInitialization({
+    Iterable<VideoPlayerController?> disposeFirst = const [],
+    Future<void>? waitForSeek,
+  }) {
+    final initializationVersion = ++_initializationVersion;
+    final disposalBarrier = _queueControllerDisposals(
+      disposeFirst,
+      waitForSeek: waitForSeek,
+    );
+    unawaited(
+      _initializeAfterDisposals(initializationVersion, disposalBarrier),
+    );
+  }
+
+  Future<void> _initializeAfterDisposals(
+    int initializationVersion,
+    Future<void> disposalBarrier,
+  ) async {
+    await disposalBarrier;
+    if (!mounted || initializationVersion != _initializationVersion) {
+      return;
+    }
+
+    VideoPlayerController? controller;
     try {
-      final controller = VideoPlayerController.file(widget.file);
-      await controller.initialize();
-      await controller.setLooping(true);
-      if (!mounted) {
-        await controller.dispose();
+      controller = widget.controllerFactory?.call(widget.file) ??
+          VideoPlayerController.file(widget.file);
+      if (!mounted || initializationVersion != _initializationVersion) {
+        unawaited(_queueControllerDisposals([controller]));
         return;
       }
+      _initializingController = controller;
+      await controller.initialize();
+      await controller.setLooping(true);
+      if (!mounted || initializationVersion != _initializationVersion) {
+        if (identical(_initializingController, controller)) {
+          _initializingController = null;
+        }
+        unawaited(_queueControllerDisposals([controller]));
+        return;
+      }
+
+      final duration = controller.value.duration;
+      final normalizedPosition = _pendingNormalizedPosition;
+      if (normalizedPosition != null && duration > Duration.zero) {
+        final targetPosition = Duration(
+          milliseconds: (duration.inMilliseconds * normalizedPosition).round(),
+        );
+        try {
+          await controller.seekTo(targetPosition);
+        } catch (_) {
+          // A failed position restore must not hide an otherwise valid video.
+        }
+      }
+      if (!mounted || initializationVersion != _initializationVersion) {
+        if (identical(_initializingController, controller)) {
+          _initializingController = null;
+        }
+        unawaited(_queueControllerDisposals([controller]));
+        return;
+      }
+
+      _pendingNormalizedPosition = null;
+      _initializingController = null;
       setState(() {
         _controller = controller;
-        _ready = true;
+        _loadState = _ReviewVideoLoadState.ready;
       });
+      widget.onLoadingChanged?.call(false);
+      if (duration > Duration.zero) {
+        widget.onDurationReady?.call(duration);
+      }
     } catch (_) {
-      if (mounted) {
-        setState(() => _ready = false);
+      if (identical(_initializingController, controller)) {
+        _initializingController = null;
+      }
+      if (mounted && initializationVersion == _initializationVersion) {
+        setState(() {
+          _controller = null;
+          _loadState = _ReviewVideoLoadState.error;
+        });
+        widget.onLoadingChanged?.call(false);
+      }
+      if (controller != null) {
+        unawaited(_queueControllerDisposals([controller]));
       }
     }
+  }
+
+  void _retry() {
+    if (widget.isUpdating) {
+      return;
+    }
+    final previousController = _controller;
+    final initializingController = _initializingController;
+    _capturePlaybackPosition(previousController);
+    _controller = null;
+    _initializingController = null;
+    final seekBarrier = _resetSeekState();
+    _playbackCommandInProgress = false;
+    setState(() => _loadState = _ReviewVideoLoadState.loading);
+    widget.onLoadingChanged?.call(true);
+    _startInitialization(
+      disposeFirst: [previousController, initializingController],
+      waitForSeek: seekBarrier,
+    );
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _initializationVersion++;
+    final seekBarrier = _resetSeekState();
+    final controller = _controller;
+    final initializingController = _initializingController;
+    _controller = null;
+    _initializingController = null;
+    unawaited(
+      _queueControllerDisposals(
+        [controller, initializingController],
+        waitForSeek: seekBarrier,
+      ),
+    );
     super.dispose();
+  }
+
+  Future<void> _queueControllerDisposals(
+    Iterable<VideoPlayerController?> controllers, {
+    Future<void>? waitForSeek,
+  }) {
+    final batch = <VideoPlayerController>[];
+    for (final controller in controllers) {
+      if (controller == null ||
+          _controllersQueuedForDisposal.any(
+            (queued) => identical(queued, controller),
+          )) {
+        continue;
+      }
+      _controllersQueuedForDisposal.add(controller);
+      batch.add(controller);
+    }
+
+    final previousBarrier = _disposalBarrier;
+    final nextBarrier = () async {
+      await previousBarrier;
+      if (waitForSeek != null) {
+        try {
+          await waitForSeek;
+        } catch (_) {
+          // A failed seek must not block release of the native player.
+        }
+      }
+      for (final controller in batch) {
+        await _disposeControllerSafely(controller);
+        _controllersQueuedForDisposal.removeWhere(
+          (queued) => identical(queued, controller),
+        );
+      }
+    }();
+    _disposalBarrier = nextBarrier;
+    return nextBarrier;
+  }
+
+  Future<void>? _resetSeekState() {
+    final activeSeek = _activeSeekFuture;
+    _seekVersion++;
+    _liveSeekTimer?.cancel();
+    _liveSeekTimer = null;
+    _dragPosition = null;
+    _pendingLiveSeekPosition = null;
+    _lastLiveSeekPosition = null;
+    _resumeAfterSeek = false;
+    _liveSeekDisabledForSession = false;
+    _pauseForSeekFuture = null;
+    return activeSeek;
+  }
+
+  Future<void> _disposeControllerSafely(
+    VideoPlayerController controller,
+  ) async {
+    try {
+      await controller.dispose();
+    } catch (_) {
+      // Native video resources may already be released after a player error.
+    }
+  }
+
+  Future<void> _pauseControllerSafely(
+    VideoPlayerController controller,
+  ) async {
+    try {
+      await controller.pause();
+    } catch (_) {
+      // The controller may be replaced while a new preview is rendering.
+    }
   }
 
   Future<void> _togglePlayback() async {
     final controller = _controller;
-    if (!_ready || controller == null) {
+    if (!_ready ||
+        controller == null ||
+        widget.isUpdating ||
+        _dragPosition != null ||
+        _activeSeekFuture != null ||
+        _playbackCommandInProgress) {
       return;
     }
-    if (controller.value.isPlaying) {
-      await controller.pause();
-    } else {
-      await controller.play();
+    _playbackCommandInProgress = true;
+    try {
+      if (controller.value.isPlaying) {
+        await controller.pause();
+      } else {
+        await controller.play();
+      }
+      if (mounted && identical(_controller, controller)) {
+        setState(() {});
+      }
+    } catch (_) {
+      // A transient play/pause command failure does not mean the file is bad.
+    } finally {
+      if (identical(_controller, controller)) {
+        _playbackCommandInProgress = false;
+      }
     }
-    if (mounted) {
-      setState(() {});
+  }
+
+  bool get _appIsResumed {
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    return lifecycleState == null ||
+        lifecycleState == AppLifecycleState.resumed;
+  }
+
+  void _handleSeekStart(Duration position) {
+    final controller = _controller;
+    if (!_ready || controller == null || widget.isUpdating) {
+      return;
     }
+
+    _seekVersion++;
+    _liveSeekTimer?.cancel();
+    _liveSeekTimer = null;
+    _pendingLiveSeekPosition = null;
+    _lastLiveSeekPosition = null;
+    _liveSeekDisabledForSession = false;
+    _resumeAfterSeek = controller.value.isPlaying;
+    _pauseForSeekFuture = _resumeAfterSeek
+        ? _pauseControllerSafely(controller)
+        : Future<void>.value();
+    setState(() => _dragPosition = position);
+  }
+
+  void _handleSeekChanged(Duration position) {
+    final controller = _controller;
+    if (!_ready || controller == null || widget.isUpdating) {
+      return;
+    }
+
+    setState(() => _dragPosition = position);
+    _queueLiveSeek(
+      controller: controller,
+      position: position,
+      seekVersion: _seekVersion,
+    );
+  }
+
+  void _queueLiveSeek({
+    required VideoPlayerController controller,
+    required Duration position,
+    required int seekVersion,
+  }) {
+    if (_liveSeekDisabledForSession) {
+      return;
+    }
+
+    _pendingLiveSeekPosition = position;
+    if (_activeSeekFuture != null || _liveSeekTimer != null) {
+      return;
+    }
+    _startPendingLiveSeek(controller, seekVersion);
+  }
+
+  void _startPendingLiveSeek(
+    VideoPlayerController controller,
+    int seekVersion,
+  ) {
+    final position = _pendingLiveSeekPosition;
+    if (position == null ||
+        !_canContinueSeek(controller, seekVersion) ||
+        _liveSeekDisabledForSession) {
+      return;
+    }
+
+    _pendingLiveSeekPosition = null;
+    final pauseForSeek = _pauseForSeekFuture;
+    late final Future<void> operation;
+    operation = () async {
+      try {
+        await pauseForSeek;
+        if (!_canContinueSeek(controller, seekVersion)) {
+          return;
+        }
+        await controller.seekTo(position);
+        if (_canContinueSeek(controller, seekVersion)) {
+          _lastLiveSeekPosition = position;
+        }
+      } catch (_) {
+        if (_canContinueSeek(controller, seekVersion)) {
+          _liveSeekDisabledForSession = true;
+          _pendingLiveSeekPosition = null;
+        }
+      }
+    }();
+    _activeSeekFuture = operation;
+
+    unawaited(
+      operation.whenComplete(() {
+        if (identical(_activeSeekFuture, operation)) {
+          _activeSeekFuture = null;
+        }
+        if (!_canContinueSeek(controller, seekVersion) ||
+            _liveSeekDisabledForSession) {
+          return;
+        }
+        _liveSeekTimer?.cancel();
+        _liveSeekTimer = Timer(_liveSeekThrottle, () {
+          _liveSeekTimer = null;
+          _startPendingLiveSeek(controller, seekVersion);
+        });
+      }),
+    );
+  }
+
+  bool _canContinueSeek(
+    VideoPlayerController controller,
+    int seekVersion,
+  ) {
+    return mounted &&
+        _ready &&
+        identical(_controller, controller) &&
+        seekVersion == _seekVersion &&
+        !widget.isUpdating &&
+        _appIsResumed;
+  }
+
+  Future<void> _handleSeekEnd(Duration position) {
+    final controller = _controller;
+    if (!_ready || controller == null || widget.isUpdating) {
+      return Future<void>.value();
+    }
+
+    final liveSeek = _activeSeekFuture;
+    final seekVersion = ++_seekVersion;
+    final shouldResume = _resumeAfterSeek && !widget.isUpdating;
+    final pauseForSeekFuture = _pauseForSeekFuture;
+    final lastLiveSeekPosition = _lastLiveSeekPosition;
+    _liveSeekTimer?.cancel();
+    _liveSeekTimer = null;
+    _pendingLiveSeekPosition = null;
+
+    late final Future<void> operation;
+    operation = () async {
+      try {
+        await pauseForSeekFuture;
+        await liveSeek;
+        if (!_canContinueSeek(controller, seekVersion)) {
+          return;
+        }
+
+        if (lastLiveSeekPosition != position) {
+          await controller.seekTo(position);
+        }
+        if (!_canContinueSeek(controller, seekVersion)) {
+          return;
+        }
+
+        if (shouldResume) {
+          await controller.play();
+          if (!_canContinueSeek(controller, seekVersion)) {
+            await _pauseControllerSafely(controller);
+          }
+        }
+      } catch (_) {
+        // Keep the last valid preview if only a seek command fails.
+      } finally {
+        if (mounted &&
+            identical(_controller, controller) &&
+            seekVersion == _seekVersion) {
+          setState(() {
+            _resetSeekState();
+          });
+        }
+      }
+    }();
+    _activeSeekFuture = operation;
+    unawaited(
+      operation.whenComplete(() {
+        if (identical(_activeSeekFuture, operation)) {
+          _activeSeekFuture = null;
+        }
+      }),
+    );
+    return operation;
   }
 
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
-    final isPlaying = controller?.value.isPlaying ?? false;
+    if (_ready && controller != null) {
+      return ValueListenableBuilder<VideoPlayerValue>(
+        valueListenable: controller,
+        builder: (context, value, _) => _buildPreview(controller, value),
+      );
+    }
+    return _buildPreview(controller, controller?.value);
+  }
 
-    return GestureDetector(
-      key: const ValueKey('ai-review-video-preview'),
-      onTap: widget.isUpdating ? null : _togglePlayback,
-      child: Container(
-        width: double.infinity,
-        height: 310,
-        decoration: BoxDecoration(
-          color: const Color(0xFF050806),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (_ready && controller != null)
-              Center(
-                child: AspectRatio(
-                  aspectRatio: controller.value.aspectRatio > 0
-                      ? controller.value.aspectRatio
-                      : 9 / 16,
-                  child: VideoPlayer(controller),
-                ),
-              )
-            else
-              Column(
-                mainAxisSize: MainAxisSize.min,
+  Widget _buildPreview(
+    VideoPlayerController? controller,
+    VideoPlayerValue? value,
+  ) {
+    final hasRuntimeError = value?.hasError ?? false;
+    final isError =
+        _loadState == _ReviewVideoLoadState.error || hasRuntimeError;
+    final isReady = _ready &&
+        !isError &&
+        controller != null &&
+        value != null &&
+        value.isInitialized;
+    final isPlaying = isReady && value.isPlaying;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          button: isReady,
+          enabled: isReady && !widget.isUpdating,
+          label: isReady
+              ? isPlaying
+                  ? 'หยุดวิดีโอ'
+                  : 'เล่นวิดีโอ'
+              : null,
+          child: GestureDetector(
+            key: const ValueKey('ai-review-video-preview'),
+            onTap: isReady && !widget.isUpdating ? _togglePlayback : null,
+            child: Container(
+              width: double.infinity,
+              height: 310,
+              decoration: BoxDecoration(
+                color: const Color(0xFF050806),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  Icon(Icons.movie_outlined,
-                      size: 48, color: AppTheme.textMuted),
-                  const SizedBox(height: 8),
-                  Text(
-                    'แตะเพื่อดูตัวอย่างวิดีโอ',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
-                  ),
-                ],
-              ),
-            if (_ready)
-              AnimatedOpacity(
-                opacity: isPlaying ? 0 : 1,
-                duration: const Duration(milliseconds: 180),
-                child: Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.62),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.play_arrow_rounded,
-                      size: 34, color: Colors.white),
-                ),
-              ),
-            if (widget.isUpdating)
-              Positioned.fill(
-                child: ColoredBox(
-                  color: Colors.black.withValues(alpha: 0.72),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
+                  if (isReady)
+                    Center(
+                      child: AspectRatio(
+                        aspectRatio:
+                            value.aspectRatio > 0 ? value.aspectRatio : 9 / 16,
+                        child: VideoPlayer(controller),
+                      ),
+                    )
+                  else if (isError)
+                    Semantics(
+                      liveRegion: true,
+                      child: Column(
+                        key: const ValueKey('ai-review-video-error'),
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.error_outline_rounded,
+                            size: 42,
+                            color: Color(0xFFF59E0B),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'เปิด${widget.sourceLabel} ไม่ได้',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'ไฟล์ยังอยู่ ลองเปิดพรีวิวอีกครั้งได้',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.68),
+                              fontSize: 11.5,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          OutlinedButton.icon(
+                            key: const ValueKey('ai-review-video-retry'),
+                            onPressed: widget.isUpdating ? null : _retry,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.55),
+                              ),
+                            ),
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text('ลองใหม่'),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Semantics(
+                      liveRegion: true,
+                      child: Column(
+                        key: const ValueKey('ai-review-video-loading'),
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.hourglass_top_rounded,
+                            size: 36,
                             color: AppTheme.accent,
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'กำลังสร้างพรีวิวใหม่...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
+                          const SizedBox(height: 12),
+                          Text(
+                            'กำลังเปิด${widget.sourceLabel}...',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'พรีวิวเดิมจะยังอยู่จนกว่าจะเสร็จ',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.72),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+                  if (isReady)
+                    AnimatedOpacity(
+                      opacity: isPlaying ? 0 : 1,
+                      duration: const Duration(milliseconds: 180),
+                      child: Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.62),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          size: 34,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  if (isReady && value.isBuffering)
+                    const Positioned(
+                      top: 12,
+                      right: 12,
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: AppTheme.accent,
+                        ),
+                      ),
+                    ),
+                  if (widget.isUpdating)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: Colors.black.withValues(alpha: 0.72),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(
+                                width: 32,
+                                height: 32,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 3,
+                                  color: AppTheme.accent,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'กำลังสร้างพรีวิวใหม่...',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'พรีวิวเดิมจะยังอยู่จนกว่าจะเสร็จ',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.72),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-          ],
+            ),
+          ),
         ),
-      ),
+        if (isReady)
+          ReviewVideoTimeline(
+            position: _dragPosition ?? value.position,
+            duration: value.duration,
+            enabled: !widget.isUpdating,
+            onSeekStart: _handleSeekStart,
+            onSeekChanged: _handleSeekChanged,
+            onSeekEnd: _handleSeekEnd,
+          ),
+      ],
     );
   }
 }

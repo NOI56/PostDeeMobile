@@ -14,11 +14,13 @@ import {
 const createFakeConnectClient = (
   overrides: Partial<PostPeerConnectClient> = {}
 ): PostPeerConnectClient => ({
+  supportsIntegrationCleanup: true,
   createProfile: vi.fn(async () => ({ profileId: 'profile-1' })),
   createConnectUrl: vi.fn(async () => ({
     connectUrl: 'https://postpeer.test/connect/tiktok'
   })),
   listIntegrations: vi.fn(async () => []),
+  disconnectIntegration: vi.fn(async () => undefined),
   ...overrides
 });
 
@@ -272,8 +274,23 @@ describe('social connection routes', () => {
     expect(response.body.status).toBe('ok');
   });
 
-  it('disconnects a linked platform for the authenticated user', async () => {
-    const { app, store } = createTestApp();
+  it('disconnects PostPeer before removing the authenticated user local connection', async () => {
+    const events: string[] = [];
+    const store = createInMemorySocialConnectionStore({
+      now: () => '2026-06-26T09:00:00.000Z'
+    });
+    const originalDisconnect = store.disconnect;
+    store.disconnect = vi.fn(async (input) => {
+      events.push('local');
+      return originalDisconnect(input);
+    });
+    const disconnectIntegration = vi.fn(async () => {
+      events.push('provider');
+    });
+    const { app } = createTestApp({
+      store,
+      connectClient: createFakeConnectClient({ disconnectIntegration })
+    });
     await store.upsert({
       userId: 'seller-social',
       platform: 'TIKTOK',
@@ -282,8 +299,111 @@ describe('social connection routes', () => {
 
     await request(app).delete('/social-connections/TIKTOK').expect(200);
 
+    expect(disconnectIntegration).toHaveBeenCalledWith({
+      integrationId: 'acct-tiktok-1'
+    });
+    expect(events).toEqual(['provider', 'local']);
     await expect(
       store.getAccountId({ userId: 'seller-social', platform: 'TIKTOK' })
     ).resolves.toBeUndefined();
+  });
+
+  it('keeps the local connection when PostPeer disconnect fails', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({
+      userId: 'seller-social',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'acct-tiktok-1'
+    });
+    const { app } = createTestApp({
+      store,
+      connectClient: createFakeConnectClient({
+        disconnectIntegration: vi.fn(async () => {
+          throw new PostPeerConnectProviderError(503);
+        })
+      })
+    });
+
+    const response = await request(app)
+      .delete('/social-connections/TIKTOK')
+      .expect(502);
+
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'SOCIAL_CONNECTION_FAILED'
+    });
+    await expect(
+      store.getAccountId({ userId: 'seller-social', platform: 'TIKTOK' })
+    ).resolves.toBe('acct-tiktok-1');
+  });
+
+  it('keeps the local connection when provider cleanup is unavailable', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({
+      userId: 'seller-social',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'acct-tiktok-1'
+    });
+    const { app } = createTestApp({
+      store,
+      connectClient: createFakeConnectClient({
+        supportsIntegrationCleanup: false,
+        disconnectIntegration: undefined
+      })
+    });
+
+    const response = await request(app)
+      .delete('/social-connections/TIKTOK')
+      .expect(503);
+
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'SOCIAL_CONNECTION_UNAVAILABLE'
+    });
+    await expect(
+      store.getAccountId({ userId: 'seller-social', platform: 'TIKTOK' })
+    ).resolves.toBe('acct-tiktok-1');
+  });
+
+  it('treats an already-disconnected local platform as an idempotent success', async () => {
+    const disconnectIntegration = vi.fn(async () => undefined);
+    const { app, store } = createTestApp({
+      connectClient: createFakeConnectClient({ disconnectIntegration })
+    });
+
+    await request(app).delete('/social-connections/TIKTOK').expect(200);
+
+    expect(disconnectIntegration).not.toHaveBeenCalled();
+    await expect(
+      store.getAccountId({ userId: 'seller-social', platform: 'TIKTOK' })
+    ).resolves.toBeUndefined();
+  });
+
+  it('never disconnects another user connection on the same platform', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({
+      userId: 'seller-social',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'acct-owner'
+    });
+    await store.upsert({
+      userId: 'seller-other',
+      platform: 'TIKTOK',
+      postPeerAccountId: 'acct-other'
+    });
+    const disconnectIntegration = vi.fn(async () => undefined);
+    const { app } = createTestApp({
+      store,
+      connectClient: createFakeConnectClient({ disconnectIntegration })
+    });
+
+    await request(app).delete('/social-connections/TIKTOK').expect(200);
+
+    expect(disconnectIntegration).toHaveBeenCalledWith({
+      integrationId: 'acct-owner'
+    });
+    await expect(
+      store.getAccountId({ userId: 'seller-other', platform: 'TIKTOK' })
+    ).resolves.toBe('acct-other');
   });
 });

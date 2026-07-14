@@ -198,7 +198,35 @@ export const registerSocialConnectionRoutes = (
         return;
       }
 
-      await store.disconnect({ userId: authUser.id, platform });
+      const connectionInput = { userId: authUser.id, platform };
+      const integrationId = await store.getAccountId(connectionInput);
+
+      // A repeated DELETE is a successful no-op. More importantly, do not
+      // remove a saved connection until PostPeer confirms that the external
+      // integration is gone; otherwise the next refresh can recreate it.
+      if (!integrationId) {
+        response.json({ status: 'ok' });
+        return;
+      }
+
+      if (
+        connectClient.supportsIntegrationCleanup === false ||
+        !connectClient.disconnectIntegration
+      ) {
+        sendConnectError(response, new PostPeerConnectUnavailableError());
+        return;
+      }
+
+      try {
+        await connectClient.disconnectIntegration({ integrationId });
+        await store.disconnect(connectionInput);
+      } catch (error) {
+        if (sendConnectError(response, error)) {
+          return;
+        }
+
+        throw error;
+      }
 
       response.json({ status: 'ok' });
     }

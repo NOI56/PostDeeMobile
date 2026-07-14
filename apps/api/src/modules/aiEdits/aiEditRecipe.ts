@@ -1,8 +1,9 @@
 import type { EditPlanCut, EditPlanResult } from './editPlanProvider.js';
-import type {
-  TranscriptSegment,
-  TranscriptWord,
-  TranscriptionResult
+import {
+  normalizeTranscriptionLanguage,
+  type TranscriptSegment,
+  type TranscriptWord,
+  type TranscriptionResult
 } from './transcriptionProvider.js';
 
 export const aiEditCapabilityKeys = [
@@ -130,9 +131,13 @@ const plannedCapabilities = new Set<AiEditCapabilityKey>([
   'hook',
   'beatsync',
   'reframe',
+  'zoom',
   'sfx',
   'audio',
-  'translate'
+  'translate',
+  'pricetag',
+  'cta',
+  'watermark'
 ]);
 
 const defaultFillerWords = ['เอ่อ', 'อ่า', 'แบบว่า', 'คือว่า', 'ประมาณว่า'];
@@ -181,6 +186,11 @@ const normalizeFillerWord = (value: string): string =>
     .normalize('NFC')
     .trim()
     .replace(/^[\p{P}\p{S}\s]+|[\p{P}\p{S}\s]+$/gu, '');
+
+const canonicalizeFillerWord = (value: string): string => {
+  const normalized = normalizeFillerWord(value);
+  return normalized === 'เออ' ? 'เอ่อ' : normalized;
+};
 
 const readFillerWords = (value: unknown): string[] | undefined => {
   if (value === undefined) {
@@ -297,38 +307,445 @@ export const readAiEditRecipeSettings = (value: unknown): AiEditRecipeSettings =
   };
 };
 
-const findSilenceRanges = (segments: TranscriptSegment[], minGapSeconds = 0.6): EditPlanCut[] => {
-  if (segments.length < 2) {
-    return [];
+type TimedRange = { start: number; end: number };
+const wordTimingCoverageToleranceSeconds = 1;
+const minimumWordTextCoverageRatio = 0.8;
+const minimumFragmentedTokenCount = 4;
+const fragmentedFillerBoundarySeconds = 0.08;
+
+const normalizeTranscriptTextForCoverage = (value: string): string =>
+  value
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}\s]+/gu, '');
+
+const readThaiWordBoundaryOffsets = (value: string): Set<number> => {
+  const boundaries = new Set<number>();
+  let offset = 0;
+
+  const segments = new Intl.Segmenter('th', { granularity: 'word' }).segment(value);
+  for (const segment of segments) {
+    const normalizedSegment = normalizeTranscriptTextForCoverage(segment.segment);
+    const segmentLength = Array.from(normalizedSegment).length;
+    if (segment.isWordLike && segmentLength > 0) {
+      boundaries.add(offset);
+      boundaries.add(offset + segmentLength);
+    }
+    offset += segmentLength;
   }
 
-  const sorted = [...segments].sort((a, b) => a.start - b.start);
-  const ranges: EditPlanCut[] = [];
+  return boundaries;
+};
 
-  for (let index = 0; index < sorted.length - 1; index += 1) {
-    const current = sorted[index]!;
-    const next = sorted[index + 1]!;
-    const start = Math.max(0, current.end);
-    const end = Math.max(start, next.start);
+const hasFinitePositiveDuration = (value?: number): value is number =>
+  value !== undefined && Number.isFinite(value) && value > 0;
 
-    if (end - start >= minGapSeconds) {
-      ranges.push({ start, end });
+const readSafeTimedRange = (
+  range: TimedRange,
+  durationSeconds?: number
+): TimedRange | undefined => {
+  if (
+    !Number.isFinite(range.start) ||
+    !Number.isFinite(range.end) ||
+    range.start < 0 ||
+    range.end <= range.start
+  ) {
+    return undefined;
+  }
+
+  if (hasFinitePositiveDuration(durationSeconds)) {
+    if (range.start >= durationSeconds) {
+      return undefined;
+    }
+
+    const end = Math.min(range.end, durationSeconds);
+    return end > range.start ? { start: range.start, end } : undefined;
+  }
+
+  return { start: range.start, end: range.end };
+};
+
+const hasFragmentedThaiWordTimings = (
+  words: TranscriptWord[],
+  language: string,
+  referenceText: string
+): boolean => {
+  if (
+    normalizeTranscriptionLanguage(language) !== 'th' ||
+    words.length < minimumFragmentedTokenCount
+  ) {
+    return false;
+  }
+
+  const normalizedReference = normalizeTranscriptTextForCoverage(referenceText);
+  const normalizedWords = normalizeTranscriptTextForCoverage(
+    words.map((word) => word.word).join('')
+  );
+  const hasReferenceEvidence =
+    normalizedReference.length === 0 || normalizedReference.includes(normalizedWords);
+  const thaiTokenRatio = words.filter((word) =>
+    /\p{Script=Thai}/u.test(word.word)
+  ).length / words.length;
+  const hasStandaloneCombiningMark = words.some((word) =>
+    /^\p{M}+$/u.test(word.word.trim().normalize('NFD'))
+  );
+  const referenceWordTokens = Array.from(
+    new Intl.Segmenter('th', { granularity: 'word' }).segment(referenceText)
+  )
+    .filter((segment) => segment.isWordLike)
+    .map((segment) => normalizeTranscriptTextForCoverage(segment.segment))
+    .filter(Boolean);
+  const providerWordTokens = words
+    .map((word) => normalizeTranscriptTextForCoverage(word.word))
+    .filter(Boolean);
+  const tokenBoundariesDiffer =
+    referenceWordTokens.length > 0 &&
+    (
+      referenceWordTokens.length !== providerWordTokens.length ||
+      referenceWordTokens.some(
+        (word, index) => word !== providerWordTokens[index]
+      )
+    );
+  const tightPairCount = words.slice(1).filter((word, index) => {
+    const previous = words[index]!;
+    const gap = word.start - previous.end;
+    return gap >= -Number.EPSILON && gap <= fragmentedFillerBoundarySeconds;
+  }).length;
+  const tightPairRatio = words.length <= 1
+    ? 0
+    : tightPairCount / (words.length - 1);
+
+  return (
+    hasReferenceEvidence &&
+    thaiTokenRatio >= 0.5 &&
+    (hasStandaloneCombiningMark || tokenBoundariesDiffer) &&
+    tightPairRatio >= 0.5
+  );
+};
+
+const readSafeTranscriptWords = (
+  words: TranscriptWord[],
+  durationSeconds?: number
+): TranscriptWord[] =>
+  words
+    .flatMap((word) => {
+      const text = word.word.trim();
+      const range = readSafeTimedRange(word, durationSeconds);
+      const hasTranscriptText =
+        normalizeTranscriptTextForCoverage(text).length > 0;
+      return hasTranscriptText && range
+        ? [{ word: text, start: range.start, end: range.end }]
+        : [];
+    })
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+const readValidTranscriptSegments = (
+  segments: TranscriptSegment[],
+  durationSeconds?: number
+): TranscriptSegment[] =>
+  segments
+    .flatMap((segment) => {
+      const text = segment.text.trim();
+      const range = readSafeTimedRange(segment, durationSeconds);
+      return text.length > 0 && range
+        ? [{ text, start: range.start, end: range.end }]
+        : [];
+    })
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+const readValidTranscriptWords = (
+  words: TranscriptWord[],
+  segments: TranscriptSegment[],
+  transcriptText: string,
+  durationSeconds?: number
+): TranscriptWord[] | undefined => {
+  const sortedWords = readSafeTranscriptWords(words, durationSeconds);
+  const meaningfulWordCount = words.filter(
+    (word) => normalizeTranscriptTextForCoverage(word.word).length > 0
+  ).length;
+  if (
+    sortedWords.length === 0 ||
+    sortedWords.length !== meaningfulWordCount
+  ) {
+    return undefined;
+  }
+
+  if (
+    sortedWords.some(
+      (word, index) => index > 0 && word.start < sortedWords[index - 1]!.end
+    )
+  ) {
+    return undefined;
+  }
+
+  if (segments.length > 0) {
+    const firstWord = sortedWords[0]!;
+    const lastWord = sortedWords.at(-1)!;
+    const firstSegment = segments[0]!;
+    const lastSegment = segments.at(-1)!;
+    const coversTranscriptTime =
+      firstWord.start + Number.EPSILON >= firstSegment.start &&
+      lastWord.end <= lastSegment.end + Number.EPSILON &&
+      Math.abs(firstWord.start - firstSegment.start) <=
+        wordTimingCoverageToleranceSeconds &&
+      Math.abs(lastWord.end - lastSegment.end) <=
+        wordTimingCoverageToleranceSeconds;
+    const transcriptReferenceText = normalizeTranscriptTextForCoverage(transcriptText);
+    const segmentText = transcriptReferenceText || normalizeTranscriptTextForCoverage(
+      segments.map((segment) => segment.text).join('')
+    );
+    const wordText = normalizeTranscriptTextForCoverage(
+      sortedWords.map((word) => word.word).join('')
+    );
+    const textCoverageRatio = segmentText.length === 0
+      ? 1
+      : wordText.length / segmentText.length;
+    const coversTranscriptText =
+      segmentText.length === 0 ||
+      (
+        textCoverageRatio >= minimumWordTextCoverageRatio &&
+        segmentText.includes(wordText)
+      );
+
+    if (!coversTranscriptTime || !coversTranscriptText) {
+      return undefined;
+    }
+  } else {
+    const transcriptReferenceText = normalizeTranscriptTextForCoverage(transcriptText);
+    const wordText = normalizeTranscriptTextForCoverage(
+      sortedWords.map((word) => word.word).join('')
+    );
+    const textCoverageRatio = transcriptReferenceText.length === 0
+      ? 1
+      : wordText.length / transcriptReferenceText.length;
+
+    if (
+      transcriptReferenceText.length > 0 &&
+      (
+        textCoverageRatio < minimumWordTextCoverageRatio ||
+        !transcriptReferenceText.includes(wordText)
+      )
+    ) {
+      return undefined;
     }
   }
 
-  return ranges;
+  return sortedWords;
+};
+
+const isNumericSubtitleToken = (value: string): boolean => {
+  const digits = value.replace(/[.,]/gu, '');
+  return digits.length > 0 && /^\p{Number}+$/u.test(digits);
+};
+
+const buildSubtitleSegments = ({
+  words,
+  language,
+  wordsPerLine
+}: {
+  words: TranscriptWord[];
+  language: string;
+  wordsPerLine: number;
+}): TranscriptSegment[] => {
+  const isThai = normalizeTranscriptionLanguage(language) === 'th';
+  const segments: TranscriptSegment[] = [];
+
+  for (let index = 0; index < words.length; index += wordsPerLine) {
+    const lineWords = words.slice(index, index + wordsPerLine);
+    const first = lineWords[0];
+    const last = lineWords.at(-1);
+
+    if (!first || !last) {
+      continue;
+    }
+
+    const lineText = lineWords
+      .map((word) => word.word.trim())
+      .reduce((text, word, wordIndex, tokens) => {
+        if (wordIndex === 0) {
+          return word;
+        }
+
+        const previousWord = tokens[wordIndex - 1]!;
+        const previousIsNumber = isNumericSubtitleToken(previousWord);
+        const wordIsNumber = isNumericSubtitleToken(word);
+        const needsSpace = !isThai ||
+          /\p{Script=Latin}/u.test(previousWord) ||
+          /\p{Script=Latin}/u.test(word) ||
+          previousIsNumber !== wordIsNumber;
+        return `${text}${needsSpace ? ' ' : ''}${word}`;
+      }, '');
+
+    segments.push({
+      text: lineText,
+      start: Math.min(...lineWords.map((word) => word.start)),
+      end: Math.max(...lineWords.map((word) => word.end))
+    });
+  }
+
+  return segments;
+};
+
+const findSilenceRanges = (
+  ranges: TimedRange[],
+  minGapSeconds = 0.6,
+  durationSeconds?: number,
+  edgeRanges = ranges
+): EditPlanCut[] => {
+  const sorted = ranges
+    .flatMap((range) => {
+      const safeRange = readSafeTimedRange(range, durationSeconds);
+      return safeRange ? [safeRange] : [];
+    })
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  const safeEdgeRanges = edgeRanges
+    .flatMap((range) => {
+      const safeRange = readSafeTimedRange(range, durationSeconds);
+      return safeRange ? [safeRange] : [];
+    })
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+  if (sorted.length === 0 || safeEdgeRanges.length === 0) {
+    return [];
+  }
+
+  const silenceRanges: EditPlanCut[] = [];
+  const first = sorted[0]!;
+  const firstEdge = safeEdgeRanges[0]!;
+  const lastEdgeEnd = Math.max(...safeEdgeRanges.map((range) => range.end));
+  let activeEnd = Math.max(0, first.end);
+
+  if (firstEdge.start + Number.EPSILON >= minGapSeconds) {
+    silenceRanges.push({ start: 0, end: firstEdge.start });
+  }
+
+  for (let index = 1; index < sorted.length; index += 1) {
+    const next = sorted[index]!;
+    const start = activeEnd;
+    const end = Math.max(start, next.start);
+
+    if (end - start + Number.EPSILON >= minGapSeconds) {
+      silenceRanges.push({ start, end });
+    }
+
+    activeEnd = Math.max(activeEnd, next.end);
+  }
+
+  if (
+    hasFinitePositiveDuration(durationSeconds) &&
+    durationSeconds - lastEdgeEnd + Number.EPSILON >= minGapSeconds
+  ) {
+    silenceRanges.push({ start: lastEdgeEnd, end: durationSeconds });
+  }
+
+  return silenceRanges;
 };
 
 const findFillerRanges = (
   words: TranscriptWord[],
-  fillerWords: readonly string[]
+  fillerWords: readonly string[],
+  matchFragmentedTokens = false,
+  referenceText = ''
 ): EditPlanCut[] => {
-  const selectedWords = new Set(fillerWords.map(normalizeFillerWord));
-
-  return words
-    .filter((word) => selectedWords.has(normalizeFillerWord(word.word)))
+  const selectedWords = new Set(fillerWords.map(canonicalizeFillerWord));
+  const selectedWordList = [...selectedWords];
+  const sortedWords = [...words].sort(
+    (a, b) => a.start - b.start || a.end - b.end
+  );
+  const exactRanges = sortedWords
+    .filter((word) => selectedWords.has(canonicalizeFillerWord(word.word)))
     .map((word) => ({ start: word.start, end: word.end }))
     .filter((range) => range.end > range.start);
+
+  if (!matchFragmentedTokens || selectedWords.size === 0) {
+    return exactRanges;
+  }
+
+  const fragments = sortedWords.flatMap((word) => {
+    const text = normalizeFillerWord(word.word);
+    return text.length > 0 ? [{ ...word, text }] : [];
+  });
+  const fragmentOffsets = [0];
+  for (const fragment of fragments) {
+    fragmentOffsets.push(
+      fragmentOffsets.at(-1)! + Array.from(fragment.text).length
+    );
+  }
+  const referenceWordBoundaries = readThaiWordBoundaryOffsets(referenceText);
+  const transcriptStart = referenceText.normalize('NFC').trimStart();
+  const fragmentedRanges: EditPlanCut[] = [];
+
+  for (let startIndex = 0; startIndex < fragments.length; startIndex += 1) {
+    let text = '';
+
+    for (let endIndex = startIndex; endIndex < fragments.length; endIndex += 1) {
+      const fragment = fragments[endIndex]!;
+      const previousFragment = fragments[endIndex - 1];
+      if (
+        endIndex > startIndex &&
+        previousFragment &&
+        fragment.start - previousFragment.end > fragmentedFillerBoundarySeconds
+      ) {
+        break;
+      }
+
+      text += fragment.text;
+      const canonicalText = canonicalizeFillerWord(text);
+      const isSelected = selectedWords.has(canonicalText);
+
+      if (isSelected && endIndex > startIndex) {
+        const first = fragments[startIndex]!;
+        const last = fragments[endIndex]!;
+        const previous = fragments[startIndex - 1];
+        const next = fragments[endIndex + 1];
+        const hasTimingBoundaries =
+          (previous === undefined ||
+            first.start - previous.end >= fragmentedFillerBoundarySeconds) &&
+          (next === undefined ||
+            next.start - last.end >= fragmentedFillerBoundarySeconds);
+        const candidate = text.normalize('NFC');
+        const textAfterCandidate = transcriptStart.startsWith(candidate)
+          ? transcriptStart.slice(candidate.length)
+          : '';
+        const hasTranscriptStartBoundary =
+          startIndex === 0 &&
+          transcriptStart.startsWith(candidate) &&
+          (
+            textAfterCandidate.length === 0 ||
+            /^[\s\p{P}\p{S}]/u.test(textAfterCandidate)
+          );
+        const candidateStartOffset = fragmentOffsets[startIndex]!;
+        const candidateEndOffset = fragmentOffsets[endIndex + 1]!;
+        const hasReferenceWordBoundaries =
+          referenceWordBoundaries.has(candidateStartOffset) &&
+          referenceWordBoundaries.has(candidateEndOffset);
+
+        if (
+          hasTimingBoundaries ||
+          hasTranscriptStartBoundary ||
+          hasReferenceWordBoundaries
+        ) {
+          fragmentedRanges.push({ start: first.start, end: last.end });
+        }
+      }
+
+      const canStillMatch = selectedWordList.some((selectedWord) =>
+        selectedWord.startsWith(canonicalText)
+      );
+      if (!canStillMatch) {
+        break;
+      }
+    }
+  }
+
+  return sortRanges(
+    [...exactRanges, ...fragmentedRanges].filter(
+      (range, index, ranges) =>
+        ranges.findIndex(
+          (candidate) => candidate.start === range.start && candidate.end === range.end
+        ) === index
+    )
+  );
 };
 
 const inferPriceText = (transcriptText: string): string => {
@@ -389,15 +806,85 @@ export const buildAiEditRecipe = ({
   prompt?: string;
   plan?: EditPlanResult;
 }): AiEditRecipe => {
-  const subtitleSegments = capabilities.subtitle ? transcript.segments : [];
+  const subtitleWordsPerLine = settings.subtitleWordsPerLine ?? 2;
+  const transcriptLanguage = normalizeTranscriptionLanguage(transcript.language);
+  const validTranscriptSegments = readValidTranscriptSegments(
+    transcript.segments,
+    transcript.durationSeconds
+  );
+  const transcriptSegmentsAreComplete =
+    validTranscriptSegments.length === transcript.segments.length;
+  const safeTranscriptWords = readSafeTranscriptWords(
+    transcript.words,
+    transcript.durationSeconds
+  );
+  const validTranscriptWords = readValidTranscriptWords(
+    transcript.words,
+    validTranscriptSegments,
+    transcript.text,
+    transcript.durationSeconds
+  );
+  const transcriptReferenceText = transcript.text.trim() ||
+    validTranscriptSegments.map((segment) => segment.text).join('');
+  const normalizedTranscriptText = normalizeTranscriptTextForCoverage(
+    transcript.text
+  );
+  const normalizedWordText = validTranscriptWords
+    ? normalizeTranscriptTextForCoverage(
+        validTranscriptWords.map((word) => word.word).join('')
+      )
+    : '';
+  const wordsFullyCoverTranscript =
+    normalizedTranscriptText.length > 0 &&
+    normalizedWordText === normalizedTranscriptText;
+  const hasReliableSilenceTimeline =
+    transcriptSegmentsAreComplete &&
+    (
+      validTranscriptSegments.length > 0 ||
+      (
+        transcript.segments.length === 0 &&
+        validTranscriptWords !== undefined &&
+        wordsFullyCoverTranscript
+      )
+    );
+  const fragmentedThaiWordTimings = validTranscriptWords
+    ? hasFragmentedThaiWordTimings(
+        validTranscriptWords,
+        transcriptLanguage,
+        transcriptReferenceText
+      )
+    : false;
+  const subtitleWords = validTranscriptWords && !fragmentedThaiWordTimings
+    ? validTranscriptWords
+    : validTranscriptSegments.length === 0 && safeTranscriptWords.length > 0
+      ? safeTranscriptWords
+      : undefined;
+  const subtitleSegments = capabilities.subtitle
+    ? subtitleWords
+      ? buildSubtitleSegments({
+          words: subtitleWords,
+          language: transcriptLanguage,
+          wordsPerLine: subtitleWordsPerLine
+        })
+      : validTranscriptSegments
+    : [];
   const silencePreset = settings.silencePreset ?? 'balanced';
-  const silenceRanges = capabilities.silence
-    ? findSilenceRanges(transcript.segments, silenceMinGapSeconds[silencePreset])
+  const silenceRanges = capabilities.silence && hasReliableSilenceTimeline
+    ? findSilenceRanges(
+        validTranscriptWords ?? validTranscriptSegments,
+        silenceMinGapSeconds[silencePreset],
+        transcript.durationSeconds,
+        validTranscriptSegments.length > 0
+          ? validTranscriptSegments
+          : validTranscriptWords ?? []
+      )
     : [];
   const fillerRanges = capabilities.filler
     ? findFillerRanges(
-        transcript.words,
-        settings.fillerWords ?? defaultFillerWords
+        safeTranscriptWords,
+        settings.fillerWords ?? defaultFillerWords,
+        fragmentedThaiWordTimings,
+        transcriptReferenceText
       )
     : [];
   const planCuts = plan?.cuts ?? [];
@@ -413,7 +900,7 @@ export const buildAiEditRecipe = ({
     prompt,
     transcript: {
       text: transcript.text,
-      language: transcript.language,
+      language: transcriptLanguage,
       durationSeconds: transcript.durationSeconds,
       segments: transcript.segments,
       words: transcript.words,
@@ -425,7 +912,7 @@ export const buildAiEditRecipe = ({
       style: {
         mode: settings.subtitleStyle ?? 'bold',
         color: settings.subtitleColor ?? '#FFFFFF',
-        wordsPerLine: settings.subtitleWordsPerLine ?? 2,
+        wordsPerLine: subtitleWordsPerLine,
         position: settings.subtitlePosition ?? 'bottom'
       }
     },

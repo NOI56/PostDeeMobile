@@ -15,11 +15,44 @@
 >
 > 2026-07-12 UX safety update: production keeps beat sync off and shows `เร็ว ๆ นี้` through the default-false `ENABLE_EXPERIMENTAL_BEAT_SYNC` compile-time flag. Internal QA may set the flag to `true` to inspect setup controls only; it does not enable rendering. Advanced capability settings use an accordion with at most one open section and no default expansion.
 >
-> 2026-07-12 pace update: silence cleanup now uses `natural` (1.0 s), `balanced` (0.6 s default), or `compact` (0.4 s) transcript-segment gap thresholds. Filler cleanup uses exact normalized matches from the five-word allowlist `เอ่อ`, `อ่า`, `แบบว่า`, `คือว่า`, `ประมาณว่า`; missing legacy input means all five, while explicit empty input means none. Review shows detected range counts and combined detected time. The 3-second hook stays locked in production by default-false `ENABLE_EXPERIMENTAL_AI_HOOK`; internal exposure remains `planned` with no renderer.
+> 2026-07-12 pace update (revised 2026-07-14): silence cleanup uses
+> `natural` (1.0 s), `balanced` (0.6 s default), or `compact` (0.4 s) validated
+> word-gap thresholds with segment fallback, overlap-safe range merging, and
+> qualifying leading/trailing gaps when duration is valid. Filler cleanup uses exact
+> normalized matches from the five-word allowlist `เอ่อ`, `อ่า`, `แบบว่า`,
+> `คือว่า`, `ประมาณว่า`; missing legacy input means all five, while explicit
+> empty input means none. Review shows detected range counts and combined
+> detected time. The 3-second hook stays locked in production by default-false
+> `ENABLE_EXPERIMENTAL_AI_HOOK`; internal exposure remains `planned` with no renderer.
 >
 > 2026-07-13 Android render verification: subtitle burn-in now supplies the bundled Prompt font to libass, and silence removal concatenates reset audio keep ranges instead of retaining the source timestamps. A Pixel emulator real-flow test produced visible subtitles and aligned 14.24 s video / 14.31 s audio from a 19.4 s source, and both review capabilities were removed and restored successfully.
 >
 > 2026-07-13 quota visibility update: the AI editing header shows exact remaining/used Pro minutes from `GET /ai-edits/quota`, updates immediately from the metered `prepare.quota` response, and supports a non-metered tap-to-refresh action.
+>
+> 2026-07-14 capability-honesty update: production enables only subtitle,
+> silence, filler-word cuts, and color/light adjustment. Reframe, zoom, audio
+> cleanup, translation, price tags, CTA cards, and the AI-page watermark stay
+> locked as `เร็ว ๆ นี้`, are sent disabled by mobile, and remain `planned` in
+> the API until real exported-video processors are verified.
+>
+> 2026-07-14 subtitle-controls honesty update: the verified mobile renderer
+> currently burns white subtitles with a black outline, supports three text
+> sizes, groups text into short/medium/long ranges, and positions subtitles at
+> the top or bottom. Custom font/color, true word-highlight karaoke, center
+> positioning, and manual transcript correction remain planned and must not be
+> presented as working controls until their exported video is verified.
+>
+> 2026-07-14 Thai timing update: the recipe validates word timing coverage and
+> uses valid timings for silence detection. Semantic word tokens may also drive
+> subtitle grouping; Groq Thai character-level tokens keep their precise gaps
+> but fall back to readable segment subtitles. Semantic Thai subtitle tokens
+> stay joined while Latin product names and numbers keep readable spacing.
+> Fragmented filler tokens are
+> reassembled conservatively from the exact allowlist across tight timing and
+> verified Thai word/text boundaries (or timing boundaries on both sides when
+> reference text is unavailable), including `เออ` as the transcription
+> alias for `เอ่อ`. Whitespace-only provider tokens are ignored without hiding
+> invalid timing on meaningful transcript tokens.
 
 ## Goal
 
@@ -45,8 +78,13 @@ The first implementation direction is **Approach 1: Hybrid low-cost architecture
 
 - Extract or upload the clip audio.
 - Backend sends audio to Groq `whisper-large-v3`.
+- Send the ISO-639-1 `th` language hint for Thai-first accuracy and latency.
+- Send a concise Groq-only Thai spelling prompt for the proper noun
+  `PostDee` → `โพสต์ดี`; do not silently replace transcript text afterward.
 - Request both word- and segment-level timestamps in the same Groq call. Words
-  provide precise filler timing; segments provide subtitle timing and silence gaps.
+  are validated for text/timeline coverage before driving subtitle, silence, and
+  filler timing. Segments remain the conservative fallback for partial timing
+  and the readable subtitle source for Thai character-level tokens.
 - Return structured transcript data to mobile:
   - full text
   - sentence/segment timing
@@ -55,12 +93,19 @@ The first implementation direction is **Approach 1: Hybrid low-cost architecture
 
 ### 2. Auto-cut silence and filler words
 
-- Detect silent gaps from transcript segment timing first.
+- Detect silent gaps from validated word timing first, with segment timing as a
+  conservative fallback.
+- Merge overlapping timing ranges and apply the same threshold to leading and
+  trailing silence when a finite media duration is available.
 - Let the user choose a 1.0 s `natural`, 0.6 s `balanced`, or 0.4 s `compact`
   minimum gap; missing/invalid input stays backward compatible with `balanced`.
 - Let the user choose from the exact allowlist `เอ่อ`, `อ่า`, `แบบว่า`,
   `คือว่า`, `ประมาณว่า`. Missing legacy `fillerWords` means all five; an
   explicit empty list means no filler cuts and never falls back implicitly.
+- Treat exact transcript `เออ` as the `เอ่อ` alias. Reassemble only a validated
+  Thai character-token stream across tight timing and verified Thai word/text
+  boundaries, or timing boundaries on both sides when reference text is
+  unavailable; do not substring-match longer semantic tokens.
 - Later, improve accuracy with FFmpeg silence detection.
 - Let users preview the suggested cuts before exporting.
 - Show detected silence/filler counts and their combined pre-render time without
@@ -69,17 +114,19 @@ The first implementation direction is **Approach 1: Hybrid low-cost architecture
 
 ### 3. Flexible subtitle editing
 
-Mobile subtitle editor should support:
+The first verified mobile subtitle editor supports:
 
-- subtitle display mode:
-  - 1 word at a time
-  - 2 words at a time
-  - 1 sentence/phrase at a time
-- font selection
-- subtitle color selection
-- outline/background style
-- edit wrong Thai words before final export
+- short, medium, or long text grouping per subtitle range
+- readable spacing for Latin product names and numbers inside Thai subtitles
+- three text sizes
+- white text with a black outline
+- top or bottom positioning
 - preview subtitles over the video before burn-in
+
+Keep these controls planned until their exported-video behavior exists and is
+verified: custom font/color, outline/background selection, true word-highlight
+karaoke, center positioning, and editing incorrect Thai transcript words before
+final export.
 
 ### 4. Mobile-side render/export
 
@@ -211,9 +258,10 @@ These numbers are planning estimates. Before implementation or launch, verify cu
 ## Risks And Decisions
 
 - Groq `whisper-large-v3` is the first production transcription model. Re-check Groq docs before production launch because model pricing or timestamp support may change.
-- Word-level timestamps are essential for precise filler/karaoke timing, and
-  segment-level timestamps are essential for subtitle ranges and silence-gap
-  detection. If a future chosen model cannot return both, keep Groq
+- Valid word-level timestamps provide precise filler/silence timing and may
+  provide subtitle ranges; segment timing remains essential as a conservative
+  fallback when words are partial or fragmented into unreadable Thai subtitle
+  tokens. If a future chosen model cannot return both, keep Groq
   `whisper-large-v3` for timing or add a separate alignment step.
 - Do not market a separate AI audio clip review feature for now. If the app needs audio understanding, merge it into "AI caption from the real clip" instead.
 - Do not keep prompt-only AI captioning as the main sold feature. The sold feature should start from a selected clip.

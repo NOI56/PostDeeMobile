@@ -339,7 +339,7 @@ describe('ai edit routes', () => {
     expect(response.body.recipe.cutRanges).toContainEqual({ start: 2, end: 4 });
     expect(response.body.recipe.capabilities.subtitle.state).toBe('applied');
     expect(response.body.recipe.capabilities.silence.state).toBe('applied');
-    expect(response.body.recipe.capabilities.cta.state).toBe('hinted');
+    expect(response.body.recipe.capabilities.cta.state).toBe('planned');
     expect(response.body.recipe.capabilities.beatsync.state).toBe('planned');
     expect(response.body.recipe.capabilities.translate.state).toBe('planned');
   });

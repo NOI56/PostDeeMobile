@@ -59,6 +59,12 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Keep debug installs and Firebase Auth isolated from the release
+            // app. Release continues to use the production application ID.
+            applicationIdSuffix = ".staging"
+            versionNameSuffix = "-staging"
+        }
         release {
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

@@ -1,14 +1,18 @@
 # PostDee Staging
 
-สถานะ ณ 15 กรกฎาคม 2026: **สร้าง Staging Blueprint และฐานข้อมูลบน Render แล้ว; API deploy และ `/health` ผ่านในโหมด health-only**
+สถานะ ณ 15 กรกฎาคม 2026: **Render/Database และ Google Auth บน Android Debug
+ผ่านแล้ว; Staging ยังผ่านเพียงบางส่วนและยังไม่ใช่ release gate**
 
 - Blueprint: `postdee-staging` (`exs-d9bb3it7vvec73ceggl0`)
 - API: `postdee-api-staging` (`srv-d9bb72ojs32c739osa5g`)
 - URL: `https://postdee-api-staging.onrender.com`
 - Database: `postdee-postgres-staging` Free (`dpg-d9bb66ojs32c739oqt10-a`)
 - Database expiry: 14 สิงหาคม 2026
-- Provider state: health-only — ใช้ dummy staging-only values; login, upload, AI,
-  billing และ social ยังไม่ถือว่าผ่าน
+- Firebase: project `project-798caf7e-85b8-45e3-af7`, Email/Google เปิดแล้ว;
+  Google Sign-In → Firebase ID token → Render Staging API ผ่านบน Android Emulator
+- RevenueCat: Test Store products/entitlements/current offering และ sandbox-only
+  webhook ตั้งแล้ว; transport/auth smoke ผ่าน แต่ purchase lifecycle ยังไม่ผ่าน
+- R2, Gemini และ Groq ยังเป็น dummy staging-only; Social ยัง `disabled`
 
 Staging ใช้ทดสอบโค้ดและผู้ให้บริการจริงก่อนส่งเข้า Production โดยต้องไม่ใช้ฐานข้อมูล
 bucket วิดีโอ Firebase project หรือ webhook token ชุดเดียวกับผู้ใช้จริง
@@ -58,6 +62,10 @@ Staging เป็นด่านตรวจเวอร์ชันถัดไ
 เมื่อจะทดสอบ Social จริง ให้เพิ่ม `POSTPEER_API_KEY` ชุดทดสอบใน Dashboard แล้ว
 สลับเป็น `SOCIAL_PUBLISHER=postpeer` เฉพาะช่วงทดสอบแบบควบคุม
 
+ค่าปัจจุบันของ Render Staging ใช้ `FIREBASE_PROJECT_ID=project-798caf7e-85b8-45e3-af7`
+แล้ว ส่วน Android API key จำกัดไว้เฉพาะ package
+`com.postdee.postdee_mobile.staging` และ Debug SHA-1 ของเครื่องทดสอบ
+
 ## ขั้นตอนสร้างใหม่หรือกู้คืน Staging
 
 1. เปิด Render Dashboard แล้วตรวจ Billing/Usage ก่อนว่ามี Free PostgreSQL อยู่หรือไม่
@@ -71,6 +79,18 @@ Staging เป็นด่านตรวจเวอร์ชันถัดไ
 9. สร้าง mobile build ที่ตั้ง `API_BASE_URL=https://<staging-host>` แล้วทดสอบด้วย
    บัญชีและวิดีโอทดสอบเท่านั้น
 
+Android Staging รองรับเฉพาะ Debug ในตอนนี้:
+
+```powershell
+cd apps/mobile
+Copy-Item staging.local.example.json staging.local.json
+..\..\.tools\flutter\bin\flutter.bat run --debug --dart-define-from-file=staging.local.json
+```
+
+ห้ามใช้ `staging.local.json` กับ `--profile` หรือ `--release` เพราะสอง build type นี้
+ยังใช้ Firebase Production หากเปลี่ยนเครื่อง/CI ต้องเพิ่ม Debug SHA-1/SHA-256 ของ
+keystore ใหม่นั้นใน Firebase Staging ก่อน Google Sign-In จะทำงาน
+
 `/health` ตรวจเพียงว่า process ของ API ตอบได้ ไม่ได้ตรวจ R2, Firebase, Gemini/Groq
 หรือ RevenueCat จึงต้องผ่าน smoke test ด้านล่างก่อนเรียก Staging ว่าใช้งานฟังก์ชันจริงได้
 
@@ -83,15 +103,17 @@ Staging เป็นด่านตรวจเวอร์ชันถัดไ
 
 ## Smoke test ก่อนอนุญาตให้ merge
 
-- Firebase Email/Google login ด้วยบัญชี Staging
-- อัปโหลดไฟล์ไป bucket Staging และยืนยันว่าไม่มี object ใน bucket Production
-- AI caption และ AI edit ใช้โควตา/ข้อมูลของบัญชีทดสอบ
-- เปิด/ปิดความสามารถ AI แล้ว preview และเวลาใน timeline ถูกต้อง
-- RevenueCat Test Store ให้ entitlement Starter/Pro กับ Firebase UID ทดสอบ
-- หลังสลับ `SOCIAL_PUBLISHER=postpeer` แบบตั้งใจแล้ว PostPeer ต้องเชื่อมต่อและ
+- [x] Firebase Google login, ID token และ API user/quota response ด้วยบัญชี Staging
+- [ ] Firebase Email/Password login ด้วยบัญชี Staging
+- [ ] อัปโหลดไฟล์ไป bucket Staging และยืนยันว่าไม่มี object ใน bucket Production
+- [ ] AI caption และ AI edit ใช้โควตา/ข้อมูลของบัญชีทดสอบ
+- [ ] เปิด/ปิดความสามารถ AI แล้ว preview และเวลาใน timeline ถูกต้อง
+- [ ] RevenueCat Test Store purchase/restore ให้ entitlement Starter/Pro กับ
+      Firebase UID ทดสอบ (การกด test webhook ทั่วไปไม่ใช่ purchase E2E)
+- [ ] หลังสลับ `SOCIAL_PUBLISHER=postpeer` แบบตั้งใจแล้ว PostPeer ต้องเชื่อมต่อและ
   โพสต์เฉพาะช่องทางทดสอบ จากนั้นสลับกลับ `disabled`
-- ตั้งเวลา, retry และสถานะล้มเหลวไม่ค้างผิดปกติ
-- ลบบัญชีเปิดทดสอบภายหลังเมื่อมี Firebase service account ของ Staging เท่านั้น
+- [ ] ตั้งเวลา, retry และสถานะล้มเหลวไม่ค้างผิดปกติ
+- [ ] ลบบัญชีเปิดทดสอบภายหลังเมื่อมี Firebase service account ของ Staging เท่านั้น
 
 ## การล้างข้อมูล
 

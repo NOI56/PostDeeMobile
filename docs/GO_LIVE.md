@@ -10,13 +10,14 @@ third-party accounts.
 
 ## Staging Gate
 
-The Staging Blueprint/database are now created on Render and the API `/health`
-check passes in health-only mode. Current provider values are dummy staging-only
-placeholders, not proof that authentication, uploads, AI, billing, or publishing
-work. Replace them only with dedicated Staging credentials and complete
-`docs/STAGING.md` before Production. Mock push and Firebase deletion remain off,
-and social publishing starts in explicit fail-closed `disabled` mode; enable
-PostPeer only for a controlled test account.
+The Staging Blueprint/database are created on Render and the API `/health`
+passes. Dedicated Android Debug Firebase/Google login through the Staging API
+also passes on the Emulator. RevenueCat Test Store configuration and webhook
+transport/auth smoke pass, but purchase/restore/lifecycle E2E does not. R2,
+Gemini/Groq, Phone Auth, and social publishing still need dedicated Staging
+credentials and functional tests. Mock push and Firebase deletion remain off,
+and social publishing stays fail-closed `disabled` except during a controlled
+test account run.
 Complete `docs/STAGING.md` before deploying this release candidate to Production;
 never point Staging at the Production database, R2 bucket, Firebase project, or
 user-owned PostPeer connections.
@@ -30,9 +31,9 @@ user-owned PostPeer connections.
 | Caption from keywords (Gemini) | ⚙️ ready | Render sets `CAPTION_PROVIDER=gemini`; add `GEMINI_API_KEY` |
 | Social publishing (PostPeer) | blocked pending provider test | Per-user connect/refresh/disconnect exists; configure the key, connect a test user, then run a controlled publish |
 | Video upload (Cloudflare R2) | ⚙️ ready | `VIDEO_STORAGE=r2` + R2 creds |
-| Auth (Firebase) | ⚙️ ready | `AUTH_PROVIDER=firebase` + project |
+| Auth (Firebase) | ✅ Android Debug Staging Google path passed; Production/iOS/Phone/physical-device tests remain | `AUTH_PROVIDER=firebase` + project |
 | Account deletion | ⚙️ ready, deployment test required | `FIREBASE_AUTH_DELETE_ENABLED=true` + service account; verify R2 prefix and Firebase UID deletion |
-| Subscriptions (RevenueCat / App Store / Play) | ⚙️ ready | `BILLING_PROVIDER=revenuecat` + webhook token |
+| Subscriptions (RevenueCat / App Store / Play) | ⚙️ Test Store config + webhook transport passed; purchase E2E pending | `BILLING_PROVIDER=revenuecat` + webhook token |
 | Durable queue (Redis/BullMQ) | ⚙️ optional | `PUBLISH_QUEUE=bullmq` + `POST_STORE=prisma` + `DATABASE_URL` + `REDIS_URL` + run worker |
 
 ## 1. Gemini caption (free key — easiest)
@@ -67,6 +68,13 @@ user-owned PostPeer connections.
 
 ## 4. Auth — Firebase (unlocks Apple Sign-In, phone OTP, push)
 
+Staging currently uses Firebase project `project-798caf7e-85b8-45e3-af7` and
+Android Debug application id `com.postdee.postdee_mobile.staging`. Email/Password
+and Google providers are enabled; Google login, token verification, and the
+authenticated Home/API response passed on the Android Emulator. The Android API
+key is restricted by package + Debug SHA-1. This does not prove Production,
+Phone Auth, iOS, or physical-device readiness.
+
 - Create a Firebase project, enable Google + Apple + Phone sign-in.
 - `AUTH_PROVIDER=firebase`
 - `FIREBASE_PROJECT_ID=...`
@@ -93,6 +101,12 @@ user-owned PostPeer connections.
   Android/web until server-side Apple token revocation is implemented.
 
 ## 5. Subscriptions — RevenueCat
+
+The PostDee RevenueCat project now has Test Store Starter/Pro products,
+entitlements, a current offering, and an authenticated sandbox-only Staging
+webhook. The dashboard transport test returned HTTP 202 and was safely ignored
+because its generic `test_product` is intentionally unmapped. This proves only
+webhook reachability/auth, not purchase, restore, renewal, cancel, or refund.
 
 - `BILLING_PROVIDER=revenuecat`
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN=...`

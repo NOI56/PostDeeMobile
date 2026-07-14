@@ -47,10 +47,13 @@ Current status:
   operational check and must be rechecked in the Render dashboard before launch.
 - The isolated free-tier Staging Blueprint and database have now been created on
   Render, and the API health check passes. The Free Postgres database expires on
-  2026-08-14. Provider values are staging-only dummies for health verification,
-  so Firebase login, R2, Gemini/Groq, RevenueCat, mobile configuration, and
-  controlled social publishing still require functional staging credentials and
-  smoke tests.
+  2026-08-14. A dedicated Firebase Staging project, isolated Android Debug app
+  id, Google provider, restricted Android API key, and Firebase-token-to-API
+  login smoke test now pass on the Android Emulator. RevenueCat Test Store
+  products, entitlements, current offering, and authenticated sandbox webhook
+  transport are configured, but purchase/restore/lifecycle E2E remains. R2,
+  Gemini/Groq, Phone Auth, and controlled social publishing still need
+  functional staging credentials and smoke tests.
 - Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
   mock/provider code have been removed from the active app path. Subscription
   compatibility flags remain false for older clients.
@@ -74,10 +77,10 @@ Primary backend choices:
 | Database | Render PostgreSQL | Store users, posts, templates, subscriptions, and publish metrics through Prisma | Prisma schema and repositories exist | Use Render PostgreSQL first before considering Neon, Supabase, or self-hosted PostgreSQL. Set all Prisma-backed stores to `prisma` only after migrations and seed flow are verified. |
 | Queue / scheduling | Upstash Redis + BullMQ | Schedule publish jobs and let a worker process delayed posts | BullMQ adapter exists; queue handoff failures return 503, stale rescheduled jobs are skipped, and config now requires shared Prisma posts for BullMQ | Use `PUBLISH_QUEUE=bullmq`, `POST_STORE=prisma`, `DATABASE_URL`, and `REDIS_URL` after Upstash is configured. Keep the in-memory queue for local development only. |
 | Video storage | Cloudflare R2 | Store temporary upload videos and signed upload/download URLs | R2 adapter and managed multipart sessions exist | Use `VIDEO_STORAGE=r2` with `UPLOAD_PROTOCOL_MODE=dual` during rollout. New clients opt in to `multipart-v1`; move to strict `multipart` after old clients are retired. Keep videos temporary and delete after successful publishing where possible. |
-| Auth | Firebase Auth | Google Sign-In, Firebase ID token verification, and Phone Auth for Basic quota unlock | Mobile and backend scaffolds exist | Use `AUTH_PROVIDER=firebase` after Firebase project files and mobile sign-in are tested on device. |
+| Auth | Firebase Auth | Google Sign-In, Firebase ID token verification, and Phone Auth for Basic quota unlock | Dedicated Android Debug Staging config and Google login/token/API smoke pass on Emulator; Production, iOS, Phone Auth, and physical-device tests remain | Keep Debug Staging on `com.postdee.postdee_mobile.staging`; do not mix its Dart defines with Profile/Release Firebase files. |
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to Gemini (retry + model fallback + local template fallback); media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`); legacy Groq/Whisper path kept for when no Gemini is configured | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
 | AI auto editing | Groq Whisper large-v3 + mobile FFmpeg | Pro subtitle transcription, optional silence/filler cuts, UI capability recipe, subtitle burn-in, phone-side review, and video export | Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, exact filler allowlist, detected count/time summary, reversible supported capabilities with automatic preview re-render, accordion settings, and Post/manual-editor exits exist. Production beat sync and the 3-second hook are locked as `เร็ว ๆ นี้` behind default-off compile-time flags. | Re-check Groq pricing/docs before production launch. Backend handles transcription, quota, and recipe hints; mobile renders and reviews locally to control cost. `ENABLE_EXPERIMENTAL_BEAT_SYNC=true` and `ENABLE_EXPERIMENTAL_AI_HOOK=true` are internal setup-UI QA flags only and do not make either renderer real. |
-| Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Backend webhook scaffold prepared; mobile SDK gateway behind flag | Prefer RevenueCat webhooks over maintaining custom Apple/Google subscription verification for the MVP. |
+| Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store products/entitlements/offering and authenticated webhook transport configured; mobile SDK gateway remains behind a flag | Test purchase, restore, renewal, cancel, and refund before claiming billing E2E. Prefer RevenueCat over maintaining custom Apple/Google verification. |
 | Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels through one provider | Per-user connect/refresh/provider-first disconnect and publisher code are wired; a connected provider account and controlled publish test are still needed | Use PostPeer first to reduce platform integration risk. Direct platform APIs are deferred until after launch. |
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
 | Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile registration, `POST /devices`, notifier, and firebase-admin sender exist; mock remains default | Add the service account, set `PUSH_SENDER=firebase`, enable APNs/iOS capabilities, and test on a real device. |
@@ -85,15 +88,17 @@ Primary backend choices:
 Recommended activation order:
 
 1. Keep backend/mobile build, analyze, and tests green as changes land.
-2. Replace health-only dummy values with real staging-only provider credentials
-   and pass the functional smoke tests in `docs/STAGING.md`.
+2. Replace the remaining health-only R2/Gemini/Groq values with real
+   staging-only provider credentials and pass the functional smoke tests in
+   `docs/STAGING.md`.
 3. Recheck Render secrets and Prisma migrations against the live database only
    after the same release candidate passes Staging.
 4. Add Upstash Redis and run the publish worker as a separate Render worker service when durable scheduling is needed.
 5. Test Cloudflare R2 managed multipart upload/download in the full
    mobile-to-worker flow, including per-part retry, completion recovery, abort,
    and account deletion while an upload is active.
-6. Enable Firebase Auth and phone verification with real mobile project config.
+6. Enable and test Firebase Phone Auth, then add isolated iOS Staging config and
+   repeat auth smoke tests on physical Android/iOS devices.
 7. Configure RevenueCat real App Store / Google Play products, replace the local
    Test Store key with platform SDK keys, and test Starter/Pro purchases on
    sandbox devices.

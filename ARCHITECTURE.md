@@ -51,6 +51,8 @@ Production และ Staging ต้องเป็นคนละ data boundary:
 `postdee-api`/`postdee-postgres` ส่วน `render.staging.yaml` ชี้ไป
 `postdee-api-staging`/`postdee-postgres-staging` และต้องใช้ R2, Firebase,
 RevenueCat และ PostPeer ชุดทดสอบแยกกัน รายละเอียดอยู่ใน `docs/STAGING.md`
+Android Debug เพิ่ม suffix `.staging` และใช้ `src/debug/google-services.json`;
+Profile/Release ยังคงใช้ Firebase Production จึงห้ามผสมกับ Staging Dart defines
 
 ## Mobile App
 
@@ -77,7 +79,9 @@ Current mobile pieces:
   been removed from the active app path.
 - Saved templates screen.
 - Unified analytics screen gated by Pro status.
-- Firebase/Google auth gateway scaffold with Firebase Phone Auth UI for Basic free quota verification.
+- Firebase/Google auth gateway with an isolated Android Debug Staging config;
+  Google login/token/Staging API smoke passes on Emulator. Firebase Phone Auth,
+  iOS, Production, and physical-device tests remain.
 - RevenueCat webhook scaffold for Starter and Pro entitlements, plus a legacy Store Subscription scaffold.
 
 Important mobile services:
@@ -688,11 +692,12 @@ cd apps/mobile
   handling, and real-device export/review testing.
 - Real R2 upload requires Cloudflare credentials and integration testing.
 - Redis/BullMQ scheduling needs infrastructure testing.
-- Firebase project files are present; auth still needs provider/capability setup
-  and real-device testing.
-- RevenueCat subscriptions need real Apple/Google products, platform SDK keys,
-  sandbox testing, and fuller renewal/cancel/refund webhook coverage. The
-  legacy direct store verifier remains a scaffold.
+- Firebase Android Debug Staging Google auth passes end to end; Phone Auth,
+  Production/iOS capability setup, and physical-device testing remain.
+- RevenueCat Test Store products/entitlements/current offering and authenticated
+  webhook transport are configured. Purchase/restore/lifecycle tests, real
+  Apple/Google products, and platform SDK keys remain. The legacy direct store
+  verifier remains a scaffold.
 - Analytics does not yet fetch real platform metrics.
 
 ## Recommended Next Steps
@@ -706,6 +711,6 @@ cd apps/mobile
 6. Run the `RealClipCaptionUsage` migration in staging/production and set
    `CAPTION_USAGE_STORE=prisma` before selling paid AI caption quotas.
 7. Harden Pro Groq Whisper job/session persistence, top-up, retry/recovery, and real-device review/export states.
-8. Test Firebase Google Sign-In on a real Android/iOS device.
+8. Test Firebase Google Sign-In and Phone Auth on real Android/iOS devices.
 9. Test video picker and 9:16 preview on real devices.
 10. Connect the first real social publishing provider.

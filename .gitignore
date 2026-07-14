@@ -12,6 +12,7 @@ coverage/
 .worktrees/
 *.log
 .claude/
+.codex/
 .idea/
 .tmp/
 claude-design-screenshots/

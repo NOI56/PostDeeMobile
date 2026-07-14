@@ -12,6 +12,14 @@ void main() {
       ),
     );
 
+    expect(find.text('รายการที่ได้รับบนอุปกรณ์นี้ในรอบการใช้งานนี้'),
+        findsOneWidget);
+    expect(
+      find.text('เมื่อได้รับผลการเผยแพร่โพสต์บนอุปกรณ์นี้ จะแสดงที่นี่'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('คลิปมาแรง'), findsNothing);
+    expect(find.textContaining('คิวตั้งเวลา'), findsNothing);
     expect(find.byIcon(Icons.notifications_off_outlined), findsOneWidget);
     expect(find.byIcon(Icons.check_circle_outline), findsNothing);
     expect(find.byIcon(Icons.trending_up), findsNothing);
@@ -32,6 +40,8 @@ void main() {
 
     expect(find.text('โพสต์เผยแพร่แล้ว'), findsOneWidget);
     expect(find.text('ลงครบทุกแพลตฟอร์ม'), findsOneWidget);
+    expect(find.text('รายการที่ได้รับบนอุปกรณ์นี้ในรอบการใช้งานนี้'),
+        findsOneWidget);
     expect(find.byIcon(Icons.notifications_off_outlined), findsNothing);
   });
 

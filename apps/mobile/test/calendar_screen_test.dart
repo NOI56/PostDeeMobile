@@ -107,4 +107,42 @@ void main() {
     expect(find.text('Fresh scheduled clip'), findsOneWidget);
     expect(find.byKey(const ValueKey('calendar-empty')), findsNothing);
   });
+
+  testWidgets('only shows actions supported by the scheduled-post API',
+      (tester) async {
+    var addPostCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: CalendarScreen(
+            loadScheduledPosts: () async => [
+              ScheduledPostResult(
+                id: 'post-actions',
+                caption: 'Scheduled actions clip',
+                videoS3Key: 'uploads/actions.mp4',
+                platforms: const ['TIKTOK'],
+                scheduledAt: DateTime(2026, 6, 9, 19),
+                status: 'QUEUED',
+                createdAt: DateTime(2026, 6, 1),
+              ),
+            ],
+            onAddPost: () => addPostCalls += 1,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Scheduled actions clip'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Scheduled actions clip'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('เลื่อนเวลา'), findsOneWidget);
+    expect(find.text('ยกเลิกโพสต์'), findsOneWidget);
+    expect(find.text('แก้ไขโพสต์'), findsNothing);
+    expect(addPostCalls, 0);
+  });
 }

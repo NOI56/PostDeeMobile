@@ -164,14 +164,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.edit_outlined, color: AppTheme.accent),
-              title: const Text('แก้ไขโพสต์'),
-              onTap: () {
-                Navigator.of(context).pop();
-                widget.onAddPost?.call();
-              },
-            ),
-            ListTile(
               leading:
                   const Icon(Icons.delete_outline, color: Colors.redAccent),
               title: const Text('ยกเลิกโพสต์',

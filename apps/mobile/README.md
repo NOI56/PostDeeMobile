@@ -14,7 +14,9 @@ Run commands from this folder with the workspace-local Flutter SDK:
 
 ## Platform Folders
 
-Android and iOS folders are generated from Flutter templates with package org `com.postdee`.
+The current Android application id is `com.postdee.postdee_mobile` and the iOS
+bundle id is `com.postdee.postdeeMobile`. Keep Firebase, RevenueCat, Google Play,
+and App Store configuration aligned with these exact identifiers.
 Android builds still require Android Studio and the Android SDK.
 Production iOS builds require Xcode on macOS.
 
@@ -54,6 +56,13 @@ The script merges:
   `ENABLE_FIREBASE_AUTH=true`, and `ALLOW_LOCAL_MOCK_AUTH=false`.
 - `revenuecat.local.json` for the RevenueCat mobile SDK key. This file is
   ignored by Git and must not contain backend webhook tokens.
+
+The production helper rejects empty RevenueCat keys, Test Store keys beginning
+with `test_`, and example placeholders beginning with `replace_with_`. The
+`build-apk` command specifically requires a valid
+`REVENUECAT_ANDROID_API_KEY`; a generic `REVENUECAT_API_KEY` does not count for
+an Android release build. Use the direct Flutter command in the local testing
+section below when testing with the RevenueCat Test Store.
 
 Build a release Android APK with the same production flags:
 

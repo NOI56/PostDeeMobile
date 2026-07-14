@@ -25,6 +25,7 @@ class GrowthToolDetail {
     required this.icon,
     required this.color,
     required this.settings,
+    this.prototypeOnly = false,
     this.note =
         'รอบนี้เป็นหน้าตั้งค่าเบื้องต้น ระบบจะจำค่าที่เลือกไว้ในเครื่องเพื่อใช้ต่อยอดกับระบบจริง',
   });
@@ -36,6 +37,7 @@ class GrowthToolDetail {
   final IconData icon;
   final Color color;
   final List<GrowthToolSettingOption> settings;
+  final bool prototypeOnly;
   final String note;
 }
 
@@ -104,7 +106,9 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
     }
 
     setState(() {
-      _draftSettings = savedSettings ?? _defaultSettings();
+      _draftSettings = widget.detail.prototypeOnly
+          ? (savedSettings ?? _defaultSettings()).copyWith(isEnabled: false)
+          : savedSettings ?? _defaultSettings();
     });
   }
 
@@ -139,9 +143,12 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
     });
 
     try {
+      final settingsToSave = widget.detail.prototypeOnly
+          ? _draftSettings.copyWith(isEnabled: false)
+          : _draftSettings;
       await widget.settingsStore.saveSettings(
         widget.detail.id,
-        _draftSettings,
+        settingsToSave,
       );
     } catch (_) {
       if (!mounted) {
@@ -163,7 +170,13 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
 
     navigator.pop();
     messenger.showSnackBar(
-      const SnackBar(content: Text('บันทึกการตั้งค่าแล้ว')),
+      SnackBar(
+        content: Text(
+          widget.detail.prototypeOnly
+              ? 'บันทึกแบบร่างไว้ในเครื่องแล้ว ยังไม่ได้เปิดใช้งานฟีเจอร์'
+              : 'บันทึกการตั้งค่าแล้ว',
+        ),
+      ),
     );
   }
 
@@ -171,8 +184,11 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
   Widget build(BuildContext context) {
     final detail = widget.detail;
     final textTheme = Theme.of(context).textTheme;
-    final statusLabel =
-        _draftSettings.isEnabled ? 'เปิดใช้งานแล้ว' : 'ยังไม่เปิดใช้งาน';
+    final statusLabel = detail.prototypeOnly
+        ? 'แบบร่างในเครื่อง'
+        : _draftSettings.isEnabled
+            ? 'เปิดใช้งานแล้ว'
+            : 'ยังไม่เปิดใช้งาน';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -266,21 +282,27 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                PostDeeSoftPill(label: detail.status, color: detail.color),
-                PostDeeSoftPill(label: statusLabel, color: detail.color),
                 PostDeeSoftPill(
-                  label: 'ตั้งค่าในเครื่องนี้',
+                  label: detail.prototypeOnly ? 'เร็ว ๆ นี้' : detail.status,
                   color: detail.color,
                 ),
+                PostDeeSoftPill(label: statusLabel, color: detail.color),
+                if (!detail.prototypeOnly)
+                  PostDeeSoftPill(
+                    label: 'ตั้งค่าในเครื่องนี้',
+                    color: detail.color,
+                  ),
               ],
             ),
             const SizedBox(height: 14),
-            _ToolEnabledCard(
-              color: detail.color,
-              isEnabled: _draftSettings.isEnabled,
-              onChanged: _isSaving ? null : _setEnabled,
-            ),
-            const SizedBox(height: 10),
+            if (!detail.prototypeOnly) ...[
+              _ToolEnabledCard(
+                color: detail.color,
+                isEnabled: _draftSettings.isEnabled,
+                onChanged: _isSaving ? null : _setEnabled,
+              ),
+              const SizedBox(height: 10),
+            ],
             PostDeeCard(
               padding: const EdgeInsets.all(AppTheme.spaceMd),
               glowColor: detail.color,
@@ -336,7 +358,9 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        detail.note,
+                        detail.prototypeOnly
+                            ? 'ฟีเจอร์นี้ยังไม่เชื่อมระบบจริง ค่าที่เลือกจะบันทึกเป็นแบบร่างในเครื่องนี้เท่านั้น'
+                            : detail.note,
                         style: TextStyle(
                           fontSize: 12,
                           height: 1.45,
@@ -366,7 +390,12 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
                       onPressed: _isSaving ? null : _saveSettings,
                       icon: const Icon(Icons.save_outlined, size: 18),
                       label: Text(
-                          _isSaving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'),
+                        _isSaving
+                            ? 'กำลังบันทึก...'
+                            : detail.prototypeOnly
+                                ? 'บันทึกแบบร่าง'
+                                : 'บันทึกการตั้งค่า',
+                      ),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppTheme.accent,
                         foregroundColor: Colors.white,

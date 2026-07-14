@@ -159,7 +159,7 @@ void main() {
 
     expect(find.text('ช่องทางที่ทำผลงานดีสุด'), findsOneWidget);
     expect(find.text('TikTok'), findsOneWidget);
-    expect(find.text('รายงานเชิงลึก (Pro)'), findsOneWidget);
+    expect(find.text('รายงานเชิงลึก (Pro)'), findsNothing);
   });
 
   testWidgets('reloads real analytics when the date range changes',
@@ -234,10 +234,11 @@ void main() {
       analyticsScroll,
       'ศูนย์คอมเมนต์ AI',
     );
-    await _expectTextAfterScrolling(
-      tester,
-      analyticsScroll,
-      'คอมเมนต์และคำตอบต้องให้เจ้าของร้านอนุมัติก่อนเผยแพร่',
+    expect(find.text('เร็ว ๆ นี้'), findsNWidgets(2));
+    expect(find.text('บันทึกชุดคีย์เวิร์ดสำหรับทีม'), findsNothing);
+    expect(
+      find.text('คอมเมนต์และคำตอบต้องให้เจ้าของร้านอนุมัติก่อนเผยแพร่'),
+      findsNothing,
     );
   });
 
@@ -264,8 +265,12 @@ void main() {
         find.byKey(const ValueKey('growth-tool-real-status-note')),
         findsOneWidget,
       );
-      expect(find.text('ตั้งค่าในเครื่องนี้'), findsOneWidget);
-      expect(find.text('ยังไม่เชื่อมระบบจริง'), findsNothing);
+      expect(find.text('แบบร่างในเครื่อง'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('growth-tool-enabled-switch')),
+        findsNothing,
+      );
+      expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
 
       await tester.tap(find.byTooltip('ปิด'));
       await tester.pumpAndSettle();

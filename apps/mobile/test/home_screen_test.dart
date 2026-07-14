@@ -403,7 +403,7 @@ void main() {
     await _tapHomeTextAfterScrolling(tester, 'ลิงก์หน้าโปรไฟล์');
 
     expect(find.text('สร้างหน้า Link in Bio'), findsOneWidget);
-    expect(find.text('postdee.link/ร้านของคุณ'), findsOneWidget);
+    expect(find.text('ตัวอย่าง: postdee.link/ร้านของคุณ'), findsOneWidget);
     expect(find.text('ลิงก์สินค้าและแคมเปญ'), findsOneWidget);
 
     await tester.drag(find.byType(Scrollable).last, const Offset(0, -520));
@@ -433,8 +433,13 @@ void main() {
         find.byKey(const ValueKey('growth-tool-real-status-note')),
         findsOneWidget,
       );
-      expect(find.text('ตั้งค่าในเครื่องนี้'), findsOneWidget);
-      expect(find.text('ยังไม่เชื่อมระบบจริง'), findsNothing);
+      expect(find.text('เร็ว ๆ นี้'), findsWidgets);
+      expect(find.text('แบบร่างในเครื่อง'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('growth-tool-enabled-switch')),
+        findsNothing,
+      );
+      expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
 
       await tester.tap(find.byTooltip('ปิด'));
       await tester.pumpAndSettle();

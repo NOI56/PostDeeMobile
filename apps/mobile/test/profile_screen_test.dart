@@ -14,7 +14,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('shows package comparison, quotas, and Pro team access',
+  testWidgets('shows only currently available package benefits',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -73,7 +73,30 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(cachedText('299 ฿/ด.'), findsOneWidget);
+    expect(cachedText('รายงานวิเคราะห์เชิงลึก'), findsNothing);
     expect(cachedText('โควต้าตัดต่อ AI'), findsNothing);
+  });
+
+  testWidgets('security copy matches email and Google Firebase sign-in',
+      (tester) async {
+    await tester.pumpWidget(_hostProfile());
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('ความปลอดภัย'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.ensureVisible(find.text('ความปลอดภัย'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ความปลอดภัย'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('อีเมลหรือ Google'), findsOneWidget);
+    expect(find.textContaining('Firebase Authentication'), findsOneWidget);
+    expect(find.textContaining('Google หรือ Apple เท่านั้น'), findsNothing);
+    expect(find.textContaining('ผู้ช่วย/ทีมงาน'), findsNothing);
   });
 
   testWidgets('shows AI editing quota only for the Pro plan', (tester) async {

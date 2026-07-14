@@ -107,7 +107,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         price: 'ฟรี',
         isCurrent: currentPlanId == 'basic',
         features: const [
-          _PlanFeature('โพสต์ฟรี 3 ครั้ง/เดือนหลังยืนยันเบอร์'),
+          _PlanFeature('โพสต์ฟรี 3 หน่วย/เดือนหลังยืนยันเบอร์'),
           _PlanFeature('ต้องยืนยันเบอร์ก่อนโพสต์', included: false),
           _PlanFeature('ไม่มี AI แคปชั่นและการตั้งเวลา', included: false),
         ],
@@ -121,7 +121,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           _PlanFeature('โพสต์หลายช่องทาง 120 หน่วย/เดือน'),
           _PlanFeature('ตั้งเวลาโพสต์ + ปฏิทิน + เทมเพลต'),
           _PlanFeature('AI แคปชั่นจากเสียงคลิป 50 ครั้ง/เดือน'),
-          _PlanFeature('ลายน้ำอัตโนมัติ + ตัดคลิปเป็น EP'),
+          _PlanFeature('ลายน้ำอัตโนมัติ'),
         ],
       ),
       _PlanOption(
@@ -134,7 +134,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           _PlanFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
           _PlanFeature('ทุกอย่างใน Starter + วิเคราะห์เต็มรูปแบบ'),
           _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน'),
-          _PlanFeature('เรดาร์แฮชแท็ก, แจ้งเตือนไวรัล, ทีมและผู้ช่วย'),
+          _PlanFeature('AI ตัดต่อ 200 นาที/เดือน'),
         ],
       ),
     ];

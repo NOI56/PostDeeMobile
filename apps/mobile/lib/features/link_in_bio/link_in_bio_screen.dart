@@ -24,8 +24,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   late final TextEditingController _storeNameController;
   late final TextEditingController _slugController;
   Set<String> _enabledLinkIds = LinkInBioDraft.defaults().enabledLinkIds;
-  List<LinkInBioCustomLink> _customLinks = LinkInBioDraft.defaults().customLinks;
-  bool _autoUpdateFromScheduledPosts = true;
+  List<LinkInBioCustomLink> _customLinks =
+      LinkInBioDraft.defaults().customLinks;
   bool _isSaving = false;
 
   @override
@@ -34,7 +34,6 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     final defaults = LinkInBioDraft.defaults();
     _storeNameController = TextEditingController(text: defaults.storeName);
     _slugController = TextEditingController(text: defaults.slug);
-    _autoUpdateFromScheduledPosts = defaults.autoUpdateFromScheduledPosts;
     _loadDraft();
   }
 
@@ -61,7 +60,6 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     setState(() {
       _storeNameController.text = draft.storeName;
       _slugController.text = draft.slug;
-      _autoUpdateFromScheduledPosts = draft.autoUpdateFromScheduledPosts;
       _enabledLinkIds = draft.enabledLinkIds;
       _customLinks = draft.customLinks;
     });
@@ -94,7 +92,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       slug: _slugController.text.trim().isEmpty
           ? LinkInBioDraft.defaults().slug
           : _slugController.text.trim(),
-      autoUpdateFromScheduledPosts: _autoUpdateFromScheduledPosts,
+      autoUpdateFromScheduledPosts: false,
       enabledLinkIds: _enabledLinkIds,
       customLinks: _customLinks,
     );
@@ -221,7 +219,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 4),
                       child: Text(
-                        '199 / 299',
+                        'ต้นแบบ',
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w700,
@@ -232,6 +230,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: AppTheme.spaceMd),
+              const _LocalDraftNotice(),
               const SizedBox(height: AppTheme.spaceMd),
               _BioPreviewCard(
                 storeName: _storeNameController.text,
@@ -269,7 +269,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                       onChanged: (_) => setState(() {}),
                       textInputAction: TextInputAction.done,
                       decoration: const InputDecoration(
-                        labelText: 'URL สั้น',
+                        labelText: 'URL ตัวอย่าง (ยังไม่เผยแพร่)',
                         prefixText: 'postdee.link/',
                         hintText: 'store-name',
                       ),
@@ -333,12 +333,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
               const SizedBox(height: 11),
               _AddLinkButton(onTap: _showAddLinkSheet),
               const SizedBox(height: 14),
-              _AutoUpdateCard(
-                value: _autoUpdateFromScheduledPosts,
-                onChanged: (value) => setState(() {
-                  _autoUpdateFromScheduledPosts = value;
-                }),
-              ),
+              const _AutoUpdateCard(),
               const SizedBox(height: AppTheme.spaceLg),
               Row(
                 children: [
@@ -396,6 +391,43 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _LocalDraftNotice extends StatelessWidget {
+  const _LocalDraftNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      decoration: BoxDecoration(
+        color: AppTheme.mint,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 20,
+            color: AppTheme.accentCyanInk,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'แบบร่างในเครื่อง ยังไม่เผยแพร่เป็นเว็บไซต์',
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -471,7 +503,7 @@ class _BioPreviewCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'postdee.link/$displaySlug',
+                      'ตัวอย่าง: postdee.link/$displaySlug',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -755,73 +787,80 @@ class _LinkActionButton extends StatelessWidget {
 }
 
 class _AutoUpdateCard extends StatelessWidget {
-  const _AutoUpdateCard({
-    required this.value,
-    required this.onChanged,
-  });
-
-  final bool value;
-  final ValueChanged<bool> onChanged;
+  const _AutoUpdateCard();
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       label: 'อัปเดตจากโพสต์ที่ตั้งเวลา',
-      toggled: value,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(15),
-        onTap: () => onChanged(!value),
-        child: Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: AppTheme.border),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF122018).withValues(alpha: 0.04),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.event_repeat_outlined,
-                size: 21,
-                color: AppTheme.accentCyanInk,
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'อัปเดตจากโพสต์ที่ตั้งเวลา',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
-                      ),
+      enabled: false,
+      child: Container(
+        key: const ValueKey('link-in-bio-auto-update-card'),
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: AppTheme.glass,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: AppTheme.border),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF122018).withValues(alpha: 0.04),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.event_repeat_outlined,
+              size: 21,
+              color: AppTheme.textMuted,
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'อัปเดตจากโพสต์ที่ตั้งเวลา',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textSecondary,
                     ),
-                    const SizedBox(height: 1),
-                    Text(
-                      'เตรียมลิงก์สินค้าให้หน้าโปรไฟล์อัตโนมัติ',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.textMuted,
-                      ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    'ระบบอัปเดตลิงก์อัตโนมัติยังไม่เปิดใช้งาน',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.textMuted,
                     ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppTheme.spaceSm),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppTheme.glassDeep,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                child: Text(
+                  'เร็ว ๆ นี้',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textMuted,
+                  ),
                 ),
               ),
-              const SizedBox(width: AppTheme.spaceSm),
-              ExcludeSemantics(child: _BioSwitch(isOn: value)),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

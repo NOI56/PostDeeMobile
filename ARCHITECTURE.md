@@ -47,6 +47,11 @@ flowchart LR
   Worker -.-> PlannedSentry
 ```
 
+Production และ Staging ต้องเป็นคนละ data boundary: `render.yaml` ชี้ไป
+`postdee-api`/`postdee-postgres` ส่วน `render.staging.yaml` ชี้ไป
+`postdee-api-staging`/`postdee-postgres-staging` และต้องใช้ R2, Firebase,
+RevenueCat และ PostPeer ชุดทดสอบแยกกัน รายละเอียดอยู่ใน `docs/STAGING.md`
+
 ## Mobile App
 
 Path:
@@ -234,7 +239,7 @@ This keeps the schema usable for Apple App Store, Google Play, or other future b
 | AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | `TRANSCRIPTION_PROVIDER=groq` with Groq Whisper transcription on backend, FFmpeg export on mobile |
 | Auth | `AUTH_PROVIDER=mock` | `AUTH_PROVIDER=firebase` |
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
-| Social publishing | `SOCIAL_PUBLISHER=mock` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
+| Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
 
 Firebase production account deletion additionally requires
 `FIREBASE_AUTH_DELETE_ENABLED=true` and `FIREBASE_SERVICE_ACCOUNT_JSON`. The API

@@ -235,6 +235,15 @@ describe('createPlatformPublisherFromConfig', () => {
     expect(result.externalPostId).toContain('mock-tiktok');
   });
 
+  it('fails closed without calling a provider when publishing is disabled', async () => {
+    const config = readServerConfig({ SOCIAL_PUBLISHER: 'disabled' });
+    const publisher = createPlatformPublisherFromConfig({ config });
+
+    await expect(
+      publisher.publish({ postId: 'p-disabled', platform: 'TIKTOK' })
+    ).rejects.toThrow(/disabled for this environment/i);
+  });
+
   it('requires an API key when SOCIAL_PUBLISHER is postpeer', () => {
     const config = readServerConfig({ SOCIAL_PUBLISHER: 'postpeer' });
 

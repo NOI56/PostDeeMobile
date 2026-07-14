@@ -8,6 +8,21 @@
 
 ---
 
+## 0) Staging แยกจาก Production
+
+- [x] เตรียม `render.staging.yaml` และเทสต์ว่าชื่อ service/database แยกจาก Production
+- [ ] ตรวจว่า workspace ยังมีสิทธิ์สร้าง Free PostgreSQL อีกหนึ่งตัว ถ้ามีฐาน Free
+      อยู่แล้วให้หยุด ห้ามใช้ฐาน Production ร่วมกัน
+- [ ] สร้าง Blueprint `postdee-api-staging` จาก branch
+      `codex/ai-edit-thai-timing-staging`
+- [ ] ใส่ R2/Firebase/RevenueCat/PostPeer credentials ชุดทดสอบเท่านั้น
+- [x] ตั้ง Staging เริ่มต้นเป็น `SOCIAL_PUBLISHER=disabled`; สลับ PostPeer เฉพาะ
+      controlled test ด้วยบัญชีทดสอบแล้วสลับกลับ
+- [ ] เตรียม Firebase mobile config แยกที่ตรงกับ Staging project ก่อนทดสอบ login
+- [ ] ผ่าน smoke test ใน `docs/STAGING.md` ก่อน merge หรือ deploy Production
+
+---
+
 ## 1) สลับ provider เป็นของจริง (ตัวแปร env ของ API)
 
 ค่าเริ่มต้นทั้งหมดเป็น `mock`/`memory` และใน `NODE_ENV=production` เซิร์ฟเวอร์จะไม่

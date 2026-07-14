@@ -262,6 +262,20 @@ describe('readServerConfig', () => {
     ).toThrow('VIDEO_STORAGE=mock is not allowed when NODE_ENV=production');
   });
 
+  it('allows an explicitly disabled social publisher to fail closed in staging', () => {
+    const config = readServerConfig({
+      NODE_ENV: 'production',
+      AUTH_PROVIDER: 'firebase',
+      FIREBASE_PROJECT_ID: 'postdee-staging',
+      BILLING_PROVIDER: 'store',
+      SOCIAL_PUBLISHER: 'disabled',
+      VIDEO_STORAGE: 'r2',
+      CLOUDFLARE_R2_BUCKET: 'postdee-r2-staging'
+    });
+
+    expect(config.socialPublisher).toBe('disabled');
+  });
+
   it('allows RevenueCat billing in production', () => {
     const config = readServerConfig({
       NODE_ENV: 'production',

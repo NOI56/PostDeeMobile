@@ -45,10 +45,12 @@ Current status:
 - Render PostgreSQL and the API service have been created and the live health
   endpoint responds successfully. Secret/provider state remains a dated
   operational check and must be rechecked in the Render dashboard before launch.
-- A separate `render.staging.yaml` now defines an isolated free-tier staging API
-  and database with production safety guards. It has not been created in Render
-  yet; the workspace free-database limit and staging-only provider secrets must
-  be confirmed first.
+- The isolated free-tier Staging Blueprint and database have now been created on
+  Render, and the API health check passes. The Free Postgres database expires on
+  2026-08-14. Provider values are staging-only dummies for health verification,
+  so Firebase login, R2, Gemini/Groq, RevenueCat, mobile configuration, and
+  controlled social publishing still require functional staging credentials and
+  smoke tests.
 - Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
   mock/provider code have been removed from the active app path. Subscription
   compatibility flags remain false for older clients.
@@ -83,8 +85,8 @@ Primary backend choices:
 Recommended activation order:
 
 1. Keep backend/mobile build, analyze, and tests green as changes land.
-2. Create the isolated Staging Blueprint from `render.staging.yaml`, fill only
-   staging credentials, and pass `docs/STAGING.md` smoke tests.
+2. Replace health-only dummy values with real staging-only provider credentials
+   and pass the functional smoke tests in `docs/STAGING.md`.
 3. Recheck Render secrets and Prisma migrations against the live database only
    after the same release candidate passes Staging.
 4. Add Upstash Redis and run the publish worker as a separate Render worker service when durable scheduling is needed.

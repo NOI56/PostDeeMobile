@@ -11,11 +11,13 @@
 ## 0) Staging แยกจาก Production
 
 - [x] เตรียม `render.staging.yaml` และเทสต์ว่าชื่อ service/database แยกจาก Production
-- [ ] ตรวจว่า workspace ยังมีสิทธิ์สร้าง Free PostgreSQL อีกหนึ่งตัว ถ้ามีฐาน Free
-      อยู่แล้วให้หยุด ห้ามใช้ฐาน Production ร่วมกัน
-- [ ] สร้าง Blueprint `postdee-api-staging` จาก branch
+- [x] ตรวจสิทธิ์และสร้าง Free PostgreSQL แยกสำเร็จโดยไม่ใช้ฐาน Production ร่วมกัน
+- [x] สร้าง Blueprint `postdee-api-staging` จาก branch
       `codex/ai-edit-thai-timing-staging`
-- [ ] ใส่ R2/Firebase/RevenueCat/PostPeer credentials ชุดทดสอบเท่านั้น
+- [x] ใส่ dummy staging-only values สำหรับ health-only โดยไม่ใช้ Production credentials
+- [x] API deploy, Prisma migration และ `GET /health` ผ่านบน Render Staging
+- [ ] เปลี่ยนเป็น R2/Firebase/RevenueCat/Gemini/Groq ของ Staging จริงก่อน functional
+      smoke test
 - [x] ตั้ง Staging เริ่มต้นเป็น `SOCIAL_PUBLISHER=disabled`; สลับ PostPeer เฉพาะ
       controlled test ด้วยบัญชีทดสอบแล้วสลับกลับ
 - [ ] เตรียม Firebase mobile config แยกที่ตรงกับ Staging project ก่อนทดสอบ login

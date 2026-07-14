@@ -1,6 +1,14 @@
 # PostDee Staging
 
-สถานะ ณ 15 กรกฎาคม 2026: **เตรียม Blueprint และเทสต์แล้ว แต่ยังไม่ได้สร้างทรัพยากรใน Render**
+สถานะ ณ 15 กรกฎาคม 2026: **สร้าง Staging Blueprint และฐานข้อมูลบน Render แล้ว; API deploy และ `/health` ผ่านในโหมด health-only**
+
+- Blueprint: `postdee-staging` (`exs-d9bb3it7vvec73ceggl0`)
+- API: `postdee-api-staging` (`srv-d9bb72ojs32c739osa5g`)
+- URL: `https://postdee-api-staging.onrender.com`
+- Database: `postdee-postgres-staging` Free (`dpg-d9bb66ojs32c739oqt10-a`)
+- Database expiry: 14 สิงหาคม 2026
+- Provider state: health-only — ใช้ dummy staging-only values; login, upload, AI,
+  billing และ social ยังไม่ถือว่าผ่าน
 
 Staging ใช้ทดสอบโค้ดและผู้ให้บริการจริงก่อนส่งเข้า Production โดยต้องไม่ใช้ฐานข้อมูล
 bucket วิดีโอ Firebase project หรือ webhook token ชุดเดียวกับผู้ใช้จริง
@@ -50,7 +58,7 @@ Staging เป็นด่านตรวจเวอร์ชันถัดไ
 เมื่อจะทดสอบ Social จริง ให้เพิ่ม `POSTPEER_API_KEY` ชุดทดสอบใน Dashboard แล้ว
 สลับเป็น `SOCIAL_PUBLISHER=postpeer` เฉพาะช่วงทดสอบแบบควบคุม
 
-## ขั้นตอนสร้างใน Render Dashboard
+## ขั้นตอนสร้างใหม่หรือกู้คืน Staging
 
 1. เปิด Render Dashboard แล้วตรวจ Billing/Usage ก่อนว่ามี Free PostgreSQL อยู่หรือไม่
 2. เลือก **New → Blueprint** และ repository `NOI56/PostDeeMobile`
@@ -62,6 +70,9 @@ Staging เป็นด่านตรวจเวอร์ชันถัดไ
 8. เปิด `https://<staging-host>/health` และต้องได้ `status: ok`
 9. สร้าง mobile build ที่ตั้ง `API_BASE_URL=https://<staging-host>` แล้วทดสอบด้วย
    บัญชีและวิดีโอทดสอบเท่านั้น
+
+`/health` ตรวจเพียงว่า process ของ API ตอบได้ ไม่ได้ตรวจ R2, Firebase, Gemini/Groq
+หรือ RevenueCat จึงต้องผ่าน smoke test ด้านล่างก่อนเรียก Staging ว่าใช้งานฟังก์ชันจริงได้
 
 ก่อนทดสอบ Firebase ต้องสร้าง mobile staging Firebase config ที่ตรงกับ
 `FIREBASE_PROJECT_ID` ของ Staging ด้วย หากแอปยังใช้ Firebase project เดิม token จะ

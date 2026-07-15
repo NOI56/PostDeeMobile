@@ -24,7 +24,9 @@ enum SocialPlatform {
     color: Color(0xFFE1306C),
   ),
   facebookReels(
-    label: 'Facebook Reels',
+    // Keep the legacy enum/API value for stored-post compatibility. PostPeer
+    // currently publishes this target as a Facebook Page video, not a Reel.
+    label: 'Facebook Video',
     shortLabel: 'Facebook',
     apiValue: 'FACEBOOK_REELS',
     color: Color(0xFF1877F2),

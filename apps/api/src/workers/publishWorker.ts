@@ -36,6 +36,29 @@ export type PlatformPublisher = {
   publish: (input: PlatformPublishInput) => Promise<PlatformPublishSuccess>;
 };
 
+/**
+ * A publisher may use this error only when it knows the provider did not
+ * accept/create a post. Generic network and timeout errors are intentionally
+ * not retryable because their provider outcome can be ambiguous.
+ */
+export class RetryablePublishError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RetryablePublishError';
+  }
+}
+
+/**
+ * The provider may already have accepted the publish request, but its final
+ * outcome could not be read. Retrying this error could create a duplicate.
+ */
+export class PublishOutcomeUnknownError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PublishOutcomeUnknownError';
+  }
+}
+
 export type VideoStorageCleaner = {
   deleteVideo: (videoS3Key: string) => Promise<void>;
 };
@@ -56,11 +79,18 @@ const readErrorMessage = (error: unknown) =>
 
 const publicPlatformPublishErrorMessage =
   'Publishing to this platform failed. Please try again later.';
+const publicPublishOutcomeUnknownErrorMessage =
+  'Publishing result could not be confirmed. Check the platform before trying again.';
 const publicCleanupErrorMessage = 'Video cleanup failed. Please try again later.';
 
 const logWorkerError = (message: string, error: unknown) => {
   console.error(message, readErrorMessage(error));
 };
+
+const wait = async (delayMs: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
 
 const getWorkerStatus = (platformResults: PlatformPublishResult[]): PublishWorkerResult['status'] => {
   const publishedCount = platformResults.filter((result) => result.status === 'PUBLISHED').length;
@@ -104,32 +134,52 @@ export const processPublishJob = async ({
   // may download the media asynchronously AFTER it accepts the job. Deleting the
   // source immediately can make that fetch 404 and silently fail the post.
   // Prefer an R2/S3 lifecycle rule to expire temporary uploads instead.
-  deleteVideoAfterPublish = false
+  deleteVideoAfterPublish = false,
+  maxPublishAttempts = 3,
+  publishRetryBackoffMs = 1_000,
+  sleep = wait
 }: {
   jobData: BullMqPublishJobData;
   publisher?: PlatformPublisher;
   storage?: VideoStorageCleaner;
   platformPublishStore?: PlatformPublishStore;
   deleteVideoAfterPublish?: boolean;
+  maxPublishAttempts?: number;
+  publishRetryBackoffMs?: number;
+  sleep?: (delayMs: number) => Promise<void>;
 }): Promise<PublishWorkerResult> => {
+  const attemptLimit = Math.max(1, Math.floor(maxPublishAttempts));
+  const retryBackoffMs = Math.max(0, publishRetryBackoffMs);
   const platformResults = await Promise.all(
     jobData.platforms.map(async (platform): Promise<PlatformPublishResult> => {
-      try {
-        return await publisher.publish({
-          ...(jobData.userId ? { userId: jobData.userId } : {}),
-          postId: jobData.postId,
-          caption: jobData.caption,
-          videoS3Key: jobData.videoS3Key,
-          platform
-        });
-      } catch (error) {
-        logWorkerError('Platform publish failed:', error);
-        return {
-          platform,
-          status: 'FAILED',
-          errorMessage: publicPlatformPublishErrorMessage
-        };
+      for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
+        try {
+          return await publisher.publish({
+            ...(jobData.userId ? { userId: jobData.userId } : {}),
+            postId: jobData.postId,
+            caption: jobData.caption,
+            videoS3Key: jobData.videoS3Key,
+            platform
+          });
+        } catch (error) {
+          if (error instanceof RetryablePublishError && attempt < attemptLimit) {
+            await sleep(retryBackoffMs * 2 ** (attempt - 1));
+            continue;
+          }
+
+          logWorkerError('Platform publish failed:', error);
+          return {
+            platform,
+            status: 'FAILED',
+            errorMessage:
+              error instanceof PublishOutcomeUnknownError
+                ? publicPublishOutcomeUnknownErrorMessage
+                : publicPlatformPublishErrorMessage
+          };
+        }
       }
+
+      throw new Error('Publish retry loop exited unexpectedly');
     })
   );
   const status = getWorkerStatus(platformResults);

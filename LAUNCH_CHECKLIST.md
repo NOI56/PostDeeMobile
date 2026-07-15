@@ -2,9 +2,9 @@
 
 เช็กลิสต์ก่อนเปิดใช้งานจริง / ทดสอบกับผู้ใช้จริง สำหรับ PostDee
 
-> ภาพรวม: โค้ดและสถาปัตยกรรมพร้อมแล้ว (บั๊กระดับสูงอุดครบ, เทสต์เขียวทั้ง API
-> และ mobile) เหลือขั้นตอน "เสียบคีย์ + ตั้งค่าโครงสร้างจริง + ทดสอบบนเครื่อง"
-> ตามลำดับด้านล่าง
+> ภาพรวม: โครงสร้างหลักและ adapter มีแล้ว แต่ provider/device E2E หลายรายการยัง
+> ไม่ผ่าน จึงยังห้ามถือว่าเปิดใช้จริงครบ เพื่อลดความเสี่ยงให้ตั้งค่าชุดทดสอบและ
+> ผ่านเช็กลิสต์ตามลำดับด้านล่างก่อน Production
 
 ---
 
@@ -30,8 +30,8 @@
       app/subscriptions, service credentials และ internal testing; Emulator ใช้
       ยืนยันบัญชีขั้นตอนนี้ไม่ได้
 - [ ] เปลี่ยน R2/Gemini/Groq เป็น credentials ของ Staging จริงก่อน functional smoke
-- [x] ตั้ง Staging เริ่มต้นเป็น `SOCIAL_PUBLISHER=disabled`; สลับ PostPeer เฉพาะ
-      controlled test ด้วยบัญชีทดสอบแล้วสลับกลับ
+- [x] ตั้ง Staging เริ่มต้นเป็น `SOCIAL_PUBLISHER=disabled`; กำหนดให้สลับ
+      PostPeer เฉพาะ controlled test ด้วยบัญชีทดสอบแล้วสลับกลับ
 - [x] เตรียม Android Debug Firebase config แยกด้วย application id
       `com.postdee.postdee_mobile.staging`; Release ยังใช้ Production
 - [x] Android Emulator ผ่าน Google Sign-In → Firebase ID token → Render Staging API
@@ -78,7 +78,8 @@
 - [ ] Deploy **worker service แยก** ที่รัน `npm run worker:publish`
 - ⚠️ ถ้าไม่มี worker: โพสต์ทันทีและตั้งเวลา **จะค้างสถานะ QUEUED** ไม่ถูกประมวลผล
 - worker ตัวนี้เป็นคนอัปเดตสถานะโพสต์ (QUEUED → PUBLISHED/PARTIAL_PUBLISHED/FAILED)
-  และมี idempotency กันโพสต์ซ้ำตอน retry แล้ว
+  Retry ทำเฉพาะ error ที่ยืนยันว่าปลอดภัย; network/timeout หรือ outcome ที่ไม่
+  แน่นอนต้องหยุดและให้ผู้ใช้ตรวจปลายทางก่อน เพื่อไม่สร้างโพสต์ซ้ำ
 
 ---
 
@@ -100,7 +101,17 @@
 - [ ] `SOCIAL_PUBLISHER=postpeer`, ตั้ง `POSTPEER_API_KEY`
 - [ ] ในแอป ให้ผู้ใช้ทดสอบเชื่อมบัญชีผ่าน PostPeer แล้วกด refresh จนสถานะขึ้น connected
 - [ ] `POSTPEER_*_ACCOUNT_ID` เป็น optional legacy/operator id เท่านั้น สำหรับ setup ที่ไม่มี per-user connection store
-- [ ] ทดสอบโพสต์จริง 1 คลิป ครบทุกแพลตฟอร์มด้วยบัญชีทดสอบที่เชื่อมแล้ว
+- [x] Profile creation ใส่ชื่อ pseudonymous ที่ PostPeer บังคับและ ensure `User`
+      ก่อนบันทึก profile แล้ว
+- [x] รองรับ `202 pending/publishing` ด้วย bounded poll ประมาณ 2 นาที, ไม่สร้าง
+      external id ปลอม และ `GET /posts` คืน user-scoped `platformResults` แล้ว
+- [x] Controlled-first request ใช้ YouTube `private` และ TikTok `SELF_ONLY`
+      (`draft: false`) แล้ว; ก่อนเปิด public ต้องเพิ่มตัวเลือก privacy ที่ผู้ใช้ยืนยัน
+- [ ] ทดสอบโพสต์จริง 1 คลิปด้วยบัญชี disposable ที่เชื่อมแล้ว: TikTok,
+      YouTube Shorts, Instagram Reels และ Facebook Page Video พร้อมตรวจ URL/ID,
+      partial/failed และ outcome-unknown ก่อน retry
+- หมายเหตุ: `FACEBOOK_REELS` เป็นชื่อ compatibility ภายใน แต่ PostPeer ปัจจุบัน
+  ส่ง Facebook Page Video ไม่ใช่ Reels จึงห้ามใช้คำว่า Facebook Reels ใน Store
 - หมายเหตุ: Shopee/Lazada ยังไม่รองรับใน PostPeer mapping (เพิ่มภายหลัง)
 
 ---
@@ -161,7 +172,8 @@
 - [ ] ทดสอบ export ด้วย FFmpeg 8.1.2 บน Android และ iPhone จริงก่อนรับไฟล์
       จากผู้ใช้ทั่วไป ระหว่างนี้ให้ทดสอบเฉพาะคลิปที่ทีมสร้างหรือเชื่อถือได้
 - [ ] ล็อกอิน Google + Apple + ยืนยันเบอร์ (OTP) สำเร็จ บนมือถือจริง
-- [ ] อัปคลิป → โพสต์ทันที → ขึ้นจริงทุกแพลตฟอร์ม → สถานะอัปเป็น PUBLISHED
+- [ ] อัปคลิป → โพสต์ทันที → ขึ้นจริงทุก capability ที่ระบุไว้ → provider URL/ID
+      และ `GET /posts.platformResults` ตรงกัน (Facebook คือ Page Video)
 - [ ] ตั้งเวลาโพสต์ → ปฏิทินแสดง → ถึงเวลาแล้วโพสต์จริง
 - [ ] AI แคปชั่นจากคลิป (Starter ฟัง / Pro ฟัง+ดูเฟรม)
 - [ ] AI ตัดต่อ/ซับ (Pro) + export บนเครื่อง

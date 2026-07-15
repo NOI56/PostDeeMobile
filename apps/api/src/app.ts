@@ -492,6 +492,7 @@ export const createApp = (options: AppOptions = {}) => {
     accountAwareAuthMiddleware,
     userStore,
     subscriptionStore,
+    platformPublishStore,
     {
       allowSubscriptionPlanOverride:
         config.nodeEnv !== 'production' && config.authProvider === 'mock',
@@ -562,7 +563,8 @@ export const createApp = (options: AppOptions = {}) => {
   registerDeviceRoutes(router, accountAwareAuthMiddleware, deviceTokenStore);
   registerSocialConnectionRoutes(router, accountAwareAuthMiddleware, {
     store: socialConnectionStore,
-    connectClient: postPeerConnectClient
+    connectClient: postPeerConnectClient,
+    userStore
   });
   registerAccountRoutes(router, accountDeletionAuthMiddleware, {
     postStore,

@@ -34,6 +34,11 @@ describe('createBullMqPublishQueueFromClient', () => {
         status: 'READY'
       }),
       expect.objectContaining({
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5_000
+        },
         delay: 0,
         removeOnComplete: true,
         removeOnFail: false

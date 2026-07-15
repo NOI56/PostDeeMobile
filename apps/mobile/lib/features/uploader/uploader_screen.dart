@@ -2057,7 +2057,7 @@ class _PlatformSelectorSection extends StatelessWidget {
     SocialPlatform.tiktok: 'โพสต์คลิปสั้นไป TikTok อัตโนมัติ',
     SocialPlatform.youtubeShorts: 'อัปขึ้น YouTube Shorts จากคลิปเดียว',
     SocialPlatform.instagramReels: 'แชร์ Reels ไป Instagram',
-    SocialPlatform.facebookReels: 'โพสต์ Reels ลงเพจ Facebook',
+    SocialPlatform.facebookReels: 'โพสต์วิดีโอลงเพจ Facebook',
     SocialPlatform.shopeeVideo: 'โพสต์วิดีโอขึ้น Shopee Video',
     SocialPlatform.lazadaVideo: 'โพสต์วิดีโอขึ้น Lazada Video',
   };

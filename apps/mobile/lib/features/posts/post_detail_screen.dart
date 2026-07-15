@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
@@ -31,6 +32,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   bool get _isPublished => widget.post.status.toUpperCase() == 'PUBLISHED';
 
+  bool get _hasPublishedChannel =>
+      _isPublished ||
+      widget.post.platformResults.any(
+        (result) => result.status.toUpperCase() == 'PUBLISHED',
+      );
+
   ({String label, IconData icon, Color bg, Color ink}) get _statusMeta {
     return switch (widget.post.status.toUpperCase()) {
       'PUBLISHED' => (
@@ -50,6 +57,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           icon: Icons.sync,
           bg: const Color(0xFFE2F3EA),
           ink: const Color(0xFF0E9F6E),
+        ),
+      'PARTIAL_PUBLISHED' => (
+          label: 'สำเร็จบางช่องทาง',
+          icon: Icons.info_outline,
+          bg: const Color(0xFFFBEFD7),
+          ink: const Color(0xFFB5740B),
         ),
       'FAILED' => (
           label: 'โพสต์ไม่สำเร็จ',
@@ -71,6 +84,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     if (_isPublished && post.publishedAt != null) {
       return 'เผยแพร่ ${_formatThaiDateTime(post.publishedAt!)}';
     }
+    if (post.status.toUpperCase() == 'PARTIAL_PUBLISHED' &&
+        post.publishedAt != null) {
+      return 'เผยแพร่บางช่องทาง ${_formatThaiDateTime(post.publishedAt!)}';
+    }
     if (post.scheduledAt != null) {
       return 'ตั้งเวลา ${_formatThaiDateTime(post.scheduledAt!)}';
     }
@@ -82,11 +99,159 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       .whereType<SocialPlatform>()
       .toList();
 
-  String get _platformStatLine {
+  PostPlatformResult? _resultFor(SocialPlatform platform) {
+    for (final result in widget.post.platformResults) {
+      if (result.platform == platform.apiValue) return result;
+    }
+    return null;
+  }
+
+  String _platformStatLine(SocialPlatform platform) {
+    final resultStatus = _resultFor(platform)?.status.toUpperCase();
+    if (resultStatus == 'PUBLISHED') return 'เผยแพร่สำเร็จ';
+    if (resultStatus == 'FAILED') return 'โพสต์ไม่สำเร็จ';
+    if (resultStatus == 'PUBLISHING') return 'กำลังโพสต์';
+    if (resultStatus == 'PENDING') return 'รอส่งไปยังช่องทาง';
     if (_isPublished) return 'เผยแพร่แล้ว';
     if (_isScheduled) return 'รอเผยแพร่ตามเวลา';
     if (widget.post.status.toUpperCase() == 'FAILED') return 'โพสต์ไม่สำเร็จ';
     return 'ยังไม่เผยแพร่';
+  }
+
+  Color _platformStatusColor(SocialPlatform platform) {
+    return switch (_resultFor(platform)?.status.toUpperCase()) {
+      'PUBLISHED' => const Color(0xFF0E9F6E),
+      'FAILED' => const Color(0xFFDC2626),
+      _ => AppTheme.textMuted,
+    };
+  }
+
+  String _localizedPlatformError(String message) {
+    return switch (message) {
+      'Publishing to this platform failed. Please try again later.' =>
+        'โพสต์ไปยังช่องทางนี้ไม่สำเร็จ กรุณาลองใหม่ภายหลัง',
+      'Publishing result could not be confirmed. Check the platform before trying again.' =>
+        'ยังยืนยันผลการโพสต์ไม่ได้ กรุณาตรวจสอบช่องทางนี้ก่อนลองใหม่ เพื่อป้องกันโพสต์ซ้ำ',
+      _ => message,
+    };
+  }
+
+  bool _isWebLink(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.isNotEmpty;
+  }
+
+  Future<void> _openPostLink(String value) async {
+    final uri = Uri.tryParse(value);
+    if (uri == null || !_isWebLink(value)) return;
+
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('เปิดลิงก์โพสต์ไม่สำเร็จ')),
+      );
+    }
+  }
+
+  Widget _buildPlatformCard(SocialPlatform platform) {
+    final result = _resultFor(platform);
+    final errorMessage = result?.errorMessage?.trim();
+    final externalReference = result?.externalPostId?.trim();
+    final hasError = errorMessage != null && errorMessage.isNotEmpty;
+    final hasReference =
+        externalReference != null && externalReference.isNotEmpty;
+    final referenceIsLink = externalReference != null &&
+        externalReference.isNotEmpty &&
+        _isWebLink(externalReference);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 9),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF122018).withValues(alpha: 0.04),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SocialPlatformLogo(platform: platform, size: 40),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  platform.label,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _platformStatLine(platform),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight:
+                        result == null ? FontWeight.w400 : FontWeight.w600,
+                    color: _platformStatusColor(platform),
+                  ),
+                ),
+                if (hasError) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'สาเหตุ: ${_localizedPlatformError(errorMessage)}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      height: 1.35,
+                      color: Color(0xFFDC2626),
+                    ),
+                  ),
+                ],
+                if (hasReference) ...[
+                  const SizedBox(height: 4),
+                  InkWell(
+                    onTap: referenceIsLink
+                        ? () => _openPostLink(externalReference)
+                        : null,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Text(
+                        referenceIsLink
+                            ? 'ลิงก์โพสต์: $externalReference'
+                            : 'รหัสโพสต์: $externalReference',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          height: 1.35,
+                          color: referenceIsLink
+                              ? AppTheme.accent
+                              : AppTheme.textMuted,
+                          decoration: referenceIsLink
+                              ? TextDecoration.underline
+                              : TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _publishNow() async {
@@ -305,51 +470,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               ),
               const SizedBox(height: 10),
               for (final platform in _platforms) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 9),
-                  decoration: BoxDecoration(
-                    color: AppTheme.glass,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.border),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF122018).withValues(alpha: 0.04),
-                        blurRadius: 2,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      SocialPlatformLogo(platform: platform, size: 40),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              platform.label,
-                              style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _platformStatLine,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                color: AppTheme.textMuted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                _buildPlatformCard(platform),
               ],
               if (_platforms.isEmpty)
                 Text(
@@ -365,7 +486,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Widget? _buildActionBar(BuildContext context) {
-    if (!_isScheduled && !_isPublished) {
+    if (!_isScheduled && !_hasPublishedChannel) {
       return null;
     }
 
@@ -412,7 +533,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     onPressed: _isWorking ? null : _publishNow,
                   ),
                 ),
-              ] else if (_isPublished)
+              ] else if (_hasPublishedChannel)
                 Expanded(
                   child: _PrimaryActionButton(
                     key: const ValueKey('post-detail-open-analytics'),

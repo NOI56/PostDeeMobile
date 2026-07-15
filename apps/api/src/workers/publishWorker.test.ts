@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { processPublishJob, processPublishJobForPost } from './publishWorker.js';
+import {
+  PublishOutcomeUnknownError,
+  RetryablePublishError,
+  processPublishJob,
+  processPublishJobForPost
+} from './publishWorker.js';
 
 const makeFakePostStore = ({ status = 'QUEUED' }: { status?: string } = {}) => {
   const statuses: string[] = [];
@@ -171,6 +176,25 @@ describe('processPublishJobForPost', () => {
       }
     });
   });
+
+  it('skips a post already being published so a recovery attempt does not create duplicates', async () => {
+    const { store, statuses } = makeFakePostStore({ status: 'PUBLISHING' });
+    const publisher = {
+      publish: vi.fn(async ({ platform }) => publishedResult(platform))
+    };
+
+    const result = await processPublishJobForPost({
+      jobData,
+      postStore: store,
+      publisher,
+      storage: { deleteVideo: async () => undefined },
+      platformPublishStore: { recordResults: async () => [] }
+    });
+
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(statuses).toEqual([]);
+    expect(result.status).toBe('SKIPPED');
+  });
 });
 
 const baseJobData = {
@@ -183,6 +207,121 @@ const baseJobData = {
 };
 
 describe('processPublishJob', () => {
+  it('retries an explicitly safe provider rejection with exponential backoff', async () => {
+    const sleep = vi.fn(async () => undefined);
+    const publisher = {
+      publish: vi.fn(async ({ platform }) => {
+        if (publisher.publish.mock.calls.length < 3) {
+          throw new RetryablePublishError('provider explicitly rejected before accepting');
+        }
+
+        return publishedResult(platform);
+      })
+    };
+
+    const result = await processPublishJob({
+      jobData: {
+        ...baseJobData,
+        platforms: ['TIKTOK']
+      },
+      publisher,
+      platformPublishStore: { recordResults: vi.fn(async () => []) },
+      maxPublishAttempts: 3,
+      publishRetryBackoffMs: 100,
+      sleep
+    });
+
+    expect(publisher.publish).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenNthCalledWith(1, 100);
+    expect(sleep).toHaveBeenNthCalledWith(2, 200);
+    expect(result.status).toBe('PUBLISHED');
+  });
+
+  it('stops retrying an explicitly safe provider rejection at the configured limit', async () => {
+    const sleep = vi.fn(async () => undefined);
+    const publisher = {
+      publish: vi.fn(async () => {
+        throw new RetryablePublishError('provider still unavailable');
+      })
+    };
+
+    const result = await processPublishJob({
+      jobData: {
+        ...baseJobData,
+        platforms: ['TIKTOK']
+      },
+      publisher,
+      platformPublishStore: { recordResults: vi.fn(async () => []) },
+      maxPublishAttempts: 3,
+      publishRetryBackoffMs: 100,
+      sleep
+    });
+
+    expect(publisher.publish).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+    expect(result.status).toBe('FAILED');
+  });
+
+  it('does not retry an ambiguous provider error that could already have created a post', async () => {
+    const sleep = vi.fn(async () => undefined);
+    const publisher = {
+      publish: vi.fn(async () => {
+        throw new Error('publish outcome unknown after request was sent');
+      })
+    };
+
+    const result = await processPublishJob({
+      jobData: {
+        ...baseJobData,
+        platforms: ['TIKTOK']
+      },
+      publisher,
+      platformPublishStore: { recordResults: vi.fn(async () => []) },
+      maxPublishAttempts: 3,
+      publishRetryBackoffMs: 100,
+      sleep
+    });
+
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(result.status).toBe('FAILED');
+  });
+
+  it('surfaces an unconfirmed provider outcome without retrying the publish call', async () => {
+    const sleep = vi.fn(async () => undefined);
+    const publisher = {
+      publish: vi.fn(async () => {
+        throw new PublishOutcomeUnknownError('provider accepted the request but polling timed out');
+      })
+    };
+
+    const result = await processPublishJob({
+      jobData: {
+        ...baseJobData,
+        platforms: ['TIKTOK']
+      },
+      publisher,
+      platformPublishStore: { recordResults: vi.fn(async () => []) },
+      maxPublishAttempts: 3,
+      publishRetryBackoffMs: 100,
+      sleep
+    });
+
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: 'FAILED',
+      platformResults: [
+        {
+          platform: 'TIKTOK',
+          status: 'FAILED',
+          errorMessage:
+            'Publishing result could not be confirmed. Check the platform before trying again.'
+        }
+      ]
+    });
+  });
+
   it('passes the post owner id to the platform publisher', async () => {
     const publisher = {
       publish: vi.fn(async ({ platform }) => ({

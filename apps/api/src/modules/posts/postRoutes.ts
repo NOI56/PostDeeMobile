@@ -1,6 +1,7 @@
 import type { RequestHandler, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
+import type { PlatformPublishStore } from '../platformPublishes/platformPublishStore.js';
 import type { PublishQueue } from '../queue/publishQueue.js';
 import { isStorageKeyOwnedByUser } from '../storage/storageKeyPolicy.js';
 import {
@@ -80,6 +81,7 @@ export const registerPostRoutes = (
   authMiddleware: RequestHandler,
   userStore: UserStore,
   subscriptionStore: SubscriptionStore,
+  platformPublishStore: PlatformPublishStore,
   options: {
     allowSubscriptionPlanOverride?: boolean;
     assertUploadReady?: (ownerId: string, videoS3Key: string) => Promise<void>;
@@ -98,12 +100,30 @@ export const registerPostRoutes = (
       return;
     }
 
+    const posts = await store.list({
+      userId: authUser.id,
+      scheduledOnly: request.query.scheduled === 'true'
+    });
+    const ownedPostIds = new Set(posts.map((post) => post.id));
+    const platformResults = platformPublishStore.listForPostIds
+      ? (await platformPublishStore.listForPostIds([...ownedPostIds])).filter((result) =>
+          ownedPostIds.has(result.postId)
+        )
+      : [];
+    const resultsByPostId = new Map<string, typeof platformResults>();
+
+    for (const result of platformResults) {
+      const existingResults = resultsByPostId.get(result.postId) ?? [];
+      existingResults.push(result);
+      resultsByPostId.set(result.postId, existingResults);
+    }
+
     response.json({
       status: 'ok',
-      posts: await store.list({
-        userId: authUser.id,
-        scheduledOnly: request.query.scheduled === 'true'
-      })
+      posts: posts.map((post) => ({
+        ...post,
+        platformResults: resultsByPostId.get(post.id) ?? []
+      }))
     });
   });
 

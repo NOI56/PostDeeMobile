@@ -11,7 +11,8 @@ Target platforms:
 - TikTok
 - YouTube Shorts
 - Instagram Reels
-- Facebook Reels
+- Facebook Page Video through PostPeer (the internal compatibility value remains
+  `FACEBOOK_REELS`; Reels are not currently supported by this provider path)
 
 ## Project Layout
 
@@ -247,7 +248,7 @@ This keeps the schema usable for Apple App Store, Google Play, or other future b
 | AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | `TRANSCRIPTION_PROVIDER=groq` with Groq Whisper transcription on backend, FFmpeg export on mobile |
 | Auth | `AUTH_PROVIDER=mock` | `AUTH_PROVIDER=firebase` |
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
-| Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
+| Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; `FACEBOOK_REELS` currently targets Facebook Page Video; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
 
 Firebase production account deletion additionally requires
 `FIREBASE_AUTH_DELETE_ENABLED=true` and `FIREBASE_SERVICE_ACCOUNT_JSON`. The API
@@ -345,6 +346,14 @@ Rules:
 - Pro unlocks analytics, hashtag radar, AI comment center, team/editor access,
   AI captioning from audio plus selected frames, and Groq Whisper auto
   editing.
+- A PostPeer `202 pending/publishing` response stays inside the publisher until
+  `GET /v1/posts/{postId}` reaches a terminal result or the roughly two-minute
+  bounded poll expires. Success requires a real platform URL/id; no synthetic
+  external id is stored.
+- `GET /posts` joins each authenticated user's posts with their persisted
+  `platformResults`, including partial and failed platform outcomes.
+- Provider retries are explicit-safe-only. Unknown network/polling outcomes are
+  terminal and tell the user to inspect the destination before trying again.
 
 ## RevenueCat Subscription Flow
 
@@ -704,7 +713,12 @@ cd apps/mobile
 
 - Social platform publishing defaults to mock. The PostPeer path is wired, but
   production must use per-user social connections and a real provider-level
-  publish test before user publishing is enabled. Shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production.
+  publish test before user publishing is enabled. A new identity is ensured in
+  the local `User` store before its provider profile is saved, and the required
+  PostPeer profile name is stable and pseudonymous. Controlled-first requests
+  use YouTube `private` and TikTok `SELF_ONLY` direct posting. Shared
+  `POSTPEER_*_ACCOUNT_ID` values are rejected in production. The internal
+  `FACEBOOK_REELS` key currently means Facebook Page Video, not Reels.
 - The publish worker checks the durable account-deletion barrier, then claims
   only `QUEUED` posts before calling PostPeer or the
   mock publisher. Jobs for posts already `PUBLISHING`, `PUBLISHED`,
@@ -761,4 +775,6 @@ cd apps/mobile
 8. Harden Pro Groq Whisper job/session persistence, top-up, retry/recovery, and real-device review/export states.
 9. Test Firebase Google Sign-In and Phone Auth on real Android/iOS devices.
 10. Test video picker and 9:16 preview on real devices.
-11. Connect the first real social publishing provider.
+11. Connect disposable per-user PostPeer accounts and run the full controlled
+    upload → publish → polled result → `GET /posts.platformResults` E2E for each
+    advertised capability before enabling social publishing.

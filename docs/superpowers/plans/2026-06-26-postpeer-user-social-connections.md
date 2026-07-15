@@ -6,6 +6,17 @@
 > not describe current completion status; use `API.md`, `ARCHITECTURE.md`, and
 > the current route code as the source of truth.
 
+> **Current-state addendum (2026-07-15):** The active runtime ensures a fresh
+> `User` before saving a PostPeer profile and sends a required stable
+> pseudonymous profile name. Publish `202 pending/publishing` responses are
+> polled for roughly two minutes; success requires a real platform URL/id and
+> `GET /posts` returns user-scoped `platformResults`. Controlled-first requests
+> use YouTube `private` and TikTok `SELF_ONLY` (`draft: false`). Only explicitly
+> safe pre-accept failures are retried; unknown outcomes require checking the
+> provider before retry. `FACEBOOK_REELS` remains an internal compatibility key
+> for Facebook Page Video, not Reels. Real connected-account E2E is still
+> pending.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add user-owned PostPeer social account connections so each authenticated PostDee user publishes to their own connected social accounts.

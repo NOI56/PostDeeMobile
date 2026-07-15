@@ -1,11 +1,42 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  PostPeerProfileOwnershipConflictError,
   createInMemorySocialConnectionStore,
   supportedSocialConnectionPlatforms
 } from './socialConnectionStore.js';
 
 describe('createInMemorySocialConnectionStore', () => {
+  it('keeps assigning the same PostPeer profile to the same user idempotently', async () => {
+    const store = createInMemorySocialConnectionStore();
+
+    await store.setProfileId({ userId: 'seller-1', profileId: 'profile-shared' });
+    await expect(
+      store.setProfileId({ userId: 'seller-1', profileId: 'profile-shared' })
+    ).resolves.toBe('profile-shared');
+    await expect(
+      store.setProfileId({ userId: 'seller-1', profileId: 'profile-race-loser' })
+    ).resolves.toBe('profile-shared');
+    await expect(store.getProfileId('seller-1')).resolves.toBe('profile-shared');
+  });
+
+  it('atomically rejects two users racing to claim the same PostPeer profile', async () => {
+    const store = createInMemorySocialConnectionStore();
+    const results = await Promise.allSettled([
+      store.setProfileId({ userId: 'seller-1', profileId: 'profile-shared' }),
+      store.setProfileId({ userId: 'seller-2', profileId: 'profile-shared' })
+    ]);
+
+    expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find(({ status }) => status === 'rejected');
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: expect.any(PostPeerProfileOwnershipConflictError)
+    });
+    await expect(store.getProfileId('seller-1')).resolves.toBe('profile-shared');
+    await expect(store.getProfileId('seller-2')).resolves.toBeUndefined();
+  });
+
   it('lists every supported platform as disconnected for a new user', async () => {
     const store = createInMemorySocialConnectionStore();
 

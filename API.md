@@ -494,7 +494,15 @@ For a new Firebase identity, the API ensures the local `User` row before saving
 the foreign-keyed PostPeer profile. Profile creation sends PostPeer a required,
 stable HMAC-derived pseudonymous name and does not send the Firebase UID, email,
 phone, or display name. Concurrent same-user profile creations are coalesced
-inside one API instance.
+inside one API instance. New profiles use a versioned 128-bit HMAC name. A
+single legacy 40-bit profile can be repaired only with the temporary,
+operator-supplied fingerprint and exact profile id described below; legacy
+profiles are never selected by the short name alone. The database exclusively
+claims each PostPeer profile id for one user. A conflicting claim returns
+`409 SOCIAL_CONNECTION_CONFLICT` without exposing either user's identity or
+the provider profile id. If competing requests create different provider
+profiles for the same user, the previously claimed database mapping remains
+authoritative.
 
 ### `POST /social-connections/refresh`
 
@@ -1543,6 +1551,8 @@ PostgreSQL.
 | `SOCIAL_PUBLISHER` | `mock`, `disabled`, `postpeer` | Local fake success, explicit fail-closed staging/maintenance mode, or real PostPeer publishing |
 | `POSTPEER_API_KEY` | `...` | PostPeer API key for real social publishing |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | Optional PostPeer API host override |
+| `POSTPEER_LEGACY_RECOVERY_FINGERPRINT` | 64 hex characters | Temporary one-user repair proof: `HMAC-SHA256(POSTPEER_API_KEY, "postdee-legacy-recovery:<firebase-user-id>")`; must be paired with the exact profile id and removed after refresh succeeds |
+| `POSTPEER_LEGACY_RECOVERY_PROFILE_ID` | `...` | Exact PostPeer profile id allowed for the temporary legacy repair; must be paired with the fingerprint |
 | `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | Operator PostPeer TikTok integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | Operator PostPeer YouTube Shorts integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | Operator PostPeer Instagram Reels integration id used only when no per-user connection resolver is wired; forbidden in production |

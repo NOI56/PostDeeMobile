@@ -8,6 +8,7 @@ import {
   type PostPeerConnectClient
 } from './postPeerConnectClient.js';
 import {
+  PostPeerProfileOwnershipConflictError,
   isSocialConnectionPlatform,
   supportedSocialConnectionPlatforms,
   type SocialConnectionStore
@@ -35,6 +36,15 @@ const sendUnsupportedPlatform = (response: Response) => {
 
 // Maps PostPeer connect failures to API responses. Returns true when handled.
 const sendConnectError = (response: Response, error: unknown): boolean => {
+  if (error instanceof PostPeerProfileOwnershipConflictError) {
+    response.status(409).json({
+      status: 'error',
+      code: 'SOCIAL_CONNECTION_CONFLICT',
+      message: 'Social account linking could not be completed. Please contact support.'
+    });
+    return true;
+  }
+
   if (error instanceof PostPeerConnectUnavailableError) {
     response.status(503).json({
       status: 'error',
@@ -92,9 +102,7 @@ const ensureProfileId = async (
     }
 
     const { profileId } = await connectClient.createProfile({ userId: authUser.id });
-    await store.setProfileId({ userId: authUser.id, profileId });
-
-    return profileId;
+    return store.setProfileId({ userId: authUser.id, profileId });
   })();
 
   inFlightCreations.set(authUser.id, creation);
@@ -185,7 +193,19 @@ export const registerSocialConnectionRoutes = (
     }
 
     try {
-      const profileId = await store.getProfileId(authUser.id);
+      let profileId = await store.getProfileId(authUser.id);
+
+      if (!profileId && connectClient.findProfile) {
+        const recoveredProfile = await connectClient.findProfile({ userId: authUser.id });
+
+        if (recoveredProfile) {
+          await userStore.ensure(authUser);
+          profileId = await store.setProfileId({
+            userId: authUser.id,
+            profileId: recoveredProfile.profileId
+          });
+        }
+      }
 
       if (profileId) {
         const integrations = (await connectClient.listIntegrations({ profileId })).filter(

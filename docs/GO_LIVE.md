@@ -61,6 +61,12 @@ user-owned PostPeer connections.
 - A fresh authenticated user is ensured in the local User store before the
   PostPeer profile is saved. The provider profile gets a stable pseudonymous
   required name, not the Firebase UID, email, phone, or display name.
+- If one older 40-bit PostPeer profile lost its local mapping, configure both
+  `POSTPEER_LEGACY_RECOVERY_FINGERPRINT` (the 64-hex
+  `HMAC-SHA256(POSTPEER_API_KEY, "postdee-legacy-recovery:<firebase-user-id>")`)
+  and `POSTPEER_LEGACY_RECOVERY_PROFILE_ID`, refresh that signed-in user once,
+  verify the connection, then remove both variables. Never leave partial
+  values configured or use the short legacy profile name as ownership proof.
 - PostPeer publishing does not currently fetch platform views/likes. Analytics
   can remain zero until a separate metrics ingestion adapter is implemented.
 - The backend calls `POST /v1/posts` with the `x-access-key` header, sends

@@ -4,7 +4,10 @@ import {
   createPrismaSocialConnectionRepository,
   type PrismaSocialConnectionClient
 } from './prismaSocialConnectionRepository.js';
-import { supportedSocialConnectionPlatforms } from './socialConnectionStore.js';
+import {
+  PostPeerProfileOwnershipConflictError,
+  supportedSocialConnectionPlatforms
+} from './socialConnectionStore.js';
 
 const createPrisma = (
   delegate: Partial<PrismaSocialConnectionClient['socialConnection']>,
@@ -27,8 +30,8 @@ const createPrisma = (
     findUnique: vi
       .fn<PrismaSocialConnectionClient['postPeerProfile']['findUnique']>()
       .mockResolvedValue(null),
-    upsert: vi
-      .fn<PrismaSocialConnectionClient['postPeerProfile']['upsert']>()
+    create: vi
+      .fn<PrismaSocialConnectionClient['postPeerProfile']['create']>()
       .mockResolvedValue({ profileId: 'profile-1' }),
     deleteMany: vi
       .fn<PrismaSocialConnectionClient['postPeerProfile']['deleteMany']>()
@@ -331,17 +334,67 @@ describe('createPrismaSocialConnectionRepository', () => {
     });
   });
 
-  it('upserts the PostPeer profile id for a user', async () => {
+  it('claims the PostPeer profile id for a user', async () => {
     const prisma = createPrisma({});
     const repository = createPrismaSocialConnectionRepository({ prisma });
 
-    await repository.setProfileId({ userId: 'seller-1', profileId: 'profile-1' });
+    await expect(
+      repository.setProfileId({ userId: 'seller-1', profileId: 'profile-1' })
+    ).resolves.toBe('profile-1');
 
-    expect(prisma.postPeerProfile.upsert).toHaveBeenCalledWith({
-      where: { userId: 'seller-1' },
-      update: { profileId: 'profile-1' },
-      create: { userId: 'seller-1', profileId: 'profile-1' },
+    expect(prisma.postPeerProfile.create).toHaveBeenCalledWith({
+      data: { userId: 'seller-1', profileId: 'profile-1' },
       select: { profileId: true }
     });
+  });
+
+  it('preserves same-user PostPeer profile assignment idempotence', async () => {
+    const prismaError = Object.assign(new Error('Unique constraint failed'), {
+      code: 'P2002'
+    });
+    const create = vi
+      .fn<PrismaSocialConnectionClient['postPeerProfile']['create']>()
+      .mockResolvedValueOnce({ profileId: 'profile-1' })
+      .mockRejectedValueOnce(prismaError);
+    const findUnique = vi
+      .fn<PrismaSocialConnectionClient['postPeerProfile']['findUnique']>()
+      .mockResolvedValue({ profileId: 'profile-1' });
+    const prisma = createPrisma({}, { create, findUnique });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+
+    await expect(
+      repository.setProfileId({ userId: 'seller-1', profileId: 'profile-1' })
+    ).resolves.toBe('profile-1');
+    await expect(
+      repository.setProfileId({ userId: 'seller-1', profileId: 'profile-race-loser' })
+    ).resolves.toBe('profile-1');
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { userId: 'seller-1' },
+      select: { profileId: true }
+    });
+  });
+
+  it('maps Prisma profileId unique conflicts to an ownership domain error', async () => {
+    const prismaError = Object.assign(new Error('Unique constraint failed'), {
+      code: 'P2002',
+      meta: { target: ['profileId'] }
+    });
+    const prisma = createPrisma(
+      {},
+      {
+        create: vi
+          .fn<PrismaSocialConnectionClient['postPeerProfile']['create']>()
+          .mockRejectedValue(prismaError),
+        findUnique: vi
+          .fn<PrismaSocialConnectionClient['postPeerProfile']['findUnique']>()
+          .mockResolvedValue(null)
+      }
+    );
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+
+    await expect(
+      repository.setProfileId({ userId: 'seller-2', profileId: 'profile-owned' })
+    ).rejects.toBeInstanceOf(PostPeerProfileOwnershipConflictError);
   });
 });

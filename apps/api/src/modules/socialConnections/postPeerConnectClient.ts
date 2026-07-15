@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import type { SocialConnectionPlatform } from './socialConnectionStore.js';
 
@@ -9,6 +9,16 @@ type FetchResponse = {
 };
 
 type FetchImpl = (url: string, init: RequestInit) => Promise<FetchResponse>;
+
+type PostPeerLegacyRecoveryConfig = {
+  fingerprint: string;
+  profileId: string;
+};
+
+const profileVerificationRetryDelaysMs = [100, 250, 500] as const;
+
+const wait = async (delayMs: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, delayMs));
 
 // PostPeer platform slugs used in /v1/connect/{slug} and the integrations list.
 const postPeerPlatformSlug: Record<SocialConnectionPlatform, string> = {
@@ -55,6 +65,7 @@ export type PostPeerIntegration = {
  */
 export type PostPeerConnectClient = {
   supportsIntegrationCleanup?: boolean;
+  findProfile?: (input: { userId: string }) => Promise<{ profileId: string } | undefined>;
   createProfile: (input: { userId: string }) => Promise<{ profileId: string }>;
   createConnectUrl: (input: {
     platform: SocialConnectionPlatform;
@@ -80,27 +91,64 @@ const buildProfileName = (userId: string, secret: string | undefined): string =>
     throw new PostPeerConnectProviderError();
   }
 
-  // PostPeer requires a profile name. Use an HMAC-derived suffix so the name
-  // is stable for this account without sending a Firebase uid, email, phone,
-  // or display name to the provider.
+  // PostPeer requires a profile name. Use a versioned 128-bit HMAC-derived
+  // suffix so the name is stable for this account without sending a Firebase
+  // uid, email, phone, or display name to the provider. Never auto-recover the
+  // old 40-bit names: they are too short to safely prove profile ownership.
   const suffix = createHmac('sha256', secret ?? 'postdee-unconfigured')
     .update(`postdee-profile:${normalizedUserId}`)
+    .digest('hex')
+    .slice(0, 32);
+
+  return `PostDee user v2-${suffix}`;
+};
+
+const buildLegacyProfileName = (userId: string, secret: string): string => {
+  const suffix = createHmac('sha256', secret)
+    .update(`postdee-profile:${userId.trim()}`)
     .digest('hex')
     .slice(0, 10);
 
   return `PostDee user ${suffix}`;
 };
 
+const buildLegacyRecoveryFingerprint = (userId: string, secret: string): string =>
+  createHmac('sha256', secret)
+    .update(`postdee-legacy-recovery:${userId.trim()}`)
+    .digest('hex');
+
 export const createPostPeerConnectClient = ({
   apiKey,
   baseUrl,
+  legacyRecovery,
   fetchImpl = fetch as unknown as FetchImpl
 }: {
   apiKey?: string;
   baseUrl: string;
+  legacyRecovery?: PostPeerLegacyRecoveryConfig;
   fetchImpl?: FetchImpl;
 }): PostPeerConnectClient => {
   const root = baseUrl.replace(/\/$/, '');
+  const normalizedLegacyRecovery = (() => {
+    if (!legacyRecovery) {
+      return undefined;
+    }
+
+    const fingerprint =
+      typeof legacyRecovery.fingerprint === 'string'
+        ? legacyRecovery.fingerprint.trim().toLowerCase()
+        : '';
+    const profileId =
+      typeof legacyRecovery.profileId === 'string'
+        ? legacyRecovery.profileId.trim()
+        : '';
+
+    if (!apiKey || !/^[a-f0-9]{64}$/.test(fingerprint) || !profileId) {
+      throw new PostPeerConnectProviderError();
+    }
+
+    return { fingerprint, profileId };
+  })();
 
   const request = async (
     path: string,
@@ -134,23 +182,207 @@ export const createPostPeerConnectClient = ({
     return init.parseJson === false ? undefined : response.json();
   };
 
-  return {
-    supportsIntegrationCleanup: Boolean(apiKey),
-    createProfile: async ({ userId }) => {
-      const name = buildProfileName(userId, apiKey);
+  const findProfileByName = async (
+    name: string
+  ): Promise<{ profileId: string } | undefined> => {
+    const pageLimit = 100;
+    const matchingProfileIds: string[] = [];
+    const listedProfileIds = new Set<string>();
+    let reportedLimit: number | undefined;
+    let reportedTotal: number | undefined;
+    let page = 1;
+
+    while (true) {
       const payload = readRecord(
+        await request(`/v1/profiles?limit=${pageLimit}&page=${page}`)
+      );
+
+      if (!Array.isArray(payload.profiles)) {
+        throw new PostPeerConnectProviderError();
+      }
+
+      const profiles = payload.profiles;
+      const total = readNonNegativeInteger(payload.total);
+      const responsePage = readNonNegativeInteger(payload.page);
+      const responseLimit = readNonNegativeInteger(payload.limit);
+
+      if (
+        total === undefined ||
+        responsePage !== page ||
+        responseLimit === undefined ||
+        responseLimit <= 0 ||
+        (reportedLimit !== undefined && responseLimit !== reportedLimit) ||
+        (reportedTotal !== undefined && total !== reportedTotal)
+      ) {
+        throw new PostPeerConnectProviderError();
+      }
+
+      reportedLimit ??= responseLimit;
+      reportedTotal ??= total;
+
+      const pageStart = (page - 1) * responseLimit;
+      const expectedPageSize = Math.min(responseLimit, Math.max(total - pageStart, 0));
+
+      // A short/partial page can hide a matching profile. Fail closed instead
+      // of treating it as "not found" and creating another provider profile.
+      if (profiles.length !== expectedPageSize) {
+        throw new PostPeerConnectProviderError();
+      }
+
+      for (const entry of profiles) {
+        const profile = readRecord(entry);
+        const profileId = readString(profile.id);
+        const profileName = readString(profile.name);
+
+        if (!profileId || !profileName || listedProfileIds.has(profileId)) {
+          throw new PostPeerConnectProviderError();
+        }
+
+        listedProfileIds.add(profileId);
+
+        if (profileName === name) {
+          matchingProfileIds.push(profileId);
+        }
+      }
+
+      if (pageStart + profiles.length === total) {
+        break;
+      }
+
+      if (pageStart + profiles.length > total || profiles.length === 0) {
+        throw new PostPeerConnectProviderError();
+      }
+
+      page += 1;
+    }
+
+    if (matchingProfileIds.length > 1) {
+      throw new PostPeerConnectProviderError();
+    }
+
+    const profileId = matchingProfileIds[0];
+    return profileId ? { profileId } : undefined;
+  };
+
+  const findProfile = async ({ userId }: { userId: string }) => {
+    const profileName = buildProfileName(userId, apiKey);
+
+    if (normalizedLegacyRecovery && apiKey) {
+      const expectedFingerprint = buildLegacyRecoveryFingerprint(userId, apiKey);
+      const fingerprintMatches = timingSafeEqual(
+        Buffer.from(expectedFingerprint, 'hex'),
+        Buffer.from(normalizedLegacyRecovery.fingerprint, 'hex')
+      );
+
+      if (fingerprintMatches) {
+        const legacyProfile = await findProfileByName(
+          buildLegacyProfileName(userId, apiKey)
+        );
+
+        if (
+          !legacyProfile ||
+          legacyProfile.profileId !== normalizedLegacyRecovery.profileId
+        ) {
+          throw new PostPeerConnectProviderError();
+        }
+
+        return legacyProfile;
+      }
+    }
+
+    return findProfileByName(profileName);
+  };
+
+  const findProfileByNameWithRetry = async (
+    name: string
+  ): Promise<{ profileId: string } | undefined> => {
+    let profile = await findProfileByName(name);
+
+    for (const delayMs of profileVerificationRetryDelaysMs) {
+      if (profile) {
+        return profile;
+      }
+
+      await wait(delayMs);
+      profile = await findProfileByName(name);
+    }
+
+    return profile;
+  };
+
+  const createProfileOnce = async ({
+    userId,
+    name
+  }: {
+    userId: string;
+    name: string;
+  }): Promise<{ profileId: string }> => {
+    const existingProfile = await findProfile({ userId });
+
+    if (existingProfile) {
+      return existingProfile;
+    }
+
+    let payload: Record<string, unknown>;
+
+    try {
+      payload = readRecord(
         await request('/v1/profiles', {
           method: 'POST',
           body: JSON.stringify({ name })
         })
       );
-      const profileId = readString(payload.id) ?? readString(readRecord(payload.profile).id);
+    } catch (error) {
+      if (error instanceof PostPeerConnectProviderError) {
+        const recoveredProfile = await findProfileByNameWithRetry(name);
 
-      if (!profileId) {
-        throw new PostPeerConnectProviderError();
+        if (recoveredProfile) {
+          return recoveredProfile;
+        }
       }
 
-      return { profileId };
+      throw error;
+    }
+
+    const profileId = readString(payload.id) ?? readString(readRecord(payload.profile).id);
+    const confirmedProfile = await findProfileByNameWithRetry(name);
+
+    if (!profileId || !confirmedProfile || confirmedProfile.profileId !== profileId) {
+      throw new PostPeerConnectProviderError();
+    }
+
+    return confirmedProfile;
+  };
+
+  // This prevents duplicate provider POSTs from concurrent requests handled
+  // by this client instance. A multi-replica deployment still needs a
+  // distributed lock around creation because PostPeer does not document an
+  // idempotency key for this endpoint.
+  const profileCreationsInFlight = new Map<
+    string,
+    Promise<{ profileId: string }>
+  >();
+
+  return {
+    supportsIntegrationCleanup: Boolean(apiKey),
+    ...(apiKey ? { findProfile } : {}),
+    createProfile: async ({ userId }) => {
+      const name = buildProfileName(userId, apiKey);
+      const inFlightCreation = profileCreationsInFlight.get(name);
+
+      if (inFlightCreation) {
+        return inFlightCreation;
+      }
+
+      let trackedCreation: Promise<{ profileId: string }>;
+      trackedCreation = createProfileOnce({ userId, name }).finally(() => {
+        if (profileCreationsInFlight.get(name) === trackedCreation) {
+          profileCreationsInFlight.delete(name);
+        }
+      });
+      profileCreationsInFlight.set(name, trackedCreation);
+
+      return trackedCreation;
     },
     createConnectUrl: async ({ platform, profileId }) => {
       const slug = postPeerPlatformSlug[platform];

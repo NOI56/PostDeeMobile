@@ -558,7 +558,15 @@ export const createApp = (options: AppOptions = {}) => {
     options.postPeerConnectClient ??
     createPostPeerConnectClient({
       apiKey: config.postPeerApiKey,
-      baseUrl: config.postPeerApiBaseUrl
+      baseUrl: config.postPeerApiBaseUrl,
+      legacyRecovery:
+        config.postPeerLegacyRecoveryFingerprint &&
+        config.postPeerLegacyRecoveryProfileId
+          ? {
+              fingerprint: config.postPeerLegacyRecoveryFingerprint,
+              profileId: config.postPeerLegacyRecoveryProfileId
+            }
+          : undefined
     });
   registerDeviceRoutes(router, accountAwareAuthMiddleware, deviceTokenStore);
   registerSocialConnectionRoutes(router, accountAwareAuthMiddleware, {

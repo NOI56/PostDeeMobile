@@ -41,6 +41,13 @@ export type SocialConnectionStatus = {
   connectedAt?: string;
 };
 
+export class PostPeerProfileOwnershipConflictError extends Error {
+  constructor() {
+    super('PostPeer profile is already assigned to another user');
+    this.name = 'PostPeerProfileOwnershipConflictError';
+  }
+}
+
 export type UpsertSocialConnectionInput = {
   userId: string;
   platform: SocialConnectionPlatform;
@@ -69,7 +76,7 @@ export type SocialConnectionStore = {
   // The PostPeer profile id groups all of a user's connected accounts. It is
   // created once per user and reused for connect URLs and integration polling.
   getProfileId: (userId: string) => Promise<string | undefined>;
-  setProfileId: (input: { userId: string; profileId: string }) => Promise<void>;
+  setProfileId: (input: { userId: string; profileId: string }) => Promise<string>;
   deleteAllForUser?: (userId: string) => Promise<void>;
 };
 
@@ -141,6 +148,7 @@ export const createInMemorySocialConnectionStore = ({
 } = {}): SocialConnectionStore => {
   const connections = new Map<string, SocialConnection>();
   const profiles = new Map<string, string>();
+  const profileOwners = new Map<string, string>();
 
   return {
     listForUser: async (userId) =>
@@ -168,9 +176,29 @@ export const createInMemorySocialConnectionStore = ({
     },
     getProfileId: async (userId) => profiles.get(userId),
     setProfileId: async ({ userId, profileId }) => {
+      const existingProfileId = profiles.get(userId);
+
+      if (existingProfileId) {
+        return existingProfileId;
+      }
+
+      const currentOwner = profileOwners.get(profileId);
+
+      if (currentOwner && currentOwner !== userId) {
+        throw new PostPeerProfileOwnershipConflictError();
+      }
+
       profiles.set(userId, profileId);
+      profileOwners.set(profileId, userId);
+      return profileId;
     },
     deleteAllForUser: async (userId) => {
+      const profileId = profiles.get(userId);
+
+      if (profileId) {
+        profileOwners.delete(profileId);
+      }
+
       profiles.delete(userId);
       for (const [key, record] of connections) {
         if (record.userId === userId) {

@@ -678,6 +678,17 @@ Queue/storage scaffold switches:
   the initial Staging setting; `SOCIAL_PUBLISHER=postpeer` calls PostPeer and
   requires `POSTPEER_API_KEY` plus `VIDEO_STORAGE=r2|s3`.
 - `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`, `POSTPEER_INSTAGRAM_ACCOUNT_ID`, and `POSTPEER_FACEBOOK_ACCOUNT_ID` are non-production/operator smoke-test integration ids only. Production rejects them and must publish through per-user social connections.
+- New per-user PostPeer profiles use versioned 128-bit HMAC pseudonyms. A lost
+  mapping to one older 40-bit profile may be repaired temporarily with both
+  `POSTPEER_LEGACY_RECOVERY_FINGERPRINT` and
+  `POSTPEER_LEGACY_RECOVERY_PROFILE_ID`. The fingerprint is the full
+  `HMAC-SHA256(POSTPEER_API_KEY, "postdee-legacy-recovery:<firebase-user-id>")`;
+  remove both values immediately after that user's refresh restores the
+  mapping. Partial, malformed, duplicate, or mismatched recovery data fails
+  closed.
+- `PostPeerProfile.profileId` is uniquely claimed by one PostDee user at the
+  database boundary. The first mapping remains authoritative for same-user
+  races; cross-user claims fail safely without exposing the existing owner.
 - `VIDEO_STORAGE=mock` creates mock S3-style upload keys and mock read placeholders; `VIDEO_STORAGE=r2` uses Cloudflare R2 through the S3-compatible API for signed upload and signed download access; `VIDEO_STORAGE=s3` remains available as a legacy AWS S3 path.
 - `CLOUDFLARE_R2_BUCKET`, `CLOUDFLARE_R2_ACCOUNT_ID`, `CLOUDFLARE_R2_ACCESS_KEY_ID`, and `CLOUDFLARE_R2_SECRET_ACCESS_KEY` configure R2 uploads.
 - `CLOUDFLARE_R2_ENDPOINT` can override the default `https://<accountId>.r2.cloudflarestorage.com` endpoint when needed.

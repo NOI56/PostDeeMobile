@@ -1,4 +1,5 @@
 import {
+  PostPeerProfileOwnershipConflictError,
   type SocialConnection,
   type SocialConnectionPlatform,
   type SocialConnectionStatus,
@@ -82,10 +83,8 @@ type PostPeerProfileDelegate = {
     where: { userId: string };
     select: { profileId: true };
   }) => Promise<{ profileId: string } | null>;
-  upsert: (args: {
-    where: { userId: string };
-    update: { profileId: string };
-    create: { userId: string; profileId: string };
+  create: (args: {
+    data: { userId: string; profileId: string };
     select: { profileId: true };
   }) => Promise<{ profileId: string }>;
   deleteMany: (args: {
@@ -163,6 +162,14 @@ const writeData = ({
   displayName: normalizeOptionalMetadata(displayName) ?? null,
   externalAccountId: normalizeOptionalMetadata(externalAccountId) ?? null
 });
+
+const isUniqueConstraintError = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+
+  return (error as { code?: unknown }).code === 'P2002';
+};
 
 export const createPrismaSocialConnectionRepository = ({
   prisma
@@ -253,12 +260,32 @@ export const createPrismaSocialConnectionRepository = ({
     return record?.profileId;
   },
   setProfileId: async ({ userId, profileId }) => {
-    await prisma.postPeerProfile.upsert({
-      where: { userId },
-      update: { profileId },
-      create: { userId, profileId },
-      select: { profileId: true }
-    });
+    try {
+      const claimedProfile = await prisma.postPeerProfile.create({
+        data: { userId, profileId },
+        select: { profileId: true }
+      });
+
+      return claimedProfile.profileId;
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      // The unique userId constraint can also win a same-user race. Re-read by
+      // user and keep that first mapping authoritative; if no user row exists,
+      // the requested profile id is already owned by somebody else.
+      const existing = await prisma.postPeerProfile.findUnique({
+        where: { userId },
+        select: { profileId: true }
+      });
+
+      if (existing) {
+        return existing.profileId;
+      }
+
+      throw new PostPeerProfileOwnershipConflictError();
+    }
   },
   deleteAllForUser: async (userId) => {
     await prisma.socialConnection.deleteMany({

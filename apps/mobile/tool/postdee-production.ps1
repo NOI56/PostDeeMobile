@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('run', 'build-apk', 'test')]
+  [ValidateSet('run', 'build-apk', 'build-appbundle', 'test')]
   [string]$Command = 'run',
 
   [Parameter(ValueFromRemainingArguments = $true)]
@@ -12,7 +12,6 @@ $mobileRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent (Split-Path -Parent $mobileRoot)
 $flutter = Join-Path $workspaceRoot '.tools\flutter\bin\flutter.bat'
 $productionDefines = Join-Path $mobileRoot 'production.local.json'
-$revenueCatDefines = Join-Path $mobileRoot 'revenuecat.local.json'
 $mergedDefines = Join-Path $mobileRoot '.dart_tool\postdee_production.dartdefine.json'
 
 if (-not (Test-Path $productionDefines)) {
@@ -60,7 +59,6 @@ function Assert-ProductionRevenueCatKey {
 }
 
 Merge-DartDefines $productionDefines
-Merge-DartDefines $revenueCatDefines
 
 foreach ($blockedKey in @(
     'POSTDEE_MOCK_USER_ID',
@@ -97,14 +95,14 @@ if ($merged['ENABLE_REVENUECAT_BILLING'] -eq $true) {
   )
 
   if (
-    $Command -eq 'build-apk' -and
+    $Command -in @('build-apk', 'build-appbundle') -and
     -not $merged.Contains('REVENUECAT_ANDROID_API_KEY')
   ) {
-    throw 'REVENUECAT_ANDROID_API_KEY is required for production Android APK builds.'
+    throw 'REVENUECAT_ANDROID_API_KEY is required for production Android APK/AAB builds.'
   }
 
   if ($configuredRevenueCatKeyNames.Count -eq 0) {
-    throw "RevenueCat billing is enabled, but no RevenueCat SDK key was found. Add one to revenuecat.local.json."
+    throw "RevenueCat billing is enabled, but no RevenueCat SDK key was found. Add the platform SDK key to production.local.json."
   }
 
   foreach ($keyName in $configuredRevenueCatKeyNames) {
@@ -121,6 +119,11 @@ $flutterCommand = @(
     'build-apk' {
       'build'
       'apk'
+      '--release'
+    }
+    'build-appbundle' {
+      'build'
+      'appbundle'
       '--release'
     }
     'test' { 'test' }

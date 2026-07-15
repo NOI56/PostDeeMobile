@@ -113,12 +113,16 @@ keystore ใหม่นั้นใน Firebase Staging ก่อน Google Sig
 - [ ] เปิด/ปิดความสามารถ AI แล้ว preview และเวลาใน timeline ถูกต้อง
 - [x] RevenueCat Test Store purchase ให้ entitlement Pro กับ Firebase UID ทดสอบ
       บน Android Emulator (ราคาทดสอบ ไม่มีการเรียกเก็บเงินจริง)
-- [ ] Deploy backend ที่มี `POST /billing/revenuecat/resync`, ตั้ง
-      `REVENUECAT_REST_API_V1_KEY` ใน Render Staging แล้วทดสอบ Restore E2E ซ้ำ
-      (Restore UI/SDK รุ่นก่อน true server resync เคยผ่านแล้ว)
+- [x] Deploy backend ที่มี `POST /billing/revenuecat/resync`, ตั้ง
+      `REVENUECAT_REST_API_V1_KEY` ใน Render Staging และทดสอบ true Restore/resync
+      E2E บน Android Emulator แล้ว
 - [ ] RevenueCat renew/cancel/refund และ replay อัปเดต entitlement ถูกต้อง
-- [ ] Google Play sandbox purchase บนมือถือ Android จริง; Emulator/Test Store
-      ไม่ถือเป็นหลักฐานของ flow นี้
+- [x] เตรียม RevenueCat Play Store app, Starter/Pro products, entitlements,
+      default offering, production Android public SDK key และ signed AAB แล้ว
+- [ ] สร้าง Play Console app/subscriptions, ตั้ง service credentials, เปิด
+      internal testing และทดสอบ Google Play purchase/restore จริง ขั้นตอนเหล่านี้
+      ยังติดการยืนยันสิทธิ์ Play Console ด้วยมือถือ Android จริง; Emulator ใช้
+      ยืนยันไม่ได้ และ Test Store ไม่ถือเป็นหลักฐานของ flow นี้
 - [ ] หลังสลับ `SOCIAL_PUBLISHER=postpeer` แบบตั้งใจแล้ว PostPeer ต้องเชื่อมต่อและ
   โพสต์เฉพาะช่องทางทดสอบ จากนั้นสลับกลับ `disabled`
 - [ ] ตั้งเวลา, retry และสถานะล้มเหลวไม่ค้างผิดปกติ

@@ -14,9 +14,12 @@ The Staging Blueprint/database are created on Render and the API `/health`
 passes. Dedicated Android Debug Firebase/Google login through the Staging API
 also passes on the Emulator. RevenueCat Test Store configuration and webhook
 transport/auth smoke pass, and Test Store purchase E2E passes with a Firebase
-UID. The earlier Restore UI/SDK smoke predates true server reconciliation; the
-new backend must be deployed with `REVENUECAT_REST_API_V1_KEY` before Restore is
-retested. Lifecycle, Google Play purchase, physical Android, R2, Gemini/Groq,
+UID. True Restore/resync E2E also passes after the current backend was deployed
+and `REVENUECAT_REST_API_V1_KEY` was configured in Render Staging. The RevenueCat
+Play app/products/entitlements/default offering, production Android public SDK
+key, and signed AAB are prepared. Play Console app/subscriptions, internal
+testing, service credentials, real Google Play purchase, lifecycle, physical
+Android, R2, Gemini/Groq,
 Phone Auth, and social publishing still need dedicated Staging
 credentials and functional tests. Mock push and Firebase deletion remain off,
 and social publishing stays fail-closed `disabled` except during a controlled
@@ -36,7 +39,7 @@ user-owned PostPeer connections.
 | Video upload (Cloudflare R2) | ⚙️ ready | `VIDEO_STORAGE=r2` + R2 creds |
 | Auth (Firebase) | ✅ Android Debug Staging Google path passed; Production/iOS/Phone/physical-device tests remain | `AUTH_PROVIDER=firebase` + project |
 | Account deletion | ⚙️ ready, deployment test required | `FIREBASE_AUTH_DELETE_ENABLED=true` + service account; verify R2 prefix and Firebase UID deletion |
-| Subscriptions (RevenueCat / App Store / Play) | ⚙️ Test Store purchase E2E passed; true Restore resync deployment and real-store/device tests pending | `BILLING_PROVIDER=revenuecat` + webhook token + server REST key |
+| Subscriptions (RevenueCat / App Store / Play) | ⚙️ Test Store purchase + true Restore/resync E2E passed; RevenueCat Play config and signed AAB ready; Play Console and real-store/device tests pending | `BILLING_PROVIDER=revenuecat` + webhook token + server REST key |
 | Durable queue (Redis/BullMQ) | ⚙️ optional | `PUBLISH_QUEUE=bullmq` + `POST_STORE=prisma` + `DATABASE_URL` + `REDIS_URL` + run worker |
 
 ## 1. Gemini caption (free key — easiest)
@@ -112,9 +115,12 @@ because its generic `test_product` is intentionally unmapped. This proves only
 webhook reachability/auth. Separately, a Test Store purchase completed end to end
 on the Android Emulator with the Firebase uid and fake test price; it did not
 charge real money. Restore UI/SDK also passed before true server resync was
-added, so the current Restore flow is not complete until the new backend is
-deployed and tested with its server key. Renewal, cancel, refund, Google Play
-purchase, and physical Android remain unverified.
+added; the current backend is now deployed with its server key and true
+Restore/resync E2E passes. RevenueCat also has its Play Store app, Starter/Pro
+products, entitlements, default offering, and production Android public SDK key,
+and a signed AAB is ready. Renewal, cancel, refund, Play Console app/subscriptions,
+internal testing, Google service credentials, real Google Play purchase, and
+physical Android remain unverified.
 
 - `BILLING_PROVIDER=revenuecat`
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN=...`
@@ -125,25 +131,28 @@ purchase, and physical Android remain unverified.
 - `REVENUECAT_PRO_ENTITLEMENT_ID=pro`
 - `REVENUECAT_STARTER_PRODUCT_ID=postdee_starter_monthly`
 - `REVENUECAT_PRO_PRODUCT_ID=postdee_pro_monthly`
-- Create the matching App Store Connect and Play Console subscription products,
-  then connect them to RevenueCat offerings and entitlements.
+- The RevenueCat-side Play Store products, entitlements, and default offering are
+  already prepared. Create the matching Play Console app/subscriptions after the
+  developer account is verified on a physical Android device; an Emulator cannot
+  complete that verification. App Store Connect setup remains separate.
 - Set the RevenueCat app user id to the Firebase uid so webhook
   `event.app_user_id` matches the PostDee user id.
 - Configure the RevenueCat webhook URL:
   `https://<api-host>/billing/revenuecat/webhooks`.
 - Configure RevenueCat to send `Authorization: Bearer <token>` matching
   `REVENUECAT_WEBHOOK_AUTH_TOKEN`.
-- Deploy the backend containing `POST /billing/revenuecat/resync`, configure
-  `REVENUECAT_REST_API_V1_KEY` in the matching Render environment, then verify
-  user-initiated Restore: mobile SDK restore → authenticated backend resync →
+- The backend containing `POST /billing/revenuecat/resync` is deployed to Staging,
+  `REVENUECAT_REST_API_V1_KEY` is configured in Render, and user-initiated Restore
+  passes: mobile SDK restore → authenticated backend resync →
   `GET /billing/subscription` shows the reconciled plan.
 - Mobile has a `purchases_flutter` gateway behind
   `ENABLE_REVENUECAT_BILLING=true`. For local Test Store runs, pass the ignored
   `apps/mobile/revenuecat.local.json` file with
   `--dart-define-from-file=revenuecat.local.json`.
-- The current local SDK key is a RevenueCat Test Store key. Replace it with
-  real platform RevenueCat SDK keys before submitting to App Store or Google
-  Play.
+- Keep `revenuecat.local.json` for Test Store only. Production Android uses its
+  RevenueCat public SDK key through the ignored production config, and the signed
+  AAB is ready; do not commit either local config or any server secret. Configure
+  the iOS platform key separately before App Store submission.
 - Keep the existing `/billing/store/verify` path only as a legacy scaffold, not
   the preferred production billing path.
 

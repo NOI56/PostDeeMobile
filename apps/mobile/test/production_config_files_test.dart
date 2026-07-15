@@ -50,13 +50,51 @@ void main() {
     expect(
       contents,
       contains(
+        r"$Command -in @('build-apk', 'build-appbundle')",
+      ),
+    );
+    expect(
+      contents,
+      contains(
         r"-not $merged.Contains('REVENUECAT_ANDROID_API_KEY')",
       ),
     );
     expect(
       contents,
       contains(
-        'REVENUECAT_ANDROID_API_KEY is required for production Android APK builds.',
+        'REVENUECAT_ANDROID_API_KEY is required for production Android APK/AAB builds.',
+      ),
+    );
+  });
+  test('production helper builds app bundles from production defines only',
+      () async {
+    final helper = File('tool/postdee-production.ps1');
+
+    expect(helper.existsSync(), isTrue);
+
+    final contents = await helper.readAsString();
+
+    expect(
+      contents,
+      contains(
+        "[ValidateSet('run', 'build-apk', 'build-appbundle', 'test')]",
+      ),
+    );
+    expect(
+      contents,
+      contains(
+        RegExp(
+          r"'build-appbundle'\s*\{\s*'build'\s*'appbundle'\s*'--release'\s*\}",
+        ),
+      ),
+    );
+    expect(contents, contains(r'Merge-DartDefines $productionDefines'));
+    expect(contents, isNot(contains(r'$revenueCatDefines')));
+    expect(contents, isNot(contains('revenuecat.local.json')));
+    expect(
+      contents,
+      contains(
+        'Add the platform SDK key to production.local.json.',
       ),
     );
   });

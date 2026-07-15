@@ -395,15 +395,22 @@ provider lookup fails. Zero active RevenueCat entitlements deactivates only the
 matching RevenueCat-backed record. Active but unmapped access returns a
 configuration error and does not downgrade the user.
 
-Production work required:
+Production status and remaining work:
 
-- Create `postdee_starter_monthly` and `postdee_pro_monthly` in RevenueCat.
-- Link Apple and Google service credentials to RevenueCat dashboard.
+- RevenueCat already has the Play Store app, `postdee_starter_monthly` and
+  `postdee_pro_monthly` products, Starter/Pro entitlements, and the default
+  offering.
+- Link Apple and Google service credentials to the RevenueCat dashboard after
+  the matching store apps are available.
 - Configure `REVENUECAT_WEBHOOK_AUTH_TOKEN` and the RevenueCat webhook URL.
-- Configure the server-only `REVENUECAT_REST_API_V1_KEY` before enabling the
-  current Restore/resync flow in an environment.
-- Replace the local RevenueCat Test Store SDK key with real platform SDK keys
-  before App Store / Google Play release builds.
+- Staging already has the server-only `REVENUECAT_REST_API_V1_KEY`; Test Store
+  true Restore/resync E2E passes there.
+- The production Android public SDK key is configured through an ignored local
+  production config, and a signed AAB is ready. The iOS platform key and store
+  configuration still remain.
+- Create the Play Console app/subscriptions, configure its service credentials,
+  and open internal testing after the developer account is verified on a
+  physical Android device. The Emulator cannot complete this verification.
 - Run sandbox/device purchases and renewal/cancel/refund webhook tests.
 
 ## Real-Clip AI Caption Flow
@@ -728,21 +735,23 @@ cd apps/mobile
 - Firebase Android Debug Staging Google auth passes end to end; Phone Auth,
   Production/iOS capability setup, and physical-device testing remain.
 - RevenueCat Test Store products/entitlements/current offering and authenticated
-  webhook transport are configured, and purchase E2E passes on the Android
-  Emulator with a Firebase UID. The earlier Restore UI/SDK smoke predates true
-  server reconciliation; deploy the new route and set
-  `REVENUECAT_REST_API_V1_KEY` in Staging before calling Restore E2E complete.
-  Lifecycle tests, real Apple/Google products, platform SDK keys, Google Play
-  purchase, and physical Android verification remain. The legacy direct store
-  verifier remains a scaffold.
+  webhook transport are configured; purchase and true Restore/resync E2E pass on
+  the Android Emulator with a Firebase UID after the Render Staging key was set.
+  RevenueCat also has the Play Store app/products/entitlements/default offering
+  and production Android public SDK key, and a signed AAB is ready. Play Console
+  app/subscriptions, internal testing, Google service credentials, real Google
+  Play purchase, lifecycle tests, and physical Android verification remain. Play
+  Console requires a physical Android device for account verification and does
+  not accept an Emulator. The legacy direct store verifier remains a scaffold.
 - Analytics does not yet fetch real platform metrics.
 
 ## Recommended Next Steps
 
-1. Deploy RevenueCat restore/resync to Staging, add its server REST key, and
-   rerun Test Store Restore E2E.
-2. Add real App Store / Google Play product setup documentation.
-3. Test RevenueCat purchase and restore on real sandbox devices.
+1. Verify Play Console access with a physical Android device, then create the
+   Play app/subscriptions, service credentials, and internal-testing track.
+2. Upload the signed AAB and test RevenueCat purchase and restore through Google
+   Play internal testing.
+3. Complete the matching App Store product and platform-key setup.
 4. Test RevenueCat renewal/cancel/refund webhook delivery from sandbox events.
 5. Keep the legacy store notification scaffold covered, but do not make it the
    preferred production billing path.

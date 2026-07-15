@@ -67,17 +67,17 @@ local mock auth:
 powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-production.ps1 -Command run
 ```
 
-The script merges:
-
-- `production.local.json` for non-secret production app flags such as
-  `API_BASE_URL=https://postdee-api.onrender.com`,
-  `ENABLE_FIREBASE_AUTH=true`, and `ALLOW_LOCAL_MOCK_AUTH=false`.
-- `revenuecat.local.json` for the RevenueCat mobile SDK key. This file is
-  ignored by Git and must not contain backend webhook tokens.
+The script reads only the ignored `production.local.json` file. Start from
+`production.local.example.json`, keep the production flags such as
+`API_BASE_URL=https://postdee-api.onrender.com`, `ENABLE_FIREBASE_AUTH=true`,
+and `ALLOW_LOCAL_MOCK_AUTH=false`, then add the platform RevenueCat SDK key to
+that same local file. Android Play builds require
+`REVENUECAT_ANDROID_API_KEY`. Never add backend webhook tokens or server REST
+API keys to this mobile config.
 
 The production helper rejects empty RevenueCat keys, Test Store keys beginning
 with `test_`, and example placeholders beginning with `replace_with_`. The
-`build-apk` command specifically requires a valid
+`build-apk` and `build-appbundle` commands specifically require a valid
 `REVENUECAT_ANDROID_API_KEY`; a generic `REVENUECAT_API_KEY` does not count for
 an Android release build. Use the direct Flutter command in the local testing
 section below when testing with the RevenueCat Test Store.
@@ -88,11 +88,20 @@ Build a release Android APK with the same production flags:
 powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-production.ps1 -Command build-apk
 ```
 
+Build the signed Android App Bundle used for Google Play Internal testing:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-production.ps1 -Command build-appbundle
+```
+
+The generated bundle is written to
+`build/app/outputs/bundle/release/app-release.aab`.
+
 Android release builds also require a local signing key. Copy
 `android/key.properties.example` to `android/key.properties`, create or place the
 matching keystore file under `android/`, and keep both files out of Git. Missing
-`storeFile` means the production flags are valid, but the APK cannot be packaged
-for release until Android signing is configured. See
+`storeFile` means the production flags are valid, but the APK/AAB cannot be
+packaged for release until Android signing is configured. See
 `../../docs/ANDROID_SIGNING_KEYS.md` for the safety checklist.
 
 ## Store Subscription
@@ -105,7 +114,8 @@ The Home Starter/Pro CTAs can run in two modes:
   `POST /billing/revenuecat/webhooks` to update the backend entitlement.
 
 For local RevenueCat Test Store testing, use the ignored
-`revenuecat.local.json` file that contains the dashboard SDK key:
+`revenuecat.local.json` file that contains the dashboard SDK key. This file is
+only for the direct staging command below; the production helper never reads it:
 
 ```powershell
 ..\..\.tools\flutter\bin\flutter.bat run --debug --dart-define-from-file=staging.local.json --dart-define-from-file=revenuecat.local.json

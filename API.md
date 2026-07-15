@@ -1181,6 +1181,63 @@ without revoking access immediately because the subscription can still be active
 until the paid period actually expires. Unknown product or entitlement ids return
 `202` with `ignored: true`.
 
+### `POST /billing/revenuecat/resync`
+
+Reconciles a user-initiated RevenueCat restore with PostDee's subscription
+store when `BILLING_PROVIDER=revenuecat`. This authenticated endpoint accepts an
+empty JSON body and always uses the authenticated PostDee/Firebase uid as
+RevenueCat `app_user_id`; any user id
+in the request body is ignored. The mobile flow calls RevenueCat
+`restorePurchases` first, then calls this endpoint.
+
+The backend requests the subscriber from RevenueCat API v1 using the server-only
+`REVENUECAT_REST_API_V1_KEY`. It maps active Starter/Pro entitlements or products,
+prefers Pro if both are active, preserves a lifetime entitlement, and respects
+entitlement/subscription grace-period expiry. When RevenueCat returns no active
+entitlement, only the matching `revenuecat:<uid>` subscription is deactivated;
+paid access from another provider is left unchanged. An active but unmapped
+entitlement is treated as configuration drift and never downgrades the user.
+For an empty RevenueCat result, top-level `plan` is `BASIC` so the client does
+not report a successful Restore; `effectivePlan` separately reports any access
+that remains active from another provider.
+
+Request:
+
+```http
+POST /billing/revenuecat/resync
+Authorization: Bearer <Firebase ID token>
+Content-Type: application/json
+
+{}
+```
+
+Paid response example:
+
+```json
+{
+  "status": "ok",
+  "plan": "PRO",
+  "subscription": {
+    "userId": "firebase-user-id",
+    "plan": "PRO",
+    "status": "ACTIVE"
+  }
+}
+```
+
+The route has a fixed per-IP limit of 10 requests per 10 minutes. Errors are:
+
+- `401` when the user is not authenticated.
+- `409 REVENUECAT_ENTITLEMENT_NOT_MAPPED` when RevenueCat reports active access
+  that does not match the configured Starter/Pro ids; the existing plan is kept.
+- `429` when the restore/resync limit is exceeded.
+- `501 REVENUECAT_RESYNC_NOT_CONFIGURED` when the server REST key is absent.
+- `502 REVENUECAT_RESYNC_FAILED` when RevenueCat cannot be queried or returns an
+  invalid response. A provider failure leaves the existing local plan unchanged.
+
+This route is distinct from the webhook: the webhook handles provider lifecycle
+events, while resync repairs or confirms state after an explicit user Restore.
+
 ### `POST /billing/store/verify`
 
 Legacy direct Apple/Google store verifier. It verifies a mobile store purchase
@@ -1417,6 +1474,7 @@ PostgreSQL.
 | `GROQ_EDIT_PLAN_MODEL` | `llama-3.3-70b-versatile` | Groq chat model for edit planning |
 | `BILLING_PROVIDER` | `mock`, `store`, `revenuecat` | Billing verifier adapter |
 | `REVENUECAT_WEBHOOK_AUTH_TOKEN` | `...` | Bearer token required by the RevenueCat webhook endpoint |
+| `REVENUECAT_REST_API_V1_KEY` | `...` | Server-only secret used to read a subscriber during authenticated restore/resync |
 | `REVENUECAT_STARTER_ENTITLEMENT_ID` | `starter` | RevenueCat entitlement mapped to Starter |
 | `REVENUECAT_PRO_ENTITLEMENT_ID` | `pro` | RevenueCat entitlement mapped to Pro |
 | `REVENUECAT_STARTER_PRODUCT_ID` | `postdee_starter_monthly` | RevenueCat product mapped to Starter |
@@ -1469,9 +1527,14 @@ The following work is still required before production launch:
   top-up handling, mobile FFmpeg export, retries, and failure handling before
   implementation.
 - Complete Firebase Google Sign-In and Phone Auth device testing.
+- Deploy the RevenueCat restore/resync backend and set
+  `REVENUECAT_REST_API_V1_KEY` in Staging, then rerun the Test Store Restore E2E.
+  Test Store purchase E2E already passes on the Android Emulator; the earlier
+  Restore UI/SDK smoke predates true server reconciliation.
 - Complete RevenueCat dashboard setup for real App Store / Google Play products,
   replace the local Test Store SDK key with platform RevenueCat SDK keys, and
-  run App Store / Google Play sandbox purchase testing through RevenueCat.
+  run App Store / Google Play sandbox purchase testing through RevenueCat. A
+  Google Play purchase and physical Android device remain unverified.
 - Add full RevenueCat renewal, cancel, refund, billing-issue, and notification
   replay coverage.
 - Replace mock analytics with real platform analytics fetchers.

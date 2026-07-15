@@ -13,8 +13,11 @@ third-party accounts.
 The Staging Blueprint/database are created on Render and the API `/health`
 passes. Dedicated Android Debug Firebase/Google login through the Staging API
 also passes on the Emulator. RevenueCat Test Store configuration and webhook
-transport/auth smoke pass, but purchase/restore/lifecycle E2E does not. R2,
-Gemini/Groq, Phone Auth, and social publishing still need dedicated Staging
+transport/auth smoke pass, and Test Store purchase E2E passes with a Firebase
+UID. The earlier Restore UI/SDK smoke predates true server reconciliation; the
+new backend must be deployed with `REVENUECAT_REST_API_V1_KEY` before Restore is
+retested. Lifecycle, Google Play purchase, physical Android, R2, Gemini/Groq,
+Phone Auth, and social publishing still need dedicated Staging
 credentials and functional tests. Mock push and Firebase deletion remain off,
 and social publishing stays fail-closed `disabled` except during a controlled
 test account run.
@@ -33,7 +36,7 @@ user-owned PostPeer connections.
 | Video upload (Cloudflare R2) | ⚙️ ready | `VIDEO_STORAGE=r2` + R2 creds |
 | Auth (Firebase) | ✅ Android Debug Staging Google path passed; Production/iOS/Phone/physical-device tests remain | `AUTH_PROVIDER=firebase` + project |
 | Account deletion | ⚙️ ready, deployment test required | `FIREBASE_AUTH_DELETE_ENABLED=true` + service account; verify R2 prefix and Firebase UID deletion |
-| Subscriptions (RevenueCat / App Store / Play) | ⚙️ Test Store config + webhook transport passed; purchase E2E pending | `BILLING_PROVIDER=revenuecat` + webhook token |
+| Subscriptions (RevenueCat / App Store / Play) | ⚙️ Test Store purchase E2E passed; true Restore resync deployment and real-store/device tests pending | `BILLING_PROVIDER=revenuecat` + webhook token + server REST key |
 | Durable queue (Redis/BullMQ) | ⚙️ optional | `PUBLISH_QUEUE=bullmq` + `POST_STORE=prisma` + `DATABASE_URL` + `REDIS_URL` + run worker |
 
 ## 1. Gemini caption (free key — easiest)
@@ -106,10 +109,17 @@ The PostDee RevenueCat project now has Test Store Starter/Pro products,
 entitlements, a current offering, and an authenticated sandbox-only Staging
 webhook. The dashboard transport test returned HTTP 202 and was safely ignored
 because its generic `test_product` is intentionally unmapped. This proves only
-webhook reachability/auth, not purchase, restore, renewal, cancel, or refund.
+webhook reachability/auth. Separately, a Test Store purchase completed end to end
+on the Android Emulator with the Firebase uid and fake test price; it did not
+charge real money. Restore UI/SDK also passed before true server resync was
+added, so the current Restore flow is not complete until the new backend is
+deployed and tested with its server key. Renewal, cancel, refund, Google Play
+purchase, and physical Android remain unverified.
 
 - `BILLING_PROVIDER=revenuecat`
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN=...`
+- `REVENUECAT_REST_API_V1_KEY=...` (server-only subscriber read key; never put it
+  in Flutter and do not reuse the Test Store mobile SDK key)
 - `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN=...` if the legacy direct Google Play notification path is enabled
 - `REVENUECAT_STARTER_ENTITLEMENT_ID=starter`
 - `REVENUECAT_PRO_ENTITLEMENT_ID=pro`
@@ -123,6 +133,10 @@ webhook reachability/auth, not purchase, restore, renewal, cancel, or refund.
   `https://<api-host>/billing/revenuecat/webhooks`.
 - Configure RevenueCat to send `Authorization: Bearer <token>` matching
   `REVENUECAT_WEBHOOK_AUTH_TOKEN`.
+- Deploy the backend containing `POST /billing/revenuecat/resync`, configure
+  `REVENUECAT_REST_API_V1_KEY` in the matching Render environment, then verify
+  user-initiated Restore: mobile SDK restore → authenticated backend resync →
+  `GET /billing/subscription` shows the reconciled plan.
 - Mobile has a `purchases_flutter` gateway behind
   `ENABLE_REVENUECAT_BILLING=true`. For local Test Store runs, pass the ignored
   `apps/mobile/revenuecat.local.json` file with

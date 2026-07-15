@@ -20,7 +20,7 @@ type RevenueCatEvent = {
   appUserId: string;
   productId?: string;
   entitlementIds: string[];
-  expirationAtMs?: number;
+  expirationAtMs?: number | null;
 };
 
 const activeEventTypes = new Set([
@@ -53,10 +53,15 @@ const readString = (value: unknown) => {
 const readStringList = (value: unknown) =>
   Array.isArray(value) ? value.map(readString).filter((item): item is string => Boolean(item)) : [];
 
-const readExpiration = (value: unknown) =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0
+const readExpiration = (value: unknown) => {
+  if (value === null) {
+    return null;
+  }
+
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
     ? new Date(value).toISOString()
     : undefined;
+};
 
 const readAuthorizationToken = (request: Request) => {
   const authorization = readString(request.headers.authorization);
@@ -87,9 +92,12 @@ const readRevenueCatEvent = (body: unknown): RevenueCatEvent | undefined => {
     productId: readString(event.product_id),
     entitlementIds: readStringList(event.entitlement_ids),
     expirationAtMs:
-      typeof event.expiration_at_ms === 'number' && Number.isFinite(event.expiration_at_ms)
-        ? event.expiration_at_ms
-        : undefined
+      event.expiration_at_ms === null
+        ? null
+        : typeof event.expiration_at_ms === 'number' &&
+            Number.isFinite(event.expiration_at_ms)
+          ? event.expiration_at_ms
+          : undefined
   };
 };
 
@@ -194,9 +202,10 @@ export const registerRevenueCatWebhookRoutes = ({
         return;
       }
 
+      const currentPeriodEnd = readExpiration(event.expirationAtMs);
       const subscription = await subscriptionStore.activatePlan(authUser, plan, {
         billingSubscriptionId,
-        currentPeriodEnd: readExpiration(event.expirationAtMs)
+        ...(currentPeriodEnd !== undefined ? { currentPeriodEnd } : {})
       });
 
       response.json({

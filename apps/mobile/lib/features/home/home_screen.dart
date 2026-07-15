@@ -59,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingPosts = true;
   String? _analyticsErrorMessage;
   String? _subscriptionErrorMessage;
+  var _subscriptionLoadGeneration = 0;
 
   @override
   void initState() {
@@ -95,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadSubscription() async {
+    final loadGeneration = ++_subscriptionLoadGeneration;
     setState(() {
       _isLoadingSubscription = true;
       _subscriptionErrorMessage = null;
@@ -105,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
           widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
       final subscription = await loader();
 
-      if (!mounted) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -113,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _subscription = subscription;
       });
     } on ApiException catch (error) {
-      if (!mounted) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -121,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _subscriptionErrorMessage = error.message;
       });
     } on SocketException {
-      if (!mounted) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -130,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _subscriptionErrorMessage = l10n.homeApiConnectionError;
       });
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -139,11 +141,26 @@ class _HomeScreenState extends State<HomeScreen> {
         _subscriptionErrorMessage = l10n.homeAnalyticsLoadError;
       });
     } finally {
-      if (mounted) {
+      if (mounted && loadGeneration == _subscriptionLoadGeneration) {
         setState(() {
           _isLoadingSubscription = false;
         });
       }
+    }
+  }
+
+  Future<void> _openPaywall() async {
+    final loader =
+        widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => PaywallScreen(loadSubscription: loader),
+      ),
+    );
+
+    if (mounted) {
+      await _loadSubscription();
     }
   }
 
@@ -239,6 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
           subscription: _subscription,
           isLoading: _isLoadingSubscription,
           errorMessage: _subscriptionErrorMessage,
+          onTap: _openPaywall,
         ),
         const SizedBox(height: 14),
         _AiEditingShortcutCard(onOpenAi: widget.onOpenAi),
@@ -613,11 +631,13 @@ class _PlanSummaryCard extends StatelessWidget {
     required this.subscription,
     required this.isLoading,
     required this.errorMessage,
+    required this.onTap,
   });
 
   final SubscriptionStatusResult? subscription;
   final bool isLoading;
   final String? errorMessage;
+  final VoidCallback onTap;
 
   String _planTitle(PostDeeLocalizations l10n) {
     final isThai = l10n.locale.languageCode == 'th';
@@ -684,11 +704,7 @@ class _PlanSummaryCard extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => const PaywallScreen(),
-        ),
-      ),
+      onTap: onTap,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: AppTheme.mint,

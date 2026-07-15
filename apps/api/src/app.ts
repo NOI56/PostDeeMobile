@@ -31,6 +31,11 @@ import {
   type FirebaseCertificatesFetch
 } from './modules/auth/firebaseTokenVerifier.js';
 import { registerBillingRoutes } from './modules/billing/billingRoutes.js';
+import { registerRevenueCatRestoreRoutes } from './modules/billing/revenueCatRestoreRoutes.js';
+import {
+  createRevenueCatSubscriberClient,
+  type RevenueCatSubscriberClient
+} from './modules/billing/revenueCatSubscriberClient.js';
 import { registerRevenueCatWebhookRoutes } from './modules/billing/revenueCatWebhookRoutes.js';
 import type {
   AppleSignedNotificationDecoder
@@ -143,6 +148,7 @@ type AppOptions = {
   transcriptionProvider?: TranscriptionProvider;
   editPlanProvider?: EditPlanProvider;
   storePurchaseVerifier?: StorePurchaseVerifier;
+  revenueCatSubscriberClient?: RevenueCatSubscriberClient;
   appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
   socialConnectionStore?: SocialConnectionStore;
   postPeerConnectClient?: PostPeerConnectClient;
@@ -313,6 +319,11 @@ export const createApp = (options: AppOptions = {}) => {
     windowMs: 10 * 60 * 1000,
     maxRequests: 20
   });
+  const revenueCatResyncRateLimit = createRateLimitMiddleware({
+    bucket: 'revenuecat-resync',
+    windowMs: 10 * 60 * 1000,
+    maxRequests: 10
+  });
   const shouldCreateFirebaseAdminAuth =
     config.firebaseAuthDeleteEnabled &&
     (!options.firebaseVerifier || !options.accountIdentityDeleter);
@@ -440,6 +451,7 @@ export const createApp = (options: AppOptions = {}) => {
   router.use('/captions', aiRateLimit);
   router.use('/ai-edits', aiRateLimit);
   router.use('/social-connections', socialConnectionRateLimit);
+  router.use('/billing/revenuecat/resync', revenueCatResyncRateLimit);
 
   registerAuthRoutes(router, accountAwareAuthMiddleware);
   registerUploadRoutes(router, accountAwareAuthMiddleware, videoStorage, {
@@ -511,6 +523,18 @@ export const createApp = (options: AppOptions = {}) => {
       appleSignedNotificationDecoder: options.appleSignedNotificationDecoder
     }
   );
+  registerRevenueCatRestoreRoutes({
+    router,
+    authMiddleware: accountAwareAuthMiddleware,
+    config,
+    subscriberClient:
+      options.revenueCatSubscriberClient ??
+      createRevenueCatSubscriberClient({
+        apiKey: config.revenueCatRestApiV1Key
+      }),
+    userStore,
+    subscriptionStore
+  });
   registerRevenueCatWebhookRoutes({
     router,
     config,

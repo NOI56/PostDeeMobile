@@ -59,6 +59,7 @@ describe('render.staging.yaml isolated staging config', () => {
       'GROQ_API_KEY',
       'FIREBASE_PROJECT_ID',
       'REVENUECAT_WEBHOOK_AUTH_TOKEN',
+      'REVENUECAT_REST_API_V1_KEY',
     ]) {
       expectEnvSecret(source, key);
     }

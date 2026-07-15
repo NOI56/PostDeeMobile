@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -125,6 +127,130 @@ void main() {
     expect(find.text('โควต้าตัดต่อ AI'), findsOneWidget);
     expect(find.text('175'), findsOneWidget);
     expect(find.text('/ 200 นาที'), findsOneWidget);
+  });
+
+  testWidgets('refreshes the profile plan after returning from the paywall',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      subscription: const SubscriptionStatusResult(
+        userId: 'plan-refresh-user',
+        plan: 'BASIC',
+        status: 'INACTIVE',
+        canSchedule: false,
+        canUseAiCaptions: false,
+        canUseAnalytics: false,
+      ),
+    );
+
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('profile-plan-starter'), skipOffstage: false),
+      300,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('profile-plan-starter')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกแพ็กเกจ'), findsOneWidget);
+
+    apiClient.subscription = const SubscriptionStatusResult(
+      userId: 'plan-refresh-user',
+      plan: 'PRO',
+      status: 'ACTIVE',
+      canSchedule: true,
+      canUseAiCaptions: true,
+      canUseAnalytics: true,
+    );
+    await tester.tap(find.byTooltip('กลับ'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('profile-plan-pro'), skipOffstage: false),
+      300,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.pumpAndSettle();
+
+    expect(apiClient.subscriptionLoadCalls, 3);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('profile-plan-pro')),
+        matching: find.text('แพ็กเกจปัจจุบัน'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('ignores a stale Basic plan after returning from the paywall',
+      (tester) async {
+    final initialLoad = Completer<SubscriptionStatusResult>();
+    var subscriptionLoadCalls = 0;
+    const basic = SubscriptionStatusResult(
+      userId: 'profile-stale-user',
+      plan: 'BASIC',
+      status: 'INACTIVE',
+      canSchedule: false,
+      canUseAiCaptions: false,
+      canUseAnalytics: false,
+    );
+    const pro = SubscriptionStatusResult(
+      userId: 'profile-stale-user',
+      plan: 'PRO',
+      status: 'ACTIVE',
+      canSchedule: true,
+      canUseAiCaptions: true,
+      canUseAnalytics: true,
+    );
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      subscriptionLoader: () {
+        subscriptionLoadCalls += 1;
+        return switch (subscriptionLoadCalls) {
+          1 => initialLoad.future,
+          2 => Future.value(basic),
+          _ => Future.value(pro),
+        };
+      },
+    );
+
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('profile-plan-starter'), skipOffstage: false),
+      300,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-plan-starter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('กลับ'));
+    await tester.pumpAndSettle();
+
+    initialLoad.complete(basic);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('profile-plan-pro'), skipOffstage: false),
+      300,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.pumpAndSettle();
+
+    expect(subscriptionLoadCalls, 3);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('profile-plan-pro')),
+        matching: find.text('แพ็กเกจปัจจุบัน'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('shows connected social platforms from the API', (tester) async {
@@ -481,27 +607,36 @@ class _FakeSocialApiClient extends PostDeeApiClient {
     this.connectLink,
     this.refreshedConnections,
     this.subscription,
+    this.subscriptionLoader,
   });
 
   List<SocialConnectionResult> connections;
   final SocialConnectLinkResult? connectLink;
   final List<SocialConnectionResult>? refreshedConnections;
-  final SubscriptionStatusResult? subscription;
+  SubscriptionStatusResult? subscription;
+  final Future<SubscriptionStatusResult> Function()? subscriptionLoader;
   final List<String> connectCalls = [];
   final List<String> disconnectCalls = [];
   int refreshCalls = 0;
+  int subscriptionLoadCalls = 0;
 
   @override
-  Future<SubscriptionStatusResult> loadCurrentSubscription() async =>
-      subscription ??
-      const SubscriptionStatusResult(
-        userId: 'basic-user',
-        plan: 'BASIC',
-        status: 'INACTIVE',
-        canSchedule: false,
-        canUseAiCaptions: false,
-        canUseAnalytics: false,
-      );
+  Future<SubscriptionStatusResult> loadCurrentSubscription() async {
+    subscriptionLoadCalls += 1;
+    final loader = subscriptionLoader;
+    if (loader != null) {
+      return loader();
+    }
+    return subscription ??
+        const SubscriptionStatusResult(
+          userId: 'basic-user',
+          plan: 'BASIC',
+          status: 'INACTIVE',
+          canSchedule: false,
+          canUseAiCaptions: false,
+          canUseAnalytics: false,
+        );
+  }
 
   @override
   Future<AiEditQuota> fetchAiEditQuota() async => const AiEditQuota(

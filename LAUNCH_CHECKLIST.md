@@ -20,6 +20,10 @@
       `FIREBASE_PROJECT_ID` บน Render ให้ตรงกัน
 - [x] ตั้ง RevenueCat Test Store products/entitlements/current offering และ
       authenticated sandbox webhook; transport/auth smoke ได้ HTTP 202 ตามคาด
+- [x] Test Store purchase E2E ผ่านบน Android Emulator ด้วย Firebase UID
+      (เป็นราคาทดสอบและไม่มีการเรียกเก็บเงินจริง)
+- [ ] Deploy true server resync และตั้ง `REVENUECAT_REST_API_V1_KEY` ของ Staging
+      แล้วทดสอบ Restore ซ้ำ; UI/SDK รุ่นก่อน resync เคยผ่านแล้ว
 - [ ] เปลี่ยน R2/Gemini/Groq เป็น credentials ของ Staging จริงก่อน functional smoke
 - [x] ตั้ง Staging เริ่มต้นเป็น `SOCIAL_PUBLISHER=disabled`; สลับ PostPeer เฉพาะ
       controlled test ด้วยบัญชีทดสอบแล้วสลับกลับ
@@ -39,7 +43,7 @@
 |---|---|---|
 | `NODE_ENV` | `development` → `production` | — |
 | `AUTH_PROVIDER` | `mock` → `firebase` | `FIREBASE_PROJECT_ID` |
-| `BILLING_PROVIDER` | `mock` → `store` หรือ `revenuecat` | (ดูข้อ 6) |
+| `BILLING_PROVIDER` | `mock` → `store` หรือ `revenuecat` | webhook token + REST key (ดูข้อ 6) |
 | `VIDEO_STORAGE` | `mock` → `r2` | `CLOUDFLARE_R2_*` |
 | `CAPTION_PROVIDER` | `mock` → `gemini` | `GEMINI_API_KEY` |
 | `TRANSCRIPTION_PROVIDER` | `mock` → `groq` | `GROQ_API_KEY` |
@@ -102,8 +106,12 @@
       `BILLING_PROVIDER=revenuecat` + `REVENUECAT_WEBHOOK_AUTH_TOKEN`
 - [x] สร้าง Test Store products `postdee_starter_monthly` / `postdee_pro_monthly`,
       entitlements, current offering และ webhook ของ Staging
-- [ ] ทดสอบซื้อ/restore/renew/cancel/refund ด้วย Test Store และ Firebase UID จริง
-- [ ] ตั้ง product ใน App Store Connect / Google Play, ทดสอบซื้อบน sandbox device
+- [x] ทดสอบซื้อ Test Store ด้วย Firebase UID บน Android Emulator สำเร็จ
+- [ ] Deploy `POST /billing/revenuecat/resync` และตั้ง server-only
+      `REVENUECAT_REST_API_V1_KEY` ใน Staging แล้วทดสอบ Restore E2E ซ้ำ
+- [ ] ทดสอบ renew/cancel/refund และ replay ด้วย Test Store
+- [ ] ตั้ง product ใน App Store Connect / Google Play, ทดสอบซื้อบน sandbox
+      มือถือจริง (Google Play purchase และ Android จริงยังไม่ยืนยัน)
 - ✅ มีตาข่ายกันหมดอายุแล้ว: ถ้า webhook พลาด ระบบจะตัดเป็น BASIC เมื่อเลย
       `currentPeriodEnd`
 

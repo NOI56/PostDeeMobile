@@ -38,10 +38,12 @@ Current status:
   account cleanup, deleted-account retry semantics, and zero leftover smoke
   sessions/objects in PostgreSQL and R2. Full mobile-to-worker real-video and
   slow-network tests still remain.
-- Backend RevenueCat webhook scaffold is prepared; mobile `purchases_flutter`
-  gateway is wired behind `ENABLE_REVENUECAT_BILLING=true`. Real App Store /
-  Google Play product setup, platform SDK keys, and sandbox/device purchase
-  testing remain.
+- Backend RevenueCat webhook and authenticated subscriber resync paths are
+  prepared; mobile `purchases_flutter` purchase/restore is wired behind
+  `ENABLE_REVENUECAT_BILLING=true`. Test Store purchase E2E passes on the
+  Android Emulator. The new true server resync still needs Staging deploy plus
+  `REVENUECAT_REST_API_V1_KEY`; real App Store / Google Play products, platform
+  SDK keys, Google Play purchase, and physical-device testing remain.
 - Render PostgreSQL and the API service have been created and the live health
   endpoint responds successfully. Secret/provider state remains a dated
   operational check and must be rechecked in the Render dashboard before launch.
@@ -51,8 +53,10 @@ Current status:
   id, Google provider, restricted Android API key, and Firebase-token-to-API
   login smoke test now pass on the Android Emulator. RevenueCat Test Store
   products, entitlements, current offering, and authenticated sandbox webhook
-  transport are configured, but purchase/restore/lifecycle E2E remains. R2,
-  Gemini/Groq, Phone Auth, and controlled social publishing still need
+  transport are configured. Test Store purchase E2E passes with a Firebase UID.
+  Restore UI/SDK previously passed before true server reconciliation; deploy the
+  new backend and configure its REST key before rerunning Restore E2E. Lifecycle,
+  R2, Gemini/Groq, Phone Auth, and controlled social publishing still need
   functional staging credentials and smoke tests.
 - Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
   mock/provider code have been removed from the active app path. Subscription
@@ -80,7 +84,7 @@ Primary backend choices:
 | Auth | Firebase Auth | Google Sign-In, Firebase ID token verification, and Phone Auth for Basic quota unlock | Dedicated Android Debug Staging config and Google login/token/API smoke pass on Emulator; Production, iOS, Phone Auth, and physical-device tests remain | Keep Debug Staging on `com.postdee.postdee_mobile.staging`; do not mix its Dart defines with Profile/Release Firebase files. |
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to Gemini (retry + model fallback + local template fallback); media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`); legacy Groq/Whisper path kept for when no Gemini is configured | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
 | AI auto editing | Groq Whisper large-v3 + mobile FFmpeg | Pro subtitle transcription, optional silence/filler cuts, UI capability recipe, subtitle burn-in, phone-side review, and video export | Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, exact filler allowlist, detected count/time summary, reversible supported capabilities with automatic preview re-render, accordion settings, and Post/manual-editor exits exist. Production beat sync and the 3-second hook are locked as `เร็ว ๆ นี้` behind default-off compile-time flags. | Re-check Groq pricing/docs before production launch. Backend handles transcription, quota, and recipe hints; mobile renders and reviews locally to control cost. `ENABLE_EXPERIMENTAL_BEAT_SYNC=true` and `ENABLE_EXPERIMENTAL_AI_HOOK=true` are internal setup-UI QA flags only and do not make either renderer real. |
-| Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store products/entitlements/offering and authenticated webhook transport configured; mobile SDK gateway remains behind a flag | Test purchase, restore, renewal, cancel, and refund before claiming billing E2E. Prefer RevenueCat over maintaining custom Apple/Google verification. |
+| Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase E2E passes on Emulator; authenticated webhook and true server resync code exist | Deploy resync and set its server REST key, then rerun Restore. Test lifecycle plus real Google Play/App Store purchases on physical devices before claiming production billing E2E. |
 | Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels through one provider | Per-user connect/refresh/provider-first disconnect and publisher code are wired; a connected provider account and controlled publish test are still needed | Use PostPeer first to reduce platform integration risk. Direct platform APIs are deferred until after launch. |
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
 | Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile registration, `POST /devices`, notifier, and firebase-admin sender exist; mock remains default | Add the service account, set `PUSH_SENDER=firebase`, enable APNs/iOS capabilities, and test on a real device. |
@@ -99,13 +103,15 @@ Recommended activation order:
    and account deletion while an upload is active.
 6. Enable and test Firebase Phone Auth, then add isolated iOS Staging config and
    repeat auth smoke tests on physical Android/iOS devices.
-7. Configure RevenueCat real App Store / Google Play products, replace the local
+7. Deploy RevenueCat restore/resync to Staging, set the server-only
+   `REVENUECAT_REST_API_V1_KEY`, and rerun the Test Store Restore E2E.
+8. Configure RevenueCat real App Store / Google Play products, replace the local
    Test Store key with platform SDK keys, and test Starter/Pro purchases on
-   sandbox devices.
-8. Add Sentry to the API, worker, and mobile app.
-9. Connect a per-user PostPeer account, refresh its integration state, and run a controlled real publish test.
-10. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
-11. Harden Pro AI auto editing with persistent job/session recovery, top-up handling, and real-device tests of the setup-to-review-to-post/manual-editor flow before production launch.
+   sandbox physical devices.
+9. Add Sentry to the API, worker, and mobile app.
+10. Connect a per-user PostPeer account, refresh its integration state, and run a controlled real publish test.
+11. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
+12. Harden Pro AI auto editing with persistent job/session recovery, top-up handling, and real-device tests of the setup-to-review-to-post/manual-editor flow before production launch.
 
 ## Mobile UI Refresh Plan
 
@@ -207,6 +213,7 @@ when product direction changes, update both the detailed plan and this file.
 | `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md` | Referenced in pricing, backend services, Phase 2, and next steps | Pro AI auto editing uses Groq Whisper large-v3 for transcription and mobile-side FFmpeg for setup, result review, reversible supported edits, and post/manual-editor exits. |
 | `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md` | Reflected in the Mobile UI Refresh Plan | Older task checklist for the approved Thai ultra-dark mobile UI. Some details may need another sync after the Calendar/Profile navigation changes. |
 | `docs/superpowers/plans/2026-06-04-store-subscription-billing.md` | Reflected in backend services and store compliance | Store subscription scaffold is represented here, while RevenueCat remains the preferred production subscription management direction. |
+| `docs/superpowers/plans/2026-06-21-production-foundation-revenuecat-plan.md` | Synced with the current billing foundation | Webhooks are implemented; the later Restore/resync addendum records the server subscriber lookup and remaining deployment/device verification. |
 
 ## Planned Pricing
 

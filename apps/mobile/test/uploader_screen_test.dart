@@ -429,6 +429,12 @@ void main() {
       expect(row, findsOneWidget);
     }
 
+    // PostPeer currently publishes this target through the Facebook Page
+    // Videos endpoint, not the Reels API. Keep the legacy API value for stored
+    // posts, but do not promise a Reel in user-facing copy.
+    expect(find.text('Facebook Video', skipOffstage: false), findsOneWidget);
+    expect(find.text('Facebook Reels', skipOffstage: false), findsNothing);
+
     final firstLeft = tester.getTopLeft(platformRows.first).dx;
     var previousTop = tester.getTopLeft(platformRows.first).dy;
     for (final row in platformRows.skip(1)) {

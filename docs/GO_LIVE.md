@@ -35,7 +35,7 @@ user-owned PostPeer connections.
 | Database (Postgres/Prisma) | ✅ **Live** | `*_STORE=prisma` + `DATABASE_URL` |
 | Scheduling worker | ✅ **Live** (in-process, DB-backed) | none — runs with `PUBLISH_QUEUE=memory` |
 | Caption from keywords (Gemini) | ⚙️ ready | Render sets `CAPTION_PROVIDER=gemini`; add `GEMINI_API_KEY` |
-| Social publishing (PostPeer) | blocked pending provider test | Per-user connect/refresh/disconnect exists; configure the key, connect a test user, then run a controlled publish |
+| Social publishing (PostPeer) | blocked pending connected-account E2E | Per-user connect/refresh/disconnect, named pseudonymous profiles, async result polling, safe-only retries, and `GET /posts.platformResults` exist; configure the test key/accounts and run controlled publishing |
 | Video upload (Cloudflare R2) | ⚙️ ready | `VIDEO_STORAGE=r2` + R2 creds |
 | Auth (Firebase) | ✅ Android Debug Staging Google path passed; Production/iOS/Phone/physical-device tests remain | `AUTH_PROVIDER=firebase` + project |
 | Account deletion | ⚙️ ready, deployment test required | `FIREBASE_AUTH_DELETE_ENABLED=true` + service account; verify R2 prefix and Firebase UID deletion |
@@ -58,11 +58,30 @@ user-owned PostPeer connections.
 - Do not add shared `POSTPEER_*_ACCOUNT_ID` values to production. The per-user
   connect/refresh/disconnect flow is implemented and must be verified with a
   connected test account before production publishing is enabled.
+- A fresh authenticated user is ensured in the local User store before the
+  PostPeer profile is saved. The provider profile gets a stable pseudonymous
+  required name, not the Firebase UID, email, phone, or display name.
 - PostPeer publishing does not currently fetch platform views/likes. Analytics
   can remain zero until a separate metrics ingestion adapter is implemented.
 - The backend calls `POST /v1/posts` with the `x-access-key` header, sends
   `content`, `platforms`, `mediaItems`, and `publishNow`, and resolves uploaded
   video keys to signed R2/S3 download URLs before calling PostPeer.
+- A `202 pending/publishing` response is polled through
+  `GET /v1/posts/{postId}` for roughly two minutes. The worker accepts success
+  only with a real platform URL/id and never creates a fake external id.
+- Controlled-first requests use YouTube visibility `private` and TikTok
+  `SELF_ONLY` with `draft: false`. Add explicit user privacy controls before a
+  public rollout.
+- `FACEBOOK_REELS` is retained internally for compatibility, but PostPeer
+  currently publishes Facebook Page Video, not Facebook Reels. Store copy and
+  screenshots must use the real capability.
+- Only errors explicitly proving that a provider post was not accepted may be
+  retried. For an unknown network/polling outcome, check PostPeer and the social
+  account before retrying manually. `GET /posts` exposes the persisted,
+  user-scoped `platformResults` used for that check.
+- Real connected-account publishing has not passed E2E yet. Use disposable
+  test accounts and verify the final provider URL/status on every advertised
+  capability before changing the status table above.
 
 ## 3. Video upload — Cloudflare R2
 
@@ -229,7 +248,8 @@ volume, and voice-ducking settings in the prepare recipe. This is setup only:
 there are no licensed catalog tracks in production yet, and the current FFmpeg
 renderer does not analyze beats, mix the chosen music, or apply ducking. A
 catalog track must carry verified rights for TikTok, YouTube Shorts, Instagram
-Reels, Facebook Reels, Shopee Video, and Lazada Video before the app enables it.
+Reels, Facebook Page Video (and any future Reels integration), Shopee Video,
+and Lazada Video before the app enables it.
 Production builds must keep `ENABLE_EXPERIMENTAL_BEAT_SYNC` absent or `false`;
 the app then locks beat sync and labels it `เร็ว ๆ นี้`. Internal QA may build
 with `--dart-define=ENABLE_EXPERIMENTAL_BEAT_SYNC=true` to inspect the setup UI,
@@ -278,6 +298,6 @@ the database.
 
 1. **Gemini key** — instant, free.
 2. **R2** — needed before PostPeer (real video URL).
-3. **PostPeer** — real posting + analytics.
+3. **PostPeer** — controlled real posting; analytics ingestion is separate.
 4. **Firebase** — auth, Apple Sign-In, OTP, push (4 features).
 5. **RevenueCat billing** — paid subscriptions.

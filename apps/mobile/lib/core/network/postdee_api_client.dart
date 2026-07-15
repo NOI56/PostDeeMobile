@@ -1377,6 +1377,49 @@ class ScheduledPostResult {
 /// A post in any state (queued, publishing, published, failed). Unlike
 /// [ScheduledPostResult] the schedule and publish times are optional so it also
 /// represents post-now items, which the Home dashboard lists as latest posts.
+class PostPlatformResult {
+  const PostPlatformResult({
+    required this.postId,
+    required this.platform,
+    required this.status,
+    this.externalPostId,
+    this.errorMessage,
+    this.publishedAt,
+    this.views = 0,
+    this.likes = 0,
+  });
+
+  final String postId;
+  final String platform;
+  final String status;
+  final String? externalPostId;
+  final String? errorMessage;
+  final DateTime? publishedAt;
+  final int views;
+  final int likes;
+
+  factory PostPlatformResult.fromJson(Map<String, Object?> json) {
+    String? optionalString(Object? value) {
+      if (value is! String || value.trim().isEmpty) return null;
+      return value.trim();
+    }
+
+    final rawPublishedAt = optionalString(json['publishedAt']);
+
+    return PostPlatformResult(
+      postId: json['postId'] as String? ?? '',
+      platform: json['platform'] as String? ?? '',
+      status: json['status'] as String? ?? '',
+      externalPostId: optionalString(json['externalPostId']),
+      errorMessage: optionalString(json['errorMessage']),
+      publishedAt:
+          rawPublishedAt == null ? null : DateTime.tryParse(rawPublishedAt),
+      views: json['views'] as int? ?? 0,
+      likes: json['likes'] as int? ?? 0,
+    );
+  }
+}
+
 class PostSummaryResult {
   const PostSummaryResult({
     required this.id,
@@ -1387,6 +1430,7 @@ class PostSummaryResult {
     required this.createdAt,
     this.scheduledAt,
     this.publishedAt,
+    this.platformResults = const [],
   });
 
   final String id;
@@ -1397,6 +1441,7 @@ class PostSummaryResult {
   final DateTime createdAt;
   final DateTime? scheduledAt;
   final DateTime? publishedAt;
+  final List<PostPlatformResult> platformResults;
 
   factory PostSummaryResult.fromJson(Map<String, Object?> json) {
     DateTime? parseDate(Object? value) =>
@@ -1421,6 +1466,10 @@ class PostSummaryResult {
       createdAt: createdAt,
       scheduledAt: parseDate(json['scheduledAt']),
       publishedAt: parseDate(json['publishedAt']),
+      platformResults: (json['platformResults'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(PostPlatformResult.fromJson)
+          .toList(),
     );
   }
 }

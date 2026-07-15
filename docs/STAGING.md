@@ -11,9 +11,10 @@
 - Firebase: project `project-798caf7e-85b8-45e3-af7`, Email/Google เปิดแล้ว;
   Google Sign-In → Firebase ID token → Render Staging API ผ่านบน Android Emulator
 - RevenueCat: Test Store products/entitlements/current offering และ sandbox-only
-  webhook ตั้งแล้ว; purchase E2E ผ่านบน Emulator ด้วย Firebase UID แต่ true
-  Restore/resync ยังต้อง deploy backend และตั้ง server REST key ก่อนทดสอบซ้ำ
-- R2, Gemini และ Groq ยังเป็น dummy staging-only; Social ยัง `disabled`
+  webhook ตั้งแล้ว; purchase และ true Restore/resync E2E ผ่านบน Emulator ด้วย
+  Firebase UID หลัง deploy backend และตั้ง server REST key แล้ว
+- R2, Gemini และ Groq ยังเป็น dummy staging-only; Social ยัง `disabled` และยังไม่
+  ผ่าน connected-account E2E
 
 Staging ใช้ทดสอบโค้ดและผู้ให้บริการจริงก่อนส่งเข้า Production โดยต้องไม่ใช้ฐานข้อมูล
 bucket วิดีโอ Firebase project หรือ webhook token ชุดเดียวกับผู้ใช้จริง
@@ -64,6 +65,14 @@ Staging เป็นด่านตรวจเวอร์ชันถัดไ
 รวมถึงใช้ `SOCIAL_PUBLISHER=disabled` ซึ่งจะล้มเหลวแบบชัดเจนและไม่สร้างโพสต์ปลอม
 เมื่อจะทดสอบ Social จริง ให้เพิ่ม `POSTPEER_API_KEY` ชุดทดสอบใน Dashboard แล้ว
 สลับเป็น `SOCIAL_PUBLISHER=postpeer` เฉพาะช่วงทดสอบแบบควบคุม
+
+โค้ด Social ปัจจุบัน ensure ผู้ใช้ก่อนบันทึก profile, ส่งชื่อ profile แบบ
+pseudonymous ที่ PostPeer กำหนดให้มี, poll ผล `202 pending/publishing` ประมาณ 2 นาที
+โดยไม่สร้าง external id ปลอม และคืน `platformResults` ใน `GET /posts` แล้ว ค่า
+controlled-first คือ YouTube `private` และ TikTok `SELF_ONLY` (`draft: false`).
+`FACEBOOK_REELS` เป็นชื่อภายในที่ตอนนี้ส่ง Facebook Page Video ไม่ใช่ Reels.
+Retry ทำได้เฉพาะ error ที่ยืนยันว่า provider ยังไม่รับงาน; outcome ที่ไม่แน่นอนต้อง
+ตรวจปลายทางก่อนกดใหม่
 
 ค่าปัจจุบันของ Render Staging ใช้ `FIREBASE_PROJECT_ID=project-798caf7e-85b8-45e3-af7`
 แล้ว ส่วน Android API key จำกัดไว้เฉพาะ package
@@ -123,8 +132,12 @@ keystore ใหม่นั้นใน Firebase Staging ก่อน Google Sig
       internal testing และทดสอบ Google Play purchase/restore จริง ขั้นตอนเหล่านี้
       ยังติดการยืนยันสิทธิ์ Play Console ด้วยมือถือ Android จริง; Emulator ใช้
       ยืนยันไม่ได้ และ Test Store ไม่ถือเป็นหลักฐานของ flow นี้
-- [ ] หลังสลับ `SOCIAL_PUBLISHER=postpeer` แบบตั้งใจแล้ว PostPeer ต้องเชื่อมต่อและ
-  โพสต์เฉพาะช่องทางทดสอบ จากนั้นสลับกลับ `disabled`
+- [ ] หลังสลับ `SOCIAL_PUBLISHER=postpeer` แบบตั้งใจแล้ว ให้ใช้บัญชี disposable
+      เชื่อม/refresh และโพสต์แบบควบคุม: YouTube private, TikTok SELF_ONLY,
+      Instagram Reels และ Facebook Page Video จากนั้นตรวจ provider URL,
+      `GET /posts.platformResults` และสลับกลับ `disabled`
+- [ ] จำลอง async `202`/ผลไม่แน่นอนเพื่อยืนยันว่ารอ poll แบบ bounded, ไม่สร้าง id
+      ปลอม และไม่ retry POST ซ้ำก่อนผู้ทดสอบตรวจปลายทาง
 - [ ] ตั้งเวลา, retry และสถานะล้มเหลวไม่ค้างผิดปกติ
 - [ ] ลบบัญชีเปิดทดสอบภายหลังเมื่อมี Firebase service account ของ Staging เท่านั้น
 

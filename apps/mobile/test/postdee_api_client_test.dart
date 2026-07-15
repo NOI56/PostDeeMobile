@@ -1090,6 +1090,42 @@ void main() {
     expect(post.status, 'QUEUED');
   });
 
+  test('PostSummaryResult parses honest per-platform publish results', () {
+    final post = PostSummaryResult.fromJson({
+      'id': 'post-1',
+      'caption': 'Launch clip',
+      'videoS3Key': 'uploads/launch.mp4',
+      'platforms': ['TIKTOK', 'YOUTUBE_SHORTS'],
+      'status': 'PARTIAL_PUBLISHED',
+      'createdAt': '2026-06-01T00:00:00.000Z',
+      'platformResults': [
+        {
+          'postId': 'post-1',
+          'platform': 'TIKTOK',
+          'status': 'PUBLISHED',
+          'externalPostId': 'https://tiktok.test/post-1',
+          'publishedAt': '2026-06-02T10:00:00.000Z',
+        },
+        {
+          'postId': 'post-1',
+          'platform': 'YOUTUBE_SHORTS',
+          'status': 'FAILED',
+          'errorMessage': 'YouTube rejected the upload',
+        },
+      ],
+    });
+
+    expect(post.platformResults, hasLength(2));
+    expect(post.platformResults.first.platform, 'TIKTOK');
+    expect(post.platformResults.first.externalPostId,
+        'https://tiktok.test/post-1');
+    expect(post.platformResults.first.publishedAt?.toUtc().toIso8601String(),
+        '2026-06-02T10:00:00.000Z');
+    expect(post.platformResults.last.status, 'FAILED');
+    expect(
+        post.platformResults.last.errorMessage, 'YouTube rejected the upload');
+  });
+
   test('SocialConnectionResult parses connected platform status', () {
     final result = SocialConnectionResult.fromJson({
       'platform': 'TIKTOK',

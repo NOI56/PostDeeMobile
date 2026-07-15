@@ -3,6 +3,7 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
+import { createUserStore, type UserStore } from '../users/userStore.js';
 import { registerSocialConnectionRoutes } from './socialConnectionRoutes.js';
 import { createInMemorySocialConnectionStore } from './socialConnectionStore.js';
 import {
@@ -29,11 +30,13 @@ const createTestApp = ({
   connectClient = createFakeConnectClient(),
   store = createInMemorySocialConnectionStore({
     now: () => '2026-06-26T09:00:00.000Z'
-  })
+  }),
+  userStore = createUserStore()
 }: {
   userId?: string;
   connectClient?: PostPeerConnectClient;
   store?: ReturnType<typeof createInMemorySocialConnectionStore>;
+  userStore?: UserStore;
 } = {}) => {
   const app = express();
   app.use(express.json());
@@ -45,12 +48,12 @@ const createTestApp = ({
       response.locals.authUser = { id: userId, provider: 'mock' };
       next();
     },
-    { store, connectClient }
+    { store, connectClient, userStore }
   );
 
   app.use(router);
 
-  return { app, store, connectClient };
+  return { app, store, connectClient, userStore };
 };
 
 describe('social connection routes', () => {
@@ -94,13 +97,17 @@ describe('social connection routes', () => {
   });
 
   it('creates a PostPeer profile and returns the OAuth connect URL', async () => {
-    const { app, store, connectClient } = createTestApp();
+    const { app, store, connectClient, userStore } = createTestApp();
 
     const response = await request(app)
       .post('/social-connections/TIKTOK/connect')
       .expect(200);
 
     expect(connectClient.createProfile).toHaveBeenCalledTimes(1);
+    expect(connectClient.createProfile).toHaveBeenCalledWith({
+      userId: 'seller-social'
+    });
+    await expect(userStore.exists('seller-social')).resolves.toBe(true);
     await expect(store.getProfileId('seller-social')).resolves.toBe('profile-1');
     expect(connectClient.createConnectUrl).toHaveBeenCalledWith({
       platform: 'TIKTOK',
@@ -110,6 +117,52 @@ describe('social connection routes', () => {
       status: 'ok',
       connectUrl: 'https://postpeer.test/connect/tiktok'
     });
+  });
+
+  it('persists a fresh authenticated user before saving their PostPeer profile', async () => {
+    const events: string[] = [];
+    const userStore = createUserStore();
+    const originalEnsure = userStore.ensure;
+    userStore.ensure = vi.fn(async (authUser) => {
+      events.push('ensure-user');
+      return originalEnsure(authUser);
+    });
+    const store = createInMemorySocialConnectionStore();
+    const originalSetProfileId = store.setProfileId;
+    store.setProfileId = vi.fn(async (input) => {
+      events.push('save-profile');
+      expect(await userStore.exists(input.userId)).toBe(true);
+      await originalSetProfileId(input);
+    });
+    const connectClient = createFakeConnectClient({
+      createProfile: vi.fn(async () => {
+        events.push('create-profile');
+        return { profileId: 'profile-fresh-user' };
+      })
+    });
+    const { app } = createTestApp({ store, connectClient, userStore });
+
+    await request(app).post('/social-connections/TIKTOK/connect').expect(200);
+
+    expect(events).toEqual(['ensure-user', 'create-profile', 'save-profile']);
+  });
+
+  it('coalesces concurrent connect requests into one external profile creation', async () => {
+    const createProfile = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return { profileId: 'profile-concurrent' };
+    });
+    const { app, store } = createTestApp({
+      connectClient: createFakeConnectClient({ createProfile })
+    });
+
+    await Promise.all([
+      request(app).post('/social-connections/TIKTOK/connect').expect(200),
+      request(app).post('/social-connections/YOUTUBE_SHORTS/connect').expect(200)
+    ]);
+
+    expect(createProfile).toHaveBeenCalledTimes(1);
+    await expect(store.getProfileId('seller-social')).resolves.toBe('profile-concurrent');
   });
 
   it('reuses an existing PostPeer profile instead of creating a new one', async () => {

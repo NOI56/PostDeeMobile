@@ -96,7 +96,14 @@ cd apps/api
 npm.cmd run worker:publish
 ```
 
-The worker currently uses mock platform publishing and mock video cleanup by default. When `ANALYTICS_STORE=prisma`, it records platform publish results into `PlatformPublish` so the analytics summary can read them from PostgreSQL. It claims posts with `QUEUED -> PUBLISHING` before calling external publishers, skips jobs for posts that are already running or finished, skips stale scheduled jobs whose `runAt` no longer matches the post's current schedule, and treats optional R2/S3 cleanup failures as best-effort cleanup results instead of changing a successfully published post to failed. It is the handoff point for real TikTok, YouTube Shorts, Instagram Reels, Facebook Reels, and R2/S3 cleanup integrations.
+The worker currently uses mock platform publishing and mock video cleanup by default. When `ANALYTICS_STORE=prisma`, it records platform publish results into `PlatformPublish` so the analytics summary can read them from PostgreSQL. It claims posts with `QUEUED -> PUBLISHING` before calling external publishers, skips jobs for posts that are already running or finished, skips stale scheduled jobs whose `runAt` no longer matches the post's current schedule, and treats optional R2/S3 cleanup failures as best-effort cleanup results instead of changing a successfully published post to failed. It is the handoff point for real TikTok, YouTube Shorts, Instagram Reels, Facebook Page Video, and R2/S3 cleanup integrations. `FACEBOOK_REELS` remains the internal compatibility value, but PostPeer's current Facebook capability is Page Video, not Reels.
+
+PostPeer `202 pending/publishing` responses are polled through
+`GET /v1/posts/{postId}` for roughly two minutes. A platform is marked
+`PUBLISHED` only when PostPeer returns a real platform URL or id; the backend no
+longer invents an external id. Only errors explicitly known to be safe may be
+retried. An uncertain provider outcome fails closed with instructions to check
+the platform before trying again, so a retry cannot silently create a duplicate.
 
 ### Backend API
 
@@ -314,7 +321,7 @@ numbers.
 - TikTok
 - YouTube Shorts
 - Instagram Reels
-- Facebook Reels
+- Facebook Page Video (internal compatibility value: `FACEBOOK_REELS`)
 
 #### `GET /billing/subscription`
 
@@ -612,7 +619,9 @@ Required services for later milestones:
 - Cloudflare R2 for temporary video storage
 - Firebase Auth for Google Sign-In and Phone OTP verification
 - Gemini API for Thai caption generation
-- PostPeer for real TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels publishing
+- PostPeer for real TikTok, YouTube Shorts, Instagram Reels, and Facebook Page
+  Video publishing (`FACEBOOK_REELS` is retained only as the current internal
+  compatibility value)
 - RevenueCat subscriptions for Starter and Pro, backed by Apple App Store and Google Play products
 
 See `FIREBASE_SETUP.md` for the Firebase Auth and Google Sign-In setup checklist.
@@ -661,6 +670,9 @@ Queue/storage scaffold switches:
   retry jobs for posts already `PUBLISHING`, `PUBLISHED`,
   `PARTIAL_PUBLISHED`, or `FAILED` are skipped. Scheduled jobs whose `runAt`
   no longer matches the post's current `scheduledAt` are also skipped.
+- Provider publishing retries are bounded and run only for an explicitly safe
+  pre-accept failure. Network/timeouts or a PostPeer result that cannot be
+  confirmed are not submitted again; the user must check the destination first.
 - `SOCIAL_PUBLISHER=mock` returns fake success only in local development;
   `SOCIAL_PUBLISHER=disabled` fails closed without contacting a platform and is
   the initial Staging setting; `SOCIAL_PUBLISHER=postpeer` calls PostPeer and
@@ -703,9 +715,15 @@ See `ROADMAP.md` for the build roadmap. It includes the current Phase 1 core app
 The backend defaults to mock-safe adapters and in-memory stores for local work,
 while production can use Prisma and real provider adapters. Per-user PostPeer
 social connections and the connect/refresh/provider-first disconnect API flow
-are implemented;
-production publishing still requires a controlled provider-level test and never
-uses shared `POSTPEER_*_ACCOUNT_ID` values. Real-clip AI captioning/editing,
+are implemented. A fresh Firebase user is ensured locally before its PostPeer
+profile is persisted, and the provider receives a stable pseudonymous profile
+name rather than the Firebase UID/email. `GET /posts` now returns user-scoped
+`platformResults` for each post. Controlled-first publishing uses YouTube
+`private` and TikTok `SELF_ONLY` (`draft: false`) until explicit privacy choices
+are added. Production publishing still requires a connected-account E2E test
+and never uses shared `POSTPEER_*_ACCOUNT_ID` values. The internal
+`FACEBOOK_REELS` value currently targets Facebook Page Video, not Reels.
+Real-clip AI captioning/editing,
 Firebase device auth, RevenueCat Google Play purchases, R2 media flow, and
 renewal/refund/cancel handling still need their listed real-device/provider
 checks. RevenueCat Test Store purchase and true Restore/resync E2E pass on the

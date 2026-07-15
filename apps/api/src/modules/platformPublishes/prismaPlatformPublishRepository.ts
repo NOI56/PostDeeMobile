@@ -1,5 +1,5 @@
 import type {
-  PlatformPublishStore,
+  ReadablePlatformPublishStore,
   RecordPlatformPublishResultsInput,
   RecordedPlatformPublish
 } from './platformPublishStore.js';
@@ -31,6 +31,21 @@ type PlatformPublishUpsertArgs = {
 
 type PlatformPublishDelegate = {
   upsert: (args: PlatformPublishUpsertArgs) => Promise<unknown>;
+  findMany: (args: {
+    where: { postId: { in: string[] } };
+    orderBy: [{ postId: 'asc' }, { platform: 'asc' }];
+  }) => Promise<
+    Array<{
+      postId: string;
+      platform: RecordedPlatformPublish['platform'];
+      status: RecordedPlatformPublish['status'];
+      externalPostId: string | null;
+      errorMessage: string | null;
+      publishedAt: Date | null;
+      views: number;
+      likes: number;
+    }>
+  >;
 };
 
 export type PrismaPlatformPublishClient = {
@@ -94,16 +109,41 @@ const toUpsertArgs = (result: RecordedPlatformPublish): PlatformPublishUpsertArg
   };
 };
 
+const toRecordedRow = (
+  row: Awaited<ReturnType<PlatformPublishDelegate['findMany']>>[number]
+): RecordedPlatformPublish => ({
+  postId: row.postId,
+  platform: row.platform,
+  status: row.status,
+  ...(row.externalPostId ? { externalPostId: row.externalPostId } : {}),
+  ...(row.errorMessage ? { errorMessage: row.errorMessage } : {}),
+  ...(row.publishedAt ? { publishedAt: row.publishedAt.toISOString() } : {}),
+  views: row.views,
+  likes: row.likes
+});
+
 export const createPrismaPlatformPublishRepository = ({
   prisma
 }: {
   prisma: PrismaPlatformPublishClient;
-}): PlatformPublishStore => ({
+}): ReadablePlatformPublishStore => ({
   recordResults: async (input) => {
     const records = toRecordedResult(input);
 
     await Promise.all(records.map((record) => prisma.platformPublish.upsert(toUpsertArgs(record))));
 
     return records;
+  },
+  listForPostIds: async (postIds) => {
+    if (postIds.length === 0) {
+      return [];
+    }
+
+    const rows = await prisma.platformPublish.findMany({
+      where: { postId: { in: postIds } },
+      orderBy: [{ postId: 'asc' }, { platform: 'asc' }]
+    });
+
+    return rows.map(toRecordedRow);
   }
 });

@@ -7,16 +7,19 @@ PostSummaryResult _post({
   String status = 'QUEUED',
   DateTime? scheduledAt,
   DateTime? publishedAt,
+  List<String> platforms = const ['TIKTOK', 'YOUTUBE_SHORTS'],
+  List<PostPlatformResult> platformResults = const [],
 }) {
   return PostSummaryResult(
     id: 'post-1',
     caption: 'โปรโมตครีมกันแดดตัวใหม่',
     videoS3Key: 'uploads/clip.mp4',
-    platforms: const ['TIKTOK', 'YOUTUBE_SHORTS'],
+    platforms: platforms,
     status: status,
     createdAt: DateTime(2026, 7, 1, 10),
     scheduledAt: scheduledAt,
     publishedAt: publishedAt,
+    platformResults: platformResults,
   );
 }
 
@@ -134,5 +137,69 @@ void main() {
     expect(find.byKey(const ValueKey('post-detail-open-analytics')),
         findsOneWidget);
     expect(find.byKey(const ValueKey('post-detail-publish-now')), findsNothing);
+  });
+
+  testWidgets('shows each platform result, failure reason, and real reference',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PostDetailScreen(
+          post: _post(
+            status: 'PARTIAL_PUBLISHED',
+            publishedAt: DateTime(2026, 7, 2, 9),
+            platforms: const [
+              'TIKTOK',
+              'YOUTUBE_SHORTS',
+              'INSTAGRAM_REELS',
+            ],
+            platformResults: const [
+              PostPlatformResult(
+                postId: 'post-1',
+                platform: 'TIKTOK',
+                status: 'PUBLISHED',
+                externalPostId: 'https://tiktok.test/post-1',
+              ),
+              PostPlatformResult(
+                postId: 'post-1',
+                platform: 'YOUTUBE_SHORTS',
+                status: 'FAILED',
+                errorMessage:
+                    'Publishing result could not be confirmed. Check the platform before trying again.',
+              ),
+              PostPlatformResult(
+                postId: 'post-1',
+                platform: 'INSTAGRAM_REELS',
+                status: 'FAILED',
+                errorMessage:
+                    'Publishing to this platform failed. Please try again later.',
+              ),
+            ],
+          ),
+          apiClient: _FakePostApiClient(),
+        ),
+      ),
+    );
+
+    expect(find.text('สำเร็จบางช่องทาง'), findsOneWidget);
+    expect(find.text('เผยแพร่สำเร็จ'), findsOneWidget);
+    expect(
+      find.text('ลิงก์โพสต์: https://tiktok.test/post-1'),
+      findsOneWidget,
+    );
+    expect(find.text('โพสต์ไม่สำเร็จ'), findsWidgets);
+    expect(
+      find.text(
+        'สาเหตุ: ยังยืนยันผลการโพสต์ไม่ได้ กรุณาตรวจสอบช่องทางนี้ก่อนลองใหม่ เพื่อป้องกันโพสต์ซ้ำ',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'สาเหตุ: โพสต์ไปยังช่องทางนี้ไม่สำเร็จ กรุณาลองใหม่ภายหลัง',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('post-detail-open-analytics')),
+        findsOneWidget);
   });
 }

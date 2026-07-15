@@ -12,7 +12,7 @@ describe('createPostPeerConnectClient', () => {
       baseUrl: 'https://api.postpeer.test'
     });
 
-    await expect(client.createProfile()).rejects.toBeInstanceOf(
+    await expect(client.createProfile({ userId: 'firebase-user-1' })).rejects.toBeInstanceOf(
       PostPeerConnectUnavailableError
     );
     await expect(
@@ -32,12 +32,34 @@ describe('createPostPeerConnectClient', () => {
       fetchImpl
     });
 
-    await expect(client.createProfile()).resolves.toEqual({ profileId: 'profile-1' });
+    await expect(
+      client.createProfile({ userId: 'firebase-user@example.com' })
+    ).resolves.toEqual({ profileId: 'profile-1' });
     expect(fetchImpl).toHaveBeenCalledWith('https://api.postpeer.test/v1/profiles', {
       method: 'POST',
       headers: { 'x-access-key': 'pp-key', 'Content-Type': 'application/json' },
-      body: '{}'
+      body: expect.any(String)
     });
+
+    const requestBody = JSON.parse(fetchImpl.mock.calls[0][1].body as string) as {
+      name?: string;
+    };
+    expect(requestBody.name).toMatch(/^PostDee user [a-f0-9]{10}$/);
+    expect(requestBody.name).not.toContain('firebase-user@example.com');
+  });
+
+  it('rejects an empty user id before contacting PostPeer', async () => {
+    const fetchImpl = vi.fn();
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(client.createProfile({ userId: '   ' })).rejects.toBeInstanceOf(
+      PostPeerConnectProviderError
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('gets a platform OAuth connect URL for a profile', async () => {

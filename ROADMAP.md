@@ -21,7 +21,10 @@ Core items:
 - Sentry for error tracking and performance monitoring.
 - Universal uploader for one 9:16 video.
 - Scheduling through Upstash Redis and BullMQ.
-- Unified social posting via PostPeer API (postpeer.dev) for TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels. Direct platform API integrations are deferred until post-launch.
+- Unified social posting via PostPeer API (postpeer.dev) for TikTok, YouTube
+  Shorts, Instagram Reels, and Facebook Page Video. `FACEBOOK_REELS` remains an
+  internal compatibility value only; PostPeer's current path is not Facebook
+  Reels. Direct platform API integrations are deferred until post-launch.
 - Unified analytics summary for Pro users, with backend-backed date ranges and
   a publish-date daily series.
 
@@ -73,7 +76,11 @@ Current status:
 - Firebase Auth, Render deployments, Upstash, RevenueCat webhooks, uploads,
   analytics, real-clip caption provider hardening, production verification of
   the Prisma AI caption usage ledger, and PostPeer social posting still need
-  provider-level testing before production use.
+  provider-level testing before production use. PostPeer profiles now satisfy
+  the required name contract without exposing the Firebase UID/email and ensure
+  the local User first; accepted async posts are polled for roughly two minutes,
+  never receive a fabricated external id, and expose persisted per-platform
+  results through `GET /posts`. A real connected-account E2E is still pending.
 
 ## Backend Services Plan
 
@@ -91,7 +98,7 @@ Primary backend choices:
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to Gemini (retry + model fallback + local template fallback); media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`); legacy Groq/Whisper path kept for when no Gemini is configured | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
 | AI auto editing | Groq Whisper large-v3 + mobile FFmpeg | Pro subtitle transcription, optional silence/filler cuts, UI capability recipe, subtitle burn-in, phone-side review, and video export | Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, exact filler allowlist, detected count/time summary, reversible supported capabilities with automatic preview re-render, accordion settings, and Post/manual-editor exits exist. Production beat sync and the 3-second hook are locked as `เร็ว ๆ นี้` behind default-off compile-time flags. | Re-check Groq pricing/docs before production launch. Backend handles transcription, quota, and recipe hints; mobile renders and reviews locally to control cost. `ENABLE_EXPERIMENTAL_BEAT_SYNC=true` and `ENABLE_EXPERIMENTAL_AI_HOOK=true` are internal setup-UI QA flags only and do not make either renderer real. |
 | Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase and true Restore/resync E2E pass on Emulator; RevenueCat Play config, production Android public SDK key, and signed AAB are ready | Verify Play Console access on a physical Android device, then create the Play app/subscriptions/service credentials/internal testing and test lifecycle plus real Google Play/App Store purchases before claiming production billing E2E. |
-| Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels through one provider | Per-user connect/refresh/provider-first disconnect and publisher code are wired; a connected provider account and controlled publish test are still needed | Use PostPeer first to reduce platform integration risk. Direct platform APIs are deferred until after launch. |
+| Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect/refresh/provider-first disconnect are wired; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; YouTube defaults private and TikTok SELF_ONLY for controlled testing; connected-account E2E is still pending | `FACEBOOK_REELS` is an internal compatibility value for Page Video, not a Reels claim. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
 | Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile registration, `POST /devices`, notifier, and firebase-admin sender exist; mock remains default | Add the service account, set `PUSH_SENDER=firebase`, enable APNs/iOS capabilities, and test on a real device. |
 
@@ -115,7 +122,10 @@ Recommended activation order:
    through Google Play internal testing; complete App Store configuration and
    physical-device sandbox testing separately.
 9. Add Sentry to the API, worker, and mobile app.
-10. Connect a per-user PostPeer account, refresh its integration state, and run a controlled real publish test.
+10. Connect per-user PostPeer test accounts, refresh their integration state,
+    and run a controlled real publish E2E. Confirm YouTube `private`, TikTok
+    `SELF_ONLY`, Instagram Reels, Facebook Page Video, the bounded async poll,
+    and `GET /posts.platformResults` before enabling public claims.
 11. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
 12. Harden Pro AI auto editing with persistent job/session recovery, top-up handling, and real-device tests of the setup-to-review-to-post/manual-editor flow before production launch.
 
@@ -352,8 +362,10 @@ To ensure the app passes store review guidelines, the following must be implemen
 5. Test managed R2 multipart uploads from the mobile app through the backend
    and worker flow, then retire legacy clients and change production from
    `dual` to strict `multipart` mode.
-6. Verify the per-user PostPeer connect/refresh flow and run one controlled real
-   publish test, deferring individual social API app reviews.
+6. Verify the per-user PostPeer connect/refresh flow and run controlled real
+   publishing with disposable connected accounts. Treat `FACEBOOK_REELS` as
+   Facebook Page Video, verify uncertain outcomes before retrying, and defer
+   individual social API app reviews.
 7. Continue AI editing job/session persistence, Groq Whisper transcription hardening, top-up,
    retry/recovery, and real-device testing of pace detections, review counts, export, posting, and manual editing.
 8. Add music upload/ownership storage, license a cross-platform PostDee catalog,

@@ -43,4 +43,42 @@ describe('createInMemoryPlatformPublishStore', () => {
       }
     ]);
   });
+
+  it('lists only results belonging to the requested post ids', async () => {
+    const store = createInMemoryPlatformPublishStore();
+
+    await store.recordResults({
+      postId: 'post-1',
+      results: [
+        {
+          platform: 'TIKTOK',
+          status: 'PUBLISHED',
+          externalPostId: 'https://tiktok.test/post-1',
+          publishedAt: '2026-06-02T10:00:00.000Z'
+        }
+      ]
+    });
+    await store.recordResults({
+      postId: 'post-2',
+      results: [
+        {
+          platform: 'YOUTUBE_SHORTS',
+          status: 'FAILED',
+          errorMessage: 'YouTube rejected the upload'
+        }
+      ]
+    });
+
+    await expect(store.listForPostIds(['post-2'])).resolves.toEqual([
+      {
+        postId: 'post-2',
+        platform: 'YOUTUBE_SHORTS',
+        status: 'FAILED',
+        errorMessage: 'YouTube rejected the upload',
+        views: 0,
+        likes: 0
+      }
+    ]);
+    await expect(store.listForPostIds([])).resolves.toEqual([]);
+  });
 });

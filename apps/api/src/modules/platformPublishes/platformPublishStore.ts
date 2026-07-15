@@ -4,7 +4,7 @@ import type { Platform } from '../posts/postStore.js';
 export type RecordedPlatformPublish = {
   postId: string;
   platform: Platform;
-  status: 'PUBLISHED' | 'FAILED';
+  status: 'PENDING' | 'PUBLISHING' | 'PUBLISHED' | 'FAILED';
   externalPostId?: string;
   errorMessage?: string;
   publishedAt?: string;
@@ -21,7 +21,12 @@ export type PlatformPublishStore = {
   recordResults: (
     input: RecordPlatformPublishResultsInput
   ) => Promise<RecordedPlatformPublish[]>;
+  listForPostIds?: (postIds: string[]) => Promise<RecordedPlatformPublish[]>;
   deleteAllForPosts?: (postIds: string[]) => Promise<void>;
+};
+
+export type ReadablePlatformPublishStore = PlatformPublishStore & {
+  listForPostIds: (postIds: string[]) => Promise<RecordedPlatformPublish[]>;
 };
 
 const mapResult = (
@@ -50,7 +55,7 @@ const mapResult = (
   };
 };
 
-export const createInMemoryPlatformPublishStore = (): PlatformPublishStore => {
+export const createInMemoryPlatformPublishStore = (): ReadablePlatformPublishStore => {
   const records = new Map<string, RecordedPlatformPublish>();
 
   return {
@@ -62,6 +67,14 @@ export const createInMemoryPlatformPublishStore = (): PlatformPublishStore => {
       }
 
       return recordedResults;
+    },
+    listForPostIds: async (postIds) => {
+      if (postIds.length === 0) {
+        return [];
+      }
+
+      const requestedPostIds = new Set(postIds);
+      return [...records.values()].filter((record) => requestedPostIds.has(record.postId));
     },
     deleteAllForPosts: async (postIds) => {
       const ownedPostIds = new Set(postIds);

@@ -22,9 +22,17 @@ export type BullMqPublishJobData = {
 type BullMqAddOptions = {
   jobId: string;
   delay: number;
+  attempts: number;
+  backoff: {
+    type: 'exponential';
+    delay: number;
+  };
   removeOnComplete: boolean;
   removeOnFail: boolean;
 };
+
+const publishJobMaxAttempts = 3;
+const publishJobRetryBackoffMs = 5_000;
 
 export type BullMqQueueClient = {
   add: (
@@ -87,6 +95,11 @@ export const createBullMqPublishQueueFromClient = ({
     const addedJob = await queue.add(jobName, data, {
       jobId,
       delay,
+      attempts: publishJobMaxAttempts,
+      backoff: {
+        type: 'exponential',
+        delay: publishJobRetryBackoffMs
+      },
       removeOnComplete: true,
       removeOnFail: false
     });

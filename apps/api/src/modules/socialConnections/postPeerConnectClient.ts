@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 import type { SocialConnectionPlatform } from './socialConnectionStore.js';
 
 type FetchResponse = {
@@ -53,7 +55,7 @@ export type PostPeerIntegration = {
  */
 export type PostPeerConnectClient = {
   supportsIntegrationCleanup?: boolean;
-  createProfile: () => Promise<{ profileId: string }>;
+  createProfile: (input: { userId: string }) => Promise<{ profileId: string }>;
   createConnectUrl: (input: {
     platform: SocialConnectionPlatform;
     profileId: string;
@@ -70,6 +72,24 @@ const readString = (value: unknown): string | undefined =>
 
 const readNonNegativeInteger = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+
+const buildProfileName = (userId: string, secret: string | undefined): string => {
+  const normalizedUserId = userId.trim();
+
+  if (!normalizedUserId) {
+    throw new PostPeerConnectProviderError();
+  }
+
+  // PostPeer requires a profile name. Use an HMAC-derived suffix so the name
+  // is stable for this account without sending a Firebase uid, email, phone,
+  // or display name to the provider.
+  const suffix = createHmac('sha256', secret ?? 'postdee-unconfigured')
+    .update(`postdee-profile:${normalizedUserId}`)
+    .digest('hex')
+    .slice(0, 10);
+
+  return `PostDee user ${suffix}`;
+};
 
 export const createPostPeerConnectClient = ({
   apiKey,
@@ -116,8 +136,14 @@ export const createPostPeerConnectClient = ({
 
   return {
     supportsIntegrationCleanup: Boolean(apiKey),
-    createProfile: async () => {
-      const payload = readRecord(await request('/v1/profiles', { method: 'POST', body: '{}' }));
+    createProfile: async ({ userId }) => {
+      const name = buildProfileName(userId, apiKey);
+      const payload = readRecord(
+        await request('/v1/profiles', {
+          method: 'POST',
+          body: JSON.stringify({ name })
+        })
+      );
       const profileId = readString(payload.id) ?? readString(readRecord(payload.profile).id);
 
       if (!profileId) {

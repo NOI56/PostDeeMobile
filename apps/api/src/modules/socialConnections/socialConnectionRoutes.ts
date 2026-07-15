@@ -1,6 +1,7 @@
 import type { RequestHandler, Response, Router } from 'express';
 
-import { readAuthUser } from '../auth/authTypes.js';
+import { readAuthUser, type AuthUser } from '../auth/authTypes.js';
+import type { UserStore } from '../users/userStore.js';
 import {
   PostPeerConnectProviderError,
   PostPeerConnectUnavailableError,
@@ -15,6 +16,7 @@ import {
 export type SocialConnectionRouteDependencies = {
   store: SocialConnectionStore;
   connectClient: PostPeerConnectClient;
+  userStore: UserStore;
 };
 
 const sendUnauthorized = (response: Response) => {
@@ -59,25 +61,63 @@ const sendConnectError = (response: Response, error: unknown): boolean => {
 const ensureProfileId = async (
   store: SocialConnectionStore,
   connectClient: PostPeerConnectClient,
-  userId: string
+  userStore: UserStore,
+  authUser: AuthUser,
+  inFlightCreations: Map<string, Promise<string>>
 ): Promise<string> => {
-  const existing = await store.getProfileId(userId);
+  const existing = await store.getProfileId(authUser.id);
 
   if (existing) {
     return existing;
   }
 
-  const { profileId } = await connectClient.createProfile();
-  await store.setProfileId({ userId, profileId });
+  const inFlight = inFlightCreations.get(authUser.id);
 
-  return profileId;
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const creation = (async () => {
+    // PostPeerProfile has a foreign key to User in Prisma. Persist the fresh
+    // Firebase identity before creating the external profile so an FK failure
+    // cannot leave an avoidable orphan at PostPeer.
+    await userStore.ensure(authUser);
+
+    // Another API instance may have saved a profile while the user upsert was
+    // running. Re-check before making the external request.
+    const profileCreatedElsewhere = await store.getProfileId(authUser.id);
+
+    if (profileCreatedElsewhere) {
+      return profileCreatedElsewhere;
+    }
+
+    const { profileId } = await connectClient.createProfile({ userId: authUser.id });
+    await store.setProfileId({ userId: authUser.id, profileId });
+
+    return profileId;
+  })();
+
+  inFlightCreations.set(authUser.id, creation);
+
+  try {
+    return await creation;
+  } finally {
+    if (inFlightCreations.get(authUser.id) === creation) {
+      inFlightCreations.delete(authUser.id);
+    }
+  }
 };
 
 export const registerSocialConnectionRoutes = (
   router: Router,
   authMiddleware: RequestHandler,
-  { store, connectClient }: SocialConnectionRouteDependencies
+  { store, connectClient, userStore }: SocialConnectionRouteDependencies
 ) => {
+  // Coalesce same-user connect requests inside this API instance. This avoids
+  // duplicate external profiles when a user double-taps or two platforms are
+  // opened at nearly the same time.
+  const inFlightProfileCreations = new Map<string, Promise<string>>();
+
   router.get('/social-connections', authMiddleware, async (_request, response) => {
     const authUser = readAuthUser(response.locals);
 
@@ -110,7 +150,13 @@ export const registerSocialConnectionRoutes = (
       }
 
       try {
-        const profileId = await ensureProfileId(store, connectClient, authUser.id);
+        const profileId = await ensureProfileId(
+          store,
+          connectClient,
+          userStore,
+          authUser,
+          inFlightProfileCreations
+        );
         const { connectUrl } = await connectClient.createConnectUrl({
           platform,
           profileId

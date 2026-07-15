@@ -41,7 +41,12 @@ The backend currently supports safe scaffold flows for:
 - Store subscription verification scaffold for Apple App Store and Google Play
 - Store server notification routes for renewal, cancel, refund, and grace-period handoff
 
-The backend must not publish to TikTok, YouTube Shorts, Instagram Reels, or Facebook Reels through shared PostPeer account ids in production (startup rejects them). Production publishing resolves per-user social connections, and real PostPeer publishing should only be enabled after the per-user connect/refresh flow is verified with a connected test account and a controlled provider test is approved.
+The backend must not publish through shared PostPeer account ids in production
+(startup rejects them). Production publishing resolves per-user social
+connections. The internal `FACEBOOK_REELS` value currently maps to PostPeer's
+Facebook Page Video capability, not Facebook Reels. Real PostPeer publishing
+must remain disabled until the per-user connect/refresh flow and a controlled
+connected-account E2E test are approved.
 
 ## Authentication
 
@@ -309,6 +314,10 @@ INSTAGRAM_REELS
 FACEBOOK_REELS
 ```
 
+`FACEBOOK_REELS` is retained for mobile/API compatibility. With the current
+PostPeer adapter it publishes a Facebook Page Video; it must not be presented as
+Facebook Reels in Store copy.
+
 ### `GET /posts`
 
 Returns posts for the authenticated user.
@@ -318,9 +327,28 @@ Response:
 ```json
 {
   "status": "ok",
-  "posts": []
+  "posts": [
+    {
+      "id": "post-1",
+      "platformResults": [
+        {
+          "postId": "post-1",
+          "platform": "TIKTOK",
+          "status": "PUBLISHED",
+          "externalPostId": "https://www.tiktok.com/@seller/video/123",
+          "publishedAt": "2026-07-15T04:00:00.000Z",
+          "views": 0,
+          "likes": 0
+        }
+      ]
+    }
+  ]
 }
 ```
+
+`platformResults` is assembled only from results belonging to the authenticated
+user's returned post ids. A failed platform result can contain `errorMessage`;
+the response does not expose another user's publish records.
 
 ### `POST /posts`
 
@@ -355,6 +383,13 @@ Worker behavior:
 
 - The publish worker claims a post by moving it from `QUEUED` to `PUBLISHING`
   before calling the platform publisher.
+- PostPeer `202 pending/publishing` is not treated as success. The adapter polls
+  `GET /v1/posts/{postId}` for roughly two minutes and records `PUBLISHED` only
+  when the selected platform has a real `platformPostUrl` or `platformPostId`.
+  It never fabricates an external id.
+- A provider call is retried only for an explicitly safe error proving that no
+  external post was accepted. A network/timeout or uncertain PostPeer outcome is
+  not submitted again; clients must check the platform before a manual retry.
 - Retry or duplicate jobs are skipped when the post is already `PUBLISHING`,
   `PUBLISHED`, `PARTIAL_PUBLISHED`, or `FAILED`.
 - Stale scheduled jobs are skipped when the job `runAt` no longer matches the
@@ -454,6 +489,12 @@ Lists the authenticated user's saved PostPeer connections.
 
 Creates/loads the user's PostPeer profile and returns `{ connectUrl }` for the
 requested supported platform.
+
+For a new Firebase identity, the API ensures the local `User` row before saving
+the foreign-keyed PostPeer profile. Profile creation sends PostPeer a required,
+stable HMAC-derived pseudonymous name and does not send the Firebase UID, email,
+phone, or display name. Concurrent same-user profile creations are coalesced
+inside one API instance.
 
 ### `POST /social-connections/refresh`
 
@@ -1505,14 +1546,18 @@ PostgreSQL.
 | `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | Operator PostPeer TikTok integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | Operator PostPeer YouTube Shorts integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | Operator PostPeer Instagram Reels integration id used only when no per-user connection resolver is wired; forbidden in production |
-| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Reels integration id used only when no per-user connection resolver is wired; forbidden in production |
+| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Page Video integration id (internal `FACEBOOK_REELS` compatibility value) used only when no per-user connection resolver is wired; forbidden in production |
 | `MOCK_USER_ID` | `local-dev-user` | Default mock user id |
 
 ## Production Gaps
 
 The following work is still required before production launch:
 
-- Verify the per-user PostPeer connect/refresh flow with a connected test account before enabling production user publishing; do not use shared `POSTPEER_*_ACCOUNT_ID` values in production.
+- Verify the per-user PostPeer connect/refresh and full publish-result flow with
+  connected test accounts before enabling production user publishing; do not
+  use shared `POSTPEER_*_ACCOUNT_ID` values in production. Controlled-first
+  requests currently force YouTube `private` and TikTok `SELF_ONLY` direct
+  publishing; add explicit user privacy controls before public rollout.
 - Store social access tokens securely only if direct platform APIs replace the
   PostPeer provider later.
 - Complete provider-level R2 upload and cleanup testing.

@@ -68,6 +68,8 @@ describe('readServerConfig', () => {
       socialPublisher: 'mock',
       postPeerApiKey: undefined,
       postPeerApiBaseUrl: 'https://api.postpeer.dev',
+      postPeerLegacyRecoveryFingerprint: undefined,
+      postPeerLegacyRecoveryProfileId: undefined,
       postPeerTiktokAccountId: undefined,
       postPeerYoutubeAccountId: undefined,
       postPeerInstagramAccountId: undefined,
@@ -139,6 +141,8 @@ describe('readServerConfig', () => {
       SOCIAL_PUBLISHER: 'postpeer',
       POSTPEER_API_KEY: 'postpeer-key',
       POSTPEER_API_BASE_URL: 'https://postpeer.example.com',
+      POSTPEER_LEGACY_RECOVERY_FINGERPRINT: 'a'.repeat(64),
+      POSTPEER_LEGACY_RECOVERY_PROFILE_ID: 'legacy-profile-explicit',
       POSTPEER_TIKTOK_ACCOUNT_ID: 'postpeer-tiktok',
       POSTPEER_YOUTUBE_ACCOUNT_ID: 'postpeer-youtube',
       POSTPEER_INSTAGRAM_ACCOUNT_ID: 'postpeer-instagram',
@@ -203,6 +207,8 @@ describe('readServerConfig', () => {
       socialPublisher: 'postpeer',
       postPeerApiKey: 'postpeer-key',
       postPeerApiBaseUrl: 'https://postpeer.example.com',
+      postPeerLegacyRecoveryFingerprint: 'a'.repeat(64),
+      postPeerLegacyRecoveryProfileId: 'legacy-profile-explicit',
       postPeerTiktokAccountId: 'postpeer-tiktok',
       postPeerYoutubeAccountId: 'postpeer-youtube',
       postPeerInstagramAccountId: 'postpeer-instagram',
@@ -217,6 +223,41 @@ describe('readServerConfig', () => {
     expect(() =>
       readServerConfig({ FIREBASE_AUTH_DELETE_ENABLED: 'yes' })
     ).toThrow('FIREBASE_AUTH_DELETE_ENABLED must be true or false');
+  });
+
+  it('rejects a partial PostPeer legacy recovery configuration', () => {
+    expect(() =>
+      readServerConfig({
+        POSTPEER_API_KEY: 'postpeer-key',
+        POSTPEER_LEGACY_RECOVERY_FINGERPRINT: 'a'.repeat(64)
+      })
+    ).toThrow(
+      'POSTPEER_LEGACY_RECOVERY_FINGERPRINT and POSTPEER_LEGACY_RECOVERY_PROFILE_ID must be configured together'
+    );
+    expect(() =>
+      readServerConfig({
+        POSTPEER_API_KEY: 'postpeer-key',
+        POSTPEER_LEGACY_RECOVERY_PROFILE_ID: 'legacy-profile-explicit'
+      })
+    ).toThrow(
+      'POSTPEER_LEGACY_RECOVERY_FINGERPRINT and POSTPEER_LEGACY_RECOVERY_PROFILE_ID must be configured together'
+    );
+  });
+
+  it('rejects malformed or unusable PostPeer legacy recovery configuration', () => {
+    expect(() =>
+      readServerConfig({
+        POSTPEER_API_KEY: 'postpeer-key',
+        POSTPEER_LEGACY_RECOVERY_FINGERPRINT: 'not-a-sha256-fingerprint',
+        POSTPEER_LEGACY_RECOVERY_PROFILE_ID: 'legacy-profile-explicit'
+      })
+    ).toThrow('POSTPEER_LEGACY_RECOVERY_FINGERPRINT must be 64 hexadecimal characters');
+    expect(() =>
+      readServerConfig({
+        POSTPEER_LEGACY_RECOVERY_FINGERPRINT: 'a'.repeat(64),
+        POSTPEER_LEGACY_RECOVERY_PROFILE_ID: 'legacy-profile-explicit'
+      })
+    ).toThrow('POSTPEER_API_KEY is required for PostPeer legacy recovery');
   });
 
   it('rejects mock auth and billing shortcuts in production', () => {

@@ -719,6 +719,14 @@ cd apps/mobile
   use YouTube `private` and TikTok `SELF_ONLY` direct posting. Shared
   `POSTPEER_*_ACCOUNT_ID` values are rejected in production. The internal
   `FACEBOOK_REELS` key currently means Facebook Page Video, not Reels.
+- New PostPeer profile names carry a versioned 128-bit HMAC suffix. Legacy
+  40-bit profile recovery is disabled by default and can target only one
+  operator-approved Firebase user/profile pair through a full HMAC fingerprint
+  plus exact provider profile id. Profile pagination, uniqueness, name, and id
+  must all validate before the recovered mapping is persisted. The
+  `PostPeerProfile.profileId` database unique constraint is the final atomic
+  ownership boundary. The first mapping remains authoritative during same-user
+  races, while cross-user claims fail without returning ownership details.
 - The publish worker checks the durable account-deletion barrier, then claims
   only `QUEUED` posts before calling PostPeer or the
   mock publisher. Jobs for posts already `PUBLISHING`, `PUBLISHED`,

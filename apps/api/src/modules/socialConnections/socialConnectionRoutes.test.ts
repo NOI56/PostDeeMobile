@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../app.js';
 import { createUserStore, type UserStore } from '../users/userStore.js';
 import { registerSocialConnectionRoutes } from './socialConnectionRoutes.js';
-import { createInMemorySocialConnectionStore } from './socialConnectionStore.js';
+import {
+  PostPeerProfileOwnershipConflictError,
+  createInMemorySocialConnectionStore
+} from './socialConnectionStore.js';
 import {
   PostPeerConnectProviderError,
   PostPeerConnectUnavailableError,
@@ -132,7 +135,7 @@ describe('social connection routes', () => {
     store.setProfileId = vi.fn(async (input) => {
       events.push('save-profile');
       expect(await userStore.exists(input.userId)).toBe(true);
-      await originalSetProfileId(input);
+      return originalSetProfileId(input);
     });
     const connectClient = createFakeConnectClient({
       createProfile: vi.fn(async () => {
@@ -216,6 +219,27 @@ describe('social connection routes', () => {
     });
     expect(JSON.stringify(unavailableResponse.body)).not.toContain('PostPeer');
     expect(JSON.stringify(providerFailureResponse.body)).not.toContain('PostPeer');
+  });
+
+  it('maps an exclusive profile ownership conflict without exposing either user', async () => {
+    const store = createInMemorySocialConnectionStore();
+    store.setProfileId = vi.fn(async () => {
+      throw new PostPeerProfileOwnershipConflictError();
+    });
+    const { app, connectClient } = createTestApp({ store });
+
+    const response = await request(app)
+      .post('/social-connections/YOUTUBE_SHORTS/connect')
+      .expect(409);
+
+    expect(response.body).toEqual({
+      status: 'error',
+      code: 'SOCIAL_CONNECTION_CONFLICT',
+      message: 'Social account linking could not be completed. Please contact support.'
+    });
+    expect(connectClient.createConnectUrl).not.toHaveBeenCalled();
+    expect(JSON.stringify(response.body)).not.toContain('seller-social');
+    expect(JSON.stringify(response.body)).not.toContain('profile-1');
   });
 
   it('rejects unsupported platforms before contacting PostPeer', async () => {
@@ -325,6 +349,40 @@ describe('social connection routes', () => {
 
     expect(connectClient.listIntegrations).not.toHaveBeenCalled();
     expect(response.body.status).toBe('ok');
+  });
+
+  it('recovers a missing local profile mapping before refreshing integrations', async () => {
+    const findProfile = vi.fn(async () => ({ profileId: 'profile-recovered' }));
+    const listIntegrations = vi.fn(async () => [
+      {
+        id: 'acct-youtube-existing',
+        platform: 'YOUTUBE_SHORTS' as const,
+        displayName: '@seller_youtube'
+      }
+    ]);
+    const { app, store } = createTestApp({
+      connectClient: createFakeConnectClient({ findProfile, listIntegrations })
+    });
+
+    const response = await request(app)
+      .post('/social-connections/refresh')
+      .expect(200);
+
+    expect(findProfile).toHaveBeenCalledWith({ userId: 'seller-social' });
+    await expect(store.getProfileId('seller-social')).resolves.toBe('profile-recovered');
+    expect(listIntegrations).toHaveBeenCalledWith({ profileId: 'profile-recovered' });
+    await expect(
+      store.getAccountId({ userId: 'seller-social', platform: 'YOUTUBE_SHORTS' })
+    ).resolves.toBe('acct-youtube-existing');
+    expect(
+      response.body.connections.find(
+        (connection: { platform: string }) => connection.platform === 'YOUTUBE_SHORTS'
+      )
+    ).toMatchObject({
+      platform: 'YOUTUBE_SHORTS',
+      connected: true,
+      displayName: '@seller_youtube'
+    });
   });
 
   it('disconnects PostPeer before removing the authenticated user local connection', async () => {

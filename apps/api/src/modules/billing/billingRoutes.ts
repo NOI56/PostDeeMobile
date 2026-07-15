@@ -298,7 +298,11 @@ export const registerBillingRoutes = (
     }
 
     await userStore.ensure(authUser);
-    const subscription = await subscriptionStore.activatePlan(authUser, paidPlanRequest.plan);
+    const subscription = await subscriptionStore.activatePlan(
+      authUser,
+      paidPlanRequest.plan,
+      { currentPeriodEnd: null }
+    );
 
     response.json({
       status: 'ok',
@@ -355,7 +359,10 @@ export const registerBillingRoutes = (
       const billingSubscriptionId = buildBillingSubscriptionId(purchase);
 
       await userStore.ensure(authUser);
-      const activateOptions = billingSubscriptionId ? { billingSubscriptionId } : undefined;
+      const activateOptions = {
+        ...(billingSubscriptionId ? { billingSubscriptionId } : {}),
+        currentPeriodEnd: null
+      };
       const subscription = await subscriptionStore.activatePlan(
         authUser,
         plan,

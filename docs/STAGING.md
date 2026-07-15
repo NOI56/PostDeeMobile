@@ -11,7 +11,8 @@
 - Firebase: project `project-798caf7e-85b8-45e3-af7`, Email/Google เปิดแล้ว;
   Google Sign-In → Firebase ID token → Render Staging API ผ่านบน Android Emulator
 - RevenueCat: Test Store products/entitlements/current offering และ sandbox-only
-  webhook ตั้งแล้ว; transport/auth smoke ผ่าน แต่ purchase lifecycle ยังไม่ผ่าน
+  webhook ตั้งแล้ว; purchase E2E ผ่านบน Emulator ด้วย Firebase UID แต่ true
+  Restore/resync ยังต้อง deploy backend และตั้ง server REST key ก่อนทดสอบซ้ำ
 - R2, Gemini และ Groq ยังเป็น dummy staging-only; Social ยัง `disabled`
 
 Staging ใช้ทดสอบโค้ดและผู้ให้บริการจริงก่อนส่งเข้า Production โดยต้องไม่ใช้ฐานข้อมูล
@@ -54,6 +55,8 @@ Staging เป็นด่านตรวจเวอร์ชันถัดไ
 - `CLOUDFLARE_R2_*`: ใช้ bucket สำหรับ Staging เท่านั้น
 - `FIREBASE_PROJECT_ID`: ใช้ Firebase project สำหรับ Staging เท่านั้น
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN`: ใช้ RevenueCat Test Store/webhook ของ Staging
+- `REVENUECAT_REST_API_V1_KEY`: server-only key สำหรับอ่าน subscriber ตอนผู้ใช้
+  กด Restore; ห้ามใช้ mobile SDK key แทนและห้ามใส่ใน Flutter
 - `GEMINI_API_KEY` และ `GROQ_API_KEY`: ควรใช้ key จำกัดโควตาสำหรับ Staging
 
 ในรอบแรกไม่มี `FIREBASE_SERVICE_ACCOUNT_JSON`, ใช้ `PUSH_SENDER=mock` และ
@@ -108,8 +111,14 @@ keystore ใหม่นั้นใน Firebase Staging ก่อน Google Sig
 - [ ] อัปโหลดไฟล์ไป bucket Staging และยืนยันว่าไม่มี object ใน bucket Production
 - [ ] AI caption และ AI edit ใช้โควตา/ข้อมูลของบัญชีทดสอบ
 - [ ] เปิด/ปิดความสามารถ AI แล้ว preview และเวลาใน timeline ถูกต้อง
-- [ ] RevenueCat Test Store purchase/restore ให้ entitlement Starter/Pro กับ
-      Firebase UID ทดสอบ (การกด test webhook ทั่วไปไม่ใช่ purchase E2E)
+- [x] RevenueCat Test Store purchase ให้ entitlement Pro กับ Firebase UID ทดสอบ
+      บน Android Emulator (ราคาทดสอบ ไม่มีการเรียกเก็บเงินจริง)
+- [ ] Deploy backend ที่มี `POST /billing/revenuecat/resync`, ตั้ง
+      `REVENUECAT_REST_API_V1_KEY` ใน Render Staging แล้วทดสอบ Restore E2E ซ้ำ
+      (Restore UI/SDK รุ่นก่อน true server resync เคยผ่านแล้ว)
+- [ ] RevenueCat renew/cancel/refund และ replay อัปเดต entitlement ถูกต้อง
+- [ ] Google Play sandbox purchase บนมือถือ Android จริง; Emulator/Test Store
+      ไม่ถือเป็นหลักฐานของ flow นี้
 - [ ] หลังสลับ `SOCIAL_PUBLISHER=postpeer` แบบตั้งใจแล้ว PostPeer ต้องเชื่อมต่อและ
   โพสต์เฉพาะช่องทางทดสอบ จากนั้นสลับกลับ `disabled`
 - [ ] ตั้งเวลา, retry และสถานะล้มเหลวไม่ค้างผิดปกติ

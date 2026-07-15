@@ -8,6 +8,15 @@
 
 **Tech Stack:** Express, TypeScript, Vitest, Prisma, Render Blueprint, RevenueCat webhooks.
 
+> **Status addendum — 2026-07-15:** RevenueCat Test Store purchase E2E now
+> passes on the Android Emulator with a Firebase uid and test price. Restore
+> UI/SDK passed before server reconciliation was added. The code now performs
+> SDK restore followed by authenticated `POST /billing/revenuecat/resync`, which
+> reads the subscriber with a server-only `REVENUECAT_REST_API_V1_KEY` and
+> reconciles the subscription store. That true resync still needs Staging deploy,
+> secret configuration, and E2E verification. Google Play purchase and physical
+> Android testing remain unverified.
+
 ---
 
 ### Task 1: Billing Config Accepts RevenueCat
@@ -108,3 +117,26 @@ npm.cmd run prisma:validate
 ```
 
 Expected: tests pass, build passes, Prisma schema valid.
+
+### Task 5: Restore And Server Reconciliation Addendum
+
+**Files:**
+- Create: `apps/api/src/modules/billing/revenueCatSubscriberClient.ts`
+- Create: `apps/api/src/modules/billing/revenueCatRestoreRoutes.ts`
+- Modify: `apps/api/src/modules/subscriptions/subscriptionStore.ts`
+- Modify: `apps/api/src/modules/subscriptions/prismaSubscriptionRepository.ts`
+- Modify: `apps/mobile/lib/features/billing/store_subscription_service.dart`
+- Modify: `apps/mobile/lib/core/network/postdee_api_client.dart`
+- Modify: `render.yaml`
+- Modify: `render.staging.yaml`
+- Modify: `apps/api/.env.example`
+
+- [x] Add authenticated subscriber lookup and plan reconciliation tests.
+- [x] Add mobile SDK restore → backend resync flow and tests.
+- [x] Keep the RevenueCat REST secret on the API only; derive app user id from
+      the authenticated Firebase user rather than request data.
+- [ ] Deploy the current backend to Staging and set
+      `REVENUECAT_REST_API_V1_KEY` in Render without exposing its value.
+- [ ] Rerun Restore E2E against Test Store and verify Starter/Pro/Basic results.
+- [ ] Verify real Google Play sandbox purchase/restore on a physical Android
+      device before claiming production billing readiness.

@@ -1421,4 +1421,36 @@ void main() {
       await server.close(force: true);
     }
   });
+
+  test('resyncRevenueCatSubscription posts to the authenticated backend route',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final apiClient = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        authHeaders: PostDeeApiAuthHeaders(
+          authTokenProvider: () async => null,
+          mockUserId: 'seller-resync',
+        ),
+      );
+      final resultFuture = apiClient.resyncRevenueCatSubscription();
+      final request = await server.first;
+
+      expect(request.method, 'POST');
+      expect(request.uri.path, '/billing/revenuecat/resync');
+      expect(request.headers.value('x-postdee-user-id'), 'seller-resync');
+      expect(await _readJsonRequest(request), isEmpty);
+
+      _writeJsonResponse(request.response, {
+        'status': 'ok',
+        'plan': 'PRO',
+      });
+      await request.response.close();
+
+      await expectLater(resultFuture, completion('PRO'));
+    } finally {
+      await server.close(force: true);
+    }
+  });
 }

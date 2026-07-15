@@ -520,9 +520,7 @@ class AiEditRecipeResult {
       silenceRanges: parseRanges(json['silenceRanges']),
       fillerRanges: parseRanges(json['fillerRanges']),
       plan: AiEditPlanResult.fromJson(
-        rawPlan is Map<String, Object?>
-            ? rawPlan
-            : const <String, Object?>{},
+        rawPlan is Map<String, Object?> ? rawPlan : const <String, Object?>{},
       ),
       music: AiEditMusicResult.fromJson(
         rawMusic is Map<String, Object?> ? rawMusic : const <String, Object?>{},
@@ -1787,6 +1785,19 @@ class PostDeeApiClient {
     }
 
     return SubscriptionStatusResult.fromJson(subscription);
+  }
+
+  Future<String> resyncRevenueCatSubscription() async {
+    final response = await _postJson('/billing/revenuecat/resync', const {});
+    final plan = response['plan'];
+
+    if (plan is! String || plan.trim().isEmpty) {
+      throw const ApiException(
+        'RevenueCat resync response is missing the subscription plan',
+      );
+    }
+
+    return plan.trim().toUpperCase();
   }
 
   Future<StoreSubscriptionVerificationResult> verifyStoreSubscription(

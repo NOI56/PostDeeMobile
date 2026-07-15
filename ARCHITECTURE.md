@@ -33,6 +33,7 @@ flowchart LR
   Mobile["Flutter Mobile App"] --> API["Express API (Render)"]
   Mobile -.->|purchases_flutter| RC["RevenueCat"]
   RC -.->|Webhooks| API
+  API -.->|Subscriber read for Restore| RC
   API --> Auth["Firebase Auth & FCM"]
   API --> DB["PostgreSQL (Render)"]
   API --> Storage["Cloudflare R2 Video Storage"]
@@ -93,7 +94,9 @@ Important mobile services:
 - Home uses the legacy `POST /billing/store/verify` path by default for local
   scaffold runs, and can use RevenueCat `purchases_flutter` when
   `ENABLE_REVENUECAT_BILLING=true`; entitlements are then updated by
-  `POST /billing/revenuecat/webhooks`.
+  `POST /billing/revenuecat/webhooks`. A user-initiated Restore first calls the
+  RevenueCat SDK, then the authenticated `POST /billing/revenuecat/resync` route
+  to reconcile the server subscription store.
 
 Global readiness principles:
 
@@ -157,6 +160,7 @@ Main route groups:
 - `GET /analytics/summary?range=today|7d|30d|90d|year`
 - `GET /billing/subscription`
 - `POST /billing/revenuecat/webhooks`
+- `POST /billing/revenuecat/resync`
 - `POST /billing/store/verify`
 - `POST /billing/mock-success`
 - `POST /billing/google-play/notifications`
@@ -364,11 +368,40 @@ sequenceDiagram
   A->>DB: Activate STARTER or PRO subscription
 ```
 
+Restore is an explicit user action and uses a separate reconciliation path:
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant M as Mobile (purchases_flutter)
+  participant A as Authenticated API
+  participant RC as RevenueCat Subscriber API
+  participant DB as Subscription Store
+
+  U->>M: Tap Restore purchases
+  M->>RC: restorePurchases with Firebase uid
+  RC-->>M: Customer info refreshed
+  M->>A: POST /billing/revenuecat/resync
+  A->>RC: GET subscriber using server REST key
+  RC-->>A: Active entitlements and expiry
+  A->>DB: Reconcile PRO, STARTER, or BASIC
+  A-->>M: Current subscription
+```
+
+The mobile app never receives `REVENUECAT_REST_API_V1_KEY`. The API derives the
+RevenueCat app user id only from the authenticated Firebase user, prefers Pro if
+both paid entitlements are active, and leaves the existing plan unchanged if the
+provider lookup fails. Zero active RevenueCat entitlements deactivates only the
+matching RevenueCat-backed record. Active but unmapped access returns a
+configuration error and does not downgrade the user.
+
 Production work required:
 
 - Create `postdee_starter_monthly` and `postdee_pro_monthly` in RevenueCat.
 - Link Apple and Google service credentials to RevenueCat dashboard.
 - Configure `REVENUECAT_WEBHOOK_AUTH_TOKEN` and the RevenueCat webhook URL.
+- Configure the server-only `REVENUECAT_REST_API_V1_KEY` before enabling the
+  current Restore/resync flow in an environment.
 - Replace the local RevenueCat Test Store SDK key with real platform SDK keys
   before App Store / Google Play release builds.
 - Run sandbox/device purchases and renewal/cancel/refund webhook tests.
@@ -695,22 +728,28 @@ cd apps/mobile
 - Firebase Android Debug Staging Google auth passes end to end; Phone Auth,
   Production/iOS capability setup, and physical-device testing remain.
 - RevenueCat Test Store products/entitlements/current offering and authenticated
-  webhook transport are configured. Purchase/restore/lifecycle tests, real
-  Apple/Google products, and platform SDK keys remain. The legacy direct store
+  webhook transport are configured, and purchase E2E passes on the Android
+  Emulator with a Firebase UID. The earlier Restore UI/SDK smoke predates true
+  server reconciliation; deploy the new route and set
+  `REVENUECAT_REST_API_V1_KEY` in Staging before calling Restore E2E complete.
+  Lifecycle tests, real Apple/Google products, platform SDK keys, Google Play
+  purchase, and physical Android verification remain. The legacy direct store
   verifier remains a scaffold.
 - Analytics does not yet fetch real platform metrics.
 
 ## Recommended Next Steps
 
-1. Add real App Store / Google Play product setup documentation.
-2. Test RevenueCat purchase and restore on real sandbox devices.
-3. Test RevenueCat renewal/cancel/refund webhook delivery from sandbox events.
-4. Keep the legacy store notification scaffold covered, but do not make it the
+1. Deploy RevenueCat restore/resync to Staging, add its server REST key, and
+   rerun Test Store Restore E2E.
+2. Add real App Store / Google Play product setup documentation.
+3. Test RevenueCat purchase and restore on real sandbox devices.
+4. Test RevenueCat renewal/cancel/refund webhook delivery from sandbox events.
+5. Keep the legacy store notification scaffold covered, but do not make it the
    preferred production billing path.
-5. Expand RevenueCat notification event coverage from sandbox evidence.
-6. Run the `RealClipCaptionUsage` migration in staging/production and set
+6. Expand RevenueCat notification event coverage from sandbox evidence.
+7. Run the `RealClipCaptionUsage` migration in staging/production and set
    `CAPTION_USAGE_STORE=prisma` before selling paid AI caption quotas.
-7. Harden Pro Groq Whisper job/session persistence, top-up, retry/recovery, and real-device review/export states.
-8. Test Firebase Google Sign-In and Phone Auth on real Android/iOS devices.
-9. Test video picker and 9:16 preview on real devices.
-10. Connect the first real social publishing provider.
+8. Harden Pro Groq Whisper job/session persistence, top-up, retry/recovery, and real-device review/export states.
+9. Test Firebase Google Sign-In and Phone Auth on real Android/iOS devices.
+10. Test video picker and 9:16 preview on real devices.
+11. Connect the first real social publishing provider.

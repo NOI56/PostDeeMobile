@@ -45,6 +45,20 @@ describe('createSubscriptionStore', () => {
     await expect(store.getPlan({ id: 'seller-active', provider: 'mock' })).resolves.toBe('PRO');
   });
 
+  it('preserves the known period end when a later activation omits it', async () => {
+    const store = createSubscriptionStore({
+      now: () => '2026-07-10T00:00:00.000Z'
+    });
+    const authUser = { id: 'seller-preserve-period', provider: 'mock' as const };
+
+    await store.activatePro(authUser, {
+      currentPeriodEnd: '2026-08-01T00:00:00.000Z'
+    });
+    const subscription = await store.activatePro(authUser);
+
+    expect(subscription.currentPeriodEnd).toBe('2026-08-01T00:00:00.000Z');
+  });
+
   it('persists mock Starter activation for a user', async () => {
     const store = createSubscriptionStore();
 
@@ -84,4 +98,5 @@ describe('createSubscriptionStore', () => {
     });
     await expect(store.getPlan({ id: 'seller-store', provider: 'mock' })).resolves.toBe('BASIC');
   });
+
 });

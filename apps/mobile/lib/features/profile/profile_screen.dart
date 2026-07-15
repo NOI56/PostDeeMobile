@@ -56,6 +56,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _connectedCount = 0;
   SubscriptionStatusResult? _subscription;
   ProfileDraft? _profileDraft;
+  var _subscriptionLoadGeneration = 0;
 
   @override
   void initState() {
@@ -125,14 +126,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadSubscription() async {
+    final loadGeneration = ++_subscriptionLoadGeneration;
+
     try {
       final subscription = await _apiClient.loadCurrentSubscription();
-      if (!mounted) return;
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) return;
       setState(() => _subscription = subscription);
     } on SocketException {
       // Offline: keep the default free-tier display.
     } catch (_) {
       // Keep the default free-tier display if the plan call fails.
+    }
+  }
+
+  Future<void> _openPaywall() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => PaywallScreen(
+          loadSubscription: _apiClient.loadCurrentSubscription,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      await _loadSubscription();
     }
   }
 
@@ -361,7 +378,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             key: ValueKey('profile-plan-${tier.id}'),
             tier: tier,
             isCurrent: tier.id == _currentTierId,
-            onTap: () => _openPaywall(context),
+            onTap: _openPaywall,
           ),
           const SizedBox(height: 10),
         ],
@@ -927,14 +944,6 @@ void _openPhoneVerification(BuildContext context) {
   Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (context) => const PhoneVerificationScreen(),
-    ),
-  );
-}
-
-void _openPaywall(BuildContext context) {
-  Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (context) => const PaywallScreen(),
     ),
   );
 }

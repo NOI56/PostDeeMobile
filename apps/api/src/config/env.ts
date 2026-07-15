@@ -42,6 +42,7 @@ export type ServerConfig = {
   geminiApiKey?: string;
   billingProvider: BillingProviderKind;
   revenueCatWebhookAuthToken?: string;
+  revenueCatRestApiV1Key?: string;
   revenueCatStarterEntitlementId: string;
   revenueCatProEntitlementId: string;
   revenueCatStarterProductId: string;
@@ -432,6 +433,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     geminiApiKey: readOptional(env, 'GEMINI_API_KEY'),
     billingProvider: readBillingProvider(env),
     revenueCatWebhookAuthToken: readOptional(env, 'REVENUECAT_WEBHOOK_AUTH_TOKEN'),
+    revenueCatRestApiV1Key: readOptional(env, 'REVENUECAT_REST_API_V1_KEY'),
     revenueCatStarterEntitlementId:
       readOptional(env, 'REVENUECAT_STARTER_ENTITLEMENT_ID') ?? 'starter',
     revenueCatProEntitlementId: readOptional(env, 'REVENUECAT_PRO_ENTITLEMENT_ID') ?? 'pro',

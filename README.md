@@ -24,9 +24,11 @@ apps/
 - ขั้นตอนและข้อจำกัดค่าใช้จ่ายอยู่ใน `docs/STAGING.md` ปัจจุบันสร้างทรัพยากร
   Staging บน Render แล้ว, `/health` ผ่าน และ Android Debug ใช้ Firebase project
   แยกพร้อมผ่าน Google Sign-In → Firebase token → Staging API บน Emulator แล้ว
-  RevenueCat Test Store/offering/webhook ตั้งค่าแล้วและ transport/auth smoke ผ่าน
-  แต่การซื้อจริงยังไม่ผ่าน ส่วน R2, Gemini/Groq และ Social ยังต้องใส่ค่าทดสอบจริง
-  และผ่าน functional smoke tests ก่อนใช้เป็น release gate
+  RevenueCat Test Store/offering/webhook ตั้งค่าแล้วและ purchase E2E ผ่านบน
+  Android Emulator ด้วย Firebase UID (เป็นราคาทดสอบและไม่มีการเรียกเก็บเงินจริง)
+  ส่วน Restore UI/SDK เคยผ่านกับ Test Store ก่อนเพิ่ม true server resync; flow ใหม่
+  ยังต้อง deploy backend และตั้ง `REVENUECAT_REST_API_V1_KEY` ของ Staging ก่อน
+  ยืนยัน E2E ซ้ำ ขณะที่ Google Play purchase และมือถือ Android จริงยังไม่ผ่าน
 
 ## Backend
 
@@ -45,6 +47,7 @@ Current backend pieces:
 - Legacy S3/OpenAI adapters remain available with `VIDEO_STORAGE=s3` and `CAPTION_PROVIDER=openai`
 - Mock/Firebase auth middleware selectable with `AUTH_PROVIDER=firebase`
 - RevenueCat webhook receiver for Starter and Pro subscription entitlements
+- Authenticated RevenueCat subscriber resync for reconciling restored purchases
 - Legacy store subscription verification scaffold for Apple App Store and Google Play purchases
 - Store notification handler that updates paid entitlement state for known verified store purchases
 - Mock publish worker scaffold for the `publish-posts` queue
@@ -374,6 +377,22 @@ removes paid access. `CANCELLATION`, `SUBSCRIPTION_PAUSED`, and `BILLING_ISSUE`
 are acknowledged without revoking access immediately because the subscription
 can still be active until the paid period actually expires.
 
+#### `POST /billing/revenuecat/resync`
+
+Reconciles the authenticated Firebase user's subscription after the mobile app
+calls RevenueCat `restorePurchases`. The backend reads the RevenueCat subscriber
+with the server-only `REVENUECAT_REST_API_V1_KEY`, prefers Pro when both paid
+entitlements are active, and updates the configured subscription store. If
+RevenueCat has no active entitlement, only the matching RevenueCat-backed local
+subscription is deactivated. An active but unmapped entitlement returns a safe
+configuration error without removing existing access.
+Clients must not send or choose another RevenueCat app user id; the route always
+uses the authenticated PostDee user id.
+
+This route is not operational in an environment until the current backend is
+deployed and its RevenueCat REST API v1 secret is configured. Provider failures
+return an error without downgrading the existing plan.
+
 #### `POST /billing/store/verify`
 
 Legacy direct Apple/Google store verification scaffold. It can verify a Starter
@@ -543,7 +562,11 @@ Current mobile pieces:
   range selection and a publish-date daily chart without simulated numbers
 - Home API connection check wired to `GET /health`, a local Gemini caption smoke check, plan status refresh wired to `GET /billing/subscription`, Basic Phone OTP UI for unlocking the 3-post free quota, and one automatic analytics refresh after Pro is unlocked
 - Upload AI captions keep the customer flow simple: select a clip, optionally add guidance, then let AI infer language and market from the clip.
-- Starter and Pro CTAs on Home can use the legacy Flutter `in_app_purchase` scaffold by default, or the RevenueCat `purchases_flutter` path when `ENABLE_REVENUECAT_BILLING=true`; RevenueCat entitlement updates come from `POST /billing/revenuecat/webhooks`
+- Starter and Pro CTAs on Home can use the legacy Flutter `in_app_purchase`
+  scaffold by default, or the RevenueCat `purchases_flutter` path when
+  `ENABLE_REVENUECAT_BILLING=true`; purchases are confirmed through
+  `POST /billing/revenuecat/webhooks`, while user-initiated Restore runs the SDK
+  restore then `POST /billing/revenuecat/resync`
 
 Local API config can be passed with Dart defines:
 
@@ -612,6 +635,8 @@ Queue/storage scaffold switches:
 - `SUBSCRIPTION_STORE=memory` reads mock subscription headers and local mock billing activations; `SUBSCRIPTION_STORE=prisma` reads and upserts active subscriptions through PostgreSQL.
 - `BILLING_PROVIDER=mock` keeps the local billing scaffold; `BILLING_PROVIDER=store` keeps the legacy direct Apple/Google verifier; `BILLING_PROVIDER=revenuecat` receives RevenueCat webhooks and is the production billing path.
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN` is required when `BILLING_PROVIDER=revenuecat` in production.
+- `REVENUECAT_REST_API_V1_KEY` is a server-only RevenueCat secret used by the
+  authenticated restore/resync route. Never put it in Flutter or commit it.
 - `REVENUECAT_STARTER_ENTITLEMENT_ID` and `REVENUECAT_PRO_ENTITLEMENT_ID` map RevenueCat entitlements to PostDee plans.
 - `REVENUECAT_STARTER_PRODUCT_ID` and `REVENUECAT_PRO_PRODUCT_ID` map RevenueCat products to PostDee plans when entitlement ids are not present in the webhook.
 - `GOOGLE_PLAY_PACKAGE_NAME` is the Android package name registered in Google Play Console.
@@ -678,8 +703,10 @@ social connections and the connect/refresh/provider-first disconnect API flow
 are implemented;
 production publishing still requires a controlled provider-level test and never
 uses shared `POSTPEER_*_ACCOUNT_ID` values. Real-clip AI captioning/editing,
-Firebase device auth, RevenueCat purchases, R2 media flow, and renewal/refund/
-cancel handling still need their listed real-device/provider checks. Platform
+Firebase device auth, RevenueCat Google Play purchases, R2 media flow, and
+renewal/refund/cancel handling still need their listed real-device/provider
+checks. RevenueCat Test Store purchase E2E passes on the Emulator, but the new
+restore/resync path still needs Staging deploy/key configuration and E2E. Platform
 views/likes ingestion, Sentry, beat/hook rendering, and AI minute top-ups are not
 complete production features yet. See `docs/GO_LIVE.md` and
 `LAUNCH_CHECKLIST.md` for the operational truth.

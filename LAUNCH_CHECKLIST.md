@@ -22,8 +22,13 @@
       authenticated sandbox webhook; transport/auth smoke ได้ HTTP 202 ตามคาด
 - [x] Test Store purchase E2E ผ่านบน Android Emulator ด้วย Firebase UID
       (เป็นราคาทดสอบและไม่มีการเรียกเก็บเงินจริง)
-- [ ] Deploy true server resync และตั้ง `REVENUECAT_REST_API_V1_KEY` ของ Staging
-      แล้วทดสอบ Restore ซ้ำ; UI/SDK รุ่นก่อน resync เคยผ่านแล้ว
+- [x] Deploy true server resync, ตั้ง server REST key ใน Render Staging และทดสอบ
+      Restore/resync E2E บน Android Emulator แล้ว
+- [x] เตรียม RevenueCat Play Store app/products/entitlements/default offering,
+      production Android public SDK key และ signed AAB แล้ว
+- [ ] ยืนยันสิทธิ์ Play Console ด้วยมือถือ Android จริง แล้วสร้าง Play Console
+      app/subscriptions, service credentials และ internal testing; Emulator ใช้
+      ยืนยันบัญชีขั้นตอนนี้ไม่ได้
 - [ ] เปลี่ยน R2/Gemini/Groq เป็น credentials ของ Staging จริงก่อน functional smoke
 - [x] ตั้ง Staging เริ่มต้นเป็น `SOCIAL_PUBLISHER=disabled`; สลับ PostPeer เฉพาะ
       controlled test ด้วยบัญชีทดสอบแล้วสลับกลับ
@@ -107,11 +112,15 @@
 - [x] สร้าง Test Store products `postdee_starter_monthly` / `postdee_pro_monthly`,
       entitlements, current offering และ webhook ของ Staging
 - [x] ทดสอบซื้อ Test Store ด้วย Firebase UID บน Android Emulator สำเร็จ
-- [ ] Deploy `POST /billing/revenuecat/resync` และตั้ง server-only
-      `REVENUECAT_REST_API_V1_KEY` ใน Staging แล้วทดสอบ Restore E2E ซ้ำ
+- [x] Deploy `POST /billing/revenuecat/resync`, ตั้ง server REST key ใน Render
+      Staging และทดสอบ true Restore/resync E2E บน Android Emulator แล้ว
+- [x] เตรียม RevenueCat Play Store app, Starter/Pro products, entitlements,
+      default offering, production Android public SDK key และ signed AAB แล้ว
 - [ ] ทดสอบ renew/cancel/refund และ replay ด้วย Test Store
-- [ ] ตั้ง product ใน App Store Connect / Google Play, ทดสอบซื้อบน sandbox
-      มือถือจริง (Google Play purchase และ Android จริงยังไม่ยืนยัน)
+- [ ] ยืนยัน Play Console ด้วยมือถือ Android จริง จากนั้นสร้าง Play Console
+      app/subscriptions, service credentials และ internal testing แล้วอัปโหลด AAB
+      เพื่อทดสอบซื้อ/Restore ผ่าน Google Play จริง; Emulator ใช้ยืนยันบัญชีไม่ได้
+- [ ] ตั้ง product ใน App Store Connect และทดสอบซื้อบน iOS sandbox แยกต่างหาก
 - ✅ มีตาข่ายกันหมดอายุแล้ว: ถ้า webhook พลาด ระบบจะตัดเป็น BASIC เมื่อเลย
       `currentPeriodEnd`
 

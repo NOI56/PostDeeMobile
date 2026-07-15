@@ -24,11 +24,14 @@ apps/
 - ขั้นตอนและข้อจำกัดค่าใช้จ่ายอยู่ใน `docs/STAGING.md` ปัจจุบันสร้างทรัพยากร
   Staging บน Render แล้ว, `/health` ผ่าน และ Android Debug ใช้ Firebase project
   แยกพร้อมผ่าน Google Sign-In → Firebase token → Staging API บน Emulator แล้ว
-  RevenueCat Test Store/offering/webhook ตั้งค่าแล้วและ purchase E2E ผ่านบน
-  Android Emulator ด้วย Firebase UID (เป็นราคาทดสอบและไม่มีการเรียกเก็บเงินจริง)
-  ส่วน Restore UI/SDK เคยผ่านกับ Test Store ก่อนเพิ่ม true server resync; flow ใหม่
-  ยังต้อง deploy backend และตั้ง `REVENUECAT_REST_API_V1_KEY` ของ Staging ก่อน
-  ยืนยัน E2E ซ้ำ ขณะที่ Google Play purchase และมือถือ Android จริงยังไม่ผ่าน
+  RevenueCat Test Store/offering/webhook ตั้งค่าแล้ว และทั้ง purchase กับ true
+  Restore/resync E2E ผ่านบน Android Emulator ด้วย Firebase UID หลัง deploy backend
+  และตั้ง `REVENUECAT_REST_API_V1_KEY` ใน Render Staging (เป็นราคาทดสอบและไม่มีการ
+  เรียกเก็บเงินจริง) ฝั่ง RevenueCat มี Play Store app, Starter/Pro products,
+  entitlements, default offering และ production Android public SDK key แล้ว พร้อม
+  signed AAB สำหรับอัปโหลด แต่ Play Console app/subscriptions, internal testing,
+  service credentials และ Google Play purchase จริงยังทำไม่ได้จนกว่าจะยืนยันสิทธิ์
+  ด้วยมือถือ Android จริง; Emulator ใช้ยืนยันขั้นตอนนี้ไม่ได้
 
 ## Backend
 
@@ -705,8 +708,13 @@ production publishing still requires a controlled provider-level test and never
 uses shared `POSTPEER_*_ACCOUNT_ID` values. Real-clip AI captioning/editing,
 Firebase device auth, RevenueCat Google Play purchases, R2 media flow, and
 renewal/refund/cancel handling still need their listed real-device/provider
-checks. RevenueCat Test Store purchase E2E passes on the Emulator, but the new
-restore/resync path still needs Staging deploy/key configuration and E2E. Platform
+checks. RevenueCat Test Store purchase and true Restore/resync E2E pass on the
+Emulator after the Staging deploy and server REST key configuration. The
+RevenueCat Play app/products/entitlements/default offering, production Android
+public SDK key, and signed AAB are prepared, but Play Console app/subscriptions,
+internal testing, service credentials, and a real Google Play purchase remain
+blocked until the developer account is verified with a physical Android device;
+the Emulator cannot complete that verification. Platform
 views/likes ingestion, Sentry, beat/hook rendering, and AI minute top-ups are not
 complete production features yet. See `docs/GO_LIVE.md` and
 `LAUNCH_CHECKLIST.md` for the operational truth.

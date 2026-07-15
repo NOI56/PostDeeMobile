@@ -13,9 +13,13 @@
 > UI/SDK passed before server reconciliation was added. The code now performs
 > SDK restore followed by authenticated `POST /billing/revenuecat/resync`, which
 > reads the subscriber with a server-only `REVENUECAT_REST_API_V1_KEY` and
-> reconciles the subscription store. That true resync still needs Staging deploy,
-> secret configuration, and E2E verification. Google Play purchase and physical
-> Android testing remain unverified.
+> reconciles the subscription store. The current backend and server key are now
+> configured in Render Staging, and true Restore/resync E2E passes. RevenueCat
+> also has the Play Store app, Starter/Pro products, entitlements, default
+> offering, and production Android public SDK key, and a signed AAB is ready.
+> Play Console app/subscriptions, internal testing, service credentials, and a
+> real Google Play purchase remain blocked until the account is verified with a
+> physical Android device; an Emulator cannot complete that verification.
 
 ---
 
@@ -135,8 +139,13 @@ Expected: tests pass, build passes, Prisma schema valid.
 - [x] Add mobile SDK restore → backend resync flow and tests.
 - [x] Keep the RevenueCat REST secret on the API only; derive app user id from
       the authenticated Firebase user rather than request data.
-- [ ] Deploy the current backend to Staging and set
+- [x] Deploy the current backend to Staging and set
       `REVENUECAT_REST_API_V1_KEY` in Render without exposing its value.
-- [ ] Rerun Restore E2E against Test Store and verify Starter/Pro/Basic results.
+- [x] Rerun Restore E2E against Test Store and verify the server reconciliation
+      path.
+- [x] Prepare the RevenueCat Play Store app/products/entitlements/default
+      offering, production Android public SDK key, and signed AAB.
 - [ ] Verify real Google Play sandbox purchase/restore on a physical Android
-      device before claiming production billing readiness.
+      device before claiming production billing readiness. First complete the
+      Play Console app/subscriptions, service credentials, and internal-testing
+      track after the required physical-device account verification.

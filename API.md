@@ -1527,14 +1527,15 @@ The following work is still required before production launch:
   top-up handling, mobile FFmpeg export, retries, and failure handling before
   implementation.
 - Complete Firebase Google Sign-In and Phone Auth device testing.
-- Deploy the RevenueCat restore/resync backend and set
-  `REVENUECAT_REST_API_V1_KEY` in Staging, then rerun the Test Store Restore E2E.
-  Test Store purchase E2E already passes on the Android Emulator; the earlier
-  Restore UI/SDK smoke predates true server reconciliation.
-- Complete RevenueCat dashboard setup for real App Store / Google Play products,
-  replace the local Test Store SDK key with platform RevenueCat SDK keys, and
-  run App Store / Google Play sandbox purchase testing through RevenueCat. A
-  Google Play purchase and physical Android device remain unverified.
+- RevenueCat Test Store purchase and true Restore/resync E2E pass on the Android
+  Emulator after the current backend was deployed and
+  `REVENUECAT_REST_API_V1_KEY` was configured in Render Staging.
+- The RevenueCat dashboard now has a Play Store app, Starter/Pro products,
+  entitlements, the default offering, and a production Android public SDK key;
+  a signed AAB is also ready. Still create the Play Console app/subscriptions,
+  configure Google service credentials, open an internal-testing track, and run
+  a real Google Play purchase/restore. Those steps are blocked until Play Console
+  access is verified with a physical Android device; an Emulator is not accepted.
 - Add full RevenueCat renewal, cancel, refund, billing-issue, and notification
   replay coverage.
 - Replace mock analytics with real platform analytics fetchers.

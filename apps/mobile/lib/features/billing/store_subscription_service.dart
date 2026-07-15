@@ -227,7 +227,7 @@ class StoreSubscriptionService {
 
     await _ensureRevenueCatAvailable(revenueCatGateway);
     await revenueCatGateway.restorePurchases();
-    final resyncedPlan = await _resyncRevenueCatSubscription();
+    final resyncedPlan = await _resyncRevenueCatForRestore();
     final expectedProductsByPlan = {
       'STARTER': starterProductId,
       'PRO': productId,
@@ -291,13 +291,47 @@ class StoreSubscriptionService {
   }) async {
     await _ensureRevenueCatAvailable(gateway);
     await gateway.restorePurchases();
-    final resyncedPlan = await _resyncRevenueCatSubscription();
+    final resyncedPlan = await _resyncRevenueCatForRestore();
     _ensureRestorablePlan(resyncedPlan, {expectedPlan});
 
     return _readRevenueCatSubscription(
       expectedProductsByPlan: {expectedPlan: productId},
       operation: 'restore',
     );
+  }
+
+  Future<String> _resyncRevenueCatForRestore() async {
+    try {
+      return await _resyncRevenueCatSubscription();
+    } on ApiException catch (error) {
+      final code = error.code;
+      final statusCode = error.statusCode;
+
+      if (code == 'REVENUECAT_RESYNC_NOT_CONFIGURED' ||
+          (code == null && statusCode == HttpStatus.notImplemented)) {
+        throw const StoreSubscriptionException(
+          'ระบบกู้คืนสมาชิกยังตั้งค่าไม่เสร็จ กรุณาลองใหม่ภายหลัง',
+        );
+      }
+
+      if (code == 'REVENUECAT_ENTITLEMENT_NOT_MAPPED' ||
+          (code == null && statusCode == HttpStatus.conflict)) {
+        throw const StoreSubscriptionException(
+          'พบรายการสมาชิกแล้ว แต่แพ็กเกจยังเชื่อมกับระบบไม่ถูกต้อง กรุณาติดต่อทีม PostDee',
+        );
+      }
+
+      if (code == 'REVENUECAT_RESYNC_FAILED' ||
+          (code == null && statusCode == HttpStatus.badGateway)) {
+        throw const StoreSubscriptionException(
+          'เชื่อมต่อระบบสมาชิกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+        );
+      }
+
+      throw const StoreSubscriptionException(
+        'กู้คืนการซื้อไม่สำเร็จ ลองใหม่อีกครั้ง',
+      );
+    }
   }
 
   void _ensureRestorablePlan(String plan, Iterable<String> expectedPlans) {

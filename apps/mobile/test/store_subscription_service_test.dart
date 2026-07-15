@@ -206,6 +206,69 @@ void main() {
     expect(loadCalls, 0);
   });
 
+  final restoreResyncErrorCases = <({
+    String? code,
+    int statusCode,
+    String expectedMessage,
+  })>[
+    (
+      code: 'REVENUECAT_RESYNC_NOT_CONFIGURED',
+      statusCode: 501,
+      expectedMessage: 'ระบบกู้คืนสมาชิกยังตั้งค่าไม่เสร็จ กรุณาลองใหม่ภายหลัง',
+    ),
+    (
+      code: 'REVENUECAT_ENTITLEMENT_NOT_MAPPED',
+      statusCode: 409,
+      expectedMessage:
+          'พบรายการสมาชิกแล้ว แต่แพ็กเกจยังเชื่อมกับระบบไม่ถูกต้อง กรุณาติดต่อทีม PostDee',
+    ),
+    (
+      code: 'REVENUECAT_RESYNC_FAILED',
+      statusCode: 502,
+      expectedMessage: 'เชื่อมต่อระบบสมาชิกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+    ),
+    (
+      code: null,
+      statusCode: 501,
+      expectedMessage: 'ระบบกู้คืนสมาชิกยังตั้งค่าไม่เสร็จ กรุณาลองใหม่ภายหลัง',
+    ),
+  ];
+
+  for (final errorCase in restoreResyncErrorCases) {
+    test(
+        'restoreSubscription explains RevenueCat resync error '
+        '${errorCase.code ?? errorCase.statusCode}', () async {
+      final revenueCatGateway = FakeRevenueCatBillingGateway();
+      var loadCalls = 0;
+      final service = StoreSubscriptionService(
+        revenueCatGateway: revenueCatGateway,
+        useRevenueCat: true,
+        resyncRevenueCatSubscription: () async => throw ApiException(
+          'Backend RevenueCat resync failed',
+          statusCode: errorCase.statusCode,
+          code: errorCase.code,
+        ),
+        loadSubscription: () async {
+          loadCalls += 1;
+          return _subscription(plan: 'BASIC');
+        },
+      );
+
+      await expectLater(
+        service.restoreSubscription(),
+        throwsA(
+          isA<StoreSubscriptionException>().having(
+            (error) => error.message,
+            'message',
+            errorCase.expectedMessage,
+          ),
+        ),
+      );
+      expect(revenueCatGateway.restoreCalls, 1);
+      expect(loadCalls, 0);
+    });
+  }
+
   test('restoreProSubscription verifies iOS transaction id with backend',
       () async {
     VerifyStorePurchaseRequest? verifiedRequest;

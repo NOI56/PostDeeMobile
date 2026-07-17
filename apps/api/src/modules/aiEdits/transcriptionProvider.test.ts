@@ -7,12 +7,17 @@ import {
   createWhisperTranscriptionProvider
 } from './transcriptionProvider.js';
 
+const legacyVideoInput = (mediaS3Key: string) => ({
+  mediaS3Key,
+  mediaKind: 'legacy-video' as const
+});
+
 describe('transcription provider', () => {
   it('returns a mock Thai transcript by default', async () => {
     const config = readServerConfig({});
     const provider = createTranscriptionProviderFromConfig({ config });
 
-    const result = await provider.transcribe({ videoS3Key: 'uploads/clip.mp4' });
+    const result = await provider.transcribe(legacyVideoInput('uploads/clip.mp4'));
 
     expect(result.language).toBe('th');
     expect(result.segments.length).toBeGreaterThan(0);
@@ -47,9 +52,9 @@ describe('transcription provider', () => {
     const provider = createWhisperTranscriptionProvider({
       apiKey: 'oa-key',
       model: 'whisper-1',
-      fetchAudio: async (key) => ({
+      fetchAudio: async (input) => ({
         data: new Uint8Array([1, 2, 3]),
-        filename: `${key}.mp4`,
+        filename: `${input.mediaS3Key}.mp4`,
         contentType: 'video/mp4'
       }),
       fetchImpl: async (url, init) => {
@@ -72,7 +77,7 @@ describe('transcription provider', () => {
       }
     });
 
-    const result = await provider.transcribe({ videoS3Key: 'uploads/clip' });
+    const result = await provider.transcribe(legacyVideoInput('uploads/clip'));
 
     expect(calls[0].url).toBe('https://api.openai.com/v1/audio/transcriptions');
     expect(calls[0].prompt).toBeUndefined();
@@ -95,7 +100,7 @@ describe('transcription provider', () => {
       fetchImpl: async () => ({ ok: false, status: 500, json: async () => ({}) })
     });
 
-    await expect(provider.transcribe({ videoS3Key: 'k' })).rejects.toThrow(
+    await expect(provider.transcribe(legacyVideoInput('k'))).rejects.toThrow(
       /Whisper transcription failed with status 500/
     );
   });
@@ -112,9 +117,9 @@ describe('transcription provider', () => {
     const provider = createGroqTranscriptionProvider({
       apiKey: 'groq-key',
       model: 'whisper-large-v3',
-      fetchAudio: async (key) => ({
+      fetchAudio: async (input) => ({
         data: new Uint8Array([4, 5, 6]),
-        filename: `${key}.mp4`,
+        filename: `${input.mediaS3Key}.mp4`,
         contentType: 'video/mp4'
       }),
       fetchImpl: async (url, init) => {
@@ -143,7 +148,7 @@ describe('transcription provider', () => {
       }
     });
 
-    const result = await provider.transcribe({ videoS3Key: 'uploads/groq-clip' });
+    const result = await provider.transcribe(legacyVideoInput('uploads/groq-clip'));
 
     expect(calls[0]).toEqual({
       url: 'https://api.groq.com/openai/v1/audio/transcriptions',
@@ -175,7 +180,7 @@ describe('transcription provider', () => {
       fetchImpl: async () => ({ ok: false, status: 429, json: async () => ({}) })
     });
 
-    await expect(provider.transcribe({ videoS3Key: 'k' })).rejects.toThrow(
+    await expect(provider.transcribe(legacyVideoInput('k'))).rejects.toThrow(
       /Groq transcription failed with status 429/
     );
   });

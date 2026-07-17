@@ -81,7 +81,12 @@ import { createPublishQueueFromConfig } from './modules/queue/publishQueueFactor
 import { createPlatformPublisherFromConfig } from './workers/platformPublisherFactory.js';
 import { createPublishScheduler } from './workers/publishScheduler.js';
 import { registerPublishQueueRoutes } from './modules/queue/publishQueueRoutes.js';
-import { readAiMediaResponseBytes } from './modules/storage/mediaDownload.js';
+import {
+  MediaDownloadError,
+  aiEditAudioDownloadMaxBytes,
+  aiMediaDownloadMaxBytes,
+  readAiMediaResponseBytes
+} from './modules/storage/mediaDownload.js';
 import type { S3VideoStorageClient, VideoStorage } from './modules/storage/videoStorage.js';
 import { createVideoStorageFromConfig } from './modules/storage/videoStorageFactory.js';
 import type { PrismaSubscriptionClient } from './modules/subscriptions/prismaSubscriptionRepository.js';
@@ -214,23 +219,37 @@ const createAccountAwareAuthMiddleware = ({
 
 const createFetchAudioFromVideoStorage =
   (videoStorage: VideoStorage): FetchAudio =>
-  async (videoS3Key) => {
-    const access = await videoStorage.createDownloadAccess(videoS3Key);
+  async ({ mediaS3Key, mediaKind }) => {
+    const access = await videoStorage.createDownloadAccess(mediaS3Key);
 
     if (access.accessType !== 'signed-url' || !access.downloadUrl) {
-      throw new Error('Signed video download access is required for real transcription');
+      throw new Error('Signed media download access is required for real transcription');
     }
 
     const response = await fetch(access.downloadUrl);
 
     if (!response.ok) {
-      throw new Error(`Video download failed with status ${response.status}`);
+      throw new Error(`Media download failed with status ${response.status}`);
     }
 
+    const responseContentType = response.headers.get('content-type');
+    const normalizedContentType = responseContentType?.split(';', 1)[0]?.trim().toLowerCase();
+
+    if (mediaKind === 'audio' && normalizedContentType !== 'audio/mp4') {
+      throw new MediaDownloadError(
+        'AI edit audio must use the audio/mp4 content type',
+        415,
+        'AI_EDIT_AUDIO_CONTENT_TYPE_INVALID'
+      );
+    }
+
+    const maxBytes =
+      mediaKind === 'audio' ? aiEditAudioDownloadMaxBytes : aiMediaDownloadMaxBytes;
+
     return {
-      data: await readAiMediaResponseBytes(response),
-      filename: readFileNameFromStorageKey(videoS3Key),
-      contentType: response.headers.get('content-type') ?? 'video/mp4'
+      data: await readAiMediaResponseBytes(response, maxBytes),
+      filename: readFileNameFromStorageKey(mediaS3Key),
+      contentType: mediaKind === 'audio' ? 'audio/mp4' : (responseContentType ?? 'video/mp4')
     };
   };
 
@@ -483,7 +502,8 @@ export const createApp = (options: AppOptions = {}) => {
     accountAwareAuthMiddleware,
     subscriptionStore,
     aiEditUsageStore,
-    editPlanProvider
+    editPlanProvider,
+    videoStorage.deleteVideo
   );
   registerPostRoutes(
     router,

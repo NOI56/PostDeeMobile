@@ -739,7 +739,8 @@ describe('caption routes', () => {
       .expect(200);
 
     expect(transcribe).toHaveBeenCalledWith({
-      videoS3Key
+      mediaS3Key: videoS3Key,
+      mediaKind: 'legacy-video'
     });
     expect(response.body.context).toEqual({
       selectedCaptionLanguage: 'Japanese',

@@ -121,6 +121,7 @@ export const registerUploadRoutes = (
     if (!result.ok) {
       response.status(400).json({
         status: 'error',
+        ...('code' in result ? { code: result.code } : {}),
         message: result.message
       });
       return;

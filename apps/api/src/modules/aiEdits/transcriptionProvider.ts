@@ -12,7 +12,12 @@ export type TranscriptionResult = {
   model: string;
 };
 
-export type TranscriptionInput = { videoS3Key: string };
+export type TranscriptionMediaKind = 'audio' | 'legacy-video';
+
+export type TranscriptionInput = {
+  mediaS3Key: string;
+  mediaKind: TranscriptionMediaKind;
+};
 
 export type TranscriptionProvider = {
   transcribe: (input: TranscriptionInput) => Promise<TranscriptionResult>;
@@ -45,8 +50,8 @@ export const normalizeTranscriptionLanguage = (value?: string): string => {
   return language;
 };
 
-/** Downloads the clip audio/video bytes for a stored key (e.g. from R2). */
-export type FetchAudio = (videoS3Key: string) => Promise<AudioSource>;
+/** Downloads the audio or legacy clip bytes for transcription (e.g. from R2). */
+export type FetchAudio = (input: TranscriptionInput) => Promise<AudioSource>;
 
 type FetchResponse = {
   ok: boolean;
@@ -99,8 +104,8 @@ const createOpenAiCompatibleTranscriptionProvider = ({
   failureLabel: string;
   prompt?: string;
 }): TranscriptionProvider => ({
-  transcribe: async ({ videoS3Key }) => {
-    const audio = await fetchAudio(videoS3Key);
+  transcribe: async (input) => {
+    const audio = await fetchAudio(input);
     const form = new FormData();
     form.append(
       'file',

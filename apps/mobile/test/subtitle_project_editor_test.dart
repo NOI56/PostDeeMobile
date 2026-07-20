@@ -53,6 +53,21 @@ void main() {
     expect(mergedText('฿', '100', language: 'th'), '฿100');
   });
 
+  test('merge honors Unicode opening, currency, and closing categories', () {
+    for (final (first, second, expected) in const [
+      ('「', 'Hello', '「Hello'),
+      ('₩', '100', '₩100'),
+      ('₹', '100', '₹100'),
+      ('Hello', '」', 'Hello」'),
+    ]) {
+      expect(
+        mergedText(first, second, language: 'en'),
+        expected,
+        reason: 'boundary $first | $second',
+      );
+    }
+  });
+
   test('merge spaces numeric and mixed Thai Latin boundaries', () {
     expect(mergedText('ราคา', '100'), 'ราคา 100');
     expect(mergedText('สินค้า', 'Pro'), 'สินค้า Pro');

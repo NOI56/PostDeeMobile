@@ -84,6 +84,35 @@ void main() {
     expect((await store.loadDraft(secondId))?.toJson(), secondProject.toJson());
   });
 
+  test('bounds project ids by UTF-8 bytes before writing draft files',
+      () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final supportedId = List.filled(30, 'ก').join();
+    final rejectedId = '$supportedIdก';
+    final supportedProject = projectWithId(supportedId);
+
+    await store.saveDraft(supportedProject);
+    final entriesBefore = (await tempDirectory.list().toList())
+        .map((entry) => entry.path)
+        .toSet();
+
+    expect((await store.loadDraft(supportedId))?.toJson(),
+        supportedProject.toJson());
+    expect(
+      () => store.fileForProject(rejectedId),
+      throwsA(isA<SubtitleProjectValidationException>()),
+    );
+    await expectLater(
+      store.saveDraft(projectWithId(rejectedId)),
+      throwsA(isA<SubtitleProjectValidationException>()),
+    );
+
+    expect(
+      (await tempDirectory.list().toList()).map((entry) => entry.path).toSet(),
+      entriesBefore,
+    );
+  });
+
   test('delete removes only the requested project draft and its siblings',
       () async {
     final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);

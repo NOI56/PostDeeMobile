@@ -77,6 +77,9 @@ class SubtitleCue {
     SubtitleStyle? styleOverride,
     SubtitleAlignment? positionOverride,
     String? soundEffect,
+    bool clearStyleOverride = false,
+    bool clearPositionOverride = false,
+    bool clearSoundEffect = false,
   }) =>
       SubtitleCue(
         cueId: cueId ?? this.cueId,
@@ -85,9 +88,12 @@ class SubtitleCue {
         text: text ?? this.text,
         words: words ?? this.words,
         timingMode: timingMode ?? this.timingMode,
-        styleOverride: styleOverride ?? this.styleOverride,
-        positionOverride: positionOverride ?? this.positionOverride,
-        soundEffect: soundEffect ?? this.soundEffect,
+        styleOverride:
+            clearStyleOverride ? null : styleOverride ?? this.styleOverride,
+        positionOverride: clearPositionOverride
+            ? null
+            : positionOverride ?? this.positionOverride,
+        soundEffect: clearSoundEffect ? null : soundEffect ?? this.soundEffect,
       );
 
   Map<String, Object?> toJson() => {
@@ -403,6 +409,13 @@ void _validateWords(SubtitleCue cue) {
           'Invalid word timing in cue ${cue.cueId}.');
     }
     previousWordEnd = word.sourceEndMs;
+  }
+  final reconstructedText =
+      cue.words.map((word) => '${word.text}${word.separatorAfter}').join();
+  if (reconstructedText != cue.text) {
+    throw SubtitleProjectValidationException(
+      'Word text does not reconstruct cue ${cue.cueId}.',
+    );
   }
 }
 

@@ -88,6 +88,18 @@ void main() {
     expect(project.cues.expand((cue) => cue.words), isEmpty);
   });
 
+  test('maps an empty prepared subtitle list to a valid empty project', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(subtitleSegments: const []),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues, isEmpty);
+    expect(() => validateSubtitleProject(project), returnsNormally);
+  });
+
   test('generates stable cue ids for the same recipe', () {
     final first = mapFixture();
     final second = mapFixture();
@@ -143,7 +155,9 @@ void main() {
     expect(project.defaultStyle.alignment, SubtitleAlignment.top);
   });
 
-  test('falls back to default colour and alignment for unsupported style values', () {
+  test(
+      'falls back to default colour and alignment for unsupported style values',
+      () {
     final project = mapAiEditRecipeToSubtitleProject(
       recipe: recipeFixture(color: '#ffffff', position: 'middle'),
       projectId: 'project-1',

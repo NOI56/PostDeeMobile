@@ -80,6 +80,68 @@ void main() {
     );
   });
 
+  test('accepts word timing whose text and separators reconstruct cue text',
+      () {
+    final project = validProject().copyWith(cues: [
+      SubtitleCue(
+        cueId: 'cue-1',
+        sourceStartMs: 100,
+        sourceEndMs: 1200,
+        text: 'สวัสดี ค่ะ',
+        timingMode: SubtitleTimingMode.word,
+        words: const [
+          SubtitleWord(
+            wordId: 'word-1',
+            text: 'สวัสดี',
+            sourceStartMs: 100,
+            sourceEndMs: 600,
+            separatorAfter: ' ',
+          ),
+          SubtitleWord(
+            wordId: 'word-2',
+            text: 'ค่ะ',
+            sourceStartMs: 600,
+            sourceEndMs: 1200,
+          ),
+        ],
+      ),
+    ]);
+
+    expect(() => validateSubtitleProject(project), returnsNormally);
+  });
+
+  test('rejects word timing that does not reconstruct cue text exactly', () {
+    final project = validProject().copyWith(cues: [
+      SubtitleCue(
+        cueId: 'cue-1',
+        sourceStartMs: 100,
+        sourceEndMs: 1200,
+        text: 'สวัสดีค่ะ',
+        timingMode: SubtitleTimingMode.word,
+        words: const [
+          SubtitleWord(
+            wordId: 'word-1',
+            text: 'สวัสดี',
+            sourceStartMs: 100,
+            sourceEndMs: 600,
+            separatorAfter: ' ',
+          ),
+          SubtitleWord(
+            wordId: 'word-2',
+            text: 'ค่ะ',
+            sourceStartMs: 600,
+            sourceEndMs: 1200,
+          ),
+        ],
+      ),
+    ]);
+
+    expect(
+      () => validateSubtitleProject(project),
+      throwsA(isA<SubtitleProjectValidationException>()),
+    );
+  });
+
   test('rejects an unsupported schema version while decoding', () {
     final json = validProject().toJson()..['schemaVersion'] = 99;
 
@@ -131,5 +193,50 @@ void main() {
     );
 
     expect(cue.words, hasLength(1));
+  });
+
+  test('copyWith keeps nullable cue metadata when arguments are omitted', () {
+    final cue = SubtitleCue(
+      cueId: 'cue-1',
+      sourceStartMs: 0,
+      sourceEndMs: 100,
+      text: 'one',
+      timingMode: SubtitleTimingMode.segment,
+      styleOverride: SubtitleStyle.defaults,
+      positionOverride: SubtitleAlignment.top,
+      soundEffect: 'pop',
+    );
+
+    final copied = cue.copyWith(text: 'updated');
+
+    expect(copied.styleOverride, same(SubtitleStyle.defaults));
+    expect(copied.positionOverride, SubtitleAlignment.top);
+    expect(copied.soundEffect, 'pop');
+  });
+
+  test('copyWith clear flags win over replacement cue metadata', () {
+    final cue = SubtitleCue(
+      cueId: 'cue-1',
+      sourceStartMs: 0,
+      sourceEndMs: 100,
+      text: 'one',
+      timingMode: SubtitleTimingMode.segment,
+      styleOverride: SubtitleStyle.defaults,
+      positionOverride: SubtitleAlignment.top,
+      soundEffect: 'pop',
+    );
+
+    final copied = cue.copyWith(
+      styleOverride: SubtitleStyle.defaults,
+      positionOverride: SubtitleAlignment.bottom,
+      soundEffect: 'ding',
+      clearStyleOverride: true,
+      clearPositionOverride: true,
+      clearSoundEffect: true,
+    );
+
+    expect(copied.styleOverride, isNull);
+    expect(copied.positionOverride, isNull);
+    expect(copied.soundEffect, isNull);
   });
 }

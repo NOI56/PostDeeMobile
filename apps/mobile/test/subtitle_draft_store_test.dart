@@ -164,6 +164,59 @@ void main() {
     expect(await backup.exists(), isFalse);
   });
 
+  test('promotes a valid next draft even when the target is valid', () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final target = store.fileForProject('project-1');
+    final next = File('${target.path}.next');
+    await target.writeAsString(jsonEncode(validProject().toJson()));
+    await next.writeAsString(
+      jsonEncode(validProject().copyWith(revision: 2).toJson()),
+    );
+
+    final recovered = await store.loadDraft('project-1');
+
+    expect(recovered?.revision, 2);
+    expect(await next.exists(), isFalse);
+    expect(await File('${target.path}.backup').exists(), isFalse);
+  });
+
+  test('keeps a valid target authoritative when only a backup remains',
+      () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final target = store.fileForProject('project-1');
+    final backup = File('${target.path}.backup');
+    await target.writeAsString(
+      jsonEncode(validProject().copyWith(revision: 2).toJson()),
+    );
+    await backup.writeAsString(jsonEncode(validProject().toJson()));
+
+    final loaded = await store.loadDraft('project-1');
+
+    expect(loaded?.revision, 2);
+    expect(await backup.exists(), isTrue);
+  });
+
+  test('promotes next over target and backup using target as rollback source',
+      () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final target = store.fileForProject('project-1');
+    final next = File('${target.path}.next');
+    final backup = File('${target.path}.backup');
+    await target.writeAsString(
+      jsonEncode(validProject().copyWith(revision: 1).toJson()),
+    );
+    await next.writeAsString(
+      jsonEncode(validProject().copyWith(revision: 3).toJson()),
+    );
+    await backup.writeAsString(jsonEncode(validProject().toJson()));
+
+    final recovered = await store.loadDraft('project-1');
+
+    expect(recovered?.revision, 3);
+    expect(await next.exists(), isFalse);
+    expect(await backup.exists(), isFalse);
+  });
+
   test('recovers a valid backup when target is absent and next is invalid',
       () async {
     final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
@@ -211,6 +264,92 @@ void main() {
     expect(await backup.exists(), isTrue);
   });
 
+  test('does not replace unsupported or mismatched existing targets', () async {
+    for (final scenario in ['unsupported', 'mismatched']) {
+      final scenarioDirectory = Directory(
+        '${tempDirectory.path}${Platform.pathSeparator}$scenario',
+      );
+      await scenarioDirectory.create();
+      final store = FileSubtitleDraftStore(rootDirectory: scenarioDirectory);
+      final target = store.fileForProject('project-1');
+      final next = File('${target.path}.next');
+      final backup = File('${target.path}.backup');
+      final targetJson = scenario == 'unsupported'
+          ? (validProject().toJson()..['schemaVersion'] = 99)
+          : projectWithId('other').toJson();
+      final originalTarget = jsonEncode(targetJson);
+      await target.writeAsString(originalTarget);
+      await next.writeAsString(
+        jsonEncode(validProject().copyWith(revision: 2).toJson()),
+      );
+      await backup.writeAsString(jsonEncode(validProject().toJson()));
+
+      expect(await store.loadDraft('project-1'), isNull);
+      expect(await target.readAsString(), originalTarget);
+      expect(await next.exists(), isTrue);
+      expect(await backup.exists(), isTrue);
+    }
+  });
+
+  test('failed recovery promotion keeps the old target and valid next',
+      () async {
+    var promotionAttempts = 0;
+    final store = FileSubtitleDraftStore(
+      rootDirectory: tempDirectory,
+      beforeNextRename: () async {
+        promotionAttempts += 1;
+        throw const FileSystemException('injected promotion failure');
+      },
+    );
+    final target = store.fileForProject('project-1');
+    final next = File('${target.path}.next');
+    await target.writeAsString(jsonEncode(validProject().toJson()));
+    await next.writeAsString(
+      jsonEncode(validProject().copyWith(revision: 2).toJson()),
+    );
+
+    await expectLater(
+      store.loadDraft('project-1'),
+      throwsA(isA<FileSystemException>()),
+    );
+
+    expect(promotionAttempts, 1);
+    expect(
+      (await readProject(target))?.revision,
+      0,
+    );
+    expect((await readProject(next))?.revision, 2);
+
+    final recovered = await FileSubtitleDraftStore(
+      rootDirectory: tempDirectory,
+    ).loadDraft('project-1');
+    expect(recovered?.revision, 2);
+  });
+
+  test('a failed queued promotion does not block the next project save',
+      () async {
+    var failNextPromotion = true;
+    final store = FileSubtitleDraftStore(
+      rootDirectory: tempDirectory,
+      beforeNextRename: () async {
+        if (failNextPromotion) {
+          failNextPromotion = false;
+          throw const FileSystemException('injected promotion failure');
+        }
+      },
+    );
+    final first = validProject().copyWith(revision: 1);
+    final second = validProject().copyWith(revision: 2);
+
+    final firstSave = store.saveDraft(first);
+    final secondSave = store.saveDraft(second);
+
+    await expectLater(firstSave, throwsA(isA<FileSystemException>()));
+    await secondSave;
+
+    expect((await store.loadDraft('project-1'))?.revision, 2);
+  });
+
   test('serializes concurrent saves for the same project in call order',
       () async {
     final firstReachedPromotion = Completer<void>();
@@ -248,6 +387,12 @@ void main() {
 }
 
 SubtitleProject validProject() => projectWithId('project-1');
+
+Future<SubtitleProject?> readProject(File file) async {
+  if (!await file.exists()) return null;
+  final decoded = jsonDecode(await file.readAsString());
+  return SubtitleProject.fromJson(Map<String, Object?>.from(decoded as Map));
+}
 
 SubtitleProject projectWithId(String projectId) => SubtitleProject(
       schemaVersion: 1,

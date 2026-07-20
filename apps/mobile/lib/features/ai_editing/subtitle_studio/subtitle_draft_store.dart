@@ -10,6 +10,8 @@ abstract class SubtitleDraftStore {
 }
 
 class FileSubtitleDraftStore implements SubtitleDraftStore {
+  static const maxProjectIdUtf8Bytes = 90;
+
   FileSubtitleDraftStore({
     required Directory rootDirectory,
     Future<void> Function()? beforePromotion,
@@ -25,10 +27,10 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
 
   @override
   Future<SubtitleProject?> loadDraft(String projectId) =>
-      _runSerialized(projectId, () async {
-        _onOperationStart?.call();
-        return _loadDraft(projectId);
-      });
+      Future.sync(() => _runSerialized(projectId, () async {
+            _onOperationStart?.call();
+            return _loadDraft(projectId);
+          }));
 
   Future<SubtitleProject?> _loadDraft(String projectId) async {
     final file = fileForProject(projectId);
@@ -40,10 +42,10 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
 
   @override
   Future<void> saveDraft(SubtitleProject project) =>
-      _runSerialized(project.projectId, () async {
-        _onOperationStart?.call();
-        await _saveDraft(project);
-      });
+      Future.sync(() => _runSerialized(project.projectId, () async {
+            _onOperationStart?.call();
+            await _saveDraft(project);
+          }));
 
   Future<void> _saveDraft(SubtitleProject project) async {
     final target = fileForProject(project.projectId);
@@ -86,10 +88,10 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
 
   @override
   Future<void> deleteDraft(String projectId) =>
-      _runSerialized(projectId, () async {
-        _onOperationStart?.call();
-        await _deleteDraft(projectId);
-      });
+      Future.sync(() => _runSerialized(projectId, () async {
+            _onOperationStart?.call();
+            await _deleteDraft(projectId);
+          }));
 
   Future<void> _deleteDraft(String projectId) async {
     final target = fileForProject(projectId);
@@ -163,8 +165,13 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
   }
 
   String _encodedProjectId(String projectId) {
-    final base64UrlId =
-        base64Url.encode(utf8.encode(projectId)).replaceAll('=', '');
+    final projectIdBytes = utf8.encode(projectId);
+    if (projectIdBytes.length > maxProjectIdUtf8Bytes) {
+      throw const SubtitleProjectValidationException(
+        'Project ID is too long for local draft storage.',
+      );
+    }
+    final base64UrlId = base64Url.encode(projectIdBytes).replaceAll('=', '');
     return base64UrlId.codeUnits
         .map((codeUnit) => codeUnit.toRadixString(16).padLeft(2, '0'))
         .join();

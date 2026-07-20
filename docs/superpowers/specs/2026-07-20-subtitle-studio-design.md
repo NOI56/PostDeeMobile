@@ -211,8 +211,11 @@ locally. A small preferences index may point to a versioned JSON file in
 app-owned storage; the full project is not kept indefinitely as one large
 SharedPreferences value.
 
-Autosave is debounced and atomic: write a replacement file, validate it, then
-replace the previous draft. A corrupt or unsupported schema never crashes the
+Autosave is debounced and atomic: serialize writes per short internal project
+ID, write and validate a replacement file, then replace the previous draft.
+The next load recovers a validated replacement or backup if the app stopped
+during promotion. Draft filenames use a case-insensitive-safe encoding and a
+bounded component length. A corrupt or unsupported schema never crashes the
 editor; it offers to rebuild from the cached recipe. If the picked source path
 has expired, PostDee asks the seller to choose the same source and validates a
 fingerprint before reconnecting the draft.

@@ -569,11 +569,17 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
 }
 ```
 
-Encode unsafe IDs with `base64Url.encode(utf8.encode(projectId))` and strip
-padding. Save to a sibling `.next` file with `flush: true`, decode/validate that
-file, rotate the old target to `.backup`, rename `.next` to the target, then
-delete the backup. On promotion failure, restore the backup. Loading malformed
-JSON or an unsupported schema returns null without deleting the original file.
+Encode unsafe IDs with `base64Url.encode(utf8.encode(projectId))`, strip
+padding, then encode each base64url ASCII code unit as fixed-width lowercase
+hex. This keeps filenames injective on case-insensitive filesystems. Reject IDs
+over 90 UTF-8 bytes before creating a path so the longest `.json.backup`
+component stays under 255 bytes. Serialize load/save/delete operations per
+encoded project ID. Save to a sibling `.next` file with `flush: true`,
+decode/validate that file, rotate the old target to `.backup`, rename `.next`
+to the target, then delete the backup. On promotion failure, restore the
+backup. If an interrupted save left no target, recover a valid matching
+`.next` first or a valid matching `.backup` second. Loading malformed JSON or
+an unsupported schema returns null without deleting the original file.
 Deletion targets only `fileForProject(projectId)` and its `.next/.backup`
 siblings inside the injected root.
 

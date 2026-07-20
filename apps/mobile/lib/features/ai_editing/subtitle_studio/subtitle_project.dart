@@ -44,7 +44,7 @@ class SubtitleWord {
 }
 
 class SubtitleCue {
-  const SubtitleCue({
+  SubtitleCue({
     required this.cueId,
     required this.sourceStartMs,
     required this.sourceEndMs,
@@ -54,14 +54,14 @@ class SubtitleCue {
     this.styleOverride,
     this.positionOverride,
     this.soundEffect,
-  }) : _words = words;
+  }) : _words = List.unmodifiable(words);
 
   final String cueId;
   final int sourceStartMs;
   final int sourceEndMs;
   final String text;
   final List<SubtitleWord> _words;
-  List<SubtitleWord> get words => List.unmodifiable(_words);
+  List<SubtitleWord> get words => _words;
   final SubtitleTimingMode timingMode;
   final SubtitleStyle? styleOverride;
   final SubtitleAlignment? positionOverride;

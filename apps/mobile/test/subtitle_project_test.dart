@@ -8,7 +8,7 @@ void main() {
         sourceFingerprint: 'source-1',
         sourceDurationMs: 5000,
         language: 'th',
-        cues: const [
+        cues: [
           SubtitleCue(
             cueId: 'cue-1',
             sourceStartMs: 100,
@@ -32,7 +32,7 @@ void main() {
   });
 
   test('rejects overlapping cues', () {
-    final invalid = validProject().copyWith(cues: const [
+    final invalid = validProject().copyWith(cues: [
       SubtitleCue(
         cueId: 'one',
         sourceStartMs: 0,
@@ -56,7 +56,7 @@ void main() {
   });
 
   test('rejects word timing outside its cue', () {
-    final invalid = validProject().copyWith(cues: const [
+    final invalid = validProject().copyWith(cues: [
       SubtitleCue(
         cueId: 'cue-1',
         sourceStartMs: 100,
@@ -101,5 +101,35 @@ void main() {
     expect(style.shadowColor, '#000000');
     expect(style.alignment, SubtitleAlignment.bottom);
     expect(style.maxLines, 2);
+  });
+
+  test('copies caller-owned words when constructing a cue', () {
+    final words = <SubtitleWord>[
+      const SubtitleWord(
+        wordId: 'word-1',
+        text: 'one',
+        sourceStartMs: 0,
+        sourceEndMs: 100,
+      ),
+    ];
+    final cue = SubtitleCue(
+      cueId: 'cue-1',
+      sourceStartMs: 0,
+      sourceEndMs: 200,
+      text: 'one two',
+      timingMode: SubtitleTimingMode.word,
+      words: words,
+    );
+
+    words.add(
+      const SubtitleWord(
+        wordId: 'word-2',
+        text: 'two',
+        sourceStartMs: 100,
+        sourceEndMs: 200,
+      ),
+    );
+
+    expect(cue.words, hasLength(1));
   });
 }

@@ -1,0 +1,119 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_draft_store.dart';
+import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_project.dart';
+
+void main() {
+  late Directory tempDirectory;
+
+  setUp(() async {
+    tempDirectory =
+        await Directory.systemTemp.createTemp('subtitle-draft-store-');
+  });
+
+  tearDown(() async {
+    await tempDirectory.delete(recursive: true);
+  });
+
+  test('saves and loads one versioned project', () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final project = validProject();
+
+    await store.saveDraft(project);
+
+    expect(
+      (await store.loadDraft(project.projectId))?.toJson(),
+      project.toJson(),
+    );
+  });
+
+  test('returns null for a corrupt draft without deleting it', () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final file = store.fileForProject('project-1');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('{broken');
+
+    expect(await store.loadDraft('project-1'), isNull);
+    expect(await file.exists(), isTrue);
+  });
+
+  test(
+      'returns null for a draft with an unsupported schema without deleting it',
+      () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final file = store.fileForProject('project-1');
+    final json = validProject().toJson()..['schemaVersion'] = 99;
+    await file.parent.create(recursive: true);
+    await file.writeAsString(jsonEncode(json));
+
+    expect(await store.loadDraft('project-1'), isNull);
+    expect(await file.exists(), isTrue);
+  });
+
+  test('uses an encoded filename for unsafe project ids', () {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final file = store.fileForProject('../other');
+
+    expect(file.parent.path, tempDirectory.path);
+    expect(file.path, isNot(contains('..')));
+  });
+
+  test('delete removes only the requested project draft and its siblings',
+      () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    await store.saveDraft(projectWithId('one'));
+    await store.saveDraft(projectWithId('two'));
+    final one = store.fileForProject('one');
+    await File('${one.path}.next').writeAsString('interrupted write');
+    await File('${one.path}.backup').writeAsString('previous draft');
+
+    await store.deleteDraft('one');
+
+    expect(await store.loadDraft('one'), isNull);
+    expect(await File('${one.path}.next').exists(), isFalse);
+    expect(await File('${one.path}.backup').exists(), isFalse);
+    expect(await store.loadDraft('two'), isNotNull);
+  });
+
+  test('replaces a saved draft without leaving atomic-operation siblings',
+      () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final original = projectWithId('project-1');
+    final updated = original.copyWith(revision: 1);
+
+    await store.saveDraft(original);
+    await store.saveDraft(updated);
+
+    final file = store.fileForProject(updated.projectId);
+    expect(
+        (await store.loadDraft(updated.projectId))?.toJson(), updated.toJson());
+    expect(await File('${file.path}.next').exists(), isFalse);
+    expect(await File('${file.path}.backup').exists(), isFalse);
+  });
+}
+
+SubtitleProject validProject() => projectWithId('project-1');
+
+SubtitleProject projectWithId(String projectId) => SubtitleProject(
+      schemaVersion: 1,
+      projectId: projectId,
+      sourceFingerprint: 'source-1',
+      sourceDurationMs: 5000,
+      language: 'th',
+      cues: [
+        SubtitleCue(
+          cueId: 'cue-1',
+          sourceStartMs: 100,
+          sourceEndMs: 1200,
+          text: 'สวัสดีค่ะ',
+          timingMode: SubtitleTimingMode.segment,
+        ),
+      ],
+      defaultStyle: SubtitleStyle.defaults,
+      cutRanges: const [],
+      revision: 0,
+      createdAt: DateTime.utc(2026, 7, 20),
+      updatedAt: DateTime.utc(2026, 7, 20),
+    );

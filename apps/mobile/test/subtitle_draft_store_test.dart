@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -91,6 +92,106 @@ void main() {
         (await store.loadDraft(updated.projectId))?.toJson(), updated.toJson());
     expect(await File('${file.path}.next').exists(), isFalse);
     expect(await File('${file.path}.backup').exists(), isFalse);
+  });
+
+  test('recovers the newest valid next draft when target is absent', () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final target = store.fileForProject('project-1');
+    final next = File('${target.path}.next');
+    final backup = File('${target.path}.backup');
+    await next.writeAsString(
+        jsonEncode(validProject().copyWith(revision: 2).toJson()));
+    await backup.writeAsString(
+        jsonEncode(validProject().copyWith(revision: 1).toJson()));
+
+    final recovered = await store.loadDraft('project-1');
+
+    expect(recovered?.revision, 2);
+    expect(await target.exists(), isTrue);
+    expect(await next.exists(), isFalse);
+    expect(await backup.exists(), isFalse);
+  });
+
+  test('recovers a valid backup when target is absent and next is invalid',
+      () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final target = store.fileForProject('project-1');
+    final next = File('${target.path}.next');
+    final backup = File('${target.path}.backup');
+    await next.writeAsString('{broken');
+    await backup.writeAsString(jsonEncode(validProject().toJson()));
+
+    final recovered = await store.loadDraft('project-1');
+
+    expect(recovered?.toJson(), validProject().toJson());
+    expect(await target.exists(), isTrue);
+    expect(await backup.exists(), isFalse);
+  });
+
+  test('does not recover malformed or cross-project remnants', () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final target = store.fileForProject('project-1');
+    final next = File('${target.path}.next');
+    final backup = File('${target.path}.backup');
+    await next.writeAsString('{broken');
+    await backup.writeAsString(jsonEncode(projectWithId('other').toJson()));
+
+    expect(await store.loadDraft('project-1'), isNull);
+    expect(await target.exists(), isFalse);
+    expect(await next.exists(), isTrue);
+    expect(await backup.exists(), isTrue);
+  });
+
+  test('does not replace a corrupt existing target while loading remnants',
+      () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final target = store.fileForProject('project-1');
+    final next = File('${target.path}.next');
+    final backup = File('${target.path}.backup');
+    await target.writeAsString('{broken');
+    await next.writeAsString(
+        jsonEncode(validProject().copyWith(revision: 2).toJson()));
+    await backup.writeAsString(jsonEncode(validProject().toJson()));
+
+    expect(await store.loadDraft('project-1'), isNull);
+    expect(await target.readAsString(), '{broken');
+    expect(await next.exists(), isTrue);
+    expect(await backup.exists(), isTrue);
+  });
+
+  test('serializes concurrent saves for the same project in call order',
+      () async {
+    final firstReachedPromotion = Completer<void>();
+    final releaseFirstSave = Completer<void>();
+    var startedOperations = 0;
+    final store = FileSubtitleDraftStore(
+      rootDirectory: tempDirectory,
+      onOperationStart: () => startedOperations += 1,
+      beforePromotion: () async {
+        if (!firstReachedPromotion.isCompleted) {
+          firstReachedPromotion.complete();
+          await releaseFirstSave.future;
+        }
+      },
+    );
+    final first = validProject();
+    final second = first.copyWith(revision: 1);
+
+    final firstSave = store.saveDraft(first);
+    await firstReachedPromotion.future;
+    final secondSave = store.saveDraft(second);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(startedOperations, 1);
+
+    releaseFirstSave.complete();
+    await firstSave;
+    await secondSave;
+
+    final target = store.fileForProject(first.projectId);
+    expect((await store.loadDraft(first.projectId))?.revision, 1);
+    expect(await File('${target.path}.next').exists(), isFalse);
+    expect(await File('${target.path}.backup').exists(), isFalse);
   });
 }
 

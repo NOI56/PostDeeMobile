@@ -143,9 +143,24 @@ SubtitleStyle
   operation.
 - A cue with word timing may use active-word state only when the words are
   ordered, bounded by the cue, non-overlapping, and approved by backend timing
-  quality.
+  quality. Its words must also reconstruct `cue.text` exactly as every
+  `word.text + word.separatorAfter` joined in order; otherwise project
+  validation rejects it and the caller falls back to segment/estimated timing.
 - When edited text can no longer map safely to word timing, only that cue changes
   to `estimated` or `segment`; other cues retain their validated timing.
+- Nullable cue style, position, and sound-effect metadata is preserved by
+  ordinary copies and cleared only through explicit typed clear flags. When a
+  clear flag and replacement value are both supplied, clearing wins.
+- A cue may be inserted at any validated list index, including index zero in an
+  empty project. Invalid insertion does not alter project state or undo history.
+- Split inherits visual style/position on both results, while cue-start sound
+  metadata remains only on the first result. Merge is rejected atomically when
+  visual overrides differ by value or the second cue owns a sound effect.
+- Merge text is language/script aware at the boundary: preserve explicit
+  whitespace, add none around closing/opening or currency-prefix punctuation,
+  concatenate Thai-to-Thai directly, add one space when either grapheme is
+  ASCII Latin/digit, and add one space between other word-like graphemes for a
+  non-Thai project language.
 
 ## Components
 
@@ -158,9 +173,10 @@ responsibility to the existing large `ai_editing_screen.dart`.
 - `subtitle_project.dart`: immutable domain values, validation, JSON versioning.
 - `subtitle_project_mapper.dart`: maps the current recipe and future optional
   validated cue metadata into a project.
-- `subtitle_edit_command.dart`: edit/add/delete/split/merge/timing operations.
-- `subtitle_editor_controller.dart`: selected cue, bounded undo/redo (50
-  commands), autosave scheduling, and export snapshot.
+- `subtitle_project_editor.dart`: validated edit/add/delete/split/merge/timing
+  operations and bounded undo/redo (50 full-project snapshots).
+- `subtitle_editor_controller.dart`: future selected-cue state, autosave
+  scheduling, and export snapshot coordination.
 - `subtitle_draft_store.dart`: injectable local persistence abstraction.
 
 ### Editor UI
@@ -211,10 +227,18 @@ locally. A small preferences index may point to a versioned JSON file in
 app-owned storage; the full project is not kept indefinitely as one large
 SharedPreferences value.
 
-Autosave is debounced and atomic: serialize writes per short internal project
-ID, write and validate a replacement file, then replace the previous draft.
-The next load recovers a validated replacement or backup if the app stopped
-during promotion. Draft filenames use a case-insensitive-safe encoding and a
+Autosave is debounced and atomic: serialize operations per short internal
+project ID, write and validate a `.next` replacement, rotate the target to
+`.backup`, then promote `.next`. A valid matching `.next` is the newest intended
+replacement even when a valid target exists; promotion uses that target as the
+rollback source. If promotion fails, restore the old target where possible and
+retain recoverable remnants, and a failed queued operation does not block the
+next same-project operation. A valid target remains authoritative when only a
+matching backup exists; the stale validated backup is retained. With no target,
+recovery chooses a valid matching `.next` before a valid matching `.backup`.
+A present corrupt, unsupported, or mismatched target is never overwritten or
+deleted during load, even if valid remnants exist; load returns no draft and
+preserves all files. Draft filenames use a case-insensitive-safe encoding and a
 bounded component length. A corrupt or unsupported schema never crashes the
 editor; it offers to rebuild from the cached recipe. If the picked source path
 has expired, PostDee asks the seller to choose the same source and validates a
@@ -268,9 +292,12 @@ outside their compatibility window.
 
 Tests are written and observed failing before implementation.
 
-Domain tests cover JSON round-trip/version fallback, IDs, finite/clamped timing,
-sorting/overlap rejection, add/delete/split/merge, Thai graphemes, undo/redo, and
-conversion from the existing recipe.
+Domain/foundation tests cover JSON round-trip/version fallback, exact word-text
+reconstruction, nullable metadata clearing, IDs, finite/clamped timing,
+sorting/overlap rejection, empty-project insertion, add/delete/split/merge,
+language-aware joins, split/merge metadata safety, Thai graphemes, undo/redo,
+recipe conversion including an empty prepared cue list, and atomic draft
+recovery/queue continuation.
 
 ASS tests cover timestamp/colour conversion, escaping `\\`, braces and newline,
 font allowlisting, static cues, active-word event coverage, malformed timing,

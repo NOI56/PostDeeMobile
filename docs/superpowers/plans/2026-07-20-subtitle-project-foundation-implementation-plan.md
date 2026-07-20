@@ -20,6 +20,37 @@
 - Keep undo/redo to at most 50 snapshots.
 - Stage and commit only the exact files owned by each task; the worktree contains unrelated user changes.
 
+## Final Foundation Hardening Semantics
+
+- A word-timed cue is valid only when
+  `words.map((word) => word.text + word.separatorAfter).join()` exactly equals
+  `cue.text`, including Thai characters and separators. Any mismatch rejects
+  the project so callers can fall back to segment or estimated timing.
+- `SubtitleCue.copyWith` preserves nullable cue metadata when arguments are
+  omitted. Typed `clearStyleOverride`, `clearPositionOverride`, and
+  `clearSoundEffect` flags explicitly clear those values; a clear flag wins if
+  a replacement value is also supplied.
+- `insertCueAt(index, cue)` accepts every index from zero through the current
+  cue count, including zero for an empty project. Invalid indexes leave both
+  project state and edit history unchanged. `insertCueAfter` delegates to the
+  same insertion behavior.
+- Split copies visual style/position to both results but keeps a cue-start sound
+  effect only on the first result. Merge first requires equal-by-value style
+  overrides, equal position overrides, and no sound effect on the second cue;
+  rejected merges do not change state/history.
+- Merge preserves explicit boundary whitespace and never invents whitespace
+  before closing punctuation or after opening/currency-prefix punctuation. It
+  joins Thai-to-Thai directly, inserts one space when either boundary grapheme
+  is ASCII Latin/digit, and for non-Thai project languages inserts one space
+  between other word-like boundaries. Boundary inspection uses graphemes.
+- Draft recovery treats a valid matching `.next` as the newest intended
+  replacement even when the target is valid. Promotion rotates the target as
+  rollback, retains a recoverable `.next` if promotion fails, and does not let a
+  failed queued operation block later operations. A valid target remains
+  authoritative when only `.backup` exists; the validated stale backup is
+  retained. A present corrupt, unsupported, or mismatched target is never
+  overwritten or deleted by load recovery, and all remnants are preserved.
+
 ---
 
 ### Task 1: Versioned Subtitle Project Domain
@@ -47,7 +78,7 @@ void main() {
         sourceFingerprint: 'source-1',
         sourceDurationMs: 5000,
         language: 'th',
-        cues: const [
+        cues: [
           SubtitleCue(
             cueId: 'cue-1',
             sourceStartMs: 100,
@@ -71,7 +102,7 @@ void main() {
   });
 
   test('rejects overlapping cues', () {
-    final invalid = validProject().copyWith(cues: const [
+    final invalid = validProject().copyWith(cues: [
       SubtitleCue(
         cueId: 'one',
         sourceStartMs: 0,
@@ -95,7 +126,7 @@ void main() {
   });
 
   test('rejects word timing outside its cue', () {
-    final invalid = validProject().copyWith(cues: const [
+    final invalid = validProject().copyWith(cues: [
       SubtitleCue(
         cueId: 'cue-1',
         sourceStartMs: 100,
@@ -145,12 +176,14 @@ Expected: FAIL because `subtitle_project.dart` and all domain types are missing.
 Create `subtitle_project.dart` with:
 
 - enums whose JSON values are the enum names;
-- immutable values and `copyWith` for cue/project;
+- immutable values and `copyWith` for cue/project, including typed clear flags
+  for nullable cue style, position, and sound-effect metadata;
 - `toJson`/`fromJson` for every persisted value;
 - `SubtitleStyle.defaults` using Prompt 700, size 22, `#FFFFFF` text,
   `#00E5A8` active word, black outline/shadow, bottom alignment, two rows;
 - a validator that enforces the Global Constraints and validates ordered word
-  timing only when `timingMode == SubtitleTimingMode.word`;
+  timing only when `timingMode == SubtitleTimingMode.word`, including exact cue
+  text reconstruction from every word's text plus `separatorAfter`;
 - defensive `List.unmodifiable` copies in project/cue constructors;
 - `SubtitleProject.fromJson` calling `validateSubtitleProject` before returning.
 
@@ -300,6 +333,7 @@ class SubtitleProjectEditor {
 
   void updateCueText(String cueId, String text);
   void updateCueTiming(String cueId, {required int startMs, required int endMs});
+  void insertCueAt(int index, SubtitleCue cue);
   void insertCueAfter(String cueId, SubtitleCue cue);
   void deleteCue(String cueId);
   void splitCue(String cueId, {required int graphemeOffset});
@@ -313,6 +347,11 @@ Every mutation builds a complete next project, increments `revision`, replaces
 `updatedAt`, validates it, and only then pushes the prior snapshot. A failed
 mutation must not change project/history. A new mutation clears redo history.
 Use `package:characters/characters.dart` for split offsets.
+
+Use the hardening rules above for language/script-aware merge boundaries and
+optional cue metadata. Style equality compares every `SubtitleStyle` field by
+value without adding a Flutter dependency. The mapper allows a prepared
+subtitle list with no non-empty segments and produces a valid empty project.
 
 - [ ] **Step 4: Run Task 1–2 tests and verify GREEN**
 
@@ -576,10 +615,15 @@ over 90 UTF-8 bytes before creating a path so the longest `.json.backup`
 component stays under 255 bytes. Serialize load/save/delete operations per
 encoded project ID. Save to a sibling `.next` file with `flush: true`,
 decode/validate that file, rotate the old target to `.backup`, rename `.next`
-to the target, then delete the backup. On promotion failure, restore the
-backup. If an interrupted save left no target, recover a valid matching
-`.next` first or a valid matching `.backup` second. Loading malformed JSON or
-an unsupported schema returns null without deleting the original file.
+to the target, then delete the backup. On promotion failure, restore the old
+target where possible and retain the valid `.next` so recovery data is not
+lost. Recovery promotes a valid matching `.next` even beside a valid target,
+using that target as rollback; a lone matching `.backup` never supersedes a
+valid target and is retained. If an interrupted save left no target, recover a
+valid matching `.next` first or a valid matching `.backup` second. A present
+malformed, unsupported, or mismatched target blocks recovery replacement: load
+returns null and preserves the target plus all remnants. Loading malformed JSON
+or an unsupported schema returns null without deleting the original file.
 Deletion targets only `fileForProject(projectId)` and its `.next/.backup`
 siblings inside the injected root.
 

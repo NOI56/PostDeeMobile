@@ -66,9 +66,18 @@ class SubtitleProjectEditor {
   }
 
   void insertCueAfter(String cueId, SubtitleCue cue) {
+    final index = _cueIndex(_project.cues, cueId);
+    insertCueAt(index + 1, cue);
+  }
+
+  void insertCueAt(int index, SubtitleCue cue) {
     _mutate((cues) {
-      final index = _cueIndex(cues, cueId);
-      cues.insert(index + 1, cue);
+      if (index < 0 || index > cues.length) {
+        throw const SubtitleProjectValidationException(
+          'Cue insertion index is out of bounds.',
+        );
+      }
+      cues.insert(index, cue);
       return cues;
     });
   }
@@ -123,7 +132,6 @@ class SubtitleProjectEditor {
           timingMode: SubtitleTimingMode.estimated,
           styleOverride: cue.styleOverride,
           positionOverride: cue.positionOverride,
-          soundEffect: cue.soundEffect,
         ),
       );
       return cues;
@@ -138,11 +146,22 @@ class SubtitleProjectEditor {
       }
       final first = cues[index];
       final second = cues[index + 1];
+      if (!_stylesEqual(first.styleOverride, second.styleOverride) ||
+          first.positionOverride != second.positionOverride) {
+        throw const SubtitleProjectValidationException(
+          'Cues with different visual overrides cannot be merged safely.',
+        );
+      }
+      if (second.soundEffect != null) {
+        throw const SubtitleProjectValidationException(
+          'A cue with its own sound effect cannot be merged safely.',
+        );
+      }
       cues[index] = SubtitleCue(
         cueId: first.cueId,
         sourceStartMs: first.sourceStartMs,
         sourceEndMs: second.sourceEndMs,
-        text: '${first.text}${second.text}',
+        text: _joinCueText(first.text, second.text, _project.language),
         timingMode: SubtitleTimingMode.estimated,
         styleOverride: first.styleOverride,
         positionOverride: first.positionOverride,
@@ -191,3 +210,84 @@ class SubtitleProjectEditor {
     if (history.length > _historyLimit) history.removeAt(0);
   }
 }
+
+String _joinCueText(String first, String second, String language) {
+  final leftBoundary = first.characters.last;
+  final rightBoundary = second.characters.first;
+  final leftHasWhitespace = _whitespace.hasMatch(leftBoundary);
+  final rightHasWhitespace = _whitespace.hasMatch(rightBoundary);
+  if (leftHasWhitespace && rightHasWhitespace) {
+    return '$first${second.replaceFirst(RegExp(r'^\s+'), '')}';
+  }
+  if (leftHasWhitespace || rightHasWhitespace) return '$first$second';
+
+  if (_closingPunctuation.contains(rightBoundary) ||
+      _openingOrPrefixPunctuation.contains(leftBoundary)) {
+    return '$first$second';
+  }
+  if (_thai.hasMatch(leftBoundary) && _thai.hasMatch(rightBoundary)) {
+    return '$first$second';
+  }
+  if (_asciiLetterOrDigit.hasMatch(leftBoundary) ||
+      _asciiLetterOrDigit.hasMatch(rightBoundary)) {
+    return '$first $second';
+  }
+  if (!language.toLowerCase().startsWith('th') &&
+      _wordLike.hasMatch(leftBoundary) &&
+      _wordLike.hasMatch(rightBoundary)) {
+    return '$first $second';
+  }
+  return '$first$second';
+}
+
+bool _stylesEqual(SubtitleStyle? first, SubtitleStyle? second) {
+  if (identical(first, second)) return true;
+  if (first == null || second == null) return false;
+  return first.fontId == second.fontId &&
+      first.fontWeight == second.fontWeight &&
+      first.fontSize == second.fontSize &&
+      first.textColor == second.textColor &&
+      first.activeWordColor == second.activeWordColor &&
+      first.outlineColor == second.outlineColor &&
+      first.outlineWidth == second.outlineWidth &&
+      first.shadowColor == second.shadowColor &&
+      first.shadowDepth == second.shadowDepth &&
+      first.alignment == second.alignment &&
+      first.normalizedX == second.normalizedX &&
+      first.normalizedY == second.normalizedY &&
+      first.maxLines == second.maxLines &&
+      first.animation == second.animation;
+}
+
+final _whitespace = RegExp(r'^\s+$');
+final _thai = RegExp(r'[\u0E00-\u0E7F]');
+final _asciiLetterOrDigit = RegExp(r'[A-Za-z0-9]');
+final _wordLike = RegExp(r'[\p{L}\p{N}]', unicode: true);
+const _closingPunctuation = <String>{
+  '.',
+  ',',
+  '!',
+  '?',
+  ':',
+  ';',
+  '%',
+  ')',
+  ']',
+  '}',
+  '»',
+  '”',
+  '’',
+};
+const _openingOrPrefixPunctuation = <String>{
+  '(',
+  '[',
+  '{',
+  '«',
+  '“',
+  '‘',
+  r'$',
+  '฿',
+  '€',
+  '£',
+  '¥',
+};

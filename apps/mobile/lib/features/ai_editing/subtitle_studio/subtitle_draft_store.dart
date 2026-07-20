@@ -10,44 +10,51 @@ abstract class SubtitleDraftStore {
 }
 
 class FileSubtitleDraftStore implements SubtitleDraftStore {
-  FileSubtitleDraftStore({required Directory rootDirectory})
-      : _rootDirectory = rootDirectory;
+  FileSubtitleDraftStore({
+    required Directory rootDirectory,
+    Future<void> Function()? beforePromotion,
+    void Function()? onOperationStart,
+  })  : _rootDirectory = rootDirectory,
+        _beforePromotion = beforePromotion,
+        _onOperationStart = onOperationStart;
 
   final Directory _rootDirectory;
+  final Future<void> Function()? _beforePromotion;
+  final void Function()? _onOperationStart;
+  final Map<String, Future<void>> _operationTails = {};
 
   @override
-  Future<SubtitleProject?> loadDraft(String projectId) async {
+  Future<SubtitleProject?> loadDraft(String projectId) =>
+      _runSerialized(projectId, () async {
+        _onOperationStart?.call();
+        return _loadDraft(projectId);
+      });
+
+  Future<SubtitleProject?> _loadDraft(String projectId) async {
     final file = fileForProject(projectId);
+    await _recoverIfNeeded(projectId, file);
     if (!await file.exists()) return null;
 
-    try {
-      final decoded = jsonDecode(await file.readAsString());
-      if (decoded is! Map<String, dynamic>) return null;
-
-      final project = SubtitleProject.fromJson(
-        Map<String, Object?>.from(decoded),
-      );
-      return project.projectId == projectId ? project : null;
-    } on FormatException {
-      return null;
-    } on SubtitleProjectValidationException {
-      return null;
-    } on TypeError {
-      return null;
-    }
+    return _readMatchingProject(file, projectId);
   }
 
   @override
-  Future<void> saveDraft(SubtitleProject project) async {
+  Future<void> saveDraft(SubtitleProject project) =>
+      _runSerialized(project.projectId, () async {
+        _onOperationStart?.call();
+        await _saveDraft(project);
+      });
+
+  Future<void> _saveDraft(SubtitleProject project) async {
     final target = fileForProject(project.projectId);
     final next = _siblingFile(target, '.next');
     final backup = _siblingFile(target, '.backup');
 
     await _rootDirectory.create(recursive: true);
+    await _recoverIfNeeded(project.projectId, target);
     await next.writeAsString(jsonEncode(project.toJson()), flush: true);
 
-    final validated = await _readValidated(next);
-    if (validated == null || validated.projectId != project.projectId) {
+    if (await _readMatchingProject(next, project.projectId) == null) {
       await _deleteIfExists(next);
       throw const SubtitleProjectValidationException(
         'Draft could not be validated before saving.',
@@ -56,6 +63,7 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
 
     var rotatedTarget = false;
     try {
+      await _beforePromotion?.call();
       await _deleteIfExists(backup);
       if (await target.exists()) {
         await target.rename(backup.path);
@@ -77,7 +85,13 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
   }
 
   @override
-  Future<void> deleteDraft(String projectId) async {
+  Future<void> deleteDraft(String projectId) =>
+      _runSerialized(projectId, () async {
+        _onOperationStart?.call();
+        await _deleteDraft(projectId);
+      });
+
+  Future<void> _deleteDraft(String projectId) async {
     final target = fileForProject(projectId);
     await _deleteIfExists(target);
     await _deleteIfExists(_siblingFile(target, '.next'));
@@ -93,11 +107,34 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
 
   File _siblingFile(File file, String suffix) => File('${file.path}$suffix');
 
-  Future<SubtitleProject?> _readValidated(File file) async {
+  Future<void> _recoverIfNeeded(String projectId, File target) async {
+    if (await target.exists()) return;
+
+    final next = _siblingFile(target, '.next');
+    final backup = _siblingFile(target, '.backup');
+    final nextProject = await _readMatchingProject(next, projectId);
+    final backupProject = await _readMatchingProject(backup, projectId);
+
+    if (nextProject != null) {
+      await next.rename(target.path);
+      if (backupProject != null) await _deleteIfExists(backup);
+      return;
+    }
+    if (backupProject != null) await backup.rename(target.path);
+  }
+
+  Future<SubtitleProject?> _readMatchingProject(
+    File file,
+    String projectId,
+  ) async {
+    if (!await file.exists()) return null;
     try {
       final decoded = jsonDecode(await file.readAsString());
       if (decoded is! Map<String, dynamic>) return null;
-      return SubtitleProject.fromJson(Map<String, Object?>.from(decoded));
+      final project = SubtitleProject.fromJson(
+        Map<String, Object?>.from(decoded),
+      );
+      return project.projectId == projectId ? project : null;
     } on FormatException {
       return null;
     } on SubtitleProjectValidationException {
@@ -107,7 +144,25 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
     }
   }
 
+  Future<T> _runSerialized<T>(
+    String projectId,
+    Future<T> Function() operation,
+  ) {
+    final key = _encodedProjectId(projectId);
+    final previous = _operationTails[key] ?? Future<void>.value();
+    final operationFuture =
+        previous.catchError((_) {}).then<T>((_) => operation());
+    final tail = operationFuture.then<void>((_) {}, onError: (_, __) {});
+    _operationTails[key] = tail;
+    return operationFuture.whenComplete(() {
+      if (identical(_operationTails[key], tail)) _operationTails.remove(key);
+    });
+  }
+
   Future<void> _deleteIfExists(File file) async {
     if (await file.exists()) await file.delete();
   }
+
+  String _encodedProjectId(String projectId) =>
+      base64Url.encode(utf8.encode(projectId)).replaceAll('=', '');
 }

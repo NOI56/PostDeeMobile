@@ -99,8 +99,7 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
   }
 
   File fileForProject(String projectId) {
-    final encodedId =
-        base64Url.encode(utf8.encode(projectId)).replaceAll('=', '');
+    final encodedId = _encodedProjectId(projectId);
     return File(
         '${_rootDirectory.path}${Platform.pathSeparator}$encodedId.json');
   }
@@ -163,6 +162,11 @@ class FileSubtitleDraftStore implements SubtitleDraftStore {
     if (await file.exists()) await file.delete();
   }
 
-  String _encodedProjectId(String projectId) =>
-      base64Url.encode(utf8.encode(projectId)).replaceAll('=', '');
+  String _encodedProjectId(String projectId) {
+    final base64UrlId =
+        base64Url.encode(utf8.encode(projectId)).replaceAll('=', '');
+    return base64UrlId.codeUnits
+        .map((codeUnit) => codeUnit.toRadixString(16).padLeft(2, '0'))
+        .join();
+  }
 }

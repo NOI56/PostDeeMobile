@@ -61,6 +61,29 @@ void main() {
     expect(file.path, isNot(contains('..')));
   });
 
+  test('keeps case-colliding project ids in separate draft files', () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    const firstId = '  @';
+    const secondId = '  Z';
+    final firstFile = store.fileForProject(firstId);
+    final secondFile = store.fileForProject(secondId);
+    final firstProject = projectWithId(firstId);
+    final secondProject = projectWithId(secondId).copyWith(revision: 1);
+
+    expect(firstFile.path.toLowerCase(), isNot(secondFile.path.toLowerCase()));
+
+    await store.saveDraft(firstProject);
+    await store.saveDraft(secondProject);
+
+    expect((await store.loadDraft(firstId))?.toJson(), firstProject.toJson());
+    expect((await store.loadDraft(secondId))?.toJson(), secondProject.toJson());
+
+    await store.deleteDraft(firstId);
+
+    expect(await store.loadDraft(firstId), isNull);
+    expect((await store.loadDraft(secondId))?.toJson(), secondProject.toJson());
+  });
+
   test('delete removes only the requested project draft and its siblings',
       () async {
     final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);

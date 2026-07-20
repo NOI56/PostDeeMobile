@@ -157,10 +157,12 @@ SubtitleStyle
   metadata remains only on the first result. Merge is rejected atomically when
   visual overrides differ by value or the second cue owns a sound effect.
 - Merge text is language/script aware at the boundary: preserve explicit
-  whitespace, add none around closing/opening or currency-prefix punctuation,
-  concatenate Thai-to-Thai directly, add one space when either grapheme is
-  ASCII Latin/digit, and add one space between other word-like graphemes for a
-  non-Thai project language.
+  whitespace; add none before Unicode closing punctuation (`Pe`/`Pf`) or the
+  common closing `Po` set; add none after Unicode opening/initial/currency
+  prefixes (`Ps`/`Pi`/`Sc`); concatenate Thai-to-Thai directly; add one space
+  when either grapheme is ASCII Latin/digit; and add one space between other
+  word-like graphemes for a non-Thai project language. Unicode category checks
+  are anchored to the complete boundary grapheme.
 
 ## Components
 
@@ -233,8 +235,9 @@ project ID, write and validate a `.next` replacement, rotate the target to
 replacement even when a valid target exists; promotion uses that target as the
 rollback source. If promotion fails, restore the old target where possible and
 retain recoverable remnants, and a failed queued operation does not block the
-next same-project operation. A valid target remains authoritative when only a
-matching backup exists; the stale validated backup is retained. With no target,
+next same-project operation. If a valid target has no `.next`, any lone backup
+remnant is neither read/validated nor modified; the target is returned even
+when that backup is corrupt or belongs to another project. With no target,
 recovery chooses a valid matching `.next` before a valid matching `.backup`.
 A present corrupt, unsupported, or mismatched target is never overwritten or
 deleted during load, even if valid remnants exist; load returns no draft and

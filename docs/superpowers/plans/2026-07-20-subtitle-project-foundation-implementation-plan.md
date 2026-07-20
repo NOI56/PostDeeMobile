@@ -39,17 +39,20 @@
   overrides, equal position overrides, and no sound effect on the second cue;
   rejected merges do not change state/history.
 - Merge preserves explicit boundary whitespace and never invents whitespace
-  before closing punctuation or after opening/currency-prefix punctuation. It
-  joins Thai-to-Thai directly, inserts one space when either boundary grapheme
-  is ASCII Latin/digit, and for non-Thai project languages inserts one space
-  between other word-like boundaries. Boundary inspection uses graphemes.
+  before Unicode closing punctuation (`Pe`/`Pf`) or common closing `Po`
+  characters, nor after Unicode opening/initial/currency prefixes
+  (`Ps`/`Pi`/`Sc`). It joins Thai-to-Thai directly, inserts one space when
+  either boundary grapheme is ASCII Latin/digit, and for non-Thai project
+  languages inserts one space between other word-like boundaries. Boundary
+  inspection and Unicode-category checks are anchored to whole graphemes.
 - Draft recovery treats a valid matching `.next` as the newest intended
   replacement even when the target is valid. Promotion rotates the target as
   rollback, retains a recoverable `.next` if promotion fails, and does not let a
-  failed queued operation block later operations. A valid target remains
-  authoritative when only `.backup` exists; the validated stale backup is
-  retained. A present corrupt, unsupported, or mismatched target is never
-  overwritten or deleted by load recovery, and all remnants are preserved.
+  failed queued operation block later operations. When a valid target has only
+  a `.backup` sibling, the target is returned and that backup remnant is not
+  read, validated, or modified, regardless of its bytes. A present corrupt,
+  unsupported, or mismatched target is never overwritten or deleted by load
+  recovery, and all remnants are preserved.
 
 ---
 
@@ -618,9 +621,11 @@ decode/validate that file, rotate the old target to `.backup`, rename `.next`
 to the target, then delete the backup. On promotion failure, restore the old
 target where possible and retain the valid `.next` so recovery data is not
 lost. Recovery promotes a valid matching `.next` even beside a valid target,
-using that target as rollback; a lone matching `.backup` never supersedes a
-valid target and is retained. If an interrupted save left no target, recover a
-valid matching `.next` first or a valid matching `.backup` second. A present
+using that target as rollback. When the target is valid and `.next` is absent,
+a lone `.backup` is not consulted or modified; the target is returned whether
+that remnant is valid, corrupt, or belongs to another project. If an interrupted
+save left no target, recover a valid matching `.next` first or a valid matching
+`.backup` second. A present
 malformed, unsupported, or mismatched target blocks recovery replacement: load
 returns null and preserves the target plus all remnants. Loading malformed JSON
 or an unsupported schema returns null without deleting the original file.

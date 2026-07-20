@@ -196,6 +196,23 @@ void main() {
     expect(await backup.exists(), isTrue);
   });
 
+  test('does not consult or modify a corrupt lone backup beside valid target',
+      () async {
+    final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);
+    final target = store.fileForProject('project-1');
+    final backup = File('${target.path}.backup');
+    const backupBytes = '{broken backup';
+    await target.writeAsString(
+      jsonEncode(validProject().copyWith(revision: 2).toJson()),
+    );
+    await backup.writeAsString(backupBytes);
+
+    final loaded = await store.loadDraft('project-1');
+
+    expect(loaded?.revision, 2);
+    expect(await backup.readAsString(), backupBytes);
+  });
+
   test('promotes next over target and backup using target as rollback source',
       () async {
     final store = FileSubtitleDraftStore(rootDirectory: tempDirectory);

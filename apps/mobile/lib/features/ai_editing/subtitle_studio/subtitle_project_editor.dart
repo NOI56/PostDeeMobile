@@ -221,8 +221,9 @@ String _joinCueText(String first, String second, String language) {
   }
   if (leftHasWhitespace || rightHasWhitespace) return '$first$second';
 
-  if (_closingPunctuation.contains(rightBoundary) ||
-      _openingOrPrefixPunctuation.contains(leftBoundary)) {
+  if (_unicodeClosingPunctuation.hasMatch(rightBoundary) ||
+      _commonClosingPunctuation.contains(rightBoundary) ||
+      _unicodeOpeningOrCurrency.hasMatch(leftBoundary)) {
     return '$first$second';
   }
   if (_thai.hasMatch(leftBoundary) && _thai.hasMatch(rightBoundary)) {
@@ -263,7 +264,15 @@ final _whitespace = RegExp(r'^\s+$');
 final _thai = RegExp(r'[\u0E00-\u0E7F]');
 final _asciiLetterOrDigit = RegExp(r'[A-Za-z0-9]');
 final _wordLike = RegExp(r'[\p{L}\p{N}]', unicode: true);
-const _closingPunctuation = <String>{
+final _unicodeOpeningOrCurrency = RegExp(
+  r'^(?:\p{Ps}|\p{Pi}|\p{Sc})$',
+  unicode: true,
+);
+final _unicodeClosingPunctuation = RegExp(
+  r'^(?:\p{Pe}|\p{Pf})$',
+  unicode: true,
+);
+const _commonClosingPunctuation = <String>{
   '.',
   ',',
   '!',
@@ -271,23 +280,4 @@ const _closingPunctuation = <String>{
   ':',
   ';',
   '%',
-  ')',
-  ']',
-  '}',
-  '»',
-  '”',
-  '’',
-};
-const _openingOrPrefixPunctuation = <String>{
-  '(',
-  '[',
-  '{',
-  '«',
-  '“',
-  '‘',
-  r'$',
-  '฿',
-  '€',
-  '£',
-  '¥',
 };

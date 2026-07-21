@@ -818,6 +818,21 @@ or Groq returns Thai character-level tokens that are not readable subtitle words
 Whitespace-only/punctuation-only timing tokens are ignored, while invalid tokens
 that contain transcript text invalidate word-level timing and trigger fallback.
 
+If the configured transcription provider is unavailable, both this endpoint and
+`POST /ai-edits/prepare` return `502` JSON without reserving quota:
+
+```json
+{
+  "status": "error",
+  "code": "AI_TRANSCRIPTION_PROVIDER_FAILED",
+  "message": "AI transcription is temporarily unavailable"
+}
+```
+
+Provider response details and credentials are never included in the client
+response. A temporary uploaded analysis-audio object is still cleaned up by the
+route's normal `finally` path.
+
 ### `GET /ai-edits/quota`
 
 Reports `{ limitMinutes, usedMinutes, remainingMinutes }` for the current month.
@@ -835,12 +850,26 @@ stored clip, then reserves the actual transcribed minutes before returning the
 recipe. It does **not** render video on the server; mobile still renders/export
 with FFmpeg.
 
+Current mobile clients send exactly one temporary `audioS3Key`, created through
+`POST /uploads` with `.m4a`, `audio/mp4`, `purpose=ai-edit-audio`, no dimensions,
+and a maximum size of 25 MiB. The route validates ownership, transcribes it, and
+deletes the temporary object in its cleanup path. Legacy clients may send exactly
+one `videoS3Key` instead; legacy video objects are not auto-deleted. Sending both
+keys or neither key is rejected.
+
+`targetDurationSeconds` is the desired result length (30, 60, or a positive
+custom value). It is separate from `durationSeconds`, which is only the initial
+source-duration/quota estimate. When a target is present, the edit planner selects
+the strongest coherent selling moments from the transcript and returns ranges to
+remove while preserving timeline order.
+
 Request:
 
 ```json
 {
-  "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
+  "audioS3Key": "uploads/local-dev-user/upload-id/postdee-ai-edit-audio.m4a",
   "durationSeconds": 65,
+  "targetDurationSeconds": 30,
   "styleId": "flash_sale",
   "prompt": "เหลือ 45 วิ เน้นตอนพูดราคา",
   "capabilities": {
@@ -880,12 +909,18 @@ Request:
 }
 ```
 
+If a client loses the prepare response after uploading analysis audio, it may
+call `POST /ai-edits/audio/cleanup` with `{ "audioS3Key": "..." }`. Cleanup is
+authenticated, owner-scoped, and idempotent.
+
 Response includes:
 
 - `recipe.renderMode: "mobile-ffmpeg"`
 - `recipe.transcript` with text, language, duration, segments, words, and model
 - `recipe.subtitles` for mobile subtitle burn-in
 - `recipe.cutRanges`, `silenceRanges`, and `fillerRanges`
+- `recipe.plan`, including transcript-selected cuts, a short summary, and the
+  planner model identifier
 - `recipe.overlays` for future CTA, price tag, and watermark processors; the
   current production mobile renderer does not apply these hints.
 - `recipe.renderHints` for tone and future zoom settings. Hook removal is not

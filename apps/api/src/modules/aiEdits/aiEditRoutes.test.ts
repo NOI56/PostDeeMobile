@@ -226,6 +226,39 @@ describe('ai edit routes', () => {
     expect(transcribe).not.toHaveBeenCalled();
   });
 
+  it.each(['/ai-edits/transcribe', '/ai-edits/prepare'])(
+    'returns a safe JSON error when transcription fails on %s',
+    async (endpoint) => {
+      const transcribe = vi.fn(async () => {
+        throw new Error('Groq transcription failed: secret provider detail');
+      });
+      const app = createApp({ transcriptionProvider: { transcribe } });
+
+      const response = await request(app)
+        .post(endpoint)
+        .set('x-postdee-subscription-plan', 'PRO')
+        .send({
+          videoS3Key: ownedUploadKey('local-dev-user', 'provider-failure.mp4'),
+          durationSeconds: 30
+        })
+        .expect('Content-Type', /json/)
+        .expect(502);
+
+      expect(response.body).toEqual({
+        status: 'error',
+        code: 'AI_TRANSCRIPTION_PROVIDER_FAILED',
+        message: 'AI transcription is temporarily unavailable'
+      });
+      expect(JSON.stringify(response.body)).not.toContain('secret provider detail');
+
+      const quotaResponse = await request(app)
+        .get('/ai-edits/quota')
+        .set('x-postdee-subscription-plan', 'PRO')
+        .expect(200);
+      expect(quotaResponse.body.quota.usedMinutes).toBe(0);
+    }
+  );
+
   it('prepares a mobile render recipe from the AI editing UI capabilities', async () => {
     const transcribe = vi.fn(async () => ({
       text: 'ราคา 99 บาท ส่งฟรีวันนี้ กดตะกร้าได้เลย',
@@ -342,6 +375,60 @@ describe('ai edit routes', () => {
     expect(response.body.recipe.capabilities.cta.state).toBe('planned');
     expect(response.body.recipe.capabilities.beatsync.state).toBe('planned');
     expect(response.body.recipe.capabilities.translate.state).toBe('planned');
+  });
+
+  it('passes the requested result length to the planner for highlight selection', async () => {
+    const plan = vi.fn(async () => ({
+      cuts: [
+        { start: 0, end: 4 },
+        { start: 8, end: 12 }
+      ],
+      summary: 'เลือกช่วงขายที่ดีที่สุดให้เหลือประมาณ 10 วิ',
+      model: 'test-planner'
+    }));
+    const transcribe = vi.fn(async () => ({
+      text: 'คลิปขายสินค้า',
+      language: 'th',
+      durationSeconds: 18,
+      segments: [
+        { text: 'เกริ่นทั่วไป', start: 0, end: 4 },
+        { text: 'ช่วยประหยัดเวลา', start: 4, end: 8 },
+        { text: 'รายละเอียดทั่วไป', start: 8, end: 12 },
+        { text: 'ราคา 99 บาท', start: 12, end: 15 },
+        { text: 'กดตะกร้าเลย', start: 15, end: 18 }
+      ],
+      words: [],
+      model: 'test-whisper'
+    }));
+    const app = createApp({
+      transcriptionProvider: { transcribe },
+      editPlanProvider: { plan }
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'highlights.mp4'),
+        durationSeconds: 18,
+        targetDurationSeconds: 10,
+        capabilities: { subtitle: true }
+      })
+      .expect(200);
+
+    expect(plan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        durationSeconds: 18,
+        targetDurationSeconds: 10
+      })
+    );
+    expect(response.body.recipe.plan).toMatchObject({
+      cuts: [
+        { start: 0, end: 4 },
+        { start: 8, end: 12 }
+      ],
+      model: 'test-planner'
+    });
   });
 
   it('sanitizes unsupported beat music settings without claiming they were applied', async () => {

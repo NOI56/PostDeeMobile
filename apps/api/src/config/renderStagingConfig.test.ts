@@ -22,7 +22,7 @@ describe('render.staging.yaml isolated staging config', () => {
     expect(source).toMatch(/databaseName: postdee_staging/);
     expect(source).toMatch(/user: postdee_staging/);
     expect(source.match(/plan: free/g)).toHaveLength(2);
-    expect(source).toContain('branch: codex/ai-edit-thai-timing-staging');
+    expect(source).toContain('branch: main');
     expect(source).toContain('autoDeployTrigger: checksPass');
     expect(source).not.toContain('preDeployCommand:');
     expect(source).toContain(

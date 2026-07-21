@@ -216,24 +216,34 @@ class AiEditPrepareSettings {
 
 class AiEditPrepareRequest {
   const AiEditPrepareRequest({
-    required this.videoS3Key,
+    this.audioS3Key,
+    this.videoS3Key,
     required this.durationSeconds,
+    this.targetDurationSeconds,
     this.styleId,
     this.prompt,
     this.capabilities = const <String, bool>{},
     this.settings = const AiEditPrepareSettings(),
-  });
+  }) : assert(
+          (audioS3Key == null) != (videoS3Key == null),
+          'Provide exactly one of audioS3Key or videoS3Key',
+        );
 
-  final String videoS3Key;
+  final String? audioS3Key;
+  final String? videoS3Key;
   final double durationSeconds;
+  final double? targetDurationSeconds;
   final String? styleId;
   final String? prompt;
   final Map<String, bool> capabilities;
   final AiEditPrepareSettings settings;
 
   Map<String, Object?> toJson() => {
-        'videoS3Key': videoS3Key,
+        if (audioS3Key != null) 'audioS3Key': audioS3Key,
+        if (videoS3Key != null) 'videoS3Key': videoS3Key,
         'durationSeconds': durationSeconds,
+        if (targetDurationSeconds != null)
+          'targetDurationSeconds': targetDurationSeconds,
         if (styleId != null) 'styleId': styleId,
         if (prompt != null) 'prompt': prompt,
         'capabilities': capabilities,
@@ -631,6 +641,7 @@ class CreateUploadRequest {
     required this.fileName,
     required this.contentType,
     required this.sizeBytes,
+    this.purpose,
     this.width,
     this.height,
   });
@@ -638,6 +649,7 @@ class CreateUploadRequest {
   final String fileName;
   final String contentType;
   final int sizeBytes;
+  final String? purpose;
   final int? width;
   final int? height;
 
@@ -646,6 +658,7 @@ class CreateUploadRequest {
         'contentType': contentType,
         'sizeBytes': sizeBytes,
         'uploadProtocol': _multipartUploadProtocol,
+        if (purpose != null) 'purpose': purpose,
         if (width != null) 'width': width,
         if (height != null) 'height': height,
       };
@@ -1710,6 +1723,12 @@ class PostDeeApiClient {
       recipe: AiEditRecipeResult.fromJson(recipe),
       quota: AiEditQuota.fromJson(quota),
     );
+  }
+
+  Future<void> cleanupAiEditAudio(String audioS3Key) async {
+    await _postJson('/ai-edits/audio/cleanup', {
+      'audioS3Key': audioS3Key,
+    });
   }
 
   Future<AiEditPlanResult> requestAiEditPlan(AiEditPlanRequest request) async {

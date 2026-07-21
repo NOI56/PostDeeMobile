@@ -553,8 +553,12 @@ Basic/Starter users receive the Pro message locally and no `POST /uploads`, R2
 transfer, or metered prepare request is started. The API Pro check remains the
 authoritative security boundary for stale or modified clients.
 
-The core Pro flow is implemented. Backend handles auth, quota, temporary storage, and
-Groq Whisper transcription. `POST /ai-edits/prepare` combines the AI editing UI
+The core Pro flow is implemented. For current audio-driven capabilities, mobile
+extracts mono 16 kHz/64 kbps AAC into a temporary M4A and uploads only that file
+with the narrow `ai-edit-audio` purpose. Backend handles auth, ownership, quota,
+temporary-audio cleanup, and Groq Whisper transcription; the untouched original
+video remains local for rendering. Legacy `videoS3Key` requests remain supported
+without automatic video deletion. `POST /ai-edits/prepare` combines the AI editing UI
 capability toggles, selected style/prompt, transcript, cut plan, overlay hints,
 and quota into one mobile render recipe. The API pre-checks estimated duration, then reserves
 actual transcribed minutes before a successful response so parallel requests do
@@ -566,6 +570,15 @@ available if a new render fails. The user can then continue either to
 Upload/Post or the manual editor. Mobile handles FFmpeg
 subtitle burn-in, silence cutting, supported visual adjustments, and final MP4
 export; capabilities marked `planned` are not shown as already applied.
+The selected 30/60/custom result length travels separately as
+`targetDurationSeconds`. The planner scores transcript segments for seller-oriented
+signals such as hook, benefit, proof, offer, and CTA, selects strong moments within
+the time budget in chronological order, and returns the complementary cut ranges.
+Mobile still applies a final target cap as a compatibility safety guard.
+If Groq transcription fails, the API returns the stable
+`AI_TRANSCRIPTION_PROVIDER_FAILED` code with HTTP 502 before quota reservation;
+provider internals are not exposed. Mobile translates that code into a Thai
+retry message and leaves the setup available for another attempt.
 The production capability allowlist is currently `subtitle`, `silence`,
 `filler`, and `color`. Auto-reframe, zoom, audio cleanup, translation, price
 tags, CTA cards, and the AI-page watermark remain `planned`; mobile locks them

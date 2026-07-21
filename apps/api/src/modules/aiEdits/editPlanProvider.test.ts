@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildHighlightCuts,
   buildKeywordKeepCuts,
   createMockEditPlanProvider,
   createOpenAiCompatibleEditPlanProvider,
@@ -38,6 +39,46 @@ describe('edit plan provider', () => {
   it('trims the tail to a target length', () => {
     const cuts = trimToTarget([], 60, 45);
     expect(cuts).toEqual([{ start: 45, end: 60 }]);
+  });
+
+  it('selects the strongest selling moments instead of the first seconds', () => {
+    const cuts = buildHighlightCuts(
+      [
+        { text: 'สวัสดีค่ะ วันนี้จะมาเล่าให้ฟัง', start: 0, end: 4 },
+        { text: 'ใช้แล้วช่วยประหยัดเวลาและใช้ง่ายมาก', start: 4, end: 8 },
+        { text: 'ตรงนี้เป็นรายละเอียดทั่วไป', start: 8, end: 12 },
+        { text: 'ราคาพิเศษ 99 บาท ส่งฟรีวันนี้', start: 12, end: 15 },
+        { text: 'กดตะกร้าสั่งซื้อได้เลย', start: 15, end: 18 }
+      ],
+      18,
+      10
+    );
+
+    expect(cuts).toEqual([
+      { start: 0, end: 4 },
+      { start: 8, end: 12 }
+    ]);
+  });
+
+  it('uses targetDurationSeconds to plan transcript highlights', async () => {
+    const provider = createMockEditPlanProvider();
+    const result = await provider.plan({
+      durationSeconds: 18,
+      targetDurationSeconds: 10,
+      segments: [
+        { text: 'สวัสดีค่ะ วันนี้จะมาเล่าให้ฟัง', start: 0, end: 4 },
+        { text: 'ใช้แล้วช่วยประหยัดเวลาและใช้ง่ายมาก', start: 4, end: 8 },
+        { text: 'ตรงนี้เป็นรายละเอียดทั่วไป', start: 8, end: 12 },
+        { text: 'ราคาพิเศษ 99 บาท ส่งฟรีวันนี้', start: 12, end: 15 },
+        { text: 'กดตะกร้าสั่งซื้อได้เลย', start: 15, end: 18 }
+      ]
+    });
+
+    expect(result.cuts).toEqual([
+      { start: 0, end: 4 },
+      { start: 8, end: 12 }
+    ]);
+    expect(result.summary).toContain('10');
   });
 
   it('parses a prompt target length and profanity intent', () => {

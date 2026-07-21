@@ -32,6 +32,11 @@ apps/
   signed AAB สำหรับอัปโหลด แต่ Play Console app/subscriptions, internal testing,
   service credentials และ Google Play purchase จริงยังทำไม่ได้จนกว่าจะยืนยันสิทธิ์
   ด้วยมือถือ Android จริง; Emulator ใช้ยืนยันขั้นตอนนี้ไม่ได้
+- Render Staging ติดตาม branch `main` แล้ว การอัปโหลด R2 จากแอปผ่าน และตั้ง
+  `GROQ_API_KEY` ชุด Staging แล้ว รอบเดิมที่ส่งวิดีโอ 38 MB ทั้งไฟล์หยุดที่
+  transcription เพราะเกินขนาดไฟล์ของ provider โดยโควตาไม่เปลี่ยน โค้ดปัจจุบันจึง
+  แยกเสียง M4A ขนาดเล็กก่อนอัปโหลด; ยังต้อง deploy แล้วทดสอบคลิปเดิมซ้ำก่อนนับว่า
+  AI edit ผ่าน E2E
 
 ## Backend
 
@@ -511,6 +516,18 @@ Current mobile pieces:
   still drive precise gaps, but subtitle text falls back to readable segments.
   Whitespace-only provider tokens are ignored during validation; malformed
   tokens containing real transcript text still fail closed.
+- For the production capability set, mobile extracts mono 16 kHz AAC at 64 kbps
+  into a temporary `.m4a`, uploads it with `purpose=ai-edit-audio`, and sends
+  `audioS3Key` to the backend. The original video stays on the phone for FFmpeg
+  rendering. Local and remote temporary audio are cleaned best-effort after the
+  prepare call; legacy `videoS3Key` clients remain compatible.
+- The selected 30/60/custom duration is sent as `targetDurationSeconds`. The edit
+  planner uses transcript selling signals (hook, benefit, proof, offer, and CTA)
+  to choose strong moments in timeline order; the local duration cap remains a
+  safety guard for old or malformed recipes.
+- Transcription-provider failures return structured HTTP 502
+  `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
+  provider details; the mobile screen translates this into a retryable Thai error.
 - After the first phone-side render, the mobile app stays on the AI editing
   screen so the user can preview the result, remove supported AI edits they do
   not want, or add them back. Each review checkbox automatically re-renders a

@@ -540,6 +540,56 @@ void main() {
     expect(find.text('เลือกแพ็กเกจ'), findsOneWidget);
   });
 
+  testWidgets('shows a clear Thai message when AI transcription is unavailable',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('provider-failure.mp4');
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 8,
+            remainingMinutes: 192,
+          ),
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'provider-failure-upload',
+            videoS3Key: 'uploads/provider-failure.mp4',
+            storageProvider: 'r2',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            throw const ApiException(
+              'AI transcription is temporarily unavailable',
+              statusCode: HttpStatus.badGateway,
+              code: 'AI_TRANSCRIPTION_PROVIDER_FAILED',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('ระบบถอดเสียง AI ยังไม่พร้อม กรุณาลองใหม่อีกครั้ง'),
+      findsOneWidget,
+    );
+    expect(find.text('Request failed'), findsNothing);
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.byKey(const ValueKey('ai-process-button')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
   testWidgets('renders then stays on the AI result review screen',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);

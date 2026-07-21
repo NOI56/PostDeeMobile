@@ -566,6 +566,10 @@ available if a new render fails. The user can then continue either to
 Upload/Post or the manual editor. Mobile handles FFmpeg
 subtitle burn-in, silence cutting, supported visual adjustments, and final MP4
 export; capabilities marked `planned` are not shown as already applied.
+If Groq transcription fails, the API returns the stable
+`AI_TRANSCRIPTION_PROVIDER_FAILED` code with HTTP 502 before quota reservation;
+provider internals are not exposed. Mobile translates that code into a Thai
+retry message and leaves the setup available for another attempt.
 The production capability allowlist is currently `subtitle`, `silence`,
 `filler`, and `color`. Auto-reframe, zoom, audio cleanup, translation, price
 tags, CTA cards, and the AI-page watermark remain `planned`; mobile locks them

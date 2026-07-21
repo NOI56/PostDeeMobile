@@ -32,6 +32,9 @@ apps/
   signed AAB สำหรับอัปโหลด แต่ Play Console app/subscriptions, internal testing,
   service credentials และ Google Play purchase จริงยังทำไม่ได้จนกว่าจะยืนยันสิทธิ์
   ด้วยมือถือ Android จริง; Emulator ใช้ยืนยันขั้นตอนนี้ไม่ได้
+- Render Staging ติดตาม branch `main` แล้ว การอัปโหลด R2 จากแอปผ่าน แต่ AI edit
+  ยังต้องเปลี่ยน `GROQ_API_KEY` ใน Render เป็น staging-only key ที่ใช้งานได้ก่อน
+  จึงจะผ่าน E2E; provider failure จะไม่หักโควตาและแอปแสดงข้อความลองใหม่ภาษาไทย
 
 ## Backend
 
@@ -511,6 +514,9 @@ Current mobile pieces:
   still drive precise gaps, but subtitle text falls back to readable segments.
   Whitespace-only provider tokens are ignored during validation; malformed
   tokens containing real transcript text still fail closed.
+- Transcription-provider failures return structured HTTP 502
+  `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
+  provider details; the mobile screen translates this into a retryable Thai error.
 - After the first phone-side render, the mobile app stays on the AI editing
   screen so the user can preview the result, remove supported AI edits they do
   not want, or add them back. Each review checkbox automatically re-renders a

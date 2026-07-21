@@ -226,6 +226,39 @@ describe('ai edit routes', () => {
     expect(transcribe).not.toHaveBeenCalled();
   });
 
+  it.each(['/ai-edits/transcribe', '/ai-edits/prepare'])(
+    'returns a safe JSON error when transcription fails on %s',
+    async (endpoint) => {
+      const transcribe = vi.fn(async () => {
+        throw new Error('Groq transcription failed: secret provider detail');
+      });
+      const app = createApp({ transcriptionProvider: { transcribe } });
+
+      const response = await request(app)
+        .post(endpoint)
+        .set('x-postdee-subscription-plan', 'PRO')
+        .send({
+          videoS3Key: ownedUploadKey('local-dev-user', 'provider-failure.mp4'),
+          durationSeconds: 30
+        })
+        .expect('Content-Type', /json/)
+        .expect(502);
+
+      expect(response.body).toEqual({
+        status: 'error',
+        code: 'AI_TRANSCRIPTION_PROVIDER_FAILED',
+        message: 'AI transcription is temporarily unavailable'
+      });
+      expect(JSON.stringify(response.body)).not.toContain('secret provider detail');
+
+      const quotaResponse = await request(app)
+        .get('/ai-edits/quota')
+        .set('x-postdee-subscription-plan', 'PRO')
+        .expect(200);
+      expect(quotaResponse.body.quota.usedMinutes).toBe(0);
+    }
+  );
+
   it('prepares a mobile render recipe from the AI editing UI capabilities', async () => {
     const transcribe = vi.fn(async () => ({
       text: 'ราคา 99 บาท ส่งฟรีวันนี้ กดตะกร้าได้เลย',

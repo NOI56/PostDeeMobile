@@ -147,12 +147,13 @@ describe('AI edit audio routes', () => {
     const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
     const app = createApp({ transcriptionProvider: { transcribe }, videoStorage });
 
-    await request(app)
+    const response = await request(app)
       .post('/ai-edits/prepare')
       .set('x-postdee-subscription-plan', 'PRO')
       .send({ audioS3Key, durationSeconds: 60 })
-      .expect(500);
+      .expect(502);
 
+    expect(response.body.code).toBe('AI_TRANSCRIPTION_PROVIDER_FAILED');
     expect(deleteVideo).toHaveBeenCalledWith(audioS3Key);
   });
 

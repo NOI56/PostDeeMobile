@@ -818,6 +818,21 @@ or Groq returns Thai character-level tokens that are not readable subtitle words
 Whitespace-only/punctuation-only timing tokens are ignored, while invalid tokens
 that contain transcript text invalidate word-level timing and trigger fallback.
 
+If the configured transcription provider is unavailable, both this endpoint and
+`POST /ai-edits/prepare` return `502` JSON without reserving quota:
+
+```json
+{
+  "status": "error",
+  "code": "AI_TRANSCRIPTION_PROVIDER_FAILED",
+  "message": "AI transcription is temporarily unavailable"
+}
+```
+
+Provider response details and credentials are never included in the client
+response. A temporary uploaded analysis-audio object is still cleaned up by the
+route's normal `finally` path.
+
 ### `GET /ai-edits/quota`
 
 Reports `{ limitMinutes, usedMinutes, remainingMinutes }` for the current month.

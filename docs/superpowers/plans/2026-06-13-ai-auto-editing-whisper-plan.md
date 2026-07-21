@@ -6,6 +6,11 @@
 >
 > 2026-07-03 update: `POST /ai-edits/prepare` now turns the Claude Design AI editing UI toggles, style/prompt, transcript, cut suggestions, overlays, and render hints into a mobile FFmpeg recipe. Server-side video rendering remains out of scope.
 >
+> 2026-07-22 provider-failure update: `/ai-edits/transcribe` and
+> `/ai-edits/prepare` return structured HTTP 502
+> `AI_TRANSCRIPTION_PROVIDER_FAILED` before quota reservation when transcription
+> is unavailable. Mobile shows a Thai retry message instead of `Request failed`.
+>
 > 2026-07-11 update: mobile now caches a successful prepare recipe, shows a playable result review, supports reversible subtitle/silence/filler/color edits that are actually rendered, and keeps `planned` capabilities out of the applied list. Local retry does not call the minute-metered prepare endpoint again.
 >
 > 2026-07-12 automatic-preview update: changing a supported edit checkbox immediately starts a local preview re-render from the original clip. Controls are locked while FFmpeg runs, the previous playable preview remains visible, and a failed update restores both the last accepted checkbox state and video.

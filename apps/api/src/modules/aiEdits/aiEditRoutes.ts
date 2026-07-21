@@ -148,6 +148,21 @@ const sendMediaDownloadErrorResponse = (response: Response, error: MediaDownload
   });
 };
 
+const sendTranscriptionProviderErrorResponse = (
+  response: Response,
+  error: unknown
+) => {
+  console.error(
+    'AI transcription provider failed:',
+    error instanceof Error ? error.message : error
+  );
+  response.status(502).json({
+    status: 'error',
+    code: 'AI_TRANSCRIPTION_PROVIDER_FAILED',
+    message: 'AI transcription is temporarily unavailable'
+  });
+};
+
 const sendAiEditQuotaExceededResponse = (response: Response) => {
   response.status(402).json({
     status: 'error',
@@ -311,7 +326,8 @@ export const registerAiEditRoutes = (
         return;
       }
 
-      throw error;
+      sendTranscriptionProviderErrorResponse(response, error);
+      return;
     }
 
     // Meter the real transcribed duration, not the client estimate.
@@ -407,7 +423,8 @@ export const registerAiEditRoutes = (
         return;
       }
 
-      throw error;
+      sendTranscriptionProviderErrorResponse(response, error);
+      return;
     }
 
     const billedMinutes =

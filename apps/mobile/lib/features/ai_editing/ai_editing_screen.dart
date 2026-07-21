@@ -1049,6 +1049,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   String _friendlyAiError(ApiException error) {
+    if (error.code == 'AI_TRANSCRIPTION_PROVIDER_FAILED') {
+      return 'ระบบถอดเสียง AI ยังไม่พร้อม กรุณาลองใหม่อีกครั้ง';
+    }
     if (error.statusCode == 402 || error.message.contains('Pro plan')) {
       return 'การตัดต่ออัตโนมัติต้องใช้แพ็กเกจ Pro';
     }

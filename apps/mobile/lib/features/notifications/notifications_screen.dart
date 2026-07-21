@@ -122,16 +122,62 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       body: SafeArea(
         child: DecoratedBox(
           decoration: AppTheme.screenBackground,
-          child: data.isEmpty
-              ? const _NotificationsEmptyState()
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
-                  itemCount: data.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) =>
-                      _NotificationTile(item: data[index]),
-                ),
+          child: Column(
+            children: [
+              const _NotificationSessionNotice(),
+              Expanded(
+                child: data.isEmpty
+                    ? const _NotificationsEmptyState()
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+                        itemCount: data.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) =>
+                            _NotificationTile(item: data[index]),
+                      ),
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _NotificationSessionNotice extends StatelessWidget {
+  const _NotificationSessionNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.mint,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.phone_android_rounded,
+            size: 18,
+            color: AppTheme.accentCyanInk,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'รายการที่ได้รับบนอุปกรณ์นี้ในรอบการใช้งานนี้',
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -196,9 +242,8 @@ class _NotificationTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 13,
-                          fontWeight: item.isUnread
-                              ? FontWeight.w700
-                              : FontWeight.w600,
+                          fontWeight:
+                              item.isUnread ? FontWeight.w700 : FontWeight.w600,
                           color: item.isUnread
                               ? AppTheme.textPrimary
                               : AppTheme.textSecondary,
@@ -268,7 +313,7 @@ class _NotificationsEmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'เมื่อมีคลิปมาแรง โพสต์เผยแพร่\nหรือใกล้ถึงคิวตั้งเวลา จะแจ้งที่นี่',
+              'เมื่อได้รับผลการเผยแพร่โพสต์บนอุปกรณ์นี้ จะแสดงที่นี่',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12.5,

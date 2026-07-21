@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
@@ -12,6 +13,11 @@ import '../../core/network/postdee_api_client.dart';
 typedef StorePurchaseVerifier = Future<StoreSubscriptionVerificationResult>
     Function(VerifyStorePurchaseRequest request);
 typedef SubscriptionLoader = Future<SubscriptionStatusResult> Function();
+typedef SubscriptionWait = Future<void> Function(Duration duration);
+typedef RevenueCatSubscriptionResync = Future<String> Function();
+
+Future<void> _defaultSubscriptionWait(Duration duration) =>
+    Future<void>.delayed(duration);
 
 class StoreSubscriptionException implements Exception {
   const StoreSubscriptionException(this.message);
@@ -91,7 +97,18 @@ class StoreSubscriptionService {
     bool useRevenueCat = AppConfig.enableRevenueCatBilling,
     this.productId = AppConfig.storeProMonthlyProductId,
     this.starterProductId = AppConfig.storeStarterMonthlyProductId,
-  })  : _gateway = gateway ??
+    int revenueCatEntitlementPollAttempts = 16,
+    Duration revenueCatEntitlementPollInterval = const Duration(seconds: 1),
+    SubscriptionWait? revenueCatEntitlementWait,
+    RevenueCatSubscriptionResync? resyncRevenueCatSubscription,
+  })  : assert(revenueCatEntitlementPollAttempts > 0),
+        _revenueCatEntitlementPollAttempts = revenueCatEntitlementPollAttempts,
+        _revenueCatEntitlementPollInterval = revenueCatEntitlementPollInterval,
+        _revenueCatEntitlementWait =
+            revenueCatEntitlementWait ?? _defaultSubscriptionWait,
+        _resyncRevenueCatSubscription = resyncRevenueCatSubscription ??
+            PostDeeApiClient().resyncRevenueCatSubscription,
+        _gateway = gateway ??
             (useRevenueCat
                 ? const _UnavailableStoreBillingGateway()
                 : InAppPurchaseStoreBillingGateway()),
@@ -107,8 +124,14 @@ class StoreSubscriptionService {
   final RevenueCatBillingGateway? _revenueCatGateway;
   final StorePurchaseVerifier _verifyPurchase;
   final SubscriptionLoader _loadSubscription;
+  final int _revenueCatEntitlementPollAttempts;
+  final Duration _revenueCatEntitlementPollInterval;
+  final SubscriptionWait _revenueCatEntitlementWait;
+  final RevenueCatSubscriptionResync _resyncRevenueCatSubscription;
   final String productId;
   final String starterProductId;
+
+  bool get supportsUnifiedRestore => _revenueCatGateway != null;
 
   Future<StoreProductInfo?> loadStarterProduct() async {
     final products = await _queryProducts({starterProductId});
@@ -193,6 +216,30 @@ class StoreSubscriptionService {
     return _verifyPayload(payload, productId);
   }
 
+  Future<StoreSubscriptionVerificationResult> restoreSubscription() async {
+    final revenueCatGateway = _revenueCatGateway;
+
+    if (revenueCatGateway == null) {
+      throw const StoreSubscriptionException(
+        'Restoring purchases is not available with the current billing setup.',
+      );
+    }
+
+    await _ensureRevenueCatAvailable(revenueCatGateway);
+    await revenueCatGateway.restorePurchases();
+    final resyncedPlan = await _resyncRevenueCatForRestore();
+    final expectedProductsByPlan = {
+      'STARTER': starterProductId,
+      'PRO': productId,
+    };
+    _ensureRestorablePlan(resyncedPlan, expectedProductsByPlan.keys);
+
+    return _readRevenueCatSubscription(
+      expectedProductsByPlan: expectedProductsByPlan,
+      operation: 'restore',
+    );
+  }
+
   Future<void> _ensureStoreAvailable() async {
     if (!await _gateway.isAvailable()) {
       throw const StoreSubscriptionException(
@@ -232,8 +279,8 @@ class StoreSubscriptionService {
     await gateway.buySubscription(productId);
 
     return _readRevenueCatSubscription(
-      productId: productId,
-      expectedPlan: expectedPlan,
+      expectedProductsByPlan: {expectedPlan: productId},
+      operation: 'purchase',
     );
   }
 
@@ -244,35 +291,124 @@ class StoreSubscriptionService {
   }) async {
     await _ensureRevenueCatAvailable(gateway);
     await gateway.restorePurchases();
+    final resyncedPlan = await _resyncRevenueCatForRestore();
+    _ensureRestorablePlan(resyncedPlan, {expectedPlan});
 
     return _readRevenueCatSubscription(
-      productId: productId,
-      expectedPlan: expectedPlan,
+      expectedProductsByPlan: {expectedPlan: productId},
+      operation: 'restore',
+    );
+  }
+
+  Future<String> _resyncRevenueCatForRestore() async {
+    try {
+      return await _resyncRevenueCatSubscription();
+    } on ApiException catch (error) {
+      final code = error.code;
+      final statusCode = error.statusCode;
+
+      if (code == 'REVENUECAT_RESYNC_NOT_CONFIGURED' ||
+          (code == null && statusCode == HttpStatus.notImplemented)) {
+        throw const StoreSubscriptionException(
+          'ระบบกู้คืนสมาชิกยังตั้งค่าไม่เสร็จ กรุณาลองใหม่ภายหลัง',
+        );
+      }
+
+      if (code == 'REVENUECAT_ENTITLEMENT_NOT_MAPPED' ||
+          (code == null && statusCode == HttpStatus.conflict)) {
+        throw const StoreSubscriptionException(
+          'พบรายการสมาชิกแล้ว แต่แพ็กเกจยังเชื่อมกับระบบไม่ถูกต้อง กรุณาติดต่อทีม PostDee',
+        );
+      }
+
+      if (code == 'REVENUECAT_RESYNC_FAILED' ||
+          (code == null && statusCode == HttpStatus.badGateway)) {
+        throw const StoreSubscriptionException(
+          'เชื่อมต่อระบบสมาชิกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+        );
+      }
+
+      throw const StoreSubscriptionException(
+        'กู้คืนการซื้อไม่สำเร็จ ลองใหม่อีกครั้ง',
+      );
+    }
+  }
+
+  void _ensureRestorablePlan(String plan, Iterable<String> expectedPlans) {
+    final normalizedPlan = plan.toUpperCase();
+    if (expectedPlans.any((expected) => expected == normalizedPlan)) {
+      return;
+    }
+
+    throw const StoreSubscriptionException(
+      'ไม่พบรายการสมาชิกที่กู้คืนได้ในบัญชีนี้',
     );
   }
 
   Future<StoreSubscriptionVerificationResult> _readRevenueCatSubscription({
-    required String productId,
-    required String expectedPlan,
+    required Map<String, String> expectedProductsByPlan,
+    required String operation,
   }) async {
-    final subscription = await _loadSubscription();
+    for (var attempt = 0;
+        attempt < _revenueCatEntitlementPollAttempts;
+        attempt += 1) {
+      late final SubscriptionStatusResult subscription;
 
-    if (subscription.plan != expectedPlan) {
-      throw StoreSubscriptionException(
-        'RevenueCat purchase completed, but PostDee has not received the '
-        '$expectedPlan entitlement yet. Please try again in a moment.',
-      );
+      try {
+        subscription = await _loadSubscription();
+      } catch (error) {
+        final hasAnotherAttempt =
+            attempt + 1 < _revenueCatEntitlementPollAttempts;
+        if (!hasAnotherAttempt || !_isRetryableSubscriptionLoadError(error)) {
+          rethrow;
+        }
+
+        await _revenueCatEntitlementWait(
+          _revenueCatEntitlementPollInterval,
+        );
+        continue;
+      }
+
+      final productId = expectedProductsByPlan[subscription.plan.toUpperCase()];
+
+      if (productId != null) {
+        return StoreSubscriptionVerificationResult(
+          purchase: StorePurchaseResult(
+            provider: 'revenuecat',
+            platform: 'REVENUECAT',
+            productId: productId,
+            verifiedAt: DateTime.now(),
+          ),
+          subscription: subscription,
+        );
+      }
+
+      if (attempt + 1 < _revenueCatEntitlementPollAttempts) {
+        await _revenueCatEntitlementWait(
+          _revenueCatEntitlementPollInterval,
+        );
+      }
     }
 
-    return StoreSubscriptionVerificationResult(
-      purchase: StorePurchaseResult(
-        provider: 'revenuecat',
-        platform: 'REVENUECAT',
-        productId: productId,
-        verifiedAt: DateTime.now(),
-      ),
-      subscription: subscription,
+    final expectedPlans = expectedProductsByPlan.keys.join(' or ');
+    throw StoreSubscriptionException(
+      'RevenueCat $operation completed, but PostDee has not received the '
+      '$expectedPlans entitlement yet. Please try again in a moment.',
     );
+  }
+
+  bool _isRetryableSubscriptionLoadError(Object error) {
+    if (error is ApiException) {
+      final statusCode = error.statusCode;
+      return statusCode == HttpStatus.requestTimeout ||
+          statusCode == HttpStatus.tooManyRequests ||
+          (statusCode != null && statusCode >= 500 && statusCode < 600);
+    }
+
+    return error is SocketException ||
+        error is HttpException ||
+        error is HandshakeException ||
+        error is TimeoutException;
   }
 
   Future<StoreSubscriptionVerificationResult> _verifyPayload(

@@ -1090,6 +1090,41 @@ void main() {
     expect(post.status, 'QUEUED');
   });
 
+  test('PostSummaryResult parses honest per-platform publish results', () {
+    final post = PostSummaryResult.fromJson({
+      'id': 'post-1',
+      'caption': 'Launch clip',
+      'videoS3Key': 'uploads/launch.mp4',
+      'platforms': ['TIKTOK', 'YOUTUBE_SHORTS'],
+      'status': 'PARTIAL_PUBLISHED',
+      'createdAt': '2026-06-01T00:00:00.000Z',
+      'platformResults': [
+        {
+          'postId': 'post-1',
+          'platform': 'TIKTOK',
+          'status': 'PUBLISHED',
+          'externalPostId': 'https://tiktok.test/post-1',
+          'publishedAt': '2026-06-02T10:00:00.000Z',
+        },
+        {
+          'postId': 'post-1',
+          'platform': 'YOUTUBE_SHORTS',
+          'status': 'FAILED',
+          'errorMessage': 'YouTube rejected the upload',
+        },
+      ],
+    });
+
+    expect(post.platformResults, hasLength(2));
+    expect(post.platformResults.first.platform, 'TIKTOK');
+    expect(post.platformResults.first.externalPostId,
+        'https://tiktok.test/post-1');
+    expect(post.platformResults.first.publishedAt?.toUtc().toIso8601String(),
+        '2026-06-02T10:00:00.000Z');
+    expect(post.platformResults.last.status, 'FAILED');
+    expect(
+        post.platformResults.last.errorMessage, 'YouTube rejected the upload');
+  });
 
   test('SocialConnectionResult parses connected platform status', () {
     final result = SocialConnectionResult.fromJson({
@@ -1114,7 +1149,8 @@ void main() {
       'expiresAt': '2026-06-26T09:10:00.000Z',
     });
 
-    expect(result.connectUrl.toString(), 'https://postpeer.test/connect/youtube');
+    expect(
+        result.connectUrl.toString(), 'https://postpeer.test/connect/youtube');
     expect(result.expiresAt?.toUtc().toIso8601String(),
         '2026-06-26T09:10:00.000Z');
   });
@@ -1294,11 +1330,19 @@ void main() {
             },
             'cutRanges': [
               {'start': 2, 'end': 3},
+              {'start': 6, 'end': 7},
             ],
             'silenceRanges': [
               {'start': 2, 'end': 3},
             ],
             'fillerRanges': <Object?>[],
+            'plan': {
+              'cuts': [
+                {'start': 6, 'end': 7},
+              ],
+              'summary': 'ตัดช่วงท้ายตามคำสั่ง',
+              'model': 'test-editor',
+            },
             'music': {
               'source': 'original',
               'beatIntensity': 'balanced',
@@ -1335,9 +1379,12 @@ void main() {
       expect(result.recipe.transcript.language, 'th');
       expect(result.recipe.transcript.segments, hasLength(2));
       expect(result.recipe.transcript.words.single.word, 'สวัสดี');
-      expect(result.recipe.cutRanges.single.start, 2);
+      expect(result.recipe.cutRanges, hasLength(2));
       expect(result.recipe.silenceRanges.single.end, 3);
       expect(result.recipe.fillerRanges, isEmpty);
+      expect(result.recipe.plan.cuts.single.start, 6);
+      expect(result.recipe.plan.summary, 'ตัดช่วงท้ายตามคำสั่ง');
+      expect(result.recipe.plan.model, 'test-editor');
       expect(result.recipe.subtitles.style.mode, 'bold');
       expect(result.recipe.subtitles.style.wordsPerLine, 2);
       expect(result.recipe.music.source, 'original');
@@ -1406,6 +1453,38 @@ void main() {
       await request.response.close();
 
       expect(await resultFuture, isFalse);
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  test('resyncRevenueCatSubscription posts to the authenticated backend route',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final apiClient = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        authHeaders: PostDeeApiAuthHeaders(
+          authTokenProvider: () async => null,
+          mockUserId: 'seller-resync',
+        ),
+      );
+      final resultFuture = apiClient.resyncRevenueCatSubscription();
+      final request = await server.first;
+
+      expect(request.method, 'POST');
+      expect(request.uri.path, '/billing/revenuecat/resync');
+      expect(request.headers.value('x-postdee-user-id'), 'seller-resync');
+      expect(await _readJsonRequest(request), isEmpty);
+
+      _writeJsonResponse(request.response, {
+        'status': 'ok',
+        'plan': 'PRO',
+      });
+      await request.response.close();
+
+      await expectLater(resultFuture, completion('PRO'));
     } finally {
       await server.close(force: true);
     }

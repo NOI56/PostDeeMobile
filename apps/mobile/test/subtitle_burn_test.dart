@@ -177,15 +177,20 @@ void main() {
     expect(buildColorFilter(filterIndex: 3), 'hue=s=0');
     expect(
       buildColorFilter(filterIndex: 0, brightness: 0.5, contrast: 0.4),
-      'eq=brightness=0.250:contrast=1.400',
+      "lutrgb=r='clip((val-128)*1.400+128+63.750,0,255)':"
+      "g='clip((val-128)*1.400+128+63.750,0,255)':"
+      "b='clip((val-128)*1.400+128+63.750,0,255)'",
     );
+    expect(buildColorFilter(filterIndex: 1), 'hue=s=1.400');
+    expect(buildColorFilter(filterIndex: 2), startsWith('hue=s=0.700'));
+    expect(buildColorFilter(filterIndex: 1), isNot(contains('eq=')));
     expect(buildColorFilter(filterIndex: 4), contains('colorbalance'));
   });
 
   test('retries a requested color filter without color as a safe fallback', () {
     expect(
-      buildColorFilterFallbacks('eq=saturation=1.400'),
-      ['eq=saturation=1.400', ''],
+      buildColorFilterFallbacks('hue=s=1.400'),
+      ['hue=s=1.400', ''],
     );
     expect(buildColorFilterFallbacks(''), ['']);
   });

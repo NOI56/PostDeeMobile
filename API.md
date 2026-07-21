@@ -41,7 +41,12 @@ The backend currently supports safe scaffold flows for:
 - Store subscription verification scaffold for Apple App Store and Google Play
 - Store server notification routes for renewal, cancel, refund, and grace-period handoff
 
-The backend must not publish to TikTok, YouTube Shorts, Instagram Reels, or Facebook Reels through shared PostPeer account ids in production (startup rejects them). Production publishing resolves per-user social connections, and real PostPeer publishing should only be enabled after the per-user connect/refresh flow is verified with a connected test account and a controlled provider test is approved.
+The backend must not publish through shared PostPeer account ids in production
+(startup rejects them). Production publishing resolves per-user social
+connections. The internal `FACEBOOK_REELS` value currently maps to PostPeer's
+Facebook Page Video capability, not Facebook Reels. Real PostPeer publishing
+must remain disabled until the per-user connect/refresh flow and a controlled
+connected-account E2E test are approved.
 
 ## Authentication
 
@@ -206,7 +211,7 @@ Mock response:
     "height": 1920,
     "aspectRatio": "9:16",
     "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
-    "storageProvider": "mock-s3",
+    "storageProvider": "private",
     "createdAt": "2026-06-05T08:00:00.000Z"
   }
 }
@@ -309,6 +314,10 @@ INSTAGRAM_REELS
 FACEBOOK_REELS
 ```
 
+`FACEBOOK_REELS` is retained for mobile/API compatibility. With the current
+PostPeer adapter it publishes a Facebook Page Video; it must not be presented as
+Facebook Reels in Store copy.
+
 ### `GET /posts`
 
 Returns posts for the authenticated user.
@@ -318,9 +327,28 @@ Response:
 ```json
 {
   "status": "ok",
-  "posts": []
+  "posts": [
+    {
+      "id": "post-1",
+      "platformResults": [
+        {
+          "postId": "post-1",
+          "platform": "TIKTOK",
+          "status": "PUBLISHED",
+          "externalPostId": "https://www.tiktok.com/@seller/video/123",
+          "publishedAt": "2026-07-15T04:00:00.000Z",
+          "views": 0,
+          "likes": 0
+        }
+      ]
+    }
+  ]
 }
 ```
+
+`platformResults` is assembled only from results belonging to the authenticated
+user's returned post ids. A failed platform result can contain `errorMessage`;
+the response does not expose another user's publish records.
 
 ### `POST /posts`
 
@@ -355,6 +383,13 @@ Worker behavior:
 
 - The publish worker claims a post by moving it from `QUEUED` to `PUBLISHING`
   before calling the platform publisher.
+- PostPeer `202 pending/publishing` is not treated as success. The adapter polls
+  `GET /v1/posts/{postId}` for roughly two minutes and records `PUBLISHED` only
+  when the selected platform has a real `platformPostUrl` or `platformPostId`.
+  It never fabricates an external id.
+- A provider call is retried only for an explicitly safe error proving that no
+  external post was accepted. A network/timeout or uncertain PostPeer outcome is
+  not submitted again; clients must check the platform before a manual retry.
 - Retry or duplicate jobs are skipped when the post is already `PUBLISHING`,
   `PUBLISHED`, `PARTIAL_PUBLISHED`, or `FAILED`.
 - Stale scheduled jobs are skipped when the job `runAt` no longer matches the
@@ -389,7 +424,7 @@ Success response:
     "id": "post-id",
     "userId": "local-dev-user",
     "caption": "Try this product today. #PostDee",
-    "videoS3Key": "uploads/upload-id/demo-video.mp4",
+    "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
     "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
     "scheduledAt": "2026-06-06T10:00:00.000Z",
     "status": "QUEUED",
@@ -423,9 +458,68 @@ Post limit reached:
 {
   "status": "error",
   "code": "POST_LIMIT_REACHED",
-  "message": "Basic plan is limited to 3 posts per month"
+  "message": "Basic plan is limited to 3 post units per month"
 }
 ```
+
+### `PATCH /posts/:id`
+
+Reschedules an authenticated user's queued post. Body:
+`{ "scheduledAt": "<ISO-8601 date>" }`. The route returns the updated `post`,
+returns `404` for a missing/non-queued user-owned post, and returns `503` when
+the publish queue cannot be rescheduled.
+
+### `DELETE /posts/:id`
+
+Deletes an authenticated user's scheduled/queued post and removes its publish
+job. Returns `{ "status": "ok" }` or `404` when no user-owned post is found.
+
+## Devices And Social Connections
+
+### `POST /devices`
+
+Registers the authenticated user's FCM token. Body:
+`{ "token": "...", "platform": "IOS|ANDROID|WEB" }`; `platform` is optional.
+
+### `GET /social-connections`
+
+Lists the authenticated user's saved PostPeer connections.
+
+### `POST /social-connections/:platform/connect`
+
+Creates/loads the user's PostPeer profile and returns `{ connectUrl }` for the
+requested supported platform.
+
+For a new Firebase identity, the API ensures the local `User` row before saving
+the foreign-keyed PostPeer profile. Profile creation sends PostPeer a required,
+stable HMAC-derived pseudonymous name and does not send the Firebase UID, email,
+phone, or display name. Concurrent same-user profile creations are coalesced
+inside one API instance. New profiles use a versioned 128-bit HMAC name. A
+single legacy 40-bit profile can be repaired only with the temporary,
+operator-supplied fingerprint and exact profile id described below; legacy
+profiles are never selected by the short name alone. The database exclusively
+claims each PostPeer profile id for one user. A conflicting claim returns
+`409 SOCIAL_CONNECTION_CONFLICT` without exposing either user's identity or
+the provider profile id. If competing requests create different provider
+profiles for the same user, the previously claimed database mapping remains
+authoritative.
+
+### `POST /social-connections/refresh`
+
+Polls the user's PostPeer profile integrations after the browser OAuth flow,
+then upserts connected platforms and removes stale local connections. PostPeer
+does not call a signed-state callback in the current implementation.
+
+### `DELETE /social-connections/:platform`
+
+Disconnects the authenticated user's platform using the stored, user-scoped
+PostPeer integration id. The provider integration is removed first and the
+local record is deleted only after provider success; provider `404` and a
+repeated request with no local record are treated as successful idempotent
+cleanup. If provider cleanup is unavailable or fails, the route returns
+`503 SOCIAL_CONNECTION_UNAVAILABLE` or `502 SOCIAL_CONNECTION_FAILED` and
+keeps the local record so a refresh cannot silently recreate a connection the
+user believed was removed.
 
 ## Account
 
@@ -714,8 +808,15 @@ transcribed minutes before returning success so concurrent requests cannot push
 usage past the configured store limit. Request:
 `{ "videoS3Key": "uploads/<user-id>/<upload-id>/clip.mp4", "durationSeconds": 18 }`. Response includes
 `transcript` (text, language, durationSeconds, segments[], words[]) and `quota`.
-The Groq adapter requests both `word` and `segment` timestamp granularities;
-omitting segment timestamps would prevent subtitle timing and silence-gap cuts.
+The Groq adapter sends `language=th` and requests both `word` and `segment`
+timestamp granularities. It also sends the concise Thai spelling context
+`PostDee` → `โพสต์ดี` through Groq's transcription prompt; the OpenAI adapter
+does not receive this provider-specific prompt.
+Validated word timing is preferred for subtitle timing and silence-gap cuts,
+while segments remain the conservative fallback when timing coverage is partial
+or Groq returns Thai character-level tokens that are not readable subtitle words.
+Whitespace-only/punctuation-only timing tokens are ignored, while invalid tokens
+that contain transcript text invalidate word-level timing and trigger fallback.
 
 ### `GET /ai-edits/quota`
 
@@ -748,15 +849,15 @@ Request:
     "filler": true,
     "hook": false,
     "beatsync": false,
-    "reframe": true,
-    "zoom": true,
+    "reframe": false,
+    "zoom": false,
     "color": true,
-    "sfx": true,
-    "audio": true,
-    "translate": true,
-    "pricetag": true,
-    "cta": true,
-    "watermark": true
+    "sfx": false,
+    "audio": false,
+    "translate": false,
+    "pricetag": false,
+    "cta": false,
+    "watermark": false
   },
   "settings": {
     "silencePreset": "balanced",
@@ -785,9 +886,10 @@ Response includes:
 - `recipe.transcript` with text, language, duration, segments, words, and model
 - `recipe.subtitles` for mobile subtitle burn-in
 - `recipe.cutRanges`, `silenceRanges`, and `fillerRanges`
-- `recipe.overlays` for CTA, price tag, and watermark hints
-- `recipe.renderHints` for tone and zoom settings. Hook removal is not emitted
-  by the current recipe builder yet.
+- `recipe.overlays` for future CTA, price tag, and watermark processors; the
+  current production mobile renderer does not apply these hints.
+- `recipe.renderHints` for tone and future zoom settings. Hook removal is not
+  emitted by the current recipe builder yet.
 - `recipe.music` with the validated source (`auto`, `library`, `device`, or
   `original`), optional genre/library track reference, beat intensity, volume,
   and voice-ducking preferences
@@ -795,12 +897,21 @@ Response includes:
   `applied`, `hinted`, `planned`, or `skipped`
 - `quota` with `{ limitMinutes, usedMinutes, remainingMinutes }`
 
-Capabilities that need future audio/visual analysis, such as beat sync,
-the opening hook/highlight, auto-reframe, SFX/music choice, audio cleanup, and subtitle translation, are
-accepted in the recipe but marked `planned` so the UI can stay honest.
+Production mobile enables only `subtitle`, `silence`, `filler`, and `color`,
+because those four have a real local renderer. The setup UI locks auto-reframe,
+zoom, audio cleanup, subtitle translation, price tag, CTA, and the AI-page
+watermark as `เร็ว ๆ นี้` and sends them as `false`.
+
+Capabilities that need future analysis or rendering, including beat sync, the
+opening hook/highlight, auto-reframe, zoom, SFX/music choice, audio cleanup,
+subtitle translation, price tag, CTA, and the AI-page watermark, are accepted
+from older/internal clients but marked `planned` so the UI can stay honest.
 
 `settings.silencePreset` accepts three values and changes the minimum gap
-between transcript segments that becomes a silence range:
+between validated word timings that becomes a silence range. The recipe falls
+back to transcript segment gaps when word timing is missing or incomplete. It
+also returns qualifying leading and trailing silence; trailing silence requires
+a finite `transcript.durationSeconds`:
 
 - `natural`: 1.0 second
 - `balanced`: 0.6 second (also used when the field is missing or invalid)
@@ -809,8 +920,13 @@ between transcript segments that becomes a silence range:
 `settings.fillerWords` is an exact allowlist. Supported values are `เอ่อ`,
 `อ่า`, `แบบว่า`, `คือว่า`, and `ประมาณว่า`. The backend normalizes NFC and
 removes surrounding whitespace, punctuation, and symbols before comparing a
-transcript word; it never uses a substring match. Omitting the field preserves
-legacy behavior and checks all five words. Sending `[]`, a non-array value, or
+normal transcript word; `เออ` is an exact transcription alias for `เอ่อ` but a
+longer token such as `เออแล้ว` does not match. When Groq returns a validated Thai
+character-token stream, the backend may conservatively reassemble adjacent
+fragments that equal an allowlisted filler. Reassembly cannot cross a timing
+gap and requires a real gap or verified Thai word/text boundaries; short
+prefixes remain stricter. Omitting the field preserves legacy behavior and checks all
+five words. Sending `[]`, a non-array value, or
 an array that sanitizes to no supported values fails closed and produces no
 filler ranges; it does not fall back to the legacy list.
 
@@ -1114,6 +1230,63 @@ without revoking access immediately because the subscription can still be active
 until the paid period actually expires. Unknown product or entitlement ids return
 `202` with `ignored: true`.
 
+### `POST /billing/revenuecat/resync`
+
+Reconciles a user-initiated RevenueCat restore with PostDee's subscription
+store when `BILLING_PROVIDER=revenuecat`. This authenticated endpoint accepts an
+empty JSON body and always uses the authenticated PostDee/Firebase uid as
+RevenueCat `app_user_id`; any user id
+in the request body is ignored. The mobile flow calls RevenueCat
+`restorePurchases` first, then calls this endpoint.
+
+The backend requests the subscriber from RevenueCat API v1 using the server-only
+`REVENUECAT_REST_API_V1_KEY`. It maps active Starter/Pro entitlements or products,
+prefers Pro if both are active, preserves a lifetime entitlement, and respects
+entitlement/subscription grace-period expiry. When RevenueCat returns no active
+entitlement, only the matching `revenuecat:<uid>` subscription is deactivated;
+paid access from another provider is left unchanged. An active but unmapped
+entitlement is treated as configuration drift and never downgrades the user.
+For an empty RevenueCat result, top-level `plan` is `BASIC` so the client does
+not report a successful Restore; `effectivePlan` separately reports any access
+that remains active from another provider.
+
+Request:
+
+```http
+POST /billing/revenuecat/resync
+Authorization: Bearer <Firebase ID token>
+Content-Type: application/json
+
+{}
+```
+
+Paid response example:
+
+```json
+{
+  "status": "ok",
+  "plan": "PRO",
+  "subscription": {
+    "userId": "firebase-user-id",
+    "plan": "PRO",
+    "status": "ACTIVE"
+  }
+}
+```
+
+The route has a fixed per-IP limit of 10 requests per 10 minutes. Errors are:
+
+- `401` when the user is not authenticated.
+- `409 REVENUECAT_ENTITLEMENT_NOT_MAPPED` when RevenueCat reports active access
+  that does not match the configured Starter/Pro ids; the existing plan is kept.
+- `429` when the restore/resync limit is exceeded.
+- `501 REVENUECAT_RESYNC_NOT_CONFIGURED` when the server REST key is absent.
+- `502 REVENUECAT_RESYNC_FAILED` when RevenueCat cannot be queried or returns an
+  invalid response. A provider failure leaves the existing local plan unchanged.
+
+This route is distinct from the webhook: the webhook handles provider lifecycle
+events, while resync repairs or confirms state after an explicit user Restore.
+
 ### `POST /billing/store/verify`
 
 Legacy direct Apple/Google store verifier. It verifies a mobile store purchase
@@ -1319,6 +1492,7 @@ PostgreSQL.
 | `FIREBASE_PROJECT_ID` | `postdee-prod` | Firebase project id |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | `{...}` | Firebase Admin service account JSON for account deletion and revoked-token checks; keep secret |
 | `FIREBASE_AUTH_DELETE_ENABLED` | `false`, `true` | Enables complete Firebase account deletion and revoked/deleted-token checks; requires the Firebase service account |
+| `PUSH_SENDER` | `mock`, `firebase` | Push sender adapter; keep `mock` until the Firebase sender is verified with the installed Admin SDK |
 | `VIDEO_STORAGE` | `mock`, `r2`, `s3` | Temporary video storage adapter |
 | `CLOUDFLARE_R2_BUCKET` | `postdee-video-temp` | R2 bucket name |
 | `CLOUDFLARE_R2_ACCOUNT_ID` | `...` | Cloudflare account id |
@@ -1349,17 +1523,18 @@ PostgreSQL.
 | `GROQ_EDIT_PLAN_MODEL` | `llama-3.3-70b-versatile` | Groq chat model for edit planning |
 | `BILLING_PROVIDER` | `mock`, `store`, `revenuecat` | Billing verifier adapter |
 | `REVENUECAT_WEBHOOK_AUTH_TOKEN` | `...` | Bearer token required by the RevenueCat webhook endpoint |
+| `REVENUECAT_REST_API_V1_KEY` | `...` | Server-only secret used to read a subscriber during authenticated restore/resync |
 | `REVENUECAT_STARTER_ENTITLEMENT_ID` | `starter` | RevenueCat entitlement mapped to Starter |
 | `REVENUECAT_PRO_ENTITLEMENT_ID` | `pro` | RevenueCat entitlement mapped to Pro |
 | `REVENUECAT_STARTER_PRODUCT_ID` | `postdee_starter_monthly` | RevenueCat product mapped to Starter |
 | `REVENUECAT_PRO_PRODUCT_ID` | `postdee_pro_monthly` | RevenueCat product mapped to Pro |
 | `STORE_STARTER_MONTHLY_PRODUCT_ID` | `postdee_starter_monthly` | Starter store product id |
 | `STORE_PRO_MONTHLY_PRODUCT_ID` | `postdee_pro_monthly` | Pro store product id |
-| `GOOGLE_PLAY_PACKAGE_NAME` | `com.postdee` | Android package name |
+| `GOOGLE_PLAY_PACKAGE_NAME` | `com.postdee.postdee_mobile` | Android package name |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_JSON` | `{...}` | Google Play verifier service account JSON |
 | `GOOGLE_PLAY_ACCESS_TOKEN` | `...` | Optional Google Play access token |
 | `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN` | `...` | Bearer token required by the Google Play RTDN endpoint |
-| `APPLE_APP_BUNDLE_ID` | `com.postdee` | iOS bundle id |
+| `APPLE_APP_BUNDLE_ID` | `com.postdee.postdeeMobile` | iOS bundle id |
 | `APPLE_APP_STORE_ISSUER_ID` | `...` | App Store Server API issuer id |
 | `APPLE_APP_STORE_KEY_ID` | `...` | App Store Server API key id |
 | `APPLE_APP_STORE_PRIVATE_KEY` | `...` | App Store Server API private key |
@@ -1373,25 +1548,32 @@ PostgreSQL.
 | `CAPTION_USAGE_STORE` | `memory`, `prisma` | Real-clip AI caption monthly usage persistence |
 | `AI_EDIT_USAGE_STORE` | `memory`, `prisma` | AI editing monthly minute usage persistence |
 | `PUBLISH_QUEUE` | `memory`, `bullmq` | Publish queue adapter; `bullmq` requires `POST_STORE=prisma` and `DATABASE_URL` |
-| `SOCIAL_PUBLISHER` | `mock`, `postpeer` | Social publishing adapter |
+| `SOCIAL_PUBLISHER` | `mock`, `disabled`, `postpeer` | Local fake success, explicit fail-closed staging/maintenance mode, or real PostPeer publishing |
 | `POSTPEER_API_KEY` | `...` | PostPeer API key for real social publishing |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | Optional PostPeer API host override |
+| `POSTPEER_LEGACY_RECOVERY_FINGERPRINT` | 64 hex characters | Temporary one-user repair proof: `HMAC-SHA256(POSTPEER_API_KEY, "postdee-legacy-recovery:<firebase-user-id>")`; must be paired with the exact profile id and removed after refresh succeeds |
+| `POSTPEER_LEGACY_RECOVERY_PROFILE_ID` | `...` | Exact PostPeer profile id allowed for the temporary legacy repair; must be paired with the fingerprint |
 | `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | Operator PostPeer TikTok integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | Operator PostPeer YouTube Shorts integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | Operator PostPeer Instagram Reels integration id used only when no per-user connection resolver is wired; forbidden in production |
-| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Reels integration id used only when no per-user connection resolver is wired; forbidden in production |
+| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Page Video integration id (internal `FACEBOOK_REELS` compatibility value) used only when no per-user connection resolver is wired; forbidden in production |
 | `MOCK_USER_ID` | `local-dev-user` | Default mock user id |
 
 ## Production Gaps
 
 The following work is still required before production launch:
 
-- Verify the per-user PostPeer connect/refresh flow with a connected test account before enabling production user publishing; do not use shared `POSTPEER_*_ACCOUNT_ID` values in production.
+- Verify the per-user PostPeer connect/refresh and full publish-result flow with
+  connected test accounts before enabling production user publishing; do not
+  use shared `POSTPEER_*_ACCOUNT_ID` values in production. Controlled-first
+  requests currently force YouTube `private` and TikTok `SELF_ONLY` direct
+  publishing; add explicit user privacy controls before public rollout.
 - Store social access tokens securely only if direct platform APIs replace the
   PostPeer provider later.
 - Complete provider-level R2 upload and cleanup testing.
 - Test real-clip caption transcription with real R2 videos and Groq before
-  production launch; frame sampling is still not implemented.
+  production launch. Mobile frame extraction/upload (up to 3 frames) is
+  implemented and still needs real-device/provider verification.
 - Apply and verify the Prisma `RealClipCaptionUsage` migration in production
   before selling paid AI caption quotas.
 - Keep legacy AI review compatibility flags false while building real-clip AI
@@ -1400,9 +1582,15 @@ The following work is still required before production launch:
   top-up handling, mobile FFmpeg export, retries, and failure handling before
   implementation.
 - Complete Firebase Google Sign-In and Phone Auth device testing.
-- Complete RevenueCat dashboard setup for real App Store / Google Play products,
-  replace the local Test Store SDK key with platform RevenueCat SDK keys, and
-  run App Store / Google Play sandbox purchase testing through RevenueCat.
+- RevenueCat Test Store purchase and true Restore/resync E2E pass on the Android
+  Emulator after the current backend was deployed and
+  `REVENUECAT_REST_API_V1_KEY` was configured in Render Staging.
+- The RevenueCat dashboard now has a Play Store app, Starter/Pro products,
+  entitlements, the default offering, and a production Android public SDK key;
+  a signed AAB is also ready. Still create the Play Console app/subscriptions,
+  configure Google service credentials, open an internal-testing track, and run
+  a real Google Play purchase/restore. Those steps are blocked until Play Console
+  access is verified with a physical Android device; an Emulator is not accepted.
 - Add full RevenueCat renewal, cancel, refund, billing-issue, and notification
   replay coverage.
 - Replace mock analytics with real platform analytics fetchers.

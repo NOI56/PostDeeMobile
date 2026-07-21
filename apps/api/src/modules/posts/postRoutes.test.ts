@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
 import { createInMemoryPublishQueue } from '../queue/publishQueue.js';
+import { createInMemoryPlatformPublishStore } from '../platformPublishes/platformPublishStore.js';
 import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import { createUserStore } from '../users/userStore.js';
 import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
@@ -61,7 +62,9 @@ describe('post routes', () => {
 
     const listResponse = await request(app).get('/posts').expect(200);
 
-    expect(listResponse.body.posts).toEqual([createResponse.body.post]);
+    expect(listResponse.body.posts).toEqual([
+      { ...createResponse.body.post, platformResults: [] }
+    ]);
   });
 
   it('rejects post creation with media owned by another user', async () => {
@@ -82,6 +85,87 @@ describe('post routes', () => {
       status: 'error',
       message: 'Selected media does not belong to the authenticated user'
     });
+  });
+
+  it('returns per-platform results only for posts owned by the authenticated user', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const ownedPost = await postStore.create({
+      userId: 'seller-a',
+      caption: 'Owned clip',
+      videoS3Key: ownedUploadKey('seller-a', 'owned.mp4'),
+      platforms: ['TIKTOK', 'YOUTUBE_SHORTS']
+    });
+    const foreignPost = await postStore.create({
+      userId: 'seller-b',
+      caption: 'Foreign clip',
+      videoS3Key: ownedUploadKey('seller-b', 'foreign.mp4'),
+      platforms: ['FACEBOOK_REELS']
+    });
+    const listForPostIds = vi.fn(async () => [
+      {
+        postId: ownedPost.id,
+        platform: 'TIKTOK' as const,
+        status: 'PUBLISHED' as const,
+        externalPostId: 'https://tiktok.test/owned',
+        publishedAt: '2026-06-02T10:00:00.000Z',
+        views: 0,
+        likes: 0
+      },
+      {
+        postId: foreignPost.id,
+        platform: 'FACEBOOK_REELS' as const,
+        status: 'FAILED' as const,
+        errorMessage: 'Must not leak',
+        views: 0,
+        likes: 0
+      }
+    ]);
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: 'seller-a',
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+
+    registerPostRoutes(
+      router,
+      postStore,
+      createInMemoryPublishQueue(),
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      { recordResults: vi.fn(async () => []), listForPostIds }
+    );
+    app.use(router);
+
+    const response = await request(app).get('/posts').expect(200);
+
+    expect(listForPostIds).toHaveBeenCalledWith([ownedPost.id]);
+    expect(response.body.posts).toEqual([
+      {
+        ...ownedPost,
+        platformResults: [
+          {
+            postId: ownedPost.id,
+            platform: 'TIKTOK',
+            status: 'PUBLISHED',
+            externalPostId: 'https://tiktok.test/owned',
+            publishedAt: '2026-06-02T10:00:00.000Z',
+            views: 0,
+            likes: 0
+          }
+        ]
+      }
+    ]);
   });
 
   it('does not queue a post until a managed upload is completed', async () => {
@@ -111,6 +195,7 @@ describe('post routes', () => {
       authMiddleware,
       createUserStore(),
       createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
       {
         assertUploadReady: vi.fn(async () => {
           throw new ManagedUploadServiceError(
@@ -165,7 +250,8 @@ describe('post routes', () => {
       publishQueue,
       authMiddleware,
       createUserStore(),
-      createSubscriptionStore()
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore()
     );
     app.use(router);
 
@@ -222,7 +308,8 @@ describe('post routes', () => {
       publishQueue,
       authMiddleware,
       createUserStore(),
-      createSubscriptionStore()
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore()
     );
     app.use(router);
 
@@ -299,7 +386,9 @@ describe('post routes', () => {
       .set('x-postdee-user-id', 'calendar-seller')
       .expect(200);
 
-    expect(listResponse.body.posts).toEqual([scheduledResponse.body.post]);
+    expect(listResponse.body.posts).toEqual([
+      { ...scheduledResponse.body.post, platformResults: [] }
+    ]);
   });
 
   it('scopes post lists and Basic monthly limits by authenticated user', async () => {
@@ -358,7 +447,9 @@ describe('post routes', () => {
     expect(
       sellerAListResponse.body.posts.every((post: { userId: string }) => post.userId === 'seller-a')
     ).toBe(true);
-    expect(sellerBListResponse.body.posts).toEqual([sellerBCreateResponse.body.post]);
+    expect(sellerBListResponse.body.posts).toEqual([
+      { ...sellerBCreateResponse.body.post, platformResults: [] }
+    ]);
   });
 
   it('upserts the auth user before creating a Prisma-backed post', async () => {

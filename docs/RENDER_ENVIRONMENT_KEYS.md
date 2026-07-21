@@ -1,14 +1,22 @@
 # Render Environment Keys
 
-Last checked from repository files and the live Render service: 2026-07-13.
+Last checked from repository files and the latest recorded live Render service
+snapshot: 2026-07-15.
 
 This file is the shared checklist for PostDee Render environment variables.
 Do not paste real secret values into this file. Store real values only in the
 Render Dashboard or another approved secret manager.
 
+Production uses `render.yaml`. Staging uses `render.staging.yaml` with separate
+resource names and separate provider credentials; see `docs/STAGING.md`. Never
+copy `DATABASE_URL`, R2 bucket credentials, Firebase service-account JSON,
+RevenueCat webhook/REST secrets, or PostPeer user connections between
+environments.
+
 ## What Was Checked
 
 - `render.yaml`
+- `render.staging.yaml`
 - `apps/api/.env.example`
 - `apps/api/src/config/env.ts`
 - `apps/api/src/config/renderConfig.test.ts`
@@ -54,7 +62,7 @@ These are present in `render.yaml` with fixed values or a Render-managed source.
 | `AUTH_PROVIDER` | Blueprint value | `firebase` | Requires `FIREBASE_PROJECT_ID`. |
 | `FIREBASE_AUTH_DELETE_ENABLED` | Blueprint value | `true` | Keeps Firebase UID deletion and revoked-token checks enabled; requires `FIREBASE_SERVICE_ACCOUNT_JSON`. |
 | `PUSH_SENDER` | Blueprint value | `mock` | Safe until Firebase service account push is ready. |
-| `BILLING_PROVIDER` | Blueprint value | `revenuecat` | Requires `REVENUECAT_WEBHOOK_AUTH_TOKEN`. |
+| `BILLING_PROVIDER` | Blueprint value | `revenuecat` | Requires the webhook token; current Restore also needs the server REST key below. |
 | `REVENUECAT_STARTER_ENTITLEMENT_ID` | Blueprint value | `starter` | Maps RevenueCat entitlement to Starter. |
 | `REVENUECAT_PRO_ENTITLEMENT_ID` | Blueprint value | `pro` | Maps RevenueCat entitlement to Pro. |
 | `REVENUECAT_STARTER_PRODUCT_ID` | Blueprint value | `postdee_starter_monthly` | Maps RevenueCat product to Starter. |
@@ -79,6 +87,7 @@ Render Dashboard.
 | `FIREBASE_PROJECT_ID` | Firebase Auth token verification | Yes | Project id, not a private key. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase account deletion and future push sender | Yes | Present in the live service. Keep secret; it is required while `FIREBASE_AUTH_DELETE_ENABLED=true` and before changing `PUSH_SENDER` to `firebase`. |
 | `REVENUECAT_WEBHOOK_AUTH_TOKEN` | RevenueCat webhook auth | Yes | Production startup fails without this when `BILLING_PROVIDER=revenuecat`. |
+| `REVENUECAT_REST_API_V1_KEY` | RevenueCat subscriber lookup after user Restore | Before enabling Restore | Server-only secret. Never use the mobile/Test Store SDK key here and never expose it to Flutter. Without it, `POST /billing/revenuecat/resync` returns `501 REVENUECAT_RESYNC_NOT_CONFIGURED`. |
 | `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN` | Legacy Google Play RTDN endpoint | Only if that endpoint is used | Blueprint declares it; RevenueCat is still the preferred billing path. |
 
 ## Defaults Not Needed In Render Unless Overriding
@@ -112,6 +121,7 @@ These values either fail startup in production or are intentionally not in
 | `BILLING_PROVIDER=mock` | Production startup rejects mock billing. |
 | `VIDEO_STORAGE=mock` | Production startup rejects mock storage. |
 | `SOCIAL_PUBLISHER=mock` | Production startup rejects mock publishing. |
+| `SOCIAL_PUBLISHER=disabled` | Explicit fail-closed mode for initial Staging or maintenance; it never reports fake publish success. Production launch still requires `postpeer`. |
 | `POSTPEER_TIKTOK_ACCOUNT_ID` | Shared operator account ids are forbidden in production. |
 | `POSTPEER_YOUTUBE_ACCOUNT_ID` | Shared operator account ids are forbidden in production. |
 | `POSTPEER_INSTAGRAM_ACCOUNT_ID` | Shared operator account ids are forbidden in production. |
@@ -185,8 +195,9 @@ Last checked from the Render API: 2026-07-03.
 Service: `postdee-api`
 Service id: `srv-d8uf2sbtqb8s73b6ptmg`
 
-Result: the production keys required by the current backend config are present.
-No secret values were copied into this file.
+Result of that dated snapshot: the keys required by the backend configuration at
+the time were present. No secret values were copied into this file. The newer
+`REVENUECAT_REST_API_V1_KEY` was not part of that check and remains unconfirmed.
 
 Required now and confirmed present:
 
@@ -207,6 +218,8 @@ Optional / later keys:
   `PUSH_SENDER=mock`.
 - `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN` is missing, which is acceptable while
   RevenueCat is the main billing path.
+- `REVENUECAT_REST_API_V1_KEY` is not confirmed in the dated snapshot. It must be
+  added separately to Staging and Production before enabling true Restore/resync.
 
 Forbidden production keys confirmed absent:
 
@@ -225,6 +238,8 @@ names for database persistence, R2 video storage, Gemini captions, Groq AI
 editing, PostPeer publishing, Firebase auth, RevenueCat billing, and AI edit
 usage persistence.
 
-The latest live Render API check confirms that the hidden `sync: false` values
-required by the current production config are present on the `postdee-api`
-service.
+Both blueprints now declare `REVENUECAT_REST_API_V1_KEY` as `sync: false`. The
+latest recorded live Render API check confirms only the earlier hidden values on
+`postdee-api`; it does not confirm the newly introduced RevenueCat REST key.
+Apply the updated blueprints, then recheck both `postdee-api-staging` and
+`postdee-api` without printing its value.

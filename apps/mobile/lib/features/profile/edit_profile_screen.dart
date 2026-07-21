@@ -289,7 +289,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      'ชื่อร้านจะแสดงบนหน้าโปรไฟล์ลิงก์ (Link in Bio) และในโพสต์ของคุณ',
+                      'ชื่อที่แก้จะใช้เฉพาะในเครื่องนี้ และยังไม่ซิงก์กับบัญชีหรืออุปกรณ์อื่น',
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.5,

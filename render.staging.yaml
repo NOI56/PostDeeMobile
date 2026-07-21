@@ -1,0 +1,110 @@
+# Dedicated low-cost staging Blueprint.
+#
+# Safety rules before creating this Blueprint in Render:
+# - Use the staging-only database declared below; never point DATABASE_URL at
+#   postdee-postgres or any external production database.
+# - Supply a dedicated R2 bucket, Firebase project, and RevenueCat test webhook
+#   token for every `sync: false` entry.
+# - Keep account deletion and push delivery disabled until their staging-only
+#   Firebase service account has been installed and tested.
+# - The free Render Postgres plan expires after 30 days and each workspace can
+#   have only one active free Postgres database.
+
+services:
+  - type: web
+    name: postdee-api-staging
+    runtime: node
+    rootDir: apps/api
+    region: singapore
+    plan: free
+    branch: codex/ai-edit-thai-timing-staging
+    autoDeployTrigger: checksPass
+    numInstances: 1
+    buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
+    startCommand: npm run prisma:migrate:deploy && npm run start
+    healthCheckPath: /health
+    envVars:
+      # Keep production guards enabled so staging exercises the same safety
+      # checks as the real service.
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: postdee-postgres-staging
+          property: connectionString
+      - key: TEMPLATE_STORE
+        value: prisma
+      - key: POST_STORE
+        value: prisma
+      - key: SUBSCRIPTION_STORE
+        value: prisma
+      - key: ANALYTICS_STORE
+        value: prisma
+      - key: CAPTION_USAGE_STORE
+        value: prisma
+      - key: AI_EDIT_USAGE_STORE
+        value: prisma
+      - key: PUBLISH_QUEUE
+        value: memory
+      - key: VIDEO_STORAGE
+        value: r2
+      - key: CLOUDFLARE_R2_BUCKET
+        sync: false
+      - key: CLOUDFLARE_R2_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_ENDPOINT
+        sync: false
+      - key: CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS
+        value: "300"
+      - key: UPLOAD_PROTOCOL_MODE
+        value: dual
+      - key: MULTIPART_UPLOAD_PART_SIZE_BYTES
+        value: "16777216"
+      - key: MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS
+        value: "3600"
+      - key: CAPTION_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TRANSCRIPTION_PROVIDER
+        value: groq
+      - key: EDIT_PLAN_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SOCIAL_PUBLISHER
+        value: disabled
+      - key: AUTH_PROVIDER
+        value: firebase
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_AUTH_DELETE_ENABLED
+        value: "false"
+      - key: PUSH_SENDER
+        value: mock
+      - key: BILLING_PROVIDER
+        value: revenuecat
+      - key: REVENUECAT_WEBHOOK_AUTH_TOKEN
+        sync: false
+      - key: REVENUECAT_REST_API_V1_KEY
+        sync: false
+      - key: REVENUECAT_STARTER_ENTITLEMENT_ID
+        value: starter
+      - key: REVENUECAT_PRO_ENTITLEMENT_ID
+        value: pro
+      - key: REVENUECAT_STARTER_PRODUCT_ID
+        value: postdee_starter_monthly
+      - key: REVENUECAT_PRO_PRODUCT_ID
+        value: postdee_pro_monthly
+
+databases:
+  - name: postdee-postgres-staging
+    region: singapore
+    plan: free
+    databaseName: postdee_staging
+    user: postdee_staging
+    ipAllowList: []

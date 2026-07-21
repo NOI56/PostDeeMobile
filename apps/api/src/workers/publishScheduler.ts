@@ -18,6 +18,11 @@ export type PublishScheduler = {
   runOnce: () => Promise<void>;
 };
 
+const wait = async (delayMs: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+
 /**
  * In-process publish scheduler for the in-memory queue (PUBLISH_QUEUE=memory).
  *
@@ -34,7 +39,10 @@ export const createPublishScheduler = ({
   notifier = createNoopPublishNotifier(),
   assertOwnerActive,
   intervalMs = 5000,
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  maxPrePublishAttempts = 3,
+  prePublishRetryBackoffMs = 1_000,
+  sleep = wait
 }: {
   postStore: PostStore;
   platformPublishStore: PlatformPublishStore;
@@ -44,9 +52,72 @@ export const createPublishScheduler = ({
   assertOwnerActive?: (ownerId: string) => Promise<void>;
   intervalMs?: number;
   now?: () => string;
+  maxPrePublishAttempts?: number;
+  prePublishRetryBackoffMs?: number;
+  sleep?: (delayMs: number) => Promise<void>;
 }): PublishScheduler => {
   let timer: ReturnType<typeof setInterval> | undefined;
   let isRunning = false;
+  const attemptLimit = Math.max(1, Math.floor(maxPrePublishAttempts));
+  const retryBackoffMs = Math.max(0, prePublishRetryBackoffMs);
+
+  const publishDuePost = async (post: Awaited<ReturnType<PostStore['listDue']>>[number]) => {
+    let externalPublishStarted = false;
+    const trackedPublisher: PlatformPublisher = {
+      publish: async (input) => {
+        externalPublishStarted = true;
+        return publisher.publish(input);
+      }
+    };
+
+    for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
+      try {
+        await processPublishJobForPost({
+          jobData: {
+            userId: post.userId,
+            postId: post.id,
+            caption: post.caption,
+            videoS3Key: post.videoS3Key,
+            platforms: post.platforms,
+            runAt: post.scheduledAt ?? now(),
+            status: post.scheduledAt ? 'SCHEDULED' : 'READY'
+          },
+          postStore,
+          publisher: trackedPublisher,
+          storage,
+          platformPublishStore,
+          notifier,
+          assertOwnerActive,
+          now
+        });
+        return;
+      } catch {
+        // Once a provider call starts, its outcome can be ambiguous. The worker
+        // already fails the post closed; never create another provider post.
+        if (externalPublishStarted) {
+          return;
+        }
+
+        if (attempt === attemptLimit) {
+          await postStore.updateStatus({ postId: post.id, status: 'FAILED' });
+
+          try {
+            await notifier.notifyPublishResult({
+              userId: post.userId,
+              postId: post.id,
+              outcome: 'FAILED'
+            });
+          } catch {
+            // Best-effort notification; the terminal status is already stored.
+          }
+
+          return;
+        }
+
+        await sleep(retryBackoffMs * 2 ** (attempt - 1));
+      }
+    }
+  };
 
   const runOnce = async () => {
     if (isRunning) {
@@ -60,26 +131,10 @@ export const createPublishScheduler = ({
 
       for (const post of duePosts) {
         try {
-          await processPublishJobForPost({
-            jobData: {
-              userId: post.userId,
-              postId: post.id,
-              caption: post.caption,
-              videoS3Key: post.videoS3Key,
-              platforms: post.platforms,
-              runAt: post.scheduledAt ?? now(),
-              status: post.scheduledAt ? 'SCHEDULED' : 'READY'
-            },
-            postStore,
-            publisher,
-            storage,
-            platformPublishStore,
-            notifier,
-            assertOwnerActive,
-            now
-          });
+          await publishDuePost(post);
         } catch {
-          // processPublishJobForPost already marked the post FAILED.
+          // A store outage can also prevent persisting FAILED. The next tick
+          // may safely retry while the post remains QUEUED.
         }
       }
     } finally {

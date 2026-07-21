@@ -1454,20 +1454,6 @@ class _UploadPageHeader extends StatelessWidget {
             ],
           ),
         ),
-        TextButton(
-          onPressed: () {},
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            foregroundColor: AppTheme.accentCyanInk,
-            textStyle: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          child: const Text('บันทึกร่าง'),
-        ),
       ],
     );
   }
@@ -1507,9 +1493,10 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
     id: 'ep_trimmer',
     title: 'ตัดคลิปเป็น EP',
     description: 'ตรวจความยาวคลิปก่อนโพสต์ และเตรียมร่าง EP.1 / EP.2 ให้',
-    status: 'ขั้นโพสต์',
+    status: 'เร็ว ๆ นี้',
     icon: Icons.content_cut,
     color: Color(0xFFFFD166),
+    prototypeOnly: true,
     settings: [
       GrowthToolSettingOption(
         id: 'platform_duration_check',
@@ -1529,10 +1516,11 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
   static const _manualEditorDetail = GrowthToolDetail(
     id: 'manual_editor',
     title: 'ตัดต่อเอง',
-    description: 'ไทม์ไลน์ ซับ สติกเกอร์ ฟิลเตอร์ ครบเหมือน CapCut',
-    status: 'Manual',
+    description: 'วางแผนไทม์ไลน์ ซับ สติกเกอร์ และฟิลเตอร์ไว้ล่วงหน้า',
+    status: 'เร็ว ๆ นี้',
     icon: Icons.video_settings_outlined,
     color: AppTheme.accentCyan,
+    prototypeOnly: true,
     settings: [
       GrowthToolSettingOption(
         id: 'timeline_layers',
@@ -1552,22 +1540,14 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
   static const _watermarkDetail = GrowthToolDetail(
     id: 'auto_watermark',
     title: 'ใส่ลายน้ำอัตโนมัติ',
-    description: 'ฝังโลโก้ร้านลงในวิดีโอก่อนโพสต์',
-    status: 'ป้องกันคนก๊อปคลิป',
+    description: 'ฝังโลโก้ PostDee ที่มุมขวาล่างของวิดีโอก่อนอัปโหลด',
+    status: 'ใช้โลโก้ PostDee มุมขวาล่าง',
     icon: Icons.shield_outlined,
     color: AppTheme.success,
     settings: [
       GrowthToolSettingOption(
         id: 'shop_logo',
-        label: 'อัปโหลดโลโก้ร้าน',
-      ),
-      GrowthToolSettingOption(
-        id: 'watermark_position_size',
-        label: 'เลือกตำแหน่งและขนาดลายน้ำ',
-      ),
-      GrowthToolSettingOption(
-        id: 'preview_before_post',
-        label: 'พรีวิวก่อนโพสต์โดยยังไม่แก้ไฟล์จริงในรอบนี้',
+        label: 'ใช้โลโก้ PostDee มุมขวาล่างก่อนอัปโหลด',
       ),
     ],
   );
@@ -2077,7 +2057,7 @@ class _PlatformSelectorSection extends StatelessWidget {
     SocialPlatform.tiktok: 'โพสต์คลิปสั้นไป TikTok อัตโนมัติ',
     SocialPlatform.youtubeShorts: 'อัปขึ้น YouTube Shorts จากคลิปเดียว',
     SocialPlatform.instagramReels: 'แชร์ Reels ไป Instagram',
-    SocialPlatform.facebookReels: 'โพสต์ Reels ลงเพจ Facebook',
+    SocialPlatform.facebookReels: 'โพสต์วิดีโอลงเพจ Facebook',
     SocialPlatform.shopeeVideo: 'โพสต์วิดีโอขึ้น Shopee Video',
     SocialPlatform.lazadaVideo: 'โพสต์วิดีโอขึ้น Lazada Video',
   };

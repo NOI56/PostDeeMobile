@@ -197,7 +197,7 @@ void main() {
     );
 
     expect(find.text('สร้างโพสต์ใหม่'), findsOneWidget);
-    expect(find.text('บันทึกร่าง'), findsOneWidget);
+    expect(find.text('บันทึกร่าง'), findsNothing);
     expect(find.text('เลือกวิดีโอ 9:16'), findsOneWidget);
     expect(find.text('สถานะแพ็กเกจ'), findsNothing);
     expect(find.text('รีเฟรชแพ็กเกจ'), findsNothing);
@@ -274,10 +274,10 @@ void main() {
     );
     expect(find.text('ตัดต่อเอง'), findsOneWidget);
     expect(
-      find.text('ไทม์ไลน์ ซับ สติกเกอร์ ฟิลเตอร์ ครบเหมือน CapCut'),
+      find.text('วางแผนไทม์ไลน์ ซับ สติกเกอร์ และฟิลเตอร์ไว้ล่วงหน้า'),
       findsOneWidget,
     );
-    expect(find.text('ป้องกันคนก๊อปคลิป'), findsOneWidget);
+    expect(find.text('ใช้โลโก้ PostDee มุมขวาล่าง'), findsOneWidget);
     expect(find.text('โหมดตั้งค่าขั้นสูง'), findsOneWidget);
     expect(find.text('UI ก่อน'), findsNothing);
     expect(
@@ -341,8 +341,7 @@ void main() {
       find.byKey(const ValueKey('uploader-tool-auto-watermark')),
       findsOneWidget,
     );
-    expect(find.text('ฝังโลโก้ร้านลงในวิดีโอก่อนโพสต์'), findsNothing);
-    expect(find.text('กันขโมยคลิป'), findsNothing);
+    expect(find.text('ใช้โลโก้ PostDee มุมขวาล่าง'), findsOneWidget);
   });
 
   testWidgets('opens upload growth tool detail settings', (tester) async {
@@ -357,6 +356,7 @@ void main() {
     final toolTitles = [
       'ตัดคลิปเป็น EP',
       'ใส่ลายน้ำอัตโนมัติ',
+      'ตัดต่อเอง',
     ];
 
     for (final title in toolTitles) {
@@ -368,8 +368,24 @@ void main() {
         find.byKey(const ValueKey('growth-tool-real-status-note')),
         findsOneWidget,
       );
-      expect(find.text('ตั้งค่าในเครื่องนี้'), findsOneWidget);
-      expect(find.text('ยังไม่เชื่อมระบบจริง'), findsNothing);
+      if (title == 'ใส่ลายน้ำอัตโนมัติ') {
+        expect(find.text('ตั้งค่าในเครื่องนี้'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('growth-tool-enabled-switch')),
+          findsOneWidget,
+        );
+        expect(find.text('ใช้โลโก้ PostDee มุมขวาล่างก่อนอัปโหลด'),
+            findsOneWidget);
+        expect(find.text('อัปโหลดโลโก้ร้าน'), findsNothing);
+        expect(find.text('เลือกตำแหน่งและขนาดลายน้ำ'), findsNothing);
+      } else {
+        expect(find.text('แบบร่างในเครื่อง'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('growth-tool-enabled-switch')),
+          findsNothing,
+        );
+        expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
+      }
 
       await tester.tap(find.byTooltip('ปิด'));
       await tester.pumpAndSettle();
@@ -412,6 +428,12 @@ void main() {
     for (final row in platformRows) {
       expect(row, findsOneWidget);
     }
+
+    // PostPeer currently publishes this target through the Facebook Page
+    // Videos endpoint, not the Reels API. Keep the legacy API value for stored
+    // posts, but do not promise a Reel in user-facing copy.
+    expect(find.text('Facebook Video', skipOffstage: false), findsOneWidget);
+    expect(find.text('Facebook Reels', skipOffstage: false), findsNothing);
 
     final firstLeft = tester.getTopLeft(platformRows.first).dx;
     var previousTop = tester.getTopLeft(platformRows.first).dy;

@@ -59,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingPosts = true;
   String? _analyticsErrorMessage;
   String? _subscriptionErrorMessage;
+  var _subscriptionLoadGeneration = 0;
 
   @override
   void initState() {
@@ -95,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadSubscription() async {
+    final loadGeneration = ++_subscriptionLoadGeneration;
     setState(() {
       _isLoadingSubscription = true;
       _subscriptionErrorMessage = null;
@@ -105,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
           widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
       final subscription = await loader();
 
-      if (!mounted) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -113,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _subscription = subscription;
       });
     } on ApiException catch (error) {
-      if (!mounted) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -121,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _subscriptionErrorMessage = error.message;
       });
     } on SocketException {
-      if (!mounted) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -130,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _subscriptionErrorMessage = l10n.homeApiConnectionError;
       });
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -139,11 +141,26 @@ class _HomeScreenState extends State<HomeScreen> {
         _subscriptionErrorMessage = l10n.homeAnalyticsLoadError;
       });
     } finally {
-      if (mounted) {
+      if (mounted && loadGeneration == _subscriptionLoadGeneration) {
         setState(() {
           _isLoadingSubscription = false;
         });
       }
+    }
+  }
+
+  Future<void> _openPaywall() async {
+    final loader =
+        widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => PaywallScreen(loadSubscription: loader),
+      ),
+    );
+
+    if (mounted) {
+      await _loadSubscription();
     }
   }
 
@@ -239,6 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
           subscription: _subscription,
           isLoading: _isLoadingSubscription,
           errorMessage: _subscriptionErrorMessage,
+          onTap: _openPaywall,
         ),
         const SizedBox(height: 14),
         _AiEditingShortcutCard(onOpenAi: widget.onOpenAi),
@@ -613,11 +631,13 @@ class _PlanSummaryCard extends StatelessWidget {
     required this.subscription,
     required this.isLoading,
     required this.errorMessage,
+    required this.onTap,
   });
 
   final SubscriptionStatusResult? subscription;
   final bool isLoading;
   final String? errorMessage;
+  final VoidCallback onTap;
 
   String _planTitle(PostDeeLocalizations l10n) {
     final isThai = l10n.locale.languageCode == 'th';
@@ -684,11 +704,7 @@ class _PlanSummaryCard extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => const PaywallScreen(),
-        ),
-      ),
+      onTap: onTap,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: AppTheme.mint,
@@ -1157,9 +1173,10 @@ class _GrowthToolsPreview extends StatelessWidget {
       id: 'viral_alert',
       title: 'แจ้งเตือนคลิปไวรัล',
       description: 'เตือนเมื่อยอดวิวโตเร็วกว่าปกติ',
-      status: 'แจ้งเตือน',
+      status: 'เร็ว ๆ นี้',
       icon: Icons.notifications_active,
       color: Color(0xFFF59E0B),
+      prototypeOnly: true,
       settings: [
         GrowthToolSettingOption(
           id: 'view_threshold',
@@ -1232,8 +1249,7 @@ class _GrowthToolsPreview extends StatelessWidget {
           child: Column(
             children: [
               for (var index = 0; index < _items.length; index += 1) ...[
-                if (index > 0)
-                  Divider(height: 1, color: AppTheme.borderSoft),
+                if (index > 0) Divider(height: 1, color: AppTheme.borderSoft),
                 _GrowthToolRow(item: _items[index]),
               ],
             ],
@@ -1253,6 +1269,7 @@ class _GrowthToolItem {
     required this.icon,
     required this.color,
     required this.settings,
+    this.prototypeOnly = false,
   });
 
   final String id;
@@ -1262,6 +1279,7 @@ class _GrowthToolItem {
   final IconData icon;
   final Color color;
   final List<GrowthToolSettingOption> settings;
+  final bool prototypeOnly;
 }
 
 class _GrowthToolRow extends StatelessWidget {
@@ -1289,6 +1307,7 @@ class _GrowthToolRow extends StatelessWidget {
         icon: item.icon,
         color: item.color,
         settings: item.settings,
+        prototypeOnly: item.prototypeOnly,
       ),
     );
   }
@@ -1460,89 +1479,89 @@ class _LatestPostRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
         onTap: onTap,
         child: Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppTheme.glass,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: AppTheme.border),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF122018).withValues(alpha: 0.04),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Placeholder video thumbnail (the prototype has no real images).
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFE7EFE9), Color(0xFFD6E3DA)],
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppTheme.glass,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF122018).withValues(alpha: 0.04),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
               ),
-            ),
-            child: const Icon(
-              Icons.play_arrow_rounded,
-              color: Color(0xFF8FA197),
-              size: 21,
-            ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
+          child: Row(
+            children: [
+              // Placeholder video thumbnail (the prototype has no real images).
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFE7EFE9), Color(0xFFD6E3DA)],
                   ),
                 ),
-                const SizedBox(height: 5),
-                Row(
+                child: const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Color(0xFF8FA197),
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (final platform in platforms.take(4)) ...[
-                      Container(
-                        width: 13,
-                        height: 13,
-                        margin: const EdgeInsets.only(right: 3),
-                        decoration: BoxDecoration(
-                          color: platform.displayColor,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
                       ),
-                    ],
-                    if (platforms.isNotEmpty) const SizedBox(width: 3),
-                    Expanded(
-                      child: Text(
-                        sub,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppTheme.textMuted,
+                    ),
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        for (final platform in platforms.take(4)) ...[
+                          Container(
+                            width: 13,
+                            height: 13,
+                            margin: const EdgeInsets.only(right: 3),
+                            decoration: BoxDecoration(
+                              color: platform.displayColor,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ],
+                        if (platforms.isNotEmpty) const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            sub,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.textMuted,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 6),
+              _StatusPill(label: status.label, bg: status.bg, ink: status.ink),
+            ],
           ),
-          const SizedBox(width: 6),
-          _StatusPill(label: status.label, bg: status.bg, ink: status.ink),
-        ],
-      ),
         ),
       ),
     );

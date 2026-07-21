@@ -98,6 +98,68 @@ describe('createPrismaSubscriptionRepository', () => {
     });
   });
 
+  it('clears a stale period end when lifetime access is explicit', async () => {
+    const updatedAt = new Date('2026-07-15T00:00:00.000Z');
+    const prisma = {
+      subscription: {
+        findUnique: vi.fn(),
+        upsert: vi.fn().mockResolvedValue({
+          userId: 'seller-lifetime',
+          plan: 'PRO',
+          status: 'ACTIVE',
+          billingSubscriptionId: 'revenuecat:seller-lifetime',
+          currentPeriodEnd: null,
+          updatedAt
+        })
+      }
+    };
+    const repository = createPrismaSubscriptionRepository({ prisma });
+
+    await repository.activatePlan(
+      { id: 'seller-lifetime', provider: 'firebase' },
+      'PRO',
+      {
+        billingSubscriptionId: 'revenuecat:seller-lifetime',
+        currentPeriodEnd: null
+      }
+    );
+
+    expect(prisma.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ currentPeriodEnd: null }),
+        create: expect.objectContaining({ currentPeriodEnd: null })
+      })
+    );
+  });
+
+  it('preserves the stored period end when an activation omits it', async () => {
+    const updatedAt = new Date('2026-07-15T00:00:00.000Z');
+    const prisma = {
+      subscription: {
+        findUnique: vi.fn(),
+        upsert: vi.fn().mockResolvedValue({
+          userId: 'seller-preserve-period',
+          plan: 'PRO',
+          status: 'ACTIVE',
+          billingSubscriptionId: 'revenuecat:seller-preserve-period',
+          currentPeriodEnd: new Date('2026-08-15T00:00:00.000Z'),
+          updatedAt
+        })
+      }
+    };
+    const repository = createPrismaSubscriptionRepository({ prisma });
+
+    await repository.activatePlan(
+      { id: 'seller-preserve-period', provider: 'firebase' },
+      'PRO',
+      { billingSubscriptionId: 'revenuecat:seller-preserve-period' }
+    );
+
+    const upsertCall = prisma.subscription.upsert.mock.calls[0]?.[0];
+    expect(upsertCall.update).not.toHaveProperty('currentPeriodEnd');
+    expect(upsertCall.create).not.toHaveProperty('currentPeriodEnd');
+  });
+
   it('updates a subscription status by billing subscription id', async () => {
     const updatedAt = new Date('2026-06-03T00:00:00.000Z');
     const prisma = {
@@ -145,4 +207,5 @@ describe('createPrismaSubscriptionRepository', () => {
       }
     });
   });
+
 });

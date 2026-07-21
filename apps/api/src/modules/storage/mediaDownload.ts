@@ -1,4 +1,5 @@
 export const aiMediaDownloadMaxBytes = 200 * 1024 * 1024;
+export const aiEditAudioDownloadMaxBytes = 25 * 1024 * 1024;
 
 export class MediaDownloadError extends Error {
   constructor(

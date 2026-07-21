@@ -8,8 +8,8 @@ Goal: make the first usable PostDee MVP work end to end.
 
 Core items:
 
-- Mobile UI refresh for a Thai creator workflow, using the ultra-dark
-  neon/glass style from the approved reference screens.
+- Mobile UI refresh for a Thai creator workflow, using PostDee light/dark
+  palettes and the approved green creator UI.
 - Global-ready product foundations: localization, timezone, currency, phone
   formats, store products per market, and country launch checklists.
 - Gemini caption generation through the backend.
@@ -21,7 +21,10 @@ Core items:
 - Sentry for error tracking and performance monitoring.
 - Universal uploader for one 9:16 video.
 - Scheduling through Upstash Redis and BullMQ.
-- Unified social posting via PostPeer API (postpeer.dev) for TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels. Direct platform API integrations are deferred until post-launch.
+- Unified social posting via PostPeer API (postpeer.dev) for TikTok, YouTube
+  Shorts, Instagram Reels, and Facebook Page Video. `FACEBOOK_REELS` remains an
+  internal compatibility value only; PostPeer's current path is not Facebook
+  Reels. Direct platform API integrations are deferred until post-launch.
 - Unified analytics summary for Pro users, with backend-backed date ranges and
   a publish-date daily series.
 
@@ -38,11 +41,32 @@ Current status:
   account cleanup, deleted-account retry semantics, and zero leftover smoke
   sessions/objects in PostgreSQL and R2. Full mobile-to-worker real-video and
   slow-network tests still remain.
-- Backend RevenueCat webhook scaffold is prepared; mobile `purchases_flutter`
-  gateway is wired behind `ENABLE_REVENUECAT_BILLING=true`. Real App Store /
-  Google Play product setup, platform SDK keys, and sandbox/device purchase
-  testing remain.
-- Initial Prisma migration and Render Blueprint config are prepared for Render PostgreSQL. The actual Render database and API service still need to be created or synced from the Render dashboard.
+- Backend RevenueCat webhook and authenticated subscriber resync paths are
+  prepared; mobile `purchases_flutter` purchase/restore is wired behind
+  `ENABLE_REVENUECAT_BILLING=true`. Test Store purchase E2E passes on the
+  Android Emulator, and true Restore/resync E2E passes after the Staging deploy
+  and Render server-key configuration. The RevenueCat Play Store app/products,
+  entitlements, default offering, production Android public SDK key, and signed
+  AAB are prepared. Play Console app/subscriptions, internal testing, service
+  credentials, real Google Play purchase, and physical-device testing remain;
+  Play Console requires account verification on a physical Android device and
+  does not accept an Emulator for that step.
+- Render PostgreSQL and the API service have been created and the live health
+  endpoint responds successfully. Secret/provider state remains a dated
+  operational check and must be rechecked in the Render dashboard before launch.
+- The isolated free-tier Staging Blueprint and database have now been created on
+  Render, and the API health check passes. The Free Postgres database expires on
+  2026-08-14. A dedicated Firebase Staging project, isolated Android Debug app
+  id, Google provider, restricted Android API key, and Firebase-token-to-API
+  login smoke test now pass on the Android Emulator. RevenueCat Test Store
+  products, entitlements, current offering, and authenticated sandbox webhook
+  transport are configured. Test Store purchase and true Restore/resync E2E pass
+  with a Firebase UID after the current backend and Render key were configured.
+  RevenueCat Play configuration and a signed AAB are ready, while Play Console
+  setup and a real Google Play purchase remain blocked by the required physical
+  Android account verification. Lifecycle, R2, Gemini/Groq, Phone Auth, and
+  controlled social publishing still need functional staging credentials and
+  smoke tests.
 - Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
   mock/provider code have been removed from the active app path. Subscription
   compatibility flags remain false for older clients.
@@ -52,7 +76,11 @@ Current status:
 - Firebase Auth, Render deployments, Upstash, RevenueCat webhooks, uploads,
   analytics, real-clip caption provider hardening, production verification of
   the Prisma AI caption usage ledger, and PostPeer social posting still need
-  provider-level testing before production use.
+  provider-level testing before production use. PostPeer profiles now satisfy
+  the required name contract without exposing the Firebase UID/email and ensure
+  the local User first; accepted async posts are polled for roughly two minutes,
+  never receive a fabricated external id, and expose persisted per-platform
+  results through `GET /posts`. A real connected-account E2E is still pending.
 
 ## Backend Services Plan
 
@@ -66,29 +94,40 @@ Primary backend choices:
 | Database | Render PostgreSQL | Store users, posts, templates, subscriptions, and publish metrics through Prisma | Prisma schema and repositories exist | Use Render PostgreSQL first before considering Neon, Supabase, or self-hosted PostgreSQL. Set all Prisma-backed stores to `prisma` only after migrations and seed flow are verified. |
 | Queue / scheduling | Upstash Redis + BullMQ | Schedule publish jobs and let a worker process delayed posts | BullMQ adapter exists; queue handoff failures return 503, stale rescheduled jobs are skipped, and config now requires shared Prisma posts for BullMQ | Use `PUBLISH_QUEUE=bullmq`, `POST_STORE=prisma`, `DATABASE_URL`, and `REDIS_URL` after Upstash is configured. Keep the in-memory queue for local development only. |
 | Video storage | Cloudflare R2 | Store temporary upload videos and signed upload/download URLs | R2 adapter and managed multipart sessions exist | Use `VIDEO_STORAGE=r2` with `UPLOAD_PROTOCOL_MODE=dual` during rollout. New clients opt in to `multipart-v1`; move to strict `multipart` after old clients are retired. Keep videos temporary and delete after successful publishing where possible. |
-| Auth | Firebase Auth | Google Sign-In, Firebase ID token verification, and Phone Auth for Basic quota unlock | Mobile and backend scaffolds exist | Use `AUTH_PROVIDER=firebase` after Firebase project files and mobile sign-in are tested on device. |
+| Auth | Firebase Auth | Google Sign-In, Firebase ID token verification, and Phone Auth for Basic quota unlock | Dedicated Android Debug Staging config and Google login/token/API smoke pass on Emulator; Production, iOS, Phone Auth, and physical-device tests remain | Keep Debug Staging on `com.postdee.postdee_mobile.staging`; do not mix its Dart defines with Profile/Release Firebase files. |
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to Gemini (retry + model fallback + local template fallback); media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`); legacy Groq/Whisper path kept for when no Gemini is configured | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
 | AI auto editing | Groq Whisper large-v3 + mobile FFmpeg | Pro subtitle transcription, optional silence/filler cuts, UI capability recipe, subtitle burn-in, phone-side review, and video export | Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, exact filler allowlist, detected count/time summary, reversible supported capabilities with automatic preview re-render, accordion settings, and Post/manual-editor exits exist. Production beat sync and the 3-second hook are locked as `เร็ว ๆ นี้` behind default-off compile-time flags. | Re-check Groq pricing/docs before production launch. Backend handles transcription, quota, and recipe hints; mobile renders and reviews locally to control cost. `ENABLE_EXPERIMENTAL_BEAT_SYNC=true` and `ENABLE_EXPERIMENTAL_AI_HOOK=true` are internal setup-UI QA flags only and do not make either renderer real. |
-| Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Backend webhook scaffold prepared; mobile SDK gateway behind flag | Prefer RevenueCat webhooks over maintaining custom Apple/Google subscription verification for the MVP. |
-| Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels through one provider | Publisher code wired; worker claims only queued posts, skips already-running/finished retry jobs and stale rescheduled jobs, and keeps successful posts successful if optional media cleanup fails; account ids and provider-level publish test still needed | Use PostPeer first to reduce platform integration risk. Direct platform APIs are deferred until after launch. |
+| Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase and true Restore/resync E2E pass on Emulator; RevenueCat Play config, production Android public SDK key, and signed AAB are ready | Verify Play Console access on a physical Android device, then create the Play app/subscriptions/service credentials/internal testing and test lifecycle plus real Google Play/App Store purchases before claiming production billing E2E. |
+| Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect/refresh/provider-first disconnect are wired; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; YouTube defaults private and TikTok SELF_ONLY for controlled testing; connected-account E2E is still pending | `FACEBOOK_REELS` is an internal compatibility value for Page Video, not a Reels claim. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
-| Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile scaffold done | The Flutter app has the FCM gateway, in-app notification center, and notifications screen wired (`firebase_messaging`), and registers its token via `POST /devices` (persisted per user, cleared on account deletion). The backend fires a publish-result notification to the user's devices after each publish (success/partial/failed) through a `PublishNotifier` + `PushSender` abstraction, currently using a no-op mock sender. Still needs Cloud Messaging enabled, iOS APNs key + push capability, and the real `PushSender` adapter (firebase-admin + service account) swapped in for the mock. |
+| Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile registration, `POST /devices`, notifier, and firebase-admin sender exist; mock remains default | Add the service account, set `PUSH_SENDER=firebase`, enable APNs/iOS capabilities, and test on a real device. |
 
 Recommended activation order:
 
-1. Restore backend `build` and `test` to green.
-2. Create Render PostgreSQL and switch Prisma-backed stores from `memory` to `prisma` in a staging environment.
-3. Deploy the API to Render with `DATABASE_URL` from Render PostgreSQL.
-4. Add Upstash Redis and run the publish worker as a separate Render worker service.
-5. Test Cloudflare R2 signed upload/download in the full mobile-to-worker flow.
-6. Enable Firebase Auth and phone verification with real mobile project config.
-7. Configure RevenueCat real App Store / Google Play products, replace the local
-   Test Store key with platform SDK keys, and test Starter/Pro purchases on
-   sandbox devices.
-8. Add Sentry to the API, worker, and mobile app.
-9. Connect PostPeer accounts, add account ids, and run a controlled real publish test.
-10. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
-11. Enable Pro AI auto editing with Groq Whisper only after job tracking, quota, retry, and mobile export flows are designed and tested.
+1. Keep backend/mobile build, analyze, and tests green as changes land.
+2. Replace the remaining health-only R2/Gemini/Groq values with real
+   staging-only provider credentials and pass the functional smoke tests in
+   `docs/STAGING.md`.
+3. Recheck Render secrets and Prisma migrations against the live database only
+   after the same release candidate passes Staging.
+4. Add Upstash Redis and run the publish worker as a separate Render worker service when durable scheduling is needed.
+5. Test Cloudflare R2 managed multipart upload/download in the full
+   mobile-to-worker flow, including per-part retry, completion recovery, abort,
+   and account deletion while an upload is active.
+6. Enable and test Firebase Phone Auth, then add isolated iOS Staging config and
+   repeat auth smoke tests on physical Android/iOS devices.
+7. Verify Play Console access on a physical Android device, then create the Play
+   app/subscriptions, configure service credentials, and open internal testing.
+8. Upload the prepared signed AAB and test Starter/Pro purchase and Restore
+   through Google Play internal testing; complete App Store configuration and
+   physical-device sandbox testing separately.
+9. Add Sentry to the API, worker, and mobile app.
+10. Connect per-user PostPeer test accounts, refresh their integration state,
+    and run a controlled real publish E2E. Confirm YouTube `private`, TikTok
+    `SELF_ONLY`, Instagram Reels, Facebook Page Video, the bounded async poll,
+    and `GET /posts.platformResults` before enabling public claims.
+11. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
+12. Harden Pro AI auto editing with persistent job/session recovery, top-up handling, and real-device tests of the setup-to-review-to-post/manual-editor flow before production launch.
 
 ## Mobile UI Refresh Plan
 
@@ -99,13 +138,16 @@ behavior unless a later task explicitly says so.
 
 Reference direction:
 
-- Ultra-dark background with glass panels, thin borders, purple/cyan gradients,
-  and small status indicators.
+- Light/dark PostDee palettes with green accents, clear cards, thin borders, and
+  small status indicators.
 - Thai-first copy for visible user flows.
-- Bottom navigation target: Home, Upload, Edit (AI auto editing), Calendar, Analytics, Profile.
+- Bottom navigation has five tabs; AI editing opens as a child flow rather than
+  a sixth persistent tab.
 - Keep AI captioning available from Upload after a clip is selected.
 - Keep Templates available as a secondary entry point instead of a main
   bottom-nav tab.
+- Keep AI advanced settings in an accordion with at most one expanded
+  capability and no default expansion, so the mobile flow stays scannable.
 
 Planned order:
 
@@ -187,6 +229,7 @@ when product direction changes, update both the detailed plan and this file.
 | `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md` | Referenced in pricing, backend services, Phase 2, and next steps | Pro AI auto editing uses Groq Whisper large-v3 for transcription and mobile-side FFmpeg for setup, result review, reversible supported edits, and post/manual-editor exits. |
 | `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md` | Reflected in the Mobile UI Refresh Plan | Older task checklist for the approved Thai ultra-dark mobile UI. Some details may need another sync after the Calendar/Profile navigation changes. |
 | `docs/superpowers/plans/2026-06-04-store-subscription-billing.md` | Reflected in backend services and store compliance | Store subscription scaffold is represented here, while RevenueCat remains the preferred production subscription management direction. |
+| `docs/superpowers/plans/2026-06-21-production-foundation-revenuecat-plan.md` | Synced with the current billing foundation | Webhooks and true Restore/resync are verified on Staging; the addendum records the prepared RevenueCat Play configuration/AAB and remaining Play Console physical-device verification. |
 
 ## Planned Pricing
 
@@ -203,6 +246,9 @@ removed so this package plan does not compete with a separate review feature.
 
 Package rules:
 
+- The active Paywall must show only end-to-end ready benefits. EP splitting,
+  hashtag radar, viral alerts, and team/editor access remain planned and must
+  not be presented as included until their real flows are verified.
 - Basic must verify a phone number before using the 3-post free test quota.
 - Post units count by platform: posting one video to four platforms uses four
   units.
@@ -267,11 +313,15 @@ Recommended order:
 
 8. AI Auto Editing With Groq Whisper
    - Pro users can request Thai transcription, cut silence, burn in subtitles, review the phone-rendered result, and remove supported AI edits they do not want.
-   - Backend handles auth, quota, temporary storage, and Groq Whisper transcription with both word and segment timestamps so filler cuts, subtitles, and silence detection receive the timing data they need.
+   - Backend handles auth, quota, temporary storage, and Groq Whisper transcription with a Thai language hint, a concise PostDee spelling prompt, and both word and segment timestamps. It validates word timing before using it for silence/filler cuts and subtitle timing, falls back to segments when coverage is incomplete, and keeps Thai character-level timing for gaps while using readable segment subtitles.
    - Mobile re-renders accepted capabilities from the original clip, then lets the user continue to posting or open the manual editor.
    - The AI editing header shows exact Pro minutes remaining/used, refreshes from `GET /ai-edits/quota`, and adopts the latest `prepare` quota immediately after a metered analysis.
    - Android FFmpeg rendering supplies the bundled Prompt font to libass and compacts kept audio ranges alongside silence-cut video, preventing missing burned subtitles or audio that outlives the final video frame.
-   - Silence cleanup uses `natural` (1.0 s), `balanced` (0.6 s default), or `compact` (0.4 s) transcript-gap thresholds. Filler cleanup uses an exact five-word allowlist; missing legacy input selects all five, while explicit empty input selects none.
+   - The mobile dependency is pinned to `ffmpeg_kit_flutter_new_video` 2.3.2,
+     which ships the FFmpeg 8.1.2 CVE-2026-8461 fix for Android and iOS. Store
+     release remains blocked on native export smoke tests on physical Android
+     and iPhone devices; until those pass, process only trusted team-created clips.
+   - Silence cleanup uses `natural` (1.0 s), `balanced` (0.6 s default), or `compact` (0.4 s) validated word-gap thresholds with segment fallback, including qualifying leading/trailing silence and overlap-safe range merging. Whitespace-only timing tokens are ignored, while malformed meaningful tokens fail closed. Filler cleanup uses an exact five-word allowlist, accepts exact `เออ` as the `เอ่อ` transcription alias, and conservatively reassembles a validated Thai character-token stream only across tight timing and verified Thai word/text boundaries; missing legacy input selects all five, while explicit empty input selects none.
    - Result review reports detected silence/filler counts and their combined pre-render time. It does not claim that the exported clip saves exactly that duration.
    - The 3-second hook remains `planned` with no renderer. Production keeps `ENABLE_EXPERIMENTAL_AI_HOOK=false`; `true` is internal setup-UI QA only.
    - Beat-sync setup can keep original audio or select an owned MP3/M4A/WAV file with a rights confirmation, plus cut intensity, music volume, and voice ducking. Production keeps this capability locked as `เร็ว ๆ นี้` because a verified cross-platform music catalog, beat detection, and real music mixing remain future work. Internal QA may expose only the setup UI with `ENABLE_EXPERIMENTAL_BEAT_SYNC=true`.
@@ -307,8 +357,18 @@ To ensure the app passes store review guidelines, the following must be implemen
    spoken-language detection and market-aware prompting.
 3. Run the Prisma migration and verify `CAPTION_USAGE_STORE=prisma` against a
    real PostgreSQL database.
-4. Continue Firebase Auth setup when real Firebase project files are ready.
-5. Test R2 uploads from the mobile app through the backend and worker flow.
-6. Add PostPeer connected account ids and run one controlled real publish test, deferring individual social API app reviews.
-7. Continue AI editing job/session design, Groq Whisper transcription hardening, quota minutes, top-up,
-   and mobile export states before implementation.
+4. Enable the Firebase providers/capabilities and run real-device auth tests;
+   the project files are already present.
+5. Test managed R2 multipart uploads from the mobile app through the backend
+   and worker flow, then retire legacy clients and change production from
+   `dual` to strict `multipart` mode.
+6. Verify the per-user PostPeer connect/refresh flow and run controlled real
+   publishing with disposable connected accounts. Treat `FACEBOOK_REELS` as
+   Facebook Page Video, verify uncertain outcomes before retrying, and defer
+   individual social API app reviews.
+7. Continue AI editing job/session persistence, Groq Whisper transcription hardening, top-up,
+   retry/recovery, and real-device testing of pace detections, review counts, export, posting, and manual editing.
+8. Add music upload/ownership storage, license a cross-platform PostDee catalog,
+   then implement and test beat analysis, audio mixing, and voice ducking before
+   marking beat sync as applied or enabling it in production. Keep
+   `ENABLE_EXPERIMENTAL_BEAT_SYNC` false for production until then.

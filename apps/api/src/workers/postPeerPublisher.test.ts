@@ -4,7 +4,11 @@ import { readServerConfig } from '../config/env.js';
 import { createInMemorySocialConnectionStore } from '../modules/socialConnections/socialConnectionStore.js';
 import type { VideoStorage } from '../modules/storage/videoStorage.js';
 import { createPlatformPublisherFromConfig } from './platformPublisherFactory.js';
-import { createPostPeerPublisher } from './postPeerPublisher.js';
+import {
+  PostPeerPublishOutcomeUnknownError,
+  createPostPeerPublisher
+} from './postPeerPublisher.js';
+import { PublishOutcomeUnknownError } from './publishWorker.js';
 
 const createTestVideoStorage = (): VideoStorage => ({
   createUpload: async () => {
@@ -41,7 +45,7 @@ describe('createPostPeerPublisher', () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ id: 'postpeer-post-1' })
+          json: async () => ({ externalPostId: 'postpeer-platform-post-1' })
         };
       }
     });
@@ -160,13 +164,341 @@ describe('createPostPeerPublisher', () => {
     const body = JSON.parse(calls[0].init.body as string);
     expect(body).toEqual({
       content: 'hello',
-      platforms: [{ platform: 'tiktok', accountId: 'postpeer-tiktok' }],
+      platforms: [
+        {
+          platform: 'tiktok',
+          accountId: 'postpeer-tiktok',
+          platformSpecificData: {
+            privacyLevel: 'SELF_ONLY',
+            draft: false
+          }
+        }
+      ],
       mediaItems: [{ type: 'video', url: 'https://cdn.test/uploads/clip.mp4' }],
       publishNow: true
     });
     const headers = calls[0].init.headers as Record<string, string>;
     expect(headers['x-access-key']).toBe('pp-key');
     expect(headers.Authorization).toBeUndefined();
+  });
+
+  it('polls an accepted PostPeer post until the selected platform is published', async () => {
+    const calls: { url: string; method?: string }[] = [];
+    const responses = [
+      {
+        ok: true,
+        status: 202,
+        json: async () => ({
+          success: true,
+          status: 'publishing',
+          postId: 'postpeer-post-1',
+          platforms: [{ platform: 'tiktok', success: true }]
+        })
+      },
+      {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          post: {
+            postId: 'postpeer-post-1',
+            status: 'pending',
+            platforms: [{ platform: 'tiktok', status: 'pending' }]
+          }
+        })
+      },
+      {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          post: {
+            postId: 'postpeer-post-1',
+            status: 'published',
+            platforms: [
+              {
+                platform: 'tiktok',
+                status: 'published',
+                platformPostId: 'tiktok-video-123',
+                platformPostUrl: 'https://tiktok.test/@postdee/video/123'
+              }
+            ]
+          }
+        })
+      }
+    ];
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      pollIntervalMs: 0,
+      maxPollAttempts: 3,
+      fetchImpl: async (url, init) => {
+        calls.push({ url, method: init.method });
+        const response = responses.shift();
+
+        if (!response) {
+          throw new Error('Unexpected extra PostPeer request');
+        }
+
+        return response;
+      }
+    });
+
+    const result = await publisher.publish({
+      userId: 'seller-1',
+      postId: 'post-1',
+      videoS3Key: 'uploads/clip.mp4',
+      platform: 'TIKTOK'
+    });
+
+    expect(result.externalPostId).toBe('https://tiktok.test/@postdee/video/123');
+    expect(calls).toEqual([
+      { url: 'https://api.postpeer.test/v1/posts', method: 'POST' },
+      { url: 'https://api.postpeer.test/v1/posts/postpeer-post-1', method: 'GET' },
+      { url: 'https://api.postpeer.test/v1/posts/postpeer-post-1', method: 'GET' }
+    ]);
+  });
+
+  it('preserves an outer status and post id when the response also contains a nested post', async () => {
+    const urls: string[] = [];
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      pollIntervalMs: 0,
+      maxPollAttempts: 1,
+      fetchImpl: async (url) => {
+        urls.push(url);
+
+        if (url.endsWith('/v1/posts')) {
+          return {
+            ok: true,
+            status: 202,
+            json: async () => ({
+              success: true,
+              status: 'publishing',
+              postId: 'postpeer-outer-id',
+              post: {
+                platforms: [{ platform: 'tiktok', status: 'publishing' }]
+              }
+            })
+          };
+        }
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            post: {
+              status: 'published',
+              platforms: [
+                {
+                  platform: 'tiktok',
+                  status: 'published',
+                  platformPostId: 'tiktok-video-123'
+                }
+              ]
+            }
+          })
+        };
+      }
+    });
+
+    const result = await publisher.publish({
+      userId: 'seller-1',
+      postId: 'post-1',
+      platform: 'TIKTOK'
+    });
+
+    expect(result.externalPostId).toBe('tiktok-video-123');
+    expect(urls).toEqual([
+      'https://api.postpeer.test/v1/posts',
+      'https://api.postpeer.test/v1/posts/postpeer-outer-id'
+    ]);
+  });
+
+  it('fails closed when an accepted PostPeer post never reaches a final status', async () => {
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      pollIntervalMs: 0,
+      maxPollAttempts: 2,
+      fetchImpl: async (url) => ({
+        ok: true,
+        status: url.endsWith('/v1/posts') ? 202 : 200,
+        json: async () =>
+          url.endsWith('/v1/posts')
+            ? {
+                success: true,
+                status: 'publishing',
+                postId: 'postpeer-post-1'
+              }
+            : {
+                success: true,
+                post: {
+                  postId: 'postpeer-post-1',
+                  status: 'publishing',
+                  platforms: [{ platform: 'tiktok', status: 'publishing' }]
+                }
+              }
+      })
+    });
+
+    await expect(
+      publisher.publish({
+        userId: 'seller-1',
+        postId: 'post-1',
+        platform: 'TIKTOK'
+      })
+    ).rejects.toThrow(/outcome is still unknown after 2 status checks/i);
+  });
+
+  it('does not report published without a real platform URL or id', async () => {
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      fetchImpl: async () => ({
+        ok: true,
+        status: 202,
+        json: async () => ({
+          success: true,
+          status: 'published',
+          postId: 'postpeer-post-1',
+          platforms: [{ platform: 'tiktok', success: true }]
+        })
+      })
+    });
+
+    await expect(
+      publisher.publish({
+        userId: 'seller-1',
+        postId: 'post-1',
+        platform: 'TIKTOK'
+      })
+    ).rejects.toThrow(/did not return a platform post URL or id/i);
+  });
+
+  it('sends a derived private YouTube title for controlled-first publishing', async () => {
+    const calls: { body: Record<string, unknown> }[] = [];
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { YOUTUBE_SHORTS: 'postpeer-youtube' },
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            success: true,
+            status: 'published',
+            postId: 'postpeer-post-1',
+            platforms: [
+              {
+                platform: 'youtube',
+                success: true,
+                platformPostId: 'youtube-video-123'
+              }
+            ]
+          })
+        };
+      }
+    });
+
+    await publisher.publish({
+      userId: 'seller-1',
+      postId: 'post-1',
+      caption: '  รีวิวสินค้าใหม่\nพร้อมโปรโมชันวันนี้  ',
+      platform: 'YOUTUBE_SHORTS'
+    });
+
+    expect(calls[0].body).toMatchObject({
+      platforms: [
+        {
+          platform: 'youtube',
+          accountId: 'postpeer-youtube',
+          platformSpecificData: {
+            title: 'รีวิวสินค้าใหม่ พร้อมโปรโมชันวันนี้',
+            visibility: 'private'
+          }
+        }
+      ]
+    });
+  });
+
+  it('uses a safe YouTube title when the caption is empty', async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { YOUTUBE_SHORTS: 'postpeer-youtube' },
+      fetchImpl: async (_url, init) => {
+        requestBody = JSON.parse(String(init.body));
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            success: true,
+            status: 'published',
+            postId: 'postpeer-post-1',
+            platforms: [
+              {
+                platform: 'youtube',
+                status: 'published',
+                platformPostId: 'youtube-video-123'
+              }
+            ]
+          })
+        };
+      }
+    });
+
+    await publisher.publish({
+      userId: 'seller-1',
+      postId: 'post-1',
+      caption: '   ',
+      platform: 'YOUTUBE_SHORTS'
+    });
+
+    expect(requestBody).toMatchObject({
+      platforms: [
+        {
+          platformSpecificData: {
+            title: 'PostDee video',
+            visibility: 'private'
+          }
+        }
+      ]
+    });
+  });
+
+  it('fails when PostPeer reports a top-level unsuccessful result', async () => {
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      fetchImpl: async () => ({
+        ok: true,
+        status: 202,
+        json: async () => ({
+          success: false,
+          status: 'failed',
+          error: 'Publishing is unavailable'
+        })
+      })
+    });
+
+    await expect(
+      publisher.publish({
+        userId: 'seller-1',
+        postId: 'post-1',
+        platform: 'TIKTOK'
+      })
+    ).rejects.toThrow(/PostPeer publish to TIKTOK failed: Publishing is unavailable/);
   });
 
   it('throws when PostPeer responds with an error', async () => {
@@ -188,6 +520,26 @@ describe('createPostPeerPublisher', () => {
     ).rejects.toThrow(/PostPeer publish to YOUTUBE_SHORTS failed with status 502/);
   });
 
+  it('marks a create-request network failure as an unknown outcome to prevent duplicates', async () => {
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      fetchImpl: async () => {
+        throw new Error('connection reset');
+      }
+    });
+
+    const publishAttempt = publisher.publish({
+      userId: 'seller-1',
+      postId: 'post-1',
+      platform: 'TIKTOK'
+    });
+
+    await expect(publishAttempt).rejects.toBeInstanceOf(PostPeerPublishOutcomeUnknownError);
+    await expect(publishAttempt).rejects.toBeInstanceOf(PublishOutcomeUnknownError);
+  });
+
   it('throws when PostPeer reports the selected platform failed', async () => {
     const publisher = createPostPeerPublisher({
       apiKey: 'pp-key',
@@ -205,8 +557,8 @@ describe('createPostPeerPublisher', () => {
           platforms: [
             {
               platform: 'tiktok',
-              success: false,
-              error: 'Video URL is not publicly accessible'
+              status: 'failed',
+              errorMessage: 'Video URL is not publicly accessible'
             }
           ]
         })
@@ -233,6 +585,15 @@ describe('createPlatformPublisherFromConfig', () => {
     const result = await publisher.publish({ postId: 'p1', platform: 'TIKTOK' });
     expect(result.status).toBe('PUBLISHED');
     expect(result.externalPostId).toContain('mock-tiktok');
+  });
+
+  it('fails closed without calling a provider when publishing is disabled', async () => {
+    const config = readServerConfig({ SOCIAL_PUBLISHER: 'disabled' });
+    const publisher = createPlatformPublisherFromConfig({ config });
+
+    await expect(
+      publisher.publish({ postId: 'p-disabled', platform: 'TIKTOK' })
+    ).rejects.toThrow(/disabled for this environment/i);
   });
 
   it('requires an API key when SOCIAL_PUBLISHER is postpeer', () => {

@@ -31,6 +31,11 @@ import {
   type FirebaseCertificatesFetch
 } from './modules/auth/firebaseTokenVerifier.js';
 import { registerBillingRoutes } from './modules/billing/billingRoutes.js';
+import { registerRevenueCatRestoreRoutes } from './modules/billing/revenueCatRestoreRoutes.js';
+import {
+  createRevenueCatSubscriberClient,
+  type RevenueCatSubscriberClient
+} from './modules/billing/revenueCatSubscriberClient.js';
 import { registerRevenueCatWebhookRoutes } from './modules/billing/revenueCatWebhookRoutes.js';
 import type {
   AppleSignedNotificationDecoder
@@ -76,7 +81,12 @@ import { createPublishQueueFromConfig } from './modules/queue/publishQueueFactor
 import { createPlatformPublisherFromConfig } from './workers/platformPublisherFactory.js';
 import { createPublishScheduler } from './workers/publishScheduler.js';
 import { registerPublishQueueRoutes } from './modules/queue/publishQueueRoutes.js';
-import { readAiMediaResponseBytes } from './modules/storage/mediaDownload.js';
+import {
+  MediaDownloadError,
+  aiEditAudioDownloadMaxBytes,
+  aiMediaDownloadMaxBytes,
+  readAiMediaResponseBytes
+} from './modules/storage/mediaDownload.js';
 import type { S3VideoStorageClient, VideoStorage } from './modules/storage/videoStorage.js';
 import { createVideoStorageFromConfig } from './modules/storage/videoStorageFactory.js';
 import type { PrismaSubscriptionClient } from './modules/subscriptions/prismaSubscriptionRepository.js';
@@ -143,6 +153,7 @@ type AppOptions = {
   transcriptionProvider?: TranscriptionProvider;
   editPlanProvider?: EditPlanProvider;
   storePurchaseVerifier?: StorePurchaseVerifier;
+  revenueCatSubscriberClient?: RevenueCatSubscriberClient;
   appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
   socialConnectionStore?: SocialConnectionStore;
   postPeerConnectClient?: PostPeerConnectClient;
@@ -208,23 +219,37 @@ const createAccountAwareAuthMiddleware = ({
 
 const createFetchAudioFromVideoStorage =
   (videoStorage: VideoStorage): FetchAudio =>
-  async (videoS3Key) => {
-    const access = await videoStorage.createDownloadAccess(videoS3Key);
+  async ({ mediaS3Key, mediaKind }) => {
+    const access = await videoStorage.createDownloadAccess(mediaS3Key);
 
     if (access.accessType !== 'signed-url' || !access.downloadUrl) {
-      throw new Error('Signed video download access is required for real transcription');
+      throw new Error('Signed media download access is required for real transcription');
     }
 
     const response = await fetch(access.downloadUrl);
 
     if (!response.ok) {
-      throw new Error(`Video download failed with status ${response.status}`);
+      throw new Error(`Media download failed with status ${response.status}`);
     }
 
+    const responseContentType = response.headers.get('content-type');
+    const normalizedContentType = responseContentType?.split(';', 1)[0]?.trim().toLowerCase();
+
+    if (mediaKind === 'audio' && normalizedContentType !== 'audio/mp4') {
+      throw new MediaDownloadError(
+        'AI edit audio must use the audio/mp4 content type',
+        415,
+        'AI_EDIT_AUDIO_CONTENT_TYPE_INVALID'
+      );
+    }
+
+    const maxBytes =
+      mediaKind === 'audio' ? aiEditAudioDownloadMaxBytes : aiMediaDownloadMaxBytes;
+
     return {
-      data: await readAiMediaResponseBytes(response),
-      filename: readFileNameFromStorageKey(videoS3Key),
-      contentType: response.headers.get('content-type') ?? 'video/mp4'
+      data: await readAiMediaResponseBytes(response, maxBytes),
+      filename: readFileNameFromStorageKey(mediaS3Key),
+      contentType: mediaKind === 'audio' ? 'audio/mp4' : (responseContentType ?? 'video/mp4')
     };
   };
 
@@ -312,6 +337,11 @@ export const createApp = (options: AppOptions = {}) => {
     bucket: 'social-connections',
     windowMs: 10 * 60 * 1000,
     maxRequests: 20
+  });
+  const revenueCatResyncRateLimit = createRateLimitMiddleware({
+    bucket: 'revenuecat-resync',
+    windowMs: 10 * 60 * 1000,
+    maxRequests: 10
   });
   const shouldCreateFirebaseAdminAuth =
     config.firebaseAuthDeleteEnabled &&
@@ -440,6 +470,7 @@ export const createApp = (options: AppOptions = {}) => {
   router.use('/captions', aiRateLimit);
   router.use('/ai-edits', aiRateLimit);
   router.use('/social-connections', socialConnectionRateLimit);
+  router.use('/billing/revenuecat/resync', revenueCatResyncRateLimit);
 
   registerAuthRoutes(router, accountAwareAuthMiddleware);
   registerUploadRoutes(router, accountAwareAuthMiddleware, videoStorage, {
@@ -471,7 +502,8 @@ export const createApp = (options: AppOptions = {}) => {
     accountAwareAuthMiddleware,
     subscriptionStore,
     aiEditUsageStore,
-    editPlanProvider
+    editPlanProvider,
+    videoStorage.deleteVideo
   );
   registerPostRoutes(
     router,
@@ -480,6 +512,7 @@ export const createApp = (options: AppOptions = {}) => {
     accountAwareAuthMiddleware,
     userStore,
     subscriptionStore,
+    platformPublishStore,
     {
       allowSubscriptionPlanOverride:
         config.nodeEnv !== 'production' && config.authProvider === 'mock',
@@ -511,6 +544,18 @@ export const createApp = (options: AppOptions = {}) => {
       appleSignedNotificationDecoder: options.appleSignedNotificationDecoder
     }
   );
+  registerRevenueCatRestoreRoutes({
+    router,
+    authMiddleware: accountAwareAuthMiddleware,
+    config,
+    subscriberClient:
+      options.revenueCatSubscriberClient ??
+      createRevenueCatSubscriberClient({
+        apiKey: config.revenueCatRestApiV1Key
+      }),
+    userStore,
+    subscriptionStore
+  });
   registerRevenueCatWebhookRoutes({
     router,
     config,
@@ -533,12 +578,21 @@ export const createApp = (options: AppOptions = {}) => {
     options.postPeerConnectClient ??
     createPostPeerConnectClient({
       apiKey: config.postPeerApiKey,
-      baseUrl: config.postPeerApiBaseUrl
+      baseUrl: config.postPeerApiBaseUrl,
+      legacyRecovery:
+        config.postPeerLegacyRecoveryFingerprint &&
+        config.postPeerLegacyRecoveryProfileId
+          ? {
+              fingerprint: config.postPeerLegacyRecoveryFingerprint,
+              profileId: config.postPeerLegacyRecoveryProfileId
+            }
+          : undefined
     });
   registerDeviceRoutes(router, accountAwareAuthMiddleware, deviceTokenStore);
   registerSocialConnectionRoutes(router, accountAwareAuthMiddleware, {
     store: socialConnectionStore,
-    connectClient: postPeerConnectClient
+    connectClient: postPeerConnectClient,
+    userStore
   });
   registerAccountRoutes(router, accountDeletionAuthMiddleware, {
     postStore,

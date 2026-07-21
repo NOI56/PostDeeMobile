@@ -295,17 +295,25 @@ String buildColorFilter({
   final filters = <String>[];
 
   if (brightness != 0 || contrast != 0) {
-    final eqBrightness = (brightness * 0.5).toStringAsFixed(3);
-    final eqContrast = (1 + contrast).toStringAsFixed(3);
-    filters.add('eq=brightness=$eqBrightness:contrast=$eqContrast');
+    // The mobile "video" FFmpeg build does not include `eq`, but it does
+    // include `lutrgb`. Apply the same brightness offset and contrast around
+    // the mid point to each RGB channel so these controls work on-device.
+    final lutContrast = (1 + contrast).toStringAsFixed(3);
+    final brightnessOffset = brightness * 0.5 * 255;
+    final signedOffset = brightnessOffset >= 0
+        ? '+${brightnessOffset.toStringAsFixed(3)}'
+        : brightnessOffset.toStringAsFixed(3);
+    final expression =
+        "'clip((val-128)*$lutContrast+128$signedOffset,0,255)'";
+    filters.add('lutrgb=r=$expression:g=$expression:b=$expression');
   }
 
   switch (filterIndex) {
     case 1: // สดใส (vivid)
-      filters.add('eq=saturation=1.400');
+      filters.add('hue=s=1.400');
       break;
     case 2: // วินเทจ (vintage)
-      filters.add('eq=saturation=0.700');
+      filters.add('hue=s=0.700');
       filters.add('colorbalance=rs=0.10:gs=0.05:bs=-0.10');
       break;
     case 3: // ขาวดำ (B&W)
@@ -322,8 +330,8 @@ String buildColorFilter({
   return filters.join(',');
 }
 
-/// Tries the requested grade first, then preserves the source colors when the
-/// device FFmpeg build does not include a required color filter such as `eq`.
+/// Tries the requested grade first, then preserves the source colors when a
+/// device FFmpeg build or encoder cannot render the requested filter chain.
 List<String> buildColorFilterFallbacks(String requestedColorFilter) =>
     requestedColorFilter.isEmpty ? const [''] : [requestedColorFilter, ''];
 

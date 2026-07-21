@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('run', 'build-apk', 'test')]
+  [ValidateSet('run', 'build-apk', 'build-appbundle', 'test')]
   [string]$Command = 'run',
 
   [Parameter(ValueFromRemainingArguments = $true)]
@@ -12,7 +12,6 @@ $mobileRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent (Split-Path -Parent $mobileRoot)
 $flutter = Join-Path $workspaceRoot '.tools\flutter\bin\flutter.bat'
 $productionDefines = Join-Path $mobileRoot 'production.local.json'
-$revenueCatDefines = Join-Path $mobileRoot 'revenuecat.local.json'
 $mergedDefines = Join-Path $mobileRoot '.dart_tool\postdee_production.dartdefine.json'
 
 if (-not (Test-Path $productionDefines)) {
@@ -37,8 +36,29 @@ function Merge-DartDefines($path) {
   }
 }
 
+function Assert-ProductionRevenueCatKey {
+  param(
+    [string]$Name,
+    [AllowNull()]
+    [object]$Value
+  )
+
+  $normalizedValue = ([string]$Value).Trim()
+
+  if ([string]::IsNullOrWhiteSpace($normalizedValue)) {
+    throw "$Name must contain a production RevenueCat SDK key."
+  }
+
+  if ($normalizedValue.StartsWith('test_', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "$Name uses a RevenueCat Test Store key. Test Store keys are not allowed by the production helper."
+  }
+
+  if ($normalizedValue.StartsWith('replace_with_', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "$Name still contains a placeholder RevenueCat SDK key. Add the real platform SDK key before using the production helper."
+  }
+}
+
 Merge-DartDefines $productionDefines
-Merge-DartDefines $revenueCatDefines
 
 foreach ($blockedKey in @(
     'POSTDEE_MOCK_USER_ID',
@@ -65,16 +85,28 @@ if ($merged['ALLOW_LOCAL_MOCK_AUTH'] -ne $false) {
 }
 
 if ($merged['ENABLE_REVENUECAT_BILLING'] -eq $true) {
-  $hasRevenueCatKey = $false
+  $revenueCatKeyNames = @(
+    'REVENUECAT_API_KEY',
+    'REVENUECAT_ANDROID_API_KEY',
+    'REVENUECAT_IOS_API_KEY'
+  )
+  $configuredRevenueCatKeyNames = @(
+    $revenueCatKeyNames | Where-Object { $merged.Contains($_) }
+  )
 
-  foreach ($key in @('REVENUECAT_API_KEY', 'REVENUECAT_ANDROID_API_KEY', 'REVENUECAT_IOS_API_KEY')) {
-    if ($merged.Contains($key) -and -not [string]::IsNullOrWhiteSpace([string]$merged[$key])) {
-      $hasRevenueCatKey = $true
-    }
+  if (
+    $Command -in @('build-apk', 'build-appbundle') -and
+    -not $merged.Contains('REVENUECAT_ANDROID_API_KEY')
+  ) {
+    throw 'REVENUECAT_ANDROID_API_KEY is required for production Android APK/AAB builds.'
   }
 
-  if (-not $hasRevenueCatKey) {
-    throw "RevenueCat billing is enabled, but no RevenueCat SDK key was found. Add one to revenuecat.local.json."
+  if ($configuredRevenueCatKeyNames.Count -eq 0) {
+    throw "RevenueCat billing is enabled, but no RevenueCat SDK key was found. Add the platform SDK key to production.local.json."
+  }
+
+  foreach ($keyName in $configuredRevenueCatKeyNames) {
+    Assert-ProductionRevenueCatKey -Name $keyName -Value $merged[$keyName]
   }
 }
 
@@ -87,6 +119,11 @@ $flutterCommand = @(
     'build-apk' {
       'build'
       'apk'
+      '--release'
+    }
+    'build-appbundle' {
+      'build'
+      'appbundle'
       '--release'
     }
     'test' { 'test' }

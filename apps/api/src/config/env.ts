@@ -12,7 +12,7 @@ export type CaptionProviderKind = 'mock' | 'openai' | 'gemini';
 export type AuthProviderKind = 'mock' | 'firebase';
 export type BillingProviderKind = 'mock' | 'store' | 'revenuecat';
 export type PushSenderKind = 'mock' | 'firebase';
-export type SocialPublisherKind = 'mock' | 'postpeer';
+export type SocialPublisherKind = 'mock' | 'disabled' | 'postpeer';
 export type TranscriptionProviderKind = 'mock' | 'openai' | 'groq';
 export type EditPlanProviderKind = 'mock' | 'openai' | 'groq';
 export type AppleAppStoreEnvironmentKind = 'sandbox' | 'production';
@@ -42,6 +42,7 @@ export type ServerConfig = {
   geminiApiKey?: string;
   billingProvider: BillingProviderKind;
   revenueCatWebhookAuthToken?: string;
+  revenueCatRestApiV1Key?: string;
   revenueCatStarterEntitlementId: string;
   revenueCatProEntitlementId: string;
   revenueCatStarterProductId: string;
@@ -78,6 +79,8 @@ export type ServerConfig = {
   socialPublisher: SocialPublisherKind;
   postPeerApiKey?: string;
   postPeerApiBaseUrl: string;
+  postPeerLegacyRecoveryFingerprint?: string;
+  postPeerLegacyRecoveryProfileId?: string;
   postPeerTiktokAccountId?: string;
   postPeerYoutubeAccountId?: string;
   postPeerInstagramAccountId?: string;
@@ -306,8 +309,8 @@ const readEditPlanProvider = (env: EnvSource): EditPlanProviderKind => {
 const readSocialPublisher = (env: EnvSource): SocialPublisherKind => {
   const value = readOptional(env, 'SOCIAL_PUBLISHER') ?? 'mock';
 
-  if (value !== 'mock' && value !== 'postpeer') {
-    throw new Error('SOCIAL_PUBLISHER must be mock or postpeer');
+  if (value !== 'mock' && value !== 'disabled' && value !== 'postpeer') {
+    throw new Error('SOCIAL_PUBLISHER must be mock, disabled, or postpeer');
   }
 
   return value;
@@ -386,6 +389,31 @@ const assertRuntimeStoreConfig = (config: ServerConfig) => {
   }
 };
 
+const assertPostPeerLegacyRecoveryConfig = (config: ServerConfig) => {
+  const hasFingerprint = config.postPeerLegacyRecoveryFingerprint !== undefined;
+  const hasProfileId = config.postPeerLegacyRecoveryProfileId !== undefined;
+
+  if (hasFingerprint !== hasProfileId) {
+    throw new Error(
+      'POSTPEER_LEGACY_RECOVERY_FINGERPRINT and POSTPEER_LEGACY_RECOVERY_PROFILE_ID must be configured together'
+    );
+  }
+
+  if (!hasFingerprint) {
+    return;
+  }
+
+  if (!/^[a-f0-9]{64}$/i.test(config.postPeerLegacyRecoveryFingerprint ?? '')) {
+    throw new Error(
+      'POSTPEER_LEGACY_RECOVERY_FINGERPRINT must be 64 hexadecimal characters'
+    );
+  }
+
+  if (!config.postPeerApiKey) {
+    throw new Error('POSTPEER_API_KEY is required for PostPeer legacy recovery');
+  }
+};
+
 export const readServerConfig = (env: EnvSource = process.env): ServerConfig => {
   const config: ServerConfig = {
     port: readPort(env),
@@ -432,6 +460,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     geminiApiKey: readOptional(env, 'GEMINI_API_KEY'),
     billingProvider: readBillingProvider(env),
     revenueCatWebhookAuthToken: readOptional(env, 'REVENUECAT_WEBHOOK_AUTH_TOKEN'),
+    revenueCatRestApiV1Key: readOptional(env, 'REVENUECAT_REST_API_V1_KEY'),
     revenueCatStarterEntitlementId:
       readOptional(env, 'REVENUECAT_STARTER_ENTITLEMENT_ID') ?? 'starter',
     revenueCatProEntitlementId: readOptional(env, 'REVENUECAT_PRO_ENTITLEMENT_ID') ?? 'pro',
@@ -477,6 +506,14 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     postPeerApiKey: readOptional(env, 'POSTPEER_API_KEY'),
     postPeerApiBaseUrl:
       readOptional(env, 'POSTPEER_API_BASE_URL') ?? 'https://api.postpeer.dev',
+    postPeerLegacyRecoveryFingerprint: readOptional(
+      env,
+      'POSTPEER_LEGACY_RECOVERY_FINGERPRINT'
+    )?.toLowerCase(),
+    postPeerLegacyRecoveryProfileId: readOptional(
+      env,
+      'POSTPEER_LEGACY_RECOVERY_PROFILE_ID'
+    ),
     postPeerTiktokAccountId: readOptional(env, 'POSTPEER_TIKTOK_ACCOUNT_ID'),
     postPeerYoutubeAccountId: readOptional(env, 'POSTPEER_YOUTUBE_ACCOUNT_ID'),
     postPeerInstagramAccountId: readOptional(env, 'POSTPEER_INSTAGRAM_ACCOUNT_ID'),
@@ -493,6 +530,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
   };
 
   assertRuntimeStoreConfig(config);
+  assertPostPeerLegacyRecoveryConfig(config);
   assertProductionSafeConfig(config);
   return config;
 };

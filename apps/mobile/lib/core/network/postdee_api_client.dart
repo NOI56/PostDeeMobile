@@ -443,6 +443,11 @@ class AiEditRecipeResult {
     required this.silenceRanges,
     required this.fillerRanges,
     required this.capabilities,
+    this.plan = const AiEditPlanResult(
+      cuts: [],
+      summary: '',
+      model: 'none',
+    ),
     this.music = const AiEditMusicResult(
       source: 'original',
       beatIntensity: 'balanced',
@@ -466,6 +471,7 @@ class AiEditRecipeResult {
   final List<AiEditCut> cutRanges;
   final List<AiEditCut> silenceRanges;
   final List<AiEditCut> fillerRanges;
+  final AiEditPlanResult plan;
   final AiEditMusicResult music;
   final Map<String, AiEditCapabilityStatusResult> capabilities;
 
@@ -480,6 +486,7 @@ class AiEditRecipeResult {
     final rawTranscript = json['transcript'];
     final rawSubtitles = json['subtitles'];
     final rawCapabilities = json['capabilities'];
+    final rawPlan = json['plan'];
     final rawMusic = json['music'];
     final capabilities = <String, AiEditCapabilityStatusResult>{};
 
@@ -512,6 +519,9 @@ class AiEditRecipeResult {
       cutRanges: parseRanges(json['cutRanges']),
       silenceRanges: parseRanges(json['silenceRanges']),
       fillerRanges: parseRanges(json['fillerRanges']),
+      plan: AiEditPlanResult.fromJson(
+        rawPlan is Map<String, Object?> ? rawPlan : const <String, Object?>{},
+      ),
       music: AiEditMusicResult.fromJson(
         rawMusic is Map<String, Object?> ? rawMusic : const <String, Object?>{},
       ),
@@ -1367,6 +1377,49 @@ class ScheduledPostResult {
 /// A post in any state (queued, publishing, published, failed). Unlike
 /// [ScheduledPostResult] the schedule and publish times are optional so it also
 /// represents post-now items, which the Home dashboard lists as latest posts.
+class PostPlatformResult {
+  const PostPlatformResult({
+    required this.postId,
+    required this.platform,
+    required this.status,
+    this.externalPostId,
+    this.errorMessage,
+    this.publishedAt,
+    this.views = 0,
+    this.likes = 0,
+  });
+
+  final String postId;
+  final String platform;
+  final String status;
+  final String? externalPostId;
+  final String? errorMessage;
+  final DateTime? publishedAt;
+  final int views;
+  final int likes;
+
+  factory PostPlatformResult.fromJson(Map<String, Object?> json) {
+    String? optionalString(Object? value) {
+      if (value is! String || value.trim().isEmpty) return null;
+      return value.trim();
+    }
+
+    final rawPublishedAt = optionalString(json['publishedAt']);
+
+    return PostPlatformResult(
+      postId: json['postId'] as String? ?? '',
+      platform: json['platform'] as String? ?? '',
+      status: json['status'] as String? ?? '',
+      externalPostId: optionalString(json['externalPostId']),
+      errorMessage: optionalString(json['errorMessage']),
+      publishedAt:
+          rawPublishedAt == null ? null : DateTime.tryParse(rawPublishedAt),
+      views: json['views'] as int? ?? 0,
+      likes: json['likes'] as int? ?? 0,
+    );
+  }
+}
+
 class PostSummaryResult {
   const PostSummaryResult({
     required this.id,
@@ -1377,6 +1430,7 @@ class PostSummaryResult {
     required this.createdAt,
     this.scheduledAt,
     this.publishedAt,
+    this.platformResults = const [],
   });
 
   final String id;
@@ -1387,6 +1441,7 @@ class PostSummaryResult {
   final DateTime createdAt;
   final DateTime? scheduledAt;
   final DateTime? publishedAt;
+  final List<PostPlatformResult> platformResults;
 
   factory PostSummaryResult.fromJson(Map<String, Object?> json) {
     DateTime? parseDate(Object? value) =>
@@ -1411,6 +1466,10 @@ class PostSummaryResult {
       createdAt: createdAt,
       scheduledAt: parseDate(json['scheduledAt']),
       publishedAt: parseDate(json['publishedAt']),
+      platformResults: (json['platformResults'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(PostPlatformResult.fromJson)
+          .toList(),
     );
   }
 }
@@ -1562,6 +1621,7 @@ class PostDeeApiClient {
       if (platform != null) 'platform': platform,
     });
   }
+
   Future<List<SocialConnectionResult>> listSocialConnections() async {
     final response = await _getJson('/social-connections');
     final connections = response['connections'];
@@ -1572,8 +1632,8 @@ class PostDeeApiClient {
     }
 
     return connections
-        .map((connection) => SocialConnectionResult.fromJson(
-            connection as Map<String, Object?>))
+        .map((connection) =>
+            SocialConnectionResult.fromJson(connection as Map<String, Object?>))
         .toList();
   }
 
@@ -1599,8 +1659,8 @@ class PostDeeApiClient {
     }
 
     return connections
-        .map((connection) => SocialConnectionResult.fromJson(
-            connection as Map<String, Object?>))
+        .map((connection) =>
+            SocialConnectionResult.fromJson(connection as Map<String, Object?>))
         .toList();
   }
 
@@ -1774,6 +1834,19 @@ class PostDeeApiClient {
     }
 
     return SubscriptionStatusResult.fromJson(subscription);
+  }
+
+  Future<String> resyncRevenueCatSubscription() async {
+    final response = await _postJson('/billing/revenuecat/resync', const {});
+    final plan = response['plan'];
+
+    if (plan is! String || plan.trim().isEmpty) {
+      throw const ApiException(
+        'RevenueCat resync response is missing the subscription plan',
+      );
+    }
+
+    return plan.trim().toUpperCase();
   }
 
   Future<StoreSubscriptionVerificationResult> verifyStoreSubscription(

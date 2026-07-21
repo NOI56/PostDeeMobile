@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createInMemoryPlatformPublishStore } from '../modules/platformPublishes/platformPublishStore.js';
 import { createPostStore } from '../modules/posts/postStore.js';
@@ -132,5 +132,123 @@ describe('createPublishScheduler', () => {
 
     expect(recorded).toContain('TIKTOK');
     expect(recorded).toContain('INSTAGRAM_REELS');
+  });
+
+  it('retries failures before the external publisher starts with exponential backoff', async () => {
+    const postStore = createPostStore();
+    const platformPublishStore = createInMemoryPlatformPublishStore();
+    const sleep = vi.fn(async () => undefined);
+    const assertOwnerActive = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error('database temporarily unavailable'))
+      .mockRejectedValueOnce(new Error('database temporarily unavailable'))
+      .mockResolvedValue(undefined);
+    const publisher = {
+      publish: vi.fn(async ({ postId, platform }) => ({
+        platform,
+        status: 'PUBLISHED' as const,
+        externalPostId: `${platform}-${postId}`,
+        publishedAt: '2026-06-01T00:00:00.000Z'
+      }))
+    };
+
+    await postStore.create({
+      userId: 'seller-preflight-retry',
+      caption: 'retry safely',
+      videoS3Key: 'uploads/retry.mp4',
+      platforms: ['TIKTOK']
+    });
+
+    const scheduler = createPublishScheduler({
+      postStore,
+      platformPublishStore,
+      publisher,
+      assertOwnerActive,
+      maxPrePublishAttempts: 3,
+      prePublishRetryBackoffMs: 100,
+      sleep
+    });
+    await scheduler.runOnce();
+
+    const [post] = await postStore.list({ userId: 'seller-preflight-retry' });
+    expect(assertOwnerActive).toHaveBeenCalledTimes(3);
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(sleep).toHaveBeenNthCalledWith(1, 100);
+    expect(sleep).toHaveBeenNthCalledWith(2, 200);
+    expect(post.status).toBe('PUBLISHED');
+  });
+
+  it('fails a memory-scheduled post after the pre-publish retry budget is exhausted', async () => {
+    const postStore = createPostStore();
+    const platformPublishStore = createInMemoryPlatformPublishStore();
+    const sleep = vi.fn(async () => undefined);
+    const assertOwnerActive = vi.fn(async () => {
+      throw new Error('database unavailable');
+    });
+    const publisher = { publish: vi.fn() };
+
+    await postStore.create({
+      userId: 'seller-preflight-exhausted',
+      caption: 'fail closed',
+      videoS3Key: 'uploads/fail-closed.mp4',
+      platforms: ['TIKTOK']
+    });
+
+    const scheduler = createPublishScheduler({
+      postStore,
+      platformPublishStore,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      publisher: publisher as any,
+      assertOwnerActive,
+      maxPrePublishAttempts: 3,
+      prePublishRetryBackoffMs: 100,
+      sleep
+    });
+    await scheduler.runOnce();
+
+    const [post] = await postStore.list({ userId: 'seller-preflight-exhausted' });
+    expect(assertOwnerActive).toHaveBeenCalledTimes(3);
+    expect(publisher.publish).not.toHaveBeenCalled();
+    expect(sleep).toHaveBeenCalledTimes(2);
+    expect(post.status).toBe('FAILED');
+  });
+
+  it('does not retry scheduler failures after an external publish call has started', async () => {
+    const postStore = createPostStore();
+    const sleep = vi.fn(async () => undefined);
+    const publisher = {
+      publish: vi.fn(async ({ postId, platform }) => ({
+        platform,
+        status: 'PUBLISHED' as const,
+        externalPostId: `${platform}-${postId}`,
+        publishedAt: '2026-06-01T00:00:00.000Z'
+      }))
+    };
+
+    await postStore.create({
+      userId: 'seller-no-duplicate',
+      caption: 'do not duplicate',
+      videoS3Key: 'uploads/no-duplicate.mp4',
+      platforms: ['TIKTOK']
+    });
+
+    const scheduler = createPublishScheduler({
+      postStore,
+      platformPublishStore: {
+        recordResults: async () => {
+          throw new Error('result database unavailable');
+        }
+      },
+      publisher,
+      maxPrePublishAttempts: 3,
+      prePublishRetryBackoffMs: 100,
+      sleep
+    });
+    await scheduler.runOnce();
+
+    const [post] = await postStore.list({ userId: 'seller-no-duplicate' });
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    expect(post.status).toBe('FAILED');
   });
 });

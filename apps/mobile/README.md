@@ -14,7 +14,11 @@ Run commands from this folder with the workspace-local Flutter SDK:
 
 ## Platform Folders
 
-Android and iOS folders are generated from Flutter templates with package org `com.postdee`.
+The Android Release application id is `com.postdee.postdee_mobile`; Android
+Debug uses `com.postdee.postdee_mobile.staging` so Firebase Staging can be
+installed alongside Production. The iOS bundle id is
+`com.postdee.postdeeMobile`. Keep Firebase, RevenueCat, Google Play, and App
+Store configuration aligned with the build being tested.
 Android builds still require Android Studio and the Android SDK.
 Production iOS builds require Xcode on macOS.
 
@@ -30,12 +34,28 @@ Firebase auth is off by default for local scaffold runs. To enable the real gate
 ..\..\.tools\flutter\bin\flutter.bat run --dart-define=ENABLE_FIREBASE_AUTH=true --dart-define=GOOGLE_SERVER_CLIENT_ID=121898224944-1hkh1mrfb5lc1ltraapu10lj1ib465vj.apps.googleusercontent.com
 ```
 
-The Firebase project files are installed locally. The next Firebase milestone is
-testing Google Sign-In on an actual Android/iOS device.
+The Firebase project files are installed locally. Android Emulator Google
+Sign-In, Firebase ID token verification, and the authenticated Staging API/Home
+response pass. Physical Android/iOS and Phone Auth tests remain.
 
 If `ENABLE_FIREBASE_AUTH=true` is used before Firebase project files are available, the app keeps running and the Google Sign-In button reports the setup issue instead of crashing during startup.
 
 See `../../FIREBASE_SETUP.md` for the full Firebase Auth and Google Sign-In checklist.
+
+### Android Debug Staging
+
+`android/app/src/debug/google-services.json` is the dedicated Firebase Staging
+config. Copy the checked-in non-secret example to the ignored local file, then
+run Debug only:
+
+```powershell
+Copy-Item staging.local.example.json staging.local.json
+..\..\.tools\flutter\bin\flutter.bat run --debug --dart-define-from-file=staging.local.json
+```
+
+Do not pass `staging.local.json` to `--profile` or `--release`; those build types
+still use Firebase Production. A different machine/CI debug keystore also needs
+its SHA-1 and SHA-256 registered in Firebase Staging.
 
 ## Production / Sandbox Run
 
@@ -47,13 +67,20 @@ local mock auth:
 powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-production.ps1 -Command run
 ```
 
-The script merges:
+The script reads only the ignored `production.local.json` file. Start from
+`production.local.example.json`, keep the production flags such as
+`API_BASE_URL=https://postdee-api.onrender.com`, `ENABLE_FIREBASE_AUTH=true`,
+and `ALLOW_LOCAL_MOCK_AUTH=false`, then add the platform RevenueCat SDK key to
+that same local file. Android Play builds require
+`REVENUECAT_ANDROID_API_KEY`. Never add backend webhook tokens or server REST
+API keys to this mobile config.
 
-- `production.local.json` for non-secret production app flags such as
-  `API_BASE_URL=https://postdee-api.onrender.com`,
-  `ENABLE_FIREBASE_AUTH=true`, and `ALLOW_LOCAL_MOCK_AUTH=false`.
-- `revenuecat.local.json` for the RevenueCat mobile SDK key. This file is
-  ignored by Git and must not contain backend webhook tokens.
+The production helper rejects empty RevenueCat keys, Test Store keys beginning
+with `test_`, and example placeholders beginning with `replace_with_`. The
+`build-apk` and `build-appbundle` commands specifically require a valid
+`REVENUECAT_ANDROID_API_KEY`; a generic `REVENUECAT_API_KEY` does not count for
+an Android release build. Use the direct Flutter command in the local testing
+section below when testing with the RevenueCat Test Store.
 
 Build a release Android APK with the same production flags:
 
@@ -61,11 +88,20 @@ Build a release Android APK with the same production flags:
 powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-production.ps1 -Command build-apk
 ```
 
+Build the signed Android App Bundle used for Google Play Internal testing:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-production.ps1 -Command build-appbundle
+```
+
+The generated bundle is written to
+`build/app/outputs/bundle/release/app-release.aab`.
+
 Android release builds also require a local signing key. Copy
 `android/key.properties.example` to `android/key.properties`, create or place the
 matching keystore file under `android/`, and keep both files out of Git. Missing
-`storeFile` means the production flags are valid, but the APK cannot be packaged
-for release until Android signing is configured. See
+`storeFile` means the production flags are valid, but the APK/AAB cannot be
+packaged for release until Android signing is configured. See
 `../../docs/ANDROID_SIGNING_KEYS.md` for the safety checklist.
 
 ## Store Subscription
@@ -78,10 +114,11 @@ The Home Starter/Pro CTAs can run in two modes:
   `POST /billing/revenuecat/webhooks` to update the backend entitlement.
 
 For local RevenueCat Test Store testing, use the ignored
-`revenuecat.local.json` file that contains the dashboard SDK key:
+`revenuecat.local.json` file that contains the dashboard SDK key. This file is
+only for the direct staging command below; the production helper never reads it:
 
 ```powershell
-..\..\.tools\flutter\bin\flutter.bat run --dart-define=ENABLE_FIREBASE_AUTH=true --dart-define=GOOGLE_SERVER_CLIENT_ID=121898224944-1hkh1mrfb5lc1ltraapu10lj1ib465vj.apps.googleusercontent.com --dart-define-from-file=revenuecat.local.json
+..\..\.tools\flutter\bin\flutter.bat run --debug --dart-define-from-file=staging.local.json --dart-define-from-file=revenuecat.local.json
 ```
 
 Use `STORE_STARTER_MONTHLY_PRODUCT_ID=postdee_starter_monthly` and

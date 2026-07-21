@@ -29,6 +29,7 @@ import {
 } from '../modules/uploads/prismaUploadSessionRepository.js';
 import { createPlatformPublisherFromConfig } from './platformPublisherFactory.js';
 import { processPublishJobForPost } from './publishWorker.js';
+import { enforceRetriedPublishRecoveryPolicy } from './publishWorkerRunnerPolicy.js';
 
 const config = readServerConfig();
 const storage = createVideoStorageFromConfig({ config });
@@ -75,8 +76,8 @@ const notifier = createPublishNotifier({
 
 const worker = new Worker<BullMqPublishJobData>(
   publishQueueName,
-  async (job) =>
-    processPublishJobForPost({
+  async (job) => {
+    const result = await processPublishJobForPost({
       jobData: job.data,
       postStore,
       publisher,
@@ -84,7 +85,13 @@ const worker = new Worker<BullMqPublishJobData>(
       platformPublishStore,
       notifier,
       assertOwnerActive: uploadSessionStore?.assertOwnerActive
-    }),
+    });
+
+    return enforceRetriedPublishRecoveryPolicy({
+      attemptsStarted: job.attemptsStarted,
+      result
+    });
+  },
   {
     connection: parseRedisConnection(config.redisUrl)
   }

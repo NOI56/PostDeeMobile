@@ -11,6 +11,7 @@ import 'package:postdee_mobile/features/ai_editing/capcut_editor_screen.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
+import 'package:video_player/video_player.dart';
 
 PickedVideoFile _createPickedVideoFixture(String name) {
   final directory = Directory.systemTemp.createTempSync('postdee-editor-');
@@ -46,8 +47,15 @@ BurnedSubtitleResult _createRenderedVideoFixture(
   );
 }
 
-AiEditPrepareResult _createPrepareFixture() => const AiEditPrepareResult(
-      quota: AiEditQuota(
+AiEditPrepareResult _createPrepareFixture({
+  AiEditPlanResult plan = const AiEditPlanResult(
+    cuts: [],
+    summary: '',
+    model: 'none',
+  ),
+}) =>
+    AiEditPrepareResult(
+      quota: const AiEditQuota(
         limitMinutes: 60,
         usedMinutes: 1,
         remainingMinutes: 59,
@@ -56,7 +64,7 @@ AiEditPrepareResult _createPrepareFixture() => const AiEditPrepareResult(
         version: 1,
         status: 'ready',
         renderMode: 'mobile-ffmpeg',
-        transcript: AiEditTranscriptResult(
+        transcript: const AiEditTranscriptResult(
           text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
           language: 'th',
           durationSeconds: 45,
@@ -75,7 +83,7 @@ AiEditPrepareResult _createPrepareFixture() => const AiEditPrepareResult(
           words: [],
           model: 'test',
         ),
-        subtitles: AiEditSubtitlesResult(
+        subtitles: const AiEditSubtitlesResult(
           enabled: true,
           segments: [
             ClipTranscriptSegment(
@@ -91,10 +99,11 @@ AiEditPrepareResult _createPrepareFixture() => const AiEditPrepareResult(
             position: 'bottom',
           ),
         ),
-        cutRanges: [AiEditCut(start: 10, end: 11)],
-        silenceRanges: [AiEditCut(start: 10, end: 11)],
-        fillerRanges: [],
-        capabilities: {
+        cutRanges: [...plan.cuts, const AiEditCut(start: 10, end: 11)],
+        silenceRanges: const [AiEditCut(start: 10, end: 11)],
+        fillerRanges: const [],
+        plan: plan,
+        capabilities: const {
           'subtitle': AiEditCapabilityStatusResult(
             enabled: true,
             state: 'applied',
@@ -247,6 +256,87 @@ Future<void> _openAdvancedPanel(
   await tester.pumpAndSettle();
   await tester.tap(disclosure);
   await tester.pumpAndSettle();
+}
+
+class _FakeReviewVideoController extends VideoPlayerController {
+  _FakeReviewVideoController({
+    required this.fakeDuration,
+    this.initializeGate,
+    this.disposeGate,
+    this.seekGate,
+    this.failInitialize = false,
+    this.failSeek = false,
+  }) : super.asset('fake-review-video.mp4');
+
+  final Duration fakeDuration;
+  final Completer<void>? initializeGate;
+  final Completer<void>? disposeGate;
+  final Completer<void>? seekGate;
+  final bool failInitialize;
+  final bool failSeek;
+  bool disposed = false;
+  int activeSeekCount = 0;
+  int maxActiveSeekCount = 0;
+  final List<String> calls = [];
+
+  @override
+  Future<void> initialize() async {
+    calls.add('initialize');
+    await initializeGate?.future;
+    if (failInitialize) {
+      throw StateError('fake video initialization failed');
+    }
+    value = VideoPlayerValue(
+      duration: fakeDuration,
+      size: const Size(1080, 1920),
+      isInitialized: true,
+    );
+  }
+
+  @override
+  Future<void> setLooping(bool looping) async {
+    calls.add('loop:$looping');
+    value = value.copyWith(isLooping: looping);
+  }
+
+  @override
+  Future<void> play() async {
+    calls.add('play');
+    value = value.copyWith(isPlaying: true);
+  }
+
+  @override
+  Future<void> pause() async {
+    calls.add('pause');
+    value = value.copyWith(isPlaying: false);
+  }
+
+  @override
+  Future<void> seekTo(Duration position) async {
+    calls.add('seek:${position.inMilliseconds}');
+    activeSeekCount += 1;
+    if (activeSeekCount > maxActiveSeekCount) {
+      maxActiveSeekCount = activeSeekCount;
+    }
+    try {
+      await seekGate?.future;
+      if (failSeek) {
+        throw StateError('fake seek failed');
+      }
+      value = value.copyWith(position: position);
+    } finally {
+      activeSeekCount -= 1;
+    }
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (disposed) return;
+    disposed = true;
+    calls.add('dispose');
+    await disposeGate?.future;
+    await super.dispose();
+  }
 }
 
 void main() {
@@ -492,7 +582,13 @@ void main() {
           },
           prepareEdit: (request) async {
             prepareRequest = request;
-            return _createPrepareFixture();
+            return _createPrepareFixture(
+              plan: const AiEditPlanResult(
+                cuts: [AiEditCut(start: 4, end: 5)],
+                summary: 'ตัดช่วงที่ไม่เกี่ยวข้อง',
+                model: 'test-editor',
+              ),
+            );
           },
           burnVideo: (request) async {
             renderRequest = request;
@@ -519,11 +615,389 @@ void main() {
     expect(uploadCalls, 2);
     expect(prepareRequest?.videoS3Key, 'uploads/editor-real-2.mp4');
     expect(renderRequest?.inputFile.path, pickedVideo.path);
+    expect(
+      renderRequest?.silenceRanges.any(
+        (range) => range.start == 4 && range.end == 5,
+      ),
+      isTrue,
+      reason: 'style/prompt plan cuts must be rendered on the mobile output',
+    );
     expect(find.byType(CapCutEditorScreen), findsNothing);
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
     expect(find.text('AI ตัดต่อให้แล้ว'), findsOneWidget);
     expect(find.text('ไปหน้าโพสต์'), findsOneWidget);
     expect(find.text('ตัดต่อเพิ่ม'), findsOneWidget);
+  });
+
+  testWidgets('review preview shows loading, error, and successful retry',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('retry-original.mp4');
+    final renderedVideo = _createRenderedVideoFixture('retry-result.mp4');
+    final initializeGate = Completer<void>();
+    final controllers = <_FakeReviewVideoController>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-retry-preview',
+            videoS3Key: 'uploads/retry-original.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (_) async => renderedVideo,
+          reviewVideoControllerFactory: (_) {
+            final controller = _FakeReviewVideoController(
+              fakeDuration: const Duration(seconds: 20),
+              initializeGate: controllers.isEmpty ? initializeGate : null,
+              failInitialize: controllers.isEmpty,
+            );
+            controllers.add(controller);
+            return controller;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('ai-review-video-loading')),
+      findsOneWidget,
+    );
+    expect(find.text('กำลังเปิดผล AI...'), findsOneWidget);
+
+    initializeGate.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('ai-review-video-error')),
+      findsOneWidget,
+    );
+    expect(find.text('เปิดผล AI ไม่ได้'), findsOneWidget);
+    expect(controllers.first.disposed, isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey('ai-review-video-retry')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controllers, hasLength(2));
+    expect(
+      find.byKey(const ValueKey('ai-review-seek-slider')),
+      findsOneWidget,
+    );
+    expect(find.text('00:00 / 00:20'), findsOneWidget);
+  });
+
+  testWidgets('compares original and AI durations and still posts the AI file',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('compare-original.mp4');
+    final renderedVideo = _createRenderedVideoFixture('compare-result.mp4');
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-compare-preview',
+            videoS3Key: 'uploads/compare-original.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (_) async => renderedVideo,
+          reviewVideoControllerFactory: (file) => _FakeReviewVideoController(
+            fakeDuration: file.path == renderedVideo.file.path
+                ? const Duration(seconds: 20)
+                : const Duration(seconds: 45),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('ต้นฉบับ 00:45 → ผล AI 00:20 · สั้นลง 25 วิ'),
+      findsOneWidget,
+    );
+    expect(find.text('compare-result.mp4'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('ai-review-file-source')),
+          )
+          .data,
+      'ผล AI',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('ai-review-source-original')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('compare-original.mp4'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('ai-review-file-source')),
+          )
+          .data,
+      'ต้นฉบับ',
+    );
+    expect(find.text('00:00 / 00:45'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('ai-review-post')));
+    await tester.pumpAndSettle();
+
+    final uploader = tester.widget<UploaderScreen>(find.byType(UploaderScreen));
+    expect(uploader.initialVideoPath, renderedVideo.file.path);
+  });
+
+  testWidgets('updates the review frame while dragging and throttles seeks',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('live-seek-original.mp4');
+    final renderedVideo = _createRenderedVideoFixture('live-seek-result.mp4');
+    late final _FakeReviewVideoController controller;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-live-seek-preview',
+            videoS3Key: 'uploads/live-seek-original.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (_) async => renderedVideo,
+          reviewVideoControllerFactory: (_) =>
+              controller = _FakeReviewVideoController(
+            fakeDuration: const Duration(seconds: 20),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final slider = tester.widget<Slider>(
+      find.byKey(const ValueKey('ai-review-seek-slider')),
+    );
+    slider.onChangeStart!(2000);
+    slider.onChanged!(2000);
+    slider.onChanged!(5000);
+    slider.onChanged!(8000);
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(find.text('00:08 / 00:20'), findsOneWidget);
+    expect(controller.value.position, const Duration(seconds: 8));
+    expect(
+      controller.calls.where((call) => call.startsWith('seek:')).toList(),
+      ['seek:2000', 'seek:8000'],
+    );
+    expect(controller.maxActiveSeekCount, 1);
+
+    slider.onChangeEnd!(9000);
+    await tester.pumpAndSettle();
+
+    expect(controller.value.position, const Duration(seconds: 9));
+    expect(
+      controller.calls.where((call) => call.startsWith('seek:')).last,
+      'seek:9000',
+    );
+  });
+
+  testWidgets('waits for an active live seek before the final seek and resume',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('seek-order-original.mp4');
+    final renderedVideo = _createRenderedVideoFixture('seek-order-result.mp4');
+    final seekGate = Completer<void>();
+    late final _FakeReviewVideoController controller;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-seek-order-preview',
+            videoS3Key: 'uploads/seek-order-original.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (_) async => renderedVideo,
+          reviewVideoControllerFactory: (_) =>
+              controller = _FakeReviewVideoController(
+            fakeDuration: const Duration(seconds: 20),
+            seekGate: seekGate,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-review-video-preview')));
+    await tester.pump();
+    controller.calls.clear();
+
+    final slider = tester.widget<Slider>(
+      find.byKey(const ValueKey('ai-review-seek-slider')),
+    );
+    slider.onChangeStart!(2000);
+    slider.onChanged!(2000);
+    slider.onChanged!(5000);
+    slider.onChanged!(8000);
+    await tester.pump();
+
+    expect(find.text('00:08 / 00:20'), findsOneWidget);
+    expect(
+      controller.calls.where((call) => call.startsWith('seek:')).toList(),
+      ['seek:2000'],
+    );
+    expect(controller.calls, isNot(contains('play')));
+
+    slider.onChangeEnd!(9000);
+    await tester.pump(const Duration(seconds: 1));
+    expect(controller.calls, isNot(contains('play')));
+
+    seekGate.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      controller.calls.where((call) => call.startsWith('seek:')).toList(),
+      ['seek:2000', 'seek:9000'],
+    );
+    expect(controller.maxActiveSeekCount, 1);
+    expect(controller.calls.last, 'play');
+  });
+
+  testWidgets('disposes the old player before opening another review source',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('serial-original.mp4');
+    final renderedVideo = _createRenderedVideoFixture('serial-result.mp4');
+    final disposeGate = Completer<void>();
+    final controllers = <_FakeReviewVideoController>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-serial-preview',
+            videoS3Key: 'uploads/serial-original.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (_) async => renderedVideo,
+          reviewVideoControllerFactory: (_) {
+            final controller = _FakeReviewVideoController(
+              fakeDuration: const Duration(seconds: 20),
+              disposeGate: controllers.isEmpty ? disposeGate : null,
+            );
+            controllers.add(controller);
+            return controller;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('ai-review-source-original')),
+    );
+    await tester.pump();
+
+    expect(controllers, hasLength(1));
+    expect(controllers.first.disposed, isTrue);
+    expect(
+      tester.getSemantics(
+        find.byKey(const ValueKey('ai-review-source-ai')),
+      ),
+      isSemantics(
+        isButton: true,
+        hasSelectedState: true,
+        isSelected: false,
+        hasTapAction: false,
+      ),
+    );
+
+    disposeGate.complete();
+    await tester.pumpAndSettle();
+
+    expect(controllers, hasLength(2));
+    expect(find.text('serial-original.mp4'), findsOneWidget);
+  });
+
+  testWidgets('keeps the review available after a transient seek failure',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('seek-original.mp4');
+    final renderedVideo = _createRenderedVideoFixture('seek-result.mp4');
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-seek-preview',
+            videoS3Key: 'uploads/seek-original.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (_) async => renderedVideo,
+          reviewVideoControllerFactory: (_) => _FakeReviewVideoController(
+            fakeDuration: const Duration(seconds: 20),
+            failSeek: true,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final slider = tester.widget<Slider>(
+      find.byKey(const ValueKey('ai-review-seek-slider')),
+    );
+    slider.onChangeStart!(10000);
+    slider.onChanged!(10000);
+    slider.onChangeEnd!(10000);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('ai-review-video-error')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('ai-review-seek-slider')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('review explains when device rendering skips the color filter',
@@ -993,7 +1467,16 @@ void main() {
 
     expect(renderCalls, 0);
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
+    expect(find.text('คลิปนี้ไม่ต้องแก้เพิ่ม'), findsOneWidget);
     expect(find.text('keep-original.mp4'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('ai-review-file-source')),
+          )
+          .data,
+      'ต้นฉบับ',
+    );
   });
 
   testWidgets('review status follows automatic preview removal and restore',
@@ -1123,7 +1606,70 @@ void main() {
     );
   });
 
-  testWidgets('review analysis summary keeps explicit zero states',
+  testWidgets(
+      'review shows when a selected capability was checked but not found',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('analysis-not-found.mp4');
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-analysis-not-found',
+            videoS3Key: 'uploads/analysis-not-found.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (_) async =>
+              _createRenderedVideoFixture('analysis-not-found-result.mp4'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final fillerResult = find.byKey(
+      const ValueKey('ai-review-not-detected-filler'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      fillerResult,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(fillerResult, findsOneWidget);
+    expect(
+      find.descendant(of: fillerResult, matching: find.text('คำฟุ่มเฟือย')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: fillerResult,
+        matching: find.text('ตรวจแล้ว · ไม่พบ'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: fillerResult, matching: find.byType(Checkbox)),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('ai-review-not-detected-silence'),
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('review analysis does not guess when status data is missing',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('analysis-zero.mp4');
 
@@ -1162,12 +1708,26 @@ void main() {
 
     expect(summary, findsOneWidget);
     expect(
-      find.descendant(of: summary, matching: find.textContaining('0 ช่วง')),
-      findsOneWidget,
+      find.descendant(
+        of: summary,
+        matching: find.text('ไม่มีข้อมูลผลตรวจ'),
+      ),
+      findsNWidgets(2),
     );
     expect(
-      find.descendant(of: summary, matching: find.textContaining('0 คำ')),
-      findsOneWidget,
+      find.byKey(
+        const ValueKey('ai-review-not-detected-silence'),
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('ai-review-not-detected-filler'),
+        skipOffstage: false,
+      ),
+      findsNothing,
+      reason: 'Missing status must not be presented as a completed AI check.',
     );
     expect(
       find.descendant(
@@ -1428,7 +1988,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('เร็ว ๆ นี้'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('ai-capability-badge-beatsync')),
+      findsOneWidget,
+    );
     expect(tester.getSize(beatSwitch).height, greaterThanOrEqualTo(44));
     expect(
       tester.getSemantics(beatSwitch),
@@ -1463,6 +2026,123 @@ void main() {
 
     expect(prepareRequest?.capabilities['beatsync'], isFalse);
     expect(prepareRequest?.settings.music?.source, 'original');
+    semantics.dispose();
+  });
+
+  testWidgets(
+      'locks capabilities without a real renderer and excludes them from prepare',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    final pickedVideo =
+        _createPickedVideoFixture('production-planned-locks.mp4');
+    AiEditPrepareRequest? prepareRequest;
+    const plannedCapabilities = <String, (String, String)>{
+      'reframe': (
+        'ปรับเป็น 9:16 อัตโนมัติ',
+        'ระบบครอปและติดตามวัตถุในคลิปจริงกำลังพัฒนา',
+      ),
+      'zoom': (
+        'ซูมเข้าตอนสำคัญ',
+        'ระบบวิเคราะห์จุดสำคัญและซูมลงในคลิปจริงกำลังพัฒนา',
+      ),
+      'audio': (
+        'ปรับเสียงให้ชัด',
+        'ระบบลดเสียงรบกวนและปรับเสียงพูดในคลิปจริงกำลังพัฒนา',
+      ),
+      'translate': (
+        'แปลซับ 2 ภาษา',
+        'ระบบแปลและเรนเดอร์ซับหลายภาษาในคลิปจริงกำลังพัฒนา',
+      ),
+      'pricetag': (
+        'ป้ายราคาอัตโนมัติ',
+        'ระบบตรวจราคาและเรนเดอร์ป้ายลงในคลิปจริงกำลังพัฒนา',
+      ),
+      'cta': (
+        'การ์ดปิดท้าย (CTA)',
+        'ระบบเรนเดอร์การ์ด CTA ลงในคลิปจริงกำลังพัฒนา',
+      ),
+      'watermark': (
+        'ลายน้ำร้าน',
+        'ระบบเรนเดอร์ลายน้ำจากหน้านี้ลงในคลิปจริงกำลังพัฒนา',
+      ),
+    };
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-production-planned-locks',
+            videoS3Key: 'uploads/production-planned-locks.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (request) async {
+            prepareRequest = request;
+            return _createPrepareFixture();
+          },
+          burnVideo: (_) async =>
+              _createRenderedVideoFixture('production-supported-result.mp4'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    for (final entry in plannedCapabilities.entries) {
+      final capabilitySwitch = find.byKey(
+        ValueKey('ai-capability-${entry.key}'),
+        skipOffstage: false,
+      );
+      await tester.scrollUntilVisible(
+        capabilitySwitch,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(ValueKey('ai-capability-badge-${entry.key}')),
+        findsOneWidget,
+      );
+      expect(find.text(entry.value.$2), findsOneWidget);
+      expect(
+        tester.getSemantics(capabilitySwitch),
+        isSemantics(
+          label: entry.value.$1,
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: false,
+          hasToggledState: true,
+          isToggled: false,
+          hasTapAction: false,
+        ),
+      );
+    }
+
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    for (final capability in plannedCapabilities.keys) {
+      expect(
+        prepareRequest?.capabilities[capability],
+        isFalse,
+        reason: '$capability must stay out of the production render request',
+      );
+    }
+    for (final capability in const [
+      'subtitle',
+      'silence',
+      'filler',
+      'color',
+    ]) {
+      expect(
+        prepareRequest?.capabilities[capability],
+        isTrue,
+        reason: '$capability has a real production renderer',
+      );
+    }
     semantics.dispose();
   });
 
@@ -1612,7 +2292,7 @@ void main() {
         'TikTok',
         'YouTube Shorts',
         'Instagram Reels',
-        'Facebook Reels',
+        'Facebook Video',
         'Shopee Video',
         'Lazada Video',
       ],
@@ -1816,7 +2496,7 @@ void main() {
         'TikTok',
         'YouTube Shorts',
         'Instagram Reels',
-        'Facebook Reels',
+        'Facebook Video',
         'Shopee Video',
         'Lazada Video',
       ],
@@ -1977,6 +2657,127 @@ void main() {
   });
 
   testWidgets(
+      'subtitle advanced settings only expose options supported by the renderer',
+      (tester) async {
+    await tester.pumpWidget(_testApp(const AiEditingScreen()));
+
+    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
+    await tester.pumpAndSettle();
+    await _openAdvancedPanel(tester, 'subtitle');
+
+    final panel = find.byKey(
+      const ValueKey('ai-advanced-subtitle'),
+      skipOffstage: false,
+    );
+    expect(panel, findsOneWidget);
+    expect(
+      find.descendant(of: panel, matching: find.text('ขนาดตัวอักษร')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: panel,
+        matching: find.text('สีซับเป็นสีขาวพร้อมขอบดำในเวอร์ชันนี้'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: panel,
+        matching: find.text('สั้น (ไม่เกิน 8 ตัวอักษร)'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: panel, matching: find.textContaining('คาราโอเกะ')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: panel, matching: find.text('กลาง')),
+      findsOneWidget,
+      reason: 'the only middle option is subtitle size, not a fake position',
+    );
+    expect(
+      find.byKey(const ValueKey('ai-subtitle-position-center')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('ai-subtitle-position-top')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('ai-subtitle-position-bottom')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('sends and renders only truthful subtitle settings',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final pickedVideo = _createPickedVideoFixture('subtitle-settings.mp4');
+    AiEditPrepareRequest? prepareRequest;
+    BurnSubtitleRequest? burnRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-subtitle-settings',
+            videoS3Key: 'uploads/subtitle-settings.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (request) async {
+            prepareRequest = request;
+            return _createPrepareFixture();
+          },
+          burnVideo: (request) async {
+            burnRequest = request;
+            return _createRenderedVideoFixture('subtitle-settings-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
+    await tester.pumpAndSettle();
+    await _openAdvancedPanel(tester, 'subtitle');
+
+    final shortText = find.byKey(
+      const ValueKey('ai-subtitle-length-short'),
+      skipOffstage: false,
+    );
+    final smallSize = find.byKey(
+      const ValueKey('ai-subtitle-size-small'),
+      skipOffstage: false,
+    );
+    final topPosition = find.byKey(
+      const ValueKey('ai-subtitle-position-top'),
+      skipOffstage: false,
+    );
+    tester.widget<Semantics>(shortText).properties.onTap!.call();
+    tester.widget<Semantics>(smallSize).properties.onTap!.call();
+    tester.widget<Semantics>(topPosition).properties.onTap!.call();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(prepareRequest?.settings.subtitleStyle, 'outline');
+    expect(prepareRequest?.settings.subtitleColor, '#FFFFFF');
+    expect(prepareRequest?.settings.subtitleWordsPerLine, 1);
+    expect(prepareRequest?.settings.subtitlePosition, 'top');
+    expect(burnRequest?.subtitleFontSize, 17);
+    expect(burnRequest?.subtitleAtBottom, isFalse);
+  });
+
+  testWidgets(
       'sends silence preset and selected filler words while blocking an empty selection',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('pace-settings.mp4');
@@ -2080,20 +2881,20 @@ void main() {
     await tester.tap(advancedToggle);
     await tester.pumpAndSettle();
 
-    final zoomDisclosure = find.byKey(
-      const ValueKey('ai-advanced-disclosure-zoom'),
+    final silenceDisclosure = find.byKey(
+      const ValueKey('ai-advanced-disclosure-silence'),
       skipOffstage: false,
     );
     await tester.scrollUntilVisible(
-      zoomDisclosure,
+      silenceDisclosure,
       350,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
 
-    expect(tester.getSize(zoomDisclosure).height, greaterThanOrEqualTo(44));
+    expect(tester.getSize(silenceDisclosure).height, greaterThanOrEqualTo(44));
     expect(
-      tester.getSemantics(zoomDisclosure),
+      tester.getSemantics(silenceDisclosure),
       isSemantics(
         hasExpandedState: true,
         isExpanded: false,
@@ -2101,7 +2902,7 @@ void main() {
       ),
     );
     expect(
-      find.byKey(const ValueKey('ai-advanced-zoom'), skipOffstage: false),
+      find.byKey(const ValueKey('ai-advanced-silence'), skipOffstage: false),
       findsNothing,
     );
     expect(
@@ -2109,10 +2910,10 @@ void main() {
       findsNothing,
     );
 
-    await tester.tap(zoomDisclosure);
+    await tester.tap(silenceDisclosure);
     await tester.pumpAndSettle();
     expect(
-      tester.getSemantics(zoomDisclosure),
+      tester.getSemantics(silenceDisclosure),
       isSemantics(
         hasExpandedState: true,
         isExpanded: true,
@@ -2120,19 +2921,18 @@ void main() {
       ),
     );
     expect(
-      find.byKey(const ValueKey('ai-advanced-zoom'), skipOffstage: false),
+      find.byKey(const ValueKey('ai-advanced-silence'), skipOffstage: false),
       findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey('ai-advanced-color'), skipOffstage: false),
       findsNothing,
     );
-    expect(find.text('ความแรงซูม'), findsOneWidget);
-    expect(find.text('ความเร็วคลิป'), findsOneWidget);
+    expect(find.text('ตัดช่วงเงียบเมื่อยาวตั้งแต่'), findsOneWidget);
 
     await _openAdvancedPanel(tester, 'color');
     expect(
-      find.byKey(const ValueKey('ai-advanced-zoom'), skipOffstage: false),
+      find.byKey(const ValueKey('ai-advanced-silence'), skipOffstage: false),
       findsNothing,
     );
     expect(

@@ -26,7 +26,7 @@ type PrismaSubscriptionWriteData = {
   plan: PaidSubscriptionPlan;
   status: 'ACTIVE';
   billingSubscriptionId?: string;
-  currentPeriodEnd?: Date;
+  currentPeriodEnd?: Date | null;
 };
 
 type PrismaSubscriptionSelect = {
@@ -108,7 +108,7 @@ export const createPrismaSubscriptionRepository = ({
   }: {
     plan: PaidSubscriptionPlan;
     billingSubscriptionId?: string;
-    currentPeriodEnd?: string;
+    currentPeriodEnd?: string | null;
   }): PrismaSubscriptionWriteData => {
     const data: PrismaSubscriptionWriteData = {
       plan,
@@ -119,8 +119,8 @@ export const createPrismaSubscriptionRepository = ({
       data.billingSubscriptionId = billingSubscriptionId;
     }
 
-    if (currentPeriodEnd) {
-      data.currentPeriodEnd = new Date(currentPeriodEnd);
+    if (currentPeriodEnd !== undefined) {
+      data.currentPeriodEnd = currentPeriodEnd ? new Date(currentPeriodEnd) : null;
     }
 
     return data;

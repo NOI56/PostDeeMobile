@@ -15,7 +15,7 @@ export type UserSubscription = {
 
 export type ActivatePlanOptions = {
   billingSubscriptionId?: string;
-  currentPeriodEnd?: string;
+  currentPeriodEnd?: string | null;
 };
 
 export type UpdateSubscriptionStatusByBillingIdInput = {
@@ -76,6 +76,12 @@ export const createSubscriptionStore = ({
     options: ActivatePlanOptions = {}
   ) => {
     const previousSubscription = subscriptions.get(authUser.id);
+    const currentPeriodEnd = Object.prototype.hasOwnProperty.call(
+      options,
+      'currentPeriodEnd'
+    )
+      ? options.currentPeriodEnd ?? undefined
+      : previousSubscription?.currentPeriodEnd;
 
     if (previousSubscription?.billingSubscriptionId) {
       subscriptionUserIdsByBillingId.delete(previousSubscription.billingSubscriptionId);
@@ -86,7 +92,7 @@ export const createSubscriptionStore = ({
       plan,
       status: 'ACTIVE',
       billingSubscriptionId: options.billingSubscriptionId,
-      currentPeriodEnd: options.currentPeriodEnd,
+      currentPeriodEnd,
       updatedAt: now()
     };
 

@@ -100,13 +100,18 @@ internal mock/provider code have now been removed from the app path. Useful
 ideas such as hooks, SEO wording, and hashtag suggestions should be rebuilt
 inside real-clip captioning instead of kept as a separate review feature.
 
-## Notes For Implementation Later
+## Current implementation status
 
-- Backend currently needs updates before this plan becomes real behavior:
-  - Starter post limit should change from 50 posts to 120 post units.
-  - Post usage must count selected platforms, not just post rows.
-  - Starter should be allowed to schedule posts.
-  - Pro post limit should be 250 post units per month.
+- Active purchase screens must list only benefits that work end to end in the
+  current app. EP splitting, hashtag radar, viral alerts, and team/editor
+  access remain roadmap items and must not appear as included benefits until
+  their mobile, backend, and provider flows have been verified.
+
+- The core package rules in this plan are implemented and covered by backend
+  tests: Starter has 120 post units and 50 clip-caption generations, Pro has
+  250 post units, 120 clip-caption generations, and 200 AI-editing minutes.
+  Post usage counts selected platforms and Starter scheduling is enabled.
+  Remaining production work:
   - AI caption from real clip now has a mock-safe endpoint and memory/Prisma
     quota ledger options, plus transcription-backed language/market context.
     Production still needs real R2/Groq clip testing and the Prisma migration

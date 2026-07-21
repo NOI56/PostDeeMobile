@@ -129,6 +129,37 @@ void main() {
       ),
     );
   });
+
+  test('FirebaseGoogleAuthGateway explains when no Google account is available',
+      () async {
+    final gateway = FirebaseGoogleAuthGateway(
+      googleClient: FakeGoogleIdentityClient(
+        const GoogleAccountSnapshot(),
+        error: const GoogleSignInException(
+          code: GoogleSignInExceptionCode.unknownError,
+          description: 'No credential available: no eligible accounts',
+        ),
+      ),
+      firebaseAuthClient: FakeFirebaseAuthClient(
+        const FirebaseUserSnapshot(idToken: 'firebase-id-token'),
+      ),
+    );
+
+    expect(
+      gateway.signIn,
+      throwsA(
+        isA<AuthUnavailableException>().having(
+          (error) => error.message,
+          'message',
+          allOf(
+            contains('บัญชี Google'),
+            contains('Google Play'),
+          ),
+        ),
+      ),
+    );
+  });
+
   test('FirebaseGoogleAuthGateway signs out from Firebase and Google',
       () async {
     final googleClient = FakeGoogleIdentityClient(

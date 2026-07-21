@@ -383,7 +383,8 @@ export const registerCaptionRoutes = (
         }
 
         transcript = await transcriptionProvider.transcribe({
-          videoS3Key: validation.request.videoS3Key
+          mediaS3Key: validation.request.videoS3Key,
+          mediaKind: 'legacy-video'
         });
       } catch (error) {
         if (error instanceof MediaDownloadError) {

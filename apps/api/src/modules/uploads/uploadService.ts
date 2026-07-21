@@ -1,5 +1,9 @@
 import type { UploadMetadata } from '../storage/videoStorage.js';
 
+export const aiEditAudioUploadPurpose = 'ai-edit-audio' as const;
+export const aiEditAudioUploadMaxBytes = 25 * 1024 * 1024;
+export const aiEditAudioUploadInvalidCode = 'UPLOAD_AI_EDIT_AUDIO_INVALID' as const;
+
 const isPositiveNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
 
@@ -27,6 +31,36 @@ export const readUploadMetadata = (body: unknown, { maxSizeBytes }: ReadUploadMe
   const sizeBytes = payload.sizeBytes;
   const width = readOptionalPositiveNumber(payload.width);
   const height = readOptionalPositiveNumber(payload.height);
+
+  if (payload.purpose === aiEditAudioUploadPurpose) {
+    const hasDimensions = payload.width !== undefined || payload.height !== undefined;
+    const audioSizeLimit = Math.min(maxSizeBytes, aiEditAudioUploadMaxBytes);
+    const isValidAiEditAudio =
+      fileName.toLowerCase().endsWith('.m4a') &&
+      contentType === 'audio/mp4' &&
+      isPositiveNumber(sizeBytes) &&
+      sizeBytes <= audioSizeLimit &&
+      !hasDimensions;
+
+    if (!isValidAiEditAudio) {
+      return {
+        ok: false as const,
+        code: aiEditAudioUploadInvalidCode,
+        message: 'AI edit audio must be an M4A audio/mp4 file no larger than 25 MiB.'
+      };
+    }
+
+    return {
+      ok: true as const,
+      metadata: {
+        fileName,
+        contentType,
+        sizeBytes,
+        width,
+        height
+      }
+    };
+  }
 
   // Videos are the main upload; images are accepted too for AI-caption frames.
   const isSupportedContentType =

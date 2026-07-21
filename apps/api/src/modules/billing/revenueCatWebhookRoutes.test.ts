@@ -110,6 +110,38 @@ describe('RevenueCat webhooks', () => {
     });
   });
 
+  it('clears a stale period end for lifetime RevenueCat access', async () => {
+    const app = createRevenueCatApp();
+    await createKnownUser(app, 'seller-revenuecat-lifetime');
+
+    await postRevenueCatWebhook(app, {
+      event: {
+        type: 'INITIAL_PURCHASE',
+        app_user_id: 'seller-revenuecat-lifetime',
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly',
+        expiration_at_ms: 1
+      }
+    }).expect(200);
+
+    const lifetimeResponse = await postRevenueCatWebhook(app, {
+      event: {
+        type: 'NON_RENEWING_PURCHASE',
+        app_user_id: 'seller-revenuecat-lifetime',
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly',
+        expiration_at_ms: null
+      }
+    }).expect(200);
+
+    expect(lifetimeResponse.body.subscription.currentPeriodEnd).toBeUndefined();
+    const subscriptionResponse = await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', 'seller-revenuecat-lifetime')
+      .expect(200);
+    expect(subscriptionResponse.body.subscription.plan).toBe('PRO');
+  });
+
   it('marks an existing RevenueCat subscription as canceled after expiration', async () => {
     const app = createRevenueCatApp();
     await createKnownUser(app, 'seller-revenuecat-expired');

@@ -11,7 +11,8 @@ Target platforms:
 - TikTok
 - YouTube Shorts
 - Instagram Reels
-- Facebook Reels
+- Facebook Page Video through PostPeer (the internal compatibility value remains
+  `FACEBOOK_REELS`; Reels are not currently supported by this provider path)
 
 ## Project Layout
 
@@ -33,6 +34,7 @@ flowchart LR
   Mobile["Flutter Mobile App"] --> API["Express API (Render)"]
   Mobile -.->|purchases_flutter| RC["RevenueCat"]
   RC -.->|Webhooks| API
+  API -.->|Subscriber read for Restore| RC
   API --> Auth["Firebase Auth & FCM"]
   API --> DB["PostgreSQL (Render)"]
   API --> Storage["Cloudflare R2 Video Storage"]
@@ -43,9 +45,16 @@ flowchart LR
   Worker --> Social["PostPeer API (Unified)"]
   Worker --> Storage
   Worker --> DB
-  API -.-> Sentry["Sentry Error Tracking"]
-  Worker -.-> Sentry
+  API -.-> PlannedSentry["Sentry (planned)"]
+  Worker -.-> PlannedSentry
 ```
+
+Production และ Staging ต้องเป็นคนละ data boundary: `render.yaml` ชี้ไป
+`postdee-api`/`postdee-postgres` ส่วน `render.staging.yaml` ชี้ไป
+`postdee-api-staging`/`postdee-postgres-staging` และต้องใช้ R2, Firebase,
+RevenueCat และ PostPeer ชุดทดสอบแยกกัน รายละเอียดอยู่ใน `docs/STAGING.md`
+Android Debug เพิ่ม suffix `.staging` และใช้ `src/debug/google-services.json`;
+Profile/Release ยังคงใช้ Firebase Production จึงห้ามผสมกับ Staging Dart defines
 
 ## Mobile App
 
@@ -57,7 +66,7 @@ apps/mobile
 
 Current mobile pieces:
 
-- Ultra-dark Flutter UI theme.
+- Light and dark Flutter themes; light is the current default.
 - Home dashboard with total views, total likes, subscription status, Basic Phone OTP verification, and Starter/Pro CTAs.
 - Universal uploader screen with 9:16 metadata validation and platform toggles.
 - Calendar tab for scheduled posts and refresh after scheduling.
@@ -72,7 +81,9 @@ Current mobile pieces:
   been removed from the active app path.
 - Saved templates screen.
 - Unified analytics screen gated by Pro status.
-- Firebase/Google auth gateway scaffold with Firebase Phone Auth UI for Basic free quota verification.
+- Firebase/Google auth gateway with an isolated Android Debug Staging config;
+  Google login/token/Staging API smoke passes on Emulator. Firebase Phone Auth,
+  iOS, Production, and physical-device tests remain.
 - RevenueCat webhook scaffold for Starter and Pro entitlements, plus a legacy Store Subscription scaffold.
 
 Important mobile services:
@@ -84,7 +95,9 @@ Important mobile services:
 - Home uses the legacy `POST /billing/store/verify` path by default for local
   scaffold runs, and can use RevenueCat `purchases_flutter` when
   `ENABLE_REVENUECAT_BILLING=true`; entitlements are then updated by
-  `POST /billing/revenuecat/webhooks`.
+  `POST /billing/revenuecat/webhooks`. A user-initiated Restore first calls the
+  RevenueCat SDK, then the authenticated `POST /billing/revenuecat/resync` route
+  to reconcile the server subscription store.
 
 Global readiness principles:
 
@@ -123,15 +136,21 @@ Backend stack:
 - Gemini caption provider scaffold
 - Groq Whisper AI auto editing scaffold
 - RevenueCat webhook receiver scaffold
-- Sentry error tracking integration
+- Sentry error tracking is planned; it is not integrated yet
 
 Main route groups:
 
 - `GET /health`
 - `GET /auth/me`
 - `POST /uploads`
+- `POST /uploads/:uploadId/parts/:partNumber`
+- `POST /uploads/:uploadId/complete`
+- `GET /uploads/:uploadId`
+- `DELETE /uploads/:uploadId`
 - `GET /posts`
 - `POST /posts`
+- `PATCH /posts/:id`
+- `DELETE /posts/:id`
 - `POST /captions/generate`
 - `GET /ai-edits/quota`
 - `POST /ai-edits/transcribe`
@@ -142,10 +161,16 @@ Main route groups:
 - `GET /analytics/summary?range=today|7d|30d|90d|year`
 - `GET /billing/subscription`
 - `POST /billing/revenuecat/webhooks`
+- `POST /billing/revenuecat/resync`
 - `POST /billing/store/verify`
 - `POST /billing/mock-success`
 - `POST /billing/google-play/notifications`
 - `POST /billing/apple/notifications`
+- `POST /devices`
+- `GET /social-connections`
+- `POST /social-connections/:platform/connect`
+- `POST /social-connections/refresh`
+- `DELETE /social-connections/:platform`
 - `GET /queue/jobs`
 
 ## Module Layout
@@ -197,6 +222,9 @@ Important models:
 - `Subscription`: Basic/Starter/Pro entitlement state.
 - `RealClipCaptionUsage`: monthly usage ledger for paid AI caption generations
   from selected clips.
+- `AiEditUsage`: monthly minute ledger for Pro AI editing.
+- `DeviceToken`: per-user FCM registration token.
+- `SocialConnection` and `PostPeerProfile`: per-user provider connection state.
 
 Subscription fields are provider-neutral:
 
@@ -220,7 +248,7 @@ This keeps the schema usable for Apple App Store, Google Play, or other future b
 | AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | `TRANSCRIPTION_PROVIDER=groq` with Groq Whisper transcription on backend, FFmpeg export on mobile |
 | Auth | `AUTH_PROVIDER=mock` | `AUTH_PROVIDER=firebase` |
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
-| Social publishing | `SOCIAL_PUBLISHER=mock` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
+| Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; `FACEBOOK_REELS` currently targets Facebook Page Video; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
 
 Firebase production account deletion additionally requires
 `FIREBASE_AUTH_DELETE_ENABLED=true` and `FIREBASE_SERVICE_ACCOUNT_JSON`. The API
@@ -283,7 +311,9 @@ sequenceDiagram
   A-->>M: post + publishJob
   Q->>W: Run job immediately or at scheduled time
   W->>P: Publish to selected platforms
-  W->>S: Delete temporary video after success
+  opt Cleanup enabled or storage lifecycle policy
+    W->>S: Delete temporary video after success
+  end
   W->>A: Record publish/analytics result
 ```
 
@@ -316,6 +346,14 @@ Rules:
 - Pro unlocks analytics, hashtag radar, AI comment center, team/editor access,
   AI captioning from audio plus selected frames, and Groq Whisper auto
   editing.
+- A PostPeer `202 pending/publishing` response stays inside the publisher until
+  `GET /v1/posts/{postId}` reaches a terminal result or the roughly two-minute
+  bounded poll expires. Success requires a real platform URL/id; no synthetic
+  external id is stored.
+- `GET /posts` joins each authenticated user's posts with their persisted
+  `platformResults`, including partial and failed platform outcomes.
+- Provider retries are explicit-safe-only. Unknown network/polling outcomes are
+  terminal and tell the user to inspect the destination before trying again.
 
 ## RevenueCat Subscription Flow
 
@@ -339,13 +377,49 @@ sequenceDiagram
   A->>DB: Activate STARTER or PRO subscription
 ```
 
-Production work required:
+Restore is an explicit user action and uses a separate reconciliation path:
 
-- Create `postdee_starter_monthly` and `postdee_pro_monthly` in RevenueCat.
-- Link Apple and Google service credentials to RevenueCat dashboard.
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant M as Mobile (purchases_flutter)
+  participant A as Authenticated API
+  participant RC as RevenueCat Subscriber API
+  participant DB as Subscription Store
+
+  U->>M: Tap Restore purchases
+  M->>RC: restorePurchases with Firebase uid
+  RC-->>M: Customer info refreshed
+  M->>A: POST /billing/revenuecat/resync
+  A->>RC: GET subscriber using server REST key
+  RC-->>A: Active entitlements and expiry
+  A->>DB: Reconcile PRO, STARTER, or BASIC
+  A-->>M: Current subscription
+```
+
+The mobile app never receives `REVENUECAT_REST_API_V1_KEY`. The API derives the
+RevenueCat app user id only from the authenticated Firebase user, prefers Pro if
+both paid entitlements are active, and leaves the existing plan unchanged if the
+provider lookup fails. Zero active RevenueCat entitlements deactivates only the
+matching RevenueCat-backed record. Active but unmapped access returns a
+configuration error and does not downgrade the user.
+
+Production status and remaining work:
+
+- RevenueCat already has the Play Store app, `postdee_starter_monthly` and
+  `postdee_pro_monthly` products, Starter/Pro entitlements, and the default
+  offering.
+- Link Apple and Google service credentials to the RevenueCat dashboard after
+  the matching store apps are available.
 - Configure `REVENUECAT_WEBHOOK_AUTH_TOKEN` and the RevenueCat webhook URL.
-- Replace the local RevenueCat Test Store SDK key with real platform SDK keys
-  before App Store / Google Play release builds.
+- Staging already has the server-only `REVENUECAT_REST_API_V1_KEY`; Test Store
+  true Restore/resync E2E passes there.
+- The production Android public SDK key is configured through an ignored local
+  production config, and a signed AAB is ready. The iOS platform key and store
+  configuration still remain.
+- Create the Play Console app/subscriptions, configure its service credentials,
+  and open internal testing after the developer account is verified on a
+  physical Android device. The Emulator cannot complete this verification.
 - Run sandbox/device purchases and renewal/cancel/refund webhook tests.
 
 ## Real-Clip AI Caption Flow
@@ -492,6 +566,11 @@ available if a new render fails. The user can then continue either to
 Upload/Post or the manual editor. Mobile handles FFmpeg
 subtitle burn-in, silence cutting, supported visual adjustments, and final MP4
 export; capabilities marked `planned` are not shown as already applied.
+The production capability allowlist is currently `subtitle`, `silence`,
+`filler`, and `color`. Auto-reframe, zoom, audio cleanup, translation, price
+tags, CTA cards, and the AI-page watermark remain `planned`; mobile locks them
+as `เร็ว ๆ นี้` and sends them disabled instead of implying that their recipe
+hints changed the exported file.
 The AI header independently reads the authenticated monthly quota and replaces
 that value with `prepare.quota` as soon as a metered recipe succeeds. Local
 preview re-renders and manual quota refreshes do not call the metered endpoint.
@@ -500,12 +579,26 @@ and passes that directory to libass. For silence cuts, video frames use the
 selected keep timeline while audio keep ranges are reset and concatenated, so
 both streams finish together after local preview re-renders.
 
-Pace cleanup is an end-to-end recipe input. `silencePreset` selects the minimum
-gap between transcript segments: `natural` = 1.0 s, `balanced` = 0.6 s, and
-`compact` = 0.4 s. Missing or invalid values use `balanced`. `fillerWords` is an
+Pace cleanup is an end-to-end recipe input. The backend first validates that
+word timings cover the transcript text and timeline, then `silencePreset`
+selects their minimum gap: `natural` = 1.0 s, `balanced` = 0.6 s, and
+`compact` = 0.4 s. Missing/incomplete word timing falls back to segment gaps.
+The same threshold applies before the first range and after the last range when
+the transcript has a finite media duration. Overlapping ranges are merged before
+gaps are calculated. Groq Thai character-level timings remain useful for gap
+detection, while subtitle text falls back to segments instead of being split
+into individual characters. The Groq request carries a concise Thai spelling
+hint for `PostDee` → `โพสต์ดี`; this prompt is not sent through the OpenAI
+provider path.
+Whitespace-only provider tokens do not invalidate an otherwise complete timing
+stream; malformed tokens containing transcript text still fail closed.
+Missing or invalid preset values use `balanced`. `fillerWords` is an
 exact, normalized allowlist limited to `เอ่อ`, `อ่า`, `แบบว่า`, `คือว่า`, and
-`ประมาณว่า`. A missing field keeps the legacy all-five behavior, while an
-explicit empty or fully invalid list fails closed with no filler cuts. The API
+`ประมาณว่า`; `เออ` is an exact alias of `เอ่อ`, and validated fragmented Thai
+tokens are reassembled only across tight timing and verified Thai word/text
+boundaries. A missing field keeps the legacy
+all-five behavior, while an explicit empty or fully invalid list fails closed
+with no filler cuts. The API
 returns detected silence/filler ranges and mobile renders the supported cuts.
 The review summarizes range counts and their combined detected time before
 rendering; it does not claim that the final clip duration changes by exactly the
@@ -620,7 +713,20 @@ cd apps/mobile
 
 - Social platform publishing defaults to mock. The PostPeer path is wired, but
   production must use per-user social connections and a real provider-level
-  publish test before user publishing is enabled. Shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production.
+  publish test before user publishing is enabled. A new identity is ensured in
+  the local `User` store before its provider profile is saved, and the required
+  PostPeer profile name is stable and pseudonymous. Controlled-first requests
+  use YouTube `private` and TikTok `SELF_ONLY` direct posting. Shared
+  `POSTPEER_*_ACCOUNT_ID` values are rejected in production. The internal
+  `FACEBOOK_REELS` key currently means Facebook Page Video, not Reels.
+- New PostPeer profile names carry a versioned 128-bit HMAC suffix. Legacy
+  40-bit profile recovery is disabled by default and can target only one
+  operator-approved Firebase user/profile pair through a full HMAC fingerprint
+  plus exact provider profile id. Profile pagination, uniqueness, name, and id
+  must all validate before the recovered mapping is persisted. The
+  `PostPeerProfile.profileId` database unique constraint is the final atomic
+  ownership boundary. The first mapping remains authoritative during same-user
+  races, while cross-user claims fail without returning ownership details.
 - The publish worker checks the durable account-deletion barrier, then claims
   only `QUEUED` posts before calling PostPeer or the
   mock publisher. Jobs for posts already `PUBLISHING`, `PUBLISHED`,
@@ -631,6 +737,11 @@ cd apps/mobile
   to `FAILED`.
 - Direct social OAuth/token storage is not implemented because the MVP
   production path uses PostPeer first.
+- Per-platform disconnect is provider-first and user-scoped: PostPeer must
+  confirm the saved integration is gone before the local connection row is
+  removed. Missing integrations are idempotent; provider failures keep local
+  state so later refreshes cannot silently recreate a supposedly disconnected
+  account.
 - Real Gemini calls require credentials and provider testing.
 - Real-clip AI captioning can use the transcription provider for audio
   language detection, but still needs real R2/Groq clip testing, visual-frame
@@ -643,23 +754,35 @@ cd apps/mobile
   handling, and real-device export/review testing.
 - Real R2 upload requires Cloudflare credentials and integration testing.
 - Redis/BullMQ scheduling needs infrastructure testing.
-- Firebase auth needs real project files and device testing.
-- RevenueCat subscriptions need real Apple/Google products, platform SDK keys,
-  sandbox testing, and fuller renewal/cancel/refund webhook coverage. The
-  legacy direct store verifier remains a scaffold.
+- Firebase Android Debug Staging Google auth passes end to end; Phone Auth,
+  Production/iOS capability setup, and physical-device testing remain.
+- RevenueCat Test Store products/entitlements/current offering and authenticated
+  webhook transport are configured; purchase and true Restore/resync E2E pass on
+  the Android Emulator with a Firebase UID after the Render Staging key was set.
+  RevenueCat also has the Play Store app/products/entitlements/default offering
+  and production Android public SDK key, and a signed AAB is ready. Play Console
+  app/subscriptions, internal testing, Google service credentials, real Google
+  Play purchase, lifecycle tests, and physical Android verification remain. Play
+  Console requires a physical Android device for account verification and does
+  not accept an Emulator. The legacy direct store verifier remains a scaffold.
 - Analytics does not yet fetch real platform metrics.
 
 ## Recommended Next Steps
 
-1. Add real App Store / Google Play product setup documentation.
-2. Test RevenueCat purchase and restore on real sandbox devices.
-3. Test RevenueCat renewal/cancel/refund webhook delivery from sandbox events.
-4. Keep the legacy store notification scaffold covered, but do not make it the
+1. Verify Play Console access with a physical Android device, then create the
+   Play app/subscriptions, service credentials, and internal-testing track.
+2. Upload the signed AAB and test RevenueCat purchase and restore through Google
+   Play internal testing.
+3. Complete the matching App Store product and platform-key setup.
+4. Test RevenueCat renewal/cancel/refund webhook delivery from sandbox events.
+5. Keep the legacy store notification scaffold covered, but do not make it the
    preferred production billing path.
-5. Expand RevenueCat notification event coverage from sandbox evidence.
-6. Run the `RealClipCaptionUsage` migration in staging/production and set
+6. Expand RevenueCat notification event coverage from sandbox evidence.
+7. Run the `RealClipCaptionUsage` migration in staging/production and set
    `CAPTION_USAGE_STORE=prisma` before selling paid AI caption quotas.
-7. Harden Pro Groq Whisper job/session persistence, top-up, retry/recovery, and real-device review/export states.
-8. Test Firebase Google Sign-In on a real Android/iOS device.
-9. Test video picker and 9:16 preview on real devices.
-10. Connect the first real social publishing provider.
+8. Harden Pro Groq Whisper job/session persistence, top-up, retry/recovery, and real-device review/export states.
+9. Test Firebase Google Sign-In and Phone Auth on real Android/iOS devices.
+10. Test video picker and 9:16 preview on real devices.
+11. Connect disposable per-user PostPeer accounts and run the full controlled
+    upload → publish → polled result → `GET /posts.platformResults` E2E for each
+    advertised capability before enabling social publishing.

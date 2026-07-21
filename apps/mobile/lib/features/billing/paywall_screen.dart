@@ -61,6 +61,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       widget.service ?? StoreSubscriptionService();
   final _apiClient = PostDeeApiClient();
   SubscriptionStatusResult? _subscription;
+  var _subscriptionLoadGeneration = 0;
 
   @override
   void initState() {
@@ -69,12 +70,14 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Future<void> _loadSubscription() async {
+    final loadGeneration = ++_subscriptionLoadGeneration;
+
     try {
       final loader =
           widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
       final subscription = await loader();
 
-      if (!mounted) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -83,6 +86,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
       // Non-fatal: without the current plan we simply highlight none. The
       // paywall stays usable so the user can still subscribe.
     }
+  }
+
+  void _applyVerifiedSubscription(SubscriptionStatusResult subscription) {
+    _subscriptionLoadGeneration += 1;
+    setState(() => _subscription = subscription);
   }
 
   // Maps a backend plan code (e.g. PRO, FREE) to a paywall card id.
@@ -107,7 +115,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         price: 'ฟรี',
         isCurrent: currentPlanId == 'basic',
         features: const [
-          _PlanFeature('โพสต์ฟรี 3 ครั้ง/เดือนหลังยืนยันเบอร์'),
+          _PlanFeature('โพสต์ฟรี 3 หน่วย/เดือนหลังยืนยันเบอร์'),
           _PlanFeature('ต้องยืนยันเบอร์ก่อนโพสต์', included: false),
           _PlanFeature('ไม่มี AI แคปชั่นและการตั้งเวลา', included: false),
         ],
@@ -121,7 +129,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           _PlanFeature('โพสต์หลายช่องทาง 120 หน่วย/เดือน'),
           _PlanFeature('ตั้งเวลาโพสต์ + ปฏิทิน + เทมเพลต'),
           _PlanFeature('AI แคปชั่นจากเสียงคลิป 50 ครั้ง/เดือน'),
-          _PlanFeature('ลายน้ำอัตโนมัติ + ตัดคลิปเป็น EP'),
+          _PlanFeature('ลายน้ำอัตโนมัติ'),
         ],
       ),
       _PlanOption(
@@ -134,7 +142,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           _PlanFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
           _PlanFeature('ทุกอย่างใน Starter + วิเคราะห์เต็มรูปแบบ'),
           _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน'),
-          _PlanFeature('เรดาร์แฮชแท็ก, แจ้งเตือนไวรัล, ทีมและผู้ช่วย'),
+          _PlanFeature('AI ตัดต่อ 200 นาที/เดือน'),
         ],
       ),
     ];
@@ -150,28 +158,33 @@ class _PaywallScreenState extends State<PaywallScreen> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.charcoal,
-        content: const Row(
-          children: [
-            CircularProgressIndicator(color: AppTheme.accent),
-            SizedBox(width: AppTheme.spaceLg),
-            Expanded(child: Text('กำลังดำเนินการสั่งซื้อ...')),
-          ],
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: AppTheme.charcoal,
+          content: const Row(
+            children: [
+              CircularProgressIndicator(color: AppTheme.accent),
+              SizedBox(width: AppTheme.spaceLg),
+              Expanded(child: Text('กำลังดำเนินการสั่งซื้อ...')),
+            ],
+          ),
         ),
       ),
     );
 
     try {
       // Real store purchase → backend receipt verification → entitlement.
+      late final StoreSubscriptionVerificationResult result;
       if (plan.id == 'pro') {
-        await _service.startProSubscription();
+        result = await _service.startProSubscription();
       } else {
-        await _service.startStarterSubscription();
+        result = await _service.startStarterSubscription();
       }
 
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
+      _applyVerifiedSubscription(result.subscription);
       widget.onSubscribed?.call(plan.id);
       _showSuccess(plan);
     } on StoreSubscriptionException catch (error) {
@@ -187,6 +200,49 @@ class _PaywallScreenState extends State<PaywallScreen> {
     }
   }
 
+  Future<void> _restorePurchase() async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: AppTheme.charcoal,
+          content: const Row(
+            children: [
+              CircularProgressIndicator(color: AppTheme.accent),
+              SizedBox(width: AppTheme.spaceLg),
+              Expanded(child: Text('กำลังกู้คืนการซื้อ...')),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final result = await _service.restoreSubscription();
+      final planId = result.subscription.plan.toLowerCase();
+
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      _applyVerifiedSubscription(result.subscription);
+      widget.onSubscribed?.call(planId);
+      _showRestoreSuccess(result.subscription.plan);
+    } on StoreSubscriptionException catch (error) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('กู้คืนการซื้อไม่สำเร็จ ลองใหม่อีกครั้ง')),
+      );
+    }
+  }
+
   void _showSuccess(_PlanOption plan) {
     showDialog<void>(
       context: context,
@@ -194,6 +250,23 @@ class _PaywallScreenState extends State<PaywallScreen> {
         backgroundColor: AppTheme.charcoal,
         title: Text('สมัคร ${plan.name} สำเร็จ'),
         content: const Text('ปลดล็อกฟีเจอร์ของแพ็กเกจเรียบร้อยแล้ว'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('ตกลง'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRestoreSuccess(String plan) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.charcoal,
+        title: const Text('กู้คืนการซื้อสำเร็จ'),
+        content: Text('คืนสิทธิ์แพ็กเกจ ${plan.toUpperCase()} เรียบร้อยแล้ว'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -237,6 +310,28 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 if (index < _plans.length - 1) const SizedBox(height: 13),
               ],
               const SizedBox(height: 16),
+              if (_service.supportsUnifiedRestore) ...[
+                SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: _restorePurchase,
+                    icon: const Icon(Icons.restore, size: 19),
+                    label: const Text('กู้คืนการซื้อ'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.accentCyanInk,
+                      side: BorderSide(color: AppTheme.border),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               Text(
                 'ราคาจริงจะแสดงตามร้านค้าของแต่ละประเทศ · ยกเลิกได้ทุกเมื่อ',
                 textAlign: TextAlign.center,
@@ -281,7 +376,10 @@ class _PlanCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 plan.name,
@@ -291,22 +389,18 @@ class _PlanCard extends StatelessWidget {
                   color: AppTheme.textPrimary,
                 ),
               ),
-              if (plan.isRecommended) ...[
-                const SizedBox(width: 8),
+              if (plan.isRecommended)
                 const _PlanBadge(
                   label: 'แนะนำ',
                   background: AppTheme.accent,
                   foreground: Colors.white,
                 ),
-              ],
-              if (plan.isCurrent) ...[
-                const SizedBox(width: 8),
+              if (plan.isCurrent)
                 _PlanBadge(
                   label: 'แพ็กเกจปัจจุบัน',
                   background: AppTheme.borderSoft,
                   foreground: AppTheme.textMuted,
                 ),
-              ],
             ],
           ),
           const SizedBox(height: 4),

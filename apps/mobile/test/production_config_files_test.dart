@@ -30,6 +30,74 @@ void main() {
     expect(defines.containsKey('GROQ_API_KEY'), isFalse);
     expect(defines.containsKey('REVENUECAT_WEBHOOK_AUTH_TOKEN'), isFalse);
   });
+  test('production helper blocks non-production RevenueCat SDK keys', () async {
+    final helper = File('tool/postdee-production.ps1');
+
+    expect(helper.existsSync(), isTrue);
+
+    final contents = await helper.readAsString();
+
+    expect(contents, contains('Assert-ProductionRevenueCatKey'));
+    expect(contents, contains('IsNullOrWhiteSpace'));
+    expect(contents, contains("StartsWith('test_'"));
+    expect(contents, contains("StartsWith('replace_with_'"));
+    expect(
+      contents,
+      contains(
+        r'Assert-ProductionRevenueCatKey -Name $keyName -Value $merged[$keyName]',
+      ),
+    );
+    expect(
+      contents,
+      contains(
+        r"$Command -in @('build-apk', 'build-appbundle')",
+      ),
+    );
+    expect(
+      contents,
+      contains(
+        r"-not $merged.Contains('REVENUECAT_ANDROID_API_KEY')",
+      ),
+    );
+    expect(
+      contents,
+      contains(
+        'REVENUECAT_ANDROID_API_KEY is required for production Android APK/AAB builds.',
+      ),
+    );
+  });
+  test('production helper builds app bundles from production defines only',
+      () async {
+    final helper = File('tool/postdee-production.ps1');
+
+    expect(helper.existsSync(), isTrue);
+
+    final contents = await helper.readAsString();
+
+    expect(
+      contents,
+      contains(
+        "[ValidateSet('run', 'build-apk', 'build-appbundle', 'test')]",
+      ),
+    );
+    expect(
+      contents,
+      contains(
+        RegExp(
+          r"'build-appbundle'\s*\{\s*'build'\s*'appbundle'\s*'--release'\s*\}",
+        ),
+      ),
+    );
+    expect(contents, contains(r'Merge-DartDefines $productionDefines'));
+    expect(contents, isNot(contains(r'$revenueCatDefines')));
+    expect(contents, isNot(contains('revenuecat.local.json')));
+    expect(
+      contents,
+      contains(
+        'Add the platform SDK key to production.local.json.',
+      ),
+    );
+  });
   test('Android production build applies Google services plugin', () async {
     final settingsGradle = File('android/settings.gradle.kts');
     final appGradle = File('android/app/build.gradle.kts');
@@ -47,7 +115,7 @@ void main() {
       contains('id("com.google.gms.google-services")'),
     );
   });
-  test('Android Firebase config includes an Android OAuth client', () async {
+  test('Android Firebase config includes the release OAuth client', () async {
     final googleServicesFile = File('android/app/google-services.json');
 
     expect(googleServicesFile.existsSync(), isTrue);
@@ -66,7 +134,104 @@ void main() {
         )
         .toList();
 
-    expect(androidOAuthClients, hasLength(greaterThanOrEqualTo(2)));
+    expect(androidOAuthClients, hasLength(greaterThanOrEqualTo(3)));
+
+    final releaseOAuthClient = androidOAuthClients.singleWhere(
+      (client) {
+        final androidInfo = (client as Map<String, Object?>)['android_info']
+            as Map<String, Object?>;
+        return androidInfo['certificate_hash'] ==
+            '421e228a13035cd15f5483076976bbbd25446807';
+      },
+    ) as Map<String, Object?>;
+    final releaseAndroidInfo =
+        releaseOAuthClient['android_info'] as Map<String, Object?>;
+
+    expect(
+      releaseOAuthClient['client_id'],
+      '121898224944-6rcv02n4mq2a33tbem8leeptvoisb1ir.apps.googleusercontent.com',
+    );
+    expect(
+      releaseAndroidInfo['package_name'],
+      'com.postdee.postdee_mobile',
+    );
+  });
+  test('Android debug builds use the isolated Firebase Staging app', () async {
+    final appGradle = File('android/app/build.gradle.kts');
+    final stagingGoogleServicesFile =
+        File('android/app/src/debug/google-services.json');
+    final productionGoogleServicesFile =
+        File('android/app/google-services.json');
+    final stagingDefinesFile = File('staging.local.example.json');
+
+    expect(appGradle.existsSync(), isTrue);
+    expect(stagingGoogleServicesFile.existsSync(), isTrue);
+    expect(productionGoogleServicesFile.existsSync(), isTrue);
+    expect(stagingDefinesFile.existsSync(), isTrue);
+
+    final gradleContents = await appGradle.readAsString();
+    expect(
+      gradleContents,
+      contains('applicationIdSuffix = ".staging"'),
+    );
+    expect(
+      gradleContents,
+      contains('versionNameSuffix = "-staging"'),
+    );
+
+    final config = jsonDecode(await stagingGoogleServicesFile.readAsString())
+        as Map<String, Object?>;
+    final projectInfo = config['project_info'] as Map<String, Object?>;
+    final clients = config['client'] as List<dynamic>;
+    final stagingClient = clients.singleWhere(
+      (client) =>
+          client is Map<String, Object?> &&
+          (client['client_info'] as Map<String, Object?>)['android_client_info']
+              is Map<String, Object?> &&
+          ((client['client_info']
+                      as Map<String, Object?>)['android_client_info']
+                  as Map<String, Object?>)['package_name'] ==
+              'com.postdee.postdee_mobile.staging',
+    ) as Map<String, Object?>;
+    final oauthClients = stagingClient['oauth_client'] as List<dynamic>;
+    final stagingWebClient = oauthClients.singleWhere(
+      (client) => client is Map<String, Object?> && client['client_type'] == 3,
+    ) as Map<String, Object?>;
+    final stagingDefines = jsonDecode(await stagingDefinesFile.readAsString())
+        as Map<String, Object?>;
+    final productionConfig =
+        jsonDecode(await productionGoogleServicesFile.readAsString())
+            as Map<String, Object?>;
+    final productionProjectInfo =
+        productionConfig['project_info'] as Map<String, Object?>;
+
+    expect(projectInfo['project_id'], 'project-798caf7e-85b8-45e3-af7');
+    expect(
+      stagingDefines['API_BASE_URL'],
+      'https://postdee-api-staging.onrender.com',
+    );
+    expect(stagingDefines['ENABLE_FIREBASE_AUTH'], isTrue);
+    expect(stagingDefines['ALLOW_LOCAL_MOCK_AUTH'], isFalse);
+    expect(
+      stagingDefines['GOOGLE_SERVER_CLIENT_ID'],
+      stagingWebClient['client_id'],
+    );
+    expect(productionProjectInfo['project_id'], 'postdee-3c163');
+    expect(
+      await productionGoogleServicesFile.readAsString(),
+      isNot(contains('com.postdee.postdee_mobile.staging')),
+    );
+    expect(
+      oauthClients.where(
+        (client) =>
+            client is Map<String, Object?> &&
+            client['client_type'] == 1 &&
+            (client['android_info']
+                    as Map<String, Object?>)['certificate_hash'] ==
+                'fca0c22ed78e82053a3b77bf7171e9f6789e45bb',
+      ),
+      isNotEmpty,
+    );
   });
   test('Android release builds use release signing properties', () async {
     final appGradle = File('android/app/build.gradle.kts');

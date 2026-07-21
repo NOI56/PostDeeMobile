@@ -56,6 +56,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _connectedCount = 0;
   SubscriptionStatusResult? _subscription;
   ProfileDraft? _profileDraft;
+  var _subscriptionLoadGeneration = 0;
 
   @override
   void initState() {
@@ -125,14 +126,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadSubscription() async {
+    final loadGeneration = ++_subscriptionLoadGeneration;
+
     try {
       final subscription = await _apiClient.loadCurrentSubscription();
-      if (!mounted) return;
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) return;
       setState(() => _subscription = subscription);
     } on SocketException {
       // Offline: keep the default free-tier display.
     } catch (_) {
       // Keep the default free-tier display if the plan call fails.
+    }
+  }
+
+  Future<void> _openPaywall() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => PaywallScreen(
+          loadSubscription: _apiClient.loadCurrentSubscription,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      await _loadSubscription();
     }
   }
 
@@ -361,7 +378,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             key: ValueKey('profile-plan-${tier.id}'),
             tier: tier,
             isCurrent: tier.id == _currentTierId,
-            onTap: () => _openPaywall(context),
+            onTap: _openPaywall,
           ),
           const SizedBox(height: 10),
         ],
@@ -688,8 +705,7 @@ class _ProfileMenuRow extends StatelessWidget {
                     color: AppTheme.mint,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child:
-                      Icon(icon, size: 19, color: AppTheme.accentCyanInk),
+                  child: Icon(icon, size: 19, color: AppTheme.accentCyanInk),
                 ),
               const SizedBox(width: 12),
               Expanded(
@@ -773,7 +789,6 @@ const _tiers = [
       _TierFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
       _TierFeature('AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน'),
       _TierFeature('AI ตัดต่อ 200 นาที/เดือน'),
-      _TierFeature('รายงานวิเคราะห์เชิงลึก'),
     ],
   ),
 ];
@@ -904,9 +919,8 @@ class _TierCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w700,
-                    color: isCurrent
-                        ? AppTheme.textMuted
-                        : AppTheme.accentCyanInk,
+                    color:
+                        isCurrent ? AppTheme.textMuted : AppTheme.accentCyanInk,
                   ),
                 ),
               ),
@@ -934,20 +948,12 @@ void _openPhoneVerification(BuildContext context) {
   );
 }
 
-void _openPaywall(BuildContext context) {
-  Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (context) => const PaywallScreen(),
-    ),
-  );
-}
-
 const _securityInfo = LegalDocument(
   title: 'ความปลอดภัย',
   body: 'PostDee ดูแลความปลอดภัยของบัญชีและข้อมูลของคุณ\n\n'
-      '- เข้าสู่ระบบผ่าน Google หรือ Apple เท่านั้น ไม่เก็บรหัสผ่านของคุณ\n'
+      '- การเข้าสู่ระบบด้วยอีเมลหรือ Google จัดการผ่าน Firebase Authentication '
+      'และแอปไม่เก็บรหัสผ่านของคุณ\n'
       '- โทเคนการเชื่อมต่อบัญชีโซเชียลถูกเก็บอย่างปลอดภัยบนเซิร์ฟเวอร์\n'
-      '- ผู้ช่วย/ทีมงานไม่เห็นรหัสผ่านหรือโทเคนของเจ้าของร้าน\n'
       '- คีย์ลับของระบบ AI อยู่ฝั่งเซิร์ฟเวอร์เท่านั้น ไม่อยู่ในแอป\n\n'
       'หากพบกิจกรรมที่น่าสงสัย ติดต่อ support@postdee.app',
 );
@@ -1454,7 +1460,8 @@ class _AiEditingQuotaCardState extends State<_AiEditingQuotaCard> {
         children: [
           Row(
             children: [
-              Icon(Icons.auto_fix_high, color: AppTheme.accentCyanInk, size: 20),
+              Icon(Icons.auto_fix_high,
+                  color: AppTheme.accentCyanInk, size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(

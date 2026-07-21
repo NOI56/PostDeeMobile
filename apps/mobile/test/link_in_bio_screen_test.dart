@@ -36,6 +36,39 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  testWidgets('clearly labels Link in Bio as a local unpublished prototype',
+      (tester) async {
+    await tester.pumpWidget(
+      _linkInBioTestApp(const LinkInBioScreen()),
+    );
+
+    expect(find.text('ต้นแบบ'), findsOneWidget);
+    expect(find.text('แบบร่างในเครื่อง ยังไม่เผยแพร่เป็นเว็บไซต์'),
+        findsOneWidget);
+    expect(find.text('URL ตัวอย่าง (ยังไม่เผยแพร่)'), findsOneWidget);
+    expect(find.textContaining('ตัวอย่าง: postdee.link/'), findsOneWidget);
+    expect(find.text('199 / 299'), findsNothing);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('link-in-bio-auto-update-card')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    final autoUpdateCard =
+        find.byKey(const ValueKey('link-in-bio-auto-update-card'));
+    expect(find.descendant(of: autoUpdateCard, matching: find.byType(InkWell)),
+        findsNothing);
+    expect(
+      find.descendant(
+        of: autoUpdateCard,
+        matching: find.text('เร็ว ๆ นี้'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('saves a Link in Bio draft and reloads it locally',
       (tester) async {
     await tester.pumpWidget(
@@ -59,7 +92,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ร้านมินาขายดี'), findsWidgets);
-    expect(find.text('postdee.link/mina-shop'), findsOneWidget);
+    expect(find.text('ตัวอย่าง: postdee.link/mina-shop'), findsOneWidget);
   });
 
   testWidgets('adds a custom Link in Bio button and saves it with the draft',

@@ -57,19 +57,217 @@ void main() {
     expect(result.subscription.isPro, isTrue);
   });
 
-  test('startStarterSubscription waits for RevenueCat webhook entitlement',
+  test('startStarterSubscription polls until RevenueCat webhook entitlement',
       () async {
+    var loadCalls = 0;
+    var waitCalls = 0;
     final service = StoreSubscriptionService(
       revenueCatGateway: FakeRevenueCatBillingGateway(),
       useRevenueCat: true,
-      loadSubscription: () async => _subscription(plan: 'BASIC'),
+      loadSubscription: () async {
+        loadCalls += 1;
+        return _subscription(plan: loadCalls < 3 ? 'BASIC' : 'STARTER');
+      },
+      revenueCatEntitlementPollAttempts: 3,
+      revenueCatEntitlementWait: (_) async => waitCalls += 1,
+    );
+
+    final result = await service.startStarterSubscription();
+
+    expect(result.subscription.isStarter, isTrue);
+    expect(loadCalls, 3);
+    expect(waitCalls, 2);
+  });
+
+  test('startStarterSubscription stops polling when entitlement never arrives',
+      () async {
+    var loadCalls = 0;
+    var waitCalls = 0;
+    final service = StoreSubscriptionService(
+      revenueCatGateway: FakeRevenueCatBillingGateway(),
+      useRevenueCat: true,
+      loadSubscription: () async {
+        loadCalls += 1;
+        return _subscription(plan: 'BASIC');
+      },
+      revenueCatEntitlementPollAttempts: 3,
+      revenueCatEntitlementWait: (_) async => waitCalls += 1,
     );
 
     await expectLater(
       service.startStarterSubscription(),
       throwsA(isA<StoreSubscriptionException>()),
     );
+    expect(loadCalls, 3);
+    expect(waitCalls, 2);
   });
+
+  test('RevenueCat entitlement polling retries transient backend failures',
+      () async {
+    var loadCalls = 0;
+    var waitCalls = 0;
+    final service = StoreSubscriptionService(
+      revenueCatGateway: FakeRevenueCatBillingGateway(),
+      useRevenueCat: true,
+      loadSubscription: () async {
+        loadCalls += 1;
+        if (loadCalls == 1) {
+          throw const ApiException('Backend is waking up', statusCode: 503);
+        }
+        return _subscription(plan: loadCalls == 2 ? 'BASIC' : 'PRO');
+      },
+      revenueCatEntitlementPollAttempts: 3,
+      revenueCatEntitlementWait: (_) async => waitCalls += 1,
+    );
+
+    final result = await service.startProSubscription();
+
+    expect(result.subscription.isPro, isTrue);
+    expect(loadCalls, 3);
+    expect(waitCalls, 2);
+  });
+
+  test('RevenueCat entitlement polling does not retry authentication errors',
+      () async {
+    var loadCalls = 0;
+    var waitCalls = 0;
+    final service = StoreSubscriptionService(
+      revenueCatGateway: FakeRevenueCatBillingGateway(),
+      useRevenueCat: true,
+      loadSubscription: () async {
+        loadCalls += 1;
+        throw const ApiException('Unauthorized', statusCode: 401);
+      },
+      revenueCatEntitlementPollAttempts: 3,
+      revenueCatEntitlementWait: (_) async => waitCalls += 1,
+    );
+
+    await expectLater(
+      service.startProSubscription(),
+      throwsA(
+        isA<ApiException>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          401,
+        ),
+      ),
+    );
+    expect(loadCalls, 1);
+    expect(waitCalls, 0);
+  });
+
+  test('restoreSubscription restores once and accepts the active paid plan',
+      () async {
+    final revenueCatGateway = FakeRevenueCatBillingGateway();
+    var resyncCalls = 0;
+    final service = StoreSubscriptionService(
+      revenueCatGateway: revenueCatGateway,
+      useRevenueCat: true,
+      resyncRevenueCatSubscription: () async {
+        resyncCalls += 1;
+        return 'STARTER';
+      },
+      loadSubscription: () async => _subscription(plan: 'STARTER'),
+    );
+
+    final result = await service.restoreSubscription();
+
+    expect(revenueCatGateway.restoreCalls, 1);
+    expect(resyncCalls, 1);
+    expect(result.purchase.productId, 'postdee_starter_monthly');
+    expect(result.subscription.isStarter, isTrue);
+  });
+
+  test('restoreSubscription stops immediately when no purchase is available',
+      () async {
+    final revenueCatGateway = FakeRevenueCatBillingGateway();
+    var loadCalls = 0;
+    final service = StoreSubscriptionService(
+      revenueCatGateway: revenueCatGateway,
+      useRevenueCat: true,
+      resyncRevenueCatSubscription: () async => 'BASIC',
+      loadSubscription: () async {
+        loadCalls += 1;
+        return _subscription(plan: 'BASIC');
+      },
+    );
+
+    await expectLater(
+      service.restoreSubscription(),
+      throwsA(
+        isA<StoreSubscriptionException>().having(
+          (error) => error.message,
+          'message',
+          'ไม่พบรายการสมาชิกที่กู้คืนได้ในบัญชีนี้',
+        ),
+      ),
+    );
+    expect(revenueCatGateway.restoreCalls, 1);
+    expect(loadCalls, 0);
+  });
+
+  final restoreResyncErrorCases = <({
+    String? code,
+    int statusCode,
+    String expectedMessage,
+  })>[
+    (
+      code: 'REVENUECAT_RESYNC_NOT_CONFIGURED',
+      statusCode: 501,
+      expectedMessage: 'ระบบกู้คืนสมาชิกยังตั้งค่าไม่เสร็จ กรุณาลองใหม่ภายหลัง',
+    ),
+    (
+      code: 'REVENUECAT_ENTITLEMENT_NOT_MAPPED',
+      statusCode: 409,
+      expectedMessage:
+          'พบรายการสมาชิกแล้ว แต่แพ็กเกจยังเชื่อมกับระบบไม่ถูกต้อง กรุณาติดต่อทีม PostDee',
+    ),
+    (
+      code: 'REVENUECAT_RESYNC_FAILED',
+      statusCode: 502,
+      expectedMessage: 'เชื่อมต่อระบบสมาชิกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+    ),
+    (
+      code: null,
+      statusCode: 501,
+      expectedMessage: 'ระบบกู้คืนสมาชิกยังตั้งค่าไม่เสร็จ กรุณาลองใหม่ภายหลัง',
+    ),
+  ];
+
+  for (final errorCase in restoreResyncErrorCases) {
+    test(
+        'restoreSubscription explains RevenueCat resync error '
+        '${errorCase.code ?? errorCase.statusCode}', () async {
+      final revenueCatGateway = FakeRevenueCatBillingGateway();
+      var loadCalls = 0;
+      final service = StoreSubscriptionService(
+        revenueCatGateway: revenueCatGateway,
+        useRevenueCat: true,
+        resyncRevenueCatSubscription: () async => throw ApiException(
+          'Backend RevenueCat resync failed',
+          statusCode: errorCase.statusCode,
+          code: errorCase.code,
+        ),
+        loadSubscription: () async {
+          loadCalls += 1;
+          return _subscription(plan: 'BASIC');
+        },
+      );
+
+      await expectLater(
+        service.restoreSubscription(),
+        throwsA(
+          isA<StoreSubscriptionException>().having(
+            (error) => error.message,
+            'message',
+            errorCase.expectedMessage,
+          ),
+        ),
+      );
+      expect(revenueCatGateway.restoreCalls, 1);
+      expect(loadCalls, 0);
+    });
+  }
 
   test('restoreProSubscription verifies iOS transaction id with backend',
       () async {

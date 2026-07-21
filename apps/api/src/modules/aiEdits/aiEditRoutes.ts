@@ -37,6 +37,56 @@ const readPositiveNumber = (value: unknown) => {
   return value;
 };
 
+type AiEditMedia =
+  | { key: string; kind: 'audio'; deleteAfterUse: true }
+  | { key: string; kind: 'legacy-video'; deleteAfterUse: false };
+
+type ReadAiEditMediaResult =
+  | { ok: true; media: AiEditMedia }
+  | { ok: false; code: string; message: string };
+
+const readAiEditMedia = (body: unknown): ReadAiEditMediaResult => {
+  const payload = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const audioS3Key = readRequiredString(payload.audioS3Key);
+  const videoS3Key = readRequiredString(payload.videoS3Key);
+
+  if (audioS3Key && videoS3Key) {
+    return {
+      ok: false,
+      code: 'AI_EDIT_MEDIA_AMBIGUOUS',
+      message: 'Provide exactly one of audioS3Key or videoS3Key'
+    };
+  }
+
+  if (!audioS3Key && !videoS3Key) {
+    return {
+      ok: false,
+      code: 'AI_EDIT_MEDIA_REQUIRED',
+      message: 'audioS3Key or videoS3Key is required'
+    };
+  }
+
+  if (audioS3Key) {
+    if (!audioS3Key.toLowerCase().endsWith('.m4a')) {
+      return {
+        ok: false,
+        code: 'AI_EDIT_AUDIO_KEY_INVALID',
+        message: 'audioS3Key must identify an M4A file'
+      };
+    }
+
+    return {
+      ok: true,
+      media: { key: audioS3Key, kind: 'audio', deleteAfterUse: true }
+    };
+  }
+
+  return {
+    ok: true,
+    media: { key: videoS3Key as string, kind: 'legacy-video', deleteAfterUse: false }
+  };
+};
+
 const readSegments = (value: unknown): EditPlanSegment[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -71,6 +121,17 @@ const buildQuota = (usedMinutes: number) => ({
   remainingMinutes: Math.max(0, aiEditMonthlyMinuteLimit - usedMinutes)
 });
 
+const sendAiEditMediaErrorResponse = (
+  response: Response,
+  result: Extract<ReadAiEditMediaResult, { ok: false }>
+) => {
+  response.status(400).json({
+    status: 'error',
+    code: result.code,
+    message: result.message
+  });
+};
+
 const sendForbiddenMediaKeyResponse = (response: Response) => {
   response.status(403).json({
     status: 'error',
@@ -101,8 +162,67 @@ export const registerAiEditRoutes = (
   authMiddleware: RequestHandler,
   subscriptionStore: SubscriptionStore,
   aiEditUsageStore: AiEditUsageStore,
-  editPlanProvider: EditPlanProvider
+  editPlanProvider: EditPlanProvider,
+  deleteMedia: (mediaS3Key: string) => Promise<void>
 ) => {
+  const cleanupTemporaryAudio = async (media: AiEditMedia) => {
+    if (!media.deleteAfterUse) {
+      return;
+    }
+
+    try {
+      await deleteMedia(media.key);
+    } catch (error) {
+      console.error(
+        'AI edit temporary audio cleanup failed:',
+        error instanceof Error ? error.message : error
+      );
+    }
+  };
+
+  router.post('/ai-edits/audio/cleanup', authMiddleware, async (request, response) => {
+    const authUser = readAuthUser(response.locals);
+
+    if (!authUser) {
+      response.status(401).json({
+        status: 'error',
+        message: 'Authenticated user is required'
+      });
+      return;
+    }
+
+    const audioS3Key = readRequiredString(request.body?.audioS3Key);
+
+    if (!audioS3Key || !audioS3Key.toLowerCase().endsWith('.m4a')) {
+      response.status(400).json({
+        status: 'error',
+        code: 'AI_EDIT_AUDIO_KEY_INVALID',
+        message: 'audioS3Key must identify an M4A file'
+      });
+      return;
+    }
+
+    if (!isStorageKeyOwnedByUser({ videoS3Key: audioS3Key, userId: authUser.id })) {
+      sendForbiddenMediaKeyResponse(response);
+      return;
+    }
+
+    try {
+      await deleteMedia(audioS3Key);
+      response.json({ status: 'ok' });
+    } catch (error) {
+      console.error(
+        'AI edit explicit audio cleanup failed:',
+        error instanceof Error ? error.message : error
+      );
+      response.status(502).json({
+        status: 'error',
+        code: 'AI_EDIT_AUDIO_CLEANUP_FAILED',
+        message: 'Temporary audio cleanup failed'
+      });
+    }
+  });
+
   router.get('/ai-edits/quota', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
 
@@ -133,31 +253,31 @@ export const registerAiEditRoutes = (
       return;
     }
 
-    const videoS3Key = readRequiredString(request.body?.videoS3Key);
+    const mediaResult = readAiEditMedia(request.body);
 
-    if (!videoS3Key) {
-      response.status(400).json({
-        status: 'error',
-        message: 'videoS3Key is required'
-      });
+    if (!mediaResult.ok) {
+      sendAiEditMediaErrorResponse(response, mediaResult);
       return;
     }
 
-    const plan = await subscriptionStore.getPlan(authUser);
+    const media = mediaResult.media;
 
-    if (plan !== 'PRO') {
-      response.status(402).json({
-        status: 'error',
-        code: 'PRO_REQUIRED',
-        message: 'AI auto editing requires the Pro plan'
-      });
-      return;
-    }
-
-    if (!isStorageKeyOwnedByUser({ videoS3Key, userId: authUser.id })) {
+    if (!isStorageKeyOwnedByUser({ videoS3Key: media.key, userId: authUser.id })) {
       sendForbiddenMediaKeyResponse(response);
       return;
     }
+
+    try {
+      const plan = await subscriptionStore.getPlan(authUser);
+
+      if (plan !== 'PRO') {
+        response.status(402).json({
+          status: 'error',
+          code: 'PRO_REQUIRED',
+          message: 'AI auto editing requires the Pro plan'
+        });
+        return;
+      }
 
     // Client-provided duration is only a pre-check estimate to reject obviously
     // over-quota requests before spending a transcription call. Actual metering
@@ -181,7 +301,10 @@ export const registerAiEditRoutes = (
     let transcript;
 
     try {
-      transcript = await transcriptionProvider.transcribe({ videoS3Key });
+      transcript = await transcriptionProvider.transcribe({
+        mediaS3Key: media.key,
+        mediaKind: media.kind
+      });
     } catch (error) {
       if (error instanceof MediaDownloadError) {
         sendMediaDownloadErrorResponse(response, error);
@@ -209,11 +332,14 @@ export const registerAiEditRoutes = (
       return;
     }
 
-    response.json({
-      status: 'ok',
-      transcript,
-      quota: buildQuota(reservation.usedMinutes)
-    });
+      response.json({
+        status: 'ok',
+        transcript,
+        quota: buildQuota(reservation.usedMinutes)
+      });
+    } finally {
+      await cleanupTemporaryAudio(media);
+    }
   });
 
   // Builds the UI-facing edit recipe in one call: transcript, cut suggestions,
@@ -229,31 +355,31 @@ export const registerAiEditRoutes = (
       return;
     }
 
-    const videoS3Key = readRequiredString(request.body?.videoS3Key);
+    const mediaResult = readAiEditMedia(request.body);
 
-    if (!videoS3Key) {
-      response.status(400).json({
-        status: 'error',
-        message: 'videoS3Key is required'
-      });
+    if (!mediaResult.ok) {
+      sendAiEditMediaErrorResponse(response, mediaResult);
       return;
     }
 
-    const userPlan = await subscriptionStore.getPlan(authUser);
+    const media = mediaResult.media;
 
-    if (userPlan !== 'PRO') {
-      response.status(402).json({
-        status: 'error',
-        code: 'PRO_REQUIRED',
-        message: 'AI auto editing requires the Pro plan'
-      });
-      return;
-    }
-
-    if (!isStorageKeyOwnedByUser({ videoS3Key, userId: authUser.id })) {
+    if (!isStorageKeyOwnedByUser({ videoS3Key: media.key, userId: authUser.id })) {
       sendForbiddenMediaKeyResponse(response);
       return;
     }
+
+    try {
+      const userPlan = await subscriptionStore.getPlan(authUser);
+
+      if (userPlan !== 'PRO') {
+        response.status(402).json({
+          status: 'error',
+          code: 'PRO_REQUIRED',
+          message: 'AI auto editing requires the Pro plan'
+        });
+        return;
+      }
 
     const estimatedDurationSeconds = readPositiveNumber(request.body?.durationSeconds) ?? 60;
     const estimatedMinutes = Math.max(1, Math.ceil(estimatedDurationSeconds / 60));
@@ -271,7 +397,10 @@ export const registerAiEditRoutes = (
     let transcript;
 
     try {
-      transcript = await transcriptionProvider.transcribe({ videoS3Key });
+      transcript = await transcriptionProvider.transcribe({
+        mediaS3Key: media.key,
+        mediaKind: media.kind
+      });
     } catch (error) {
       if (error instanceof MediaDownloadError) {
         sendMediaDownloadErrorResponse(response, error);
@@ -321,11 +450,14 @@ export const registerAiEditRoutes = (
       plan: editPlan
     });
 
-    response.json({
-      status: 'ok',
-      recipe,
-      quota: buildQuota(reservation.usedMinutes)
-    });
+      response.json({
+        status: 'ok',
+        recipe,
+        quota: buildQuota(reservation.usedMinutes)
+      });
+    } finally {
+      await cleanupTemporaryAudio(media);
+    }
   });
   // Returns a structured cut plan for a style or a free-form prompt. Operates on
   // an already-transcribed clip, so it is Pro-gated but does not meter minutes.

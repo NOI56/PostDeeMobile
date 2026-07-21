@@ -159,6 +159,105 @@ void main() {
     expect(find.text('คงเหลือ 23 วัน'), findsNothing);
   });
 
+  testWidgets('refreshes the home plan after returning from the paywall',
+      (tester) async {
+    var subscriptionLoadCalls = 0;
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        HomeScreen(
+          loadAnalytics: () async => const AnalyticsSummaryResult(
+            totalViews: 0,
+            totalLikes: 0,
+            platforms: [],
+          ),
+          loadSubscription: () async {
+            subscriptionLoadCalls += 1;
+            final isPro = subscriptionLoadCalls >= 3;
+            return SubscriptionStatusResult(
+              userId: 'seller-refresh',
+              plan: isPro ? 'PRO' : 'BASIC',
+              status: isPro ? 'ACTIVE' : 'INACTIVE',
+              remainingPostsThisMonth: isPro ? 250 : 3,
+              canSchedule: isPro,
+              canUseAiCaptions: isPro,
+              canUseAnalytics: isPro,
+            );
+          },
+          loadRecentPosts: () async => const [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
+
+    await tester.tap(find.text('แพ็กเกจฟรี'));
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกแพ็กเกจ'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('กลับ'));
+    await tester.pumpAndSettle();
+
+    expect(subscriptionLoadCalls, 3);
+    expect(find.text('แพ็กเกจ Pro'), findsOneWidget);
+  });
+
+  testWidgets('ignores a stale Basic plan after returning from the paywall',
+      (tester) async {
+    final initialLoad = Completer<SubscriptionStatusResult>();
+    var subscriptionLoadCalls = 0;
+    const basic = SubscriptionStatusResult(
+      userId: 'seller-stale-home',
+      plan: 'BASIC',
+      status: 'INACTIVE',
+      canSchedule: false,
+      canUseAiCaptions: false,
+      canUseAnalytics: false,
+    );
+    const pro = SubscriptionStatusResult(
+      userId: 'seller-stale-home',
+      plan: 'PRO',
+      status: 'ACTIVE',
+      canSchedule: true,
+      canUseAiCaptions: true,
+      canUseAnalytics: true,
+    );
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        HomeScreen(
+          loadAnalytics: () async => const AnalyticsSummaryResult(
+            totalViews: 0,
+            totalLikes: 0,
+            platforms: [],
+          ),
+          loadSubscription: () {
+            subscriptionLoadCalls += 1;
+            return switch (subscriptionLoadCalls) {
+              1 => initialLoad.future,
+              2 => Future.value(basic),
+              _ => Future.value(pro),
+            };
+          },
+          loadRecentPosts: () async => const [],
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('กำลังโหลดแพ็กเกจ'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('กลับ'));
+    await tester.pumpAndSettle();
+    expect(find.text('แพ็กเกจ Pro'), findsOneWidget);
+
+    initialLoad.complete(basic);
+    await tester.pumpAndSettle();
+
+    expect(subscriptionLoadCalls, 3);
+    expect(find.text('แพ็กเกจ Pro'), findsOneWidget);
+  });
+
   testWidgets('shows only real user-facing home sections', (tester) async {
     await tester.pumpWidget(
       _homeTestApp(
@@ -403,7 +502,7 @@ void main() {
     await _tapHomeTextAfterScrolling(tester, 'ลิงก์หน้าโปรไฟล์');
 
     expect(find.text('สร้างหน้า Link in Bio'), findsOneWidget);
-    expect(find.text('postdee.link/ร้านของคุณ'), findsOneWidget);
+    expect(find.text('ตัวอย่าง: postdee.link/ร้านของคุณ'), findsOneWidget);
     expect(find.text('ลิงก์สินค้าและแคมเปญ'), findsOneWidget);
 
     await tester.drag(find.byType(Scrollable).last, const Offset(0, -520));
@@ -433,8 +532,13 @@ void main() {
         find.byKey(const ValueKey('growth-tool-real-status-note')),
         findsOneWidget,
       );
-      expect(find.text('ตั้งค่าในเครื่องนี้'), findsOneWidget);
-      expect(find.text('ยังไม่เชื่อมระบบจริง'), findsNothing);
+      expect(find.text('เร็ว ๆ นี้'), findsWidgets);
+      expect(find.text('แบบร่างในเครื่อง'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('growth-tool-enabled-switch')),
+        findsNothing,
+      );
+      expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
 
       await tester.tap(find.byTooltip('ปิด'));
       await tester.pumpAndSettle();

@@ -1,13 +1,9 @@
 import type { PushMessage, PushSender } from './pushSender.js';
 
-// `firebase-admin` is an OPTIONAL runtime dependency. It is intentionally NOT in
-// package.json yet: the project ships with the mock sender by default. To enable
-// real push delivery, run `npm install firebase-admin`, set PUSH_SENDER=firebase
-// and provide FIREBASE_SERVICE_ACCOUNT_JSON (a service account key, kept secret).
-//
-// We load it via a non-literal dynamic import so the build/test pipeline does not
-// require the package to be installed. Everything here is typed loosely because
-// the module's types are unavailable until it is installed.
+// The project ships with the mock sender by default. To enable real push
+// delivery, set PUSH_SENDER=firebase and provide FIREBASE_SERVICE_ACCOUNT_JSON
+// (a service account key, kept secret). The dynamic import keeps the sender
+// lazy so local mock-mode startup does not initialize Firebase Admin.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FirebaseMessaging = any;

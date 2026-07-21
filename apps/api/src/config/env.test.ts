@@ -31,6 +31,7 @@ describe('readServerConfig', () => {
       geminiApiKey: undefined,
       billingProvider: 'mock',
       revenueCatWebhookAuthToken: undefined,
+      revenueCatRestApiV1Key: undefined,
       revenueCatStarterEntitlementId: 'starter',
       revenueCatProEntitlementId: 'pro',
       revenueCatStarterProductId: 'postdee_starter_monthly',
@@ -67,6 +68,8 @@ describe('readServerConfig', () => {
       socialPublisher: 'mock',
       postPeerApiKey: undefined,
       postPeerApiBaseUrl: 'https://api.postpeer.dev',
+      postPeerLegacyRecoveryFingerprint: undefined,
+      postPeerLegacyRecoveryProfileId: undefined,
       postPeerTiktokAccountId: undefined,
       postPeerYoutubeAccountId: undefined,
       postPeerInstagramAccountId: undefined,
@@ -107,6 +110,7 @@ describe('readServerConfig', () => {
       GROQ_API_KEY: 'groq-key',
       GEMINI_API_KEY: 'gemini-key',
       BILLING_PROVIDER: 'store',
+      REVENUECAT_REST_API_V1_KEY: 'revenuecat-rest-key',
       STORE_STARTER_MONTHLY_PRODUCT_ID: 'postdee_starter_monthly_test',
       STORE_PRO_MONTHLY_PRODUCT_ID: 'postdee_pro_monthly_test',
       GOOGLE_PLAY_PACKAGE_NAME: 'com.postdee',
@@ -137,6 +141,8 @@ describe('readServerConfig', () => {
       SOCIAL_PUBLISHER: 'postpeer',
       POSTPEER_API_KEY: 'postpeer-key',
       POSTPEER_API_BASE_URL: 'https://postpeer.example.com',
+      POSTPEER_LEGACY_RECOVERY_FINGERPRINT: 'a'.repeat(64),
+      POSTPEER_LEGACY_RECOVERY_PROFILE_ID: 'legacy-profile-explicit',
       POSTPEER_TIKTOK_ACCOUNT_ID: 'postpeer-tiktok',
       POSTPEER_YOUTUBE_ACCOUNT_ID: 'postpeer-youtube',
       POSTPEER_INSTAGRAM_ACCOUNT_ID: 'postpeer-instagram',
@@ -170,6 +176,7 @@ describe('readServerConfig', () => {
       groqApiKey: 'groq-key',
       geminiApiKey: 'gemini-key',
       billingProvider: 'store',
+      revenueCatRestApiV1Key: 'revenuecat-rest-key',
       storeStarterMonthlyProductId: 'postdee_starter_monthly_test',
       storeProMonthlyProductId: 'postdee_pro_monthly_test',
       googlePlayPackageName: 'com.postdee',
@@ -200,6 +207,8 @@ describe('readServerConfig', () => {
       socialPublisher: 'postpeer',
       postPeerApiKey: 'postpeer-key',
       postPeerApiBaseUrl: 'https://postpeer.example.com',
+      postPeerLegacyRecoveryFingerprint: 'a'.repeat(64),
+      postPeerLegacyRecoveryProfileId: 'legacy-profile-explicit',
       postPeerTiktokAccountId: 'postpeer-tiktok',
       postPeerYoutubeAccountId: 'postpeer-youtube',
       postPeerInstagramAccountId: 'postpeer-instagram',
@@ -214,6 +223,41 @@ describe('readServerConfig', () => {
     expect(() =>
       readServerConfig({ FIREBASE_AUTH_DELETE_ENABLED: 'yes' })
     ).toThrow('FIREBASE_AUTH_DELETE_ENABLED must be true or false');
+  });
+
+  it('rejects a partial PostPeer legacy recovery configuration', () => {
+    expect(() =>
+      readServerConfig({
+        POSTPEER_API_KEY: 'postpeer-key',
+        POSTPEER_LEGACY_RECOVERY_FINGERPRINT: 'a'.repeat(64)
+      })
+    ).toThrow(
+      'POSTPEER_LEGACY_RECOVERY_FINGERPRINT and POSTPEER_LEGACY_RECOVERY_PROFILE_ID must be configured together'
+    );
+    expect(() =>
+      readServerConfig({
+        POSTPEER_API_KEY: 'postpeer-key',
+        POSTPEER_LEGACY_RECOVERY_PROFILE_ID: 'legacy-profile-explicit'
+      })
+    ).toThrow(
+      'POSTPEER_LEGACY_RECOVERY_FINGERPRINT and POSTPEER_LEGACY_RECOVERY_PROFILE_ID must be configured together'
+    );
+  });
+
+  it('rejects malformed or unusable PostPeer legacy recovery configuration', () => {
+    expect(() =>
+      readServerConfig({
+        POSTPEER_API_KEY: 'postpeer-key',
+        POSTPEER_LEGACY_RECOVERY_FINGERPRINT: 'not-a-sha256-fingerprint',
+        POSTPEER_LEGACY_RECOVERY_PROFILE_ID: 'legacy-profile-explicit'
+      })
+    ).toThrow('POSTPEER_LEGACY_RECOVERY_FINGERPRINT must be 64 hexadecimal characters');
+    expect(() =>
+      readServerConfig({
+        POSTPEER_LEGACY_RECOVERY_FINGERPRINT: 'a'.repeat(64),
+        POSTPEER_LEGACY_RECOVERY_PROFILE_ID: 'legacy-profile-explicit'
+      })
+    ).toThrow('POSTPEER_API_KEY is required for PostPeer legacy recovery');
   });
 
   it('rejects mock auth and billing shortcuts in production', () => {
@@ -260,6 +304,20 @@ describe('readServerConfig', () => {
         // VIDEO_STORAGE left at its mock default.
       })
     ).toThrow('VIDEO_STORAGE=mock is not allowed when NODE_ENV=production');
+  });
+
+  it('allows an explicitly disabled social publisher to fail closed in staging', () => {
+    const config = readServerConfig({
+      NODE_ENV: 'production',
+      AUTH_PROVIDER: 'firebase',
+      FIREBASE_PROJECT_ID: 'postdee-staging',
+      BILLING_PROVIDER: 'store',
+      SOCIAL_PUBLISHER: 'disabled',
+      VIDEO_STORAGE: 'r2',
+      CLOUDFLARE_R2_BUCKET: 'postdee-r2-staging'
+    });
+
+    expect(config.socialPublisher).toBe('disabled');
   });
 
   it('allows RevenueCat billing in production', () => {

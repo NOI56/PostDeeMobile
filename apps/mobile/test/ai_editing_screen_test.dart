@@ -8,7 +8,6 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_edit_audio_extractor.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_editing_screen.dart';
 import 'package:postdee_mobile/features/ai_editing/beat_music_picker.dart';
-import 'package:postdee_mobile/features/ai_editing/capcut_editor_screen.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
@@ -418,10 +417,16 @@ void main() {
 
   testWidgets('matches the AI setup screen from PostDee.dc.html',
       (tester) async {
-    await tester.pumpWidget(_testApp(const AiEditingScreen()));
+    await tester.pumpWidget(_testApp(const AiEditingScreen(
+      initialTargetDurationSeconds: 30,
+    )));
 
     expect(find.text('ตัดต่อด้วย AI'), findsOneWidget);
-    expect(find.text('โหมดตั้งค่าขั้นสูง'), findsOneWidget);
+    expect(find.text('โหมดตั้งค่าขั้นสูง'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('ai-advanced-toggle')),
+      findsNothing,
+    );
     expect(find.text('เพิ่มวิดีโอ'), findsOneWidget);
     expect(find.text('ความยาวที่อยากได้'), findsOneWidget);
     expect(find.text('30 วิ'), findsOneWidget);
@@ -447,6 +452,29 @@ void main() {
     expect(find.text('ป้ายยาฉับไว'), findsNothing);
   });
 
+  testWidgets('shows automatic subtitles before the other AI capabilities',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_testApp(const AiEditingScreen(
+      initialTargetDurationSeconds: 30,
+    )));
+    await tester.pumpAndSettle();
+
+    final subtitleCard = find.byKey(const ValueKey('ai-capability-subtitle'));
+    final silenceCard = find.byKey(const ValueKey('ai-capability-silence'));
+
+    expect(subtitleCard, findsOneWidget);
+    expect(silenceCard, findsOneWidget);
+    expect(
+      tester.getTopLeft(subtitleCard).dy,
+      lessThan(tester.getTopLeft(silenceCard).dy),
+    );
+  });
+
   testWidgets('keeps a selected clip on the setup screen until processing',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('selected-clip.mp4');
@@ -455,6 +483,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
@@ -474,7 +503,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('selected-clip.mp4'), findsOneWidget);
-    expect(find.byType(CapCutEditorScreen), findsNothing);
+    expect(
+      find.byKey(const ValueKey('ai-review-edit-more')),
+      findsNothing,
+    );
     expect(createUploadCalls, 0);
     expect(find.text('ให้ AI ตัดต่อให้เลย'), findsOneWidget);
     expect(
@@ -490,6 +522,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('selected-clip.mp4'), findsNothing);
     expect(find.byKey(const ValueKey('ai-add-video')), findsOneWidget);
+  });
+
+  testWidgets('requires the seller to choose a target length after video pick',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('choose-duration.mp4');
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => pickedVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    var processButton = tester.widget<ElevatedButton>(
+      find.byKey(const ValueKey('ai-process-button')),
+    );
+    expect(processButton.onPressed, isNull);
+    expect(find.text('เลือกความยาวก่อน'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('ai-duration-30')));
+    await tester.tap(find.byKey(const ValueKey('ai-duration-30')));
+    await tester.pumpAndSettle();
+
+    processButton = tester.widget<ElevatedButton>(
+      find.byKey(const ValueKey('ai-process-button')),
+    );
+    expect(processButton.onPressed, isNotNull);
   });
 
   testWidgets('shows progress while reading a selected video', (tester) async {
@@ -706,11 +770,14 @@ void main() {
       isTrue,
       reason: 'style/prompt plan cuts must be rendered on the mobile output',
     );
-    expect(find.byType(CapCutEditorScreen), findsNothing);
+    expect(
+      find.byKey(const ValueKey('ai-review-edit-more')),
+      findsNothing,
+    );
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
     expect(find.text('AI ตัดต่อให้แล้ว'), findsOneWidget);
     expect(find.text('ไปหน้าโพสต์'), findsOneWidget);
-    expect(find.text('ตัดต่อเพิ่ม'), findsOneWidget);
+    expect(find.text('ตัดต่อเพิ่ม'), findsNothing);
   });
 
   testWidgets('stops before upload when the selected video has no audio',
@@ -1971,14 +2038,14 @@ void main() {
     expect(prepareRequests.last.capabilities['silence'], isFalse);
   });
 
-  testWidgets(
-      'review actions open posting and manual editing with latest result',
+  testWidgets('review action opens posting with the latest AI result',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('original-actions.mp4');
     final renderedVideo = _createRenderedVideoFixture('latest-ai-result.mp4');
 
     Widget buildScreen() => _testApp(
           AiEditingScreen(
+            initialTargetDurationSeconds: 30,
             extractAudio: _extractAudioFixture,
             cleanupAiEditAudio: (_) async {},
             key: UniqueKey(),
@@ -2001,29 +2068,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ai-review-edit-more')),
+      findsNothing,
+    );
     await tester.tap(find.byKey(const ValueKey('ai-review-post')));
     await tester.pumpAndSettle();
 
     expect(find.byType(UploaderScreen), findsOneWidget);
     final uploader = tester.widget<UploaderScreen>(find.byType(UploaderScreen));
     expect(uploader.initialVideoPath, renderedVideo.file.path);
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpAndSettle();
-    await tester.pumpWidget(buildScreen());
-    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-review-edit-more')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(CapCutEditorScreen), findsOneWidget);
-    final editor = tester.widget<CapCutEditorScreen>(
-      find.byType(CapCutEditorScreen),
-    );
-    expect(editor.videoFile?.path, renderedVideo.file.path);
-    expect(editor.initialStyle, isNull);
   });
 
   testWidgets(
@@ -2056,8 +2110,6 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
     await tester.pumpAndSettle();
 
     final hookSwitch = find.byKey(
@@ -2148,8 +2200,6 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
 
     final beatSwitch = find.byKey(
       const ValueKey('ai-capability-beatsync'),
@@ -2204,7 +2254,7 @@ void main() {
   });
 
   testWidgets(
-      'locks capabilities without a real renderer and excludes them from prepare',
+      'hides deferred tools and excludes unavailable capabilities from prepare',
       (tester) async {
     final semantics = tester.ensureSemantics();
     final pickedVideo =
@@ -2223,23 +2273,8 @@ void main() {
         'ปรับเสียงให้ชัด',
         'ระบบลดเสียงรบกวนและปรับเสียงพูดในคลิปจริงกำลังพัฒนา',
       ),
-      'translate': (
-        'แปลซับ 2 ภาษา',
-        'ระบบแปลและเรนเดอร์ซับหลายภาษาในคลิปจริงกำลังพัฒนา',
-      ),
-      'pricetag': (
-        'ป้ายราคาอัตโนมัติ',
-        'ระบบตรวจราคาและเรนเดอร์ป้ายลงในคลิปจริงกำลังพัฒนา',
-      ),
-      'cta': (
-        'การ์ดปิดท้าย (CTA)',
-        'ระบบเรนเดอร์การ์ด CTA ลงในคลิปจริงกำลังพัฒนา',
-      ),
-      'watermark': (
-        'ลายน้ำร้าน',
-        'ระบบเรนเดอร์ลายน้ำจากหน้านี้ลงในคลิปจริงกำลังพัฒนา',
-      ),
     };
+    const hiddenCapabilities = ['translate', 'pricetag', 'cta', 'watermark'];
 
     await tester.pumpWidget(
       _testApp(
@@ -2297,10 +2332,23 @@ void main() {
       );
     }
 
+    for (final capability in hiddenCapabilities) {
+      expect(
+        find.byKey(
+          ValueKey('ai-capability-$capability'),
+          skipOffstage: false,
+        ),
+        findsNothing,
+      );
+    }
+
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
-    for (final capability in plannedCapabilities.keys) {
+    for (final capability in [
+      ...plannedCapabilities.keys,
+      ...hiddenCapabilities,
+    ]) {
       expect(
         prepareRequest?.capabilities[capability],
         isFalse,
@@ -2378,8 +2426,6 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'beatsync');
 
     final beatAdvanced = find.byKey(
@@ -2501,8 +2547,6 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'beatsync');
 
     final catalogSource = find.byKey(
@@ -2602,8 +2646,6 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'beatsync');
 
     final myMusicSource = find.byKey(
@@ -2687,8 +2729,6 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'beatsync');
 
     final catalogSource = find.byKey(
@@ -2771,8 +2811,6 @@ void main() {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(_testApp(const AiEditingScreen()));
 
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'silence');
 
     expect(
@@ -2839,8 +2877,6 @@ void main() {
       (tester) async {
     await tester.pumpWidget(_testApp(const AiEditingScreen()));
 
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'subtitle');
 
     final panel = find.byKey(
@@ -2925,8 +2961,6 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'subtitle');
 
     final shortText = find.byKey(
@@ -2986,8 +3020,6 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
     await tester.pumpAndSettle();
 
     await _openAdvancedPanel(tester, 'silence');
@@ -3053,15 +3085,15 @@ void main() {
     expect(prepareRequest?.settings.fillerWords, ['เอ่อ', 'แบบว่า']);
   });
 
-  testWidgets('advanced accordion opens one capability at a time',
+  testWidgets('settings accordion opens one capability at a time',
       (tester) async {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(_testApp(const AiEditingScreen()));
 
-    final advancedToggle = find.byKey(const ValueKey('ai-advanced-toggle'));
-    expect(tester.getSize(advancedToggle).height, greaterThanOrEqualTo(44));
-    await tester.tap(advancedToggle);
-    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ai-advanced-toggle')),
+      findsNothing,
+    );
 
     final silenceDisclosure = find.byKey(
       const ValueKey('ai-advanced-disclosure-silence'),
@@ -3171,8 +3203,6 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(_testApp(const AiEditingScreen()));
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
 
     await _openAdvancedPanel(tester, 'silence');
     expect(

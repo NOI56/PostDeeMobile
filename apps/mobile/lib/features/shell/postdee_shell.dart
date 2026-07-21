@@ -139,6 +139,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
           userName: _authController.session.displayName,
         ),
         AiEditingScreen(
+          initialTargetDurationSeconds: null,
           onBack: () => _selectTab(0),
           pickVideo: widget.pickVideo,
           createUpload: widget.createUpload,

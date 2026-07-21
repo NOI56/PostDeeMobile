@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
+import 'package:postdee_mobile/features/ai_editing/ai_edit_audio_extractor.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_editing_screen.dart';
 import 'package:postdee_mobile/features/ai_editing/beat_music_picker.dart';
 import 'package:postdee_mobile/features/ai_editing/capcut_editor_screen.dart';
@@ -30,6 +31,19 @@ PickedVideoFile _createPickedVideoFixture(String name) {
     sizeBytes: file.lengthSync(),
     width: 1080,
     height: 1920,
+  );
+}
+
+Future<AiEditAudioArtifact> _extractAudioFixture(File source) {
+  final directory = Directory.systemTemp.createTempSync(
+    'postdee-editor-audio-',
+  );
+  final file = File(
+    '${directory.path}${Platform.pathSeparator}postdee-ai-edit-audio.m4a',
+  );
+  file.writeAsBytesSync(List<int>.filled(512, 7));
+  return Future.value(
+    AiEditAudioArtifact(file: file, workingDirectory: directory),
   );
 }
 
@@ -344,6 +358,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           loadAiEditQuota: () async => const AiEditQuota(
             limitMinutes: 200,
             usedMinutes: 17,
@@ -368,6 +384,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           loadAiEditQuota: () async => const AiEditQuota(
             limitMinutes: 200,
             usedMinutes: 0,
@@ -437,6 +455,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async {
             createUploadCalls += 1;
@@ -503,6 +523,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           loadSubscription: () async => _subscriptionFixture('BASIC'),
           createUpload: (_) async {
@@ -547,6 +569,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           loadAiEditQuota: () async => const AiEditQuota(
             limitMinutes: 200,
             usedMinutes: 8,
@@ -605,17 +629,20 @@ void main() {
     BurnSubtitleRequest? renderRequest;
     var createUploadCalls = 0;
     var uploadCalls = 0;
+    final cleanedAudioKeys = <String>[];
 
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (key) async => cleanedAudioKeys.add(key),
           pickVideo: () async => pickedVideo,
           createUpload: (request) async {
             createUploadCalls += 1;
             createdUploadRequest = request;
             return UploadResult(
               id: 'editor-upload-$createUploadCalls',
-              videoS3Key: 'uploads/editor-real-$createUploadCalls.mp4',
+              videoS3Key: 'uploads/editor-real-$createUploadCalls.m4a',
               storageProvider: 's3',
             );
           },
@@ -656,14 +683,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    expect(createdUploadRequest?.fileName, 'editor-real.mp4');
-    expect(createdUploadRequest?.sizeBytes, pickedVideo.sizeBytes);
-    expect(createdUploadRequest?.width, 1080);
-    expect(createdUploadRequest?.height, 1920);
-    expect(uploadedFilePath, pickedVideo.path);
+    expect(createdUploadRequest?.fileName, 'postdee-ai-edit-audio.m4a');
+    expect(createdUploadRequest?.contentType, 'audio/mp4');
+    expect(createdUploadRequest?.purpose, 'ai-edit-audio');
+    expect(createdUploadRequest?.sizeBytes, 512);
+    expect(createdUploadRequest?.width, isNull);
+    expect(createdUploadRequest?.height, isNull);
+    expect(uploadedFilePath, isNot(pickedVideo.path));
+    expect(uploadedFilePath, endsWith('.m4a'));
+    expect(File(uploadedFilePath!).existsSync(), isFalse);
     expect(createUploadCalls, 2);
     expect(uploadCalls, 2);
-    expect(prepareRequest?.videoS3Key, 'uploads/editor-real-2.mp4');
+    expect(prepareRequest?.audioS3Key, 'uploads/editor-real-2.m4a');
+    expect(prepareRequest?.videoS3Key, isNull);
+    expect(prepareRequest?.targetDurationSeconds, 30);
+    expect(cleanedAudioKeys, ['uploads/editor-real-2.m4a']);
     expect(renderRequest?.inputFile.path, pickedVideo.path);
     expect(
       renderRequest?.silenceRanges.any(
@@ -679,6 +713,52 @@ void main() {
     expect(find.text('ตัดต่อเพิ่ม'), findsOneWidget);
   });
 
+  testWidgets('stops before upload when the selected video has no audio',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('no-audio.mp4');
+    var createUploadCalls = 0;
+    var prepareCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: (_) async => throw const AiEditAudioExtractionException(
+            AiEditAudioExtractionFailure.noAudioStream,
+          ),
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 0,
+            remainingMinutes: 200,
+          ),
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'must-not-upload',
+              videoS3Key: 'uploads/must-not-upload.m4a',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(createUploadCalls, 0);
+    expect(prepareCalls, 0);
+    expect(find.text('วิดีโอนี้ไม่มีเสียงให้ AI วิเคราะห์'), findsOneWidget);
+  });
+
   testWidgets('review preview shows loading, error, and successful retry',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('retry-original.mp4');
@@ -689,6 +769,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-retry-preview',
@@ -753,6 +835,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-compare-preview',
@@ -822,6 +906,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-live-seek-preview',
@@ -883,6 +969,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-seek-order-preview',
@@ -950,6 +1038,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-serial-preview',
@@ -1010,6 +1100,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-seek-preview',
@@ -1061,6 +1153,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'color-fallback-upload',
@@ -1098,6 +1192,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u1',
@@ -1191,6 +1287,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-pending-preview',
@@ -1260,6 +1358,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-failure',
@@ -1321,6 +1421,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-setup-change',
@@ -1368,6 +1470,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-setup-failure',
@@ -1436,6 +1540,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-retry-render',
@@ -1482,6 +1588,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-keep-original',
@@ -1537,6 +1645,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-review-status',
@@ -1608,6 +1718,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-analysis-summary',
@@ -1664,6 +1776,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-analysis-not-found',
@@ -1726,6 +1840,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-analysis-zero',
@@ -1797,6 +1913,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-removed-setting',
@@ -1861,6 +1979,8 @@ void main() {
 
     Widget buildScreen() => _testApp(
           AiEditingScreen(
+            extractAudio: _extractAudioFixture,
+            cleanupAiEditAudio: (_) async {},
             key: UniqueKey(),
             pickVideo: () async => pickedVideo,
             createUpload: (_) async => const UploadResult(
@@ -1916,6 +2036,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-production-hook-lock',
@@ -2005,6 +2127,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-production-beat-lock',
@@ -2120,6 +2244,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-production-planned-locks',
@@ -2454,6 +2580,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           enableExperimentalBeatSync: true,
           pickVideo: () async => pickedVideo,
           pickMusic: () async => pickedMusic,
@@ -2774,6 +2902,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-subtitle-settings',
@@ -2836,6 +2966,8 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-pace-settings',

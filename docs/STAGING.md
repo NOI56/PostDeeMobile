@@ -15,8 +15,10 @@ R2 จาก Android Debug ผ่านแล้วบางส่วน; Stagin
   Firebase UID หลัง deploy backend และตั้ง server REST key แล้ว
 - R2 รับวิดีโอทดสอบจากแอปได้จริงแล้ว แต่ยังต้องตรวจยืนยันว่า bucket Production ไม่มี
   object จากรอบทดสอบและลบ object ทดสอบที่อัปโหลดสำเร็จด้วยตนเอง
-- Gemini และ `GROQ_API_KEY` บน Render ยังไม่พร้อมใช้งานจริง; รอบทดสอบ AI edit
-  อัปโหลดสำเร็จแต่หยุดที่ transcription โดยโควตายังคงเดิม ส่วน Social ยัง
+- ตั้ง `GROQ_API_KEY` ชุด Staging บน Render แล้ว แต่รอบทดสอบ AI edit เดิมส่ง
+  วิดีโอ 38 MB ทั้งไฟล์และหยุดที่ transcription เพราะเกินขนาดไฟล์ของ provider
+  โดยโควตายังคงเดิม รุ่นแก้ไขจะแยกเสียง M4A ก่อนส่งและยังต้อง deploy/test ซ้ำ
+  ส่วน Gemini ยังต้องตรวจ credential/function แยก และ Social ยัง
   `disabled` และยังไม่ผ่าน connected-account E2E
 
 Staging ใช้ทดสอบโค้ดและผู้ให้บริการจริงก่อนส่งเข้า Production โดยต้องไม่ใช้ฐานข้อมูล
@@ -122,9 +124,10 @@ keystore ใหม่นั้นใน Firebase Staging ก่อน Google Sig
 - [ ] Firebase Email/Password login ด้วยบัญชี Staging
 - [ ] อัปโหลดไฟล์ไป bucket Staging และยืนยันว่าไม่มี object ใน bucket Production
       (อัปโหลดจาก Android ผ่านแล้ว แต่การยืนยันขอบเขต bucket และ cleanup ยังไม่ครบ)
-- [ ] AI caption และ AI edit ใช้โควตา/ข้อมูลของบัญชีทดสอบ (`GROQ_API_KEY` ใน Render
-      ต้องเป็น staging-only key ที่ใช้งานได้ก่อน; provider failure ต้องตอบ JSON 502
-      โดยไม่หักโควตาและแอปต้องแสดงข้อความลองใหม่ภาษาไทย)
+- [ ] AI caption และ AI edit ใช้โควตา/ข้อมูลของบัญชีทดสอบ (`GROQ_API_KEY` ชุด
+      Staging ตั้งแล้ว; ต้อง deploy รุ่นแยกเสียงและทดสอบคลิป 38 MB ซ้ำ พร้อมยืนยัน
+      ว่า R2/Groq รับเฉพาะ M4A ชั่วคราว, cleanup สำเร็จ, provider failure ตอบ JSON
+      502 โดยไม่หักโควตา และแอปแสดงข้อความลองใหม่ภาษาไทย)
 - [ ] เปิด/ปิดความสามารถ AI แล้ว preview และเวลาใน timeline ถูกต้อง
 - [x] RevenueCat Test Store purchase ให้ entitlement Pro กับ Firebase UID ทดสอบ
       บน Android Emulator (ราคาทดสอบ ไม่มีการเรียกเก็บเงินจริง)

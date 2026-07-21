@@ -6,6 +6,7 @@ export type EditPlanCut = { start: number; end: number };
 export type EditPlanRequest = {
   segments: EditPlanSegment[];
   durationSeconds: number;
+  targetDurationSeconds?: number;
   styleId?: string;
   prompt?: string;
 };
@@ -90,13 +91,165 @@ export const matchesAnyKeyword = (text: string, keywords: string[]): boolean => 
   });
 };
 
+const highlightSignals: Array<{ keywords: string[]; weight: number }> = [
+  {
+    keywords: ['หยุด', 'รู้ไหม', 'ต้องดู', 'ปัญหา', 'ใครที่', 'ห้ามพลาด'],
+    weight: 5
+  },
+  {
+    keywords: [
+      'ช่วย',
+      'ดี',
+      'คุ้ม',
+      'ง่าย',
+      'สะดวก',
+      'ประหยัด',
+      'เร็ว',
+      'แก้',
+      'ลดเวลา'
+    ],
+    weight: 4
+  },
+  {
+    keywords: ['ผลลัพธ์', 'ก่อน', 'หลัง', 'รีวิว', 'ขายดี', 'จริง', 'ลองแล้ว'],
+    weight: 5
+  },
+  {
+    keywords: ['ราคา', 'บาท', 'ลด', 'โปร', 'ส่วนลด', 'ส่งฟรี', 'ฟรี', 'แถม'],
+    weight: 6
+  },
+  {
+    keywords: ['กด', 'สั่ง', 'ซื้อ', 'ตะกร้า', 'ลิงก์', 'ทัก', 'วันนี้'],
+    weight: 6
+  }
+];
+
+const scoreHighlightSegment = (
+  segment: EditPlanSegment,
+  index: number,
+  segmentCount: number
+): number => {
+  const text = segment.text.toLowerCase();
+  const signalScore = highlightSignals.reduce(
+    (total, signal) =>
+      total +
+      signal.keywords.filter((keyword) => text.includes(keyword)).length *
+        signal.weight,
+    0
+  );
+  const positionScore = index === 0 ? 1 : index === segmentCount - 1 ? 2 : 0;
+  return signalScore + positionScore;
+};
+
+const normalizeCuts = (
+  cuts: EditPlanCut[],
+  durationSeconds: number
+): EditPlanCut[] => {
+  const normalized: EditPlanCut[] = [];
+
+  for (const cut of [...cuts].sort((a, b) => a.start - b.start)) {
+    const start = Math.min(Math.max(cut.start, 0), durationSeconds);
+    const end = Math.min(Math.max(cut.end, 0), durationSeconds);
+    if (end <= start) continue;
+
+    const previous = normalized[normalized.length - 1];
+    if (previous && start <= previous.end + 0.001) {
+      previous.end = Math.max(previous.end, end);
+    } else {
+      normalized.push({ start, end });
+    }
+  }
+
+  return normalized;
+};
+
+const cutsOutsideKeptRanges = (
+  keptRanges: EditPlanCut[],
+  durationSeconds: number
+): EditPlanCut[] => {
+  const kept = normalizeCuts(keptRanges, durationSeconds);
+  const cuts: EditPlanCut[] = [];
+  let cursor = 0;
+
+  for (const range of kept) {
+    if (range.start > cursor + 0.001) {
+      cuts.push({ start: cursor, end: range.start });
+    }
+    cursor = Math.max(cursor, range.end);
+  }
+  if (cursor < durationSeconds - 0.001) {
+    cuts.push({ start: cursor, end: durationSeconds });
+  }
+  return cuts;
+};
+
+/** Selects strong Thai selling moments while preserving their timeline order. */
+export const buildHighlightCuts = (
+  segments: EditPlanSegment[],
+  durationSeconds: number,
+  targetDurationSeconds: number
+): EditPlanCut[] => {
+  if (
+    durationSeconds <= 0 ||
+    targetDurationSeconds <= 0 ||
+    targetDurationSeconds >= durationSeconds
+  ) {
+    return [];
+  }
+
+  const validSegments = segments
+    .map((segment, index) => ({
+      ...segment,
+      index,
+      start: Math.min(Math.max(segment.start, 0), durationSeconds),
+      end: Math.min(Math.max(segment.end, 0), durationSeconds)
+    }))
+    .filter((segment) => segment.text.trim().length > 0 && segment.end > segment.start);
+
+  if (validSegments.length === 0) {
+    return trimToTarget([], durationSeconds, targetDurationSeconds);
+  }
+
+  const ranked = validSegments
+    .map((segment) => ({
+      segment,
+      score: scoreHighlightSegment(segment, segment.index, segments.length)
+    }))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.segment.end - a.segment.start - (b.segment.end - b.segment.start) ||
+        a.segment.start - b.segment.start
+    );
+
+  const selected: EditPlanCut[] = [];
+  let remaining = targetDurationSeconds;
+  for (const candidate of ranked) {
+    const length = candidate.segment.end - candidate.segment.start;
+    if (length <= remaining + 0.001) {
+      selected.push({ start: candidate.segment.start, end: candidate.segment.end });
+      remaining -= length;
+    }
+  }
+
+  if (selected.length === 0) {
+    const best = ranked[0]!.segment;
+    selected.push({
+      start: best.start,
+      end: Math.min(best.end, best.start + targetDurationSeconds)
+    });
+  }
+
+  return cutsOutsideKeptRanges(selected, durationSeconds);
+};
+
 /** Gaps in [0, duration] not covered by cuts, merged and sorted. Pure. */
 const complement = (cuts: EditPlanCut[], duration: number): EditPlanCut[] => {
   if (cuts.length === 0) {
     return [{ start: 0, end: duration }];
   }
 
-  const sorted = [...cuts].sort((a, b) => a.start - b.start);
+  const sorted = normalizeCuts(cuts, duration);
   const result: EditPlanCut[] = [];
   let cursor = 0;
 
@@ -180,7 +333,8 @@ export const trimToTarget = (
     return cuts;
   }
 
-  const kept = complement(cuts, durationSeconds);
+  const normalizedCuts = normalizeCuts(cuts, durationSeconds);
+  const kept = complement(normalizedCuts, durationSeconds);
   let accumulated = 0;
   let keepUntil: number | undefined;
 
@@ -194,10 +348,13 @@ export const trimToTarget = (
   }
 
   if (keepUntil !== undefined && keepUntil < durationSeconds) {
-    return [...cuts, { start: keepUntil, end: durationSeconds }];
+    return normalizeCuts(
+      [...normalizedCuts, { start: keepUntil, end: durationSeconds }],
+      durationSeconds
+    );
   }
 
-  return cuts;
+  return normalizedCuts;
 };
 
 export const parsePromptInstruction = (
@@ -231,7 +388,29 @@ export const parsePromptInstruction = (
  * exercised today and an LLM can replace the brain without touching callers.
  */
 export const createMockEditPlanProvider = (): EditPlanProvider => ({
-  plan: async ({ segments, durationSeconds, styleId, prompt }) => {
+  plan: async ({
+    segments,
+    durationSeconds,
+    targetDurationSeconds,
+    styleId,
+    prompt
+  }) => {
+    if (
+      targetDurationSeconds !== undefined &&
+      !styleId &&
+      (!prompt || prompt.trim().length === 0)
+    ) {
+      return {
+        cuts: buildHighlightCuts(
+          segments,
+          durationSeconds,
+          targetDurationSeconds
+        ),
+        summary: `เลือกช่วงขายที่ดีที่สุดให้เหลือประมาณ ${Math.round(targetDurationSeconds)} วิ`,
+        model: 'mock-highlight-rule'
+      };
+    }
+
     if (prompt && prompt.trim().length > 0) {
       const instruction = parsePromptInstruction(prompt);
       let cuts: EditPlanCut[] = [];
@@ -279,15 +458,19 @@ export const createMockEditPlanProvider = (): EditPlanProvider => ({
 
 export const editPlanSystemPrompt =
   'You are a precise short-video editor for Thai sellers. Given the clip ' +
-  'duration, transcript segments (text with start/end seconds), and an ' +
+  'duration, target result duration, transcript segments (text with start/end seconds), and an ' +
   'instruction (a style id or a free-form Thai request), decide which time ' +
-  'ranges to REMOVE. Respond with ONLY JSON: ' +
+  'ranges to REMOVE. When targetDurationSeconds is present, select the strongest ' +
+  'coherent selling moments within that time budget: hook, benefit, proof, offer, ' +
+  'and call to action. Prefer complete sentences and preserve chronological order. ' +
+  'Respond with ONLY JSON: ' +
   '{"cuts":[{"start":<sec>,"end":<sec>}],"summary":"<short Thai summary>"}. ' +
   'Ranges must be within [0, duration], non-overlapping, and sorted.';
 
 const buildEditPlanUserPrompt = (request: EditPlanRequest): string =>
   JSON.stringify({
     durationSeconds: request.durationSeconds,
+    targetDurationSeconds: request.targetDurationSeconds ?? null,
     styleId: request.styleId ?? null,
     prompt: request.prompt ?? null,
     segments: request.segments.map((segment) => ({
@@ -332,7 +515,7 @@ export const parseLlmEditPlan = (
   }
 
   return {
-    cuts,
+    cuts: normalizeCuts(cuts, durationSeconds),
     summary: typeof parsed.summary === 'string' ? parsed.summary : '',
     model
   };
@@ -390,7 +573,17 @@ export const createOpenAiCompatibleEditPlanProvider = ({
         throw new Error(`${failureLabel} returned no content`);
       }
 
-      return parseLlmEditPlan(content, request.durationSeconds, model);
+      const result = parseLlmEditPlan(content, request.durationSeconds, model);
+      return request.targetDurationSeconds !== undefined
+        ? {
+            ...result,
+            cuts: trimToTarget(
+              result.cuts,
+              request.durationSeconds,
+              request.targetDurationSeconds
+            )
+          }
+        : result;
     } catch {
       return fallback.plan(request);
     }

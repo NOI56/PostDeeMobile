@@ -446,13 +446,17 @@ export const registerAiEditRoutes = (
 
     const styleId = readRequiredString(request.body?.styleId);
     const prompt = readRequiredString(request.body?.prompt);
+    const targetDurationSeconds = readPositiveNumber(
+      request.body?.targetDurationSeconds
+    );
     const durationSeconds =
       transcript.durationSeconds > 0 ? transcript.durationSeconds : estimatedDurationSeconds;
     const editPlan =
-      styleId || prompt
+      styleId || prompt || targetDurationSeconds
         ? await editPlanProvider.plan({
             segments: transcript.segments,
             durationSeconds,
+            targetDurationSeconds,
             styleId,
             prompt
           })
@@ -512,11 +516,14 @@ export const registerAiEditRoutes = (
 
     const styleId = readRequiredString(request.body?.styleId);
     const prompt = readRequiredString(request.body?.prompt);
+    const targetDurationSeconds = readPositiveNumber(
+      request.body?.targetDurationSeconds
+    );
 
-    if (!styleId && !prompt) {
+    if (!styleId && !prompt && !targetDurationSeconds) {
       response.status(400).json({
         status: 'error',
-        message: 'styleId or prompt is required'
+        message: 'styleId, prompt, or targetDurationSeconds is required'
       });
       return;
     }
@@ -524,6 +531,7 @@ export const registerAiEditRoutes = (
     const plan = await editPlanProvider.plan({
       segments: readSegments(request.body?.segments),
       durationSeconds,
+      targetDurationSeconds,
       styleId,
       prompt
     });

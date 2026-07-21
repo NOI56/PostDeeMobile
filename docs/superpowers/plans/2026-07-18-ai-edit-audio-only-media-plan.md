@@ -8,6 +8,12 @@
 
 **Tech Stack:** Flutter/Dart, FFmpegKit, Node.js, Express, TypeScript, Vitest, Prisma-compatible stores, Cloudflare R2/S3-compatible storage, Groq Whisper.
 
+**Implementation status (2026-07-22):** Backend audio upload/media/cleanup support
+is present on `main`. The scoped follow-up implements mobile M4A extraction and
+cleanup plus transcript-based `targetDurationSeconds` planning for 30/60/custom.
+Backend tests/build/Prisma validation and mobile analyze/tests/debug APK build
+pass; real Staging evidence remains required after merge and deploy.
+
 ## Global Constraints
 
 - Follow `docs/superpowers/specs/2026-07-18-ai-edit-audio-only-media-design.md` exactly.

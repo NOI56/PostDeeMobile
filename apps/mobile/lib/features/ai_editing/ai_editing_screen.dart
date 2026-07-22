@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -386,6 +387,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   final _priceBeforeController = TextEditingController(text: '359');
 
   PickedVideoFile? _selectedVideo;
+  double? _selectedVideoDurationSeconds;
   AiEditPrepareResult? _preparedEdit;
   SubtitleProject? _subtitleProject;
   SubtitleDraftStore? _resolvedSubtitleDraftStore;
@@ -535,6 +537,24 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
       setState(() {
         _selectedVideo = picked;
+        _selectedVideoDurationSeconds = picked.durationSeconds;
+        final sliderMaximum = _durationSliderMaximum;
+        if (sliderMaximum == null) {
+          _durationMode = _AiDurationMode.unselected;
+        } else {
+          final sliderMinimum = _durationSliderMinimum(sliderMaximum);
+          final initialTarget = widget.initialTargetDurationSeconds;
+          final target = (initialTarget ?? sliderMaximum.round()).clamp(
+            sliderMinimum.round(),
+            sliderMaximum.round(),
+          );
+          _customDurationSeconds = target;
+          _customDurationController.text = target.toString();
+          _durationMode = initialTarget != null ||
+                  sliderMaximum.round() == sliderMinimum.round()
+              ? _AiDurationMode.custom
+              : _AiDurationMode.unselected;
+        }
         _preparedEdit = null;
         _subtitleProject = null;
         _preparedEditsBySignature.clear();
@@ -1458,6 +1478,23 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   bool get _hasSelectedDuration => _durationMode != _AiDurationMode.unselected;
 
+  double? get _durationSliderMaximum {
+    final sourceDuration = _selectedVideoDurationSeconds;
+    if (sourceDuration == null ||
+        !sourceDuration.isFinite ||
+        sourceDuration <= 0) {
+      return null;
+    }
+
+    return math.min(180, math.max(1, sourceDuration.floor())).toDouble();
+  }
+
+  double _durationSliderMinimum(double maximum) => maximum >= 5 ? 5 : 1;
+
+  String _formatDurationSeconds(num seconds) => formatReviewVideoClock(
+        Duration(seconds: math.max(0, seconds.floor())),
+      );
+
   bool get _reviewIsDirty {
     final keys = {
       ..._reviewCapabilities.keys,
@@ -1813,19 +1850,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     Navigator.of(context).maybePop();
   }
 
-  void _setCustomDuration(String raw) {
-    final parsed = int.tryParse(raw) ?? 0;
-    final capped = parsed.clamp(0, 180);
-    if (parsed != capped) {
-      final text = capped.toString();
-      _customDurationController.value = TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
-      );
-    }
-    setState(() => _customDurationSeconds = capped);
-  }
-
   void _savePreset() {
     final omittedPrivateMusic = _musicSource == _BeatMusicSource.device;
     setState(() {
@@ -1925,7 +1949,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           )
         else
           _buildSelectedVideoCard(_selectedVideo!),
-        _buildDurationPromptTransition(),
+        _buildDurationPrompt(),
         _sectionHeading(
           icon: Icons.auto_fix_high,
           title: 'ให้ AI จัดการให้',
@@ -2743,6 +2767,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final details = <String>[
       if ((video.width ?? 0) > 0 && (video.height ?? 0) > 0)
         '${video.width}×${video.height}',
+      if ((video.durationSeconds ?? 0) > 0)
+        'เวลา ${_formatDurationSeconds(video.durationSeconds!)}',
       _formatBytes(video.sizeBytes),
     ];
 
@@ -2824,6 +2850,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               onTap: () {
                 setState(() {
                   _selectedVideo = null;
+                  _selectedVideoDurationSeconds = null;
+                  _durationMode = _AiDurationMode.unselected;
                   _preparedEdit = null;
                   _subtitleProject = null;
                   _preparedEditsBySignature.clear();
@@ -2855,140 +2883,179 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Widget _buildDurationSection() {
+    final maximum = _durationSliderMaximum;
+    final sourceDuration = _selectedVideoDurationSeconds;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeading(
           icon: Icons.timer_outlined,
           title: 'ความยาวที่อยากได้',
-          description: 'AI จะเลือกช่วงที่ดีที่สุดให้พอดีกับเวลาที่ตั้ง',
+          description:
+              'ลากจุดบนเส้นจากขวาไปซ้าย เพื่อเลือกว่าจะให้ AI ย่อเหลือเท่าไร',
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _choiceChip(
-              label: '30 วิ',
-              selected: _durationMode == _AiDurationMode.seconds30,
-              onTap: () =>
-                  setState(() => _durationMode = _AiDurationMode.seconds30),
-              key: const ValueKey('ai-duration-30'),
-            ),
-            _choiceChip(
-              label: '1 นาที',
-              selected: _durationMode == _AiDurationMode.seconds60,
-              onTap: () =>
-                  setState(() => _durationMode = _AiDurationMode.seconds60),
-              key: const ValueKey('ai-duration-60'),
-            ),
-            _choiceChip(
-              label: 'กำหนดเอง',
-              selected: _durationMode == _AiDurationMode.custom,
-              onTap: () =>
-                  setState(() => _durationMode = _AiDurationMode.custom),
-              key: const ValueKey('ai-duration-custom'),
-            ),
-          ],
-        ),
-        if (!_hasSelectedDuration) ...[
-          const SizedBox(height: 8),
-          Text(
-            'เลือกความยาวก่อนเริ่ม เพื่อให้ AI รู้ว่าจะคัดช่วงมาเท่าไร',
-            key: const ValueKey('ai-duration-required-message'),
-            style: TextStyle(
-              fontSize: 11.5,
-              color: AppTheme.textMuted,
-            ),
-          ),
-        ],
-        if (_durationMode == _AiDurationMode.custom) ...[
-          const SizedBox(height: 12),
+        if (maximum == null || sourceDuration == null)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            key: const ValueKey('ai-duration-unavailable'),
+            padding: const EdgeInsets.all(14),
             decoration: _cardDecoration(radius: 13),
             child: Row(
               children: [
-                Icon(Icons.tune, size: 19, color: AppTheme.accentCyanInk),
+                const Icon(
+                  Icons.error_outline_rounded,
+                  size: 20,
+                  color: Color(0xFFDC2626),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'ความยาวที่ต้องการ',
-                    style:
-                        TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                  ),
-                ),
-                SizedBox(
-                  width: 58,
-                  height: 40,
-                  child: TextField(
-                    key: const ValueKey('ai-custom-duration-field'),
-                    controller: _customDurationController,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    onChanged: _setCustomDuration,
+                    'อ่านเวลาคลิปไม่สำเร็จ กรุณาเลือกคลิปใหม่อีกครั้ง',
                     style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
+                      fontSize: 12.5,
+                      color: AppTheme.textSecondary,
                     ),
-                    decoration: _compactInputDecoration(),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'วินาที',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
                   ),
                 ),
               ],
             ),
+          )
+        else
+          Builder(
+            builder: (context) {
+              final minimum = _durationSliderMinimum(maximum);
+              final rawTarget = _hasSelectedDuration
+                  ? _selectedDurationSeconds
+                  : _customDurationSeconds;
+              final target = rawTarget.clamp(
+                minimum.round(),
+                maximum.round(),
+              );
+              final divisions = maximum.round() - minimum.round();
+              final sourceLabel = _formatDurationSeconds(sourceDuration);
+              final targetLabel = _formatDurationSeconds(target);
+
+              return Container(
+                key: const ValueKey('ai-duration-slider-card'),
+                padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+                decoration: _cardDecoration(radius: 15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'ต้นฉบับ $sourceLabel',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.mint,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'ให้ AI ย่อเหลือ $targetLabel',
+                            key: const ValueKey('ai-duration-selected-label'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.accentCyanInk,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 5,
+                        activeTrackColor: AppTheme.accent,
+                        inactiveTrackColor: AppTheme.borderSoft,
+                        thumbColor: AppTheme.accent,
+                        overlayColor: AppTheme.accent.withValues(alpha: 0.14),
+                      ),
+                      child: Slider(
+                        key: const ValueKey('ai-duration-slider'),
+                        min: minimum,
+                        max: maximum,
+                        divisions: divisions > 0 ? divisions : null,
+                        value: target.toDouble(),
+                        label: targetLabel,
+                        onChanged: divisions <= 0
+                            ? null
+                            : (value) {
+                                final seconds = value.round();
+                                setState(() {
+                                  _durationMode = _AiDurationMode.custom;
+                                  _customDurationSeconds = seconds;
+                                  _customDurationController.text =
+                                      seconds.toString();
+                                });
+                              },
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'สั้นสุด ${_formatDurationSeconds(minimum)}',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
+                        Text(
+                          'ยาวสุด ${_formatDurationSeconds(maximum)}',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (!_hasSelectedDuration) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'ลากจุดไปทางซ้ายเพื่อเลือกความยาวก่อนเริ่ม',
+                        key: const ValueKey('ai-duration-required-message'),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
           ),
-        ],
       ],
     );
   }
 
-  Widget _buildDurationPromptTransition() {
-    const durationStepKey = ValueKey('ai-duration-step');
-    final showDuration = _selectedVideo != null;
+  Widget _buildDurationPrompt() {
+    if (_selectedVideo == null) {
+      return const SizedBox(
+        key: ValueKey('ai-duration-step-hidden'),
+        height: 20,
+      );
+    }
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 320),
-      reverseDuration: const Duration(milliseconds: 240),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) {
-        final isDurationStep = child.key == durationStepKey;
-        final offsetAnimation = Tween<Offset>(
-          begin: isDurationStep ? const Offset(1, 0) : const Offset(-0.15, 0),
-          end: Offset.zero,
-        ).animate(animation);
-
-        return ClipRect(
-          child: SlideTransition(
-            key: isDurationStep
-                ? const ValueKey('ai-duration-step-slide')
-                : null,
-            position: offsetAnimation,
-            child: child,
-          ),
-        );
-      },
-      child: showDuration
-          ? Padding(
-              key: durationStepKey,
-              padding: const EdgeInsets.only(top: 18, bottom: 20),
-              child: _buildDurationSection(),
-            )
-          : const SizedBox(
-              key: ValueKey('ai-duration-step-hidden'),
-              height: 20,
-            ),
+    return Padding(
+      key: const ValueKey('ai-duration-step'),
+      padding: const EdgeInsets.only(top: 18, bottom: 20),
+      child: _buildDurationSection(),
     );
   }
 
@@ -4669,7 +4736,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ? _reviewCapabilities
         : _effectiveCapabilities;
     final selectedTasks = [
-      'ย่อเหลือ ${_selectedDurationSeconds >= 60 ? '1 นาที' : '$_selectedDurationSeconds วิ'}',
+      'ย่อเหลือ ${_formatDurationSeconds(_selectedDurationSeconds)}',
       for (final definition in _capabilityDefinitions)
         if (definition.id != 'hook' &&
             (activeCapabilities[definition.id] ?? false))
@@ -4949,19 +5016,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           offset: const Offset(0, 1),
         ),
       ],
-    );
-  }
-
-  InputDecoration _compactInputDecoration() {
-    return InputDecoration(
-      isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-      filled: true,
-      fillColor: AppTheme.pitchBlack,
-      border: _inputBorder(),
-      enabledBorder: _inputBorder(),
-      focusedBorder: _inputBorder(color: AppTheme.accent),
-      counterText: '',
     );
   }
 

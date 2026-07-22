@@ -32,7 +32,19 @@ PickedVideoFile _createPickedVideoFixture(String name) {
     sizeBytes: file.lengthSync(),
     width: 1080,
     height: 1920,
+    durationSeconds: 150,
   );
+}
+
+Future<void> _setTargetDuration(
+  WidgetTester tester,
+  double seconds,
+) async {
+  final slider = tester.widget<Slider>(
+    find.byKey(const ValueKey('ai-duration-slider')),
+  );
+  slider.onChanged!(seconds);
+  await tester.pumpAndSettle();
 }
 
 class _MemorySubtitleDraftStore implements SubtitleDraftStore {
@@ -570,14 +582,6 @@ void main() {
     expect(find.byKey(const ValueKey('ai-duration-30')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    final durationSlide = tester.widget<SlideTransition>(
-      find.byKey(const ValueKey('ai-duration-step-slide')),
-    );
-    expect(durationSlide.position.value.dx, greaterThan(0));
-
     await tester.pumpAndSettle();
 
     var processButton = tester.widget<ElevatedButton>(
@@ -585,15 +589,20 @@ void main() {
     );
     expect(processButton.onPressed, isNull);
     expect(find.text('เลือกความยาวก่อน'), findsOneWidget);
+    expect(find.text('ต้นฉบับ 02:30'), findsOneWidget);
+    expect(find.text('ให้ AI ย่อเหลือ 02:30'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-duration-slider')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-duration-30')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-duration-60')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-duration-custom')), findsNothing);
 
-    await tester.ensureVisible(find.byKey(const ValueKey('ai-duration-30')));
-    await tester.tap(find.byKey(const ValueKey('ai-duration-30')));
-    await tester.pumpAndSettle();
+    await _setTargetDuration(tester, 45);
 
     processButton = tester.widget<ElevatedButton>(
       find.byKey(const ValueKey('ai-process-button')),
     );
     expect(processButton.onPressed, isNotNull);
+    expect(find.text('ให้ AI ย่อเหลือ 00:45'), findsOneWidget);
   });
 
   testWidgets('shows progress while reading a selected video', (tester) async {
@@ -1760,8 +1769,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('ตั้งค่าใหม่'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-duration-60')));
-    await tester.pumpAndSettle();
+    await _setTargetDuration(tester, 60);
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -1816,8 +1824,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('ตั้งค่าใหม่'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-duration-60')));
-    await tester.pumpAndSettle();
+    await _setTargetDuration(tester, 60);
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -2283,8 +2290,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('ตั้งค่าใหม่'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-duration-60')));
-    await tester.pumpAndSettle();
+    await _setTargetDuration(tester, 60);
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -3431,29 +3437,30 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('supports a custom duration capped at 180 seconds',
+  testWidgets('uses one timeline slider instead of duration preset buttons',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('custom-duration.mp4');
     await tester.pumpWidget(
-      _testApp(AiEditingScreen(pickVideo: () async => pickedVideo)),
+      _testApp(AiEditingScreen(
+        initialTargetDurationSeconds: null,
+        pickVideo: () async => pickedVideo,
+      )),
     );
 
-    expect(find.byKey(const ValueKey('ai-duration-custom')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('ai-duration-custom')));
-    await tester.pumpAndSettle();
-    expect(
-        find.byKey(const ValueKey('ai-custom-duration-field')), findsOneWidget);
-
-    await tester.enterText(
-      find.byKey(const ValueKey('ai-custom-duration-field')),
-      '999',
+    final slider = tester.widget<Slider>(
+      find.byKey(const ValueKey('ai-duration-slider')),
     );
-    await tester.pumpAndSettle();
-    expect(find.text('180'), findsOneWidget);
-    expect(find.text('วินาที'), findsOneWidget);
+    expect(slider.min, 5);
+    expect(slider.max, 150);
+    expect(slider.value, 150);
+    expect(
+        find.byKey(const ValueKey('ai-custom-duration-field')), findsNothing);
+    expect(find.text('30 วิ'), findsNothing);
+    expect(find.text('1 นาที'), findsNothing);
+    expect(find.text('กำหนดเอง'), findsNothing);
   });
 
   testWidgets('advanced layout fits the 390px reference phone width',

@@ -10,10 +10,12 @@ class VideoDimensions {
   const VideoDimensions({
     required this.width,
     required this.height,
+    this.durationSeconds,
   });
 
   final int width;
   final int height;
+  final double? durationSeconds;
 }
 
 class VideoMetadataException implements Exception {
@@ -37,6 +39,12 @@ class FfmpegVideoMetadataReader {
         return null;
       }
 
+      final rawDuration = mediaInformation.getDuration();
+      final parsedDuration =
+          rawDuration == null ? null : double.tryParse(rawDuration);
+      final durationSeconds =
+          parsedDuration != null && parsedDuration > 0 ? parsedDuration : null;
+
       for (final stream in mediaInformation.getStreams()) {
         if (stream.getType() != 'video') {
           continue;
@@ -49,7 +57,11 @@ class FfmpegVideoMetadataReader {
           continue;
         }
 
-        return VideoDimensions(width: width, height: height);
+        return VideoDimensions(
+          width: width,
+          height: height,
+          durationSeconds: durationSeconds,
+        );
       }
 
       return null;
@@ -66,6 +78,7 @@ class PickedVideoFile {
     required this.sizeBytes,
     this.width,
     this.height,
+    this.durationSeconds,
   });
 
   final String name;
@@ -73,6 +86,7 @@ class PickedVideoFile {
   final int sizeBytes;
   final int? width;
   final int? height;
+  final double? durationSeconds;
 }
 
 class GalleryVideoPicker {
@@ -107,6 +121,7 @@ class GalleryVideoPicker {
       sizeBytes: await video.length(),
       width: dimensions?.width,
       height: dimensions?.height,
+      durationSeconds: dimensions?.durationSeconds,
     );
   }
 }

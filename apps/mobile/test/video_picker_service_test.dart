@@ -29,7 +29,11 @@ void main() {
       ),
       readVideoDimensions: (path) async {
         expect(path, videoFile.path);
-        return const VideoDimensions(width: 1080, height: 1920);
+        return const VideoDimensions(
+          width: 1080,
+          height: 1920,
+          durationSeconds: 150.5,
+        );
       },
     );
 
@@ -41,6 +45,7 @@ void main() {
     expect(pickedVideo?.sizeBytes, videoFile.lengthSync());
     expect(pickedVideo?.width, 1080);
     expect(pickedVideo?.height, 1920);
+    expect(pickedVideo?.durationSeconds, 150.5);
   });
 
   test('still returns the picked video when metadata reading fails', () async {
@@ -60,5 +65,6 @@ void main() {
     expect(pickedVideo?.sizeBytes, videoFile.lengthSync());
     expect(pickedVideo?.width, isNull);
     expect(pickedVideo?.height, isNull);
+    expect(pickedVideo?.durationSeconds, isNull);
   });
 }

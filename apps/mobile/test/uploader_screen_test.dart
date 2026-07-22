@@ -116,7 +116,7 @@ void main() {
 
   final uploaderScroll = find.byType(Scrollable).first;
 
-  testWidgets('allows selecting only platforms connected by the real status',
+  testWidgets('shows and selects only platforms connected by the real status',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -126,6 +126,14 @@ void main() {
               SocialConnectionResult(platform: 'TIKTOK', connected: false),
               SocialConnectionResult(
                 platform: 'YOUTUBE_SHORTS',
+                connected: true,
+              ),
+              SocialConnectionResult(
+                platform: 'INSTAGRAM_REELS',
+                connected: false,
+              ),
+              SocialConnectionResult(
+                platform: 'FACEBOOK_REELS',
                 connected: false,
               ),
             ],
@@ -136,32 +144,43 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('uploader-platform-TIKTOK')),
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
       400,
       scrollable: uploaderScroll,
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
+    expect(find.text('เลือกแล้ว 1 ช่องทาง'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('uploader-connect-TIKTOK')),
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('uploader-soon-SHOPEE_VIDEO')),
-      findsOneWidget,
+      find.byKey(const ValueKey('uploader-platform-TIKTOK')),
+      findsNothing,
     );
     expect(
-      find.byKey(const ValueKey('uploader-soon-LAZADA_VIDEO')),
-      findsOneWidget,
+      find.byKey(const ValueKey('uploader-platform-INSTAGRAM_REELS')),
+      findsNothing,
     );
-    await tester.tap(find.byKey(const ValueKey('uploader-platform-TIKTOK')));
-    await tester.pumpAndSettle();
-    expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('uploader-platform-FACEBOOK_REELS')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('uploader-platform-SHOPEE_VIDEO')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('uploader-platform-LAZADA_VIDEO')),
+      findsNothing,
+    );
 
-    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await tester.tap(
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
+    );
     await tester.pumpAndSettle();
-    expect(find.text('ยังไม่ได้เชื่อมช่องทาง'), findsOneWidget);
+    expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
   });
 
   RealClipCaptionResult buildRealClipCaptionResult({
@@ -402,9 +421,11 @@ void main() {
     });
 
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
-          body: UploaderScreen(),
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+          ),
         ),
       ),
     );
@@ -413,15 +434,11 @@ void main() {
     await tester.drag(uploaderScroll, const Offset(0, -320));
     await tester.pumpAndSettle();
 
-    // The prototype lists platforms as full-width rows with toggles.
+    // Connected platforms are listed as full-width rows with toggles.
     final platformRows = [
       find.byKey(const ValueKey('uploader-platform-TIKTOK'),
           skipOffstage: false),
       find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS'),
-          skipOffstage: false),
-      find.byKey(const ValueKey('uploader-platform-INSTAGRAM_REELS'),
-          skipOffstage: false),
-      find.byKey(const ValueKey('uploader-platform-FACEBOOK_REELS'),
           skipOffstage: false),
     ];
 
@@ -429,11 +446,20 @@ void main() {
       expect(row, findsOneWidget);
     }
 
-    // PostPeer currently publishes this target through the Facebook Page
-    // Videos endpoint, not the Reels API. Keep the legacy API value for stored
-    // posts, but do not promise a Reel in user-facing copy.
-    expect(find.text('Facebook Video', skipOffstage: false), findsOneWidget);
-    expect(find.text('Facebook Reels', skipOffstage: false), findsNothing);
+    for (final apiValue in [
+      'INSTAGRAM_REELS',
+      'FACEBOOK_REELS',
+      'SHOPEE_VIDEO',
+      'LAZADA_VIDEO',
+    ]) {
+      expect(
+        find.byKey(
+          ValueKey('uploader-platform-$apiValue'),
+          skipOffstage: false,
+        ),
+        findsNothing,
+      );
+    }
 
     final firstLeft = tester.getTopLeft(platformRows.first).dx;
     var previousTop = tester.getTopLeft(platformRows.first).dy;

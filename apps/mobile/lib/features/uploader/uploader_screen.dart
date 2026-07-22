@@ -2065,6 +2065,9 @@ class _PlatformSelectorSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasConnectedPlatforms = connectedPlatforms.isNotEmpty;
+    final visiblePlatforms = SocialPlatform.values
+        .where(connectedPlatforms.contains)
+        .toList(growable: false);
     final statusColor = hasConnectedPlatforms
         ? AppTheme.accentCyanInk
         : const Color(0xFFB5740B);
@@ -2175,57 +2178,44 @@ class _PlatformSelectorSection extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 10),
-        Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.border),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF122018).withValues(alpha: 0.04),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              for (var index = 0;
-                  index < SocialPlatform.values.length;
-                  index += 1) ...[
-                if (index > 0) Divider(height: 1, color: AppTheme.borderSoft),
-                _PlatformRow(
-                  platform: SocialPlatform.values[index],
-                  subLabel: connectedPlatforms.contains(
-                    SocialPlatform.values[index],
-                  )
-                      ? _subLabels[SocialPlatform.values[index]] ?? ''
-                      : connectablePlatforms.contains(
-                          SocialPlatform.values[index],
-                        )
-                          ? 'ยังไม่ได้เชื่อมต่อ'
-                          : 'ยังไม่รองรับการเชื่อมต่อ',
-                  isConnected: connectedPlatforms.contains(
-                    SocialPlatform.values[index],
-                  ),
-                  isConnectable: connectablePlatforms.contains(
-                    SocialPlatform.values[index],
-                  ),
-                  isSelected: selectedPlatforms.contains(
-                    SocialPlatform.values[index],
-                  ),
-                  onConnect: onOpenConnections,
-                  onChanged: (next) => onPlatformChanged(
-                    SocialPlatform.values[index],
-                    next,
-                  ),
+        if (visiblePlatforms.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: AppTheme.glass,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.border),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF122018).withValues(alpha: 0.04),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
                 ),
               ],
-            ],
+            ),
+            child: Column(
+              children: [
+                for (var index = 0;
+                    index < visiblePlatforms.length;
+                    index += 1) ...[
+                  if (index > 0) Divider(height: 1, color: AppTheme.borderSoft),
+                  _PlatformRow(
+                    platform: visiblePlatforms[index],
+                    subLabel: _subLabels[visiblePlatforms[index]] ?? '',
+                    isSelected: selectedPlatforms.contains(
+                      visiblePlatforms[index],
+                    ),
+                    onChanged: (next) => onPlatformChanged(
+                      visiblePlatforms[index],
+                      next,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -2235,19 +2225,13 @@ class _PlatformRow extends StatelessWidget {
   const _PlatformRow({
     required this.platform,
     required this.subLabel,
-    required this.isConnected,
-    required this.isConnectable,
     required this.isSelected,
-    required this.onConnect,
     required this.onChanged,
   });
 
   final SocialPlatform platform;
   final String subLabel;
-  final bool isConnected;
-  final bool isConnectable;
   final bool isSelected;
-  final VoidCallback onConnect;
   final ValueChanged<bool> onChanged;
 
   @override
@@ -2255,19 +2239,16 @@ class _PlatformRow extends StatelessWidget {
     return Semantics(
       label: platform.label,
       button: true,
-      enabled: isConnected,
+      enabled: true,
       selected: isSelected,
       child: InkWell(
         key: ValueKey('uploader-platform-${platform.apiValue}'),
-        onTap: isConnected ? () => onChanged(!isSelected) : null,
+        onTap: () => onChanged(!isSelected),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              Opacity(
-                opacity: isConnectable ? 1 : 0.5,
-                child: SocialPlatformLogo(platform: platform, size: 36),
-              ),
+              SocialPlatformLogo(platform: platform, size: 36),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -2278,9 +2259,7 @@ class _PlatformRow extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: isConnectable
-                            ? AppTheme.textPrimary
-                            : AppTheme.textMuted,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 1),
@@ -2297,45 +2276,9 @@ class _PlatformRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              if (!isConnectable)
-                Container(
-                  key: ValueKey('uploader-soon-${platform.apiValue}'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.glassDeep,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'เร็ว ๆ นี้',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textMuted,
-                    ),
-                  ),
-                )
-              else if (!isConnected)
-                TextButton(
-                  key: ValueKey('uploader-connect-${platform.apiValue}'),
-                  onPressed: onConnect,
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.accentCyanInk,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(44, 44),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text(
-                    'เชื่อมต่อ',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
-                )
-              else
-                ExcludeSemantics(
-                  child: _PrototypeSwitch(isOn: isSelected),
-                ),
+              ExcludeSemantics(
+                child: _PrototypeSwitch(isOn: isSelected),
+              ),
             ],
           ),
         ),

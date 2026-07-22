@@ -864,6 +864,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           projectId: identity.projectId,
           sourceFingerprint: identity.sourceFingerprint,
           now: DateTime.now().toUtc(),
+          maxCharsPerCue:
+              _buildEditOptions(reviewCapabilities).subtitleMaxChars ?? 18,
         );
         setState(() {
           _processing = false;
@@ -1297,10 +1299,17 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           ),
     ];
     final subtitleMaxChars = options.subtitleMaxChars;
-    if (studioProject == null && subtitleMaxChars != null) {
+    if (subtitleMaxChars != null) {
       subtitleSegments = rechunkSubtitleByMaxChars(
         subtitleSegments,
         subtitleMaxChars,
+      );
+    }
+    if (sourceDuration > 0 && subtitleSegments.isNotEmpty) {
+      cutRanges = alignLeadingCutToFirstSubtitle(
+        cutRanges,
+        subtitleSegments,
+        sourceDuration,
       );
     }
 

@@ -35,6 +35,16 @@ void main() {
     expect(fills.any((text) => text.style?.fontFamily == 'Anuphan'), isTrue);
     expect(fills.any((text) => text.style?.color == const Color(0xFF00FF00)),
         isTrue);
+    final safeAreaPadding = tester.widget<Padding>(
+      find.descendant(
+        of: find.byType(SubtitlePreviewOverlay),
+        matching: find.byType(Padding),
+      ),
+    );
+    expect(
+      safeAreaPadding.padding,
+      const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+    );
     expect(tester.getTopLeft(find.byType(SubtitlePreviewOverlay)).dy,
         lessThan(100));
   });

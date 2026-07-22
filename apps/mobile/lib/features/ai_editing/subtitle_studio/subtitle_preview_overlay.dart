@@ -42,7 +42,7 @@ class SubtitlePreviewOverlay extends StatelessWidget {
 
     return IgnorePointer(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 28),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
         child: Align(
           key: const ValueKey('subtitle-preview-position'),
           alignment: alignment,

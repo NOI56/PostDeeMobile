@@ -509,6 +509,10 @@ void main() {
     final bottom = buildSubtitleForceStyle(fontSize: 24, atBottom: true);
     expect(bottom, contains('Fontsize=24'));
     expect(bottom, contains('Alignment=2'));
+    expect(bottom, contains('MarginL=24'));
+    expect(bottom, contains('MarginR=24'));
+    expect(bottom, contains('MarginV=28'));
+    expect(bottom, contains('WrapStyle=0'));
 
     final top = buildSubtitleForceStyle(fontSize: 14, atBottom: false);
     expect(top, contains('Fontsize=14'));

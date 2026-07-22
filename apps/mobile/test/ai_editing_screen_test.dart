@@ -1105,6 +1105,8 @@ void main() {
     final store = _MemorySubtitleDraftStore();
     SubtitleProject? studioInput;
     BurnSubtitleRequest? renderRequest;
+    const editedSubtitle =
+        'ซับที่แก้แล้วมีข้อความภาษาไทยยาวเกินขอบและต้องแบ่งให้อ่านง่าย';
 
     await tester.pumpWidget(
       _testApp(
@@ -1139,7 +1141,7 @@ void main() {
             );
             return initialProject.copyWith(
               cues: [
-                initialProject.cues.first.copyWith(text: 'ซับที่แก้แล้ว'),
+                initialProject.cues.first.copyWith(text: editedSubtitle),
               ],
               defaultStyle: updatedStyle,
               revision: initialProject.revision + 1,
@@ -1160,7 +1162,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(studioInput?.cues.single.text, isNotEmpty);
-    expect(renderRequest?.segments.single.text, 'ซับที่แก้แล้ว');
+    expect(renderRequest?.segments, hasLength(greaterThan(1)));
+    expect(
+      renderRequest?.segments.map((segment) => segment.text).join(),
+      editedSubtitle,
+    );
+    expect(
+      renderRequest?.segments.every(
+        (segment) => segment.text.characters.length <= 18,
+      ),
+      isTrue,
+    );
     expect(renderRequest?.subtitleFontName, 'Anuphan');
     expect(renderRequest?.subtitleFontSize, 30);
     expect(renderRequest?.subtitleTextColor, '#00E5A8');

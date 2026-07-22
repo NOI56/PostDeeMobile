@@ -284,6 +284,8 @@ String buildSubtitleForceStyle({
   double outlineWidth = 2,
   String shadowColor = '#000000',
   double shadowDepth = 0,
+  int horizontalMargin = 24,
+  int verticalMargin = 28,
 }) {
   final size = fontSize.round();
   final assAlignment = switch (alignment) {
@@ -293,13 +295,17 @@ String buildSubtitleForceStyle({
     null => atBottom ? 2 : 8,
   };
   final safeFontName = fontName.replaceAll(RegExp(r"[',:]"), '').trim();
+  final safeHorizontalMargin = horizontalMargin.clamp(0, 2000);
+  final safeVerticalMargin = verticalMargin.clamp(0, 2000);
 
   return 'FontName=${safeFontName.isEmpty ? 'Prompt' : safeFontName},'
       'Fontsize=$size,PrimaryColour=${_assColor(textColor, '#FFFFFF')},'
       'OutlineColour=${_assColor(outlineColor, '#000000')},'
       'BackColour=${_assColor(shadowColor, '#000000')},BorderStyle=1,'
       'Outline=${_safeAssNumber(outlineWidth)},'
-      'Shadow=${_safeAssNumber(shadowDepth)},Alignment=$assAlignment';
+      'Shadow=${_safeAssNumber(shadowDepth)},Alignment=$assAlignment,'
+      'MarginL=$safeHorizontalMargin,MarginR=$safeHorizontalMargin,'
+      'MarginV=$safeVerticalMargin,WrapStyle=0';
 }
 
 String _assColor(String color, String fallback) {

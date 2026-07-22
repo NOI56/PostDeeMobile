@@ -1,3 +1,4 @@
+import 'package:characters/characters.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_project.dart';
@@ -75,6 +76,30 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  test('splits long Thai AI segments before opening Subtitle Studio', () {
+    const text = 'กำลังทดสอบข้อความซับภาษาไทยที่ยาวเกินพื้นที่ปลอดภัย';
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(text: text, start: 1, end: 4),
+        ],
+      ),
+      projectId: 'project-long-thai',
+      sourceFingerprint: 'source-long-thai',
+      now: DateTime.utc(2026, 7, 23),
+      maxCharsPerCue: 18,
+    );
+
+    expect(project.cues, hasLength(greaterThan(1)));
+    expect(project.cues.map((cue) => cue.text).join(), text);
+    expect(
+      project.cues.every((cue) => cue.text.characters.length <= 18),
+      isTrue,
+    );
+    expect(project.cues.first.sourceStartMs, 1000);
+    expect(project.cues.last.sourceEndMs, 4000);
   });
 
   test('does not trust raw transcript words for highlighting', () {

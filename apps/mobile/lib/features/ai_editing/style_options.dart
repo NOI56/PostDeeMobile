@@ -1,3 +1,5 @@
+import 'package:characters/characters.dart';
+
 import 'subtitle_burn_video_processor.dart';
 
 /// User fine-tuning applied on top of a chosen style. All fields optional; null
@@ -220,11 +222,11 @@ List<SilenceCutRange> withTargetLength(
 }
 
 /// Splits a line into pieces near [maxChars], preferring to break at spaces.
-/// Long Thai runs are kept intact because an arbitrary character boundary can
-/// split a word or combining character. Other long runs are hard-split. Pure.
+/// Long runs are split only on grapheme-cluster boundaries, so Thai vowels and
+/// tone marks stay attached to their base character. Pure + testable.
 List<String> splitLineByMaxChars(String text, int maxChars) {
   final trimmed = text.trim();
-  if (maxChars <= 0 || trimmed.length <= maxChars) {
+  if (maxChars <= 0 || trimmed.characters.length <= maxChars) {
     return trimmed.isEmpty ? const [] : [trimmed];
   }
 
@@ -244,22 +246,22 @@ List<String> splitLineByMaxChars(String text, int maxChars) {
     }
 
     final candidate = current.isEmpty ? word : '$current $word';
-    if (candidate.length <= maxChars) {
+    if (candidate.characters.length <= maxChars) {
       current = candidate;
       continue;
     }
 
     flush();
 
-    if (word.length <= maxChars || RegExp(r'[\u0E00-\u0E7F]').hasMatch(word)) {
+    if (word.characters.length <= maxChars) {
       current = word;
     } else {
-      var rest = word;
+      var rest = word.characters;
       while (rest.length > maxChars) {
-        pieces.add(rest.substring(0, maxChars));
-        rest = rest.substring(maxChars);
+        pieces.add(rest.take(maxChars).toString());
+        rest = rest.skip(maxChars);
       }
-      current = rest;
+      current = rest.toString();
     }
   }
 
@@ -286,13 +288,15 @@ List<SubtitleSegment> rechunkSubtitleByMaxChars(
       continue;
     }
 
-    final totalChars = pieces.fold<int>(0, (sum, p) => sum + p.length);
+    final totalChars =
+        pieces.fold<int>(0, (sum, p) => sum + p.characters.length);
     final span = segment.end - segment.start;
     var cursor = segment.start;
 
     for (final piece in pieces) {
-      final fraction =
-          totalChars > 0 ? piece.length / totalChars : 1 / pieces.length;
+      final fraction = totalChars > 0
+          ? piece.characters.length / totalChars
+          : 1 / pieces.length;
       final pieceEnd = (cursor + span * fraction).clamp(cursor, segment.end);
       out.add(SubtitleSegment(text: piece, start: cursor, end: pieceEnd));
       cursor = pieceEnd;
@@ -300,4 +304,80 @@ List<SubtitleSegment> rechunkSubtitleByMaxChars(
   }
 
   return out;
+}
+
+/// Removes a short subtitle-free opening created when an AI cut ends shortly
+/// before the first retained subtitle. The same amount is restored from a
+/// trailing cut so the requested result length remains unchanged.
+List<SilenceCutRange> alignLeadingCutToFirstSubtitle(
+  List<SilenceCutRange> cuts,
+  List<SubtitleSegment> segments,
+  double durationSeconds, {
+  double allowedLeadingGapSeconds = 0.35,
+  double maxShiftSeconds = 6,
+  double subtitlePreRollSeconds = 0.15,
+}) {
+  if (durationSeconds <= 0 || cuts.isEmpty || segments.isEmpty) {
+    return cuts;
+  }
+
+  final normalizedCuts = _normalizeCutRanges(cuts, durationSeconds);
+  if (normalizedCuts.isEmpty || normalizedCuts.first.start > 0.001) {
+    return normalizedCuts;
+  }
+
+  final leadingCut = normalizedCuts.first;
+  final sortedSegments = [...segments]
+    ..sort((left, right) => left.start.compareTo(right.start));
+  SubtitleSegment? firstRetainedSubtitle;
+  for (final segment in sortedSegments) {
+    if (segment.text.trim().isEmpty || segment.end <= leadingCut.end + 0.001) {
+      continue;
+    }
+    final fullyRemoved = normalizedCuts.any(
+      (cut) =>
+          cut.start <= segment.start + 0.001 && cut.end >= segment.end - 0.001,
+    );
+    if (!fullyRemoved) {
+      firstRetainedSubtitle = segment;
+      break;
+    }
+  }
+  if (firstRetainedSubtitle == null) {
+    return normalizedCuts;
+  }
+
+  final leadingGap = firstRetainedSubtitle.start - leadingCut.end;
+  if (leadingGap <= allowedLeadingGapSeconds || leadingGap > maxShiftSeconds) {
+    return normalizedCuts;
+  }
+
+  final alignedEnd =
+      (firstRetainedSubtitle.start - subtitlePreRollSeconds).clamp(
+    leadingCut.end,
+    durationSeconds,
+  );
+  final shiftSeconds = alignedEnd - leadingCut.end;
+  if (shiftSeconds <= 0.001) {
+    return normalizedCuts;
+  }
+
+  final trailingIndex = normalizedCuts.lastIndexWhere(
+    (cut) => cut.end >= durationSeconds - 0.001 && cut.start > leadingCut.end,
+  );
+  if (trailingIndex <= 0) {
+    return normalizedCuts;
+  }
+  final trailingCut = normalizedCuts[trailingIndex];
+  if (trailingCut.end - trailingCut.start + 0.001 < shiftSeconds) {
+    return normalizedCuts;
+  }
+
+  final adjusted = [...normalizedCuts];
+  adjusted[0] = SilenceCutRange(start: 0, end: alignedEnd);
+  adjusted[trailingIndex] = SilenceCutRange(
+    start: trailingCut.start + shiftSeconds,
+    end: trailingCut.end,
+  );
+  return _normalizeCutRanges(adjusted, durationSeconds);
 }

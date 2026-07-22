@@ -1,4 +1,6 @@
 import '../../../core/network/postdee_api_client.dart';
+import '../style_options.dart';
+import '../subtitle_burn_video_processor.dart';
 import 'subtitle_project.dart';
 
 SubtitleProject mapAiEditRecipeToSubtitleProject({
@@ -6,6 +8,7 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
   required String projectId,
   required String sourceFingerprint,
   required DateTime now,
+  int maxCharsPerCue = 18,
 }) {
   final sourceDurationMs = _secondsToMilliseconds(
     recipe.transcript.durationSeconds,
@@ -17,11 +20,23 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
     );
   }
 
-  final preparedSegments = recipe.subtitles.segments
+  final sourceSegments = recipe.subtitles.segments
       .where((segment) => segment.text.trim().isNotEmpty)
       .map(
-        (segment) => _MappedRange(
+        (segment) => SubtitleSegment(
           text: segment.text.trim(),
+          start: segment.start,
+          end: segment.end,
+        ),
+      )
+      .toList(growable: false);
+  final preparedSegments = rechunkSubtitleByMaxChars(
+    sourceSegments,
+    maxCharsPerCue,
+  )
+      .map(
+        (segment) => _MappedRange(
+          text: segment.text,
           startMs: _secondsToMilliseconds(segment.start, 'Subtitle segment'),
           endMs: _secondsToMilliseconds(segment.end, 'Subtitle segment'),
         ),

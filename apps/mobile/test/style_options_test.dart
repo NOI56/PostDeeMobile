@@ -1,3 +1,4 @@
+import 'package:characters/characters.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/ai_editing/edit_styles.dart';
 import 'package:postdee_mobile/features/ai_editing/style_options.dart';
@@ -63,10 +64,14 @@ void main() {
     expect(splitLineByMaxChars('aaaaaaaaaa', 4), ['aaaa', 'aaaa', 'aa']);
   });
 
-  test('preserves an unspaced Thai run instead of splitting mid-word', () {
-    const thaiCue = 'คลิปตัดไทย';
+  test('splits an unspaced Thai run without breaking grapheme clusters', () {
+    const thaiCue = 'กำลังทดสอบซับภาษาไทย';
 
-    expect(splitLineByMaxChars(thaiCue, 4), [thaiCue]);
+    final pieces = splitLineByMaxChars(thaiCue, 4);
+
+    expect(pieces, hasLength(greaterThan(1)));
+    expect(pieces.join(), thaiCue);
+    expect(pieces.every((piece) => piece.characters.length <= 4), isTrue);
   });
 
   test('splits Thai cues only at explicit spaces', () {
@@ -101,17 +106,66 @@ void main() {
     expect(out[1].end, 10);
   });
 
-  test('keeps the timing of an unspaced Thai cue intact', () {
+  test('rechunks a long Thai cue and preserves its complete time window', () {
+    const thaiCue = 'กำลังทดสอบซับภาษาไทย';
     final out = rechunkSubtitleByMaxChars(
       const [
-        SubtitleSegment(text: 'คลิปตัดไทย', start: 2, end: 8),
+        SubtitleSegment(text: thaiCue, start: 2, end: 8),
       ],
       4,
     );
 
-    expect(out, hasLength(1));
-    expect(out.single.text, 'คลิปตัดไทย');
-    expect(out.single.start, 2);
-    expect(out.single.end, 8);
+    expect(out, hasLength(greaterThan(1)));
+    expect(out.map((segment) => segment.text).join(), thaiCue);
+    expect(out.first.start, 2);
+    expect(out.last.end, closeTo(8, 0.001));
+    expect(
+      out.every((segment) => segment.text.characters.length <= 4),
+      isTrue,
+    );
+    for (var index = 1; index < out.length; index += 1) {
+      expect(out[index].start, closeTo(out[index - 1].end, 0.001));
+    }
+  });
+
+  test('moves a short subtitle-free opening to the end of the clip', () {
+    final adjusted = alignLeadingCutToFirstSubtitle(
+      const [
+        SilenceCutRange(start: 0, end: 5),
+        SilenceCutRange(start: 15, end: 20),
+      ],
+      const [
+        SubtitleSegment(text: 'เริ่มพูดตรงนี้', start: 10, end: 12),
+      ],
+      20,
+    );
+
+    expect(adjusted, hasLength(2));
+    expect(adjusted.first.start, 0);
+    expect(adjusted.first.end, closeTo(9.85, 0.001));
+    expect(adjusted.last.start, closeTo(19.85, 0.001));
+    expect(adjusted.last.end, 20);
+    expect(
+      estimateResultSeconds(durationSeconds: 20, cutRanges: adjusted),
+      closeTo(10, 0.001),
+    );
+  });
+
+  test('does not move an intentionally long visual opening', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 2),
+      SilenceCutRange(start: 15, end: 20),
+    ];
+
+    final adjusted = alignLeadingCutToFirstSubtitle(
+      cuts,
+      const [
+        SubtitleSegment(text: 'เริ่มพูดภายหลัง', start: 10, end: 12),
+      ],
+      20,
+    );
+
+    expect(adjusted.first.start, 0);
+    expect(adjusted.first.end, 2);
   });
 }

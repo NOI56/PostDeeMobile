@@ -282,22 +282,25 @@ void main() {
     expect(find.text('4'), findsNothing);
 
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('uploader-advanced-tools-section')),
+      find.byKey(const ValueKey('uploader-ep-tool-section')),
       500,
       scrollable: uploaderScroll,
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey('uploader-advanced-tools-section')),
+      find.byKey(const ValueKey('uploader-ep-tool-section')),
       findsOneWidget,
     );
-    expect(find.text('ตัดต่อเอง'), findsOneWidget);
+    expect(find.text('ตัดคลิปเป็น EP'), findsOneWidget);
+    expect(find.text('ตัดต่อเอง'), findsNothing);
     expect(
       find.text('วางแผนไทม์ไลน์ ซับ สติกเกอร์ และฟิลเตอร์ไว้ล่วงหน้า'),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('ใช้โลโก้ PostDee มุมขวาล่าง'), findsOneWidget);
-    expect(find.text('โหมดตั้งค่าขั้นสูง'), findsOneWidget);
+    expect(find.text('ใส่ลายน้ำอัตโนมัติ'), findsNothing);
+    expect(find.text('ใช้โลโก้ PostDee มุมขวาล่าง'), findsNothing);
+    expect(find.text('โหมดตั้งค่าขั้นสูง'), findsNothing);
+    expect(find.text('เลือกได้หลายอย่าง'), findsNothing);
     expect(find.text('UI ก่อน'), findsNothing);
     expect(
       find.text(
@@ -341,8 +344,7 @@ void main() {
     expect(find.text('เหมาะกับ Shorts/Reels'), findsNothing);
   });
 
-  testWidgets('shows compact automatic watermark tool on the upload screen',
-      (tester) async {
+  testWidgets('hides upload tools other than the EP trimmer', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
@@ -351,19 +353,27 @@ void main() {
       ),
     );
 
-    await _expectTextAfterScrolling(
-      tester,
-      uploaderScroll,
-      'ใส่ลายน้ำอัตโนมัติ',
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('uploader-ep-tool-section')),
+      500,
+      scrollable: uploaderScroll,
     );
+    await tester.pumpAndSettle();
+
     expect(
       find.byKey(const ValueKey('uploader-tool-auto-watermark')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('ใช้โลโก้ PostDee มุมขวาล่าง'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('uploader-tool-manual-editor')),
+      findsNothing,
+    );
+    expect(find.text('ใส่ลายน้ำอัตโนมัติ'), findsNothing);
+    expect(find.text('ตัดต่อเอง'), findsNothing);
+    expect(find.text('โหมดตั้งค่าขั้นสูง'), findsNothing);
   });
 
-  testWidgets('opens upload growth tool detail settings', (tester) async {
+  testWidgets('opens EP trimming detail settings', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
@@ -372,43 +382,21 @@ void main() {
       ),
     );
 
-    final toolTitles = [
-      'ตัดคลิปเป็น EP',
-      'ใส่ลายน้ำอัตโนมัติ',
-      'ตัดต่อเอง',
-    ];
+    const title = 'ตัดคลิปเป็น EP';
+    await _tapTextAfterScrolling(tester, uploaderScroll, title);
 
-    for (final title in toolTitles) {
-      await _tapTextAfterScrolling(tester, uploaderScroll, title);
-
-      expect(find.text('รายละเอียดและตั้งค่า'), findsOneWidget);
-      expect(find.text('ตั้งค่า: $title'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('growth-tool-real-status-note')),
-        findsOneWidget,
-      );
-      if (title == 'ใส่ลายน้ำอัตโนมัติ') {
-        expect(find.text('ตั้งค่าในเครื่องนี้'), findsOneWidget);
-        expect(
-          find.byKey(const ValueKey('growth-tool-enabled-switch')),
-          findsOneWidget,
-        );
-        expect(find.text('ใช้โลโก้ PostDee มุมขวาล่างก่อนอัปโหลด'),
-            findsOneWidget);
-        expect(find.text('อัปโหลดโลโก้ร้าน'), findsNothing);
-        expect(find.text('เลือกตำแหน่งและขนาดลายน้ำ'), findsNothing);
-      } else {
-        expect(find.text('แบบร่างในเครื่อง'), findsOneWidget);
-        expect(
-          find.byKey(const ValueKey('growth-tool-enabled-switch')),
-          findsNothing,
-        );
-        expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
-      }
-
-      await tester.tap(find.byTooltip('ปิด'));
-      await tester.pumpAndSettle();
-    }
+    expect(find.text('รายละเอียดและตั้งค่า'), findsOneWidget);
+    expect(find.text('ตั้งค่า: $title'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('growth-tool-real-status-note')),
+      findsOneWidget,
+    );
+    expect(find.text('แบบร่างในเครื่อง'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('growth-tool-enabled-switch')),
+      findsNothing,
+    );
+    expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
   });
 
   testWidgets('shows platform choices as a stacked toggle list on phones',

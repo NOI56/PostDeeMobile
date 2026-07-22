@@ -123,7 +123,6 @@ class _UploaderScreenState extends State<UploaderScreen> {
   bool _isSubmitting = false;
   bool _isLoadingTemplates = false;
   bool _isGeneratingCaption = false;
-  bool _isAdvancedModeEnabled = true;
   bool _isLoadingConnections = true;
   String? _connectionsErrorMessage;
   String? _successMessage;
@@ -1256,14 +1255,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
                 ),
               ),
               const SizedBox(height: AppTheme.spaceLg),
-              _AdvancedUploadToolsSection(
-                advancedModeEnabled: _isAdvancedModeEnabled,
-                onAdvancedModeChanged: (value) {
-                  setState(() {
-                    _isAdvancedModeEnabled = value;
-                  });
-                },
-              ),
+              const _UploadEpToolSection(),
               const SizedBox(height: AppTheme.spaceLg),
             ],
           ),
@@ -1480,14 +1472,8 @@ class _UploadStepHeader extends StatelessWidget {
   }
 }
 
-class _AdvancedUploadToolsSection extends StatelessWidget {
-  const _AdvancedUploadToolsSection({
-    required this.advancedModeEnabled,
-    required this.onAdvancedModeChanged,
-  });
-
-  final bool advancedModeEnabled;
-  final ValueChanged<bool> onAdvancedModeChanged;
+class _UploadEpToolSection extends StatelessWidget {
+  const _UploadEpToolSection();
 
   static const _epTrimmerDetail = GrowthToolDetail(
     id: 'ep_trimmer',
@@ -1513,49 +1499,10 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
     ],
   );
 
-  static const _manualEditorDetail = GrowthToolDetail(
-    id: 'manual_editor',
-    title: 'ตัดต่อเอง',
-    description: 'วางแผนไทม์ไลน์ ซับ สติกเกอร์ และฟิลเตอร์ไว้ล่วงหน้า',
-    status: 'เร็ว ๆ นี้',
-    icon: Icons.video_settings_outlined,
-    color: AppTheme.accentCyan,
-    prototypeOnly: true,
-    settings: [
-      GrowthToolSettingOption(
-        id: 'timeline_layers',
-        label: 'จัดไทม์ไลน์และเลเยอร์ข้อความ',
-      ),
-      GrowthToolSettingOption(
-        id: 'subtitle_sticker_filter',
-        label: 'ซับ สติกเกอร์ และฟิลเตอร์ในคลิปเดียว',
-      ),
-      GrowthToolSettingOption(
-        id: 'cta_card',
-        label: 'ปรับ CTA ก่อนส่งไปโพสต์',
-      ),
-    ],
-  );
-
-  static const _watermarkDetail = GrowthToolDetail(
-    id: 'auto_watermark',
-    title: 'ใส่ลายน้ำอัตโนมัติ',
-    description: 'ฝังโลโก้ PostDee ที่มุมขวาล่างของวิดีโอก่อนอัปโหลด',
-    status: 'ใช้โลโก้ PostDee มุมขวาล่าง',
-    icon: Icons.shield_outlined,
-    color: AppTheme.success,
-    settings: [
-      GrowthToolSettingOption(
-        id: 'shop_logo',
-        label: 'ใช้โลโก้ PostDee มุมขวาล่างก่อนอัปโหลด',
-      ),
-    ],
-  );
-
   @override
   Widget build(BuildContext context) {
     return Column(
-      key: const ValueKey('uploader-advanced-tools-section'),
+      key: const ValueKey('uploader-ep-tool-section'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -1574,13 +1521,6 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
                     ),
               ),
             ),
-            Text(
-              'เลือกได้หลายอย่าง',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
           ],
         ),
         const SizedBox(height: AppTheme.spaceSm),
@@ -1592,63 +1532,7 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
                 detail: _epTrimmerDetail,
               ),
             ),
-            SizedBox(width: AppTheme.spaceSm),
-            Expanded(
-              child: _CompactUploadToolButton(
-                key: ValueKey('uploader-tool-auto-watermark'),
-                detail: _watermarkDetail,
-              ),
-            ),
           ],
-        ),
-        const SizedBox(height: AppTheme.spaceSm),
-        const _WideUploadToolButton(
-          key: ValueKey('uploader-tool-manual-editor'),
-          detail: _manualEditorDetail,
-        ),
-        const SizedBox(height: AppTheme.spaceSm),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppTheme.glass.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-            border:
-                Border.all(color: AppTheme.borderSoft.withValues(alpha: 0.84)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'โหมดตั้งค่าขั้นสูง',
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        advancedModeEnabled
-                            ? 'ซับ/โทนสี/CTA · ให้ปรับใต้การ์ดทันที'
-                            : 'ปิดไว้เพื่อใช้ค่าพื้นฐานของ PostDee',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppTheme.textSecondary,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                Switch.adaptive(
-                  value: advancedModeEnabled,
-                  activeThumbColor: AppTheme.accent,
-                  activeTrackColor: AppTheme.accent.withValues(alpha: 0.24),
-                  onChanged: onAdvancedModeChanged,
-                ),
-              ],
-            ),
-          ),
         ),
       ],
     );
@@ -1734,83 +1618,6 @@ class _CompactUploadToolButton extends StatelessWidget {
                   color: AppTheme.textMuted,
                   size: 17,
                 ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _WideUploadToolButton extends StatelessWidget {
-  const _WideUploadToolButton({
-    required this.detail,
-    super.key,
-  });
-
-  final GrowthToolDetail detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = detail.color;
-
-    return Semantics(
-      button: true,
-      label: detail.title,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-        onTap: () => showGrowthToolDetailSheet(context, detail),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppTheme.glass.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-            border:
-                Border.all(color: AppTheme.borderSoft.withValues(alpha: 0.84)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-                  ),
-                  child: SizedBox(
-                    width: 38,
-                    height: 38,
-                    child: Icon(
-                      detail.icon,
-                      color: AppTheme.inkFor(color),
-                      size: 20,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppTheme.spaceSm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        detail.title,
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        detail.description,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppTheme.textSecondary,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: AppTheme.textMuted, size: 18),
               ],
             ),
           ),

@@ -550,10 +550,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           );
           _customDurationSeconds = target;
           _customDurationController.text = target.toString();
-          _durationMode = initialTarget != null ||
-                  sliderMaximum.round() == sliderMinimum.round()
-              ? _AiDurationMode.custom
-              : _AiDurationMode.unselected;
+          _durationMode = _AiDurationMode.custom;
         }
         _preparedEdit = null;
         _subtitleProject = null;

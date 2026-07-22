@@ -565,7 +565,7 @@ void main() {
     expect(find.byKey(const ValueKey('ai-add-video')), findsOneWidget);
   });
 
-  testWidgets('requires the seller to choose a target length after video pick',
+  testWidgets('defaults every selected video to its full duration',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('choose-duration.mp4');
 
@@ -587,8 +587,7 @@ void main() {
     var processButton = tester.widget<ElevatedButton>(
       find.byKey(const ValueKey('ai-process-button')),
     );
-    expect(processButton.onPressed, isNull);
-    expect(find.text('เลือกความยาวก่อน'), findsOneWidget);
+    expect(processButton.onPressed, isNotNull);
     expect(find.text('ต้นฉบับ 02:30'), findsOneWidget);
     expect(find.text('ให้ AI ย่อเหลือ 02:30'), findsOneWidget);
     expect(find.byKey(const ValueKey('ai-duration-slider')), findsOneWidget);
@@ -603,6 +602,21 @@ void main() {
     );
     expect(processButton.onPressed, isNotNull);
     expect(find.text('ให้ AI ย่อเหลือ 00:45'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('ai-remove-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    final resetSlider = tester.widget<Slider>(
+      find.byKey(const ValueKey('ai-duration-slider')),
+    );
+    expect(resetSlider.value, resetSlider.max);
+    expect(find.text('ให้ AI ย่อเหลือ 02:30'), findsOneWidget);
+    processButton = tester.widget<ElevatedButton>(
+      find.byKey(const ValueKey('ai-process-button')),
+    );
+    expect(processButton.onPressed, isNotNull);
   });
 
   testWidgets('shows progress while reading a selected video', (tester) async {

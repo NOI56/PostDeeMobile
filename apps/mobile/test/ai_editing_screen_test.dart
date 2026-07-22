@@ -16,7 +16,10 @@ import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:video_player/video_player.dart';
 
-PickedVideoFile _createPickedVideoFixture(String name) {
+PickedVideoFile _createPickedVideoFixture(
+  String name, {
+  double durationSeconds = 150,
+}) {
   final directory = Directory.systemTemp.createTempSync('postdee-editor-');
   addTearDown(() {
     if (directory.existsSync()) {
@@ -33,7 +36,7 @@ PickedVideoFile _createPickedVideoFixture(String name) {
     sizeBytes: file.lengthSync(),
     width: 1080,
     height: 1920,
-    durationSeconds: 150,
+    durationSeconds: durationSeconds,
   );
 }
 
@@ -672,7 +675,7 @@ void main() {
     );
     expect(processButton.onPressed, isNotNull);
     expect(find.text('ต้นฉบับ 02:30'), findsOneWidget);
-    expect(find.text('ให้ AI ย่อเหลือ 02:30'), findsOneWidget);
+    expect(find.text('ไม่ย่อ · ต้นฉบับ 02:30'), findsOneWidget);
     expect(find.byKey(const ValueKey('ai-duration-slider')), findsOneWidget);
     expect(find.byKey(const ValueKey('ai-duration-30')), findsNothing);
     expect(find.byKey(const ValueKey('ai-duration-60')), findsNothing);
@@ -695,11 +698,128 @@ void main() {
       find.byKey(const ValueKey('ai-duration-slider')),
     );
     expect(resetSlider.value, resetSlider.max);
-    expect(find.text('ให้ AI ย่อเหลือ 02:30'), findsOneWidget);
+    expect(find.text('ไม่ย่อ · ต้นฉบับ 02:30'), findsOneWidget);
     processButton = tester.widget<ElevatedButton>(
       find.byKey(const ValueKey('ai-process-button')),
     );
     expect(processButton.onPressed, isNotNull);
+  });
+
+  testWidgets(
+      'keeps a long source at the rightmost stop and caps AI shortening at three minutes',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'ten-minute-source.mp4',
+      durationSeconds: 600,
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => pickedVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    var slider = tester.widget<Slider>(
+      find.byKey(const ValueKey('ai-duration-slider')),
+    );
+    expect(slider.max, 181);
+    expect(slider.value, 181);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('ai-duration-selected-label')),
+          )
+          .data,
+      'ไม่ย่อ · ต้นฉบับ 10:00',
+    );
+    expect(
+      find.text('ช่วงแนะนำ 00:30–01:00'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('ต้นฉบับเกิน 03:00 บางช่องทางอาจไม่รับเป็นคลิปสั้น'),
+      findsOneWidget,
+    );
+
+    slider.onChanged!(180);
+    await tester.pumpAndSettle();
+
+    slider = tester.widget<Slider>(
+      find.byKey(const ValueKey('ai-duration-slider')),
+    );
+    expect(slider.value, 180);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('ai-duration-selected-label')),
+          )
+          .data,
+      'ให้ AI ย่อเหลือ 03:00',
+    );
+    expect(
+      find.text('ต้นฉบับเกิน 03:00 บางช่องทางอาจไม่รับเป็นคลิปสั้น'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('never lets the requested result exceed a short source',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'twelve-second-source.mp4',
+      durationSeconds: 12,
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => pickedVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    final slider = tester.widget<Slider>(
+      find.byKey(const ValueKey('ai-duration-slider')),
+    );
+    expect(slider.max, 12);
+    expect(slider.value, 12);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('ai-duration-selected-label')),
+          )
+          .data,
+      'ไม่ย่อ · ต้นฉบับ 00:12',
+    );
+  });
+
+  testWidgets('rejects a source longer than ten minutes', (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'too-long-source.mp4',
+      durationSeconds: 601,
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(pickVideo: () async => pickedVideo),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('รองรับคลิปต้นฉบับยาวไม่เกิน 10 นาที'), findsOneWidget);
+    expect(find.text('too-long-source.mp4'), findsNothing);
+    expect(find.byKey(const ValueKey('ai-duration-slider')), findsNothing);
   });
 
   testWidgets('shows progress while reading a selected video', (tester) async {

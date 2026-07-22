@@ -70,6 +70,10 @@ enum _AiDurationMode { unselected, seconds30, seconds60, custom }
 
 enum _AiEditingStage { setup, review }
 
+const _maxAiEditSourceDurationSeconds = 600;
+const _maxAiShortenedDurationSeconds = 180;
+const _originalDurationSliderStop = 181.0;
+
 enum _AiCapabilityGroup { pace, look, sales }
 
 const _capabilityGroupDisplayOrder = <_AiCapabilityGroup>[
@@ -545,6 +549,13 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         throw const ApiException('ไม่พบไฟล์วิดีโอในเครื่อง');
       }
 
+      final pickedDuration = picked.durationSeconds;
+      if (pickedDuration != null &&
+          pickedDuration.isFinite &&
+          pickedDuration > _maxAiEditSourceDurationSeconds) {
+        throw const ApiException('รองรับคลิปต้นฉบับยาวไม่เกิน 10 นาที');
+      }
+
       setState(() {
         _selectedVideo = picked;
         _selectedVideoDurationSeconds = picked.durationSeconds;
@@ -552,11 +563,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         if (sliderMaximum == null) {
           _durationMode = _AiDurationMode.unselected;
         } else {
-          final sliderMinimum = _durationSliderMinimum(sliderMaximum);
           final initialTarget = widget.initialTargetDurationSeconds;
-          final target = (initialTarget ?? sliderMaximum.round()).clamp(
-            sliderMinimum.round(),
-            sliderMaximum.round(),
+          final target = _normalizeTargetDuration(
+            initialTarget ?? _sourceDurationMaximumSeconds!,
           );
           _customDurationSeconds = target;
           _customDurationController.text = target.toString();
@@ -1595,27 +1604,87 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     return error.message;
   }
 
-  int get _selectedDurationSeconds => switch (_durationMode) {
-        _AiDurationMode.unselected => 0,
-        _AiDurationMode.seconds30 => 30,
-        _AiDurationMode.seconds60 => 60,
-        _AiDurationMode.custom => _customDurationSeconds.clamp(1, 180),
-      };
+  int get _selectedDurationSeconds {
+    final requested = switch (_durationMode) {
+      _AiDurationMode.unselected => 0,
+      _AiDurationMode.seconds30 => 30,
+      _AiDurationMode.seconds60 => 60,
+      _AiDurationMode.custom => _customDurationSeconds,
+    };
+    final sourceMaximum = _sourceDurationMaximumSeconds;
+    if (sourceMaximum == null || requested <= 0) {
+      return requested;
+    }
+    return requested.clamp(1, sourceMaximum);
+  }
 
   bool get _hasSelectedDuration => _durationMode != _AiDurationMode.unselected;
 
-  double? get _durationSliderMaximum {
+  int? get _sourceDurationMaximumSeconds {
     final sourceDuration = _selectedVideoDurationSeconds;
     if (sourceDuration == null ||
         !sourceDuration.isFinite ||
         sourceDuration <= 0) {
       return null;
     }
+    return math.max(1, sourceDuration.floor());
+  }
 
-    return math.min(180, math.max(1, sourceDuration.floor())).toDouble();
+  int _normalizeTargetDuration(int requested) {
+    final sourceMaximum = _sourceDurationMaximumSeconds;
+    if (sourceMaximum == null) return requested;
+    final minimum = sourceMaximum >= 5 ? 5 : 1;
+    if (requested >= sourceMaximum) return sourceMaximum;
+    return requested.clamp(
+      minimum,
+      math.min(_maxAiShortenedDurationSeconds, sourceMaximum),
+    );
+  }
+
+  bool get _usesOriginalDurationSliderStop =>
+      (_sourceDurationMaximumSeconds ?? 0) > _maxAiShortenedDurationSeconds;
+
+  bool get _isUsingOriginalDuration {
+    final sourceMaximum = _sourceDurationMaximumSeconds;
+    return sourceMaximum != null &&
+        _hasSelectedDuration &&
+        _selectedDurationSeconds >= sourceMaximum;
+  }
+
+  double? get _durationSliderMaximum {
+    final sourceMaximum = _sourceDurationMaximumSeconds;
+    if (sourceMaximum == null) return null;
+    return sourceMaximum > _maxAiShortenedDurationSeconds
+        ? _originalDurationSliderStop
+        : sourceMaximum.toDouble();
   }
 
   double _durationSliderMinimum(double maximum) => maximum >= 5 ? 5 : 1;
+
+  double _durationSliderValue({
+    required double minimum,
+    required double maximum,
+  }) {
+    if (_usesOriginalDurationSliderStop && _isUsingOriginalDuration) {
+      return maximum;
+    }
+    return _selectedDurationSeconds
+        .clamp(
+          minimum.round(),
+          math.min(
+            _maxAiShortenedDurationSeconds,
+            _sourceDurationMaximumSeconds ?? _maxAiShortenedDurationSeconds,
+          ),
+        )
+        .toDouble();
+  }
+
+  int _targetDurationForSliderValue(double value, double maximum) {
+    if (_usesOriginalDurationSliderStop && value.round() >= maximum.round()) {
+      return _sourceDurationMaximumSeconds!;
+    }
+    return _normalizeTargetDuration(value.round());
+  }
 
   String _formatDurationSeconds(num seconds) => formatReviewVideoClock(
         Duration(seconds: math.max(0, seconds.floor())),
@@ -3051,16 +3120,19 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           Builder(
             builder: (context) {
               final minimum = _durationSliderMinimum(maximum);
-              final rawTarget = _hasSelectedDuration
+              final target = _hasSelectedDuration
                   ? _selectedDurationSeconds
-                  : _customDurationSeconds;
-              final target = rawTarget.clamp(
-                minimum.round(),
-                maximum.round(),
+                  : _normalizeTargetDuration(_customDurationSeconds);
+              final sliderValue = _durationSliderValue(
+                minimum: minimum,
+                maximum: maximum,
               );
               final divisions = maximum.round() - minimum.round();
               final sourceLabel = _formatDurationSeconds(sourceDuration);
               final targetLabel = _formatDurationSeconds(target);
+              final usingOriginal = _isUsingOriginalDuration;
+              final sourceMaximum = _sourceDurationMaximumSeconds!;
+              final recommendedMaximum = math.min(60, sourceMaximum);
 
               return Container(
                 key: const ValueKey('ai-duration-slider-card'),
@@ -3091,7 +3163,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            'ให้ AI ย่อเหลือ $targetLabel',
+                            usingOriginal
+                                ? 'ไม่ย่อ · ต้นฉบับ $sourceLabel'
+                                : 'ให้ AI ย่อเหลือ $targetLabel',
                             key: const ValueKey('ai-duration-selected-label'),
                             style: TextStyle(
                               fontSize: 12,
@@ -3116,12 +3190,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                         min: minimum,
                         max: maximum,
                         divisions: divisions > 0 ? divisions : null,
-                        value: target.toDouble(),
-                        label: targetLabel,
+                        value: sliderValue,
+                        label: usingOriginal ? 'ไม่ย่อ' : targetLabel,
                         onChanged: divisions <= 0
                             ? null
                             : (value) {
-                                final seconds = value.round();
+                                final seconds = _targetDurationForSliderValue(
+                                  value,
+                                  maximum,
+                                );
                                 setState(() {
                                   _durationMode = _AiDurationMode.custom;
                                   _customDurationSeconds = seconds;
@@ -3142,7 +3219,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                           ),
                         ),
                         Text(
-                          'ยาวสุด ${_formatDurationSeconds(maximum)}',
+                          'ไม่ย่อ $sourceLabel',
                           style: TextStyle(
                             fontSize: 10.5,
                             color: AppTheme.textMuted,
@@ -3150,6 +3227,45 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                         ),
                       ],
                     ),
+                    if (_usesOriginalDurationSliderStop) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        'เมื่อเลื่อนซ้าย AI ย่อได้สูงสุด 03:00',
+                        key: const ValueKey('ai-duration-three-minute-hint'),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                    ],
+                    if (sourceMaximum >= 30) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        'ช่วงแนะนำ 00:30–${_formatDurationSeconds(recommendedMaximum)}',
+                        key: const ValueKey(
+                          'ai-duration-recommended-range',
+                        ),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.accent,
+                        ),
+                      ),
+                    ],
+                    if (_usesOriginalDurationSliderStop && usingOriginal) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        'ต้นฉบับเกิน 03:00 บางช่องทางอาจไม่รับเป็นคลิปสั้น',
+                        key: const ValueKey(
+                          'ai-duration-platform-warning',
+                        ),
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFB45309),
+                        ),
+                      ),
+                    ],
                     if (!_hasSelectedDuration) ...[
                       const SizedBox(height: 8),
                       Text(

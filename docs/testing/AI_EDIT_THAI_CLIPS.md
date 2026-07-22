@@ -39,6 +39,17 @@ This proves transport coverage, not editorial quality. Real cut-quality scoring
 is blocked locally until `GEMINI_API_KEY`, R2, and authenticated staging mobile
 are available together.
 
+## Duration policy
+
+- Accept an original clip up to 10:00. Reject anything longer before upload or
+  AI preprocessing begins.
+- Keep the duration control at the far-right `original / no shortening` stop
+  after a clip is selected.
+- For an original longer than 3:00, moving left from the original stop enters
+  AI shortening at 3:00, then continues down to 0:05.
+- For an original at or below 3:00, never allow the requested result to exceed
+  the original duration.
+
 ## Editorial acceptance rubric
 
 For each speech fixture test 30 s, 60 s, and one custom target. A Thai reviewer

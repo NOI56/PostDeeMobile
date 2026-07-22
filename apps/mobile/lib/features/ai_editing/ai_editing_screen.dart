@@ -1925,9 +1925,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           )
         else
           _buildSelectedVideoCard(_selectedVideo!),
-        const SizedBox(height: 18),
-        _buildDurationSection(),
-        const SizedBox(height: 20),
+        _buildDurationPromptTransition(),
         _sectionHeading(
           icon: Icons.auto_fix_high,
           title: 'ให้ AI จัดการให้',
@@ -2952,6 +2950,45 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildDurationPromptTransition() {
+    const durationStepKey = ValueKey('ai-duration-step');
+    final showDuration = _selectedVideo != null;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      reverseDuration: const Duration(milliseconds: 240),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final isDurationStep = child.key == durationStepKey;
+        final offsetAnimation = Tween<Offset>(
+          begin: isDurationStep ? const Offset(1, 0) : const Offset(-0.15, 0),
+          end: Offset.zero,
+        ).animate(animation);
+
+        return ClipRect(
+          child: SlideTransition(
+            key: isDurationStep
+                ? const ValueKey('ai-duration-step-slide')
+                : null,
+            position: offsetAnimation,
+            child: child,
+          ),
+        );
+      },
+      child: showDuration
+          ? Padding(
+              key: durationStepKey,
+              padding: const EdgeInsets.only(top: 18, bottom: 20),
+              child: _buildDurationSection(),
+            )
+          : const SizedBox(
+              key: ValueKey('ai-duration-step-hidden'),
+              height: 20,
+            ),
     );
   }
 

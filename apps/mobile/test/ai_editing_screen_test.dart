@@ -457,10 +457,10 @@ void main() {
       findsNothing,
     );
     expect(find.text('เพิ่มวิดีโอ'), findsOneWidget);
-    expect(find.text('ความยาวที่อยากได้'), findsOneWidget);
-    expect(find.text('30 วิ'), findsOneWidget);
-    expect(find.text('1 นาที'), findsOneWidget);
-    expect(find.text('กำหนดเอง'), findsOneWidget);
+    expect(find.text('ความยาวที่อยากได้'), findsNothing);
+    expect(find.text('30 วิ'), findsNothing);
+    expect(find.text('1 นาที'), findsNothing);
+    expect(find.text('กำหนดเอง'), findsNothing);
     expect(find.text('ให้ AI จัดการให้'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('ตัดต่อ · จังหวะ', skipOffstage: false),
@@ -566,7 +566,18 @@ void main() {
       ),
     );
 
+    expect(find.byKey(const ValueKey('ai-duration-step')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-duration-30')), findsNothing);
+
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final durationSlide = tester.widget<SlideTransition>(
+      find.byKey(const ValueKey('ai-duration-step-slide')),
+    );
+    expect(durationSlide.position.value.dx, greaterThan(0));
+
     await tester.pumpAndSettle();
 
     var processButton = tester.widget<ElevatedButton>(
@@ -3422,7 +3433,14 @@ void main() {
 
   testWidgets('supports a custom duration capped at 180 seconds',
       (tester) async {
-    await tester.pumpWidget(_testApp(const AiEditingScreen()));
+    final pickedVideo = _createPickedVideoFixture('custom-duration.mp4');
+    await tester.pumpWidget(
+      _testApp(AiEditingScreen(pickVideo: () async => pickedVideo)),
+    );
+
+    expect(find.byKey(const ValueKey('ai-duration-custom')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('ai-duration-custom')));
     await tester.pumpAndSettle();

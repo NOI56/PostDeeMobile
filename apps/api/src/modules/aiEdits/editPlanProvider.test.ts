@@ -100,6 +100,22 @@ describe('edit plan provider', () => {
         avgLogprob: -0.2
       })
     ).toBe(true);
+    expect(
+      isReliableHighlightSegment({
+        text: 'Т็อปปิงต่างๆ จากเชียงใหม่',
+        start: 12,
+        end: 16,
+        avgLogprob: -0.2
+      })
+    ).toBe(false);
+    expect(
+      isReliableHighlightSegment({
+        text: 'ไป Weekend Market กันค่ะ',
+        start: 16,
+        end: 20,
+        avgLogprob: -0.2
+      })
+    ).toBe(true);
   });
 
   it('parses a prompt target length and profanity intent', () => {

@@ -581,7 +581,8 @@ provider segments, scores seller-oriented signals such as hook, benefit, proof,
 offer, and CTA, then returns one continuous target-length story window as
 complementary cut ranges.
 The recipe also omits those unreliable time ranges from user-facing subtitle
-lines while retaining their speech timing for conservative silence detection.
+lines, including clearly unexpected mixed-script recognition noise, while
+retaining their speech timing for conservative silence detection.
 Mobile still applies a final target cap as a compatibility safety guard.
 If the combined AI/silence/filler cuts leave less media than requested, that
 guard proportionally restores nearby context while preserving every selected

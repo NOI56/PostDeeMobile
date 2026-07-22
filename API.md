@@ -867,7 +867,9 @@ returns the complementary ranges to remove. Provider prompt leakage and segments
 that cross the configured Whisper confidence/no-speech/compression thresholds are
 excluded from highlight scoring and from rendered subtitle lines. Their timing
 still remains available to silence detection so uncertain speech is not mistaken
-for a silent gap.
+for a silent gap. Thai-first transcripts containing clearly unexpected scripts
+(for example Cyrillic/Hangul/Han replacement noise) are rejected by the same gate,
+while ordinary Latin product or place names remain allowed.
 
 Request:
 

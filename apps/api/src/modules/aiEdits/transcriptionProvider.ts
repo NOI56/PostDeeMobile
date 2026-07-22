@@ -14,6 +14,8 @@ const leakedTranscriptionPromptSignals = [
   'ชื่อแอปให้เขียนเป็นภาษาไทยว่า',
   'คำศัพท์เฉพาะ'
 ];
+const unexpectedThaiTranscriptScript =
+  /[\p{Script=Cyrillic}\p{Script=Han}\p{Script=Hangul}\p{Script=Arabic}\p{Script=Devanagari}\p{Script=Hiragana}\p{Script=Katakana}\uFFFD]/u;
 
 /** Keeps uncertain speech and provider prompt leakage out of user-facing text. */
 export const isReliableTranscriptSegment = (
@@ -22,6 +24,9 @@ export const isReliableTranscriptSegment = (
   const text = segment.text.normalize('NFC').trim().toLowerCase();
   if (text.length === 0) return false;
   if (leakedTranscriptionPromptSignals.some((signal) => text.includes(signal))) {
+    return false;
+  }
+  if (unexpectedThaiTranscriptScript.test(text)) {
     return false;
   }
   if (segment.avgLogprob !== undefined && segment.avgLogprob < -1) {

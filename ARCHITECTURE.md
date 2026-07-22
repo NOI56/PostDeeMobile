@@ -534,12 +534,14 @@ sequenceDiagram
     A->>W: Transcribe audio with word + segment timestamps
     W-->>A: transcript + word timing + segment timing
     A-->>M: editable transcript data or mobile render recipe
-    M->>F: Render initial preview from original clip
+    M->>F: Render adaptive lightweight preview from original clip
     F-->>M: reviewable MP4
     M-->>M: Stay on AI review and toggle supported edits off or back on
     M->>F: Automatically re-render preview from original clip after each toggle
     alt User chooses Post
-      M-->>M: Open Upload/Post with latest result
+      M->>F: Render full-source-dimension export
+      F-->>M: publishable MP4
+      M-->>M: Open Upload/Post with full-quality result
     else User chooses more editing
       M-->>M: Open manual editor with latest result
     end
@@ -575,6 +577,10 @@ The selected 30/60/custom result length travels separately as
 signals such as hook, benefit, proof, offer, and CTA, selects strong moments within
 the time budget in chronological order, and returns the complementary cut ranges.
 Mobile still applies a final target cap as a compatibility safety guard.
+If the combined AI/silence/filler cuts leave less media than requested, that
+guard proportionally restores nearby context while preserving every selected
+moment. This prevents incomplete transcript timing from turning a 30/60/custom
+request into a near-empty clip.
 If Groq transcription fails, the API returns the stable
 `AI_TRANSCRIPTION_PROVIDER_FAILED` code with HTTP 502 before quota reservation;
 provider internals are not exposed. Mobile translates that code into a Thai
@@ -587,6 +593,14 @@ hints changed the exported file.
 The AI header independently reads the authenticated monthly quota and replaces
 that value with `prepare.quota` as soon as a metered recipe succeeds. Local
 preview re-renders and manual quota refreshes do not call the metered endpoint.
+Review renders are disposable adaptive previews: sources longer than 60 seconds
+use a maximum 540 dimension, 20 fps, and 1 Mbps; shorter sources use a maximum
+720 dimension, 24 fps, and 2 Mbps. FFmpeg writes processed-time progress to a
+local file because Android completion/statistics callbacks are not reliable on
+all devices. Mobile polls that file, supports cancellation and timeouts, and
+caches identical successful renders for the current editing session. Entering
+Upload/Post triggers a separate full-source-dimension render, so preview media
+is never treated as the publishable export.
 The renderer copies the bundled Prompt font into each subtitle render workspace
 and passes that directory to libass. For silence cuts, video frames use the
 selected keep timeline while audio keep ranges are reset and concatenated, so

@@ -524,7 +524,10 @@ Current mobile pieces:
 - The selected 30/60/custom duration is sent as `targetDurationSeconds`. The edit
   planner uses transcript selling signals (hook, benefit, proof, offer, and CTA)
   to choose strong moments in timeline order; the local duration cap remains a
-  safety guard for old or malformed recipes.
+  safety guard for old or malformed recipes. If incomplete transcript/silence
+  timing would leave less media than requested, mobile restores neighboring
+  context around the selected moments so a 30/60/custom request does not
+  collapse into a near-empty result.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.
@@ -534,6 +537,12 @@ Current mobile pieces:
   new preview from the original clip without another metered prepare call while
   keeping the last successful preview safe on failure. The accepted result can
   then go directly to Upload/Post or open in the manual editor for further changes.
+- AI review uses a disposable lightweight preview: sources longer than 60 seconds
+  render at up to 540p/20 fps/1 Mbps, while shorter sources use up to
+  720p/24 fps/2 Mbps. FFmpeg writes real processed-time progress for the UI,
+  renders can be cancelled or retried, and identical local results are reused.
+  Choosing Post creates a separate full-source-dimension export before opening
+  Upload/Post, so the lightweight preview is never published.
 - The AI editing header loads `GET /ai-edits/quota` and shows the authenticated
   user's exact remaining and used Pro minutes. It updates immediately from the
   metered `prepare` response and can be tapped to refresh without consuming a

@@ -275,6 +275,96 @@ void main() {
     expect(vf, contains('scale=trunc(iw/2)*2:trunc(ih/2)*2'));
   });
 
+  test('caps preview dimensions and keeps the aspect ratio', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      videoCodec: 'h264_mediacodec',
+      videoEncoderArgs: const ['-b:v', '2M', '-pix_fmt', 'yuv420p'],
+      scaleEvenDimensions: true,
+      maxVideoDimension: 720,
+      maxVideoFrameRate: 24,
+    );
+    final joined = args.join(' ');
+    final vf = args[args.indexOf('-vf') + 1];
+
+    expect(joined, contains('-b:v 2M'));
+    expect(
+      vf,
+      contains(
+        "scale=w='min(720,iw)':h='min(720,ih)':"
+        'force_original_aspect_ratio=decrease:force_divisible_by=2',
+      ),
+    );
+    expect(vf, isNot(contains('scale=trunc(iw/2)*2')));
+    expect(vf, contains('fps=24'));
+  });
+
+  test('uses a smaller preview profile for long source videos', () {
+    final short = videoPreviewProfileForSourceDuration(45);
+    final long = videoPreviewProfileForSourceDuration(150);
+
+    expect(short.maxVideoDimension, 720);
+    expect(short.videoBitrate, '2M');
+    expect(short.maxVideoFrameRate, 24);
+    expect(long.maxVideoDimension, 540);
+    expect(long.videoBitrate, '1M');
+    expect(long.maxVideoFrameRate, 20);
+  });
+
+  test('writes FFmpeg progress to a file that can be polled on Android', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      progressPath: '/tmp/render-progress.txt',
+    );
+
+    expect(
+      args.join(' '),
+      contains(
+        '-stats_period 0.5 -progress /tmp/render-progress.txt -nostats',
+      ),
+    );
+  });
+
+  test('reads processed time from FFmpeg progress file content', () {
+    expect(
+      parseFfmpegProgressSeconds(
+        'frame=120\nout_time_us=12345678\nprogress=continue\n',
+      ),
+      closeTo(12.345678, 0.000001),
+    );
+    expect(
+      parseFfmpegProgressSeconds(
+        'frame=120\nout_time_ms=7654321\nprogress=continue\n',
+      ),
+      closeTo(7.654321, 0.000001),
+    );
+    expect(parseFfmpegProgressSeconds('progress=continue\n'), isNull);
+  });
+
+  test('render cancellation token cancels an attached session once', () async {
+    final token = RenderCancellationToken();
+    var cancelCalls = 0;
+
+    await token.attach(() async => cancelCalls += 1);
+    await token.cancel();
+    await token.cancel();
+
+    expect(token.isCancelled, isTrue);
+    expect(cancelCalls, 1);
+  });
+
+  test('render cancellation token cancels a session attached later', () async {
+    final token = RenderCancellationToken();
+    var cancelCalls = 0;
+
+    await token.cancel();
+    await token.attach(() async => cancelCalls += 1);
+
+    expect(cancelCalls, 1);
+  });
+
   test('defaults to the mpeg4 encoder when no codec is given', () {
     final args = buildEditFfmpegArguments(
       inputPath: '/in.mp4',

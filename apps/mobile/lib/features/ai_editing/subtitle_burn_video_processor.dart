@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_new_video/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_video/session_state.dart';
 import 'package:flutter/services.dart';
 
 class SubtitleSegment {
@@ -23,6 +23,66 @@ class SilenceCutRange {
 
   final double start;
   final double end;
+}
+
+enum VideoRenderPurpose { preview, export }
+
+class VideoPreviewProfile {
+  const VideoPreviewProfile({
+    required this.maxVideoDimension,
+    required this.videoBitrate,
+    required this.maxVideoFrameRate,
+  });
+
+  final int maxVideoDimension;
+  final String videoBitrate;
+  final int maxVideoFrameRate;
+}
+
+/// Keeps short previews reasonably sharp while making longer source videos
+/// cheaper to process on-device. Full exports do not use this profile.
+VideoPreviewProfile videoPreviewProfileForSourceDuration(double seconds) {
+  if (seconds > 60) {
+    return const VideoPreviewProfile(
+      maxVideoDimension: 540,
+      videoBitrate: '1M',
+      maxVideoFrameRate: 20,
+    );
+  }
+
+  return const VideoPreviewProfile(
+    maxVideoDimension: 720,
+    videoBitrate: '2M',
+    maxVideoFrameRate: 24,
+  );
+}
+
+class RenderCancellationToken {
+  bool _isCancelled = false;
+  Future<void> Function()? _attachedCancel;
+
+  bool get isCancelled => _isCancelled;
+
+  Future<void> attach(Future<void> Function() cancel) async {
+    _attachedCancel = cancel;
+    if (_isCancelled) {
+      await cancel();
+    }
+  }
+
+  void detach(Future<void> Function() cancel) {
+    if (identical(_attachedCancel, cancel)) {
+      _attachedCancel = null;
+    }
+  }
+
+  Future<void> cancel() async {
+    if (_isCancelled) {
+      return;
+    }
+    _isCancelled = true;
+    await _attachedCancel?.call();
+  }
 }
 
 class BurnSubtitleRequest {
@@ -46,6 +106,11 @@ class BurnSubtitleRequest {
     this.preserveTempDirectoryPaths = const {},
     this.outputDurationSeconds,
     this.onProgress,
+    this.renderPurpose = VideoRenderPurpose.export,
+    this.maxVideoDimension,
+    this.videoBitrate,
+    this.maxVideoFrameRate,
+    this.cancellationToken,
   });
 
   final File inputFile;
@@ -80,6 +145,14 @@ class BurnSubtitleRequest {
 
   /// Optional render progress reporter (0..1).
   final RenderProgressCallback? onProgress;
+
+  /// Preview renders are intentionally smaller and are never uploaded as the
+  /// final social video. Export renders keep the source dimensions.
+  final VideoRenderPurpose renderPurpose;
+  final int? maxVideoDimension;
+  final String? videoBitrate;
+  final int? maxVideoFrameRate;
+  final RenderCancellationToken? cancellationToken;
 }
 
 /// Reports render progress (0..1).
@@ -122,6 +195,42 @@ String formatSrtTimestamp(double seconds) {
   String pad(int value, int width) => value.toString().padLeft(width, '0');
 
   return '${pad(hours, 2)}:${pad(minutes, 2)}:${pad(secs, 2)},${pad(millis, 3)}';
+}
+
+/// Reads the latest processed media time written by FFmpeg's `-progress`
+/// output. Despite its legacy name, `out_time_ms` is also expressed in
+/// microseconds by FFmpeg, just like `out_time_us`.
+double? parseFfmpegProgressSeconds(String content) {
+  final values = <String, String>{};
+  for (final line in content.split(RegExp(r'\r?\n'))) {
+    final separator = line.indexOf('=');
+    if (separator <= 0) {
+      continue;
+    }
+    values[line.substring(0, separator)] = line.substring(separator + 1);
+  }
+
+  final microseconds =
+      int.tryParse(values['out_time_us'] ?? values['out_time_ms'] ?? '');
+  if (microseconds != null) {
+    return microseconds / Duration.microsecondsPerSecond;
+  }
+
+  final timestamp = values['out_time'];
+  if (timestamp == null) {
+    return null;
+  }
+  final parts = timestamp.split(':');
+  if (parts.length != 3) {
+    return null;
+  }
+  final hours = int.tryParse(parts[0]);
+  final minutes = int.tryParse(parts[1]);
+  final seconds = double.tryParse(parts[2]);
+  if (hours == null || minutes == null || seconds == null) {
+    return null;
+  }
+  return hours * 3600 + minutes * 60 + seconds;
 }
 
 /// Builds an SRT subtitle file body from transcript segments. Pure + testable.
@@ -191,18 +300,19 @@ const VideoEncoderOption fallbackMpeg4Encoder = VideoEncoderOption(
 VideoEncoderOption hardwareH264Encoder({
   required bool isAndroid,
   required bool isIOS,
+  String videoBitrate = '6M',
 }) {
-  const encoderArgs = ['-b:v', '6M', '-pix_fmt', 'yuv420p'];
+  final encoderArgs = ['-b:v', videoBitrate, '-pix_fmt', 'yuv420p'];
 
   if (isAndroid) {
-    return const VideoEncoderOption(
+    return VideoEncoderOption(
       codec: 'h264_mediacodec',
       encoderArgs: encoderArgs,
       scaleEvenDimensions: true,
     );
   }
   if (isIOS) {
-    return const VideoEncoderOption(
+    return VideoEncoderOption(
       codec: 'h264_videotoolbox',
       encoderArgs: encoderArgs,
       scaleEvenDimensions: true,
@@ -303,8 +413,7 @@ String buildColorFilter({
     final signedOffset = brightnessOffset >= 0
         ? '+${brightnessOffset.toStringAsFixed(3)}'
         : brightnessOffset.toStringAsFixed(3);
-    final expression =
-        "'clip((val-128)*$lutContrast+128$signedOffset,0,255)'";
+    final expression = "'clip((val-128)*$lutContrast+128$signedOffset,0,255)'";
     filters.add('lutrgb=r=$expression:g=$expression:b=$expression');
   }
 
@@ -519,8 +628,21 @@ List<String> buildEditFfmpegArguments({
   String videoCodec = 'mpeg4',
   List<String> videoEncoderArgs = const ['-q:v', '4'],
   bool scaleEvenDimensions = false,
+  int? maxVideoDimension,
+  int? maxVideoFrameRate,
+  String? progressPath,
 }) {
-  final args = <String>['-y', '-i', inputPath];
+  final args = <String>['-y'];
+  if (progressPath != null && progressPath.trim().isNotEmpty) {
+    args.addAll([
+      '-stats_period',
+      '0.5',
+      '-progress',
+      progressPath,
+      '-nostats',
+    ]);
+  }
+  args.addAll(['-i', inputPath]);
 
   // Sticker overlays arrive as extra image inputs (indices 1..n).
   for (final stickerPath in stickerImagePaths) {
@@ -543,9 +665,18 @@ List<String> buildEditFfmpegArguments({
       .join('+');
 
   final videoFilters = <String>[];
-  if (scaleEvenDimensions) {
+  if (maxVideoDimension != null && maxVideoDimension > 0) {
+    videoFilters.add(
+      "scale=w='min($maxVideoDimension,iw)':"
+      "h='min($maxVideoDimension,ih)':"
+      'force_original_aspect_ratio=decrease:force_divisible_by=2',
+    );
+  } else if (scaleEvenDimensions) {
     // Hardware H.264 encoders reject odd width/height; round both down.
     videoFilters.add('scale=trunc(iw/2)*2:trunc(ih/2)*2');
+  }
+  if (maxVideoFrameRate != null && maxVideoFrameRate > 0) {
+    videoFilters.add('fps=$maxVideoFrameRate');
   }
   if (colorFilter.isNotEmpty) {
     videoFilters.add(colorFilter);
@@ -794,12 +925,16 @@ class FfmpegSubtitleBurnVideoProcessor {
     final outputFile = File(
       '${workingDirectory.path}$separator${_subtitledFileName(request.fileName)}',
     );
+    final progressFile = File(
+      '${workingDirectory.path}${separator}render-progress.txt',
+    );
 
     // Prefer the platform hardware H.264 encoder for quality/compatibility,
     // then fall back to the universal MPEG-4 path if it fails on a device.
     final primary = hardwareH264Encoder(
       isAndroid: Platform.isAndroid,
       isIOS: Platform.isIOS,
+      videoBitrate: request.videoBitrate ?? '6M',
     );
     final encoders = <VideoEncoderOption>[
       primary,
@@ -812,84 +947,126 @@ class FfmpegSubtitleBurnVideoProcessor {
         ? <List<String>>[const []]
         : <List<String>>[request.stickerImagePaths, const []];
 
-    // Stream FFmpeg's processed time into a 0..1 progress fraction.
+    // Poll FFmpeg's progress file, with native statistics as a fallback,
+    // instead of depending on the package's Android async callback event sink.
+    // That event sink can be unavailable even while FFmpeg runs normally.
     final outDuration = request.outputDurationSeconds;
     final onProgress = request.onProgress;
-    if (onProgress != null && outDuration != null && outDuration > 0) {
-      FFmpegKitConfig.enableStatisticsCallback((statistics) {
-        onProgress(
-          (statistics.getTime() / 1000 / outDuration).clamp(0.0, 1.0),
-        );
-      });
-    }
 
     var renderedOk = false;
     var colorFilterSkipped = false;
     String? failureLogs;
-    try {
-      render:
-      for (final attemptedColorFilter
-          in buildColorFilterFallbacks(colorFilter)) {
-        for (final stickerPaths in stickerVariants) {
-          for (final encoder in encoders) {
-            final session = await FFmpegKit.executeWithArguments(
-              buildEditFfmpegArguments(
-                inputPath: request.inputFile.path,
-                outputPath: outputFile.path,
-                subtitlePath: subtitlePath,
-                subtitleFontsDirectory:
-                    hasSubtitles ? workingDirectory.path : null,
-                subtitleFontName: 'Prompt',
-                colorFilter: attemptedColorFilter,
-                drawTextFilters: drawTextFilters,
-                speed: request.speed,
-                volume: request.volume,
-                trimStartSec: request.trimStartSec,
-                trimEndSec: request.trimEndSec,
-                silenceRanges: trimmedSilence,
-                stickerImagePaths: stickerPaths,
-                stickerPositions:
-                    stickerPaths.isEmpty ? const [] : request.stickerPositions,
-                subtitleFontSize: request.subtitleFontSize,
-                subtitleAtBottom: request.subtitleAtBottom,
-                videoCodec: encoder.codec,
-                videoEncoderArgs: encoder.encoderArgs,
-                scaleEvenDimensions: encoder.scaleEvenDimensions,
-              ),
-            );
-            final returnCode = await session.getReturnCode();
-
-            if (ReturnCode.isSuccess(returnCode)) {
-              // Trust but verify: some hardware encoders exit 0 while writing an
-              // audio-only file. Only accept output with a real video stream.
-              if (renderedOutputHasVideo(
-                  await probeStreamTypes(outputFile.path))) {
-                renderedOk = true;
-                colorFilterSkipped =
-                    colorFilter.isNotEmpty && attemptedColorFilter.isEmpty;
-                failureLogs = null;
-                break render;
-              }
-              failureLogs =
-                  'encoder ${encoder.codec} exited 0 but wrote no video stream';
-              continue;
-            }
-
-            // A cancel aborts the whole export — don't fall back to other paths.
-            if (ReturnCode.isCancel(returnCode)) {
-              throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
-            }
-
-            final logs = await session.getAllLogsAsString();
-            failureLogs = logs == null || logs.trim().isEmpty
-                ? 'FFmpeg return code: $returnCode'
-                : logs.trim();
+    render:
+    for (final attemptedColorFilter in buildColorFilterFallbacks(colorFilter)) {
+      for (final stickerPaths in stickerVariants) {
+        for (final encoder in encoders) {
+          if (request.cancellationToken?.isCancelled ?? false) {
+            throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
           }
+
+          if (await progressFile.exists()) {
+            await progressFile.delete();
+          }
+
+          final session = await FFmpegKit.executeWithArgumentsAsync(
+            buildEditFfmpegArguments(
+              inputPath: request.inputFile.path,
+              outputPath: outputFile.path,
+              subtitlePath: subtitlePath,
+              subtitleFontsDirectory:
+                  hasSubtitles ? workingDirectory.path : null,
+              subtitleFontName: 'Prompt',
+              colorFilter: attemptedColorFilter,
+              drawTextFilters: drawTextFilters,
+              speed: request.speed,
+              volume: request.volume,
+              trimStartSec: request.trimStartSec,
+              trimEndSec: request.trimEndSec,
+              silenceRanges: trimmedSilence,
+              stickerImagePaths: stickerPaths,
+              stickerPositions:
+                  stickerPaths.isEmpty ? const [] : request.stickerPositions,
+              subtitleFontSize: request.subtitleFontSize,
+              subtitleAtBottom: request.subtitleAtBottom,
+              videoCodec: encoder.codec,
+              videoEncoderArgs: encoder.encoderArgs,
+              scaleEvenDimensions: encoder.scaleEvenDimensions,
+              maxVideoDimension: request.maxVideoDimension,
+              maxVideoFrameRate: request.maxVideoFrameRate,
+              progressPath: progressFile.path,
+            ),
+          );
+          Future<void> cancelSession() => session.cancel();
+          await request.cancellationToken?.attach(cancelSession);
+          try {
+            while (true) {
+              if (onProgress != null &&
+                  outDuration != null &&
+                  outDuration > 0) {
+                double? processedSeconds;
+                try {
+                  if (await progressFile.exists()) {
+                    processedSeconds = parseFfmpegProgressSeconds(
+                      await progressFile.readAsString(),
+                    );
+                  }
+                } on FileSystemException {
+                  // FFmpeg may be replacing the progress file while it is read.
+                }
+                if (processedSeconds == null) {
+                  final statistics = await session.getLastReceivedStatistics();
+                  if (statistics != null) {
+                    processedSeconds = statistics.getTime() / 1000;
+                  }
+                }
+                if (processedSeconds != null) {
+                  onProgress(
+                    (processedSeconds / outDuration).clamp(0.0, 0.99),
+                  );
+                }
+              }
+
+              final state = await session.getState();
+              if (state == SessionState.completed ||
+                  state == SessionState.failed) {
+                break;
+              }
+              await Future<void>.delayed(
+                const Duration(milliseconds: 250),
+              );
+            }
+          } finally {
+            request.cancellationToken?.detach(cancelSession);
+          }
+          final returnCode = await session.getReturnCode();
+
+          if (ReturnCode.isSuccess(returnCode)) {
+            // Trust but verify: some hardware encoders exit 0 while writing an
+            // audio-only file. Only accept output with a real video stream.
+            if (renderedOutputHasVideo(
+                await probeStreamTypes(outputFile.path))) {
+              renderedOk = true;
+              colorFilterSkipped =
+                  colorFilter.isNotEmpty && attemptedColorFilter.isEmpty;
+              failureLogs = null;
+              break render;
+            }
+            failureLogs =
+                'encoder ${encoder.codec} exited 0 but wrote no video stream';
+            continue;
+          }
+
+          // A cancel aborts the whole export — don't fall back to other paths.
+          if (ReturnCode.isCancel(returnCode)) {
+            throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
+          }
+
+          final logs = await session.getAllLogsAsString();
+          failureLogs = logs == null || logs.trim().isEmpty
+              ? 'FFmpeg return code: $returnCode'
+              : logs.trim();
         }
       }
-    } finally {
-      // Always detach the global statistics listener.
-      FFmpegKitConfig.enableStatisticsCallback();
     }
 
     if (!renderedOk) {

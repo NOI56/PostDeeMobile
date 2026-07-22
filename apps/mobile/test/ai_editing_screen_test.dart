@@ -271,6 +271,20 @@ Future<void> _openAdvancedPanel(
   await tester.pumpAndSettle();
 }
 
+Future<void> _pumpUntilPreviewUpdateFinishes(WidgetTester tester) async {
+  final updating = find.byKey(
+    const ValueKey('ai-review-preview-updating'),
+    skipOffstage: false,
+  );
+  for (var attempt = 0; attempt < 20; attempt += 1) {
+    await tester.pump(const Duration(milliseconds: 50));
+    if (updating.evaluate().isEmpty) {
+      return;
+    }
+  }
+  fail('AI preview update did not finish');
+}
+
 class _FakeReviewVideoController extends VideoPlayerController {
   _FakeReviewVideoController({
     required this.fakeDuration,
@@ -1248,12 +1262,11 @@ void main() {
     );
   });
 
-  testWidgets('automatically previews a removed AI feature and can add it back',
+  testWidgets('reuses a cached preview when an AI feature is added back',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('original.mp4');
     final firstResult = _createRenderedVideoFixture('ai-result-1.mp4');
     final secondResult = _createRenderedVideoFixture('ai-result-2.mp4');
-    final thirdResult = _createRenderedVideoFixture('ai-result-3.mp4');
     final renderRequests = <BurnSubtitleRequest>[];
 
     await tester.pumpWidget(
@@ -1271,12 +1284,11 @@ void main() {
           prepareEdit: (_) async => _createPrepareFixture(),
           burnVideo: (request) async {
             renderRequests.add(request);
-            return switch (renderRequests.length) {
-              1 => firstResult,
-              2 => secondResult,
-              _ => thirdResult,
-            };
+            return renderRequests.length == 1 ? firstResult : secondResult;
           },
+          reviewVideoControllerFactory: (_) => _FakeReviewVideoController(
+            fakeDuration: const Duration(seconds: 30),
+          ),
         ),
       ),
     );
@@ -1297,7 +1309,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(silenceSwitch);
-    await tester.pumpAndSettle();
+    await _pumpUntilPreviewUpdateFinishes(tester);
 
     expect(renderRequests, hasLength(2));
     expect(find.byKey(const ValueKey('ai-review-update')), findsNothing);
@@ -1328,19 +1340,126 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(silenceSwitch);
-    await tester.pumpAndSettle();
+    await _pumpUntilPreviewUpdateFinishes(tester);
 
-    expect(renderRequests, hasLength(3));
+    expect(renderRequests, hasLength(2));
     expect(
-      renderRequests.last.silenceRanges.any(
-        (range) => range.start == 10 && range.end == 11,
-      ),
-      isTrue,
-    );
-    expect(
-      find.text('ai-result-3.mp4', skipOffstage: false),
+      find.text('ai-result-1.mp4', skipOffstage: false),
       findsOneWidget,
     );
+  });
+
+  testWidgets('shows render progress and lets the user cancel preview',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('cancel-preview.mp4');
+    final renderResult = Completer<BurnedSubtitleResult>();
+    var cancelCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-cancel-preview',
+            videoS3Key: 'uploads/cancel-preview.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (request) async {
+            request.onProgress?.call(0.42);
+            await request.cancellationToken?.attach(() async {
+              cancelCalls += 1;
+              if (!renderResult.isCompleted) {
+                renderResult.completeError(
+                  const SubtitleBurnException('render cancelled'),
+                );
+              }
+            });
+            return renderResult.future;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('ai-render-progress')), findsOneWidget);
+    expect(find.text('42%'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-render-cancel')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('ai-render-cancel')));
+    await tester.pumpAndSettle();
+
+    expect(cancelCalls, 1);
+    expect(find.byKey(const ValueKey('ai-render-progress')), findsNothing);
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.byKey(const ValueKey('ai-process-button')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('uses a light preview and exports full quality before posting',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('quality-source.mp4');
+    final preview = _createRenderedVideoFixture('quality-preview.mp4');
+    final export = _createRenderedVideoFixture('quality-export.mp4');
+    final requests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-quality-preview',
+            videoS3Key: 'uploads/quality-preview.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (request) async {
+            requests.add(request);
+            return request.renderPurpose == VideoRenderPurpose.preview
+                ? preview
+                : export;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(requests, hasLength(1));
+    expect(requests.single.renderPurpose, VideoRenderPurpose.preview);
+    expect(requests.single.maxVideoDimension, 720);
+    expect(requests.single.videoBitrate, '2M');
+    expect(requests.single.maxVideoFrameRate, 24);
+
+    await tester.tap(find.byKey(const ValueKey('ai-review-post')));
+    await tester.pumpAndSettle();
+
+    expect(requests, hasLength(2));
+    expect(requests.last.renderPurpose, VideoRenderPurpose.export);
+    expect(requests.last.maxVideoDimension, isNull);
+    expect(requests.last.videoBitrate, isNull);
+    expect(requests.last.maxVideoFrameRate, isNull);
+    final uploader = tester.widget<UploaderScreen>(find.byType(UploaderScreen));
+    expect(uploader.initialVideoPath, export.file.path);
   });
 
   testWidgets('blocks overlapping changes while an automatic preview renders',
@@ -1726,6 +1845,9 @@ void main() {
             renderCalls += 1;
             return _createRenderedVideoFixture('review-$renderCalls.mp4');
           },
+          reviewVideoControllerFactory: (_) => _FakeReviewVideoController(
+            fakeDuration: const Duration(seconds: 30),
+          ),
         ),
       ),
     );
@@ -1767,8 +1889,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(silenceSwitch);
-    await tester.pumpAndSettle();
-    expect(renderCalls, 3);
+    await _pumpUntilPreviewUpdateFinishes(tester);
+    expect(renderCalls, 2);
     expect(
       find.text(
         'อยู่ในพรีวิว · เอาติ๊กออกเพื่อดูแบบไม่ใช้',

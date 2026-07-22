@@ -69,21 +69,50 @@ class EditStyleOptions {
   }
 }
 
+List<SilenceCutRange> _normalizeCutRanges(
+  List<SilenceCutRange> cuts,
+  double duration,
+) {
+  final normalized = <SilenceCutRange>[];
+  final sorted = [...cuts]..sort((a, b) => a.start.compareTo(b.start));
+
+  for (final cut in sorted) {
+    final start = cut.start.clamp(0.0, duration);
+    final end = cut.end.clamp(0.0, duration);
+    if (end <= start) {
+      continue;
+    }
+    if (normalized.isNotEmpty && start <= normalized.last.end + 0.001) {
+      final previous = normalized.removeLast();
+      normalized.add(
+        SilenceCutRange(
+          start: previous.start,
+          end: end > previous.end ? end : previous.end,
+        ),
+      );
+    } else {
+      normalized.add(SilenceCutRange(start: start, end: end));
+    }
+  }
+
+  return normalized;
+}
+
 /// Gaps in [0, duration] not covered by [cuts], merged and sorted. Pure.
 List<List<double>> _complement(List<SilenceCutRange> cuts, double duration) {
-  if (cuts.isEmpty) {
+  final normalizedCuts = _normalizeCutRanges(cuts, duration);
+  if (normalizedCuts.isEmpty) {
     return [
       [0, duration],
     ];
   }
 
-  final sorted = [...cuts]..sort((a, b) => a.start.compareTo(b.start));
   final result = <List<double>>[];
   var cursor = 0.0;
 
-  for (final cut in sorted) {
-    final start = cut.start.clamp(0.0, duration);
-    final end = cut.end.clamp(0.0, duration);
+  for (final cut in normalizedCuts) {
+    final start = cut.start;
+    final end = cut.end;
     if (start > cursor) {
       result.add([cursor, start]);
     }
@@ -99,8 +128,10 @@ List<List<double>> _complement(List<SilenceCutRange> cuts, double duration) {
   return result;
 }
 
-/// Adds a tail cut so the kept (non-cut) length fits [targetSeconds]. Returns
-/// the cuts unchanged when no trimming is needed. Pure + testable.
+/// Makes the kept (non-cut) length fit [targetSeconds]. If AI/silence cuts
+/// remove too much, nearby context is restored around the selected moments
+/// instead of returning a clip that is far shorter than the requested length.
+/// Pure + testable.
 List<SilenceCutRange> withTargetLength(
   List<SilenceCutRange> cuts,
   double durationSeconds,
@@ -110,24 +141,82 @@ List<SilenceCutRange> withTargetLength(
     return cuts;
   }
 
-  final kept = _complement(cuts, durationSeconds);
+  final desiredSeconds = targetSeconds.clamp(0.0, durationSeconds);
+  if (desiredSeconds >= durationSeconds) {
+    return const [];
+  }
+
+  final normalizedCuts = _normalizeCutRanges(cuts, durationSeconds);
+  final kept = _complement(normalizedCuts, durationSeconds);
   var accumulated = 0.0;
   double? keepUntil;
 
   for (final interval in kept) {
     final length = interval[1] - interval[0];
-    if (accumulated + length >= targetSeconds) {
-      keepUntil = interval[0] + (targetSeconds - accumulated);
+    if (accumulated + length >= desiredSeconds) {
+      keepUntil = interval[0] + (desiredSeconds - accumulated);
       break;
     }
     accumulated += length;
   }
 
   if (keepUntil != null && keepUntil < durationSeconds) {
-    return [...cuts, SilenceCutRange(start: keepUntil, end: durationSeconds)];
+    return _normalizeCutRanges(
+      [
+        ...normalizedCuts,
+        SilenceCutRange(start: keepUntil, end: durationSeconds),
+      ],
+      durationSeconds,
+    );
   }
 
-  return cuts;
+  // The selected speech/highlight ranges are shorter than requested. Restore
+  // context proportionally from the edges of every cut while preserving all
+  // moments that AI selected.
+  if (accumulated > 0 && normalizedCuts.isNotEmpty) {
+    final totalCutSeconds = durationSeconds - accumulated;
+    final secondsToRestore = desiredSeconds - accumulated;
+    final remainingCutFraction =
+        ((totalCutSeconds - secondsToRestore) / totalCutSeconds)
+            .clamp(0.0, 1.0);
+    final adjusted = <SilenceCutRange>[];
+
+    for (final cut in normalizedCuts) {
+      final remainingLength = (cut.end - cut.start) * remainingCutFraction;
+      if (remainingLength <= 0.001) {
+        continue;
+      }
+
+      if (cut.start <= 0.001) {
+        adjusted.add(
+          SilenceCutRange(start: 0, end: remainingLength),
+        );
+      } else if (cut.end >= durationSeconds - 0.001) {
+        adjusted.add(
+          SilenceCutRange(
+            start: durationSeconds - remainingLength,
+            end: durationSeconds,
+          ),
+        );
+      } else {
+        final center = (cut.start + cut.end) / 2;
+        adjusted.add(
+          SilenceCutRange(
+            start: center - remainingLength / 2,
+            end: center + remainingLength / 2,
+          ),
+        );
+      }
+    }
+
+    return _normalizeCutRanges(adjusted, durationSeconds);
+  }
+
+  // No usable selected moment remains. Keep a deterministic opening window
+  // rather than exporting an empty/near-empty video.
+  return [
+    SilenceCutRange(start: desiredSeconds, end: durationSeconds),
+  ];
 }
 
 /// Splits a line into pieces near [maxChars], preferring to break at spaces.

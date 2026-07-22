@@ -369,6 +369,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   BurnedSubtitleResult? _renderedResult;
   _AiSetupSnapshot? _acceptedSetup;
   final Map<String, AiEditPrepareResult> _preparedEditsBySignature = {};
+  final Map<String, BurnedSubtitleResult> _renderResultsBySignature = {};
   _AiEditingStage _stage = _AiEditingStage.setup;
   final Map<String, bool> _reviewCapabilities = {};
   final Map<String, bool> _appliedReviewCapabilities = {};
@@ -384,6 +385,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   bool _aiEditQuotaLoadFailed = false;
   AiEditQuota? _aiEditQuota;
   String _processingTitle = 'AI กำลังวิเคราะห์คลิป...';
+  double? _renderProgress;
+  RenderCancellationToken? _activeRenderCancellation;
+  bool _renderCancelRequested = false;
   _AiDurationMode _durationMode = _AiDurationMode.unselected;
   int _customDurationSeconds = 45;
 
@@ -448,6 +452,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   @override
   void dispose() {
+    final activeRenderCancellation = _activeRenderCancellation;
+    if (activeRenderCancellation != null) {
+      unawaited(activeRenderCancellation.cancel());
+    }
     _customDurationController.dispose();
     _ctaController.dispose();
     _priceNowController.dispose();
@@ -505,6 +513,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _selectedVideo = picked;
         _preparedEdit = null;
         _preparedEditsBySignature.clear();
+        _renderResultsBySignature.clear();
         _renderedResult = null;
         _acceptedSetup = null;
         _reviewCapabilities.clear();
@@ -639,6 +648,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     setState(() {
       _processing = true;
       _processingTitle = 'AI กำลังวิเคราะห์คลิป...';
+      _renderProgress = null;
+      _renderCancelRequested = false;
     });
 
     try {
@@ -715,6 +726,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _isLoadingAiEditQuota = false;
         _aiEditQuotaLoadFailed = false;
         _processingTitle = 'กำลังสร้างวิดีโอตัวอย่าง...';
+        _renderProgress = 0;
       });
 
       final reviewCapabilities =
@@ -743,6 +755,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             ..addAll(reviewCapabilities);
           _stage = _AiEditingStage.review;
           _processing = false;
+          _renderProgress = null;
+          _renderCancelRequested = false;
         });
       }
     } on ApiException catch (error) {
@@ -862,6 +876,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final acceptedSetup = _acceptedSetup;
     setState(() {
       _processing = false;
+      _renderProgress = null;
+      _renderCancelRequested = false;
       if (hasPreviousResult) {
         if (acceptedSetup != null) {
           _restoreSetupSnapshot(acceptedSetup);
@@ -902,6 +918,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   Future<BurnedSubtitleResult> _renderPreparedRecipe({
     required AiEditRecipeResult recipe,
     required Map<String, bool> capabilities,
+    VideoRenderPurpose purpose = VideoRenderPurpose.preview,
   }) async {
     final picked = _selectedVideo;
     if (picked == null) {
@@ -950,6 +967,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     }
 
     final speed = options.speed ?? 1;
+    final previewProfile = purpose == VideoRenderPurpose.preview
+        ? videoPreviewProfileForSourceDuration(sourceDuration)
+        : null;
     final outputDuration = sourceDuration > 0
         ? estimateResultSeconds(
             durationSeconds: sourceDuration,
@@ -974,30 +994,125 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       );
     }
 
+    final sortedCapabilities = capabilities.entries.toList()
+      ..sort((left, right) => left.key.compareTo(right.key));
+    final renderSignature = jsonEncode({
+      'purpose': purpose.name,
+      'source': {
+        'path': originalFile.path,
+        'sizeBytes': originalFile.lengthSync(),
+        'lastModifiedMs':
+            originalFile.lastModifiedSync().millisecondsSinceEpoch,
+      },
+      'targetDurationSeconds': _selectedDurationSeconds,
+      'capabilities': {
+        for (final entry in sortedCapabilities) entry.key: entry.value,
+      },
+      'segments': [
+        for (final segment in subtitleSegments)
+          {
+            'text': segment.text,
+            'start': segment.start,
+            'end': segment.end,
+          },
+      ],
+      'cuts': [
+        for (final range in cutRanges) {'start': range.start, 'end': range.end},
+      ],
+      'speed': speed,
+      'filterIndex': options.filterIndex ?? 0,
+      'brightness': options.brightness ?? 0,
+      'contrast': options.contrast ?? 0,
+      'subtitleFontSize': options.subtitleFontSize ?? 18,
+      'subtitleAtBottom': options.subtitleAtBottom ?? true,
+      'previewProfile': previewProfile == null
+          ? null
+          : {
+              'maxVideoDimension': previewProfile.maxVideoDimension,
+              'videoBitrate': previewProfile.videoBitrate,
+              'maxVideoFrameRate': previewProfile.maxVideoFrameRate,
+            },
+    });
+    final cachedResult = _renderResultsBySignature[renderSignature];
+    if (cachedResult != null && cachedResult.file.existsSync()) {
+      return cachedResult;
+    }
+    _renderResultsBySignature.remove(renderSignature);
+
     final renderer =
         widget.burnVideo ?? const FfmpegSubtitleBurnVideoProcessor().call;
+    final cancellationToken = RenderCancellationToken();
+    if (mounted) {
+      setState(() {
+        _activeRenderCancellation = cancellationToken;
+        _renderCancelRequested = false;
+      });
+    }
 
-    return renderer(
-      BurnSubtitleRequest(
-        inputFile: originalFile,
-        fileName: picked.name.trim().isNotEmpty
-            ? picked.name.trim()
-            : _readFileNameFromPath(picked.path),
-        segments: subtitleSegments,
-        silenceRanges: cutRanges,
-        speed: speed,
-        volume: 1,
-        filterIndex: options.filterIndex ?? 0,
-        brightness: options.brightness ?? 0,
-        contrast: options.contrast ?? 0,
-        subtitleFontSize: options.subtitleFontSize ?? 18,
-        subtitleAtBottom: options.subtitleAtBottom ?? true,
-        preserveTempDirectoryPaths: {
-          if (_renderedResult != null) _renderedResult!.file.parent.path,
-        },
-        outputDurationSeconds: outputDuration,
-      ),
+    void reportProgress(double fraction) {
+      if (!mounted ||
+          !identical(_activeRenderCancellation, cancellationToken)) {
+        return;
+      }
+      final normalized = fraction.clamp(0.0, 1.0).toDouble();
+      final current = _renderProgress ?? 0;
+      if (normalized < current ||
+          (normalized - current < 0.01 && normalized < 1)) {
+        return;
+      }
+      setState(() => _renderProgress = normalized);
+    }
+
+    final request = BurnSubtitleRequest(
+      inputFile: originalFile,
+      fileName: picked.name.trim().isNotEmpty
+          ? picked.name.trim()
+          : _readFileNameFromPath(picked.path),
+      segments: subtitleSegments,
+      silenceRanges: cutRanges,
+      speed: speed,
+      volume: 1,
+      filterIndex: options.filterIndex ?? 0,
+      brightness: options.brightness ?? 0,
+      contrast: options.contrast ?? 0,
+      subtitleFontSize: options.subtitleFontSize ?? 18,
+      subtitleAtBottom: options.subtitleAtBottom ?? true,
+      preserveTempDirectoryPaths: {
+        if (_renderedResult != null) _renderedResult!.file.parent.path,
+        for (final result in _renderResultsBySignature.values)
+          result.file.parent.path,
+      },
+      outputDurationSeconds: outputDuration,
+      onProgress: reportProgress,
+      renderPurpose: purpose,
+      maxVideoDimension: previewProfile?.maxVideoDimension,
+      videoBitrate: previewProfile?.videoBitrate,
+      maxVideoFrameRate: previewProfile?.maxVideoFrameRate,
+      cancellationToken: cancellationToken,
     );
+
+    try {
+      final result = await renderer(request).timeout(
+        purpose == VideoRenderPurpose.preview
+            ? const Duration(minutes: 5)
+            : const Duration(minutes: 15),
+        onTimeout: () {
+          unawaited(cancellationToken.cancel());
+          throw SubtitleBurnException(
+            purpose == VideoRenderPurpose.preview
+                ? 'สร้างวิดีโอตัวอย่างนานเกินไป กรุณาลองใหม่'
+                : 'สร้างวิดีโอคุณภาพเต็มนานเกินไป กรุณาลองใหม่',
+          );
+        },
+      );
+      reportProgress(1);
+      _renderResultsBySignature[renderSignature] = result;
+      return result;
+    } finally {
+      if (mounted && identical(_activeRenderCancellation, cancellationToken)) {
+        setState(() => _activeRenderCancellation = null);
+      }
+    }
   }
 
   EditStyleOptions _buildEditOptions(Map<String, bool> capabilities) {
@@ -1229,6 +1344,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
     setState(() {
       _updatingReviewPreview = true;
+      _renderProgress = 0;
+      _renderCancelRequested = false;
     });
 
     try {
@@ -1251,11 +1368,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _syncSetupCapabilitiesFromReview();
         _acceptedSetup = _captureSetupSnapshot();
         _updatingReviewPreview = false;
+        _renderProgress = null;
+        _renderCancelRequested = false;
       });
     } on SubtitleBurnException catch (error) {
       if (mounted) {
         setState(() {
           _updatingReviewPreview = false;
+          _renderProgress = null;
+          _renderCancelRequested = false;
           _reviewCapabilities
             ..clear()
             ..addAll(_appliedReviewCapabilities);
@@ -1266,6 +1387,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       if (mounted) {
         setState(() {
           _updatingReviewPreview = false;
+          _renderProgress = null;
+          _renderCancelRequested = false;
           _reviewCapabilities
             ..clear()
             ..addAll(_appliedReviewCapabilities);
@@ -1302,9 +1425,45 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     });
   }
 
-  Future<void> _openPostFlow(BurnedSubtitleResult result) async {
+  Future<void> _openPostFlow(BurnedSubtitleResult previewResult) async {
     if (!mounted) {
       return;
+    }
+
+    var result = previewResult;
+    final prepared = _preparedEdit;
+    if (prepared != null) {
+      setState(() {
+        _processing = true;
+        _processingTitle = 'กำลังสร้างวิดีโอคุณภาพเต็ม...';
+        _renderProgress = 0;
+        _renderCancelRequested = false;
+      });
+
+      try {
+        result = await _renderPreparedRecipe(
+          recipe: prepared.recipe,
+          capabilities: Map<String, bool>.from(_appliedReviewCapabilities),
+          purpose: VideoRenderPurpose.export,
+        );
+      } on SubtitleBurnException catch (error) {
+        _handleProcessingFailure(error.message);
+        return;
+      } catch (_) {
+        _handleProcessingFailure(
+          'สร้างวิดีโอคุณภาพเต็มไม่สำเร็จ กรุณาลองใหม่',
+        );
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _processing = false;
+        _renderProgress = null;
+        _renderCancelRequested = false;
+      });
     }
 
     await Navigator.of(context).push(
@@ -1327,6 +1486,25 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _cancelActiveRender() async {
+    final cancellation = _activeRenderCancellation;
+    if (cancellation == null || _renderCancelRequested) {
+      return;
+    }
+    setState(() {
+      _renderCancelRequested = true;
+      _processingTitle = 'กำลังยกเลิก...';
+    });
+    try {
+      await cancellation.cancel();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _renderCancelRequested = false);
+        _showError('ยกเลิกการสร้างวิดีโอไม่สำเร็จ');
+      }
+    }
   }
 
   void _showError(String message) {
@@ -2372,6 +2550,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                   _selectedVideo = null;
                   _preparedEdit = null;
                   _preparedEditsBySignature.clear();
+                  _renderResultsBySignature.clear();
                   _renderedResult = null;
                   _acceptedSetup = null;
                   _reviewCapabilities.clear();
@@ -4074,26 +4253,51 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   Widget _buildReviewActions() {
     if (_updatingReviewPreview) {
-      return ElevatedButton.icon(
-        key: const ValueKey('ai-review-preview-updating'),
-        onPressed: null,
-        style: ElevatedButton.styleFrom(
-          minimumSize: const Size(double.infinity, 54),
-          disabledBackgroundColor: AppTheme.glassDeep,
-          disabledForegroundColor: AppTheme.textSecondary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+      final renderProgress = _renderProgress;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ElevatedButton.icon(
+            key: const ValueKey('ai-review-preview-updating'),
+            onPressed: null,
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 54),
+              disabledBackgroundColor: AppTheme.glassDeep,
+              disabledForegroundColor: AppTheme.textSecondary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+            ),
+            icon: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                value: renderProgress,
+                strokeWidth: 2,
+              ),
+            ),
+            label: Text(
+              renderProgress == null
+                  ? 'กำลังอัปเดตพรีวิว...'
+                  : 'กำลังอัปเดตพรีวิว ${(renderProgress * 100).round()}%',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
-        ),
-        icon: const SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-        label: const Text(
-          'กำลังอัปเดตพรีวิว...',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-        ),
+          if (_activeRenderCancellation != null) ...[
+            const SizedBox(height: 6),
+            TextButton.icon(
+              key: const ValueKey('ai-review-render-cancel'),
+              onPressed: _renderCancelRequested ? null : _cancelActiveRender,
+              icon: const Icon(Icons.close_rounded, size: 18),
+              label: Text(
+                _renderCancelRequested ? 'กำลังยกเลิก...' : 'ยกเลิก',
+              ),
+            ),
+          ],
+        ],
       );
     }
 
@@ -4143,6 +4347,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Widget _buildProcessingOverlay() {
+    final renderProgress = _renderProgress;
     final activeCapabilities = _stage == _AiEditingStage.review
         ? _reviewCapabilities
         : _effectiveCapabilities;
@@ -4167,6 +4372,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                   width: 76,
                   height: 76,
                   child: CircularProgressIndicator(
+                    key: renderProgress == null
+                        ? const ValueKey('ai-processing-spinner')
+                        : const ValueKey('ai-render-progress'),
+                    value: renderProgress,
                     strokeWidth: 5,
                     color: AppTheme.accent,
                     backgroundColor: AppTheme.mint,
@@ -4182,6 +4391,18 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                     color: AppTheme.textPrimary,
                   ),
                 ),
+                if (renderProgress != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${(renderProgress * 100).round()}%',
+                    key: const ValueKey('ai-render-progress-percent'),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.accentCyanInk,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Text(
                   selectedTasks,
@@ -4202,6 +4423,18 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                     color: AppTheme.textMuted,
                   ),
                 ),
+                if (_activeRenderCancellation != null) ...[
+                  const SizedBox(height: 18),
+                  TextButton.icon(
+                    key: const ValueKey('ai-render-cancel'),
+                    onPressed:
+                        _renderCancelRequested ? null : _cancelActiveRender,
+                    icon: const Icon(Icons.close_rounded),
+                    label: Text(
+                      _renderCancelRequested ? 'กำลังยกเลิก...' : 'ยกเลิก',
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

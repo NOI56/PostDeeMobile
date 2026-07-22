@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/features/ai_editing/edit_styles.dart';
 import 'package:postdee_mobile/features/ai_editing/style_options.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 
@@ -27,6 +28,34 @@ void main() {
 
   test('no trim when the clip is already under target', () {
     expect(withTargetLength(const [], 5, 30), isEmpty);
+  });
+
+  test('restores context when AI cuts leave less than the target length', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 4),
+      SilenceCutRange(start: 4.5, end: 9.3),
+      SilenceCutRange(start: 9.7, end: 14.2),
+      SilenceCutRange(start: 14.7, end: 20.3),
+      SilenceCutRange(start: 20.4, end: 33.44),
+      SilenceCutRange(start: 33.7, end: 107.881),
+      SilenceCutRange(start: 108.321, end: 150.641),
+    ];
+
+    final adjusted = withTargetLength(cuts, 150.641, 30);
+    final resultSeconds = estimateResultSeconds(
+      durationSeconds: 150.641,
+      cutRanges: adjusted,
+    );
+
+    expect(resultSeconds, closeTo(30, 0.01));
+    for (final selectedMoment in [4.25, 9.5, 14.45, 20.35, 33.57, 108.1]) {
+      expect(
+        adjusted.any(
+          (cut) => cut.start < selectedMoment && selectedMoment < cut.end,
+        ),
+        isFalse,
+      );
+    }
   });
 
   test('splits a line on spaces and hard-splits long runs', () {

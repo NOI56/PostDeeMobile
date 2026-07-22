@@ -15,6 +15,16 @@
 > seconds. The seller must choose 30/60/custom before processing, and the
 > selected value is sent as `targetDurationSeconds` for AI highlight planning.
 >
+> 2026-07-22 preview-performance update: mobile review now renders a disposable
+> adaptive preview (long sources: max 540p/20 fps/1 Mbps; short sources: max
+> 720p/24 fps/2 Mbps), polls FFmpeg's local progress file, supports cancellation,
+> timeout, retry, and in-session result reuse, then renders full source dimensions
+> only when the user continues to Post. A target-length guard restores context
+> around selected moments if incomplete timing would otherwise create a result
+> shorter than 30/60/custom. Pixel 8 emulator verification with the 38 MB / 2:30
+> fixture reached a 30-second preview and a 29.994667-second full export, then
+> opened the Post flow.
+>
 > 2026-07-11 update: mobile now caches a successful prepare recipe, shows a playable result review, supports reversible subtitle/silence/filler/color edits that are actually rendered, and keeps `planned` capabilities out of the applied list. Local retry does not call the minute-metered prepare endpoint again.
 >
 > 2026-07-12 automatic-preview update: changing a supported edit checkbox immediately starts a local preview re-render from the original clip. Controls are locked while FFmpeg runs, the previous playable preview remains visible, and a failed update restores both the last accepted checkbox state and video.

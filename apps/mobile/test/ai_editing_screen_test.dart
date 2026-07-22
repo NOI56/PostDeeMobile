@@ -417,6 +417,7 @@ void main() {
         AiEditingScreen(
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
+          loadSubscription: () async => _subscriptionFixture('PRO'),
           loadAiEditQuota: () async => const AiEditQuota(
             limitMinutes: 200,
             usedMinutes: 17,
@@ -433,6 +434,52 @@ void main() {
     expect(find.text('Pro · ใช้แล้ว 17/200 นาที'), findsOneWidget);
   });
 
+  testWidgets('uses the actual Basic entitlement instead of the quota size',
+      (tester) async {
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          loadSubscription: () async => _subscriptionFixture('BASIC'),
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 17,
+            remainingMinutes: 183,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('แพ็กเกจ Basic'), findsOneWidget);
+    expect(find.text('AI ตัดต่อใช้ได้เฉพาะ Pro'), findsOneWidget);
+    expect(find.text('Pro · ใช้แล้ว 17/200 นาที'), findsNothing);
+  });
+
+  testWidgets('uses the actual Starter entitlement instead of showing Pro',
+      (tester) async {
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          loadSubscription: () async => _subscriptionFixture('STARTER'),
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 17,
+            remainingMinutes: 183,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('แพ็กเกจ Starter'), findsOneWidget);
+    expect(find.text('AI ตัดต่อใช้ได้เฉพาะ Pro'), findsOneWidget);
+    expect(find.text('Pro · ใช้แล้ว 17/200 นาที'), findsNothing);
+  });
+
   testWidgets('updates remaining minutes after a metered AI edit',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('quota-update.mp4');
@@ -443,6 +490,7 @@ void main() {
         AiEditingScreen(
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
+          loadSubscription: () async => _subscriptionFixture('PRO'),
           loadAiEditQuota: () async => const AiEditQuota(
             limitMinutes: 200,
             usedMinutes: 0,

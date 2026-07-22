@@ -423,7 +423,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   bool _isPickingVideo = false;
   bool _isLoadingAiEditQuota = false;
   bool _aiEditQuotaLoadFailed = false;
+  bool _aiEditSubscriptionLoadFailed = false;
   AiEditQuota? _aiEditQuota;
+  SubscriptionStatusResult? _aiEditSubscription;
   String _processingTitle = 'AI กำลังวิเคราะห์คลิป...';
   double? _renderProgress;
   RenderCancellationToken? _activeRenderCancellation;
@@ -514,24 +516,43 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     setState(() {
       _isLoadingAiEditQuota = true;
       _aiEditQuotaLoadFailed = false;
+      _aiEditSubscriptionLoadFailed = false;
     });
 
-    try {
-      final loader = widget.loadAiEditQuota ?? _apiClient.fetchAiEditQuota;
-      final quota = await loader();
-      if (!mounted) return;
-      setState(() {
-        _aiEditQuota = quota;
-        _isLoadingAiEditQuota = false;
-        _aiEditQuotaLoadFailed = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingAiEditQuota = false;
-        _aiEditQuotaLoadFailed = true;
-      });
+    Future<AiEditQuota?> loadQuota() async {
+      try {
+        final loader = widget.loadAiEditQuota ?? _apiClient.fetchAiEditQuota;
+        return await loader();
+      } catch (_) {
+        return null;
+      }
     }
+
+    Future<SubscriptionStatusResult?> loadSubscription() async {
+      try {
+        final loader =
+            widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
+        return await loader();
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final quotaFuture = loadQuota();
+    final subscriptionFuture = loadSubscription();
+    final quota = await quotaFuture;
+    final subscription = await subscriptionFuture;
+
+    if (!mounted) return;
+    setState(() {
+      if (quota != null) {
+        _aiEditQuota = quota;
+      }
+      _aiEditSubscription = subscription;
+      _isLoadingAiEditQuota = false;
+      _aiEditQuotaLoadFailed = quota == null;
+      _aiEditSubscriptionLoadFailed = subscription == null;
+    });
   }
 
   Future<void> _pickVideo() async {
@@ -2819,9 +2840,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   Widget _buildQuotaIndicator() {
     final quota = _aiEditQuota;
+    final subscription = _aiEditSubscription;
 
-    if (quota == null) {
-      if (_aiEditQuotaLoadFailed) {
+    if (quota == null || subscription == null) {
+      if (_aiEditQuotaLoadFailed || _aiEditSubscriptionLoadFailed) {
         return Material(
           key: const ValueKey('ai-edit-quota-indicator'),
           color: AppTheme.glassDeep,
@@ -2864,6 +2886,58 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           width: 16,
           height: 16,
           child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    if (!subscription.isPro) {
+      final planLabel = switch (subscription.plan.trim().toUpperCase()) {
+        'BASIC' => 'Basic',
+        'STARTER' => 'Starter',
+        'PRO' => 'Pro',
+        final value when value.isNotEmpty => value,
+        _ => 'ไม่ทราบแพ็กเกจ',
+      };
+
+      return Semantics(
+        label: 'แพ็กเกจ $planLabel AI ตัดต่อใช้ได้เฉพาะ Pro',
+        button: true,
+        child: Material(
+          key: const ValueKey('ai-edit-quota-indicator'),
+          color: AppTheme.glassDeep,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: _isLoadingAiEditQuota
+                ? null
+                : () => unawaited(_loadAiEditQuota()),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'แพ็กเกจ $planLabel',
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    'AI ตัดต่อใช้ได้เฉพาะ Pro',
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 8.5,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       );
     }

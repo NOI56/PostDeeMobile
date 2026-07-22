@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../core/config/app_config.dart';
@@ -20,6 +21,11 @@ import 'edit_styles.dart';
 import 'review_video_timeline.dart';
 import 'style_options.dart';
 import 'subtitle_burn_video_processor.dart';
+import 'subtitle_studio/subtitle_draft_store.dart';
+import 'subtitle_studio/subtitle_project.dart';
+import 'subtitle_studio/subtitle_project_identity.dart';
+import 'subtitle_studio/subtitle_project_mapper.dart';
+import 'subtitle_studio/subtitle_studio_screen.dart';
 
 typedef EditorVideoPicker = Future<PickedVideoFile?> Function();
 typedef EditorUploadCreator = Future<UploadResult> Function(
@@ -45,6 +51,12 @@ typedef EditorSubscriptionLoader = Future<SubscriptionStatusResult> Function();
 typedef AiEditQuotaLoader = Future<AiEditQuota> Function();
 typedef ReviewVideoControllerFactory = VideoPlayerController Function(
   File file,
+);
+typedef SubtitleStudioLauncher = Future<SubtitleProject?> Function(
+  BuildContext context,
+  File sourceFile,
+  SubtitleProject initialProject,
+  SubtitleDraftStore draftStore,
 );
 
 enum _AiDurationMode { unselected, seconds30, seconds60, custom }
@@ -337,6 +349,8 @@ class AiEditingScreen extends StatefulWidget {
     this.enableExperimentalBeatSync = AppConfig.enableExperimentalBeatSync,
     this.enableExperimentalAiHook = AppConfig.enableExperimentalAiHook,
     this.reviewVideoControllerFactory,
+    this.subtitleStudioLauncher,
+    this.subtitleDraftStore,
     this.onBack,
   });
 
@@ -356,6 +370,8 @@ class AiEditingScreen extends StatefulWidget {
   final bool enableExperimentalBeatSync;
   final bool enableExperimentalAiHook;
   final ReviewVideoControllerFactory? reviewVideoControllerFactory;
+  final SubtitleStudioLauncher? subtitleStudioLauncher;
+  final SubtitleDraftStore? subtitleDraftStore;
   final VoidCallback? onBack;
 
   @override
@@ -371,6 +387,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   PickedVideoFile? _selectedVideo;
   AiEditPrepareResult? _preparedEdit;
+  SubtitleProject? _subtitleProject;
+  SubtitleDraftStore? _resolvedSubtitleDraftStore;
   BurnedSubtitleResult? _renderedResult;
   _AiSetupSnapshot? _acceptedSetup;
   final Map<String, AiEditPrepareResult> _preparedEditsBySignature = {};
@@ -518,6 +536,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       setState(() {
         _selectedVideo = picked;
         _preparedEdit = null;
+        _subtitleProject = null;
         _preparedEditsBySignature.clear();
         _preparedEditsByAnalysisSignature.clear();
         _renderResultsBySignature.clear();
@@ -762,12 +781,51 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _aiEditQuota = preparedResult.quota;
         _isLoadingAiEditQuota = false;
         _aiEditQuotaLoadFailed = false;
+        _preparedEdit = preparedResult;
         _processingTitle = 'กำลังสร้างวิดีโอตัวอย่าง...';
         _renderProgress = 0;
       });
 
       final reviewCapabilities =
           _buildReviewCapabilities(preparedResult.recipe);
+      final shouldOpenSubtitleStudio = reviewCapabilities['subtitle'] == true &&
+          (widget.subtitleStudioLauncher != null || widget.burnVideo == null);
+      if (shouldOpenSubtitleStudio) {
+        final identity = buildSubtitleProjectIdentity(
+          sourceFile: file,
+          setupSignature: prepareSignature,
+        );
+        final initialProject = mapAiEditRecipeToSubtitleProject(
+          recipe: preparedResult.recipe,
+          projectId: identity.projectId,
+          sourceFingerprint: identity.sourceFingerprint,
+          now: DateTime.now().toUtc(),
+        );
+        setState(() {
+          _processing = false;
+          _renderProgress = null;
+        });
+        final editedProject = await _openSubtitleStudio(
+          sourceFile: file,
+          initialProject: initialProject,
+        );
+        if (!mounted) return;
+        if (editedProject == null) {
+          setState(() {
+            _processing = false;
+            _renderProgress = null;
+            _renderCancelRequested = false;
+          });
+          return;
+        }
+        validateSubtitleProject(editedProject);
+        setState(() {
+          _subtitleProject = editedProject;
+          _processing = true;
+          _processingTitle = 'กำลังสร้างวิดีโอตัวอย่างพร้อมซับ...';
+          _renderProgress = 0;
+        });
+      }
       final result = await _renderPreparedRecipe(
         recipe: preparedResult.recipe,
         capabilities: reviewCapabilities,
@@ -780,7 +838,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       if (mounted) {
         final acceptedSetup = _captureSetupSnapshot();
         setState(() {
-          _preparedEdit = preparedResult;
           _renderedResult = result;
           _prepareReviewForResult(result);
           _acceptedSetup = acceptedSetup;
@@ -804,6 +861,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _handleProcessingFailure(error.toString());
     } on SubtitleBurnException catch (error) {
       _handleProcessingFailure(error.message);
+    } on SubtitleProjectValidationException catch (error) {
+      _handleProcessingFailure(
+        'เตรียมโปรเจกต์ซับไม่สำเร็จ: ${error.message}',
+      );
     } catch (_) {
       _handleProcessingFailure('AI ตัดต่อวิดีโอไม่สำเร็จ ลองใหม่อีกครั้ง');
     }
@@ -921,6 +982,42 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     }
   }
 
+  Future<SubtitleDraftStore> _getSubtitleDraftStore() async {
+    final injected = widget.subtitleDraftStore;
+    if (injected != null) return injected;
+    final cached = _resolvedSubtitleDraftStore;
+    if (cached != null) return cached;
+    final supportDirectory = await getApplicationSupportDirectory();
+    final store = FileSubtitleDraftStore(
+      rootDirectory: Directory(
+        '${supportDirectory.path}${Platform.pathSeparator}subtitle-drafts',
+      ),
+    );
+    _resolvedSubtitleDraftStore = store;
+    return store;
+  }
+
+  Future<SubtitleProject?> _openSubtitleStudio({
+    required File sourceFile,
+    required SubtitleProject initialProject,
+  }) async {
+    final store = await _getSubtitleDraftStore();
+    if (!mounted) return null;
+    final launcher = widget.subtitleStudioLauncher;
+    if (launcher != null) {
+      return launcher(context, sourceFile, initialProject, store);
+    }
+    return Navigator.of(context).push<SubtitleProject>(
+      MaterialPageRoute<SubtitleProject>(
+        builder: (_) => SubtitleStudioScreen(
+          sourceFile: sourceFile,
+          initialProject: initialProject,
+          draftStore: store,
+        ),
+      ),
+    );
+  }
+
   void _handleProcessingFailure(String message) {
     if (!mounted) {
       return;
@@ -1004,8 +1101,18 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       );
     }
 
+    final studioProject =
+        capabilities['subtitle'] == true ? _subtitleProject : null;
+    final studioStyle = studioProject?.defaultStyle;
     var subtitleSegments = <SubtitleSegment>[
-      if (capabilities['subtitle'] ?? false)
+      if (studioProject != null)
+        for (final cue in studioProject.cues)
+          SubtitleSegment(
+            text: cue.text,
+            start: cue.sourceStartMs / 1000,
+            end: cue.sourceEndMs / 1000,
+          )
+      else if (capabilities['subtitle'] ?? false)
         for (final segment in recipe.subtitles.segments)
           SubtitleSegment(
             text: segment.text,
@@ -1014,7 +1121,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           ),
     ];
     final subtitleMaxChars = options.subtitleMaxChars;
-    if (subtitleMaxChars != null) {
+    if (studioProject == null && subtitleMaxChars != null) {
       subtitleSegments = rechunkSubtitleByMaxChars(
         subtitleSegments,
         subtitleMaxChars,
@@ -1080,6 +1187,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       'contrast': options.contrast ?? 0,
       'subtitleFontSize': options.subtitleFontSize ?? 18,
       'subtitleAtBottom': options.subtitleAtBottom ?? true,
+      'subtitleStudioStyle': studioStyle?.toJson(),
       'previewProfile': previewProfile == null
           ? null
           : {
@@ -1130,8 +1238,21 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       filterIndex: options.filterIndex ?? 0,
       brightness: options.brightness ?? 0,
       contrast: options.contrast ?? 0,
-      subtitleFontSize: options.subtitleFontSize ?? 18,
-      subtitleAtBottom: options.subtitleAtBottom ?? true,
+      subtitleFontSize: studioStyle?.fontSize ?? options.subtitleFontSize ?? 18,
+      subtitleAtBottom: studioStyle == null
+          ? options.subtitleAtBottom ?? true
+          : studioStyle.alignment == SubtitleAlignment.bottom,
+      subtitleAlignment: studioStyle == null
+          ? null
+          : _burnSubtitleAlignment(studioStyle.alignment),
+      subtitleFontName: studioStyle?.fontId ?? 'Prompt',
+      subtitleFontAssetPath:
+          studioStyle == null ? null : _subtitleFontAssetPath(studioStyle),
+      subtitleTextColor: studioStyle?.textColor ?? '#FFFFFF',
+      subtitleOutlineColor: studioStyle?.outlineColor ?? '#000000',
+      subtitleOutlineWidth: studioStyle?.outlineWidth ?? 2,
+      subtitleShadowColor: studioStyle?.shadowColor ?? '#000000',
+      subtitleShadowDepth: studioStyle?.shadowDepth ?? 0,
       preserveTempDirectoryPaths: {
         if (_renderedResult != null) _renderedResult!.file.parent.path,
         for (final result in _renderResultsBySignature.values)
@@ -1220,6 +1341,27 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   String get _effectiveSubtitlePosition =>
       _subtitlePosition == 'top' ? 'top' : 'bottom';
+
+  BurnSubtitleAlignment _burnSubtitleAlignment(SubtitleAlignment alignment) =>
+      switch (alignment) {
+        SubtitleAlignment.top => BurnSubtitleAlignment.top,
+        SubtitleAlignment.middle => BurnSubtitleAlignment.middle,
+        SubtitleAlignment.bottom => BurnSubtitleAlignment.bottom,
+      };
+
+  String _subtitleFontAssetPath(SubtitleStyle style) {
+    final family = style.fontId == 'Anuphan' ? 'anuphan' : 'prompt';
+    final familyName = family == 'anuphan' ? 'Anuphan' : 'Prompt';
+    final weight = switch (style.fontWeight) {
+      >= 900 when family == 'prompt' => 'Black',
+      >= 800 when family == 'prompt' => 'ExtraBold',
+      >= 700 => 'Bold',
+      >= 600 => 'SemiBold',
+      >= 500 => 'Medium',
+      _ => 'Regular',
+    };
+    return 'assets/fonts/$family/$familyName-$weight.ttf';
+  }
 
   _AiSetupSnapshot _captureSetupSnapshot() {
     return _AiSetupSnapshot(
@@ -1450,6 +1592,66 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         });
         _showError('อัปเดตคลิปไม่สำเร็จ · ผลลัพธ์เดิมยังอยู่');
       }
+    }
+  }
+
+  Future<void> _editReviewSubtitles() async {
+    final prepared = _preparedEdit;
+    final project = _subtitleProject;
+    final picked = _selectedVideo;
+    if (prepared == null ||
+        project == null ||
+        picked == null ||
+        _processing ||
+        _updatingReviewPreview) {
+      return;
+    }
+
+    final edited = await _openSubtitleStudio(
+      sourceFile: File(picked.path),
+      initialProject: project,
+    );
+    if (!mounted || edited == null) return;
+    validateSubtitleProject(edited);
+
+    final previous = _subtitleProject;
+    setState(() {
+      _subtitleProject = edited;
+      _updatingReviewPreview = true;
+      _renderProgress = 0;
+      _renderCancelRequested = false;
+    });
+    try {
+      final result = await _renderPreparedRecipe(
+        recipe: prepared.recipe,
+        capabilities: Map<String, bool>.from(_appliedReviewCapabilities),
+      );
+      if (!mounted) return;
+      setState(() {
+        _renderedResult = result;
+        _prepareReviewForResult(result);
+        _updatingReviewPreview = false;
+        _renderProgress = null;
+        _renderCancelRequested = false;
+      });
+    } on SubtitleBurnException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _subtitleProject = previous;
+        _updatingReviewPreview = false;
+        _renderProgress = null;
+        _renderCancelRequested = false;
+      });
+      _showError('${error.message} • ผลลัพธ์เดิมยังอยู่');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _subtitleProject = previous;
+        _updatingReviewPreview = false;
+        _renderProgress = null;
+        _renderCancelRequested = false;
+      });
+      _showError('อัปเดตซับไม่สำเร็จ • ผลลัพธ์เดิมยังอยู่');
     }
   }
 
@@ -2003,6 +2205,27 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ),
         const SizedBox(height: 14),
         _buildAnalysisSummary(),
+        if (_subtitleProject != null &&
+            (_appliedReviewCapabilities['subtitle'] ?? false)) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const ValueKey('ai-review-edit-subtitles'),
+            onPressed: _updatingReviewPreview ? null : _editReviewSubtitles,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              foregroundColor: AppTheme.accentCyanInk,
+              side: BorderSide(color: AppTheme.accent.withValues(alpha: 0.55)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            icon: const Icon(Icons.subtitles_outlined, size: 19),
+            label: const Text(
+              'แก้ข้อความและรูปแบบซับ',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         _sectionHeading(
           icon: Icons.auto_awesome,
@@ -2604,6 +2827,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                 setState(() {
                   _selectedVideo = null;
                   _preparedEdit = null;
+                  _subtitleProject = null;
                   _preparedEditsBySignature.clear();
                   _preparedEditsByAnalysisSignature.clear();
                   _renderResultsBySignature.clear();

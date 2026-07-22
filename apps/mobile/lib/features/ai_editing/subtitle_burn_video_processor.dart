@@ -103,6 +103,14 @@ class BurnSubtitleRequest {
     this.stickerPositions = const [],
     this.subtitleFontSize = 18,
     this.subtitleAtBottom = true,
+    this.subtitleAlignment,
+    this.subtitleFontName = 'Prompt',
+    this.subtitleFontAssetPath,
+    this.subtitleTextColor = '#FFFFFF',
+    this.subtitleOutlineColor = '#000000',
+    this.subtitleOutlineWidth = 2,
+    this.subtitleShadowColor = '#000000',
+    this.subtitleShadowDepth = 0,
     this.preserveTempDirectoryPaths = const {},
     this.outputDurationSeconds,
     this.onProgress,
@@ -134,6 +142,14 @@ class BurnSubtitleRequest {
   /// Burned subtitle font size and whether it sits at the bottom (vs top).
   final double subtitleFontSize;
   final bool subtitleAtBottom;
+  final BurnSubtitleAlignment? subtitleAlignment;
+  final String subtitleFontName;
+  final String? subtitleFontAssetPath;
+  final String subtitleTextColor;
+  final String subtitleOutlineColor;
+  final double subtitleOutlineWidth;
+  final String subtitleShadowColor;
+  final double subtitleShadowDepth;
 
   /// Render-result directories that must remain available until this render
   /// succeeds. This lets review flows keep the last accepted video on failure.
@@ -255,20 +271,52 @@ String buildSrtContent(List<SubtitleSegment> segments) {
   return buffer.toString();
 }
 
-/// Builds the libass `force_style` for burned subtitles. [atBottom] uses
-/// Alignment=2 (bottom-center) or 8 (top-center). Pure + testable.
+enum BurnSubtitleAlignment { top, middle, bottom }
+
+/// Builds the libass `force_style` for burned subtitles. Pure + testable.
 String buildSubtitleForceStyle({
   double fontSize = 18,
   bool atBottom = true,
+  BurnSubtitleAlignment? alignment,
   String fontName = 'Prompt',
+  String textColor = '#FFFFFF',
+  String outlineColor = '#000000',
+  double outlineWidth = 2,
+  String shadowColor = '#000000',
+  double shadowDepth = 0,
 }) {
   final size = fontSize.round();
-  final alignment = atBottom ? 2 : 8;
+  final assAlignment = switch (alignment) {
+    BurnSubtitleAlignment.top => 8,
+    BurnSubtitleAlignment.middle => 5,
+    BurnSubtitleAlignment.bottom => 2,
+    null => atBottom ? 2 : 8,
+  };
   final safeFontName = fontName.replaceAll(RegExp(r"[',:]"), '').trim();
 
   return 'FontName=${safeFontName.isEmpty ? 'Prompt' : safeFontName},'
-      'Fontsize=$size,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,'
-      'BorderStyle=1,Outline=2,Alignment=$alignment';
+      'Fontsize=$size,PrimaryColour=${_assColor(textColor, '#FFFFFF')},'
+      'OutlineColour=${_assColor(outlineColor, '#000000')},'
+      'BackColour=${_assColor(shadowColor, '#000000')},BorderStyle=1,'
+      'Outline=${_safeAssNumber(outlineWidth)},'
+      'Shadow=${_safeAssNumber(shadowDepth)},Alignment=$assAlignment';
+}
+
+String _assColor(String color, String fallback) {
+  final normalized = RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch(color)
+      ? color.substring(1).toUpperCase()
+      : fallback.substring(1);
+  final red = normalized.substring(0, 2);
+  final green = normalized.substring(2, 4);
+  final blue = normalized.substring(4, 6);
+  return '&H00$blue$green$red';
+}
+
+String _safeAssNumber(double value) {
+  final safe = value.isFinite && value >= 0 ? value : 0;
+  return safe == safe.roundToDouble()
+      ? safe.round().toString()
+      : safe.toStringAsFixed(1);
 }
 
 /// A video encoder choice for the render: the FFmpeg codec name plus its
@@ -625,6 +673,12 @@ List<String> buildEditFfmpegArguments({
   List<(double dx, double dy)> stickerPositions = const [],
   double subtitleFontSize = 18,
   bool subtitleAtBottom = true,
+  BurnSubtitleAlignment? subtitleAlignment,
+  String subtitleTextColor = '#FFFFFF',
+  String subtitleOutlineColor = '#000000',
+  double subtitleOutlineWidth = 2,
+  String subtitleShadowColor = '#000000',
+  double subtitleShadowDepth = 0,
   String videoCodec = 'mpeg4',
   List<String> videoEncoderArgs = const ['-q:v', '4'],
   bool scaleEvenDimensions = false,
@@ -689,7 +743,13 @@ List<String> buildEditFfmpegArguments({
     final forceStyle = buildSubtitleForceStyle(
       fontSize: subtitleFontSize,
       atBottom: subtitleAtBottom,
+      alignment: subtitleAlignment,
       fontName: subtitleFontName,
+      textColor: subtitleTextColor,
+      outlineColor: subtitleOutlineColor,
+      outlineWidth: subtitleOutlineWidth,
+      shadowColor: subtitleShadowColor,
+      shadowDepth: subtitleShadowDepth,
     );
     final fontsDirectoryOption = escapedFontsDirectory == null
         ? ''
@@ -900,9 +960,15 @@ class FfmpegSubtitleBurnVideoProcessor {
     String? renderFontPath;
     if (hasSubtitles || hasText) {
       final bundle = assetBundle ?? rootBundle;
-      final fontData = await bundle.load(fontAssetPath);
-      final fontFile =
-          File('${workingDirectory.path}${separator}Prompt-Bold.ttf');
+      final selectedFontAsset = request.subtitleFontAssetPath ?? fontAssetPath;
+      final fontData = await bundle.load(selectedFontAsset);
+      final fontAssetName = selectedFontAsset.split(RegExp(r'[\\/]')).last;
+      final safeFontAssetName = fontAssetName.toLowerCase().endsWith('.ttf')
+          ? fontAssetName
+          : 'subtitle-font.ttf';
+      final fontFile = File(
+        '${workingDirectory.path}$separator$safeFontAssetName',
+      );
       await fontFile.writeAsBytes(fontData.buffer.asUint8List());
       renderFontPath = fontFile.path;
     }
@@ -975,7 +1041,7 @@ class FfmpegSubtitleBurnVideoProcessor {
               subtitlePath: subtitlePath,
               subtitleFontsDirectory:
                   hasSubtitles ? workingDirectory.path : null,
-              subtitleFontName: 'Prompt',
+              subtitleFontName: request.subtitleFontName,
               colorFilter: attemptedColorFilter,
               drawTextFilters: drawTextFilters,
               speed: request.speed,
@@ -988,6 +1054,12 @@ class FfmpegSubtitleBurnVideoProcessor {
                   stickerPaths.isEmpty ? const [] : request.stickerPositions,
               subtitleFontSize: request.subtitleFontSize,
               subtitleAtBottom: request.subtitleAtBottom,
+              subtitleAlignment: request.subtitleAlignment,
+              subtitleTextColor: request.subtitleTextColor,
+              subtitleOutlineColor: request.subtitleOutlineColor,
+              subtitleOutlineWidth: request.subtitleOutlineWidth,
+              subtitleShadowColor: request.subtitleShadowColor,
+              subtitleShadowDepth: request.subtitleShadowDepth,
               videoCodec: encoder.codec,
               videoEncoderArgs: encoder.encoderArgs,
               scaleEvenDimensions: encoder.scaleEvenDimensions,

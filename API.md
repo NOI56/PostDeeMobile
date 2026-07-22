@@ -940,6 +940,13 @@ Response includes:
   `applied`, `hinted`, `planned`, or `skipped`
 - `quota` with `{ limitMinutes, usedMinutes, remainingMinutes }`
 
+Current mobile builds convert `recipe.subtitles`, transcript metadata, and cut
+ranges into a local versioned `SubtitleProject` for Subtitle Studio. Editing,
+autosave, live preview, local preview render, reopen, and export reuse this
+prepare response; they require no additional API endpoint and consume no extra
+AI-edit minutes. The existing `recipe.subtitles.segments` response remains the
+compatibility contract while reliable active-word cue metadata is deferred.
+
 Production mobile enables only `subtitle`, `silence`, `filler`, and `color`,
 because those four have a real local renderer. The setup UI locks auto-reframe,
 zoom, audio cleanup, subtitle translation, price tag, CTA, and the AI-page

@@ -515,6 +515,28 @@ void main() {
     expect(top, contains('Alignment=8'));
   });
 
+  test('builds the selected font, colors, outline, shadow, and middle position',
+      () {
+    final style = buildSubtitleForceStyle(
+      fontSize: 28,
+      alignment: BurnSubtitleAlignment.middle,
+      fontName: 'Anuphan',
+      textColor: '#12AB34',
+      outlineColor: '#112233',
+      outlineWidth: 3,
+      shadowColor: '#445566',
+      shadowDepth: 4,
+    );
+
+    expect(style, contains('FontName=Anuphan'));
+    expect(style, contains('PrimaryColour=&H0034AB12'));
+    expect(style, contains('OutlineColour=&H00332211'));
+    expect(style, contains('BackColour=&H00665544'));
+    expect(style, contains('Outline=3'));
+    expect(style, contains('Shadow=4'));
+    expect(style, contains('Alignment=5'));
+  });
+
   test('applies subtitle font size and top position to the args', () {
     final args = buildEditFfmpegArguments(
       inputPath: '/in.mp4',

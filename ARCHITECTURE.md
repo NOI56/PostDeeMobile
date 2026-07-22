@@ -564,8 +564,14 @@ without automatic video deletion. `POST /ai-edits/prepare` combines the AI editi
 capability toggles, selected style/prompt, transcript, cut plan, overlay hints,
 and quota into one mobile render recipe. The API pre-checks estimated duration, then reserves
 actual transcribed minutes before a successful response so parallel requests do
-not exceed the monthly quota. Mobile caches that successful recipe, renders an
-initial preview, and stays on the AI screen. Review checkboxes automatically
+not exceed the monthly quota. Mobile caches that successful recipe and maps its
+subtitle segments and source-timeline cuts into a versioned local
+`SubtitleProject`. Subtitle Studio sits between `prepare` and the first render:
+it restores an exact source/setup draft from app-owned storage, previews edits
+with a Flutter overlay, and supports cue editing plus whole-clip style changes
+without rerendering. Confirmation sends the corrected source-timeline cues and
+style to FFmpeg; cancelling leaves the draft available and does not start a
+render. Review checkboxes automatically
 re-render from the original clip when supported edits are removed or restored,
 without another metered prepare request. The last successful preview remains
 available if a new render fails. The user can then continue either to
@@ -608,8 +614,12 @@ all devices. Mobile polls that file, supports cancellation and timeouts, and
 caches identical successful renders for the current editing session. Entering
 Upload/Post triggers a separate full-source-dimension render, so preview media
 is never treated as the publishable export.
-The renderer copies the bundled Prompt font into each subtitle render workspace
-and passes that directory to libass. For silence cuts, video frames use the
+The renderer copies the selected bundled Prompt or Anuphan font into each
+subtitle render workspace and passes that directory plus verified static style
+values (font size, text/outline/shadow colours, outline/shadow depth, and safe
+top/middle/bottom alignment) to libass. The current export remains SRT-based;
+ASS active-word events, karaoke, and per-cue style overrides are not enabled.
+For silence cuts, video frames use the
 selected keep timeline while audio keep ranges are reset and concatenated, so
 both streams finish together after local preview re-renders.
 

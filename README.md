@@ -535,6 +535,14 @@ Current mobile pieces:
   the same in-memory transcript and calls non-metered `POST /ai-edits/plan`.
   Audio is not uploaded or transcribed again unless the source or analysis
   settings change.
+- When automatic subtitles are available, mobile now opens Subtitle Studio
+  after `prepare` and before the first FFmpeg render. The user can edit text and
+  timing, add/delete/split/merge cues, undo/redo, and change the bundled
+  Prompt/Anuphan font, size, text colour, outline, shadow, line count, and safe
+  top/middle/bottom position while the Flutter preview updates immediately.
+  Draft JSON is autosaved in app-owned storage and reopening the same source
+  and AI setup restores it. These local edits and retries do not call a metered
+  AI endpoint.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.
@@ -554,9 +562,11 @@ Current mobile pieces:
   user's exact remaining and used Pro minutes. It updates immediately from the
   metered `prepare` response and can be tapped to refresh without consuming a
   minute.
-- Android subtitle export gives libass the bundled Prompt font explicitly so
-  subtitles are burned into the actual MP4 even when the device has no usable
-  system font provider. Silence removal compacts kept audio ranges with
+- Android subtitle export gives libass the selected bundled Prompt or Anuphan
+  font explicitly and maps the selected colour, outline, shadow, and safe
+  alignment into the final MP4. The current rollback-safe renderer still uses
+  SRT/static cues; active-word karaoke and per-cue styles remain future work.
+  Silence removal compacts kept audio ranges with
   `atrim` + `concat` so the audio ends with the shortened video instead of
   continuing after the final frame.
 - Pace cleanup settings are real recipe inputs. `silencePreset` maps to validated

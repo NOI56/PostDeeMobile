@@ -255,14 +255,20 @@ delete/export rights, storage quotas, and a PDPA review before implementation.
 
 ## 6. Implementation phases
 
+Implementation update (2026-07-22): the domain model, local draft store,
+mobile editor/live preview, and verified static SRT/libass style mapping are
+implemented. Pixel 8 emulator E2E passes through a 30-second review result.
+ASS active-word events, reusable brand-style presets, golden parity tests, and
+physical Android/iPhone acceptance remain open release gates below.
+
 ### Phase 0 — Lock behavior with tests
 
-- [ ] Document subtitle editing invariants: non-empty ID, finite timestamps,
+- [x] Document subtitle editing invariants: non-empty ID, finite timestamps,
       `0 <= start < end <= sourceDuration`, stable ordering, and overlap rules.
 - [ ] Add failing tests for Thai grapheme handling, cue edits, timing validation,
       undo/redo, autosave schema migration, and ASS escaping.
-- [ ] Add compatibility fixtures for the current recipe response.
-- [ ] Decide whether exact cue overlaps are disallowed or rendered as layered
+- [x] Add compatibility fixtures for the current recipe response.
+- [x] Decide whether exact cue overlaps are disallowed or rendered as layered
       captions. Recommended MVP: disallow overlaps and offer an automatic fix.
 
 ### Phase 1 — Domain model and project adapter
@@ -275,12 +281,12 @@ Suggested new files:
 
 Work:
 
-- [ ] Convert `AiEditRecipeResult.subtitles`, transcript words, and cut ranges
+- [x] Convert `AiEditRecipeResult.subtitles`, transcript words, and cut ranges
       into `SubtitleProject` without another API request.
-- [ ] Implement edit, add, delete, split, merge, and time-nudge commands.
-- [ ] Bound undo/redo history (recommended first limit: 50 commands).
-- [ ] Preserve Thai combining marks and emoji grapheme clusters.
-- [ ] Add local JSON autosave and safe schema-version fallback.
+- [x] Implement edit, add, delete, split, merge, and time-nudge commands.
+- [x] Bound undo/redo history (recommended first limit: 50 commands).
+- [x] Preserve Thai combining marks and emoji grapheme clusters.
+- [x] Add local JSON autosave and safe schema-version fallback.
 - [ ] Persist whole-clip brand styles locally.
 
 ### Phase 2 — Mobile editor and live preview
@@ -293,14 +299,14 @@ Suggested new files:
 
 Work:
 
-- [ ] Insert Subtitle Studio after `/ai-edits/prepare` and before final render.
-- [ ] Build the cue list, active-cue tracking, tap-to-seek, replay-cue, text edit,
+- [x] Insert Subtitle Studio after `/ai-edits/prepare` and before final render.
+- [x] Build the cue list, active-cue tracking, tap-to-seek, replay-cue, text edit,
       add/delete/split/merge, and undo/redo interactions.
 - [ ] Add whole-clip font, size, text colour, highlight colour, outline, shadow,
       row count, and safe top/middle/bottom position controls.
-- [ ] Do not rerender MP4 when a style or word changes.
-- [ ] Warn when a cue is outside the AI-selected result.
-- [ ] Preserve the last successful rendered result if a new render fails.
+- [x] Do not rerender MP4 when a style or word changes.
+- [x] Warn when a cue is outside the AI-selected result.
+- [x] Preserve the last successful rendered result if a new render fails.
 
 ### Phase 3 — ASS renderer and active-word highlight
 
@@ -316,14 +322,14 @@ Files to extend:
 Work:
 
 - [ ] Generate deterministic ASS headers, styles, events, and escaped text.
-- [ ] Copy every selected bundled font into the render workspace.
-- [ ] Map preview controls only to verified libass equivalents.
+- [x] Copy every selected bundled font into the render workspace.
+- [x] Map preview controls only to verified libass equivalents.
 - [ ] Generate active-word events only for reliable word timing; do not rely on
       karaoke tags until their current-word-only behavior is visually verified.
-- [ ] Keep segment-level fallback for fragmented Thai timing.
-- [ ] Keep current hardware encoder, MPEG-4 fallback, stream verification,
+- [x] Keep segment-level fallback for fragmented Thai timing.
+- [x] Keep current hardware encoder, MPEG-4 fallback, stream verification,
       cancellation, temp cleanup, audio/video cut synchronization, and progress.
-- [ ] Run one final render after confirmation, then reuse current result review
+- [x] Run one final render after confirmation, then reuse current result review
       and Upload/Post handoff.
 - [ ] Put Subtitle Studio/ASS export behind a feature flag until real-device
       acceptance passes; preserve the current SRT route as rollback.

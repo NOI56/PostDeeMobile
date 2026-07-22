@@ -98,6 +98,20 @@ void main() {
     expect(editor.project.cues.single.text, 'after');
   });
 
+  test('style changes are validated and participate in undo and redo', () {
+    final editor = testEditor(projectWithCue(text: 'before'));
+    final updatedStyle = styleWithFontSize(30);
+
+    editor.updateDefaultStyle(updatedStyle);
+
+    expect(editor.project.defaultStyle.fontSize, 30);
+    expect(editor.project.revision, 1);
+    editor.undo();
+    expect(editor.project.defaultStyle.fontSize, 22);
+    editor.redo();
+    expect(editor.project.defaultStyle.fontSize, 30);
+  });
+
   test('undo history keeps at most fifty snapshots', () {
     final editor = testEditor(projectWithCue(text: '0'));
     for (var index = 1; index <= 55; index += 1) {

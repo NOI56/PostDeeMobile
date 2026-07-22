@@ -9,6 +9,8 @@ import 'package:postdee_mobile/features/ai_editing/ai_edit_audio_extractor.dart'
 import 'package:postdee_mobile/features/ai_editing/ai_editing_screen.dart';
 import 'package:postdee_mobile/features/ai_editing/beat_music_picker.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
+import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_draft_store.dart';
+import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_project.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:video_player/video_player.dart';
@@ -31,6 +33,19 @@ PickedVideoFile _createPickedVideoFixture(String name) {
     width: 1080,
     height: 1920,
   );
+}
+
+class _MemorySubtitleDraftStore implements SubtitleDraftStore {
+  SubtitleProject? saved;
+
+  @override
+  Future<void> deleteDraft(String projectId) async => saved = null;
+
+  @override
+  Future<SubtitleProject?> loadDraft(String projectId) async => saved;
+
+  @override
+  Future<void> saveDraft(SubtitleProject project) async => saved = project;
 }
 
 Future<AiEditAudioArtifact> _extractAudioFixture(File source) {
@@ -792,6 +807,96 @@ void main() {
     expect(find.text('AI ตัดต่อให้แล้ว'), findsOneWidget);
     expect(find.text('ไปหน้าโพสต์'), findsOneWidget);
     expect(find.text('ตัดต่อเพิ่ม'), findsNothing);
+  });
+
+  testWidgets('opens Subtitle Studio before render and uses its edited output',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final pickedVideo = _createPickedVideoFixture('subtitle-studio.mp4');
+    final renderedVideo = _createRenderedVideoFixture('subtitle-edited.mp4');
+    final store = _MemorySubtitleDraftStore();
+    SubtitleProject? studioInput;
+    BurnSubtitleRequest? renderRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          extractAudio: _extractAudioFixture,
+          createUpload: (_) async => const UploadResult(
+            id: 'subtitle-upload',
+            videoS3Key: 'uploads/subtitle-audio.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          subtitleDraftStore: store,
+          subtitleStudioLauncher:
+              (context, sourceFile, initialProject, draftStore) async {
+            studioInput = initialProject;
+            final updatedStyle = SubtitleStyle(
+              fontId: 'Anuphan',
+              fontWeight: 700,
+              fontSize: 30,
+              textColor: '#00E5A8',
+              activeWordColor: '#FFF45C',
+              outlineColor: '#112233',
+              outlineWidth: 3,
+              shadowColor: '#445566',
+              shadowDepth: 4,
+              alignment: SubtitleAlignment.middle,
+              normalizedX: 0.5,
+              normalizedY: 0.5,
+              maxLines: 2,
+            );
+            return initialProject.copyWith(
+              cues: [
+                initialProject.cues.first.copyWith(text: 'ซับที่แก้แล้ว'),
+              ],
+              defaultStyle: updatedStyle,
+              revision: initialProject.revision + 1,
+              updatedAt: DateTime.utc(2026, 7, 22),
+            );
+          },
+          burnVideo: (request) async {
+            renderRequest = request;
+            return renderedVideo;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(studioInput?.cues.single.text, isNotEmpty);
+    expect(renderRequest?.segments.single.text, 'ซับที่แก้แล้ว');
+    expect(renderRequest?.subtitleFontName, 'Anuphan');
+    expect(renderRequest?.subtitleFontSize, 30);
+    expect(renderRequest?.subtitleTextColor, '#00E5A8');
+    expect(renderRequest?.subtitleOutlineColor, '#112233');
+    expect(renderRequest?.subtitleOutlineWidth, 3);
+    expect(renderRequest?.subtitleShadowColor, '#445566');
+    expect(renderRequest?.subtitleShadowDepth, 4);
+    expect(
+      renderRequest?.subtitleAlignment,
+      BurnSubtitleAlignment.middle,
+    );
+    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('ai-review-edit-subtitles')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.byKey(const ValueKey('ai-review-edit-subtitles')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('stops before upload when the selected video has no audio',

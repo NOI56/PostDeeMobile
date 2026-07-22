@@ -33,6 +33,10 @@ class SubtitleProjectEditor {
   bool get canUndo => _undoHistory.isNotEmpty;
   bool get canRedo => _redoHistory.isNotEmpty;
 
+  void updateDefaultStyle(SubtitleStyle style) {
+    _mutateProject((project) => project.copyWith(defaultStyle: style));
+  }
+
   void updateCueText(String cueId, String text) {
     _mutate((cues) {
       final index = _cueIndex(cues, cueId);
@@ -186,8 +190,14 @@ class SubtitleProjectEditor {
 
   void _mutate(List<SubtitleCue> Function(List<SubtitleCue>) transform) {
     final cues = transform(List<SubtitleCue>.of(_project.cues));
-    final next = _project.copyWith(
-      cues: cues,
+    _mutateProject((project) => project.copyWith(cues: cues));
+  }
+
+  void _mutateProject(
+    SubtitleProject Function(SubtitleProject project) transform,
+  ) {
+    final transformed = transform(_project);
+    final next = transformed.copyWith(
       revision: _project.revision + 1,
       updatedAt: _now(),
     );

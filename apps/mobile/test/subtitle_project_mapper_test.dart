@@ -210,13 +210,27 @@ void main() {
     }
   });
 
-  test('rejects malformed or overlapping cut ranges', () {
+  test('merges overlapping cut ranges from the combined AI recipe', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        cutRanges: const [
+          AiEditCut(start: 1, end: 3),
+          AiEditCut(start: 2, end: 4),
+        ],
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cutRanges, hasLength(1));
+    expect(project.cutRanges.single.sourceStartMs, 1000);
+    expect(project.cutRanges.single.sourceEndMs, 4000);
+  });
+
+  test('rejects malformed cut ranges', () {
     for (final cutRanges in [
       const [AiEditCut(start: 4, end: 3)],
-      const [
-        AiEditCut(start: 1, end: 3),
-        AiEditCut(start: 2, end: 4),
-      ],
       [AiEditCut(start: double.infinity, end: 4)],
     ]) {
       expect(

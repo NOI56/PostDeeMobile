@@ -41,7 +41,7 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
       ),
   ];
 
-  final cutRanges = recipe.cutRanges
+  final mappedCutRanges = recipe.cutRanges
       .map(
         (range) => SubtitleCutRange(
           sourceStartMs: _secondsToMilliseconds(range.start, 'Cut range'),
@@ -54,6 +54,16 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
           ? left.sourceStartMs.compareTo(right.sourceStartMs)
           : left.sourceEndMs.compareTo(right.sourceEndMs),
     );
+  for (final range in mappedCutRanges) {
+    if (range.sourceStartMs < 0 ||
+        range.sourceEndMs <= range.sourceStartMs ||
+        range.sourceEndMs > sourceDurationMs) {
+      throw const SubtitleProjectValidationException(
+        'Cut range has invalid timing.',
+      );
+    }
+  }
+  final cutRanges = _mergeCutRanges(mappedCutRanges);
 
   final project = SubtitleProject(
     schemaVersion: 1,
@@ -70,6 +80,26 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
   );
   validateSubtitleProject(project);
   return project;
+}
+
+List<SubtitleCutRange> _mergeCutRanges(List<SubtitleCutRange> ranges) {
+  final merged = <SubtitleCutRange>[];
+  for (final range in ranges) {
+    if (merged.isEmpty || range.sourceStartMs > merged.last.sourceEndMs) {
+      merged.add(range);
+      continue;
+    }
+    final previous = merged.removeLast();
+    merged.add(
+      SubtitleCutRange(
+        sourceStartMs: previous.sourceStartMs,
+        sourceEndMs: range.sourceEndMs > previous.sourceEndMs
+            ? range.sourceEndMs
+            : previous.sourceEndMs,
+      ),
+    );
+  }
+  return merged;
 }
 
 SubtitleStyle _mapStyle(AiEditSubtitleStyleResult style) {

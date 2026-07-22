@@ -1014,6 +1014,13 @@ non-metered `/ai-edits/plan` endpoint with that transcript and does not upload o
 transcribe the audio again. Changing analysis settings or selecting another
 source still requires a new metered prepare.
 
+When the target is shorter than the transcript, current mobile builds create a
+whole-duration 360 px MP4 proxy at 1 fps with mono 16 kHz AAC. The upload
+must use `purpose=ai-edit-visual-proxy`, `video/mp4`, an `.mp4` name, no client
+dimensions, and at most 50 MiB. This is a low-bandwidth representation of the
+entire timeline, not a small set of selected still frames. The original source
+remains on the device for rendering.
+
 ### `POST /ai-edits/plan`
 
 Returns a structured cut plan for an auto-edit style or a free-form prompt,
@@ -1023,6 +1030,15 @@ Local mode uses the rule-based mock (`model: "mock-rule"`). Staging/production
 may use the configured Groq/OpenAI planner and falls back to the mock on provider
 failure.
 
+If `visualProxyS3Key` is present, owned by the authenticated user, and a Gemini
+key is configured, the API downloads the proxy, uploads it to Gemini Files API,
+waits until it is active, and asks Gemini to watch the complete proxy together
+with the timestamped transcript. The returned cuts are still clamped to the
+requested duration. Any visual download/upload/processing/generation failure
+falls back to the configured audio/transcript planner so an otherwise valid edit
+does not fail. The R2 proxy and Gemini file are temporary and cleaned
+best-effort.
+
 Request (one of `styleId`, `prompt`, or `targetDurationSeconds` is required):
 
 ```json
@@ -1030,6 +1046,8 @@ Request (one of `styleId`, `prompt`, or `targetDurationSeconds` is required):
   "styleId": "flash_sale",
   "prompt": "เธ•เธฑเธ”เธเธณเธซเธขเธฒเธเธญเธญเธเนเธฅเนเธงเน€เธซเธฅเธทเธญ 15 เธงเธด",
   "durationSeconds": 30,
+  "targetDurationSeconds": 15,
+  "visualProxyS3Key": "uploads/local-dev-user/upload-id/postdee-visual-proxy.mp4",
   "segments": [{ "text": "เธฃเธฒเธเธฒ 99 เธเธฒเธ—", "start": 3, "end": 6 }]
 }
 ```
@@ -1052,9 +1070,16 @@ Response:
 }
 ```
 
+`visualProxyS3Key` is optional for old clients and audio-only fallback. A key
+outside the authenticated user's upload namespace returns `403`; a non-MP4 key
+returns `400`. If upload succeeds but the planning request cannot be sent, the
+client may call `POST /ai-edits/visual-proxy/cleanup` with
+`{ "visualProxyS3Key": "..." }`.
+
 `cuts` are absolute-second ranges to remove; the client feeds them into the same
 on-device render pipeline used by silence/segment cuts. Returns `400` when
-`durationSeconds` is missing or neither `styleId` nor `prompt` is provided.
+`durationSeconds` is missing or none of `styleId`, `prompt`, or
+`targetDurationSeconds` is provided.
 
 ## Templates
 

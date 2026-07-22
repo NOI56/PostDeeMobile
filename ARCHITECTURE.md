@@ -586,6 +586,14 @@ transcribing audio again. The planner rejects known prompt leakage and low-quali
 provider segments, scores seller-oriented signals such as hook, benefit, proof,
 offer, and CTA, then returns one continuous target-length story window as
 complementary cut ranges.
+For a result shorter than the transcript, mobile creates a whole-duration visual
+proxy rather than a sparse frame set: 360 px H.264 at 1 fps plus mono 16 kHz AAC.
+The proxy is purpose-limited to 50 MiB, user-owned in R2, downloaded once by the
+API, uploaded to Gemini Files API, and paired with timestamped transcript
+segments. Gemini therefore sees the full clip timeline and audio before choosing
+cuts. The API falls back to the audio/transcript planner if media download,
+Gemini upload, processing, or generation fails. The original source remains on
+device and is always used for preview/full-quality rendering.
 The recipe also omits those unreliable time ranges from user-facing subtitle
 lines, including clearly unexpected mixed-script recognition noise, while
 retaining their speech timing for conservative silence detection.

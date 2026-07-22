@@ -523,6 +523,15 @@ Current mobile pieces:
   `audioS3Key` to the backend. The original video stays on the phone for FFmpeg
   rendering. Local and remote temporary audio are cleaned best-effort after the
   prepare call; legacy `videoS3Key` clients remain compatible.
+- When the requested result is shorter than the source transcript, mobile also
+  creates a temporary whole-duration 360 px MP4 visual proxy at 1 fps with its
+  complete audio track. It uploads that bounded proxy with
+  `purpose=ai-edit-visual-proxy`; `POST /ai-edits/plan` sends the proxy through
+  Gemini Files API together with timestamped Thai transcript segments. Gemini
+  selects the story window after seeing the entire proxy, while the full-quality
+  source never leaves the phone for rendering. If visual analysis is unavailable,
+  the existing audio/transcript plan remains the safe fallback. Local, R2, and
+  Gemini temporary files are cleaned best-effort after planning.
 - The selected 30/60/custom duration is sent as `targetDurationSeconds`. The edit
   planner excludes known prompt leakage and low-quality segments, then uses
   transcript selling signals (hook, benefit, proof, offer, and CTA) to choose one

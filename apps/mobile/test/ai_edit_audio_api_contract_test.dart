@@ -47,6 +47,23 @@ void main() {
     expect(json['segments'], hasLength(1));
   });
 
+  test('AI edit visual plan serializes the owned whole-clip proxy key', () {
+    final json = const AiEditPlanRequest(
+      durationSeconds: 150,
+      targetDurationSeconds: 45,
+      segments: [],
+      visualProxyS3Key: 'uploads/seller/id/visual-proxy.mp4',
+    ).toJson();
+
+    expect(
+      json,
+      containsPair(
+        'visualProxyS3Key',
+        'uploads/seller/id/visual-proxy.mp4',
+      ),
+    );
+  });
+
   test('AI edit prepare keeps the legacy video-only request compatible', () {
     final json = const AiEditPrepareRequest(
       videoS3Key: 'uploads/seller/id/clip.mp4',
@@ -95,6 +112,43 @@ void main() {
       expect(request.uri.path, '/ai-edits/audio/cleanup');
       expect(body, {
         'audioS3Key': 'uploads/seller-test/id/clip.m4a',
+      });
+
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode({'status': 'ok'}));
+      await request.response.close();
+      await cleanupFuture;
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  test('cleanupAiEditVisualProxy posts the owned temporary video key',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final apiClient = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        authHeaders: PostDeeApiAuthHeaders(
+          authTokenProvider: () async => null,
+          mockUserId: 'seller-test',
+          mockSubscriptionPlan: 'PRO',
+        ),
+      );
+      final cleanupFuture = apiClient.cleanupAiEditVisualProxy(
+        'uploads/seller-test/id/visual-proxy.mp4',
+      );
+      final request = await server.first;
+      final body = jsonDecode(await utf8.decoder.bind(request).join())
+          as Map<String, Object?>;
+
+      expect(request.method, 'POST');
+      expect(request.uri.path, '/ai-edits/visual-proxy/cleanup');
+      expect(body, {
+        'visualProxyS3Key': 'uploads/seller-test/id/visual-proxy.mp4',
       });
 
       request.response

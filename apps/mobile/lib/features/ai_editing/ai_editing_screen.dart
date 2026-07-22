@@ -17,6 +17,7 @@ import '../uploader/uploader_screen.dart';
 import '../uploader/video_picker_service.dart';
 import 'ai_edit_audio_extractor.dart';
 import 'ai_edit_media_strategy.dart';
+import 'ai_edit_visual_proxy_extractor.dart';
 import 'beat_music_picker.dart';
 import 'edit_styles.dart';
 import 'review_video_timeline.dart';
@@ -45,6 +46,11 @@ typedef AiEditPlanner = Future<AiEditPlanResult> Function(
 typedef AiEditAudioExtraction = Future<AiEditAudioArtifact> Function(
     File source);
 typedef AiEditAudioCleanup = Future<void> Function(String audioS3Key);
+typedef AiEditVisualProxyExtraction = Future<AiEditVisualProxyArtifact>
+    Function(File source);
+typedef AiEditVisualProxyCleanup = Future<void> Function(
+  String visualProxyS3Key,
+);
 typedef AiVideoRenderer = Future<BurnedSubtitleResult> Function(
   BurnSubtitleRequest request,
 );
@@ -341,6 +347,8 @@ class AiEditingScreen extends StatefulWidget {
     this.planEdit,
     this.extractAudio,
     this.cleanupAiEditAudio,
+    this.extractVisualProxy,
+    this.cleanupAiEditVisualProxy,
     this.loadSubscription,
     this.loadAiEditQuota,
     this.initialTargetDurationSeconds = 30,
@@ -362,6 +370,8 @@ class AiEditingScreen extends StatefulWidget {
   final AiEditPlanner? planEdit;
   final AiEditAudioExtraction? extractAudio;
   final AiEditAudioCleanup? cleanupAiEditAudio;
+  final AiEditVisualProxyExtraction? extractVisualProxy;
+  final AiEditVisualProxyCleanup? cleanupAiEditVisualProxy;
   final EditorSubscriptionLoader? loadSubscription;
   final AiEditQuotaLoader? loadAiEditQuota;
   final int? initialTargetDurationSeconds;
@@ -728,6 +738,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             recipe: previousAnalysis.recipe.withPlan(plan),
             quota: previousAnalysis.quota,
           );
+          prepared = await _enhancePreparedEditWithVisualProxy(
+            sourceFile: file,
+            prepared: prepared,
+          );
           _preparedEditsBySignature[prepareSignature] = prepared;
         } else {
           AiEditAudioArtifact? audioArtifact;
@@ -775,10 +789,13 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             if (!mounted) {
               return;
             }
-            _preparedEditsBySignature[prepareSignature] = preparedFromApi;
             _preparedEditsByAnalysisSignature[analysisSignature] =
                 preparedFromApi;
-            prepared = preparedFromApi;
+            prepared = await _enhancePreparedEditWithVisualProxy(
+              sourceFile: file,
+              prepared: preparedFromApi,
+            );
+            _preparedEditsBySignature[prepareSignature] = prepared;
           } finally {
             if (audioArtifact != null) {
               await _cleanupLocalAudioBestEffort(audioArtifact);
@@ -884,6 +901,96 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       );
     } catch (_) {
       _handleProcessingFailure('AI ตัดต่อวิดีโอไม่สำเร็จ ลองใหม่อีกครั้ง');
+    }
+  }
+
+  bool get _shouldAttemptVisualProxy =>
+      widget.extractVisualProxy != null ||
+      (widget.createUpload == null &&
+          widget.uploadVideoFile == null &&
+          widget.prepareEdit == null &&
+          widget.planEdit == null);
+
+  Future<AiEditPrepareResult> _enhancePreparedEditWithVisualProxy({
+    required File sourceFile,
+    required AiEditPrepareResult prepared,
+  }) async {
+    final transcript = prepared.recipe.transcript;
+    final targetDurationSeconds = _selectedDurationSeconds.toDouble();
+    if (!_shouldAttemptVisualProxy ||
+        transcript.durationSeconds <= 0 ||
+        targetDurationSeconds >= transcript.durationSeconds - 0.5) {
+      return prepared;
+    }
+
+    AiEditVisualProxyArtifact? proxyArtifact;
+    String? remoteProxyKey;
+    try {
+      if (mounted) {
+        setState(
+          () =>
+              _processingTitle = 'กำลังสร้างวิดีโอตัวอย่างทั้งคลิปให้ AI ดู...',
+        );
+      }
+      final extractVisualProxy =
+          widget.extractVisualProxy ?? AiEditVisualProxyExtractor().extract;
+      proxyArtifact = await extractVisualProxy(sourceFile);
+
+      final createUpload = widget.createUpload ?? _apiClient.createUpload;
+      final uploadVideoFile =
+          widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
+      final upload = await createAndUploadFileWithRetry(
+        request: CreateUploadRequest(
+          fileName: _readFileNameFromPath(proxyArtifact.file.path),
+          contentType: 'video/mp4',
+          sizeBytes: proxyArtifact.file.lengthSync(),
+          purpose: 'ai-edit-visual-proxy',
+        ),
+        file: proxyArtifact.file,
+        createUpload: createUpload,
+        uploadFile: uploadVideoFile,
+        onRetry: () {
+          if (mounted) {
+            setState(
+              () => _processingTitle =
+                  'ลิงก์วิดีโอตัวอย่างหมดอายุ กำลังลองใหม่...',
+            );
+          }
+        },
+      );
+      remoteProxyKey = upload.videoS3Key;
+
+      if (mounted) {
+        setState(
+          () => _processingTitle =
+              'AI กำลังดูภาพ ฟังเสียง และเลือกช่วงจากทั้งคลิป...',
+        );
+      }
+      final planEdit = widget.planEdit ?? _apiClient.requestAiEditPlan;
+      final visualPlan = await planEdit(
+        AiEditPlanRequest(
+          segments: transcript.segments,
+          durationSeconds: transcript.durationSeconds,
+          targetDurationSeconds: targetDurationSeconds,
+          visualProxyS3Key: remoteProxyKey,
+        ),
+      );
+      return AiEditPrepareResult(
+        recipe: prepared.recipe.withPlan(visualPlan),
+        quota: prepared.quota,
+      );
+    } catch (error) {
+      debugPrint(
+        'AI visual planning unavailable; using audio plan: $error',
+      );
+      return prepared;
+    } finally {
+      if (proxyArtifact != null) {
+        await _cleanupLocalVisualProxyBestEffort(proxyArtifact);
+      }
+      if (remoteProxyKey != null) {
+        await _cleanupRemoteVisualProxyBestEffort(remoteProxyKey);
+      }
     }
   }
 
@@ -996,6 +1103,28 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       await artifact.cleanup();
     } catch (_) {
       // Do not replace the original processing result or error.
+    }
+  }
+
+  Future<void> _cleanupRemoteVisualProxyBestEffort(
+    String visualProxyS3Key,
+  ) async {
+    try {
+      final cleanup = widget.cleanupAiEditVisualProxy ??
+          _apiClient.cleanupAiEditVisualProxy;
+      await cleanup(visualProxyS3Key);
+    } catch (_) {
+      // The planning API also removes the temporary visual proxy.
+    }
+  }
+
+  Future<void> _cleanupLocalVisualProxyBestEffort(
+    AiEditVisualProxyArtifact artifact,
+  ) async {
+    try {
+      await artifact.cleanup();
+    } catch (_) {
+      // Do not replace the audio plan when temporary cleanup fails.
     }
   }
 

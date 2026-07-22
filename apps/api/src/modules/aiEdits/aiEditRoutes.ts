@@ -1,6 +1,7 @@
 import type { RequestHandler, Response, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
+import type { RealClipMediaPart } from '../captions/realClipCaptionProvider.js';
 import { MediaDownloadError } from '../storage/mediaDownload.js';
 import { isStorageKeyOwnedByUser } from '../storage/storageKeyPolicy.js';
 import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
@@ -19,6 +20,7 @@ import type {
   EditPlanSegment
 } from './editPlanProvider.js';
 import type { TranscriptionProvider } from './transcriptionProvider.js';
+import type { VisualEditPlanProvider } from './visualEditPlanProvider.js';
 
 const readRequiredString = (value: unknown) => {
   if (typeof value !== 'string') {
@@ -35,6 +37,22 @@ const readPositiveNumber = (value: unknown) => {
   }
 
   return value;
+};
+
+const readVisualProxyKey = (value: unknown) => {
+  if (value === undefined) {
+    return { ok: true as const, key: undefined };
+  }
+
+  const key = readRequiredString(value);
+  if (!key || !key.toLowerCase().endsWith('.mp4')) {
+    return {
+      ok: false as const,
+      message: 'visualProxyS3Key must identify an MP4 file'
+    };
+  }
+
+  return { ok: true as const, key };
 };
 
 type AiEditMedia =
@@ -187,7 +205,9 @@ export const registerAiEditRoutes = (
   subscriptionStore: SubscriptionStore,
   aiEditUsageStore: AiEditUsageStore,
   editPlanProvider: EditPlanProvider,
-  deleteMedia: (mediaS3Key: string) => Promise<void>
+  deleteMedia: (mediaS3Key: string) => Promise<void>,
+  visualEditPlanProvider?: VisualEditPlanProvider,
+  fetchVisualMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>
 ) => {
   const cleanupTemporaryAudio = async (media: AiEditMedia) => {
     if (!media.deleteAfterUse) {
@@ -246,6 +266,60 @@ export const registerAiEditRoutes = (
       });
     }
   });
+
+  router.post(
+    '/ai-edits/visual-proxy/cleanup',
+    authMiddleware,
+    async (request, response) => {
+      const authUser = readAuthUser(response.locals);
+      if (!authUser) {
+        response.status(401).json({
+          status: 'error',
+          message: 'Authenticated user is required'
+        });
+        return;
+      }
+
+      const visualProxyResult = readVisualProxyKey(
+        request.body?.visualProxyS3Key
+      );
+      if (!visualProxyResult.ok || !visualProxyResult.key) {
+        response.status(400).json({
+          status: 'error',
+          code: 'AI_EDIT_VISUAL_PROXY_KEY_INVALID',
+          message:
+            visualProxyResult.ok
+              ? 'visualProxyS3Key is required'
+              : visualProxyResult.message
+        });
+        return;
+      }
+      const visualProxyS3Key = visualProxyResult.key;
+      if (!isStorageKeyOwnedByUser({
+        videoS3Key: visualProxyS3Key,
+        userId: authUser.id
+      })) {
+        sendForbiddenMediaKeyResponse(response);
+        return;
+      }
+
+      try {
+        await deleteMedia(visualProxyS3Key);
+      } catch (error) {
+        console.error(
+          'AI edit visual proxy cleanup failed:',
+          error instanceof Error ? error.message : error
+        );
+        response.status(502).json({
+          status: 'error',
+          code: 'AI_EDIT_VISUAL_PROXY_CLEANUP_FAILED',
+          message: 'Temporary visual proxy cleanup failed'
+        });
+        return;
+      }
+      response.json({ status: 'ok' });
+    }
+  );
 
   router.get('/ai-edits/quota', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
@@ -528,6 +602,29 @@ export const registerAiEditRoutes = (
     const targetDurationSeconds = readPositiveNumber(
       request.body?.targetDurationSeconds
     );
+    const visualProxyResult = readVisualProxyKey(
+      request.body?.visualProxyS3Key
+    );
+
+    if (!visualProxyResult.ok) {
+      response.status(400).json({
+        status: 'error',
+        code: 'AI_EDIT_VISUAL_PROXY_KEY_INVALID',
+        message: visualProxyResult.message
+      });
+      return;
+    }
+    const visualProxyS3Key = visualProxyResult.key;
+    if (
+      visualProxyS3Key &&
+      !isStorageKeyOwnedByUser({
+        videoS3Key: visualProxyS3Key,
+        userId: authUser.id
+      })
+    ) {
+      sendForbiddenMediaKeyResponse(response);
+      return;
+    }
 
     if (!styleId && !prompt && !targetDurationSeconds) {
       response.status(400).json({
@@ -537,14 +634,48 @@ export const registerAiEditRoutes = (
       return;
     }
 
-    const plan = await editPlanProvider.plan({
-      segments: readSegments(request.body?.segments),
-      durationSeconds,
-      targetDurationSeconds,
-      styleId,
-      prompt
-    });
+    const segments = readSegments(request.body?.segments);
+    const fallbackPlan = () =>
+      editPlanProvider.plan({
+        segments,
+        durationSeconds,
+        targetDurationSeconds,
+        styleId,
+        prompt
+      });
 
-    response.json({ status: 'ok', plan });
+    try {
+      let plan;
+      if (
+        visualProxyS3Key &&
+        targetDurationSeconds !== undefined &&
+        visualEditPlanProvider &&
+        fetchVisualMedia
+      ) {
+        try {
+          const video = await fetchVisualMedia(visualProxyS3Key);
+          plan = await visualEditPlanProvider.plan({
+            video,
+            segments,
+            durationSeconds,
+            targetDurationSeconds
+          });
+        } catch (error) {
+          console.error(
+            'AI visual edit planning failed; falling back to audio:',
+            error instanceof Error ? error.message : error
+          );
+          plan = await fallbackPlan();
+        }
+      } else {
+        plan = await fallbackPlan();
+      }
+
+      response.json({ status: 'ok', plan });
+    } finally {
+      if (visualProxyS3Key) {
+        await Promise.allSettled([deleteMedia(visualProxyS3Key)]);
+      }
+    }
   });
 };

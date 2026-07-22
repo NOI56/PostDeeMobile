@@ -115,6 +115,7 @@ class AiEditPlanRequest {
     this.targetDurationSeconds,
     this.styleId,
     this.prompt,
+    this.visualProxyS3Key,
   });
 
   final List<ClipTranscriptSegment> segments;
@@ -122,6 +123,7 @@ class AiEditPlanRequest {
   final double? targetDurationSeconds;
   final String? styleId;
   final String? prompt;
+  final String? visualProxyS3Key;
 
   Map<String, Object?> toJson() => {
         'durationSeconds': durationSeconds,
@@ -129,6 +131,7 @@ class AiEditPlanRequest {
           'targetDurationSeconds': targetDurationSeconds,
         if (styleId != null) 'styleId': styleId,
         if (prompt != null) 'prompt': prompt,
+        if (visualProxyS3Key != null) 'visualProxyS3Key': visualProxyS3Key,
         'segments': [
           for (final segment in segments)
             {
@@ -1772,6 +1775,12 @@ class PostDeeApiClient {
   Future<void> cleanupAiEditAudio(String audioS3Key) async {
     await _postJson('/ai-edits/audio/cleanup', {
       'audioS3Key': audioS3Key,
+    });
+  }
+
+  Future<void> cleanupAiEditVisualProxy(String visualProxyS3Key) async {
+    await _postJson('/ai-edits/visual-proxy/cleanup', {
+      'visualProxyS3Key': visualProxyS3Key,
     });
   }
 

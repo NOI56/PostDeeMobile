@@ -6,6 +6,11 @@
 
 **Architecture:** Add a purpose-limited `audio/mp4` path to the existing managed upload API, accept an owned `audioS3Key` in AI edit routes while preserving legacy `videoS3Key`, and keep the existing Groq/recipe/quota flow. Mobile selects `audio-only` from enabled production capabilities, extracts AAC/M4A with FFmpeg, uploads it, requests the existing recipe, and renders that recipe against the untouched source video.
 
+> 2026-07-23 follow-up: this historical audio-only milestone remains valid for
+> transcription and fallback. Whole-duration visual planning is implemented in
+> `2026-07-23-ai-edit-whole-video-proxy-plan.md`; it intentionally supersedes the
+> earlier “do not add the future 360p visual proxy” scope boundary.
+
 **Tech Stack:** Flutter/Dart, FFmpegKit, Node.js, Express, TypeScript, Vitest, Prisma-compatible stores, Cloudflare R2/S3-compatible storage, Groq Whisper.
 
 **Implementation status (2026-07-22):** Backend audio upload/media/cleanup support

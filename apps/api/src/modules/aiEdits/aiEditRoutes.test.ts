@@ -2,6 +2,7 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
+import { createMockVideoStorage } from '../storage/videoStorage.js';
 
 const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
   `uploads/${userId}/${uploadId}/${fileName}`;
@@ -503,6 +504,119 @@ describe('ai edit routes', () => {
       .expect(200);
 
     expect(response.body.plan.cuts).toEqual([{ start: 5, end: 10 }]);
+  });
+
+  it('uses an owned whole-clip proxy for visual highlight planning and cleans it',
+      async () => {
+    const visualPlan = vi.fn(async () => ({
+      cuts: [
+        { start: 0, end: 5 },
+        { start: 15, end: 20 }
+      ],
+      summary: 'เลือกช่วงที่เห็นสินค้าและการสาธิตชัด',
+      model: 'gemini-test-visual'
+    }));
+    const fetchClipMedia = vi.fn(async () => ({
+      data: new Uint8Array([1, 2, 3]),
+      mimeType: 'video/mp4'
+    }));
+    const deleteVideo = vi.fn(async () => undefined);
+    const proxyKey = ownedUploadKey(
+      'local-dev-user',
+      'visual-proxy.mp4',
+      'visual-proxy'
+    );
+    const app = createApp({
+      visualEditPlanProvider: { plan: visualPlan },
+      fetchClipMedia,
+      videoStorage: { ...createMockVideoStorage(), deleteVideo }
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/plan')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        durationSeconds: 20,
+        targetDurationSeconds: 10,
+        segments: [
+          { text: 'ใช้แล้วง่ายมาก', start: 5, end: 10 },
+          { text: 'ราคา 99 บาท', start: 10, end: 15 }
+        ],
+        visualProxyS3Key: proxyKey
+      })
+      .expect(200);
+
+    expect(visualPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        durationSeconds: 20,
+        targetDurationSeconds: 10,
+        video: expect.objectContaining({ mimeType: 'video/mp4' })
+      })
+    );
+    expect(fetchClipMedia).toHaveBeenCalledOnce();
+    expect(fetchClipMedia).toHaveBeenCalledWith(proxyKey);
+    expect(deleteVideo).toHaveBeenCalledWith(proxyKey);
+    expect(response.body.plan.model).toBe('gemini-test-visual');
+  });
+
+  it('falls back to the audio planner when visual planning fails', async () => {
+    const audioPlan = vi.fn(async () => ({
+      cuts: [{ start: 10, end: 20 }],
+      summary: 'ใช้แผนจากเสียง',
+      model: 'audio-fallback'
+    }));
+    const proxyKey = ownedUploadKey(
+      'local-dev-user',
+      'visual-proxy.mp4',
+      'proxy-fallback'
+    );
+    const app = createApp({
+      editPlanProvider: { plan: audioPlan },
+      visualEditPlanProvider: {
+        plan: async () => {
+          throw new Error('Gemini unavailable');
+        }
+      },
+      fetchClipMedia: async () => ({
+        data: new Uint8Array([1]),
+        mimeType: 'video/mp4'
+      })
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/plan')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        durationSeconds: 20,
+        targetDurationSeconds: 10,
+        segments: [{ text: 'ขายสินค้า', start: 0, end: 20 }],
+        visualProxyS3Key: proxyKey
+      })
+      .expect(200);
+
+    expect(audioPlan).toHaveBeenCalledOnce();
+    expect(response.body.plan.model).toBe('audio-fallback');
+  });
+
+  it('rejects a visual proxy owned by another seller', async () => {
+    const app = createApp();
+
+    const response = await request(app)
+      .post('/ai-edits/plan')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        durationSeconds: 20,
+        targetDurationSeconds: 10,
+        segments: [],
+        visualProxyS3Key: ownedUploadKey(
+          'another-seller',
+          'visual-proxy.mp4',
+          'foreign-proxy'
+        )
+      })
+      .expect(403);
+
+    expect(response.body.code).toBe('MEDIA_KEY_FORBIDDEN');
   });
 
   it('blocks the plan endpoint for non-Pro users', async () => {

@@ -7,6 +7,7 @@ import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_edit_audio_extractor.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_editing_screen.dart';
+import 'package:postdee_mobile/features/ai_editing/ai_edit_visual_proxy_extractor.dart';
 import 'package:postdee_mobile/features/ai_editing/beat_music_picker.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_draft_store.dart';
@@ -70,6 +71,19 @@ Future<AiEditAudioArtifact> _extractAudioFixture(File source) {
   file.writeAsBytesSync(List<int>.filled(512, 7));
   return Future.value(
     AiEditAudioArtifact(file: file, workingDirectory: directory),
+  );
+}
+
+Future<AiEditVisualProxyArtifact> _extractVisualProxyFixture(File source) {
+  final directory = Directory.systemTemp.createTempSync(
+    'postdee-editor-visual-proxy-',
+  );
+  final file = File(
+    '${directory.path}${Platform.pathSeparator}postdee-visual-proxy.mp4',
+  );
+  file.writeAsBytesSync(List<int>.filled(1024, 9));
+  return Future.value(
+    AiEditVisualProxyArtifact(file: file, workingDirectory: directory),
   );
 }
 
@@ -454,6 +468,75 @@ void main() {
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
     expect(find.text('เหลือ 59 นาที'), findsOneWidget);
     expect(find.text('Pro · ใช้แล้ว 1/60 นาที'), findsOneWidget);
+  });
+
+  testWidgets('uploads the whole visual proxy before selecting a short plan',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('visual-plan-source.mp4');
+    final renderedVideo = _createRenderedVideoFixture('visual-plan-result.mp4');
+    final uploadPurposes = <String?>[];
+    final planRequests = <AiEditPlanRequest>[];
+    final cleanedProxyKeys = <String>[];
+    String? localProxyPath;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          extractVisualProxy: (source) async {
+            final artifact = await _extractVisualProxyFixture(source);
+            localProxyPath = artifact.file.path;
+            return artifact;
+          },
+          cleanupAiEditAudio: (_) async {},
+          cleanupAiEditVisualProxy: (key) async => cleanedProxyKeys.add(key),
+          pickVideo: () async => pickedVideo,
+          createUpload: (request) async {
+            uploadPurposes.add(request.purpose);
+            final isProxy = request.purpose == 'ai-edit-visual-proxy';
+            return UploadResult(
+              id: isProxy ? 'visual-upload' : 'audio-upload',
+              videoS3Key: isProxy
+                  ? 'uploads/seller/visual-proxy.mp4'
+                  : 'uploads/seller/audio.m4a',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          planEdit: (request) async {
+            planRequests.add(request);
+            return const AiEditPlanResult(
+              cuts: [AiEditCut(start: 30, end: 45)],
+              summary: 'visual plan',
+              model: 'gemini-test-visual',
+            );
+          },
+          burnVideo: (_) async => renderedVideo,
+          reviewVideoControllerFactory: (_) => _FakeReviewVideoController(
+            fakeDuration: const Duration(seconds: 30),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(uploadPurposes, ['ai-edit-audio', 'ai-edit-visual-proxy']);
+    expect(planRequests, hasLength(1));
+    expect(
+      planRequests.single.visualProxyS3Key,
+      'uploads/seller/visual-proxy.mp4',
+    );
+    expect(planRequests.single.durationSeconds, 45);
+    expect(planRequests.single.targetDurationSeconds, 30);
+    expect(cleanedProxyKeys, ['uploads/seller/visual-proxy.mp4']);
+    expect(File(localProxyPath!).existsSync(), isFalse);
+    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
   });
 
   testWidgets('matches the AI setup screen from PostDee.dc.html',

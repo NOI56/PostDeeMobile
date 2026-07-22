@@ -3,6 +3,10 @@ import type { UploadMetadata } from '../storage/videoStorage.js';
 export const aiEditAudioUploadPurpose = 'ai-edit-audio' as const;
 export const aiEditAudioUploadMaxBytes = 25 * 1024 * 1024;
 export const aiEditAudioUploadInvalidCode = 'UPLOAD_AI_EDIT_AUDIO_INVALID' as const;
+export const aiEditVisualProxyUploadPurpose = 'ai-edit-visual-proxy' as const;
+export const aiEditVisualProxyUploadMaxBytes = 50 * 1024 * 1024;
+export const aiEditVisualProxyUploadInvalidCode =
+  'UPLOAD_AI_EDIT_VISUAL_PROXY_INVALID' as const;
 
 const isPositiveNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
@@ -47,6 +51,36 @@ export const readUploadMetadata = (body: unknown, { maxSizeBytes }: ReadUploadMe
         ok: false as const,
         code: aiEditAudioUploadInvalidCode,
         message: 'AI edit audio must be an M4A audio/mp4 file no larger than 25 MiB.'
+      };
+    }
+
+    return {
+      ok: true as const,
+      metadata: {
+        fileName,
+        contentType,
+        sizeBytes,
+        width,
+        height
+      }
+    };
+  }
+
+  if (payload.purpose === aiEditVisualProxyUploadPurpose) {
+    const hasDimensions = payload.width !== undefined || payload.height !== undefined;
+    const proxySizeLimit = Math.min(maxSizeBytes, aiEditVisualProxyUploadMaxBytes);
+    const isValidVisualProxy =
+      fileName.toLowerCase().endsWith('.mp4') &&
+      contentType === 'video/mp4' &&
+      isPositiveNumber(sizeBytes) &&
+      sizeBytes <= proxySizeLimit &&
+      !hasDimensions;
+
+    if (!isValidVisualProxy) {
+      return {
+        ok: false as const,
+        code: aiEditVisualProxyUploadInvalidCode,
+        message: 'AI edit visual proxy must be an MP4 video/mp4 file no larger than 50 MiB.'
       };
     }
 

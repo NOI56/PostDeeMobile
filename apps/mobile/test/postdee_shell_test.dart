@@ -230,10 +230,10 @@ void main() {
       find.byKey(const ValueKey('ai-advanced-toggle')),
       findsNothing,
     );
-    final duration30 = tester.widget<Semantics>(
-      find.byKey(const ValueKey('ai-duration-30')),
+    expect(
+      find.byKey(const ValueKey('ai-duration-slider')),
+      findsNothing,
     );
-    expect(duration30.properties.selected, isFalse);
 
     await tester.tap(find.byKey(const ValueKey('ai-editing-back')));
     await tester.pumpAndSettle();

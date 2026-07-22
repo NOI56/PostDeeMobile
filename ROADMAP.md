@@ -104,6 +104,17 @@ Primary backend choices:
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
 | Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile registration, `POST /devices`, notifier, and firebase-admin sender exist; mock remains default | Add the service account, set `PUSH_SENDER=firebase`, enable APNs/iOS capabilities, and test on a real device. |
 
+### AI auto-editing update (2026-07-23)
+
+The table's earlier audio-only deployment note is superseded. Groq M4A
+transcription remains the first pass and fallback, but shorter targets now add a
+whole-duration 360 px/1 fps MP4 proxy with complete audio. The API pairs that
+proxy with timestamped transcript segments through Gemini Files API, falls back
+to audio planning on any visual failure, and cleans temporary device/R2/Gemini
+media best-effort. The remaining release gate is a deployed R2 + Groq + Gemini
+comparison across the licensed Thai fixture matrix, followed by physical Android
+and iPhone rendering tests.
+
 Recommended activation order:
 
 1. Keep backend/mobile build, analyze, and tests green as changes land.

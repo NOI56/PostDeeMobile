@@ -70,6 +70,10 @@ import {
   type EditPlanProvider,
   createEditPlanProviderFromConfig
 } from './modules/aiEdits/editPlanProvider.js';
+import {
+  type VisualEditPlanProvider,
+  createVisualEditPlanProviderFromConfig
+} from './modules/aiEdits/visualEditPlanProvider.js';
 import type { PrismaAiEditUsageClient } from './modules/aiEdits/prismaAiEditUsageRepository.js';
 import {
   type FetchAudio,
@@ -152,6 +156,7 @@ type AppOptions = {
   fetchClipMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>;
   transcriptionProvider?: TranscriptionProvider;
   editPlanProvider?: EditPlanProvider;
+  visualEditPlanProvider?: VisualEditPlanProvider;
   storePurchaseVerifier?: StorePurchaseVerifier;
   revenueCatSubscriberClient?: RevenueCatSubscriberClient;
   appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
@@ -478,6 +483,8 @@ export const createApp = (options: AppOptions = {}) => {
     uploadProtocolMode: config.uploadProtocolMode,
     managedUploadService
   });
+  const fetchClipMedia =
+    options.fetchClipMedia ?? createFetchMediaFromVideoStorage(videoStorage);
   registerCaptionRoutes(
     router,
     captionGenerator,
@@ -487,7 +494,7 @@ export const createApp = (options: AppOptions = {}) => {
     realClipCaptionUsageStore,
     options.realClipCaptionProvider ??
       createRealClipCaptionProviderFromConfig({ config }),
-    options.fetchClipMedia ?? createFetchMediaFromVideoStorage(videoStorage),
+    fetchClipMedia,
     videoStorage.deleteVideo
   );
   const aiEditUsageStore = createAiEditUsageStoreFromConfig({
@@ -496,6 +503,9 @@ export const createApp = (options: AppOptions = {}) => {
   });
   const editPlanProvider =
     options.editPlanProvider ?? createEditPlanProviderFromConfig({ config });
+  const visualEditPlanProvider =
+    options.visualEditPlanProvider ??
+    createVisualEditPlanProviderFromConfig({ config });
   registerAiEditRoutes(
     router,
     transcriptionProvider,
@@ -503,7 +513,9 @@ export const createApp = (options: AppOptions = {}) => {
     subscriptionStore,
     aiEditUsageStore,
     editPlanProvider,
-    videoStorage.deleteVideo
+    videoStorage.deleteVideo,
+    visualEditPlanProvider,
+    fetchClipMedia
   );
   registerPostRoutes(
     router,

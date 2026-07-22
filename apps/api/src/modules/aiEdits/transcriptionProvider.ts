@@ -10,6 +10,35 @@ export type TranscriptSegment = {
   compressionRatio?: number;
 };
 
+const leakedTranscriptionPromptSignals = [
+  'ชื่อแอปให้เขียนเป็นภาษาไทยว่า',
+  'คำศัพท์เฉพาะ'
+];
+
+/** Keeps uncertain speech and provider prompt leakage out of user-facing text. */
+export const isReliableTranscriptSegment = (
+  segment: TranscriptSegment
+): boolean => {
+  const text = segment.text.normalize('NFC').trim().toLowerCase();
+  if (text.length === 0) return false;
+  if (leakedTranscriptionPromptSignals.some((signal) => text.includes(signal))) {
+    return false;
+  }
+  if (segment.avgLogprob !== undefined && segment.avgLogprob < -1) {
+    return false;
+  }
+  if (
+    segment.noSpeechProbability !== undefined &&
+    segment.noSpeechProbability > 0.6
+  ) {
+    return false;
+  }
+  if (segment.compressionRatio !== undefined && segment.compressionRatio > 2.4) {
+    return false;
+  }
+  return true;
+};
+
 export type TranscriptionResult = {
   text: string;
   language: string;

@@ -1,5 +1,6 @@
 import type { EditPlanCut, EditPlanResult } from './editPlanProvider.js';
 import {
+  isReliableTranscriptSegment,
   normalizeTranscriptionLanguage,
   type TranscriptSegment,
   type TranscriptWord,
@@ -448,7 +449,20 @@ const readValidTranscriptSegments = (
       const text = segment.text.trim();
       const range = readSafeTimedRange(segment, durationSeconds);
       return text.length > 0 && range
-        ? [{ text, start: range.start, end: range.end }]
+        ? [{
+            text,
+            start: range.start,
+            end: range.end,
+            ...(segment.avgLogprob !== undefined
+              ? { avgLogprob: segment.avgLogprob }
+              : {}),
+            ...(segment.noSpeechProbability !== undefined
+              ? { noSpeechProbability: segment.noSpeechProbability }
+              : {}),
+            ...(segment.compressionRatio !== undefined
+              ? { compressionRatio: segment.compressionRatio }
+              : {})
+          }]
         : [];
     })
     .sort((a, b) => a.start - b.start || a.end - b.end);
@@ -812,6 +826,12 @@ export const buildAiEditRecipe = ({
     transcript.segments,
     transcript.durationSeconds
   );
+  const reliableTranscriptSegments = validTranscriptSegments.filter(
+    isReliableTranscriptSegment
+  );
+  const unreliableTranscriptSegments = validTranscriptSegments.filter(
+    (segment) => !isReliableTranscriptSegment(segment)
+  );
   const transcriptSegmentsAreComplete =
     validTranscriptSegments.length === transcript.segments.length;
   const safeTranscriptWords = readSafeTranscriptWords(
@@ -824,8 +844,19 @@ export const buildAiEditRecipe = ({
     transcript.text,
     transcript.durationSeconds
   );
-  const transcriptReferenceText = transcript.text.trim() ||
-    validTranscriptSegments.map((segment) => segment.text).join('');
+  const wordOverlapsUnreliableSegment = (word: TranscriptWord): boolean =>
+    unreliableTranscriptSegments.some(
+      (segment) => word.start < segment.end && word.end > segment.start
+    );
+  const reliableSafeTranscriptWords = safeTranscriptWords.filter(
+    (word) => !wordOverlapsUnreliableSegment(word)
+  );
+  const reliableValidTranscriptWords = validTranscriptWords?.filter(
+    (word) => !wordOverlapsUnreliableSegment(word)
+  );
+  const transcriptReferenceText = reliableTranscriptSegments
+    .map((segment) => segment.text)
+    .join('') || transcript.text.trim();
   const normalizedTranscriptText = normalizeTranscriptTextForCoverage(
     transcript.text
   );
@@ -847,17 +878,19 @@ export const buildAiEditRecipe = ({
         wordsFullyCoverTranscript
       )
     );
-  const fragmentedThaiWordTimings = validTranscriptWords
+  const fragmentedThaiWordTimings = reliableValidTranscriptWords
     ? hasFragmentedThaiWordTimings(
-        validTranscriptWords,
+        reliableValidTranscriptWords,
         transcriptLanguage,
         transcriptReferenceText
       )
     : false;
-  const subtitleWords = validTranscriptWords && !fragmentedThaiWordTimings
-    ? validTranscriptWords
-    : validTranscriptSegments.length === 0 && safeTranscriptWords.length > 0
-      ? safeTranscriptWords
+  const subtitleWords = reliableValidTranscriptWords && !fragmentedThaiWordTimings
+    ? reliableValidTranscriptWords
+    : reliableTranscriptSegments.length === 0 &&
+        validTranscriptSegments.length === 0 &&
+        reliableSafeTranscriptWords.length > 0
+      ? reliableSafeTranscriptWords
       : undefined;
   const subtitleSegments = capabilities.subtitle
     ? subtitleWords
@@ -866,7 +899,7 @@ export const buildAiEditRecipe = ({
           language: transcriptLanguage,
           wordsPerLine: subtitleWordsPerLine
         })
-      : validTranscriptSegments
+      : reliableTranscriptSegments
     : [];
   const silencePreset = settings.silencePreset ?? 'balanced';
   const silenceRanges = capabilities.silence && hasReliableSilenceTimeline
@@ -881,7 +914,7 @@ export const buildAiEditRecipe = ({
     : [];
   const fillerRanges = capabilities.filler
     ? findFillerRanges(
-        safeTranscriptWords,
+        reliableSafeTranscriptWords,
         settings.fillerWords ?? defaultFillerWords,
         fragmentedThaiWordTimings,
         transcriptReferenceText

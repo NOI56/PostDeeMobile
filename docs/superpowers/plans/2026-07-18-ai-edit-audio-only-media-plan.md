@@ -17,7 +17,8 @@ pass; real Staging evidence remains required after merge and deploy.
 **Quality update (2026-07-22):** A duration-only change reuses the successful
 in-memory transcript through non-metered `/ai-edits/plan`; Groq no longer
 receives the PostDee spelling prompt, and highlight planning quality-gates
-provider segments before selecting one continuous story window.
+provider segments before selecting one continuous story window. The same gate
+omits unreliable time ranges from rendered subtitle lines.
 
 ## Global Constraints
 

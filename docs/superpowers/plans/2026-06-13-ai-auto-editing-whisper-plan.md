@@ -106,7 +106,7 @@ The first implementation direction is **Approach 1: Hybrid low-cost architecture
 - Do not send a spelling prompt to Groq. Real-clip validation showed provider
   context leaking into unrelated Thai transcript text. Retain optional segment
   quality signals and exclude prompt leakage or low-confidence segments from
-  highlight planning instead.
+  highlight planning and rendered subtitle lines instead.
 - Request both word- and segment-level timestamps in the same Groq call. Words
   are validated for text/timeline coverage before driving subtitle, silence, and
   filler timing. Segments remain the conservative fallback for partial timing

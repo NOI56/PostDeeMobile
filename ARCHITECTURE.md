@@ -580,6 +580,8 @@ transcribing audio again. The planner rejects known prompt leakage and low-quali
 provider segments, scores seller-oriented signals such as hook, benefit, proof,
 offer, and CTA, then returns one continuous target-length story window as
 complementary cut ranges.
+The recipe also omits those unreliable time ranges from user-facing subtitle
+lines while retaining their speech timing for conservative silence detection.
 Mobile still applies a final target cap as a compatibility safety guard.
 If the combined AI/silence/filler cuts leave less media than requested, that
 guard proportionally restores nearby context while preserving every selected
@@ -621,7 +623,8 @@ detection, while subtitle text falls back to segments instead of being split
 into individual characters. The Groq request no longer carries a PostDee
 spelling prompt because real-clip validation showed provider context leaking
 into transcript text. Optional segment-level log-probability, no-speech, and
-compression signals are retained for highlight quality gating.
+compression signals are retained for highlight and rendered-subtitle quality
+gating.
 Whitespace-only provider tokens do not invalidate an otherwise complete timing
 stream; malformed tokens containing transcript text still fail closed.
 Missing or invalid preset values use `balanced`. `fillerWords` is an

@@ -191,6 +191,57 @@ describe('AI edit recipe pacing settings', () => {
     ]);
   });
 
+  it('omits low-confidence and leaked prompt ranges from rendered subtitles', () => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      settings: { subtitleWordsPerLine: 2 },
+      text:
+        'Good intro garbled words ชื่อแอปให้เขียนเป็นภาษาไทยว่า โพสต์ดี',
+      durationSeconds: 6,
+      segments: [
+        {
+          text: 'Good intro',
+          start: 0,
+          end: 2,
+          avgLogprob: -0.2,
+          noSpeechProbability: 0.01,
+          compressionRatio: 1.1
+        },
+        {
+          text: 'garbled words',
+          start: 2,
+          end: 4,
+          avgLogprob: -1.4,
+          noSpeechProbability: 0.1,
+          compressionRatio: 1.2
+        },
+        {
+          text: 'ชื่อแอปให้เขียนเป็นภาษาไทยว่า โพสต์ดี',
+          start: 4,
+          end: 6,
+          avgLogprob: -0.1,
+          noSpeechProbability: 0.01,
+          compressionRatio: 1.1
+        }
+      ],
+      words: [
+        { word: 'Good', start: 0, end: 1 },
+        { word: 'intro', start: 1, end: 2 },
+        { word: 'garbled', start: 2, end: 3 },
+        { word: 'words', start: 3, end: 4 },
+        {
+          word: 'ชื่อแอปให้เขียนเป็นภาษาไทยว่า โพสต์ดี',
+          start: 4,
+          end: 6
+        }
+      ]
+    });
+
+    expect(recipe.subtitles.segments).toEqual([
+      { text: 'Good intro', start: 0, end: 2 }
+    ]);
+  });
+
   it('recognizes a short Thai character-token stream as fragmented', () => {
     const segments = [{ text: 'เออครับนะ', start: 0, end: 0.9 }];
     const recipe = buildRecipe({

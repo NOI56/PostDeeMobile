@@ -865,7 +865,9 @@ source-duration/quota estimate. When a target is present, the edit planner selec
 one strongest continuous story window from reliable transcript segments and
 returns the complementary ranges to remove. Provider prompt leakage and segments
 that cross the configured Whisper confidence/no-speech/compression thresholds are
-excluded from highlight scoring.
+excluded from highlight scoring and from rendered subtitle lines. Their timing
+still remains available to silence detection so uncertain speech is not mistaken
+for a silent gap.
 
 Request:
 

@@ -510,7 +510,8 @@ Current mobile pieces:
   sends the ISO-639-1 Thai hint (`th`) and requests both word and segment
   timestamps without a spelling prompt, preventing provider context from leaking
   into unrelated clip text. Optional segment confidence/no-speech/compression
-  signals are retained for highlight quality checks. The backend validates word timing
+  signals are retained for highlight quality checks and to omit unreliable ranges
+  from burned subtitle lines. The backend validates word timing
   coverage before using it for precise silence/filler cuts and subtitle timing;
   incomplete timing falls back to segments. Groq Thai character-level tokens
   still drive precise gaps, but subtitle text falls back to readable segments.

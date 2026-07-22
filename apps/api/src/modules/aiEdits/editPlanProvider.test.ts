@@ -5,6 +5,7 @@ import {
   buildKeywordKeepCuts,
   createMockEditPlanProvider,
   createOpenAiCompatibleEditPlanProvider,
+  isReliableHighlightSegment,
   matchesAnyKeyword,
   parseLlmEditPlan,
   parsePromptInstruction,
@@ -54,10 +55,7 @@ describe('edit plan provider', () => {
       10
     );
 
-    expect(cuts).toEqual([
-      { start: 0, end: 4 },
-      { start: 8, end: 12 }
-    ]);
+    expect(cuts).toEqual([{ start: 0, end: 8 }]);
   });
 
   it('uses targetDurationSeconds to plan transcript highlights', async () => {
@@ -74,11 +72,34 @@ describe('edit plan provider', () => {
       ]
     });
 
-    expect(result.cuts).toEqual([
-      { start: 0, end: 4 },
-      { start: 8, end: 12 }
-    ]);
+    expect(result.cuts).toEqual([{ start: 0, end: 8 }]);
     expect(result.summary).toContain('10');
+  });
+
+  it('rejects leaked prompts and low-confidence transcript segments', () => {
+    expect(
+      isReliableHighlightSegment({
+        text: 'ชื่อแอปให้เขียนเป็นภาษาไทยว่า โพสต์ดี',
+        start: 0,
+        end: 4
+      })
+    ).toBe(false);
+    expect(
+      isReliableHighlightSegment({
+        text: 'รีวิวสินค้านี้ดีมาก',
+        start: 4,
+        end: 8,
+        avgLogprob: -1.2
+      })
+    ).toBe(false);
+    expect(
+      isReliableHighlightSegment({
+        text: 'รีวิวสินค้านี้ดีมาก',
+        start: 8,
+        end: 12,
+        avgLogprob: -0.2
+      })
+    ).toBe(true);
   });
 
   it('parses a prompt target length and profanity intent', () => {
@@ -170,6 +191,43 @@ describe('edit plan provider', () => {
 
     expect(result.model).toBe('llm-x');
     expect(result.cuts).toEqual([{ start: 1, end: 2 }]);
+  });
+
+  it('turns scattered LLM highlights into one coherent target-length range', async () => {
+    const provider = createOpenAiCompatibleEditPlanProvider({
+      apiKey: 'k',
+      model: 'llm-x',
+      endpointUrl: 'https://example.com/v1/chat/completions',
+      failureLabel: 'Test edit plan',
+      fallback: createMockEditPlanProvider(),
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content:
+                  '{"cuts":[{"start":0,"end":10},{"start":20,"end":50},{"start":60,"end":90}],"summary":"ai"}'
+              }
+            }
+          ]
+        })
+      })
+    });
+
+    const result = await provider.plan({
+      durationSeconds: 100,
+      targetDurationSeconds: 45,
+      segments: [
+        { text: 'ช่วงเรื่องที่ต่อเนื่องและน่าสนใจ', start: 10, end: 55 },
+        { text: 'ช่วงสรุป', start: 90, end: 100 }
+      ]
+    });
+
+    expect(result.cuts).toEqual([
+      { start: 0, end: 10 },
+      { start: 55, end: 100 }
+    ]);
   });
 
   it('falls back to the mock when the chat call fails', async () => {

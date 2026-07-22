@@ -103,8 +103,10 @@ The first implementation direction is **Approach 1: Hybrid low-cost architecture
 - Extract or upload the clip audio.
 - Backend sends audio to Groq `whisper-large-v3`.
 - Send the ISO-639-1 `th` language hint for Thai-first accuracy and latency.
-- Send a concise Groq-only Thai spelling prompt for the proper noun
-  `PostDee` → `โพสต์ดี`; do not silently replace transcript text afterward.
+- Do not send a spelling prompt to Groq. Real-clip validation showed provider
+  context leaking into unrelated Thai transcript text. Retain optional segment
+  quality signals and exclude prompt leakage or low-confidence segments from
+  highlight planning instead.
 - Request both word- and segment-level timestamps in the same Groq call. Words
   are validated for text/timeline coverage before driving subtitle, silence, and
   filler timing. Segments remain the conservative fallback for partial timing

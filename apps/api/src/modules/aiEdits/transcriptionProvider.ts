@@ -1,7 +1,14 @@
 import type { ServerConfig } from '../../config/env.js';
 
 export type TranscriptWord = { word: string; start: number; end: number };
-export type TranscriptSegment = { text: string; start: number; end: number };
+export type TranscriptSegment = {
+  text: string;
+  start: number;
+  end: number;
+  avgLogprob?: number;
+  noSpeechProbability?: number;
+  compressionRatio?: number;
+};
 
 export type TranscriptionResult = {
   text: string;
@@ -65,12 +72,16 @@ type TranscriptionApiResponse = {
   text?: string;
   language?: string;
   duration?: number;
-  segments?: Array<{ text?: string; start?: number; end?: number }>;
+  segments?: Array<{
+    text?: string;
+    start?: number;
+    end?: number;
+    avg_logprob?: number;
+    no_speech_prob?: number;
+    compression_ratio?: number;
+  }>;
   words?: Array<{ word?: string; start?: number; end?: number }>;
 };
-
-const groqThaiTranscriptionPrompt =
-  'คำศัพท์เฉพาะ: ชื่อแอปให้เขียนเป็นภาษาไทยว่า โพสต์ดี';
 
 export const createMockTranscriptionProvider = (): TranscriptionProvider => ({
   transcribe: async () => ({
@@ -144,7 +155,16 @@ const createOpenAiCompatibleTranscriptionProvider = ({
       segments: (payload.segments ?? []).map((segment) => ({
         text: (segment.text ?? '').trim(),
         start: segment.start ?? 0,
-        end: segment.end ?? 0
+        end: segment.end ?? 0,
+        ...(typeof segment.avg_logprob === 'number'
+          ? { avgLogprob: segment.avg_logprob }
+          : {}),
+        ...(typeof segment.no_speech_prob === 'number'
+          ? { noSpeechProbability: segment.no_speech_prob }
+          : {}),
+        ...(typeof segment.compression_ratio === 'number'
+          ? { compressionRatio: segment.compression_ratio }
+          : {})
       })),
       words: (payload.words ?? []).map((word) => ({
         word: word.word ?? '',
@@ -203,8 +223,7 @@ export const createGroqTranscriptionProvider = ({
     fetchAudio,
     fetchImpl,
     endpointUrl: 'https://api.groq.com/openai/v1/audio/transcriptions',
-    failureLabel: 'Groq transcription',
-    prompt: groqThaiTranscriptionPrompt
+    failureLabel: 'Groq transcription'
   });
 
 export const createTranscriptionProviderFromConfig = ({

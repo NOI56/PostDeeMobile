@@ -1597,11 +1597,13 @@ void main() {
     expect(renderCalls, 2);
   });
 
-  testWidgets('prepares a fresh recipe after changing setup', (tester) async {
+  testWidgets('reuses the transcript and only replans after changing duration',
+      (tester) async {
     final pickedVideo = _createPickedVideoFixture('setup-change.mp4');
     final firstResult = _createRenderedVideoFixture('setup-result-1.mp4');
     final secondResult = _createRenderedVideoFixture('setup-result-2.mp4');
     final prepareRequests = <AiEditPrepareRequest>[];
+    final planRequests = <AiEditPlanRequest>[];
     var renderCalls = 0;
 
     await tester.pumpWidget(
@@ -1619,6 +1621,14 @@ void main() {
           prepareEdit: (request) async {
             prepareRequests.add(request);
             return _createPrepareFixture();
+          },
+          planEdit: (request) async {
+            planRequests.add(request);
+            return const AiEditPlanResult(
+              cuts: [AiEditCut(start: 0, end: 5)],
+              summary: 'เลือกช่วงใหม่',
+              model: 'test-plan',
+            );
           },
           burnVideo: (_) async {
             renderCalls += 1;
@@ -1639,9 +1649,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
-    expect(prepareRequests, hasLength(2));
+    expect(prepareRequests, hasLength(1));
     expect(prepareRequests.first.durationSeconds, 30);
-    expect(prepareRequests.last.durationSeconds, 60);
+    expect(planRequests, hasLength(1));
+    expect(planRequests.single.targetDurationSeconds, 60);
     expect(find.text('setup-result-2.mp4'), findsOneWidget);
   });
 
@@ -1666,6 +1677,11 @@ void main() {
           ),
           uploadVideoFile: (_, __) async {},
           prepareEdit: (_) async => _createPrepareFixture(),
+          planEdit: (_) async => const AiEditPlanResult(
+            cuts: [],
+            summary: 'เลือกช่วงใหม่',
+            model: 'test-plan',
+          ),
           burnVideo: (request) async {
             renderCalls += 1;
             renderRequests.add(request);

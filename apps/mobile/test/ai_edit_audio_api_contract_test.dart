@@ -29,6 +29,24 @@ void main() {
     expect(json.containsKey('videoS3Key'), isFalse);
   });
 
+  test('AI edit replan serializes the cached transcript and new result length',
+      () {
+    final json = const AiEditPlanRequest(
+      durationSeconds: 150,
+      targetDurationSeconds: 60,
+      segments: [
+        ClipTranscriptSegment(
+          text: 'ช่วงที่ดีที่สุด',
+          start: 30,
+          end: 90,
+        ),
+      ],
+    ).toJson();
+
+    expect(json, containsPair('targetDurationSeconds', 60.0));
+    expect(json['segments'], hasLength(1));
+  });
+
   test('AI edit prepare keeps the legacy video-only request compatible', () {
     final json = const AiEditPrepareRequest(
       videoS3Key: 'uploads/seller/id/clip.mp4',

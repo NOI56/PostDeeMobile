@@ -22,17 +22,26 @@ class ClipTranscriptSegment {
     required this.text,
     required this.start,
     required this.end,
+    this.avgLogprob,
+    this.noSpeechProbability,
+    this.compressionRatio,
   });
 
   final String text;
   final double start;
   final double end;
+  final double? avgLogprob;
+  final double? noSpeechProbability;
+  final double? compressionRatio;
 
   factory ClipTranscriptSegment.fromJson(Map<String, Object?> json) {
     return ClipTranscriptSegment(
       text: json['text'] as String? ?? '',
       start: (json['start'] as num?)?.toDouble() ?? 0,
       end: (json['end'] as num?)?.toDouble() ?? 0,
+      avgLogprob: (json['avgLogprob'] as num?)?.toDouble(),
+      noSpeechProbability: (json['noSpeechProbability'] as num?)?.toDouble(),
+      compressionRatio: (json['compressionRatio'] as num?)?.toDouble(),
     );
   }
 }
@@ -103,22 +112,35 @@ class AiEditPlanRequest {
   const AiEditPlanRequest({
     required this.segments,
     required this.durationSeconds,
+    this.targetDurationSeconds,
     this.styleId,
     this.prompt,
   });
 
   final List<ClipTranscriptSegment> segments;
   final double durationSeconds;
+  final double? targetDurationSeconds;
   final String? styleId;
   final String? prompt;
 
   Map<String, Object?> toJson() => {
         'durationSeconds': durationSeconds,
+        if (targetDurationSeconds != null)
+          'targetDurationSeconds': targetDurationSeconds,
         if (styleId != null) 'styleId': styleId,
         if (prompt != null) 'prompt': prompt,
         'segments': [
           for (final segment in segments)
-            {'text': segment.text, 'start': segment.start, 'end': segment.end},
+            {
+              'text': segment.text,
+              'start': segment.start,
+              'end': segment.end,
+              if (segment.avgLogprob != null) 'avgLogprob': segment.avgLogprob,
+              if (segment.noSpeechProbability != null)
+                'noSpeechProbability': segment.noSpeechProbability,
+              if (segment.compressionRatio != null)
+                'compressionRatio': segment.compressionRatio,
+            },
         ],
       };
 }
@@ -484,6 +506,28 @@ class AiEditRecipeResult {
   final AiEditPlanResult plan;
   final AiEditMusicResult music;
   final Map<String, AiEditCapabilityStatusResult> capabilities;
+
+  AiEditRecipeResult withPlan(AiEditPlanResult updatedPlan) {
+    return AiEditRecipeResult(
+      version: version,
+      status: status,
+      renderMode: renderMode,
+      styleId: styleId,
+      prompt: prompt,
+      transcript: transcript,
+      subtitles: subtitles,
+      cutRanges: [
+        ...updatedPlan.cuts,
+        ...silenceRanges,
+        ...fillerRanges,
+      ],
+      silenceRanges: silenceRanges,
+      fillerRanges: fillerRanges,
+      plan: updatedPlan,
+      music: music,
+      capabilities: capabilities,
+    );
+  }
 
   factory AiEditRecipeResult.fromJson(Map<String, Object?> json) {
     List<AiEditCut> parseRanges(Object? value) => value is List<dynamic>

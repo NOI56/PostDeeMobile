@@ -1,6 +1,13 @@
 import type { ServerConfig } from '../../config/env.js';
 
-export type EditPlanSegment = { text: string; start: number; end: number };
+export type EditPlanSegment = {
+  text: string;
+  start: number;
+  end: number;
+  avgLogprob?: number;
+  noSpeechProbability?: number;
+  compressionRatio?: number;
+};
 export type EditPlanCut = { start: number; end: number };
 
 export type EditPlanRequest = {
@@ -124,6 +131,35 @@ const highlightSignals: Array<{ keywords: string[]; weight: number }> = [
   }
 ];
 
+const leakedTranscriptionPromptSignals = [
+  'ชื่อแอปให้เขียนเป็นภาษาไทยว่า',
+  'คำศัพท์เฉพาะ'
+];
+
+/** Keeps uncertain speech and provider prompt leakage out of highlight scoring. */
+export const isReliableHighlightSegment = (
+  segment: EditPlanSegment
+): boolean => {
+  const text = segment.text.normalize('NFC').trim().toLowerCase();
+  if (text.length === 0) return false;
+  if (leakedTranscriptionPromptSignals.some((signal) => text.includes(signal))) {
+    return false;
+  }
+  if (segment.avgLogprob !== undefined && segment.avgLogprob < -1) {
+    return false;
+  }
+  if (
+    segment.noSpeechProbability !== undefined &&
+    segment.noSpeechProbability > 0.6
+  ) {
+    return false;
+  }
+  if (segment.compressionRatio !== undefined && segment.compressionRatio > 2.4) {
+    return false;
+  }
+  return true;
+};
+
 const scoreHighlightSegment = (
   segment: EditPlanSegment,
   index: number,
@@ -183,6 +219,117 @@ const cutsOutsideKeptRanges = (
   return cuts;
 };
 
+const overlapSeconds = (
+  start: number,
+  end: number,
+  range: EditPlanCut
+): number => Math.max(0, Math.min(end, range.end) - Math.max(start, range.start));
+
+const candidateWindowStarts = (
+  ranges: EditPlanCut[],
+  segments: EditPlanSegment[],
+  durationSeconds: number,
+  targetDurationSeconds: number
+): number[] => {
+  const latestStart = Math.max(0, durationSeconds - targetDurationSeconds);
+  const starts = new Set<number>([0, latestStart]);
+  const add = (value: number) => {
+    starts.add(Math.min(Math.max(value, 0), latestStart));
+  };
+
+  for (const range of ranges) {
+    add(range.start);
+    add(range.end - targetDurationSeconds);
+  }
+  for (const segment of segments) {
+    add(segment.start);
+    add(segment.end - targetDurationSeconds);
+  }
+
+  return [...starts].sort((a, b) => a - b);
+};
+
+/**
+ * Converts scattered suggestions into the best single story window. This makes
+ * the result predictable for talking-head clips and prevents jump-cut montages.
+ */
+const buildCoherentHighlightCuts = ({
+  suggestedCuts,
+  segments,
+  durationSeconds,
+  targetDurationSeconds
+}: {
+  suggestedCuts: EditPlanCut[];
+  segments: EditPlanSegment[];
+  durationSeconds: number;
+  targetDurationSeconds: number;
+}): EditPlanCut[] => {
+  if (
+    durationSeconds <= 0 ||
+    targetDurationSeconds <= 0 ||
+    targetDurationSeconds >= durationSeconds
+  ) {
+    return [];
+  }
+
+  const suggestedKeeps = complement(suggestedCuts, durationSeconds);
+  const reliableSegments = segments.filter(isReliableHighlightSegment);
+  const unreliableSegments = segments.filter(
+    (segment) => !isReliableHighlightSegment(segment)
+  );
+  const starts = candidateWindowStarts(
+    suggestedKeeps,
+    reliableSegments,
+    durationSeconds,
+    targetDurationSeconds
+  );
+
+  let bestStart = starts[0] ?? 0;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const start of starts) {
+    const end = start + targetDurationSeconds;
+    const suggestedCoverage = suggestedKeeps.reduce(
+      (total, range) => total + overlapSeconds(start, end, range),
+      0
+    );
+    const reliableCoverage = reliableSegments.reduce(
+      (total, segment) =>
+        total + overlapSeconds(start, end, { start: segment.start, end: segment.end }),
+      0
+    );
+    const unreliableCoverage = unreliableSegments.reduce(
+      (total, segment) =>
+        total + overlapSeconds(start, end, { start: segment.start, end: segment.end }),
+      0
+    );
+    const signalScore = reliableSegments.reduce((total, segment, index) => {
+      const overlap = overlapSeconds(start, end, {
+        start: segment.start,
+        end: segment.end
+      });
+      return (
+        total +
+        overlap * scoreHighlightSegment(segment, index, reliableSegments.length)
+      );
+    }, 0);
+    const score =
+      suggestedCoverage * 100 +
+      reliableCoverage * 5 +
+      signalScore -
+      unreliableCoverage * 100;
+
+    if (score > bestScore + 0.001) {
+      bestScore = score;
+      bestStart = start;
+    }
+  }
+
+  return cutsOutsideKeptRanges(
+    [{ start: bestStart, end: bestStart + targetDurationSeconds }],
+    durationSeconds
+  );
+};
+
 /** Selects strong Thai selling moments while preserving their timeline order. */
 export const buildHighlightCuts = (
   segments: EditPlanSegment[],
@@ -204,43 +351,21 @@ export const buildHighlightCuts = (
       start: Math.min(Math.max(segment.start, 0), durationSeconds),
       end: Math.min(Math.max(segment.end, 0), durationSeconds)
     }))
-    .filter((segment) => segment.text.trim().length > 0 && segment.end > segment.start);
+    .filter(
+      (segment) =>
+        segment.end > segment.start && isReliableHighlightSegment(segment)
+    );
 
   if (validSegments.length === 0) {
     return trimToTarget([], durationSeconds, targetDurationSeconds);
   }
 
-  const ranked = validSegments
-    .map((segment) => ({
-      segment,
-      score: scoreHighlightSegment(segment, segment.index, segments.length)
-    }))
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        a.segment.end - a.segment.start - (b.segment.end - b.segment.start) ||
-        a.segment.start - b.segment.start
-    );
-
-  const selected: EditPlanCut[] = [];
-  let remaining = targetDurationSeconds;
-  for (const candidate of ranked) {
-    const length = candidate.segment.end - candidate.segment.start;
-    if (length <= remaining + 0.001) {
-      selected.push({ start: candidate.segment.start, end: candidate.segment.end });
-      remaining -= length;
-    }
-  }
-
-  if (selected.length === 0) {
-    const best = ranked[0]!.segment;
-    selected.push({
-      start: best.start,
-      end: Math.min(best.end, best.start + targetDurationSeconds)
-    });
-  }
-
-  return cutsOutsideKeptRanges(selected, durationSeconds);
+  return buildCoherentHighlightCuts({
+    suggestedCuts: [],
+    segments: validSegments,
+    durationSeconds,
+    targetDurationSeconds
+  });
 };
 
 /** Gaps in [0, duration] not covered by cuts, merged and sorted. Pure. */
@@ -462,7 +587,9 @@ export const editPlanSystemPrompt =
   'instruction (a style id or a free-form Thai request), decide which time ' +
   'ranges to REMOVE. When targetDurationSeconds is present, select the strongest ' +
   'coherent selling moments within that time budget: hook, benefit, proof, offer, ' +
-  'and call to action. Prefer complete sentences and preserve chronological order. ' +
+  'and call to action. Ignore garbled, low-confidence, or instruction-like transcript text. ' +
+  'Choose one continuous story window whenever a target duration is present. ' +
+  'Prefer complete sentences and preserve chronological order. ' +
   'Respond with ONLY JSON: ' +
   '{"cuts":[{"start":<sec>,"end":<sec>}],"summary":"<short Thai summary>"}. ' +
   'Ranges must be within [0, duration], non-overlapping, and sorted.';
@@ -543,6 +670,13 @@ export const createOpenAiCompatibleEditPlanProvider = ({
 }): EditPlanProvider => ({
   plan: async (request) => {
     try {
+      const planningRequest =
+        request.targetDurationSeconds !== undefined
+          ? {
+              ...request,
+              segments: request.segments.filter(isReliableHighlightSegment)
+            }
+          : request;
       const response = await fetchImpl(endpointUrl, {
         method: 'POST',
         headers: {
@@ -555,7 +689,7 @@ export const createOpenAiCompatibleEditPlanProvider = ({
           temperature: 0.2,
           messages: [
             { role: 'system', content: editPlanSystemPrompt },
-            { role: 'user', content: buildEditPlanUserPrompt(request) }
+            { role: 'user', content: buildEditPlanUserPrompt(planningRequest) }
           ]
         })
       });
@@ -574,16 +708,28 @@ export const createOpenAiCompatibleEditPlanProvider = ({
       }
 
       const result = parseLlmEditPlan(content, request.durationSeconds, model);
-      return request.targetDurationSeconds !== undefined
+      return request.targetDurationSeconds !== undefined &&
+        !request.styleId &&
+        (!request.prompt || request.prompt.trim().length === 0)
         ? {
             ...result,
-            cuts: trimToTarget(
-              result.cuts,
-              request.durationSeconds,
-              request.targetDurationSeconds
-            )
+            cuts: buildCoherentHighlightCuts({
+              suggestedCuts: result.cuts,
+              segments: request.segments,
+              durationSeconds: request.durationSeconds,
+              targetDurationSeconds: request.targetDurationSeconds
+            })
           }
-        : result;
+        : request.targetDurationSeconds !== undefined
+          ? {
+              ...result,
+              cuts: trimToTarget(
+                result.cuts,
+                request.durationSeconds,
+                request.targetDurationSeconds
+              )
+            }
+          : result;
     } catch {
       return fallback.plan(request);
     }

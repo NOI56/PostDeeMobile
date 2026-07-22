@@ -109,7 +109,16 @@ const readSegments = (value: unknown): EditPlanSegment[] => {
       {
         text: typeof record.text === 'string' ? record.text : '',
         start,
-        end
+        end,
+        ...(typeof record.avgLogprob === 'number'
+          ? { avgLogprob: record.avgLogprob }
+          : {}),
+        ...(typeof record.noSpeechProbability === 'number'
+          ? { noSpeechProbability: record.noSpeechProbability }
+          : {}),
+        ...(typeof record.compressionRatio === 'number'
+          ? { compressionRatio: record.compressionRatio }
+          : {})
       }
     ];
   });

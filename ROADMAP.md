@@ -315,10 +315,11 @@ Recommended order:
 
 8. AI Auto Editing With Groq Whisper
    - Pro users can request Thai transcription, cut silence, burn in subtitles, review the phone-rendered result, and remove supported AI edits they do not want.
-   - Backend handles auth, quota, temporary storage, and Groq Whisper transcription with a Thai language hint, a concise PostDee spelling prompt, and both word and segment timestamps. It validates word timing before using it for silence/filler cuts and subtitle timing, falls back to segments when coverage is incomplete, and keeps Thai character-level timing for gaps while using readable segment subtitles.
+   - Backend handles auth, quota, temporary storage, and Groq Whisper transcription with a Thai language hint and both word and segment timestamps. The spelling prompt was removed after real-clip validation found provider context leaking into Thai transcript text. It validates word timing before using it for silence/filler cuts and subtitle timing, falls back to segments when coverage is incomplete, and keeps Thai character-level timing for gaps while using readable segment subtitles.
    - Mobile re-renders accepted capabilities from the original clip, then lets the user continue to posting or open the manual editor.
    - Review uses an adaptive 540p/20 fps preview for sources longer than one minute (720p/24 fps for shorter sources), reports FFmpeg processed-time progress, supports cancel/retry, and reuses identical results. Going to Post renders a separate full-source-dimension file.
    - The mobile target-length safety guard restores context around AI-selected moments when incomplete transcript timing would otherwise leave less than the requested 30/60/custom duration.
+   - Target-length planning now rejects known prompt leakage and low-quality provider segments, then selects one continuous story window. Changing only 30/60/custom reuses the current in-memory transcript through non-metered `/ai-edits/plan`, so the source audio is transcribed and charged once per analysis settings set.
    - The AI editing header shows exact Pro minutes remaining/used, refreshes from `GET /ai-edits/quota`, and adopts the latest `prepare` quota immediately after a metered analysis.
    - Android FFmpeg rendering supplies the bundled Prompt font to libass and compacts kept audio ranges alongside silence-cut video, preventing missing burned subtitles or audio that outlives the final video frame.
    - The mobile dependency is pinned to `ffmpeg_kit_flutter_new_video` 2.3.2,

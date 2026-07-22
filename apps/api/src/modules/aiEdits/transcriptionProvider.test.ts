@@ -141,7 +141,16 @@ describe('transcription provider', () => {
             text: 'สวัสดีค่ะ',
             language: 'Thai',
             duration: 2.5,
-            segments: [{ text: ' สวัสดีค่ะ ', start: 0, end: 2.5 }],
+            segments: [
+              {
+                text: ' สวัสดีค่ะ ',
+                start: 0,
+                end: 2.5,
+                avg_logprob: -0.2,
+                no_speech_prob: 0.01,
+                compression_ratio: 1.1
+              }
+            ],
             words: [{ word: 'สวัสดีค่ะ', start: 0.2, end: 1.8 }]
           })
         };
@@ -154,7 +163,7 @@ describe('transcription provider', () => {
       url: 'https://api.groq.com/openai/v1/audio/transcriptions',
       auth: 'Bearer groq-key',
       language: 'th',
-      prompt: 'คำศัพท์เฉพาะ: ชื่อแอปให้เขียนเป็นภาษาไทยว่า โพสต์ดี',
+      prompt: undefined,
       responseFormat: 'verbose_json',
       timestampGranularities: ['word', 'segment']
     });
@@ -164,7 +173,14 @@ describe('transcription provider', () => {
       durationSeconds: 2.5,
       model: 'whisper-large-v3'
     });
-    expect(result.segments[0]).toEqual({ text: 'สวัสดีค่ะ', start: 0, end: 2.5 });
+    expect(result.segments[0]).toEqual({
+      text: 'สวัสดีค่ะ',
+      start: 0,
+      end: 2.5,
+      avgLogprob: -0.2,
+      noSpeechProbability: 0.01,
+      compressionRatio: 1.1
+    });
     expect(result.words[0]).toEqual({ word: 'สวัสดีค่ะ', start: 0.2, end: 1.8 });
   });
 

@@ -809,9 +809,11 @@ usage past the configured store limit. Request:
 `{ "videoS3Key": "uploads/<user-id>/<upload-id>/clip.mp4", "durationSeconds": 18 }`. Response includes
 `transcript` (text, language, durationSeconds, segments[], words[]) and `quota`.
 The Groq adapter sends `language=th` and requests both `word` and `segment`
-timestamp granularities. It also sends the concise Thai spelling context
-`PostDee` → `โพสต์ดี` through Groq's transcription prompt; the OpenAI adapter
-does not receive this provider-specific prompt.
+timestamp granularities. It deliberately sends no spelling prompt because a
+real-clip test showed that provider context could leak into the returned Thai
+transcript. Segment responses retain optional `avgLogprob`,
+`noSpeechProbability`, and `compressionRatio` quality signals when the provider
+returns them.
 Validated word timing is preferred for subtitle timing and silence-gap cuts,
 while segments remain the conservative fallback when timing coverage is partial
 or Groq returns Thai character-level tokens that are not readable subtitle words.
@@ -860,8 +862,10 @@ keys or neither key is rejected.
 `targetDurationSeconds` is the desired result length (30, 60, or a positive
 custom value). It is separate from `durationSeconds`, which is only the initial
 source-duration/quota estimate. When a target is present, the edit planner selects
-the strongest coherent selling moments from the transcript and returns ranges to
-remove while preserving timeline order.
+one strongest continuous story window from reliable transcript segments and
+returns the complementary ranges to remove. Provider prompt leakage and segments
+that cross the configured Whisper confidence/no-speech/compression thresholds are
+excluded from highlight scoring.
 
 Request:
 
@@ -993,15 +997,22 @@ the detected time.
 That summary describes pre-render detections and must not be presented as the
 exact duration removed from the exported clip.
 
+After one successful metered prepare, mobile keeps the transcript in memory for
+the selected source and settings. Changing only 30/60/custom duration calls the
+non-metered `/ai-edits/plan` endpoint with that transcript and does not upload or
+transcribe the audio again. Changing analysis settings or selecting another
+source still requires a new metered prepare.
+
 ### `POST /ai-edits/plan`
 
 Returns a structured cut plan for an auto-edit style or a free-form prompt,
 computed from an already-transcribed clip. Pro-gated but **not** minute-metered.
 
-Currently backed by a rule-based mock (`model: "mock-rule"`); the contract is
-designed so an LLM planner can replace the brain without changing callers.
+Local mode uses the rule-based mock (`model: "mock-rule"`). Staging/production
+may use the configured Groq/OpenAI planner and falls back to the mock on provider
+failure.
 
-Request (one of `styleId` or `prompt` is required):
+Request (one of `styleId`, `prompt`, or `targetDurationSeconds` is required):
 
 ```json
 {

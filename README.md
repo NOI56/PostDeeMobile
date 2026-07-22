@@ -508,9 +508,9 @@ Current mobile pieces:
   mobile FFmpeg render recipe. It meters the same 200 monthly AI editing minutes
   as transcription and does not render video server-side. Groq transcription
   sends the ISO-639-1 Thai hint (`th`) and requests both word and segment
-  timestamps. It also sends Groq a concise Thai spelling hint for
-  `PostDee` → `โพสต์ดี`; the shared OpenAI provider does not receive that
-  Groq-specific prompt. The backend validates word timing
+  timestamps without a spelling prompt, preventing provider context from leaking
+  into unrelated clip text. Optional segment confidence/no-speech/compression
+  signals are retained for highlight quality checks. The backend validates word timing
   coverage before using it for precise silence/filler cuts and subtitle timing;
   incomplete timing falls back to segments. Groq Thai character-level tokens
   still drive precise gaps, but subtitle text falls back to readable segments.
@@ -522,12 +522,17 @@ Current mobile pieces:
   rendering. Local and remote temporary audio are cleaned best-effort after the
   prepare call; legacy `videoS3Key` clients remain compatible.
 - The selected 30/60/custom duration is sent as `targetDurationSeconds`. The edit
-  planner uses transcript selling signals (hook, benefit, proof, offer, and CTA)
-  to choose strong moments in timeline order; the local duration cap remains a
+  planner excludes known prompt leakage and low-quality segments, then uses
+  transcript selling signals (hook, benefit, proof, offer, and CTA) to choose one
+  continuous story window; the local duration cap remains a
   safety guard for old or malformed recipes. If incomplete transcript/silence
   timing would leave less media than requested, mobile restores neighboring
   context around the selected moments so a 30/60/custom request does not
   collapse into a near-empty result.
+- After the first successful metered prepare, changing only 30/60/custom reuses
+  the same in-memory transcript and calls non-metered `POST /ai-edits/plan`.
+  Audio is not uploaded or transcribed again unless the source or analysis
+  settings change.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.

@@ -32,6 +32,9 @@ typedef EditorVideoUploader = Future<void> Function(
 typedef AiEditPreparer = Future<AiEditPrepareResult> Function(
   AiEditPrepareRequest request,
 );
+typedef AiEditPlanner = Future<AiEditPlanResult> Function(
+  AiEditPlanRequest request,
+);
 typedef AiEditAudioExtraction = Future<AiEditAudioArtifact> Function(
     File source);
 typedef AiEditAudioCleanup = Future<void> Function(String audioS3Key);
@@ -322,6 +325,7 @@ class AiEditingScreen extends StatefulWidget {
     this.createUpload,
     this.uploadVideoFile,
     this.prepareEdit,
+    this.planEdit,
     this.extractAudio,
     this.cleanupAiEditAudio,
     this.loadSubscription,
@@ -340,6 +344,7 @@ class AiEditingScreen extends StatefulWidget {
   final EditorUploadCreator? createUpload;
   final EditorVideoUploader? uploadVideoFile;
   final AiEditPreparer? prepareEdit;
+  final AiEditPlanner? planEdit;
   final AiEditAudioExtraction? extractAudio;
   final AiEditAudioCleanup? cleanupAiEditAudio;
   final EditorSubscriptionLoader? loadSubscription;
@@ -369,6 +374,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   BurnedSubtitleResult? _renderedResult;
   _AiSetupSnapshot? _acceptedSetup;
   final Map<String, AiEditPrepareResult> _preparedEditsBySignature = {};
+  final Map<String, AiEditPrepareResult> _preparedEditsByAnalysisSignature = {};
   final Map<String, BurnedSubtitleResult> _renderResultsBySignature = {};
   _AiEditingStage _stage = _AiEditingStage.setup;
   final Map<String, bool> _reviewCapabilities = {};
@@ -513,6 +519,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _selectedVideo = picked;
         _preparedEdit = null;
         _preparedEditsBySignature.clear();
+        _preparedEditsByAnalysisSignature.clear();
         _renderResultsBySignature.clear();
         _renderedResult = null;
         _acceptedSetup = null;
@@ -658,61 +665,91 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       }
 
       final prepareSignature = _buildPrepareSignature(picked, file);
+      final analysisSignature = _buildAnalysisSignature(picked, file);
       var prepared = _preparedEditsBySignature[prepareSignature];
       if (prepared == null) {
-        AiEditAudioArtifact? audioArtifact;
-        String? remoteAudioKey;
-        try {
-          selectAiEditAnalysisMode(
-            _buildPrepareRequest('__capability_check__.m4a').capabilities,
-          );
+        final previousAnalysis =
+            _preparedEditsByAnalysisSignature[analysisSignature];
+        if (previousAnalysis != null) {
           if (mounted) {
-            setState(() => _processingTitle = 'กำลังเตรียมเสียงให้ AI...');
+            setState(
+              () => _processingTitle = 'กำลังเลือกช่วงที่ดีที่สุดให้ใหม่...',
+            );
           }
-
-          final extractAudio =
-              widget.extractAudio ?? AiEditAudioExtractor().extract;
-          audioArtifact = await extractAudio(file);
-          final audioFile = audioArtifact.file;
-
-          final createUpload = widget.createUpload ?? _apiClient.createUpload;
-          final uploadVideoFile =
-              widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-          final upload = await createAndUploadFileWithRetry(
-            request: CreateUploadRequest(
-              fileName: _readFileNameFromPath(audioFile.path),
-              contentType: 'audio/mp4',
-              sizeBytes: audioFile.lengthSync(),
-              purpose: 'ai-edit-audio',
+          final transcript = previousAnalysis.recipe.transcript;
+          final planEdit = widget.planEdit ?? _apiClient.requestAiEditPlan;
+          final plan = await planEdit(
+            AiEditPlanRequest(
+              segments: transcript.segments,
+              durationSeconds: transcript.durationSeconds,
+              targetDurationSeconds: _selectedDurationSeconds.toDouble(),
             ),
-            file: audioFile,
-            createUpload: createUpload,
-            uploadFile: uploadVideoFile,
-            onRetry: () {
-              if (mounted) {
-                setState(() {
-                  _processingTitle = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
-                });
-              }
-            },
-          );
-          remoteAudioKey = upload.videoS3Key;
-
-          final prepareEdit = widget.prepareEdit ?? _apiClient.prepareAiEdit;
-          final preparedFromApi = await prepareEdit(
-            _buildPrepareRequest(remoteAudioKey),
           );
           if (!mounted) {
             return;
           }
-          _preparedEditsBySignature[prepareSignature] = preparedFromApi;
-          prepared = preparedFromApi;
-        } finally {
-          if (audioArtifact != null) {
-            await _cleanupLocalAudioBestEffort(audioArtifact);
-          }
-          if (remoteAudioKey != null) {
-            await _cleanupRemoteAudioBestEffort(remoteAudioKey);
+          prepared = AiEditPrepareResult(
+            recipe: previousAnalysis.recipe.withPlan(plan),
+            quota: previousAnalysis.quota,
+          );
+          _preparedEditsBySignature[prepareSignature] = prepared;
+        } else {
+          AiEditAudioArtifact? audioArtifact;
+          String? remoteAudioKey;
+          try {
+            selectAiEditAnalysisMode(
+              _buildPrepareRequest('__capability_check__.m4a').capabilities,
+            );
+            if (mounted) {
+              setState(() => _processingTitle = 'กำลังเตรียมเสียงให้ AI...');
+            }
+
+            final extractAudio =
+                widget.extractAudio ?? AiEditAudioExtractor().extract;
+            audioArtifact = await extractAudio(file);
+            final audioFile = audioArtifact.file;
+
+            final createUpload = widget.createUpload ?? _apiClient.createUpload;
+            final uploadVideoFile =
+                widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
+            final upload = await createAndUploadFileWithRetry(
+              request: CreateUploadRequest(
+                fileName: _readFileNameFromPath(audioFile.path),
+                contentType: 'audio/mp4',
+                sizeBytes: audioFile.lengthSync(),
+                purpose: 'ai-edit-audio',
+              ),
+              file: audioFile,
+              createUpload: createUpload,
+              uploadFile: uploadVideoFile,
+              onRetry: () {
+                if (mounted) {
+                  setState(() {
+                    _processingTitle = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+                  });
+                }
+              },
+            );
+            remoteAudioKey = upload.videoS3Key;
+
+            final prepareEdit = widget.prepareEdit ?? _apiClient.prepareAiEdit;
+            final preparedFromApi = await prepareEdit(
+              _buildPrepareRequest(remoteAudioKey),
+            );
+            if (!mounted) {
+              return;
+            }
+            _preparedEditsBySignature[prepareSignature] = preparedFromApi;
+            _preparedEditsByAnalysisSignature[analysisSignature] =
+                preparedFromApi;
+            prepared = preparedFromApi;
+          } finally {
+            if (audioArtifact != null) {
+              await _cleanupLocalAudioBestEffort(audioArtifact);
+            }
+            if (remoteAudioKey != null) {
+              await _cleanupRemoteAudioBestEffort(remoteAudioKey);
+            }
           }
         }
       }
@@ -834,6 +871,24 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final request = _buildPrepareRequest('__signature_audio__.m4a').toJson()
       ..remove('audioS3Key')
       ..remove('videoS3Key');
+
+    return jsonEncode({
+      'source': {
+        'path': picked.path,
+        'name': picked.name,
+        'sizeBytes': sourceFile.lengthSync(),
+        'lastModifiedMs': sourceFile.lastModifiedSync().millisecondsSinceEpoch,
+      },
+      'request': request,
+    });
+  }
+
+  String _buildAnalysisSignature(PickedVideoFile picked, File sourceFile) {
+    final request = _buildPrepareRequest('__signature_audio__.m4a').toJson()
+      ..remove('audioS3Key')
+      ..remove('videoS3Key')
+      ..remove('durationSeconds')
+      ..remove('targetDurationSeconds');
 
     return jsonEncode({
       'source': {
@@ -2550,6 +2605,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                   _selectedVideo = null;
                   _preparedEdit = null;
                   _preparedEditsBySignature.clear();
+                  _preparedEditsByAnalysisSignature.clear();
                   _renderResultsBySignature.clear();
                   _renderedResult = null;
                   _acceptedSetup = null;

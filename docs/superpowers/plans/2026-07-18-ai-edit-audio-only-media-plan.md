@@ -14,6 +14,11 @@ cleanup plus transcript-based `targetDurationSeconds` planning for 30/60/custom.
 Backend tests/build/Prisma validation and mobile analyze/tests/debug APK build
 pass; real Staging evidence remains required after merge and deploy.
 
+**Quality update (2026-07-22):** A duration-only change reuses the successful
+in-memory transcript through non-metered `/ai-edits/plan`; Groq no longer
+receives the PostDee spelling prompt, and highlight planning quality-gates
+provider segments before selecting one continuous story window.
+
 ## Global Constraints
 
 - Follow `docs/superpowers/specs/2026-07-18-ai-edit-audio-only-media-design.md` exactly.

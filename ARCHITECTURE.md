@@ -573,9 +573,13 @@ Upload/Post or the manual editor. Mobile handles FFmpeg
 subtitle burn-in, silence cutting, supported visual adjustments, and final MP4
 export; capabilities marked `planned` are not shown as already applied.
 The selected 30/60/custom result length travels separately as
-`targetDurationSeconds`. The planner scores transcript segments for seller-oriented
-signals such as hook, benefit, proof, offer, and CTA, selects strong moments within
-the time budget in chronological order, and returns the complementary cut ranges.
+`targetDurationSeconds`. The first successful prepare stores its transcript in
+the current mobile editing session. A duration-only change calls the non-metered
+`POST /ai-edits/plan` with that cached transcript instead of uploading and
+transcribing audio again. The planner rejects known prompt leakage and low-quality
+provider segments, scores seller-oriented signals such as hook, benefit, proof,
+offer, and CTA, then returns one continuous target-length story window as
+complementary cut ranges.
 Mobile still applies a final target cap as a compatibility safety guard.
 If the combined AI/silence/filler cuts leave less media than requested, that
 guard proportionally restores nearby context while preserving every selected
@@ -614,9 +618,10 @@ The same threshold applies before the first range and after the last range when
 the transcript has a finite media duration. Overlapping ranges are merged before
 gaps are calculated. Groq Thai character-level timings remain useful for gap
 detection, while subtitle text falls back to segments instead of being split
-into individual characters. The Groq request carries a concise Thai spelling
-hint for `PostDee` → `โพสต์ดี`; this prompt is not sent through the OpenAI
-provider path.
+into individual characters. The Groq request no longer carries a PostDee
+spelling prompt because real-clip validation showed provider context leaking
+into transcript text. Optional segment-level log-probability, no-speech, and
+compression signals are retained for highlight quality gating.
 Whitespace-only provider tokens do not invalidate an otherwise complete timing
 stream; malformed tokens containing transcript text still fail closed.
 Missing or invalid preset values use `balanced`. `fillerWords` is an

@@ -985,6 +985,58 @@ void main() {
     expect(find.text('Pro · ใช้แล้ว 17/200 นาที'), findsOneWidget);
   });
 
+  testWidgets('refreshes a stale Pro badge when the process check returns Basic',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('expired-pro-clip.mp4');
+    var createUploadCalls = 0;
+    var subscriptionChecks = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async {
+            subscriptionChecks += 1;
+            return _subscriptionFixture(
+              subscriptionChecks == 1 ? 'PRO' : 'BASIC',
+            );
+          },
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 92,
+            remainingMinutes: 108,
+          ),
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'must-not-upload',
+              videoS3Key: 'uploads/must-not-upload.mp4',
+              storageProvider: 'r2',
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pro · ใช้แล้ว 92/200 นาที'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(createUploadCalls, 0);
+    expect(
+      find.byKey(const ValueKey('postdee-system-status-sheet')),
+      findsOneWidget,
+    );
+    expect(find.text('แพ็กเกจ Basic'), findsOneWidget);
+    expect(find.text('Pro · ใช้แล้ว 92/200 นาที'), findsNothing);
+  });
+
   testWidgets('shows a clear Thai message when AI transcription is unavailable',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('provider-failure.mp4');

@@ -726,6 +726,13 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         final loadSubscription =
             widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
         final subscription = await loadSubscription();
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _aiEditSubscription = subscription;
+          _aiEditSubscriptionLoadFailed = false;
+        });
         if (!subscription.isPro) {
           throw const ApiException(
             'Pro plan is required for AI editing',

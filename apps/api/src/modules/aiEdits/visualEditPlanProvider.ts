@@ -122,7 +122,10 @@ export const createGeminiVisualEditPlanProvider = ({
         'X-Goog-Upload-Header-Content-Length': String(input.video.data.length),
         'X-Goog-Upload-Header-Content-Type': input.video.mimeType
       },
-      body: JSON.stringify({ file: { displayName: 'postdee-visual-proxy' } })
+      // The resumable Files REST endpoint expects protobuf JSON field names
+      // in snake_case. `displayName` is rejected with HTTP 400 here even
+      // though SDK response objects expose the property in camelCase.
+      body: JSON.stringify({ file: { display_name: 'postdee-visual-proxy' } })
     });
     if (!startResponse.ok) {
       throw new Error(

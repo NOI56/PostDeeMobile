@@ -27,6 +27,9 @@ describe('visual edit plan provider', () => {
     const uploadedBytes: number[] = [];
     const fetchImpl = vi.fn(async (url: string, init: RequestInit = {}) => {
       if (url.includes('/upload/v1beta/files')) {
+        expect(JSON.parse(String(init.body))).toEqual({
+          file: { display_name: 'postdee-visual-proxy' }
+        });
         return response(
           {},
           { headers: { 'x-goog-upload-url': 'https://upload.local/session' } }

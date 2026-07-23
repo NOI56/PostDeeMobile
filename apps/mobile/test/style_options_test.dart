@@ -1,3 +1,4 @@
+import 'package:characters/characters.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/ai_editing/edit_styles.dart';
 import 'package:postdee_mobile/features/ai_editing/style_options.dart';
@@ -63,12 +64,19 @@ void main() {
     expect(splitLineByMaxChars('aaaaaaaaaa', 4), ['aaaa', 'aaaa', 'aa']);
   });
 
-  test('keeps an unspaced Thai run whole instead of splitting a word', () {
+  test('balances an unspaced Thai run within the character limit', () {
     const thaiCue = 'กำลังทดสอบซับภาษาไทย';
 
     final pieces = splitLineByMaxChars(thaiCue, 4);
 
-    expect(pieces, [thaiCue]);
+    expect(pieces, hasLength(5));
+    expect(pieces.every((piece) => piece.characters.length <= 4), isTrue);
+    expect(
+        pieces.map((piece) => piece.characters.length).reduce(
+              (shortest, length) => length < shortest ? length : shortest,
+            ),
+        greaterThanOrEqualTo(3));
+    expect(pieces.join(), thaiCue);
   });
 
   test('splits Thai cues only at explicit spaces', () {
@@ -103,7 +111,7 @@ void main() {
     expect(out[1].end, 10);
   });
 
-  test('does not create tiny mid-word cues from a long Thai cue', () {
+  test('does not create a tiny tail cue from a long Thai cue', () {
     const thaiCue = 'กำลังทดสอบซับภาษาไทย';
     final out = rechunkSubtitleByMaxChars(
       const [
@@ -112,10 +120,37 @@ void main() {
       4,
     );
 
-    expect(out, hasLength(1));
-    expect(out.single.text, thaiCue);
-    expect(out.single.start, 2);
-    expect(out.single.end, 8);
+    expect(out, hasLength(5));
+    expect(
+      out.every((segment) => segment.text.characters.length <= 4),
+      isTrue,
+    );
+    expect(
+      out.every((segment) => segment.end - segment.start >= 1),
+      isTrue,
+    );
+    expect(out.map((segment) => segment.text).join(), thaiCue);
+    expect(out.first.start, 2);
+    expect(out.last.end, closeTo(8, 0.0001));
+  });
+
+  test('keeps a single-line Thai subtitle within the character limit', () {
+    const thaiCue = 'หาของของที่ตัวเองต้องการ';
+    final out = rechunkSubtitleByMaxChars(
+      const [
+        SubtitleSegment(text: thaiCue, start: 87.84, end: 89.077),
+      ],
+      18,
+    );
+
+    expect(out, hasLength(2));
+    expect(
+      out.every((segment) => segment.text.characters.length <= 18),
+      isTrue,
+    );
+    expect(out.map((segment) => segment.text).join(), thaiCue);
+    expect(out.first.start, 87.84);
+    expect(out.last.end, 89.077);
   });
 
   test('merges a subtitle fragment that is too short to read', () {

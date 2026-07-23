@@ -1443,12 +1443,16 @@ void main() {
     expect(studioInput?.cues.single.text, isNotEmpty);
     expect(renderRequests, hasLength(2));
     final renderRequest = renderRequests.last;
-    expect(renderRequest.segments, hasLength(1));
+    expect(renderRequest.segments, hasLength(3));
+    expect(
+      renderRequest.segments
+          .every((segment) => segment.text.characters.length <= 18),
+      isTrue,
+    );
     expect(
       renderRequest.segments.map((segment) => segment.text).join(),
       editedSubtitle,
     );
-    expect(renderRequest.segments.single.text, editedSubtitle);
     expect(renderRequest.subtitleFontName, 'Anuphan');
     expect(renderRequest.subtitleFontSize, 30);
     expect(renderRequest.subtitleTextColor, '#00E5A8');

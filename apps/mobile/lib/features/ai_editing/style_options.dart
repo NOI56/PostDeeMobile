@@ -222,9 +222,9 @@ List<SilenceCutRange> withTargetLength(
 }
 
 /// Splits a line into pieces near [maxChars], preferring to break at spaces.
-/// Unspaced Thai runs stay intact because a grapheme boundary is not always a
-/// word boundary. Other long runs are split on grapheme boundaries. Pure and
-/// testable.
+/// Long runs without spaces are split into balanced grapheme chunks so a
+/// single-line subtitle never leaves a tiny trailing cue or overflows the
+/// video safe area. Pure and testable.
 List<String> splitLineByMaxChars(String text, int maxChars) {
   final trimmed = text.trim();
   if (maxChars <= 0 || trimmed.characters.length <= maxChars) {
@@ -257,11 +257,18 @@ List<String> splitLineByMaxChars(String text, int maxChars) {
     if (word.characters.length <= maxChars) {
       current = word;
     } else if (_containsThaiScript(word)) {
-      // Thai normally has no spaces between words. A character-count split can
-      // turn เดิน into เดิ + น and produce an unreadable 0.08-second
-      // tail cue. Keep the phrase intact; the preview and ASS renderer wrap it
-      // safely while the backend supplies real Thai word boundaries.
-      current = word;
+      final graphemes = word.characters;
+      final chunkCount = (graphemes.length / maxChars).ceil();
+      final baseSize = graphemes.length ~/ chunkCount;
+      final largerChunkCount = graphemes.length % chunkCount;
+      var offset = 0;
+      for (var index = 0; index < chunkCount; index += 1) {
+        final chunkSize = baseSize + (index < largerChunkCount ? 1 : 0);
+        pieces.add(
+          graphemes.skip(offset).take(chunkSize).toString(),
+        );
+        offset += chunkSize;
+      }
     } else {
       var rest = word.characters;
       while (rest.length > maxChars) {
@@ -314,7 +321,10 @@ List<SubtitleSegment> rechunkSubtitleByMaxChars(
     }
   }
 
-  return mergeShortSubtitleSegments(out);
+  return mergeShortSubtitleSegments(
+    out,
+    maximumChars: maxChars,
+  );
 }
 
 /// Merges provider fragments that would flash too quickly to read. A short cue
@@ -324,6 +334,7 @@ List<SubtitleSegment> mergeShortSubtitleSegments(
   List<SubtitleSegment> segments, {
   double minimumDurationSeconds = 0.7,
   double maximumGapSeconds = 0.5,
+  int? maximumChars,
 }) {
   final merged = <SubtitleSegment>[];
 
@@ -333,12 +344,17 @@ List<SubtitleSegment> mergeShortSubtitleSegments(
         previous == null ? 0 : previous.end - previous.start;
     final gap =
         previous == null ? double.infinity : segment.start - previous.end;
+    final joinedText = previous == null
+        ? segment.text
+        : _joinSubtitleText(previous.text, segment.text);
     if (previous != null &&
         previousDuration < minimumDurationSeconds &&
         gap >= -double.minPositive &&
-        gap <= maximumGapSeconds) {
+        gap <= maximumGapSeconds &&
+        (maximumChars == null ||
+            joinedText.characters.length <= maximumChars)) {
       merged[merged.length - 1] = SubtitleSegment(
-        text: _joinSubtitleText(previous.text, segment.text),
+        text: joinedText,
         start: previous.start,
         end: segment.end > previous.end ? segment.end : previous.end,
       );
@@ -351,15 +367,18 @@ List<SubtitleSegment> mergeShortSubtitleSegments(
     final last = merged.last;
     final previous = merged[merged.length - 2];
     final gap = last.start - previous.end;
+    final joinedText = _joinSubtitleText(previous.text, last.text);
     if (last.end - last.start < minimumDurationSeconds &&
         gap >= -double.minPositive &&
-        gap <= maximumGapSeconds) {
+        gap <= maximumGapSeconds &&
+        (maximumChars == null ||
+            joinedText.characters.length <= maximumChars)) {
       merged
         ..removeLast()
         ..removeLast()
         ..add(
           SubtitleSegment(
-            text: _joinSubtitleText(previous.text, last.text),
+            text: joinedText,
             start: previous.start,
             end: last.end > previous.end ? last.end : previous.end,
           ),

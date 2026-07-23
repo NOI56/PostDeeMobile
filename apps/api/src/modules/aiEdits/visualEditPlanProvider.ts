@@ -1,4 +1,4 @@
-import { Buffer } from 'node:buffer';
+import { GoogleGenAI } from '@google/genai';
 
 import type { ServerConfig } from '../../config/env.js';
 import type { RealClipMediaPart } from '../captions/realClipCaptionProvider.js';
@@ -32,6 +32,15 @@ type FetchResponse = {
 };
 
 type FetchImpl = (url: string, init?: RequestInit) => Promise<FetchResponse>;
+
+type GeminiFilesClient = {
+  upload: (input: {
+    file: string | Blob;
+    config?: { displayName?: string; mimeType?: string };
+  }) => Promise<unknown>;
+  get: (input: { name: string }) => Promise<unknown>;
+  delete: (input: { name: string }) => Promise<unknown>;
+};
 
 type GeminiFile = {
   name: string;
@@ -79,17 +88,10 @@ const readGeminiFile = (payload: unknown): GeminiFile => {
   return file as GeminiFile;
 };
 
-const fileResourceUrl = (fileName: string, apiKey: string) => {
-  const url = new URL(
-    `https://generativelanguage.googleapis.com/v1beta/${fileName}`
-  );
-  url.searchParams.set('key', apiKey);
-  return url.toString();
-};
-
 export const createGeminiVisualEditPlanProvider = ({
   apiKey,
   model,
+  filesClient = new GoogleGenAI({ apiKey }).files,
   fetchImpl = fetch as unknown as FetchImpl,
   sleep = (ms: number) =>
     new Promise<void>((resolve) => setTimeout(resolve, ms)),
@@ -97,6 +99,7 @@ export const createGeminiVisualEditPlanProvider = ({
 }: {
   apiKey: string;
   model: string;
+  filesClient?: GeminiFilesClient;
   fetchImpl?: FetchImpl;
   sleep?: (ms: number) => Promise<void>;
   maxPollAttempts?: number;
@@ -109,51 +112,19 @@ export const createGeminiVisualEditPlanProvider = ({
       throw new Error('Visual edit plan requires a video MIME type');
     }
 
-    const startUrl = new URL(
-      'https://generativelanguage.googleapis.com/upload/v1beta/files'
-    );
-    startUrl.searchParams.set('key', apiKey);
-    const startResponse = await fetchImpl(startUrl.toString(), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Upload-Protocol': 'resumable',
-        'X-Goog-Upload-Command': 'start',
-        'X-Goog-Upload-Header-Content-Length': String(input.video.data.length),
-        'X-Goog-Upload-Header-Content-Type': input.video.mimeType
-      },
-      // The resumable Files REST endpoint expects protobuf JSON field names
-      // in snake_case. `displayName` is rejected with HTTP 400 here even
-      // though SDK response objects expose the property in camelCase.
-      body: JSON.stringify({ file: { display_name: 'postdee-visual-proxy' } })
-    });
-    if (!startResponse.ok) {
-      throw new Error(
-        `Visual edit Files API start failed with status ${startResponse.status ?? 'unknown'}`
-      );
-    }
-    const uploadUrl = startResponse.headers.get('x-goog-upload-url');
-    if (!uploadUrl) {
-      throw new Error('Visual edit Files API did not return an upload URL');
-    }
-
     let uploadedFile: GeminiFile | undefined;
     try {
-      const uploadResponse = await fetchImpl(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Length': String(input.video.data.length),
-          'X-Goog-Upload-Offset': '0',
-          'X-Goog-Upload-Command': 'upload, finalize'
-        },
-        body: Buffer.from(input.video.data)
-      });
-      if (!uploadResponse.ok) {
-        throw new Error(
-          `Visual edit Files API upload failed with status ${uploadResponse.status ?? 'unknown'}`
-        );
-      }
-      uploadedFile = readGeminiFile(await uploadResponse.json());
+      uploadedFile = readGeminiFile(
+        await filesClient.upload({
+          file: new Blob([Uint8Array.from(input.video.data)], {
+            type: input.video.mimeType
+          }),
+          config: {
+            displayName: 'postdee-visual-proxy',
+            mimeType: input.video.mimeType
+          }
+        })
+      );
 
       for (
         let attempt = 0;
@@ -161,16 +132,9 @@ export const createGeminiVisualEditPlanProvider = ({
         attempt += 1
       ) {
         await sleep(1000);
-        const fileResponse = await fetchImpl(
-          fileResourceUrl(uploadedFile.name, apiKey),
-          { method: 'GET' }
+        uploadedFile = readGeminiFile(
+          await filesClient.get({ name: uploadedFile.name })
         );
-        if (!fileResponse.ok) {
-          throw new Error(
-            `Visual edit Files API status failed with ${fileResponse.status ?? 'unknown'}`
-          );
-        }
-        uploadedFile = readGeminiFile(await fileResponse.json());
       }
       if (uploadedFile.state !== 'ACTIVE') {
         throw new Error(
@@ -244,9 +208,7 @@ export const createGeminiVisualEditPlanProvider = ({
     } finally {
       if (uploadedFile?.name) {
         try {
-          await fetchImpl(fileResourceUrl(uploadedFile.name, apiKey), {
-            method: 'DELETE'
-          });
+          await filesClient.delete({ name: uploadedFile.name });
         } catch {
           // Gemini files expire automatically; cleanup is best-effort.
         }

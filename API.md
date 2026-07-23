@@ -1058,9 +1058,9 @@ with the timestamped transcript. The returned cuts are still clamped to the
 requested duration. Any visual download/upload/processing/generation failure
 falls back to the configured audio/transcript planner so an otherwise valid edit
 does not fail. The R2 proxy and Gemini file are temporary and cleaned
-best-effort. The Gemini resumable REST metadata body uses
-`{"file":{"display_name":"postdee-visual-proxy"}}`; camel-case
-`displayName` is an SDK property spelling and is rejected by this REST endpoint.
+best-effort. Upload, processing-state polling, and deletion use Google's
+official `@google/genai` Files client; the edit request still uses the validated
+file URI only after Gemini reports the proxy as active.
 
 Request (one of `styleId`, `prompt`, or `targetDurationSeconds` is required):
 

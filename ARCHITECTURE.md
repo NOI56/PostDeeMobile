@@ -609,9 +609,10 @@ Gemini upload, processing, or generation fails. The original source remains on
 device and is always used for preview/full-quality rendering. Mobile retains one
 local proxy for the current source so duration-only replans skip FFmpeg proxy
 extraction; replacing/removing the source or leaving the screen deletes it.
-Gemini and R2 copies remain request-scoped. The resumable Gemini REST metadata
-uses `file.display_name`; `displayName` fails at the upload-start request with
-HTTP 400. Visual and transcript planners apply a soft penalty to Thai
+Gemini and R2 copies remain request-scoped. Gemini file upload, status polling,
+and deletion use the official `@google/genai` server SDK instead of maintaining
+a hand-written resumable upload contract. Visual and transcript planners apply
+a soft penalty to Thai
 continuation-fragment openings and may nudge a suggested window to a nearby
 complete transcript boundary while preserving target length.
 The recipe also omits those unreliable time ranges from user-facing subtitle

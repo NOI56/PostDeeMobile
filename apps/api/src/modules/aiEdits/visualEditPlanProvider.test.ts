@@ -25,35 +25,42 @@ describe('visual edit plan provider', () => {
   it('uploads the whole proxy, waits for Gemini, and plans with transcript',
       async () => {
     const uploadedBytes: number[] = [];
-    const fetchImpl = vi.fn(async (url: string, init: RequestInit = {}) => {
-      if (url.includes('/upload/v1beta/files')) {
-        expect(JSON.parse(String(init.body))).toEqual({
-          file: { display_name: 'postdee-visual-proxy' }
+    const deletedFiles: string[] = [];
+    const filesClient = {
+      upload: vi.fn(async ({
+        file,
+        config
+      }: {
+        file: string | Blob;
+        config?: { displayName?: string; mimeType?: string };
+      }) => {
+        expect(file).toBeInstanceOf(Blob);
+        expect(config).toEqual({
+          displayName: 'postdee-visual-proxy',
+          mimeType: 'video/mp4'
         });
-        return response(
-          {},
-          { headers: { 'x-goog-upload-url': 'https://upload.local/session' } }
+        uploadedBytes.push(
+          ...new Uint8Array(await (file as Blob).arrayBuffer())
         );
-      }
-      if (url === 'https://upload.local/session') {
-        uploadedBytes.push(...new Uint8Array(init.body as ArrayBuffer));
-        return response({
-          file: {
-            name: 'files/postdee-visual',
-            uri: 'https://files.local/postdee-visual',
-            mimeType: 'video/mp4',
-            state: 'PROCESSING'
-          }
-        });
-      }
-      if (url.includes('/v1beta/files/postdee-visual') && init.method === 'GET') {
-        return response({
+        return {
           name: 'files/postdee-visual',
           uri: 'https://files.local/postdee-visual',
           mimeType: 'video/mp4',
-          state: 'ACTIVE'
-        });
-      }
+          state: 'PROCESSING'
+        };
+      }),
+      get: vi.fn(async () => ({
+        name: 'files/postdee-visual',
+        uri: 'https://files.local/postdee-visual',
+        mimeType: 'video/mp4',
+        state: 'ACTIVE'
+      })),
+      delete: vi.fn(async ({ name }: { name: string }) => {
+        deletedFiles.push(name);
+        return {};
+      })
+    };
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit = {}) => {
       if (url.includes(':generateContent')) {
         expect(String(init.body)).toContain('ราคา 99 บาท');
         expect(String(init.body)).toContain('fileUri');
@@ -77,14 +84,12 @@ describe('visual edit plan provider', () => {
           ]
         });
       }
-      if (url.includes('/v1beta/files/postdee-visual') && init.method === 'DELETE') {
-        return response({});
-      }
       throw new Error(`Unexpected request: ${init.method ?? 'GET'} ${url}`);
     });
     const provider = createGeminiVisualEditPlanProvider({
       apiKey: 'test-key',
       model: 'gemini-test',
+      filesClient,
       fetchImpl,
       sleep: async () => undefined
     });
@@ -110,46 +115,35 @@ describe('visual edit plan provider', () => {
       summary: 'เลือกภาพสินค้าและช่วงเสนอราคา',
       model: 'gemini-test-visual'
     });
-    expect(
-      fetchImpl.mock.calls.some(
-        ([url, init]) =>
-          String(url).includes('/v1beta/files/postdee-visual') &&
-          init?.method === 'DELETE'
-      ),
-      true
-    );
+    expect(filesClient.upload).toHaveBeenCalledOnce();
+    expect(filesClient.get).toHaveBeenCalledWith({
+      name: 'files/postdee-visual'
+    });
+    expect(deletedFiles).toEqual(['files/postdee-visual']);
   });
 
   it('rejects an unusable Gemini response so callers can fall back to audio',
       async () => {
+    const filesClient = {
+      upload: vi.fn(async () => ({
+        name: 'files/postdee-empty',
+        uri: 'https://files.local/postdee-empty',
+        mimeType: 'video/mp4',
+        state: 'ACTIVE'
+      })),
+      get: vi.fn(),
+      delete: vi.fn(async () => ({}))
+    };
     const fetchImpl = vi.fn(async (url: string, init: RequestInit = {}) => {
-      if (url.includes('/upload/v1beta/files')) {
-        return response(
-          {},
-          { headers: { 'x-goog-upload-url': 'https://upload.local/session' } }
-        );
-      }
-      if (url === 'https://upload.local/session') {
-        return response({
-          file: {
-            name: 'files/postdee-empty',
-            uri: 'https://files.local/postdee-empty',
-            mimeType: 'video/mp4',
-            state: 'ACTIVE'
-          }
-        });
-      }
       if (url.includes(':generateContent')) {
         return response({ candidates: [] });
-      }
-      if (url.includes('/v1beta/files/postdee-empty') && init.method === 'DELETE') {
-        return response({});
       }
       throw new Error(`Unexpected request: ${init.method ?? 'GET'} ${url}`);
     });
     const provider = createGeminiVisualEditPlanProvider({
       apiKey: 'test-key',
       model: 'gemini-test',
+      filesClient,
       fetchImpl,
       sleep: async () => undefined
     });
@@ -165,5 +159,8 @@ describe('visual edit plan provider', () => {
         }
       })
     ).rejects.toThrow('Visual edit plan provider returned no content');
+    expect(filesClient.delete).toHaveBeenCalledWith({
+      name: 'files/postdee-empty'
+    });
   });
 });

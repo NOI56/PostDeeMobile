@@ -539,10 +539,10 @@ Current mobile pieces:
   the existing audio/transcript plan remains the safe fallback. Mobile reuses
   the local proxy when only the target duration changes, then deletes it when
   the source is replaced, removed, or the editing screen closes. R2 and Gemini
-  temporary files are cleaned best-effort after each planning request. The
-  resumable Gemini REST request uses the documented `file.display_name` field;
-  the SDK-style `displayName` spelling is rejected with HTTP 400 before any
-  proxy bytes reach Gemini.
+  temporary files are cleaned best-effort after each planning request. Gemini
+  file upload, processing-state polling, and deletion use Google's official
+  `@google/genai` server SDK so the app does not maintain a fragile resumable
+  upload protocol itself.
 - The full source duration is sent as `durationSeconds` for the quota pre-check.
   A selected 30/60/custom shortened duration is sent separately as
   `targetDurationSeconds`; the target is omitted at the rightmost “keep

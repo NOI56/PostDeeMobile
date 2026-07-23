@@ -27,9 +27,10 @@ window. Do not rely on a sparse set of still images.
 8. Gemini suggestions are normalized into one continuous target-length window.
    A soft Thai continuation-fragment penalty may move the opening to a nearby
    complete transcript boundary without hard-blocking a stronger hook.
-9. The resumable Files API start body uses `file.display_name`, matching the
-   Gemini REST contract. The SDK-style `displayName` spelling returns HTTP 400
-   on this endpoint and would force an audio-only fallback.
+9. Gemini file upload, processing-state polling, and deletion use Google's
+   official `@google/genai` server SDK. This replaced the hand-written resumable
+   request after real Staging runs continued to receive upload-start HTTP 400
+   responses and fall back to audio-only planning.
 
 Gemini's normal video understanding samples visual frames at roughly 1 fps, so
 the proxy keeps the complete time axis while avoiding a wasteful 30 fps upload.

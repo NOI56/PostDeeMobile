@@ -117,6 +117,183 @@ type TranscriptionApiResponse = {
   words?: Array<{ word?: string; start?: number; end?: number }>;
 };
 
+type ElevenLabsTranscriptEvent = {
+  text?: unknown;
+  start?: unknown;
+  end?: unknown;
+  type?: unknown;
+};
+
+type ElevenLabsTranscriptionResponse = {
+  text?: unknown;
+  language_code?: unknown;
+  words?: unknown;
+};
+
+type ElevenLabsTimedWord = {
+  word: string;
+  displayText: string;
+  start: number;
+  end: number;
+};
+
+const elevenLabsPauseBoundarySeconds = 0.55;
+const elevenLabsMaxSegmentSeconds = 4;
+const elevenLabsMaxSegmentGraphemes = 32;
+const terminalTranscriptPunctuation = /[.!?。！？…ฯ]$/u;
+const thaiGraphemeSegmenter = new Intl.Segmenter('th', {
+  granularity: 'grapheme'
+});
+
+const isElevenLabsEvent = (
+  value: unknown
+): value is ElevenLabsTranscriptEvent =>
+  typeof value === 'object' && value !== null;
+
+const isValidElevenLabsTimedWord = (
+  event: ElevenLabsTranscriptEvent
+): event is ElevenLabsTranscriptEvent & {
+  text: string;
+  start: number;
+  end: number;
+  type: 'word';
+} =>
+  event.type === 'word' &&
+  typeof event.text === 'string' &&
+  event.text.trim().length > 0 &&
+  typeof event.start === 'number' &&
+  Number.isFinite(event.start) &&
+  event.start >= 0 &&
+  typeof event.end === 'number' &&
+  Number.isFinite(event.end) &&
+  event.end >= event.start;
+
+const countGraphemes = (value: string): number =>
+  Array.from(thaiGraphemeSegmenter.segment(value)).length;
+
+const readElevenLabsTimedWords = (
+  events: ElevenLabsTranscriptEvent[]
+): ElevenLabsTimedWord[] => {
+  const timedWords: ElevenLabsTimedWord[] = [];
+  let pendingSpacing = '';
+
+  for (const event of events) {
+    if (event.type === 'spacing' && typeof event.text === 'string') {
+      pendingSpacing += event.text;
+      continue;
+    }
+
+    if (!isValidElevenLabsTimedWord(event)) {
+      continue;
+    }
+
+    const word = event.text.normalize('NFC').trim();
+    timedWords.push({
+      word,
+      displayText: `${pendingSpacing}${word}`,
+      start: event.start,
+      end: event.end
+    });
+    pendingSpacing = '';
+  }
+
+  return timedWords;
+};
+
+const buildElevenLabsSegments = (
+  timedWords: ElevenLabsTimedWord[]
+): TranscriptSegment[] => {
+  const segments: TranscriptSegment[] = [];
+  let current:
+    | {
+        text: string;
+        start: number;
+        end: number;
+      }
+    | undefined;
+
+  const flush = () => {
+    if (!current) return;
+    const text = current.text.normalize('NFC').trim();
+    if (text) {
+      segments.push({
+        text,
+        start: current.start,
+        end: current.end
+      });
+    }
+    current = undefined;
+  };
+
+  for (const timedWord of timedWords) {
+    if (
+      current &&
+      timedWord.start - current.end >= elevenLabsPauseBoundarySeconds
+    ) {
+      flush();
+    }
+
+    if (!current) {
+      current = {
+        text: timedWord.displayText,
+        start: timedWord.start,
+        end: timedWord.end
+      };
+    } else {
+      current.text += timedWord.displayText;
+      current.end = timedWord.end;
+    }
+
+    const normalizedText = current.text.normalize('NFC').trim();
+    const reachedBoundary =
+      terminalTranscriptPunctuation.test(timedWord.word) ||
+      current.end - current.start >= elevenLabsMaxSegmentSeconds ||
+      countGraphemes(normalizedText) >= elevenLabsMaxSegmentGraphemes;
+
+    if (reachedBoundary) {
+      flush();
+    }
+  }
+
+  flush();
+  return segments;
+};
+
+const normalizeElevenLabsTranscription = (
+  value: unknown,
+  model: string
+): TranscriptionResult => {
+  const payload =
+    typeof value === 'object' && value !== null
+      ? (value as ElevenLabsTranscriptionResponse)
+      : {};
+  const events = Array.isArray(payload.words)
+    ? payload.words.filter(isElevenLabsEvent)
+    : [];
+  const timedWords = readElevenLabsTimedWords(events);
+  const fallbackText = timedWords.map((word) => word.displayText).join('');
+  const text =
+    typeof payload.text === 'string'
+      ? payload.text.normalize('NFC').trim()
+      : fallbackText.normalize('NFC').trim();
+  const language =
+    typeof payload.language_code === 'string'
+      ? payload.language_code
+      : undefined;
+
+  return {
+    text,
+    language: normalizeTranscriptionLanguage(language),
+    durationSeconds: timedWords.reduce(
+      (duration, word) => Math.max(duration, word.end),
+      0
+    ),
+    segments: buildElevenLabsSegments(timedWords),
+    words: timedWords.map(({ word, start, end }) => ({ word, start, end })),
+    model
+  };
+};
+
 export const createMockTranscriptionProvider = (): TranscriptionProvider => ({
   transcribe: async () => ({
     text: 'สวัสดีค่ะ วันนี้มีของดีมาแนะนำ สินค้าตัวนี้ขายดีมากบอกเลย กดลิงก์ในไบโอสั่งได้เลยนะคะ',
@@ -260,6 +437,58 @@ export const createGroqTranscriptionProvider = ({
     failureLabel: 'Groq transcription'
   });
 
+/**
+ * Real Thai transcription via ElevenLabs Scribe v2. Spacing events rebuild
+ * readable mixed-language text, while only valid word events become timed
+ * subtitle words.
+ */
+export const createElevenLabsTranscriptionProvider = ({
+  apiKey,
+  model,
+  fetchAudio,
+  fetchImpl = fetch as unknown as FetchImpl
+}: {
+  apiKey: string;
+  model: string;
+  fetchAudio: FetchAudio;
+  fetchImpl?: FetchImpl;
+}): TranscriptionProvider => ({
+  transcribe: async (input) => {
+    const audio = await fetchAudio(input);
+    const form = new FormData();
+    form.append(
+      'file',
+      new Blob([audio.data], { type: audio.contentType }),
+      audio.filename
+    );
+    form.append('model_id', model);
+    form.append('language_code', 'th');
+    form.append('timestamps_granularity', 'word');
+    form.append('tag_audio_events', 'false');
+    form.append('diarize', 'false');
+    form.append('no_verbatim', 'false');
+
+    const response = await fetchImpl(
+      'https://api.elevenlabs.io/v1/speech-to-text',
+      {
+        method: 'POST',
+        headers: { 'xi-api-key': apiKey },
+        body: form as unknown as RequestInit['body']
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `ElevenLabs transcription failed with status ${
+          response.status ?? 'unknown'
+        }`
+      );
+    }
+
+    return normalizeElevenLabsTranscription(await response.json(), model);
+  }
+});
+
 export const createTranscriptionProviderFromConfig = ({
   config,
   fetchAudio
@@ -271,6 +500,8 @@ export const createTranscriptionProviderFromConfig = ({
     | 'whisperModel'
     | 'groqApiKey'
     | 'groqTranscriptionModel'
+    | 'elevenLabsApiKey'
+    | 'elevenLabsTranscriptionModel'
   >;
   fetchAudio?: FetchAudio;
 }): TranscriptionProvider => {
@@ -302,6 +533,26 @@ export const createTranscriptionProviderFromConfig = ({
     return createGroqTranscriptionProvider({
       apiKey: config.groqApiKey,
       model: config.groqTranscriptionModel,
+      fetchAudio
+    });
+  }
+
+  if (config.transcriptionProvider === 'elevenlabs') {
+    if (!config.elevenLabsApiKey) {
+      throw new Error(
+        'ELEVENLABS_API_KEY is required when TRANSCRIPTION_PROVIDER is elevenlabs'
+      );
+    }
+
+    if (!fetchAudio) {
+      throw new Error(
+        'A fetchAudio implementation is required for ElevenLabs transcription'
+      );
+    }
+
+    return createElevenLabsTranscriptionProvider({
+      apiKey: config.elevenLabsApiKey,
+      model: config.elevenLabsTranscriptionModel,
       fetchAudio
     });
   }

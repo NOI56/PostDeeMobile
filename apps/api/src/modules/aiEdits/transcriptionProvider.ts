@@ -171,6 +171,102 @@ const isValidElevenLabsTimedWord = (
 const countGraphemes = (value: string): number =>
   Array.from(thaiGraphemeSegmenter.segment(value)).length;
 
+const rebuildFragmentedElevenLabsThaiWords = (
+  timedWords: ElevenLabsTimedWord[],
+  language?: string
+): ElevenLabsTimedWord[] => {
+  if (
+    normalizeTranscriptionLanguage(language) !== 'th' ||
+    timedWords.length < 4
+  ) {
+    return timedWords;
+  }
+
+  const timelineText = timedWords
+    .map((word) => word.displayText)
+    .join('')
+    .normalize('NFC');
+  const parts = Array.from(
+    new Intl.Segmenter('th', { granularity: 'word' }).segment(timelineText)
+  );
+  const semanticWordCount = parts.filter((part) => part.isWordLike).length;
+
+  // Scribe normally returns Thai timing events as grapheme-sized fragments.
+  // Leave providers that already return semantic words untouched.
+  if (
+    semanticWordCount === 0 ||
+    timedWords.length <= semanticWordCount * 1.5
+  ) {
+    return timedWords;
+  }
+
+  let offset = 0;
+  const indexedWords = timedWords.map((timedWord) => {
+    const displayText = timedWord.displayText.normalize('NFC');
+    const word = timedWord.word.normalize('NFC');
+    const suffixOffset = Math.max(0, displayText.lastIndexOf(word));
+    const indexedWord = {
+      timedWord,
+      wordStart: offset + suffixOffset,
+      wordEnd: offset + suffixOffset + word.length
+    };
+    offset += displayText.length;
+    return indexedWord;
+  });
+  const readPartRange = (start: number, end: number) => {
+    const overlapping = indexedWords.filter(
+      (entry) => entry.wordStart < end && entry.wordEnd > start
+    );
+    const first = overlapping[0]?.timedWord;
+    const last = overlapping.at(-1)?.timedWord;
+    return first && last
+      ? { start: first.start, end: last.end }
+      : undefined;
+  };
+
+  const rebuilt: ElevenLabsTimedWord[] = [];
+  let pendingSpacing = '';
+
+  for (const part of parts) {
+    const value = part.segment.normalize('NFC');
+    if (!part.isWordLike) {
+      if (/^\s+$/u.test(value)) {
+        pendingSpacing += value;
+        continue;
+      }
+
+      const previous = rebuilt.at(-1);
+      const range = readPartRange(part.index, part.index + part.segment.length);
+      if (previous) {
+        previous.word += value;
+        previous.displayText += value;
+        if (range) {
+          previous.end = Math.max(previous.end, range.end);
+        }
+      } else {
+        pendingSpacing += value;
+      }
+      continue;
+    }
+
+    const word = value.trim();
+    const range = readPartRange(part.index, part.index + part.segment.length);
+    if (!word || !range) {
+      continue;
+    }
+
+    rebuilt.push({
+      word,
+      displayText: `${pendingSpacing}${word}`,
+      start: range.start,
+      end: range.end
+    });
+    pendingSpacing = '';
+  }
+
+  return rebuilt.length > 0 ? rebuilt : timedWords;
+};
+
 const readElevenLabsTimedWords = (
   events: ElevenLabsTranscriptEvent[]
 ): ElevenLabsTimedWord[] => {
@@ -270,16 +366,19 @@ const normalizeElevenLabsTranscription = (
   const events = Array.isArray(payload.words)
     ? payload.words.filter(isElevenLabsEvent)
     : [];
-  const timedWords = readElevenLabsTimedWords(events);
+  const language =
+    typeof payload.language_code === 'string'
+      ? payload.language_code
+      : undefined;
+  const timedWords = rebuildFragmentedElevenLabsThaiWords(
+    readElevenLabsTimedWords(events),
+    language
+  );
   const fallbackText = timedWords.map((word) => word.displayText).join('');
   const text =
     typeof payload.text === 'string'
       ? payload.text.normalize('NFC').trim()
       : fallbackText.normalize('NFC').trim();
-  const language =
-    typeof payload.language_code === 'string'
-      ? payload.language_code
-      : undefined;
 
   return {
     text,

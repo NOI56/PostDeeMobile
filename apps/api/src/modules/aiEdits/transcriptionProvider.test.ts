@@ -388,6 +388,49 @@ describe('transcription provider', () => {
     ]);
   });
 
+  it('rebuilds fragmented Thai events into semantic timed words', async () => {
+    const text =
+      'เพราะฉะนั้นก็จะไปไปมามาระหว่างบ้านแล้วก็สยามเป็นคนเมืองหลวงต่างๆ';
+    const fragments = Array.from(
+      new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(text),
+      (part, index) => ({
+        type: 'word',
+        text: part.segment,
+        start: index * 0.05,
+        end: (index + 1) * 0.05
+      })
+    );
+
+    const result = await transcribeElevenLabsFixture(fragments, text);
+
+    expect(result.words.map((word) => word.word)).toEqual([
+      'เพราะ',
+      'ฉะนั้น',
+      'ก็',
+      'จะ',
+      'ไป',
+      'ไป',
+      'มา',
+      'มาระ',
+      'หว่าง',
+      'บ้าน',
+      'แล้ว',
+      'ก็',
+      'สยาม',
+      'เป็น',
+      'คน',
+      'เมือง',
+      'หลวง',
+      'ต่างๆ'
+    ]);
+    expect(result.segments.map((segment) => segment.text).join('')).toBe(text);
+    expect(
+      result.segments.every((segment) =>
+        result.words.some((word) => word.end === segment.end)
+      )
+    ).toBe(true);
+  });
+
   it('drops malformed and non-word ElevenLabs events', async () => {
     const result = await transcribeElevenLabsFixture([
       { type: 'word', text: 'ถูก', start: 0.1, end: 0.4 },

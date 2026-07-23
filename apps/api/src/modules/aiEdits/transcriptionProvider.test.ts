@@ -464,6 +464,51 @@ describe('transcription provider', () => {
     );
   });
 
+  it('rebuilds a Thai word split across adjacent Scribe timing events', async () => {
+    const result = await transcribeElevenLabsFixture(
+      [
+        { type: 'word', text: 'ไป', start: 0, end: 0.2 },
+        { type: 'word', text: 'ใช้', start: 0.2, end: 0.4 },
+        { type: 'word', text: 'เนื่อ', start: 0.4, end: 0.6 },
+        { type: 'word', text: 'งจาก', start: 0.6, end: 0.8 },
+        { type: 'word', text: 'รถ', start: 0.8, end: 1 }
+      ],
+      'ไปใช้เนื่องจากรถ'
+    );
+
+    expect(result.words.map((word) => word.word)).toEqual([
+      'ไป',
+      'ใช้',
+      'เนื่องจาก',
+      'รถ'
+    ]);
+  });
+
+  it('keeps rebuilt Thai word timings monotonic across a shared Scribe event', async () => {
+    const result = await transcribeElevenLabsFixture(
+      [
+        { type: 'word', text: 'อยู่', start: 0, end: 0.2 },
+        { type: 'word', text: 'ที่', start: 0.2, end: 0.4 },
+        { type: 'word', text: 'แถ', start: 0.4, end: 0.6 },
+        { type: 'word', text: 'วสยาม', start: 0.6, end: 1.1 }
+      ],
+      'อยู่ที่แถวสยาม'
+    );
+
+    expect(result.words.map((word) => word.word)).toEqual([
+      'อยู่',
+      'ที่',
+      'แถว',
+      'สยาม'
+    ]);
+    expect(
+      result.words.every(
+        (word, index) =>
+          index === 0 || word.start >= result.words[index - 1]!.end
+      )
+    ).toBe(true);
+  });
+
   it('drops malformed and non-word ElevenLabs events', async () => {
     const result = await transcribeElevenLabsFixture([
       { type: 'word', text: 'ถูก', start: 0.1, end: 0.4 },

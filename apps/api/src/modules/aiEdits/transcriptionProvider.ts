@@ -216,20 +216,6 @@ const rebuildFragmentedElevenLabsThaiWords = (
   ).filter((part) => part.isWordLike).length;
   const spacingSplitsSemanticWord =
     spacedSemanticWordCount > semanticWordCount;
-
-  // Scribe normally returns Thai timing events as grapheme-sized fragments.
-  // Leave providers that already return semantic words untouched.
-  if (
-    semanticWordCount === 0 ||
-    (
-      !canonicalSpacingDiffers &&
-      !spacingSplitsSemanticWord &&
-      timedWords.length <= semanticWordCount * 1.5
-    )
-  ) {
-    return timedWords;
-  }
-
   let offset = 0;
   const indexedWords = timedWords.flatMap((timedWord) => {
     const word = compact(timedWord.word);
@@ -244,15 +230,61 @@ const rebuildFragmentedElevenLabsThaiWords = (
     offset += word.length;
     return [indexedWord];
   });
+  let semanticOffset = 0;
+  const semanticWordSplitAcrossEvents = parts.some((part) => {
+    const value = compact(part.segment);
+    const start = semanticOffset;
+    const end = start + value.length;
+    semanticOffset = end;
+    if (!part.isWordLike || !value) {
+      return false;
+    }
+    return indexedWords.filter(
+      (entry) => entry.wordStart < end && entry.wordEnd > start
+    ).length > 1;
+  });
+
+  // Scribe normally returns Thai timing events as grapheme-sized fragments.
+  // Leave providers that already return semantic words untouched.
+  if (
+    semanticWordCount === 0 ||
+    (
+      !canonicalSpacingDiffers &&
+      !spacingSplitsSemanticWord &&
+      !semanticWordSplitAcrossEvents &&
+      timedWords.length <= semanticWordCount * 1.5
+    )
+  ) {
+    return timedWords;
+  }
+
   const readPartRange = (start: number, end: number) => {
     const overlapping = indexedWords.filter(
       (entry) => entry.wordStart < end && entry.wordEnd > start
     );
-    const first = overlapping[0]?.timedWord;
-    const last = overlapping.at(-1)?.timedWord;
-    return first && last
-      ? { start: first.start, end: last.end }
-      : undefined;
+    const first = overlapping[0];
+    const last = overlapping.at(-1);
+    if (!first || !last) {
+      return undefined;
+    }
+    const readOffsetTime = (
+      entry: (typeof indexedWords)[number],
+      position: number
+    ) => {
+      const textLength = entry.wordEnd - entry.wordStart;
+      const ratio = textLength <= 0
+        ? 0
+        : Math.min(
+            1,
+            Math.max(0, (position - entry.wordStart) / textLength)
+          );
+      return entry.timedWord.start +
+        (entry.timedWord.end - entry.timedWord.start) * ratio;
+    };
+    return {
+      start: readOffsetTime(first, start),
+      end: readOffsetTime(last, end)
+    };
   };
 
   const rebuilt: ElevenLabsTimedWord[] = [];

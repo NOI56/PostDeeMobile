@@ -29,7 +29,8 @@ omits unreliable time ranges from rendered subtitle lines.
 source audio into balanced M4A chunks no longer than 30 seconds and sends
 ordered `audioChunks`. The API validates ownership for every key, transcribes
 chunks sequentially, restores source-relative timestamps, merges one transcript,
-meters the combined duration once, and deletes every temporary chunk on success
+clips AAC timing overrun at the next chunk boundary, meters the combined duration
+once, and deletes every temporary chunk on success
 or failure. Legacy single `audioS3Key` remains compatible.
 
 ## Global Constraints

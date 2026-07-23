@@ -110,6 +110,7 @@ AiEditPrepareResult _createPrepareFixture({
     summary: '',
     model: 'none',
   ),
+  double transcriptDurationSeconds = 45,
 }) =>
     AiEditPrepareResult(
       quota: const AiEditQuota(
@@ -121,11 +122,11 @@ AiEditPrepareResult _createPrepareFixture({
         version: 1,
         status: 'ready',
         renderMode: 'mobile-ffmpeg',
-        transcript: const AiEditTranscriptResult(
+        transcript: AiEditTranscriptResult(
           text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
           language: 'th',
-          durationSeconds: 45,
-          segments: [
+          durationSeconds: transcriptDurationSeconds,
+          segments: const [
             ClipTranscriptSegment(
               text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
               start: 0,
@@ -1173,6 +1174,8 @@ void main() {
       everyElement('ai-edit-audio'),
     );
     expect(prepareRequest?.audioS3Key, isNull);
+    expect(prepareRequest?.durationSeconds, 150);
+    expect(prepareRequest?.targetDurationSeconds, 30);
     expect(
       prepareRequest?.audioChunks?.map((chunk) => chunk.startSeconds).toList(),
       [0, 25],
@@ -1186,6 +1189,61 @@ void main() {
       'uploads/editor/chunk-1.m4a',
     ]);
     expect(chunksDirectory!.existsSync(), isFalse);
+  });
+
+  testWidgets(
+      'does not create a visual proxy when the user keeps the full source',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'full-source.mp4',
+      durationSeconds: 150,
+    );
+    final renderedVideo = _createRenderedVideoFixture('full-result.mp4');
+    var visualProxyCalls = 0;
+    var planCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => pickedVideo,
+          extractAudio: _extractAudioFixture,
+          extractVisualProxy: (source) async {
+            visualProxyCalls += 1;
+            return _extractVisualProxyFixture(source);
+          },
+          cleanupAiEditAudio: (_) async {},
+          cleanupAiEditVisualProxy: (_) async {},
+          createUpload: (request) async => UploadResult(
+            id: request.purpose ?? 'upload',
+            videoS3Key: 'uploads/${request.fileName}',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(
+            transcriptDurationSeconds: 150.8,
+          ),
+          planEdit: (_) async {
+            planCalls += 1;
+            return const AiEditPlanResult(
+              cuts: [],
+              summary: 'ไม่ต้องย่อ',
+              model: 'test-plan',
+            );
+          },
+          burnVideo: (_) async => renderedVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(visualProxyCalls, 0);
+    expect(planCalls, 0);
+    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
   });
 
   testWidgets('opens Subtitle Studio before render and uses its edited output',
@@ -2140,7 +2198,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(prepareRequests, hasLength(1));
-    expect(prepareRequests.first.durationSeconds, 30);
+    expect(prepareRequests.first.durationSeconds, 150);
     expect(planRequests, hasLength(1));
     expect(planRequests.single.targetDurationSeconds, 60);
     expect(find.text('setup-result-2.mp4'), findsOneWidget);

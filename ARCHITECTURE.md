@@ -561,7 +561,9 @@ than 30 seconds and uploads only those files with the narrow `ai-edit-audio`
 purpose. Balanced chunking avoids a very short final request while keeping every
 part within Groq's short audio context. Backend validates ownership of every
 chunk, transcribes them sequentially, shifts local timing back onto the source
-timeline, merges one transcript, meters the combined duration once, and cleans
+timeline, clips segment/word timing at the next chunk boundary to remove AAC
+container overrun, merges one non-overlapping transcript, meters the combined
+duration once, and cleans
 all temporary audio even after a partial failure; the untouched original video
 remains local for rendering. Legacy single `audioS3Key` and `videoS3Key`
 requests remain supported, and legacy videos are not automatically deleted.
@@ -588,8 +590,9 @@ available if a new render fails. The user can then continue either to
 Upload/Post or the manual editor. Mobile handles FFmpeg
 subtitle burn-in, silence cutting, supported visual adjustments, and final MP4
 export; capabilities marked `planned` are not shown as already applied.
-The selected 30/60/custom result length travels separately as
-`targetDurationSeconds`. The first successful prepare stores its transcript in
+The source duration travels as `durationSeconds` for quota preflight. A selected
+30/60/custom shortened result travels separately as `targetDurationSeconds`;
+mobile omits it when the slider is at “keep original”. The first successful prepare stores its transcript in
 the current mobile editing session. A duration-only change calls the non-metered
 `POST /ai-edits/plan` with that cached transcript instead of uploading and
 transcribing audio again. The planner rejects known prompt leakage and low-quality

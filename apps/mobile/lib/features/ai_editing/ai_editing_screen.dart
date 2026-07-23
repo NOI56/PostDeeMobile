@@ -981,6 +981,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final transcript = prepared.recipe.transcript;
     final targetDurationSeconds = _selectedDurationSeconds.toDouble();
     if (!_shouldAttemptVisualProxy ||
+        _isUsingOriginalDuration ||
         transcript.durationSeconds <= 0 ||
         targetDurationSeconds >= transcript.durationSeconds - 0.5) {
       return prepared;
@@ -1074,8 +1075,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     return AiEditPrepareRequest(
       audioS3Key: audioS3Key,
       audioChunks: audioChunks.isEmpty ? null : audioChunks,
-      durationSeconds: _selectedDurationSeconds.toDouble(),
-      targetDurationSeconds: _selectedDurationSeconds.toDouble(),
+      durationSeconds: _selectedVideoDurationSeconds ??
+          _selectedDurationSeconds.toDouble(),
+      targetDurationSeconds:
+          _isUsingOriginalDuration ? null : _selectedDurationSeconds.toDouble(),
       capabilities: {
         ...capabilities,
         'sfx': false,
@@ -1321,7 +1324,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       cutRanges = withTargetLength(
         cutRanges,
         sourceDuration,
-        _selectedDurationSeconds.toDouble(),
+        _isUsingOriginalDuration
+            ? sourceDuration
+            : _selectedDurationSeconds.toDouble(),
       );
     }
 

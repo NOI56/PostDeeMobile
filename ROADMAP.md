@@ -108,8 +108,11 @@ Primary backend choices:
 
 The table's earlier audio-only deployment note is superseded. Groq M4A
 transcription now uses balanced source-audio chunks no longer than 30 seconds.
-The API merges source-relative timestamps and charges the combined duration
-once, while all temporary chunks are cleaned on success or failure. This fixes
+The API clips AAC timing overrun at each chunk boundary, merges non-overlapping
+source-relative timestamps, and charges the combined duration once, while all
+temporary chunks are cleaned on success or failure. Mobile now sends the actual
+source duration for quota preflight and omits the target at the rightmost
+“ไม่ย่อ” stop. This fixes
 the observed long-form omission where active Thai speech at the start of the
 2:30 fixture produced no subtitle until 22 seconds. Target-length cuts that land
 inside a cue are moved before the cue and balanced at the tail. Shorter targets
@@ -117,7 +120,8 @@ also add a
 whole-duration 360 px/1 fps MP4 proxy with complete audio. The API pairs that
 proxy with timestamped transcript segments through Gemini Files API, falls back
 to audio planning on any visual failure, and cleans temporary device/R2/Gemini
-media best-effort. The remaining release gate is a deployed R2 + Groq + Gemini
+media best-effort. The remaining release gate is a deployed Pixel 8 rerun that
+must open Subtitle Studio with the full opening cue, then an R2 + Groq + Gemini
 comparison across the licensed Thai fixture matrix, followed by physical Android
 and iPhone rendering tests.
 

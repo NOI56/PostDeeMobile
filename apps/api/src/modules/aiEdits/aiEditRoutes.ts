@@ -200,21 +200,30 @@ const readAiEditMedia = (body: unknown): ReadAiEditMediaResult => {
 
 const shiftTranscriptionResult = (
   result: TranscriptionResult,
-  startSeconds: number
-): TranscriptionResult => ({
-  ...result,
-  durationSeconds: startSeconds + result.durationSeconds,
-  segments: result.segments.map((segment) => ({
-    ...segment,
-    start: startSeconds + segment.start,
-    end: startSeconds + segment.end
-  })),
-  words: result.words.map((word) => ({
-    ...word,
-    start: startSeconds + word.start,
-    end: startSeconds + word.end
-  }))
-});
+  startSeconds: number,
+  endSeconds?: number
+): TranscriptionResult => {
+  const shiftAndClipRanges = <T extends { start: number; end: number }>(
+    ranges: T[]
+  ): T[] =>
+    ranges.flatMap((range) => {
+      const start = Math.max(startSeconds, startSeconds + range.start);
+      const shiftedEnd = startSeconds + range.end;
+      const end =
+        endSeconds === undefined ? shiftedEnd : Math.min(shiftedEnd, endSeconds);
+      if (end <= start) {
+        return [];
+      }
+      return [{ ...range, start, end }];
+    });
+
+  return {
+    ...result,
+    durationSeconds: endSeconds ?? startSeconds + result.durationSeconds,
+    segments: shiftAndClipRanges(result.segments),
+    words: shiftAndClipRanges(result.words)
+  };
+};
 
 const mergeChunkedTranscriptions = (
   chunks: Array<{ startSeconds: number; transcript: TranscriptionResult }>
@@ -223,8 +232,12 @@ const mergeChunkedTranscriptions = (
     return chunks[0].transcript;
   }
 
-  const shifted = chunks.map(({ startSeconds, transcript }) =>
-    shiftTranscriptionResult(transcript, startSeconds)
+  const shifted = chunks.map(({ startSeconds, transcript }, index) =>
+    shiftTranscriptionResult(
+      transcript,
+      startSeconds,
+      chunks[index + 1]?.startSeconds
+    )
   );
   return {
     text: shifted

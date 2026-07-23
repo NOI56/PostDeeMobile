@@ -61,9 +61,10 @@ The API and mobile client both attempt remote cleanup. S3-compatible deletion is
 
 ### AI editing contract
 
-- New mobile clients send `audioChunks`, `durationSeconds`, capabilities/settings, and no legacy media key.
+- New mobile clients send `audioChunks`, the source clip `durationSeconds`, capabilities/settings, and no legacy media key. A shorter requested result is sent separately as `targetDurationSeconds`; it is omitted when the user keeps the original duration.
 - `/ai-edits/prepare` and `/ai-edits/transcribe` accept exactly one of `audioChunks`, one `audioS3Key`, or one legacy `videoS3Key`.
 - `audioChunks` start at zero, are strictly ordered and unique, contain at most 40 owned `.m4a` keys, and include each chunk's source-relative `startSeconds`.
+- The backend clips each non-final chunk's segment and word timestamps at the next `startSeconds`, preventing AAC/container timing overrun from creating overlapping Subtitle Studio cues.
 - `audioS3Key` must be owned by the authenticated user and identify an `.m4a` object.
 - The backend downloads the audio with a 25 MiB ceiling and expects `audio/mp4` before calling Groq.
 - Legacy `videoS3Key` keeps the existing 200 MiB ceiling during the compatibility window and is never automatically deleted.

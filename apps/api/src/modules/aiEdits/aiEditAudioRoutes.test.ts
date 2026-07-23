@@ -120,6 +120,79 @@ describe('AI edit audio routes', () => {
     expect(deleteVideo).toHaveBeenCalledWith(secondKey);
   });
 
+  it('clips AAC timing overrun at chunk boundaries so subtitle segments never overlap', async () => {
+    const firstKey = ownedUploadKey(
+      'local-dev-user',
+      'chunk-000.m4a',
+      'chunks'
+    );
+    const secondKey = ownedUploadKey(
+      'local-dev-user',
+      'chunk-001.m4a',
+      'chunks'
+    );
+    const transcribe = vi.fn(async ({ mediaS3Key }: { mediaS3Key: string }) => {
+      if (mediaS3Key === firstKey) {
+        return {
+          text: 'ประโยคก่อนรอยต่อ',
+          language: 'th',
+          durationSeconds: 30.08,
+          segments: [
+            { text: 'ประโยคก่อนรอยต่อ', start: 29.4, end: 30.08 }
+          ],
+          words: [
+            { word: 'ประโยคก่อนรอยต่อ', start: 29.4, end: 30.08 }
+          ],
+          model: 'test-whisper'
+        };
+      }
+
+      return {
+        text: 'ประโยคหลังรอยต่อ',
+        language: 'th',
+        durationSeconds: 30.08,
+        segments: [
+          { text: 'ประโยคหลังรอยต่อ', start: 0, end: 0.8 }
+        ],
+        words: [
+          { word: 'ประโยคหลังรอยต่อ', start: 0, end: 0.8 }
+        ],
+        model: 'test-whisper'
+      };
+    });
+    const { videoStorage } = createStorageWithDeleteSpy();
+    const app = createApp({
+      transcriptionProvider: { transcribe },
+      videoStorage
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        audioChunks: [
+          { audioS3Key: firstKey, startSeconds: 0 },
+          { audioS3Key: secondKey, startSeconds: 30 }
+        ],
+        durationSeconds: 60,
+        targetDurationSeconds: 60,
+        capabilities: { subtitle: true }
+      })
+      .expect(200);
+
+    expect(response.body.recipe.transcript.segments).toEqual([
+      { text: 'ประโยคก่อนรอยต่อ', start: 29.4, end: 30 },
+      { text: 'ประโยคหลังรอยต่อ', start: 30, end: 30.8 }
+    ]);
+    expect(response.body.recipe.subtitles.segments).toEqual([
+      {
+        text: 'ประโยคก่อนรอยต่อประโยคหลังรอยต่อ',
+        start: 29.4,
+        end: 30.8
+      }
+    ]);
+  });
+
   it('rejects audio chunks when one key belongs to another user', async () => {
     const firstKey = ownedUploadKey('local-dev-user', 'chunk-000.m4a', 'chunks');
     const foreignKey = ownedUploadKey('other-seller', 'chunk-001.m4a', 'chunks');

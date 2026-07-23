@@ -860,15 +860,19 @@ Current mobile clients split source audio into balanced chunks no longer than
 time of every chunk. The first start must be zero; keys must be unique,
 user-owned, ordered, and limited to 40 chunks. The backend transcribes chunks
 sequentially, shifts their local word/segment timestamps onto the source
-timeline, merges one transcript, and reserves quota once from the combined
-duration. All owned chunks are deleted in the cleanup path even if a later
+timeline, clips AAC/container timing overrun at the next chunk boundary, merges
+one non-overlapping transcript, and reserves quota once from the combined
+duration. `durationSeconds` must describe the source clip for the quota
+pre-check, not the requested output length. All owned chunks are deleted in the
+cleanup path even if a later
 provider call fails. Legacy clients may send exactly one `audioS3Key` or one
 `videoS3Key`; legacy video objects are not auto-deleted. Sending multiple media
 forms or no media form is rejected.
 
 `targetDurationSeconds` is the desired result length (30, 60, or a positive
 custom value). It is separate from `durationSeconds`, which is only the initial
-source-duration/quota estimate. When a target is present, the edit planner selects
+source-duration/quota estimate. Current mobile clients omit the target when the
+duration slider is at the rightmost “keep original” position. When a target is present, the edit planner selects
 one strongest continuous story window from reliable transcript segments and
 returns the complementary ranges to remove. Provider prompt leakage and segments
 that cross the configured Whisper confidence/no-speech/compression thresholds are

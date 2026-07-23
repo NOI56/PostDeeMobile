@@ -523,8 +523,9 @@ Current mobile pieces:
   with `purpose=ai-edit-audio`, and sends ordered `audioChunks` to the backend.
   This keeps the whole source timeline while avoiding a tiny final chunk and
   long-form leading-speech omissions. The backend transcribes each chunk,
-  restores source-relative timestamps, merges one transcript, and meters the
-  combined duration once. The original video stays on the phone for FFmpeg
+  restores source-relative timestamps, clips AAC timing overrun at every chunk
+  boundary, merges one non-overlapping transcript, and meters the combined
+  duration once. The original video stays on the phone for FFmpeg
   rendering. Local and remote temporary audio are cleaned best-effort after the
   prepare call; legacy single `audioS3Key` and `videoS3Key` clients remain
   compatible.
@@ -537,7 +538,11 @@ Current mobile pieces:
   source never leaves the phone for rendering. If visual analysis is unavailable,
   the existing audio/transcript plan remains the safe fallback. Local, R2, and
   Gemini temporary files are cleaned best-effort after planning.
-- The selected 30/60/custom duration is sent as `targetDurationSeconds`. The edit
+- The full source duration is sent as `durationSeconds` for the quota pre-check.
+  A selected 30/60/custom shortened duration is sent separately as
+  `targetDurationSeconds`; the target is omitted at the rightmost “keep
+  original” stop so provider timing drift cannot trim the final fraction of the
+  clip or trigger an unnecessary visual proxy. The edit
   planner excludes known prompt leakage and low-quality segments, then uses
   transcript selling signals (hook, benefit, proof, offer, and CTA) to choose one
   continuous story window; the local duration cap remains a

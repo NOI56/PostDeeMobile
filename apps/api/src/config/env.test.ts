@@ -28,6 +28,7 @@ describe('readServerConfig', () => {
       rateLimitMaxRequests: 300,
       openAiApiKey: undefined,
       groqApiKey: undefined,
+      elevenLabsApiKey: undefined,
       geminiApiKey: undefined,
       billingProvider: 'mock',
       revenueCatWebhookAuthToken: undefined,
@@ -77,6 +78,7 @@ describe('readServerConfig', () => {
       transcriptionProvider: 'mock',
       whisperModel: 'whisper-1',
       groqTranscriptionModel: 'whisper-large-v3',
+      elevenLabsTranscriptionModel: 'scribe_v2',
       editPlanProvider: 'mock',
       openAiEditPlanModel: 'gpt-4o-mini',
       groqEditPlanModel: 'llama-3.3-70b-versatile',
@@ -108,6 +110,8 @@ describe('readServerConfig', () => {
       RATE_LIMIT_MAX_REQUESTS: '50',
       OPENAI_API_KEY: 'openai-key',
       GROQ_API_KEY: 'groq-key',
+      ELEVENLABS_API_KEY: 'elevenlabs-key',
+      ELEVENLABS_TRANSCRIPTION_MODEL: 'scribe_v2',
       GEMINI_API_KEY: 'gemini-key',
       BILLING_PROVIDER: 'store',
       REVENUECAT_REST_API_V1_KEY: 'revenuecat-rest-key',
@@ -174,6 +178,7 @@ describe('readServerConfig', () => {
       rateLimitMaxRequests: 50,
       openAiApiKey: 'openai-key',
       groqApiKey: 'groq-key',
+      elevenLabsApiKey: 'elevenlabs-key',
       geminiApiKey: 'gemini-key',
       billingProvider: 'store',
       revenueCatRestApiV1Key: 'revenuecat-rest-key',
@@ -215,6 +220,7 @@ describe('readServerConfig', () => {
       postPeerFacebookAccountId: 'postpeer-facebook',
       transcriptionProvider: 'groq',
       groqTranscriptionModel: 'whisper-large-v3',
+      elevenLabsTranscriptionModel: 'scribe_v2',
       mockUserId: 'mock-user-1'
     });
   });
@@ -516,7 +522,7 @@ describe('readServerConfig', () => {
 
   it('rejects invalid TRANSCRIPTION_PROVIDER values', () => {
     expect(() => readServerConfig({ TRANSCRIPTION_PROVIDER: 'local' })).toThrow(
-      'TRANSCRIPTION_PROVIDER must be mock, openai, or groq'
+      'TRANSCRIPTION_PROVIDER must be mock, openai, groq, or elevenlabs'
     );
   });
 

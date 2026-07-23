@@ -203,10 +203,19 @@ const rebuildFragmentedElevenLabsThaiWords = (
   const canonicalSpacingDiffers =
     referenceMatchesTimeline &&
     normalizedReference !== timelineText.trim();
+  const segmentationText = canonicalText.replace(
+    /(\p{Script=Thai})\s+(?=\p{Script=Thai})/gu,
+    '$1'
+  );
   const parts = Array.from(
-    new Intl.Segmenter('th', { granularity: 'word' }).segment(canonicalText)
+    new Intl.Segmenter('th', { granularity: 'word' }).segment(segmentationText)
   );
   const semanticWordCount = parts.filter((part) => part.isWordLike).length;
+  const spacedSemanticWordCount = Array.from(
+    new Intl.Segmenter('th', { granularity: 'word' }).segment(canonicalText)
+  ).filter((part) => part.isWordLike).length;
+  const spacingSplitsSemanticWord =
+    spacedSemanticWordCount > semanticWordCount;
 
   // Scribe normally returns Thai timing events as grapheme-sized fragments.
   // Leave providers that already return semantic words untouched.
@@ -214,6 +223,7 @@ const rebuildFragmentedElevenLabsThaiWords = (
     semanticWordCount === 0 ||
     (
       !canonicalSpacingDiffers &&
+      !spacingSplitsSemanticWord &&
       timedWords.length <= semanticWordCount * 1.5
     )
   ) {

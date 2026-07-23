@@ -432,7 +432,7 @@ describe('transcription provider', () => {
   });
 
   it('uses the canonical Scribe text when spacing events split a Thai word', async () => {
-    const text = 'ไม่ค่อยได้ใช้เนื่องจากรถติดมาก';
+    const text = 'ไม่ค่อยได้ใช้เนื่อ งจากรถติดมาก';
     const result = await transcribeElevenLabsFixture(
       [
         { type: 'word', text: 'ไม่', start: 0, end: 0.2 },
@@ -459,7 +459,9 @@ describe('transcription provider', () => {
       'ติด',
       'มาก'
     ]);
-    expect(result.segments.map((segment) => segment.text).join('')).toBe(text);
+    expect(result.segments.map((segment) => segment.text).join('')).toBe(
+      'ไม่ค่อยได้ใช้เนื่องจากรถติดมาก'
+    );
   });
 
   it('drops malformed and non-word ElevenLabs events', async () => {

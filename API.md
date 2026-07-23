@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-This document describes the current Express + TypeScript scaffold in `apps/api`. It is written for local development and integration planning. Production integrations for social publishing, live analytics, Cloudflare R2, real-clip AI captioning, Pro Groq Whisper auto editing, Firebase, Apple App Store, and Google Play still require real credentials and provider-level testing.
+This document describes the current Express + TypeScript scaffold in `apps/api`. It is written for local development and integration planning. Production integrations for social publishing, live analytics, Cloudflare R2, real-clip AI captioning, Pro AI auto editing, Firebase, Apple App Store, and Google Play still require real credentials and provider-level testing.
 
 ## Base URL
 
@@ -100,7 +100,7 @@ The backend reads `phone_number` from the verified Firebase ID token and treats 
 | Cloud scheduling | No | Yes | Yes |
 | Calendar for scheduled posts | No | Yes | Yes |
 | AI caption from real clip | No | Audio-only, 50 generations/month scaffolded | Audio + selected frames, 120 generations/month scaffolded |
-| AI auto editing with Groq Whisper | No | No | 200 minutes/month scaffolded |
+| AI auto editing with configured speech-to-text | No | No | 200 minutes/month scaffolded |
 | AI audio review as a separate feature | No | No | No |
 | Unified Analytics | No | No | Yes |
 | Hashtag radar and AI comment center | No | No | Yes |
@@ -115,7 +115,7 @@ Important rules:
 - Starter users can post immediately, schedule posts, use the calendar, and use
   real-clip AI captioning from audio after a selected clip.
 - Pro users unlock analytics, hashtag radar, AI comment center, team/editor
-  access, visual-frame AI captioning, and Groq Whisper auto editing scaffolds.
+  access, visual-frame AI captioning, and speech-to-text auto editing scaffolds.
 - Prompt-only caption generation may still exist in the API while the app
   transitions, but it should not be the main paid package promise.
 - Secret provider keys must stay on the backend, never inside the Flutter app.
@@ -679,9 +679,9 @@ Requires Starter or Pro.
   retries transient failures and falls back to a secondary model, then to the
   local template caption if it still fails, so a caption is always returned.
 - When no Gemini provider is configured, it falls back to the legacy path: the
-  configured `TRANSCRIPTION_PROVIDER` (e.g. Groq Whisper) transcribes the clip
+  configured `TRANSCRIPTION_PROVIDER` (for example Groq or ElevenLabs) transcribes the clip
   and a local template builds the caption.
-- Note: Groq Whisper is otherwise reserved for the auto-editing/subtitle flow
+- Note: live timestamp-capable transcription is otherwise reserved for the auto-editing/subtitle flow
   (which needs accurate timestamps); the caption path prefers Gemini.
 - Frame sampling itself (extracting `selectedFrameKeys` from the video) is done
   by the mobile app via FFmpeg, which uploads the frames as images before
@@ -1624,9 +1624,11 @@ PostgreSQL.
 | `GEMINI_CAPTION_MODEL` | `gemini-2.5-flash-lite` | Gemini caption model |
 | `OPENAI_API_KEY` | `...` | Legacy OpenAI API key |
 | `OPENAI_CAPTION_MODEL` | `gpt-4o-mini` | Legacy OpenAI caption model |
-| `TRANSCRIPTION_PROVIDER` | `mock`, `openai`, `groq` | AI caption language detection and AI edit transcription provider |
+| `TRANSCRIPTION_PROVIDER` | `mock`, `openai`, `groq`, `elevenlabs` | AI caption language detection and AI edit transcription provider; one provider is called per request |
 | `GROQ_API_KEY` | `...` | Groq API key for AI caption detection and AI edit transcription |
 | `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3` | Groq transcription model |
+| `ELEVENLABS_API_KEY` | `...` | ElevenLabs Speech-to-Text API key; backend secret only |
+| `ELEVENLABS_TRANSCRIPTION_MODEL` | `scribe_v2` | ElevenLabs transcription model |
 | `WHISPER_MODEL` | `whisper-1` | Legacy OpenAI transcription model |
 | `EDIT_PLAN_PROVIDER` | `mock`, `openai`, `groq` | Brain for `POST /ai-edits/plan`; `mock` is rule-based, the others call an LLM and fall back to mock on failure |
 | `OPENAI_EDIT_PLAN_MODEL` | `gpt-4o-mini` | OpenAI chat model for edit planning |
@@ -1687,8 +1689,8 @@ The following work is still required before production launch:
 - Apply and verify the Prisma `RealClipCaptionUsage` migration in production
   before selling paid AI caption quotas.
 - Keep legacy AI review compatibility flags false while building real-clip AI
-  captioning and Pro Groq Whisper editing.
-- Design Pro AI auto editing jobs with Groq Whisper transcription, minute quotas,
+  captioning and Pro speech-to-text editing.
+- Design Pro AI auto editing jobs with configured transcription, minute quotas,
   top-up handling, mobile FFmpeg export, retries, and failure handling before
   implementation.
 - Complete Firebase Google Sign-In and Phone Auth device testing.

@@ -40,7 +40,7 @@ flowchart LR
   API --> Storage["Cloudflare R2 Video Storage"]
   API --> Queue["Upstash Redis / BullMQ"]
   API --> Captions["Real-Clip Caption Provider"]
-  API --> Editing["Groq Whisper AI Auto Editing"]
+  API --> Editing["Configured Speech-to-Text AI Auto Editing"]
   Queue --> Worker["Publish Worker"]
   Worker --> Social["PostPeer API (Unified)"]
   Worker --> Storage
@@ -134,7 +134,7 @@ Backend stack:
 - Firebase ID token verifier
 - Firebase Cloud Messaging (FCM) sender
 - Gemini caption provider scaffold
-- Groq Whisper AI auto editing scaffold
+- Configurable Groq/ElevenLabs AI auto editing transcription scaffold
 - RevenueCat webhook receiver scaffold
 - Sentry error tracking is planned; it is not integrated yet
 
@@ -245,7 +245,7 @@ This keeps the schema usable for Apple App Store, Google Play, or other future b
 | Video storage | `VIDEO_STORAGE=mock`, `UPLOAD_PROTOCOL_MODE=legacy` | `VIDEO_STORAGE=r2`, with `UPLOAD_PROTOCOL_MODE=dual` during rollout and strict `multipart` after old clients are retired |
 | Captions | `CAPTION_PROVIDER=mock` | Real-clip caption provider using backend AI |
 | Caption usage | `CAPTION_USAGE_STORE=memory` | `CAPTION_USAGE_STORE=prisma` |
-| AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | `TRANSCRIPTION_PROVIDER=groq` with Groq Whisper transcription on backend, FFmpeg export on mobile |
+| AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | `TRANSCRIPTION_PROVIDER=groq` in production; staging can evaluate `elevenlabs`; FFmpeg export remains on mobile |
 | Auth | `AUTH_PROVIDER=mock` | `AUTH_PROVIDER=firebase` |
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
 | Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; `FACEBOOK_REELS` currently targets Facebook Page Video; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
@@ -344,7 +344,7 @@ Rules:
 - Every route except `GET /health` sits behind a global per-IP rate limit (`RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS`); auth, upload, AI, and social-connection routes add tighter fixed per-IP buckets.
 - Starter unlocks real-clip AI captioning from audio.
 - Pro unlocks analytics, hashtag radar, AI comment center, team/editor access,
-  AI captioning from audio plus selected frames, and Groq Whisper auto
+  AI captioning from audio plus selected frames, and speech-to-text auto
   editing.
 - A PostPeer `202 pending/publishing` response stays inside the publisher until
   `GET /v1/posts/{postId}` reaches a terminal result or the roughly two-minute
@@ -497,7 +497,7 @@ sequenceDiagram
 The active route and mobile UI have been removed. It should not be marketed as
 a separate "AI audio review" package feature. Useful output ideas such as
 caption angles, hooks, hashtags, and SEO keywords should move into real-clip AI
-captioning or Pro Groq Whisper auto editing.
+captioning or Pro speech-to-text auto editing.
 
 Known limitations:
 
@@ -518,14 +518,14 @@ Cleanup direction:
 - Reuse useful product ideas such as hooks, hashtags, and SEO fields inside
   real-clip captioning where they help.
 
-## AI Auto Editing With Groq Whisper Flow
+## AI Auto Editing With Configured Transcription Flow
 
 ```mermaid
 sequenceDiagram
   participant M as Mobile
   participant A as API
   participant Sub as Subscription Store
-  participant W as Groq Whisper
+  participant W as Configured Speech-to-Text Provider
   participant F as Mobile FFmpeg
 
   M->>A: Request transcript or prepare recipe for selected clip
@@ -626,7 +626,7 @@ request into a near-empty clip. A separate subtitle-boundary guard detects when
 the leading target cut lands inside a spoken cue, moves the opening just before
 that cue with a small pre-roll, and balances the duration at the trailing cut so
 the result remains exact without opening mid-sentence.
-If Groq transcription fails, the API returns the stable
+If the configured transcription provider fails, the API returns the stable
 `AI_TRANSCRIPTION_PROVIDER_FAILED` code with HTTP 502 before quota reservation;
 provider internals are not exposed. Mobile translates that code into a Thai
 retry message and leaves the setup available for another attempt.
@@ -866,7 +866,7 @@ cd apps/mobile
 6. Expand RevenueCat notification event coverage from sandbox evidence.
 7. Run the `RealClipCaptionUsage` migration in staging/production and set
    `CAPTION_USAGE_STORE=prisma` before selling paid AI caption quotas.
-8. Harden Pro Groq Whisper job/session persistence, top-up, retry/recovery, and real-device review/export states.
+8. Compare Groq and ElevenLabs on Thai clips, then harden Pro transcription job/session persistence, top-up, retry/recovery, and real-device review/export states.
 9. Test Firebase Google Sign-In and Phone Auth on real Android/iOS devices.
 10. Test video picker and 9:16 preview on real devices.
 11. Connect disposable per-user PostPeer accounts and run the full controlled

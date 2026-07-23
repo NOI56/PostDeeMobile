@@ -57,6 +57,7 @@ describe('render.staging.yaml isolated staging config', () => {
       'CLOUDFLARE_R2_ENDPOINT',
       'GEMINI_API_KEY',
       'GROQ_API_KEY',
+      'ELEVENLABS_API_KEY',
       'FIREBASE_PROJECT_ID',
       'REVENUECAT_WEBHOOK_AUTH_TOKEN',
       'REVENUECAT_REST_API_V1_KEY',
@@ -64,6 +65,8 @@ describe('render.staging.yaml isolated staging config', () => {
       expectEnvSecret(source, key);
     }
 
+    expectEnvValue(source, 'TRANSCRIPTION_PROVIDER', 'groq');
+    expectEnvValue(source, 'ELEVENLABS_TRANSCRIPTION_MODEL', 'scribe_v2');
     expect(source).not.toContain('POSTPEER_TIKTOK_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_YOUTUBE_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_INSTAGRAM_ACCOUNT_ID');

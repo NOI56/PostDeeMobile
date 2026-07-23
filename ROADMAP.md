@@ -98,7 +98,7 @@ Primary backend choices:
 | Video storage | Cloudflare R2 | Store temporary upload videos and signed upload/download URLs | R2 adapter and managed multipart sessions exist | Use `VIDEO_STORAGE=r2` with `UPLOAD_PROTOCOL_MODE=dual` during rollout. New clients opt in to `multipart-v1`; move to strict `multipart` after old clients are retired. Keep videos temporary and delete after successful publishing where possible. |
 | Auth | Firebase Auth | Google Sign-In, Firebase ID token verification, and Phone Auth for Basic quota unlock | Dedicated Android Debug Staging config and Google login/token/API smoke pass on Emulator; Production, iOS, Phone Auth, and physical-device tests remain | Keep Debug Staging on `com.postdee.postdee_mobile.staging`; do not mix its Dart defines with Profile/Release Firebase files. |
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to Gemini (retry + model fallback + local template fallback); media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`); legacy Groq/Whisper path kept for when no Gemini is configured | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
-| AI auto editing | Groq Whisper large-v3 + mobile FFmpeg | Pro subtitle transcription, optional silence/filler cuts, UI capability recipe, subtitle burn-in, phone-side review, and video export | Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, exact filler allowlist, detected count/time summary, reversible supported capabilities with automatic preview re-render, accordion settings, and Post/manual-editor exits exist. Mobile now extracts a bounded temporary M4A instead of uploading the full source for current capabilities, and 30/60/custom is sent as `targetDurationSeconds` so the planner selects strong transcript moments. Provider failures return structured 502 without consuming quota. Production beat sync and the 3-second hook are locked as `เร็ว ๆ นี้` behind default-off compile-time flags. | Deploy the audio-only/target-duration release and repeat the 38 MB real-clip E2E with the configured Staging Groq key. Confirm only M4A reaches R2/Groq, temporary audio is deleted, chosen moments are coherent, and the original video renders locally. Re-check Groq pricing/docs before production launch. `ENABLE_EXPERIMENTAL_BEAT_SYNC=true` and `ENABLE_EXPERIMENTAL_AI_HOOK=true` remain setup-only QA flags. |
+| AI auto editing | Configurable speech-to-text + mobile FFmpeg | Pro subtitle transcription, optional silence/filler cuts, UI capability recipe, subtitle burn-in, phone-side review, and video export | Groq remains the production default. A staging-only ElevenLabs Scribe v2 adapter adds word-timestamp normalization and short segments without changing the mobile contract. Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, exact filler allowlist, reversible supported capabilities, and Post/manual-editor exits exist. | Run the approved same-file Thai A/B against Groq, measuring CER, hallucinations, opening coverage, timing, latency, and cost. Keep production on Groq until the result is reviewed. Rotate the 30-day ElevenLabs staging key before 2026-08-23. |
 | Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase and true Restore/resync E2E pass on Emulator; RevenueCat Play config, production Android public SDK key, and signed AAB are ready | Verify Play Console access on a physical Android device, then create the Play app/subscriptions/service credentials/internal testing and test lifecycle plus real Google Play/App Store purchases before claiming production billing E2E. |
 | Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect/refresh/provider-first disconnect are wired; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; YouTube defaults private and TikTok SELF_ONLY for controlled testing; connected-account E2E is still pending | `FACEBOOK_REELS` is an internal compatibility value for Page Video, not a Reels claim. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
@@ -108,6 +108,14 @@ Primary backend choices:
 
 The table's earlier audio-only deployment note is superseded. Groq M4A
 transcription now uses balanced source-audio chunks no longer than 30 seconds.
+
+### Transcription provider trial (2026-07-24)
+
+Staging can select ElevenLabs Scribe v2 while production remains on Groq. A
+normal customer request calls only one configured provider and does not
+silently fall back, so A/B results remain attributable. The trial compares the
+same Thai source audio and gives accuracy priority over timing, latency, and
+cost.
 The API clips AAC timing overrun at each chunk boundary, merges non-overlapping
 source-relative timestamps, and charges the combined duration once, while all
 temporary chunks are cleaned on success or failure. Mobile now sends the actual
@@ -334,9 +342,9 @@ Recommended order:
    - Editors can prepare posts and schedules without seeing social account passwords.
    - Use role-based access around connected OAuth accounts.
 
-8. AI Auto Editing With Groq Whisper
+8. AI Auto Editing With Configured Speech-to-Text
    - Pro users can request Thai transcription, cut silence, burn in subtitles, review the phone-rendered result, and remove supported AI edits they do not want.
-   - Backend handles auth, quota, temporary storage, and Groq Whisper transcription with a Thai language hint and both word and segment timestamps. The spelling prompt was removed after real-clip validation found provider context leaking into Thai transcript text. It validates word timing before using it for silence/filler cuts and subtitle timing, falls back to segments when coverage is incomplete, and keeps Thai character-level timing for gaps while using readable segment subtitles.
+   - Backend handles auth, quota, temporary storage, and one configured transcription provider. Groq uses a Thai hint with word/segment timestamps; ElevenLabs staging uses Scribe v2 word timestamps, ignores audio events, and creates short normalized segments. It validates timing before using it for silence/filler cuts and subtitles.
    - Mobile re-renders accepted capabilities from the original clip, then lets the user continue to posting or open the manual editor.
    - Review uses an adaptive 540p/20 fps preview for sources longer than one minute (720p/24 fps for shorter sources), reports FFmpeg processed-time progress, supports cancel/retry, and reuses identical results. Going to Post renders a separate full-source-dimension file.
    - The mobile target-length safety guard restores context around AI-selected moments when incomplete transcript timing would otherwise leave less than the requested 30/60/custom duration.
@@ -369,7 +377,7 @@ Recommended order:
   `false` in production until their real analyzers/renderers pass device tests.
 - Keep Phase 2 behind Pro or future Agency plan gates where appropriate.
 - Do not market separate AI audio review while real-clip AI captioning and
-  Groq Whisper auto editing cover that user need.
+  speech-to-text auto editing covers that user need.
 - Keep Pro-only social/team tools scoped so editors can prepare work without
   seeing owner credentials or tokens.
 

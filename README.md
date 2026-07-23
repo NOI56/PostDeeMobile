@@ -52,6 +52,7 @@ Current backend pieces:
 - Optional Cloudflare R2 video storage adapter selectable with `VIDEO_STORAGE=r2`, including signed upload and signed download access scaffolds
 - Optional Gemini caption adapter selectable with `CAPTION_PROVIDER=gemini`
 - Optional Groq transcription adapter selectable with `TRANSCRIPTION_PROVIDER=groq`
+- Optional ElevenLabs Scribe v2 adapter selectable with `TRANSCRIPTION_PROVIDER=elevenlabs`
 - Legacy S3/OpenAI adapters remain available with `VIDEO_STORAGE=s3` and `CAPTION_PROVIDER=openai`
 - Mock/Firebase auth middleware selectable with `AUTH_PROVIDER=firebase`
 - RevenueCat webhook receiver for Starter and Pro subscription entitlements
@@ -233,8 +234,8 @@ AI provider.
   production should use `CAPTION_USAGE_STORE=prisma` after the Prisma migration
   is applied.
 - In local mode, `TRANSCRIPTION_PROVIDER=mock` returns a safe Thai transcript.
-  In production, `TRANSCRIPTION_PROVIDER=groq` or `openai` downloads the stored
-  clip through signed storage access and sends it to the speech provider.
+  Live `groq`, `elevenlabs`, or legacy `openai` mode downloads the stored clip
+  through signed storage access and sends it to exactly one speech provider.
 - It still does not sample real frames from the uploaded video.
 
 #### Removed: `POST /clip-reviews`
@@ -244,7 +245,7 @@ The legacy AI Clip Review endpoint is no longer mounted. Requests to
 
 Reason: it overlaps with AI caption from the real clip and made the package
 copy confusing. Useful ideas from the old mock review output should move into
-AI caption from the real clip or the future Pro Groq Whisper auto editing flow.
+AI caption from the real clip or the Pro speech-to-text auto editing flow.
 
 #### `GET /templates` and `POST /templates`
 
@@ -508,8 +509,10 @@ Current mobile pieces:
   mobile FFmpeg render recipe. It meters the same 200 monthly AI editing minutes
   as transcription and does not render video server-side. Groq transcription
   sends the ISO-639-1 Thai hint (`th`) and requests both word and segment
-  timestamps without a spelling prompt, preventing provider context from leaking
-  into unrelated clip text. Optional segment confidence/no-speech/compression
+  timestamps without a spelling prompt. The staging-only ElevenLabs Scribe v2
+  adapter requests word timestamps, disables audio-event tags/diarization, and
+  converts valid timed words into short segments. Optional Groq segment
+  confidence/no-speech/compression
   signals are retained for highlight quality checks and to omit unreliable ranges
   or clearly unexpected mixed-script recognition noise from burned subtitle
   lines. Normal Latin product/place names remain allowed. The backend validates word timing
@@ -790,7 +793,7 @@ Queue/storage scaffold switches:
 - `RATE_LIMIT_WINDOW_MS=60000` and `RATE_LIMIT_MAX_REQUESTS=300` cap requests per IP per window; exceeding the cap returns `429` with code `RATE_LIMITED` (`GET /health` is exempt). Auth, upload, AI, and social-connection routes also have tighter fixed per-IP buckets.
 - `AWS_S3_UPLOAD_EXPIRES_SECONDS=900` controls how long legacy S3 signed upload URLs remain usable.
 - `CAPTION_PROVIDER=mock` uses the local Thai template; `CAPTION_PROVIDER=gemini` calls Gemini with `GEMINI_CAPTION_MODEL` and `GEMINI_API_KEY`; `CAPTION_PROVIDER=openai` remains available as a legacy path.
-- `TRANSCRIPTION_PROVIDER=mock` uses the local Thai transcript for AI caption language detection and AI editing; `TRANSCRIPTION_PROVIDER=groq` calls Groq with `GROQ_TRANSCRIPTION_MODEL` and `GROQ_API_KEY`; `TRANSCRIPTION_PROVIDER=openai` remains available as a legacy path.
+- `TRANSCRIPTION_PROVIDER=mock` uses the local Thai transcript; `groq` calls Groq with `GROQ_TRANSCRIPTION_MODEL` and `GROQ_API_KEY`; `elevenlabs` calls Scribe v2 with `ELEVENLABS_TRANSCRIPTION_MODEL` and `ELEVENLABS_API_KEY`; `openai` remains a legacy path. Normal requests call one provider only, without automatic fallback.
 - `AUTH_PROVIDER=mock` uses development headers; `AUTH_PROVIDER=firebase`
   requires `FIREBASE_PROJECT_ID`. It verifies Google Secure Token certificates
   by default, or Firebase Admin revocation/user existence when
@@ -804,7 +807,7 @@ Seed helpers:
 
 ## Roadmap
 
-See `ROADMAP.md` for the build roadmap. It includes the current Phase 1 core app work, planned pricing with Basic, Starter 199, and Pro 299, AI caption from the real clip, Pro Groq Whisper auto editing, and Phase 2 growth features such as Link in Bio, EP tools, watermarking, hashtag radar, AI comment center, viral alerts, and Team and Editor Access.
+See `ROADMAP.md` for the build roadmap. It includes the current Phase 1 core app work, planned pricing with Basic, Starter 199, and Pro 299, AI caption from the real clip, Pro speech-to-text auto editing, and Phase 2 growth features such as Link in Bio, EP tools, watermarking, hashtag radar, AI comment center, viral alerts, and Team and Editor Access.
 
 ## Current Limits
 

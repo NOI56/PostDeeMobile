@@ -556,11 +556,12 @@ Current mobile pieces:
   AI endpoint.
 - Thai subtitle preparation rebuilds readable word boundaries when provider
   word timestamps arrive as character fragments. Long Thai fallback segments
-  without usable word timing are also split at estimated Thai word boundaries
-  before reaching mobile. Cues shorter than 0.7 seconds are joined across only
-  a small neighboring gap, mobile never hard-splits an unspaced Thai phrase,
-  and the live preview scales text down inside its single line instead of
-  hiding it with an ellipsis.
+  or fallback segments containing several words are also split at estimated
+  Thai word boundaries, capped at two estimated words per cue, before reaching
+  mobile. Cues shorter than 0.7 seconds are joined across only a small
+  neighboring gap, mobile never hard-splits an unspaced Thai phrase, and the
+  live preview scales text down inside its single line instead of hiding it
+  with an ellipsis.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.

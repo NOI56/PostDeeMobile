@@ -343,8 +343,11 @@ describe('ai edit routes', () => {
         enabled: true,
         segments: [
           { text: 'สวัสดีค่ะ', start: 0, end: 2 },
-          { text: 'ราคา 99 บาท ส่งฟรีวันนี้', start: 4, end: 7 },
-          { text: 'กดตะกร้าได้เลย', start: 10, end: 13 }
+          { text: 'ราคา 99', start: 4, end: 5.125 },
+          { text: 'บาทส่ง', start: 5.125, end: 6.0625 },
+          { text: 'ฟรีวันนี้', start: 6.0625, end: 7 },
+          { text: 'กดตะกร้า', start: 10, end: 11.75 },
+          { text: 'ได้เลย', start: 11.75, end: 13 }
         ]
       },
       overlays: {

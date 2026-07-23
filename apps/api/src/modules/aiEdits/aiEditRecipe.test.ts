@@ -223,6 +223,26 @@ describe('AI edit recipe pacing settings', () => {
     ).toBe(true);
   });
 
+  it('splits word-dense Thai fallback segments even under four seconds', () => {
+    const text = 'จนกระทั่งแทบจะไม่มีที่เดินสำหรับคน';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds: 3.2,
+      settings: { subtitleWordsPerLine: 4 },
+      segments: [{ text, start: 0, end: 3.2 }],
+      words: []
+    });
+
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe(text);
+    expect(
+      recipe.subtitles.segments.every((segment) => segment.text !== text)
+    ).toBe(true);
+  });
+
   it('merges provider subtitle fragments that are too short to read', () => {
     const recipe = buildRecipe({
       capabilities: { subtitle: true },
@@ -545,7 +565,21 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual(segments);
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(segments.length);
+    expect(
+      recipe.subtitles.segments
+        .map((segment) => segment.text)
+        .join('')
+        .replace(/\s+/g, '')
+    ).toBe(
+      segments
+        .map((segment) => segment.text)
+        .join('')
+        .replace(/\s+/g, '')
+    );
+    expect(
+      recipe.subtitles.segments.every((segment) => segment.end > segment.start)
+    ).toBe(true);
     expect(recipe.silenceRanges).toEqual([
       { start: 2, end: 4 },
       { start: 7, end: 10 }
@@ -565,7 +599,18 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual(segments);
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(segments.length);
+    expect(
+      recipe.subtitles.segments
+        .map((segment) => segment.text)
+        .join('')
+        .replace(/\s+/g, '')
+    ).toBe(
+      segments
+        .map((segment) => segment.text)
+        .join('')
+        .replace(/\s+/g, '')
+    );
     expect(recipe.silenceRanges).toEqual([]);
   });
 

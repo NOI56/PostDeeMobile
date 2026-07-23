@@ -314,7 +314,7 @@ const minimumWordTextCoverageRatio = 0.8;
 const minimumFragmentedTokenCount = 4;
 const fragmentedFillerBoundarySeconds = 0.08;
 const minimumEstimatedSubtitleDurationSeconds = 0.7;
-const maximumFallbackThaiSubtitleDurationSeconds = 4;
+const maximumEstimatedThaiWordsPerCue = 2;
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
   value
@@ -691,7 +691,7 @@ const buildEstimatedThaiSubtitleSegments = (
     buildSubtitleSegments({
       words: rebuildThaiWordsFromSegment(segment),
       language: 'th',
-      wordsPerLine,
+      wordsPerLine: Math.min(wordsPerLine, maximumEstimatedThaiWordsPerCue),
       minimumDurationSeconds: minimumEstimatedSubtitleDurationSeconds
     })
   );
@@ -706,13 +706,6 @@ const buildReadableFallbackSubtitleSegments = (
   }
 
   return segments.flatMap((segment) => {
-    if (
-      segment.end - segment.start <=
-      maximumFallbackThaiSubtitleDurationSeconds
-    ) {
-      return [segment];
-    }
-
     const rebuilt = buildEstimatedThaiSubtitleSegments(
       [segment],
       wordsPerLine

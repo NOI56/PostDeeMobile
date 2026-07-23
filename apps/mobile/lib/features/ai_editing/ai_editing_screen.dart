@@ -2149,11 +2149,18 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     );
 
     if (openPaywall == true && mounted) {
+      final loadSubscription =
+          widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (context) => const PaywallScreen(),
+          builder: (context) => PaywallScreen(
+            loadSubscription: loadSubscription,
+          ),
         ),
       );
+      if (mounted) {
+        await _loadAiEditQuota();
+      }
     }
   }
 

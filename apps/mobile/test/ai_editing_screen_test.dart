@@ -924,6 +924,8 @@ void main() {
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('basic-user-clip.mp4');
     var createUploadCalls = 0;
+    var subscriptionChecks = 0;
+    var currentPlan = 'BASIC';
 
     await tester.pumpWidget(
       _testApp(
@@ -931,7 +933,15 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
-          loadSubscription: () async => _subscriptionFixture('BASIC'),
+          loadSubscription: () async {
+            subscriptionChecks += 1;
+            return _subscriptionFixture(currentPlan);
+          },
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 17,
+            remainingMinutes: 183,
+          ),
           createUpload: (_) async {
             createUploadCalls += 1;
             return const UploadResult(
@@ -965,6 +975,14 @@ void main() {
     await tester.tap(find.text('ดูแพ็กเกจ Pro'));
     await tester.pumpAndSettle();
     expect(find.text('เลือกแพ็กเกจ'), findsOneWidget);
+
+    currentPlan = 'PRO';
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(subscriptionChecks, greaterThanOrEqualTo(4));
+    expect(find.text('เหลือ 183 นาที'), findsOneWidget);
+    expect(find.text('Pro · ใช้แล้ว 17/200 นาที'), findsOneWidget);
   });
 
   testWidgets('shows a clear Thai message when AI transcription is unavailable',

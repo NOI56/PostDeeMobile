@@ -511,6 +511,7 @@ describe('ai edit routes', () => {
 
   it('uses an owned whole-clip proxy for visual highlight planning and cleans it',
       async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     const visualPlan = vi.fn(async () => ({
       cuts: [
         { start: 0, end: 5 },
@@ -560,6 +561,14 @@ describe('ai edit routes', () => {
     expect(fetchClipMedia).toHaveBeenCalledWith(proxyKey);
     expect(deleteVideo).toHaveBeenCalledWith(proxyKey);
     expect(response.body.plan.model).toBe('gemini-test-visual');
+    expect(info).toHaveBeenCalledWith(
+      'AI visual edit planning succeeded',
+      expect.objectContaining({
+        model: 'gemini-test-visual',
+        cutCount: 2
+      })
+    );
+    info.mockRestore();
   });
 
   it('falls back to the audio planner when visual planning fails', async () => {

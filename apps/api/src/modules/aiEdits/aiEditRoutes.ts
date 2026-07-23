@@ -830,6 +830,10 @@ export const registerAiEditRoutes = (
             durationSeconds,
             targetDurationSeconds
           });
+          console.info('AI visual edit planning succeeded', {
+            model: plan.model,
+            cutCount: plan.cuts.length
+          });
         } catch (error) {
           console.error(
             'AI visual edit planning failed; falling back to audio:',

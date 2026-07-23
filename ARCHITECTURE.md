@@ -606,7 +606,12 @@ API, uploaded to Gemini Files API, and paired with timestamped transcript
 segments. Gemini therefore sees the full clip timeline and audio before choosing
 cuts. The API falls back to the audio/transcript planner if media download,
 Gemini upload, processing, or generation fails. The original source remains on
-device and is always used for preview/full-quality rendering.
+device and is always used for preview/full-quality rendering. Mobile retains one
+local proxy for the current source so duration-only replans skip FFmpeg proxy
+extraction; replacing/removing the source or leaving the screen deletes it.
+Gemini and R2 copies remain request-scoped. Visual and transcript planners apply
+a soft penalty to Thai continuation-fragment openings and may nudge a suggested
+window to a nearby complete transcript boundary while preserving target length.
 The recipe also omits those unreliable time ranges from user-facing subtitle
 lines, including clearly unexpected mixed-script recognition noise, while
 retaining their speech timing for conservative silence detection.
@@ -634,7 +639,11 @@ Review renders are disposable adaptive previews: sources longer than 60 seconds
 use a maximum 540 dimension, 20 fps, and 1 Mbps; shorter sources use a maximum
 720 dimension, 24 fps, and 2 Mbps. FFmpeg writes processed-time progress to a
 local file because Android completion/statistics callbacks are not reliable on
-all devices. Mobile polls that file, supports cancellation and timeouts, and
+all devices. Mobile polls that file and treats its exact `progress=end` marker
+as a lost-callback fallback, but accepts the result only after probing a real
+video stream. The progress UI labels this final 99% probe as video verification
+so the user can distinguish finalization from a stalled encoder. It supports
+cancellation and timeouts, and
 caches identical successful renders for the current editing session. Entering
 Upload/Post triggers a separate full-source-dimension render, so preview media
 is never treated as the publishable export.

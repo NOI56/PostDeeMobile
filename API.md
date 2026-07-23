@@ -1097,6 +1097,11 @@ returns `400`. If upload succeeds but the planning request cannot be sent, the
 client may call `POST /ai-edits/visual-proxy/cleanup` with
 `{ "visualProxyS3Key": "..." }`.
 
+Visual planning converts Gemini suggestions into one continuous target-length
+window and uses timestamped transcript boundaries to avoid opening on common
+Thai continuation fragments when a nearby complete sentence has comparable
+editorial value. This is a soft ranking rule, not a forbidden-word filter.
+
 `cuts` are absolute-second ranges to remove; the client feeds them into the same
 on-device render pipeline used by silence/segment cuts. Returns `400` when
 `durationSeconds` is missing or none of `styleId`, `prompt`, or

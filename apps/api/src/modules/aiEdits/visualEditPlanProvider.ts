@@ -3,8 +3,8 @@ import { Buffer } from 'node:buffer';
 import type { ServerConfig } from '../../config/env.js';
 import type { RealClipMediaPart } from '../captions/realClipCaptionProvider.js';
 import {
+  buildCoherentHighlightCuts,
   parseLlmEditPlan,
-  trimToTarget,
   type EditPlanResult,
   type EditPlanSegment
 } from './editPlanProvider.js';
@@ -50,7 +50,9 @@ const visualEditSystemPrompt =
   'story window for the requested duration. Prefer a clear hook, visible ' +
   'product, demonstration, benefit, proof, offer, and call to action. Reject ' +
   'blurry, empty, duplicate, or visually confusing moments. Keep complete ' +
-  'speech sentences and chronological order. Return ONLY JSON: ' +
+  'speech sentences and chronological order. Do not open with a Thai sentence ' +
+  'fragment such as "แต่", "แล้ว", "โดย", "ซึ่ง", or "ของมาจาก" when a ' +
+  'complete nearby sentence is available. Return ONLY JSON: ' +
   '{"cuts":[{"start":<sec>,"end":<sec>}],"summary":"<short Thai summary>"}. ' +
   'Cuts are time ranges to REMOVE and must stay within the clip duration.';
 
@@ -225,11 +227,15 @@ export const createGeminiVisualEditPlanProvider = ({
       const parsed = parseLlmEditPlan(content, input.durationSeconds, model);
       return {
         ...parsed,
-        cuts: trimToTarget(
-          parsed.cuts,
-          input.durationSeconds,
-          input.targetDurationSeconds
-        ),
+        cuts: buildCoherentHighlightCuts({
+          suggestedCuts: parsed.cuts,
+          segments: input.segments,
+          durationSeconds: input.durationSeconds,
+          targetDurationSeconds: input.targetDurationSeconds,
+          // Gemini's selected window remains the strongest signal, but allow a
+          // short nudge to the next transcript boundary for a complete opener.
+          weakOpeningPenalty: 300
+        }),
         model: `${model}-visual`
       };
     } finally {

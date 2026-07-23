@@ -343,6 +343,53 @@ void main() {
     expect(parseFfmpegProgressSeconds('progress=continue\n'), isNull);
   });
 
+  test('detects FFmpeg completion from the polled progress file', () {
+    expect(
+      ffmpegProgressReportedEnd(
+        'frame=120\nout_time_us=12345678\nprogress=end\n',
+      ),
+      isTrue,
+    );
+    expect(
+      ffmpegProgressReportedEnd(
+        'frame=120\nout_time_us=12345678\nprogress=continue\n',
+      ),
+      isFalse,
+    );
+    expect(ffmpegProgressReportedEnd('progress=ending\n'), isFalse);
+  });
+
+  test('verifies output when the callback lost a successful completion', () {
+    expect(
+      shouldVerifyFfmpegOutput(
+        returnCodeValue: null,
+        progressReportedEnd: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldVerifyFfmpegOutput(
+        returnCodeValue: null,
+        progressReportedEnd: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldVerifyFfmpegOutput(
+        returnCodeValue: 1,
+        progressReportedEnd: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldVerifyFfmpegOutput(
+        returnCodeValue: 0,
+        progressReportedEnd: false,
+      ),
+      isTrue,
+    );
+  });
+
   test('render cancellation token cancels an attached session once', () async {
     final token = RenderCancellationToken();
     var cancelCalls = 0;

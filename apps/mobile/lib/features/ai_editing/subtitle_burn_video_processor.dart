@@ -249,6 +249,32 @@ double? parseFfmpegProgressSeconds(String content) {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
+/// FFmpeg writes this final marker even when the Android async completion
+/// callback cannot be delivered to Flutter.
+bool ffmpegProgressReportedEnd(String content) {
+  for (final line in content.split(RegExp(r'\r?\n'))) {
+    final separator = line.indexOf('=');
+    if (separator <= 0) {
+      continue;
+    }
+    if (line.substring(0, separator).trim() == 'progress' &&
+        line.substring(separator + 1).trim() == 'end') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// A missing return code is only treated as a lost callback when FFmpeg's own
+/// progress channel reported a normal end. The caller still probes the output
+/// and requires a real video stream before accepting it.
+bool shouldVerifyFfmpegOutput({
+  required int? returnCodeValue,
+  required bool progressReportedEnd,
+}) =>
+    returnCodeValue == ReturnCode.success ||
+    (returnCodeValue == null && progressReportedEnd);
+
 /// Builds an SRT subtitle file body from transcript segments. Pure + testable.
 String buildSrtContent(List<SubtitleSegment> segments) {
   final buffer = StringBuffer();
@@ -1039,6 +1065,9 @@ class FfmpegSubtitleBurnVideoProcessor {
           if (await progressFile.exists()) {
             await progressFile.delete();
           }
+          if (await outputFile.exists()) {
+            await outputFile.delete();
+          }
 
           final session = await FFmpegKit.executeWithArgumentsAsync(
             buildEditFfmpegArguments(
@@ -1076,21 +1105,25 @@ class FfmpegSubtitleBurnVideoProcessor {
           );
           Future<void> cancelSession() => session.cancel();
           await request.cancellationToken?.attach(cancelSession);
+          var progressReportedEnd = false;
           try {
             while (true) {
+              double? processedSeconds;
+              try {
+                if (await progressFile.exists()) {
+                  final progressContent = await progressFile.readAsString();
+                  processedSeconds =
+                      parseFfmpegProgressSeconds(progressContent);
+                  progressReportedEnd = progressReportedEnd ||
+                      ffmpegProgressReportedEnd(progressContent);
+                }
+              } on FileSystemException {
+                // FFmpeg may be replacing the progress file while it is read.
+              }
+
               if (onProgress != null &&
                   outDuration != null &&
                   outDuration > 0) {
-                double? processedSeconds;
-                try {
-                  if (await progressFile.exists()) {
-                    processedSeconds = parseFfmpegProgressSeconds(
-                      await progressFile.readAsString(),
-                    );
-                  }
-                } on FileSystemException {
-                  // FFmpeg may be replacing the progress file while it is read.
-                }
                 if (processedSeconds == null) {
                   final statistics = await session.getLastReceivedStatistics();
                   if (statistics != null) {
@@ -1106,7 +1139,8 @@ class FfmpegSubtitleBurnVideoProcessor {
 
               final state = await session.getState();
               if (state == SessionState.completed ||
-                  state == SessionState.failed) {
+                  state == SessionState.failed ||
+                  progressReportedEnd) {
                 break;
               }
               await Future<void>.delayed(
@@ -1116,9 +1150,17 @@ class FfmpegSubtitleBurnVideoProcessor {
           } finally {
             request.cancellationToken?.detach(cancelSession);
           }
+          if (progressReportedEnd) {
+            // Give the native muxer a brief moment to close the output before
+            // probing it when the Flutter callback was the only missing event.
+            await Future<void>.delayed(const Duration(milliseconds: 250));
+          }
           final returnCode = await session.getReturnCode();
 
-          if (ReturnCode.isSuccess(returnCode)) {
+          if (shouldVerifyFfmpegOutput(
+            returnCodeValue: returnCode?.getValue(),
+            progressReportedEnd: progressReportedEnd,
+          )) {
             // Trust but verify: some hardware encoders exit 0 while writing an
             // audio-only file. Only accept output with a real video stream.
             if (renderedOutputHasVideo(

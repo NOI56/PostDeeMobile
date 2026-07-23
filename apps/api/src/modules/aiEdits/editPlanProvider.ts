@@ -137,6 +137,28 @@ export const isReliableHighlightSegment = (
   segment: EditPlanSegment
 ): boolean => isReliableTranscriptSegment(segment);
 
+const weakThaiOpeningPrefixes = [
+  'แต่',
+  'แล้ว',
+  'โดย',
+  'ซึ่ง',
+  'และ',
+  'หรือ',
+  'ก็',
+  'ของมาจาก'
+];
+
+/**
+ * Detects short-clips that would begin like a continuation of an earlier
+ * sentence. This is a soft signal only; a genuinely strong hook can still win.
+ */
+export const hasWeakThaiOpening = (text: string): boolean => {
+  const normalized = text
+    .trim()
+    .replace(/^[\s"'“”‘’()[\]{}.,!?…:;–—-]+/u, '');
+  return weakThaiOpeningPrefixes.some((prefix) => normalized.startsWith(prefix));
+};
+
 const scoreHighlightSegment = (
   segment: EditPlanSegment,
   index: number,
@@ -230,16 +252,18 @@ const candidateWindowStarts = (
  * Converts scattered suggestions into the best single story window. This makes
  * the result predictable for talking-head clips and prevents jump-cut montages.
  */
-const buildCoherentHighlightCuts = ({
+export const buildCoherentHighlightCuts = ({
   suggestedCuts,
   segments,
   durationSeconds,
-  targetDurationSeconds
+  targetDurationSeconds,
+  weakOpeningPenalty = 80
 }: {
   suggestedCuts: EditPlanCut[];
   segments: EditPlanSegment[];
   durationSeconds: number;
   targetDurationSeconds: number;
+  weakOpeningPenalty?: number;
 }): EditPlanCut[] => {
   if (
     durationSeconds <= 0 ||
@@ -289,11 +313,19 @@ const buildCoherentHighlightCuts = ({
         overlap * scoreHighlightSegment(segment, index, reliableSegments.length)
       );
     }, 0);
+    const openingSegment = reliableSegments.find(
+      (segment) => segment.end > start + 0.001 && segment.start < end - 0.001
+    );
+    const openingPenalty =
+      openingSegment && hasWeakThaiOpening(openingSegment.text)
+        ? Math.max(0, weakOpeningPenalty)
+        : 0;
     const score =
       suggestedCoverage * 100 +
       reliableCoverage * 5 +
       signalScore -
-      unreliableCoverage * 100;
+      unreliableCoverage * 100 -
+      openingPenalty;
 
     if (score > bestScore + 0.001) {
       bestScore = score;

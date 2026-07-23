@@ -530,6 +530,7 @@ void main() {
     final planRequests = <AiEditPlanRequest>[];
     final cleanedProxyKeys = <String>[];
     String? localProxyPath;
+    var visualProxyExtractions = 0;
 
     await tester.pumpWidget(
       _testApp(
@@ -537,6 +538,7 @@ void main() {
           initialTargetDurationSeconds: 30,
           extractAudio: _extractAudioFixture,
           extractVisualProxy: (source) async {
+            visualProxyExtractions += 1;
             final artifact = await _extractVisualProxyFixture(source);
             localProxyPath = artifact.file.path;
             return artifact;
@@ -586,8 +588,33 @@ void main() {
     expect(planRequests.single.durationSeconds, 45);
     expect(planRequests.single.targetDurationSeconds, 30);
     expect(cleanedProxyKeys, ['uploads/seller/visual-proxy.mp4']);
-    expect(File(localProxyPath!).existsSync(), isFalse);
+    expect(visualProxyExtractions, 1);
+    expect(File(localProxyPath!).existsSync(), isTrue);
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('ai-editing-back')));
+    await tester.pumpAndSettle();
+    await _setTargetDuration(tester, 35);
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(visualProxyExtractions, 1);
+    expect(
+      uploadPurposes,
+      ['ai-edit-audio', 'ai-edit-visual-proxy', 'ai-edit-visual-proxy'],
+    );
+    expect(
+      planRequests.where((request) => request.visualProxyS3Key != null),
+      hasLength(2),
+    );
+    expect(cleanedProxyKeys, [
+      'uploads/seller/visual-proxy.mp4',
+      'uploads/seller/visual-proxy.mp4',
+    ]);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    expect(File(localProxyPath!).existsSync(), isFalse);
   });
 
   testWidgets('matches the AI setup screen from PostDee.dc.html',
@@ -1903,6 +1930,7 @@ void main() {
     final pickedVideo = _createPickedVideoFixture('cancel-preview.mp4');
     final renderResult = Completer<BurnedSubtitleResult>();
     var cancelCalls = 0;
+    BurnSubtitleRequest? activeRenderRequest;
 
     await tester.pumpWidget(
       _testApp(
@@ -1918,6 +1946,7 @@ void main() {
           uploadVideoFile: (_, __) async {},
           prepareEdit: (_) async => _createPrepareFixture(),
           burnVideo: (request) async {
+            activeRenderRequest = request;
             request.onProgress?.call(0.42);
             await request.cancellationToken?.attach(() async {
               cancelCalls += 1;
@@ -1942,6 +1971,12 @@ void main() {
     expect(find.byKey(const ValueKey('ai-render-progress')), findsOneWidget);
     expect(find.text('42%'), findsOneWidget);
     expect(find.byKey(const ValueKey('ai-render-cancel')), findsOneWidget);
+
+    activeRenderRequest!.onProgress?.call(0.99);
+    await tester.pump();
+
+    expect(find.text('กำลังตรวจไฟล์วิดีโอ...'), findsOneWidget);
+    expect(find.text('99%'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('ai-render-cancel')));
     await tester.pumpAndSettle();

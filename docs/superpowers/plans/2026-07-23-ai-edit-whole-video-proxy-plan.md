@@ -20,8 +20,13 @@ window. Do not rely on a sparse set of still images.
    remain the final safety boundary.
 6. If proxy extraction, upload, download, Gemini processing, or generation
    fails, planning falls back to the existing audio/transcript provider.
-7. Flutter, R2, and Gemini temporary files are cleaned best-effort. The original
-   full-resolution video remains on the phone and is used for every render.
+7. Flutter caches one local proxy for the current source across duration-only
+   replans and removes it when the source changes or the screen closes. R2 and
+   Gemini copies are cleaned best-effort per request. The original full-resolution
+   video remains on the phone and is used for every render.
+8. Gemini suggestions are normalized into one continuous target-length window.
+   A soft Thai continuation-fragment penalty may move the opening to a nearby
+   complete transcript boundary without hard-blocking a stronger hook.
 
 Gemini's normal video understanding samples visual frames at roughly 1 fps, so
 the proxy keeps the complete time axis while avoiding a wasteful 30 fps upload.
@@ -44,8 +49,8 @@ Its full audio track and the transcript preserve speech context between frames.
 - Upload tests: accepted shape plus extension, MIME, dimensions, and 50 MiB cap.
 - Flutter extractor tests: no `-t`, full-duration FFmpeg arguments, empty output,
   and local cleanup.
-- Flutter screen test: audio prepare, proxy upload, visual plan request, cleanup,
-  and result review.
+- Flutter screen test: audio prepare, proxy upload, local proxy reuse across a
+  duration change, cleanup on disposal, and result review.
 - Reproducible real-media preprocessing smoke test:
   `scripts/test-ai-edit-visual-proxy.ps1`.
 - Release gate: run the licensed Thai fixture set through deployed R2 + Gemini,

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildCoherentHighlightCuts,
   buildHighlightCuts,
   buildKeywordKeepCuts,
   createMockEditPlanProvider,
   createOpenAiCompatibleEditPlanProvider,
+  hasWeakThaiOpening,
   isReliableHighlightSegment,
   matchesAnyKeyword,
   parseLlmEditPlan,
@@ -56,6 +58,56 @@ describe('edit plan provider', () => {
     );
 
     expect(cuts).toEqual([{ start: 0, end: 8 }]);
+  });
+
+  it('recognizes Thai fragments that should not lead a short clip', () => {
+    expect(hasWeakThaiOpening('แต่ไม่ได้ช่วยเรื่องนี้')).toBe(true);
+    expect(hasWeakThaiOpening('แล้วเราค่อยไปขั้นตอนถัดไป')).toBe(true);
+    expect(hasWeakThaiOpening('ของมาจากตลาดใกล้บ้าน')).toBe(true);
+    expect(hasWeakThaiOpening('วิธีนี้ช่วยประหยัดเวลาได้จริง')).toBe(false);
+  });
+
+  it('prefers a complete Thai opening when highlight strength is close', () => {
+    const cuts = buildHighlightCuts(
+      [
+        { text: 'เกริ่นนำทั่วไป', start: 0, end: 10 },
+        { text: 'แต่ไม่ได้ช่วยให้เข้าใจง่ายขึ้น', start: 10, end: 20 },
+        {
+          text: 'วิธีนี้ช่วยประหยัดเวลาและใช้งานได้จริง',
+          start: 20,
+          end: 30
+        },
+        { text: 'รายละเอียดทั่วไป', start: 30, end: 40 }
+      ],
+      40,
+      20
+    );
+
+    expect(cuts).toEqual([{ start: 0, end: 20 }]);
+  });
+
+  it('nudges a visual suggestion to the next complete Thai sentence', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'เกริ่นนำ', start: 0, end: 10 },
+        { text: 'แต่ไม่ได้', start: 10, end: 12 },
+        { text: 'ประโยคนี้เริ่มเรื่องใหม่ครบถ้วน', start: 12, end: 20 },
+        { text: 'รายละเอียดต่อเนื่อง', start: 20, end: 30 },
+        { text: 'บทสรุป', start: 30, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts).toEqual([
+      { start: 0, end: 12 },
+      { start: 32, end: 40 }
+    ]);
   });
 
   it('uses targetDurationSeconds to plan transcript highlights', async () => {

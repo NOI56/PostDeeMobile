@@ -416,6 +416,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   final Map<String, AiEditPrepareResult> _preparedEditsBySignature = {};
   final Map<String, AiEditPrepareResult> _preparedEditsByAnalysisSignature = {};
   final Map<String, BurnedSubtitleResult> _renderResultsBySignature = {};
+  AiEditVisualProxyArtifact? _cachedVisualProxyArtifact;
+  String? _cachedVisualProxySourceKey;
   _AiEditingStage _stage = _AiEditingStage.setup;
   final Map<String, bool> _reviewCapabilities = {};
   final Map<String, bool> _appliedReviewCapabilities = {};
@@ -504,6 +506,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     if (activeRenderCancellation != null) {
       unawaited(activeRenderCancellation.cancel());
     }
+    final cachedVisualProxy = _cachedVisualProxyArtifact;
+    _cachedVisualProxyArtifact = null;
+    _cachedVisualProxySourceKey = null;
+    if (cachedVisualProxy != null) {
+      unawaited(_cleanupLocalVisualProxyBestEffort(cachedVisualProxy));
+    }
     _customDurationController.dispose();
     _ctaController.dispose();
     _priceNowController.dispose();
@@ -583,6 +591,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         throw const ApiException('รองรับคลิปต้นฉบับยาวไม่เกิน 10 นาที');
       }
 
+      await _releaseCachedVisualProxy();
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _selectedVideo = picked;
         _selectedVideoDurationSeconds = picked.durationSeconds;
@@ -987,7 +999,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       return prepared;
     }
 
-    AiEditVisualProxyArtifact? proxyArtifact;
     String? remoteProxyKey;
     try {
       if (mounted) {
@@ -996,9 +1007,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               _processingTitle = 'กำลังสร้างวิดีโอตัวอย่างทั้งคลิปให้ AI ดู...',
         );
       }
-      final extractVisualProxy =
-          widget.extractVisualProxy ?? AiEditVisualProxyExtractor().extract;
-      proxyArtifact = await extractVisualProxy(sourceFile);
+      final proxyArtifact = await _getOrCreateVisualProxy(sourceFile);
 
       final createUpload = widget.createUpload ?? _apiClient.createUpload;
       final uploadVideoFile =
@@ -1049,9 +1058,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       );
       return prepared;
     } finally {
-      if (proxyArtifact != null) {
-        await _cleanupLocalVisualProxyBestEffort(proxyArtifact);
-      }
       if (remoteProxyKey != null) {
         await _cleanupRemoteVisualProxyBestEffort(remoteProxyKey);
       }
@@ -1075,8 +1081,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     return AiEditPrepareRequest(
       audioS3Key: audioS3Key,
       audioChunks: audioChunks.isEmpty ? null : audioChunks,
-      durationSeconds: _selectedVideoDurationSeconds ??
-          _selectedDurationSeconds.toDouble(),
+      durationSeconds:
+          _selectedVideoDurationSeconds ?? _selectedDurationSeconds.toDouble(),
       targetDurationSeconds:
           _isUsingOriginalDuration ? null : _selectedDurationSeconds.toDouble(),
       capabilities: {
@@ -1206,6 +1212,45 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       await artifact.cleanup();
     } catch (_) {
       // Do not replace the audio plan when temporary cleanup fails.
+    }
+  }
+
+  String _visualProxySourceKey(File sourceFile) => jsonEncode({
+        'path': sourceFile.path,
+        'sizeBytes': sourceFile.lengthSync(),
+        'lastModifiedMs': sourceFile.lastModifiedSync().millisecondsSinceEpoch,
+      });
+
+  Future<AiEditVisualProxyArtifact> _getOrCreateVisualProxy(
+    File sourceFile,
+  ) async {
+    final sourceKey = _visualProxySourceKey(sourceFile);
+    final cached = _cachedVisualProxyArtifact;
+    if (_cachedVisualProxySourceKey == sourceKey &&
+        cached != null &&
+        cached.file.existsSync()) {
+      return cached;
+    }
+
+    await _releaseCachedVisualProxy();
+    final extractVisualProxy =
+        widget.extractVisualProxy ?? AiEditVisualProxyExtractor().extract;
+    final artifact = await extractVisualProxy(sourceFile);
+    if (!mounted) {
+      await _cleanupLocalVisualProxyBestEffort(artifact);
+      throw StateError('AI editing screen closed during visual extraction');
+    }
+    _cachedVisualProxySourceKey = sourceKey;
+    _cachedVisualProxyArtifact = artifact;
+    return artifact;
+  }
+
+  Future<void> _releaseCachedVisualProxy() async {
+    final artifact = _cachedVisualProxyArtifact;
+    _cachedVisualProxyArtifact = null;
+    _cachedVisualProxySourceKey = null;
+    if (artifact != null) {
+      await _cleanupLocalVisualProxyBestEffort(artifact);
     }
   }
 
@@ -3176,7 +3221,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             borderRadius: BorderRadius.circular(10),
             child: InkWell(
               key: const ValueKey('ai-remove-video'),
-              onTap: () {
+              onTap: () async {
+                await _releaseCachedVisualProxy();
+                if (!mounted) {
+                  return;
+                }
                 setState(() {
                   _selectedVideo = null;
                   _selectedVideoDurationSeconds = null;
@@ -5037,9 +5086,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               ),
             ),
             label: Text(
-              renderProgress == null
-                  ? 'กำลังอัปเดตพรีวิว...'
-                  : 'กำลังอัปเดตพรีวิว ${(renderProgress * 100).round()}%',
+              renderProgress != null && renderProgress >= 0.99
+                  ? 'กำลังตรวจไฟล์วิดีโอ...'
+                  : renderProgress == null
+                      ? 'กำลังอัปเดตพรีวิว...'
+                      : 'กำลังอัปเดตพรีวิว ${(renderProgress * 100).round()}%',
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
@@ -5143,7 +5194,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  _processingTitle,
+                  renderProgress != null && renderProgress >= 0.99
+                      ? 'กำลังตรวจไฟล์วิดีโอ...'
+                      : _processingTitle,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 19,

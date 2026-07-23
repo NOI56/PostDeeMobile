@@ -536,8 +536,10 @@ Current mobile pieces:
   Gemini Files API together with timestamped Thai transcript segments. Gemini
   selects the story window after seeing the entire proxy, while the full-quality
   source never leaves the phone for rendering. If visual analysis is unavailable,
-  the existing audio/transcript plan remains the safe fallback. Local, R2, and
-  Gemini temporary files are cleaned best-effort after planning.
+  the existing audio/transcript plan remains the safe fallback. Mobile reuses
+  the local proxy when only the target duration changes, then deletes it when
+  the source is replaced, removed, or the editing screen closes. R2 and Gemini
+  temporary files are cleaned best-effort after each planning request.
 - The full source duration is sent as `durationSeconds` for the quota pre-check.
   A selected 30/60/custom shortened duration is sent separately as
   `targetDurationSeconds`; the target is omitted at the rightmost “keep
@@ -545,7 +547,9 @@ Current mobile pieces:
   clip or trigger an unnecessary visual proxy. The edit
   planner excludes known prompt leakage and low-quality segments, then uses
   transcript selling signals (hook, benefit, proof, offer, and CTA) to choose one
-  continuous story window; the local duration cap remains a
+  continuous story window. Thai continuation fragments such as `แต่`, `แล้ว`,
+  `โดย`, `ซึ่ง`, and `ของมาจาก` receive a soft opening penalty when a complete
+  nearby sentence is available; the local duration cap remains a
   safety guard for old or malformed recipes. If incomplete transcript/silence
   timing would leave less media than requested, mobile restores neighboring
   context around the selected moments so a 30/60/custom request does not
@@ -586,7 +590,11 @@ Current mobile pieces:
 - AI review uses a disposable lightweight preview: sources longer than 60 seconds
   render at up to 540p/20 fps/1 Mbps, while shorter sources use up to
   720p/24 fps/2 Mbps. FFmpeg writes real processed-time progress for the UI,
-  renders can be cancelled or retried, and identical local results are reused.
+  and mobile accepts FFmpeg's own `progress=end` marker when an Android
+  completion callback is lost. The output must still contain a real video
+  stream. At 99%, the UI says that it is verifying the video instead of leaving
+  users with what looks like a frozen progress screen. Renders can be cancelled
+  or retried, and identical local results are reused.
   Choosing Post creates a separate full-source-dimension export before opening
   Upload/Post, so the lightweight preview is never published.
 - The AI editing header loads `GET /ai-edits/quota` and shows the authenticated

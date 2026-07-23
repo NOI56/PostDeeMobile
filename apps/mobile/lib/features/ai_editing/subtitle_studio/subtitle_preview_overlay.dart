@@ -46,37 +46,79 @@ class SubtitlePreviewOverlay extends StatelessWidget {
         child: Align(
           key: const ValueKey('subtitle-preview-position'),
           alignment: alignment,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              if (style.outlineWidth > 0)
-                Text(
-                  text,
-                  maxLines: style.maxLines,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: baseStyle.copyWith(
-                    foreground: Paint()
-                      ..style = PaintingStyle.stroke
-                      ..strokeWidth = style.outlineWidth * 2
-                      ..strokeJoin = StrokeJoin.round
-                      ..color = subtitleColor(style.outlineColor),
-                    color: null,
-                  ),
-                ),
-              Text(
-                text,
-                maxLines: style.maxLines,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final fittedFontSize = _fitSubtitleFontSize(
+                context: context,
+                text: text,
                 style: baseStyle,
-              ),
-            ],
+                maxLines: style.maxLines,
+                maxWidth: constraints.maxWidth,
+              );
+              final fittedStyle = baseStyle.copyWith(fontSize: fittedFontSize);
+
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  if (style.outlineWidth > 0)
+                    Text(
+                      text,
+                      maxLines: style.maxLines,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.clip,
+                      style: fittedStyle.copyWith(
+                        foreground: Paint()
+                          ..style = PaintingStyle.stroke
+                          ..strokeWidth = style.outlineWidth * 2
+                          ..strokeJoin = StrokeJoin.round
+                          ..color = subtitleColor(style.outlineColor),
+                        color: null,
+                      ),
+                    ),
+                  Text(
+                    text,
+                    maxLines: style.maxLines,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.clip,
+                    style: fittedStyle,
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
     );
   }
+}
+
+double _fitSubtitleFontSize({
+  required BuildContext context,
+  required String text,
+  required TextStyle style,
+  required int maxLines,
+  required double maxWidth,
+}) {
+  final requested = style.fontSize ?? 22;
+  final minimum = requested < 10 ? requested : 10.0;
+  final safeWidth = maxWidth.isFinite && maxWidth > 0
+      ? maxWidth
+      : MediaQuery.sizeOf(context).width;
+
+  for (var candidate = requested; candidate >= minimum; candidate -= 1) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style.copyWith(fontSize: candidate)),
+      textAlign: TextAlign.center,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: maxLines,
+    )..layout(maxWidth: safeWidth);
+    if (!painter.didExceedMaxLines) {
+      return candidate;
+    }
+  }
+
+  return minimum;
 }
 
 Color subtitleColor(String hex) {

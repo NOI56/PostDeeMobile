@@ -313,6 +313,7 @@ const wordTimingCoverageToleranceSeconds = 1;
 const minimumWordTextCoverageRatio = 0.8;
 const minimumFragmentedTokenCount = 4;
 const fragmentedFillerBoundarySeconds = 0.08;
+const minimumEstimatedSubtitleDurationSeconds = 0.7;
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
   value
@@ -552,20 +553,101 @@ const isNumericSubtitleToken = (value: string): boolean => {
   return digits.length > 0 && /^\p{Number}+$/u.test(digits);
 };
 
+const readGraphemeCount = (value: string): number =>
+  Array.from(
+    new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(value)
+  ).length;
+
+/**
+ * Groq can return Thai "word" timestamps as individual characters. Rebuild
+ * readable word boundaries from each reliable segment and estimate the timing
+ * proportionally inside that segment. This keeps Thai words intact while still
+ * preserving the provider's trustworthy segment-level timeline.
+ */
+const rebuildThaiWordsFromSegment = (
+  segment: TranscriptSegment
+): TranscriptWord[] => {
+  const tokens: string[] = [];
+  const segmented = new Intl.Segmenter('th', { granularity: 'word' })
+    .segment(segment.text.normalize('NFC').trim());
+
+  for (const part of segmented) {
+    const value = part.segment.normalize('NFC');
+    if (part.isWordLike) {
+      tokens.push(value);
+      continue;
+    }
+
+    const punctuation = value.trim();
+    if (!punctuation) {
+      continue;
+    }
+    if (tokens.length === 0) {
+      tokens.push(punctuation);
+    } else {
+      tokens[tokens.length - 1] = `${tokens.at(-1)!}${punctuation}`;
+    }
+  }
+
+  if (tokens.length === 0) {
+    return [];
+  }
+
+  const weights = tokens.map((token) => Math.max(1, readGraphemeCount(token)));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  const span = segment.end - segment.start;
+  let elapsedWeight = 0;
+
+  return tokens.map((word, index) => {
+    const start = segment.start + span * elapsedWeight / totalWeight;
+    elapsedWeight += weights[index]!;
+    const end = index === tokens.length - 1
+      ? segment.end
+      : segment.start + span * elapsedWeight / totalWeight;
+    return { word, start, end };
+  });
+};
+
 const buildSubtitleSegments = ({
   words,
   language,
-  wordsPerLine
+  wordsPerLine,
+  minimumDurationSeconds = 0
 }: {
   words: TranscriptWord[];
   language: string;
   wordsPerLine: number;
+  minimumDurationSeconds?: number;
 }): TranscriptSegment[] => {
   const isThai = normalizeTranscriptionLanguage(language) === 'th';
   const segments: TranscriptSegment[] = [];
+  const groups: TranscriptWord[][] = [];
+  let current: TranscriptWord[] = [];
 
-  for (let index = 0; index < words.length; index += wordsPerLine) {
-    const lineWords = words.slice(index, index + wordsPerLine);
+  for (const word of words) {
+    current.push(word);
+    if (current.length < wordsPerLine) {
+      continue;
+    }
+    const duration = current.at(-1)!.end - current[0]!.start;
+    if (minimumDurationSeconds <= 0 || duration >= minimumDurationSeconds) {
+      groups.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 0) {
+    groups.push(current);
+  }
+  if (minimumDurationSeconds > 0 && groups.length > 1) {
+    const last = groups.at(-1)!;
+    const lastDuration = last.at(-1)!.end - last[0]!.start;
+    if (lastDuration < minimumDurationSeconds) {
+      groups[groups.length - 2]!.push(...last);
+      groups.pop();
+    }
+  }
+
+  for (const lineWords of groups) {
     const first = lineWords[0];
     const last = lineWords.at(-1);
 
@@ -598,6 +680,75 @@ const buildSubtitleSegments = ({
   }
 
   return segments;
+};
+
+const buildEstimatedThaiSubtitleSegments = (
+  segments: TranscriptSegment[],
+  wordsPerLine: number
+): TranscriptSegment[] =>
+  segments.flatMap((segment) =>
+    buildSubtitleSegments({
+      words: rebuildThaiWordsFromSegment(segment),
+      language: 'th',
+      wordsPerLine,
+      minimumDurationSeconds: minimumEstimatedSubtitleDurationSeconds
+    })
+  );
+
+const joinSubtitleText = (left: string, right: string): string => {
+  const first = left.trim();
+  const second = right.trim();
+  if (!first) return second;
+  if (!second) return first;
+  if (/^[\p{Pe}\p{Pf}.,!?;:\u0E2F\u0E46]/u.test(second)) {
+    return `${first}${second}`;
+  }
+  const thaiBoundary = /\p{Script=Thai}$/u.test(first) &&
+    /^\p{Script=Thai}/u.test(second);
+  return `${first}${thaiBoundary ? '' : ' '}${second}`;
+};
+
+const mergeShortSubtitleSegments = (
+  segments: TranscriptSegment[],
+  minimumDurationSeconds = minimumEstimatedSubtitleDurationSeconds,
+  maximumGapSeconds = 0.5
+): TranscriptSegment[] => {
+  const merged: TranscriptSegment[] = [];
+
+  for (const segment of segments) {
+    const previous = merged.at(-1);
+    const previousDuration = previous ? previous.end - previous.start : 0;
+    const gap = previous ? segment.start - previous.end : Number.POSITIVE_INFINITY;
+    if (
+      previous &&
+      previousDuration < minimumDurationSeconds &&
+      gap >= -Number.EPSILON &&
+      gap <= maximumGapSeconds
+    ) {
+      merged[merged.length - 1] = {
+        text: joinSubtitleText(previous.text, segment.text),
+        start: previous.start,
+        end: Math.max(previous.end, segment.end)
+      };
+    } else {
+      merged.push(segment);
+    }
+  }
+
+  const last = merged.at(-1);
+  const previous = merged.at(-2);
+  if (last && previous && last.end - last.start < minimumDurationSeconds) {
+    const gap = last.start - previous.end;
+    if (gap >= -Number.EPSILON && gap <= maximumGapSeconds) {
+      merged.splice(merged.length - 2, 2, {
+        text: joinSubtitleText(previous.text, last.text),
+        start: previous.start,
+        end: Math.max(previous.end, last.end)
+      });
+    }
+  }
+
+  return merged;
 };
 
 const findSilenceRanges = (
@@ -885,6 +1036,13 @@ export const buildAiEditRecipe = ({
         transcriptReferenceText
       )
     : false;
+  const estimatedThaiSubtitleSegments =
+    fragmentedThaiWordTimings && reliableTranscriptSegments.length > 0
+      ? buildEstimatedThaiSubtitleSegments(
+          reliableTranscriptSegments,
+          subtitleWordsPerLine
+        )
+      : undefined;
   const subtitleWords = reliableValidTranscriptWords && !fragmentedThaiWordTimings
     ? reliableValidTranscriptWords
     : reliableTranscriptSegments.length === 0 &&
@@ -892,15 +1050,17 @@ export const buildAiEditRecipe = ({
         reliableSafeTranscriptWords.length > 0
       ? reliableSafeTranscriptWords
       : undefined;
-  const subtitleSegments = capabilities.subtitle
-    ? subtitleWords
-      ? buildSubtitleSegments({
-          words: subtitleWords,
-          language: transcriptLanguage,
-          wordsPerLine: subtitleWordsPerLine
-        })
-      : reliableTranscriptSegments
+  const preparedSubtitleSegments = capabilities.subtitle
+    ? estimatedThaiSubtitleSegments ??
+      (subtitleWords
+        ? buildSubtitleSegments({
+            words: subtitleWords,
+            language: transcriptLanguage,
+            wordsPerLine: subtitleWordsPerLine
+          })
+        : reliableTranscriptSegments)
     : [];
+  const subtitleSegments = mergeShortSubtitleSegments(preparedSubtitleSegments);
   const silencePreset = settings.silencePreset ?? 'balanced';
   const silenceRanges = capabilities.silence && hasReliableSilenceTimeline
     ? findSilenceRanges(

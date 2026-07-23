@@ -1,4 +1,3 @@
-import 'package:characters/characters.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/ai_editing/edit_styles.dart';
 import 'package:postdee_mobile/features/ai_editing/style_options.dart';
@@ -64,14 +63,12 @@ void main() {
     expect(splitLineByMaxChars('aaaaaaaaaa', 4), ['aaaa', 'aaaa', 'aa']);
   });
 
-  test('splits an unspaced Thai run without breaking grapheme clusters', () {
+  test('keeps an unspaced Thai run whole instead of splitting a word', () {
     const thaiCue = 'กำลังทดสอบซับภาษาไทย';
 
     final pieces = splitLineByMaxChars(thaiCue, 4);
 
-    expect(pieces, hasLength(greaterThan(1)));
-    expect(pieces.join(), thaiCue);
-    expect(pieces.every((piece) => piece.characters.length <= 4), isTrue);
+    expect(pieces, [thaiCue]);
   });
 
   test('splits Thai cues only at explicit spaces', () {
@@ -106,7 +103,7 @@ void main() {
     expect(out[1].end, 10);
   });
 
-  test('rechunks a long Thai cue and preserves its complete time window', () {
+  test('does not create tiny mid-word cues from a long Thai cue', () {
     const thaiCue = 'กำลังทดสอบซับภาษาไทย';
     final out = rechunkSubtitleByMaxChars(
       const [
@@ -115,17 +112,24 @@ void main() {
       4,
     );
 
-    expect(out, hasLength(greaterThan(1)));
-    expect(out.map((segment) => segment.text).join(), thaiCue);
-    expect(out.first.start, 2);
-    expect(out.last.end, closeTo(8, 0.001));
-    expect(
-      out.every((segment) => segment.text.characters.length <= 4),
-      isTrue,
+    expect(out, hasLength(1));
+    expect(out.single.text, thaiCue);
+    expect(out.single.start, 2);
+    expect(out.single.end, 8);
+  });
+
+  test('merges a subtitle fragment that is too short to read', () {
+    final out = mergeShortSubtitleSegments(
+      const [
+        SubtitleSegment(text: 'เช่น', start: 0, end: 0.18),
+        SubtitleSegment(text: 'ช่วงเสาร์อาทิตย์', start: 0.18, end: 1.2),
+      ],
     );
-    for (var index = 1; index < out.length; index += 1) {
-      expect(out[index].start, closeTo(out[index - 1].end, 0.001));
-    }
+
+    expect(out, hasLength(1));
+    expect(out.single.text, 'เช่นช่วงเสาร์อาทิตย์');
+    expect(out.single.start, 0);
+    expect(out.single.end, 1.2);
   });
 
   test('moves a short subtitle-free opening to the end of the clip', () {

@@ -141,6 +141,13 @@ SubtitleStyle
   range.
 - Thai combining marks and emoji grapheme clusters are never split by a text
   operation.
+- Automatic Thai cues are never hard-split at an arbitrary grapheme boundary.
+  When provider word timestamps are character-fragmented, the backend rebuilds
+  word boundaries from reliable segment text and estimates timing within that
+  original segment. Readable adjacent fragments are merged to at least 0.7
+  seconds unless a real pause prevents a safe merge.
+- Live preview text stays inside the safe horizontal/vertical padding and
+  scales down within the selected line count instead of using an ellipsis.
 - A cue with word timing may use active-word state only when the words are
   ordered, bounded by the cue, non-overlapping, and approved by backend timing
   quality. Its words must also reconstruct `cue.text` exactly as every

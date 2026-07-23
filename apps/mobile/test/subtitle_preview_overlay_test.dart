@@ -48,4 +48,38 @@ void main() {
     expect(tester.getTopLeft(find.byType(SubtitlePreviewOverlay)).dy,
         lessThan(100));
   });
+
+  testWidgets('shrinks a long Thai cue instead of hiding it with an ellipsis',
+      (tester) async {
+    final style = copySubtitleStyle(
+      SubtitleStyle.defaults,
+      fontSize: 30,
+      maxLines: 2,
+    );
+    const text = 'จนกระทั่งแทบจะไม่มีที่เดินสำหรับคน';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 220,
+            height: 360,
+            child: SubtitlePreviewOverlay(text: text, style: style),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final subtitles = tester.widgetList<Text>(find.text(text)).toList();
+    expect(subtitles, hasLength(2));
+    expect(
+      subtitles.every((subtitle) => subtitle.overflow != TextOverflow.ellipsis),
+      isTrue,
+    );
+    expect(
+      subtitles.every((subtitle) => (subtitle.style?.fontSize ?? 30) < 30),
+      isTrue,
+    );
+  });
 }

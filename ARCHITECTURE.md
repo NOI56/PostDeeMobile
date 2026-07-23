@@ -571,7 +571,12 @@ it restores an exact source/setup draft from app-owned storage, previews edits
 with a Flutter overlay, and supports cue editing plus whole-clip style changes
 without rerendering. Confirmation sends the corrected source-timeline cues and
 style to FFmpeg; cancelling leaves the draft available and does not start a
-render. Review checkboxes automatically
+render. Groq Thai word timestamps that degrade into character fragments are
+rebuilt from reliable segment text with `Intl.Segmenter`; their timing remains
+bounded by the provider segment. Subtitle fragments below 0.7 seconds are
+joined only across a nearby gap. Mobile keeps unspaced Thai phrases intact and
+auto-fits the live preview rather than cutting a word or showing an ellipsis.
+Review checkboxes automatically
 re-render from the original clip when supported edits are removed or restored,
 without another metered prepare request. The last successful preview remains
 available if a new render fails. The user can then continue either to

@@ -20,8 +20,8 @@ class EditStyleOptions {
   /// Trim the clip to roughly this length (null = keep original length).
   final int? targetSeconds;
 
-  /// Max characters per burned subtitle line (null = no re-chunking). Uses
-  /// characters (not words) because Thai has no spaces between words.
+  /// Preferred max characters per burned subtitle cue (null = no re-chunking).
+  /// Unspaced Thai phrases may exceed this value so a word is never cut apart.
   final int? subtitleMaxChars;
 
   /// Override the auto silence-cut gap threshold (null = use the style's value).
@@ -222,8 +222,9 @@ List<SilenceCutRange> withTargetLength(
 }
 
 /// Splits a line into pieces near [maxChars], preferring to break at spaces.
-/// Long runs are split only on grapheme-cluster boundaries, so Thai vowels and
-/// tone marks stay attached to their base character. Pure + testable.
+/// Unspaced Thai runs stay intact because a grapheme boundary is not always a
+/// word boundary. Other long runs are split on grapheme boundaries. Pure and
+/// testable.
 List<String> splitLineByMaxChars(String text, int maxChars) {
   final trimmed = text.trim();
   if (maxChars <= 0 || trimmed.characters.length <= maxChars) {
@@ -255,6 +256,12 @@ List<String> splitLineByMaxChars(String text, int maxChars) {
 
     if (word.characters.length <= maxChars) {
       current = word;
+    } else if (_containsThaiScript(word)) {
+      // Thai normally has no spaces between words. A character-count split can
+      // turn เดิน into เดิ + น and produce an unreadable 0.08-second
+      // tail cue. Keep the phrase intact; the preview and ASS renderer wrap it
+      // safely while the backend supplies real Thai word boundaries.
+      current = word;
     } else {
       var rest = word.characters;
       while (rest.length > maxChars) {
@@ -269,8 +276,12 @@ List<String> splitLineByMaxChars(String text, int maxChars) {
   return pieces.isEmpty ? [trimmed] : pieces;
 }
 
-/// Re-chunks subtitle segments so each line is at most [maxChars], splitting a
-/// segment's time window proportionally to each piece's length. Pure + testable.
+bool _containsThaiScript(String value) =>
+    RegExp(r'[\u0E00-\u0E7F]').hasMatch(value);
+
+/// Re-chunks subtitle segments around [maxChars], splitting a segment's time
+/// window proportionally to each piece's length. Thai phrases can exceed the
+/// preferred limit to avoid creating mid-word cues. Pure + testable.
 List<SubtitleSegment> rechunkSubtitleByMaxChars(
   List<SubtitleSegment> segments,
   int maxChars,
@@ -303,7 +314,73 @@ List<SubtitleSegment> rechunkSubtitleByMaxChars(
     }
   }
 
-  return out;
+  return mergeShortSubtitleSegments(out);
+}
+
+/// Merges provider fragments that would flash too quickly to read. A short cue
+/// is joined only across a small gap, so real pauses and separate scenes remain
+/// independent.
+List<SubtitleSegment> mergeShortSubtitleSegments(
+  List<SubtitleSegment> segments, {
+  double minimumDurationSeconds = 0.7,
+  double maximumGapSeconds = 0.5,
+}) {
+  final merged = <SubtitleSegment>[];
+
+  for (final segment in segments) {
+    final previous = merged.isEmpty ? null : merged.last;
+    final previousDuration =
+        previous == null ? 0 : previous.end - previous.start;
+    final gap =
+        previous == null ? double.infinity : segment.start - previous.end;
+    if (previous != null &&
+        previousDuration < minimumDurationSeconds &&
+        gap >= -double.minPositive &&
+        gap <= maximumGapSeconds) {
+      merged[merged.length - 1] = SubtitleSegment(
+        text: _joinSubtitleText(previous.text, segment.text),
+        start: previous.start,
+        end: segment.end > previous.end ? segment.end : previous.end,
+      );
+    } else {
+      merged.add(segment);
+    }
+  }
+
+  if (merged.length >= 2) {
+    final last = merged.last;
+    final previous = merged[merged.length - 2];
+    final gap = last.start - previous.end;
+    if (last.end - last.start < minimumDurationSeconds &&
+        gap >= -double.minPositive &&
+        gap <= maximumGapSeconds) {
+      merged
+        ..removeLast()
+        ..removeLast()
+        ..add(
+          SubtitleSegment(
+            text: _joinSubtitleText(previous.text, last.text),
+            start: previous.start,
+            end: last.end > previous.end ? last.end : previous.end,
+          ),
+        );
+    }
+  }
+
+  return merged;
+}
+
+String _joinSubtitleText(String left, String right) {
+  final first = left.trim();
+  final second = right.trim();
+  if (first.isEmpty) return second;
+  if (second.isEmpty) return first;
+  if (RegExp(r'^[\)\]\}\.,!?;:ฯๆ]').hasMatch(second)) {
+    return '$first$second';
+  }
+  final thaiBoundary = _containsThaiScript(first.characters.last) &&
+      _containsThaiScript(second.characters.first);
+  return '$first${thaiBoundary ? '' : ' '}$second';
 }
 
 /// Removes a short subtitle-free opening created when an AI cut ends shortly

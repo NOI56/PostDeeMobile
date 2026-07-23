@@ -165,7 +165,59 @@ describe('AI edit recipe pacing settings', () => {
     expect(recipe.silenceRanges).toEqual([{ start: 0.55, end: 1.2 }]);
   });
 
-  it('keeps semantic Thai short-word timings as subtitle words', () => {
+  it('rebuilds readable Thai subtitle words from fragmented provider timings', () => {
+    const text = 'จนกระทั่งแทบจะไม่มีที่เดินสำหรับคน';
+    const tokens = Array.from(text);
+    const durationSeconds = 3.2;
+    const words = tokens.map((word, index) => ({
+      word,
+      start: index * durationSeconds / tokens.length,
+      end: (index + 1) * durationSeconds / tokens.length
+    }));
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds,
+      settings: { subtitleWordsPerLine: 2 },
+      segments: [{ text, start: 0, end: durationSeconds }],
+      words
+    });
+
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe(text);
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
+    expect(recipe.subtitles.segments).not.toContainEqual(
+      expect.objectContaining({ text: expect.stringMatching(/เดิ$/u) })
+    );
+    expect(recipe.subtitles.segments).not.toContainEqual(
+      expect.objectContaining({ text: expect.stringMatching(/^นสำหรับ/u) })
+    );
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => segment.end - segment.start >= 0.7 - Number.EPSILON
+      )
+    ).toBe(true);
+  });
+
+  it('merges provider subtitle fragments that are too short to read', () => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text: 'เช่นช่วงเสาร์อาทิตย์',
+      durationSeconds: 1.2,
+      segments: [
+        { text: 'เช่น', start: 0, end: 0.18 },
+        { text: 'ช่วงเสาร์อาทิตย์', start: 0.18, end: 1.2 }
+      ]
+    });
+
+    expect(recipe.subtitles.segments).toEqual([
+      { text: 'เช่นช่วงเสาร์อาทิตย์', start: 0, end: 1.2 }
+    ]);
+  });
+
+  it('groups semantic Thai words into readable-duration subtitle cues', () => {
     const recipe = buildRecipe({
       capabilities: { subtitle: true },
       language: 'Thai',
@@ -184,10 +236,8 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.subtitles.segments).toEqual([
-      { text: 'มีดี', start: 0, end: 0.4 },
-      { text: 'มาไป', start: 0.4, end: 0.8 },
-      { text: 'ดูของ', start: 0.8, end: 1.2 },
-      { text: 'ใหม่นะ', start: 1.2, end: 1.6 }
+      { text: 'มีดีมาไป', start: 0, end: 0.8 },
+      { text: 'ดูของใหม่นะ', start: 0.8, end: 1.6 }
     ]);
   });
 
@@ -278,8 +328,10 @@ describe('AI edit recipe pacing settings', () => {
       words
     });
 
-    expect(recipe.subtitles.segments).toHaveLength(6);
-    expect(recipe.subtitles.segments[0]?.text).toBe('12');
+    expect(recipe.subtitles.segments).toHaveLength(1);
+    expect(recipe.subtitles.segments[0]?.text).toBe('12 34 56 78 90 12');
+    expect(recipe.subtitles.segments[0]?.start).toBe(0);
+    expect(recipe.subtitles.segments[0]?.end).toBeCloseTo(1.2);
   });
 
   it.each([
@@ -519,8 +571,7 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.subtitles.segments).toEqual([
-      { text: 'สวัสดีค่ะ', start: 0, end: 0.7 },
-      { text: 'วันนี้', start: 0.8, end: 1.2 }
+      { text: 'สวัสดีค่ะวันนี้', start: 0, end: 1.2 }
     ]);
   });
 
@@ -594,8 +645,7 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.subtitles.segments).toEqual([
-      { text: 'Hello world', start: 0, end: 0.8 },
-      { text: 'again', start: 0.9, end: 1.3 }
+      { text: 'Hello world again', start: 0, end: 1.3 }
     ]);
   });
 

@@ -552,6 +552,11 @@ Current mobile pieces:
   Draft JSON is autosaved in app-owned storage and reopening the same source
   and AI setup restores it. These local edits and retries do not call a metered
   AI endpoint.
+- Thai subtitle preparation rebuilds readable word boundaries when provider
+  word timestamps arrive as character fragments. Cues shorter than 0.7 seconds
+  are joined across only a small neighboring gap, mobile never hard-splits an
+  unspaced Thai phrase, and the live preview scales long text down inside the
+  selected line count instead of hiding it with an ellipsis.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.

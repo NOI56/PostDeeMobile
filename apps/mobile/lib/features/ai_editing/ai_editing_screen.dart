@@ -902,14 +902,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
       final reviewCapabilities =
           _buildReviewCapabilities(preparedResult.recipe);
-      final shouldOpenSubtitleStudio = reviewCapabilities['subtitle'] == true &&
-          (widget.subtitleStudioLauncher != null || widget.burnVideo == null);
-      if (shouldOpenSubtitleStudio) {
+      if (reviewCapabilities['subtitle'] == true) {
         final identity = buildSubtitleProjectIdentity(
           sourceFile: file,
           setupSignature: prepareSignature,
         );
-        final initialProject = mapAiEditRecipeToSubtitleProject(
+        final mappedProject = mapAiEditRecipeToSubtitleProject(
           recipe: preparedResult.recipe,
           projectId: identity.projectId,
           sourceFingerprint: identity.sourceFingerprint,
@@ -917,29 +915,14 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           maxCharsPerCue:
               _buildEditOptions(reviewCapabilities).subtitleMaxChars ?? 18,
         );
-        setState(() {
-          _processing = false;
-          _renderProgress = null;
-        });
-        final editedProject = await _openSubtitleStudio(
-          sourceFile: file,
-          initialProject: initialProject,
+        final initialProject = mappedProject.copyWith(
+          defaultStyle: _subtitleStyleForSetup(
+            mappedProject.defaultStyle,
+            reviewCapabilities,
+          ),
         );
-        if (!mounted) return;
-        if (editedProject == null) {
-          setState(() {
-            _processing = false;
-            _renderProgress = null;
-            _renderCancelRequested = false;
-          });
-          return;
-        }
-        validateSubtitleProject(editedProject);
         setState(() {
-          _subtitleProject = editedProject;
-          _processing = true;
-          _processingTitle = 'กำลังสร้างวิดีโอตัวอย่างพร้อมซับ...';
-          _renderProgress = 0;
+          _subtitleProject = initialProject;
         });
       }
       final result = await _renderPreparedRecipe(
@@ -1618,6 +1601,33 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           subtitleOn ? _effectiveSubtitlePosition == 'bottom' : null,
       brightness: colorOn ? 0.12 * _toneStrength : 0,
       contrast: colorOn ? 0.08 * _toneStrength : 0,
+    );
+  }
+
+  SubtitleStyle _subtitleStyleForSetup(
+    SubtitleStyle mappedStyle,
+    Map<String, bool> capabilities,
+  ) {
+    final options = _buildEditOptions(capabilities);
+    final alignment = (options.subtitleAtBottom ?? true)
+        ? SubtitleAlignment.bottom
+        : SubtitleAlignment.top;
+
+    return SubtitleStyle(
+      fontId: mappedStyle.fontId,
+      fontWeight: mappedStyle.fontWeight,
+      fontSize: options.subtitleFontSize ?? mappedStyle.fontSize,
+      textColor: mappedStyle.textColor,
+      activeWordColor: mappedStyle.activeWordColor,
+      outlineColor: mappedStyle.outlineColor,
+      outlineWidth: mappedStyle.outlineWidth,
+      shadowColor: mappedStyle.shadowColor,
+      shadowDepth: mappedStyle.shadowDepth,
+      alignment: alignment,
+      normalizedX: mappedStyle.normalizedX,
+      normalizedY: alignment == SubtitleAlignment.top ? 0.12 : 0.88,
+      maxLines: mappedStyle.maxLines,
+      animation: mappedStyle.animation,
     );
   }
 

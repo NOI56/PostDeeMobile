@@ -1343,7 +1343,8 @@ void main() {
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
   });
 
-  testWidgets('opens Subtitle Studio before render and uses its edited output',
+  testWidgets(
+      'renders AI subtitles first and opens Subtitle Studio only on request',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -1353,7 +1354,8 @@ void main() {
     final renderedVideo = _createRenderedVideoFixture('subtitle-edited.mp4');
     final store = _MemorySubtitleDraftStore();
     SubtitleProject? studioInput;
-    BurnSubtitleRequest? renderRequest;
+    final renderRequests = <BurnSubtitleRequest>[];
+    var studioLaunches = 0;
     const editedSubtitle =
         'ซับที่แก้แล้วมีข้อความภาษาไทยยาวเกินขอบและต้องแบ่งให้อ่านง่าย';
 
@@ -1372,6 +1374,7 @@ void main() {
           subtitleDraftStore: store,
           subtitleStudioLauncher:
               (context, sourceFile, initialProject, draftStore) async {
+            studioLaunches += 1;
             studioInput = initialProject;
             final updatedStyle = SubtitleStyle(
               fontId: 'Anuphan',
@@ -1398,7 +1401,7 @@ void main() {
             );
           },
           burnVideo: (request) async {
-            renderRequest = request;
+            renderRequests.add(request);
             return renderedVideo;
           },
         ),
@@ -1410,23 +1413,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
-    expect(studioInput?.cues.single.text, isNotEmpty);
-    expect(renderRequest?.segments, hasLength(1));
+    expect(studioLaunches, 0);
+    expect(renderRequests, hasLength(1));
+    expect(renderRequests.single.segments, isNotEmpty);
     expect(
-      renderRequest?.segments.map((segment) => segment.text).join(),
-      editedSubtitle,
-    );
-    expect(renderRequest?.segments.single.text, editedSubtitle);
-    expect(renderRequest?.subtitleFontName, 'Anuphan');
-    expect(renderRequest?.subtitleFontSize, 30);
-    expect(renderRequest?.subtitleTextColor, '#00E5A8');
-    expect(renderRequest?.subtitleOutlineColor, '#112233');
-    expect(renderRequest?.subtitleOutlineWidth, 3);
-    expect(renderRequest?.subtitleShadowColor, '#445566');
-    expect(renderRequest?.subtitleShadowDepth, 4);
-    expect(
-      renderRequest?.subtitleAlignment,
-      BurnSubtitleAlignment.middle,
+      renderRequests.single.segments.map((segment) => segment.text).join(),
+      isNot(editedSubtitle),
     );
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
     await tester.scrollUntilVisible(
@@ -1437,6 +1429,36 @@ void main() {
     expect(
       find.byKey(const ValueKey('ai-review-edit-subtitles')),
       findsOneWidget,
+    );
+
+    await tester.drag(
+      find.byType(Scrollable).first,
+      const Offset(0, -180),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-review-edit-subtitles')));
+    await tester.pumpAndSettle();
+
+    expect(studioLaunches, 1);
+    expect(studioInput?.cues.single.text, isNotEmpty);
+    expect(renderRequests, hasLength(2));
+    final renderRequest = renderRequests.last;
+    expect(renderRequest.segments, hasLength(1));
+    expect(
+      renderRequest.segments.map((segment) => segment.text).join(),
+      editedSubtitle,
+    );
+    expect(renderRequest.segments.single.text, editedSubtitle);
+    expect(renderRequest.subtitleFontName, 'Anuphan');
+    expect(renderRequest.subtitleFontSize, 30);
+    expect(renderRequest.subtitleTextColor, '#00E5A8');
+    expect(renderRequest.subtitleOutlineColor, '#112233');
+    expect(renderRequest.subtitleOutlineWidth, 3);
+    expect(renderRequest.subtitleShadowColor, '#445566');
+    expect(renderRequest.subtitleShadowDepth, 4);
+    expect(
+      renderRequest.subtitleAlignment,
+      BurnSubtitleAlignment.middle,
     );
   });
 

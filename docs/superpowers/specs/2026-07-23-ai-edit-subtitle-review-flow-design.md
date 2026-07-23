@@ -11,7 +11,8 @@ flow and shows the full transcript before a preview has been rendered.
 1. The user selects a clip and taps the AI edit button.
 2. AI prepares the edit recipe and caption cues.
 3. The app creates an in-memory `SubtitleProject` from those cues without
-   navigating away.
+   navigating away. Its initial font size and position match the subtitle
+   settings selected on the AI setup screen.
 4. The preview is rendered with the AI captions and the app opens the existing
    result review screen.
 5. Subtitle Studio opens only when the user explicitly taps the edit-subtitles

@@ -173,7 +173,8 @@ const countGraphemes = (value: string): number =>
 
 const rebuildFragmentedElevenLabsThaiWords = (
   timedWords: ElevenLabsTimedWord[],
-  language?: string
+  language?: string,
+  referenceText?: string
 ): ElevenLabsTimedWord[] => {
   if (
     normalizeTranscriptionLanguage(language) !== 'th' ||
@@ -186,8 +187,24 @@ const rebuildFragmentedElevenLabsThaiWords = (
     .map((word) => word.displayText)
     .join('')
     .normalize('NFC');
+  const compact = (value: string) =>
+    value.normalize('NFC').replace(/\s+/gu, '');
+  const compactTimelineWords = compact(
+    timedWords.map((word) => word.word).join('')
+  );
+  const normalizedReference = referenceText?.normalize('NFC').trim();
+  const referenceMatchesTimeline =
+    normalizedReference &&
+    compact(normalizedReference) === compactTimelineWords;
+  const canonicalText =
+    referenceMatchesTimeline
+      ? normalizedReference
+      : timelineText;
+  const canonicalSpacingDiffers =
+    referenceMatchesTimeline &&
+    normalizedReference !== timelineText.trim();
   const parts = Array.from(
-    new Intl.Segmenter('th', { granularity: 'word' }).segment(timelineText)
+    new Intl.Segmenter('th', { granularity: 'word' }).segment(canonicalText)
   );
   const semanticWordCount = parts.filter((part) => part.isWordLike).length;
 
@@ -195,23 +212,27 @@ const rebuildFragmentedElevenLabsThaiWords = (
   // Leave providers that already return semantic words untouched.
   if (
     semanticWordCount === 0 ||
-    timedWords.length <= semanticWordCount * 1.5
+    (
+      !canonicalSpacingDiffers &&
+      timedWords.length <= semanticWordCount * 1.5
+    )
   ) {
     return timedWords;
   }
 
   let offset = 0;
-  const indexedWords = timedWords.map((timedWord) => {
-    const displayText = timedWord.displayText.normalize('NFC');
-    const word = timedWord.word.normalize('NFC');
-    const suffixOffset = Math.max(0, displayText.lastIndexOf(word));
+  const indexedWords = timedWords.flatMap((timedWord) => {
+    const word = compact(timedWord.word);
+    if (!word) {
+      return [];
+    }
     const indexedWord = {
       timedWord,
-      wordStart: offset + suffixOffset,
-      wordEnd: offset + suffixOffset + word.length
+      wordStart: offset,
+      wordEnd: offset + word.length
     };
-    offset += displayText.length;
-    return indexedWord;
+    offset += word.length;
+    return [indexedWord];
   });
   const readPartRange = (start: number, end: number) => {
     const overlapping = indexedWords.filter(
@@ -226,9 +247,15 @@ const rebuildFragmentedElevenLabsThaiWords = (
 
   const rebuilt: ElevenLabsTimedWord[] = [];
   let pendingSpacing = '';
+  let compactOffset = 0;
 
   for (const part of parts) {
     const value = part.segment.normalize('NFC');
+    const compactValue = compact(value);
+    const partStart = compactOffset;
+    const partEnd = partStart + compactValue.length;
+    compactOffset = partEnd;
+
     if (!part.isWordLike) {
       if (/^\s+$/u.test(value)) {
         pendingSpacing += value;
@@ -236,7 +263,9 @@ const rebuildFragmentedElevenLabsThaiWords = (
       }
 
       const previous = rebuilt.at(-1);
-      const range = readPartRange(part.index, part.index + part.segment.length);
+      const range = compactValue
+        ? readPartRange(partStart, partEnd)
+        : undefined;
       if (previous) {
         previous.word += value;
         previous.displayText += value;
@@ -250,7 +279,9 @@ const rebuildFragmentedElevenLabsThaiWords = (
     }
 
     const word = value.trim();
-    const range = readPartRange(part.index, part.index + part.segment.length);
+    const range = compactValue
+      ? readPartRange(partStart, partEnd)
+      : undefined;
     if (!word || !range) {
       continue;
     }
@@ -370,15 +401,19 @@ const normalizeElevenLabsTranscription = (
     typeof payload.language_code === 'string'
       ? payload.language_code
       : undefined;
-  const timedWords = rebuildFragmentedElevenLabsThaiWords(
-    readElevenLabsTimedWords(events),
-    language
-  );
-  const fallbackText = timedWords.map((word) => word.displayText).join('');
+  const rawTimedWords = readElevenLabsTimedWords(events);
+  const rawFallbackText = rawTimedWords
+    .map((word) => word.displayText)
+    .join('');
   const text =
     typeof payload.text === 'string'
       ? payload.text.normalize('NFC').trim()
-      : fallbackText.normalize('NFC').trim();
+      : rawFallbackText.normalize('NFC').trim();
+  const timedWords = rebuildFragmentedElevenLabsThaiWords(
+    rawTimedWords,
+    language,
+    text
+  );
 
   return {
     text,

@@ -431,6 +431,37 @@ describe('transcription provider', () => {
     ).toBe(true);
   });
 
+  it('uses the canonical Scribe text when spacing events split a Thai word', async () => {
+    const text = 'ไม่ค่อยได้ใช้เนื่องจากรถติดมาก';
+    const result = await transcribeElevenLabsFixture(
+      [
+        { type: 'word', text: 'ไม่', start: 0, end: 0.2 },
+        { type: 'word', text: 'ค่อย', start: 0.2, end: 0.4 },
+        { type: 'word', text: 'ได้', start: 0.4, end: 0.6 },
+        { type: 'word', text: 'ใช้', start: 0.6, end: 0.8 },
+        { type: 'word', text: 'เนื่อ', start: 0.8, end: 1 },
+        { type: 'spacing', text: ' ' },
+        { type: 'word', text: 'งจาก', start: 1, end: 1.2 },
+        { type: 'word', text: 'รถ', start: 1.2, end: 1.4 },
+        { type: 'word', text: 'ติด', start: 1.4, end: 1.6 },
+        { type: 'word', text: 'มาก', start: 1.6, end: 1.8 }
+      ],
+      text
+    );
+
+    expect(result.words.map((word) => word.word)).toEqual([
+      'ไม่',
+      'ค่อย',
+      'ได้',
+      'ใช้',
+      'เนื่องจาก',
+      'รถ',
+      'ติด',
+      'มาก'
+    ]);
+    expect(result.segments.map((segment) => segment.text).join('')).toBe(text);
+  });
+
   it('drops malformed and non-word ElevenLabs events', async () => {
     const result = await transcribeElevenLabsFixture([
       { type: 'word', text: 'ถูก', start: 0.1, end: 0.4 },

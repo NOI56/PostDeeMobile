@@ -155,6 +155,36 @@ void main() {
     );
   });
 
+  test('moves a leading cut back when it starts inside a subtitle cue', () {
+    final adjusted = alignLeadingCutToFirstSubtitle(
+      const [
+        SilenceCutRange(start: 0, end: 30.321),
+        SilenceCutRange(start: 90.321, end: 150.641),
+      ],
+      const [
+        SubtitleSegment(
+          text: 'ที่เดินสำหรับ',
+          start: 29.985,
+          end: 30.921,
+        ),
+      ],
+      150.641,
+    );
+
+    expect(adjusted, hasLength(2));
+    expect(adjusted.first.start, 0);
+    expect(adjusted.first.end, closeTo(29.835, 0.001));
+    expect(adjusted.last.start, closeTo(89.835, 0.001));
+    expect(adjusted.last.end, 150.641);
+    expect(
+      estimateResultSeconds(
+        durationSeconds: 150.641,
+        cutRanges: adjusted,
+      ),
+      closeTo(60, 0.001),
+    );
+  });
+
   test('does not move an intentionally long visual opening', () {
     const cuts = [
       SilenceCutRange(start: 0, end: 2),

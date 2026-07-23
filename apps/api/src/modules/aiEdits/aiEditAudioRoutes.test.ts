@@ -61,6 +61,141 @@ describe('AI edit audio routes', () => {
     expect(deleteVideo).toHaveBeenCalledWith(audioS3Key);
   });
 
+  it('merges ordered audio chunks into one complete transcript and deletes every chunk', async () => {
+    const firstKey = ownedUploadKey('local-dev-user', 'chunk-000.m4a', 'chunks');
+    const secondKey = ownedUploadKey('local-dev-user', 'chunk-001.m4a', 'chunks');
+    const transcribe = vi.fn(async ({ mediaS3Key }: { mediaS3Key: string }) => {
+      if (mediaS3Key === firstKey) {
+        return {
+          text: 'สวัสดีค่ะ',
+          language: 'th',
+          durationSeconds: 30,
+          segments: [{ text: 'สวัสดีค่ะ', start: 0.2, end: 1.1 }],
+          words: [{ word: 'สวัสดีค่ะ', start: 0.2, end: 1.1 }],
+          model: 'test-whisper'
+        };
+      }
+
+      return {
+        text: 'ช่วงต่อไป',
+        language: 'th',
+        durationSeconds: 30,
+        segments: [{ text: 'ช่วงต่อไป', start: 0.1, end: 1.2 }],
+        words: [{ word: 'ช่วงต่อไป', start: 0.1, end: 1.2 }],
+        model: 'test-whisper'
+      };
+    });
+    const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
+    const app = createApp({ transcriptionProvider: { transcribe }, videoStorage });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        audioChunks: [
+          { audioS3Key: firstKey, startSeconds: 0 },
+          { audioS3Key: secondKey, startSeconds: 30 }
+        ],
+        durationSeconds: 60,
+        targetDurationSeconds: 30,
+        capabilities: { subtitle: true }
+      })
+      .expect(200);
+
+    expect(transcribe).toHaveBeenCalledTimes(2);
+    expect(response.body.recipe.transcript).toMatchObject({
+      text: 'สวัสดีค่ะ ช่วงต่อไป',
+      durationSeconds: 60,
+      segments: [
+        { text: 'สวัสดีค่ะ', start: 0.2, end: 1.1 },
+        { text: 'ช่วงต่อไป', start: 30.1, end: 31.2 }
+      ],
+      words: [
+        { word: 'สวัสดีค่ะ', start: 0.2, end: 1.1 },
+        { word: 'ช่วงต่อไป', start: 30.1, end: 31.2 }
+      ]
+    });
+    expect(deleteVideo).toHaveBeenCalledTimes(2);
+    expect(deleteVideo).toHaveBeenCalledWith(firstKey);
+    expect(deleteVideo).toHaveBeenCalledWith(secondKey);
+  });
+
+  it('rejects audio chunks when one key belongs to another user', async () => {
+    const firstKey = ownedUploadKey('local-dev-user', 'chunk-000.m4a', 'chunks');
+    const foreignKey = ownedUploadKey('other-seller', 'chunk-001.m4a', 'chunks');
+    const transcribe = vi.fn(async () => transcript);
+    const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
+    const app = createApp({ transcriptionProvider: { transcribe }, videoStorage });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        audioChunks: [
+          { audioS3Key: firstKey, startSeconds: 0 },
+          { audioS3Key: foreignKey, startSeconds: 30 }
+        ]
+      })
+      .expect(403);
+
+    expect(response.body.code).toBe('MEDIA_KEY_FORBIDDEN');
+    expect(transcribe).not.toHaveBeenCalled();
+    expect(deleteVideo).not.toHaveBeenCalled();
+  });
+
+  it('deletes every owned audio chunk when a later transcription fails', async () => {
+    const firstKey = ownedUploadKey('local-dev-user', 'chunk-000.m4a', 'chunks');
+    const secondKey = ownedUploadKey('local-dev-user', 'chunk-001.m4a', 'chunks');
+    const transcribe = vi
+      .fn()
+      .mockResolvedValueOnce(transcript)
+      .mockRejectedValueOnce(new Error('provider unavailable'));
+    const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
+    const app = createApp({ transcriptionProvider: { transcribe }, videoStorage });
+
+    await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        audioChunks: [
+          { audioS3Key: firstKey, startSeconds: 0 },
+          { audioS3Key: secondKey, startSeconds: 30 }
+        ]
+      })
+      .expect(502);
+
+    expect(deleteVideo).toHaveBeenCalledTimes(2);
+    expect(deleteVideo).toHaveBeenCalledWith(firstKey);
+    expect(deleteVideo).toHaveBeenCalledWith(secondKey);
+  });
+
+  it('rejects audio chunks that do not start at the beginning', async () => {
+    const transcribe = vi.fn(async () => transcript);
+    const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
+    const app = createApp({ transcriptionProvider: { transcribe }, videoStorage });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        audioChunks: [
+          {
+            audioS3Key: ownedUploadKey(
+              'local-dev-user',
+              'chunk-000.m4a',
+              'chunks'
+            ),
+            startSeconds: 15
+          }
+        ]
+      })
+      .expect(400);
+
+    expect(response.body.code).toBe('AI_EDIT_AUDIO_CHUNKS_INVALID');
+    expect(transcribe).not.toHaveBeenCalled();
+    expect(deleteVideo).not.toHaveBeenCalled();
+  });
+
   it('rejects requests that contain both audio and legacy video keys', async () => {
     const transcribe = vi.fn(async () => transcript);
     const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();

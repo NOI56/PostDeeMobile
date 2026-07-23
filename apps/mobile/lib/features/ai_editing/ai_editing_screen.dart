@@ -45,6 +45,10 @@ typedef AiEditPlanner = Future<AiEditPlanResult> Function(
 );
 typedef AiEditAudioExtraction = Future<AiEditAudioArtifact> Function(
     File source);
+typedef AiEditAudioChunksExtraction = Future<AiEditAudioChunksArtifact>
+    Function(
+  File source,
+);
 typedef AiEditAudioCleanup = Future<void> Function(String audioS3Key);
 typedef AiEditVisualProxyExtraction = Future<AiEditVisualProxyArtifact>
     Function(File source);
@@ -350,6 +354,7 @@ class AiEditingScreen extends StatefulWidget {
     this.prepareEdit,
     this.planEdit,
     this.extractAudio,
+    this.extractAudioChunks,
     this.cleanupAiEditAudio,
     this.extractVisualProxy,
     this.cleanupAiEditVisualProxy,
@@ -373,6 +378,7 @@ class AiEditingScreen extends StatefulWidget {
   final AiEditPreparer? prepareEdit;
   final AiEditPlanner? planEdit;
   final AiEditAudioExtraction? extractAudio;
+  final AiEditAudioChunksExtraction? extractAudioChunks;
   final AiEditAudioCleanup? cleanupAiEditAudio;
   final AiEditVisualProxyExtraction? extractVisualProxy;
   final AiEditVisualProxyCleanup? cleanupAiEditVisualProxy;
@@ -775,7 +781,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           _preparedEditsBySignature[prepareSignature] = prepared;
         } else {
           AiEditAudioArtifact? audioArtifact;
-          String? remoteAudioKey;
+          AiEditAudioChunksArtifact? audioChunksArtifact;
+          final remoteAudioKeys = <String>[];
           try {
             selectAiEditAnalysisMode(
               _buildPrepareRequest('__capability_check__.m4a').capabilities,
@@ -784,38 +791,59 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               setState(() => _processingTitle = 'กำลังเตรียมเสียงให้ AI...');
             }
 
-            final extractAudio =
-                widget.extractAudio ?? AiEditAudioExtractor().extract;
-            audioArtifact = await extractAudio(file);
-            final audioFile = audioArtifact.file;
-
             final createUpload = widget.createUpload ?? _apiClient.createUpload;
             final uploadVideoFile =
                 widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-            final upload = await createAndUploadFileWithRetry(
-              request: CreateUploadRequest(
-                fileName: _readFileNameFromPath(audioFile.path),
-                contentType: 'audio/mp4',
-                sizeBytes: audioFile.lengthSync(),
-                purpose: 'ai-edit-audio',
-              ),
-              file: audioFile,
-              createUpload: createUpload,
-              uploadFile: uploadVideoFile,
-              onRetry: () {
-                if (mounted) {
-                  setState(() {
-                    _processingTitle = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
-                  });
-                }
-              },
-            );
-            remoteAudioKey = upload.videoS3Key;
+            Future<UploadResult> uploadAudioFile(File audioFile) =>
+                createAndUploadFileWithRetry(
+                  request: CreateUploadRequest(
+                    fileName: _readFileNameFromPath(audioFile.path),
+                    contentType: 'audio/mp4',
+                    sizeBytes: audioFile.lengthSync(),
+                    purpose: 'ai-edit-audio',
+                  ),
+                  file: audioFile,
+                  createUpload: createUpload,
+                  uploadFile: uploadVideoFile,
+                  onRetry: () {
+                    if (mounted) {
+                      setState(() {
+                        _processingTitle =
+                            'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+                      });
+                    }
+                  },
+                );
+
+            late final AiEditPrepareRequest prepareRequest;
+            if (widget.extractAudio != null) {
+              audioArtifact = await widget.extractAudio!(file);
+              final upload = await uploadAudioFile(audioArtifact.file);
+              remoteAudioKeys.add(upload.videoS3Key);
+              prepareRequest = _buildPrepareRequest(upload.videoS3Key);
+            } else {
+              final extractAudioChunks = widget.extractAudioChunks ??
+                  AiEditAudioExtractor().extractChunks;
+              audioChunksArtifact = await extractAudioChunks(file);
+              final requests = <AiEditAudioChunkRequest>[];
+              for (final chunk in audioChunksArtifact.chunks) {
+                final upload = await uploadAudioFile(chunk.file);
+                remoteAudioKeys.add(upload.videoS3Key);
+                requests.add(
+                  AiEditAudioChunkRequest(
+                    audioS3Key: upload.videoS3Key,
+                    startSeconds: chunk.startSeconds,
+                  ),
+                );
+              }
+              prepareRequest = _buildPrepareRequest(
+                null,
+                audioChunks: requests,
+              );
+            }
 
             final prepareEdit = widget.prepareEdit ?? _apiClient.prepareAiEdit;
-            final preparedFromApi = await prepareEdit(
-              _buildPrepareRequest(remoteAudioKey),
-            );
+            final preparedFromApi = await prepareEdit(prepareRequest);
             if (!mounted) {
               return;
             }
@@ -830,7 +858,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             if (audioArtifact != null) {
               await _cleanupLocalAudioBestEffort(audioArtifact);
             }
-            if (remoteAudioKey != null) {
+            if (audioChunksArtifact != null) {
+              await _cleanupLocalAudioChunksBestEffort(audioChunksArtifact);
+            }
+            for (final remoteAudioKey in remoteAudioKeys) {
               await _cleanupRemoteAudioBestEffort(remoteAudioKey);
             }
           }
@@ -1026,7 +1057,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     }
   }
 
-  AiEditPrepareRequest _buildPrepareRequest(String audioS3Key) {
+  AiEditPrepareRequest _buildPrepareRequest(
+    String? audioS3Key, {
+    List<AiEditAudioChunkRequest> audioChunks =
+        const <AiEditAudioChunkRequest>[],
+  }) {
     final capabilities = _effectiveCapabilities;
     final canUseBeatMusic =
         _isCapabilityEnabled('beatsync') && _beatMusicSelectionComplete;
@@ -1038,6 +1073,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
     return AiEditPrepareRequest(
       audioS3Key: audioS3Key,
+      audioChunks: audioChunks.isEmpty ? null : audioChunks,
       durationSeconds: _selectedDurationSeconds.toDouble(),
       targetDurationSeconds: _selectedDurationSeconds.toDouble(),
       capabilities: {
@@ -1130,6 +1166,16 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   Future<void> _cleanupLocalAudioBestEffort(
     AiEditAudioArtifact artifact,
+  ) async {
+    try {
+      await artifact.cleanup();
+    } catch (_) {
+      // Do not replace the original processing result or error.
+    }
+  }
+
+  Future<void> _cleanupLocalAudioChunksBestEffort(
+    AiEditAudioChunksArtifact artifact,
   ) async {
     try {
       await artifact.cleanup();

@@ -571,7 +571,6 @@ void main() {
         ),
       ),
     );
-
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
@@ -1092,6 +1091,101 @@ void main() {
     expect(find.text('AI ตัดต่อให้แล้ว'), findsOneWidget);
     expect(find.text('ไปหน้าโพสต์'), findsOneWidget);
     expect(find.text('ตัดต่อเพิ่ม'), findsNothing);
+  });
+
+  testWidgets('uploads ordered audio chunks and cleans every temporary file',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final pickedVideo = _createPickedVideoFixture('chunked-source.mp4');
+    final renderedVideo = _createRenderedVideoFixture('chunked-result.mp4');
+    final uploadRequests = <CreateUploadRequest>[];
+    final cleanedAudioKeys = <String>[];
+    AiEditPrepareRequest? prepareRequest;
+    Directory? chunksDirectory;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          extractAudioChunks: (_) async {
+            chunksDirectory = Directory.systemTemp.createTempSync(
+              'postdee-editor-audio-chunks-',
+            );
+            final chunks = <AiEditAudioChunk>[];
+            for (var index = 0; index < 2; index += 1) {
+              final file = File(
+                '${chunksDirectory!.path}${Platform.pathSeparator}'
+                'postdee-ai-edit-audio-${index.toString().padLeft(3, '0')}.m4a',
+              )..writeAsBytesSync(List<int>.filled(512, index + 1));
+              chunks.add(
+                AiEditAudioChunk(
+                  file: file,
+                  startSeconds: index * 25.0,
+                ),
+              );
+            }
+            return AiEditAudioChunksArtifact(
+              chunks: chunks,
+              workingDirectory: chunksDirectory!,
+            );
+          },
+          cleanupAiEditAudio: (key) async => cleanedAudioKeys.add(key),
+          createUpload: (request) async {
+            uploadRequests.add(request);
+            return UploadResult(
+              id: 'chunk-upload-${uploadRequests.length}',
+              videoS3Key:
+                  'uploads/editor/chunk-${uploadRequests.length - 1}.m4a',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (request) async {
+            prepareRequest = request;
+            return _createPrepareFixture();
+          },
+          burnVideo: (_) async => renderedVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    for (var attempt = 0;
+        attempt < 100 &&
+            find.byKey(const ValueKey('ai-result-review')).evaluate().isEmpty;
+        attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    expect(
+      find.byKey(const ValueKey('ai-result-review')),
+      findsOneWidget,
+    );
+    expect(uploadRequests, hasLength(2));
+    expect(
+      uploadRequests.map((request) => request.purpose),
+      everyElement('ai-edit-audio'),
+    );
+    expect(prepareRequest?.audioS3Key, isNull);
+    expect(
+      prepareRequest?.audioChunks?.map((chunk) => chunk.startSeconds).toList(),
+      [0, 25],
+    );
+    expect(
+      prepareRequest?.audioChunks?.map((chunk) => chunk.audioS3Key).toList(),
+      ['uploads/editor/chunk-0.m4a', 'uploads/editor/chunk-1.m4a'],
+    );
+    expect(cleanedAudioKeys, [
+      'uploads/editor/chunk-0.m4a',
+      'uploads/editor/chunk-1.m4a',
+    ]);
+    expect(chunksDirectory!.existsSync(), isFalse);
   });
 
   testWidgets('opens Subtitle Studio before render and uses its edited output',

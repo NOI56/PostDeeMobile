@@ -25,6 +25,13 @@ receives the PostDee spelling prompt, and highlight planning quality-gates
 provider segments before selecting one continuous story window. The same gate
 omits unreliable time ranges from rendered subtitle lines.
 
+**Transcript coverage update (2026-07-23):** Production mobile now divides the
+source audio into balanced M4A chunks no longer than 30 seconds and sends
+ordered `audioChunks`. The API validates ownership for every key, transcribes
+chunks sequentially, restores source-relative timestamps, merges one transcript,
+meters the combined duration once, and deletes every temporary chunk on success
+or failure. Legacy single `audioS3Key` remains compatible.
+
 ## Global Constraints
 
 - Follow `docs/superpowers/specs/2026-07-18-ai-edit-audio-only-media-design.md` exactly.

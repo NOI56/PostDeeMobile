@@ -801,12 +801,13 @@ available to any authenticated user.
 
 ### `POST /ai-edits/transcribe`
 
-Transcribes an uploaded clip (Thai). Meters usage against a monthly minute quota
+Transcribes uploaded analysis audio (Thai). Meters usage against a monthly minute quota
 (`200` min); returns `402` `AI_EDIT_QUOTA_EXCEEDED` when exhausted. The client
 `durationSeconds` is only a pre-check estimate; the backend reserves the actual
 transcribed minutes before returning success so concurrent requests cannot push
-usage past the configured store limit. Request:
-`{ "videoS3Key": "uploads/<user-id>/<upload-id>/clip.mp4", "durationSeconds": 18 }`. Response includes
+usage past the configured store limit. Current clients send ordered
+`audioChunks`; legacy clients may send one `audioS3Key` or `videoS3Key`.
+Exactly one of those three media forms is required. Response includes
 `transcript` (text, language, durationSeconds, segments[], words[]) and `quota`.
 The Groq adapter sends `language=th` and requests both `word` and `segment`
 timestamp granularities. It deliberately sends no spelling prompt because a
@@ -852,12 +853,18 @@ stored clip, then reserves the actual transcribed minutes before returning the
 recipe. It does **not** render video on the server; mobile still renders/export
 with FFmpeg.
 
-Current mobile clients send exactly one temporary `audioS3Key`, created through
-`POST /uploads` with `.m4a`, `audio/mp4`, `purpose=ai-edit-audio`, no dimensions,
-and a maximum size of 25 MiB. The route validates ownership, transcribes it, and
-deletes the temporary object in its cleanup path. Legacy clients may send exactly
-one `videoS3Key` instead; legacy video objects are not auto-deleted. Sending both
-keys or neither key is rejected.
+Current mobile clients split source audio into balanced chunks no longer than
+30 seconds. Every chunk is created through `POST /uploads` with `.m4a`,
+`audio/mp4`, `purpose=ai-edit-audio`, no dimensions, and a maximum size of
+25 MiB. The client sends ordered `audioChunks` with the source-relative start
+time of every chunk. The first start must be zero; keys must be unique,
+user-owned, ordered, and limited to 40 chunks. The backend transcribes chunks
+sequentially, shifts their local word/segment timestamps onto the source
+timeline, merges one transcript, and reserves quota once from the combined
+duration. All owned chunks are deleted in the cleanup path even if a later
+provider call fails. Legacy clients may send exactly one `audioS3Key` or one
+`videoS3Key`; legacy video objects are not auto-deleted. Sending multiple media
+forms or no media form is rejected.
 
 `targetDurationSeconds` is the desired result length (30, 60, or a positive
 custom value). It is separate from `durationSeconds`, which is only the initial
@@ -875,7 +882,16 @@ Request:
 
 ```json
 {
-  "audioS3Key": "uploads/local-dev-user/upload-id/postdee-ai-edit-audio.m4a",
+  "audioChunks": [
+    {
+      "audioS3Key": "uploads/local-dev-user/upload-id/postdee-ai-edit-audio-000.m4a",
+      "startSeconds": 0
+    },
+    {
+      "audioS3Key": "uploads/local-dev-user/upload-id/postdee-ai-edit-audio-001.m4a",
+      "startSeconds": 25
+    }
+  ],
   "durationSeconds": 65,
   "targetDurationSeconds": 30,
   "styleId": "flash_sale",
@@ -919,7 +935,8 @@ Request:
 
 If a client loses the prepare response after uploading analysis audio, it may
 call `POST /ai-edits/audio/cleanup` with `{ "audioS3Key": "..." }`. Cleanup is
-authenticated, owner-scoped, and idempotent.
+authenticated, owner-scoped, and idempotent. Chunked clients call it once for
+each orphaned chunk.
 
 Response includes:
 

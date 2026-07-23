@@ -519,10 +519,15 @@ Current mobile pieces:
   Whitespace-only provider tokens are ignored during validation; malformed
   tokens containing real transcript text still fail closed.
 - For the production capability set, mobile extracts mono 16 kHz AAC at 64 kbps
-  into a temporary `.m4a`, uploads it with `purpose=ai-edit-audio`, and sends
-  `audioS3Key` to the backend. The original video stays on the phone for FFmpeg
+  into balanced temporary `.m4a` chunks no longer than 30 seconds, uploads them
+  with `purpose=ai-edit-audio`, and sends ordered `audioChunks` to the backend.
+  This keeps the whole source timeline while avoiding a tiny final chunk and
+  long-form leading-speech omissions. The backend transcribes each chunk,
+  restores source-relative timestamps, merges one transcript, and meters the
+  combined duration once. The original video stays on the phone for FFmpeg
   rendering. Local and remote temporary audio are cleaned best-effort after the
-  prepare call; legacy `videoS3Key` clients remain compatible.
+  prepare call; legacy single `audioS3Key` and `videoS3Key` clients remain
+  compatible.
 - When the requested result is shorter than the source transcript, mobile also
   creates a temporary whole-duration 360 px MP4 visual proxy at 1 fps with its
   complete audio track. It uploads that bounded proxy with
@@ -539,7 +544,9 @@ Current mobile pieces:
   safety guard for old or malformed recipes. If incomplete transcript/silence
   timing would leave less media than requested, mobile restores neighboring
   context around the selected moments so a 30/60/custom request does not
-  collapse into a near-empty result.
+  collapse into a near-empty result. If a leading target-length cut intersects
+  a subtitle cue, mobile moves the cut just before that cue and balances the
+  result at the tail, preventing the shortened clip from opening mid-sentence.
 - After the first successful metered prepare, changing only 30/60/custom reuses
   the same in-memory transcript and calls non-metered `POST /ai-edits/plan`.
   Audio is not uploaded or transcribed again unless the source or analysis

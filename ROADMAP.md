@@ -107,7 +107,13 @@ Primary backend choices:
 ### AI auto-editing update (2026-07-23)
 
 The table's earlier audio-only deployment note is superseded. Groq M4A
-transcription remains the first pass and fallback, but shorter targets now add a
+transcription now uses balanced source-audio chunks no longer than 30 seconds.
+The API merges source-relative timestamps and charges the combined duration
+once, while all temporary chunks are cleaned on success or failure. This fixes
+the observed long-form omission where active Thai speech at the start of the
+2:30 fixture produced no subtitle until 22 seconds. Target-length cuts that land
+inside a cue are moved before the cue and balanced at the tail. Shorter targets
+also add a
 whole-duration 360 px/1 fps MP4 proxy with complete audio. The API pairs that
 proxy with timestamped transcript segments through Gemini Files API, falls back
 to audio planning on any visual failure, and cleans temporary device/R2/Gemini

@@ -71,6 +71,71 @@ void main() {
     expect(await workingDirectory.exists(), isFalse);
   });
 
+  test('extracts long audio into balanced chunks no longer than 30 seconds',
+      () async {
+    List<String>? capturedArguments;
+    final extractor = AiEditAudioExtractor(
+      hasAudioStream: (_) async => true,
+      probeDuration: (_) async => 75,
+      runFfmpeg: (arguments) async {
+        capturedArguments = arguments;
+        final pattern = arguments.last;
+        for (var index = 0; index < 3; index += 1) {
+          final path = pattern.replaceFirst(
+            '%03d',
+            index.toString().padLeft(3, '0'),
+          );
+          await File(path).writeAsBytes([4, 5, 6]);
+        }
+        return true;
+      },
+      createWorkingDirectory: createWorkingDirectory,
+    );
+
+    final artifact = await extractor.extractChunks(source);
+
+    expect(
+        capturedArguments,
+        containsAllInOrder([
+          '-f',
+          'segment',
+          '-segment_times',
+          '25.000,50.000',
+          '-reset_timestamps',
+          '1',
+        ]));
+    expect(artifact.chunks, hasLength(3));
+    expect(
+      artifact.chunks.map((chunk) => chunk.startSeconds),
+      [0, 25, 50],
+    );
+    expect(
+      artifact.chunks.map((chunk) => chunk.file.path),
+      everyElement(endsWith('.m4a')),
+    );
+
+    final workingDirectory = artifact.chunks.first.file.parent;
+    await artifact.cleanup();
+    await artifact.cleanup();
+    expect(await workingDirectory.exists(), isFalse);
+  });
+
+  test('balances a 2:30 clip without producing a tiny final chunk', () {
+    final seconds = balancedAiEditAudioChunkSeconds(150.635);
+
+    expect(seconds, closeTo(25.1058, 0.0001));
+    expect(seconds, lessThanOrEqualTo(aiEditAudioChunkSeconds));
+    expect(150.635 / seconds, closeTo(6, 0.0001));
+    expect(
+      balancedAiEditAudioSegmentTimes(150.635),
+      hasLength(5),
+    );
+    expect(
+      balancedAiEditAudioSegmentTimes(150.635).last,
+      closeTo(125.5292, 0.0001),
+    );
+  });
+
   test('rejects a clip without audio before running FFmpeg', () async {
     var runnerCalled = false;
     final extractor = AiEditAudioExtractor(

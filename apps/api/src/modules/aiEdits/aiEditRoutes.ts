@@ -19,7 +19,10 @@ import type {
   EditPlanProvider,
   EditPlanSegment
 } from './editPlanProvider.js';
-import type { TranscriptionProvider } from './transcriptionProvider.js';
+import type {
+  TranscriptionProvider,
+  TranscriptionResult
+} from './transcriptionProvider.js';
 import type { VisualEditPlanProvider } from './visualEditPlanProvider.js';
 
 const readRequiredString = (value: unknown) => {
@@ -55,9 +58,16 @@ const readVisualProxyKey = (value: unknown) => {
   return { ok: true as const, key };
 };
 
-type AiEditMedia =
-  | { key: string; kind: 'audio'; deleteAfterUse: true }
-  | { key: string; kind: 'legacy-video'; deleteAfterUse: false };
+type AiEditMediaPart = {
+  key: string;
+  kind: 'audio' | 'legacy-video';
+  startSeconds: number;
+};
+
+type AiEditMedia = {
+  parts: AiEditMediaPart[];
+  deleteAfterUse: boolean;
+};
 
 type ReadAiEditMediaResult =
   | { ok: true; media: AiEditMedia }
@@ -66,21 +76,33 @@ type ReadAiEditMediaResult =
 const readAiEditMedia = (body: unknown): ReadAiEditMediaResult => {
   const payload = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const audioS3Key = readRequiredString(payload.audioS3Key);
+  const rawAudioChunks = payload.audioChunks;
   const videoS3Key = readRequiredString(payload.videoS3Key);
+  const hasAudioChunks = Array.isArray(rawAudioChunks) && rawAudioChunks.length > 0;
+  const mediaSourceCount =
+    (audioS3Key ? 1 : 0) + (hasAudioChunks ? 1 : 0) + (videoS3Key ? 1 : 0);
 
-  if (audioS3Key && videoS3Key) {
+  if (mediaSourceCount > 1) {
     return {
       ok: false,
       code: 'AI_EDIT_MEDIA_AMBIGUOUS',
-      message: 'Provide exactly one of audioS3Key or videoS3Key'
+      message: 'Provide exactly one of audioS3Key, audioChunks, or videoS3Key'
     };
   }
 
-  if (!audioS3Key && !videoS3Key) {
+  if (rawAudioChunks !== undefined && !hasAudioChunks) {
+    return {
+      ok: false,
+      code: 'AI_EDIT_AUDIO_CHUNKS_INVALID',
+      message: 'audioChunks must contain at least one ordered M4A chunk'
+    };
+  }
+
+  if (mediaSourceCount === 0) {
     return {
       ok: false,
       code: 'AI_EDIT_MEDIA_REQUIRED',
-      message: 'audioS3Key or videoS3Key is required'
+      message: 'audioS3Key, audioChunks, or videoS3Key is required'
     };
   }
 
@@ -95,13 +117,128 @@ const readAiEditMedia = (body: unknown): ReadAiEditMediaResult => {
 
     return {
       ok: true,
-      media: { key: audioS3Key, kind: 'audio', deleteAfterUse: true }
+      media: {
+        parts: [{ key: audioS3Key, kind: 'audio', startSeconds: 0 }],
+        deleteAfterUse: true
+      }
+    };
+  }
+
+  if (hasAudioChunks) {
+    if (rawAudioChunks.length > 40) {
+      return {
+        ok: false,
+        code: 'AI_EDIT_AUDIO_CHUNKS_INVALID',
+        message: 'audioChunks exceeds the supported limit'
+      };
+    }
+
+    const chunks: AiEditMediaPart[] = [];
+    let previousStart = -1;
+    const keys = new Set<string>();
+    for (const item of rawAudioChunks) {
+      if (typeof item !== 'object' || item === null) {
+        return {
+          ok: false,
+          code: 'AI_EDIT_AUDIO_CHUNKS_INVALID',
+          message: 'Each audio chunk must include an M4A key and startSeconds'
+        };
+      }
+
+      const record = item as Record<string, unknown>;
+      const key = readRequiredString(record.audioS3Key);
+      const startSeconds = record.startSeconds;
+      if (
+        !key ||
+        !key.toLowerCase().endsWith('.m4a') ||
+        typeof startSeconds !== 'number' ||
+        !Number.isFinite(startSeconds) ||
+        startSeconds < 0 ||
+        startSeconds <= previousStart ||
+        keys.has(key)
+      ) {
+        return {
+          ok: false,
+          code: 'AI_EDIT_AUDIO_CHUNKS_INVALID',
+          message: 'audioChunks must be unique, ordered M4A chunks'
+        };
+      }
+
+      chunks.push({ key, kind: 'audio', startSeconds });
+      keys.add(key);
+      previousStart = startSeconds;
+    }
+
+    if (chunks[0]?.startSeconds !== 0) {
+      return {
+        ok: false,
+        code: 'AI_EDIT_AUDIO_CHUNKS_INVALID',
+        message: 'The first audio chunk must start at zero'
+      };
+    }
+
+    return {
+      ok: true,
+      media: { parts: chunks, deleteAfterUse: true }
     };
   }
 
   return {
     ok: true,
-    media: { key: videoS3Key as string, kind: 'legacy-video', deleteAfterUse: false }
+    media: {
+      parts: [
+        {
+          key: videoS3Key as string,
+          kind: 'legacy-video',
+          startSeconds: 0
+        }
+      ],
+      deleteAfterUse: false
+    }
+  };
+};
+
+const shiftTranscriptionResult = (
+  result: TranscriptionResult,
+  startSeconds: number
+): TranscriptionResult => ({
+  ...result,
+  durationSeconds: startSeconds + result.durationSeconds,
+  segments: result.segments.map((segment) => ({
+    ...segment,
+    start: startSeconds + segment.start,
+    end: startSeconds + segment.end
+  })),
+  words: result.words.map((word) => ({
+    ...word,
+    start: startSeconds + word.start,
+    end: startSeconds + word.end
+  }))
+});
+
+const mergeChunkedTranscriptions = (
+  chunks: Array<{ startSeconds: number; transcript: TranscriptionResult }>
+): TranscriptionResult => {
+  if (chunks.length === 1 && chunks[0]?.startSeconds === 0) {
+    return chunks[0].transcript;
+  }
+
+  const shifted = chunks.map(({ startSeconds, transcript }) =>
+    shiftTranscriptionResult(transcript, startSeconds)
+  );
+  return {
+    text: shifted
+      .map((chunk) => chunk.text.trim())
+      .filter(Boolean)
+      .join(' '),
+    language: shifted.find((chunk) => chunk.language.trim())?.language ?? 'th',
+    durationSeconds: Math.max(
+      0,
+      ...shifted.map((chunk) => chunk.durationSeconds)
+    ),
+    segments: shifted.flatMap((chunk) => chunk.segments),
+    words: shifted.flatMap((chunk) => chunk.words),
+    model: shifted.find((chunk) => chunk.model.trim())?.model ?? ''
   };
 };
 
@@ -214,14 +351,40 @@ export const registerAiEditRoutes = (
       return;
     }
 
-    try {
-      await deleteMedia(media.key);
-    } catch (error) {
-      console.error(
-        'AI edit temporary audio cleanup failed:',
-        error instanceof Error ? error.message : error
-      );
+    for (const part of media.parts) {
+      try {
+        await deleteMedia(part.key);
+      } catch (error) {
+        console.error(
+          'AI edit temporary audio cleanup failed:',
+          error instanceof Error ? error.message : error
+        );
+      }
     }
+  };
+
+  const mediaBelongsToUser = (media: AiEditMedia, userId: string) =>
+    media.parts.every((part) =>
+      isStorageKeyOwnedByUser({ videoS3Key: part.key, userId })
+    );
+
+  const transcribeMedia = async (
+    media: AiEditMedia
+  ): Promise<TranscriptionResult> => {
+    const chunks: Array<{
+      startSeconds: number;
+      transcript: TranscriptionResult;
+    }> = [];
+    for (const part of media.parts) {
+      chunks.push({
+        startSeconds: part.startSeconds,
+        transcript: await transcriptionProvider.transcribe({
+          mediaS3Key: part.key,
+          mediaKind: part.kind
+        })
+      });
+    }
+    return mergeChunkedTranscriptions(chunks);
   };
 
   router.post('/ai-edits/audio/cleanup', authMiddleware, async (request, response) => {
@@ -360,7 +523,7 @@ export const registerAiEditRoutes = (
 
     const media = mediaResult.media;
 
-    if (!isStorageKeyOwnedByUser({ videoS3Key: media.key, userId: authUser.id })) {
+    if (!mediaBelongsToUser(media, authUser.id)) {
       sendForbiddenMediaKeyResponse(response);
       return;
     }
@@ -399,10 +562,7 @@ export const registerAiEditRoutes = (
     let transcript;
 
     try {
-      transcript = await transcriptionProvider.transcribe({
-        mediaS3Key: media.key,
-        mediaKind: media.kind
-      });
+      transcript = await transcribeMedia(media);
     } catch (error) {
       if (error instanceof MediaDownloadError) {
         sendMediaDownloadErrorResponse(response, error);
@@ -463,7 +623,7 @@ export const registerAiEditRoutes = (
 
     const media = mediaResult.media;
 
-    if (!isStorageKeyOwnedByUser({ videoS3Key: media.key, userId: authUser.id })) {
+    if (!mediaBelongsToUser(media, authUser.id)) {
       sendForbiddenMediaKeyResponse(response);
       return;
     }
@@ -496,10 +656,7 @@ export const registerAiEditRoutes = (
     let transcript;
 
     try {
-      transcript = await transcriptionProvider.transcribe({
-        mediaS3Key: media.key,
-        mediaKind: media.kind
-      });
+      transcript = await transcribeMedia(media);
     } catch (error) {
       if (error instanceof MediaDownloadError) {
         sendMediaDownloadErrorResponse(response, error);

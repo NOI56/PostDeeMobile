@@ -29,6 +29,36 @@ void main() {
     expect(json.containsKey('videoS3Key'), isFalse);
   });
 
+  test('AI edit prepare serializes ordered audio chunks', () {
+    final json = const AiEditPrepareRequest(
+      audioChunks: [
+        AiEditAudioChunkRequest(
+          audioS3Key: 'uploads/seller/id/chunk-000.m4a',
+          startSeconds: 0,
+        ),
+        AiEditAudioChunkRequest(
+          audioS3Key: 'uploads/seller/id/chunk-001.m4a',
+          startSeconds: 30,
+        ),
+      ],
+      durationSeconds: 60,
+      targetDurationSeconds: 30,
+    ).toJson();
+
+    expect(json['audioChunks'], [
+      {
+        'audioS3Key': 'uploads/seller/id/chunk-000.m4a',
+        'startSeconds': 0.0,
+      },
+      {
+        'audioS3Key': 'uploads/seller/id/chunk-001.m4a',
+        'startSeconds': 30.0,
+      },
+    ]);
+    expect(json.containsKey('audioS3Key'), isFalse);
+    expect(json.containsKey('videoS3Key'), isFalse);
+  });
+
   test('AI edit replan serializes the cached transcript and new result length',
       () {
     final json = const AiEditPlanRequest(
@@ -83,6 +113,19 @@ void main() {
       () => AiEditPrepareRequest(
         audioS3Key: 'uploads/seller/id/clip.m4a',
         videoS3Key: 'uploads/seller/id/clip.mp4',
+        durationSeconds: 60,
+      ),
+      throwsAssertionError,
+    );
+    expect(
+      () => AiEditPrepareRequest(
+        audioS3Key: 'uploads/seller/id/clip.m4a',
+        audioChunks: const [
+          AiEditAudioChunkRequest(
+            audioS3Key: 'uploads/seller/id/chunk-000.m4a',
+            startSeconds: 0,
+          ),
+        ],
         durationSeconds: 60,
       ),
       throwsAssertionError,

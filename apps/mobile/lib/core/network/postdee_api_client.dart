@@ -239,9 +239,25 @@ class AiEditPrepareSettings {
       };
 }
 
+class AiEditAudioChunkRequest {
+  const AiEditAudioChunkRequest({
+    required this.audioS3Key,
+    required this.startSeconds,
+  });
+
+  final String audioS3Key;
+  final double startSeconds;
+
+  Map<String, Object?> toJson() => {
+        'audioS3Key': audioS3Key,
+        'startSeconds': startSeconds,
+      };
+}
+
 class AiEditPrepareRequest {
   const AiEditPrepareRequest({
     this.audioS3Key,
+    this.audioChunks,
     this.videoS3Key,
     required this.durationSeconds,
     this.targetDurationSeconds,
@@ -250,11 +266,16 @@ class AiEditPrepareRequest {
     this.capabilities = const <String, bool>{},
     this.settings = const AiEditPrepareSettings(),
   }) : assert(
-          (audioS3Key == null) != (videoS3Key == null),
-          'Provide exactly one of audioS3Key or videoS3Key',
+          (audioS3Key != null && audioChunks == null && videoS3Key == null) ||
+              (audioS3Key == null &&
+                  audioChunks != null &&
+                  videoS3Key == null) ||
+              (audioS3Key == null && audioChunks == null && videoS3Key != null),
+          'Provide exactly one of audioS3Key, audioChunks, or videoS3Key',
         );
 
   final String? audioS3Key;
+  final List<AiEditAudioChunkRequest>? audioChunks;
   final String? videoS3Key;
   final double durationSeconds;
   final double? targetDurationSeconds;
@@ -265,6 +286,10 @@ class AiEditPrepareRequest {
 
   Map<String, Object?> toJson() => {
         if (audioS3Key != null) 'audioS3Key': audioS3Key,
+        if (audioChunks != null)
+          'audioChunks': audioChunks!
+              .map((chunk) => chunk.toJson())
+              .toList(growable: false),
         if (videoS3Key != null) 'videoS3Key': videoS3Key,
         'durationSeconds': durationSeconds,
         if (targetDurationSeconds != null)

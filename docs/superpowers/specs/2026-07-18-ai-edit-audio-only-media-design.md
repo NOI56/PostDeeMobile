@@ -8,7 +8,7 @@ Reduce AI editing transfer, memory, and temporary-storage load by extracting a s
 
 - The customer continues to select a normal video and press the existing AI editing action. There is no file-format or analysis-mode choice in the UI.
 - Source videos may be `.mp4`, `.mov`, or another format accepted by the existing picker and FFmpeg build.
-- PostDee creates a temporary `.m4a` audio file automatically. The customer never needs to create, select, rename, or manage this file.
+- PostDee creates balanced temporary `.m4a` audio chunks no longer than 30 seconds automatically. The customer never needs to create, select, rename, or manage these files.
 - Subtitle timing, silence removal, and filler-word removal use audio-only analysis.
 - Current color adjustment remains a local FFmpeg operation and does not make the AI inspect the video.
 - The original video remains unchanged and local until PostDee renders the reviewed result.
@@ -26,11 +26,11 @@ Rejected alternatives:
 
 ## Architecture
 
-The mobile app selects an analysis strategy from the effective enabled capabilities. Every currently production-supported AI editing capability uses `audio-only`; unknown or future visual capabilities fail closed instead of silently sending the wrong media. The app extracts AAC audio into an M4A container using one channel, 16 kHz sampling, and a 64 kbps target bitrate.
+The mobile app selects an analysis strategy from the effective enabled capabilities. Every currently production-supported AI editing capability uses `audio-only`; unknown or future visual capabilities fail closed instead of silently sending the wrong media. The app extracts AAC audio into balanced M4A chunks no longer than 30 seconds using one channel, 16 kHz sampling, and a 64 kbps target bitrate. Chunk length is calculated from the source duration so a clip just over a 30-second boundary does not create a tiny final provider request.
 
 The generic upload API gains a narrowly validated `ai-edit-audio` purpose. That purpose accepts only `audio/mp4`, a `.m4a` filename, no image dimensions, and at most 25 MiB. Existing video/image requests keep their current behavior and do not need the new purpose.
 
-The AI editing API accepts `audioS3Key` for new clients and keeps `videoS3Key` as a temporary backward-compatible fallback. Exactly one key is accepted per request. Only an owned key can be transcribed or cleaned up. Internally, transcription inputs use a media-neutral key name so the caption and legacy video flows do not pretend every input is audio.
+The AI editing API accepts ordered `audioChunks` for current clients and keeps one `audioS3Key` or `videoS3Key` as backward-compatible fallbacks. Exactly one media form is accepted per request. Every chunk key must be owned by the authenticated user. The backend transcribes chunks sequentially, shifts provider-local timestamps onto the source timeline, merges one transcript, and meters the combined duration once.
 
 The API and mobile client both attempt remote cleanup. S3-compatible deletion is idempotent, so a second delete is safe. The API performs cleanup after every accepted prepare/transcribe attempt, including quota and provider failures. The mobile client calls the authenticated cleanup endpoint after an upload whenever the prepare result is received or fails. Local temporary files are deleted in a `finally` path.
 
@@ -47,7 +47,7 @@ The API and mobile client both attempt remote cleanup. S3-compatible deletion is
 ### Mobile audio artifact
 
 - Add an injectable FFmpeg audio extractor under `apps/mobile/lib/features/ai_editing/`.
-- Output is a uniquely named `.m4a` in a PostDee-owned temporary directory.
+- Output is a uniquely named ordered set of `.m4a` chunks in a PostDee-owned temporary directory.
 - FFmpeg removes video and encodes AAC, mono, 16 kHz, 64 kbps.
 - The extractor verifies a successful return code, a non-empty output file, and an audio stream. Missing audio gets a dedicated user-facing error.
 - The artifact owns cleanup of its temporary file/directory so tests can verify success and failure lifecycles.
@@ -61,8 +61,9 @@ The API and mobile client both attempt remote cleanup. S3-compatible deletion is
 
 ### AI editing contract
 
-- New mobile clients send `audioS3Key`, `durationSeconds`, capabilities/settings, and no `videoS3Key`.
-- `/ai-edits/prepare` and `/ai-edits/transcribe` accept exactly one of `audioS3Key` or legacy `videoS3Key`.
+- New mobile clients send `audioChunks`, `durationSeconds`, capabilities/settings, and no legacy media key.
+- `/ai-edits/prepare` and `/ai-edits/transcribe` accept exactly one of `audioChunks`, one `audioS3Key`, or one legacy `videoS3Key`.
+- `audioChunks` start at zero, are strictly ordered and unique, contain at most 40 owned `.m4a` keys, and include each chunk's source-relative `startSeconds`.
 - `audioS3Key` must be owned by the authenticated user and identify an `.m4a` object.
 - The backend downloads the audio with a 25 MiB ceiling and expects `audio/mp4` before calling Groq.
 - Legacy `videoS3Key` keeps the existing 200 MiB ceiling during the compatibility window and is never automatically deleted.
@@ -71,7 +72,7 @@ The API and mobile client both attempt remote cleanup. S3-compatible deletion is
 ### Remote cleanup
 
 - AI edit routes receive the existing storage delete dependency.
-- When `audioS3Key` is used, the route requests deletion in a `finally` path after validation has established ownership.
+- When `audioChunks` or `audioS3Key` is used, the route requests deletion of every accepted object in a `finally` path after validation has established ownership.
 - Add an authenticated idempotent audio-cleanup endpoint for the mobile client to cover upload-completed/request-never-arrived and lost-response cases.
 - The cleanup endpoint accepts only an owned `.m4a` audio key; it cannot delete another user's media or a video key.
 - Cleanup failure is logged without converting an otherwise successful transcription into a failed edit. Operations monitoring must expose cleanup failures.

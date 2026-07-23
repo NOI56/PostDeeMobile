@@ -425,17 +425,22 @@ List<SilenceCutRange> alignLeadingCutToFirstSubtitle(
   }
 
   final leadingGap = firstRetainedSubtitle.start - leadingCut.end;
-  if (leadingGap <= allowedLeadingGapSeconds || leadingGap > maxShiftSeconds) {
+  final cutStartsInsideSubtitle =
+      firstRetainedSubtitle.start < leadingCut.end &&
+          firstRetainedSubtitle.end > leadingCut.end;
+  if (!cutStartsInsideSubtitle &&
+      (leadingGap <= allowedLeadingGapSeconds ||
+          leadingGap > maxShiftSeconds)) {
     return normalizedCuts;
   }
 
   final alignedEnd =
       (firstRetainedSubtitle.start - subtitlePreRollSeconds).clamp(
-    leadingCut.end,
+    0.0,
     durationSeconds,
   );
   final shiftSeconds = alignedEnd - leadingCut.end;
-  if (shiftSeconds <= 0.001) {
+  if (shiftSeconds.abs() <= 0.001 || shiftSeconds.abs() > maxShiftSeconds) {
     return normalizedCuts;
   }
 
@@ -446,14 +451,16 @@ List<SilenceCutRange> alignLeadingCutToFirstSubtitle(
     return normalizedCuts;
   }
   final trailingCut = normalizedCuts[trailingIndex];
-  if (trailingCut.end - trailingCut.start + 0.001 < shiftSeconds) {
+  final adjustedTrailingStart = trailingCut.start + shiftSeconds;
+  if (adjustedTrailingStart < leadingCut.end ||
+      adjustedTrailingStart > trailingCut.end) {
     return normalizedCuts;
   }
 
   final adjusted = [...normalizedCuts];
   adjusted[0] = SilenceCutRange(start: 0, end: alignedEnd);
   adjusted[trailingIndex] = SilenceCutRange(
-    start: trailingCut.start + shiftSeconds,
+    start: adjustedTrailingStart,
     end: trailingCut.end,
   );
   return _normalizeCutRanges(adjusted, durationSeconds);

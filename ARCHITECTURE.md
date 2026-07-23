@@ -556,11 +556,16 @@ transfer, or metered prepare request is started. The API Pro check remains the
 authoritative security boundary for stale or modified clients.
 
 The core Pro flow is implemented. For current audio-driven capabilities, mobile
-extracts mono 16 kHz/64 kbps AAC into a temporary M4A and uploads only that file
-with the narrow `ai-edit-audio` purpose. Backend handles auth, ownership, quota,
-temporary-audio cleanup, and Groq Whisper transcription; the untouched original
-video remains local for rendering. Legacy `videoS3Key` requests remain supported
-without automatic video deletion. `POST /ai-edits/prepare` combines the AI editing UI
+extracts mono 16 kHz/64 kbps AAC into balanced temporary M4A chunks no longer
+than 30 seconds and uploads only those files with the narrow `ai-edit-audio`
+purpose. Balanced chunking avoids a very short final request while keeping every
+part within Groq's short audio context. Backend validates ownership of every
+chunk, transcribes them sequentially, shifts local timing back onto the source
+timeline, merges one transcript, meters the combined duration once, and cleans
+all temporary audio even after a partial failure; the untouched original video
+remains local for rendering. Legacy single `audioS3Key` and `videoS3Key`
+requests remain supported, and legacy videos are not automatically deleted.
+`POST /ai-edits/prepare` combines the AI editing UI
 capability toggles, selected style/prompt, transcript, cut plan, overlay hints,
 and quota into one mobile render recipe. The API pre-checks estimated duration, then reserves
 actual transcribed minutes before a successful response so parallel requests do
@@ -606,7 +611,10 @@ Mobile still applies a final target cap as a compatibility safety guard.
 If the combined AI/silence/filler cuts leave less media than requested, that
 guard proportionally restores nearby context while preserving every selected
 moment. This prevents incomplete transcript timing from turning a 30/60/custom
-request into a near-empty clip.
+request into a near-empty clip. A separate subtitle-boundary guard detects when
+the leading target cut lands inside a spoken cue, moves the opening just before
+that cue with a small pre-roll, and balances the duration at the trailing cut so
+the result remains exact without opening mid-sentence.
 If Groq transcription fails, the API returns the stable
 `AI_TRANSCRIPTION_PROVIDER_FAILED` code with HTTP 502 before quota reservation;
 provider internals are not exposed. Mobile translates that code into a Thai

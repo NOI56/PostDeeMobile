@@ -1137,7 +1137,7 @@ void main() {
               alignment: SubtitleAlignment.middle,
               normalizedX: 0.5,
               normalizedY: 0.5,
-              maxLines: 2,
+              maxLines: 1,
             );
             return initialProject.copyWith(
               cues: [

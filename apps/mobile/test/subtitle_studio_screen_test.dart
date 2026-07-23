@@ -70,6 +70,13 @@ void main() {
       scrollable: find.byType(Scrollable).last,
     );
     await tester.tap(find.byKey(const ValueKey('subtitle-position-middle')));
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('subtitle-lines-one')),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.byKey(const ValueKey('subtitle-lines-two')), findsNothing);
+    expect(find.byKey(const ValueKey('subtitle-lines-one')), findsOneWidget);
     await tester.pump();
 
     await tester.tap(find.byKey(const ValueKey('subtitle-finish')));

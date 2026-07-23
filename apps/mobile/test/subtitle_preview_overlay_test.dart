@@ -54,7 +54,7 @@ void main() {
     final style = copySubtitleStyle(
       SubtitleStyle.defaults,
       fontSize: 30,
-      maxLines: 2,
+      maxLines: 1,
     );
     const text = 'จนกระทั่งแทบจะไม่มีที่เดินสำหรับคน';
 

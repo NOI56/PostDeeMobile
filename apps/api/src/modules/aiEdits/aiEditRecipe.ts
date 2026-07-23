@@ -314,6 +314,7 @@ const minimumWordTextCoverageRatio = 0.8;
 const minimumFragmentedTokenCount = 4;
 const fragmentedFillerBoundarySeconds = 0.08;
 const minimumEstimatedSubtitleDurationSeconds = 0.7;
+const maximumFallbackThaiSubtitleDurationSeconds = 4;
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
   value
@@ -695,6 +696,31 @@ const buildEstimatedThaiSubtitleSegments = (
     })
   );
 
+const buildReadableFallbackSubtitleSegments = (
+  segments: TranscriptSegment[],
+  language: string,
+  wordsPerLine: number
+): TranscriptSegment[] => {
+  if (normalizeTranscriptionLanguage(language) !== 'th') {
+    return segments;
+  }
+
+  return segments.flatMap((segment) => {
+    if (
+      segment.end - segment.start <=
+      maximumFallbackThaiSubtitleDurationSeconds
+    ) {
+      return [segment];
+    }
+
+    const rebuilt = buildEstimatedThaiSubtitleSegments(
+      [segment],
+      wordsPerLine
+    );
+    return rebuilt.length > 1 ? rebuilt : [segment];
+  });
+};
+
 const joinSubtitleText = (left: string, right: string): string => {
   const first = left.trim();
   const second = right.trim();
@@ -1050,6 +1076,11 @@ export const buildAiEditRecipe = ({
         reliableSafeTranscriptWords.length > 0
       ? reliableSafeTranscriptWords
       : undefined;
+  const fallbackSubtitleSegments = buildReadableFallbackSubtitleSegments(
+    reliableTranscriptSegments,
+    transcriptLanguage,
+    subtitleWordsPerLine
+  );
   const preparedSubtitleSegments = capabilities.subtitle
     ? estimatedThaiSubtitleSegments ??
       (subtitleWords
@@ -1058,7 +1089,7 @@ export const buildAiEditRecipe = ({
             language: transcriptLanguage,
             wordsPerLine: subtitleWordsPerLine
           })
-        : reliableTranscriptSegments)
+        : fallbackSubtitleSegments)
     : [];
   const subtitleSegments = mergeShortSubtitleSegments(preparedSubtitleSegments);
   const silencePreset = settings.silencePreset ?? 'balanced';

@@ -159,7 +159,7 @@ class SubtitleStyle {
     alignment: SubtitleAlignment.bottom,
     normalizedX: 0.5,
     normalizedY: 0.88,
-    maxLines: 2,
+    maxLines: 1,
   );
 
   final String fontId;
@@ -207,7 +207,7 @@ class SubtitleStyle {
         alignment: _alignment(_requiredString(json, 'alignment')),
         normalizedX: _requiredDouble(json, 'normalizedX'),
         normalizedY: _requiredDouble(json, 'normalizedY'),
-        maxLines: _requiredInt(json, 'maxLines'),
+        maxLines: _readSingleLineMaxLines(json),
         animation: _optionalString(json, 'animation') ?? 'none',
       );
 }
@@ -434,7 +434,7 @@ void _validateStyle(SubtitleStyle style) {
       style.normalizedX > 1 ||
       style.normalizedY < 0 ||
       style.normalizedY > 1 ||
-      (style.maxLines != 1 && style.maxLines != 2)) {
+      style.maxLines != 1) {
     throw const SubtitleProjectValidationException('Invalid subtitle style.');
   }
   for (final color in [
@@ -482,6 +482,16 @@ int _requiredInt(Map<String, Object?> json, String key) {
   final value = json[key];
   if (value is int) return value;
   throw SubtitleProjectValidationException('$key must be an integer.');
+}
+
+int _readSingleLineMaxLines(Map<String, Object?> json) {
+  final value = _requiredInt(json, 'maxLines');
+  if (value != 1 && value != 2) {
+    throw const SubtitleProjectValidationException(
+      'maxLines must be 1 or legacy value 2.',
+    );
+  }
+  return 1;
 }
 
 double _requiredDouble(Map<String, Object?> json, String key) {

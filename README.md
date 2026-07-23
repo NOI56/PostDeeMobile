@@ -547,16 +547,20 @@ Current mobile pieces:
 - When automatic subtitles are available, mobile now opens Subtitle Studio
   after `prepare` and before the first FFmpeg render. The user can edit text and
   timing, add/delete/split/merge cues, undo/redo, and change the bundled
-  Prompt/Anuphan font, size, text colour, outline, shadow, line count, and safe
+  Prompt/Anuphan font, size, text colour, outline, shadow, and safe
   top/middle/bottom position while the Flutter preview updates immediately.
+  Subtitle cues use one line in both new and restored drafts; legacy two-line
+  draft styles are migrated to one line when loaded.
   Draft JSON is autosaved in app-owned storage and reopening the same source
   and AI setup restores it. These local edits and retries do not call a metered
   AI endpoint.
 - Thai subtitle preparation rebuilds readable word boundaries when provider
-  word timestamps arrive as character fragments. Cues shorter than 0.7 seconds
-  are joined across only a small neighboring gap, mobile never hard-splits an
-  unspaced Thai phrase, and the live preview scales long text down inside the
-  selected line count instead of hiding it with an ellipsis.
+  word timestamps arrive as character fragments. Long Thai fallback segments
+  without usable word timing are also split at estimated Thai word boundaries
+  before reaching mobile. Cues shorter than 0.7 seconds are joined across only
+  a small neighboring gap, mobile never hard-splits an unspaced Thai phrase,
+  and the live preview scales text down inside its single line instead of
+  hiding it with an ellipsis.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.

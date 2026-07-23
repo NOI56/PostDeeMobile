@@ -138,6 +138,8 @@ SubtitleStyle
   when the repair is deterministic; otherwise the editor identifies the cue and
   blocks final export.
 - Split/merge operations preserve the source-time coverage of the affected cue
+- `maxLines` is fixed to `1` in the current product. Drafts saved with the
+  legacy value `2` are normalized to `1` when loaded.
   range.
 - Thai combining marks and emoji grapheme clusters are never split by a text
   operation.

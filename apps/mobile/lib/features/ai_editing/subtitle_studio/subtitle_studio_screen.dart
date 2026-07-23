@@ -700,15 +700,6 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
                 onTap: () => _setStyle(maxLines: 1),
               ),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _choiceButton(
-                key: 'subtitle-lines-two',
-                label: '2 บรรทัด',
-                selected: style.maxLines == 2,
-                onTap: () => _setStyle(maxLines: 2),
-              ),
-            ),
           ],
         ),
       ],

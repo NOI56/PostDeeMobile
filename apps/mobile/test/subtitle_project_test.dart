@@ -162,7 +162,19 @@ void main() {
     expect(style.outlineColor, '#000000');
     expect(style.shadowColor, '#000000');
     expect(style.alignment, SubtitleAlignment.bottom);
-    expect(style.maxLines, 2);
+    expect(style.maxLines, 1);
+  });
+
+  test('migrates legacy two-line drafts to a single subtitle line', () {
+    final json = validProject().toJson();
+    final style = Map<String, Object?>.from(
+      json['defaultStyle']! as Map<String, Object?>,
+    )..['maxLines'] = 2;
+    json['defaultStyle'] = style;
+
+    final decoded = SubtitleProject.fromJson(json);
+
+    expect(decoded.defaultStyle.maxLines, 1);
   });
 
   test('copies caller-owned words when constructing a cue', () {

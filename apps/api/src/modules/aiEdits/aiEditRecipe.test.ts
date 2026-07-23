@@ -200,6 +200,29 @@ describe('AI edit recipe pacing settings', () => {
     ).toBe(true);
   });
 
+  it('splits long Thai fallback segments when word timings are unavailable', () => {
+    const text =
+      'ที่รู้อยู่ว่ากรุงเทพมีรถเยอะเกินไปจนแทบไม่มีที่เดินสำหรับคน';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds: 8.3,
+      settings: { subtitleWordsPerLine: 4 },
+      segments: [{ text, start: 0, end: 8.3 }],
+      words: []
+    });
+
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe(text);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => segment.end - segment.start <= 4
+      )
+    ).toBe(true);
+  });
+
   it('merges provider subtitle fragments that are too short to read', () => {
     const recipe = buildRecipe({
       capabilities: { subtitle: true },

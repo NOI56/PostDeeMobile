@@ -644,7 +644,10 @@ The same threshold applies before the first range and after the last range when
 the transcript has a finite media duration. Overlapping ranges are merged before
 gaps are calculated. Groq Thai character-level timings remain useful for gap
 detection, while subtitle text falls back to segments instead of being split
-into individual characters. The Groq request no longer carries a PostDee
+into individual characters. Thai fallback segments longer than four seconds
+are rebuilt with estimated Thai word boundaries, and mobile presents each cue
+on one subtitle line; legacy two-line draft styles normalize to one line when
+loaded. The Groq request no longer carries a PostDee
 spelling prompt because real-clip validation showed provider context leaking
 into transcript text. Optional segment-level log-probability, no-speech, and
 compression signals are retained for highlight and rendered-subtitle quality

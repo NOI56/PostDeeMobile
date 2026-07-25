@@ -154,12 +154,13 @@ void main() {
   test('uses the specified readable default style', () {
     final style = SubtitleStyle.defaults;
 
-    expect(style.fontId, 'Prompt');
+    expect(style.fontId, 'Anuphan');
     expect(style.fontWeight, 700);
     expect(style.fontSize, 22);
     expect(style.textColor, '#FFFFFF');
     expect(style.activeWordColor, '#00E5A8');
     expect(style.outlineColor, '#000000');
+    expect(style.outlineWidth, 1.2);
     expect(style.shadowColor, '#000000');
     expect(style.alignment, SubtitleAlignment.bottom);
     expect(style.maxLines, 1);

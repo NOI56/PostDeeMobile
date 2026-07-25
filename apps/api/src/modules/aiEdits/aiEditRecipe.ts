@@ -316,6 +316,7 @@ const fragmentedFillerBoundarySeconds = 0.08;
 const minimumEstimatedSubtitleDurationSeconds = 0.7;
 const maximumEstimatedThaiWordsPerCue = 2;
 const maximumThaiMidWordSegmentGapSeconds = 0.5;
+const maximumThaiCueBoundaryShiftCharacters = 4;
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
   value
@@ -777,6 +778,139 @@ const joinSubtitleText = (left: string, right: string): string => {
   return `${first}${thaiBoundary ? '' : ' '}${second}`;
 };
 
+const readCoverageLength = (value: string): number =>
+  Array.from(normalizeTranscriptTextForCoverage(value)).length;
+
+const splitTextAtCoverageOffset = (
+  value: string,
+  targetOffset: number
+): [string, string] | undefined => {
+  const characters = Array.from(value.normalize('NFC'));
+  let consumed = 0;
+  let splitIndex = 0;
+
+  for (const [index, character] of characters.entries()) {
+    const characterLength = readCoverageLength(character);
+    if (consumed + characterLength > targetOffset) {
+      break;
+    }
+    consumed += characterLength;
+    splitIndex = index + 1;
+  }
+
+  if (consumed !== targetOffset) {
+    return undefined;
+  }
+
+  const left = characters.slice(0, splitIndex).join('').trim();
+  const right = characters.slice(splitIndex).join('').trim();
+  return left && right ? [left, right] : undefined;
+};
+
+const repairThaiSubtitleCueBoundaries = (
+  segments: TranscriptSegment[],
+  language: string,
+  referenceText: string
+): TranscriptSegment[] => {
+  if (
+    normalizeTranscriptionLanguage(language) !== 'th' ||
+    segments.length < 2
+  ) {
+    return segments;
+  }
+
+  const semanticReference = referenceText
+    .normalize('NFC')
+    .replace(/(\p{Script=Thai})\s+(?=\p{Script=Thai})/gu, '$1');
+  const normalizedReference = normalizeTranscriptTextForCoverage(
+    semanticReference
+  );
+  const normalizedSubtitles = normalizeTranscriptTextForCoverage(
+    segments
+      .map((segment) => segment.text)
+      .reduce(joinSubtitleText, '')
+  );
+  const referenceStart = normalizedReference.indexOf(normalizedSubtitles);
+  if (referenceStart < 0) {
+    return segments;
+  }
+
+  const wordBoundaries = readThaiWordBoundaryOffsets(semanticReference);
+  const repaired = segments.map((segment) => ({ ...segment }));
+  let cueStartOffset = referenceStart;
+
+  for (let index = 0; index < repaired.length - 1; index += 1) {
+    const left = repaired[index]!;
+    const right = repaired[index + 1]!;
+    const leftLength = readCoverageLength(left.text);
+    const rightLength = readCoverageLength(right.text);
+    const currentBoundary = cueStartOffset + leftLength;
+    const pairEndOffset = currentBoundary + rightLength;
+    const hasThaiBoundary =
+      /[\u0E00-\u0E7F]$/u.test(left.text.trim()) &&
+      /^[\u0E00-\u0E7F]/u.test(right.text.trim());
+
+    if (!hasThaiBoundary || wordBoundaries.has(currentBoundary)) {
+      cueStartOffset = currentBoundary;
+      continue;
+    }
+
+    const desiredBoundary = [...wordBoundaries]
+      .filter(
+        (boundary) =>
+          boundary > cueStartOffset &&
+          boundary < pairEndOffset &&
+          Math.abs(boundary - currentBoundary) <=
+            maximumThaiCueBoundaryShiftCharacters
+      )
+      .sort(
+        (leftBoundary, rightBoundary) =>
+          Math.abs(leftBoundary - currentBoundary) -
+            Math.abs(rightBoundary - currentBoundary) ||
+          rightBoundary - leftBoundary
+      )[0];
+
+    if (desiredBoundary === undefined) {
+      cueStartOffset = currentBoundary;
+      continue;
+    }
+
+    const combinedText = joinSubtitleText(left.text, right.text).replace(
+      /(\p{Script=Thai})\s+(?=\p{Script=Thai})/gu,
+      '$1'
+    );
+    const split = splitTextAtCoverageOffset(
+      combinedText,
+      desiredBoundary - cueStartOffset
+    );
+    if (!split) {
+      cueStartOffset = currentBoundary;
+      continue;
+    }
+
+    const shift = desiredBoundary - currentBoundary;
+    const boundaryTime = shift > 0
+      ? right.start +
+        (right.end - right.start) * Math.min(1, shift / rightLength)
+      : left.start +
+        (left.end - left.start) *
+          Math.max(0, (leftLength + shift) / leftLength);
+    repaired[index] = {
+      ...left,
+      text: split[0],
+      end: Math.min(right.end, Math.max(left.start, boundaryTime))
+    };
+    repaired[index + 1] = {
+      ...right,
+      text: split[1],
+      start: Math.max(left.start, Math.min(right.end, boundaryTime))
+    };
+    cueStartOffset = desiredBoundary;
+  }
+
+  return repaired;
+};
+
 const mergeShortSubtitleSegments = (
   segments: TranscriptSegment[],
   minimumDurationSeconds = minimumEstimatedSubtitleDurationSeconds,
@@ -1134,7 +1268,11 @@ export const buildAiEditRecipe = ({
           })
         : fallbackSubtitleSegments)
     : [];
-  const subtitleSegments = mergeShortSubtitleSegments(preparedSubtitleSegments);
+  const subtitleSegments = repairThaiSubtitleCueBoundaries(
+    mergeShortSubtitleSegments(preparedSubtitleSegments),
+    transcriptLanguage,
+    transcript.text.trim() || transcriptReferenceText
+  );
   const silencePreset = settings.silencePreset ?? 'balanced';
   const silenceRanges = capabilities.silence && hasReliableSilenceTimeline
     ? findSilenceRanges(

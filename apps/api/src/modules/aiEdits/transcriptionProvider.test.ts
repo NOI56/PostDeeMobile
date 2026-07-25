@@ -491,6 +491,29 @@ describe('transcription provider', () => {
     );
   });
 
+  it('repairs a Scribe spacing event inside the Thai word ฟุตบอล', async () => {
+    const text = 'ถ้าไม่มีสนามฟุ ตบอลเนี่ยคนก็';
+    const result = await transcribeElevenLabsFixture(
+      [
+        { type: 'word', text: 'ถ้า', start: 0, end: 0.3 },
+        { type: 'word', text: 'ไม่มี', start: 0.3, end: 0.6 },
+        { type: 'word', text: 'สนาม', start: 0.6, end: 0.9 },
+        { type: 'word', text: 'ฟุ', start: 0.9, end: 1.1 },
+        { type: 'spacing', text: ' ' },
+        { type: 'word', text: 'ตบอล', start: 1.1, end: 1.4 },
+        { type: 'word', text: 'เนี่ย', start: 1.4, end: 1.7 },
+        { type: 'word', text: 'คน', start: 1.7, end: 2 },
+        { type: 'word', text: 'ก็', start: 2, end: 2.2 }
+      ],
+      text
+    );
+
+    expect(result.words.map((word) => word.word)).toContain('ฟุตบอล');
+    expect(result.words.map((word) => word.word)).not.toEqual(
+      expect.arrayContaining(['ฟุ', 'ตบอล'])
+    );
+  });
+
   it('rebuilds a Thai word split across adjacent Scribe timing events', async () => {
     const result = await transcribeElevenLabsFixture(
       [

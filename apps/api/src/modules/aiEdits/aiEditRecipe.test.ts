@@ -499,6 +499,37 @@ describe('AI edit recipe pacing settings', () => {
     ).toBe(false);
   });
 
+  it('keeps ฟุตบอล whole when a long Thai cue is shortened', () => {
+    const text = 'ถ้าไม่มีสนามฟุตบอลเนี่ยคนก็แทบจะไม่ค่อยมา';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      model: 'scribe_v2',
+      text,
+      durationSeconds: 4,
+      settings: { subtitleWordsPerLine: 4 },
+      segments: [{ text, start: 0, end: 4 }],
+      words: [
+        { word: 'ถ้า', start: 0, end: 0.4 },
+        { word: 'ไม่มี', start: 0.4, end: 0.8 },
+        { word: 'สนาม', start: 0.8, end: 1.2 },
+        { word: 'ฟุตบอล', start: 1.2, end: 1.8 },
+        { word: 'เนี่ย', start: 1.8, end: 2.2 },
+        { word: 'คน', start: 2.2, end: 2.5 },
+        { word: 'ก็', start: 2.5, end: 2.8 },
+        { word: 'แทบจะ', start: 2.8, end: 3.3 },
+        { word: 'ไม่ค่อยมา', start: 3.3, end: 4 }
+      ]
+    });
+    const subtitleTexts = recipe.subtitles.segments.map(
+      (segment) => segment.text
+    );
+
+    expect(subtitleTexts.some((subtitle) => /ฟุ$/u.test(subtitle))).toBe(false);
+    expect(subtitleTexts.some((subtitle) => /^ตบอล/u.test(subtitle))).toBe(false);
+    expect(subtitleTexts.join('')).toContain('ฟุตบอล');
+  });
+
   it('splits long Thai fallback segments when word timings are unavailable', () => {
     const text =
       'ที่รู้อยู่ว่ากรุงเทพมีรถเยอะเกินไปจนแทบไม่มีที่เดินสำหรับคน';

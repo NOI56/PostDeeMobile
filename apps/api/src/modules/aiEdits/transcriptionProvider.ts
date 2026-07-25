@@ -153,6 +153,7 @@ const protectedThaiCompoundWords = [
   'เนื่องจาก',
   'รูปลักษณ์',
   'ส่วนมาก',
+  'ฟุตบอล',
   'วรภพ',
   'ยุ่นเพียร'
 ];
@@ -232,6 +233,46 @@ const mergeProtectedThaiCompoundParts = (
   return merged;
 };
 
+const segmentThaiRunPreservingProtectedWords = (
+  value: string
+): ThaiTextPart[] => {
+  const segmentNormally = (text: string): ThaiTextPart[] =>
+    mergeProtectedThaiCompoundParts(
+      Array.from(
+        new Intl.Segmenter('th', { granularity: 'word' }).segment(text),
+        (part) => ({
+          segment: part.segment.normalize('NFC'),
+          isWordLike: Boolean(part.isWordLike)
+        })
+      )
+    );
+  const parts: ThaiTextPart[] = [];
+  let cursor = 0;
+
+  while (cursor < value.length) {
+    const nextMatch = protectedThaiCompoundWords
+      .flatMap((word) => {
+        const index = value.indexOf(word, cursor);
+        return index >= 0 ? [{ word, index }] : [];
+      })
+      .sort((left, right) =>
+        left.index - right.index || right.word.length - left.word.length
+      )[0];
+
+    if (!nextMatch) {
+      parts.push(...segmentNormally(value.slice(cursor)));
+      break;
+    }
+    if (nextMatch.index > cursor) {
+      parts.push(...segmentNormally(value.slice(cursor, nextMatch.index)));
+    }
+    parts.push({ segment: nextMatch.word, isWordLike: true });
+    cursor = nextMatch.index + nextMatch.word.length;
+  }
+
+  return parts;
+};
+
 const segmentThaiTextPreservingShortPhrases = (
   value: string
 ): ThaiTextPart[] => {
@@ -254,15 +295,7 @@ const segmentThaiTextPreservingShortPhrases = (
         return [{ segment: run, isWordLike: true }];
       }
 
-      return mergeProtectedThaiCompoundParts(
-        Array.from(
-          new Intl.Segmenter('th', { granularity: 'word' }).segment(run),
-          (part) => ({
-            segment: part.segment.normalize('NFC'),
-            isWordLike: Boolean(part.isWordLike)
-          })
-        )
-      );
+      return segmentThaiRunPreservingProtectedWords(run);
     });
 };
 

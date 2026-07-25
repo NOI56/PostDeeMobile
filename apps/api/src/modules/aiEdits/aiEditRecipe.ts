@@ -326,6 +326,7 @@ const protectedThaiSubtitleWords = [
   'เนื่องจาก',
   'รูปลักษณ์',
   'ส่วนมาก',
+  'ฟุตบอล',
   'วรภพ',
   'ยุ่นเพียร'
 ];
@@ -387,18 +388,44 @@ const mergeProtectedThaiSubtitleParts = (
 
 const segmentThaiTextPreservingShortPhrases = (
   value: string
-): ThaiTextPart[] =>
-  mergeProtectedThaiSubtitleParts(
-    Array.from(
-      new Intl.Segmenter('th', { granularity: 'word' }).segment(
-        value.normalize('NFC')
-      ),
-      (part) => ({
-        segment: part.segment.normalize('NFC'),
-        isWordLike: Boolean(part.isWordLike)
+): ThaiTextPart[] => {
+  const normalized = value.normalize('NFC');
+  const segmentNormally = (text: string): ThaiTextPart[] =>
+    mergeProtectedThaiSubtitleParts(
+      Array.from(
+        new Intl.Segmenter('th', { granularity: 'word' }).segment(text),
+        (part) => ({
+          segment: part.segment.normalize('NFC'),
+          isWordLike: Boolean(part.isWordLike)
+        })
+      )
+    );
+  const parts: ThaiTextPart[] = [];
+  let cursor = 0;
+
+  while (cursor < normalized.length) {
+    const nextMatch = protectedThaiSubtitleWords
+      .flatMap((word) => {
+        const index = normalized.indexOf(word, cursor);
+        return index >= 0 ? [{ word, index }] : [];
       })
-    )
-  );
+      .sort((left, right) =>
+        left.index - right.index || right.word.length - left.word.length
+      )[0];
+
+    if (!nextMatch) {
+      parts.push(...segmentNormally(normalized.slice(cursor)));
+      break;
+    }
+    if (nextMatch.index > cursor) {
+      parts.push(...segmentNormally(normalized.slice(cursor, nextMatch.index)));
+    }
+    parts.push({ segment: nextMatch.word, isWordLike: true });
+    cursor = nextMatch.index + nextMatch.word.length;
+  }
+
+  return parts;
+};
 
 const readExplicitTextBoundaryOffsets = (value: string): Set<number> => {
   const boundaries = new Set<number>();

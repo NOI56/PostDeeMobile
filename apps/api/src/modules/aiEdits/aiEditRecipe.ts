@@ -315,6 +315,7 @@ const minimumFragmentedTokenCount = 4;
 const fragmentedFillerBoundarySeconds = 0.08;
 const minimumEstimatedSubtitleDurationSeconds = 0.7;
 const maximumEstimatedThaiWordsPerCue = 2;
+const maximumThaiMidWordSegmentGapSeconds = 0.5;
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
   value
@@ -683,11 +684,56 @@ const buildSubtitleSegments = ({
   return segments;
 };
 
+const mergeThaiMidWordTranscriptSegments = (
+  segments: TranscriptSegment[]
+): TranscriptSegment[] => {
+  const merged: TranscriptSegment[] = [];
+
+  for (const segment of segments) {
+    const previous = merged.at(-1);
+    if (!previous) {
+      merged.push(segment);
+      continue;
+    }
+
+    const gap = segment.start - previous.end;
+    const previousText = previous.text.normalize('NFC').trim();
+    const segmentText = segment.text.normalize('NFC').trim();
+    const hasThaiBoundary =
+      /\p{Script=Thai}$/u.test(previousText) &&
+      /^\p{Script=Thai}/u.test(segmentText);
+    const combinedText = joinSubtitleText(previousText, segmentText);
+    const boundaryOffset = Array.from(
+      normalizeTranscriptTextForCoverage(previousText)
+    ).length;
+    const splitsSemanticWord =
+      hasThaiBoundary &&
+      !readThaiWordBoundaryOffsets(combinedText).has(boundaryOffset);
+
+    if (
+      gap >= -Number.EPSILON &&
+      gap <= maximumThaiMidWordSegmentGapSeconds &&
+      splitsSemanticWord
+    ) {
+      merged[merged.length - 1] = {
+        text: combinedText,
+        start: previous.start,
+        end: Math.max(previous.end, segment.end)
+      };
+      continue;
+    }
+
+    merged.push(segment);
+  }
+
+  return merged;
+};
+
 const buildEstimatedThaiSubtitleSegments = (
   segments: TranscriptSegment[],
   wordsPerLine: number
 ): TranscriptSegment[] =>
-  segments.flatMap((segment) =>
+  mergeThaiMidWordTranscriptSegments(segments).flatMap((segment) =>
     buildSubtitleSegments({
       words: rebuildThaiWordsFromSegment(segment),
       language: 'th',

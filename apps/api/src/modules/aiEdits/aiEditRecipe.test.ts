@@ -248,6 +248,43 @@ describe('AI edit recipe pacing settings', () => {
     ]);
   });
 
+  it('repairs Thai words split across fragmented provider segment boundaries', () => {
+    const text =
+      'ก็มีร้านอยู่ที่แถวสยามเพราะอยู่ในเมืองหลวงต่างๆไม่ค่อยได้ใช้เนื่องจากรถ';
+    const characters = Array.from(text);
+    const durationSeconds = 6;
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      model: 'scribe_v2',
+      text,
+      durationSeconds,
+      settings: { subtitleWordsPerLine: 2 },
+      segments: [
+        { text: 'ก็มีร้านอยู่ที่แถ', start: 0, end: 1.2 },
+        { text: 'วสยามเพราะอยู่ในเมืองหล', start: 1.2, end: 3 },
+        { text: 'วงต่างๆไม่ค่อยได้ใช้เนื่อ', start: 3, end: 5.2 },
+        { text: 'งจากรถ', start: 5.2, end: durationSeconds }
+      ],
+      words: characters.map((word, index) => ({
+        word,
+        start: index * durationSeconds / characters.length,
+        end: (index + 1) * durationSeconds / characters.length
+      }))
+    });
+
+    const subtitleTexts = recipe.subtitles.segments.map(
+      (segment) => segment.text
+    );
+    expect(subtitleTexts.join('')).toBe(text);
+    expect(
+      subtitleTexts.some((subtitle) => /(แถ|หล|เนื่อ)$/u.test(subtitle))
+    ).toBe(false);
+    expect(
+      subtitleTexts.some((subtitle) => /^(วสยาม|วงต่าง|งจาก)/u.test(subtitle))
+    ).toBe(false);
+  });
+
   it('splits long Thai fallback segments when word timings are unavailable', () => {
     const text =
       'ที่รู้อยู่ว่ากรุงเทพมีรถเยอะเกินไปจนแทบไม่มีที่เดินสำหรับคน';

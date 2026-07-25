@@ -285,6 +285,36 @@ describe('AI edit recipe pacing settings', () => {
     ).toBe(false);
   });
 
+  it('repairs Thai words split across fallback segment boundaries', () => {
+    const text =
+      'ก็มีร้านอยู่ที่แถวสยามเพราะอยู่ในเมืองหลวงต่างๆไม่ค่อยได้ใช้เนื่องจากรถ';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds: 6,
+      settings: { subtitleWordsPerLine: 2 },
+      segments: [
+        { text: 'ก็มีร้านอยู่ที่แถ', start: 0, end: 1.2 },
+        { text: 'วสยามเพราะอยู่ในเมืองหล', start: 1.2, end: 3 },
+        { text: 'วงต่างๆไม่ค่อยได้ใช้เนื่อ', start: 3, end: 5.2 },
+        { text: 'งจากรถ', start: 5.2, end: 6 }
+      ],
+      words: []
+    });
+
+    const subtitleTexts = recipe.subtitles.segments.map(
+      (segment) => segment.text
+    );
+    expect(subtitleTexts.join('')).toBe(text);
+    expect(
+      subtitleTexts.some((subtitle) => /(แถ|หล|เนื่อ)$/u.test(subtitle))
+    ).toBe(false);
+    expect(
+      subtitleTexts.some((subtitle) => /^(วสยาม|วงต่าง|งจาก)/u.test(subtitle))
+    ).toBe(false);
+  });
+
   it('splits long Thai fallback segments when word timings are unavailable', () => {
     const text =
       'ที่รู้อยู่ว่ากรุงเทพมีรถเยอะเกินไปจนแทบไม่มีที่เดินสำหรับคน';

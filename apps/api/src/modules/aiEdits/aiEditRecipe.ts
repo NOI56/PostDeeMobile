@@ -751,7 +751,7 @@ const buildReadableFallbackSubtitleSegments = (
     return segments;
   }
 
-  return segments.flatMap((segment) => {
+  return mergeThaiMidWordTranscriptSegments(segments).flatMap((segment) => {
     const rebuilt = buildEstimatedThaiSubtitleSegments(
       [segment],
       wordsPerLine

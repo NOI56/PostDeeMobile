@@ -376,6 +376,34 @@ describe('AI edit recipe pacing settings', () => {
     ).toBe(false);
   });
 
+  it('repairs Thai cue boundaries when transcript and segment wording differ', () => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text:
+        'ก็มีร้านอยู่ที่แถวสยามเพราะฉะนั้นก็จะมีไลฟ์สไตล์อยู่ในเมืองหลวงต่างๆ',
+      durationSeconds: 8,
+      settings: { subtitleWordsPerLine: 2 },
+      segments: [
+        { text: 'ก็มีร้านอยู่ที่แถ', start: 0, end: 1.5 },
+        { text: 'วสยามเพราะฉะนั้นก็จะมี lifestyle ที่', start: 2.1, end: 5 },
+        { text: 'อยู่ในเมืองหลว', start: 5.6, end: 6.6 },
+        { text: 'งต่างๆ', start: 7.2, end: 8 }
+      ],
+      words: []
+    });
+
+    const subtitleTexts = recipe.subtitles.segments.map(
+      (segment) => segment.text
+    );
+    expect(
+      subtitleTexts.some((subtitle) => /(แถ|หลว)$/u.test(subtitle))
+    ).toBe(false);
+    expect(
+      subtitleTexts.some((subtitle) => /^(วสยาม|งต่าง)/u.test(subtitle))
+    ).toBe(false);
+  });
+
   it('splits long Thai fallback segments when word timings are unavailable', () => {
     const text =
       'ที่รู้อยู่ว่ากรุงเทพมีรถเยอะเกินไปจนแทบไม่มีที่เดินสำหรับคน';

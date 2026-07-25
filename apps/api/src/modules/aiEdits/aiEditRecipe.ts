@@ -1271,7 +1271,7 @@ export const buildAiEditRecipe = ({
   const subtitleSegments = repairThaiSubtitleCueBoundaries(
     mergeShortSubtitleSegments(preparedSubtitleSegments),
     transcriptLanguage,
-    transcript.text.trim() || transcriptReferenceText
+    transcriptReferenceText || transcript.text.trim()
   );
   const silencePreset = settings.silencePreset ?? 'balanced';
   const silenceRanges = capabilities.silence && hasReliableSilenceTimeline

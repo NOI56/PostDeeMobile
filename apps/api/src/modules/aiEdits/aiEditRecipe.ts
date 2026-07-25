@@ -1026,7 +1026,7 @@ export const buildAiEditRecipe = ({
   );
   const transcriptReferenceText = reliableTranscriptSegments
     .map((segment) => segment.text)
-    .join('') || transcript.text.trim();
+    .reduce(joinSubtitleText, '') || transcript.text.trim();
   const normalizedTranscriptText = normalizeTranscriptTextForCoverage(
     transcript.text
   );

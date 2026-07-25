@@ -16,12 +16,14 @@ const buildTranscript = ({
   segments = [],
   words = [],
   language = 'th',
+  model = 'test-whisper',
   durationSeconds
 }: {
   text?: string;
   segments?: TranscriptSegment[];
   words?: TranscriptWord[];
   language?: string;
+  model?: string;
   durationSeconds?: number;
 } = {}): TranscriptionResult => ({
   text,
@@ -33,7 +35,7 @@ const buildTranscript = ({
   ),
   segments,
   words,
-  model: 'test-whisper'
+  model
 });
 
 const buildRecipe = ({
@@ -41,6 +43,7 @@ const buildRecipe = ({
   segments,
   words,
   language,
+  model,
   durationSeconds,
   capabilities,
   settings
@@ -49,12 +52,20 @@ const buildRecipe = ({
   segments?: TranscriptSegment[];
   words?: TranscriptWord[];
   language?: string;
+  model?: string;
   durationSeconds?: number;
   capabilities: Record<string, boolean>;
   settings?: unknown;
 }) =>
   buildAiEditRecipe({
-    transcript: buildTranscript({ text, segments, words, language, durationSeconds }),
+    transcript: buildTranscript({
+      text,
+      segments,
+      words,
+      language,
+      model,
+      durationSeconds
+    }),
     capabilities: readAiEditCapabilities({
       subtitle: false,
       silence: false,
@@ -198,6 +209,43 @@ describe('AI edit recipe pacing settings', () => {
         (segment) => segment.end - segment.start >= 0.7 - Number.EPSILON
       )
     ).toBe(true);
+  });
+
+  it('keeps Scribe word timings when Latin words cross segment boundaries', () => {
+    const segments = [
+      { text: 'อยู่ที่แถ', start: 0, end: 0.65 },
+      { text: 'วสยาม Weekend', start: 0.65, end: 1.5 },
+      { text: 'Market อยู่ในเมืองหลว', start: 1.5, end: 2.75 },
+      { text: 'งต่างๆ', start: 2.75, end: 3.2 }
+    ];
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      model: 'scribe_v2',
+      text: 'อยู่ที่แถวสยาม Weekend Market อยู่ในเมืองหลวงต่างๆ',
+      durationSeconds: 3.2,
+      settings: { subtitleWordsPerLine: 4 },
+      segments,
+      words: [
+        { word: 'อยู่', start: 0, end: 0.3 },
+        { word: 'ที่', start: 0.3, end: 0.5 },
+        { word: 'แถว', start: 0.5, end: 0.8 },
+        { word: 'สยาม', start: 0.8, end: 1.1 },
+        { word: 'Weekend', start: 1.1, end: 1.5 },
+        { word: 'Market', start: 1.5, end: 1.9 },
+        { word: 'อยู่', start: 1.9, end: 2.1 },
+        { word: 'ใน', start: 2.1, end: 2.3 },
+        { word: 'เมือง', start: 2.3, end: 2.6 },
+        { word: 'หลวง', start: 2.6, end: 2.9 },
+        { word: 'ต่างๆ', start: 2.9, end: 3.2 }
+      ]
+    });
+
+    expect(recipe.subtitles.segments).toEqual([
+      { text: 'อยู่ที่แถวสยาม', start: 0, end: 1.1 },
+      { text: 'Weekend Market อยู่ใน', start: 1.1, end: 2.3 },
+      { text: 'เมืองหลวงต่างๆ', start: 2.3, end: 3.2 }
+    ]);
   });
 
   it('splits long Thai fallback segments when word timings are unavailable', () => {

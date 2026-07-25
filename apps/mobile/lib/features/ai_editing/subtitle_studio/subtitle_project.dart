@@ -147,13 +147,13 @@ class SubtitleStyle {
   });
 
   static const defaults = SubtitleStyle(
-    fontId: 'Prompt',
+    fontId: 'Anuphan',
     fontWeight: 700,
     fontSize: 22,
     textColor: '#FFFFFF',
     activeWordColor: '#00E5A8',
     outlineColor: '#000000',
-    outlineWidth: 2,
+    outlineWidth: 1.2,
     shadowColor: '#000000',
     shadowDepth: 2,
     alignment: SubtitleAlignment.bottom,

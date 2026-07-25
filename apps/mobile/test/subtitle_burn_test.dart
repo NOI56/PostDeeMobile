@@ -29,6 +29,16 @@ void main() {
     expect(srt.trim(), isEmpty);
   });
 
+  test('keeps every Thai upper and lower mark attached in SRT output', () {
+    const thaiMarkCoverage =
+        'กั กิ กี กึ กื กุ กู ก็ ก่ ก้ ก๊ ก๋ ก์ กำ กิ่ กี้ กึ๊ กื๋ กุ่ กู้';
+    final srt = buildSrtContent(const [
+      SubtitleSegment(text: thaiMarkCoverage, start: 0, end: 3),
+    ]);
+
+    expect(srt, contains(thaiMarkCoverage));
+  });
+
   test('clips and shifts segments to the trim window', () {
     final clipped = clipSegmentsToTrim(
       const [
@@ -554,7 +564,9 @@ void main() {
 
   test('builds subtitle force style with size and position', () {
     final bottom = buildSubtitleForceStyle(fontSize: 24, atBottom: true);
+    expect(bottom, contains('FontName=Anuphan'));
     expect(bottom, contains('Fontsize=24'));
+    expect(bottom, contains('Outline=1.2'));
     expect(bottom, contains('Alignment=2'));
     expect(bottom, contains('MarginL=24'));
     expect(bottom, contains('MarginR=24'));

@@ -1516,12 +1516,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       subtitleAlignment: studioStyle == null
           ? null
           : _burnSubtitleAlignment(studioStyle.alignment),
-      subtitleFontName: studioStyle?.fontId ?? 'Prompt',
+      subtitleFontName: studioStyle?.fontId ?? 'Anuphan',
       subtitleFontAssetPath:
           studioStyle == null ? null : _subtitleFontAssetPath(studioStyle),
       subtitleTextColor: studioStyle?.textColor ?? '#FFFFFF',
       subtitleOutlineColor: studioStyle?.outlineColor ?? '#000000',
-      subtitleOutlineWidth: studioStyle?.outlineWidth ?? 2,
+      subtitleOutlineWidth: studioStyle?.outlineWidth ?? 1.2,
       subtitleShadowColor: studioStyle?.shadowColor ?? '#000000',
       subtitleShadowDepth: studioStyle?.shadowDepth ?? 0,
       preserveTempDirectoryPaths: {

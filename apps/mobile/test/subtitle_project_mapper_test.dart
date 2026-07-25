@@ -162,7 +162,7 @@ void main() {
     expect(project.updatedAt, DateTime.utc(2026, 7, 20));
   });
 
-  test('uses recipe colour and top alignment with Prompt defaults', () {
+  test('uses recipe colour and top alignment with Thai-safe defaults', () {
     final project = mapAiEditRecipeToSubtitleProject(
       recipe: recipeFixture(color: '#A1B2C3', position: 'top'),
       projectId: 'project-1',
@@ -170,7 +170,7 @@ void main() {
       now: DateTime.utc(2026, 7, 20),
     );
 
-    expect(project.defaultStyle.fontId, 'Prompt');
+    expect(project.defaultStyle.fontId, 'Anuphan');
     expect(project.defaultStyle.textColor, '#A1B2C3');
     expect(project.defaultStyle.alignment, SubtitleAlignment.top);
   });

@@ -433,7 +433,7 @@ describe('transcription provider', () => {
 
   it('preserves short Thai phrases from Scribe spacing as whole words', async () => {
     const text =
-      'สวัสดีครับ ผมวรภพ ยุ่นเพียร ผู้เสียหายไม่ได้แจ้งตำรวจ';
+      'สวัสดีครับ ผมวรภพ ยุ่นเพียร ผู้เสียหายไม่ได้แจ้งตำรวจ ซุปเปอร์สตาร์';
     const fragments = Array.from(
       new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(
         text.replace(/\s+/gu, '')
@@ -452,8 +452,9 @@ describe('transcription provider', () => {
     expect(words).toContain('ผมวรภพ');
     expect(words).toContain('ยุ่นเพียร');
     expect(words).toContain('ผู้เสียหาย');
+    expect(words).toContain('ซุปเปอร์สตาร์');
     expect(words).not.toEqual(
-      expect.arrayContaining(['วร', 'ภพ', 'ผู้เสีย', 'หาย'])
+      expect.arrayContaining(['วร', 'ภพ', 'ผู้เสีย', 'หาย', 'ซุปเปอร์', 'สตาร์'])
     );
   });
 

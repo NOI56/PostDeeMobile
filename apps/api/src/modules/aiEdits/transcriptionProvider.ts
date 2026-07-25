@@ -148,10 +148,13 @@ const thaiGraphemeSegmenter = new Intl.Segmenter('th', {
 const protectedThaiCompoundWords = [
   'ความแตกต่าง',
   'ซูเปอร์สตาร์',
+  'ซุปเปอร์สตาร์',
   'ผู้เสียหาย',
   'เนื่องจาก',
   'รูปลักษณ์',
-  'ส่วนมาก'
+  'ส่วนมาก',
+  'วรภพ',
+  'ยุ่นเพียร'
 ];
 
 const isElevenLabsEvent = (

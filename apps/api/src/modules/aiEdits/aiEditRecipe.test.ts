@@ -474,7 +474,7 @@ describe('AI edit recipe pacing settings', () => {
       model: 'scribe_v2',
       text,
       durationSeconds: 4,
-      settings: { subtitleWordsPerLine: 2 },
+      settings: { subtitleWordsPerLine: 4 },
       segments: [{ text, start: 0, end: 4 }],
       words: [
         { word: 'สวัสดีครับ', start: 0, end: 0.7 },
@@ -492,10 +492,10 @@ describe('AI edit recipe pacing settings', () => {
       text.replace(/\s+/gu, '')
     );
     expect(
-      subtitleTexts.some((subtitle) => /(วร|ผู้เสีย)$/u.test(subtitle))
+      subtitleTexts.some((subtitle) => /(วร|ผู้เสีย|ยุ่น)$/u.test(subtitle))
     ).toBe(false);
     expect(
-      subtitleTexts.some((subtitle) => /^(ภพ|หาย)/u.test(subtitle))
+      subtitleTexts.some((subtitle) => /^(ภพ|หาย|เพียร)/u.test(subtitle))
     ).toBe(false);
   });
 

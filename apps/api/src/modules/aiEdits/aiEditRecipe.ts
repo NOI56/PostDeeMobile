@@ -321,10 +321,13 @@ const maximumThaiSubtitleGraphemes = 18;
 const protectedThaiSubtitleWords = [
   'ความแตกต่าง',
   'ซูเปอร์สตาร์',
+  'ซุปเปอร์สตาร์',
   'ผู้เสียหาย',
   'เนื่องจาก',
   'รูปลักษณ์',
-  'ส่วนมาก'
+  'ส่วนมาก',
+  'วรภพ',
+  'ยุ่นเพียร'
 ];
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
@@ -650,6 +653,25 @@ const isNumericSubtitleToken = (value: string): boolean => {
   return digits.length > 0 && /^\p{Number}+$/u.test(digits);
 };
 
+const joinSubtitleWordTokens = (
+  words: string[],
+  isThai: boolean
+): string =>
+  words.reduce((text, word, wordIndex, tokens) => {
+    if (wordIndex === 0) {
+      return word;
+    }
+
+    const previousWord = tokens[wordIndex - 1]!;
+    const previousIsNumber = isNumericSubtitleToken(previousWord);
+    const wordIsNumber = isNumericSubtitleToken(word);
+    const needsSpace = !isThai ||
+      /\p{Script=Latin}/u.test(previousWord) ||
+      /\p{Script=Latin}/u.test(word) ||
+      previousIsNumber !== wordIsNumber;
+    return `${text}${needsSpace ? ' ' : ''}${word}`;
+  }, '');
+
 const readGraphemeCount = (value: string): number =>
   Array.from(
     new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(value)
@@ -725,6 +747,19 @@ const buildSubtitleSegments = ({
   let current: TranscriptWord[] = [];
 
   for (const word of words) {
+    const candidateWords = [...current, word]
+      .map((candidate) => candidate.word.trim());
+    const candidateText = joinSubtitleWordTokens(candidateWords, isThai);
+    if (
+      isThai &&
+      current.length > 0 &&
+      !/\p{Script=Latin}/u.test(candidateText) &&
+      readGraphemeCount(candidateText) > maximumThaiSubtitleGraphemes
+    ) {
+      groups.push(current);
+      current = [];
+    }
+
     current.push(word);
     if (current.length < wordsPerLine) {
       continue;
@@ -755,22 +790,10 @@ const buildSubtitleSegments = ({
       continue;
     }
 
-    const lineText = lineWords
-      .map((word) => word.word.trim())
-      .reduce((text, word, wordIndex, tokens) => {
-        if (wordIndex === 0) {
-          return word;
-        }
-
-        const previousWord = tokens[wordIndex - 1]!;
-        const previousIsNumber = isNumericSubtitleToken(previousWord);
-        const wordIsNumber = isNumericSubtitleToken(word);
-        const needsSpace = !isThai ||
-          /\p{Script=Latin}/u.test(previousWord) ||
-          /\p{Script=Latin}/u.test(word) ||
-          previousIsNumber !== wordIsNumber;
-        return `${text}${needsSpace ? ' ' : ''}${word}`;
-      }, '');
+    const lineText = joinSubtitleWordTokens(
+      lineWords.map((word) => word.word.trim()),
+      isThai
+    );
 
     segments.push({
       text: lineText,

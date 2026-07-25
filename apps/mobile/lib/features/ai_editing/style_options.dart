@@ -314,7 +314,10 @@ List<SubtitleSegment> rechunkSubtitleByMaxChars(
     }
   }
 
-  return mergeShortSubtitleSegments(out);
+  return mergeShortSubtitleSegments(
+    out,
+    maximumCharacters: maxChars,
+  );
 }
 
 /// Merges provider fragments that would flash too quickly to read. A short cue
@@ -324,6 +327,7 @@ List<SubtitleSegment> mergeShortSubtitleSegments(
   List<SubtitleSegment> segments, {
   double minimumDurationSeconds = 0.7,
   double maximumGapSeconds = 0.5,
+  int? maximumCharacters,
 }) {
   final merged = <SubtitleSegment>[];
 
@@ -333,12 +337,19 @@ List<SubtitleSegment> mergeShortSubtitleSegments(
         previous == null ? 0 : previous.end - previous.start;
     final gap =
         previous == null ? double.infinity : segment.start - previous.end;
+    final joinedText = previous == null
+        ? segment.text
+        : _joinSubtitleText(previous.text, segment.text);
+    final mergeFits =
+        maximumCharacters == null ||
+        joinedText.characters.length <= maximumCharacters;
     if (previous != null &&
         previousDuration < minimumDurationSeconds &&
         gap >= -double.minPositive &&
-        gap <= maximumGapSeconds) {
+        gap <= maximumGapSeconds &&
+        mergeFits) {
       merged[merged.length - 1] = SubtitleSegment(
-        text: _joinSubtitleText(previous.text, segment.text),
+        text: joinedText,
         start: previous.start,
         end: segment.end > previous.end ? segment.end : previous.end,
       );
@@ -351,15 +362,20 @@ List<SubtitleSegment> mergeShortSubtitleSegments(
     final last = merged.last;
     final previous = merged[merged.length - 2];
     final gap = last.start - previous.end;
+    final joinedText = _joinSubtitleText(previous.text, last.text);
+    final mergeFits =
+        maximumCharacters == null ||
+        joinedText.characters.length <= maximumCharacters;
     if (last.end - last.start < minimumDurationSeconds &&
         gap >= -double.minPositive &&
-        gap <= maximumGapSeconds) {
+        gap <= maximumGapSeconds &&
+        mergeFits) {
       merged
         ..removeLast()
         ..removeLast()
         ..add(
           SubtitleSegment(
-            text: _joinSubtitleText(previous.text, last.text),
+            text: joinedText,
             start: previous.start,
             end: last.end > previous.end ? last.end : previous.end,
           ),

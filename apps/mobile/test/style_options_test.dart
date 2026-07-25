@@ -118,6 +118,20 @@ void main() {
     expect(out.single.end, 8);
   });
 
+  test('does not merge short Thai cues beyond the single-line limit', () {
+    final out = rechunkSubtitleByMaxChars(
+      const [
+        SubtitleSegment(text: 'ก็มีร้านอยู่', start: 0, end: 0.6),
+        SubtitleSegment(text: 'ที่แถวสยามเพราะ', start: 0.6, end: 2.2),
+      ],
+      18,
+    );
+
+    expect(out, hasLength(2));
+    expect(out[0].text, 'ก็มีร้านอยู่');
+    expect(out[1].text, 'ที่แถวสยามเพราะ');
+  });
+
   test('merges a subtitle fragment that is too short to read', () {
     final out = mergeShortSubtitleSegments(
       const [

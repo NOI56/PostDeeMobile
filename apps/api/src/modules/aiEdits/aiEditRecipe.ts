@@ -570,8 +570,12 @@ const rebuildThaiWordsFromSegment = (
   segment: TranscriptSegment
 ): TranscriptWord[] => {
   const tokens: string[] = [];
+  const semanticText = segment.text
+    .normalize('NFC')
+    .trim()
+    .replace(/(\p{Script=Thai})\s+(?=\p{Script=Thai})/gu, '$1');
   const segmented = new Intl.Segmenter('th', { granularity: 'word' })
-    .segment(segment.text.normalize('NFC').trim());
+    .segment(semanticText);
 
   for (const part of segmented) {
     const value = part.segment.normalize('NFC');

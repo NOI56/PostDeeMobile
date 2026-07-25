@@ -431,6 +431,32 @@ describe('transcription provider', () => {
     ).toBe(true);
   });
 
+  it('preserves short Thai phrases from Scribe spacing as whole words', async () => {
+    const text =
+      'สวัสดีครับ ผมวรภพ ยุ่นเพียร ผู้เสียหายไม่ได้แจ้งตำรวจ';
+    const fragments = Array.from(
+      new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(
+        text.replace(/\s+/gu, '')
+      ),
+      (part, index) => ({
+        type: 'word',
+        text: part.segment,
+        start: index * 0.05,
+        end: (index + 1) * 0.05
+      })
+    );
+
+    const result = await transcribeElevenLabsFixture(fragments, text);
+    const words = result.words.map((word) => word.word);
+
+    expect(words).toContain('ผมวรภพ');
+    expect(words).toContain('ยุ่นเพียร');
+    expect(words).toContain('ผู้เสียหาย');
+    expect(words).not.toEqual(
+      expect.arrayContaining(['วร', 'ภพ', 'ผู้เสีย', 'หาย'])
+    );
+  });
+
   it('uses the canonical Scribe text when spacing events split a Thai word', async () => {
     const text = 'ไม่ค่อยได้ใช้เนื่อ งจากรถติดมาก';
     const result = await transcribeElevenLabsFixture(

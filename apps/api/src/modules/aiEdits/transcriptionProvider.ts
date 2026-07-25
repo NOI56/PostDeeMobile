@@ -140,10 +140,19 @@ type ElevenLabsTimedWord = {
 const elevenLabsPauseBoundarySeconds = 0.55;
 const elevenLabsMaxSegmentSeconds = 4;
 const elevenLabsMaxSegmentGraphemes = 32;
+const elevenLabsMaxProtectedThaiPhraseGraphemes = 17;
 const terminalTranscriptPunctuation = /[.!?。！？…ฯ]$/u;
 const thaiGraphemeSegmenter = new Intl.Segmenter('th', {
   granularity: 'grapheme'
 });
+const protectedThaiCompoundWords = [
+  'ความแตกต่าง',
+  'ซูเปอร์สตาร์',
+  'ผู้เสียหาย',
+  'เนื่องจาก',
+  'รูปลักษณ์',
+  'ส่วนมาก'
+];
 
 const isElevenLabsEvent = (
   value: unknown
@@ -170,6 +179,133 @@ const isValidElevenLabsTimedWord = (
 
 const countGraphemes = (value: string): number =>
   Array.from(thaiGraphemeSegmenter.segment(value)).length;
+
+type ThaiTextPart = {
+  segment: string;
+  isWordLike: boolean;
+};
+
+const mergeProtectedThaiCompoundParts = (
+  parts: ThaiTextPart[]
+): ThaiTextPart[] => {
+  const merged: ThaiTextPart[] = [];
+
+  for (let index = 0; index < parts.length;) {
+    const part = parts[index]!;
+    if (!part.isWordLike) {
+      merged.push(part);
+      index += 1;
+      continue;
+    }
+
+    let protectedMatch:
+      | { text: string; nextIndex: number }
+      | undefined;
+    for (const protectedWord of protectedThaiCompoundWords) {
+      let candidate = '';
+      for (let nextIndex = index; nextIndex < parts.length; nextIndex += 1) {
+        const nextPart = parts[nextIndex]!;
+        if (!nextPart.isWordLike) break;
+        candidate += nextPart.segment;
+        if (candidate === protectedWord) {
+          protectedMatch = { text: candidate, nextIndex: nextIndex + 1 };
+          break;
+        }
+        if (!protectedWord.startsWith(candidate)) break;
+      }
+      if (protectedMatch) break;
+    }
+
+    if (protectedMatch) {
+      merged.push({ segment: protectedMatch.text, isWordLike: true });
+      index = protectedMatch.nextIndex;
+      continue;
+    }
+
+    merged.push(part);
+    index += 1;
+  }
+
+  return merged;
+};
+
+const segmentThaiTextPreservingShortPhrases = (
+  value: string
+): ThaiTextPart[] => {
+  const hasExplicitSpacing = /\s/u.test(value);
+  return value
+    .normalize('NFC')
+    .split(/(\s+)/u)
+    .filter(Boolean)
+    .flatMap((run): ThaiTextPart[] => {
+      if (/^\s+$/u.test(run)) {
+        return [{ segment: run, isWordLike: false }];
+      }
+
+      if (
+        /\p{Script=Thai}/u.test(run) &&
+        !/\p{Script=Latin}/u.test(run) &&
+        hasExplicitSpacing &&
+        countGraphemes(run) <= elevenLabsMaxProtectedThaiPhraseGraphemes
+      ) {
+        return [{ segment: run, isWordLike: true }];
+      }
+
+      return mergeProtectedThaiCompoundParts(
+        Array.from(
+          new Intl.Segmenter('th', { granularity: 'word' }).segment(run),
+          (part) => ({
+            segment: part.segment.normalize('NFC'),
+            isWordLike: Boolean(part.isWordLike)
+          })
+        )
+      );
+    });
+};
+
+const readThaiBoundaryOffsets = (value: string): Set<number> => {
+  const boundaries = new Set<number>();
+  let offset = 0;
+
+  for (const part of segmentThaiTextPreservingShortPhrases(value)) {
+    const compactLength = part.segment.replace(/\s+/gu, '').length;
+    if (part.isWordLike && compactLength > 0) {
+      boundaries.add(offset);
+      boundaries.add(offset + compactLength);
+    }
+    offset += compactLength;
+  }
+
+  return boundaries;
+};
+
+const repairFalseThaiSpacing = (value: string): string => {
+  const normalized = value.normalize('NFC');
+  const compactText = normalized.replace(/\s+/gu, '');
+  const boundaries = readThaiBoundaryOffsets(compactText);
+  const characters = Array.from(normalized);
+  let compactOffset = 0;
+  let repaired = '';
+
+  for (const [index, character] of characters.entries()) {
+    if (/^\s+$/u.test(character)) {
+      const previous = characters[index - 1] ?? '';
+      const next = characters[index + 1] ?? '';
+      const isThaiBoundary =
+        /\p{Script=Thai}/u.test(previous) &&
+        /\p{Script=Thai}/u.test(next);
+      if (!isThaiBoundary || boundaries.has(compactOffset)) {
+        repaired += character;
+      }
+      continue;
+    }
+
+    repaired += character;
+    compactOffset += character.length;
+  }
+
+  return repaired;
+};
 
 const rebuildFragmentedElevenLabsThaiWords = (
   timedWords: ElevenLabsTimedWord[],
@@ -203,19 +339,10 @@ const rebuildFragmentedElevenLabsThaiWords = (
   const canonicalSpacingDiffers =
     referenceMatchesTimeline &&
     normalizedReference !== timelineText.trim();
-  const segmentationText = canonicalText.replace(
-    /(\p{Script=Thai})\s+(?=\p{Script=Thai})/gu,
-    '$1'
-  );
-  const parts = Array.from(
-    new Intl.Segmenter('th', { granularity: 'word' }).segment(segmentationText)
-  );
+  const segmentationText = repairFalseThaiSpacing(canonicalText);
+  const parts = segmentThaiTextPreservingShortPhrases(segmentationText);
   const semanticWordCount = parts.filter((part) => part.isWordLike).length;
-  const spacedSemanticWordCount = Array.from(
-    new Intl.Segmenter('th', { granularity: 'word' }).segment(canonicalText)
-  ).filter((part) => part.isWordLike).length;
-  const spacingSplitsSemanticWord =
-    spacedSemanticWordCount > semanticWordCount;
+  const spacingSplitsSemanticWord = segmentationText !== canonicalText;
   let offset = 0;
   const indexedWords = timedWords.flatMap((timedWord) => {
     const word = compact(timedWord.word);

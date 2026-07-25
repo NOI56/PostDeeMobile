@@ -64,6 +64,8 @@ describe('edit plan provider', () => {
     expect(hasWeakThaiOpening('แต่ไม่ได้ช่วยเรื่องนี้')).toBe(true);
     expect(hasWeakThaiOpening('แล้วเราค่อยไปขั้นตอนถัดไป')).toBe(true);
     expect(hasWeakThaiOpening('ของมาจากตลาดใกล้บ้าน')).toBe(true);
+    expect(hasWeakThaiOpening('อาฮะเราก็เลยเริ่มเลี้ยงนก')).toBe(true);
+    expect(hasWeakThaiOpening('นะครับผูกพันกับนกชนิดนี้')).toBe(true);
     expect(hasWeakThaiOpening('วิธีนี้ช่วยประหยัดเวลาได้จริง')).toBe(false);
   });
 
@@ -107,6 +109,25 @@ describe('edit plan provider', () => {
     expect(cuts).toEqual([
       { start: 0, end: 12 },
       { start: 32, end: 40 }
+    ]);
+  });
+
+  it('never keeps a weak mid-sentence opening when a complete one is available', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [{ start: 30, end: 45 }],
+      segments: [
+        { text: 'แต่ว่าไม่บ่อยนักตอนที่เข้ามา', start: 0, end: 5 },
+        { text: 'ตอนนั้นมีโอกาสเข้ามาแข่งฟุตบอล', start: 5, end: 15 },
+        { text: 'บุรีรัมย์เปลี่ยนไปเยอะมาก', start: 15, end: 30 },
+        { text: 'คนส่วนมากมาที่สนามฟุตบอล', start: 30, end: 45 }
+      ],
+      durationSeconds: 45,
+      targetDurationSeconds: 30
+    });
+
+    expect(cuts).toEqual([
+      { start: 0, end: 5 },
+      { start: 35, end: 45 }
     ]);
   });
 

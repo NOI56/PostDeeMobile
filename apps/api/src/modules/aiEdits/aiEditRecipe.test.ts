@@ -465,6 +465,40 @@ describe('AI edit recipe pacing settings', () => {
     ).toBe(false);
   });
 
+  it('keeps Scribe-spaced Thai names and compounds on whole-word boundaries', () => {
+    const text =
+      'สวัสดีครับ ผมวรภพ ยุ่นเพียร ผู้เสียหายไม่ได้แจ้งตำรวจ';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      model: 'scribe_v2',
+      text,
+      durationSeconds: 4,
+      settings: { subtitleWordsPerLine: 2 },
+      segments: [{ text, start: 0, end: 4 }],
+      words: [
+        { word: 'สวัสดีครับ', start: 0, end: 0.7 },
+        { word: 'ผมวรภพ', start: 0.7, end: 1.4 },
+        { word: 'ยุ่นเพียร', start: 1.4, end: 2 },
+        { word: 'ผู้เสียหาย', start: 2, end: 2.8 },
+        { word: 'ไม่ได้แจ้งตำรวจ', start: 2.8, end: 4 }
+      ]
+    });
+    const subtitleTexts = recipe.subtitles.segments.map(
+      (segment) => segment.text
+    );
+
+    expect(subtitleTexts.join('').replace(/\s+/gu, '')).toBe(
+      text.replace(/\s+/gu, '')
+    );
+    expect(
+      subtitleTexts.some((subtitle) => /(วร|ผู้เสีย)$/u.test(subtitle))
+    ).toBe(false);
+    expect(
+      subtitleTexts.some((subtitle) => /^(ภพ|หาย)/u.test(subtitle))
+    ).toBe(false);
+  });
+
   it('splits long Thai fallback segments when word timings are unavailable', () => {
     const text =
       'ที่รู้อยู่ว่ากรุงเทพมีรถเยอะเกินไปจนแทบไม่มีที่เดินสำหรับคน';

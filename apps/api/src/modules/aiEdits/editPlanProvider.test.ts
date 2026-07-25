@@ -66,6 +66,7 @@ describe('edit plan provider', () => {
     expect(hasWeakThaiOpening('ของมาจากตลาดใกล้บ้าน')).toBe(true);
     expect(hasWeakThaiOpening('อาฮะเราก็เลยเริ่มเลี้ยงนก')).toBe(true);
     expect(hasWeakThaiOpening('นะครับผูกพันกับนกชนิดนี้')).toBe(true);
+    expect(hasWeakThaiOpening('น่ะครับผูกพันกับนกชนิดนี้')).toBe(true);
     expect(hasWeakThaiOpening('วิธีนี้ช่วยประหยัดเวลาได้จริง')).toBe(false);
   });
 

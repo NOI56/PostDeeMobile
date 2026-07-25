@@ -317,6 +317,7 @@ const minimumEstimatedSubtitleDurationSeconds = 0.7;
 const maximumEstimatedThaiWordsPerCue = 2;
 const maximumThaiMidWordSegmentGapSeconds = 0.5;
 const maximumThaiCueBoundaryShiftCharacters = 4;
+const maximumThaiSubtitleGraphemes = 18;
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
   value
@@ -911,6 +912,62 @@ const repairThaiSubtitleCueBoundaries = (
   return repaired;
 };
 
+const constrainThaiSubtitleCueLength = (
+  segments: TranscriptSegment[],
+  language: string,
+  maximumGraphemes = maximumThaiSubtitleGraphemes
+): TranscriptSegment[] => {
+  if (normalizeTranscriptionLanguage(language) !== 'th') {
+    return segments;
+  }
+
+  return segments.flatMap((segment) => {
+    if (
+      /\s/u.test(segment.text) ||
+      readGraphemeCount(segment.text) <= maximumGraphemes
+    ) {
+      return [segment];
+    }
+
+    const words = rebuildThaiWordsFromSegment(segment);
+    const groups: TranscriptWord[][] = [];
+    let current: TranscriptWord[] = [];
+
+    const flush = () => {
+      if (current.length > 0) {
+        groups.push(current);
+        current = [];
+      }
+    };
+
+    for (const word of words) {
+      const candidateText = [...current, word]
+        .map((candidate) => candidate.word)
+        .reduce(joinSubtitleText, '');
+      if (
+        current.length > 0 &&
+        readGraphemeCount(candidateText) > maximumGraphemes
+      ) {
+        flush();
+      }
+      current.push(word);
+    }
+    flush();
+
+    if (groups.length <= 1) {
+      return [segment];
+    }
+
+    return groups.map((group) => ({
+      text: group
+        .map((word) => word.word)
+        .reduce(joinSubtitleText, ''),
+      start: group[0]!.start,
+      end: group.at(-1)!.end
+    }));
+  });
+};
+
 const mergeShortSubtitleSegments = (
   segments: TranscriptSegment[],
   minimumDurationSeconds = minimumEstimatedSubtitleDurationSeconds,
@@ -1268,10 +1325,13 @@ export const buildAiEditRecipe = ({
           })
         : fallbackSubtitleSegments)
     : [];
-  const subtitleSegments = repairThaiSubtitleCueBoundaries(
-    mergeShortSubtitleSegments(preparedSubtitleSegments),
-    transcriptLanguage,
-    transcriptReferenceText || transcript.text.trim()
+  const subtitleSegments = constrainThaiSubtitleCueLength(
+    repairThaiSubtitleCueBoundaries(
+      mergeShortSubtitleSegments(preparedSubtitleSegments),
+      transcriptLanguage,
+      transcriptReferenceText || transcript.text.trim()
+    ),
+    transcriptLanguage
   );
   const silencePreset = settings.silencePreset ?? 'balanced';
   const silenceRanges = capabilities.silence && hasReliableSilenceTimeline

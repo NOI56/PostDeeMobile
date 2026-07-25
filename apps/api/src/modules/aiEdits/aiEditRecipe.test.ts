@@ -433,6 +433,38 @@ describe('AI edit recipe pacing settings', () => {
     ).toBe(false);
   });
 
+  it('caps trusted Thai word groups to a safe single-line length', () => {
+    const text = 'ก็มีร้านอยู่ที่แถวสยามเพราะ';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds: 2.2,
+      settings: { subtitleWordsPerLine: 4 },
+      segments: [{ text, start: 0, end: 2.2 }],
+      words: [
+        { word: 'ก็มีร้านอยู่', start: 0, end: 0.7 },
+        { word: 'ที่แถวสยามเพราะ', start: 0.7, end: 2.2 }
+      ]
+    });
+    const graphemeCount = (value: string) =>
+      Array.from(
+        new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(value)
+      ).length;
+
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe(text);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => graphemeCount(segment.text) <= 18
+      )
+    ).toBe(true);
+    expect(
+      recipe.subtitles.segments.some((segment) => /แถ$/u.test(segment.text))
+    ).toBe(false);
+  });
+
   it('splits long Thai fallback segments when word timings are unavailable', () => {
     const text =
       'ที่รู้อยู่ว่ากรุงเทพมีรถเยอะเกินไปจนแทบไม่มีที่เดินสำหรับคน';

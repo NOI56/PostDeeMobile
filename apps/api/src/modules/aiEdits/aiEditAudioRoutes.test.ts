@@ -186,8 +186,13 @@ describe('AI edit audio routes', () => {
     ]);
     expect(response.body.recipe.subtitles.segments).toEqual([
       {
-        text: 'ประโยคก่อนรอยต่อประโยคหลังรอยต่อ',
+        text: 'ประโยคก่อนรอยต่อ',
         start: 29.4,
+        end: 30.1
+      },
+      {
+        text: 'ประโยคหลังรอยต่อ',
+        start: 30.1,
         end: 30.8
       }
     ]);

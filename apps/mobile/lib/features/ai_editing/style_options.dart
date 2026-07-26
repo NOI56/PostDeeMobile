@@ -242,9 +242,9 @@ List<SilenceCutRange> withTargetLength(
 }
 
 /// Splits a line into pieces near [maxChars], preferring to break at spaces.
-/// Unspaced Thai runs stay intact because a grapheme boundary is not always a
-/// word boundary. Other long runs are split on grapheme boundaries. Pure and
-/// testable.
+/// Long runs without spaces are split into balanced grapheme chunks so a
+/// single-line subtitle never leaves a tiny trailing cue or overflows the
+/// video safe area. Pure and testable.
 List<String> splitLineByMaxChars(String text, int maxChars) {
   final trimmed = text.trim();
   if (maxChars <= 0 || trimmed.characters.length <= maxChars) {
@@ -277,11 +277,18 @@ List<String> splitLineByMaxChars(String text, int maxChars) {
     if (word.characters.length <= maxChars) {
       current = word;
     } else if (_containsThaiScript(word)) {
-      // Thai normally has no spaces between words. A character-count split can
-      // turn เดิน into เดิ + น and produce an unreadable 0.08-second
-      // tail cue. Keep the phrase intact; the preview and ASS renderer wrap it
-      // safely while the backend supplies real Thai word boundaries.
-      current = word;
+      final graphemes = word.characters;
+      final chunkCount = (graphemes.length / maxChars).ceil();
+      final baseSize = graphemes.length ~/ chunkCount;
+      final largerChunkCount = graphemes.length % chunkCount;
+      var offset = 0;
+      for (var index = 0; index < chunkCount; index += 1) {
+        final chunkSize = baseSize + (index < largerChunkCount ? 1 : 0);
+        pieces.add(
+          graphemes.skip(offset).take(chunkSize).toString(),
+        );
+        offset += chunkSize;
+      }
     } else {
       var rest = word.characters;
       while (rest.length > maxChars) {

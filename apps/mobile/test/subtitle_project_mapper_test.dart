@@ -77,7 +77,7 @@ void main() {
     );
   });
 
-  test('keeps long Thai AI segments intact before opening Subtitle Studio', () {
+  test('preserves a Thai API segment before opening Subtitle Studio', () {
     const text = 'กำลังทดสอบข้อความซับภาษาไทยที่ยาวเกินพื้นที่ปลอดภัย';
     final project = mapAiEditRecipeToSubtitleProject(
       recipe: recipeFixture(

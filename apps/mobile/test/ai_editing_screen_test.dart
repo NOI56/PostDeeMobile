@@ -1446,10 +1446,6 @@ void main() {
     expect(renderRequests, hasLength(2));
     final renderRequest = renderRequests.last;
     expect(renderRequest.segments, hasLength(1));
-    expect(
-      renderRequest.segments.map((segment) => segment.text).join(),
-      editedSubtitle,
-    );
     expect(renderRequest.segments.single.text, editedSubtitle);
     expect(renderRequest.subtitleFontName, 'Anuphan');
     expect(renderRequest.subtitleFontSize, lessThan(30));

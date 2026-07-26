@@ -2,7 +2,7 @@ enum SubtitleTimingMode { word, segment, estimated }
 
 enum SubtitleAlignment { top, middle, bottom }
 
-const currentSubtitleProjectSchemaVersion = 2;
+const currentSubtitleProjectSchemaVersion = 3;
 
 class SubtitleProjectValidationException implements Exception {
   const SubtitleProjectValidationException(this.message);
@@ -149,13 +149,13 @@ class SubtitleStyle {
   });
 
   static const defaults = SubtitleStyle(
-    fontId: 'Noto Sans Thai',
+    fontId: 'Bai Jamjuree',
     fontWeight: 700,
-    fontSize: 22,
+    fontSize: 28,
     textColor: '#FFFFFF',
     activeWordColor: '#00E5A8',
     outlineColor: '#000000',
-    outlineWidth: 1,
+    outlineWidth: 0.5,
     shadowColor: '#000000',
     shadowDepth: 0,
     alignment: SubtitleAlignment.bottom,
@@ -308,6 +308,7 @@ class SubtitleProject {
   factory SubtitleProject.fromJson(Map<String, Object?> json) {
     final storedSchemaVersion = _requiredInt(json, 'schemaVersion');
     if (storedSchemaVersion != 1 &&
+        storedSchemaVersion != 2 &&
         storedSchemaVersion != currentSubtitleProjectSchemaVersion) {
       throw const SubtitleProjectValidationException(
           'Unsupported schema version.');
@@ -317,14 +318,16 @@ class SubtitleProject {
         .toList(growable: false);
     final storedDefaultStyle =
         SubtitleStyle.fromJson(_requiredObject(json, 'defaultStyle'));
-    final cues = storedSchemaVersion == 1
+    final cues = storedSchemaVersion < currentSubtitleProjectSchemaVersion
         ? [
             for (final cue in storedCues)
               cue.styleOverride == null
                   ? cue
                   : cue.copyWith(
-                      styleOverride:
-                          _migrateLegacySubtitleStyle(cue.styleOverride!),
+                      styleOverride: _migrateStoredSubtitleStyle(
+                        cue.styleOverride!,
+                        storedSchemaVersion: storedSchemaVersion,
+                      ),
                     ),
           ]
         : storedCues;
@@ -335,8 +338,11 @@ class SubtitleProject {
       sourceDurationMs: _requiredInt(json, 'sourceDurationMs'),
       language: _requiredString(json, 'language'),
       cues: cues,
-      defaultStyle: storedSchemaVersion == 1
-          ? _migrateLegacySubtitleStyle(storedDefaultStyle)
+      defaultStyle: storedSchemaVersion < currentSubtitleProjectSchemaVersion
+          ? _migrateStoredSubtitleStyle(
+              storedDefaultStyle,
+              storedSchemaVersion: storedSchemaVersion,
+            )
           : storedDefaultStyle,
       cutRanges: _objectList(json, 'cutRanges')
           .map(SubtitleCutRange.fromJson)
@@ -414,18 +420,31 @@ void validateSubtitleProject(SubtitleProject project) {
   }
 }
 
-SubtitleStyle _migrateLegacySubtitleStyle(SubtitleStyle style) {
-  if (style.fontId != 'Anuphan') {
+SubtitleStyle _migrateStoredSubtitleStyle(
+  SubtitleStyle style, {
+  required int storedSchemaVersion,
+}) {
+  final shouldMigrateFont = switch (storedSchemaVersion) {
+    1 => style.fontId == 'Anuphan',
+    2 => style.fontId == 'Noto Sans Thai',
+    _ => false,
+  };
+  if (!shouldMigrateFont) {
     return style;
   }
   return SubtitleStyle(
-    fontId: 'Noto Sans Thai',
+    fontId: 'Bai Jamjuree',
     fontWeight: style.fontWeight,
-    fontSize: style.fontSize,
+    fontSize: switch (style.fontSize) {
+      17 => 22,
+      19 => 25,
+      22 => 28,
+      _ => style.fontSize,
+    },
     textColor: style.textColor,
     activeWordColor: style.activeWordColor,
     outlineColor: style.outlineColor,
-    outlineWidth: style.outlineWidth == 1.2 ? 1 : style.outlineWidth,
+    outlineWidth: style.outlineWidth <= 1.2 ? 0.5 : style.outlineWidth,
     shadowColor: style.shadowColor,
     shadowDepth: style.shadowDepth == 2 ? 0 : style.shadowDepth,
     alignment: style.alignment,

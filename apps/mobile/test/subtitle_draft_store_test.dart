@@ -412,7 +412,7 @@ Future<SubtitleProject?> readProject(File file) async {
 }
 
 SubtitleProject projectWithId(String projectId) => SubtitleProject(
-      schemaVersion: 2,
+      schemaVersion: 3,
       projectId: projectId,
       sourceFingerprint: 'source-1',
       sourceDurationMs: 5000,

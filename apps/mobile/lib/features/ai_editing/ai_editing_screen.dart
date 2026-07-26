@@ -1431,7 +1431,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         : fitSubtitleFontSizeForSingleLine(
             texts: subtitleSegments.map((segment) => segment.text),
             style: TextStyle(
-              fontFamily: studioStyle?.fontId ?? 'Noto Sans Thai',
+              fontFamily: studioStyle?.fontId ?? 'Bai Jamjuree',
               fontWeight: studioStyle == null
                   ? FontWeight.w700
                   : FontWeight.values.firstWhere(
@@ -1548,12 +1548,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       subtitleAlignment: studioStyle == null
           ? null
           : _burnSubtitleAlignment(studioStyle.alignment),
-      subtitleFontName: studioStyle?.fontId ?? 'Noto Sans Thai',
+      subtitleFontName: studioStyle?.fontId ?? 'Bai Jamjuree',
       subtitleFontAssetPath:
           studioStyle == null ? null : _subtitleFontAssetPath(studioStyle),
       subtitleTextColor: studioStyle?.textColor ?? '#FFFFFF',
       subtitleOutlineColor: studioStyle?.outlineColor ?? '#000000',
-      subtitleOutlineWidth: studioStyle?.outlineWidth ?? 1,
+      subtitleOutlineWidth: studioStyle?.outlineWidth ?? 0.5,
       subtitleShadowColor: studioStyle?.shadowColor ?? '#000000',
       subtitleShadowDepth: studioStyle?.shadowDepth ?? 0,
       preserveTempDirectoryPaths: {
@@ -1606,9 +1606,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _ => 18,
     };
     final subtitleFontSize = switch (_subtitleStyle) {
-      'small' => 17.0,
-      'medium' => 19.0,
-      _ => 22.0,
+      'small' => 22.0,
+      'medium' => 25.0,
+      _ => 28.0,
     };
     final filterIndex = switch (_toneFilter) {
       'vivid' => 1,
@@ -1681,8 +1681,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       };
 
   String _subtitleFontAssetPath(SubtitleStyle style) {
-    if (style.fontId == 'Noto Sans Thai') {
-      return 'assets/fonts/notosansthai/NotoSansThai-Bold.ttf';
+    if (style.fontId == 'Bai Jamjuree') {
+      return 'assets/fonts/baijamjuree/BaiJamjuree-Bold.ttf';
     }
     final family = style.fontId == 'Anuphan' ? 'anuphan' : 'prompt';
     final familyName = family == 'anuphan' ? 'Anuphan' : 'Prompt';

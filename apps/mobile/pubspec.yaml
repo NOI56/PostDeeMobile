@@ -39,9 +39,9 @@ flutter:
     - assets/images/brand/
     - assets/images/platforms/
   fonts:
-    - family: Noto Sans Thai
+    - family: Bai Jamjuree
       fonts:
-        - asset: assets/fonts/notosansthai/NotoSansThai-Bold.ttf
+        - asset: assets/fonts/baijamjuree/BaiJamjuree-Bold.ttf
           weight: 700
     - family: Anuphan
       fonts:

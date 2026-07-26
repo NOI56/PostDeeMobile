@@ -573,13 +573,13 @@ Current mobile pieces:
 - When automatic subtitles are available, mobile now opens Subtitle Studio
   after `prepare` and before the first FFmpeg render. The user can edit text and
   timing, add/delete/split/merge cues, undo/redo, and change the bundled
-  Noto Sans Thai/Prompt/Anuphan font, size, text colour, outline, shadow, and safe
+  Bai Jamjuree/Prompt/Anuphan font, size, text colour, outline, shadow, and safe
   top/middle/bottom position while the Flutter preview updates immediately.
   Subtitle cues use one line in both new and restored drafts; legacy two-line
   draft styles are migrated to one line when loaded. New automatic subtitles
-  default to Noto Sans Thai Bold with a thinner outline and no drop shadow so
-  Thai above/below-base marks remain legible; schema-1 Anuphan styles migrate
-  to the same safe style, while Prompt styles remain unchanged.
+  default to Bai Jamjuree Bold with a 0.5 outline and no drop shadow so stacked
+  Thai marks remain visually separated in a 540p preview. Schema-1 Anuphan and
+  schema-2 Noto defaults migrate to schema 3; Prompt styles remain unchanged.
   Draft JSON is autosaved in app-owned storage and reopening the same source
   and AI setup restores it. These local edits and retries do not call a metered
   AI endpoint.
@@ -617,7 +617,7 @@ Current mobile pieces:
   user's exact remaining and used Pro minutes. It updates immediately from the
   metered `prepare` response and can be tapped to refresh without consuming a
   minute.
-- Android subtitle export gives libass the selected bundled Noto Sans Thai,
+- Android subtitle export gives libass the selected bundled Bai Jamjuree,
   Prompt, or Anuphan font explicitly and maps the selected colour, outline,
   shadow, and safe alignment into the final MP4. The current rollback-safe
   renderer still uses SRT/static cues; active-word karaoke and per-cue styles

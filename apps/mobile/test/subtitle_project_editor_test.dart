@@ -107,7 +107,10 @@ void main() {
     expect(editor.project.defaultStyle.fontSize, 30);
     expect(editor.project.revision, 1);
     editor.undo();
-    expect(editor.project.defaultStyle.fontSize, 22);
+    expect(
+      editor.project.defaultStyle.fontSize,
+      SubtitleStyle.defaults.fontSize,
+    );
     editor.redo();
     expect(editor.project.defaultStyle.fontSize, 30);
   });
@@ -327,7 +330,7 @@ SubtitleProject twoCueProject(
   String? secondSoundEffect,
 }) =>
     SubtitleProject(
-      schemaVersion: 2,
+      schemaVersion: 3,
       projectId: 'project-1',
       sourceFingerprint: 'source-1',
       sourceDurationMs: 2000,
@@ -370,7 +373,7 @@ SubtitleProject projectWithCue({
   String? soundEffect,
 }) =>
     SubtitleProject(
-      schemaVersion: 2,
+      schemaVersion: 3,
       projectId: 'project-1',
       sourceFingerprint: 'source-1',
       sourceDurationMs: 2000,
@@ -396,7 +399,7 @@ SubtitleProject projectWithCue({
     );
 
 SubtitleProject emptyProject() => SubtitleProject(
-      schemaVersion: 2,
+      schemaVersion: 3,
       projectId: 'project-1',
       sourceFingerprint: 'source-1',
       sourceDurationMs: 2000,

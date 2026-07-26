@@ -61,14 +61,14 @@ void main() {
     expect(File('assets/fonts/anuphan/Anuphan-Bold.ttf').existsSync(), isTrue);
   });
 
-  test('bundles the Thai subtitle-safe Noto font and its license', () {
+  test('bundles the Thai mark-safe Bai Jamjuree font and its license', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
 
-    expect(pubspec, contains('family: Noto Sans Thai'));
+    expect(pubspec, contains('family: Bai Jamjuree'));
     expect(
-      File('assets/fonts/notosansthai/NotoSansThai-Bold.ttf').existsSync(),
+      File('assets/fonts/baijamjuree/BaiJamjuree-Bold.ttf').existsSync(),
       isTrue,
     );
-    expect(File('assets/fonts/notosansthai/OFL.txt').existsSync(), isTrue);
+    expect(File('assets/fonts/baijamjuree/OFL.txt').existsSync(), isTrue);
   });
 }

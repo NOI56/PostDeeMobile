@@ -7,7 +7,8 @@ import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_proj
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_studio_screen.dart';
 
 void main() {
-  testWidgets('edits text and allows Prompt to override the Noto Thai default',
+  testWidgets(
+      'edits text and allows Prompt to override the Bai Jamjuree default',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -63,6 +64,10 @@ void main() {
     final tabBarRect = tester.getRect(find.byType(TabBar));
     await tester.tapAt(Offset(tabBarRect.right - 70, tabBarRect.center.dy));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('subtitle-font-bai-jamjuree')),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey('subtitle-font-prompt')));
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('subtitle-position-middle')),
@@ -103,7 +108,7 @@ class _MemoryDraftStore implements SubtitleDraftStore {
 }
 
 SubtitleProject _project() => SubtitleProject(
-      schemaVersion: 2,
+      schemaVersion: 3,
       projectId: 'screen-project',
       sourceFingerprint: 'screen-source',
       sourceDurationMs: 5000,

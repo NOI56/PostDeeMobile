@@ -123,18 +123,21 @@ MP4 container.
 
 ## 2026-07-26 Thai combining-mark render acceptance
 
-The same 38 MB / 150.635-second talking-head source was regenerated through the
-installed Staging app on the Pixel 8 emulator with a 60-second target. The
-render workspace contained the bundled 20,600-byte `NotoSansThai-Bold.ttf`,
-and the final 304x540 preview contained MPEG-4 video plus AAC audio for exactly
-60.000 seconds.
+The first regenerated result used Noto Sans Thai Bold with outline 1. Enlarged
+pixel review showed that `้` still visually joined `ํ` in `ซ้ำ`, so that result
+was rejected instead of being treated as acceptance.
 
-Frame inspection covered the source phrases `ซ้ำแล้วซ้ำ`, `อีกเพื่อจะ`, and
-`มีอาหารที่`. The upper vowel and tone marks were visibly separated from their
-base consonants, remained inside the glyph area, and were not swallowed by the
-outline. The automatic style used Noto Sans Thai Bold, outline 1, and shadow 0.
-Prompt and Anuphan remain user-selectable in Subtitle Studio.
+The same 38 MB / 150.635-second source was then regenerated through the
+installed Staging app on the Pixel 8 emulator with Bai Jamjuree Bold. The
+render workspace contained the bundled 81,840-byte font, and the final 304x540
+preview contained MPEG-4 video plus AAC audio for exactly 60.000 seconds.
+
+Frame inspection covered `ซ้ำแล้ว`, `ซ้ำอีกเพื่อ`, and `มีอาหารที่`. Stacked
+marks retained visible background/outline separation at the real rendered
+resolution. The tested medium style used font size 25, outline 0.5, and shadow
+0. A separate fixture covered `่ ้ ๊ ๋ ิ ี ึ ื ุ ู ็ ์`; none collided with
+the base glyph or another mark. Prompt and Anuphan remain selectable.
 
 The transcript strings were already valid NFC Thai in the generated SRT, so
-this regression was in font metrics plus the old heavy outline/shadow
-combination, not in ElevenLabs transcription or Thai Unicode ordering.
+this regression was in font metrics plus outline thickness, not in ElevenLabs
+transcription or Thai Unicode ordering.

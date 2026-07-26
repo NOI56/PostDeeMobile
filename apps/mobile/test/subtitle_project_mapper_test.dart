@@ -187,7 +187,7 @@ void main() {
       now: DateTime.utc(2026, 7, 20),
     );
 
-    expect(project.defaultStyle.fontId, 'Noto Sans Thai');
+    expect(project.defaultStyle.fontId, 'Bai Jamjuree');
     expect(project.defaultStyle.textColor, '#A1B2C3');
     expect(project.defaultStyle.alignment, SubtitleAlignment.top);
   });

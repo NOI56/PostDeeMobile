@@ -3,7 +3,7 @@ import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_proj
 
 void main() {
   SubtitleProject validProject() => SubtitleProject(
-        schemaVersion: 2,
+        schemaVersion: 3,
         projectId: 'project-1',
         sourceFingerprint: 'source-1',
         sourceDurationMs: 5000,
@@ -154,13 +154,13 @@ void main() {
   test('uses the specified readable default style', () {
     final style = SubtitleStyle.defaults;
 
-    expect(style.fontId, 'Noto Sans Thai');
+    expect(style.fontId, 'Bai Jamjuree');
     expect(style.fontWeight, 700);
-    expect(style.fontSize, 22);
+    expect(style.fontSize, 28);
     expect(style.textColor, '#FFFFFF');
     expect(style.activeWordColor, '#00E5A8');
     expect(style.outlineColor, '#000000');
-    expect(style.outlineWidth, 1);
+    expect(style.outlineWidth, 0.5);
     expect(style.shadowColor, '#000000');
     expect(style.shadowDepth, 0);
     expect(style.alignment, SubtitleAlignment.bottom);
@@ -172,15 +172,17 @@ void main() {
     json['defaultStyle'] = {
       ...SubtitleStyle.defaults.toJson(),
       'fontId': 'Anuphan',
+      'fontSize': 22.0,
       'outlineWidth': 1.2,
       'shadowDepth': 2.0,
     };
 
     final decoded = SubtitleProject.fromJson(json);
 
-    expect(decoded.schemaVersion, 2);
-    expect(decoded.defaultStyle.fontId, 'Noto Sans Thai');
-    expect(decoded.defaultStyle.outlineWidth, 1);
+    expect(decoded.schemaVersion, 3);
+    expect(decoded.defaultStyle.fontId, 'Bai Jamjuree');
+    expect(decoded.defaultStyle.fontSize, 28);
+    expect(decoded.defaultStyle.outlineWidth, 0.5);
     expect(decoded.defaultStyle.shadowDepth, 0);
   });
 
@@ -195,6 +197,7 @@ void main() {
     )..['styleOverride'] = {
         ...SubtitleStyle.defaults.toJson(),
         'fontId': 'Anuphan',
+        'fontSize': 22.0,
         'outlineWidth': 1.2,
         'shadowDepth': 2.0,
       };
@@ -203,9 +206,27 @@ void main() {
     final decoded = SubtitleProject.fromJson(json);
 
     expect(decoded.defaultStyle.fontId, 'Prompt');
-    expect(decoded.cues.single.styleOverride?.fontId, 'Noto Sans Thai');
-    expect(decoded.cues.single.styleOverride?.outlineWidth, 1);
+    expect(decoded.cues.single.styleOverride?.fontId, 'Bai Jamjuree');
+    expect(decoded.cues.single.styleOverride?.fontSize, 28);
+    expect(decoded.cues.single.styleOverride?.outlineWidth, 0.5);
     expect(decoded.cues.single.styleOverride?.shadowDepth, 0);
+  });
+
+  test('migrates the schema-two Noto style that still joins Thai marks', () {
+    final json = validProject().toJson()..['schemaVersion'] = 2;
+    json['defaultStyle'] = {
+      ...SubtitleStyle.defaults.toJson(),
+      'fontId': 'Noto Sans Thai',
+      'fontSize': 22.0,
+      'outlineWidth': 1.0,
+    };
+
+    final decoded = SubtitleProject.fromJson(json);
+
+    expect(decoded.schemaVersion, 3);
+    expect(decoded.defaultStyle.fontId, 'Bai Jamjuree');
+    expect(decoded.defaultStyle.fontSize, 28);
+    expect(decoded.defaultStyle.outlineWidth, 0.5);
   });
 
   test('migrates legacy two-line drafts to a single subtitle line', () {

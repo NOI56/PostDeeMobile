@@ -30,9 +30,10 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
         ),
       )
       .toList(growable: false);
-  final preparedSegments = rechunkSubtitleByMaxChars(
+  final preparedSegments = prepareSubtitleSegmentsForLocalRender(
     sourceSegments,
-    maxCharsPerCue,
+    language: recipe.transcript.language,
+    maximumCharacters: maxCharsPerCue,
   )
       .map(
         (segment) => _MappedRange(

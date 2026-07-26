@@ -585,8 +585,10 @@ Current mobile pieces:
   or fallback segments containing several words are also split at estimated
   Thai word boundaries before reaching mobile. The final automatic cue limit is
   one word for karaoke, up to three words for large text, four for medium, and
-  five for small text; short-cue merging cannot exceed that limit. Mobile never
-  hard-splits an unspaced Thai phrase. Preview and burned output disable
+  five for small text; short-cue merging cannot exceed that limit. Mobile keeps
+  those server-enforced Thai cue boundaries instead of running its
+  character-based short-cue merger a second time, and never hard-splits an
+  unspaced Thai phrase. Preview and burned output disable
   wrapping, measure cues against 85% of the scaled video width, and reduce the
   font size only as a fallback instead of clipping the text.
 - Transcription-provider failures return structured HTTP 502

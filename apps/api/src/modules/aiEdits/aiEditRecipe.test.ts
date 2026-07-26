@@ -1058,6 +1058,27 @@ describe('AI edit recipe pacing settings', () => {
     ).toBe(true);
   });
 
+  it('splits a real ElevenLabs Thai cue at the requested word limit', () => {
+    const text = 'จะเป็นของมือสองไปหา';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'th',
+      model: 'scribe_v2',
+      text,
+      durationSeconds: 2,
+      settings: { subtitleWordsPerLine: 3 },
+      segments: [{ text, start: 0, end: 2 }],
+      words: []
+    });
+
+    expect(recipe.subtitles.segments.map((segment) => segment.text)).toEqual([
+      'จะเป็นของ',
+      'มือสองไปหา'
+    ]);
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe(text);
+  });
+
   it('keeps spaces around Latin product names and numbers in Thai subtitles', () => {
     const recipe = buildRecipe({
       capabilities: { subtitle: true },

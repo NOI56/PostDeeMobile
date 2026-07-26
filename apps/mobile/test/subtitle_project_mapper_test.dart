@@ -97,6 +97,23 @@ void main() {
     expect(project.cues.single.sourceEndMs, 4000);
   });
 
+  test('does not merge adjacent Thai cues already split by the API', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(text: 'จะเป็นของ', start: 0, end: 0.35),
+          ClipTranscriptSegment(text: 'มือสองไปหา', start: 0.35, end: 2),
+        ],
+      ),
+      projectId: 'project-thai-api-boundaries',
+      sourceFingerprint: 'source-thai-api-boundaries',
+      now: DateTime.utc(2026, 7, 26),
+      maxCharsPerCue: 18,
+    );
+
+    expect(project.cues.map((cue) => cue.text), ['จะเป็นของ', 'มือสองไปหา']);
+  });
+
   test('does not trust raw transcript words for highlighting', () {
     final project = mapAiEditRecipeToSubtitleProject(
       recipe: recipeFixture(includeRawWords: true),

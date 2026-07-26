@@ -144,7 +144,9 @@ The first verified mobile subtitle editor supports:
 
 - short, medium, or long text grouping per subtitle range
 - a hard one-line cap of 3 words for large text, 4 for medium, 5 for small,
-  and 1 for karaoke, preserved after short-cue merging
+  and 1 for karaoke, preserved after short-cue merging; mobile keeps the
+  server-produced Thai boundaries instead of merging them again by character
+  count
 - readable spacing for Latin product names and numbers inside Thai subtitles
 - three text sizes
 - white text with a black outline

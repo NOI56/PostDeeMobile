@@ -682,7 +682,10 @@ into individual characters. Thai fallback segments that are long or contain
 several words are rebuilt with estimated Thai word boundaries. An explicit
 `subtitleWordsPerLine` remains a hard cap after short-cue merging; current
 mobile choices cap large text at three words, medium at four, small at five,
-and karaoke at one. Mobile presents each cue on one subtitle line;
+and karaoke at one. Mobile preserves these API-produced Thai cue boundaries
+without passing them through its character-based short-cue merger again, while
+non-Thai text keeps the existing local character re-chunking safety pass.
+Mobile presents each cue on one subtitle line;
 legacy two-line draft styles normalize to one line when loaded. The Groq
 request no longer carries a PostDee
 spelling prompt because real-clip validation showed provider context leaking

@@ -1386,12 +1386,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           ),
     ];
     final subtitleMaxChars = options.subtitleMaxChars;
-    if (subtitleMaxChars != null) {
-      subtitleSegments = rechunkSubtitleByMaxChars(
-        subtitleSegments,
-        subtitleMaxChars,
-      );
-    }
+    subtitleSegments = prepareSubtitleSegmentsForLocalRender(
+      subtitleSegments,
+      language: recipe.transcript.language,
+      maximumCharacters: subtitleMaxChars,
+    );
     if (sourceDuration > 0 && subtitleSegments.isNotEmpty) {
       cutRanges = alignLeadingCutToFirstSubtitle(
         cutRanges,

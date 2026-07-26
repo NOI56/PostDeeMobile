@@ -340,6 +340,29 @@ List<SubtitleSegment> rechunkSubtitleByMaxChars(
   );
 }
 
+bool _isThaiTranscriptLanguage(String language) {
+  final normalized = language.trim().toLowerCase().replaceAll('_', '-');
+  return normalized == 'th' ||
+      normalized == 'tha' ||
+      normalized == 'thai' ||
+      normalized.startsWith('th-');
+}
+
+/// The API has the Thai dictionary and owns Thai word boundaries. Re-chunking
+/// those cues again on-device can merge several short cues back into one long
+/// line because the local fallback only sees characters. Other languages keep
+/// the existing local character-based safety pass.
+List<SubtitleSegment> prepareSubtitleSegmentsForLocalRender(
+  List<SubtitleSegment> segments, {
+  required String language,
+  required int? maximumCharacters,
+}) {
+  if (maximumCharacters == null || _isThaiTranscriptLanguage(language)) {
+    return segments;
+  }
+  return rechunkSubtitleByMaxChars(segments, maximumCharacters);
+}
+
 /// Merges provider fragments that would flash too quickly to read. A short cue
 /// is joined only across a small gap, so real pauses and separate scenes remain
 /// independent.

@@ -82,7 +82,7 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
   final cutRanges = _mergeCutRanges(mappedCutRanges);
 
   final project = SubtitleProject(
-    schemaVersion: 1,
+    schemaVersion: currentSubtitleProjectSchemaVersion,
     projectId: projectId,
     sourceFingerprint: sourceFingerprint,
     sourceDurationMs: sourceDurationMs,

@@ -129,7 +129,7 @@ class _MemoryDraftStore implements SubtitleDraftStore {
 }
 
 SubtitleProject _project() => SubtitleProject(
-      schemaVersion: 1,
+      schemaVersion: 2,
       projectId: 'project-1',
       sourceFingerprint: 'source-1',
       sourceDurationMs: 5000,

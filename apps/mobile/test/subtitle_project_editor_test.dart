@@ -327,7 +327,7 @@ SubtitleProject twoCueProject(
   String? secondSoundEffect,
 }) =>
     SubtitleProject(
-      schemaVersion: 1,
+      schemaVersion: 2,
       projectId: 'project-1',
       sourceFingerprint: 'source-1',
       sourceDurationMs: 2000,
@@ -370,7 +370,7 @@ SubtitleProject projectWithCue({
   String? soundEffect,
 }) =>
     SubtitleProject(
-      schemaVersion: 1,
+      schemaVersion: 2,
       projectId: 'project-1',
       sourceFingerprint: 'source-1',
       sourceDurationMs: 2000,
@@ -396,7 +396,7 @@ SubtitleProject projectWithCue({
     );
 
 SubtitleProject emptyProject() => SubtitleProject(
-      schemaVersion: 1,
+      schemaVersion: 2,
       projectId: 'project-1',
       sourceFingerprint: 'source-1',
       sourceDurationMs: 2000,

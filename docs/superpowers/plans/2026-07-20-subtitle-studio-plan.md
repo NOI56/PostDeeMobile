@@ -72,9 +72,10 @@ PostDee already has the expensive and technically risky foundations:
   Thai word timing is fragmented or incomplete.
 - Mobile extracts and uploads a small temporary M4A for the current production
   AI capabilities while the original source video remains on the phone.
-- Mobile builds SRT, bundles Prompt Bold, uses FFmpeg/libass to burn subtitles,
-  tries hardware H.264 first, falls back safely, and verifies that the output
-  still contains a video stream.
+- Mobile builds SRT, defaults automatic subtitles to bundled Noto Sans Thai
+  Bold, keeps Prompt and Anuphan selectable, uses FFmpeg/libass to burn
+  subtitles, tries hardware H.264 first, falls back safely, and verifies that
+  the output still contains a video stream.
 - The current screen already offers three subtitle sizes, three text-density
   choices, top/bottom position, and final review before Upload/Post.
 
@@ -92,7 +93,7 @@ subtitle project and a live editor between `prepare` and the final FFmpeg render
 | Adjust cue start/end | Timed lines observed | No | MVP with safe nudge controls; waveform later |
 | Undo/redo and autosave | Yes | No | MVP |
 | Live subtitle preview | Yes | Static setup preview + rendered review | MVP with Flutter overlay |
-| Font, size, colours, outline, shadow | Yes | Prompt, size, white/black fixed | MVP, whole-clip style first |
+| Font, size, colours, outline, shadow | Yes | Noto Sans Thai, Prompt, and Anuphan; editable whole-clip style | MVP implemented; per-line style remains later |
 | Current-word highlight | Yes | No | MVP after timing-quality fallback is implemented |
 | Per-line style/position | Yes | No | Data model supports it; UI after MVP |
 | Text animations | Yes | No | Phase 2, start with a small verified set |
@@ -233,8 +234,11 @@ the existing word durations. If the structure changes, mark that cue as
 `estimated`, distribute timing conservatively inside the cue, and allow the user
 to adjust the cue. Do not show a confidently wrong word-by-word animation.
 
-Start with the already bundled Prompt and Anuphan families. Add fonts or sound
-assets only after commercial redistribution rights are recorded.
+Noto Sans Thai Bold is the default automatic-subtitle face because its Thai
+mark spacing remains legible with libass at small mobile-preview sizes. Prompt
+and Anuphan remain selectable. The bundled Noto asset includes its SIL Open
+Font License; add any further fonts or sound assets only after redistribution
+rights are recorded.
 
 ### 5.5 Persistence
 

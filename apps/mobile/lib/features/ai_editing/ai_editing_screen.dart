@@ -1431,7 +1431,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         : fitSubtitleFontSizeForSingleLine(
             texts: subtitleSegments.map((segment) => segment.text),
             style: TextStyle(
-              fontFamily: studioStyle?.fontId ?? 'Anuphan',
+              fontFamily: studioStyle?.fontId ?? 'Noto Sans Thai',
               fontWeight: studioStyle == null
                   ? FontWeight.w700
                   : FontWeight.values.firstWhere(
@@ -1548,12 +1548,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       subtitleAlignment: studioStyle == null
           ? null
           : _burnSubtitleAlignment(studioStyle.alignment),
-      subtitleFontName: studioStyle?.fontId ?? 'Anuphan',
+      subtitleFontName: studioStyle?.fontId ?? 'Noto Sans Thai',
       subtitleFontAssetPath:
           studioStyle == null ? null : _subtitleFontAssetPath(studioStyle),
       subtitleTextColor: studioStyle?.textColor ?? '#FFFFFF',
       subtitleOutlineColor: studioStyle?.outlineColor ?? '#000000',
-      subtitleOutlineWidth: studioStyle?.outlineWidth ?? 1.2,
+      subtitleOutlineWidth: studioStyle?.outlineWidth ?? 1,
       subtitleShadowColor: studioStyle?.shadowColor ?? '#000000',
       subtitleShadowDepth: studioStyle?.shadowDepth ?? 0,
       preserveTempDirectoryPaths: {
@@ -1681,6 +1681,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       };
 
   String _subtitleFontAssetPath(SubtitleStyle style) {
+    if (style.fontId == 'Noto Sans Thai') {
+      return 'assets/fonts/notosansthai/NotoSansThai-Bold.ttf';
+    }
     final family = style.fontId == 'Anuphan' ? 'anuphan' : 'prompt';
     final familyName = family == 'anuphan' ? 'Anuphan' : 'Prompt';
     final weight = switch (style.fontWeight) {

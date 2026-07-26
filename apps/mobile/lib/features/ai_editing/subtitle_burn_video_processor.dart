@@ -104,11 +104,11 @@ class BurnSubtitleRequest {
     this.subtitleFontSize = 18,
     this.subtitleAtBottom = true,
     this.subtitleAlignment,
-    this.subtitleFontName = 'Anuphan',
+    this.subtitleFontName = 'Noto Sans Thai',
     this.subtitleFontAssetPath,
     this.subtitleTextColor = '#FFFFFF',
     this.subtitleOutlineColor = '#000000',
-    this.subtitleOutlineWidth = 1.2,
+    this.subtitleOutlineWidth = 1,
     this.subtitleShadowColor = '#000000',
     this.subtitleShadowDepth = 0,
     this.preserveTempDirectoryPaths = const {},
@@ -310,10 +310,10 @@ String buildSubtitleForceStyle({
   double fontSize = 18,
   bool atBottom = true,
   BurnSubtitleAlignment? alignment,
-  String fontName = 'Anuphan',
+  String fontName = 'Noto Sans Thai',
   String textColor = '#FFFFFF',
   String outlineColor = '#000000',
-  double outlineWidth = 1.2,
+  double outlineWidth = 1,
   String shadowColor = '#000000',
   double shadowDepth = 0,
   int horizontalMargin = 24,
@@ -330,7 +330,7 @@ String buildSubtitleForceStyle({
   final safeHorizontalMargin = horizontalMargin.clamp(0, 2000);
   final safeVerticalMargin = verticalMargin.clamp(0, 2000);
 
-  return 'FontName=${safeFontName.isEmpty ? 'Anuphan' : safeFontName},'
+  return 'FontName=${safeFontName.isEmpty ? 'Noto Sans Thai' : safeFontName},'
       'Fontsize=$size,PrimaryColour=${_assColor(textColor, '#FFFFFF')},'
       'OutlineColour=${_assColor(outlineColor, '#000000')},'
       'BackColour=${_assColor(shadowColor, '#000000')},BorderStyle=1,'
@@ -699,7 +699,7 @@ List<String> buildEditFfmpegArguments({
   required String outputPath,
   String? subtitlePath,
   String? subtitleFontsDirectory,
-  String subtitleFontName = 'Anuphan',
+  String subtitleFontName = 'Noto Sans Thai',
   String colorFilter = '',
   List<String> drawTextFilters = const [],
   double speed = 1.0,
@@ -715,7 +715,7 @@ List<String> buildEditFfmpegArguments({
   BurnSubtitleAlignment? subtitleAlignment,
   String subtitleTextColor = '#FFFFFF',
   String subtitleOutlineColor = '#000000',
-  double subtitleOutlineWidth = 1.2,
+  double subtitleOutlineWidth = 1,
   String subtitleShadowColor = '#000000',
   double subtitleShadowDepth = 0,
   String videoCodec = 'mpeg4',
@@ -938,7 +938,7 @@ Future<List<String?>?> ffprobeStreamTypes(String path) async {
 class FfmpegSubtitleBurnVideoProcessor {
   const FfmpegSubtitleBurnVideoProcessor({
     this.assetBundle,
-    this.fontAssetPath = 'assets/fonts/anuphan/Anuphan-Bold.ttf',
+    this.fontAssetPath = 'assets/fonts/notosansthai/NotoSansThai-Bold.ttf',
     this.probeStreamTypes = ffprobeStreamTypes,
     this.renderTempDirectory,
   });

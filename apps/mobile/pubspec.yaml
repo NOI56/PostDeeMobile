@@ -39,6 +39,10 @@ flutter:
     - assets/images/brand/
     - assets/images/platforms/
   fonts:
+    - family: Noto Sans Thai
+      fonts:
+        - asset: assets/fonts/notosansthai/NotoSansThai-Bold.ttf
+          weight: 700
     - family: Anuphan
       fonts:
         - asset: assets/fonts/anuphan/Anuphan-Regular.ttf

@@ -612,6 +612,15 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
           children: [
             Expanded(
               child: _choiceButton(
+                key: 'subtitle-font-noto',
+                label: 'Noto Thai',
+                selected: style.fontId == 'Noto Sans Thai',
+                onTap: () => _setStyle(fontId: 'Noto Sans Thai'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _choiceButton(
                 key: 'subtitle-font-prompt',
                 label: 'Prompt',
                 selected: style.fontId == 'Prompt',

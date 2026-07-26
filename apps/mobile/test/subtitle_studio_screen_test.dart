@@ -7,7 +7,7 @@ import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_proj
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_studio_screen.dart';
 
 void main() {
-  testWidgets('edits text and allows Prompt to override the Anuphan default',
+  testWidgets('edits text and allows Prompt to override the Noto Thai default',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -103,7 +103,7 @@ class _MemoryDraftStore implements SubtitleDraftStore {
 }
 
 SubtitleProject _project() => SubtitleProject(
-      schemaVersion: 1,
+      schemaVersion: 2,
       projectId: 'screen-project',
       sourceFingerprint: 'screen-source',
       sourceDurationMs: 5000,

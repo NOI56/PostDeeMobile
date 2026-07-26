@@ -60,4 +60,15 @@ void main() {
     );
     expect(File('assets/fonts/anuphan/Anuphan-Bold.ttf').existsSync(), isTrue);
   });
+
+  test('bundles the Thai subtitle-safe Noto font and its license', () {
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+
+    expect(pubspec, contains('family: Noto Sans Thai'));
+    expect(
+      File('assets/fonts/notosansthai/NotoSansThai-Bold.ttf').existsSync(),
+      isTrue,
+    );
+    expect(File('assets/fonts/notosansthai/OFL.txt').existsSync(), isTrue);
+  });
 }

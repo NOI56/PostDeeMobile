@@ -586,9 +586,10 @@ void main() {
 
   test('builds subtitle force style with size and position', () {
     final bottom = buildSubtitleForceStyle(fontSize: 24, atBottom: true);
-    expect(bottom, contains('FontName=Anuphan'));
+    expect(bottom, contains('FontName=Noto Sans Thai'));
     expect(bottom, contains('Fontsize=24'));
-    expect(bottom, contains('Outline=1.2'));
+    expect(bottom, contains('Outline=1'));
+    expect(bottom, contains('Shadow=0'));
     expect(bottom, contains('Alignment=2'));
     expect(bottom, contains('MarginL=24'));
     expect(bottom, contains('MarginR=24'));

@@ -3,7 +3,7 @@ import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_proj
 
 void main() {
   SubtitleProject validProject() => SubtitleProject(
-        schemaVersion: 1,
+        schemaVersion: 2,
         projectId: 'project-1',
         sourceFingerprint: 'source-1',
         sourceDurationMs: 5000,
@@ -154,16 +154,58 @@ void main() {
   test('uses the specified readable default style', () {
     final style = SubtitleStyle.defaults;
 
-    expect(style.fontId, 'Anuphan');
+    expect(style.fontId, 'Noto Sans Thai');
     expect(style.fontWeight, 700);
     expect(style.fontSize, 22);
     expect(style.textColor, '#FFFFFF');
     expect(style.activeWordColor, '#00E5A8');
     expect(style.outlineColor, '#000000');
-    expect(style.outlineWidth, 1.2);
+    expect(style.outlineWidth, 1);
     expect(style.shadowColor, '#000000');
+    expect(style.shadowDepth, 0);
     expect(style.alignment, SubtitleAlignment.bottom);
     expect(style.maxLines, 1);
+  });
+
+  test('migrates the legacy subtitle style away from sunken Thai marks', () {
+    final json = validProject().toJson()..['schemaVersion'] = 1;
+    json['defaultStyle'] = {
+      ...SubtitleStyle.defaults.toJson(),
+      'fontId': 'Anuphan',
+      'outlineWidth': 1.2,
+      'shadowDepth': 2.0,
+    };
+
+    final decoded = SubtitleProject.fromJson(json);
+
+    expect(decoded.schemaVersion, 2);
+    expect(decoded.defaultStyle.fontId, 'Noto Sans Thai');
+    expect(decoded.defaultStyle.outlineWidth, 1);
+    expect(decoded.defaultStyle.shadowDepth, 0);
+  });
+
+  test('keeps Prompt while migrating a legacy Anuphan cue override', () {
+    final json = validProject().toJson()..['schemaVersion'] = 1;
+    json['defaultStyle'] = {
+      ...SubtitleStyle.defaults.toJson(),
+      'fontId': 'Prompt',
+    };
+    final cue = Map<String, Object?>.from(
+      (json['cues']! as List<Object?>).single as Map<String, Object?>,
+    )..['styleOverride'] = {
+        ...SubtitleStyle.defaults.toJson(),
+        'fontId': 'Anuphan',
+        'outlineWidth': 1.2,
+        'shadowDepth': 2.0,
+      };
+    json['cues'] = [cue];
+
+    final decoded = SubtitleProject.fromJson(json);
+
+    expect(decoded.defaultStyle.fontId, 'Prompt');
+    expect(decoded.cues.single.styleOverride?.fontId, 'Noto Sans Thai');
+    expect(decoded.cues.single.styleOverride?.outlineWidth, 1);
+    expect(decoded.cues.single.styleOverride?.shadowDepth, 0);
   });
 
   test('migrates legacy two-line drafts to a single subtitle line', () {

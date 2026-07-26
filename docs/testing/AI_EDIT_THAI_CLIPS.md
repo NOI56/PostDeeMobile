@@ -120,3 +120,21 @@ requested target, while the existing planner still chooses and expands the
 content ranges. Repeating the same 150.635→60-second flow on the Pixel 8 after
 the fix produced exactly 60.000 seconds for the video stream, audio stream, and
 MP4 container.
+
+## 2026-07-26 Thai combining-mark render acceptance
+
+The same 38 MB / 150.635-second talking-head source was regenerated through the
+installed Staging app on the Pixel 8 emulator with a 60-second target. The
+render workspace contained the bundled 20,600-byte `NotoSansThai-Bold.ttf`,
+and the final 304x540 preview contained MPEG-4 video plus AAC audio for exactly
+60.000 seconds.
+
+Frame inspection covered the source phrases `ซ้ำแล้วซ้ำ`, `อีกเพื่อจะ`, and
+`มีอาหารที่`. The upper vowel and tone marks were visibly separated from their
+base consonants, remained inside the glyph area, and were not swallowed by the
+outline. The automatic style used Noto Sans Thai Bold, outline 1, and shadow 0.
+Prompt and Anuphan remain user-selectable in Subtitle Studio.
+
+The transcript strings were already valid NFC Thai in the generated SRT, so
+this regression was in font metrics plus the old heavy outline/shadow
+combination, not in ElevenLabs transcription or Thai Unicode ordering.

@@ -658,11 +658,16 @@ cancellation and timeouts, and
 caches identical successful renders for the current editing session. Entering
 Upload/Post triggers a separate full-source-dimension render, so preview media
 is never treated as the publishable export.
-The renderer copies the selected bundled Prompt or Anuphan font into each
-subtitle render workspace and passes that directory plus verified static style
-values (font size, text/outline/shadow colours, outline/shadow depth, and safe
-top/middle/bottom alignment) to libass. The current export remains SRT-based;
-ASS active-word events, karaoke, and per-cue style overrides are not enabled.
+The renderer copies the selected bundled Noto Sans Thai, Prompt, or Anuphan
+font into each subtitle render workspace and passes that directory plus
+verified static style values (font size, text/outline/shadow colours,
+outline/shadow depth, and safe top/middle/bottom alignment) to libass.
+Automatic subtitles use Noto Sans Thai Bold, outline 1, and no drop shadow so
+Thai combining marks remain legible. Subtitle-project schema version 2 carries
+that default; version-1 Anuphan styles migrate on load, Prompt styles stay
+unchanged, and users can select Anuphan again after migration. The current
+export remains SRT-based; ASS active-word events, karaoke, and per-cue style
+overrides are not enabled.
 Automatic cues are rendered with wrapping disabled. Mobile measures every cue
 against 85% of the scaled video width and reduces the requested font size only
 as a fallback when a valid Thai word-boundary split is still too wide.

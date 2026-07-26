@@ -577,8 +577,12 @@ Current mobile pieces:
   top/middle/bottom position while the Flutter preview updates immediately.
   Subtitle cues use one line in both new and restored drafts; legacy two-line
   draft styles are migrated to one line when loaded. New automatic subtitles
-  default to Bai Jamjuree Bold with a 0.5 outline and no drop shadow so stacked
-  Thai marks remain visually separated in a 540p preview. Schema-1 Anuphan and
+  retain Bai Jamjuree Bold as the editable style with a 0.5 outline and no drop
+  shadow. For burn-in only, every selectable Bai Jamjuree, Prompt, or Anuphan
+  style maps to its bundled, internally renamed OFL derivative. Temporary SRT
+  private-use glyphs lift tone marks only when they stack above an upper vowel
+  or sara am. Saved captions remain normal Unicode Thai, while 540p previews
+  keep `่/้/๊/๋` visibly separate from the mark below. Schema-1 Anuphan and
   schema-2 Noto defaults migrate to schema 3; Prompt styles remain unchanged.
   Draft JSON is autosaved in app-owned storage and reopening the same source
   and AI setup restores it. These local edits and retries do not call a metered
@@ -617,11 +621,13 @@ Current mobile pieces:
   user's exact remaining and used Pro minutes. It updates immediately from the
   metered `prepare` response and can be tapped to refresh without consuming a
   minute.
-- Android subtitle export gives libass the selected bundled Bai Jamjuree,
-  Prompt, or Anuphan font explicitly and maps the selected colour, outline,
-  shadow, and safe alignment into the final MP4. The current rollback-safe
-  renderer still uses SRT/static cues; active-word karaoke and per-cue styles
-  remain future work.
+- Android subtitle export gives libass the selected bundled font explicitly and
+  maps the selected colour, outline, shadow, and safe alignment into the final
+  MP4. Bai Jamjuree, Prompt, and Anuphan burn-in use internally renamed
+  derivatives so stacked Thai tone marks can use mark-safe glyphs without
+  modifying the user's caption text. The current rollback-safe renderer still
+  uses SRT/static cues; active-word karaoke and per-cue styles remain future
+  work.
   Silence removal compacts kept audio ranges with
   `atrim` + `concat` so the audio ends with the shortened video instead of
   continuing after the final frame.

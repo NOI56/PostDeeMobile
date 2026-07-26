@@ -48,6 +48,121 @@ void main() {
     expect(srt, contains(thaiMarkCoverage));
   });
 
+  test('lifts only Thai tone marks stacked above upper vowels or sara am', () {
+    expect(
+      liftStackedThaiToneMarksForRender('ที่ นี้ ชิ้น ขึ้น ซ้ำ ปิ๊ง'),
+      'ที\uE000 นี\uE001 ชิ\uE001น ขึ\uE001น ซ\uE001ำ ปิ\uE002ง',
+    );
+    expect(
+      liftStackedThaiToneMarksForRender('เก่ง กุ้ง จ๋า ก๋วยเตี๋ยว'),
+      'เก่ง กุ้ง จ๋า ก๋วยเตี\uE003ยว',
+    );
+    expect(
+      liftStackedThaiToneMarksForRender('ขายดี Weekend Market'),
+      'ขายดี Weekend Market',
+    );
+  });
+
+  test('lifts every Thai tone mark above every supported upper mark', () {
+    const upperMarks = [
+      0x0E31,
+      0x0E34,
+      0x0E35,
+      0x0E36,
+      0x0E37,
+      0x0E47,
+      0x0E4D,
+    ];
+
+    for (final upperMark in upperMarks) {
+      for (var toneMark = 0x0E48; toneMark <= 0x0E4B; toneMark += 1) {
+        final input = String.fromCharCodes([0x0E01, upperMark, toneMark]);
+        final expected = String.fromCharCodes([
+          0x0E01,
+          upperMark,
+          0xE000 + toneMark - 0x0E48,
+        ]);
+
+        expect(liftStackedThaiToneMarksForRender(input), expected);
+      }
+    }
+  });
+
+  test('lifts a tone before precomposed or decomposed sara am', () {
+    final precomposed = String.fromCharCodes([0x0E19, 0x0E49, 0x0E33]);
+    final decomposed = String.fromCharCodes([0x0E19, 0x0E49, 0x0E4D, 0x0E32]);
+    final expectedPrecomposed = String.fromCharCodes([0x0E19, 0xE001, 0x0E33]);
+    final expectedDecomposed =
+        String.fromCharCodes([0x0E19, 0xE001, 0x0E4D, 0x0E32]);
+
+    expect(
+      liftStackedThaiToneMarksForRender(precomposed),
+      expectedPrecomposed,
+    );
+    expect(
+      liftStackedThaiToneMarksForRender(decomposed),
+      expectedDecomposed,
+    );
+  });
+
+  test('protects marks only when the matching mark-safe font asset is used',
+      () {
+    expect(
+      shouldProtectStackedThaiMarksForRender(
+        fontName: postDeeSubtitleThaiFontName,
+        fontAssetPath: postDeeSubtitleThaiFontAssetPath,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldProtectStackedThaiMarksForRender(
+        fontName: postDeeSubtitleAnuphanFontName,
+        fontAssetPath:
+            'assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-Bold.ttf',
+      ),
+      isTrue,
+    );
+    expect(
+      shouldProtectStackedThaiMarksForRender(
+        fontName: postDeeSubtitlePromptFontName,
+        fontAssetPath:
+            'assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Black.ttf',
+      ),
+      isTrue,
+    );
+    expect(
+      shouldProtectStackedThaiMarksForRender(
+        fontName: postDeeSubtitleThaiFontName,
+        fontAssetPath: 'assets/fonts/anuphan/Anuphan-Bold.ttf',
+      ),
+      isFalse,
+    );
+    expect(
+      shouldProtectStackedThaiMarksForRender(
+        fontName: 'Prompt',
+        fontAssetPath:
+            'assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Bold.ttf',
+      ),
+      isFalse,
+    );
+  });
+
+  test('builds mark-safe SRT only for the PostDee subtitle render font', () {
+    const segments = [
+      SubtitleSegment(text: 'มีอาหารที่ ซ้ำแล้ว', start: 0, end: 2),
+    ];
+
+    final normal = buildSrtContent(segments);
+    final protected = buildSrtContent(
+      segments,
+      protectStackedThaiMarks: true,
+    );
+
+    expect(normal, contains('มีอาหารที่ ซ้ำแล้ว'));
+    expect(protected, contains('มีอาหารที\uE000 ซ\uE001ำแล้ว'));
+    expect(protected, isNot(contains('มีอาหารที่ ซ้ำแล้ว')));
+  });
+
   test('clips and shifts segments to the trim window', () {
     final clipped = clipSegmentsToTrim(
       const [
@@ -586,7 +701,7 @@ void main() {
 
   test('builds subtitle force style with size and position', () {
     final bottom = buildSubtitleForceStyle(fontSize: 24, atBottom: true);
-    expect(bottom, contains('FontName=Bai Jamjuree'));
+    expect(bottom, contains('FontName=PostDee Subtitle Thai'));
     expect(bottom, contains('Fontsize=24'));
     expect(bottom, contains('Outline=0.5'));
     expect(bottom, contains('Shadow=0'));

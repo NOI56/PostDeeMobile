@@ -1417,6 +1417,10 @@ void main() {
     expect(studioLaunches, 0);
     expect(renderRequests, hasLength(1));
     expect(renderRequests.single.segments, isNotEmpty);
+    expect(
+      renderRequests.single.subtitleFontName,
+      postDeeSubtitleThaiFontName,
+    );
     expect(renderRequests.single.maxOutputDurationSeconds, 30);
     expect(
       renderRequests.single.segments.map((segment) => segment.text).join(),
@@ -1447,7 +1451,14 @@ void main() {
     final renderRequest = renderRequests.last;
     expect(renderRequest.segments, hasLength(1));
     expect(renderRequest.segments.single.text, editedSubtitle);
-    expect(renderRequest.subtitleFontName, 'Anuphan');
+    expect(
+      renderRequest.subtitleFontName,
+      postDeeSubtitleAnuphanFontName,
+    );
+    expect(
+      renderRequest.subtitleFontAssetPath,
+      'assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-Bold.ttf',
+    );
     expect(renderRequest.subtitleFontSize, lessThan(30));
     expect(renderRequest.subtitleFontSize, greaterThanOrEqualTo(6));
     expect(renderRequest.subtitleTextColor, '#00E5A8');

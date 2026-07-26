@@ -132,12 +132,41 @@ installed Staging app on the Pixel 8 emulator with Bai Jamjuree Bold. The
 render workspace contained the bundled 81,840-byte font, and the final 304x540
 preview contained MPEG-4 video plus AAC audio for exactly 60.000 seconds.
 
-Frame inspection covered `ซ้ำแล้ว`, `ซ้ำอีกเพื่อ`, and `มีอาหารที่`. Stacked
-marks retained visible background/outline separation at the real rendered
-resolution. The tested medium style used font size 25, outline 0.5, and shadow
-0. A separate fixture covered `่ ้ ๊ ๋ ิ ี ึ ื ุ ู ็ ์`; none collided with
-the base glyph or another mark. Prompt and Anuphan remain selectable.
+Frame inspection covered `ซ้ำแล้ว`, `ซ้ำอีกเพื่อ`, and `มีอาหารที่`. The first
+review considered the marks separated, but a 2026-07-27 enlarged audit rejected
+that conclusion: at the real 304x540 resolution, the `่` in `ที่` still joined
+the `ี`. The tested medium style used font size 25, outline 0.5, and shadow 0.
+Prompt and Anuphan remain selectable.
 
 The transcript strings were already valid NFC Thai in the generated SRT, so
 this regression was in font metrics plus outline thickness, not in ElevenLabs
 transcription or Thai Unicode ordering.
+
+## 2026-07-27 context-aware Thai tone-mark correction
+
+Code-point inspection confirmed the source SRT already used the valid sequence
+`ท + ี + ่`. Nine ordinary Thai fonts and outline widths from 0 through 0.5
+were rasterized at 304x540; all could still collapse stacked marks to one
+component. The corrective path keeps editable text untouched and replaces only
+tone marks stacked above `ั/ิ/ี/ึ/ื/็/ํ` or immediately before composed or
+decomposed `ำ` in the temporary libass SRT. Internally renamed OFL derivatives
+for Bai Jamjuree, Prompt, and Anuphan each map those four temporary private-use
+values to the matching face's raised tone glyphs. Direct tones such as `เก่ง`,
+`กุ้ง`, and `จ๋า` remain unchanged.
+
+Pixel 8 Staging acceptance used a new 30-second Thai talking-head extract and
+consumed one metered minute. The short-source preview was 406x720 with video and
+audio for exactly 30.000 seconds. Its 38-cue temporary SRT exercised 12 mai-ek,
+7 mai-tho, and 1 mai-chattawa protected glyphs. Pixel inspection of
+`ที่ในเมือง`, `แล้วซ้ำอีก`, and `ตั๋วครั้งนึง` showed visible gaps between the
+upper vowel and tone mark while the direct tone in `แล้ว` retained its normal
+shape. Subtitle Studio then re-rendered the same analysis locally with
+Bai Jamjuree, Anuphan, and Prompt; each workspace contained its matching
+PostDee derivative and all three outputs passed the same frame check without
+using another AI minute.
+
+The current generated Bai derivative and extracted Android SRT were also
+rendered through libass at the long-source 304x540 preview size. The same three
+frames remained separated. The saved 38-cue draft retained `fontId: Prompt`,
+normal Thai such as `ที่ในเมือง`, and no `U+E000` through `U+E003`; the private
+glyphs existed only in temporary render SRT files.

@@ -70,5 +70,29 @@ void main() {
       isTrue,
     );
     expect(File('assets/fonts/baijamjuree/OFL.txt').existsSync(), isTrue);
+    expect(pubspec, contains('family: PostDee Subtitle Thai'));
+    expect(pubspec, contains('family: PostDee Subtitle Anuphan'));
+    expect(pubspec, contains('family: PostDee Subtitle Prompt'));
+    for (final asset in [
+      'PostDeeSubtitleThai-Bold.ttf',
+      'PostDeeSubtitleAnuphan-Regular.ttf',
+      'PostDeeSubtitleAnuphan-Medium.ttf',
+      'PostDeeSubtitleAnuphan-SemiBold.ttf',
+      'PostDeeSubtitleAnuphan-Bold.ttf',
+      'PostDeeSubtitlePrompt-Regular.ttf',
+      'PostDeeSubtitlePrompt-Medium.ttf',
+      'PostDeeSubtitlePrompt-SemiBold.ttf',
+      'PostDeeSubtitlePrompt-Bold.ttf',
+      'PostDeeSubtitlePrompt-ExtraBold.ttf',
+      'PostDeeSubtitlePrompt-Black.ttf',
+    ]) {
+      expect(
+        File('assets/fonts/postdee_subtitle/$asset').existsSync(),
+        isTrue,
+        reason: '$asset must be bundled for mark-safe subtitle rendering',
+      );
+      expect(pubspec, contains('assets/fonts/postdee_subtitle/$asset'));
+    }
+    expect(File('assets/fonts/postdee_subtitle/OFL.txt').existsSync(), isTrue);
   });
 }

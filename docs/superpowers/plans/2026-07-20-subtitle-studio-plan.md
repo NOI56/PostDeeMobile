@@ -234,11 +234,15 @@ the existing word durations. If the structure changes, mark that cue as
 `estimated`, distribute timing conservatively inside the cue, and allow the user
 to adjust the cue. Do not show a confidently wrong word-by-word animation.
 
-Bai Jamjuree Bold is the default automatic-subtitle face because its mark-to-
-mark spacing keeps `้` separate from `ํ` with libass at small mobile-preview
-sizes. Prompt and Anuphan remain selectable. The bundled Bai Jamjuree asset
-includes its SIL Open Font License; add any further fonts or sound assets only
-after redistribution rights are recorded.
+Bai Jamjuree Bold remains the default editable automatic-subtitle style.
+Low-resolution libass previews can still merge tone marks with the upper mark
+below, so burn-in maps that style to the internally renamed OFL derivative
+`PostDee Subtitle Thai`. Prompt and Anuphan remain selectable and map to their
+matching internally renamed derivatives during burn-in. Only stacked `่/้/๊/๋`
+are substituted with private-use render glyphs in the temporary SRT; drafts and
+API text remain standard Unicode Thai. The source and derivative fonts retain
+the SIL Open Font License; add further fonts or sound assets only after
+redistribution rights are recorded.
 
 ### 5.5 Persistence
 

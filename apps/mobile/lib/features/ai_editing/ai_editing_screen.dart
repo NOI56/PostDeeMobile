@@ -1548,7 +1548,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       subtitleAlignment: studioStyle == null
           ? null
           : _burnSubtitleAlignment(studioStyle.alignment),
-      subtitleFontName: studioStyle?.fontId ?? 'Bai Jamjuree',
+      subtitleFontName: _subtitleRenderFontName(studioStyle),
       subtitleFontAssetPath:
           studioStyle == null ? null : _subtitleFontAssetPath(studioStyle),
       subtitleTextColor: studioStyle?.textColor ?? '#FFFFFF',
@@ -1682,7 +1682,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   String _subtitleFontAssetPath(SubtitleStyle style) {
     if (style.fontId == 'Bai Jamjuree') {
-      return 'assets/fonts/baijamjuree/BaiJamjuree-Bold.ttf';
+      return postDeeSubtitleThaiFontAssetPath;
     }
     final family = style.fontId == 'Anuphan' ? 'anuphan' : 'prompt';
     final familyName = family == 'anuphan' ? 'Anuphan' : 'Prompt';
@@ -1694,7 +1694,17 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       >= 500 => 'Medium',
       _ => 'Regular',
     };
-    return 'assets/fonts/$family/$familyName-$weight.ttf';
+    return 'assets/fonts/postdee_subtitle/'
+        'PostDeeSubtitle$familyName-$weight.ttf';
+  }
+
+  String _subtitleRenderFontName(SubtitleStyle? style) {
+    if (style == null || style.fontId == 'Bai Jamjuree') {
+      return postDeeSubtitleThaiFontName;
+    }
+    return style.fontId == 'Anuphan'
+        ? postDeeSubtitleAnuphanFontName
+        : postDeeSubtitlePromptFontName;
   }
 
   _AiSetupSnapshot _captureSetupSnapshot() {

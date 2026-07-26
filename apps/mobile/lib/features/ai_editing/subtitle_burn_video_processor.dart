@@ -6,6 +6,39 @@ import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new_video/session_state.dart';
 import 'package:flutter/services.dart';
 
+const postDeeSubtitleThaiFontName = 'PostDee Subtitle Thai';
+const postDeeSubtitleAnuphanFontName = 'PostDee Subtitle Anuphan';
+const postDeeSubtitlePromptFontName = 'PostDee Subtitle Prompt';
+const postDeeSubtitleThaiFontAssetPath =
+    'assets/fonts/postdee_subtitle/PostDeeSubtitleThai-Bold.ttf';
+const _postDeeMarkSafeFontAssets = <String, Set<String>>{
+  postDeeSubtitleThaiFontName: {
+    postDeeSubtitleThaiFontAssetPath,
+  },
+  postDeeSubtitleAnuphanFontName: {
+    'assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-Regular.ttf',
+    'assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-Medium.ttf',
+    'assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-SemiBold.ttf',
+    'assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-Bold.ttf',
+  },
+  postDeeSubtitlePromptFontName: {
+    'assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Regular.ttf',
+    'assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Medium.ttf',
+    'assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-SemiBold.ttf',
+    'assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Bold.ttf',
+    'assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-ExtraBold.ttf',
+    'assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Black.ttf',
+  },
+};
+
+bool shouldProtectStackedThaiMarksForRender({
+  required String fontName,
+  required String fontAssetPath,
+}) =>
+    _postDeeMarkSafeFontAssets[fontName]
+        ?.contains(fontAssetPath.replaceAll('\\', '/')) ??
+    false;
+
 class SubtitleSegment {
   const SubtitleSegment({
     required this.text,
@@ -104,7 +137,7 @@ class BurnSubtitleRequest {
     this.subtitleFontSize = 18,
     this.subtitleAtBottom = true,
     this.subtitleAlignment,
-    this.subtitleFontName = 'Bai Jamjuree',
+    this.subtitleFontName = postDeeSubtitleThaiFontName,
     this.subtitleFontAssetPath,
     this.subtitleTextColor = '#FFFFFF',
     this.subtitleOutlineColor = '#000000',
@@ -281,13 +314,60 @@ bool shouldVerifyFfmpegOutput({
     returnCodeValue == ReturnCode.success ||
     (returnCodeValue == null && progressReportedEnd);
 
+/// Replaces only tone marks that must sit above another Thai upper mark with
+/// private-use glyphs bundled in [postDeeSubtitleThaiFontName].
+///
+/// Editable subtitles remain normal Unicode Thai. The conversion is used only
+/// in the temporary SRT passed to libass, whose 540p rasterization otherwise
+/// joins stacked marks such as the sara ii + mai ek in "ที่".
+String liftStackedThaiToneMarksForRender(String text) {
+  const upperMarks = {
+    0x0E31, // MAI HAN-AKAT
+    0x0E34, // SARA I
+    0x0E35, // SARA II
+    0x0E36, // SARA UE
+    0x0E37, // SARA UEE
+    0x0E47, // MAITAIKHU
+    0x0E4D, // NIKHAHIT (decomposed SARA AM)
+  };
+  const firstToneMark = 0x0E48;
+  const lastToneMark = 0x0E4B;
+  const saraAm = 0x0E33;
+  const nikhahit = 0x0E4D;
+  const firstProtectedToneGlyph = 0xE000;
+
+  final codePoints = text.runes.toList(growable: false);
+  final buffer = StringBuffer();
+  for (var index = 0; index < codePoints.length; index += 1) {
+    final codePoint = codePoints[index];
+    final isToneMark = codePoint >= firstToneMark && codePoint <= lastToneMark;
+    final previous = index == 0 ? null : codePoints[index - 1];
+    final next = index + 1 >= codePoints.length ? null : codePoints[index + 1];
+    final mustLift = isToneMark &&
+        (upperMarks.contains(previous) || next == saraAm || next == nikhahit);
+
+    buffer.writeCharCode(
+      mustLift
+          ? firstProtectedToneGlyph + codePoint - firstToneMark
+          : codePoint,
+    );
+  }
+  return buffer.toString();
+}
+
 /// Builds an SRT subtitle file body from transcript segments. Pure + testable.
-String buildSrtContent(List<SubtitleSegment> segments) {
+String buildSrtContent(
+  List<SubtitleSegment> segments, {
+  bool protectStackedThaiMarks = false,
+}) {
   final buffer = StringBuffer();
 
   for (var index = 0; index < segments.length; index += 1) {
     final segment = segments[index];
-    final text = segment.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    var text = segment.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (protectStackedThaiMarks) {
+      text = liftStackedThaiToneMarksForRender(text);
+    }
 
     if (text.isEmpty) {
       continue;
@@ -310,7 +390,7 @@ String buildSubtitleForceStyle({
   double fontSize = 18,
   bool atBottom = true,
   BurnSubtitleAlignment? alignment,
-  String fontName = 'Bai Jamjuree',
+  String fontName = postDeeSubtitleThaiFontName,
   String textColor = '#FFFFFF',
   String outlineColor = '#000000',
   double outlineWidth = 0.5,
@@ -330,7 +410,7 @@ String buildSubtitleForceStyle({
   final safeHorizontalMargin = horizontalMargin.clamp(0, 2000);
   final safeVerticalMargin = verticalMargin.clamp(0, 2000);
 
-  return 'FontName=${safeFontName.isEmpty ? 'Bai Jamjuree' : safeFontName},'
+  return 'FontName=${safeFontName.isEmpty ? postDeeSubtitleThaiFontName : safeFontName},'
       'Fontsize=$size,PrimaryColour=${_assColor(textColor, '#FFFFFF')},'
       'OutlineColour=${_assColor(outlineColor, '#000000')},'
       'BackColour=${_assColor(shadowColor, '#000000')},BorderStyle=1,'
@@ -699,7 +779,7 @@ List<String> buildEditFfmpegArguments({
   required String outputPath,
   String? subtitlePath,
   String? subtitleFontsDirectory,
-  String subtitleFontName = 'Bai Jamjuree',
+  String subtitleFontName = postDeeSubtitleThaiFontName,
   String colorFilter = '',
   List<String> drawTextFilters = const [],
   double speed = 1.0,
@@ -938,7 +1018,7 @@ Future<List<String?>?> ffprobeStreamTypes(String path) async {
 class FfmpegSubtitleBurnVideoProcessor {
   const FfmpegSubtitleBurnVideoProcessor({
     this.assetBundle,
-    this.fontAssetPath = 'assets/fonts/baijamjuree/BaiJamjuree-Bold.ttf',
+    this.fontAssetPath = postDeeSubtitleThaiFontAssetPath,
     this.probeStreamTypes = ffprobeStreamTypes,
     this.renderTempDirectory,
   });
@@ -985,7 +1065,14 @@ class FfmpegSubtitleBurnVideoProcessor {
     );
     final hasText =
         request.textOverlays.any((overlay) => overlay.text.trim().isNotEmpty);
-    final srtBody = buildSrtContent(trimmedSegments);
+    final selectedFontAsset = request.subtitleFontAssetPath ?? fontAssetPath;
+    final srtBody = buildSrtContent(
+      trimmedSegments,
+      protectStackedThaiMarks: shouldProtectStackedThaiMarksForRender(
+        fontName: request.subtitleFontName,
+        fontAssetPath: selectedFontAsset,
+      ),
+    );
     final hasSubtitles = srtBody.trim().isNotEmpty;
     final hasEdits = hasSubtitles ||
         trimmedSilence.isNotEmpty ||
@@ -1008,7 +1095,6 @@ class FfmpegSubtitleBurnVideoProcessor {
     String? renderFontPath;
     if (hasSubtitles || hasText) {
       final bundle = assetBundle ?? rootBundle;
-      final selectedFontAsset = request.subtitleFontAssetPath ?? fontAssetPath;
       final fontData = await bundle.load(selectedFontAsset);
       final fontAssetName = selectedFontAsset.split(RegExp(r'[\\/]')).last;
       final safeFontAssetName = fontAssetName.toLowerCase().endsWith('.ttf')

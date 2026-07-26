@@ -921,6 +921,8 @@ Request:
     "watermark": false
   },
   "settings": {
+    "subtitleStyle": "large",
+    "subtitleWordsPerLine": 3,
     "silencePreset": "balanced",
     "fillerWords": ["เอ่อ", "อ่า", "แบบว่า", "คือว่า", "ประมาณว่า"],
     "ctaText": "กดตะกร้าเลย",
@@ -971,6 +973,10 @@ autosave, live preview, local preview render, reopen, and export reuse this
 prepare response; they require no additional API endpoint and consume no extra
 AI-edit minutes. The existing `recipe.subtitles.segments` response remains the
 compatibility contract while reliable active-word cue metadata is deferred.
+When `settings.subtitleWordsPerLine` is present, Thai cue preparation treats it
+as a hard final limit even after short-cue merging. Current mobile values are
+one word for karaoke, up to three words for large text, four for medium, and
+five for small text.
 
 Production mobile enables only `subtitle`, `silence`, `filler`, and `color`,
 because those four have a real local renderer. The setup UI locks auto-reframe,

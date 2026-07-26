@@ -985,7 +985,8 @@ void main() {
     expect(find.text('Pro · ใช้แล้ว 17/200 นาที'), findsOneWidget);
   });
 
-  testWidgets('refreshes a stale Pro badge when the process check returns Basic',
+  testWidgets(
+      'refreshes a stale Pro badge when the process check returns Basic',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('expired-pro-clip.mp4');
     var createUploadCalls = 0;
@@ -1451,7 +1452,8 @@ void main() {
     );
     expect(renderRequest.segments.single.text, editedSubtitle);
     expect(renderRequest.subtitleFontName, 'Anuphan');
-    expect(renderRequest.subtitleFontSize, 30);
+    expect(renderRequest.subtitleFontSize, lessThan(30));
+    expect(renderRequest.subtitleFontSize, greaterThanOrEqualTo(6));
     expect(renderRequest.subtitleTextColor, '#00E5A8');
     expect(renderRequest.subtitleOutlineColor, '#112233');
     expect(renderRequest.subtitleOutlineWidth, 3);
@@ -3710,7 +3712,14 @@ void main() {
     expect(
       find.descendant(
         of: panel,
-        matching: find.text('สั้น (ไม่เกิน 8 ตัวอักษร)'),
+        matching: find.text('สั้น (1 คำ)'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: panel,
+        matching: find.textContaining('ฟอนต์ใหญ่จำกัด 3 คำ'),
       ),
       findsOneWidget,
     );
@@ -3799,7 +3808,8 @@ void main() {
     expect(prepareRequest?.settings.subtitleColor, '#FFFFFF');
     expect(prepareRequest?.settings.subtitleWordsPerLine, 1);
     expect(prepareRequest?.settings.subtitlePosition, 'top');
-    expect(burnRequest?.subtitleFontSize, 17);
+    expect(burnRequest?.subtitleFontSize, lessThanOrEqualTo(17));
+    expect(burnRequest?.subtitleFontSize, greaterThanOrEqualTo(6));
     expect(burnRequest?.subtitleAtBottom, isFalse);
   });
 

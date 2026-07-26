@@ -27,6 +27,7 @@ import 'subtitle_studio/subtitle_draft_store.dart';
 import 'subtitle_studio/subtitle_project.dart';
 import 'subtitle_studio/subtitle_project_identity.dart';
 import 'subtitle_studio/subtitle_project_mapper.dart';
+import 'subtitle_studio/subtitle_preview_overlay.dart';
 import 'subtitle_studio/subtitle_studio_screen.dart';
 
 typedef EditorVideoPicker = Future<PickedVideoFile?> Function();
@@ -1410,6 +1411,38 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             speed: speed,
           )
         : null;
+    final requestedSubtitleFontSize =
+        studioStyle?.fontSize ?? options.subtitleFontSize ?? 18;
+    final sourceWidth = picked.width?.toDouble();
+    final sourceHeight = picked.height?.toDouble();
+    final maximumDimension = previewProfile?.maxVideoDimension.toDouble();
+    final outputWidth = sourceWidth == null ||
+            sourceHeight == null ||
+            sourceWidth <= 0 ||
+            sourceHeight <= 0
+        ? null
+        : maximumDimension != null &&
+                math.max(sourceWidth, sourceHeight) > maximumDimension
+            ? sourceWidth *
+                maximumDimension /
+                math.max(sourceWidth, sourceHeight)
+            : sourceWidth;
+    final subtitleFontSize = subtitleSegments.isEmpty || outputWidth == null
+        ? requestedSubtitleFontSize
+        : fitSubtitleFontSizeForSingleLine(
+            texts: subtitleSegments.map((segment) => segment.text),
+            style: TextStyle(
+              fontFamily: studioStyle?.fontId ?? 'Anuphan',
+              fontWeight: studioStyle == null
+                  ? FontWeight.w700
+                  : FontWeight.values.firstWhere(
+                      (weight) => weight.value == studioStyle.fontWeight,
+                      orElse: () => FontWeight.w700,
+                    ),
+              fontSize: requestedSubtitleFontSize,
+            ),
+            maxWidth: outputWidth * 0.85,
+          );
     final needsLocalRender = subtitleSegments.isNotEmpty ||
         cutRanges.isNotEmpty ||
         (speed - 1).abs() > 0.0001 ||
@@ -1456,7 +1489,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       'filterIndex': options.filterIndex ?? 0,
       'brightness': options.brightness ?? 0,
       'contrast': options.contrast ?? 0,
-      'subtitleFontSize': options.subtitleFontSize ?? 18,
+      'subtitleFontSize': subtitleFontSize,
       'subtitleAtBottom': options.subtitleAtBottom ?? true,
       'subtitleStudioStyle': studioStyle?.toJson(),
       'previewProfile': previewProfile == null
@@ -1509,7 +1542,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       filterIndex: options.filterIndex ?? 0,
       brightness: options.brightness ?? 0,
       contrast: options.contrast ?? 0,
-      subtitleFontSize: studioStyle?.fontSize ?? options.subtitleFontSize ?? 18,
+      subtitleFontSize: subtitleFontSize,
       subtitleAtBottom: studioStyle == null
           ? options.subtitleAtBottom ?? true
           : studioStyle.alignment == SubtitleAlignment.bottom,
@@ -1633,11 +1666,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     );
   }
 
-  int get _subtitleWordsPerLine => switch (_subtitleWords) {
-        'karaoke' => 1,
-        'full' => 8,
-        _ => 4,
-      };
+  int get _subtitleWordsPerLine => subtitleWordLimitForStyle(
+        subtitleStyle: _subtitleStyle,
+        subtitleWords: _subtitleWords,
+      );
 
   String get _effectiveSubtitlePosition =>
       _subtitlePosition == 'top' ? 'top' : 'bottom';
@@ -3943,23 +3975,32 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           children: [
             _choiceChip(
               key: const ValueKey('ai-subtitle-length-short'),
-              label: 'สั้น (ไม่เกิน 8 ตัวอักษร)',
+              label: 'สั้น (1 คำ)',
               selected: _subtitleWords == 'karaoke',
               onTap: () => setState(() => _subtitleWords = 'karaoke'),
             ),
             _choiceChip(
               key: const ValueKey('ai-subtitle-length-medium'),
-              label: 'กลาง (ไม่เกิน 18 ตัวอักษร)',
+              label: 'กลาง (ไม่เกิน 4 คำ)',
               selected: _subtitleWords == 'few',
               onTap: () => setState(() => _subtitleWords = 'few'),
             ),
             _choiceChip(
               key: const ValueKey('ai-subtitle-length-long'),
-              label: 'ยาว (ไม่เกิน 36 ตัวอักษร)',
+              label: 'ยาว (ไม่เกิน 5 คำ)',
               selected: _subtitleWords == 'full',
               onTap: () => setState(() => _subtitleWords = 'full'),
             ),
           ],
+        ),
+        const SizedBox(height: 7),
+        Text(
+          'ฟอนต์ใหญ่จำกัด 3 คำ กลาง 4 คำ และเล็ก 5 คำ เพื่อให้ซับอยู่แถวเดียว',
+          style: TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 11,
+            height: 1.35,
+          ),
         ),
         const SizedBox(height: 13),
         _advancedLabel('ตำแหน่งซับ'),

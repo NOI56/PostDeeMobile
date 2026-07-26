@@ -14,7 +14,8 @@ class SubtitlePreviewOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (text.trim().isEmpty) return const SizedBox.expand();
+    final displayText = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (displayText.isEmpty) return const SizedBox.expand();
     final alignment = switch (style.alignment) {
       SubtitleAlignment.top => Alignment.topCenter,
       SubtitleAlignment.middle => Alignment.center,
@@ -50,7 +51,7 @@ class SubtitlePreviewOverlay extends StatelessWidget {
             builder: (context, constraints) {
               final fittedFontSize = _fitSubtitleFontSize(
                 context: context,
-                text: text,
+                text: displayText,
                 style: baseStyle,
                 maxLines: style.maxLines,
                 maxWidth: constraints.maxWidth,
@@ -62,7 +63,7 @@ class SubtitlePreviewOverlay extends StatelessWidget {
                 children: [
                   if (style.outlineWidth > 0)
                     Text(
-                      text,
+                      displayText,
                       maxLines: style.maxLines,
                       textAlign: TextAlign.center,
                       overflow: TextOverflow.clip,
@@ -76,7 +77,7 @@ class SubtitlePreviewOverlay extends StatelessWidget {
                       ),
                     ),
                   Text(
-                    text,
+                    displayText,
                     maxLines: style.maxLines,
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.clip,
@@ -90,6 +91,59 @@ class SubtitlePreviewOverlay extends StatelessWidget {
       ),
     );
   }
+}
+
+bool subtitleTextFitsSingleLine({
+  required Iterable<String> texts,
+  required TextStyle style,
+  required double fontSize,
+  required double maxWidth,
+}) {
+  if (!maxWidth.isFinite || maxWidth <= 0) {
+    return true;
+  }
+
+  for (final rawText in texts) {
+    final text = rawText.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (text.isEmpty) {
+      continue;
+    }
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style.copyWith(fontSize: fontSize)),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+      textScaler: TextScaler.noScaling,
+      maxLines: 1,
+    )..layout(maxWidth: maxWidth);
+    if (painter.didExceedMaxLines) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+double fitSubtitleFontSizeForSingleLine({
+  required Iterable<String> texts,
+  required TextStyle style,
+  required double maxWidth,
+  double minimumFontSize = 6,
+}) {
+  final requested = style.fontSize ?? 22;
+  final minimum = minimumFontSize.clamp(1.0, requested).toDouble();
+
+  for (var candidate = requested; candidate >= minimum; candidate -= 1) {
+    if (subtitleTextFitsSingleLine(
+      texts: texts,
+      style: style,
+      fontSize: candidate,
+      maxWidth: maxWidth,
+    )) {
+      return candidate;
+    }
+  }
+
+  return minimum;
 }
 
 double _fitSubtitleFontSize({

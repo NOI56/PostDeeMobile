@@ -143,11 +143,15 @@ The first implementation direction is **Approach 1: Hybrid low-cost architecture
 The first verified mobile subtitle editor supports:
 
 - short, medium, or long text grouping per subtitle range
+- a hard one-line cap of 3 words for large text, 4 for medium, 5 for small,
+  and 1 for karaoke, preserved after short-cue merging
 - readable spacing for Latin product names and numbers inside Thai subtitles
 - three text sizes
 - white text with a black outline
 - top or bottom positioning
 - preview subtitles over the video before burn-in
+- measure every burned cue against 85% of the scaled frame width and reduce
+  font size only when the word-boundary split is still too wide
 
 Keep these controls planned until their exported-video behavior exists and is
 verified: custom font/color, outline/background selection, true word-highlight

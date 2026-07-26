@@ -29,6 +29,15 @@ void main() {
     expect(srt.trim(), isEmpty);
   });
 
+  test('flattens explicit subtitle line breaks before burn-in', () {
+    final srt = buildSrtContent(const [
+      SubtitleSegment(text: 'ขายดีมาก\nส่งฟรี', start: 0, end: 2),
+    ]);
+
+    expect(srt, contains('ขายดีมาก ส่งฟรี'));
+    expect(srt, isNot(contains('ขายดีมาก\nส่งฟรี')));
+  });
+
   test('keeps every Thai upper and lower mark attached in SRT output', () {
     const thaiMarkCoverage =
         'กั กิ กี กึ กื กุ กู ก็ ก่ ก้ ก๊ ก๋ ก์ กำ กิ่ กี้ กึ๊ กื๋ กุ่ กู้';
@@ -584,7 +593,7 @@ void main() {
     expect(bottom, contains('MarginL=24'));
     expect(bottom, contains('MarginR=24'));
     expect(bottom, contains('MarginV=28'));
-    expect(bottom, contains('WrapStyle=0'));
+    expect(bottom, contains('WrapStyle=2'));
 
     final top = buildSubtitleForceStyle(fontSize: 14, atBottom: false);
     expect(top, contains('Fontsize=14'));

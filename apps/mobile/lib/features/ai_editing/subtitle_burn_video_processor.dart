@@ -287,7 +287,7 @@ String buildSrtContent(List<SubtitleSegment> segments) {
 
   for (var index = 0; index < segments.length; index += 1) {
     final segment = segments[index];
-    final text = segment.text.trim();
+    final text = segment.text.replaceAll(RegExp(r'\s+'), ' ').trim();
 
     if (text.isEmpty) {
       continue;
@@ -337,7 +337,7 @@ String buildSubtitleForceStyle({
       'Outline=${_safeAssNumber(outlineWidth)},'
       'Shadow=${_safeAssNumber(shadowDepth)},Alignment=$assAlignment,'
       'MarginL=$safeHorizontalMargin,MarginR=$safeHorizontalMargin,'
-      'MarginV=$safeVerticalMargin,WrapStyle=0';
+      'MarginV=$safeVerticalMargin,WrapStyle=2';
 }
 
 String _assColor(String color, String fallback) {

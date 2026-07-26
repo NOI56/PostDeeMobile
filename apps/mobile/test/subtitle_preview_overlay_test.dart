@@ -5,6 +5,40 @@ import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_proj
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_studio_controller.dart';
 
 void main() {
+  testWidgets('fits every burned cue inside one safe-width line',
+      (tester) async {
+    final fitted = fitSubtitleFontSizeForSingleLine(
+      texts: const [
+        'ทางของของมาจากเชียงใหม่',
+        'ช่างกลับมาอีกกลับมาอีกซ้ำ',
+      ],
+      style: const TextStyle(
+        fontFamily: 'Anuphan',
+        fontWeight: FontWeight.w700,
+        fontSize: 22,
+      ),
+      maxWidth: 258,
+    );
+
+    expect(fitted, lessThan(22));
+    expect(
+      subtitleTextFitsSingleLine(
+        texts: const [
+          'ทางของของมาจากเชียงใหม่',
+          'ช่างกลับมาอีกกลับมาอีกซ้ำ',
+        ],
+        style: const TextStyle(
+          fontFamily: 'Anuphan',
+          fontWeight: FontWeight.w700,
+          fontSize: 22,
+        ),
+        fontSize: fitted,
+        maxWidth: 258,
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('shows draft text immediately with the selected subtitle style',
       (tester) async {
     final style = copySubtitleStyle(

@@ -583,11 +583,12 @@ Current mobile pieces:
 - Thai subtitle preparation rebuilds readable word boundaries when provider
   word timestamps arrive as character fragments. Long Thai fallback segments
   or fallback segments containing several words are also split at estimated
-  Thai word boundaries, capped at two estimated words per cue, before reaching
-  mobile. Cues shorter than 0.7 seconds are joined across only a small
-  neighboring gap, mobile never hard-splits an unspaced Thai phrase, and the
-  live preview scales text down inside its single line instead of hiding it
-  with an ellipsis.
+  Thai word boundaries before reaching mobile. The final automatic cue limit is
+  one word for karaoke, up to three words for large text, four for medium, and
+  five for small text; short-cue merging cannot exceed that limit. Mobile never
+  hard-splits an unspaced Thai phrase. Preview and burned output disable
+  wrapping, measure cues against 85% of the scaled video width, and reduce the
+  font size only as a fallback instead of clipping the text.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.

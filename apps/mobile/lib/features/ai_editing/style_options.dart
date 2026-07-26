@@ -2,6 +2,26 @@ import 'package:characters/characters.dart';
 
 import 'subtitle_burn_video_processor.dart';
 
+/// Keeps automatic subtitles short enough for a single vertical-video line.
+/// The selected length remains a preference, while the font size is the hard
+/// visual limit agreed by the product.
+int subtitleWordLimitForStyle({
+  required String subtitleStyle,
+  required String subtitleWords,
+}) {
+  final requestedLimit = switch (subtitleWords) {
+    'karaoke' => 1,
+    'full' => 5,
+    _ => 4,
+  };
+  final visualLimit = switch (subtitleStyle) {
+    'large' => 3,
+    'medium' => 4,
+    _ => 5,
+  };
+  return requestedLimit < visualLimit ? requestedLimit : visualLimit;
+}
+
 /// User fine-tuning applied on top of a chosen style. All fields optional; null
 /// means "use the style/clip default".
 class EditStyleOptions {
@@ -340,8 +360,7 @@ List<SubtitleSegment> mergeShortSubtitleSegments(
     final joinedText = previous == null
         ? segment.text
         : _joinSubtitleText(previous.text, segment.text);
-    final mergeFits =
-        maximumCharacters == null ||
+    final mergeFits = maximumCharacters == null ||
         joinedText.characters.length <= maximumCharacters;
     if (previous != null &&
         previousDuration < minimumDurationSeconds &&
@@ -363,8 +382,7 @@ List<SubtitleSegment> mergeShortSubtitleSegments(
     final previous = merged[merged.length - 2];
     final gap = last.start - previous.end;
     final joinedText = _joinSubtitleText(previous.text, last.text);
-    final mergeFits =
-        maximumCharacters == null ||
+    final mergeFits = maximumCharacters == null ||
         joinedText.characters.length <= maximumCharacters;
     if (last.end - last.start < minimumDurationSeconds &&
         gap >= -double.minPositive &&

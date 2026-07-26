@@ -1103,16 +1103,54 @@ const constrainThaiSubtitleCueLength = (
   });
 };
 
+const constrainThaiSubtitleCueWordCount = (
+  segments: TranscriptSegment[],
+  language: string,
+  maximumWords: number
+): TranscriptSegment[] => {
+  if (
+    normalizeTranscriptionLanguage(language) !== 'th' ||
+    maximumWords <= 0
+  ) {
+    return segments;
+  }
+
+  return segments.flatMap((segment) => {
+    const words = rebuildThaiWordsFromSegment(segment);
+    if (words.length <= maximumWords) {
+      return [segment];
+    }
+
+    return buildSubtitleSegments({
+      words,
+      language: 'th',
+      wordsPerLine: maximumWords
+    });
+  });
+};
+
 const mergeShortSubtitleSegments = (
   segments: TranscriptSegment[],
   minimumDurationSeconds = minimumEstimatedSubtitleDurationSeconds,
   maximumGapSeconds = 0.5,
-  maximumGraphemes?: number
+  maximumGraphemes?: number,
+  maximumWords?: number
 ): TranscriptSegment[] => {
   const merged: TranscriptSegment[] = [];
-  const canMergeText = (left: string, right: string): boolean =>
-    maximumGraphemes === undefined ||
-    readGraphemeCount(joinSubtitleText(left, right)) <= maximumGraphemes;
+  const canMergeText = (left: string, right: string): boolean => {
+    const joinedText = joinSubtitleText(left, right);
+    const fitsGraphemes =
+      maximumGraphemes === undefined ||
+      readGraphemeCount(joinedText) <= maximumGraphemes;
+    const fitsWords =
+      maximumWords === undefined ||
+      rebuildThaiWordsFromSegment({
+        text: joinedText,
+        start: 0,
+        end: 1
+      }).length <= maximumWords;
+    return fitsGraphemes && fitsWords;
+  };
 
   for (const segment of segments) {
     const previous = merged.at(-1);
@@ -1469,21 +1507,34 @@ export const buildAiEditRecipe = ({
           })
         : fallbackSubtitleSegments)
     : [];
-  const subtitleSegments = constrainThaiSubtitleCueLength(
-    repairThaiSubtitleCueBoundaries(
-      mergeShortSubtitleSegments(
-        preparedSubtitleSegments,
-        minimumEstimatedSubtitleDurationSeconds,
-        0.5,
-        transcriptLanguage === 'th'
-          ? maximumThaiSubtitleGraphemes
-          : undefined
+  const enforceSubtitleWordLimit =
+    settings.subtitleWordsPerLine !== undefined;
+  const repairedSubtitleSegments =
+    constrainThaiSubtitleCueLength(
+      repairThaiSubtitleCueBoundaries(
+        mergeShortSubtitleSegments(
+          preparedSubtitleSegments,
+          minimumEstimatedSubtitleDurationSeconds,
+          0.5,
+          transcriptLanguage === 'th'
+            ? maximumThaiSubtitleGraphemes
+            : undefined,
+          enforceSubtitleWordLimit && transcriptLanguage === 'th'
+            ? subtitleWordsPerLine
+            : undefined
+        ),
+        transcriptLanguage,
+        transcriptReferenceText || transcript.text.trim()
       ),
-      transcriptLanguage,
-      transcriptReferenceText || transcript.text.trim()
-    ),
-    transcriptLanguage
-  );
+      transcriptLanguage
+    );
+  const subtitleSegments = enforceSubtitleWordLimit
+    ? constrainThaiSubtitleCueWordCount(
+        repairedSubtitleSegments,
+        transcriptLanguage,
+        subtitleWordsPerLine
+      )
+    : repairedSubtitleSegments;
   const silencePreset = settings.silencePreset ?? 'balanced';
   const silenceRanges = capabilities.silence && hasReliableSilenceTimeline
     ? findSilenceRanges(

@@ -204,9 +204,13 @@ describe('AI edit recipe pacing settings', () => {
     expect(recipe.subtitles.segments).not.toContainEqual(
       expect.objectContaining({ text: expect.stringMatching(/^นสำหรับ/u) })
     );
+    const countWords = (value: string) =>
+      Array.from(
+        new Intl.Segmenter('th', { granularity: 'word' }).segment(value)
+      ).filter((segment) => segment.isWordLike).length;
     expect(
       recipe.subtitles.segments.every(
-        (segment) => segment.end - segment.start >= 0.7 - Number.EPSILON
+        (segment) => countWords(segment.text) <= 2
       )
     ).toBe(true);
   });
@@ -657,8 +661,10 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.subtitles.segments).toEqual([
-      { text: 'มีดีมาไป', start: 0, end: 0.8 },
-      { text: 'ดูของใหม่นะ', start: 0.8, end: 1.6 }
+      { text: 'มีดี', start: 0, end: 0.4 },
+      { text: 'มาไป', start: 0.4, end: 0.8 },
+      { text: 'ดูของ', start: 0.8, end: 1.2 },
+      { text: 'ใหม่นะ', start: 1.2, end: 1.6 }
     ]);
   });
 
@@ -731,7 +737,9 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual(segments);
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe(segments[0]!.text);
+    expect(recipe.subtitles.segments).toHaveLength(2);
     expect(recipe.fillerRanges).toEqual([{ start: 0, end: 0.2 }]);
   });
 
@@ -749,10 +757,11 @@ describe('AI edit recipe pacing settings', () => {
       words
     });
 
-    expect(recipe.subtitles.segments).toHaveLength(1);
-    expect(recipe.subtitles.segments[0]?.text).toBe('12 34 56 78 90 12');
+    expect(recipe.subtitles.segments).toHaveLength(3);
+    expect(recipe.subtitles.segments.map((segment) => segment.text))
+      .toEqual(['12 34', '56 78', '90 12']);
     expect(recipe.subtitles.segments[0]?.start).toBe(0);
-    expect(recipe.subtitles.segments[0]?.end).toBeCloseTo(1.2);
+    expect(recipe.subtitles.segments.at(-1)?.end).toBeCloseTo(1.2);
   });
 
   it.each([
@@ -1017,8 +1026,36 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.subtitles.segments).toEqual([
-      { text: 'สวัสดีค่ะวันนี้', start: 0, end: 1.2 }
+      { text: 'สวัสดีค่ะ', start: 0, end: 0.7 },
+      { text: 'วันนี้', start: 0.8, end: 1.2 }
     ]);
+  });
+
+  it('keeps every final Thai subtitle within the requested word limit', () => {
+    const text = 'ช่างกลับมาอีกกลับมาอีกซ้ำเพื่อจะหาของที่';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      model: 'scribe_v2',
+      text,
+      durationSeconds: 4,
+      settings: { subtitleWordsPerLine: 3 },
+      segments: [{ text, start: 0, end: 4 }],
+      words: []
+    });
+    const countWords = (value: string) =>
+      Array.from(
+        new Intl.Segmenter('th', { granularity: 'word' }).segment(value)
+      ).filter((segment) => segment.isWordLike).length;
+
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe(text);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => countWords(segment.text) <= 3
+      )
+    ).toBe(true);
   });
 
   it('keeps spaces around Latin product names and numbers in Thai subtitles', () => {

@@ -663,6 +663,9 @@ subtitle render workspace and passes that directory plus verified static style
 values (font size, text/outline/shadow colours, outline/shadow depth, and safe
 top/middle/bottom alignment) to libass. The current export remains SRT-based;
 ASS active-word events, karaoke, and per-cue style overrides are not enabled.
+Automatic cues are rendered with wrapping disabled. Mobile measures every cue
+against 85% of the scaled video width and reduces the requested font size only
+as a fallback when a valid Thai word-boundary split is still too wide.
 For silence cuts, video frames use the
 selected keep timeline while audio keep ranges are reset and concatenated, so
 both streams finish together after local preview re-renders.
@@ -676,8 +679,10 @@ the transcript has a finite media duration. Overlapping ranges are merged before
 gaps are calculated. Groq Thai character-level timings remain useful for gap
 detection, while subtitle text falls back to segments instead of being split
 into individual characters. Thai fallback segments that are long or contain
-several words are rebuilt with estimated Thai word boundaries and capped at
-two estimated words per cue. Mobile presents each cue on one subtitle line;
+several words are rebuilt with estimated Thai word boundaries. An explicit
+`subtitleWordsPerLine` remains a hard cap after short-cue merging; current
+mobile choices cap large text at three words, medium at four, small at five,
+and karaoke at one. Mobile presents each cue on one subtitle line;
 legacy two-line draft styles normalize to one line when loaded. The Groq
 request no longer carries a PostDee
 spelling prompt because real-clip validation showed provider context leaking

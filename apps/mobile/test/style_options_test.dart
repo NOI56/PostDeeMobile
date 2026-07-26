@@ -4,6 +4,37 @@ import 'package:postdee_mobile/features/ai_editing/style_options.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 
 void main() {
+  test('caps subtitle words by the selected font size', () {
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'large',
+        subtitleWords: 'full',
+      ),
+      3,
+    );
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'medium',
+        subtitleWords: 'full',
+      ),
+      4,
+    );
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'small',
+        subtitleWords: 'full',
+      ),
+      5,
+    );
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'small',
+        subtitleWords: 'karaoke',
+      ),
+      1,
+    );
+  });
+
   test('target length adds a tail cut to fit', () {
     final cuts = withTargetLength(const [], 10, 4);
 

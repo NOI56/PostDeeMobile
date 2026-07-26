@@ -1,7 +1,7 @@
 # ElevenLabs Scribe v2 Staging and Groq Comparison Design
 
-**Date:** 2026-07-24  
-**Status:** Approved design pending written-spec review  
+**Date:** 2026-07-24
+**Status:** Approved design pending written-spec review
 **Scope:** PostDee API transcription provider and staging-only A/B evaluation
 
 ## Goal

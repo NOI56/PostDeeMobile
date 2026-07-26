@@ -78,6 +78,19 @@ void main() {
     expect(joined, contains('-c:a aac')); // re-encode because of audio filters
   });
 
+  test('caps the rendered file at the requested result duration', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      maxOutputDurationSec: 60,
+      silenceRanges: const [
+        SilenceCutRange(start: 60, end: 148.7),
+      ],
+    );
+
+    expect(args, containsAllInOrder(['-t', '60.000', '/out.mp4']));
+  });
+
   test('copies audio when there are no audio edits', () {
     final args = buildEditFfmpegArguments(
       inputPath: '/in.mp4',

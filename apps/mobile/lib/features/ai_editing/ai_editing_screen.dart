@@ -1530,6 +1530,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           result.file.parent.path,
       },
       outputDurationSeconds: outputDuration,
+      maxOutputDurationSeconds:
+          _isUsingOriginalDuration ? null : _selectedDurationSeconds.toDouble(),
       onProgress: reportProgress,
       renderPurpose: purpose,
       maxVideoDimension: previewProfile?.maxVideoDimension,

@@ -58,6 +58,34 @@ void main() {
     }
   });
 
+  test('keeps preset and slider target lengths exact', () {
+    const sourceDuration = 150.641;
+    const cuts = [
+      SilenceCutRange(start: 0, end: 8),
+      SilenceCutRange(start: 24, end: 39),
+      SilenceCutRange(start: 75, end: 112),
+      SilenceCutRange(start: 140, end: sourceDuration),
+    ];
+
+    for (final targetSeconds in [19.0, 30.0, 60.0]) {
+      final adjusted = withTargetLength(
+        cuts,
+        sourceDuration,
+        targetSeconds,
+      );
+      final resultSeconds = estimateResultSeconds(
+        durationSeconds: sourceDuration,
+        cutRanges: adjusted,
+      );
+
+      expect(
+        resultSeconds,
+        closeTo(targetSeconds, 0.001),
+        reason: 'target $targetSeconds seconds must be preserved',
+      );
+    }
+  });
+
   test('splits a line on spaces and hard-splits long runs', () {
     expect(splitLineByMaxChars('a bb cc dd', 5), ['a bb', 'cc dd']);
     expect(splitLineByMaxChars('aaaaaaaaaa', 4), ['aaaa', 'aaaa', 'aa']);

@@ -1416,6 +1416,7 @@ void main() {
     expect(studioLaunches, 0);
     expect(renderRequests, hasLength(1));
     expect(renderRequests.single.segments, isNotEmpty);
+    expect(renderRequests.single.maxOutputDurationSeconds, 30);
     expect(
       renderRequests.single.segments.map((segment) => segment.text).join(),
       isNot(editedSubtitle),

@@ -93,3 +93,14 @@ After deploy `dep-d9imv8navr4c73b4i720` became Live on commit `049e3d4`, the
 three affected 45→30-second app flows were generated again on the Pixel 8
 emulator. Their live SRT outputs contained the complete `ทำให้`, `หลายๆ`, and
 `เด็กๆ` tokens with none of the previous cross-cue fragments.
+
+The rendered MP4 duration was also probed independently after the live app
+flow. The 30-second target produced 30.000 seconds, while a slider-selected
+19-second target produced 19.000 seconds for the video stream, audio stream,
+and MP4 container. A 150.635-second talking-head clip exposed a separate edge
+case: the transcript ended before the silent media tail, so a 60-second target
+produced a 61.933-second MP4. The renderer now caps the muxed output at the
+requested target, while the existing planner still chooses and expands the
+content ranges. Repeating the same 150.635→60-second flow on the Pixel 8 after
+the fix produced exactly 60.000 seconds for the video stream, audio stream, and
+MP4 container.

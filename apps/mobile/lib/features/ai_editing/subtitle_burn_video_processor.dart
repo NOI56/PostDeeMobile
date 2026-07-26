@@ -113,6 +113,7 @@ class BurnSubtitleRequest {
     this.subtitleShadowDepth = 0,
     this.preserveTempDirectoryPaths = const {},
     this.outputDurationSeconds,
+    this.maxOutputDurationSeconds,
     this.onProgress,
     this.renderPurpose = VideoRenderPurpose.export,
     this.maxVideoDimension,
@@ -158,6 +159,11 @@ class BurnSubtitleRequest {
   /// Expected length of the rendered output (after cuts/speed), used to turn
   /// FFmpeg's processed-time statistics into a 0..1 progress fraction.
   final double? outputDurationSeconds;
+
+  /// Hard upper bound selected by the user. This stays separate from
+  /// [outputDurationSeconds] because subtitle alignment can make the planner's
+  /// estimated output slightly longer than the requested target.
+  final double? maxOutputDurationSeconds;
 
   /// Optional render progress reporter (0..1).
   final RenderProgressCallback? onProgress;
@@ -700,6 +706,7 @@ List<String> buildEditFfmpegArguments({
   double volume = 1.0,
   double? trimStartSec,
   double? trimEndSec,
+  double? maxOutputDurationSec,
   List<SilenceCutRange> silenceRanges = const [],
   List<String> stickerImagePaths = const [],
   List<(double dx, double dy)> stickerPositions = const [],
@@ -848,6 +855,15 @@ List<String> buildEditFfmpegArguments({
 
   if (!hasSilence && audioFilters.isNotEmpty) {
     args.addAll(['-af', audioFilters.join(',')]);
+  }
+
+  // Transcript timing can end before the media (for example, a silent tail).
+  // The cut planner still supplies the intended result duration, so cap the
+  // muxed output to prevent those untranscribed frames from extending it.
+  if (maxOutputDurationSec != null &&
+      maxOutputDurationSec.isFinite &&
+      maxOutputDurationSec > 0) {
+    args.addAll(['-t', maxOutputDurationSec.toStringAsFixed(3)]);
   }
 
   args.addAll(['-c:v', videoCodec, ...videoEncoderArgs]);
@@ -1083,6 +1099,7 @@ class FfmpegSubtitleBurnVideoProcessor {
               volume: request.volume,
               trimStartSec: request.trimStartSec,
               trimEndSec: request.trimEndSec,
+              maxOutputDurationSec: request.maxOutputDurationSeconds,
               silenceRanges: trimmedSilence,
               stickerImagePaths: stickerPaths,
               stickerPositions:

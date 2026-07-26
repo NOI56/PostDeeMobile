@@ -578,9 +578,11 @@ it restores an exact source/setup draft from app-owned storage, previews edits
 with a Flutter overlay, and supports cue editing plus whole-clip style changes
 without rerendering. Confirmation sends the corrected source-timeline cues and
 style to FFmpeg; cancelling leaves the draft available and does not start a
-render. Groq Thai word timestamps that degrade into character fragments are
-rebuilt from reliable segment text with `Intl.Segmenter`; their timing remains
-bounded by the provider segment. Subtitle fragments below 0.7 seconds are
+render. Thai word boundaries from Groq character fragments and ElevenLabs
+events are rebuilt with the bundled `thai-wordcut-js` dictionary and one shared
+PostDee compound list. `Intl.Segmenter` remains the fallback if dictionary
+initialization or output validation fails; reconstructed timing remains bounded
+by the provider segment. Subtitle fragments below 0.7 seconds are
 joined only across a nearby gap. Mobile keeps unspaced Thai phrases intact and
 auto-fits the live preview rather than cutting a word or showing an ellipsis.
 Review checkboxes automatically

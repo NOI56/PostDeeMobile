@@ -1,4 +1,8 @@
 import type { ServerConfig } from '../../config/env.js';
+import {
+  protectedThaiSubtitleCompounds,
+  segmentThaiSubtitleRun
+} from './thaiSubtitleLexicon.js';
 
 export type TranscriptWord = { word: string; start: number; end: number };
 export type TranscriptSegment = {
@@ -145,18 +149,7 @@ const terminalTranscriptPunctuation = /[.!?。！？…ฯ]$/u;
 const thaiGraphemeSegmenter = new Intl.Segmenter('th', {
   granularity: 'grapheme'
 });
-const protectedThaiCompoundWords = [
-  'ความแตกต่าง',
-  'ซูเปอร์สตาร์',
-  'ซุปเปอร์สตาร์',
-  'ผู้เสียหาย',
-  'เนื่องจาก',
-  'รูปลักษณ์',
-  'ส่วนมาก',
-  'ฟุตบอล',
-  'วรภพ',
-  'ยุ่นเพียร'
-];
+const protectedThaiCompoundWords = protectedThaiSubtitleCompounds;
 
 const isElevenLabsEvent = (
   value: unknown
@@ -238,13 +231,7 @@ const segmentThaiRunPreservingProtectedWords = (
 ): ThaiTextPart[] => {
   const segmentNormally = (text: string): ThaiTextPart[] =>
     mergeProtectedThaiCompoundParts(
-      Array.from(
-        new Intl.Segmenter('th', { granularity: 'word' }).segment(text),
-        (part) => ({
-          segment: part.segment.normalize('NFC'),
-          isWordLike: Boolean(part.isWordLike)
-        })
-      )
+      segmentThaiSubtitleRun(text)
     );
   const parts: ThaiTextPart[] = [];
   let cursor = 0;

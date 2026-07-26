@@ -519,6 +519,10 @@ Current mobile pieces:
   coverage before using it for precise silence/filler cuts and subtitle timing;
   incomplete timing falls back to segments. Groq Thai character-level tokens
   still drive precise gaps, but subtitle text falls back to readable segments.
+  Thai subtitle text is segmented with the bundled `thai-wordcut-js`
+  dictionary plus a shared PostDee compound list; ICU remains the fallback if
+  the dictionary cannot initialize. This prevents cue boundaries inside common
+  words such as `กรุงเทพ`, `เพราะฉะนั้น`, and `นักท่องเที่ยว`.
   Whitespace-only provider tokens are ignored during validation; malformed
   tokens containing real transcript text still fail closed.
 - For the production capability set, mobile extracts mono 16 kHz AAC at 64 kbps

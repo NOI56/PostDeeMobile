@@ -818,6 +818,10 @@ returns them.
 Validated word timing is preferred for subtitle timing and silence-gap cuts,
 while segments remain the conservative fallback when timing coverage is partial
 or Groq returns Thai character-level tokens that are not readable subtitle words.
+Thai text is segmented by the bundled `thai-wordcut-js` dictionary before cue
+grouping. A shared protected-compound list is applied to both provider
+normalization and recipe generation, with `Intl.Segmenter` retained as the safe
+fallback when the dictionary is unavailable.
 Whitespace-only/punctuation-only timing tokens are ignored, while invalid tokens
 that contain transcript text invalidate word-level timing and trigger fallback.
 

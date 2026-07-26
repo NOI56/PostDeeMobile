@@ -235,8 +235,7 @@ describe('AI edit recipe pacing settings', () => {
         { word: 'Market', start: 1.5, end: 1.9 },
         { word: 'อยู่', start: 1.9, end: 2.1 },
         { word: 'ใน', start: 2.1, end: 2.3 },
-        { word: 'เมือง', start: 2.3, end: 2.6 },
-        { word: 'หลวง', start: 2.6, end: 2.9 },
+        { word: 'เมืองหลวง', start: 2.3, end: 2.9 },
         { word: 'ต่างๆ', start: 2.9, end: 3.2 }
       ]
     });
@@ -529,6 +528,52 @@ describe('AI edit recipe pacing settings', () => {
     expect(subtitleTexts.some((subtitle) => /^ตบอล/u.test(subtitle))).toBe(false);
     expect(subtitleTexts.join('')).toContain('ฟุตบอล');
   });
+
+  it.each([
+    ['เจ้า', 'หน้าที่'],
+    ['วัน', 'นี้'],
+    ['ดัง', 'กล่าว'],
+    ['เพศ', 'เมีย'],
+    ['เขา', 'เขียว'],
+    ['เพราะ', 'ฉะนั้น'],
+    ['เท่า', 'ไหร่'],
+    ['นัก', 'ท่องเที่ยว'],
+    ['ร้าน', 'อาหาร'],
+    ['สวน', 'สัตว์'],
+    ['เมือง', 'หลวง'],
+    ['ชาว', 'บ้าน'],
+    ['ต่าง', 'ๆ']
+  ])(
+    'does not split the common Thai compound %s%s across subtitle cues',
+    (firstPart, secondPart) => {
+      const text = `ก่อน${firstPart}${secondPart}หลัง`;
+      const recipe = buildRecipe({
+        capabilities: { subtitle: true },
+        language: 'Thai',
+        text,
+        durationSeconds: 2,
+        settings: { subtitleWordsPerLine: 2 },
+        segments: [{ text, start: 0, end: 2 }],
+        words: [
+          { word: 'ก่อน', start: 0, end: 0.5 },
+          { word: firstPart, start: 0.5, end: 1 },
+          { word: secondPart, start: 1, end: 1.5 },
+          { word: 'หลัง', start: 1.5, end: 2 }
+        ]
+      });
+      const subtitleTexts = recipe.subtitles.segments.map(
+        (segment) => segment.text
+      );
+
+      expect(
+        subtitleTexts.some((subtitle) => subtitle.endsWith(firstPart))
+      ).toBe(false);
+      expect(
+        subtitleTexts.some((subtitle) => subtitle.startsWith(secondPart))
+      ).toBe(false);
+      expect(subtitleTexts.join('')).toContain(`${firstPart}${secondPart}`);
+    }
+  );
 
   it('splits long Thai fallback segments when word timings are unavailable', () => {
     const text =

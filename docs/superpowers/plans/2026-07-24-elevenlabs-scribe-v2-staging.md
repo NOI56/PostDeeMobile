@@ -878,6 +878,21 @@ the report notes.
 
 - [ ] **Step 7: Generate and review the comparison**
 
+Partial evidence captured on 2026-07-26: the manually checked 19.1-second
+opening sample measured Groq CER at 29.8578% with two hallucinated phrases,
+while ElevenLabs measured 0% with none. ElevenLabs completed in 18.372 seconds
+versus Groq at 21.124 seconds; estimated provider rates were $0.22/hour and
+$0.111/hour respectively. Do not mark this step complete until independent
+reference transcripts cover the four-style Thai QA set and a combined CER is
+calculated.
+
+The tokenizer-only replay over the four stored QA SRT files passed: all text was
+preserved, rebuilt cues stayed at or below 18 graphemes, and protected compound
+splits changed from 5→0 (news), 2→0 (scripted), 2→0 (natural interview), and
+0→0 (noisy field audio). This verifies subtitle grouping, not transcription
+accuracy, because those SRT files are provider output rather than independent
+ground truth.
+
 Run:
 
 ```powershell

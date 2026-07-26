@@ -434,23 +434,21 @@ describe('transcription provider', () => {
     const result = await transcribeElevenLabsFixture(fragments, text);
 
     expect(result.words.map((word) => word.word)).toEqual([
-      'เพราะ',
-      'ฉะนั้น',
+      'เพราะฉะนั้น',
       'ก็',
       'จะ',
       'ไป',
       'ไป',
       'มา',
-      'มาระ',
-      'หว่าง',
+      'มา',
+      'ระหว่าง',
       'บ้าน',
       'แล้ว',
       'ก็',
       'สยาม',
       'เป็น',
       'คน',
-      'เมือง',
-      'หลวง',
+      'เมืองหลวง',
       'ต่างๆ'
     ]);
     expect(result.segments.map((segment) => segment.text).join('')).toBe(text);

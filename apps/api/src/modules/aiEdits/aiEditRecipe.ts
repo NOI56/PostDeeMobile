@@ -6,6 +6,10 @@ import {
   type TranscriptWord,
   type TranscriptionResult
 } from './transcriptionProvider.js';
+import {
+  protectedThaiSubtitleCompounds,
+  segmentThaiSubtitleRun
+} from './thaiSubtitleLexicon.js';
 
 export const aiEditCapabilityKeys = [
   'subtitle',
@@ -316,20 +320,9 @@ const fragmentedFillerBoundarySeconds = 0.08;
 const minimumEstimatedSubtitleDurationSeconds = 0.7;
 const maximumEstimatedThaiWordsPerCue = 2;
 const maximumThaiMidWordSegmentGapSeconds = 0.5;
-const maximumThaiCueBoundaryShiftCharacters = 4;
+const maximumThaiCueBoundaryShiftCharacters = 6;
 const maximumThaiSubtitleGraphemes = 18;
-const protectedThaiSubtitleWords = [
-  'ความแตกต่าง',
-  'ซูเปอร์สตาร์',
-  'ซุปเปอร์สตาร์',
-  'ผู้เสียหาย',
-  'เนื่องจาก',
-  'รูปลักษณ์',
-  'ส่วนมาก',
-  'ฟุตบอล',
-  'วรภพ',
-  'ยุ่นเพียร'
-];
+const protectedThaiSubtitleWords = protectedThaiSubtitleCompounds;
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
   value
@@ -392,13 +385,7 @@ const segmentThaiTextPreservingShortPhrases = (
   const normalized = value.normalize('NFC');
   const segmentNormally = (text: string): ThaiTextPart[] =>
     mergeProtectedThaiSubtitleParts(
-      Array.from(
-        new Intl.Segmenter('th', { granularity: 'word' }).segment(text),
-        (part) => ({
-          segment: part.segment.normalize('NFC'),
-          isWordLike: Boolean(part.isWordLike)
-        })
-      )
+      segmentThaiSubtitleRun(text)
     );
   const parts: ThaiTextPart[] = [];
   let cursor = 0;

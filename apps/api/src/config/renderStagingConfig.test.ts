@@ -70,7 +70,7 @@ describe('render.staging.yaml isolated staging config', () => {
     expectEnvValue(
       source,
       'ELEVENLABS_TRANSCRIPTION_KEYTERMS',
-      '"PostDee,ปักตะกร้า,แอฟฟิลิเอต,วรภพ,ยุ่นเพียร,ซุปเปอร์สตาร์,ฟุตบอล,ผู้เสียหาย"',
+      '"PostDee,ปักตะกร้า,แอฟฟิลิเอต,วรภพ,ยุ่นเพียร,ซุปเปอร์สตาร์,ฟุตบอล,ผู้เสียหาย,นกกรงหัวจุก,4 ยก 8 ดอก"',
     );
     expect(source).not.toContain('POSTPEER_TIKTOK_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_YOUTUBE_ACCOUNT_ID');

@@ -83,6 +83,22 @@ normalized character coverage relative to ElevenLabs was 14.69% for news,
 field audio. These ratios diagnose omissions; the last three are not CER
 because no independent Thai reference transcript is available.
 
+The source-page audit found no human TimedText for the scripted, interview, or
+noisy clips. YouTube exposes only auto-generated Thai captions for the
+scripted and interview sources, and no caption track for the noisy source.
+Those captions are another model observation, not independent ground truth,
+so they are intentionally excluded from CER.
+
+The noisy clip also exposed two recurring domain-term errors:
+`นกโรงประจุก` instead of `นกกรงหัวจุก`, and `สี่ย่องแปดดอก` instead of the
+competition term `4 ยก 8 ดอก`. Both correct forms are now staging-only
+ElevenLabs keyterms. Replaying the complete 45-second source through the live
+Pixel 8 emulator produced `นกกรงหัวจุก`, `สี่ยก`, and `แปดดอก`, with neither
+previous error present. The rendered SRT contained 52 physical single-line
+cues, a maximum of four semantic words per cue, and no cue above the five-word
+limit. The video, audio, and MP4 container each remained exactly 45.000
+seconds.
+
 The fresh ElevenLabs renders exposed three PostDee cue-boundary regressions:
 `ทำใ / ห้`, `หลา / ยๆ`, and `เด็ / กๆ`. The shared Thai subtitle lexicon now
 protects `ทำให้`, `หลายๆ`, and `เด็กๆ`. Replaying all four stored SRTs preserves

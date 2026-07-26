@@ -7,7 +7,7 @@ import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_proj
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_studio_screen.dart';
 
 void main() {
-  testWidgets('edits text immediately and returns the finished project',
+  testWidgets('edits text and allows Prompt to override the Anuphan default',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -63,7 +63,7 @@ void main() {
     final tabBarRect = tester.getRect(find.byType(TabBar));
     await tester.tapAt(Offset(tabBarRect.right - 70, tabBarRect.center.dy));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('subtitle-font-anuphan')));
+    await tester.tap(find.byKey(const ValueKey('subtitle-font-prompt')));
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('subtitle-position-middle')),
       220,
@@ -83,7 +83,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(result?.cues.single.text, 'แก้แล้วเห็นทันที');
-    expect(result?.defaultStyle.fontId, 'Anuphan');
+    expect(result?.defaultStyle.fontId, 'Prompt');
     expect(result?.defaultStyle.alignment, SubtitleAlignment.middle);
     expect(store.saved?.toJson(), result?.toJson());
   });

@@ -878,13 +878,19 @@ the report notes.
 
 - [ ] **Step 7: Generate and review the comparison**
 
-Partial evidence captured on 2026-07-26: the manually checked 19.1-second
-opening sample measured Groq CER at 29.8578% with two hallucinated phrases,
-while ElevenLabs measured 0% with none. ElevenLabs completed in 18.372 seconds
-versus Groq at 21.124 seconds; estimated provider rates were $0.22/hour and
-$0.111/hour respectively. Do not mark this step complete until independent
-reference transcripts cover the four-style Thai QA set and a combined CER is
-calculated.
+Evidence captured on 2026-07-26: the manually checked 19.1-second opening and
+the publisher-supplied 45-second Thai news transcript provide 763 normalized
+reference characters. Combined CER was 71.5596% for Groq and 2.7523% for
+ElevenLabs. On the news reference alone, CER was 87.5% and 3.8043%
+respectively. The unusually high Groq error is mainly missing coverage: its
+news result retained 83 normalized characters versus ElevenLabs' 565.
+
+The same Staging commit was also replayed on clean scripted speech, a natural
+interview, and noisy field audio. Groq retained only 34.35%, 18.18%, and
+42.04% as many normalized characters as ElevenLabs. These three ratios are
+diagnostic coverage observations, not CER, because the source pages do not
+provide independent Thai transcripts. Do not present them as human-scored
+accuracy.
 
 The tokenizer-only replay over the four stored QA SRT files passed: all text was
 preserved, rebuilt cues stayed at or below 18 graphemes, and protected compound
@@ -908,9 +914,10 @@ do not choose a cheaper provider that materially transcribes Thai worse.
 
 If ElevenLabs lowers relative CER by at least 20% without increasing
 hallucinations, leave staging on `elevenlabs`. Otherwise return staging to
-`groq`. Confirm `/health` and one complete app flow through the review screen.
-Production remains on Groq until the user explicitly approves a production
-change.
+`groq`. The 2026-07-26 result passed this gate; Staging was restored to
+`elevenlabs`, deploy `dep-d9imkejtqb8s73941oug` became Live on commit
+`612a8cc`, and `/health` returned `status: ok`. Production remains on Groq
+until the user explicitly approves a production change.
 
 - [ ] **Step 9: Commit no benchmark artifacts**
 

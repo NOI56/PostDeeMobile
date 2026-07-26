@@ -542,7 +542,10 @@ describe('AI edit recipe pacing settings', () => {
     ['สวน', 'สัตว์'],
     ['เมือง', 'หลวง'],
     ['ชาว', 'บ้าน'],
-    ['ต่าง', 'ๆ']
+    ['ต่าง', 'ๆ'],
+    ['ทำใ', 'ห้'],
+    ['หลา', 'ยๆ'],
+    ['เด็', 'กๆ']
   ])(
     'does not split the common Thai compound %s%s across subtitle cues',
     (firstPart, secondPart) => {

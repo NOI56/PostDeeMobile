@@ -64,3 +64,27 @@ scores each result from 1–5 for:
 Do not call the feature production-ready unless the average is at least 4/5,
 no sentence is cut mid-word, and visual planning beats the audio-only baseline
 on at least two of the three content styles.
+
+## 2026-07-26 transcription comparison
+
+Staging commit `612a8cc` processed four 45-second Thai clips to 30-second
+results with both ElevenLabs Scribe v2 and Groq. A manually checked 19.1-second
+opening plus the publisher-supplied Thai transcript for the 45-second news clip
+provided 763 normalized reference characters.
+
+| Provider | Combined verified CER |
+| --- | ---: |
+| ElevenLabs Scribe v2 | 2.7523% |
+| Groq Whisper | 71.5596% |
+
+Groq returned substantially less text on every four-style replay. Its
+normalized character coverage relative to ElevenLabs was 14.69% for news,
+34.35% for scripted speech, 18.18% for natural interview, and 42.04% for noisy
+field audio. These ratios diagnose omissions; the last three are not CER
+because no independent Thai reference transcript is available.
+
+The fresh ElevenLabs renders exposed three PostDee cue-boundary regressions:
+`ทำใ / ห้`, `หลา / ยๆ`, and `เด็ / กๆ`. The shared Thai subtitle lexicon now
+protects `ทำให้`, `หลายๆ`, and `เด็กๆ`. Replaying all four stored SRTs preserves
+every source character, removes all three splits, and keeps every rebuilt cue
+at or below 18 graphemes.

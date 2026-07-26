@@ -6,6 +6,8 @@ import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new_video/session_state.dart';
 import 'package:flutter/services.dart';
 
+import 'subtitle_word_timing_safety.dart';
+
 const postDeeSubtitleThaiFontName = 'PostDee Subtitle Thai';
 const postDeeSubtitleAnuphanFontName = 'PostDee Subtitle Anuphan';
 const postDeeSubtitlePromptFontName = 'PostDee Subtitle Prompt';
@@ -41,6 +43,24 @@ bool shouldProtectStackedThaiMarksForRender({
 
 class SubtitleSegment {
   const SubtitleSegment({
+    required this.text,
+    required this.start,
+    required this.end,
+    this.words = const [],
+  });
+
+  final String text;
+  final double start;
+  final double end;
+  final List<SubtitleWordTiming> words;
+}
+
+/// A word's absolute start/end time on the same timeline as its segment.
+///
+/// The field is optional at the segment level so drafts and edited subtitles
+/// without word-level timings keep using the existing static SRT renderer.
+class SubtitleWordTiming {
+  const SubtitleWordTiming({
     required this.text,
     required this.start,
     required this.end,
@@ -140,6 +160,8 @@ class BurnSubtitleRequest {
     this.subtitleFontName = postDeeSubtitleThaiFontName,
     this.subtitleFontAssetPath,
     this.subtitleTextColor = '#FFFFFF',
+    this.activeWordColor,
+    this.subtitleAnimation = 'none',
     this.subtitleOutlineColor = '#000000',
     this.subtitleOutlineWidth = 0.5,
     this.subtitleShadowColor = '#000000',
@@ -180,6 +202,8 @@ class BurnSubtitleRequest {
   final String subtitleFontName;
   final String? subtitleFontAssetPath;
   final String subtitleTextColor;
+  final String? activeWordColor;
+  final String subtitleAnimation;
   final String subtitleOutlineColor;
   final double subtitleOutlineWidth;
   final String subtitleShadowColor;
@@ -383,6 +407,460 @@ String buildSrtContent(
   return buffer.toString();
 }
 
+/// Formats a time in seconds as an ASS timestamp: `H:MM:SS.cc`.
+String formatAssTimestamp(double seconds) {
+  final safeSeconds = seconds.isFinite ? seconds : 0;
+  final totalCentiseconds =
+      (safeSeconds * 100).round().clamp(0, 35999999).toInt();
+  return _formatAssCentiseconds(totalCentiseconds);
+}
+
+String _formatAssCentiseconds(int totalCentiseconds) {
+  final hours = totalCentiseconds ~/ 360000;
+  final minutes = (totalCentiseconds % 360000) ~/ 6000;
+  final secs = (totalCentiseconds % 6000) ~/ 100;
+  final centiseconds = totalCentiseconds % 100;
+
+  String pad(int value) => value.toString().padLeft(2, '0');
+
+  return '$hours:${pad(minutes)}:${pad(secs)}.${pad(centiseconds)}';
+}
+
+int _assCentiseconds(double seconds) {
+  final safeSeconds = seconds.isFinite ? seconds : 0;
+  return (safeSeconds * 100).round().clamp(0, 35999999).toInt();
+}
+
+/// The subtitle file selected for one render.
+///
+/// ASS is used only when both an active-word color and at least one usable
+/// word timing are available. Otherwise the existing SRT behavior is kept.
+class SubtitleFileContent {
+  const SubtitleFileContent({
+    required this.fileName,
+    required this.content,
+    required this.usesActiveWordTiming,
+  });
+
+  final String fileName;
+  final String content;
+  final bool usesActiveWordTiming;
+}
+
+class _ResolvedSubtitleWord {
+  const _ResolvedSubtitleWord({
+    required this.textStart,
+    required this.textEnd,
+    required this.start,
+    required this.end,
+  });
+
+  final int textStart;
+  final int textEnd;
+  final double start;
+  final double end;
+}
+
+class _AssDialogueSlice {
+  const _AssDialogueSlice({
+    required this.startCentiseconds,
+    required this.endCentiseconds,
+    this.activeWord,
+  });
+
+  final int startCentiseconds;
+  final int endCentiseconds;
+  final _ResolvedSubtitleWord? activeWord;
+}
+
+String _flattenSubtitleText(String text) =>
+    text.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+List<_ResolvedSubtitleWord> _resolveSubtitleWords(
+  SubtitleSegment segment,
+) {
+  final sentence = _flattenSubtitleText(segment.text);
+  if (sentence.isEmpty ||
+      !segment.start.isFinite ||
+      !segment.end.isFinite ||
+      segment.end <= segment.start) {
+    return const [];
+  }
+
+  final resolved = <_ResolvedSubtitleWord>[];
+  var textCursor = 0;
+  double? previousWordEnd;
+  for (final word in segment.words) {
+    final wordText = _flattenSubtitleText(word.text);
+    if (wordText.isEmpty ||
+        !word.start.isFinite ||
+        !word.end.isFinite ||
+        word.end <= word.start ||
+        word.start < segment.start ||
+        word.end > segment.end ||
+        (previousWordEnd != null && word.start < previousWordEnd)) {
+      return const [];
+    }
+
+    // Match in spoken order so repeated words highlight the correct instance.
+    final textStart = sentence.indexOf(wordText, textCursor);
+    if (textStart < 0) {
+      return const [];
+    }
+    if (!containsOnlyUntimedSubtitleSeparators(
+      sentence.substring(textCursor, textStart),
+    )) {
+      return const [];
+    }
+
+    final textEnd = textStart + wordText.length;
+    resolved.add(
+      _ResolvedSubtitleWord(
+        textStart: textStart,
+        textEnd: textEnd,
+        start: word.start,
+        end: word.end,
+      ),
+    );
+    textCursor = textEnd;
+    previousWordEnd = word.end;
+  }
+
+  if (resolved.isEmpty ||
+      !containsOnlyUntimedSubtitleSeparators(sentence.substring(textCursor))) {
+    return const [];
+  }
+  return resolved;
+}
+
+bool _hasValidTimedSubtitleCue(List<SubtitleSegment> segments) =>
+    segments.any((segment) => _resolveSubtitleWords(segment).isNotEmpty);
+
+/// Makes user-controlled dialogue text inert before it enters an ASS file.
+///
+/// ASS has no portable literal escape for every override-control character,
+/// so visually equivalent full-width characters are used for braces and
+/// backslashes. This prevents subtitle text from injecting `\N`, positioning,
+/// font, or color commands.
+String escapeAssDialogueText(String text) =>
+    text.replaceAll(r'\', '＼').replaceAll('{', '｛').replaceAll('}', '｝');
+
+String _normalizeSubtitleAnimation(String animation) {
+  return switch (animation.trim().toLowerCase()) {
+    'pop' => 'pop',
+    'fade' => 'fade',
+    _ => 'none',
+  };
+}
+
+String _assAnimationOverride(
+  String animation, {
+  required bool isFirstEvent,
+  required bool isLastEvent,
+  required double cueDurationSeconds,
+  required double eventDurationSeconds,
+}) {
+  final normalized = _normalizeSubtitleAnimation(animation);
+  if (normalized == 'fade') {
+    if (isFirstEvent && isLastEvent) return r'{\fad(180,180)}';
+    if (isFirstEvent) return r'{\fad(180,0)}';
+    if (isLastEvent) return r'{\fad(0,180)}';
+    return '';
+  }
+  if (normalized != 'pop' || !isFirstEvent) {
+    return '';
+  }
+
+  final availableSeconds = cueDurationSeconds < eventDurationSeconds
+      ? cueDurationSeconds
+      : eventDurationSeconds;
+  if (!availableSeconds.isFinite || availableSeconds <= 0) {
+    return '';
+  }
+  final durationMs = (availableSeconds * 1000).round().clamp(1, 220);
+  if (durationMs == 1) {
+    return r'{\fscx78\fscy78\t(0,1,\fscx100\fscy100)}';
+  }
+  final overshootAtMs =
+      (durationMs * 120 / 220).round().clamp(1, durationMs - 1);
+  return '{\\fscx78\\fscy78'
+      '\\t(0,$overshootAtMs,\\fscx103\\fscy103)'
+      '\\t($overshootAtMs,$durationMs,\\fscx100\\fscy100)}';
+}
+
+bool _hasRenderableSubtitleCue(List<SubtitleSegment> segments) =>
+    segments.any((segment) =>
+        _flattenSubtitleText(segment.text).isNotEmpty &&
+        segment.start.isFinite &&
+        segment.end.isFinite &&
+        segment.end > segment.start);
+
+String _buildAssDialogueText({
+  required String sentence,
+  _ResolvedSubtitleWord? activeWord,
+  required String? activeWordColor,
+  required String textColor,
+  required String prefixOverride,
+  required bool protectStackedThaiMarks,
+}) {
+  final renderSentence = protectStackedThaiMarks
+      ? liftStackedThaiToneMarksForRender(sentence)
+      : sentence;
+  if (activeWord == null ||
+      activeWordColor == null ||
+      activeWordColor.trim().isEmpty) {
+    return '$prefixOverride${escapeAssDialogueText(renderSentence)}';
+  }
+
+  final before = escapeAssDialogueText(
+    renderSentence.substring(0, activeWord.textStart),
+  );
+  final active = escapeAssDialogueText(
+    renderSentence.substring(activeWord.textStart, activeWord.textEnd),
+  );
+  final after = escapeAssDialogueText(
+    renderSentence.substring(activeWord.textEnd),
+  );
+  final color = _assColor(activeWordColor, '#00E3A4');
+  final baseColor = _assColor(textColor, '#FFFFFF');
+  return '$prefixOverride$before{\\1c$color&}$active'
+      '{\\1c$baseColor&}$after';
+}
+
+String _buildAssSubtitleContent(
+  List<SubtitleSegment> segments, {
+  String? activeWordColor,
+  String textColor = '#FFFFFF',
+  String subtitleAnimation = 'none',
+  bool protectStackedThaiMarks = false,
+}) {
+  final events = <String>[];
+  final usesActiveWords =
+      activeWordColor != null && activeWordColor.trim().isNotEmpty;
+
+  for (final segment in segments) {
+    final sentence = _flattenSubtitleText(segment.text);
+    if (sentence.isEmpty ||
+        !segment.start.isFinite ||
+        !segment.end.isFinite ||
+        segment.end <= segment.start) {
+      continue;
+    }
+
+    final words = usesActiveWords ? _resolveSubtitleWords(segment) : const [];
+    if (words.isEmpty) {
+      final startCentiseconds = _assCentiseconds(segment.start);
+      final endCentiseconds = _assCentiseconds(segment.end);
+      if (endCentiseconds <= startCentiseconds) {
+        continue;
+      }
+      final renderedDurationSeconds =
+          (endCentiseconds - startCentiseconds) / 100;
+      final text = _buildAssDialogueText(
+        sentence: sentence,
+        activeWordColor: null,
+        textColor: textColor,
+        prefixOverride: _assAnimationOverride(
+          subtitleAnimation,
+          isFirstEvent: true,
+          isLastEvent: true,
+          cueDurationSeconds: renderedDurationSeconds,
+          eventDurationSeconds: renderedDurationSeconds,
+        ),
+        protectStackedThaiMarks: protectStackedThaiMarks,
+      );
+      events.add(
+        'Dialogue: 0,${_formatAssCentiseconds(startCentiseconds)},'
+        '${_formatAssCentiseconds(endCentiseconds)},Default,,0,0,0,,$text',
+      );
+      continue;
+    }
+
+    final boundaries = <double>{segment.start, segment.end};
+    for (final word in words) {
+      boundaries
+        ..add(word.start)
+        ..add(word.end);
+    }
+    final orderedBoundaries = boundaries.toList()..sort();
+    final slices = <_AssDialogueSlice>[];
+
+    for (var index = 0; index < orderedBoundaries.length - 1; index += 1) {
+      final start = orderedBoundaries[index];
+      final end = orderedBoundaries[index + 1];
+      if (end <= start) {
+        continue;
+      }
+      final startCentiseconds = _assCentiseconds(start);
+      final endCentiseconds = _assCentiseconds(end);
+      if (endCentiseconds <= startCentiseconds) {
+        continue;
+      }
+
+      final probe = start + ((end - start) / 2);
+      _ResolvedSubtitleWord? activeWord;
+      for (final word in words) {
+        if (word.start <= probe && probe < word.end) {
+          activeWord = word;
+          break;
+        }
+      }
+      slices.add(
+        _AssDialogueSlice(
+          startCentiseconds: startCentiseconds,
+          endCentiseconds: endCentiseconds,
+          activeWord: activeWord,
+        ),
+      );
+    }
+
+    for (var index = 0; index < slices.length; index += 1) {
+      final slice = slices[index];
+      final eventDurationSeconds =
+          (slice.endCentiseconds - slice.startCentiseconds) / 100;
+      final text = _buildAssDialogueText(
+        sentence: sentence,
+        activeWord: slice.activeWord,
+        activeWordColor: activeWordColor,
+        textColor: textColor,
+        prefixOverride: _assAnimationOverride(
+          subtitleAnimation,
+          isFirstEvent: index == 0,
+          isLastEvent: index == slices.length - 1,
+          cueDurationSeconds: segment.end - segment.start,
+          eventDurationSeconds: eventDurationSeconds,
+        ),
+        protectStackedThaiMarks: protectStackedThaiMarks,
+      );
+      events.add(
+        'Dialogue: 0,${_formatAssCentiseconds(slice.startCentiseconds)},'
+        '${_formatAssCentiseconds(slice.endCentiseconds)},'
+        'Default,,0,0,0,,$text',
+      );
+    }
+  }
+
+  final primaryColor = _assColor(textColor, '#FFFFFF');
+  return '[Script Info]\n'
+      'ScriptType: v4.00+\n'
+      'WrapStyle: 2\n'
+      'ScaledBorderAndShadow: yes\n'
+      '\n'
+      '[V4+ Styles]\n'
+      'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, '
+      'OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, '
+      'ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, '
+      'Alignment, MarginL, MarginR, MarginV, Encoding\n'
+      'Style: Default,Arial,18,$primaryColor,$primaryColor,&H00000000,'
+      '&H00000000,-1,0,0,0,100,100,0,0,1,0.5,0,2,24,24,28,1\n'
+      '\n'
+      '[Events]\n'
+      'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, '
+      'Effect, Text\n'
+      '${events.join('\n')}${events.isEmpty ? '' : '\n'}';
+}
+
+/// Builds an ASS file whose timed cues show the complete sentence while only
+/// the currently spoken word changes color during its `[start, end)` window.
+/// Cues without usable word timing remain static in the same file.
+String buildActiveWordAssContent(
+  List<SubtitleSegment> segments, {
+  required String activeWordColor,
+  String textColor = '#FFFFFF',
+  String subtitleAnimation = 'none',
+  bool protectStackedThaiMarks = false,
+}) =>
+    _buildAssSubtitleContent(
+      segments,
+      activeWordColor: activeWordColor,
+      textColor: textColor,
+      subtitleAnimation: subtitleAnimation,
+      protectStackedThaiMarks: protectStackedThaiMarks,
+    );
+
+SubtitleFileContent buildSubtitleFileContent(
+  List<SubtitleSegment> segments, {
+  String? activeWordColor,
+  String textColor = '#FFFFFF',
+  String subtitleAnimation = 'none',
+  bool protectStackedThaiMarks = false,
+}) {
+  final normalizedActiveColor = activeWordColor?.trim();
+  final normalizedAnimation = _normalizeSubtitleAnimation(subtitleAnimation);
+  final usesActiveWordTiming = normalizedActiveColor != null &&
+      normalizedActiveColor.isNotEmpty &&
+      _hasValidTimedSubtitleCue(segments);
+  final usesAnimation =
+      normalizedAnimation != 'none' && _hasRenderableSubtitleCue(segments);
+
+  if (usesActiveWordTiming || usesAnimation) {
+    return SubtitleFileContent(
+      fileName: 'captions.ass',
+      content: _buildAssSubtitleContent(
+        segments,
+        activeWordColor: usesActiveWordTiming ? normalizedActiveColor : null,
+        textColor: textColor,
+        subtitleAnimation: normalizedAnimation,
+        protectStackedThaiMarks: protectStackedThaiMarks,
+      ),
+      usesActiveWordTiming: usesActiveWordTiming,
+    );
+  }
+
+  return SubtitleFileContent(
+    fileName: 'captions.srt',
+    content: buildSrtContent(
+      segments,
+      protectStackedThaiMarks: protectStackedThaiMarks,
+    ),
+    usesActiveWordTiming: false,
+  );
+}
+
+/// Limits the ASS rollback to failures emitted by the subtitle/libass stage.
+///
+/// FFmpeg also logs normal libass initialization before unrelated encoder
+/// failures, so the component name and an error marker must occur on the same
+/// line. Cancellation and an already-used rollback never qualify.
+bool shouldRetryAssRenderWithStaticSrt({
+  required String subtitleFileName,
+  required String? failureLogs,
+  bool cancellationRequested = false,
+  bool alreadyRetried = false,
+}) {
+  if (subtitleFileName.toLowerCase() != 'captions.ass' ||
+      cancellationRequested ||
+      alreadyRetried ||
+      failureLogs == null ||
+      failureLogs.trim().isEmpty) {
+    return false;
+  }
+
+  const errorMarkers = [
+    'error',
+    'failed',
+    'unable',
+    'invalid',
+    'could not',
+    'not found',
+    'no such',
+  ];
+  for (final rawLine in failureLogs.split(RegExp(r'\r?\n'))) {
+    final line = rawLine.toLowerCase();
+    final namesSubtitleComponent = line.contains('parsed_subtitles_') ||
+        line.contains('libass') ||
+        line.contains('ass_read_file') ||
+        line.contains("filter 'subtitles'") ||
+        line.contains('filter "subtitles"') ||
+        line.contains('captions.ass');
+    if (namesSubtitleComponent &&
+        errorMarkers.any((marker) => line.contains(marker))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 enum BurnSubtitleAlignment { top, middle, bottom }
 
 /// Builds the libass `force_style` for burned subtitles. Pure + testable.
@@ -496,22 +974,75 @@ List<SubtitleSegment> clipSegmentsToTrim(
   double? trimEndSec,
 }) {
   final start = trimStartSec ?? 0;
+  final clipped = <SubtitleSegment>[];
 
-  return [
-    for (final segment in segments)
-      if (segment.end > start &&
-          (trimEndSec == null || segment.start < trimEndSec))
-        SubtitleSegment(
-          text: segment.text,
-          start: (segment.start - start).clamp(0, double.infinity).toDouble(),
-          end: ((trimEndSec != null && segment.end > trimEndSec
-                      ? trimEndSec
-                      : segment.end) -
-                  start)
-              .clamp(0, double.infinity)
-              .toDouble(),
-        ),
-  ];
+  for (final segment in segments) {
+    if (segment.end <= start ||
+        (trimEndSec != null && segment.start >= trimEndSec)) {
+      continue;
+    }
+
+    final resolvedWords = _resolveSubtitleWords(segment);
+    final hasValidFullWordTiming = resolvedWords.isNotEmpty &&
+        resolvedWords.length == segment.words.length;
+    final retainedWordIndexes = <int>[
+      for (var index = 0; index < segment.words.length; index += 1)
+        if (segment.words[index].end > start &&
+            (trimEndSec == null || segment.words[index].start < trimEndSec))
+          index,
+    ];
+
+    // A fully validated cue can safely remove words that are completely
+    // outside the trim. If no spoken word remains, omit the cue instead of
+    // displaying its old sentence over a silent retained gap.
+    if (hasValidFullWordTiming && retainedWordIndexes.isEmpty) {
+      continue;
+    }
+
+    var clippedText = segment.text;
+    if (hasValidFullWordTiming &&
+        retainedWordIndexes.length != segment.words.length) {
+      final sentence = _flattenSubtitleText(segment.text);
+      final firstIndex = retainedWordIndexes.first;
+      final lastIndex = retainedWordIndexes.last;
+      final textStart =
+          firstIndex == 0 ? 0 : resolvedWords[firstIndex].textStart;
+      final textEnd = lastIndex == resolvedWords.length - 1
+          ? sentence.length
+          : resolvedWords[lastIndex].textEnd;
+      clippedText = sentence.substring(textStart, textEnd);
+    }
+
+    clipped.add(
+      SubtitleSegment(
+        text: clippedText,
+        start: (segment.start - start).clamp(0, double.infinity).toDouble(),
+        end: ((trimEndSec != null && segment.end > trimEndSec
+                    ? trimEndSec
+                    : segment.end) -
+                start)
+            .clamp(0, double.infinity)
+            .toDouble(),
+        words: [
+          for (final index in retainedWordIndexes)
+            SubtitleWordTiming(
+              text: segment.words[index].text,
+              start: (segment.words[index].start - start)
+                  .clamp(0, double.infinity)
+                  .toDouble(),
+              end: ((trimEndSec != null && segment.words[index].end > trimEndSec
+                          ? trimEndSec
+                          : segment.words[index].end) -
+                      start)
+                  .clamp(0, double.infinity)
+                  .toDouble(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  return clipped;
 }
 
 /// Finds silent gaps between consecutive transcript segments longer than
@@ -1066,14 +1597,18 @@ class FfmpegSubtitleBurnVideoProcessor {
     final hasText =
         request.textOverlays.any((overlay) => overlay.text.trim().isNotEmpty);
     final selectedFontAsset = request.subtitleFontAssetPath ?? fontAssetPath;
-    final srtBody = buildSrtContent(
-      trimmedSegments,
-      protectStackedThaiMarks: shouldProtectStackedThaiMarksForRender(
-        fontName: request.subtitleFontName,
-        fontAssetPath: selectedFontAsset,
-      ),
+    final protectStackedThaiMarks = shouldProtectStackedThaiMarksForRender(
+      fontName: request.subtitleFontName,
+      fontAssetPath: selectedFontAsset,
     );
-    final hasSubtitles = srtBody.trim().isNotEmpty;
+    final subtitleFileContent = buildSubtitleFileContent(
+      trimmedSegments,
+      activeWordColor: request.activeWordColor,
+      textColor: request.subtitleTextColor,
+      subtitleAnimation: request.subtitleAnimation,
+      protectStackedThaiMarks: protectStackedThaiMarks,
+    );
+    final hasSubtitles = subtitleFileContent.content.trim().isNotEmpty;
     final hasEdits = hasSubtitles ||
         trimmedSilence.isNotEmpty ||
         colorFilter.isNotEmpty ||
@@ -1109,9 +1644,11 @@ class FfmpegSubtitleBurnVideoProcessor {
 
     String? subtitlePath;
     if (hasSubtitles) {
-      final srtFile = File('${workingDirectory.path}${separator}captions.srt');
-      await srtFile.writeAsString(srtBody);
-      subtitlePath = srtFile.path;
+      final subtitleFile = File(
+        '${workingDirectory.path}$separator${subtitleFileContent.fileName}',
+      );
+      await subtitleFile.writeAsString(subtitleFileContent.content);
+      subtitlePath = subtitleFile.path;
     }
 
     var drawTextFilters = const <String>[];
@@ -1156,140 +1693,173 @@ class FfmpegSubtitleBurnVideoProcessor {
     var renderedOk = false;
     var colorFilterSkipped = false;
     String? failureLogs;
-    render:
-    for (final attemptedColorFilter in buildColorFilterFallbacks(colorFilter)) {
-      for (final stickerPaths in stickerVariants) {
-        for (final encoder in encoders) {
-          if (request.cancellationToken?.isCancelled ?? false) {
-            throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
-          }
+    var activeSubtitlePath = subtitlePath;
+    var retriedWithStaticSrt = false;
+    while (true) {
+      render:
+      for (final attemptedColorFilter
+          in buildColorFilterFallbacks(colorFilter)) {
+        for (final stickerPaths in stickerVariants) {
+          for (final encoder in encoders) {
+            if (request.cancellationToken?.isCancelled ?? false) {
+              throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
+            }
 
-          if (await progressFile.exists()) {
-            await progressFile.delete();
-          }
-          if (await outputFile.exists()) {
-            await outputFile.delete();
-          }
+            if (await progressFile.exists()) {
+              await progressFile.delete();
+            }
+            if (await outputFile.exists()) {
+              await outputFile.delete();
+            }
 
-          final session = await FFmpegKit.executeWithArgumentsAsync(
-            buildEditFfmpegArguments(
-              inputPath: request.inputFile.path,
-              outputPath: outputFile.path,
-              subtitlePath: subtitlePath,
-              subtitleFontsDirectory:
-                  hasSubtitles ? workingDirectory.path : null,
-              subtitleFontName: request.subtitleFontName,
-              colorFilter: attemptedColorFilter,
-              drawTextFilters: drawTextFilters,
-              speed: request.speed,
-              volume: request.volume,
-              trimStartSec: request.trimStartSec,
-              trimEndSec: request.trimEndSec,
-              maxOutputDurationSec: request.maxOutputDurationSeconds,
-              silenceRanges: trimmedSilence,
-              stickerImagePaths: stickerPaths,
-              stickerPositions:
-                  stickerPaths.isEmpty ? const [] : request.stickerPositions,
-              subtitleFontSize: request.subtitleFontSize,
-              subtitleAtBottom: request.subtitleAtBottom,
-              subtitleAlignment: request.subtitleAlignment,
-              subtitleTextColor: request.subtitleTextColor,
-              subtitleOutlineColor: request.subtitleOutlineColor,
-              subtitleOutlineWidth: request.subtitleOutlineWidth,
-              subtitleShadowColor: request.subtitleShadowColor,
-              subtitleShadowDepth: request.subtitleShadowDepth,
-              videoCodec: encoder.codec,
-              videoEncoderArgs: encoder.encoderArgs,
-              scaleEvenDimensions: encoder.scaleEvenDimensions,
-              maxVideoDimension: request.maxVideoDimension,
-              maxVideoFrameRate: request.maxVideoFrameRate,
-              progressPath: progressFile.path,
-            ),
-          );
-          Future<void> cancelSession() => session.cancel();
-          await request.cancellationToken?.attach(cancelSession);
-          var progressReportedEnd = false;
-          try {
-            while (true) {
-              double? processedSeconds;
-              try {
-                if (await progressFile.exists()) {
-                  final progressContent = await progressFile.readAsString();
-                  processedSeconds =
-                      parseFfmpegProgressSeconds(progressContent);
-                  progressReportedEnd = progressReportedEnd ||
-                      ffmpegProgressReportedEnd(progressContent);
+            final session = await FFmpegKit.executeWithArgumentsAsync(
+              buildEditFfmpegArguments(
+                inputPath: request.inputFile.path,
+                outputPath: outputFile.path,
+                subtitlePath: activeSubtitlePath,
+                subtitleFontsDirectory:
+                    hasSubtitles ? workingDirectory.path : null,
+                subtitleFontName: request.subtitleFontName,
+                colorFilter: attemptedColorFilter,
+                drawTextFilters: drawTextFilters,
+                speed: request.speed,
+                volume: request.volume,
+                trimStartSec: request.trimStartSec,
+                trimEndSec: request.trimEndSec,
+                maxOutputDurationSec: request.maxOutputDurationSeconds,
+                silenceRanges: trimmedSilence,
+                stickerImagePaths: stickerPaths,
+                stickerPositions:
+                    stickerPaths.isEmpty ? const [] : request.stickerPositions,
+                subtitleFontSize: request.subtitleFontSize,
+                subtitleAtBottom: request.subtitleAtBottom,
+                subtitleAlignment: request.subtitleAlignment,
+                subtitleTextColor: request.subtitleTextColor,
+                subtitleOutlineColor: request.subtitleOutlineColor,
+                subtitleOutlineWidth: request.subtitleOutlineWidth,
+                subtitleShadowColor: request.subtitleShadowColor,
+                subtitleShadowDepth: request.subtitleShadowDepth,
+                videoCodec: encoder.codec,
+                videoEncoderArgs: encoder.encoderArgs,
+                scaleEvenDimensions: encoder.scaleEvenDimensions,
+                maxVideoDimension: request.maxVideoDimension,
+                maxVideoFrameRate: request.maxVideoFrameRate,
+                progressPath: progressFile.path,
+              ),
+            );
+            Future<void> cancelSession() => session.cancel();
+            await request.cancellationToken?.attach(cancelSession);
+            var progressReportedEnd = false;
+            try {
+              while (true) {
+                double? processedSeconds;
+                try {
+                  if (await progressFile.exists()) {
+                    final progressContent = await progressFile.readAsString();
+                    processedSeconds =
+                        parseFfmpegProgressSeconds(progressContent);
+                    progressReportedEnd = progressReportedEnd ||
+                        ffmpegProgressReportedEnd(progressContent);
+                  }
+                } on FileSystemException {
+                  // FFmpeg may be replacing the progress file while it is read.
                 }
-              } on FileSystemException {
-                // FFmpeg may be replacing the progress file while it is read.
-              }
 
-              if (onProgress != null &&
-                  outDuration != null &&
-                  outDuration > 0) {
-                if (processedSeconds == null) {
-                  final statistics = await session.getLastReceivedStatistics();
-                  if (statistics != null) {
-                    processedSeconds = statistics.getTime() / 1000;
+                if (onProgress != null &&
+                    outDuration != null &&
+                    outDuration > 0) {
+                  if (processedSeconds == null) {
+                    final statistics =
+                        await session.getLastReceivedStatistics();
+                    if (statistics != null) {
+                      processedSeconds = statistics.getTime() / 1000;
+                    }
+                  }
+                  if (processedSeconds != null) {
+                    onProgress(
+                      (processedSeconds / outDuration).clamp(0.0, 0.99),
+                    );
                   }
                 }
-                if (processedSeconds != null) {
-                  onProgress(
-                    (processedSeconds / outDuration).clamp(0.0, 0.99),
-                  );
+
+                final state = await session.getState();
+                if (state == SessionState.completed ||
+                    state == SessionState.failed ||
+                    progressReportedEnd) {
+                  break;
                 }
+                await Future<void>.delayed(
+                  const Duration(milliseconds: 250),
+                );
               }
+            } finally {
+              request.cancellationToken?.detach(cancelSession);
+            }
+            if (progressReportedEnd) {
+              // Give the native muxer a brief moment to close the output before
+              // probing it when the Flutter callback was the only missing event.
+              await Future<void>.delayed(const Duration(milliseconds: 250));
+            }
+            final returnCode = await session.getReturnCode();
 
-              final state = await session.getState();
-              if (state == SessionState.completed ||
-                  state == SessionState.failed ||
-                  progressReportedEnd) {
-                break;
+            if (shouldVerifyFfmpegOutput(
+              returnCodeValue: returnCode?.getValue(),
+              progressReportedEnd: progressReportedEnd,
+            )) {
+              // Trust but verify: some hardware encoders exit 0 while writing an
+              // audio-only file. Only accept output with a real video stream.
+              if (renderedOutputHasVideo(
+                  await probeStreamTypes(outputFile.path))) {
+                renderedOk = true;
+                colorFilterSkipped =
+                    colorFilter.isNotEmpty && attemptedColorFilter.isEmpty;
+                failureLogs = null;
+                break render;
               }
-              await Future<void>.delayed(
-                const Duration(milliseconds: 250),
-              );
+              failureLogs =
+                  'encoder ${encoder.codec} exited 0 but wrote no video stream';
+              continue;
             }
-          } finally {
-            request.cancellationToken?.detach(cancelSession);
-          }
-          if (progressReportedEnd) {
-            // Give the native muxer a brief moment to close the output before
-            // probing it when the Flutter callback was the only missing event.
-            await Future<void>.delayed(const Duration(milliseconds: 250));
-          }
-          final returnCode = await session.getReturnCode();
 
-          if (shouldVerifyFfmpegOutput(
-            returnCodeValue: returnCode?.getValue(),
-            progressReportedEnd: progressReportedEnd,
-          )) {
-            // Trust but verify: some hardware encoders exit 0 while writing an
-            // audio-only file. Only accept output with a real video stream.
-            if (renderedOutputHasVideo(
-                await probeStreamTypes(outputFile.path))) {
-              renderedOk = true;
-              colorFilterSkipped =
-                  colorFilter.isNotEmpty && attemptedColorFilter.isEmpty;
-              failureLogs = null;
-              break render;
+            // A cancel aborts the whole export — don't fall back to other paths.
+            if (ReturnCode.isCancel(returnCode)) {
+              throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
             }
-            failureLogs =
-                'encoder ${encoder.codec} exited 0 but wrote no video stream';
-            continue;
-          }
 
-          // A cancel aborts the whole export — don't fall back to other paths.
-          if (ReturnCode.isCancel(returnCode)) {
-            throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
+            final logs = await session.getAllLogsAsString();
+            failureLogs = logs == null || logs.trim().isEmpty
+                ? 'FFmpeg return code: $returnCode'
+                : logs.trim();
           }
-
-          final logs = await session.getAllLogsAsString();
-          failureLogs = logs == null || logs.trim().isEmpty
-              ? 'FFmpeg return code: $returnCode'
-              : logs.trim();
         }
       }
+
+      if (renderedOk) {
+        break;
+      }
+      if (!shouldRetryAssRenderWithStaticSrt(
+        subtitleFileName: subtitleFileContent.fileName,
+        failureLogs: failureLogs,
+        cancellationRequested: request.cancellationToken?.isCancelled ?? false,
+        alreadyRetried: retriedWithStaticSrt,
+      )) {
+        break;
+      }
+
+      final staticSrt = buildSrtContent(
+        trimmedSegments,
+        protectStackedThaiMarks: protectStackedThaiMarks,
+      );
+      if (staticSrt.trim().isEmpty) {
+        break;
+      }
+      final fallbackFile = File(
+        '${workingDirectory.path}${separator}captions-fallback.srt',
+      );
+      await fallbackFile.writeAsString(staticSrt);
+      activeSubtitlePath = fallbackFile.path;
+      retriedWithStaticSrt = true;
+      failureLogs = null;
     }
 
     if (!renderedOk) {

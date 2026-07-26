@@ -819,9 +819,11 @@ Validated word timing is preferred for subtitle timing and silence-gap cuts,
 while segments remain the conservative fallback when timing coverage is partial
 or Groq returns Thai character-level tokens that are not readable subtitle words.
 Thai text is segmented by the bundled `thai-wordcut-js` dictionary before cue
-grouping. A shared protected-compound list is applied to both provider
-normalization and recipe generation, with `Intl.Segmenter` retained as the safe
-fallback when the dictionary is unavailable.
+  grouping. A shared protected-compound list is applied to both provider
+  normalization and recipe generation, with `Intl.Segmenter` retained as the safe
+  fallback when the dictionary is unavailable. Exact regressions for repeated
+  Thai forms such as `ใหม่ๆ` and `ใกล้ๆ` are tested in both layers so timing
+  normalization and final cue generation cannot disagree.
 Whitespace-only/punctuation-only timing tokens are ignored, while invalid tokens
 that contain transcript text invalidate word-level timing and trigger fallback.
 
@@ -971,12 +973,37 @@ Current mobile builds convert `recipe.subtitles`, transcript metadata, and cut
 ranges into a local versioned `SubtitleProject` for Subtitle Studio. Editing,
 autosave, live preview, local preview render, reopen, and export reuse this
 prepare response; they require no additional API endpoint and consume no extra
-AI-edit minutes. The existing `recipe.subtitles.segments` response remains the
-compatibility contract while reliable active-word cue metadata is deferred.
+AI-edit minutes.
+
+Each current `recipe.subtitles.segments[]` object keeps its existing
+`text/start/end` fields and adds authoritative cue-level word timing:
+
+```json
+{
+  "text": "รีวิวสินค้าชิ้นนี้ดีมาก",
+  "start": 0,
+  "end": 2.4,
+  "words": [
+    { "word": "รีวิวสินค้า", "start": 0, "end": 1.1 },
+    { "word": "ชิ้นนี้ดีมาก", "start": 1.1, "end": 2.4 }
+  ]
+}
+```
+
+The API emits `words: []` when timing is unavailable or fails finite,
+positive-duration, ordering, cue-boundary, exact-text-reconstruction, or Thai
+fragment safety checks. Mobile treats that empty list as authoritative and
+uses a static cue. Older deployed servers may omit `words`; only that all-legacy
+shape may use the separately validated raw transcript-word fallback. A mixed
+old/new payload fails closed instead of guessing.
 When `settings.subtitleWordsPerLine` is present, Thai cue preparation treats it
 as a hard final limit even after short-cue merging. Current mobile values are
-one word for karaoke, up to three words for large text, four for medium, and
-five for small text.
+  one word for karaoke, up to three words for large text, four for medium, and
+  five for small text. The Thai grouper may rebalance whole words across one
+  adjacent pair when that makes both cues at least 0.7 seconds without exceeding
+  the selected word cap, 18 graphemes, a 0.5-second gap, or the real word
+  timeline. If those constraints cannot all hold, the short cue is preserved
+  rather than stretched or overlapped.
 
 Production mobile enables only `subtitle`, `silence`, `filler`, and `color`,
 because those four have a real local renderer. The setup UI locks auto-reframe,

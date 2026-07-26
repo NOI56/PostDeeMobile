@@ -1,5 +1,10 @@
 # PostDee Subtitle Studio Design
 
+Implementation status (2026-07-27): the staging branch now implements the
+validated cue-word contract, active-word Flutter preview, time-sliced ASS
+export, static fallback, and the first none/pop/fade effect set. Physical-device
+preview/export parity remains a release gate.
+
 ## Goal
 
 Add a subtitle-only editor between the existing AI prepare step and final mobile
@@ -146,8 +151,10 @@ SubtitleStyle
 - Automatic Thai cues are never hard-split at an arbitrary grapheme boundary.
   When provider word timestamps are character-fragmented, the backend rebuilds
   word boundaries from reliable segment text and estimates timing within that
-  original segment. Readable adjacent fragments are merged to at least 0.7
-  seconds unless a real pause prevents a safe merge.
+  original segment. Adjacent short groups are rebalanced with whole words only
+  when both results reach 0.7 seconds without exceeding the selected word cap,
+  18 graphemes, a 0.5-second gap, or the real word timeline. Unavoidable fast
+  speech remains short rather than being stretched or overlapped.
 - Live preview text stays inside the safe horizontal/vertical padding and
   scales down within the selected line count instead of using an ellipsis.
 - A cue with word timing may use active-word state only when the words are
@@ -208,6 +215,9 @@ the top and the lower area switches between text and style tools.
 - The existing subtitle burn processor accepts either the legacy SRT artifact or
   the new ASS artifact and keeps all current encoder, stream verification,
   cancellation, cleanup, progress, and audio/video cut behavior.
+- ASS boundaries are quantized to centiseconds before dialogue events are
+  emitted. A collapsed zero-duration slice is omitted, and first/last animation
+  flags are derived from the remaining renderable slices.
 
 For the desired “only the current word changes colour” look, the first verified
 implementation uses time-sliced dialogue events that display the full cue and
@@ -253,8 +263,12 @@ deleted during load, even if valid remnants exist; load returns no draft and
 preserves all files. Draft filenames use a case-insensitive-safe encoding and a
 bounded component length. A corrupt or unsupported schema never crashes the
 editor; it offers to rebuild from the cached recipe. If the picked source path
-has expired, PostDee asks the seller to choose the same source and validates a
-fingerprint before reconnecting the draft.
+  has expired, PostDee asks the seller to choose the same source and validates a
+  fingerprint before reconnecting the draft.
+- The local project ID includes a deliberate cue-segmentation revision. Draft
+  restore requires that exact ID in addition to source fingerprint and duration,
+  so an older cue algorithm cannot overwrite newly mapped cues. A revision bump
+  does not delete the older draft.
 
 Cloud persistence is a separate later design requiring authenticated ownership,
 retention/deletion rules, quotas, optimistic concurrency, and PDPA review.
@@ -264,11 +278,25 @@ retention/deletion rules, quotas, optimistic concurrency, and PDPA review.
 The first project mapper can use the existing recipe, so no new endpoint or
 Prisma model is required.
 
-Before public active-word rollout, the API should add optional backward-
-compatible cue metadata such as `timingMode` and validated `words` under
-`subtitles`. Mobile must not independently treat raw provider word timing as
-trusted because backend code already checks text/timeline coverage and
-fragmented Thai tokens.
+The backward-compatible active-word contract is implemented on
+`subtitles.segments[].words`. Each authoritative word entry has the shape
+`{ word, start, end }`, and the backend supplies it only after checking
+text/timeline coverage and fragmented Thai tokens. Mobile must not
+independently trust raw provider word timing.
+
+Compatibility is decided for the complete response, not separately per cue:
+
+- Only when every segment omits the JSON `words` field is the payload legacy,
+  so mobile may use the existing validated legacy transcript-word mapping.
+  Dart may represent this absent field as null internally; explicit JSON
+  `words: null` is not legacy.
+- A present `words` field that is null, malformed, or `[]` is authoritative and
+  fail-closed. It means that segment must remain a readable static cue and must
+  not fall back to legacy words.
+- If any segment contains the JSON `words` field, including null, malformed, or
+  empty values, the response is treated as new-format throughout. A mixed
+  old/new payload must not perform per-segment legacy fallback for segments
+  that omit `words`.
 
 The existing `subtitles.segments` field remains until old deployed clients are
 outside their compatibility window.
@@ -312,8 +340,8 @@ recipe conversion including an empty prepared cue list, and atomic draft
 recovery/queue continuation.
 
 ASS tests cover timestamp/colour conversion, escaping `\\`, braces and newline,
-font allowlisting, static cues, active-word event coverage, malformed timing,
-and legacy SRT fallback.
+font allowlisting, static cues, active-word event coverage, centisecond
+zero-duration collapse, malformed timing, and legacy SRT fallback.
 
 Widget tests cover cue seek/replay, immediate text/style preview, selection,
 keyboard/focus, undo/redo, autosave debounce, missing source recovery, and final

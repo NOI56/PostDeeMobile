@@ -111,6 +111,7 @@ AiEditPrepareResult _createPrepareFixture({
     model: 'none',
   ),
   double transcriptDurationSeconds = 45,
+  List<AiEditTranscriptWordResult>? validatedSubtitleWords,
 }) =>
     AiEditPrepareResult(
       quota: const AiEditQuota(
@@ -141,16 +142,17 @@ AiEditPrepareResult _createPrepareFixture({
           words: [],
           model: 'test',
         ),
-        subtitles: const AiEditSubtitlesResult(
+        subtitles: AiEditSubtitlesResult(
           enabled: true,
           segments: [
             ClipTranscriptSegment(
               text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
               start: 0,
               end: 10,
+              words: validatedSubtitleWords,
             ),
           ],
-          style: AiEditSubtitleStyleResult(
+          style: const AiEditSubtitleStyleResult(
             mode: 'bold',
             color: '#FFFFFF',
             wordsPerLine: 3,
@@ -412,6 +414,26 @@ class _FakeReviewVideoController extends VideoPlayerController {
 }
 
 void main() {
+  test('drops stale word metadata unless a cue is word-timed', () {
+    final staleCue = SubtitleCue(
+      cueId: 'stale-cue',
+      sourceStartMs: 0,
+      sourceEndMs: 1000,
+      text: 'ขายดี',
+      timingMode: SubtitleTimingMode.estimated,
+      words: const [
+        SubtitleWord(
+          wordId: 'stale-word',
+          text: 'ขายดี',
+          sourceStartMs: 0,
+          sourceEndMs: 1000,
+        ),
+      ],
+    );
+
+    expect(subtitleWordsForRender(staleCue), isEmpty);
+  });
+
   testWidgets('shows remaining AI editing minutes on setup', (tester) async {
     await tester.pumpWidget(
       _testApp(
@@ -1371,7 +1393,20 @@ void main() {
             storageProvider: 's3',
           ),
           uploadVideoFile: (_, __) async {},
-          prepareEdit: (_) async => _createPrepareFixture(),
+          prepareEdit: (_) async => _createPrepareFixture(
+            validatedSubtitleWords: const [
+              AiEditTranscriptWordResult(
+                word: 'รีวิวสินค้า',
+                start: 0,
+                end: 4,
+              ),
+              AiEditTranscriptWordResult(
+                word: 'ชิ้นนี้ดีมาก',
+                start: 4,
+                end: 10,
+              ),
+            ],
+          ),
           subtitleDraftStore: store,
           subtitleStudioLauncher:
               (context, sourceFile, initialProject, draftStore) async {
@@ -1391,10 +1426,15 @@ void main() {
               normalizedX: 0.5,
               normalizedY: 0.5,
               maxLines: 1,
+              animation: 'fade',
             );
             return initialProject.copyWith(
               cues: [
-                initialProject.cues.first.copyWith(text: editedSubtitle),
+                initialProject.cues.first.copyWith(
+                  text: editedSubtitle,
+                  words: const [],
+                  timingMode: SubtitleTimingMode.estimated,
+                ),
               ],
               defaultStyle: updatedStyle,
               revision: initialProject.revision + 1,
@@ -1417,6 +1457,8 @@ void main() {
     expect(studioLaunches, 0);
     expect(renderRequests, hasLength(1));
     expect(renderRequests.single.segments, isNotEmpty);
+    expect(renderRequests.single.segments.single.words, hasLength(2));
+    expect(renderRequests.single.activeWordColor, '#00E5A8');
     expect(
       renderRequests.single.subtitleFontName,
       postDeeSubtitleThaiFontName,
@@ -1462,6 +1504,9 @@ void main() {
     expect(renderRequest.subtitleFontSize, lessThan(30));
     expect(renderRequest.subtitleFontSize, greaterThanOrEqualTo(6));
     expect(renderRequest.subtitleTextColor, '#00E5A8');
+    expect(renderRequest.activeWordColor, '#FFF45C');
+    expect(renderRequest.subtitleAnimation, 'fade');
+    expect(renderRequest.segments.single.words, isEmpty);
     expect(renderRequest.subtitleOutlineColor, '#112233');
     expect(renderRequest.subtitleOutlineWidth, 3);
     expect(renderRequest.subtitleShadowColor, '#445566');

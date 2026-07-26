@@ -459,6 +459,45 @@ describe('transcription provider', () => {
     ).toBe(true);
   });
 
+  it.each([
+    [
+      'เพราะจะมีของใหม่ๆตลอดส่วน',
+      ['เพราะ', 'จะ', 'มี', 'ขอ', 'งให', 'ม่ๆ', 'ตลอด', 'ส่วน'],
+      ['เพราะ', 'จะ', 'มี', 'ของ', 'ใหม่ๆ', 'ตลอด', 'ส่วน']
+    ],
+    [
+      'อีกที่นึงระยะทางใกล้ๆราคาไม่แพง',
+      [
+        'อีก',
+        'ที่',
+        'นึง',
+        'ระยะ',
+        'ทา',
+        'งใก',
+        'ล้ๆ',
+        'ราคา',
+        'ไม่',
+        'แพง'
+      ],
+      ['อีก', 'ที่', 'นึง', 'ระยะ', 'ทาง', 'ใกล้ๆ', 'ราคา', 'ไม่', 'แพง']
+    ]
+  ])(
+    'rebuilds exact Thai fragments into semantic words for %s',
+    async (text, fragments, expectedWords) => {
+      const result = await transcribeElevenLabsFixture(
+        fragments.map((fragment, index) => ({
+          type: 'word',
+          text: fragment,
+          start: index * 0.05,
+          end: (index + 1) * 0.05
+        })),
+        text
+      );
+
+      expect(result.words.map((word) => word.word)).toEqual(expectedWords);
+    }
+  );
+
   it('preserves short Thai phrases from Scribe spacing as whole words', async () => {
     const text =
       'สวัสดีครับ ผมวรภพ ยุ่นเพียร ผู้เสียหายไม่ได้แจ้งตำรวจ ซุปเปอร์สตาร์';

@@ -522,7 +522,9 @@ Current mobile pieces:
   Thai subtitle text is segmented with the bundled `thai-wordcut-js`
   dictionary plus a shared PostDee compound list; ICU remains the fallback if
   the dictionary cannot initialize. This prevents cue boundaries inside common
-  words such as `กรุงเทพ`, `เพราะฉะนั้น`, and `นักท่องเที่ยว`.
+  words such as `กรุงเทพ`, `เพราะฉะนั้น`, and `นักท่องเที่ยว`. Real Scribe v2
+  regressions around `ใหม่ๆ` and `ใกล้ๆ` are covered by the same shared
+  provider/recipe tests instead of a separate mobile phrase list.
   Whitespace-only provider tokens are ignored during validation; malformed
   tokens containing real transcript text still fail closed.
 - For the production capability set, mobile extracts mono 16 kHz AAC at 64 kbps
@@ -573,8 +575,10 @@ Current mobile pieces:
 - When automatic subtitles are available, mobile now opens Subtitle Studio
   after `prepare` and before the first FFmpeg render. The user can edit text and
   timing, add/delete/split/merge cues, undo/redo, and change the bundled
-  Bai Jamjuree/Prompt/Anuphan font, size, text colour, outline, shadow, and safe
-  top/middle/bottom position while the Flutter preview updates immediately.
+  Bai Jamjuree/Prompt/Anuphan font, size, text colour, active-word colour,
+  outline, shadow, safe top/middle/bottom position, and none/pop/fade entrance
+  effect while the Flutter preview updates immediately. The style editor keeps
+  typography, colour, and effects in separate phone-sized panels.
   Subtitle cues use one line in both new and restored drafts; legacy two-line
   draft styles are migrated to one line when loaded. New automatic subtitles
   retain Bai Jamjuree Bold as the editable style with a 0.5 outline and no drop
@@ -584,20 +588,31 @@ Current mobile pieces:
   or sara am. Saved captions remain normal Unicode Thai, while 540p previews
   keep `่/้/๊/๋` visibly separate from the mark below. Schema-1 Anuphan and
   schema-2 Noto defaults migrate to schema 3; Prompt styles remain unchanged.
-  Draft JSON is autosaved in app-owned storage and reopening the same source
-  and AI setup restores it. These local edits and retries do not call a metered
-  AI endpoint.
+  Draft JSON is autosaved in app-owned storage and reopening the same source,
+  AI setup, and cue-segmentation revision restores it. A deliberate
+  segmentation revision bump gives corrected server cues a new project ID, so
+  an older draft cannot replace them; the old file remains recoverable. These
+  local edits and retries do not call a metered AI endpoint.
 - Thai subtitle preparation rebuilds readable word boundaries when provider
   word timestamps arrive as character fragments. Long Thai fallback segments
   or fallback segments containing several words are also split at estimated
   Thai word boundaries before reaching mobile. The final automatic cue limit is
   one word for karaoke, up to three words for large text, four for medium, and
-  five for small text; short-cue merging cannot exceed that limit. Mobile keeps
-  those server-enforced Thai cue boundaries instead of running its
+  five for small text; short-cue merging cannot exceed that limit. Adjacent
+  short groups may move whole words between them only when both become at least
+  0.7 seconds while still meeting the selected word/grapheme limits. A genuinely
+  fast cue keeps its exact spoken timeline instead of being stretched or
+  overlapped. Mobile keeps those server-enforced Thai cue boundaries instead of running its
   character-based short-cue merger a second time, and never hard-splits an
   unspaced Thai phrase. Preview and burned output disable
   wrapping, measure cues against 85% of the scaled video width, and reduce the
   font size only as a fallback instead of clipping the text.
+- Current prepare responses attach server-validated `words` to each subtitle
+  cue. Safe word timing colours only the word being spoken in the live preview
+  and in time-sliced ASS export. An absent field identifies a legacy server;
+  an explicit empty list means the server rejected that cue's timing. Edited,
+  incomplete, overlapping, out-of-range, malformed, or Thai combining-mark
+  fragment timing fails closed to a static cue instead of guessing.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.
@@ -625,9 +640,15 @@ Current mobile pieces:
   maps the selected colour, outline, shadow, and safe alignment into the final
   MP4. Bai Jamjuree, Prompt, and Anuphan burn-in use internally renamed
   derivatives so stacked Thai tone marks can use mark-safe glyphs without
-  modifying the user's caption text. The current rollback-safe renderer still
-  uses SRT/static cues; active-word karaoke and per-cue styles remain future
-  work.
+  modifying the user's caption text. The rollback-safe renderer generates ASS
+  only when a cue has validated active-word timing or the user selects pop/fade;
+  unsupported animation values and unsafe word timing fall back to static
+  ASS/SRT without blocking the complete export. An explicit subtitle/libass ASS
+  failure retries once with static SRT. User text is escaped before it enters
+  ASS override syntax.
+  ASS event boundaries are quantized to the format's 0.01-second precision
+  before export; slices that collapse to zero duration are omitted and
+  first/last Pop/Fade flags are recalculated from the remaining slices.
   Silence removal compacts kept audio ranges with
   `atrim` + `concat` so the audio ends with the shortened video instead of
   continuing after the final frame.

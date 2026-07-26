@@ -578,12 +578,22 @@ it restores an exact source/setup draft from app-owned storage, previews edits
 with a Flutter overlay, and supports cue editing plus whole-clip style changes
 without rerendering. Confirmation sends the corrected source-timeline cues and
 style to FFmpeg; cancelling leaves the draft available and does not start a
-render. Thai word boundaries from Groq character fragments and ElevenLabs
+  render. The project identity includes an explicit cue-segmentation revision,
+  and draft restoration also requires the exact project ID, so a draft produced
+  by an older boundary algorithm cannot replace newly mapped cues. Old files are
+  retained rather than destructively deleted. Current API recipes add an authoritative `words` list to every subtitle
+cue after server-side timing/text validation. Old recipes may omit the field;
+an explicit empty list disables active-word timing for that cue. Mobile checks
+finite ordered cue-bounded timings and exact text reconstruction again, while
+text edits clear the stale word timing. Thai word boundaries from Groq
+character fragments and ElevenLabs
 events are rebuilt with the bundled `thai-wordcut-js` dictionary and one shared
 PostDee compound list. `Intl.Segmenter` remains the fallback if dictionary
 initialization or output validation fails; reconstructed timing remains bounded
-by the provider segment. Subtitle fragments below 0.7 seconds are
-joined only across a nearby gap. Mobile keeps unspaced Thai phrases intact and
+  by the provider segment. Subtitle word groups below 0.7 seconds are
+  rebalanced only by moving whole adjacent words when both resulting groups
+  still meet the requested word cap, the 18-grapheme Thai limit, and the real
+  word timeline. Unavoidable fast speech is not stretched or overlapped. Mobile keeps unspaced Thai phrases intact and
 auto-fits the live preview rather than cutting a word or showing an ellipsis.
 Review checkboxes automatically
 re-render from the original clip when supported edits are removed or restored,
@@ -659,9 +669,9 @@ caches identical successful renders for the current editing session. Entering
 Upload/Post triggers a separate full-source-dimension render, so preview media
 is never treated as the publishable export.
 The renderer copies the selected bundled font into each subtitle render
-workspace and passes that directory plus verified static style values (font
-size, text/outline/shadow colours, outline/shadow depth, and safe
-top/middle/bottom alignment) to libass. Automatic subtitles retain Bai
+workspace and passes that directory plus verified style values (font size,
+text/active-word/outline/shadow colours, outline/shadow depth, safe
+top/middle/bottom alignment, and none/pop/fade effect) to libass. Automatic subtitles retain Bai
 Jamjuree Bold as their editable style, outline 0.5, and no drop shadow. During
 burn-in every selectable Bai Jamjuree, Prompt, or Anuphan style maps to an
 internally renamed OFL derivative. Mobile replaces only `่/้/๊/๋` stacked above
@@ -670,9 +680,16 @@ Drafts, API data, and Subtitle Studio text remain standard Unicode Thai. Setup
 sizes 22/25/28 compensate for the default face's smaller em metrics while the
 single-line width fitter still shrinks long cues safely. Subtitle-project
 schema version 3 carries the Bai style default; version-1 Anuphan and version-2
-Noto styles migrate on load, while Prompt stays unchanged. The current export
-remains SRT-based; ASS active-word events, karaoke, and per-cue style overrides
-are not enabled.
+Noto styles migrate on load, while Prompt stays unchanged. Cues with complete
+validated word timing use time-sliced ASS dialogue events so the full sentence
+stays visible and only the current word changes colour. Pop/fade also selects
+ASS. Pop applies its `78 -> 103 -> 100` entrance only at cue start, while fade
+puts fade-in on the first slice and fade-out on the final slice.
+Malformed or edited timing, unsupported effects, and ordinary static cues keep
+the rollback-safe static ASS/SRT path. ASS dialogue text is escaped before
+override tags are added. If FFmpeg reports a subtitle/libass-specific ASS
+failure, the renderer retries once with static SRT; cancellation and unrelated
+encoder failures are never retried. Per-cue style overrides remain disabled.
 Automatic cues are rendered with wrapping disabled. Mobile measures every cue
 against 85% of the scaled video width and reduces the requested font size only
 as a fallback when a valid Thai word-boundary split is still too wide.

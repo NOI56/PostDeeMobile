@@ -188,12 +188,18 @@ describe('AI edit audio routes', () => {
       {
         text: 'ประโยคก่อนรอยต่อ',
         start: 29.4,
-        end: 30
+        end: 30,
+        words: [
+          { word: 'ประโยคก่อนรอยต่อ', start: 29.4, end: 30 }
+        ]
       },
       {
         text: 'ประโยคหลังรอยต่อ',
         start: 30,
-        end: 30.8
+        end: 30.8,
+        words: [
+          { word: 'ประโยคหลังรอยต่อ', start: 30, end: 30.8 }
+        ]
       }
     ]);
   });

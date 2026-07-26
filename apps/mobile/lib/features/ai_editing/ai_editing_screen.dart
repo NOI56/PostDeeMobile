@@ -71,6 +71,20 @@ typedef SubtitleStudioLauncher = Future<SubtitleProject?> Function(
   SubtitleDraftStore draftStore,
 );
 
+List<SubtitleWordTiming> subtitleWordsForRender(SubtitleCue cue) {
+  if (cue.timingMode != SubtitleTimingMode.word) {
+    return const <SubtitleWordTiming>[];
+  }
+  return [
+    for (final word in cue.words)
+      SubtitleWordTiming(
+        text: word.text,
+        start: word.sourceStartMs / 1000,
+        end: word.sourceEndMs / 1000,
+      ),
+  ];
+}
+
 enum _AiDurationMode { unselected, seconds30, seconds60, custom }
 
 enum _AiEditingStage { setup, review }
@@ -1376,6 +1390,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             text: cue.text,
             start: cue.sourceStartMs / 1000,
             end: cue.sourceEndMs / 1000,
+            words: subtitleWordsForRender(cue),
           )
       else if (capabilities['subtitle'] ?? false)
         for (final segment in recipe.subtitles.segments)
@@ -1383,6 +1398,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             text: segment.text,
             start: segment.start,
             end: segment.end,
+            words: [
+              for (final word
+                  in segment.words ?? const <AiEditTranscriptWordResult>[])
+                SubtitleWordTiming(
+                  text: word.word,
+                  start: word.start,
+                  end: word.end,
+                ),
+            ],
           ),
     ];
     final subtitleMaxChars = options.subtitleMaxChars;
@@ -1440,7 +1464,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                     ),
               fontSize: requestedSubtitleFontSize,
             ),
-            maxWidth: outputWidth * 0.85,
+            maxWidth: subtitleSafeWidthForEffect(
+              maxWidth: outputWidth * 0.85,
+              animation: studioStyle?.animation ?? 'none',
+            ),
           );
     final needsLocalRender = subtitleSegments.isNotEmpty ||
         cutRanges.isNotEmpty ||
@@ -1479,6 +1506,14 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             'text': segment.text,
             'start': segment.start,
             'end': segment.end,
+            'words': [
+              for (final word in segment.words)
+                {
+                  'text': word.text,
+                  'start': word.start,
+                  'end': word.end,
+                },
+            ],
           },
       ],
       'cuts': [
@@ -1552,6 +1587,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       subtitleFontAssetPath:
           studioStyle == null ? null : _subtitleFontAssetPath(studioStyle),
       subtitleTextColor: studioStyle?.textColor ?? '#FFFFFF',
+      activeWordColor: studioStyle?.activeWordColor ??
+          SubtitleStyle.defaults.activeWordColor,
+      subtitleAnimation: studioStyle?.animation ?? 'none',
       subtitleOutlineColor: studioStyle?.outlineColor ?? '#000000',
       subtitleOutlineWidth: studioStyle?.outlineWidth ?? 0.5,
       subtitleShadowColor: studioStyle?.shadowColor ?? '#000000',

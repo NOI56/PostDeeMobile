@@ -15,6 +15,15 @@ typedef SubtitleVideoPreviewBuilder = Widget Function(
   File sourceFile,
 );
 
+enum _SubtitleStyleSection { typeface, colors, effects }
+
+bool shouldStopSubtitleCueReplay({
+  required int? replayEndMs,
+  required bool isPlaying,
+  required int sourcePositionMs,
+}) =>
+    replayEndMs != null && isPlaying && sourcePositionMs >= replayEndMs;
+
 class SubtitleStudioScreen extends StatefulWidget {
   const SubtitleStudioScreen({
     super.key,
@@ -39,8 +48,10 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
   VideoPlayerController? _videoController;
   bool _videoReady = false;
   int _sourcePositionMs = 0;
+  int? _replayCueEndMs;
   int _nextId = 1;
   String? _lastSelectedCueId;
+  _SubtitleStyleSection _styleSection = _SubtitleStyleSection.typeface;
 
   @override
   void initState() {
@@ -103,10 +114,12 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
     if (!mounted || video == null || !video.value.isInitialized) return;
     final nextPosition = video.value.position.inMilliseconds;
     if (nextPosition == _sourcePositionMs) return;
-    final selected = _controller.selectedCue;
-    if (selected != null &&
-        video.value.isPlaying &&
-        nextPosition >= selected.sourceEndMs) {
+    if (shouldStopSubtitleCueReplay(
+      replayEndMs: _replayCueEndMs,
+      isPlaying: video.value.isPlaying,
+      sourcePositionMs: nextPosition,
+    )) {
+      _replayCueEndMs = null;
       unawaited(video.pause());
     }
     setState(() => _sourcePositionMs = nextPosition);
@@ -127,6 +140,7 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
   }
 
   Future<void> _selectCue(SubtitleCue cue) async {
+    _replayCueEndMs = null;
     _controller.selectCue(cue.cueId);
     final video = _videoController;
     if (video != null && video.value.isInitialized) {
@@ -139,6 +153,8 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
     final cue = _controller.selectedCue;
     final video = _videoController;
     if (cue == null || video == null || !video.value.isInitialized) return;
+    await video.pause();
+    _replayCueEndMs = cue.sourceEndMs;
     await video.seekTo(Duration(milliseconds: cue.sourceStartMs));
     await video.play();
   }
@@ -146,6 +162,7 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
   Future<void> _togglePlayback() async {
     final video = _videoController;
     if (video == null || !video.value.isInitialized) return;
+    _replayCueEndMs = null;
     if (video.value.isPlaying) {
       await video.pause();
     } else {
@@ -305,12 +322,14 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
   }
 
   Widget _buildPreview() {
-    final activeCue = _controller.cueAt(_sourcePositionMs);
-    final previewCue = activeCue ?? _controller.selectedCue;
-    final previewText =
-        previewCue == null ? '' : _controller.displayTextFor(previewCue);
     final video = _videoController;
     final isPlaying = video?.value.isPlaying ?? false;
+    final previewCue = _controller.previewCueAt(
+      _sourcePositionMs,
+      isPlaying: isPlaying,
+    );
+    final previewText =
+        previewCue == null ? '' : _controller.displayTextFor(previewCue);
 
     return Container(
       color: const Color(0xFF08110E),
@@ -352,6 +371,13 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
                         SubtitlePreviewOverlay(
                           text: previewText,
                           style: _controller.project.defaultStyle,
+                          currentPlaybackTimeMs: _sourcePositionMs,
+                          cueStartMs: previewCue?.sourceStartMs,
+                          cueEndMs: previewCue?.sourceEndMs,
+                          words:
+                              previewCue?.timingMode == SubtitleTimingMode.word
+                                  ? previewCue!.words
+                                  : const <SubtitleWord>[],
                         ),
                       ],
                     ),
@@ -604,9 +630,57 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
 
   Widget _buildStyleEditor() {
     final style = _controller.project.defaultStyle;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+    return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: _styleSectionButton(
+                  key: 'subtitle-style-section-typeface',
+                  label: 'ตัวอักษร',
+                  icon: Icons.text_fields_rounded,
+                  section: _SubtitleStyleSection.typeface,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _styleSectionButton(
+                  key: 'subtitle-style-section-colors',
+                  label: 'สี',
+                  icon: Icons.palette_outlined,
+                  section: _SubtitleStyleSection.colors,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _styleSectionButton(
+                  key: 'subtitle-style-section-effects',
+                  label: 'เอฟเฟกต์',
+                  icon: Icons.auto_awesome_outlined,
+                  section: _SubtitleStyleSection.effects,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            key: ValueKey(_styleSection),
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 24),
+            children: switch (_styleSection) {
+              _SubtitleStyleSection.typeface => _buildTypefaceControls(style),
+              _SubtitleStyleSection.colors => _buildColorControls(style),
+              _SubtitleStyleSection.effects => _buildEffectControls(style),
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _buildTypefaceControls(SubtitleStyle style) => [
         _styleHeading('ฟอนต์'),
         Row(
           children: [
@@ -647,35 +721,6 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
           divisions: 28,
           onChanged: (value) => _setStyle(fontSize: value),
         ),
-        _styleHeading('สีตัวอักษร'),
-        _colorRow(
-          selected: style.textColor,
-          values: const ['#FFFFFF', '#FFF45C', '#00E5A8', '#FF6B6B'],
-          onChanged: (value) => _setStyle(textColor: value),
-        ),
-        const SizedBox(height: 14),
-        _styleHeading('สีขอบ'),
-        _colorRow(
-          selected: style.outlineColor,
-          values: const ['#000000', '#FFFFFF', '#052E21', '#7C2D12'],
-          onChanged: (value) => _setStyle(outlineColor: value),
-        ),
-        _slider(
-          label: 'ความหนาขอบ ${style.outlineWidth.toStringAsFixed(1)}',
-          value: style.outlineWidth,
-          min: 0,
-          max: 5,
-          divisions: 10,
-          onChanged: (value) => _setStyle(outlineWidth: value),
-        ),
-        _slider(
-          label: 'เงา ${style.shadowDepth.toStringAsFixed(1)}',
-          value: style.shadowDepth,
-          min: 0,
-          max: 6,
-          divisions: 12,
-          onChanged: (value) => _setStyle(shadowDepth: value),
-        ),
         _styleHeading('ตำแหน่ง'),
         Row(
           children: [
@@ -697,21 +742,130 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
             ],
           ],
         ),
-        const SizedBox(height: 14),
-        _styleHeading('จำนวนบรรทัด'),
+      ];
+
+  List<Widget> _buildColorControls(SubtitleStyle style) => [
+        _styleHeading('สีข้อความ'),
+        _colorRow(
+          keyPrefix: 'subtitle-color-text',
+          selected: style.textColor,
+          values: const ['#FFFFFF', '#FFF45C', '#00E5A8', '#FF6B6B'],
+          onChanged: (value) => _setStyle(textColor: value),
+        ),
+        const SizedBox(height: 16),
+        _styleHeading('สีคำที่กำลังพูด'),
+        const Text(
+          'เปลี่ยนสีตามคำที่ได้ยิน เพื่อให้ซับตามเสียงชัดขึ้น',
+          style: TextStyle(color: Color(0xFF91A399), fontSize: 10),
+        ),
+        const SizedBox(height: 8),
+        _colorRow(
+          keyPrefix: 'subtitle-color-active',
+          selected: style.activeWordColor,
+          values: const ['#00E5A8', '#FFF45C', '#FF6B6B', '#60A5FA'],
+          onChanged: (value) => _setStyle(activeWordColor: value),
+        ),
+        const SizedBox(height: 16),
+        _styleHeading('สีขอบ'),
+        _colorRow(
+          keyPrefix: 'subtitle-color-outline',
+          selected: style.outlineColor,
+          values: const ['#000000', '#FFFFFF', '#052E21', '#7C2D12'],
+          onChanged: (value) => _setStyle(outlineColor: value),
+        ),
+        _slider(
+          label: 'ความหนาขอบ ${style.outlineWidth.toStringAsFixed(1)}',
+          value: style.outlineWidth,
+          min: 0,
+          max: 5,
+          divisions: 10,
+          onChanged: (value) => _setStyle(outlineWidth: value),
+        ),
+        _styleHeading('สีเงา'),
+        _colorRow(
+          keyPrefix: 'subtitle-color-shadow',
+          selected: style.shadowColor,
+          values: const ['#000000', '#FFFFFF', '#052E21', '#7C2D12'],
+          onChanged: (value) => _setStyle(shadowColor: value),
+        ),
+        _slider(
+          label: 'ระยะเงา ${style.shadowDepth.toStringAsFixed(1)}',
+          value: style.shadowDepth,
+          min: 0,
+          max: 6,
+          divisions: 12,
+          onChanged: (value) => _setStyle(shadowDepth: value),
+        ),
+      ];
+
+  List<Widget> _buildEffectControls(SubtitleStyle style) => [
+        _styleHeading('การเคลื่อนไหวของซับ'),
+        const Text(
+          'เลือกแล้วกดฟังประโยค เพื่อดูเอฟเฟกต์ตามเวลาจริง',
+          style: TextStyle(color: Color(0xFF91A399), fontSize: 10),
+        ),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
               child: _choiceButton(
-                key: 'subtitle-lines-one',
-                label: '1 บรรทัด',
-                selected: style.maxLines == 1,
-                onTap: () => _setStyle(maxLines: 1),
+                key: 'subtitle-effect-none',
+                label: 'ไม่มี',
+                selected: style.animation == 'none',
+                onTap: () => _setStyle(animation: 'none'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _choiceButton(
+                key: 'subtitle-effect-pop',
+                label: 'เด้ง',
+                selected: style.animation == 'pop',
+                onTap: () => _setStyle(animation: 'pop'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _choiceButton(
+                key: 'subtitle-effect-fade',
+                label: 'เฟด',
+                selected: style.animation == 'fade',
+                onTap: () => _setStyle(animation: 'fade'),
               ),
             ),
           ],
         ),
-      ],
+      ];
+
+  Widget _styleSectionButton({
+    required String key,
+    required String label,
+    required IconData icon,
+    required _SubtitleStyleSection section,
+  }) {
+    final selected = _styleSection == section;
+    return OutlinedButton.icon(
+      key: ValueKey(key),
+      onPressed: () {
+        if (!selected) setState(() => _styleSection = section);
+      },
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        backgroundColor:
+            selected ? const Color(0xFF0F4D39) : const Color(0xFF101A16),
+        foregroundColor: selected ? AppTheme.accent : const Color(0xFF9EB0A6),
+        side: BorderSide(
+          color: selected ? AppTheme.accent : const Color(0xFF30443A),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      icon: Icon(icon, size: 16),
+      label: Text(
+        label,
+        maxLines: 1,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+      ),
     );
   }
 
@@ -749,6 +903,7 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
   }
 
   Widget _colorRow({
+    required String keyPrefix,
     required String selected,
     required List<String> values,
     required ValueChanged<String> onChanged,
@@ -758,6 +913,9 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
       children: [
         for (final value in values)
           InkWell(
+            key: ValueKey(
+              '$keyPrefix-${value.replaceFirst('#', '').toLowerCase()}',
+            ),
             onTap: () => onChanged(value),
             borderRadius: BorderRadius.circular(999),
             child: Container(
@@ -819,11 +977,14 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
     String? fontId,
     double? fontSize,
     String? textColor,
+    String? activeWordColor,
     String? outlineColor,
     double? outlineWidth,
+    String? shadowColor,
     double? shadowDepth,
     SubtitleAlignment? alignment,
     int? maxLines,
+    String? animation,
   }) {
     _controller.updateDefaultStyle(
       copySubtitleStyle(
@@ -831,11 +992,14 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
         fontId: fontId,
         fontSize: fontSize,
         textColor: textColor,
+        activeWordColor: activeWordColor,
         outlineColor: outlineColor,
         outlineWidth: outlineWidth,
+        shadowColor: shadowColor,
         shadowDepth: shadowDepth,
         alignment: alignment,
         maxLines: maxLines,
+        animation: animation,
       ),
     );
   }

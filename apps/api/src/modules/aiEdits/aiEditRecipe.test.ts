@@ -76,6 +76,11 @@ const buildRecipe = ({
     settings: readAiEditRecipeSettings(settings)
   });
 
+const readLegacySubtitleSegmentFields = (
+  segments: Array<{ text: string; start: number; end: number }>
+) =>
+  segments.map(({ text, start, end }) => ({ text, start, end }));
+
 describe('AI edit recipe pacing settings', () => {
   it.each([
     ['natural', 1],
@@ -172,7 +177,8 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual(segments);
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
+      .toEqual(segments);
     expect(recipe.silenceRanges).toEqual([{ start: 0.55, end: 1.2 }]);
   });
 
@@ -215,6 +221,72 @@ describe('AI edit recipe pacing settings', () => {
     ).toBe(true);
   });
 
+  it.each([
+    {
+      text: 'เพราะจะมีของใหม่ๆตลอดส่วน',
+      fragments: ['เพราะ', 'จะ', 'มี', 'ขอ', 'งให', 'ม่ๆ', 'ตลอด', 'ส่วน'],
+      protectedParts: ['ใหม่ๆ']
+    },
+    {
+      text: 'อีกที่นึงระยะทางใกล้ๆราคาไม่แพง',
+      fragments: [
+        'อีก',
+        'ที่',
+        'นึง',
+        'ระยะ',
+        'ทา',
+        'งใก',
+        'ล้ๆ',
+        'ราคา',
+        'ไม่',
+        'แพง'
+      ],
+      protectedParts: ['ทาง', 'ใกล้ๆ']
+    }
+  ])(
+    'does not keep a Thai subtitle cue boundary inside semantic words from $text',
+    ({ text, fragments, protectedParts }) => {
+      const durationSeconds = fragments.length * 0.3;
+      const recipe = buildRecipe({
+        capabilities: { subtitle: true },
+        language: 'Thai',
+        text,
+        durationSeconds,
+        settings: { subtitleWordsPerLine: 2 },
+        segments: [{ text, start: 0, end: durationSeconds }],
+        words: fragments.map((word, index) => ({
+          word,
+          start: index * 0.3,
+          end: (index + 1) * 0.3
+        }))
+      });
+
+      const subtitleTexts = recipe.subtitles.segments.map(
+        (segment) => segment.text
+      );
+      let cueOffset = 0;
+      const cueBoundaries = subtitleTexts.slice(0, -1).map((subtitle) => {
+        cueOffset += Array.from(subtitle).length;
+        return cueOffset;
+      });
+
+      expect(subtitleTexts.join('')).toBe(text);
+      for (const protectedPart of protectedParts) {
+        const protectedStart = Array.from(
+          text.slice(0, text.indexOf(protectedPart))
+        ).length;
+        const protectedEnd =
+          protectedStart + Array.from(protectedPart).length;
+        expect(
+          cueBoundaries.every(
+            (boundary) =>
+              boundary <= protectedStart || boundary >= protectedEnd
+          )
+        ).toBe(true);
+      }
+    }
+  );
+
   it('keeps Scribe word timings when Latin words cross segment boundaries', () => {
     const segments = [
       { text: 'อยู่ที่แถ', start: 0, end: 0.65 },
@@ -244,7 +316,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'อยู่ที่แถวสยาม', start: 0, end: 1.1 },
       { text: 'Weekend Market อยู่ใน', start: 1.1, end: 2.3 },
       { text: 'เมืองหลวงต่างๆ', start: 2.3, end: 3.2 }
@@ -637,7 +709,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'เช่นช่วงเสาร์อาทิตย์', start: 0, end: 1.2 }
     ]);
   });
@@ -660,11 +732,116 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'มีดี', start: 0, end: 0.4 },
       { text: 'มาไป', start: 0.4, end: 0.8 },
       { text: 'ดูของ', start: 0.8, end: 1.2 },
       { text: 'ใหม่นะ', start: 1.2, end: 1.6 }
+    ]);
+  });
+
+  it('balances a real fast Thai draft without creating unreadable short cues', () => {
+    const tokens = [
+      'เพราะ',
+      'จะ',
+      'มี',
+      'ของ',
+      'ใหม่ๆ',
+      'ตลอด',
+      'ส่วน',
+      'อีก',
+      'ที่',
+      'นึง',
+      'ระยะ',
+      'ทาง',
+      'ใกล้ๆ',
+      'ราคา',
+      'ไม่',
+      'แพง'
+    ];
+    const text = tokens.join('');
+    const wordDurationSeconds = 0.4;
+    const durationSeconds = tokens.length * wordDurationSeconds;
+    const words = tokens.map((word, index) => ({
+      word,
+      start: index * wordDurationSeconds,
+      end: (index + 1) * wordDurationSeconds
+    }));
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      model: 'scribe_v2',
+      text,
+      durationSeconds,
+      settings: { subtitleWordsPerLine: 3 },
+      segments: [{ text, start: 0, end: durationSeconds }],
+      words
+    });
+    const subtitles = recipe.subtitles.segments;
+    const graphemeCount = (value: string) =>
+      Array.from(
+        new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(value)
+      ).length;
+
+    expect(subtitles.map((subtitle) => subtitle.text).join('')).toBe(text);
+    expect(subtitles[0]?.start).toBeCloseTo(0);
+    expect(subtitles.at(-1)?.end).toBeCloseTo(durationSeconds);
+    expect(
+      subtitles.every(
+        (subtitle) =>
+          subtitle.end - subtitle.start >= 0.7 - Number.EPSILON
+      )
+    ).toBe(true);
+    expect(
+      subtitles.every(
+        (subtitle) =>
+          subtitle.words.length > 0 &&
+          subtitle.words.length <= 3 &&
+          graphemeCount(subtitle.text) <= 18 &&
+          subtitle.words.map((word) => word.word).join('') === subtitle.text
+      )
+    ).toBe(true);
+    expect(
+      subtitles.every(
+        (subtitle, index) =>
+          index === 0 ||
+          subtitle.start >= subtitles[index - 1]!.end - Number.EPSILON
+      )
+    ).toBe(true);
+    for (const word of words) {
+      expect(
+        subtitles.filter(
+          (subtitle) =>
+            word.start >= subtitle.start - Number.EPSILON &&
+            word.end <= subtitle.end + Number.EPSILON
+        )
+      ).toHaveLength(1);
+    }
+  });
+
+  it('keeps an unavoidable three-word Thai cue inside its 359ms timeline', () => {
+    const words = [
+      { word: 'ของ', start: 0, end: 0.11 },
+      { word: 'ที่', start: 0.11, end: 0.2 },
+      { word: 'ตัวเอง', start: 0.2, end: 0.359 }
+    ];
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text: 'ของที่ตัวเอง',
+      durationSeconds: 0.359,
+      settings: { subtitleWordsPerLine: 3 },
+      segments: [{ text: 'ของที่ตัวเอง', start: 0, end: 0.359 }],
+      words
+    });
+
+    expect(recipe.subtitles.segments).toEqual([
+      {
+        text: 'ของที่ตัวเอง',
+        start: 0,
+        end: 0.359,
+        words
+      }
     ]);
   });
 
@@ -714,7 +891,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'Good intro', start: 0, end: 2 }
     ]);
   });
@@ -782,7 +959,8 @@ describe('AI edit recipe pacing settings', () => {
       words
     });
 
-    expect(recipe.subtitles.segments).toEqual(segments);
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
+      .toEqual(segments);
   });
 
   it('detects silence at the start and end of the transcript timeline', () => {
@@ -884,7 +1062,7 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.silenceRanges).toEqual([]);
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'ช่วงแรก', start: 0, end: 1 }
     ]);
   });
@@ -907,7 +1085,7 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.silenceRanges).toEqual([]);
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'ช่วงหลัก', start: 0, end: 10 },
       { text: 'ซ้อนหนึ่ง', start: 1, end: 2 },
       { text: 'ซ้อนสอง', start: 5, end: 6 },
@@ -1025,7 +1203,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'สวัสดีค่ะ', start: 0, end: 0.7 },
       { text: 'วันนี้', start: 0.8, end: 1.2 }
     ]);
@@ -1092,7 +1270,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'รุ่น iPhone 15 Pro', start: 0, end: 1.2 }
     ]);
   });
@@ -1111,7 +1289,7 @@ describe('AI edit recipe pacing settings', () => {
         ]
       });
 
-      expect(recipe.subtitles.segments).toEqual([
+      expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
         { text: `ราคา ${price} บาท`, start: 0, end: 1 }
       ]);
     }
@@ -1130,7 +1308,7 @@ describe('AI edit recipe pacing settings', () => {
         ]
       });
 
-      expect(recipe.subtitles.segments).toEqual([
+      expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
         { text: 'สวัสดีค่ะ', start: 0, end: 0.7 }
       ]);
     }
@@ -1148,7 +1326,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'Hello world again', start: 0, end: 1.3 }
     ]);
   });
@@ -1161,7 +1339,8 @@ describe('AI edit recipe pacing settings', () => {
       words: [{ word: 'เวลาผิด', start: 0.5, end: 0.5 }]
     });
 
-    expect(recipe.subtitles.segments).toEqual(segments);
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
+      .toEqual(segments);
   });
 
   it('uses only supported filler words selected by the request', () => {
@@ -1481,5 +1660,137 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.renderHints).not.toHaveProperty('hookSeconds');
+  });
+
+  it('adds server-validated word timings to each subtitle cue', () => {
+    const words = [
+      { word: 'Hello', start: 0, end: 0.4 },
+      { word: 'world', start: 0.4, end: 0.8 },
+      { word: 'again', start: 1.5, end: 2.3 }
+    ];
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'en',
+      text: 'Hello world again',
+      durationSeconds: 2.3,
+      settings: { subtitleWordsPerLine: 2 },
+      segments: [{ text: 'Hello world again', start: 0, end: 2.3 }],
+      words
+    });
+
+    expect(recipe.subtitles.segments).toEqual([
+      {
+        text: 'Hello world',
+        start: 0,
+        end: 0.8,
+        words: words.slice(0, 2)
+      },
+      {
+        text: 'again',
+        start: 1.5,
+        end: 2.3,
+        words: words.slice(2)
+      }
+    ]);
+  });
+
+  it('omits word timings when Thai provider timings are fragmented', () => {
+    const text = 'สวัสดีครับ';
+    const characters = Array.from(text);
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'th',
+      text,
+      durationSeconds: 1,
+      segments: [{ text, start: 0, end: 1 }],
+      words: characters.map((word, index) => ({
+        word,
+        start: index / characters.length,
+        end: (index + 1) / characters.length
+      }))
+    });
+
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(0);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => segment.words.length === 0
+      )
+    ).toBe(true);
+  });
+
+  it.each([
+    ['two tokens', 'ก้'],
+    ['three tokens', 'ก้า']
+  ])(
+    'omits standalone Thai combining-mark timing from a short %s clip',
+    (_, text) => {
+      const characters = Array.from(text);
+      const recipe = buildRecipe({
+        capabilities: { subtitle: true },
+        language: 'th',
+        text,
+        durationSeconds: 1,
+        segments: [{ text, start: 0, end: 1 }],
+        words: characters.map((word, index) => ({
+          word,
+          start: index / characters.length,
+          end: (index + 1) / characters.length
+        }))
+      });
+
+      expect(recipe.subtitles.segments).toHaveLength(1);
+      expect(recipe.subtitles.segments[0]?.words).toEqual([]);
+    }
+  );
+
+  it.each([
+    [
+      'overlap',
+      [{ text: 'one two', start: 0, end: 1.2 }],
+      [
+        { word: 'one', start: 0, end: 0.7 },
+        { word: 'two', start: 0.6, end: 1.2 }
+      ]
+    ],
+    [
+      'outside the subtitle cue',
+      [{ text: 'one two', start: 0.2, end: 1.2 }],
+      [
+        { word: 'one', start: 0, end: 0.6 },
+        { word: 'two', start: 0.6, end: 1.2 }
+      ]
+    ]
+  ])('omits %s word timings', (_, segments, words) => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'en',
+      text: 'one two',
+      durationSeconds: 1.2,
+      segments,
+      words
+    });
+
+    expect(recipe.subtitles.segments).toHaveLength(1);
+    expect(recipe.subtitles.segments[0]?.words).toEqual([]);
+  });
+
+  it('omits word timings that cannot reconstruct a length-constrained cue', () => {
+    const text = 'นี่คือข้อความภาษาไทยที่ยาวมากเกินไปสำหรับซับหนึ่งบรรทัด';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'th',
+      text,
+      durationSeconds: 3,
+      settings: { subtitleWordsPerLine: 4 },
+      segments: [{ text, start: 0, end: 3 }],
+      words: [{ word: text, start: 0, end: 3 }]
+    });
+
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => segment.words.length === 0
+      )
+    ).toBe(true);
   });
 });

@@ -5,7 +5,7 @@ import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_proj
 
 void main() {
   AiEditRecipeResult recipeFixture({
-    bool includeRawWords = false,
+    List<AiEditTranscriptWordResult> transcriptWords = const [],
     double durationSeconds = 5,
     List<ClipTranscriptSegment>? subtitleSegments,
     List<AiEditCut> cutRanges = const [AiEditCut(start: 3, end: 4)],
@@ -24,15 +24,7 @@ void main() {
           ClipTranscriptSegment(text: 'หนึ่ง', start: 0.1, end: 1.2),
           ClipTranscriptSegment(text: 'สอง', start: 1.5, end: 2.5),
         ],
-        words: includeRawWords
-            ? const [
-                AiEditTranscriptWordResult(
-                  word: 'ห',
-                  start: 0.1,
-                  end: 0.2,
-                ),
-              ]
-            : const [],
+        words: transcriptWords,
         model: 'fixture',
       ),
       subtitles: AiEditSubtitlesResult(
@@ -114,15 +106,388 @@ void main() {
     expect(project.cues.map((cue) => cue.text), ['จะเป็นของ', 'มือสองไปหา']);
   });
 
-  test('does not trust raw transcript words for highlighting', () {
+  test('maps verified transcript words inside a subtitle cue', () {
     final project = mapAiEditRecipeToSubtitleProject(
-      recipe: recipeFixture(includeRawWords: true),
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(text: 'hello world', start: 0.1, end: 1.2),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'hello', start: 0.1, end: 0.5),
+          AiEditTranscriptWordResult(word: 'world', start: 0.6, end: 1.2),
+        ],
+      ),
       projectId: 'project-1',
       sourceFingerprint: 'source-1',
       now: DateTime.utc(2026, 7, 20),
     );
 
-    expect(project.cues.expand((cue) => cue.words), isEmpty);
+    final cue = project.cues.single;
+    expect(cue.timingMode, SubtitleTimingMode.word);
+    expect(cue.words.map((word) => word.text), ['hello', 'world']);
+    expect(cue.words.map((word) => word.sourceStartMs), [100, 600]);
+    expect(cue.words.map((word) => word.sourceEndMs), [500, 1200]);
+    expect(cue.words.map((word) => word.separatorAfter), [' ', '']);
+    expect(
+      cue.words.map((word) => word.wordId),
+      ['${cue.cueId}-word-1', '${cue.cueId}-word-2'],
+    );
+  });
+
+  test('prefers server-validated cue words over raw transcript words', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+            text: 'hello world',
+            start: 0.1,
+            end: 1.2,
+            words: [
+              AiEditTranscriptWordResult(
+                word: 'hello',
+                start: 0.2,
+                end: 0.5,
+              ),
+              AiEditTranscriptWordResult(
+                word: 'world',
+                start: 0.7,
+                end: 1.1,
+              ),
+            ],
+          ),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'hello', start: 0.1, end: 0.4),
+          AiEditTranscriptWordResult(word: 'world', start: 0.5, end: 1.2),
+        ],
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(
+      project.cues.single.words.map((word) => word.sourceStartMs),
+      [200, 700],
+    );
+    expect(
+      project.cues.single.words.map((word) => word.sourceEndMs),
+      [500, 1100],
+    );
+  });
+
+  test('authoritative empty cue words block raw transcript fallback', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+            text: 'hello world',
+            start: 0.1,
+            end: 1.2,
+            words: [],
+          ),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'hello', start: 0.1, end: 0.5),
+          AiEditTranscriptWordResult(word: 'world', start: 0.6, end: 1.2),
+        ],
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues.single.words, isEmpty);
+    expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+  });
+
+  test('mixed nested word contract does not fall back per missing cue', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+            text: 'first',
+            start: 0.1,
+            end: 1,
+            words: [
+              AiEditTranscriptWordResult(word: 'first', start: 0.1, end: 1),
+            ],
+          ),
+          ClipTranscriptSegment(text: 'second', start: 1.5, end: 2.5),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'first', start: 0.1, end: 1),
+          AiEditTranscriptWordResult(word: 'second', start: 1.5, end: 2.5),
+        ],
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues[0].words.single.text, 'first');
+    expect(project.cues[1].words, isEmpty);
+    expect(project.cues[1].timingMode, SubtitleTimingMode.segment);
+  });
+
+  test('keeps transcript words that belong to their respective cues', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(text: 'first', start: 0.1, end: 1),
+          ClipTranscriptSegment(text: 'second', start: 1.5, end: 2.5),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'first', start: 0.1, end: 1),
+          AiEditTranscriptWordResult(word: 'second', start: 1.5, end: 2.5),
+          AiEditTranscriptWordResult(word: 'ignored', start: 4.1, end: 4.5),
+        ],
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues[0].words.single.text, 'first');
+    expect(project.cues[1].words.single.text, 'second');
+    expect(
+      project.cues.every(
+        (cue) => cue.timingMode == SubtitleTimingMode.word,
+      ),
+      isTrue,
+    );
+  });
+
+  test('falls back when transcript words do not reconstruct the cue', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+              text: 'hello brave world', start: 0.1, end: 1.2),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'hello', start: 0.1, end: 0.5),
+          AiEditTranscriptWordResult(word: 'world', start: 0.6, end: 1.2),
+        ],
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues.single.words, isEmpty);
+    expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+  });
+
+  test('preserves punctuation, symbols, and whitespace between timed words',
+      () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+            text: 'ขายดี, ส่งฟรี! ✨',
+            start: 0.1,
+            end: 1.2,
+            words: [
+              AiEditTranscriptWordResult(
+                word: 'ขายดี',
+                start: 0.1,
+                end: 0.5,
+              ),
+              AiEditTranscriptWordResult(
+                word: 'ส่งฟรี',
+                start: 0.6,
+                end: 1.2,
+              ),
+            ],
+          ),
+        ],
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    final cue = project.cues.single;
+    expect(cue.timingMode, SubtitleTimingMode.word);
+    expect(cue.words.map((word) => word.text), ['ขายดี', 'ส่งฟรี']);
+    expect(cue.words.map((word) => word.separatorAfter), [', ', '! ✨']);
+  });
+
+  test('treats Thai abbreviation and repetition marks as semantic cue text',
+      () {
+    for (final mark in const ['\u0E2F', '\u0E46']) {
+      final project = mapAiEditRecipeToSubtitleProject(
+        recipe: recipeFixture(
+          subtitleSegments: [
+            ClipTranscriptSegment(
+              text: 'word$mark',
+              start: 0.1,
+              end: 1.2,
+              words: const [
+                AiEditTranscriptWordResult(
+                  word: 'word',
+                  start: 0.1,
+                  end: 1.2,
+                ),
+              ],
+            ),
+          ],
+        ),
+        projectId: 'project-1',
+        sourceFingerprint: 'source-1',
+        now: DateTime.utc(2026, 7, 20),
+      );
+
+      expect(project.cues.single.words, isEmpty);
+      expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+    }
+  });
+
+  test('falls back for malformed or overlapping transcript word timing', () {
+    final invalidWords = <List<AiEditTranscriptWordResult>>[
+      const [
+        AiEditTranscriptWordResult(word: 'hello', start: 0.1, end: 0.5),
+        AiEditTranscriptWordResult(word: 'world', start: 0.4, end: 1.2),
+      ],
+      const [
+        AiEditTranscriptWordResult(word: 'hello', start: 0.1, end: 0.5),
+        AiEditTranscriptWordResult(word: 'world', start: 0.6, end: 0.6),
+      ],
+      [
+        const AiEditTranscriptWordResult(word: 'hello', start: 0.1, end: 0.5),
+        AiEditTranscriptWordResult(
+          word: 'world',
+          start: double.nan,
+          end: 1.2,
+        ),
+      ],
+    ];
+
+    for (final words in invalidWords) {
+      final project = mapAiEditRecipeToSubtitleProject(
+        recipe: recipeFixture(
+          subtitleSegments: const [
+            ClipTranscriptSegment(text: 'hello world', start: 0.1, end: 1.2),
+          ],
+          transcriptWords: words,
+        ),
+        projectId: 'project-1',
+        sourceFingerprint: 'source-1',
+        now: DateTime.utc(2026, 7, 20),
+      );
+
+      expect(project.cues.single.words, isEmpty);
+      expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+    }
+  });
+
+  test('falls back when a transcript word crosses a cue boundary', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(text: 'hello world', start: 0.1, end: 1.2),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'hello', start: 0.05, end: 0.5),
+          AiEditTranscriptWordResult(word: 'world', start: 0.6, end: 1.2),
+        ],
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues.single.words, isEmpty);
+    expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+  });
+
+  test('does not expose fragmented Thai character timing as words', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(text: 'สวัสดี', start: 0.1, end: 0.6),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'ส', start: 0.1, end: 0.2),
+          AiEditTranscriptWordResult(word: 'ว', start: 0.2, end: 0.3),
+          AiEditTranscriptWordResult(word: 'ั', start: 0.3, end: 0.35),
+          AiEditTranscriptWordResult(word: 'ส', start: 0.35, end: 0.45),
+          AiEditTranscriptWordResult(word: 'ดี', start: 0.45, end: 0.6),
+        ],
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues.single.words, isEmpty);
+    expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+  });
+
+  test('does not trust structurally fragmented authoritative Thai cue words',
+      () {
+    for (final fixture in [
+      (
+        text: 'ก้',
+        words: const [
+          AiEditTranscriptWordResult(word: 'ก', start: 0.1, end: 0.3),
+          AiEditTranscriptWordResult(word: '้', start: 0.3, end: 0.6),
+        ],
+      ),
+      (
+        text: 'ก้า',
+        words: const [
+          AiEditTranscriptWordResult(word: 'ก', start: 0.1, end: 0.25),
+          AiEditTranscriptWordResult(word: '้', start: 0.25, end: 0.4),
+          AiEditTranscriptWordResult(word: 'า', start: 0.4, end: 0.6),
+        ],
+      ),
+    ]) {
+      final project = mapAiEditRecipeToSubtitleProject(
+        recipe: recipeFixture(
+          subtitleSegments: [
+            ClipTranscriptSegment(
+              text: fixture.text,
+              start: 0.1,
+              end: 0.6,
+              words: fixture.words,
+            ),
+          ],
+        ),
+        projectId: 'project-1',
+        sourceFingerprint: 'source-1',
+        now: DateTime.utc(2026, 7, 20),
+      );
+
+      expect(project.cues.single.words, isEmpty);
+      expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+    }
+  });
+
+  test('keeps verified semantic Thai word timing', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(text: 'อยู่ที่บ้านนะ', start: 0.1, end: 1.4),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'อยู่', start: 0.1, end: 0.4),
+          AiEditTranscriptWordResult(word: 'ที่', start: 0.4, end: 0.7),
+          AiEditTranscriptWordResult(word: 'บ้าน', start: 0.7, end: 1.1),
+          AiEditTranscriptWordResult(word: 'นะ', start: 1.1, end: 1.4),
+        ],
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(
+      project.cues.single.words.map((word) => word.text),
+      ['อยู่', 'ที่', 'บ้าน', 'นะ'],
+    );
+    expect(project.cues.single.timingMode, SubtitleTimingMode.word);
   });
 
   test('maps an empty prepared subtitle list to a valid empty project', () {

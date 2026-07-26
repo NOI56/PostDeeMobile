@@ -93,6 +93,8 @@ export const protectedThaiSubtitleCompounds = [
   'เท่าไหร่',
   'ส่วนมาก',
   'ชาวบ้าน',
+  'ใหม่ๆ',
+  'ใกล้ๆ',
   'หลายๆ',
   'เด็กๆ',
   'ต่างๆ',

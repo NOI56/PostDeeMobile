@@ -70,6 +70,10 @@ export type AiEditRecipeSettings = {
   music?: AiEditMusicSettings;
 };
 
+export type AiEditSubtitleSegment = TranscriptSegment & {
+  words: TranscriptWord[];
+};
+
 export type AiEditRecipe = {
   version: 1;
   status: 'ready';
@@ -86,7 +90,7 @@ export type AiEditRecipe = {
   };
   subtitles: {
     enabled: boolean;
-    segments: TranscriptSegment[];
+    segments: AiEditSubtitleSegment[];
     style: {
       mode: string;
       color: string;
@@ -322,6 +326,7 @@ const maximumEstimatedThaiWordsPerCue = 2;
 const maximumThaiMidWordSegmentGapSeconds = 0.5;
 const maximumThaiCueBoundaryShiftCharacters = 6;
 const maximumThaiSubtitleGraphemes = 18;
+const subtitleWordTimingToleranceSeconds = 1e-6;
 const protectedThaiSubtitleWords = protectedThaiSubtitleCompounds;
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
@@ -489,10 +494,17 @@ const hasFragmentedThaiWordTimings = (
   language: string,
   referenceText: string
 ): boolean => {
-  if (
-    normalizeTranscriptionLanguage(language) !== 'th' ||
-    words.length < minimumFragmentedTokenCount
-  ) {
+  if (normalizeTranscriptionLanguage(language) !== 'th') {
+    return false;
+  }
+
+  const hasStandaloneCombiningMark = words.some((word) =>
+    /^\p{M}+$/u.test(word.word.trim().normalize('NFD'))
+  );
+  if (hasStandaloneCombiningMark) {
+    return true;
+  }
+  if (words.length < minimumFragmentedTokenCount) {
     return false;
   }
 
@@ -505,9 +517,6 @@ const hasFragmentedThaiWordTimings = (
   const thaiTokenRatio = words.filter((word) =>
     /\p{Script=Thai}/u.test(word.word)
   ).length / words.length;
-  const hasStandaloneCombiningMark = words.some((word) =>
-    /^\p{M}+$/u.test(word.word.trim().normalize('NFD'))
-  );
   const providerWordTokens = words
     .map((word) => normalizeTranscriptTextForCoverage(word.word))
     .filter(Boolean);
@@ -534,7 +543,7 @@ const hasFragmentedThaiWordTimings = (
   return (
     hasReferenceEvidence &&
     thaiTokenRatio >= 0.5 &&
-    (hasStandaloneCombiningMark || providerBoundariesDiffer) &&
+    providerBoundariesDiffer &&
     tightPairRatio >= 0.5
   );
 };
@@ -662,6 +671,49 @@ const readValidTranscriptWords = (
   return sortedWords;
 };
 
+const attachValidatedSubtitleWords = (
+  segments: TranscriptSegment[],
+  words: TranscriptWord[]
+): AiEditSubtitleSegment[] =>
+  segments.map((segment) => {
+    const cueWords = words.filter(
+      (word) => word.start < segment.end && word.end > segment.start
+    );
+    if (cueWords.length === 0) {
+      return { ...segment, words: [] };
+    }
+
+    const hasWordOutsideCue = cueWords.some(
+      (word) =>
+        word.start < segment.start - subtitleWordTimingToleranceSeconds ||
+        word.end > segment.end + subtitleWordTimingToleranceSeconds
+    );
+    const hasOverlappingWords = cueWords.some(
+      (word, index) =>
+        index > 0 &&
+        word.start <
+          cueWords[index - 1]!.end - subtitleWordTimingToleranceSeconds
+    );
+    const cueText = normalizeTranscriptTextForCoverage(segment.text);
+    const reconstructedText = normalizeTranscriptTextForCoverage(
+      cueWords.map((word) => word.word).join('')
+    );
+
+    if (
+      hasWordOutsideCue ||
+      hasOverlappingWords ||
+      cueText.length === 0 ||
+      reconstructedText !== cueText
+    ) {
+      return { ...segment, words: [] };
+    }
+
+    return {
+      ...segment,
+      words: cueWords
+    };
+  });
+
 const isNumericSubtitleToken = (value: string): boolean => {
   const digits = value.replace(/[.,]/gu, '');
   return digits.length > 0 && /^\p{Number}+$/u.test(digits);
@@ -744,57 +796,155 @@ const rebuildThaiWordsFromSegment = (
   });
 };
 
+const buildBalancedSubtitleWordGroups = ({
+  words,
+  isThai,
+  maximumWords,
+  maximumGraphemes,
+  minimumDurationSeconds,
+  enforceMaximumWords
+}: {
+  words: TranscriptWord[];
+  isThai: boolean;
+  maximumWords: number;
+  maximumGraphemes: number;
+  minimumDurationSeconds: number;
+  enforceMaximumWords: boolean;
+}): TranscriptWord[][] => {
+  const groups: TranscriptWord[][] = [];
+  let current: TranscriptWord[] = [];
+  const fitsHardLimits = (group: TranscriptWord[]): boolean => {
+    if (enforceMaximumWords && group.length > maximumWords) {
+      return false;
+    }
+    const text = joinSubtitleWordTokens(
+      group.map((word) => word.word.trim()),
+      isThai
+    );
+    return group.length === 1 ||
+      !isThai ||
+      /\p{Script=Latin}/u.test(text) ||
+      readGraphemeCount(text) <= maximumGraphemes;
+  };
+  const flush = () => {
+    if (current.length > 0) {
+      groups.push(current);
+      current = [];
+    }
+  };
+
+  for (const word of words) {
+    if (current.length > 0 && !fitsHardLimits([...current, word])) {
+      flush();
+    }
+    current.push(word);
+
+    const duration = current.at(-1)!.end - current[0]!.start;
+    if (
+      current.length >= maximumWords &&
+      (
+        enforceMaximumWords ||
+        minimumDurationSeconds <= 0 ||
+        duration + Number.EPSILON >= minimumDurationSeconds
+      )
+    ) {
+      flush();
+    }
+  }
+  flush();
+
+  if (minimumDurationSeconds > 0 && groups.length > 1) {
+    const duration = (group: TranscriptWord[]) =>
+      group.at(-1)!.end - group[0]!.start;
+
+    for (let index = 0; index < groups.length - 1; index += 1) {
+      const left = groups[index]!;
+      const right = groups[index + 1]!;
+      if (
+        duration(left) + Number.EPSILON >= minimumDurationSeconds &&
+        duration(right) + Number.EPSILON >= minimumDurationSeconds
+      ) {
+        continue;
+      }
+      const gap = right[0]!.start - left.at(-1)!.end;
+      if (
+        gap < -Number.EPSILON ||
+        gap > maximumThaiMidWordSegmentGapSeconds
+      ) {
+        continue;
+      }
+
+      const combined = [...left, ...right];
+      const candidates: TranscriptWord[][][] = [];
+      if (
+        fitsHardLimits(combined) &&
+        duration(combined) + Number.EPSILON >= minimumDurationSeconds
+      ) {
+        candidates.push([combined]);
+      }
+      for (let splitIndex = 1; splitIndex < combined.length; splitIndex += 1) {
+        const candidateLeft = combined.slice(0, splitIndex);
+        const candidateRight = combined.slice(splitIndex);
+        if (
+          fitsHardLimits(candidateLeft) &&
+          fitsHardLimits(candidateRight) &&
+          duration(candidateLeft) + Number.EPSILON >=
+            minimumDurationSeconds &&
+          duration(candidateRight) + Number.EPSILON >=
+            minimumDurationSeconds
+        ) {
+          candidates.push([candidateLeft, candidateRight]);
+        }
+      }
+      const best = candidates.sort(
+        (first, second) =>
+          first.length - second.length ||
+          (
+            first.length === 2 && second.length === 2
+              ? Math.abs(first[0]!.length - left.length) -
+                Math.abs(second[0]!.length - left.length)
+              : 0
+          )
+      )[0];
+      if (!best) {
+        // The word/grapheme ceiling or the real spoken span makes this short
+        // cue unavoidable; keep its exact timeline instead of stretching it.
+        continue;
+      }
+
+      groups.splice(index, 2, ...best);
+      if (best.length === 1) {
+        index -= 1;
+      }
+    }
+  }
+
+  return groups;
+};
+
 const buildSubtitleSegments = ({
   words,
   language,
   wordsPerLine,
-  minimumDurationSeconds = 0
+  minimumDurationSeconds = 0,
+  enforceMaximumWords = true
 }: {
   words: TranscriptWord[];
   language: string;
   wordsPerLine: number;
   minimumDurationSeconds?: number;
+  enforceMaximumWords?: boolean;
 }): TranscriptSegment[] => {
   const isThai = normalizeTranscriptionLanguage(language) === 'th';
   const segments: TranscriptSegment[] = [];
-  const groups: TranscriptWord[][] = [];
-  let current: TranscriptWord[] = [];
-
-  for (const word of words) {
-    const candidateWords = [...current, word]
-      .map((candidate) => candidate.word.trim());
-    const candidateText = joinSubtitleWordTokens(candidateWords, isThai);
-    if (
-      isThai &&
-      current.length > 0 &&
-      !/\p{Script=Latin}/u.test(candidateText) &&
-      readGraphemeCount(candidateText) > maximumThaiSubtitleGraphemes
-    ) {
-      groups.push(current);
-      current = [];
-    }
-
-    current.push(word);
-    if (current.length < wordsPerLine) {
-      continue;
-    }
-    const duration = current.at(-1)!.end - current[0]!.start;
-    if (minimumDurationSeconds <= 0 || duration >= minimumDurationSeconds) {
-      groups.push(current);
-      current = [];
-    }
-  }
-  if (current.length > 0) {
-    groups.push(current);
-  }
-  if (minimumDurationSeconds > 0 && groups.length > 1) {
-    const last = groups.at(-1)!;
-    const lastDuration = last.at(-1)!.end - last[0]!.start;
-    if (lastDuration < minimumDurationSeconds) {
-      groups[groups.length - 2]!.push(...last);
-      groups.pop();
-    }
-  }
+  const groups = buildBalancedSubtitleWordGroups({
+    words,
+    isThai,
+    maximumWords: Math.max(1, wordsPerLine),
+    maximumGraphemes: maximumThaiSubtitleGraphemes,
+    minimumDurationSeconds,
+    enforceMaximumWords
+  });
 
   for (const lineWords of groups) {
     const first = lineWords[0];
@@ -873,7 +1023,8 @@ const buildEstimatedThaiSubtitleSegments = (
       words: rebuildThaiWordsFromSegment(segment),
       language: 'th',
       wordsPerLine: Math.min(wordsPerLine, maximumEstimatedThaiWordsPerCue),
-      minimumDurationSeconds: minimumEstimatedSubtitleDurationSeconds
+      minimumDurationSeconds: minimumEstimatedSubtitleDurationSeconds,
+      enforceMaximumWords: false
     })
   );
 
@@ -1065,29 +1216,14 @@ const constrainThaiSubtitleCueLength = (
     }
 
     const words = rebuildThaiWordsFromSegment(segment);
-    const groups: TranscriptWord[][] = [];
-    let current: TranscriptWord[] = [];
-
-    const flush = () => {
-      if (current.length > 0) {
-        groups.push(current);
-        current = [];
-      }
-    };
-
-    for (const word of words) {
-      const candidateText = [...current, word]
-        .map((candidate) => candidate.word)
-        .reduce(joinSubtitleText, '');
-      if (
-        current.length > 0 &&
-        readGraphemeCount(candidateText) > maximumGraphemes
-      ) {
-        flush();
-      }
-      current.push(word);
-    }
-    flush();
+    const groups = buildBalancedSubtitleWordGroups({
+      words,
+      isThai: true,
+      maximumWords: Math.max(1, words.length),
+      maximumGraphemes,
+      minimumDurationSeconds: minimumEstimatedSubtitleDurationSeconds,
+      enforceMaximumWords: true
+    });
 
     if (groups.length <= 1) {
       return [segment];
@@ -1124,7 +1260,8 @@ const constrainThaiSubtitleCueWordCount = (
     return buildSubtitleSegments({
       words,
       language: 'th',
-      wordsPerLine: maximumWords
+      wordsPerLine: maximumWords,
+      minimumDurationSeconds: minimumEstimatedSubtitleDurationSeconds
     });
   });
 };
@@ -1503,7 +1640,10 @@ export const buildAiEditRecipe = ({
         ? buildSubtitleSegments({
             words: subtitleWords,
             language: transcriptLanguage,
-            wordsPerLine: subtitleWordsPerLine
+            wordsPerLine: subtitleWordsPerLine,
+            minimumDurationSeconds: transcriptLanguage === 'th'
+              ? minimumEstimatedSubtitleDurationSeconds
+              : 0
           })
         : fallbackSubtitleSegments)
     : [];
@@ -1535,6 +1675,15 @@ export const buildAiEditRecipe = ({
         subtitleWordsPerLine
       )
     : repairedSubtitleSegments;
+  const subtitleSegmentsWithValidatedWords =
+    capabilities.subtitle &&
+    reliableValidTranscriptWords &&
+    !fragmentedThaiWordTimings
+      ? attachValidatedSubtitleWords(
+          subtitleSegments,
+          reliableValidTranscriptWords
+        )
+      : subtitleSegments.map((segment) => ({ ...segment, words: [] }));
   const silencePreset = settings.silencePreset ?? 'balanced';
   const silenceRanges = capabilities.silence && hasReliableSilenceTimeline
     ? findSilenceRanges(
@@ -1575,7 +1724,7 @@ export const buildAiEditRecipe = ({
     },
     subtitles: {
       enabled: capabilities.subtitle,
-      segments: subtitleSegments,
+      segments: subtitleSegmentsWithValidatedWords,
       style: {
         mode: settings.subtitleStyle ?? 'bold',
         color: settings.subtitleColor ?? '#FFFFFF',

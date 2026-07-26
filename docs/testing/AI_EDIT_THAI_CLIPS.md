@@ -170,3 +170,49 @@ rendered through libass at the long-source 304x540 preview size. The same three
 frames remained separated. The saved 38-cue draft retained `fontId: Prompt`,
 normal Thai such as `ที่ในเมือง`, and no `U+E000` through `U+E003`; the private
 glyphs existed only in temporary render SRT files.
+
+## 2026-07-27 active-word and effect automation
+
+The staging contract now publishes validated `words` inside each subtitle cue.
+Automated API and mobile tests cover legacy field omission, authoritative empty
+lists, malformed/mixed payloads, non-finite and overlapping ranges, exact cue
+text reconstruction, Thai character fragments, current-word preview colour,
+ASS text escaping, source-time trim shifting, and static SRT fallback. Pop and
+fade select ASS even without word timing. Pop runs `78 -> 103 -> 100` only at
+cue start; fade-in belongs to the first dialogue slice and fade-out to the last.
+Tests also cover removal of trimmed-out word timings and the single static-SRT
+retry after an explicit subtitle/libass ASS failure.
+
+The original long Thai talking-head fixtures still need new active-word exports
+on the Pixel 8 plus sampled-frame comparison against the live Flutter preview.
+Physical Android and iPhone tests remain required before enabling this path in
+a Store build.
+
+## 2026-07-27 short-source active-word E2E and regressions
+
+A real Pixel 8 Staging run selected a 30-second, 540x960 Thai talking-head
+source and requested a 20-second result. Prepare took about 10 seconds and
+reported three silence cuts, one filler word, and 2.8 seconds of detected
+cleanup. The accepted Pop render probes as exactly 20.000 seconds, 406x720,
+2,833,565 bytes, with MPEG-4 video and AAC audio. Sampled frames kept captions
+to one line, showed the active word in green, retained visible Thai stacked-mark
+separation, and did not clip either horizontal edge.
+
+The same run exposed two server cue-boundary regressions in its saved 38-cue
+draft: `มีของให|ม่ๆ` and `นึงระยะทา|งใกล้ๆ`. Provider normalization and recipe
+generation now share exact tests for `ใหม่ๆ` and `ใกล้ๆ`. The automatic cue
+grouper also rebalances whole words for fixable sub-0.7-second pairs while
+preserving the selected word cap, 18-grapheme cap, gaps, and source timing.
+Truly unavoidable fast cues remain short rather than being stretched.
+
+The mobile project identity now carries cue-segmentation revision 2 and the
+draft controller requires the exact project ID, so this pre-fix draft cannot
+overwrite a newly mapped project. The original file is retained for recovery.
+Inspection of the rendered ASS also found sub-centisecond slices that rounded to
+equal start/end timestamps. ASS generation now quantizes boundaries first,
+omits collapsed events, and recalculates first/last Pop or Fade flags.
+
+The Staging AI-edit quota reached zero after this run. The exact server
+tokenization fixes therefore still require a deployed build plus refreshed test
+quota for another live provider pass; automated API and renderer regressions
+cover them in the meantime.

@@ -120,6 +120,12 @@ The base-model comparison was captured without keyterms. A follow-up staging
 trial now uses a small, validated glossary for known names and commerce terms;
 the list is disabled by default, capped at 100 entries, and remains absent from
 production until the accuracy gain justifies the provider surcharge.
+On 2026-07-26, two fresh end-to-end emulator runs confirmed that the staging
+glossary kept `วรภพ`, `ยุ่นเพียร`, `ผู้เสียหาย`, and `ซุปเปอร์สตาร์` intact.
+The same fixtures had previously split `วร / ภพ`, `ผู้เสีย / หาย`, and
+`ซุป / เปอร์สตาร์`. General Thai cue boundaries can still split common words,
+so this validates targeted recognition bias but does not replace the planned
+tokenizer and full CER comparison.
 The API clips AAC timing overrun at each chunk boundary, merges non-overlapping
 source-relative timestamps, and charges the combined duration once, while all
 temporary chunks are cleaned on success or failure. Mobile now sends the actual

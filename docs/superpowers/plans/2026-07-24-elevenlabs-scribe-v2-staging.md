@@ -21,6 +21,23 @@
 - The ElevenLabs key must be rotated before 2026-08-23.
 - New behavior is implemented test-first.
 
+## Staging glossary validation (2026-07-26)
+
+Two fresh Android emulator runs used the deployed staging branch after adding
+the guarded glossary. The app quota advanced once per 45-second source, which
+confirmed that neither run reused an earlier in-memory result.
+
+- Scripted clean speech: `วร / ภพ` became `วรภพ`,
+  `ผู้เสีย / หาย` became `ผู้เสียหาย`, and `ยุ่นเพียร` stayed intact.
+- News voice-over: `ซุป / เปอร์สตาร์` became `ซุปเปอร์สตาร์`;
+  `โทนี่` also stayed inside one cue.
+- Both runs reached the mobile review screen and produced burned-in preview
+  video successfully.
+- Common Thai words can still land across adjacent cues. Keyterms therefore
+  improve configured names and domain words, but do not solve general cue
+  segmentation or replace the full Groq/ElevenLabs CER benchmark.
+- Production remains unchanged and has no glossary configured.
+
 ---
 
 ### Task 1: Add ElevenLabs configuration without changing defaults

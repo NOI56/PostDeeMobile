@@ -88,3 +88,8 @@ The fresh ElevenLabs renders exposed three PostDee cue-boundary regressions:
 protects `ทำให้`, `หลายๆ`, and `เด็กๆ`. Replaying all four stored SRTs preserves
 every source character, removes all three splits, and keeps every rebuilt cue
 at or below 18 graphemes.
+
+After deploy `dep-d9imv8navr4c73b4i720` became Live on commit `049e3d4`, the
+three affected 45→30-second app flows were generated again on the Pixel 8
+emulator. Their live SRT outputs contained the complete `ทำให้`, `หลายๆ`, and
+`เด็กๆ` tokens with none of the previous cross-cue fragments.

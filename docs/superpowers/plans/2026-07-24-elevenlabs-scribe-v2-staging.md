@@ -915,9 +915,10 @@ do not choose a cheaper provider that materially transcribes Thai worse.
 If ElevenLabs lowers relative CER by at least 20% without increasing
 hallucinations, leave staging on `elevenlabs`. Otherwise return staging to
 `groq`. The 2026-07-26 result passed this gate; Staging was restored to
-`elevenlabs`, deploy `dep-d9imkejtqb8s73941oug` became Live on commit
-`612a8cc`, and `/health` returned `status: ok`. Production remains on Groq
-until the user explicitly approves a production change.
+`elevenlabs`. After the Thai boundary regression fix, deploy
+`dep-d9imv8navr4c73b4i720` became Live on commit `049e3d4`, and `/health`
+returned `status: ok`. Production remains on Groq until the user explicitly
+approves a production change.
 
 - [ ] **Step 9: Commit no benchmark artifacts**
 

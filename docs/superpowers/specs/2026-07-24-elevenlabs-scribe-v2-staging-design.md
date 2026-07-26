@@ -36,6 +36,7 @@ same interface and is selected with:
 TRANSCRIPTION_PROVIDER=elevenlabs
 ELEVENLABS_API_KEY=<Render secret>
 ELEVENLABS_TRANSCRIPTION_MODEL=scribe_v2
+ELEVENLABS_TRANSCRIPTION_KEYTERMS=<optional comma/newline-separated glossary>
 ```
 
 `mock`, `openai`, and `groq` remain supported. The default ElevenLabs model is
@@ -62,10 +63,14 @@ language_code=th
 timestamps_granularity=word
 tag_audio_events=false
 diarize=false
+keyterms=<one repeated form field per configured term; omitted when empty>
 ```
 
-The request does not enable keyterm prompting during the first comparison, so
-the test measures the base model and avoids the optional prompting surcharge.
+The first comparison did not enable keyterm prompting, so it measured the base
+model without the optional prompting surcharge. The follow-up staging trial can
+enable a small glossary of verified names, brands, and domain terms. The list
+is normalized, deduplicated, validated against provider limits, and capped at
+100 entries. Production leaves the list empty.
 Verbatim speech remains enabled so fillers are available to PostDee's existing
 filler-word editing logic.
 
@@ -103,6 +108,9 @@ mobile subtitle renderer remains responsible for final one-line layout.
   `TRANSCRIPTION_PROVIDER=elevenlabs`.
 - Missing media fetching support fails API startup with a provider-specific
   message.
+- Invalid keyterms fail configuration before the server calls ElevenLabs.
+- Empty keyterms omit every `keyterms` form field and therefore do not enable
+  paid prompting.
 - Non-2xx ElevenLabs responses produce a provider failure and never silently
   fall back to mock or Groq.
 - Malformed successful responses are normalized safely; an empty response

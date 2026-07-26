@@ -67,6 +67,11 @@ describe('render.staging.yaml isolated staging config', () => {
 
     expectEnvValue(source, 'TRANSCRIPTION_PROVIDER', 'groq');
     expectEnvValue(source, 'ELEVENLABS_TRANSCRIPTION_MODEL', 'scribe_v2');
+    expectEnvValue(
+      source,
+      'ELEVENLABS_TRANSCRIPTION_KEYTERMS',
+      '"PostDee,ปักตะกร้า,แอฟฟิลิเอต,วรภพ,ยุ่นเพียร,ซุปเปอร์สตาร์,ฟุตบอล,ผู้เสียหาย"',
+    );
     expect(source).not.toContain('POSTPEER_TIKTOK_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_YOUTUBE_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_INSTAGRAM_ACCOUNT_ID');

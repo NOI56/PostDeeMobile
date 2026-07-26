@@ -266,10 +266,12 @@ describe('transcription provider', () => {
       tagAudioEvents?: string;
       diarize?: string;
       noVerbatim?: string;
+      keyterms?: string[];
     }> = [];
     const provider = createElevenLabsTranscriptionProvider({
       apiKey: 'elevenlabs-key',
       model: 'scribe_v2',
+      keyterms: ['PostDee', 'ปักตะกร้า', 'แอฟฟิลิเอต'],
       fetchAudio: async () => ({
         data: new Uint8Array([1, 2, 3]),
         filename: 'clip.m4a',
@@ -285,7 +287,8 @@ describe('transcription provider', () => {
           timestampGranularity: form.get('timestamps_granularity')?.toString(),
           tagAudioEvents: form.get('tag_audio_events')?.toString(),
           diarize: form.get('diarize')?.toString(),
-          noVerbatim: form.get('no_verbatim')?.toString()
+          noVerbatim: form.get('no_verbatim')?.toString(),
+          keyterms: form.getAll('keyterms').map((value) => value.toString())
         });
         return {
           ok: true,
@@ -320,7 +323,8 @@ describe('transcription provider', () => {
       timestampGranularity: 'word',
       tagAudioEvents: 'false',
       diarize: 'false',
-      noVerbatim: 'false'
+      noVerbatim: 'false',
+      keyterms: ['PostDee', 'ปักตะกร้า', 'แอฟฟิลิเอต']
     });
     expect(result).toMatchObject({
       text: 'วันนี้ลด Weekend Market ค่ะ',
@@ -338,6 +342,32 @@ describe('transcription provider', () => {
       'วันนี้ลด Weekend Market',
       'ค่ะ'
     ]);
+  });
+
+  it('does not enable paid ElevenLabs keyterm prompting when the list is empty', async () => {
+    let submittedKeyterms: FormDataEntryValue[] = [];
+    const provider = createElevenLabsTranscriptionProvider({
+      apiKey: 'elevenlabs-key',
+      model: 'scribe_v2',
+      keyterms: [],
+      fetchAudio: async () => ({
+        data: new Uint8Array([1]),
+        filename: 'clip.m4a',
+        contentType: 'audio/mp4'
+      }),
+      fetchImpl: async (_url, init) => {
+        submittedKeyterms = (init.body as FormData).getAll('keyterms');
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ language_code: 'tha', text: '', words: [] })
+        };
+      }
+    });
+
+    await provider.transcribe(legacyVideoInput('uploads/no-keyterms'));
+
+    expect(submittedKeyterms).toEqual([]);
   });
 
   it.each([

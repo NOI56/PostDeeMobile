@@ -1629,6 +1629,7 @@ PostgreSQL.
 | `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3` | Groq transcription model |
 | `ELEVENLABS_API_KEY` | `...` | ElevenLabs Speech-to-Text API key; backend secret only |
 | `ELEVENLABS_TRANSCRIPTION_MODEL` | `scribe_v2` | ElevenLabs transcription model |
+| `ELEVENLABS_TRANSCRIPTION_KEYTERMS` | empty | Optional comma/newline-separated glossary for Scribe v2. The API normalizes, deduplicates, validates, and caps it at 100 entries; a non-empty list incurs the provider's keyterm surcharge. |
 | `WHISPER_MODEL` | `whisper-1` | Legacy OpenAI transcription model |
 | `EDIT_PLAN_PROVIDER` | `mock`, `openai`, `groq` | Brain for `POST /ai-edits/plan`; `mock` is rule-based, the others call an LLM and fall back to mock on failure |
 | `OPENAI_EDIT_PLAN_MODEL` | `gpt-4o-mini` | OpenAI chat model for edit planning |

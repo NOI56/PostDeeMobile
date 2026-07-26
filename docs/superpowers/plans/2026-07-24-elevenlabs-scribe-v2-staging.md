@@ -16,7 +16,8 @@
 - Production keeps `TRANSCRIPTION_PROVIDER=groq`.
 - Staging can return to Groq by changing one environment value.
 - `ELEVENLABS_API_KEY` and `GROQ_API_KEY` never enter Git, logs, benchmark artifacts, or command output.
-- The first trial does not enable ElevenLabs keyterm prompting, diarization, or audio-event tags.
+- The base-model trial did not enable ElevenLabs keyterm prompting, diarization, or audio-event tags.
+- A follow-up staging-only trial may enable at most 100 validated keyterms; production remains empty until measured accuracy gains justify the surcharge.
 - The ElevenLabs key must be rotated before 2026-08-23.
 - New behavior is implemented test-first.
 

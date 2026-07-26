@@ -794,6 +794,10 @@ Queue/storage scaffold switches:
 - `AWS_S3_UPLOAD_EXPIRES_SECONDS=900` controls how long legacy S3 signed upload URLs remain usable.
 - `CAPTION_PROVIDER=mock` uses the local Thai template; `CAPTION_PROVIDER=gemini` calls Gemini with `GEMINI_CAPTION_MODEL` and `GEMINI_API_KEY`; `CAPTION_PROVIDER=openai` remains available as a legacy path.
 - `TRANSCRIPTION_PROVIDER=mock` uses the local Thai transcript; `groq` calls Groq with `GROQ_TRANSCRIPTION_MODEL` and `GROQ_API_KEY`; `elevenlabs` calls Scribe v2 with `ELEVENLABS_TRANSCRIPTION_MODEL` and `ELEVENLABS_API_KEY`; `openai` remains a legacy path. Normal requests call one provider only, without automatic fallback.
+- `ELEVENLABS_TRANSCRIPTION_KEYTERMS` is an optional comma/newline-separated
+  glossary for uncommon names, brands, and Thai commerce terms. Empty is the
+  default. Configuration is deduplicated and limited to 100 valid entries
+  before any paid ElevenLabs keyterm request is allowed.
 - `AUTH_PROVIDER=mock` uses development headers; `AUTH_PROVIDER=firebase`
   requires `FIREBASE_PROJECT_ID`. It verifies Google Secure Token certificates
   by default, or Firebase Admin revocation/user existence when

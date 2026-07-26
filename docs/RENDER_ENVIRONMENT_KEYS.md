@@ -1,7 +1,7 @@
 # Render Environment Keys
 
 Last checked from repository files and the latest recorded live Render service
-snapshot: 2026-07-15.
+snapshot: 2026-07-26.
 
 This file is the shared checklist for PostDee Render environment variables.
 Do not paste real secret values into this file. Store real values only in the
@@ -99,6 +99,8 @@ intentionally want a different value.
 | --- | --- | --- |
 | `GEMINI_CAPTION_MODEL` | `gemini-2.5-flash-lite` | Caption model. |
 | `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3` | AI editing transcription model. |
+| `ELEVENLABS_TRANSCRIPTION_MODEL` | `scribe_v2` | Optional staging transcription model. |
+| `ELEVENLABS_TRANSCRIPTION_KEYTERMS` | empty | Optional Scribe v2 glossary. Leave empty in production; the staging trial uses a small validated list and incurs the provider's keyterm surcharge only while ElevenLabs is selected. |
 | `GROQ_EDIT_PLAN_MODEL` | `llama-3.3-70b-versatile` | AI edit-plan model. |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | PostPeer API host. |
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Five-minute signed upload URL lifetime; mobile retries once only when the URL explicitly expires. |

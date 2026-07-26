@@ -784,11 +784,13 @@ export const createGroqTranscriptionProvider = ({
 export const createElevenLabsTranscriptionProvider = ({
   apiKey,
   model,
+  keyterms = [],
   fetchAudio,
   fetchImpl = fetch as unknown as FetchImpl
 }: {
   apiKey: string;
   model: string;
+  keyterms?: string[];
   fetchAudio: FetchAudio;
   fetchImpl?: FetchImpl;
 }): TranscriptionProvider => ({
@@ -806,6 +808,9 @@ export const createElevenLabsTranscriptionProvider = ({
     form.append('tag_audio_events', 'false');
     form.append('diarize', 'false');
     form.append('no_verbatim', 'false');
+    for (const keyterm of keyterms) {
+      form.append('keyterms', keyterm);
+    }
 
     const response = await fetchImpl(
       'https://api.elevenlabs.io/v1/speech-to-text',
@@ -841,6 +846,7 @@ export const createTranscriptionProviderFromConfig = ({
     | 'groqTranscriptionModel'
     | 'elevenLabsApiKey'
     | 'elevenLabsTranscriptionModel'
+    | 'elevenLabsTranscriptionKeyterms'
   >;
   fetchAudio?: FetchAudio;
 }): TranscriptionProvider => {
@@ -892,6 +898,7 @@ export const createTranscriptionProviderFromConfig = ({
     return createElevenLabsTranscriptionProvider({
       apiKey: config.elevenLabsApiKey,
       model: config.elevenLabsTranscriptionModel,
+      keyterms: config.elevenLabsTranscriptionKeyterms,
       fetchAudio
     });
   }

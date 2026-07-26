@@ -94,6 +94,7 @@ export type ServerConfig = {
   whisperModel: string;
   groqTranscriptionModel: string;
   elevenLabsTranscriptionModel: string;
+  elevenLabsTranscriptionKeyterms: string[];
   editPlanProvider: EditPlanProviderKind;
   openAiEditPlanModel: string;
   groqEditPlanModel: string;
@@ -104,6 +105,52 @@ export type ServerConfig = {
 const readOptional = (env: EnvSource, key: string) => {
   const value = env[key]?.trim();
   return value && value.length > 0 ? value : undefined;
+};
+
+const readElevenLabsTranscriptionKeyterms = (env: EnvSource) => {
+  const rawValue = readOptional(env, 'ELEVENLABS_TRANSCRIPTION_KEYTERMS');
+
+  if (!rawValue) {
+    return [];
+  }
+
+  const keyterms = rawValue
+    .split(/[,\r\n]+/u)
+    .map((value) => value.normalize('NFC').trim())
+    .filter((value) => value.length > 0)
+    .filter(
+      (value, index, values) =>
+        values.findIndex(
+          (candidate) =>
+            candidate.toLocaleLowerCase() === value.toLocaleLowerCase()
+        ) === index
+    );
+
+  if (keyterms.length > 100) {
+    throw new Error(
+      'ELEVENLABS_TRANSCRIPTION_KEYTERMS supports at most 100 entries'
+    );
+  }
+
+  if (keyterms.some((value) => /[<>{}\[\]\\]/u.test(value))) {
+    throw new Error(
+      'ELEVENLABS_TRANSCRIPTION_KEYTERMS contains unsupported characters'
+    );
+  }
+
+  if (keyterms.some((value) => Array.from(value).length >= 50)) {
+    throw new Error(
+      'ELEVENLABS_TRANSCRIPTION_KEYTERMS entries must be shorter than 50 characters'
+    );
+  }
+
+  if (keyterms.some((value) => value.split(/\s+/u).length > 5)) {
+    throw new Error(
+      'ELEVENLABS_TRANSCRIPTION_KEYTERMS entries must contain at most 5 words'
+    );
+  }
+
+  return keyterms;
 };
 
 const readBoolean = (env: EnvSource, key: string, fallback: boolean) => {
@@ -537,6 +584,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     groqTranscriptionModel: readOptional(env, 'GROQ_TRANSCRIPTION_MODEL') ?? 'whisper-large-v3',
     elevenLabsTranscriptionModel:
       readOptional(env, 'ELEVENLABS_TRANSCRIPTION_MODEL') ?? 'scribe_v2',
+    elevenLabsTranscriptionKeyterms: readElevenLabsTranscriptionKeyterms(env),
     editPlanProvider: readEditPlanProvider(env),
     openAiEditPlanModel: readOptional(env, 'OPENAI_EDIT_PLAN_MODEL') ?? 'gpt-4o-mini',
     groqEditPlanModel:

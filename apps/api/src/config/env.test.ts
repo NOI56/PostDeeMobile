@@ -79,6 +79,7 @@ describe('readServerConfig', () => {
       whisperModel: 'whisper-1',
       groqTranscriptionModel: 'whisper-large-v3',
       elevenLabsTranscriptionModel: 'scribe_v2',
+      elevenLabsTranscriptionKeyterms: [],
       editPlanProvider: 'mock',
       openAiEditPlanModel: 'gpt-4o-mini',
       groqEditPlanModel: 'llama-3.3-70b-versatile',
@@ -112,6 +113,8 @@ describe('readServerConfig', () => {
       GROQ_API_KEY: 'groq-key',
       ELEVENLABS_API_KEY: 'elevenlabs-key',
       ELEVENLABS_TRANSCRIPTION_MODEL: 'scribe_v2',
+      ELEVENLABS_TRANSCRIPTION_KEYTERMS:
+        'PostDee, ปักตะกร้า,แอฟฟิลิเอต,PostDee',
       GEMINI_API_KEY: 'gemini-key',
       BILLING_PROVIDER: 'store',
       REVENUECAT_REST_API_V1_KEY: 'revenuecat-rest-key',
@@ -221,8 +224,36 @@ describe('readServerConfig', () => {
       transcriptionProvider: 'groq',
       groqTranscriptionModel: 'whisper-large-v3',
       elevenLabsTranscriptionModel: 'scribe_v2',
+      elevenLabsTranscriptionKeyterms: [
+        'PostDee',
+        'ปักตะกร้า',
+        'แอฟฟิลิเอต'
+      ],
       mockUserId: 'mock-user-1'
     });
+  });
+
+  it('rejects unsafe or oversized ElevenLabs transcription keyterms', () => {
+    expect(() =>
+      readServerConfig({
+        ELEVENLABS_TRANSCRIPTION_KEYTERMS: 'PostDee,สินค้า[ใหม่]'
+      })
+    ).toThrow('ELEVENLABS_TRANSCRIPTION_KEYTERMS contains unsupported characters');
+
+    expect(() =>
+      readServerConfig({
+        ELEVENLABS_TRANSCRIPTION_KEYTERMS: 'หนึ่ง สอง สาม สี่ ห้า หก'
+      })
+    ).toThrow('ELEVENLABS_TRANSCRIPTION_KEYTERMS entries must contain at most 5 words');
+
+    expect(() =>
+      readServerConfig({
+        ELEVENLABS_TRANSCRIPTION_KEYTERMS: Array.from(
+          { length: 101 },
+          (_, index) => `term-${index}`
+        ).join(',')
+      })
+    ).toThrow('ELEVENLABS_TRANSCRIPTION_KEYTERMS supports at most 100 entries');
   });
 
   it('rejects invalid Firebase account deletion flags', () => {

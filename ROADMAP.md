@@ -116,6 +116,10 @@ normal customer request calls only one configured provider and does not
 silently fall back, so A/B results remain attributable. The trial compares the
 same Thai source audio and gives accuracy priority over timing, latency, and
 cost.
+The base-model comparison was captured without keyterms. A follow-up staging
+trial now uses a small, validated glossary for known names and commerce terms;
+the list is disabled by default, capped at 100 entries, and remains absent from
+production until the accuracy gain justifies the provider surcharge.
 The API clips AAC timing overrun at each chunk boundary, merges non-overlapping
 source-relative timestamps, and charges the combined duration once, while all
 temporary chunks are cleaned on success or failure. Mobile now sends the actual

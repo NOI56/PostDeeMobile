@@ -615,6 +615,12 @@ a hand-written resumable upload contract. Visual and transcript planners apply
 a soft penalty to Thai
 continuation-fragment openings and may nudge a suggested window to a nearby
 complete transcript boundary while preserving target length.
+When ElevenLabs is selected, an optional server-side
+`ELEVENLABS_TRANSCRIPTION_KEYTERMS` glossary can bias Scribe v2 toward verified
+names, brands, and domain terms. The default is empty. Configuration
+normalizes and deduplicates entries, rejects unsupported values, and caps the
+trial at 100 terms; production remains on Groq and does not declare this
+glossary.
 The recipe also omits those unreliable time ranges from user-facing subtitle
 lines, including clearly unexpected mixed-script recognition noise, while
 retaining their speech timing for conservative silence detection.

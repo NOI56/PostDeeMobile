@@ -153,7 +153,13 @@ Expected: fail until the current scaffold form is replaced with the refreshed Th
 
 - [x] **Step 3: Refresh Upload layout**
 
-Keep `_createPost`, `_pickVideoFile`, `_loadTemplates`, `_selectedPlatforms`, and subscription checks intact. Rebuild only the visible layout into: top title row, vertical 9:16 preview, edit-thumbnail action, platform toggle grid, schedule mode selector, date/time controls, template entry point, error/success messages, and one gradient Post button.
+Keep `_createPost`, `_pickVideoFile`, `_loadTemplates`, `_selectedPlatforms`,
+and subscription checks intact. The former edit-thumbnail placeholder is now a
+functional cover editor: select a source-video frame, style Thai text, render a
+1080x1920 JPEG, preview it before confirmation, and send only the cover controls
+supported by each destination. The rest of the refreshed layout remains the top
+title row, vertical 9:16 preview, platform selection, schedule controls,
+template entry point, error/success messages, and one gradient Post button.
 
 - [x] **Step 4: Verify Upload**
 

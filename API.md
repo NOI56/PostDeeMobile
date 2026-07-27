@@ -360,6 +360,8 @@ Request:
 {
   "caption": "Try this product today. #PostDee",
   "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
+  "coverImageS3Key": "uploads/local-dev-user/cover-upload-id/post-cover.jpg",
+  "coverFrameTimeMs": 4200,
   "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
   "scheduledAt": "2026-06-06T10:00:00.000Z"
 }
@@ -369,9 +371,13 @@ Rules:
 
 - `caption`, `videoS3Key`, and at least one valid platform are required.
 - `videoS3Key` must be an upload key owned by the authenticated user, using the `uploads/<user-id>/<upload-id>/<file>` shape returned by `POST /uploads`.
+- `coverImageS3Key` is optional. When present, it must be an owner-scoped
+  completed JPEG or PNG managed upload no larger than 2 MiB.
+- `coverFrameTimeMs` is optional and must be a non-negative 32-bit integer. It
+  records the selected source-video frame in milliseconds.
 - A managed multipart upload must have status `COMPLETED` before its
-  `videoS3Key` can be used. Legacy owner-scoped keys remain accepted only while
-  the server is in `legacy` or `dual` rollout mode.
+  `videoS3Key` or `coverImageS3Key` can be used. Legacy owner-scoped video keys
+  remain accepted only while the server is in `legacy` or `dual` rollout mode.
 - If `scheduledAt` is present, the user must be Starter or Pro.
 - Basic users must have a verified phone number before using the free quota.
 - Basic is limited to 3 post units per month after phone verification.
@@ -397,6 +403,10 @@ Worker behavior:
 - Optional R2/S3 cleanup after a fully successful publish is best-effort. A
   cleanup failure is returned in the worker result, but the post stays
   `PUBLISHED`.
+- Cover delivery follows platform capability: Instagram receives the signed
+  cover image or frame offset, Facebook Page Video receives the signed image,
+  TikTok Direct Post receives the selected frame time, and YouTube Shorts does
+  not receive a custom thumbnail.
 - If the publish queue is unavailable while creating or rescheduling a post,
   the API returns `503` with `PUBLISH_QUEUE_UNAVAILABLE` and keeps the post
   store from advancing ahead of the queue.
@@ -425,6 +435,8 @@ Success response:
     "userId": "local-dev-user",
     "caption": "Try this product today. #PostDee",
     "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
+    "coverImageS3Key": "uploads/local-dev-user/cover-upload-id/post-cover.jpg",
+    "coverFrameTimeMs": 4200,
     "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
     "scheduledAt": "2026-06-06T10:00:00.000Z",
     "status": "QUEUED",

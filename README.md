@@ -289,6 +289,8 @@ Create request:
 {
   "caption": "ของดีต้องลอง #ของดีบอกต่อ",
   "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
+  "coverImageS3Key": "uploads/local-dev-user/cover-upload-id/post-cover.jpg",
+  "coverFrameTimeMs": 4200,
   "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
   "subscriptionPlan": "PRO",
   "scheduledAt": "2026-06-02T10:00:00.000Z"
@@ -296,7 +298,9 @@ Create request:
 ```
 
 Response includes `post` and `publishJob`. If `scheduledAt` is present, the job status is `SCHEDULED`; otherwise it is `READY`.
-`videoS3Key` must come from `POST /uploads` for the same authenticated user; the backend rejects media keys owned by another user.
+`videoS3Key` and optional `coverImageS3Key` must come from `POST /uploads` for
+the same authenticated user; the backend rejects media keys owned by another
+user. `coverFrameTimeMs` stores the selected source-video frame in milliseconds.
 Cloud Scheduling requires Starter or Pro. The `BASIC` scaffold path supports
 real-time posting only after phone verification and is limited to 3 post units
 per month. Starter is limited to 120 post units per month, and Pro is limited
@@ -512,7 +516,15 @@ Current mobile pieces:
 - Light and dark Flutter themes (light is the current default)
 - Generated Android and iOS platform folders with app display name `PostDee`
 - Home dashboard with manual refresh for total views and likes from `GET /analytics/summary`, plus automatic analytics refresh after the plan becomes Pro
-- Universal uploader screen with 9:16 metadata form, client/server 9:16 metadata validation, upload plan status refresh with remaining Basic post units, video file picker scaffold, saved template insertion for captions, Starter/Pro pre-check for scheduled posts, optional local file path upload to R2/S3 signed URLs, platform toggles, and backend calls to `POST /uploads` then `POST /posts`. Its compact tool area intentionally exposes only `ตัดคลิปเป็น EP`; the removed manual editor, cover, automatic-watermark, and advanced-mode cards must not return.
+- Universal uploader screen with 9:16 validation, real video selection, saved
+  caption templates, scheduling checks, connected platform selection, and a
+  functional cover editor. A seller can scrub to a source-video frame, add Thai
+  text, choose Prompt or Anuphan, adjust weight, size, colors, and position, then
+  review the cover before posting. Mobile renders a 1080x1920 JPEG; Instagram
+  and Facebook receive the image, TikTok receives the frame time, and YouTube
+  Shorts leaves final cover selection to the YouTube mobile app. The compact
+  tool area still exposes only `ตัดคลิปเป็น EP`; the removed manual editor,
+  automatic-watermark, and advanced-mode cards must not return.
 - Calendar tab for scheduled posts, plus AI caption entry points from Upload after a clip is selected
 - Mobile API client and Upload UI call `POST /captions/generate-from-clip` for
   the new real-clip caption scaffold after a clip is selected.

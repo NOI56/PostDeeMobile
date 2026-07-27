@@ -289,6 +289,10 @@ sequenceDiagram
   participant P as Social Platforms
 
   U->>M: Select vertical video
+  opt User customizes the cover
+    U->>M: Scrub to a frame and style Thai cover text
+    M-->>M: Render a 1080x1920 JPEG
+  end
   M->>A: POST /uploads (uploadProtocol: multipart-v1)
   alt Managed multipart in dual/multipart mode
     A->>S: Initiate multipart upload
@@ -306,13 +310,17 @@ sequenceDiagram
     A-->>M: videoS3Key + uploadUrl
     M->>S: PUT full video file
   end
+  opt Instagram or Facebook uses the custom cover image
+    M->>A: POST /uploads for JPEG/PNG cover
+    M->>S: Upload rendered cover image
+  end
   M->>A: POST /posts
   A->>Q: Enqueue publish job
   A-->>M: post + publishJob
   Q->>W: Run job immediately or at scheduled time
   W->>P: Publish to selected platforms
   opt Cleanup enabled or storage lifecycle policy
-    W->>S: Delete temporary video after success
+    W->>S: Delete temporary video and cover after success
   end
   W->>A: Record publish/analytics result
 ```
@@ -329,6 +337,14 @@ Rules:
 - Upload metadata is capped by `UPLOAD_MAX_SIZE_BYTES`. Managed multipart part
   sizes are selected by the server, and a post can reference the key only after
   its session reaches `COMPLETED`.
+- Cover fields are optional. The post, queue, scheduler, and worker carry
+  `coverImageS3Key` and `coverFrameTimeMs` only after the seller saves a cover.
+  Both storage keys remain owner-scoped and must be completed before queueing.
+- Managed cover uploads accept JPEG or PNG up to 2 MiB. Mobile avoids uploading
+  an unused image for TikTok/YouTube-only posts.
+- Platform adapters send only supported controls: Instagram uses the signed
+  image or frame offset, Facebook Page Video receives the signed image, TikTok
+  receives the frame time, and YouTube Shorts receives no custom thumbnail.
 - New clients opt in with `multipart-v1`. `UPLOAD_PROTOCOL_MODE` defaults to
   `legacy`; production uses `dual` during rollout, and moves to strict
   `multipart` only after old clients are retired.

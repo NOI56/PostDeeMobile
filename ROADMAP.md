@@ -179,9 +179,12 @@ Planned order:
    widgets.
 2. Finish Home dashboard: greeting, plan card, latest-post status rows, quick
    actions, and platform performance summary.
-3. Redesign Upload: vertical video preview, edit thumbnail action, platform
-   toggles, schedule/date/time controls, draft state, and a single clear Post
-   CTA.
+3. Redesign Upload: vertical video preview, functional cover editor (video
+   frame, Thai text, font/style/position, rendered 1080x1920 image, secure
+   upload, preview, and platform-aware delivery), platform toggles,
+   schedule/date/time controls, draft state, and a single clear Post CTA. The
+   cover editor implementation now exists; real connected-account publishing
+   still requires staging verification.
 4. Refine Calendar and Upload AI Caption: scheduled-post calendar, refresh after
    scheduled posts, and real-clip AI captioning after a video is selected.
 5. Redesign Analytics: date filter chips, KPI cards, views trend chart,

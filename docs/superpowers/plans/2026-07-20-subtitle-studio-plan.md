@@ -255,11 +255,12 @@ delete/export rights, storage quotas, and a PDPA review before implementation.
 
 ## 6. Implementation phases
 
-Implementation update (2026-07-22): the domain model, local draft store,
-mobile editor/live preview, and verified static SRT/libass style mapping are
-implemented. Pixel 8 emulator E2E passes through a 30-second review result.
-ASS active-word events, reusable brand-style presets, golden parity tests, and
-physical Android/iPhone acceptance remain open release gates below.
+Implementation update (2026-07-28): the domain model, local draft store,
+mobile editor/live preview, Thai-safe fonts, active-word ASS export, and static
+SRT fallback are implemented. The product flow renders result review first and
+opens Subtitle Studio only from an explicit review action. Focused tests and
+static analysis pass. Reusable brand-style presets, golden parity tests, and
+fresh physical Android/iPhone acceptance remain open release gates below.
 
 ### Phase 0 — Lock behavior with tests
 
@@ -299,10 +300,11 @@ Suggested new files:
 
 Work:
 
-- [x] Insert Subtitle Studio after `/ai-edits/prepare` and before final render.
+- [x] Render result review after `/ai-edits/prepare`; open Subtitle Studio only
+      from the explicit review action.
 - [x] Build the cue list, active-cue tracking, tap-to-seek, replay-cue, text edit,
       add/delete/split/merge, and undo/redo interactions.
-- [ ] Add whole-clip font, size, text colour, highlight colour, outline, shadow,
+- [x] Add whole-clip font, size, text colour, highlight colour, outline, shadow,
       row count, and safe top/middle/bottom position controls.
 - [x] Do not rerender MP4 when a style or word changes.
 - [x] Warn when a cue is outside the AI-selected result.
@@ -321,10 +323,10 @@ Files to extend:
 
 Work:
 
-- [ ] Generate deterministic ASS headers, styles, events, and escaped text.
+- [x] Generate deterministic ASS headers, styles, events, and escaped text.
 - [x] Copy every selected bundled font into the render workspace.
 - [x] Map preview controls only to verified libass equivalents.
-- [ ] Generate active-word events only for reliable word timing; do not rely on
+- [x] Generate active-word events only for reliable word timing; do not rely on
       karaoke tags until their current-word-only behavior is visually verified.
 - [x] Keep segment-level fallback for fragmented Thai timing.
 - [x] Keep current hardware encoder, MPEG-4 fallback, stream verification,
@@ -336,7 +338,7 @@ Work:
 
 ### Phase 4 — Production hardening and MVP release gate
 
-- [ ] Unit-test ASS output, colour conversion, outline/shadow, alignment,
+- [x] Unit-test ASS output, colour conversion, outline/shadow, alignment,
       karaoke durations, source-timeline cuts, and malformed values.
 - [ ] Widget-test editing, focus/keyboard, cue selection, undo/redo, autosave,
       screen rotation, and accessibility labels/touch targets.

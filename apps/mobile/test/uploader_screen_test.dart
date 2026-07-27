@@ -370,6 +370,7 @@ void main() {
     );
     expect(find.text('ใส่ลายน้ำอัตโนมัติ'), findsNothing);
     expect(find.text('ตัดต่อเอง'), findsNothing);
+    expect(find.text('แต่งหน้าปก'), findsNothing);
     expect(find.text('โหมดตั้งค่าขั้นสูง'), findsNothing);
   });
 

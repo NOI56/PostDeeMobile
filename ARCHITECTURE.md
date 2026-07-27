@@ -573,7 +573,8 @@ and quota into one mobile render recipe. The API pre-checks estimated duration, 
 actual transcribed minutes before a successful response so parallel requests do
 not exceed the monthly quota. Mobile caches that successful recipe and maps its
 subtitle segments and source-timeline cuts into a versioned local
-`SubtitleProject`. Subtitle Studio sits between `prepare` and the first render:
+`SubtitleProject`. Mobile renders a lightweight preview and opens result review
+first. Subtitle Studio opens only from the explicit review action:
 it restores an exact source/setup draft from app-owned storage, previews edits
 with a Flutter overlay, and supports cue editing plus whole-clip style changes
 without rerendering. Confirmation sends the corrected source-timeline cues and
@@ -650,11 +651,13 @@ cancellation and timeouts, and
 caches identical successful renders for the current editing session. Entering
 Upload/Post triggers a separate full-source-dimension render, so preview media
 is never treated as the publishable export.
-The renderer copies the selected bundled Prompt or Anuphan font into each
-subtitle render workspace and passes that directory plus verified static style
-values (font size, text/outline/shadow colours, outline/shadow depth, and safe
-top/middle/bottom alignment) to libass. The current export remains SRT-based;
-ASS active-word events, karaoke, and per-cue style overrides are not enabled.
+The renderer copies the selected bundled Thai-safe Bai Jamjuree, Prompt, or
+Anuphan font into each subtitle render workspace and passes that directory plus
+verified style values (font size, text/active-word/outline/shadow colours,
+outline/shadow depth, fade/pop effect, and safe top/middle/bottom alignment) to
+libass. Complete validated cue-word timing produces escaped ASS active-word
+events. Missing, edited, incomplete, or unsafe timing uses static SRT, and an
+explicit subtitle/libass failure may retry through that static fallback.
 For silence cuts, video frames use the
 selected keep timeline while audio keep ranges are reset and concatenated, so
 both streams finish together after local preview re-renders.

@@ -512,7 +512,7 @@ Current mobile pieces:
 - Light and dark Flutter themes (light is the current default)
 - Generated Android and iOS platform folders with app display name `PostDee`
 - Home dashboard with manual refresh for total views and likes from `GET /analytics/summary`, plus automatic analytics refresh after the plan becomes Pro
-- Universal uploader screen with 9:16 metadata form, client/server 9:16 metadata validation, upload plan status refresh with remaining Basic post units, video file picker scaffold, saved template insertion for captions, Starter/Pro pre-check for scheduled posts, optional local file path upload to R2/S3 signed URLs, platform toggles, and backend calls to `POST /uploads` then `POST /posts`
+- Universal uploader screen with 9:16 metadata form, client/server 9:16 metadata validation, upload plan status refresh with remaining Basic post units, video file picker scaffold, saved template insertion for captions, Starter/Pro pre-check for scheduled posts, optional local file path upload to R2/S3 signed URLs, platform toggles, and backend calls to `POST /uploads` then `POST /posts`. Its compact tool area intentionally exposes only `ตัดคลิปเป็น EP`; the removed manual editor, cover, automatic-watermark, and advanced-mode cards must not return.
 - Calendar tab for scheduled posts, plus AI caption entry points from Upload after a clip is selected
 - Mobile API client and Upload UI call `POST /captions/generate-from-clip` for
   the new real-clip caption scaffold after a clip is selected.
@@ -576,8 +576,9 @@ Current mobile pieces:
   the same in-memory transcript and calls non-metered `POST /ai-edits/plan`.
   Audio is not uploaded or transcribed again unless the source or analysis
   settings change.
-- When automatic subtitles are available, mobile now opens Subtitle Studio
-  after `prepare` and before the first FFmpeg render. The user can edit text and
+- When automatic subtitles are available, mobile first renders a lightweight
+  result and opens result review. Subtitle Studio opens only from the explicit
+  “edit subtitles” review action. The user can edit text and
   timing, add/delete/split/merge cues, undo/redo, and change the bundled
   Prompt/Anuphan font, size, text colour, outline, shadow, and safe
   top/middle/bottom position while the Flutter preview updates immediately.
@@ -586,14 +587,11 @@ Current mobile pieces:
   Draft JSON is autosaved in app-owned storage and reopening the same source
   and AI setup restores it. These local edits and retries do not call a metered
   AI endpoint.
-- Thai subtitle preparation rebuilds readable word boundaries when provider
-  word timestamps arrive as character fragments. Long Thai fallback segments
-  or fallback segments containing several words are also split at estimated
-  Thai word boundaries, capped at two estimated words per cue, before reaching
-  mobile. Cues shorter than 0.7 seconds are joined across only a small
-  neighboring gap, mobile never hard-splits an unspaced Thai phrase, and the
-  live preview scales text down inside its single line instead of hiding it
-  with an ellipsis.
+- Thai subtitle preparation rejects unsafe character-fragment timing and keeps
+  the API's readable Thai cue boundaries instead of splitting an unspaced phrase.
+  Typeface-size rules cap visible density at 3, 4, or 5 words (karaoke uses one)
+  and both preview and export scale inside the same one-line safe area instead
+  of clipping or adding an ellipsis.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.
@@ -617,10 +615,12 @@ Current mobile pieces:
   user's exact remaining and used Pro minutes. It updates immediately from the
   metered `prepare` response and can be tapped to refresh without consuming a
   minute.
-- Android subtitle export gives libass the selected bundled Prompt or Anuphan
-  font explicitly and maps the selected colour, outline, shadow, and safe
-  alignment into the final MP4. The current rollback-safe renderer still uses
-  SRT/static cues; active-word karaoke and per-cue styles remain future work.
+- Android subtitle export gives libass the selected bundled Thai-safe
+  Bai Jamjuree, Prompt, or Anuphan font explicitly and maps the selected colour,
+  active-word colour, fade/pop effect, outline, shadow, and safe alignment into
+  the final MP4. Validated complete word timing uses escaped ASS active-word
+  events; missing, incomplete, edited, or unsafe timing falls back to readable
+  static SRT without inventing word timing.
   Silence removal compacts kept audio ranges with
   `atrim` + `concat` so the audio ends with the shortened video instead of
   continuing after the final frame.

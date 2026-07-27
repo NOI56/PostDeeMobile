@@ -149,6 +149,19 @@ keeps the existing 30-second expiry safety margin and requests one fresh URL
 only after an explicit expiry response. The legacy path remains replayable
 until production switches to strict `multipart` mode.
 
+## AI Editing and Subtitle Studio
+
+AI Editing renders a lightweight preview and opens result review before any
+subtitle editor. The user opens Subtitle Studio explicitly from review. Local
+text/time/style edits and re-renders reuse the prepared recipe and do not consume
+another AI-editing minute.
+
+Validated cue-level word timing can drive active-word colour in preview and ASS
+export. Edited, incomplete, malformed, or rejected word timing falls back to a
+static one-line subtitle. Bundled Thai-safe Bai Jamjuree, Anuphan, and Prompt
+fonts share the same safe-area sizing in preview and export. The uploader tool
+area remains intentionally EP-only.
+
 ## Profile Draft
 
 Display name and store name edits are currently saved only on the user's

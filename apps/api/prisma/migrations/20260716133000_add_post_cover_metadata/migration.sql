@@ -1,0 +1,3 @@
+ALTER TABLE "Post"
+ADD COLUMN "coverImageS3Key" TEXT,
+ADD COLUMN "coverFrameTimeMs" INTEGER;

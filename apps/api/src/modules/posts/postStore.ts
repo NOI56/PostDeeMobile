@@ -21,6 +21,8 @@ export type QueuedPost = {
   userId: string;
   caption: string;
   videoS3Key: string;
+  coverImageS3Key?: string;
+  coverFrameTimeMs?: number;
   platforms: Platform[];
   scheduledAt?: string;
   status: PostStatus;
@@ -32,6 +34,8 @@ export type CreatePostInput = {
   userId: string;
   caption: string;
   videoS3Key: string;
+  coverImageS3Key?: string;
+  coverFrameTimeMs?: number;
   platforms: Platform[];
   scheduledAt?: string;
 };
@@ -102,6 +106,12 @@ export const createPostStore = (): PostStore => {
         userId: input.userId,
         caption: input.caption,
         videoS3Key: input.videoS3Key,
+        ...(input.coverImageS3Key
+          ? { coverImageS3Key: input.coverImageS3Key }
+          : {}),
+        ...(input.coverFrameTimeMs !== undefined
+          ? { coverFrameTimeMs: input.coverFrameTimeMs }
+          : {}),
         platforms: input.platforms,
         scheduledAt: input.scheduledAt,
         status: 'QUEUED',

@@ -21,6 +21,8 @@ type PrismaPost = {
   userId: string;
   caption: string;
   videoS3Key: string;
+  coverImageS3Key?: string | null;
+  coverFrameTimeMs?: number | null;
   selectedPlatforms: Platform[];
   scheduledAt: Date | null;
   status: PrismaPostStatus;
@@ -43,6 +45,8 @@ type PostDelegate = {
       userId: string;
       caption: string;
       videoS3Key: string;
+      coverImageS3Key?: string;
+      coverFrameTimeMs?: number;
       selectedPlatforms: Platform[];
       scheduledAt?: Date;
       status: 'QUEUED';
@@ -79,6 +83,12 @@ const mapPost = (post: PrismaPost): QueuedPost => ({
   userId: post.userId,
   caption: post.caption,
   videoS3Key: post.videoS3Key,
+  ...(post.coverImageS3Key
+    ? { coverImageS3Key: post.coverImageS3Key }
+    : {}),
+  ...(post.coverFrameTimeMs !== null && post.coverFrameTimeMs !== undefined
+    ? { coverFrameTimeMs: post.coverFrameTimeMs }
+    : {}),
   platforms: [...post.selectedPlatforms],
   scheduledAt: post.scheduledAt?.toISOString(),
   status: toPostStatus(post.status),
@@ -115,6 +125,12 @@ export const createPrismaPostRepository = ({
         userId: input.userId,
         caption: input.caption,
         videoS3Key: input.videoS3Key,
+        ...(input.coverImageS3Key
+          ? { coverImageS3Key: input.coverImageS3Key }
+          : {}),
+        ...(input.coverFrameTimeMs !== undefined
+          ? { coverFrameTimeMs: input.coverFrameTimeMs }
+          : {}),
         selectedPlatforms: input.platforms,
         scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
         status: 'QUEUED'

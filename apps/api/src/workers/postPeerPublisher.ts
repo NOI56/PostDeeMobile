@@ -237,16 +237,20 @@ const deriveYoutubeTitle = (caption?: string) => {
 const buildPlatformTarget = ({
   platform,
   accountId,
-  caption
+  caption,
+  coverUrl,
+  coverFrameTimeMs
 }: {
   platform: Platform;
   accountId: string;
   caption?: string;
+  coverUrl?: string;
+  coverFrameTimeMs?: number;
 }) => {
   const target: {
     platform: string;
     accountId: string;
-    platformSpecificData?: Record<string, string | boolean>;
+    platformSpecificData?: Record<string, string | boolean | number>;
   } = {
     platform: postPeerPlatform[platform],
     accountId
@@ -266,8 +270,19 @@ const buildPlatformTarget = ({
       // `draft: false` keeps this a direct post whose final status can be polled
       // while still limiting the first controlled release to the account owner.
       privacyLevel: 'SELF_ONLY',
-      draft: false
+      draft: false,
+      ...(coverFrameTimeMs !== undefined
+        ? { videoCoverTimestampMs: coverFrameTimeMs }
+        : {})
     };
+  } else if (platform === 'INSTAGRAM_REELS') {
+    target.platformSpecificData = coverUrl
+      ? { coverUrl }
+      : coverFrameTimeMs !== undefined
+        ? { thumbOffset: coverFrameTimeMs }
+        : undefined;
+  } else if (platform === 'FACEBOOK_REELS' && coverUrl) {
+    target.platformSpecificData = { videoThumbnailUrl: coverUrl };
   }
 
   return target;
@@ -305,7 +320,14 @@ export const createPostPeerPublisher = ({
   sleep?: Sleep;
   fetchImpl?: FetchImpl;
 }): PlatformPublisher => ({
-  publish: async ({ userId, caption, videoS3Key, platform }) => {
+  publish: async ({
+    userId,
+    caption,
+    videoS3Key,
+    coverImageS3Key,
+    coverFrameTimeMs,
+    platform
+  }) => {
     const accountId = await readPostPeerAccountId({
       accountIds,
       resolveAccountId,
@@ -317,6 +339,17 @@ export const createPostPeerPublisher = ({
         ? await resolveVideoUrl(videoS3Key)
         : videoS3Key
       : undefined;
+    // PostPeer accepts custom cover image URLs only for Instagram and
+    // Facebook. TikTok selects a frame timestamp, while YouTube thumbnails
+    // require a separate authenticated API flow and must not be sent here.
+    const shouldResolveCoverImage =
+      platform === 'INSTAGRAM_REELS' || platform === 'FACEBOOK_REELS';
+    const coverUrl =
+      shouldResolveCoverImage && coverImageS3Key
+        ? resolveVideoUrl
+          ? await resolveVideoUrl(coverImageS3Key)
+          : coverImageS3Key
+        : undefined;
 
     let response: FetchResponse;
 
@@ -329,7 +362,15 @@ export const createPostPeerPublisher = ({
         },
         body: JSON.stringify({
           content: caption ?? '',
-          platforms: [buildPlatformTarget({ platform, accountId, caption })],
+          platforms: [
+            buildPlatformTarget({
+              platform,
+              accountId,
+              caption,
+              coverUrl,
+              coverFrameTimeMs
+            })
+          ],
           ...(videoUrl
             ? {
                 mediaItems: [

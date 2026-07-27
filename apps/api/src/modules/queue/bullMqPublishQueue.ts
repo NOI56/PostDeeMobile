@@ -14,6 +14,8 @@ export type BullMqPublishJobData = {
   postId: string;
   caption?: string;
   videoS3Key?: string;
+  coverImageS3Key?: string;
+  coverFrameTimeMs?: number;
   platforms: Platform[];
   runAt: string;
   status: PublishJob['status'];
@@ -88,6 +90,12 @@ export const createBullMqPublishQueueFromClient = ({
       postId: post.id,
       caption: post.caption,
       videoS3Key: post.videoS3Key,
+      ...(post.coverImageS3Key
+        ? { coverImageS3Key: post.coverImageS3Key }
+        : {}),
+      ...(post.coverFrameTimeMs !== undefined
+        ? { coverFrameTimeMs: post.coverFrameTimeMs }
+        : {}),
       platforms: [...post.platforms],
       runAt,
       status
@@ -109,6 +117,12 @@ export const createBullMqPublishQueueFromClient = ({
       queueName: publishQueueName,
       userId: post.userId,
       postId: post.id,
+      ...(post.coverImageS3Key
+        ? { coverImageS3Key: post.coverImageS3Key }
+        : {}),
+      ...(post.coverFrameTimeMs !== undefined
+        ? { coverFrameTimeMs: post.coverFrameTimeMs }
+        : {}),
       platforms: [...post.platforms],
       runAt,
       status,
@@ -125,6 +139,12 @@ export const createBullMqPublishQueueFromClient = ({
         queueName: publishQueueName,
         userId: job.data.userId,
         postId: job.data.postId,
+        ...(job.data.coverImageS3Key
+          ? { coverImageS3Key: job.data.coverImageS3Key }
+          : {}),
+        ...(job.data.coverFrameTimeMs !== undefined
+          ? { coverFrameTimeMs: job.data.coverFrameTimeMs }
+          : {}),
         platforms: [...job.data.platforms],
         runAt: job.data.runAt,
         status: job.data.status,

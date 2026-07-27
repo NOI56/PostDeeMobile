@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+const currentSubtitleCueSegmentationRevision = 3;
+
 class SubtitleProjectIdentity {
   const SubtitleProjectIdentity({
     required this.projectId,
@@ -14,14 +16,26 @@ class SubtitleProjectIdentity {
 SubtitleProjectIdentity buildSubtitleProjectIdentity({
   required File sourceFile,
   required String setupSignature,
+  int cueSegmentationRevision = currentSubtitleCueSegmentationRevision,
 }) {
+  if (cueSegmentationRevision <= 0) {
+    throw ArgumentError.value(
+      cueSegmentationRevision,
+      'cueSegmentationRevision',
+      'Must be positive.',
+    );
+  }
   final stat = sourceFile.statSync();
   final sourceFingerprint = jsonEncode({
     'path': sourceFile.absolute.path,
     'sizeBytes': stat.size,
     'lastModifiedMs': stat.modified.millisecondsSinceEpoch,
   });
-  final hash = _fnv1a64('$sourceFingerprint\n$setupSignature');
+  final hash = _fnv1a64(
+    '$sourceFingerprint\n'
+    'cue-segmentation-v$cueSegmentationRevision\n'
+    '$setupSignature',
+  );
   return SubtitleProjectIdentity(
     projectId: 'subtitle-${hash.toRadixString(16).padLeft(16, '0')}',
     sourceFingerprint: sourceFingerprint,

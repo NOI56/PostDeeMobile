@@ -31,6 +31,56 @@ void main() {
     expect(controller.project.cues.first.text, 'แก้แล้ว');
   });
 
+  test('ignores a draft from an older cue segmentation identity', () async {
+    final initial = _project().copyWith(projectId: 'project-cue-v3');
+    final oldDraft = initial.copyWith(
+      projectId: 'project-cue-v2',
+      cues: [initial.cues.first.copyWith(text: 'มีของให')],
+      revision: 3,
+    );
+    final controller = SubtitleStudioController(
+      initialProject: initial,
+      draftStore: _MemoryDraftStore(oldDraft),
+      now: () => DateTime.utc(2026, 7, 27, 12),
+      idGenerator: () => 'new-cue',
+    );
+
+    await controller.initialize();
+
+    expect(controller.project.toJson(), initial.toJson());
+  });
+
+  test('ignores a matching draft whose non-word cue keeps stale words',
+      () async {
+    final initial = _project();
+    final invalidDraft = initial.copyWith(
+      cues: [
+        initial.cues.first.copyWith(
+          words: const [
+            SubtitleWord(
+              wordId: 'stale-word',
+              text: 'สวัสดีค่ะ',
+              sourceStartMs: 0,
+              sourceEndMs: 2000,
+            ),
+          ],
+        ),
+      ],
+      revision: 2,
+    );
+    final controller = SubtitleStudioController(
+      initialProject: initial,
+      draftStore: _MemoryDraftStore(invalidDraft),
+      now: () => DateTime.utc(2026, 7, 22, 12),
+      idGenerator: () => 'new-cue',
+    );
+
+    await controller.initialize();
+
+    expect(controller.project.toJson(), initial.toJson());
+    expect(controller.validationMessage, isNotNull);
+  });
+
   test('rejects an empty cue without corrupting the project', () async {
     final controller = SubtitleStudioController(
       initialProject: _project(),

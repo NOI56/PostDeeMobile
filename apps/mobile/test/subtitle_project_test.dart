@@ -142,6 +142,31 @@ void main() {
     );
   });
 
+  test('rejects stale words on a cue that is not word-timed', () {
+    final project = validProject().copyWith(cues: [
+      SubtitleCue(
+        cueId: 'cue-1',
+        sourceStartMs: 100,
+        sourceEndMs: 1200,
+        text: 'สวัสดีค่ะ',
+        timingMode: SubtitleTimingMode.segment,
+        words: const [
+          SubtitleWord(
+            wordId: 'word-1',
+            text: 'สวัสดีค่ะ',
+            sourceStartMs: 100,
+            sourceEndMs: 1200,
+          ),
+        ],
+      ),
+    ]);
+
+    expect(
+      () => validateSubtitleProject(project),
+      throwsA(isA<SubtitleProjectValidationException>()),
+    );
+  });
+
   test('rejects an unsupported schema version while decoding', () {
     final json = validProject().toJson()..['schemaVersion'] = 99;
 

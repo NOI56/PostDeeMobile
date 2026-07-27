@@ -42,6 +42,63 @@ void main() {
     expect(health.isOk, isTrue);
   });
 
+  test('subtitle segment parser preserves validated word contract presence',
+      () {
+    final legacy = ClipTranscriptSegment.fromJson({
+      'text': 'legacy',
+      'start': 0,
+      'end': 1,
+    });
+    final rejected = ClipTranscriptSegment.fromJson({
+      'text': 'rejected',
+      'start': 1,
+      'end': 2,
+      'words': <Object?>[],
+    });
+    final validated = ClipTranscriptSegment.fromJson({
+      'text': 'hello world',
+      'start': 2,
+      'end': 3,
+      'words': [
+        {'word': 'hello', 'start': 2, 'end': 2.4},
+        {'word': 'world', 'start': 2.5, 'end': 3},
+      ],
+    });
+    final malformed = ClipTranscriptSegment.fromJson({
+      'text': 'malformed',
+      'start': 3,
+      'end': 4,
+      'words': 'not-a-list',
+    });
+
+    expect(legacy.words, isNull);
+    expect(rejected.words, isEmpty);
+    expect(validated.words?.map((word) => word.word), ['hello', 'world']);
+    expect(validated.words?.last.start, 2.5);
+    expect(malformed.words, isEmpty);
+  });
+
+  test('subtitle segment parser rejects malformed validated word fields', () {
+    for (final malformedWord in [
+      {'word': 7, 'start': 0, 'end': 1},
+      {'word': 'hello', 'start': '0', 'end': 1},
+      {'word': 'hello', 'start': 0, 'end': '1'},
+      {'word': 'hello', 'start': double.nan, 'end': 1},
+      {'word': 'hello', 'start': 0, 'end': double.infinity},
+      {'word': 'hello', 'start': 0},
+      {'word': 'hello', 'end': 1},
+    ]) {
+      final segment = ClipTranscriptSegment.fromJson({
+        'text': 'hello',
+        'start': 0,
+        'end': 1,
+        'words': [malformedWord],
+      });
+
+      expect(segment.words, isEmpty);
+    }
+  });
+
   test('VerifyStorePurchaseRequest serializes Android purchase tokens', () {
     expect(
       const VerifyStorePurchaseRequest.android(

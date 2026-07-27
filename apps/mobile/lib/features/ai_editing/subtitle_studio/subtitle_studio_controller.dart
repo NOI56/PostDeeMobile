@@ -61,6 +61,7 @@ class SubtitleStudioController extends ChangeNotifier {
     try {
       final draft = await _draftStore.loadDraft(_initialProject.projectId);
       if (draft != null &&
+          draft.projectId == _initialProject.projectId &&
           draft.sourceFingerprint == _initialProject.sourceFingerprint &&
           draft.sourceDurationMs == _initialProject.sourceDurationMs) {
         _editor = SubtitleProjectEditor(

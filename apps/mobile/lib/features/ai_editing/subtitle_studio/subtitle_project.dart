@@ -372,6 +372,10 @@ void validateSubtitleProject(SubtitleProject project) {
             'Word-timed cue ${cue.cueId} has no words.');
       }
       _validateWords(cue);
+    } else if (cue.words.isNotEmpty) {
+      throw SubtitleProjectValidationException(
+        'Non-word-timed cue ${cue.cueId} cannot keep word timing.',
+      );
     }
   }
 

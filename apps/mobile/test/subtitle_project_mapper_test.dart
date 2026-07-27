@@ -7,6 +7,7 @@ import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_proj
 void main() {
   AiEditRecipeResult recipeFixture({
     bool includeRawWords = false,
+    List<AiEditTranscriptWordResult>? transcriptWords,
     double durationSeconds = 5,
     List<ClipTranscriptSegment>? subtitleSegments,
     List<AiEditCut> cutRanges = const [AiEditCut(start: 3, end: 4)],
@@ -25,15 +26,16 @@ void main() {
           ClipTranscriptSegment(text: 'หนึ่ง', start: 0.1, end: 1.2),
           ClipTranscriptSegment(text: 'สอง', start: 1.5, end: 2.5),
         ],
-        words: includeRawWords
-            ? const [
-                AiEditTranscriptWordResult(
-                  word: 'ห',
-                  start: 0.1,
-                  end: 0.2,
-                ),
-              ]
-            : const [],
+        words: transcriptWords ??
+            (includeRawWords
+                ? const [
+                    AiEditTranscriptWordResult(
+                      word: 'ห',
+                      start: 0.1,
+                      end: 0.2,
+                    ),
+                  ]
+                : const []),
         model: 'fixture',
       ),
       subtitles: AiEditSubtitlesResult(
@@ -111,6 +113,148 @@ void main() {
     );
 
     expect(project.cues.expand((cue) => cue.words), isEmpty);
+  });
+
+  test('maps server-validated words and preserves untimed separators', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+            text: 'ขายดี, ส่งฟรี! ✨',
+            start: 0.1,
+            end: 1.2,
+            words: [
+              AiEditTranscriptWordResult(
+                word: 'ขายดี',
+                start: 0.1,
+                end: 0.5,
+              ),
+              AiEditTranscriptWordResult(
+                word: 'ส่งฟรี',
+                start: 0.6,
+                end: 1.2,
+              ),
+            ],
+          ),
+        ],
+      ),
+      projectId: 'project-validated',
+      sourceFingerprint: 'source-validated',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    final cue = project.cues.single;
+    expect(cue.timingMode, SubtitleTimingMode.word);
+    expect(cue.words.map((word) => word.text), ['ขายดี', 'ส่งฟรี']);
+    expect(cue.words.map((word) => word.sourceStartMs), [100, 600]);
+    expect(cue.words.map((word) => word.separatorAfter), [', ', '! ✨']);
+  });
+
+  test('authoritative empty cue words block raw transcript fallback', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+            text: 'hello world',
+            start: 0.1,
+            end: 1.2,
+            words: [],
+          ),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'hello', start: 0.1, end: 0.5),
+          AiEditTranscriptWordResult(word: 'world', start: 0.6, end: 1.2),
+        ],
+      ),
+      projectId: 'project-authoritative-empty',
+      sourceFingerprint: 'source-authoritative-empty',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues.single.words, isEmpty);
+    expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+  });
+
+  test('legacy response uses safe raw transcript word timing', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(text: 'hello world', start: 0.1, end: 1.2),
+        ],
+        transcriptWords: const [
+          AiEditTranscriptWordResult(word: 'hello', start: 0.1, end: 0.5),
+          AiEditTranscriptWordResult(word: 'world', start: 0.6, end: 1.2),
+        ],
+      ),
+      projectId: 'project-legacy-safe',
+      sourceFingerprint: 'source-legacy-safe',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues.single.timingMode, SubtitleTimingMode.word);
+    expect(
+      project.cues.single.words.map((word) => word.text),
+      ['hello', 'world'],
+    );
+  });
+
+  test('falls back when validated word timing overlaps', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+            text: 'hello world',
+            start: 0.1,
+            end: 1.2,
+            words: [
+              AiEditTranscriptWordResult(
+                word: 'hello',
+                start: 0.1,
+                end: 0.7,
+              ),
+              AiEditTranscriptWordResult(
+                word: 'world',
+                start: 0.6,
+                end: 1.2,
+              ),
+            ],
+          ),
+        ],
+      ),
+      projectId: 'project-overlap',
+      sourceFingerprint: 'source-overlap',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues.single.words, isEmpty);
+    expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+  });
+
+  test('does not expose fragmented Thai character timing as words', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+            text: 'สวัสดี',
+            start: 0.1,
+            end: 0.6,
+            words: [
+              AiEditTranscriptWordResult(word: 'ส', start: 0.1, end: 0.2),
+              AiEditTranscriptWordResult(word: 'ว', start: 0.2, end: 0.3),
+              AiEditTranscriptWordResult(word: 'ั', start: 0.3, end: 0.35),
+              AiEditTranscriptWordResult(word: 'ส', start: 0.35, end: 0.45),
+              AiEditTranscriptWordResult(word: 'ดี', start: 0.45, end: 0.6),
+            ],
+          ),
+        ],
+      ),
+      projectId: 'project-fragmented-thai',
+      sourceFingerprint: 'source-fragmented-thai',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues.single.words, isEmpty);
+    expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
   });
 
   test('maps an empty prepared subtitle list to a valid empty project', () {

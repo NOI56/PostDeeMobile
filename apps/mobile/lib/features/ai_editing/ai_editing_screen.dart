@@ -1623,6 +1623,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               ),
             ),
       onProgress: reportProgress,
+      onAttemptStarted: (attempt) {
+        if (attempt <= 1 || !mounted) {
+          return;
+        }
+        setState(() {
+          _processingTitle = 'กำลังลองวิธีสร้างวิดีโอสำรอง...';
+          _renderProgress = 0;
+        });
+      },
       renderPurpose: purpose,
       maxVideoDimension: previewProfile?.maxVideoDimension,
       videoBitrate: previewProfile?.videoBitrate,

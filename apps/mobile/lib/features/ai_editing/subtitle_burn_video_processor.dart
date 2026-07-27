@@ -175,6 +175,7 @@ class BurnSubtitleRequest {
     this.outputDurationSeconds,
     this.maxOutputDurationSeconds,
     this.onProgress,
+    this.onAttemptStarted,
     this.renderPurpose = VideoRenderPurpose.export,
     this.maxVideoDimension,
     this.videoBitrate,
@@ -230,6 +231,10 @@ class BurnSubtitleRequest {
   /// Optional render progress reporter (0..1).
   final RenderProgressCallback? onProgress;
 
+  /// Reports each FFmpeg attempt, starting at 1. A later attempt means the
+  /// processor is retrying with a safer encoder or filter fallback.
+  final RenderAttemptStartedCallback? onAttemptStarted;
+
   /// Preview renders are intentionally smaller and are never uploaded as the
   /// final social video. Export renders keep the source dimensions.
   final VideoRenderPurpose renderPurpose;
@@ -241,6 +246,9 @@ class BurnSubtitleRequest {
 
 /// Reports render progress (0..1).
 typedef RenderProgressCallback = void Function(double fraction);
+
+/// Reports that a render attempt has started (1-based).
+typedef RenderAttemptStartedCallback = void Function(int attempt);
 
 class BurnedSubtitleResult {
   const BurnedSubtitleResult({
@@ -1702,6 +1710,7 @@ class FfmpegSubtitleBurnVideoProcessor {
     String? failureLogs;
     var activeSubtitlePath = subtitlePath;
     var retriedWithStaticSrt = false;
+    var renderAttempt = 0;
     while (true) {
       render:
       for (final attemptedColorFilter
@@ -1719,6 +1728,8 @@ class FfmpegSubtitleBurnVideoProcessor {
               await outputFile.delete();
             }
 
+            renderAttempt += 1;
+            request.onAttemptStarted?.call(renderAttempt);
             final session = await FFmpegKit.executeWithArgumentsAsync(
               buildEditFfmpegArguments(
                 inputPath: request.inputFile.path,

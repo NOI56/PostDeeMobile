@@ -2193,6 +2193,16 @@ void main() {
     expect(find.text('กำลังตรวจไฟล์วิดีโอ...'), findsOneWidget);
     expect(find.text('99%'), findsOneWidget);
 
+    activeRenderRequest!.onAttemptStarted?.call(2);
+    await tester.pump();
+
+    expect(find.text('0%'), findsOneWidget);
+
+    activeRenderRequest!.onProgress?.call(0.03);
+    await tester.pump();
+
+    expect(find.text('3%'), findsOneWidget);
+
     await tester.tap(find.byKey(const ValueKey('ai-render-cancel')));
     await tester.pumpAndSettle();
 

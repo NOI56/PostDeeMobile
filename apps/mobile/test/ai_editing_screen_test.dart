@@ -1229,12 +1229,14 @@ void main() {
     final cleanedAudioKeys = <String>[];
     AiEditPrepareRequest? prepareRequest;
     Directory? chunksDirectory;
+    double? capturedKnownDurationSeconds;
 
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
           pickVideo: () async => pickedVideo,
-          extractAudioChunks: (_) async {
+          extractAudioChunks: (_, {knownDurationSeconds}) async {
+            capturedKnownDurationSeconds = knownDurationSeconds;
             chunksDirectory = Directory.systemTemp.createTempSync(
               'postdee-editor-audio-chunks-',
             );
@@ -1298,6 +1300,7 @@ void main() {
     expect(prepareRequest?.audioS3Key, isNull);
     expect(prepareRequest?.durationSeconds, 150);
     expect(prepareRequest?.targetDurationSeconds, 30);
+    expect(capturedKnownDurationSeconds, 150);
     expect(
       prepareRequest?.audioChunks?.map((chunk) => chunk.startSeconds).toList(),
       [0, 25],

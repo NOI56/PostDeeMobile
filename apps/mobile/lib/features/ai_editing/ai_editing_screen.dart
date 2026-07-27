@@ -49,8 +49,9 @@ typedef AiEditAudioExtraction = Future<AiEditAudioArtifact> Function(
     File source);
 typedef AiEditAudioChunksExtraction = Future<AiEditAudioChunksArtifact>
     Function(
-  File source,
-);
+  File source, {
+  double? knownDurationSeconds,
+});
 typedef AiEditAudioCleanup = Future<void> Function(String audioS3Key);
 typedef AiEditVisualProxyExtraction = Future<AiEditVisualProxyArtifact>
     Function(File source);
@@ -859,7 +860,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             } else {
               final extractAudioChunks = widget.extractAudioChunks ??
                   AiEditAudioExtractor().extractChunks;
-              audioChunksArtifact = await extractAudioChunks(file);
+              audioChunksArtifact = await extractAudioChunks(
+                file,
+                knownDurationSeconds: picked.durationSeconds,
+              );
               final requests = <AiEditAudioChunkRequest>[];
               for (final chunk in audioChunksArtifact.chunks) {
                 final upload = await uploadAudioFile(chunk.file);

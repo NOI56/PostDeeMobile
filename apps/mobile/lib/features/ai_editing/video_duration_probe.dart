@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new_video/ffprobe_kit.dart';
+import 'package:flutter/foundation.dart';
 
 /// Reads the duration (in seconds) of a local video file. Returns null when the
 /// duration cannot be determined. Injectable so the editor can be tested without
@@ -16,7 +17,15 @@ class FfprobeVideoDurationProbe {
     try {
       final session = await FFprobeKit.getMediaInformation(videoFile.path);
       final mediaInformation = session.getMediaInformation();
-      final rawDuration = mediaInformation?.getDuration();
+      if (mediaInformation == null) {
+        final returnCode = await session.getReturnCode();
+        debugPrint(
+          'AI edit duration probe returned no media information '
+          '(return code: ${returnCode?.getValue() ?? 'unknown'})',
+        );
+        return null;
+      }
+      final rawDuration = mediaInformation.getDuration();
 
       if (rawDuration == null) {
         return null;
@@ -29,7 +38,15 @@ class FfprobeVideoDurationProbe {
       }
 
       return seconds;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint(
+          'AI edit duration probe failed: ${error.runtimeType}: $error',
+        );
+        debugPrintStack(stackTrace: stackTrace);
+      } else {
+        debugPrint('AI edit duration probe failed');
+      }
       return null;
     }
   }

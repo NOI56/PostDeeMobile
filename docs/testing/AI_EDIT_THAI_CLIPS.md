@@ -35,9 +35,9 @@ powershell -ExecutionPolicy Bypass -File scripts/test-ai-edit-visual-proxy.ps1 `
 
 All proxies cover the complete timeline at 1 fps, use 360 px width, remain far
 below the 50 MiB API cap, and differ from source duration by less than one second.
-This proves transport coverage, not editorial quality. Real cut-quality scoring
-is blocked locally until `GEMINI_API_KEY`, R2, and authenticated staging mobile
-are available together.
+This proves transport coverage, not editorial quality. Whole-video Gemini
+cut-quality scoring remains pending; authenticated Staging transcription,
+mobile review, and local render E2E are now available.
 
 ## Duration policy
 
@@ -191,28 +191,59 @@ a Store build.
 ## 2026-07-27 short-source active-word E2E and regressions
 
 A real Pixel 8 Staging run selected a 30-second, 540x960 Thai talking-head
-source and requested a 20-second result. Prepare took about 10 seconds and
-reported three silence cuts, one filler word, and 2.8 seconds of detected
-cleanup. The accepted Pop render probes as exactly 20.000 seconds, 406x720,
-2,833,565 bytes, with MPEG-4 video and AAC audio. Sampled frames kept captions
-to one line, showed the active word in green, retained visible Thai stacked-mark
-separation, and did not clip either horizontal edge.
+source and requested a 20-second result through ElevenLabs Scribe v2. Prepare
+took about 10 seconds, reported three silence cuts, one filler word, and
+2.8 seconds of detected cleanup. Each prepare call consumed exactly one
+AI-edit minute, metered from the 30-second transcribed source rather than the
+requested 20-second output.
+
+The final Anuphan Bold Pop export probes as 19.999 seconds and 3,617,243 bytes,
+with 540x960 MPEG-4 video plus AAC audio. Its SHA-256 is
+`814AE4A5A58D617A900F89E0890946F992F19FD7138D7EA720250168853426BE`.
+The generated ASS declares a 304x540 logical canvas instead of relying on
+libass's 384x288 fallback. Ten sampled frames kept captions to one line, showed
+the active word in green, retained visible Thai stacked-mark separation, and
+did not clip either horizontal edge. In particular, `Weekend Market` and the
+ending cue containing `ระยะทาง` remained inside the frame.
 
 The same run exposed two server cue-boundary regressions in its saved 38-cue
 draft: `มีของให|ม่ๆ` and `นึงระยะทา|งใกล้ๆ`. Provider normalization and recipe
-generation now share exact tests for `ใหม่ๆ` and `ใกล้ๆ`. The automatic cue
-grouper also rebalances whole words for fixable sub-0.7-second pairs while
-preserving the selected word cap, 18-grapheme cap, gaps, and source timing.
-Truly unavoidable fast cues remain short rather than being stretched.
+generation now share exact tests for `ใหม่ๆ` and `ใกล้ๆ`. A later replay also
+found that a mixed Thai/Latin cue such as `ไป Weekend Market` could fit the
+character limit while still overflowing visually. The automatic cue grouper
+now uses a display-width budget, weighting Latin characters and spaces
+separately, and protects `ระยะทาง`, `วันหยุด`, and `ตีตั๋ว` from cross-cue
+splits. It still rebalances whole words for fixable sub-0.7-second pairs while
+preserving gaps and source timing. Truly unavoidable fast cues remain short
+rather than being stretched.
 
-The mobile project identity now carries cue-segmentation revision 2 and the
+The accepted revision-3 draft contains 38 ordered, non-overlapping cues, a
+maximum of three semantic words per cue, one display line, valid in-cue word
+timings, and no cue starting with a Thai combining mark. It retains complete
+`มีของใหม่ๆ`, `วันหยุด`, `ระยะทาง`, and `ตีตั๋ว` tokens and isolates
+`Weekend Market` into a width-safe cue.
+
+The mobile project identity now carries cue-segmentation revision 3 and the
 draft controller requires the exact project ID, so this pre-fix draft cannot
 overwrite a newly mapped project. The original file is retained for recovery.
 Inspection of the rendered ASS also found sub-centisecond slices that rounded to
 equal start/end timestamps. ASS generation now quantizes boundaries first,
 omits collapsed events, and recalculates first/last Pop or Fade flags.
 
-The Staging AI-edit quota reached zero after this run. The exact server
-tokenization fixes therefore still require a deployed build plus refreshed test
-quota for another live provider pass; automated API and renderer regressions
-cover them in the meantime.
+Frame-level review found one more target-duration risk: a mathematically exact
+tail cut could land inside a subtitle cue. The mobile renderer now moves only
+that trailing boundary to the furthest consecutive cue/phrase boundary that
+fits within one second of the requested duration. It does not reorder or change
+the opening hook. The hard output cap follows the aligned duration so it cannot
+cut the cue again afterward. In the final 30-to-20-second replay, the actual
+trailing cut was at source 26.715 seconds while the last retained cue ended at
+26.614 seconds. The final sampled video frame at output 19.92 seconds contained
+no subtitle, confirming a clean pause before the 19.999-second file ended.
+
+The persistent Staging account had already reached 200/200 minutes before the
+final replay. Testing therefore used the in-memory usage store temporarily;
+the original Prisma usage record was left untouched. After acceptance,
+`AI_EDIT_USAGE_STORE` was restored to `prisma`, so the temporary counter cannot
+leak into normal Staging behaviour. The Staging health endpoint returned
+`{"status":"ok","service":"postdee-api"}`, and the restarted Pixel 8 app again
+showed zero remaining AI-edit minutes from the unchanged 200/200 Prisma record.

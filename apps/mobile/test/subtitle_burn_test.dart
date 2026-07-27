@@ -39,6 +39,143 @@ void main() {
     expect(srt, contains(thaiMarkCoverage));
   });
 
+  test('flattens explicit subtitle line breaks before burn-in', () {
+    final srt = buildSrtContent(const [
+      SubtitleSegment(text: 'ขายดีมาก\nส่งฟรี', start: 0, end: 2),
+    ]);
+
+    expect(srt, contains('ขายดีมาก ส่งฟรี'));
+    expect(srt, isNot(contains('ขายดีมาก\nส่งฟรี')));
+  });
+
+  test('protects stacked Thai marks only for reviewed subtitle fonts', () {
+    expect(
+      liftStackedThaiToneMarksForRender('ที่ นี่ ซ้ำ'),
+      'ที\uE000 นี\uE000 ซ\uE001ำ',
+    );
+    expect(
+      shouldProtectStackedThaiMarksForRender(
+        fontName: postDeeSubtitleThaiFontName,
+        fontAssetPath: postDeeSubtitleThaiFontAssetPath,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldProtectStackedThaiMarksForRender(
+        fontName: postDeeSubtitleThaiFontName,
+        fontAssetPath: 'assets/fonts/anuphan/Anuphan-Bold.ttf',
+      ),
+      isFalse,
+    );
+  });
+
+  test('builds active-word ASS while keeping the full sentence visible', () {
+    final file = buildSubtitleFileContent(
+      const [
+        SubtitleSegment(
+          text: 'ขายดีมาก',
+          start: 0,
+          end: 1,
+          words: [
+            SubtitleWordTiming(text: 'ขาย', start: 0, end: 0.5),
+            SubtitleWordTiming(text: 'ดีมาก', start: 0.5, end: 1),
+          ],
+        ),
+      ],
+      activeWordColor: '#FF0000',
+    );
+
+    expect(file.fileName, 'captions.ass');
+    expect(file.usesActiveWordTiming, isTrue);
+    expect(file.content, contains(r'{\1c&H000000FF&}ขาย'));
+    expect(file.content, contains(r'{\1c&H000000FF&}ดีมาก'));
+    final dialogues = file.content
+        .split('\n')
+        .where((line) => line.startsWith('Dialogue:'))
+        .map((line) => line.replaceAll(RegExp(r'\{[^}]*\}'), ''));
+    expect(dialogues.every((line) => line.endsWith('ขายดีมาก')), isTrue);
+  });
+
+  test('falls back the whole cue when word timing is incomplete or unsafe', () {
+    const unsafeCue = SubtitleSegment(
+      text: 'ขายดีมาก',
+      start: 0,
+      end: 1,
+      words: [
+        SubtitleWordTiming(text: 'ขาย', start: 0, end: 0.5),
+      ],
+    );
+    final file = buildSubtitleFileContent(
+      const [unsafeCue],
+      activeWordColor: '#FF0000',
+    );
+
+    expect(file.fileName, 'captions.srt');
+    expect(file.usesActiveWordTiming, isFalse);
+    expect(file.content, contains('ขายดีมาก'));
+  });
+
+  test('uses ASS for pop and fade without restarting the sentence text', () {
+    const segments = [
+      SubtitleSegment(text: 'ประโยคเดียว', start: 0, end: 1),
+    ];
+    final pop = buildSubtitleFileContent(
+      segments,
+      subtitleAnimation: 'pop',
+    );
+    final fade = buildSubtitleFileContent(
+      segments,
+      subtitleAnimation: 'fade',
+    );
+
+    expect(pop.fileName, 'captions.ass');
+    expect(pop.content, contains(r'\fscx78'));
+    expect(pop.content, contains(r'\fscx103'));
+    expect(RegExp('ประโยคเดียว').allMatches(pop.content), hasLength(1));
+    expect(fade.fileName, 'captions.ass');
+    expect(fade.content, contains(r'{\fad(180,180)}'));
+  });
+
+  test('normalizes unknown animation to static SRT', () {
+    final file = buildSubtitleFileContent(
+      const [SubtitleSegment(text: 'ซับปกติ', start: 0, end: 1)],
+      subtitleAnimation: 'future-effect',
+    );
+
+    expect(file.fileName, 'captions.srt');
+    expect(file.content, contains('ซับปกติ'));
+  });
+
+  test('retries ASS as SRT only for an explicit subtitle render failure', () {
+    expect(
+      shouldRetryAssRenderWithStaticSrt(
+        subtitleFileName: 'captions.ass',
+        failureLogs: '[Parsed_subtitles_0] Error applying option force_style',
+        cancellationRequested: false,
+        alreadyRetried: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldRetryAssRenderWithStaticSrt(
+        subtitleFileName: 'captions.ass',
+        failureLogs: 'encoder wrote no video stream',
+        cancellationRequested: false,
+        alreadyRetried: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRetryAssRenderWithStaticSrt(
+        subtitleFileName: 'captions.srt',
+        failureLogs: 'Error initializing filter subtitles',
+        cancellationRequested: false,
+        alreadyRetried: false,
+      ),
+      isFalse,
+    );
+  });
+
   test('clips and shifts segments to the trim window', () {
     final clipped = clipSegmentsToTrim(
       const [
@@ -55,6 +192,55 @@ void main() {
     expect(clipped.first.text, 'b');
     expect(clipped.first.start, 1); // 5 - 4
     expect(clipped.first.end, 5); // 9 - 4
+  });
+
+  test('removes fully trimmed words from a valid timed cue', () {
+    final clipped = clipSegmentsToTrim(
+      const [
+        SubtitleSegment(
+          text: 'one two three',
+          start: 0,
+          end: 3,
+          words: [
+            SubtitleWordTiming(text: 'one', start: 0, end: 1),
+            SubtitleWordTiming(text: 'two', start: 1, end: 2),
+            SubtitleWordTiming(text: 'three', start: 2, end: 3),
+          ],
+        ),
+      ],
+      trimStartSec: 1,
+      trimEndSec: 3,
+    );
+
+    expect(clipped.single.text, 'two three');
+    expect(clipped.single.words.map((word) => word.text), ['two', 'three']);
+    expect(clipped.single.words.map((word) => word.start), [0, 1]);
+    expect(clipped.single.words.map((word) => word.end), [1, 2]);
+  });
+
+  test('keeps unsafe trimmed timing on the static subtitle fallback', () {
+    final clipped = clipSegmentsToTrim(
+      const [
+        SubtitleSegment(
+          text: 'one missing',
+          start: 0,
+          end: 2,
+          words: [
+            SubtitleWordTiming(text: 'one', start: 0, end: 1),
+          ],
+        ),
+      ],
+      trimStartSec: 0.5,
+      trimEndSec: 2,
+    );
+    final file = buildSubtitleFileContent(
+      clipped,
+      activeWordColor: '#FF0000',
+    );
+
+    expect(clipped.single.text, 'one missing');
+    expect(file.fileName, 'captions.srt');
+    expect(file.content, contains('one missing'));
   });
 
   test('builds ffmpeg args for trim, speed, volume and subtitles', () {
@@ -564,14 +750,14 @@ void main() {
 
   test('builds subtitle force style with size and position', () {
     final bottom = buildSubtitleForceStyle(fontSize: 24, atBottom: true);
-    expect(bottom, contains('FontName=Anuphan'));
+    expect(bottom, contains('FontName=PostDee Subtitle Thai'));
     expect(bottom, contains('Fontsize=24'));
-    expect(bottom, contains('Outline=1.2'));
+    expect(bottom, contains('Outline=0.5'));
     expect(bottom, contains('Alignment=2'));
     expect(bottom, contains('MarginL=24'));
     expect(bottom, contains('MarginR=24'));
     expect(bottom, contains('MarginV=28'));
-    expect(bottom, contains('WrapStyle=0'));
+    expect(bottom, contains('WrapStyle=2'));
 
     final top = buildSubtitleForceStyle(fontSize: 14, atBottom: false);
     expect(top, contains('Fontsize=14'));

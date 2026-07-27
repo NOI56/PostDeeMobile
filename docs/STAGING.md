@@ -65,6 +65,17 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
   กด Restore; ห้ามใช้ mobile SDK key แทนและห้ามใส่ใน Flutter
 - `GEMINI_API_KEY` และ `GROQ_API_KEY`: ควรใช้ key จำกัดโควตาสำหรับ Staging
 
+## สถานะ AI transcription ที่ถือเป็นข้อมูลจริง
+
+- `render.yaml` และ `render.staging.yaml` ใน `main` ตั้ง
+  `TRANSCRIPTION_PROVIDER=groq` ดังนั้น Production และ Staging ที่สร้างจาก
+  Blueprint ปัจจุบันใช้ Groq Whisper
+- ElevenLabs Scribe v2 ยังเป็นงานทดลองและไม่ได้เปิดใน Blueprint ทั้งสองไฟล์
+- การมี API key หรือค่ารุ่นโมเดลอยู่ใน Dashboard ไม่ได้แปลว่าโมเดลนั้นถูกเรียก
+  ต้องตรวจค่า `TRANSCRIPTION_PROVIDER` ของ service ที่ Deploy จริงทุกครั้ง
+- ระบบตัดช่วงเงียบใช้ช่องว่างจากเวลา word/segment ของ transcript ปัจจุบันยังไม่มี
+  VAD, การวัดเดซิเบล หรือ FFmpeg `silencedetect` มายืนยันเสียงจริงอีกชั้น
+
 ในรอบแรกไม่มี `FIREBASE_SERVICE_ACCOUNT_JSON`, ใช้ `PUSH_SENDER=mock` และ
 `FIREBASE_AUTH_DELETE_ENABLED=false` เพื่อป้องกันการลบผู้ใช้หรือยิง Push ผิดระบบ
 รวมถึงใช้ `SOCIAL_PUBLISHER=disabled` ซึ่งจะล้มเหลวแบบชัดเจนและไม่สร้างโพสต์ปลอม

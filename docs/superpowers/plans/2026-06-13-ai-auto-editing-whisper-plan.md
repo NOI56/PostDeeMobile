@@ -1,5 +1,11 @@
 # AI Auto Editing With Groq Whisper Implementation Plan
 
+> **Document role:** this dated implementation plan records how the feature
+> evolved; it is not the source of truth for the currently deployed provider or
+> release status. Use `README.md`, `ROADMAP.md`, `API.md`,
+> `ARCHITECTURE.md`, `docs/GO_LIVE.md`, and the active Render blueprint for
+> current behavior.
+
 > Status: the mobile flow stays in `ai_editing_screen.dart` through **setup → prepare/render → result review**. The user previews the AI result and uses review checkboxes to remove or restore supported edits; every change automatically re-renders locally from the original clip before the accepted result continues to Upload/Post.
 >
 > Original plan name referenced Whisper-1. The current production direction is Groq `whisper-large-v3` for transcription, with the same quota ledger and mobile FFmpeg export flow.

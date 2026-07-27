@@ -1,5 +1,10 @@
 # AI Edit Audio-Only Media Implementation Plan
 
+> **Document role:** this is a historical implementation milestone, not the
+> current deployment checklist. Use `README.md`, `ROADMAP.md`, `API.md`,
+> `ARCHITECTURE.md`, `docs/GO_LIVE.md`, and the active Render blueprint for
+> current provider and release status.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make current AI Editing capabilities extract and upload a temporary M4A on mobile, transcribe only that audio, clean it locally/remotely, and continue rendering the original video on mobile.

@@ -193,8 +193,9 @@ and needs `GROQ_API_KEY` before real transcription tests.
 - `EDIT_PLAN_PROVIDER=groq`
 - `GROQ_API_KEY=...`
 - Optional: `GROQ_TRANSCRIPTION_MODEL` (default `whisper-large-v3`)
-- Keep `VIDEO_STORAGE=r2` configured so the backend can create a signed download URL
-  and pass the uploaded media bytes to Groq.
+- Keep `VIDEO_STORAGE=r2` configured so the backend can create signed download
+  URLs for the bounded temporary M4A chunks sent to Groq. The original video
+  remains on the phone for preview and final export.
 
 Mobile flow is wired: the Edit tab picks a real clip, can call
 `/ai-edits/transcribe` for captions or `/ai-edits/prepare` for the full UI
@@ -215,9 +216,10 @@ the minimum validated word-timing gap, with segment gaps as a conservative
 fallback. The threshold also covers leading/trailing silence when duration is
 valid, and overlapping timing ranges are merged before gaps are calculated.
 Thai character-level Groq timings still drive gaps, but subtitle text falls back
-to readable transcript segments. Groq receives the Thai language hint plus a
-concise `PostDee` → `โพสต์ดี` spelling prompt; verify this against natural speech
-before launch because a prompt guides rather than guarantees transcription.
+to readable transcript segments. Groq receives the Thai language hint and both
+word/segment timestamps. It deliberately receives no spelling prompt because a
+real-clip test showed that provider context could leak into the returned Thai
+transcript.
 `fillerWords` matches only the
 normalized exact allowlist `เอ่อ`, `อ่า`, `แบบว่า`, `คือว่า`, `ประมาณว่า`; it
 does not use substring matching on normal tokens. Exact `เออ` maps to `เอ่อ`,
@@ -277,7 +279,8 @@ card reads it. The ledger persists when `AI_EDIT_USAGE_STORE=prisma` (add it to
 
 Still TODO for full AI editing: verify Groq Thai timing, fragmented-token
 fallback, and cut quality with natural speech on physical phones; consider
-FFmpeg audio silence detection if transcript timing is not accurate enough;
+FFmpeg audio silence detection or VAD as a second confirmation layer if
+transcript timing is not accurate enough (neither is active today);
 turn planned recipe capabilities such as beat sync, auto-reframe, audio
 cleanup, SFX/music, and
 translation into real processors; sticker image overlays;

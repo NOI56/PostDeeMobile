@@ -38,6 +38,19 @@ apps/
   แยกเสียง M4A ขนาดเล็กก่อนอัปโหลด; ยังต้อง deploy แล้วทดสอบคลิปเดิมซ้ำก่อนนับว่า
   AI edit ผ่าน E2E
 
+## AI Editing Runtime Source of Truth
+
+- Both `render.yaml` and `render.staging.yaml` currently set
+  `TRANSCRIPTION_PROVIDER=groq`; Groq Whisper is therefore the configured
+  transcription provider for Production and Staging builds from `main`.
+- ElevenLabs Scribe v2 work is experimental and is not enabled by either active
+  blueprint. A provider mentioned in a dated plan, branch, or local environment
+  must not be described as live until the active blueprint and deployed Render
+  environment both select it.
+- Silence cleanup currently detects validated gaps between transcript
+  word/segment timestamps. It does not yet use waveform decibels, FFmpeg
+  `silencedetect`, or VAD as a second confirmation layer.
+
 ## Backend
 
 Path: `apps/api`

@@ -1,5 +1,10 @@
 # AI Edit Audio-Only Media Design
 
+> **Document role:** this dated design captures the approved audio-only
+> milestone. Later work may supersede its future-scope statements. Use
+> `README.md`, `ROADMAP.md`, `API.md`, `ARCHITECTURE.md`,
+> `docs/GO_LIVE.md`, and the active Render blueprint for current behavior.
+
 ## Goal
 
 Reduce AI editing transfer, memory, and temporary-storage load by extracting a small audio artifact on the mobile device and sending that artifact to Groq Whisper for transcription, while keeping the original video local for FFmpeg preview and export.

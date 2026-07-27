@@ -6,7 +6,7 @@ import 'dart:io';
 /// Keeping this stable preserves drafts created by the current algorithm,
 /// while a deliberate bump prevents older boundaries from replacing a newly
 /// mapped project.
-const currentSubtitleCueSegmentationRevision = 2;
+const currentSubtitleCueSegmentationRevision = 3;
 
 class SubtitleProjectIdentity {
   const SubtitleProjectIdentity({

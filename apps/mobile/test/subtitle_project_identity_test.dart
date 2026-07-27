@@ -53,17 +53,17 @@ void main() {
     final previous = buildSubtitleProjectIdentity(
       sourceFile: source,
       setupSignature: '30-seconds',
-      cueSegmentationRevision: 1,
+      cueSegmentationRevision: 2,
     );
     final current = buildSubtitleProjectIdentity(
       sourceFile: source,
       setupSignature: '30-seconds',
-      cueSegmentationRevision: 2,
+      cueSegmentationRevision: 3,
     );
     final currentAgain = buildSubtitleProjectIdentity(
       sourceFile: source,
       setupSignature: '30-seconds',
-      cueSegmentationRevision: 2,
+      cueSegmentationRevision: 3,
     );
     final defaultRevision = buildSubtitleProjectIdentity(
       sourceFile: source,

@@ -233,6 +233,8 @@ class ReviewVideoTimeline extends StatelessWidget {
     required this.onSeekStart,
     required this.onSeekChanged,
     required this.onSeekEnd,
+    this.maxPosition,
+    this.sliderKey = const ValueKey('ai-review-seek-slider'),
   });
 
   final Duration position;
@@ -241,16 +243,23 @@ class ReviewVideoTimeline extends StatelessWidget {
   final ValueChanged<Duration> onSeekStart;
   final ValueChanged<Duration> onSeekChanged;
   final ValueChanged<Duration> onSeekEnd;
+  final Duration? maxPosition;
+  final Key sliderKey;
 
   @override
   Widget build(BuildContext context) {
     final durationMilliseconds =
         duration.inMilliseconds < 0 ? 0 : duration.inMilliseconds;
-    final positionMilliseconds = position.inMilliseconds.clamp(
+    final maximumPositionMilliseconds =
+        (maxPosition?.inMilliseconds ?? durationMilliseconds).clamp(
       0,
       durationMilliseconds,
     );
-    final canSeek = enabled && durationMilliseconds > 0;
+    final positionMilliseconds = position.inMilliseconds.clamp(
+      0,
+      maximumPositionMilliseconds,
+    );
+    final canSeek = enabled && maximumPositionMilliseconds > 0;
     final remainingSeconds = reviewVideoRemainingSeconds(
       position: position,
       duration: duration,
@@ -261,7 +270,8 @@ class ReviewVideoTimeline extends StatelessWidget {
     final durationLabel = formatReviewVideoClock(duration);
 
     Duration readSeekDuration(double value) => Duration(
-          milliseconds: value.round().clamp(0, durationMilliseconds),
+          milliseconds:
+              value.round().clamp(0, maximumPositionMilliseconds),
         );
 
     return Column(
@@ -282,11 +292,11 @@ class ReviewVideoTimeline extends StatelessWidget {
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
             ),
             child: Slider(
-              key: const ValueKey('ai-review-seek-slider'),
+              key: sliderKey,
               value: positionMilliseconds.toDouble(),
               min: 0,
-              max: durationMilliseconds > 0
-                  ? durationMilliseconds.toDouble()
+              max: maximumPositionMilliseconds > 0
+                  ? maximumPositionMilliseconds.toDouble()
                   : 1,
               onChangeStart: canSeek
                   ? (value) => onSeekStart(readSeekDuration(value))

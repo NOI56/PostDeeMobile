@@ -65,6 +65,11 @@ const buildRecipe = ({
     settings: readAiEditRecipeSettings(settings)
   });
 
+const readLegacySubtitleSegmentFields = (
+  segments: Array<{ text: string; start: number; end: number }>
+) =>
+  segments.map(({ text, start, end }) => ({ text, start, end }));
+
 describe('AI edit recipe pacing settings', () => {
   it.each([
     ['natural', 1],
@@ -161,7 +166,8 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual(segments);
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
+      .toEqual(segments);
     expect(recipe.silenceRanges).toEqual([{ start: 0.55, end: 1.2 }]);
   });
 
@@ -255,7 +261,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'เช่นช่วงเสาร์อาทิตย์', start: 0, end: 1.2 }
     ]);
   });
@@ -278,7 +284,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'มีดีมาไป', start: 0, end: 0.8 },
       { text: 'ดูของใหม่นะ', start: 0.8, end: 1.6 }
     ]);
@@ -330,7 +336,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'Good intro', start: 0, end: 2 }
     ]);
   });
@@ -353,7 +359,8 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual(segments);
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
+      .toEqual(segments);
     expect(recipe.fillerRanges).toEqual([{ start: 0, end: 0.2 }]);
   });
 
@@ -395,7 +402,8 @@ describe('AI edit recipe pacing settings', () => {
       words
     });
 
-    expect(recipe.subtitles.segments).toEqual(segments);
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
+      .toEqual(segments);
   });
 
   it('detects silence at the start and end of the transcript timeline', () => {
@@ -497,7 +505,7 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.silenceRanges).toEqual([]);
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'ช่วงแรก', start: 0, end: 1 }
     ]);
   });
@@ -520,7 +528,7 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.silenceRanges).toEqual([]);
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'ช่วงหลัก', start: 0, end: 10 },
       { text: 'ซ้อนหนึ่ง', start: 1, end: 2 },
       { text: 'ซ้อนสอง', start: 5, end: 6 },
@@ -543,7 +551,8 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).not.toEqual([{ text: '', start: 0, end: 0 }]);
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
+      .not.toEqual([{ text: '', start: 0, end: 0 }]);
     expect(recipe.subtitles.segments.map((segment) => segment.text).join('')).toBe(
       'สวัสดี'
     );
@@ -638,7 +647,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'สวัสดีค่ะวันนี้', start: 0, end: 1.2 }
     ]);
   });
@@ -656,7 +665,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'รุ่น iPhone 15 Pro', start: 0, end: 1.2 }
     ]);
   });
@@ -675,7 +684,7 @@ describe('AI edit recipe pacing settings', () => {
         ]
       });
 
-      expect(recipe.subtitles.segments).toEqual([
+      expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
         { text: `ราคา ${price} บาท`, start: 0, end: 1 }
       ]);
     }
@@ -694,7 +703,7 @@ describe('AI edit recipe pacing settings', () => {
         ]
       });
 
-      expect(recipe.subtitles.segments).toEqual([
+      expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
         { text: 'สวัสดีค่ะ', start: 0, end: 0.7 }
       ]);
     }
@@ -712,7 +721,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'Hello world again', start: 0, end: 1.3 }
     ]);
   });
@@ -725,7 +734,8 @@ describe('AI edit recipe pacing settings', () => {
       words: [{ word: 'เวลาผิด', start: 0.5, end: 0.5 }]
     });
 
-    expect(recipe.subtitles.segments).toEqual(segments);
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
+      .toEqual(segments);
   });
 
   it('uses only supported filler words selected by the request', () => {
@@ -1045,5 +1055,49 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.renderHints).not.toHaveProperty('hookSeconds');
+  });
+
+  it('adds validated word timings to the final subtitle cue', () => {
+    const words = [
+      { word: 'Hello', start: 0, end: 0.4 },
+      { word: 'world', start: 0.4, end: 0.8 },
+      { word: 'again', start: 0.9, end: 1.3 }
+    ];
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'en',
+      text: 'Hello world again',
+      durationSeconds: 1.3,
+      settings: { subtitleWordsPerLine: 2 },
+      segments: [{ text: 'Hello world again', start: 0, end: 1.3 }],
+      words
+    });
+
+    expect(recipe.subtitles.segments).toEqual([
+      {
+        text: 'Hello world again',
+        start: 0,
+        end: 1.3,
+        words
+      }
+    ]);
+  });
+
+  it('returns an authoritative empty word list for unsafe cue timing', () => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'en',
+      text: 'one two',
+      durationSeconds: 1.2,
+      segments: [{ text: 'one two', start: 0, end: 1.2 }],
+      words: [
+        { word: 'one', start: 0, end: 0.7 },
+        { word: 'two', start: 0.6, end: 1.2 }
+      ]
+    });
+
+    expect(recipe.subtitles.segments).toEqual([
+      { text: 'one two', start: 0, end: 1.2, words: [] }
+    ]);
   });
 });

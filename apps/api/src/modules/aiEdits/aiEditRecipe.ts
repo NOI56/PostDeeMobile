@@ -66,6 +66,10 @@ export type AiEditRecipeSettings = {
   music?: AiEditMusicSettings;
 };
 
+export type AiEditSubtitleSegment = TranscriptSegment & {
+  words: TranscriptWord[];
+};
+
 export type AiEditRecipe = {
   version: 1;
   status: 'ready';
@@ -82,7 +86,7 @@ export type AiEditRecipe = {
   };
   subtitles: {
     enabled: boolean;
-    segments: TranscriptSegment[];
+    segments: AiEditSubtitleSegment[];
     style: {
       mode: string;
       color: string;
@@ -315,6 +319,7 @@ const minimumFragmentedTokenCount = 4;
 const fragmentedFillerBoundarySeconds = 0.08;
 const minimumEstimatedSubtitleDurationSeconds = 0.7;
 const maximumEstimatedThaiWordsPerCue = 2;
+const subtitleWordTimingToleranceSeconds = 1e-6;
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
   value
@@ -548,6 +553,46 @@ const readValidTranscriptWords = (
 
   return sortedWords;
 };
+
+const attachValidatedSubtitleWords = (
+  segments: TranscriptSegment[],
+  words: TranscriptWord[]
+): AiEditSubtitleSegment[] =>
+  segments.map((segment) => {
+    const cueWords = words.filter(
+      (word) => word.start < segment.end && word.end > segment.start
+    );
+    if (cueWords.length === 0) {
+      return { ...segment, words: [] };
+    }
+
+    const hasWordOutsideCue = cueWords.some(
+      (word) =>
+        word.start < segment.start - subtitleWordTimingToleranceSeconds ||
+        word.end > segment.end + subtitleWordTimingToleranceSeconds
+    );
+    const hasOverlappingWords = cueWords.some(
+      (word, index) =>
+        index > 0 &&
+        word.start <
+          cueWords[index - 1]!.end - subtitleWordTimingToleranceSeconds
+    );
+    const cueText = normalizeTranscriptTextForCoverage(segment.text);
+    const reconstructedText = normalizeTranscriptTextForCoverage(
+      cueWords.map((word) => word.word).join('')
+    );
+
+    if (
+      hasWordOutsideCue ||
+      hasOverlappingWords ||
+      cueText.length === 0 ||
+      reconstructedText !== cueText
+    ) {
+      return { ...segment, words: [] };
+    }
+
+    return { ...segment, words: cueWords };
+  });
 
 const isNumericSubtitleToken = (value: string): boolean => {
   const digits = value.replace(/[.,]/gu, '');
@@ -1085,6 +1130,15 @@ export const buildAiEditRecipe = ({
         : fallbackSubtitleSegments)
     : [];
   const subtitleSegments = mergeShortSubtitleSegments(preparedSubtitleSegments);
+  const subtitleSegmentsWithValidatedWords =
+    capabilities.subtitle &&
+    reliableValidTranscriptWords &&
+    !fragmentedThaiWordTimings
+      ? attachValidatedSubtitleWords(
+          subtitleSegments,
+          reliableValidTranscriptWords
+        )
+      : subtitleSegments.map((segment) => ({ ...segment, words: [] }));
   const silencePreset = settings.silencePreset ?? 'balanced';
   const silenceRanges = capabilities.silence && hasReliableSilenceTimeline
     ? findSilenceRanges(
@@ -1125,7 +1179,7 @@ export const buildAiEditRecipe = ({
     },
     subtitles: {
       enabled: capabilities.subtitle,
-      segments: subtitleSegments,
+      segments: subtitleSegmentsWithValidatedWords,
       style: {
         mode: settings.subtitleStyle ?? 'bold',
         color: settings.subtitleColor ?? '#FFFFFF',

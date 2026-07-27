@@ -221,6 +221,15 @@ class SubtitleStudioController extends ChangeNotifier {
     return null;
   }
 
+  SubtitleCue? previewCueAt(
+    int sourcePositionMs, {
+    required bool isPlaying,
+  }) {
+    final activeCue = cueAt(sourcePositionMs);
+    if (activeCue != null || isPlaying) return activeCue;
+    return selectedCue;
+  }
+
   Future<void> saveNow() async {
     _autosaveTimer?.cancel();
     _saving = true;

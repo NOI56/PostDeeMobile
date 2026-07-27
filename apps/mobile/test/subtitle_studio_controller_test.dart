@@ -128,6 +128,27 @@ void main() {
     expect(controller.selectedCueId, 'cue-2');
   });
 
+  test('does not fall back to the selected cue while playing through a gap',
+      () async {
+    final controller = SubtitleStudioController(
+      initialProject: _project(),
+      draftStore: _MemoryDraftStore(),
+      now: () => DateTime.utc(2026, 7, 22, 12),
+      idGenerator: () => 'new-cue',
+    );
+    await controller.initialize();
+
+    expect(
+      controller.previewCueAt(1000, isPlaying: true)?.cueId,
+      'cue-1',
+    );
+    expect(controller.previewCueAt(2500, isPlaying: true), isNull);
+    expect(
+      controller.previewCueAt(2500, isPlaying: false)?.cueId,
+      'cue-1',
+    );
+  });
+
   test('supports timing, split, merge, add, delete, style, and autosave',
       () async {
     var nextId = 0;

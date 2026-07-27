@@ -35,6 +35,12 @@ export type ManagedUploadPartResult = {
   uploadExpiresAt: string;
 };
 
+export type ManagedUploadUseOptions = {
+  allowLegacy: boolean;
+  acceptedContentTypes?: readonly string[];
+  maxSizeBytes?: number;
+};
+
 export type ManagedMultipartStorage = {
   createUpload: (
     metadata: UploadMetadata,
@@ -94,7 +100,7 @@ export type ManagedUploadService = {
   assertReadyForUse: (
     ownerId: string,
     videoS3Key: string,
-    options: { allowLegacy: boolean }
+    options: ManagedUploadUseOptions
   ) => Promise<void>;
   prepareOwnerDeletion: (ownerId: string) => Promise<void>;
   finishOwnerDeletion: (ownerId: string) => Promise<void>;
@@ -122,6 +128,9 @@ const toUploadResult = (session: UploadSession): ManagedUploadResult => ({
   partCount: session.partCount,
   sessionExpiresAt: session.expiresAt
 });
+
+const normalizeContentType = (contentType: string) =>
+  contentType.split(';', 1)[0]?.trim().toLowerCase() ?? '';
 
 const mapStoreError = (error: unknown): never => {
   if (!(error instanceof UploadSessionConflictError)) {
@@ -390,7 +399,11 @@ export const createManagedUploadService = ({
       videoS3Key: session.videoS3Key
     });
   },
-  assertReadyForUse: async (ownerId, videoS3Key, { allowLegacy }) => {
+  assertReadyForUse: async (
+    ownerId,
+    videoS3Key,
+    { allowLegacy, acceptedContentTypes, maxSizeBytes }
+  ) => {
     try {
       await store.assertOwnerActive(ownerId);
     } catch (error) {
@@ -416,6 +429,28 @@ export const createManagedUploadService = ({
         409,
         'UPLOAD_NOT_READY',
         'Wait for the upload to finish before creating a post.'
+      );
+    }
+
+    if (
+      acceptedContentTypes &&
+      !acceptedContentTypes.some(
+        (acceptedContentType) =>
+          normalizeContentType(acceptedContentType) === normalizeContentType(session.contentType)
+      )
+    ) {
+      throw new ManagedUploadServiceError(
+        415,
+        'UPLOAD_CONTENT_TYPE_NOT_ALLOWED',
+        'This upload type cannot be used here.'
+      );
+    }
+
+    if (maxSizeBytes !== undefined && session.sizeBytes > maxSizeBytes) {
+      throw new ManagedUploadServiceError(
+        413,
+        'UPLOAD_FILE_TOO_LARGE',
+        'This upload is larger than allowed for this use.'
       );
     }
   },

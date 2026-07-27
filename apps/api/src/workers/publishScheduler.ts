@@ -78,6 +78,12 @@ export const createPublishScheduler = ({
             postId: post.id,
             caption: post.caption,
             videoS3Key: post.videoS3Key,
+            ...(post.coverImageS3Key
+              ? { coverImageS3Key: post.coverImageS3Key }
+              : {}),
+            ...(post.coverFrameTimeMs !== undefined
+              ? { coverFrameTimeMs: post.coverFrameTimeMs }
+              : {}),
             platforms: post.platforms,
             runAt: post.scheduledAt ?? now(),
             status: post.scheduledAt ? 'SCHEDULED' : 'READY'

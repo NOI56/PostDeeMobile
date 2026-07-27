@@ -84,6 +84,8 @@ model Post {
   userId            String
   caption           String
   videoS3Key        String
+  coverImageS3Key   String?
+  coverFrameTimeMs  Int?
   scheduledAt       DateTime?
   publishedAt       DateTime?
   status            PostStatus        @default(DRAFT)

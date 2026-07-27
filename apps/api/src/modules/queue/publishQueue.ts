@@ -7,6 +7,8 @@ export type PublishJob = {
   queueName: 'publish-posts';
   userId?: string;
   postId: string;
+  coverImageS3Key?: string;
+  coverFrameTimeMs?: number;
   platforms: Platform[];
   runAt: string;
   status: 'READY' | 'SCHEDULED';
@@ -29,6 +31,12 @@ export const createInMemoryPublishQueue = (): PublishQueue => {
       queueName: 'publish-posts' as const,
       userId: post.userId,
       postId: post.id,
+      ...(post.coverImageS3Key
+        ? { coverImageS3Key: post.coverImageS3Key }
+        : {}),
+      ...(post.coverFrameTimeMs !== undefined
+        ? { coverFrameTimeMs: post.coverFrameTimeMs }
+        : {}),
       platforms: [...post.platforms],
       runAt,
       status: post.scheduledAt ? ('SCHEDULED' as const) : ('READY' as const),

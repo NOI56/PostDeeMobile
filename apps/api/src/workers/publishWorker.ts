@@ -14,6 +14,8 @@ export type PlatformPublishInput = {
   postId: string;
   caption?: string;
   videoS3Key?: string;
+  coverImageS3Key?: string;
+  coverFrameTimeMs?: number;
   platform: Platform;
 };
 
@@ -70,6 +72,7 @@ export type PublishWorkerResult = {
   cleanup: {
     status: 'DELETED' | 'SKIPPED' | 'FAILED';
     videoS3Key?: string;
+    coverImageS3Key?: string;
     errorMessage?: string;
   };
 };
@@ -159,6 +162,12 @@ export const processPublishJob = async ({
             postId: jobData.postId,
             caption: jobData.caption,
             videoS3Key: jobData.videoS3Key,
+            ...(jobData.coverImageS3Key
+              ? { coverImageS3Key: jobData.coverImageS3Key }
+              : {}),
+            ...(jobData.coverFrameTimeMs !== undefined
+              ? { coverFrameTimeMs: jobData.coverFrameTimeMs }
+              : {}),
             platform
           });
         } catch (error) {
@@ -189,32 +198,42 @@ export const processPublishJob = async ({
     results: platformResults
   });
 
-  if (status === 'PUBLISHED' && jobData.videoS3Key && deleteVideoAfterPublish) {
-    try {
-      await storage.deleteVideo(jobData.videoS3Key);
+  const cleanupKeys = [...new Set(
+    [jobData.videoS3Key, jobData.coverImageS3Key].filter(
+      (key): key is string => typeof key === 'string' && key.length > 0
+    )
+  )];
+  const cleanupMedia = {
+    ...(jobData.videoS3Key ? { videoS3Key: jobData.videoS3Key } : {}),
+    ...(jobData.coverImageS3Key
+      ? { coverImageS3Key: jobData.coverImageS3Key }
+      : {})
+  };
 
-      return {
-        postId: jobData.postId,
-        status,
-        platformResults,
-        cleanup: {
-          status: 'DELETED',
-          videoS3Key: jobData.videoS3Key
+  if (status === 'PUBLISHED' && cleanupKeys.length > 0 && deleteVideoAfterPublish) {
+    const cleanupResults = await Promise.all(
+      cleanupKeys.map(async (key) => {
+        try {
+          await storage.deleteVideo(key);
+          return true;
+        } catch (error) {
+          logWorkerError('Media cleanup failed:', error);
+          return false;
         }
-      };
-    } catch (error) {
-      logWorkerError('Video cleanup failed:', error);
-      return {
-        postId: jobData.postId,
-        status,
-        platformResults,
-        cleanup: {
-          status: 'FAILED',
-          videoS3Key: jobData.videoS3Key,
-          errorMessage: publicCleanupErrorMessage
-        }
-      };
-    }
+      })
+    );
+    const cleanupFailed = cleanupResults.some((succeeded) => !succeeded);
+
+    return {
+      postId: jobData.postId,
+      status,
+      platformResults,
+      cleanup: {
+        status: cleanupFailed ? 'FAILED' : 'DELETED',
+        ...cleanupMedia,
+        ...(cleanupFailed ? { errorMessage: publicCleanupErrorMessage } : {})
+      }
+    };
   }
 
   return {
@@ -223,7 +242,7 @@ export const processPublishJob = async ({
     platformResults,
     cleanup: {
       status: 'SKIPPED',
-      videoS3Key: jobData.videoS3Key
+      ...cleanupMedia
     }
   };
 };
@@ -253,7 +272,10 @@ const createSkippedPublishResult = (jobData: BullMqPublishJobData): PublishWorke
   platformResults: [],
   cleanup: {
     status: 'SKIPPED',
-    videoS3Key: jobData.videoS3Key
+    ...(jobData.videoS3Key ? { videoS3Key: jobData.videoS3Key } : {}),
+    ...(jobData.coverImageS3Key
+      ? { coverImageS3Key: jobData.coverImageS3Key }
+      : {})
   }
 });
 

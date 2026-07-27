@@ -23,10 +23,12 @@ import 'edit_styles.dart';
 import 'review_video_timeline.dart';
 import 'style_options.dart';
 import 'subtitle_burn_video_processor.dart';
+import 'subtitle_timeline_alignment.dart';
 import 'subtitle_studio/subtitle_draft_store.dart';
 import 'subtitle_studio/subtitle_project.dart';
 import 'subtitle_studio/subtitle_project_identity.dart';
 import 'subtitle_studio/subtitle_project_mapper.dart';
+import 'subtitle_studio/subtitle_preview_overlay.dart';
 import 'subtitle_studio/subtitle_studio_screen.dart';
 
 typedef EditorVideoPicker = Future<PickedVideoFile?> Function();
@@ -47,8 +49,9 @@ typedef AiEditAudioExtraction = Future<AiEditAudioArtifact> Function(
     File source);
 typedef AiEditAudioChunksExtraction = Future<AiEditAudioChunksArtifact>
     Function(
-  File source,
-);
+  File source, {
+  double? knownDurationSeconds,
+});
 typedef AiEditAudioCleanup = Future<void> Function(String audioS3Key);
 typedef AiEditVisualProxyExtraction = Future<AiEditVisualProxyArtifact>
     Function(File source);
@@ -69,6 +72,20 @@ typedef SubtitleStudioLauncher = Future<SubtitleProject?> Function(
   SubtitleProject initialProject,
   SubtitleDraftStore draftStore,
 );
+
+List<SubtitleWordTiming> subtitleWordsForRender(SubtitleCue cue) {
+  if (cue.timingMode != SubtitleTimingMode.word) {
+    return const <SubtitleWordTiming>[];
+  }
+  return [
+    for (final word in cue.words)
+      SubtitleWordTiming(
+        text: word.text,
+        start: word.sourceStartMs / 1000,
+        end: word.sourceEndMs / 1000,
+      ),
+  ];
+}
 
 enum _AiDurationMode { unselected, seconds30, seconds60, custom }
 
@@ -843,7 +860,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             } else {
               final extractAudioChunks = widget.extractAudioChunks ??
                   AiEditAudioExtractor().extractChunks;
-              audioChunksArtifact = await extractAudioChunks(file);
+              audioChunksArtifact = await extractAudioChunks(
+                file,
+                knownDurationSeconds: picked.durationSeconds,
+              );
               final requests = <AiEditAudioChunkRequest>[];
               for (final chunk in audioChunksArtifact.chunks) {
                 final upload = await uploadAudioFile(chunk.file);
@@ -1375,6 +1395,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             text: cue.text,
             start: cue.sourceStartMs / 1000,
             end: cue.sourceEndMs / 1000,
+            words: subtitleWordsForRender(cue),
           )
       else if (capabilities['subtitle'] ?? false)
         for (final segment in recipe.subtitles.segments)
@@ -1382,21 +1403,37 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             text: segment.text,
             start: segment.start,
             end: segment.end,
+            words: [
+              for (final word
+                  in segment.words ?? const <AiEditTranscriptWordResult>[])
+                SubtitleWordTiming(
+                  text: word.word,
+                  start: word.start,
+                  end: word.end,
+                ),
+            ],
           ),
     ];
     final subtitleMaxChars = options.subtitleMaxChars;
-    if (subtitleMaxChars != null) {
-      subtitleSegments = rechunkSubtitleByMaxChars(
-        subtitleSegments,
-        subtitleMaxChars,
-      );
-    }
+    subtitleSegments = prepareSubtitleSegmentsForLocalRender(
+      subtitleSegments,
+      language: recipe.transcript.language,
+      maximumCharacters: subtitleMaxChars,
+    );
     if (sourceDuration > 0 && subtitleSegments.isNotEmpty) {
       cutRanges = alignLeadingCutToFirstSubtitle(
         cutRanges,
         subtitleSegments,
         sourceDuration,
       );
+      if (!_isUsingOriginalDuration) {
+        cutRanges = alignTargetTailToSubtitleBoundary(
+          cuts: cutRanges,
+          subtitleSegments: subtitleSegments,
+          durationSeconds: sourceDuration,
+          targetSeconds: _selectedDurationSeconds.toDouble(),
+        );
+      }
     }
 
     final speed = options.speed ?? 1;
@@ -1410,6 +1447,41 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             speed: speed,
           )
         : null;
+    final requestedSubtitleFontSize =
+        studioStyle?.fontSize ?? options.subtitleFontSize ?? 18;
+    final sourceWidth = picked.width?.toDouble();
+    final sourceHeight = picked.height?.toDouble();
+    final maximumDimension = previewProfile?.maxVideoDimension.toDouble();
+    final outputWidth = sourceWidth == null ||
+            sourceHeight == null ||
+            sourceWidth <= 0 ||
+            sourceHeight <= 0
+        ? null
+        : maximumDimension != null &&
+                math.max(sourceWidth, sourceHeight) > maximumDimension
+            ? sourceWidth *
+                maximumDimension /
+                math.max(sourceWidth, sourceHeight)
+            : sourceWidth;
+    final subtitleFontSize = subtitleSegments.isEmpty || outputWidth == null
+        ? requestedSubtitleFontSize
+        : fitSubtitleFontSizeForSingleLine(
+            texts: subtitleSegments.map((segment) => segment.text),
+            style: TextStyle(
+              fontFamily: studioStyle?.fontId ?? 'Bai Jamjuree',
+              fontWeight: studioStyle == null
+                  ? FontWeight.w700
+                  : FontWeight.values.firstWhere(
+                      (weight) => weight.value == studioStyle.fontWeight,
+                      orElse: () => FontWeight.w700,
+                    ),
+              fontSize: requestedSubtitleFontSize,
+            ),
+            maxWidth: subtitleSafeWidthForEffect(
+              maxWidth: outputWidth * 0.85,
+              animation: studioStyle?.animation ?? 'none',
+            ),
+          );
     final needsLocalRender = subtitleSegments.isNotEmpty ||
         cutRanges.isNotEmpty ||
         (speed - 1).abs() > 0.0001 ||
@@ -1447,6 +1519,14 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             'text': segment.text,
             'start': segment.start,
             'end': segment.end,
+            'words': [
+              for (final word in segment.words)
+                {
+                  'text': word.text,
+                  'start': word.start,
+                  'end': word.end,
+                },
+            ],
           },
       ],
       'cuts': [
@@ -1456,7 +1536,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       'filterIndex': options.filterIndex ?? 0,
       'brightness': options.brightness ?? 0,
       'contrast': options.contrast ?? 0,
-      'subtitleFontSize': options.subtitleFontSize ?? 18,
+      'subtitleFontSize': subtitleFontSize,
       'subtitleAtBottom': options.subtitleAtBottom ?? true,
       'subtitleStudioStyle': studioStyle?.toJson(),
       'previewProfile': previewProfile == null
@@ -1509,19 +1589,22 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       filterIndex: options.filterIndex ?? 0,
       brightness: options.brightness ?? 0,
       contrast: options.contrast ?? 0,
-      subtitleFontSize: studioStyle?.fontSize ?? options.subtitleFontSize ?? 18,
+      subtitleFontSize: subtitleFontSize,
       subtitleAtBottom: studioStyle == null
           ? options.subtitleAtBottom ?? true
           : studioStyle.alignment == SubtitleAlignment.bottom,
       subtitleAlignment: studioStyle == null
           ? null
           : _burnSubtitleAlignment(studioStyle.alignment),
-      subtitleFontName: studioStyle?.fontId ?? 'Anuphan',
+      subtitleFontName: _subtitleRenderFontName(studioStyle),
       subtitleFontAssetPath:
           studioStyle == null ? null : _subtitleFontAssetPath(studioStyle),
       subtitleTextColor: studioStyle?.textColor ?? '#FFFFFF',
+      activeWordColor: studioStyle?.activeWordColor ??
+          SubtitleStyle.defaults.activeWordColor,
+      subtitleAnimation: studioStyle?.animation ?? 'none',
       subtitleOutlineColor: studioStyle?.outlineColor ?? '#000000',
-      subtitleOutlineWidth: studioStyle?.outlineWidth ?? 1.2,
+      subtitleOutlineWidth: studioStyle?.outlineWidth ?? 0.5,
       subtitleShadowColor: studioStyle?.shadowColor ?? '#000000',
       subtitleShadowDepth: studioStyle?.shadowDepth ?? 0,
       preserveTempDirectoryPaths: {
@@ -1530,7 +1613,25 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           result.file.parent.path,
       },
       outputDurationSeconds: outputDuration,
+      maxOutputDurationSeconds: _isUsingOriginalDuration
+          ? null
+          : math.min(
+              _selectedDurationSeconds + 1.0,
+              math.max(
+                _selectedDurationSeconds.toDouble(),
+                outputDuration ?? _selectedDurationSeconds.toDouble(),
+              ),
+            ),
       onProgress: reportProgress,
+      onAttemptStarted: (attempt) {
+        if (attempt <= 1 || !mounted) {
+          return;
+        }
+        setState(() {
+          _processingTitle = 'กำลังลองวิธีสร้างวิดีโอสำรอง...';
+          _renderProgress = 0;
+        });
+      },
       renderPurpose: purpose,
       maxVideoDimension: previewProfile?.maxVideoDimension,
       videoBitrate: previewProfile?.videoBitrate,
@@ -1572,9 +1673,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _ => 18,
     };
     final subtitleFontSize = switch (_subtitleStyle) {
-      'small' => 17.0,
-      'medium' => 19.0,
-      _ => 22.0,
+      'small' => 22.0,
+      'medium' => 25.0,
+      _ => 28.0,
     };
     final filterIndex = switch (_toneFilter) {
       'vivid' => 1,
@@ -1631,11 +1732,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     );
   }
 
-  int get _subtitleWordsPerLine => switch (_subtitleWords) {
-        'karaoke' => 1,
-        'full' => 8,
-        _ => 4,
-      };
+  int get _subtitleWordsPerLine => subtitleWordLimitForStyle(
+        subtitleStyle: _subtitleStyle,
+        subtitleWords: _subtitleWords,
+      );
 
   String get _effectiveSubtitlePosition =>
       _subtitlePosition == 'top' ? 'top' : 'bottom';
@@ -1648,6 +1748,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       };
 
   String _subtitleFontAssetPath(SubtitleStyle style) {
+    if (style.fontId == 'Bai Jamjuree') {
+      return postDeeSubtitleThaiFontAssetPath;
+    }
     final family = style.fontId == 'Anuphan' ? 'anuphan' : 'prompt';
     final familyName = family == 'anuphan' ? 'Anuphan' : 'Prompt';
     final weight = switch (style.fontWeight) {
@@ -1658,7 +1761,17 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       >= 500 => 'Medium',
       _ => 'Regular',
     };
-    return 'assets/fonts/$family/$familyName-$weight.ttf';
+    return 'assets/fonts/postdee_subtitle/'
+        'PostDeeSubtitle$familyName-$weight.ttf';
+  }
+
+  String _subtitleRenderFontName(SubtitleStyle? style) {
+    if (style == null || style.fontId == 'Bai Jamjuree') {
+      return postDeeSubtitleThaiFontName;
+    }
+    return style.fontId == 'Anuphan'
+        ? postDeeSubtitleAnuphanFontName
+        : postDeeSubtitlePromptFontName;
   }
 
   _AiSetupSnapshot _captureSetupSnapshot() {
@@ -3941,23 +4054,32 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           children: [
             _choiceChip(
               key: const ValueKey('ai-subtitle-length-short'),
-              label: 'สั้น (ไม่เกิน 8 ตัวอักษร)',
+              label: 'สั้น (1 คำ)',
               selected: _subtitleWords == 'karaoke',
               onTap: () => setState(() => _subtitleWords = 'karaoke'),
             ),
             _choiceChip(
               key: const ValueKey('ai-subtitle-length-medium'),
-              label: 'กลาง (ไม่เกิน 18 ตัวอักษร)',
+              label: 'กลาง (ไม่เกิน 4 คำ)',
               selected: _subtitleWords == 'few',
               onTap: () => setState(() => _subtitleWords = 'few'),
             ),
             _choiceChip(
               key: const ValueKey('ai-subtitle-length-long'),
-              label: 'ยาว (ไม่เกิน 36 ตัวอักษร)',
+              label: 'ยาว (ไม่เกิน 5 คำ)',
               selected: _subtitleWords == 'full',
               onTap: () => setState(() => _subtitleWords = 'full'),
             ),
           ],
+        ),
+        const SizedBox(height: 7),
+        Text(
+          'ฟอนต์ใหญ่จำกัด 3 คำ กลาง 4 คำ และเล็ก 5 คำ เพื่อให้ซับอยู่แถวเดียว',
+          style: TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 11,
+            height: 1.35,
+          ),
         ),
         const SizedBox(height: 13),
         _advancedLabel('ตำแหน่งซับ'),

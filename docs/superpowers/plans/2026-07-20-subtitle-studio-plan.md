@@ -72,9 +72,10 @@ PostDee already has the expensive and technically risky foundations:
   Thai word timing is fragmented or incomplete.
 - Mobile extracts and uploads a small temporary M4A for the current production
   AI capabilities while the original source video remains on the phone.
-- Mobile builds SRT, bundles Prompt Bold, uses FFmpeg/libass to burn subtitles,
-  tries hardware H.264 first, falls back safely, and verifies that the output
-  still contains a video stream.
+- Mobile builds SRT, defaults automatic subtitles to bundled Bai Jamjuree
+  Bold, keeps Prompt and Anuphan selectable, uses FFmpeg/libass to burn
+  subtitles, tries hardware H.264 first, falls back safely, and verifies that
+  the output still contains a video stream.
 - The current screen already offers three subtitle sizes, three text-density
   choices, top/bottom position, and final review before Upload/Post.
 
@@ -92,7 +93,7 @@ subtitle project and a live editor between `prepare` and the final FFmpeg render
 | Adjust cue start/end | Timed lines observed | No | MVP with safe nudge controls; waveform later |
 | Undo/redo and autosave | Yes | No | MVP |
 | Live subtitle preview | Yes | Static setup preview + rendered review | MVP with Flutter overlay |
-| Font, size, colours, outline, shadow | Yes | Prompt, size, white/black fixed | MVP, whole-clip style first |
+| Font, size, colours, outline, shadow | Yes | Bai Jamjuree, Prompt, and Anuphan; editable whole-clip style | MVP implemented; per-line style remains later |
 | Current-word highlight | Yes | No | MVP after timing-quality fallback is implemented |
 | Per-line style/position | Yes | No | Data model supports it; UI after MVP |
 | Text animations | Yes | No | Phase 2, start with a small verified set |
@@ -233,8 +234,15 @@ the existing word durations. If the structure changes, mark that cue as
 `estimated`, distribute timing conservatively inside the cue, and allow the user
 to adjust the cue. Do not show a confidently wrong word-by-word animation.
 
-Start with the already bundled Prompt and Anuphan families. Add fonts or sound
-assets only after commercial redistribution rights are recorded.
+Bai Jamjuree Bold remains the default editable automatic-subtitle style.
+Low-resolution libass previews can still merge tone marks with the upper mark
+below, so burn-in maps that style to the internally renamed OFL derivative
+`PostDee Subtitle Thai`. Prompt and Anuphan remain selectable and map to their
+matching internally renamed derivatives during burn-in. Only stacked `่/้/๊/๋`
+are substituted with private-use render glyphs in the temporary SRT; drafts and
+API text remain standard Unicode Thai. The source and derivative fonts retain
+the SIL Open Font License; add further fonts or sound assets only after
+redistribution rights are recorded.
 
 ### 5.5 Persistence
 
@@ -255,11 +263,15 @@ delete/export rights, storage quotas, and a PDPA review before implementation.
 
 ## 6. Implementation phases
 
-Implementation update (2026-07-22): the domain model, local draft store,
-mobile editor/live preview, and verified static SRT/libass style mapping are
-implemented. Pixel 8 emulator E2E passes through a 30-second review result.
-ASS active-word events, reusable brand-style presets, golden parity tests, and
-physical Android/iPhone acceptance remain open release gates below.
+Implementation update (2026-07-27): the domain model, local draft store,
+mobile editor/live preview, server-validated cue-word contract, active-word
+preview, time-sliced ASS export, and none/pop/fade effects are implemented on
+the staging branch. Unsafe timing keeps the static SRT fallback. Pixel 8
+emulator E2E passes through an exact 20-second active-word Pop result from a
+30-second Thai source. The run also added regressions for Thai mid-word
+boundaries, cue-segmentation draft identity, fixable short-cue rebalancing, and
+zero-duration ASS slices. Reusable brand-style presets, active-word golden
+parity, and physical Android/iPhone acceptance remain open release gates below.
 
 ### Phase 0 — Lock behavior with tests
 
@@ -287,6 +299,8 @@ Work:
 - [x] Bound undo/redo history (recommended first limit: 50 commands).
 - [x] Preserve Thai combining marks and emoji grapheme clusters.
 - [x] Add local JSON autosave and safe schema-version fallback.
+- [x] Version automatic cue segmentation in the project identity so corrected
+      cues are not replaced by a Draft produced by an older algorithm.
 - [ ] Persist whole-clip brand styles locally.
 
 ### Phase 2 — Mobile editor and live preview
@@ -302,8 +316,8 @@ Work:
 - [x] Insert Subtitle Studio after `/ai-edits/prepare` and before final render.
 - [x] Build the cue list, active-cue tracking, tap-to-seek, replay-cue, text edit,
       add/delete/split/merge, and undo/redo interactions.
-- [ ] Add whole-clip font, size, text colour, highlight colour, outline, shadow,
-      row count, and safe top/middle/bottom position controls.
+- [x] Add whole-clip font, size, text colour, highlight colour, outline, shadow,
+      enforced one-row layout, and safe top/middle/bottom position controls.
 - [x] Do not rerender MP4 when a style or word changes.
 - [x] Warn when a cue is outside the AI-selected result.
 - [x] Preserve the last successful rendered result if a new render fails.
@@ -321,10 +335,12 @@ Files to extend:
 
 Work:
 
-- [ ] Generate deterministic ASS headers, styles, events, and escaped text.
+- [x] Generate deterministic ASS headers, styles, events, and escaped text.
+- [x] Quantize ASS boundaries before export and omit zero-duration events while
+      retaining the correct first/last Pop/Fade edges.
 - [x] Copy every selected bundled font into the render workspace.
 - [x] Map preview controls only to verified libass equivalents.
-- [ ] Generate active-word events only for reliable word timing; do not rely on
+- [x] Generate active-word events only for reliable word timing; do not rely on
       karaoke tags until their current-word-only behavior is visually verified.
 - [x] Keep segment-level fallback for fragmented Thai timing.
 - [x] Keep current hardware encoder, MPEG-4 fallback, stream verification,
@@ -336,7 +352,7 @@ Work:
 
 ### Phase 4 — Production hardening and MVP release gate
 
-- [ ] Unit-test ASS output, colour conversion, outline/shadow, alignment,
+- [x] Unit-test ASS output, colour conversion, outline/shadow, alignment,
       karaoke durations, source-timeline cuts, and malformed values.
 - [ ] Widget-test editing, focus/keyboard, cue selection, undo/redo, autosave,
       screen rotation, and accessibility labels/touch targets.
@@ -377,21 +393,20 @@ real devices, and render failure is recoverable.
 No new endpoint is required for the first editor because the current prepare
 recipe already contains transcript segments and words.
 
-For reliable active-word UX, add backward-compatible cue metadata later rather
-than make mobile duplicate backend timing validation:
+The reliable active-word contract is implemented at
+`subtitles.segments[].words`; each entry is `{ word, start, end }`. The API
+shape is:
 
 ```json
 {
   "subtitles": {
-    "cues": [
+    "segments": [
       {
-        "id": "cue-1",
         "text": "...",
         "start": 0.2,
         "end": 1.7,
-        "timingMode": "word",
         "words": [
-          { "text": "...", "start": 0.2, "end": 0.8 }
+          { "word": "...", "start": 0.2, "end": 0.8 }
         ]
       }
     ]
@@ -399,9 +414,21 @@ than make mobile duplicate backend timing validation:
 }
 ```
 
-The current `segments` field must remain during migration so older mobile builds
-continue to work. A future cloud library should use separate user-scoped CRUD
-endpoints and must not be smuggled into `/ai-edits/prepare`.
+Contract and migration rules:
+
+- Only when every segment omits the JSON `words` field is the response legacy,
+  so mobile may use the existing validated legacy transcript-word mapping.
+  Dart may represent this absent field as null internally; explicit JSON
+  `words: null` is not legacy.
+- A present `words` field that is null, malformed, or `[]` is authoritative and
+  fail-closed: keep that segment static and do not fall back to legacy words.
+- Once any segment contains the JSON `words` field, including null, malformed,
+  or empty values, treat the complete response as new-format. A mixed old/new
+  response must not fall back for segments that omit `words`.
+
+The current `segments` field remains backward-compatible for older mobile
+builds. A future cloud library should use separate user-scoped CRUD endpoints
+and must not be smuggled into `/ai-edits/prepare`.
 
 ## 8. Quota and package recommendation
 

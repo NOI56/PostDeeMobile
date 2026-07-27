@@ -72,6 +72,14 @@ services:
         sync: false
       - key: TRANSCRIPTION_PROVIDER
         value: groq
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_TRANSCRIPTION_MODEL
+        value: scribe_v2
+      # Staging-only glossary trial. ElevenLabs applies a 20% transcription
+      # surcharge only while this non-empty list is used with its provider.
+      - key: ELEVENLABS_TRANSCRIPTION_KEYTERMS
+        value: "PostDee,ปักตะกร้า,แอฟฟิลิเอต,วรภพ,ยุ่นเพียร,ซุปเปอร์สตาร์,ฟุตบอล,ผู้เสียหาย,นกกรงหัวจุก,4 ยก 8 ดอก"
       - key: EDIT_PLAN_PROVIDER
         value: groq
       - key: GROQ_API_KEY

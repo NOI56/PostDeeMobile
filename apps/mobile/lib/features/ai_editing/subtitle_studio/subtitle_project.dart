@@ -2,6 +2,8 @@ enum SubtitleTimingMode { word, segment, estimated }
 
 enum SubtitleAlignment { top, middle, bottom }
 
+const currentSubtitleProjectSchemaVersion = 3;
+
 class SubtitleProjectValidationException implements Exception {
   const SubtitleProjectValidationException(this.message);
 
@@ -147,15 +149,15 @@ class SubtitleStyle {
   });
 
   static const defaults = SubtitleStyle(
-    fontId: 'Anuphan',
+    fontId: 'Bai Jamjuree',
     fontWeight: 700,
-    fontSize: 22,
+    fontSize: 28,
     textColor: '#FFFFFF',
     activeWordColor: '#00E5A8',
     outlineColor: '#000000',
-    outlineWidth: 1.2,
+    outlineWidth: 0.5,
     shadowColor: '#000000',
-    shadowDepth: 2,
+    shadowDepth: 0,
     alignment: SubtitleAlignment.bottom,
     normalizedX: 0.5,
     normalizedY: 0.88,
@@ -304,17 +306,44 @@ class SubtitleProject {
       };
 
   factory SubtitleProject.fromJson(Map<String, Object?> json) {
+    final storedSchemaVersion = _requiredInt(json, 'schemaVersion');
+    if (storedSchemaVersion != 1 &&
+        storedSchemaVersion != 2 &&
+        storedSchemaVersion != currentSubtitleProjectSchemaVersion) {
+      throw const SubtitleProjectValidationException(
+          'Unsupported schema version.');
+    }
+    final storedCues = _objectList(json, 'cues')
+        .map(SubtitleCue.fromJson)
+        .toList(growable: false);
+    final storedDefaultStyle =
+        SubtitleStyle.fromJson(_requiredObject(json, 'defaultStyle'));
+    final cues = storedSchemaVersion < currentSubtitleProjectSchemaVersion
+        ? [
+            for (final cue in storedCues)
+              cue.styleOverride == null
+                  ? cue
+                  : cue.copyWith(
+                      styleOverride: _migrateStoredSubtitleStyle(
+                        cue.styleOverride!,
+                        storedSchemaVersion: storedSchemaVersion,
+                      ),
+                    ),
+          ]
+        : storedCues;
     final project = SubtitleProject(
-      schemaVersion: _requiredInt(json, 'schemaVersion'),
+      schemaVersion: currentSubtitleProjectSchemaVersion,
       projectId: _requiredString(json, 'projectId'),
       sourceFingerprint: _requiredString(json, 'sourceFingerprint'),
       sourceDurationMs: _requiredInt(json, 'sourceDurationMs'),
       language: _requiredString(json, 'language'),
-      cues: _objectList(json, 'cues')
-          .map(SubtitleCue.fromJson)
-          .toList(growable: false),
-      defaultStyle:
-          SubtitleStyle.fromJson(_requiredObject(json, 'defaultStyle')),
+      cues: cues,
+      defaultStyle: storedSchemaVersion < currentSubtitleProjectSchemaVersion
+          ? _migrateStoredSubtitleStyle(
+              storedDefaultStyle,
+              storedSchemaVersion: storedSchemaVersion,
+            )
+          : storedDefaultStyle,
       cutRanges: _objectList(json, 'cutRanges')
           .map(SubtitleCutRange.fromJson)
           .toList(growable: false),
@@ -328,7 +357,7 @@ class SubtitleProject {
 }
 
 void validateSubtitleProject(SubtitleProject project) {
-  if (project.schemaVersion != 1) {
+  if (project.schemaVersion != currentSubtitleProjectSchemaVersion) {
     throw const SubtitleProjectValidationException(
         'Unsupported schema version.');
   }
@@ -372,6 +401,10 @@ void validateSubtitleProject(SubtitleProject project) {
             'Word-timed cue ${cue.cueId} has no words.');
       }
       _validateWords(cue);
+    } else if (cue.words.isNotEmpty) {
+      throw SubtitleProjectValidationException(
+        'Non-word-timed cue ${cue.cueId} cannot keep word timing.',
+      );
     }
   }
 
@@ -389,6 +422,41 @@ void validateSubtitleProject(SubtitleProject project) {
     }
     previousCutEnd = range.sourceEndMs;
   }
+}
+
+SubtitleStyle _migrateStoredSubtitleStyle(
+  SubtitleStyle style, {
+  required int storedSchemaVersion,
+}) {
+  final shouldMigrateFont = switch (storedSchemaVersion) {
+    1 => style.fontId == 'Anuphan',
+    2 => style.fontId == 'Noto Sans Thai',
+    _ => false,
+  };
+  if (!shouldMigrateFont) {
+    return style;
+  }
+  return SubtitleStyle(
+    fontId: 'Bai Jamjuree',
+    fontWeight: style.fontWeight,
+    fontSize: switch (style.fontSize) {
+      17 => 22,
+      19 => 25,
+      22 => 28,
+      _ => style.fontSize,
+    },
+    textColor: style.textColor,
+    activeWordColor: style.activeWordColor,
+    outlineColor: style.outlineColor,
+    outlineWidth: style.outlineWidth <= 1.2 ? 0.5 : style.outlineWidth,
+    shadowColor: style.shadowColor,
+    shadowDepth: style.shadowDepth == 2 ? 0 : style.shadowDepth,
+    alignment: style.alignment,
+    normalizedX: style.normalizedX,
+    normalizedY: style.normalizedY,
+    maxLines: style.maxLines,
+    animation: style.animation,
+  );
 }
 
 void _validateWords(SubtitleCue cue) {

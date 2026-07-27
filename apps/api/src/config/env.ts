@@ -13,7 +13,11 @@ export type AuthProviderKind = 'mock' | 'firebase';
 export type BillingProviderKind = 'mock' | 'store' | 'revenuecat';
 export type PushSenderKind = 'mock' | 'firebase';
 export type SocialPublisherKind = 'mock' | 'disabled' | 'postpeer';
-export type TranscriptionProviderKind = 'mock' | 'openai' | 'groq';
+export type TranscriptionProviderKind =
+  | 'mock'
+  | 'openai'
+  | 'groq'
+  | 'elevenlabs';
 export type EditPlanProviderKind = 'mock' | 'openai' | 'groq';
 export type AppleAppStoreEnvironmentKind = 'sandbox' | 'production';
 
@@ -39,6 +43,7 @@ export type ServerConfig = {
   rateLimitMaxRequests: number;
   openAiApiKey?: string;
   groqApiKey?: string;
+  elevenLabsApiKey?: string;
   geminiApiKey?: string;
   billingProvider: BillingProviderKind;
   revenueCatWebhookAuthToken?: string;
@@ -88,6 +93,8 @@ export type ServerConfig = {
   transcriptionProvider: TranscriptionProviderKind;
   whisperModel: string;
   groqTranscriptionModel: string;
+  elevenLabsTranscriptionModel: string;
+  elevenLabsTranscriptionKeyterms: string[];
   editPlanProvider: EditPlanProviderKind;
   openAiEditPlanModel: string;
   groqEditPlanModel: string;
@@ -98,6 +105,52 @@ export type ServerConfig = {
 const readOptional = (env: EnvSource, key: string) => {
   const value = env[key]?.trim();
   return value && value.length > 0 ? value : undefined;
+};
+
+const readElevenLabsTranscriptionKeyterms = (env: EnvSource) => {
+  const rawValue = readOptional(env, 'ELEVENLABS_TRANSCRIPTION_KEYTERMS');
+
+  if (!rawValue) {
+    return [];
+  }
+
+  const keyterms = rawValue
+    .split(/[,\r\n]+/u)
+    .map((value) => value.normalize('NFC').trim())
+    .filter((value) => value.length > 0)
+    .filter(
+      (value, index, values) =>
+        values.findIndex(
+          (candidate) =>
+            candidate.toLocaleLowerCase() === value.toLocaleLowerCase()
+        ) === index
+    );
+
+  if (keyterms.length > 100) {
+    throw new Error(
+      'ELEVENLABS_TRANSCRIPTION_KEYTERMS supports at most 100 entries'
+    );
+  }
+
+  if (keyterms.some((value) => /[<>{}\[\]\\]/u.test(value))) {
+    throw new Error(
+      'ELEVENLABS_TRANSCRIPTION_KEYTERMS contains unsupported characters'
+    );
+  }
+
+  if (keyterms.some((value) => Array.from(value).length >= 50)) {
+    throw new Error(
+      'ELEVENLABS_TRANSCRIPTION_KEYTERMS entries must be shorter than 50 characters'
+    );
+  }
+
+  if (keyterms.some((value) => value.split(/\s+/u).length > 5)) {
+    throw new Error(
+      'ELEVENLABS_TRANSCRIPTION_KEYTERMS entries must contain at most 5 words'
+    );
+  }
+
+  return keyterms;
 };
 
 const readBoolean = (env: EnvSource, key: string, fallback: boolean) => {
@@ -289,8 +342,15 @@ const readAiEditUsageStore = (env: EnvSource): AiEditUsageStoreKind => {
 const readTranscriptionProvider = (env: EnvSource): TranscriptionProviderKind => {
   const value = readOptional(env, 'TRANSCRIPTION_PROVIDER') ?? 'mock';
 
-  if (value !== 'mock' && value !== 'openai' && value !== 'groq') {
-    throw new Error('TRANSCRIPTION_PROVIDER must be mock, openai, or groq');
+  if (
+    value !== 'mock' &&
+    value !== 'openai' &&
+    value !== 'groq' &&
+    value !== 'elevenlabs'
+  ) {
+    throw new Error(
+      'TRANSCRIPTION_PROVIDER must be mock, openai, groq, or elevenlabs'
+    );
   }
 
   return value;
@@ -457,6 +517,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     rateLimitMaxRequests: readPositiveInteger(env, 'RATE_LIMIT_MAX_REQUESTS', 300),
     openAiApiKey: readOptional(env, 'OPENAI_API_KEY'),
     groqApiKey: readOptional(env, 'GROQ_API_KEY'),
+    elevenLabsApiKey: readOptional(env, 'ELEVENLABS_API_KEY'),
     geminiApiKey: readOptional(env, 'GEMINI_API_KEY'),
     billingProvider: readBillingProvider(env),
     revenueCatWebhookAuthToken: readOptional(env, 'REVENUECAT_WEBHOOK_AUTH_TOKEN'),
@@ -521,6 +582,9 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     transcriptionProvider: readTranscriptionProvider(env),
     whisperModel: readOptional(env, 'WHISPER_MODEL') ?? 'whisper-1',
     groqTranscriptionModel: readOptional(env, 'GROQ_TRANSCRIPTION_MODEL') ?? 'whisper-large-v3',
+    elevenLabsTranscriptionModel:
+      readOptional(env, 'ELEVENLABS_TRANSCRIPTION_MODEL') ?? 'scribe_v2',
+    elevenLabsTranscriptionKeyterms: readElevenLabsTranscriptionKeyterms(env),
     editPlanProvider: readEditPlanProvider(env),
     openAiEditPlanModel: readOptional(env, 'OPENAI_EDIT_PLAN_MODEL') ?? 'gpt-4o-mini',
     groqEditPlanModel:

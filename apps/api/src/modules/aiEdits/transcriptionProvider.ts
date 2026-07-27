@@ -1,4 +1,8 @@
 import type { ServerConfig } from '../../config/env.js';
+import {
+  protectedThaiSubtitleCompounds,
+  segmentThaiSubtitleRun
+} from './thaiSubtitleLexicon.js';
 
 export type TranscriptWord = { word: string; start: number; end: number };
 export type TranscriptSegment = {
@@ -115,6 +119,505 @@ type TranscriptionApiResponse = {
     compression_ratio?: number;
   }>;
   words?: Array<{ word?: string; start?: number; end?: number }>;
+};
+
+type ElevenLabsTranscriptEvent = {
+  text?: unknown;
+  start?: unknown;
+  end?: unknown;
+  type?: unknown;
+};
+
+type ElevenLabsTranscriptionResponse = {
+  text?: unknown;
+  language_code?: unknown;
+  words?: unknown;
+};
+
+type ElevenLabsTimedWord = {
+  word: string;
+  displayText: string;
+  start: number;
+  end: number;
+};
+
+const elevenLabsPauseBoundarySeconds = 0.55;
+const elevenLabsMaxSegmentSeconds = 4;
+const elevenLabsMaxSegmentGraphemes = 32;
+const elevenLabsMaxProtectedThaiPhraseGraphemes = 17;
+const terminalTranscriptPunctuation = /[.!?。！？…ฯ]$/u;
+const thaiGraphemeSegmenter = new Intl.Segmenter('th', {
+  granularity: 'grapheme'
+});
+const protectedThaiCompoundWords = protectedThaiSubtitleCompounds;
+
+const isElevenLabsEvent = (
+  value: unknown
+): value is ElevenLabsTranscriptEvent =>
+  typeof value === 'object' && value !== null;
+
+const isValidElevenLabsTimedWord = (
+  event: ElevenLabsTranscriptEvent
+): event is ElevenLabsTranscriptEvent & {
+  text: string;
+  start: number;
+  end: number;
+  type: 'word';
+} =>
+  event.type === 'word' &&
+  typeof event.text === 'string' &&
+  event.text.trim().length > 0 &&
+  typeof event.start === 'number' &&
+  Number.isFinite(event.start) &&
+  event.start >= 0 &&
+  typeof event.end === 'number' &&
+  Number.isFinite(event.end) &&
+  event.end >= event.start;
+
+const countGraphemes = (value: string): number =>
+  Array.from(thaiGraphemeSegmenter.segment(value)).length;
+
+type ThaiTextPart = {
+  segment: string;
+  isWordLike: boolean;
+};
+
+const mergeProtectedThaiCompoundParts = (
+  parts: ThaiTextPart[]
+): ThaiTextPart[] => {
+  const merged: ThaiTextPart[] = [];
+
+  for (let index = 0; index < parts.length;) {
+    const part = parts[index]!;
+    if (!part.isWordLike) {
+      merged.push(part);
+      index += 1;
+      continue;
+    }
+
+    let protectedMatch:
+      | { text: string; nextIndex: number }
+      | undefined;
+    for (const protectedWord of protectedThaiCompoundWords) {
+      let candidate = '';
+      for (let nextIndex = index; nextIndex < parts.length; nextIndex += 1) {
+        const nextPart = parts[nextIndex]!;
+        if (!nextPart.isWordLike) break;
+        candidate += nextPart.segment;
+        if (candidate === protectedWord) {
+          protectedMatch = { text: candidate, nextIndex: nextIndex + 1 };
+          break;
+        }
+        if (!protectedWord.startsWith(candidate)) break;
+      }
+      if (protectedMatch) break;
+    }
+
+    if (protectedMatch) {
+      merged.push({ segment: protectedMatch.text, isWordLike: true });
+      index = protectedMatch.nextIndex;
+      continue;
+    }
+
+    merged.push(part);
+    index += 1;
+  }
+
+  return merged;
+};
+
+const segmentThaiRunPreservingProtectedWords = (
+  value: string
+): ThaiTextPart[] => {
+  const segmentNormally = (text: string): ThaiTextPart[] =>
+    mergeProtectedThaiCompoundParts(
+      segmentThaiSubtitleRun(text)
+    );
+  const parts: ThaiTextPart[] = [];
+  let cursor = 0;
+
+  while (cursor < value.length) {
+    const nextMatch = protectedThaiCompoundWords
+      .flatMap((word) => {
+        const index = value.indexOf(word, cursor);
+        return index >= 0 ? [{ word, index }] : [];
+      })
+      .sort((left, right) =>
+        left.index - right.index || right.word.length - left.word.length
+      )[0];
+
+    if (!nextMatch) {
+      parts.push(...segmentNormally(value.slice(cursor)));
+      break;
+    }
+    if (nextMatch.index > cursor) {
+      parts.push(...segmentNormally(value.slice(cursor, nextMatch.index)));
+    }
+    parts.push({ segment: nextMatch.word, isWordLike: true });
+    cursor = nextMatch.index + nextMatch.word.length;
+  }
+
+  return parts;
+};
+
+const segmentThaiTextPreservingShortPhrases = (
+  value: string
+): ThaiTextPart[] => {
+  const hasExplicitSpacing = /\s/u.test(value);
+  return value
+    .normalize('NFC')
+    .split(/(\s+)/u)
+    .filter(Boolean)
+    .flatMap((run): ThaiTextPart[] => {
+      if (/^\s+$/u.test(run)) {
+        return [{ segment: run, isWordLike: false }];
+      }
+
+      if (
+        /\p{Script=Thai}/u.test(run) &&
+        !/\p{Script=Latin}/u.test(run) &&
+        hasExplicitSpacing &&
+        countGraphemes(run) <= elevenLabsMaxProtectedThaiPhraseGraphemes
+      ) {
+        return [{ segment: run, isWordLike: true }];
+      }
+
+      return segmentThaiRunPreservingProtectedWords(run);
+    });
+};
+
+const readThaiBoundaryOffsets = (value: string): Set<number> => {
+  const boundaries = new Set<number>();
+  let offset = 0;
+
+  for (const part of segmentThaiTextPreservingShortPhrases(value)) {
+    const compactLength = part.segment.replace(/\s+/gu, '').length;
+    if (part.isWordLike && compactLength > 0) {
+      boundaries.add(offset);
+      boundaries.add(offset + compactLength);
+    }
+    offset += compactLength;
+  }
+
+  return boundaries;
+};
+
+const repairFalseThaiSpacing = (value: string): string => {
+  const normalized = value.normalize('NFC');
+  const compactText = normalized.replace(/\s+/gu, '');
+  const boundaries = readThaiBoundaryOffsets(compactText);
+  const characters = Array.from(normalized);
+  let compactOffset = 0;
+  let repaired = '';
+
+  for (const [index, character] of characters.entries()) {
+    if (/^\s+$/u.test(character)) {
+      const previous = characters[index - 1] ?? '';
+      const next = characters[index + 1] ?? '';
+      const isThaiBoundary =
+        /\p{Script=Thai}/u.test(previous) &&
+        /\p{Script=Thai}/u.test(next);
+      if (!isThaiBoundary || boundaries.has(compactOffset)) {
+        repaired += character;
+      }
+      continue;
+    }
+
+    repaired += character;
+    compactOffset += character.length;
+  }
+
+  return repaired;
+};
+
+const rebuildFragmentedElevenLabsThaiWords = (
+  timedWords: ElevenLabsTimedWord[],
+  language?: string,
+  referenceText?: string
+): ElevenLabsTimedWord[] => {
+  if (
+    normalizeTranscriptionLanguage(language) !== 'th' ||
+    timedWords.length < 4
+  ) {
+    return timedWords;
+  }
+
+  const timelineText = timedWords
+    .map((word) => word.displayText)
+    .join('')
+    .normalize('NFC');
+  const compact = (value: string) =>
+    value.normalize('NFC').replace(/\s+/gu, '');
+  const compactTimelineWords = compact(
+    timedWords.map((word) => word.word).join('')
+  );
+  const normalizedReference = referenceText?.normalize('NFC').trim();
+  const referenceMatchesTimeline =
+    normalizedReference &&
+    compact(normalizedReference) === compactTimelineWords;
+  const canonicalText =
+    referenceMatchesTimeline
+      ? normalizedReference
+      : timelineText;
+  const canonicalSpacingDiffers =
+    referenceMatchesTimeline &&
+    normalizedReference !== timelineText.trim();
+  const segmentationText = repairFalseThaiSpacing(canonicalText);
+  const parts = segmentThaiTextPreservingShortPhrases(segmentationText);
+  const semanticWordCount = parts.filter((part) => part.isWordLike).length;
+  const spacingSplitsSemanticWord = segmentationText !== canonicalText;
+  let offset = 0;
+  const indexedWords = timedWords.flatMap((timedWord) => {
+    const word = compact(timedWord.word);
+    if (!word) {
+      return [];
+    }
+    const indexedWord = {
+      timedWord,
+      wordStart: offset,
+      wordEnd: offset + word.length
+    };
+    offset += word.length;
+    return [indexedWord];
+  });
+  let semanticOffset = 0;
+  const semanticWordSplitAcrossEvents = parts.some((part) => {
+    const value = compact(part.segment);
+    const start = semanticOffset;
+    const end = start + value.length;
+    semanticOffset = end;
+    if (!part.isWordLike || !value) {
+      return false;
+    }
+    return indexedWords.filter(
+      (entry) => entry.wordStart < end && entry.wordEnd > start
+    ).length > 1;
+  });
+
+  // Scribe normally returns Thai timing events as grapheme-sized fragments.
+  // Leave providers that already return semantic words untouched.
+  if (
+    semanticWordCount === 0 ||
+    (
+      !canonicalSpacingDiffers &&
+      !spacingSplitsSemanticWord &&
+      !semanticWordSplitAcrossEvents &&
+      timedWords.length <= semanticWordCount * 1.5
+    )
+  ) {
+    return timedWords;
+  }
+
+  const readPartRange = (start: number, end: number) => {
+    const overlapping = indexedWords.filter(
+      (entry) => entry.wordStart < end && entry.wordEnd > start
+    );
+    const first = overlapping[0];
+    const last = overlapping.at(-1);
+    if (!first || !last) {
+      return undefined;
+    }
+    const readOffsetTime = (
+      entry: (typeof indexedWords)[number],
+      position: number
+    ) => {
+      const textLength = entry.wordEnd - entry.wordStart;
+      const ratio = textLength <= 0
+        ? 0
+        : Math.min(
+            1,
+            Math.max(0, (position - entry.wordStart) / textLength)
+          );
+      return entry.timedWord.start +
+        (entry.timedWord.end - entry.timedWord.start) * ratio;
+    };
+    return {
+      start: readOffsetTime(first, start),
+      end: readOffsetTime(last, end)
+    };
+  };
+
+  const rebuilt: ElevenLabsTimedWord[] = [];
+  let pendingSpacing = '';
+  let compactOffset = 0;
+
+  for (const part of parts) {
+    const value = part.segment.normalize('NFC');
+    const compactValue = compact(value);
+    const partStart = compactOffset;
+    const partEnd = partStart + compactValue.length;
+    compactOffset = partEnd;
+
+    if (!part.isWordLike) {
+      if (/^\s+$/u.test(value)) {
+        pendingSpacing += value;
+        continue;
+      }
+
+      const previous = rebuilt.at(-1);
+      const range = compactValue
+        ? readPartRange(partStart, partEnd)
+        : undefined;
+      if (previous) {
+        previous.word += value;
+        previous.displayText += value;
+        if (range) {
+          previous.end = Math.max(previous.end, range.end);
+        }
+      } else {
+        pendingSpacing += value;
+      }
+      continue;
+    }
+
+    const word = value.trim();
+    const range = compactValue
+      ? readPartRange(partStart, partEnd)
+      : undefined;
+    if (!word || !range) {
+      continue;
+    }
+
+    rebuilt.push({
+      word,
+      displayText: `${pendingSpacing}${word}`,
+      start: range.start,
+      end: range.end
+    });
+    pendingSpacing = '';
+  }
+
+  return rebuilt.length > 0 ? rebuilt : timedWords;
+};
+
+const readElevenLabsTimedWords = (
+  events: ElevenLabsTranscriptEvent[]
+): ElevenLabsTimedWord[] => {
+  const timedWords: ElevenLabsTimedWord[] = [];
+  let pendingSpacing = '';
+
+  for (const event of events) {
+    if (event.type === 'spacing' && typeof event.text === 'string') {
+      pendingSpacing += event.text;
+      continue;
+    }
+
+    if (!isValidElevenLabsTimedWord(event)) {
+      continue;
+    }
+
+    const word = event.text.normalize('NFC').trim();
+    timedWords.push({
+      word,
+      displayText: `${pendingSpacing}${word}`,
+      start: event.start,
+      end: event.end
+    });
+    pendingSpacing = '';
+  }
+
+  return timedWords;
+};
+
+const buildElevenLabsSegments = (
+  timedWords: ElevenLabsTimedWord[]
+): TranscriptSegment[] => {
+  const segments: TranscriptSegment[] = [];
+  let current:
+    | {
+        text: string;
+        start: number;
+        end: number;
+      }
+    | undefined;
+
+  const flush = () => {
+    if (!current) return;
+    const text = current.text.normalize('NFC').trim();
+    if (text) {
+      segments.push({
+        text,
+        start: current.start,
+        end: current.end
+      });
+    }
+    current = undefined;
+  };
+
+  for (const timedWord of timedWords) {
+    if (
+      current &&
+      timedWord.start - current.end >= elevenLabsPauseBoundarySeconds
+    ) {
+      flush();
+    }
+
+    if (!current) {
+      current = {
+        text: timedWord.displayText,
+        start: timedWord.start,
+        end: timedWord.end
+      };
+    } else {
+      current.text += timedWord.displayText;
+      current.end = timedWord.end;
+    }
+
+    const normalizedText = current.text.normalize('NFC').trim();
+    const reachedBoundary =
+      terminalTranscriptPunctuation.test(timedWord.word) ||
+      current.end - current.start >= elevenLabsMaxSegmentSeconds ||
+      countGraphemes(normalizedText) >= elevenLabsMaxSegmentGraphemes;
+
+    if (reachedBoundary) {
+      flush();
+    }
+  }
+
+  flush();
+  return segments;
+};
+
+const normalizeElevenLabsTranscription = (
+  value: unknown,
+  model: string
+): TranscriptionResult => {
+  const payload =
+    typeof value === 'object' && value !== null
+      ? (value as ElevenLabsTranscriptionResponse)
+      : {};
+  const events = Array.isArray(payload.words)
+    ? payload.words.filter(isElevenLabsEvent)
+    : [];
+  const language =
+    typeof payload.language_code === 'string'
+      ? payload.language_code
+      : undefined;
+  const rawTimedWords = readElevenLabsTimedWords(events);
+  const rawFallbackText = rawTimedWords
+    .map((word) => word.displayText)
+    .join('');
+  const text =
+    typeof payload.text === 'string'
+      ? payload.text.normalize('NFC').trim()
+      : rawFallbackText.normalize('NFC').trim();
+  const timedWords = rebuildFragmentedElevenLabsThaiWords(
+    rawTimedWords,
+    language,
+    text
+  );
+
+  return {
+    text,
+    language: normalizeTranscriptionLanguage(language),
+    durationSeconds: timedWords.reduce(
+      (duration, word) => Math.max(duration, word.end),
+      0
+    ),
+    segments: buildElevenLabsSegments(timedWords),
+    words: timedWords.map(({ word, start, end }) => ({ word, start, end })),
+    model
+  };
 };
 
 export const createMockTranscriptionProvider = (): TranscriptionProvider => ({
@@ -260,6 +763,63 @@ export const createGroqTranscriptionProvider = ({
     failureLabel: 'Groq transcription'
   });
 
+/**
+ * Real Thai transcription via ElevenLabs Scribe v2. Spacing events rebuild
+ * readable mixed-language text, while only valid word events become timed
+ * subtitle words.
+ */
+export const createElevenLabsTranscriptionProvider = ({
+  apiKey,
+  model,
+  keyterms = [],
+  fetchAudio,
+  fetchImpl = fetch as unknown as FetchImpl
+}: {
+  apiKey: string;
+  model: string;
+  keyterms?: string[];
+  fetchAudio: FetchAudio;
+  fetchImpl?: FetchImpl;
+}): TranscriptionProvider => ({
+  transcribe: async (input) => {
+    const audio = await fetchAudio(input);
+    const form = new FormData();
+    form.append(
+      'file',
+      new Blob([audio.data], { type: audio.contentType }),
+      audio.filename
+    );
+    form.append('model_id', model);
+    form.append('language_code', 'th');
+    form.append('timestamps_granularity', 'word');
+    form.append('tag_audio_events', 'false');
+    form.append('diarize', 'false');
+    form.append('no_verbatim', 'false');
+    for (const keyterm of keyterms) {
+      form.append('keyterms', keyterm);
+    }
+
+    const response = await fetchImpl(
+      'https://api.elevenlabs.io/v1/speech-to-text',
+      {
+        method: 'POST',
+        headers: { 'xi-api-key': apiKey },
+        body: form as unknown as RequestInit['body']
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `ElevenLabs transcription failed with status ${
+          response.status ?? 'unknown'
+        }`
+      );
+    }
+
+    return normalizeElevenLabsTranscription(await response.json(), model);
+  }
+});
+
 export const createTranscriptionProviderFromConfig = ({
   config,
   fetchAudio
@@ -271,6 +831,9 @@ export const createTranscriptionProviderFromConfig = ({
     | 'whisperModel'
     | 'groqApiKey'
     | 'groqTranscriptionModel'
+    | 'elevenLabsApiKey'
+    | 'elevenLabsTranscriptionModel'
+    | 'elevenLabsTranscriptionKeyterms'
   >;
   fetchAudio?: FetchAudio;
 }): TranscriptionProvider => {
@@ -302,6 +865,27 @@ export const createTranscriptionProviderFromConfig = ({
     return createGroqTranscriptionProvider({
       apiKey: config.groqApiKey,
       model: config.groqTranscriptionModel,
+      fetchAudio
+    });
+  }
+
+  if (config.transcriptionProvider === 'elevenlabs') {
+    if (!config.elevenLabsApiKey) {
+      throw new Error(
+        'ELEVENLABS_API_KEY is required when TRANSCRIPTION_PROVIDER is elevenlabs'
+      );
+    }
+
+    if (!fetchAudio) {
+      throw new Error(
+        'A fetchAudio implementation is required for ElevenLabs transcription'
+      );
+    }
+
+    return createElevenLabsTranscriptionProvider({
+      apiKey: config.elevenLabsApiKey,
+      model: config.elevenLabsTranscriptionModel,
+      keyterms: config.elevenLabsTranscriptionKeyterms,
       fetchAudio
     });
   }

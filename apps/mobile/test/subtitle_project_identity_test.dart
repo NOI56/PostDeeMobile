@@ -42,4 +42,37 @@ void main() {
     expect(long.projectId, isNot(short.projectId));
     expect(long.sourceFingerprint, short.sourceFingerprint);
   });
+
+  test('changes project ID only when the cue segmentation revision changes',
+      () {
+    final directory = Directory.systemTemp.createTempSync('subtitle-id-');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final source = File('${directory.path}${Platform.pathSeparator}clip.mp4')
+      ..writeAsBytesSync([1, 2, 3]);
+
+    final previous = buildSubtitleProjectIdentity(
+      sourceFile: source,
+      setupSignature: '30-seconds',
+      cueSegmentationRevision: 2,
+    );
+    final current = buildSubtitleProjectIdentity(
+      sourceFile: source,
+      setupSignature: '30-seconds',
+      cueSegmentationRevision: 3,
+    );
+    final currentAgain = buildSubtitleProjectIdentity(
+      sourceFile: source,
+      setupSignature: '30-seconds',
+      cueSegmentationRevision: 3,
+    );
+    final defaultRevision = buildSubtitleProjectIdentity(
+      sourceFile: source,
+      setupSignature: '30-seconds',
+    );
+
+    expect(current.projectId, isNot(previous.projectId));
+    expect(currentAgain.projectId, current.projectId);
+    expect(defaultRevision.projectId, current.projectId);
+    expect(current.sourceFingerprint, previous.sourceFingerprint);
+  });
 }

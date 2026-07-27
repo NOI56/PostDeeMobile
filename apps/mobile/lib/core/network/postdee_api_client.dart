@@ -22,6 +22,7 @@ class ClipTranscriptSegment {
     required this.text,
     required this.start,
     required this.end,
+    this.words,
     this.avgLogprob,
     this.noSpeechProbability,
     this.compressionRatio,
@@ -30,20 +31,58 @@ class ClipTranscriptSegment {
   final String text;
   final double start;
   final double end;
+
+  /// `null` identifies a legacy recipe without the validated-word contract.
+  /// An empty list is authoritative and means the server rejected or had no
+  /// safe word timing for this subtitle segment.
+  final List<AiEditTranscriptWordResult>? words;
   final double? avgLogprob;
   final double? noSpeechProbability;
   final double? compressionRatio;
 
   factory ClipTranscriptSegment.fromJson(Map<String, Object?> json) {
+    final hasValidatedWords = json.containsKey('words');
+    final rawWords = json['words'];
     return ClipTranscriptSegment(
       text: json['text'] as String? ?? '',
       start: (json['start'] as num?)?.toDouble() ?? 0,
       end: (json['end'] as num?)?.toDouble() ?? 0,
+      words: !hasValidatedWords ? null : _readValidatedSubtitleWords(rawWords),
       avgLogprob: (json['avgLogprob'] as num?)?.toDouble(),
       noSpeechProbability: (json['noSpeechProbability'] as num?)?.toDouble(),
       compressionRatio: (json['compressionRatio'] as num?)?.toDouble(),
     );
   }
+}
+
+List<AiEditTranscriptWordResult> _readValidatedSubtitleWords(
+  Object? rawWords,
+) {
+  if (rawWords is! List<dynamic>) {
+    return const <AiEditTranscriptWordResult>[];
+  }
+
+  final words = <AiEditTranscriptWordResult>[];
+  for (final rawWord in rawWords) {
+    if (rawWord is! Map<String, Object?>) {
+      return const <AiEditTranscriptWordResult>[];
+    }
+    final word = rawWord['word'];
+    final rawStart = rawWord['start'];
+    final rawEnd = rawWord['end'];
+    if (word is! String || rawStart is! num || rawEnd is! num) {
+      return const <AiEditTranscriptWordResult>[];
+    }
+    final start = rawStart.toDouble();
+    final end = rawEnd.toDouble();
+    if (!start.isFinite || !end.isFinite) {
+      return const <AiEditTranscriptWordResult>[];
+    }
+    words.add(
+      AiEditTranscriptWordResult(word: word, start: start, end: end),
+    );
+  }
+  return List<AiEditTranscriptWordResult>.unmodifiable(words);
 }
 
 class AiEditQuota {

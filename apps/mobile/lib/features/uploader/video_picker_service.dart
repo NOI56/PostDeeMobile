@@ -1,10 +1,14 @@
 import 'package:ffmpeg_kit_flutter_new_video/ffprobe_kit.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 
 typedef UploaderVideoPicker = Future<PickedVideoFile?> Function();
 typedef VideoMetadataReader = Future<VideoDimensions?> Function(
   String videoPath,
 );
+
+const _videoMetadataReadAttempts = 2;
+const _defaultVideoMetadataRetryDelay = Duration(milliseconds: 200);
 
 class VideoDimensions {
   const VideoDimensions({
@@ -65,7 +69,13 @@ class FfmpegVideoMetadataReader {
       }
 
       return null;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint(
+          'Video metadata probe failed: ${error.runtimeType}: $error',
+        );
+        debugPrintStack(stackTrace: stackTrace);
+      }
       throw const VideoMetadataException();
     }
   }
@@ -93,12 +103,15 @@ class GalleryVideoPicker {
   GalleryVideoPicker({
     ImagePicker? imagePicker,
     VideoMetadataReader? readVideoDimensions,
+    Duration metadataRetryDelay = _defaultVideoMetadataRetryDelay,
   })  : _imagePicker = imagePicker ?? ImagePicker(),
         _readVideoDimensions =
-            readVideoDimensions ?? const FfmpegVideoMetadataReader().call;
+            readVideoDimensions ?? const FfmpegVideoMetadataReader().call,
+        _metadataRetryDelay = metadataRetryDelay;
 
   final ImagePicker _imagePicker;
   final VideoMetadataReader _readVideoDimensions;
+  final Duration _metadataRetryDelay;
 
   Future<PickedVideoFile?> pickVideo() async {
     final video = await _imagePicker.pickVideo(source: ImageSource.gallery);
@@ -107,13 +120,7 @@ class GalleryVideoPicker {
       return null;
     }
 
-    VideoDimensions? dimensions;
-
-    try {
-      dimensions = await _readVideoDimensions(video.path);
-    } on VideoMetadataException {
-      dimensions = null;
-    }
+    final dimensions = await _readMetadataWithRetry(video.path);
 
     return PickedVideoFile(
       name: video.name,
@@ -124,4 +131,29 @@ class GalleryVideoPicker {
       durationSeconds: dimensions?.durationSeconds,
     );
   }
+
+  Future<VideoDimensions?> _readMetadataWithRetry(String videoPath) async {
+    VideoDimensions? partialDimensions;
+    for (var attempt = 1; attempt <= _videoMetadataReadAttempts; attempt += 1) {
+      try {
+        final dimensions = await _readVideoDimensions(videoPath);
+        if (dimensions != null &&
+            _hasUsableDuration(dimensions.durationSeconds)) {
+          return dimensions;
+        }
+        partialDimensions ??= dimensions;
+      } on VideoMetadataException {
+        // A native FFprobe session can fail briefly after the gallery resumes.
+      }
+
+      if (attempt < _videoMetadataReadAttempts &&
+          _metadataRetryDelay != Duration.zero) {
+        await Future<void>.delayed(_metadataRetryDelay);
+      }
+    }
+    return partialDimensions;
+  }
 }
+
+bool _hasUsableDuration(double? durationSeconds) =>
+    durationSeconds != null && durationSeconds.isFinite && durationSeconds > 0;

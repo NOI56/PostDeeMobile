@@ -98,7 +98,7 @@ Primary backend choices:
 | Video storage | Cloudflare R2 | Store temporary upload videos and signed upload/download URLs | R2 adapter and managed multipart sessions exist | Use `VIDEO_STORAGE=r2` with `UPLOAD_PROTOCOL_MODE=dual` during rollout. New clients opt in to `multipart-v1`; move to strict `multipart` after old clients are retired. Keep videos temporary and delete after successful publishing where possible. |
 | Auth | Firebase Auth | Google Sign-In, Firebase ID token verification, and Phone Auth for Basic quota unlock | Dedicated Android Debug Staging config and Google login/token/API smoke pass on Emulator; Production, iOS, Phone Auth, and physical-device tests remain | Keep Debug Staging on `com.postdee.postdee_mobile.staging`; do not mix its Dart defines with Profile/Release Firebase files. |
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to Gemini (retry + model fallback + local template fallback); media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`); legacy Groq/Whisper path kept for when no Gemini is configured | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
-| AI auto editing | Groq Whisper large-v3 + mobile FFmpeg | Pro subtitle transcription, optional silence/filler cuts, UI capability recipe, subtitle burn-in, phone-side review, and video export | Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, exact filler allowlist, detected count/time summary, reversible supported capabilities with automatic preview re-render, accordion settings, and Post/manual-editor exits exist. Mobile now extracts a bounded temporary M4A instead of uploading the full source for current capabilities, and 30/60/custom is sent as `targetDurationSeconds` so the planner selects strong transcript moments. Provider failures return structured 502 without consuming quota. Production beat sync and the 3-second hook are locked as `เร็ว ๆ นี้` behind default-off compile-time flags. | Deploy the audio-only/target-duration release and repeat the 38 MB real-clip E2E with the configured Staging Groq key. Confirm only M4A reaches R2/Groq, temporary audio is deleted, chosen moments are coherent, and the original video renders locally. Re-check Groq pricing/docs before production launch. `ENABLE_EXPERIMENTAL_BEAT_SYNC=true` and `ENABLE_EXPERIMENTAL_AI_HOOK=true` remain setup-only QA flags. |
+| AI auto editing | Configurable speech-to-text + mobile FFmpeg | Pro subtitle transcription, optional silence/filler cuts, UI capability recipe, subtitle burn-in, phone-side review, and video export | Groq remains the production default. A staging-only ElevenLabs Scribe v2 adapter adds word-timestamp normalization and short segments without changing the mobile contract. Thai cue grouping now uses a dictionary tokenizer, shared protected compounds, and an ICU fallback. Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, exact filler allowlist, reversible supported capabilities, and Post/manual-editor exits exist. | The first manually verified 19.1-second A/B favours ElevenLabs, but production and `main` stay unchanged until the four-style Thai set has independent reference transcripts and a combined CER review. Rotate the 30-day ElevenLabs staging key before 2026-08-23. |
 | Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase and true Restore/resync E2E pass on Emulator; RevenueCat Play config, production Android public SDK key, and signed AAB are ready | Verify Play Console access on a physical Android device, then create the Play app/subscriptions/service credentials/internal testing and test lifecycle plus real Google Play/App Store purchases before claiming production billing E2E. |
 | Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect/refresh/provider-first disconnect are wired; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; YouTube defaults private and TikTok SELF_ONLY for controlled testing; connected-account E2E is still pending | `FACEBOOK_REELS` is an internal compatibility value for Page Video, not a Reels claim. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
@@ -108,6 +108,38 @@ Primary backend choices:
 
 The table's earlier audio-only deployment note is superseded. Groq M4A
 transcription now uses balanced source-audio chunks no longer than 30 seconds.
+
+### Transcription provider trial (2026-07-24)
+
+Staging can select ElevenLabs Scribe v2 while production remains on Groq. A
+normal customer request calls only one configured provider and does not
+silently fall back, so A/B results remain attributable. The trial compares the
+same Thai source audio and gives accuracy priority over timing, latency, and
+cost.
+The base-model comparison was captured without keyterms. A follow-up staging
+trial now uses a small, validated glossary for known names and commerce terms;
+the list is disabled by default, capped at 100 entries, and remains absent from
+production until the accuracy gain justifies the provider surcharge.
+On 2026-07-26, two fresh end-to-end emulator runs confirmed that the staging
+glossary kept `วรภพ`, `ยุ่นเพียร`, `ผู้เสียหาย`, and `ซุปเปอร์สตาร์` intact.
+The same fixtures had previously split `วร / ภพ`, `ผู้เสีย / หาย`, and
+`ซุป / เปอร์สตาร์`. General Thai cue boundaries can still split common words,
+so this validates targeted recognition bias but does not replace the planned
+tokenizer and full CER comparison.
+The staging branch now applies `thai-wordcut-js` plus one shared protected-word
+list in provider normalization and recipe generation, with ICU as a validated
+fallback. The 19.1-second manually checked opening sample measured Groq CER at
+29.8578% with two hallucinated phrases and ElevenLabs CER at 0% with none;
+ElevenLabs also completed in 18.372 seconds versus Groq at 21.124 seconds, at
+an estimated per-hour rate of $0.22 versus $0.111. This is strong evidence for
+that sample only. A combined decision still requires independent ground-truth
+transcripts for the four-style Thai QA set, so the change is not approved for
+`main` or production yet.
+Re-segmenting the four stored QA transcripts removed every detected protected
+compound split (news 5→0, scripted 2→0, natural interview 2→0, noisy field
+audio 0→0), preserved all transcript text, and kept every rebuilt cue at or
+below 18 graphemes. This validates cue grouping across the existing content
+styles but does not substitute for provider-level CER ground truth.
 The API clips AAC timing overrun at each chunk boundary, merges non-overlapping
 source-relative timestamps, and charges the combined duration once, while all
 temporary chunks are cleaned on success or failure. Mobile now sends the actual
@@ -334,21 +366,26 @@ Recommended order:
    - Editors can prepare posts and schedules without seeing social account passwords.
    - Use role-based access around connected OAuth accounts.
 
-8. AI Auto Editing With Groq Whisper
+8. AI Auto Editing With Configured Speech-to-Text
    - Pro users can request Thai transcription, cut silence, burn in subtitles, review the phone-rendered result, and remove supported AI edits they do not want.
-   - Backend handles auth, quota, temporary storage, and Groq Whisper transcription with a Thai language hint and both word and segment timestamps. The spelling prompt was removed after real-clip validation found provider context leaking into Thai transcript text. It validates word timing before using it for silence/filler cuts and subtitle timing, falls back to segments when coverage is incomplete, and keeps Thai character-level timing for gaps while using readable segment subtitles.
+   - Backend handles auth, quota, temporary storage, and one configured transcription provider. Groq uses a Thai hint with word/segment timestamps; ElevenLabs staging uses Scribe v2 word timestamps, ignores audio events, and creates short normalized segments. It validates timing before using it for silence/filler cuts and subtitles.
    - Mobile re-renders accepted capabilities from the original clip, then lets the user continue to posting or open the manual editor.
    - Review uses an adaptive 540p/20 fps preview for sources longer than one minute (720p/24 fps for shorter sources), reports FFmpeg processed-time progress, supports cancel/retry, and reuses identical results. Going to Post renders a separate full-source-dimension file.
    - The mobile target-length safety guard restores context around AI-selected moments when incomplete transcript timing would otherwise leave less than the requested 30/60/custom duration.
    - Target-length planning now rejects known prompt leakage and low-quality provider segments, omits those ranges from rendered subtitle lines, then selects one continuous story window. Changing only 30/60/custom reuses the current in-memory transcript through non-metered `/ai-edits/plan`, so the source audio is transcribed and charged once per analysis settings set.
+   - `/ai-edits/prepare` reserves the actual transcribed minutes only after its edit plan and mobile render recipe succeed. A failed planner/recipe attempt keeps the current quota unchanged, and an in-session render retry reuses the cached successful recipe.
    - Duration-only replanning also reuses the current source's local 360p visual proxy. Thai continuation-fragment openings receive a soft penalty in transcript and Gemini visual planning so a nearby complete sentence is preferred without hard-blocking a genuinely stronger hook.
    - Real Staging logs exposed repeated Gemini Files upload-start HTTP 400 responses from the hand-written resumable request. Upload, status polling, and deletion now use Google's official `@google/genai` SDK; a deployed device E2E remains the release gate before claiming visual planning is active.
    - The AI editing header shows exact Pro minutes remaining/used, refreshes from `GET /ai-edits/quota`, and adopts the latest `prepare` quota immediately after a metered analysis.
-   - Android FFmpeg rendering supplies the bundled Prompt font to libass and compacts kept audio ranges alongside silence-cut video, preventing missing burned subtitles or audio that outlives the final video frame.
+   - Android FFmpeg rendering supplies the selected bundled font to libass and compacts kept audio ranges alongside silence-cut video, preventing missing burned subtitles or audio that outlives the final video frame. Automatic subtitles retain Bai Jamjuree Bold as the editable style with outline 0.5 and shadow 0. Every selectable Bai Jamjuree, Prompt, or Anuphan style burns through an internally renamed OFL derivative. The temporary SRT substitutes mark-safe private glyphs only for tones stacked above upper vowels or sara am; stored captions remain normal Unicode Thai.
+   - Automatic Thai subtitle cues now keep a hard one-line word cap after all merging: large text 3 words, medium 4, small 5, and karaoke 1. Mobile preserves the server's Thai cue boundaries instead of merging them again by character count, disables renderer wrapping, checks each cue against 85% of the scaled frame width, and shrinks only as a final overflow fallback. The API rebalances whole words across adjacent short cues only when both reach 0.7 seconds without breaking word/grapheme/timeline limits; unavoidable fast speech keeps its exact timing.
+   - Pixel 8 emulator acceptance on 2026-07-26 used the 38 MB / 2:30 Thai talking-head clip and produced an exact 60-second preview with 183 physical one-line cues. The project Thai tokenizer found no cue above five words (observed maximum four), the previous `จะเป็นของมือสองไปหา` regression stayed split into two cues, and contact-sheet review found no horizontal clipping.
    - Android preview completion no longer depends only on the plugin callback: an exact FFmpeg `progress=end` marker exits polling, then the renderer probes the output and requires a video stream before accepting it.
    - The render screen labels the final 99% output probe as “กำลังตรวจไฟล์วิดีโอ...” so normal mux/finalization work is not mistaken for a frozen render.
-   - Subtitle Studio now opens after AI prepare and before rendering. It provides local autosaved drafts, live video/text preview, cue text and timing edits, add/delete/split/merge, undo/redo, Prompt/Anuphan font selection, size, text colour, outline, shadow, line count, and safe top/middle/bottom placement. Confirmed edits are used by both preview and full export without another metered AI request. Active-word karaoke, ASS events, reusable brand-style presets, and physical-device preview/export parity remain release gates.
+   - Subtitle Studio now opens after AI prepare and before rendering. It provides local autosaved drafts, live video/text preview, cue text and timing edits, add/delete/split/merge, undo/redo, Bai Jamjuree/Prompt/Anuphan font selection, size, text/active-word/outline/shadow colours, safe top/middle/bottom placement, and none/pop/fade effects. Validated cue-level word timing drives current-word colour in Flutter preview and time-sliced ASS export; malformed, edited, fragmented, or unavailable timing falls back to a static cue/SRT. Confirmed edits are used by both preview and full export without another metered AI request. Reusable brand-style presets, golden preview/export parity, and physical-device acceptance remain release gates.
    - Pixel 8 emulator acceptance with the 2:30 / 38 MB Thai clip opened Subtitle Studio with 20 source-timeline cues, restored an autosaved Anuphan draft without another metered prepare, rendered an exact 30-second 2.4 MB preview, and reached result review with the new “แก้ข้อความและรูปแบบซับ” return action. The first run exposed overlapping combined plan/silence/filler cut ranges; the mobile recipe adapter now validates malformed ranges and merges valid overlaps before project validation.
+   - Enlarged review rejected the first Noto Sans Thai attempt because `้` still visually joined the `ํ` in `ซ้ำ`. A later 2026-07-27 audit also rejected the initial Bai-only acceptance: at the real 304x540 preview resolution, `่` still rasterized into `ี` in `ที่`. Pixel measurement confirmed valid Thai Unicode ordering and isolated the issue to libass's low-resolution glyph choice. The corrective renderer now uses mark-safe PostDee derivatives for all three selectable font families only in stacked contexts; version-1 Anuphan and version-2 Noto draft styles still migrate to version 3.
+   - A 2026-07-27 Pixel 8 end-to-end run shortened a 30-second Thai talking-head source to an exact 20.000-second, 406x720, 2,833,565-byte MP4 with video and audio. Subtitle Studio rendered Pop plus active-word colour in one line with no visible edge clipping. The run exposed `มีของให|ม่ๆ` and `นึงระยะทา|งใกล้ๆ`; shared server regressions now protect `ใหม่ๆ`/`ใกล้ๆ`, and a cue-segmentation revision prevents the old 38-cue draft from replacing newly mapped cues. The same exported ASS exposed sub-centisecond slices that formatted with equal start/end times; export now quantizes first and omits zero-duration events while recalculating Pop/Fade edges.
    - The mobile dependency is pinned to `ffmpeg_kit_flutter_new_video` 2.3.2,
      which ships the FFmpeg 8.1.2 CVE-2026-8461 fix for Android and iOS. Store
      release remains blocked on native export smoke tests on physical Android
@@ -369,7 +406,7 @@ Recommended order:
   `false` in production until their real analyzers/renderers pass device tests.
 - Keep Phase 2 behind Pro or future Agency plan gates where appropriate.
 - Do not market separate AI audio review while real-clip AI captioning and
-  Groq Whisper auto editing cover that user need.
+  speech-to-text auto editing covers that user need.
 - Keep Pro-only social/team tools scoped so editors can prepare work without
   seeing owner credentials or tokens.
 

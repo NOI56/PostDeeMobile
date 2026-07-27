@@ -32,6 +32,8 @@ describe('render.yaml production config', () => {
     expectEnvValue(source, 'CAPTION_PROVIDER', 'gemini');
     expectEnvSecret(source, 'GEMINI_API_KEY');
     expectEnvValue(source, 'TRANSCRIPTION_PROVIDER', 'groq');
+    expect(source).not.toContain('value: elevenlabs');
+    expect(source).not.toContain('ELEVENLABS_TRANSCRIPTION_KEYTERMS');
     expectEnvValue(source, 'EDIT_PLAN_PROVIDER', 'groq');
     expectEnvSecret(source, 'GROQ_API_KEY');
     expectEnvValue(source, 'SOCIAL_PUBLISHER', 'postpeer');

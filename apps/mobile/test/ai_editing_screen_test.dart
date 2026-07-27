@@ -111,6 +111,8 @@ AiEditPrepareResult _createPrepareFixture({
     model: 'none',
   ),
   double transcriptDurationSeconds = 45,
+  List<AiEditTranscriptWordResult>? validatedSubtitleWords,
+  List<ClipTranscriptSegment>? subtitleSegments,
 }) =>
     AiEditPrepareResult(
       quota: const AiEditQuota(
@@ -141,16 +143,18 @@ AiEditPrepareResult _createPrepareFixture({
           words: [],
           model: 'test',
         ),
-        subtitles: const AiEditSubtitlesResult(
+        subtitles: AiEditSubtitlesResult(
           enabled: true,
-          segments: [
-            ClipTranscriptSegment(
-              text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
-              start: 0,
-              end: 10,
-            ),
-          ],
-          style: AiEditSubtitleStyleResult(
+          segments: subtitleSegments ??
+              [
+                ClipTranscriptSegment(
+                  text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
+                  start: 0,
+                  end: 10,
+                  words: validatedSubtitleWords,
+                ),
+              ],
+          style: const AiEditSubtitleStyleResult(
             mode: 'bold',
             color: '#FFFFFF',
             wordsPerLine: 3,
@@ -412,6 +416,26 @@ class _FakeReviewVideoController extends VideoPlayerController {
 }
 
 void main() {
+  test('drops stale word metadata unless a cue is word-timed', () {
+    final staleCue = SubtitleCue(
+      cueId: 'stale-cue',
+      sourceStartMs: 0,
+      sourceEndMs: 1000,
+      text: 'ขายดี',
+      timingMode: SubtitleTimingMode.estimated,
+      words: const [
+        SubtitleWord(
+          wordId: 'stale-word',
+          text: 'ขายดี',
+          sourceStartMs: 0,
+          sourceEndMs: 1000,
+        ),
+      ],
+    );
+
+    expect(subtitleWordsForRender(staleCue), isEmpty);
+  });
+
   testWidgets('shows remaining AI editing minutes on setup', (tester) async {
     await tester.pumpWidget(
       _testApp(
@@ -985,7 +1009,8 @@ void main() {
     expect(find.text('Pro · ใช้แล้ว 17/200 นาที'), findsOneWidget);
   });
 
-  testWidgets('refreshes a stale Pro badge when the process check returns Basic',
+  testWidgets(
+      'refreshes a stale Pro badge when the process check returns Basic',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('expired-pro-clip.mp4');
     var createUploadCalls = 0;
@@ -1204,12 +1229,14 @@ void main() {
     final cleanedAudioKeys = <String>[];
     AiEditPrepareRequest? prepareRequest;
     Directory? chunksDirectory;
+    double? capturedKnownDurationSeconds;
 
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
           pickVideo: () async => pickedVideo,
-          extractAudioChunks: (_) async {
+          extractAudioChunks: (_, {knownDurationSeconds}) async {
+            capturedKnownDurationSeconds = knownDurationSeconds;
             chunksDirectory = Directory.systemTemp.createTempSync(
               'postdee-editor-audio-chunks-',
             );
@@ -1273,6 +1300,7 @@ void main() {
     expect(prepareRequest?.audioS3Key, isNull);
     expect(prepareRequest?.durationSeconds, 150);
     expect(prepareRequest?.targetDurationSeconds, 30);
+    expect(capturedKnownDurationSeconds, 150);
     expect(
       prepareRequest?.audioChunks?.map((chunk) => chunk.startSeconds).toList(),
       [0, 25],
@@ -1370,7 +1398,20 @@ void main() {
             storageProvider: 's3',
           ),
           uploadVideoFile: (_, __) async {},
-          prepareEdit: (_) async => _createPrepareFixture(),
+          prepareEdit: (_) async => _createPrepareFixture(
+            validatedSubtitleWords: const [
+              AiEditTranscriptWordResult(
+                word: 'รีวิวสินค้า',
+                start: 0,
+                end: 4,
+              ),
+              AiEditTranscriptWordResult(
+                word: 'ชิ้นนี้ดีมาก',
+                start: 4,
+                end: 10,
+              ),
+            ],
+          ),
           subtitleDraftStore: store,
           subtitleStudioLauncher:
               (context, sourceFile, initialProject, draftStore) async {
@@ -1390,10 +1431,15 @@ void main() {
               normalizedX: 0.5,
               normalizedY: 0.5,
               maxLines: 1,
+              animation: 'fade',
             );
             return initialProject.copyWith(
               cues: [
-                initialProject.cues.first.copyWith(text: editedSubtitle),
+                initialProject.cues.first.copyWith(
+                  text: editedSubtitle,
+                  words: const [],
+                  timingMode: SubtitleTimingMode.estimated,
+                ),
               ],
               defaultStyle: updatedStyle,
               revision: initialProject.revision + 1,
@@ -1416,6 +1462,13 @@ void main() {
     expect(studioLaunches, 0);
     expect(renderRequests, hasLength(1));
     expect(renderRequests.single.segments, isNotEmpty);
+    expect(renderRequests.single.segments.single.words, hasLength(2));
+    expect(renderRequests.single.activeWordColor, '#00E5A8');
+    expect(
+      renderRequests.single.subtitleFontName,
+      postDeeSubtitleThaiFontName,
+    );
+    expect(renderRequests.single.maxOutputDurationSeconds, 30);
     expect(
       renderRequests.single.segments.map((segment) => segment.text).join(),
       isNot(editedSubtitle),
@@ -1443,19 +1496,22 @@ void main() {
     expect(studioInput?.cues.single.text, isNotEmpty);
     expect(renderRequests, hasLength(2));
     final renderRequest = renderRequests.last;
-    expect(renderRequest.segments, hasLength(3));
+    expect(renderRequest.segments, hasLength(1));
+    expect(renderRequest.segments.single.text, editedSubtitle);
     expect(
-      renderRequest.segments
-          .every((segment) => segment.text.characters.length <= 18),
-      isTrue,
+      renderRequest.subtitleFontName,
+      postDeeSubtitleAnuphanFontName,
     );
     expect(
-      renderRequest.segments.map((segment) => segment.text).join(),
-      editedSubtitle,
+      renderRequest.subtitleFontAssetPath,
+      'assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-Bold.ttf',
     );
-    expect(renderRequest.subtitleFontName, 'Anuphan');
-    expect(renderRequest.subtitleFontSize, 30);
+    expect(renderRequest.subtitleFontSize, lessThan(30));
+    expect(renderRequest.subtitleFontSize, greaterThanOrEqualTo(6));
     expect(renderRequest.subtitleTextColor, '#00E5A8');
+    expect(renderRequest.activeWordColor, '#FFF45C');
+    expect(renderRequest.subtitleAnimation, 'fade');
+    expect(renderRequest.segments.single.words, isEmpty);
     expect(renderRequest.subtitleOutlineColor, '#112233');
     expect(renderRequest.subtitleOutlineWidth, 3);
     expect(renderRequest.subtitleShadowColor, '#445566');
@@ -1463,6 +1519,69 @@ void main() {
     expect(
       renderRequest.subtitleAlignment,
       BurnSubtitleAlignment.middle,
+    );
+  });
+
+  testWidgets('keeps the final subtitle cue whole within the target tolerance',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'subtitle-tail-boundary.mp4',
+      durationSeconds: 30,
+    );
+    final renderedVideo =
+        _createRenderedVideoFixture('subtitle-tail-boundary-result.mp4');
+    final renderRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          extractAudio: _extractAudioFixture,
+          createUpload: (_) async => const UploadResult(
+            id: 'subtitle-tail-boundary-upload',
+            videoS3Key: 'uploads/subtitle-tail-boundary.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(
+            transcriptDurationSeconds: 30,
+            subtitleSegments: const [
+              ClipTranscriptSegment(
+                text: 'ประโยคท้ายต้องแสดงให้จบ',
+                start: 20.4,
+                end: 21.6,
+              ),
+            ],
+          ),
+          burnVideo: (request) async {
+            renderRequests.add(request);
+            return renderedVideo;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _setTargetDuration(tester, 20);
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(renderRequests, hasLength(1));
+    final request = renderRequests.single;
+    expect(
+      request.silenceRanges.any(
+        (range) =>
+            (range.start - 21.6).abs() < 0.001 &&
+            (range.end - 30).abs() < 0.001,
+      ),
+      isTrue,
+    );
+    expect(request.outputDurationSeconds, closeTo(20.6, 0.001));
+    expect(request.maxOutputDurationSeconds, closeTo(20.6, 0.001));
+    expect(
+      request.maxOutputDurationSeconds! - 20,
+      lessThanOrEqualTo(1),
     );
   });
 
@@ -2073,6 +2192,16 @@ void main() {
 
     expect(find.text('กำลังตรวจไฟล์วิดีโอ...'), findsOneWidget);
     expect(find.text('99%'), findsOneWidget);
+
+    activeRenderRequest!.onAttemptStarted?.call(2);
+    await tester.pump();
+
+    expect(find.text('0%'), findsOneWidget);
+
+    activeRenderRequest!.onProgress?.call(0.03);
+    await tester.pump();
+
+    expect(find.text('3%'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('ai-render-cancel')));
     await tester.pumpAndSettle();
@@ -3713,7 +3842,14 @@ void main() {
     expect(
       find.descendant(
         of: panel,
-        matching: find.text('สั้น (ไม่เกิน 8 ตัวอักษร)'),
+        matching: find.text('สั้น (1 คำ)'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: panel,
+        matching: find.textContaining('ฟอนต์ใหญ่จำกัด 3 คำ'),
       ),
       findsOneWidget,
     );
@@ -3802,7 +3938,8 @@ void main() {
     expect(prepareRequest?.settings.subtitleColor, '#FFFFFF');
     expect(prepareRequest?.settings.subtitleWordsPerLine, 1);
     expect(prepareRequest?.settings.subtitlePosition, 'top');
-    expect(burnRequest?.subtitleFontSize, 17);
+    expect(burnRequest?.subtitleFontSize, lessThanOrEqualTo(17));
+    expect(burnRequest?.subtitleFontSize, greaterThanOrEqualTo(6));
     expect(burnRequest?.subtitleAtBottom, isFalse);
   });
 

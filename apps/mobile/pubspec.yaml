@@ -39,6 +39,38 @@ flutter:
     - assets/images/brand/
     - assets/images/platforms/
   fonts:
+    - family: Bai Jamjuree
+      fonts:
+        - asset: assets/fonts/baijamjuree/BaiJamjuree-Bold.ttf
+          weight: 700
+    - family: PostDee Subtitle Thai
+      fonts:
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitleThai-Bold.ttf
+          weight: 700
+    - family: PostDee Subtitle Anuphan
+      fonts:
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-Bold.ttf
+          weight: 700
+    - family: PostDee Subtitle Prompt
+      fonts:
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Black.ttf
+          weight: 900
     - family: Anuphan
       fonts:
         - asset: assets/fonts/anuphan/Anuphan-Regular.ttf

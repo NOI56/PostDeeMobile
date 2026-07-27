@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-This document describes the current Express + TypeScript scaffold in `apps/api`. It is written for local development and integration planning. Production integrations for social publishing, live analytics, Cloudflare R2, real-clip AI captioning, Pro Groq Whisper auto editing, Firebase, Apple App Store, and Google Play still require real credentials and provider-level testing.
+This document describes the current Express + TypeScript scaffold in `apps/api`. It is written for local development and integration planning. Production integrations for social publishing, live analytics, Cloudflare R2, real-clip AI captioning, Pro AI auto editing, Firebase, Apple App Store, and Google Play still require real credentials and provider-level testing.
 
 ## Base URL
 
@@ -100,7 +100,7 @@ The backend reads `phone_number` from the verified Firebase ID token and treats 
 | Cloud scheduling | No | Yes | Yes |
 | Calendar for scheduled posts | No | Yes | Yes |
 | AI caption from real clip | No | Audio-only, 50 generations/month scaffolded | Audio + selected frames, 120 generations/month scaffolded |
-| AI auto editing with Groq Whisper | No | No | 200 minutes/month scaffolded |
+| AI auto editing with configured speech-to-text | No | No | 200 minutes/month scaffolded |
 | AI audio review as a separate feature | No | No | No |
 | Unified Analytics | No | No | Yes |
 | Hashtag radar and AI comment center | No | No | Yes |
@@ -115,7 +115,7 @@ Important rules:
 - Starter users can post immediately, schedule posts, use the calendar, and use
   real-clip AI captioning from audio after a selected clip.
 - Pro users unlock analytics, hashtag radar, AI comment center, team/editor
-  access, visual-frame AI captioning, and Groq Whisper auto editing scaffolds.
+  access, visual-frame AI captioning, and speech-to-text auto editing scaffolds.
 - Prompt-only caption generation may still exist in the API while the app
   transitions, but it should not be the main paid package promise.
 - Secret provider keys must stay on the backend, never inside the Flutter app.
@@ -679,9 +679,9 @@ Requires Starter or Pro.
   retries transient failures and falls back to a secondary model, then to the
   local template caption if it still fails, so a caption is always returned.
 - When no Gemini provider is configured, it falls back to the legacy path: the
-  configured `TRANSCRIPTION_PROVIDER` (e.g. Groq Whisper) transcribes the clip
+  configured `TRANSCRIPTION_PROVIDER` (for example Groq or ElevenLabs) transcribes the clip
   and a local template builds the caption.
-- Note: Groq Whisper is otherwise reserved for the auto-editing/subtitle flow
+- Note: live timestamp-capable transcription is otherwise reserved for the auto-editing/subtitle flow
   (which needs accurate timestamps); the caption path prefers Gemini.
 - Frame sampling itself (extracting `selectedFrameKeys` from the video) is done
   by the mobile app via FFmpeg, which uploads the frames as images before
@@ -818,6 +818,12 @@ returns them.
 Validated word timing is preferred for subtitle timing and silence-gap cuts,
 while segments remain the conservative fallback when timing coverage is partial
 or Groq returns Thai character-level tokens that are not readable subtitle words.
+Thai text is segmented by the bundled `thai-wordcut-js` dictionary before cue
+  grouping. A shared protected-compound list is applied to both provider
+  normalization and recipe generation, with `Intl.Segmenter` retained as the safe
+  fallback when the dictionary is unavailable. Exact regressions for repeated
+  Thai forms such as `ใหม่ๆ` and `ใกล้ๆ` are tested in both layers so timing
+  normalization and final cue generation cannot disagree.
 Whitespace-only/punctuation-only timing tokens are ignored, while invalid tokens
 that contain transcript text invalidate word-level timing and trigger fallback.
 
@@ -849,9 +855,12 @@ chosen style/prompt, and capability toggles such as `subtitle`, `silence`,
 
 This endpoint is Pro-gated and minute-metered like `/ai-edits/transcribe`: the
 client `durationSeconds` is a pre-check estimate, the backend transcribes the
-stored clip, then reserves the actual transcribed minutes before returning the
-recipe. It does **not** render video on the server; mobile still renders/export
-with FFmpeg.
+stored clip, validates the actual transcribed duration, builds the edit plan and
+recipe, then atomically reserves the actual minutes immediately before returning
+success. A transcription, planner, or recipe failure therefore does not consume
+the customer's quota. The final atomic reservation still prevents concurrent
+requests from pushing usage past the monthly limit. It does **not** render video
+on the server; mobile still renders/exports with FFmpeg.
 
 Current mobile clients split source audio into balanced chunks no longer than
 30 seconds. Every chunk is created through `POST /uploads` with `.m4a`,
@@ -917,6 +926,8 @@ Request:
     "watermark": false
   },
   "settings": {
+    "subtitleStyle": "large",
+    "subtitleWordsPerLine": 3,
     "silencePreset": "balanced",
     "fillerWords": ["เอ่อ", "อ่า", "แบบว่า", "คือว่า", "ประมาณว่า"],
     "ctaText": "กดตะกร้าเลย",
@@ -965,8 +976,37 @@ Current mobile builds convert `recipe.subtitles`, transcript metadata, and cut
 ranges into a local versioned `SubtitleProject` for Subtitle Studio. Editing,
 autosave, live preview, local preview render, reopen, and export reuse this
 prepare response; they require no additional API endpoint and consume no extra
-AI-edit minutes. The existing `recipe.subtitles.segments` response remains the
-compatibility contract while reliable active-word cue metadata is deferred.
+AI-edit minutes.
+
+Each current `recipe.subtitles.segments[]` object keeps its existing
+`text/start/end` fields and adds authoritative cue-level word timing:
+
+```json
+{
+  "text": "รีวิวสินค้าชิ้นนี้ดีมาก",
+  "start": 0,
+  "end": 2.4,
+  "words": [
+    { "word": "รีวิวสินค้า", "start": 0, "end": 1.1 },
+    { "word": "ชิ้นนี้ดีมาก", "start": 1.1, "end": 2.4 }
+  ]
+}
+```
+
+The API emits `words: []` when timing is unavailable or fails finite,
+positive-duration, ordering, cue-boundary, exact-text-reconstruction, or Thai
+fragment safety checks. Mobile treats that empty list as authoritative and
+uses a static cue. Older deployed servers may omit `words`; only that all-legacy
+shape may use the separately validated raw transcript-word fallback. A mixed
+old/new payload fails closed instead of guessing.
+When `settings.subtitleWordsPerLine` is present, Thai cue preparation treats it
+as a hard final limit even after short-cue merging. Current mobile values are
+  one word for karaoke, up to three words for large text, four for medium, and
+  five for small text. The Thai grouper may rebalance whole words across one
+  adjacent pair when that makes both cues at least 0.7 seconds without exceeding
+  the selected word cap, 18 graphemes, a 0.5-second gap, or the real word
+  timeline. If those constraints cannot all hold, the short cue is preserved
+  rather than stretched or overlapped.
 
 Production mobile enables only `subtitle`, `silence`, `filler`, and `color`,
 because those four have a real local renderer. The setup UI locks auto-reframe,
@@ -1624,9 +1664,12 @@ PostgreSQL.
 | `GEMINI_CAPTION_MODEL` | `gemini-2.5-flash-lite` | Gemini caption model |
 | `OPENAI_API_KEY` | `...` | Legacy OpenAI API key |
 | `OPENAI_CAPTION_MODEL` | `gpt-4o-mini` | Legacy OpenAI caption model |
-| `TRANSCRIPTION_PROVIDER` | `mock`, `openai`, `groq` | AI caption language detection and AI edit transcription provider |
+| `TRANSCRIPTION_PROVIDER` | `mock`, `openai`, `groq`, `elevenlabs` | AI caption language detection and AI edit transcription provider; one provider is called per request |
 | `GROQ_API_KEY` | `...` | Groq API key for AI caption detection and AI edit transcription |
 | `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3` | Groq transcription model |
+| `ELEVENLABS_API_KEY` | `...` | ElevenLabs Speech-to-Text API key; backend secret only |
+| `ELEVENLABS_TRANSCRIPTION_MODEL` | `scribe_v2` | ElevenLabs transcription model |
+| `ELEVENLABS_TRANSCRIPTION_KEYTERMS` | empty | Optional comma/newline-separated glossary for Scribe v2. The API normalizes, deduplicates, validates, and caps it at 100 entries; a non-empty list incurs the provider's keyterm surcharge. |
 | `WHISPER_MODEL` | `whisper-1` | Legacy OpenAI transcription model |
 | `EDIT_PLAN_PROVIDER` | `mock`, `openai`, `groq` | Brain for `POST /ai-edits/plan`; `mock` is rule-based, the others call an LLM and fall back to mock on failure |
 | `OPENAI_EDIT_PLAN_MODEL` | `gpt-4o-mini` | OpenAI chat model for edit planning |
@@ -1687,8 +1730,8 @@ The following work is still required before production launch:
 - Apply and verify the Prisma `RealClipCaptionUsage` migration in production
   before selling paid AI caption quotas.
 - Keep legacy AI review compatibility flags false while building real-clip AI
-  captioning and Pro Groq Whisper editing.
-- Design Pro AI auto editing jobs with Groq Whisper transcription, minute quotas,
+  captioning and Pro speech-to-text editing.
+- Design Pro AI auto editing jobs with configured transcription, minute quotas,
   top-up handling, mobile FFmpeg export, retries, and failure handling before
   implementation.
 - Complete Firebase Google Sign-In and Phone Auth device testing.

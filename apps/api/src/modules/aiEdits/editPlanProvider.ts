@@ -138,6 +138,17 @@ export const isReliableHighlightSegment = (
 ): boolean => isReliableTranscriptSegment(segment);
 
 const weakThaiOpeningPrefixes = [
+  'อาฮะ',
+  'อ่าฮะ',
+  'อืม',
+  'เอ่อ',
+  'เออ',
+  'นะครับ',
+  'นะคะ',
+  'น่ะครับ',
+  'น่ะคะ',
+  'ครับ',
+  'ค่ะ',
   'แต่',
   'แล้ว',
   'โดย',
@@ -150,7 +161,7 @@ const weakThaiOpeningPrefixes = [
 
 /**
  * Detects short-clips that would begin like a continuation of an earlier
- * sentence. This is a soft signal only; a genuinely strong hook can still win.
+ * sentence. A complete opening is preferred whenever one is available.
  */
 export const hasWeakThaiOpening = (text: string): boolean => {
   const normalized = text
@@ -284,10 +295,35 @@ export const buildCoherentHighlightCuts = ({
     durationSeconds,
     targetDurationSeconds
   );
+  const candidates = starts.map((start) => {
+    const end = start + targetDurationSeconds;
+    const openingSegment = reliableSegments.find(
+      (segment) => segment.end > start + 0.001 && segment.start < end - 0.001
+    );
+    const startsInsideSegment = Boolean(
+      openingSegment &&
+      start > openingSegment.start + 0.15 &&
+      start < openingSegment.end - 0.15
+    );
+    return {
+      start,
+      openingSegment,
+      hasWeakOpening:
+        startsInsideSegment ||
+        Boolean(openingSegment && hasWeakThaiOpening(openingSegment.text))
+    };
+  });
+  const hasCompleteOpening = candidates.some(
+    (candidate) => !candidate.hasWeakOpening
+  );
+  const eligibleCandidates = hasCompleteOpening
+    ? candidates.filter((candidate) => !candidate.hasWeakOpening)
+    : candidates;
 
-  let bestStart = starts[0] ?? 0;
+  let bestStart = eligibleCandidates[0]?.start ?? 0;
   let bestScore = Number.NEGATIVE_INFINITY;
-  for (const start of starts) {
+  for (const candidate of eligibleCandidates) {
+    const { start, openingSegment } = candidate;
     const end = start + targetDurationSeconds;
     const suggestedCoverage = suggestedKeeps.reduce(
       (total, range) => total + overlapSeconds(start, end, range),
@@ -313,11 +349,8 @@ export const buildCoherentHighlightCuts = ({
         overlap * scoreHighlightSegment(segment, index, reliableSegments.length)
       );
     }, 0);
-    const openingSegment = reliableSegments.find(
-      (segment) => segment.end > start + 0.001 && segment.start < end - 0.001
-    );
     const openingPenalty =
-      openingSegment && hasWeakThaiOpening(openingSegment.text)
+      candidate.hasWeakOpening
         ? Math.max(0, weakOpeningPenalty)
         : 0;
     const score =

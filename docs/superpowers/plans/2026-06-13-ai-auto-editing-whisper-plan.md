@@ -11,6 +11,13 @@
 > `AI_TRANSCRIPTION_PROVIDER_FAILED` before quota reservation when transcription
 > is unavailable. Mobile shows a Thai retry message instead of `Request failed`.
 >
+> 2026-07-27 quota-finalization update: `/ai-edits/prepare` checks the actual
+> transcribed minutes, then reserves them only after the edit plan and recipe
+> succeed. Planner/recipe failures no longer consume quota; an in-session render
+> retry continues to reuse the successful cached recipe without another metered
+> request. Durable replay after a lost response or app restart remains part of
+> the planned persistent AI job/session work.
+>
 > 2026-07-22 target-length update: the customer flow no longer preselects 30
 > seconds. The seller must choose 30/60/custom before processing, and the
 > selected value is sent as `targetDurationSeconds` for AI highlight planning.
@@ -143,11 +150,17 @@ The first implementation direction is **Approach 1: Hybrid low-cost architecture
 The first verified mobile subtitle editor supports:
 
 - short, medium, or long text grouping per subtitle range
+- a hard one-line cap of 3 words for large text, 4 for medium, 5 for small,
+  and 1 for karaoke, preserved after short-cue merging; mobile keeps the
+  server-produced Thai boundaries instead of merging them again by character
+  count
 - readable spacing for Latin product names and numbers inside Thai subtitles
 - three text sizes
 - white text with a black outline
 - top or bottom positioning
 - preview subtitles over the video before burn-in
+- measure every burned cue against 85% of the scaled frame width and reduce
+  font size only when the word-boundary split is still too wide
 
 Keep these controls planned until their exported-video behavior exists and is
 verified: custom font/color, outline/background selection, true word-highlight

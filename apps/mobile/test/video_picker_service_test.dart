@@ -48,13 +48,106 @@ void main() {
     expect(pickedVideo?.durationSeconds, 150.5);
   });
 
+  test('retries a transient metadata exception once', () async {
+    final videoFile = File('test/uploader_screen_test.dart').absolute;
+    var metadataCalls = 0;
+    final picker = GalleryVideoPicker(
+      imagePicker: _FakeImagePicker(
+        XFile(videoFile.path, name: 'retry-demo.mp4'),
+      ),
+      readVideoDimensions: (_) async {
+        metadataCalls += 1;
+        if (metadataCalls == 1) {
+          throw const VideoMetadataException();
+        }
+        return const VideoDimensions(
+          width: 1080,
+          height: 1920,
+          durationSeconds: 150.5,
+        );
+      },
+      metadataRetryDelay: Duration.zero,
+    );
+
+    final pickedVideo = await picker.pickVideo();
+
+    expect(metadataCalls, 2);
+    expect(pickedVideo?.width, 1080);
+    expect(pickedVideo?.height, 1920);
+    expect(pickedVideo?.durationSeconds, 150.5);
+  });
+
+  test('retries missing metadata once', () async {
+    final videoFile = File('test/uploader_screen_test.dart').absolute;
+    var metadataCalls = 0;
+    final picker = GalleryVideoPicker(
+      imagePicker: _FakeImagePicker(
+        XFile(videoFile.path, name: 'retry-null-demo.mp4'),
+      ),
+      readVideoDimensions: (_) async {
+        metadataCalls += 1;
+        if (metadataCalls == 1) {
+          return null;
+        }
+        return const VideoDimensions(
+          width: 1080,
+          height: 1920,
+          durationSeconds: 150.5,
+        );
+      },
+      metadataRetryDelay: Duration.zero,
+    );
+
+    final pickedVideo = await picker.pickVideo();
+
+    expect(metadataCalls, 2);
+    expect(pickedVideo?.durationSeconds, 150.5);
+  });
+
+  test('retries metadata when the duration is missing', () async {
+    final videoFile = File('test/uploader_screen_test.dart').absolute;
+    var metadataCalls = 0;
+    final picker = GalleryVideoPicker(
+      imagePicker: _FakeImagePicker(
+        XFile(videoFile.path, name: 'retry-duration-demo.mp4'),
+      ),
+      readVideoDimensions: (_) async {
+        metadataCalls += 1;
+        if (metadataCalls == 1) {
+          return const VideoDimensions(
+            width: 1080,
+            height: 1920,
+          );
+        }
+        return const VideoDimensions(
+          width: 1080,
+          height: 1920,
+          durationSeconds: 150.5,
+        );
+      },
+      metadataRetryDelay: Duration.zero,
+    );
+
+    final pickedVideo = await picker.pickVideo();
+
+    expect(metadataCalls, 2);
+    expect(pickedVideo?.width, 1080);
+    expect(pickedVideo?.height, 1920);
+    expect(pickedVideo?.durationSeconds, 150.5);
+  });
+
   test('still returns the picked video when metadata reading fails', () async {
     final videoFile = File('test/uploader_screen_test.dart').absolute;
+    var metadataCalls = 0;
     final picker = GalleryVideoPicker(
       imagePicker: _FakeImagePicker(
         XFile(videoFile.path, name: 'unknown-demo.mp4'),
       ),
-      readVideoDimensions: (_) async => throw const VideoMetadataException(),
+      readVideoDimensions: (_) async {
+        metadataCalls += 1;
+        throw const VideoMetadataException();
+      },
+      metadataRetryDelay: Duration.zero,
     );
 
     final pickedVideo = await picker.pickVideo();
@@ -66,5 +159,6 @@ void main() {
     expect(pickedVideo?.width, isNull);
     expect(pickedVideo?.height, isNull);
     expect(pickedVideo?.durationSeconds, isNull);
+    expect(metadataCalls, 2);
   });
 }

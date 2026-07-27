@@ -7,7 +7,35 @@ import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_proj
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_studio_screen.dart';
 
 void main() {
-  testWidgets('edits text and allows Prompt to override the Anuphan default',
+  test('stops only an explicit cue replay at its end', () {
+    expect(
+      shouldStopSubtitleCueReplay(
+        replayEndMs: null,
+        isPlaying: true,
+        sourcePositionMs: 2500,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldStopSubtitleCueReplay(
+        replayEndMs: 2000,
+        isPlaying: true,
+        sourcePositionMs: 1999,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldStopSubtitleCueReplay(
+        replayEndMs: 2000,
+        isPlaying: true,
+        sourcePositionMs: 2000,
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets(
+      'edits text and allows Prompt to override the Bai Jamjuree default',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -63,6 +91,22 @@ void main() {
     final tabBarRect = tester.getRect(find.byType(TabBar));
     await tester.tapAt(Offset(tabBarRect.right - 70, tabBarRect.center.dy));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('subtitle-font-bai-jamjuree')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('subtitle-style-section-typeface')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('subtitle-style-section-colors')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('subtitle-style-section-effects')),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey('subtitle-font-prompt')));
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('subtitle-position-middle')),
@@ -70,13 +114,43 @@ void main() {
       scrollable: find.byType(Scrollable).last,
     );
     await tester.tap(find.byKey(const ValueKey('subtitle-position-middle')));
+    await tester.tap(
+      find.byKey(const ValueKey('subtitle-style-section-colors')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('subtitle-color-active-ff6b6b')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('subtitle-color-active-ff6b6b')),
+    );
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('subtitle-lines-one')),
-      220,
+      find.byKey(const ValueKey('subtitle-color-shadow-052e21')),
+      180,
       scrollable: find.byType(Scrollable).last,
     );
-    expect(find.byKey(const ValueKey('subtitle-lines-two')), findsNothing);
-    expect(find.byKey(const ValueKey('subtitle-lines-one')), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('subtitle-color-shadow-052e21')),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('subtitle-style-section-effects')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('subtitle-effect-none')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('subtitle-effect-pop')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('subtitle-effect-fade')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('subtitle-effect-fade')));
     await tester.pump();
 
     await tester.tap(find.byKey(const ValueKey('subtitle-finish')));
@@ -85,7 +159,42 @@ void main() {
     expect(result?.cues.single.text, 'แก้แล้วเห็นทันที');
     expect(result?.defaultStyle.fontId, 'Prompt');
     expect(result?.defaultStyle.alignment, SubtitleAlignment.middle);
+    expect(result?.defaultStyle.activeWordColor, '#FF6B6B');
+    expect(result?.defaultStyle.shadowColor, '#052E21');
+    expect(result?.defaultStyle.animation, 'fade');
     expect(store.saved?.toJson(), result?.toJson());
+  });
+
+  testWidgets('passes word timing into the live subtitle preview',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final file = File(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}'
+      'studio-word-preview.mp4',
+    )..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SubtitleStudioScreen(
+          sourceFile: file,
+          initialProject: _wordTimedProject(),
+          draftStore: _MemoryDraftStore(),
+          videoPreviewBuilder: (_, __) => const ColoredBox(color: Colors.black),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('subtitle-preview-active-words')),
+      findsOneWidget,
+    );
   });
 }
 
@@ -103,7 +212,7 @@ class _MemoryDraftStore implements SubtitleDraftStore {
 }
 
 SubtitleProject _project() => SubtitleProject(
-      schemaVersion: 1,
+      schemaVersion: 3,
       projectId: 'screen-project',
       sourceFingerprint: 'screen-source',
       sourceDurationMs: 5000,
@@ -115,6 +224,43 @@ SubtitleProject _project() => SubtitleProject(
           sourceEndMs: 2000,
           text: 'สวัสดีค่ะ',
           timingMode: SubtitleTimingMode.segment,
+        ),
+      ],
+      defaultStyle: SubtitleStyle.defaults,
+      cutRanges: const [],
+      revision: 0,
+      createdAt: DateTime.utc(2026, 7, 22),
+      updatedAt: DateTime.utc(2026, 7, 22),
+    );
+
+SubtitleProject _wordTimedProject() => SubtitleProject(
+      schemaVersion: 3,
+      projectId: 'word-preview-project',
+      sourceFingerprint: 'word-preview-source',
+      sourceDurationMs: 5000,
+      language: 'en',
+      cues: [
+        SubtitleCue(
+          cueId: 'cue-word-1',
+          sourceStartMs: 0,
+          sourceEndMs: 2000,
+          text: 'one two',
+          words: const [
+            SubtitleWord(
+              wordId: 'word-1',
+              text: 'one',
+              sourceStartMs: 0,
+              sourceEndMs: 900,
+              separatorAfter: ' ',
+            ),
+            SubtitleWord(
+              wordId: 'word-2',
+              text: 'two',
+              sourceStartMs: 900,
+              sourceEndMs: 2000,
+            ),
+          ],
+          timingMode: SubtitleTimingMode.word,
         ),
       ],
       defaultStyle: SubtitleStyle.defaults,

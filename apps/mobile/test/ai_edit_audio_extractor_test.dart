@@ -136,10 +136,222 @@ void main() {
     );
   });
 
-  test('rejects a clip without audio before running FFmpeg', () async {
+  test('retries a transient source audio inspection once', () async {
+    var sourceProbeCalls = 0;
+    var runnerCalls = 0;
+    final extractor = AiEditAudioExtractor(
+      hasAudioStream: (candidate) async {
+        if (candidate.path == source.path) {
+          sourceProbeCalls += 1;
+          if (sourceProbeCalls == 1) {
+            throw StateError('transient FFprobe failure');
+          }
+        }
+        return true;
+      },
+      probeDuration: (_) async => 12,
+      runFfmpeg: (arguments) async {
+        runnerCalls += 1;
+        final outputPath = arguments.last.replaceFirst('%03d', '000');
+        await File(outputPath).writeAsBytes([4, 5, 6]);
+        return true;
+      },
+      createWorkingDirectory: createWorkingDirectory,
+      probeRetryDelay: Duration.zero,
+    );
+
+    final artifact = await extractor.extractChunks(source);
+
+    expect(sourceProbeCalls, 2);
+    expect(runnerCalls, 1);
+    expect(artifact.chunks, hasLength(1));
+    await artifact.cleanup();
+  });
+
+  test('retries an invalid duration once before continuing', () async {
+    var durationProbeCalls = 0;
+    List<String>? capturedArguments;
+    final extractor = AiEditAudioExtractor(
+      hasAudioStream: (_) async => true,
+      probeDuration: (_) async {
+        durationProbeCalls += 1;
+        return durationProbeCalls == 1 ? null : 12;
+      },
+      runFfmpeg: (arguments) async {
+        capturedArguments = arguments;
+        final outputPath = arguments.last.replaceFirst('%03d', '000');
+        await File(outputPath).writeAsBytes([4, 5, 6]);
+        return true;
+      },
+      createWorkingDirectory: createWorkingDirectory,
+      probeRetryDelay: Duration.zero,
+    );
+
+    final artifact = await extractor.extractChunks(source);
+
+    expect(durationProbeCalls, 2);
+    expect(
+      capturedArguments,
+      containsAllInOrder(['-segment_time', '13.000']),
+    );
+    await artifact.cleanup();
+  });
+
+  test('retries a duration exception once before continuing', () async {
+    var durationProbeCalls = 0;
+    final extractor = AiEditAudioExtractor(
+      hasAudioStream: (_) async => true,
+      probeDuration: (_) async {
+        durationProbeCalls += 1;
+        if (durationProbeCalls == 1) {
+          throw StateError('transient duration failure');
+        }
+        return 12;
+      },
+      runFfmpeg: (arguments) async {
+        final outputPath = arguments.last.replaceFirst('%03d', '000');
+        await File(outputPath).writeAsBytes([4, 5, 6]);
+        return true;
+      },
+      createWorkingDirectory: createWorkingDirectory,
+      probeRetryDelay: Duration.zero,
+    );
+
+    final artifact = await extractor.extractChunks(source);
+
+    expect(durationProbeCalls, 2);
+    await artifact.cleanup();
+  });
+
+  test('uses a valid known duration without probing it again', () async {
+    var durationProbeCalls = 0;
+    List<String>? capturedArguments;
+    final extractor = AiEditAudioExtractor(
+      hasAudioStream: (_) async => true,
+      probeDuration: (_) async {
+        durationProbeCalls += 1;
+        throw StateError('duration probe should not run');
+      },
+      runFfmpeg: (arguments) async {
+        capturedArguments = arguments;
+        final outputPath = arguments.last.replaceFirst('%03d', '000');
+        await File(outputPath).writeAsBytes([4, 5, 6]);
+        return true;
+      },
+      createWorkingDirectory: createWorkingDirectory,
+      probeRetryDelay: Duration.zero,
+    );
+
+    final artifact = await extractor.extractChunks(
+      source,
+      knownDurationSeconds: 12,
+    );
+
+    expect(durationProbeCalls, 0);
+    expect(
+      capturedArguments,
+      containsAllInOrder(['-segment_time', '13.000']),
+    );
+    await artifact.cleanup();
+  });
+
+  test('falls back to probing when a known duration is invalid', () async {
+    var durationProbeCalls = 0;
+    final extractor = AiEditAudioExtractor(
+      hasAudioStream: (_) async => true,
+      probeDuration: (_) async {
+        durationProbeCalls += 1;
+        return 12;
+      },
+      runFfmpeg: (arguments) async {
+        final outputPath = arguments.last.replaceFirst('%03d', '000');
+        await File(outputPath).writeAsBytes([4, 5, 6]);
+        return true;
+      },
+      createWorkingDirectory: createWorkingDirectory,
+      probeRetryDelay: Duration.zero,
+    );
+
+    final artifact = await extractor.extractChunks(
+      source,
+      knownDurationSeconds: double.nan,
+    );
+
+    expect(durationProbeCalls, 1);
+    await artifact.cleanup();
+  });
+
+  test('reports inspection failure after one audio probe retry', () async {
+    var sourceProbeCalls = 0;
     var runnerCalled = false;
     final extractor = AiEditAudioExtractor(
-      hasAudioStream: (_) async => false,
+      hasAudioStream: (_) async {
+        sourceProbeCalls += 1;
+        throw StateError('persistent FFprobe failure');
+      },
+      runFfmpeg: (_) async {
+        runnerCalled = true;
+        return true;
+      },
+      createWorkingDirectory: createWorkingDirectory,
+      probeRetryDelay: Duration.zero,
+    );
+
+    await expectLater(
+      extractor.extractChunks(source),
+      throwsA(
+        isA<AiEditAudioExtractionException>().having(
+          (error) => error.failure,
+          'failure',
+          AiEditAudioExtractionFailure.inspectionFailed,
+        ),
+      ),
+    );
+
+    expect(sourceProbeCalls, 2);
+    expect(runnerCalled, isFalse);
+  });
+
+  test('reports inspection failure after one duration probe retry', () async {
+    var durationProbeCalls = 0;
+    var runnerCalled = false;
+    final extractor = AiEditAudioExtractor(
+      hasAudioStream: (_) async => true,
+      probeDuration: (_) async {
+        durationProbeCalls += 1;
+        return null;
+      },
+      runFfmpeg: (_) async {
+        runnerCalled = true;
+        return true;
+      },
+      createWorkingDirectory: createWorkingDirectory,
+      probeRetryDelay: Duration.zero,
+    );
+
+    await expectLater(
+      extractor.extractChunks(source),
+      throwsA(
+        isA<AiEditAudioExtractionException>().having(
+          (error) => error.failure,
+          'failure',
+          AiEditAudioExtractionFailure.inspectionFailed,
+        ),
+      ),
+    );
+
+    expect(durationProbeCalls, 2);
+    expect(runnerCalled, isFalse);
+  });
+
+  test('rejects a clip without audio before running FFmpeg', () async {
+    var runnerCalled = false;
+    var probeCalls = 0;
+    final extractor = AiEditAudioExtractor(
+      hasAudioStream: (_) async {
+        probeCalls += 1;
+        return false;
+      },
       runFfmpeg: (_) async {
         runnerCalled = true;
         return true;
@@ -157,6 +369,7 @@ void main() {
         ),
       ),
     );
+    expect(probeCalls, 1);
     expect(runnerCalled, isFalse);
   });
 

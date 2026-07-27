@@ -5,6 +5,37 @@ import 'package:postdee_mobile/features/ai_editing/style_options.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 
 void main() {
+  test('caps subtitle words by the selected font size', () {
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'large',
+        subtitleWords: 'full',
+      ),
+      3,
+    );
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'medium',
+        subtitleWords: 'full',
+      ),
+      4,
+    );
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'small',
+        subtitleWords: 'full',
+      ),
+      5,
+    );
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'small',
+        subtitleWords: 'karaoke',
+      ),
+      1,
+    );
+  });
+
   test('target length adds a tail cut to fit', () {
     final cuts = withTargetLength(const [], 10, 4);
 
@@ -55,6 +86,34 @@ void main() {
           (cut) => cut.start < selectedMoment && selectedMoment < cut.end,
         ),
         isFalse,
+      );
+    }
+  });
+
+  test('keeps preset and slider target lengths exact', () {
+    const sourceDuration = 150.641;
+    const cuts = [
+      SilenceCutRange(start: 0, end: 8),
+      SilenceCutRange(start: 24, end: 39),
+      SilenceCutRange(start: 75, end: 112),
+      SilenceCutRange(start: 140, end: sourceDuration),
+    ];
+
+    for (final targetSeconds in [19.0, 30.0, 60.0]) {
+      final adjusted = withTargetLength(
+        cuts,
+        sourceDuration,
+        targetSeconds,
+      );
+      final resultSeconds = estimateResultSeconds(
+        durationSeconds: sourceDuration,
+        cutRanges: adjusted,
+      );
+
+      expect(
+        resultSeconds,
+        closeTo(targetSeconds, 0.001),
+        reason: 'target $targetSeconds seconds must be preserved',
       );
     }
   });
@@ -151,6 +210,47 @@ void main() {
     expect(out.map((segment) => segment.text).join(), thaiCue);
     expect(out.first.start, 87.84);
     expect(out.last.end, 89.077);
+  });
+
+  test('does not merge short Thai cues beyond the single-line limit', () {
+    final out = rechunkSubtitleByMaxChars(
+      const [
+        SubtitleSegment(text: 'ก็มีร้านอยู่', start: 0, end: 0.6),
+        SubtitleSegment(text: 'ที่แถวสยามเพราะ', start: 0.6, end: 2.2),
+      ],
+      18,
+    );
+
+    expect(out, hasLength(2));
+    expect(out[0].text, 'ก็มีร้านอยู่');
+    expect(out[1].text, 'ที่แถวสยามเพราะ');
+  });
+
+  test('preserves Thai cue boundaries already enforced by the server', () {
+    const source = [
+      SubtitleSegment(text: 'ค่อยได้ใช้', start: 0, end: 0.35),
+      SubtitleSegment(text: 'เนื่องจากรถติด', start: 0.35, end: 1.2),
+    ];
+
+    final out = prepareSubtitleSegmentsForLocalRender(
+      source,
+      language: 'th',
+      maximumCharacters: 18,
+    );
+
+    expect(out, source);
+  });
+
+  test('still rechunks non-Thai subtitles for the local renderer', () {
+    final out = prepareSubtitleSegmentsForLocalRender(
+      const [
+        SubtitleSegment(text: 'aaaa bbbb', start: 0, end: 10),
+      ],
+      language: 'en',
+      maximumCharacters: 4,
+    );
+
+    expect(out.map((segment) => segment.text), ['aaaa', 'bbbb']);
   });
 
   test('merges a subtitle fragment that is too short to read', () {

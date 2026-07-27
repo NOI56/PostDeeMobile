@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
+import 'package:flutter/foundation.dart';
 
 import 'video_duration_probe.dart';
 
@@ -12,6 +13,8 @@ typedef AiEditAudioStreamProbe = Future<bool> Function(File source);
 typedef AiEditWorkingDirectoryFactory = Future<Directory> Function();
 
 const aiEditAudioChunkSeconds = 30.0;
+const _aiEditAudioProbeAttempts = 2;
+const _defaultAiEditAudioProbeRetryDelay = Duration(milliseconds: 200);
 
 double balancedAiEditAudioChunkSeconds(double durationSeconds) {
   if (!durationSeconds.isFinite || durationSeconds <= 0) {
@@ -124,17 +127,20 @@ class AiEditAudioExtractor {
     AiEditAudioStreamProbe? hasAudioStream,
     VideoDurationProbe? probeDuration,
     AiEditWorkingDirectoryFactory? createWorkingDirectory,
+    Duration probeRetryDelay = _defaultAiEditAudioProbeRetryDelay,
   })  : _runFfmpeg = runFfmpeg ?? _runNativeFfmpeg,
         _hasAudioStream = hasAudioStream ?? _probeNativeAudioStream,
         _probeDuration =
             probeDuration ?? const FfprobeVideoDurationProbe().call,
         _createWorkingDirectory =
-            createWorkingDirectory ?? _createSystemWorkingDirectory;
+            createWorkingDirectory ?? _createSystemWorkingDirectory,
+        _probeRetryDelay = probeRetryDelay;
 
   final AiEditFfmpegRunner _runFfmpeg;
   final AiEditAudioStreamProbe _hasAudioStream;
   final VideoDurationProbe _probeDuration;
   final AiEditWorkingDirectoryFactory _createWorkingDirectory;
+  final Duration _probeRetryDelay;
 
   Future<AiEditAudioArtifact> extract(File source) async {
     if (!await source.exists()) {
@@ -205,7 +211,10 @@ class AiEditAudioExtractor {
     }
   }
 
-  Future<AiEditAudioChunksArtifact> extractChunks(File source) async {
+  Future<AiEditAudioChunksArtifact> extractChunks(
+    File source, {
+    double? knownDurationSeconds,
+  }) async {
     if (!await source.exists()) {
       throw const AiEditAudioExtractionException(
         AiEditAudioExtractionFailure.sourceMissing,
@@ -218,7 +227,9 @@ class AiEditAudioExtractor {
       );
     }
 
-    final durationSeconds = await _readDurationSafely(source);
+    final durationSeconds = _isUsableDuration(knownDurationSeconds)
+        ? knownDurationSeconds!
+        : await _readDurationSafely(source);
     final chunkSeconds = balancedAiEditAudioChunkSeconds(durationSeconds);
     final segmentTimes = balancedAiEditAudioSegmentTimes(durationSeconds);
     final expectedChunkCount = segmentTimes.length + 1;
@@ -308,32 +319,58 @@ class AiEditAudioExtractor {
   }
 
   Future<bool> _readAudioStreamSafely(File source) async {
-    try {
-      return await _hasAudioStream(source);
-    } catch (_) {
-      throw const AiEditAudioExtractionException(
-        AiEditAudioExtractionFailure.inspectionFailed,
-      );
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (var attempt = 1; attempt <= _aiEditAudioProbeAttempts; attempt += 1) {
+      try {
+        return await _hasAudioStream(source);
+      } catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
+        if (attempt < _aiEditAudioProbeAttempts) {
+          _logProbeRetry('audio stream', error);
+          await _waitBeforeProbeRetry();
+        }
+      }
     }
+
+    _logFinalProbeFailure('audio stream', lastError, lastStackTrace);
+    throw const AiEditAudioExtractionException(
+      AiEditAudioExtractionFailure.inspectionFailed,
+    );
   }
 
   Future<double> _readDurationSafely(File source) async {
-    try {
-      final durationSeconds = await _probeDuration(source);
-      if (durationSeconds == null ||
-          !durationSeconds.isFinite ||
-          durationSeconds <= 0) {
-        throw const AiEditAudioExtractionException(
-          AiEditAudioExtractionFailure.inspectionFailed,
-        );
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (var attempt = 1; attempt <= _aiEditAudioProbeAttempts; attempt += 1) {
+      try {
+        final durationSeconds = await _probeDuration(source);
+        if (_isUsableDuration(durationSeconds)) {
+          return durationSeconds!;
+        }
+        lastError = StateError('FFprobe returned no valid duration');
+        lastStackTrace = null;
+      } catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
       }
-      return durationSeconds;
-    } on AiEditAudioExtractionException {
-      rethrow;
-    } catch (_) {
-      throw const AiEditAudioExtractionException(
-        AiEditAudioExtractionFailure.inspectionFailed,
-      );
+
+      if (attempt < _aiEditAudioProbeAttempts) {
+        _logProbeRetry('duration', lastError);
+        await _waitBeforeProbeRetry();
+      }
+    }
+
+    _logFinalProbeFailure('duration', lastError, lastStackTrace);
+    throw const AiEditAudioExtractionException(
+      AiEditAudioExtractionFailure.inspectionFailed,
+    );
+  }
+
+  Future<void> _waitBeforeProbeRetry() async {
+    if (_probeRetryDelay != Duration.zero) {
+      await Future<void>.delayed(_probeRetryDelay);
     }
   }
 }
@@ -347,7 +384,11 @@ Future<bool> _probeNativeAudioStream(File source) async {
   final session = await FFprobeKit.getMediaInformation(source.path);
   final mediaInformation = session.getMediaInformation();
   if (mediaInformation == null) {
-    return false;
+    final returnCode = await session.getReturnCode();
+    throw StateError(
+      'FFprobe returned no media information '
+      '(return code: ${returnCode?.getValue() ?? 'unknown'})',
+    );
   }
 
   return mediaInformation.getStreams().any(
@@ -357,6 +398,41 @@ Future<bool> _probeNativeAudioStream(File source) async {
 
 Future<Directory> _createSystemWorkingDirectory() =>
     Directory.systemTemp.createTemp('postdee-ai-edit-audio-');
+
+bool _isUsableDuration(double? durationSeconds) =>
+    durationSeconds != null && durationSeconds.isFinite && durationSeconds > 0;
+
+void _logProbeRetry(String probe, Object? error) {
+  if (kDebugMode) {
+    debugPrint(
+      'AI edit $probe probe failed; retrying once: '
+      '${error.runtimeType}: $error',
+    );
+  } else {
+    debugPrint('AI edit $probe probe failed; retrying once');
+  }
+}
+
+void _logFinalProbeFailure(
+  String probe,
+  Object? error,
+  StackTrace? stackTrace,
+) {
+  if (kDebugMode) {
+    debugPrint(
+      'AI edit $probe probe failed after $_aiEditAudioProbeAttempts attempts: '
+      '${error.runtimeType}: $error',
+    );
+    if (stackTrace != null) {
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  } else {
+    debugPrint(
+      'AI edit $probe probe failed after '
+      '$_aiEditAudioProbeAttempts attempts',
+    );
+  }
+}
 
 Future<void> _deleteWorkingDirectoryBestEffort(Directory? directory) async {
   if (directory == null) {

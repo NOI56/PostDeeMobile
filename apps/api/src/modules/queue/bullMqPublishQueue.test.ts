@@ -18,8 +18,11 @@ describe('createBullMqPublishQueueFromClient', () => {
 
     const job = await queue.enqueue({
       id: 'post-1',
+      userId: 'seller-cover',
       caption: 'Publish now',
       videoS3Key: 'uploads/video.mp4',
+      coverImageS3Key: 'uploads/cover.jpg',
+      coverFrameTimeMs: 2_000,
       platforms: ['FACEBOOK_REELS'],
       status: 'QUEUED',
       createdAt: '2026-06-01T00:00:00.000Z'
@@ -29,6 +32,9 @@ describe('createBullMqPublishQueueFromClient', () => {
       'publish-post',
       expect.objectContaining({
         postId: 'post-1',
+        userId: 'seller-cover',
+        coverImageS3Key: 'uploads/cover.jpg',
+        coverFrameTimeMs: 2_000,
         platforms: ['FACEBOOK_REELS'],
         runAt: expect.any(String),
         status: 'READY'
@@ -48,6 +54,9 @@ describe('createBullMqPublishQueueFromClient', () => {
       id: 'bull-job-1',
       queueName: 'publish-posts',
       postId: 'post-1',
+      userId: 'seller-cover',
+      coverImageS3Key: 'uploads/cover.jpg',
+      coverFrameTimeMs: 2_000,
       platforms: ['FACEBOOK_REELS'],
       status: 'READY'
     });
@@ -166,6 +175,8 @@ describe('createBullMqPublishQueueFromClient', () => {
       userId: 'seller-rescheduled',
       caption: 'Updated time',
       videoS3Key: 'uploads/rescheduled.mp4',
+      coverImageS3Key: 'uploads/rescheduled-cover.jpg',
+      coverFrameTimeMs: 3_000,
       platforms: ['INSTAGRAM_REELS'],
       scheduledAt: '2026-06-01T02:00:00.000Z',
       status: 'QUEUED',
@@ -181,6 +192,8 @@ describe('createBullMqPublishQueueFromClient', () => {
       expect.objectContaining({
         postId: 'post-rescheduled',
         userId: 'seller-rescheduled',
+        coverImageS3Key: 'uploads/rescheduled-cover.jpg',
+        coverFrameTimeMs: 3_000,
         runAt: '2026-06-01T02:00:00.000Z',
         status: 'SCHEDULED'
       }),

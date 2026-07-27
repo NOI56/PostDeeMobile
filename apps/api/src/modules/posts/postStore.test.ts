@@ -3,6 +3,25 @@ import { describe, expect, it } from 'vitest';
 import { createPostStore } from './postStore.js';
 
 describe('createPostStore', () => {
+  it('keeps optional cover metadata with a queued post', async () => {
+    const store = createPostStore();
+
+    const post = await store.create({
+      userId: 'seller-cover',
+      caption: 'Post with a cover',
+      videoS3Key: 'uploads/seller-cover/video/clip.mp4',
+      coverImageS3Key: 'uploads/seller-cover/cover/cover.jpg',
+      coverFrameTimeMs: 2_500,
+      platforms: ['INSTAGRAM_REELS']
+    });
+
+    expect(post).toMatchObject({
+      coverImageS3Key: 'uploads/seller-cover/cover/cover.jpg',
+      coverFrameTimeMs: 2_500
+    });
+    await expect(store.list({ userId: 'seller-cover' })).resolves.toEqual([post]);
+  });
+
   it('claims a queued post for publish only once', async () => {
     const store = createPostStore();
     const post = await store.create({

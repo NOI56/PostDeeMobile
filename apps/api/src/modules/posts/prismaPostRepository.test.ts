@@ -99,6 +99,8 @@ describe('createPrismaPostRepository', () => {
           userId: 'seller-1',
           caption: 'Stored caption',
           videoS3Key: 'uploads/video.mp4',
+          coverImageS3Key: 'uploads/cover.jpg',
+          coverFrameTimeMs: 1_750,
           selectedPlatforms: ['INSTAGRAM_REELS'],
           scheduledAt,
           status: 'QUEUED',
@@ -113,6 +115,8 @@ describe('createPrismaPostRepository', () => {
         userId: 'seller-1',
         caption: 'Stored caption',
         videoS3Key: 'uploads/video.mp4',
+        coverImageS3Key: 'uploads/cover.jpg',
+        coverFrameTimeMs: 1_750,
         platforms: ['INSTAGRAM_REELS'],
         scheduledAt: '2026-06-02T10:00:00.000Z'
       })
@@ -120,6 +124,8 @@ describe('createPrismaPostRepository', () => {
       id: 'post-1',
       userId: 'seller-1',
       platforms: ['INSTAGRAM_REELS'],
+      coverImageS3Key: 'uploads/cover.jpg',
+      coverFrameTimeMs: 1_750,
       scheduledAt: '2026-06-02T10:00:00.000Z',
       status: 'QUEUED'
     });
@@ -128,6 +134,8 @@ describe('createPrismaPostRepository', () => {
         userId: 'seller-1',
         caption: 'Stored caption',
         videoS3Key: 'uploads/video.mp4',
+        coverImageS3Key: 'uploads/cover.jpg',
+        coverFrameTimeMs: 1_750,
         selectedPlatforms: ['INSTAGRAM_REELS'],
         scheduledAt,
         status: 'QUEUED'

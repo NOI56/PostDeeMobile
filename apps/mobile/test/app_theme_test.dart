@@ -60,4 +60,40 @@ void main() {
     );
     expect(File('assets/fonts/anuphan/Anuphan-Bold.ttf').existsSync(), isTrue);
   });
+
+  test('bundles the Thai mark-safe subtitle fonts and licenses', () {
+    final manifest = File('pubspec.yaml').readAsStringSync();
+
+    expect(manifest, contains('family: Bai Jamjuree'));
+    expect(manifest, contains('family: PostDee Subtitle Thai'));
+    expect(manifest, contains('family: PostDee Subtitle Anuphan'));
+    expect(manifest, contains('family: PostDee Subtitle Prompt'));
+    expect(
+      File('assets/fonts/baijamjuree/BaiJamjuree-Bold.ttf').existsSync(),
+      isTrue,
+    );
+    expect(File('assets/fonts/baijamjuree/OFL.txt').existsSync(), isTrue);
+    expect(
+      File(
+        'assets/fonts/postdee_subtitle/'
+        'PostDeeSubtitleAnuphan-Regular.ttf',
+      ).existsSync(),
+      isTrue,
+    );
+    expect(
+      File(
+        'assets/fonts/postdee_subtitle/'
+        'PostDeeSubtitlePrompt-Black.ttf',
+      ).existsSync(),
+      isTrue,
+    );
+    expect(
+      File(
+        'assets/fonts/postdee_subtitle/'
+        'PostDeeSubtitleThai-Bold.ttf',
+      ).existsSync(),
+      isTrue,
+    );
+    expect(File('assets/fonts/postdee_subtitle/OFL.txt').existsSync(), isTrue);
+  });
 }

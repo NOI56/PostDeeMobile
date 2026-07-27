@@ -5,6 +5,37 @@ import 'package:postdee_mobile/features/ai_editing/style_options.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 
 void main() {
+  test('caps subtitle words by the selected font size', () {
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'large',
+        subtitleWords: 'full',
+      ),
+      3,
+    );
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'medium',
+        subtitleWords: 'full',
+      ),
+      4,
+    );
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'small',
+        subtitleWords: 'full',
+      ),
+      5,
+    );
+    expect(
+      subtitleWordLimitForStyle(
+        subtitleStyle: 'small',
+        subtitleWords: 'karaoke',
+      ),
+      1,
+    );
+  });
+
   test('target length adds a tail cut to fit', () {
     final cuts = withTargetLength(const [], 10, 4);
 
@@ -151,6 +182,33 @@ void main() {
     expect(out.map((segment) => segment.text).join(), thaiCue);
     expect(out.first.start, 87.84);
     expect(out.last.end, 89.077);
+  });
+
+  test('preserves Thai cue boundaries already enforced by the server', () {
+    const source = [
+      SubtitleSegment(text: 'ค่อยได้ใช้', start: 0, end: 0.35),
+      SubtitleSegment(text: 'เนื่องจากรถติด', start: 0.35, end: 1.2),
+    ];
+
+    final out = prepareSubtitleSegmentsForLocalRender(
+      source,
+      language: 'th',
+      maximumCharacters: 18,
+    );
+
+    expect(out, source);
+  });
+
+  test('still rechunks non-Thai subtitles for the local renderer', () {
+    final out = prepareSubtitleSegmentsForLocalRender(
+      const [
+        SubtitleSegment(text: 'aaaa bbbb', start: 0, end: 10),
+      ],
+      language: 'en',
+      maximumCharacters: 4,
+    );
+
+    expect(out.map((segment) => segment.text), ['aaaa', 'bbbb']);
   });
 
   test('merges a subtitle fragment that is too short to read', () {

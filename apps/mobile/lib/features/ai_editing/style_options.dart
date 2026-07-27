@@ -2,6 +2,27 @@ import 'package:characters/characters.dart';
 
 import 'subtitle_burn_video_processor.dart';
 
+/// Keeps automatic subtitles short enough for one vertical-video line.
+///
+/// The selected length is a preference. The selected font size is the hard
+/// visual limit so large subtitles never request more words than can fit.
+int subtitleWordLimitForStyle({
+  required String subtitleStyle,
+  required String subtitleWords,
+}) {
+  final requestedLimit = switch (subtitleWords) {
+    'karaoke' => 1,
+    'full' => 5,
+    _ => 4,
+  };
+  final visualLimit = switch (subtitleStyle) {
+    'large' => 3,
+    'medium' => 4,
+    _ => 5,
+  };
+  return requestedLimit < visualLimit ? requestedLimit : visualLimit;
+}
+
 /// User fine-tuning applied on top of a chosen style. All fields optional; null
 /// means "use the style/clip default".
 class EditStyleOptions {
@@ -325,6 +346,30 @@ List<SubtitleSegment> rechunkSubtitleByMaxChars(
     out,
     maximumChars: maxChars,
   );
+}
+
+bool _isThaiTranscriptLanguage(String language) {
+  final normalized = language.trim().toLowerCase().replaceAll('_', '-');
+  return normalized == 'th' ||
+      normalized == 'tha' ||
+      normalized == 'thai' ||
+      normalized.startsWith('th-');
+}
+
+/// Preserves Thai cue boundaries already selected by the API.
+///
+/// The API owns Thai word boundaries. Re-chunking its output again on-device
+/// could merge short cues or split a word by character. Non-Thai legacy output
+/// keeps the existing character-based safety pass.
+List<SubtitleSegment> prepareSubtitleSegmentsForLocalRender(
+  List<SubtitleSegment> segments, {
+  required String language,
+  required int? maximumCharacters,
+}) {
+  if (maximumCharacters == null || _isThaiTranscriptLanguage(language)) {
+    return segments;
+  }
+  return rechunkSubtitleByMaxChars(segments, maximumCharacters);
 }
 
 /// Merges provider fragments that would flash too quickly to read. A short cue

@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
 import '../../core/monitoring/postdee_analytics.dart';
 import '../../core/theme/app_theme.dart';
+import '../ai_editing/review_video_timeline.dart';
 import '../platforms/connections_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
@@ -15,6 +17,8 @@ import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/postdee_status_sheet.dart';
 import 'clip_frame_extractor.dart';
+import 'cover_editor_screen.dart';
+import 'cover_image_processor.dart';
 import 'publish_flow_screen.dart';
 import 'publish_review_screen.dart';
 import 'video_picker_service.dart';
@@ -56,6 +60,8 @@ class UploaderScreen extends StatefulWidget {
     this.onViewAnalytics,
     this.analytics,
     this.watermarkVideo,
+    this.openCoverEditor,
+    this.coverImageProcessor,
     this.now = DateTime.now,
     this.extractFrames,
     this.growthToolSettingsStore =
@@ -81,6 +87,8 @@ class UploaderScreen extends StatefulWidget {
   final VoidCallback? onViewAnalytics;
   final PostDeeAnalytics? analytics;
   final UploaderWatermarkVideoProcessor? watermarkVideo;
+  final UploaderCoverEditorLauncher? openCoverEditor;
+  final CoverImageProcessor? coverImageProcessor;
 
   // Wall clock used to reject schedules in the past. Injectable so tests can
   // pin "now" instead of depending on the real time of day.
@@ -130,6 +138,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
   String? _templateErrorMessage;
   String? _aiCaptionErrorMessage;
   String? _selectedVideoName;
+  CoverEditorResult? _coverResult;
   PostDeeStatusSheetData? _pendingStatusSheet;
   bool _pickVideoAfterStatus = false;
   String? _pendingInlineError;
@@ -238,6 +247,11 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
   @override
   void dispose() {
+    final cover = _coverResult;
+    _coverResult = null;
+    if (cover != null) {
+      unawaited(cover.cleanupTemporaryFiles());
+    }
     _captionController.dispose();
     _fileNameController.dispose();
     _localFilePathController.dispose();
@@ -247,6 +261,95 @@ class _UploaderScreenState extends State<UploaderScreen> {
     _scheduledAtController.dispose();
     _aiGuidanceController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openCoverEditor() async {
+    final localFilePath = _localFilePathController.text.trim();
+    final videoName = (_selectedVideoName ?? '').trim();
+    final videoFile = localFilePath.isEmpty ? null : File(localFilePath);
+
+    if (videoFile == null || videoName.isEmpty || !videoFile.existsSync()) {
+      setState(() {
+        _errorMessage = 'เลือกวิดีโอจริงจากเครื่องก่อนแต่งหน้าปก';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    final request = CoverEditorRequest(
+      videoFile: videoFile,
+      videoName: videoName,
+      platforms:
+          SocialPlatform.values.where(_selectedPlatforms.contains).toList(),
+      initialResult: _coverResult,
+    );
+    final result = widget.openCoverEditor != null
+        ? await widget.openCoverEditor!(context, request)
+        : await Navigator.of(context).push<CoverEditorResult>(
+            MaterialPageRoute<CoverEditorResult>(
+              builder: (context) => CoverEditorScreen(
+                videoFile: request.videoFile,
+                videoName: request.videoName,
+                platforms: request.platforms,
+                initialResult: request.initialResult,
+                processCover: widget.coverImageProcessor,
+              ),
+            ),
+          );
+
+    if (result == null) return;
+    if (!mounted) {
+      await result.cleanupTemporaryFiles();
+      return;
+    }
+
+    final previousCover = _coverResult;
+    setState(() {
+      _coverResult = result;
+      _errorMessage = null;
+      _successMessage = 'บันทึกหน้าปกแล้ว';
+    });
+    if (previousCover != null && !identical(previousCover, result)) {
+      unawaited(previousCover.cleanupTemporaryFiles());
+    }
+  }
+
+  Future<CoverEditorResult> _readCoverForUpload({
+    required File videoFile,
+    required String fileName,
+  }) async {
+    final cover = _coverResult;
+    if (cover == null) {
+      throw const CoverImageException('ยังไม่ได้เลือกหน้าปก');
+    }
+    if (cover.imageFile.existsSync() && cover.imageFile.lengthSync() > 0) {
+      return cover;
+    }
+
+    if (mounted) {
+      setState(() {
+        _successMessage = 'กำลังสร้างไฟล์หน้าปกใหม่...';
+      });
+    }
+    final processor =
+        widget.coverImageProcessor ?? FfmpegCoverImageProcessor().call;
+    final regenerated = await processor(
+      CoverImageRequest(
+        videoFile: videoFile,
+        fileName: fileName,
+        design: cover.design,
+        durationMs: cover.durationMs,
+      ),
+    );
+    if (!mounted) {
+      await regenerated.cleanupTemporaryFiles();
+      throw const CoverImageException('ยกเลิกการสร้างหน้าปกแล้ว');
+    }
+    setState(() => _coverResult = regenerated);
+    if (!identical(cover, regenerated)) {
+      unawaited(cover.cleanupTemporaryFiles());
+    }
+    return regenerated;
   }
 
   int? _readPositiveInt(TextEditingController controller) {
@@ -748,6 +851,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
       setState(() {
         _selectedVideoName = fileName;
+        _coverResult = null;
         _localFilePathController.text = video.path;
         _fileNameController.text = fileName;
         _sizeBytesController.text = video.sizeBytes.toString();
@@ -839,6 +943,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
               SocialPlatform.values.where(_selectedPlatforms.contains).toList(),
           scheduledAt: _readScheduledAt(),
           watermarkEnabled: watermarkEnabled,
+          coverResult: _coverResult,
         ),
       ),
     );
@@ -1049,6 +1154,44 @@ class _UploaderScreenState extends State<UploaderScreen> {
           }
         },
       );
+      String? coverImageS3Key;
+      var selectedCover = _coverResult;
+      final shouldUploadCoverImage = selectedCover != null &&
+          _selectedPlatforms.any(
+            (platform) =>
+                platform == SocialPlatform.instagramReels ||
+                platform == SocialPlatform.facebookReels,
+          );
+      if (shouldUploadCoverImage) {
+        final cover = await _readCoverForUpload(
+          videoFile: localVideoFile,
+          fileName: fileName,
+        );
+        selectedCover = cover;
+        if (mounted) {
+          setState(() {
+            _successMessage = 'กำลังอัปโหลดหน้าปก...';
+          });
+        }
+        final coverLease = cover.retainTemporaryFiles();
+        try {
+          final coverUpload = await createAndUploadFileWithRetry(
+            request: CreateUploadRequest(
+              fileName: 'postdee-cover.jpg',
+              contentType: 'image/jpeg',
+              sizeBytes: cover.imageFile.lengthSync(),
+              width: 1080,
+              height: 1920,
+            ),
+            file: cover.imageFile,
+            createUpload: createUpload,
+            uploadFile: uploadVideoFile,
+          );
+          coverImageS3Key = coverUpload.videoS3Key;
+        } finally {
+          await coverLease?.release();
+        }
+      }
       final createPost = widget.createPost ?? _apiClient.createPost;
       final post = await createPost(
         CreatePostRequest(
@@ -1057,8 +1200,21 @@ class _UploaderScreenState extends State<UploaderScreen> {
           platforms:
               _selectedPlatforms.map((platform) => platform.apiValue).toList(),
           scheduledAt: scheduledAt,
+          coverImageS3Key: coverImageS3Key,
+          coverFrameTimeMs: selectedCover?.coverFrameTimeMs,
         ),
       );
+
+      if (identical(_coverResult, selectedCover)) {
+        if (mounted) {
+          setState(() => _coverResult = null);
+        } else {
+          _coverResult = null;
+        }
+      }
+      if (selectedCover != null) {
+        unawaited(selectedCover.cleanupTemporaryFiles());
+      }
 
       unawaited(_analytics.logPublishSucceeded(
         platformCount: post.platforms.length,
@@ -1079,6 +1235,17 @@ class _UploaderScreenState extends State<UploaderScreen> {
             '$watermarkTextจัดคิวโพสต์ ${post.platforms.length} แพลตฟอร์มแล้ว: ${post.id}';
       });
       return post;
+    } on CoverImageException catch (error) {
+      unawaited(_analytics.logPublishFailed(reason: 'cover'));
+      if (!mounted) {
+        return null;
+      }
+      setState(() {
+        _errorMessage = null;
+        _successMessage = null;
+      });
+      _setUploadStatus(error.message);
+      return null;
     } on WatermarkVideoException catch (error) {
       unawaited(_analytics.logPublishFailed(reason: 'watermark'));
       if (!mounted) {
@@ -1209,9 +1376,42 @@ class _UploaderScreenState extends State<UploaderScreen> {
               const SizedBox(height: AppTheme.spaceSm),
               _VideoPreviewCard(
                 videoName: _selectedVideoName,
+                coverImagePath: _coverResult?.localImagePath,
+                coverImageBytes: _coverResult?.imageBytes,
                 isSubmitting: _isSubmitting,
                 onPickVideo: _pickVideoFile,
               ),
+              if (_selectedVideoName != null) ...[
+                const SizedBox(height: 10),
+                Center(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('uploader-cover-edit-button'),
+                    onPressed: _isSubmitting ? null : _openCoverEditor,
+                    icon: Icon(
+                      _coverResult == null
+                          ? Icons.add_photo_alternate_outlined
+                          : Icons.edit_outlined,
+                      size: 18,
+                    ),
+                    label: Text(
+                      _coverResult == null ? 'แต่งหน้าปก' : 'แก้หน้าปก',
+                    ),
+                  ),
+                ),
+                if (_coverResult != null)
+                  Center(
+                    child: Text(
+                      'เลือกเฟรมที่ '
+                      '${formatReviewVideoClock(Duration(milliseconds: _coverResult!.coverFrameTimeMs))}',
+                      key: const ValueKey('uploader-cover-time'),
+                      style: TextStyle(
+                        color: AppTheme.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+              ],
               const SizedBox(height: AppTheme.spaceLg),
               _PlatformSelectorSection(
                 selectedPlatforms: _selectedPlatforms,
@@ -1630,11 +1830,15 @@ class _CompactUploadToolButton extends StatelessWidget {
 class _VideoPreviewCard extends StatelessWidget {
   const _VideoPreviewCard({
     required this.videoName,
+    required this.coverImagePath,
+    required this.coverImageBytes,
     required this.isSubmitting,
     required this.onPickVideo,
   });
 
   final String? videoName;
+  final String? coverImagePath;
+  final Uint8List? coverImageBytes;
   final bool isSubmitting;
   final VoidCallback onPickVideo;
 
@@ -1711,6 +1915,11 @@ class _VideoPreviewCard extends StatelessWidget {
 
   // Selected clip: green gradient stand-in with the 9:16 check badge.
   Widget _buildSelected(BuildContext context) {
+    final hasCoverBytes = coverImageBytes?.isNotEmpty == true;
+    final hasCoverFile =
+        coverImagePath != null && File(coverImagePath!).existsSync();
+    final hasCoverImage = hasCoverBytes || hasCoverFile;
+
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -1731,12 +1940,28 @@ class _VideoPreviewCard extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Center(
-            child: Icon(
-              Icons.play_circle_rounded,
-              size: 46,
-              color: Colors.white.withValues(alpha: 0.92),
+          if (hasCoverImage)
+            Positioned.fill(
+              child: hasCoverBytes
+                  ? Image.memory(
+                      coverImageBytes!,
+                      key: const ValueKey('uploader-cover-preview-image'),
+                      fit: BoxFit.cover,
+                    )
+                  : Image.file(
+                      File(coverImagePath!),
+                      key: const ValueKey('uploader-cover-preview-image'),
+                      fit: BoxFit.cover,
+                    ),
             ),
+          Center(
+            child: hasCoverImage
+                ? const SizedBox.shrink()
+                : Icon(
+                    Icons.play_circle_rounded,
+                    size: 46,
+                    color: Colors.white.withValues(alpha: 0.92),
+                  ),
           ),
           Positioned(
             top: 10,

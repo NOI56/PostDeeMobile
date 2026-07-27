@@ -31,6 +31,32 @@ void _writeJsonResponse(
 }
 
 void main() {
+  test('CreatePostRequest serializes optional cover metadata', () {
+    final request = CreatePostRequest(
+      caption: 'สินค้าใหม่',
+      videoS3Key: 'uploads/seller/video.mp4',
+      platforms: const ['TIKTOK', 'INSTAGRAM_REELS'],
+      coverImageS3Key: 'uploads/seller/cover.jpg',
+      coverFrameTimeMs: 4250,
+    );
+
+    expect(request.toJson(), {
+      'caption': 'สินค้าใหม่',
+      'videoS3Key': 'uploads/seller/video.mp4',
+      'platforms': ['TIKTOK', 'INSTAGRAM_REELS'],
+      'coverImageS3Key': 'uploads/seller/cover.jpg',
+      'coverFrameTimeMs': 4250,
+    });
+    expect(
+      const CreatePostRequest(
+        caption: 'ไม่มีภาพปก',
+        videoS3Key: 'uploads/seller/video.mp4',
+        platforms: ['YOUTUBE_SHORTS'],
+      ).toJson(),
+      isNot(containsPair('coverImageS3Key', anything)),
+    );
+  });
+
   test('ApiHealthResult parses backend health payload', () {
     final health = ApiHealthResult.fromJson({
       'status': 'ok',

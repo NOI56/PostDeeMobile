@@ -945,12 +945,16 @@ class CreatePostRequest {
     required this.videoS3Key,
     required this.platforms,
     this.scheduledAt,
+    this.coverImageS3Key,
+    this.coverFrameTimeMs,
   });
 
   final String caption;
   final String videoS3Key;
   final List<String> platforms;
   final DateTime? scheduledAt;
+  final String? coverImageS3Key;
+  final int? coverFrameTimeMs;
 
   Map<String, Object?> toJson() => {
         'caption': caption,
@@ -958,6 +962,8 @@ class CreatePostRequest {
         'platforms': platforms,
         if (scheduledAt != null)
           'scheduledAt': scheduledAt!.toUtc().toIso8601String(),
+        if (coverImageS3Key != null) 'coverImageS3Key': coverImageS3Key,
+        if (coverFrameTimeMs != null) 'coverFrameTimeMs': coverFrameTimeMs,
       };
 }
 

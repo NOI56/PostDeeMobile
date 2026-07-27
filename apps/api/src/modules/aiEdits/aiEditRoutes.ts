@@ -685,14 +685,7 @@ export const registerAiEditRoutes = (
         ? Math.ceil(transcript.durationSeconds / 60)
         : estimatedMinutes;
 
-    const reservation = await aiEditUsageStore.reserve({
-      userId: authUser.id,
-      monthKey,
-      minutes: billedMinutes,
-      limit: aiEditMonthlyMinuteLimit
-    });
-
-    if (!reservation.ok) {
+    if (usedMinutes + billedMinutes > aiEditMonthlyMinuteLimit) {
       sendAiEditQuotaExceededResponse(response);
       return;
     }
@@ -723,6 +716,18 @@ export const registerAiEditRoutes = (
       prompt,
       plan: editPlan
     });
+
+    const reservation = await aiEditUsageStore.reserve({
+      userId: authUser.id,
+      monthKey,
+      minutes: billedMinutes,
+      limit: aiEditMonthlyMinuteLimit
+    });
+
+    if (!reservation.ok) {
+      sendAiEditQuotaExceededResponse(response);
+      return;
+    }
 
       response.json({
         status: 'ok',

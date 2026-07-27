@@ -67,6 +67,112 @@ describe('post routes', () => {
     ]);
   });
 
+  it('stores and queues cover metadata only after both uploads are ready', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const publishQueue = createInMemoryPublishQueue();
+    const assertUploadReady = vi.fn(async () => undefined);
+    const assertCoverUploadReady = vi.fn(async () => undefined);
+    const videoS3Key = ownedUploadKey('seller-cover', 'clip.mp4', 'video');
+    const coverImageS3Key = ownedUploadKey(
+      'seller-cover',
+      'cover.jpg',
+      'cover'
+    );
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: 'seller-cover',
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+
+    app.use(express.json());
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
+      { assertUploadReady, assertCoverUploadReady }
+    );
+    app.use(router);
+
+    const response = await request(app)
+      .post('/posts')
+      .send({
+        caption: 'Cover-ready post',
+        videoS3Key,
+        coverImageS3Key,
+        coverFrameTimeMs: 0,
+        platforms: ['TIKTOK', 'INSTAGRAM_REELS']
+      })
+      .expect(201);
+
+    expect(response.body.post).toMatchObject({
+      videoS3Key,
+      coverImageS3Key,
+      coverFrameTimeMs: 0
+    });
+    expect(response.body.publishJob).toMatchObject({
+      coverImageS3Key,
+      coverFrameTimeMs: 0
+    });
+    expect(assertUploadReady).toHaveBeenCalledWith('seller-cover', videoS3Key);
+    expect(assertCoverUploadReady).toHaveBeenCalledWith(
+      'seller-cover',
+      coverImageS3Key
+    );
+  });
+
+  it('rejects malformed or foreign cover metadata', async () => {
+    const app = createApp();
+    const baseRequest = {
+      caption: 'Invalid cover',
+      videoS3Key: ownedUploadKey('seller-a', 'clip.mp4'),
+      platforms: ['INSTAGRAM_REELS'],
+      subscriptionPlan: 'PRO'
+    };
+
+    for (const invalidFields of [
+      { coverImageS3Key: '' },
+      { coverImageS3Key: 123 },
+      { coverFrameTimeMs: -1 },
+      { coverFrameTimeMs: 1.5 },
+      { coverFrameTimeMs: '1000' },
+      { coverFrameTimeMs: 2_147_483_648 }
+    ]) {
+      await request(app)
+        .post('/posts')
+        .set('x-postdee-user-id', 'seller-a')
+        .send({ ...baseRequest, ...invalidFields })
+        .expect(400);
+    }
+
+    await request(app)
+      .post('/posts')
+      .set('x-postdee-user-id', 'seller-a')
+      .send({
+        ...baseRequest,
+        coverImageS3Key: ownedUploadKey('seller-b', 'cover.jpg'),
+        coverFrameTimeMs: 1_000
+      })
+      .expect(403)
+      .expect({
+        status: 'error',
+        message: 'Selected cover does not belong to the authenticated user'
+      });
+  });
+
   it('rejects post creation with media owned by another user', async () => {
     const app = createApp();
 

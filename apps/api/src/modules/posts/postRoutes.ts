@@ -43,6 +43,30 @@ const readOptionalIsoDate = (value: unknown) => {
   return Number.isNaN(timestamp) ? undefined : new Date(timestamp).toISOString();
 };
 
+const readOptionalCoverImageKey = (value: unknown) => {
+  if (value === undefined || value === null) {
+    return { ok: true as const, value: undefined };
+  }
+
+  const key = readRequiredString(value);
+  return key
+    ? { ok: true as const, value: key }
+    : { ok: false as const, value: undefined };
+};
+
+const readOptionalCoverFrameTimeMs = (value: unknown) => {
+  if (value === undefined || value === null) {
+    return { ok: true as const, value: undefined };
+  }
+
+  return typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= 2_147_483_647
+    ? { ok: true as const, value }
+    : { ok: false as const, value: undefined };
+};
+
 type SubscriptionPlanOverrideResult =
   | {
       ok: true;
@@ -74,6 +98,11 @@ const readSubscriptionPlanOverride = (value: unknown): SubscriptionPlanOverrideR
   };
 };
 
+export const postCoverUploadPolicy = {
+  acceptedContentTypes: ['image/jpeg', 'image/png'] as const,
+  maxSizeBytes: 2 * 1024 * 1024
+};
+
 export const registerPostRoutes = (
   router: Router,
   store: PostStore,
@@ -85,6 +114,7 @@ export const registerPostRoutes = (
   options: {
     allowSubscriptionPlanOverride?: boolean;
     assertUploadReady?: (ownerId: string, videoS3Key: string) => Promise<void>;
+    assertCoverUploadReady?: (ownerId: string, coverImageS3Key: string) => Promise<void>;
   } = {}
 ) => {
   const allowSubscriptionPlanOverride = options.allowSubscriptionPlanOverride ?? true;
@@ -133,6 +163,8 @@ export const registerPostRoutes = (
     const videoS3Key = readRequiredString(request.body?.videoS3Key);
     const platforms = readPlatforms(request.body?.platforms);
     const scheduledAt = readOptionalIsoDate(request.body?.scheduledAt);
+    const coverImageKeyResult = readOptionalCoverImageKey(request.body?.coverImageS3Key);
+    const coverFrameTimeResult = readOptionalCoverFrameTimeMs(request.body?.coverFrameTimeMs);
     const subscriptionPlanOverride = readSubscriptionPlanOverride(request.body?.subscriptionPlan);
 
     if (!authUser) {
@@ -151,6 +183,25 @@ export const registerPostRoutes = (
       return;
     }
 
+    if (!coverImageKeyResult.ok) {
+      response.status(400).json({
+        status: 'error',
+        message: 'coverImageS3Key must be a non-empty string when provided'
+      });
+      return;
+    }
+
+    if (!coverFrameTimeResult.ok) {
+      response.status(400).json({
+        status: 'error',
+        message: 'coverFrameTimeMs must be a non-negative integer when provided'
+      });
+      return;
+    }
+
+    const coverImageS3Key = coverImageKeyResult.value;
+    const coverFrameTimeMs = coverFrameTimeResult.value;
+
     if (!isStorageKeyOwnedByUser({ videoS3Key, userId: authUser.id })) {
       response.status(403).json({
         status: 'error',
@@ -159,9 +210,33 @@ export const registerPostRoutes = (
       return;
     }
 
-    if (options.assertUploadReady) {
+    if (
+      coverImageS3Key &&
+      !isStorageKeyOwnedByUser({
+        videoS3Key: coverImageS3Key,
+        userId: authUser.id
+      })
+    ) {
+      response.status(403).json({
+        status: 'error',
+        message: 'Selected cover does not belong to the authenticated user'
+      });
+      return;
+    }
+
+    if (
+      options.assertUploadReady ||
+      (coverImageS3Key && options.assertCoverUploadReady)
+    ) {
       try {
-        await options.assertUploadReady(authUser.id, videoS3Key);
+        if (options.assertUploadReady) {
+          await options.assertUploadReady(authUser.id, videoS3Key);
+        }
+        if (coverImageS3Key) {
+          const assertCoverUploadReady =
+            options.assertCoverUploadReady ?? options.assertUploadReady;
+          await assertCoverUploadReady?.(authUser.id, coverImageS3Key);
+        }
       } catch (error) {
         if (!(error instanceof ManagedUploadServiceError)) {
           throw error;
@@ -232,6 +307,8 @@ export const registerPostRoutes = (
       userId: user.id,
       caption,
       videoS3Key,
+      ...(coverImageS3Key ? { coverImageS3Key } : {}),
+      ...(coverFrameTimeMs !== undefined ? { coverFrameTimeMs } : {}),
       platforms,
       scheduledAt
     });

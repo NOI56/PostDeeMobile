@@ -54,7 +54,10 @@ import {
   createRealClipCaptionProviderFromConfig
 } from './modules/captions/realClipCaptionProvider.js';
 import type { PrismaRealClipCaptionUsageClient } from './modules/captions/prismaRealClipCaptionUsageRepository.js';
-import { registerPostRoutes } from './modules/posts/postRoutes.js';
+import {
+  postCoverUploadPolicy,
+  registerPostRoutes
+} from './modules/posts/postRoutes.js';
 import type { PrismaPostClient } from './modules/posts/prismaPostRepository.js';
 import {
   createInMemoryPlatformPublishStore,
@@ -532,6 +535,14 @@ export const createApp = (options: AppOptions = {}) => {
         ? (ownerId, videoS3Key) =>
             managedUploadService.assertReadyForUse(ownerId, videoS3Key, {
               allowLegacy: config.uploadProtocolMode !== 'multipart'
+            })
+        : undefined,
+      assertCoverUploadReady: managedUploadService
+        ? (ownerId, coverImageS3Key) =>
+            managedUploadService.assertReadyForUse(ownerId, coverImageS3Key, {
+              allowLegacy: config.uploadProtocolMode !== 'multipart',
+              acceptedContentTypes: postCoverUploadPolicy.acceptedContentTypes,
+              maxSizeBytes: postCoverUploadPolicy.maxSizeBytes
             })
         : undefined
     }

@@ -241,7 +241,7 @@ describe('AI edit recipe pacing settings', () => {
         'ไม่',
         'แพง'
       ],
-      protectedParts: ['ทาง', 'ใกล้ๆ']
+      protectedParts: ['ระยะทาง', 'ใกล้ๆ']
     }
   ])(
     'does not keep a Thai subtitle cue boundary inside semantic words from $text',
@@ -318,9 +318,66 @@ describe('AI edit recipe pacing settings', () => {
 
     expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
       { text: 'อยู่ที่แถวสยาม', start: 0, end: 1.1 },
-      { text: 'Weekend Market อยู่ใน', start: 1.1, end: 2.3 },
-      { text: 'เมืองหลวงต่างๆ', start: 2.3, end: 3.2 }
+      { text: 'Weekend Market', start: 1.1, end: 1.9 },
+      { text: 'อยู่ในเมืองหลวงต่างๆ', start: 1.9, end: 3.2 }
     ]);
+  });
+
+  it('splits mixed Thai and Latin cues before their display width overflows', () => {
+    const text = 'ไป Weekend Market กันค่ะ';
+    const words = [
+      { word: 'ไป', start: 0, end: 0.4 },
+      { word: 'Weekend', start: 0.4, end: 0.9 },
+      { word: 'Market', start: 0.9, end: 1.4 },
+      { word: 'กัน', start: 1.4, end: 1.8 },
+      { word: 'ค่ะ', start: 1.8, end: 2.2 }
+    ];
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      model: 'scribe_v2',
+      text,
+      durationSeconds: 2.2,
+      settings: { subtitleWordsPerLine: 3 },
+      segments: [{ text, start: 0, end: 2.2 }],
+      words
+    });
+
+    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
+      { text: 'ไป Weekend', start: 0, end: 0.9 },
+      { text: 'Market กันค่ะ', start: 0.9, end: 2.2 }
+    ]);
+    expect(
+      recipe.subtitles.segments.flatMap((segment) =>
+        segment.words.map((word) => word.word)
+      )
+    ).toEqual(words.map((word) => word.word));
+  });
+
+  it('never places audited Thai compound boundaries inside a word', () => {
+    const compounds = ['ระยะทาง', 'วันหยุด', 'ตีตั๋ว'];
+    const text = compounds.join('');
+    const characters = Array.from(text);
+    const durationSeconds = 3;
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      model: 'scribe_v2',
+      text,
+      durationSeconds,
+      settings: { subtitleWordsPerLine: 1 },
+      segments: [{ text, start: 0, end: durationSeconds }],
+      words: characters.map((word, index) => ({
+        word,
+        start: index * durationSeconds / characters.length,
+        end: (index + 1) * durationSeconds / characters.length
+      }))
+    });
+
+    expect(recipe.subtitles.segments.map((segment) => segment.text))
+      .toEqual(compounds);
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe(text);
   });
 
   it('repairs Thai words split across fragmented provider segment boundaries', () => {
@@ -752,8 +809,7 @@ describe('AI edit recipe pacing settings', () => {
       'อีก',
       'ที่',
       'นึง',
-      'ระยะ',
-      'ทาง',
+      'ระยะทาง',
       'ใกล้ๆ',
       'ราคา',
       'ไม่',

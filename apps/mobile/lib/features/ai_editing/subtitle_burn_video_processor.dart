@@ -11,6 +11,11 @@ import 'subtitle_word_timing_safety.dart';
 const postDeeSubtitleThaiFontName = 'PostDee Subtitle Thai';
 const postDeeSubtitleAnuphanFontName = 'PostDee Subtitle Anuphan';
 const postDeeSubtitlePromptFontName = 'PostDee Subtitle Prompt';
+// ASS uses this logical 9:16 canvas for every output resolution. It matches
+// the long-video preview size, keeps the chosen font sizes readable, and stops
+// libass from falling back to its landscape 384x288 canvas.
+const _postDeeSubtitleAssPlayResX = 304;
+const _postDeeSubtitleAssPlayResY = 540;
 const postDeeSubtitleThaiFontAssetPath =
     'assets/fonts/postdee_subtitle/PostDeeSubtitleThai-Bold.ttf';
 const _postDeeMarkSafeFontAssets = <String, Set<String>>{
@@ -743,6 +748,8 @@ String _buildAssSubtitleContent(
   final primaryColor = _assColor(textColor, '#FFFFFF');
   return '[Script Info]\n'
       'ScriptType: v4.00+\n'
+      'PlayResX: $_postDeeSubtitleAssPlayResX\n'
+      'PlayResY: $_postDeeSubtitleAssPlayResY\n'
       'WrapStyle: 2\n'
       'ScaledBorderAndShadow: yes\n'
       '\n'

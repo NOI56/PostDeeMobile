@@ -170,6 +170,57 @@ void main() {
     expect(formatAssTimestamp(3661.01), '1:01:01.01');
   });
 
+  test('declares a vertical ASS resolution without changing render font size',
+      () {
+    const timedSegment = SubtitleSegment(
+      text: 'ไป Weekend Market',
+      start: 0,
+      end: 1,
+      words: [
+        SubtitleWordTiming(text: 'ไป', start: 0, end: 0.3),
+        SubtitleWordTiming(text: 'Weekend', start: 0.3, end: 0.7),
+        SubtitleWordTiming(text: 'Market', start: 0.7, end: 1),
+      ],
+    );
+    final activeWord = buildSubtitleFileContent(
+      const [timedSegment],
+      activeWordColor: '#00E3A4',
+    );
+    final pop = buildSubtitleFileContent(
+      const [SubtitleSegment(text: 'ไป Weekend Market', start: 0, end: 1)],
+      subtitleAnimation: 'pop',
+    );
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      subtitlePath: '/captions.ass',
+      subtitleFontSize: 28,
+    );
+    final forceStyle = args[args.indexOf('-vf') + 1];
+
+    for (final subtitle in [activeWord, pop]) {
+      expect(subtitle.fileName, 'captions.ass');
+      expect(
+        subtitle.content,
+        contains('PlayResX: 304\nPlayResY: 540\n'),
+      );
+    }
+    expect(forceStyle, contains('Fontsize=28'));
+    expect(forceStyle, contains('MarginL=24'));
+    expect(forceStyle, contains('MarginR=24'));
+  });
+
+  test('keeps static subtitle fallback free of ASS-only resolution fields', () {
+    final staticSubtitle = buildSubtitleFileContent(
+      const [SubtitleSegment(text: 'ซับปกติ', start: 0, end: 1)],
+    );
+
+    expect(staticSubtitle.fileName, 'captions.srt');
+    expect(staticSubtitle.content, isNot(contains('PlayResX')));
+    expect(staticSubtitle.content, isNot(contains('PlayResY')));
+    expect(staticSubtitle.content, contains('00:00:00,000 --> 00:00:01,000'));
+  });
+
   test('does not emit ASS events that collapse to zero duration', () {
     final ass = buildSubtitleFileContent(
       const [

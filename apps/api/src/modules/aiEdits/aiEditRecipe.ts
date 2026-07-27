@@ -325,7 +325,9 @@ const minimumEstimatedSubtitleDurationSeconds = 0.7;
 const maximumEstimatedThaiWordsPerCue = 2;
 const maximumThaiMidWordSegmentGapSeconds = 0.5;
 const maximumThaiCueBoundaryShiftCharacters = 6;
-const maximumThaiSubtitleGraphemes = 18;
+const maximumThaiSubtitleWidthUnits = 18;
+const latinSubtitleWidthMultiplier = 1.2;
+const subtitleWhitespaceWidth = 0.5;
 const subtitleWordTimingToleranceSeconds = 1e-6;
 const protectedThaiSubtitleWords = protectedThaiSubtitleCompounds;
 
@@ -744,6 +746,26 @@ const readGraphemeCount = (value: string): number =>
   ).length;
 
 /**
+ * Approximates how much horizontal room a cue needs in the bundled Thai font.
+ * Latin glyph runs are visibly wider than Thai grapheme clusters in the
+ * vertical-video subtitle style, while spaces use about half a cluster.
+ * A single semantic word may exceed the budget because splitting it would be
+ * more damaging than letting the renderer apply its final fit safeguard.
+ */
+const readEstimatedSubtitleWidth = (value: string): number =>
+  Array.from(
+    new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(value)
+  ).reduce((width, part) => {
+    if (/^\s+$/u.test(part.segment)) {
+      return width + subtitleWhitespaceWidth;
+    }
+    if (/\p{Script=Latin}/u.test(part.segment)) {
+      return width + latinSubtitleWidthMultiplier;
+    }
+    return width + 1;
+  }, 0);
+
+/**
  * Groq can return Thai "word" timestamps as individual characters. Rebuild
  * readable word boundaries from each reliable segment and estimate the timing
  * proportionally inside that segment. This keeps Thai words intact while still
@@ -800,14 +822,14 @@ const buildBalancedSubtitleWordGroups = ({
   words,
   isThai,
   maximumWords,
-  maximumGraphemes,
+  maximumWidthUnits,
   minimumDurationSeconds,
   enforceMaximumWords
 }: {
   words: TranscriptWord[];
   isThai: boolean;
   maximumWords: number;
-  maximumGraphemes: number;
+  maximumWidthUnits: number;
   minimumDurationSeconds: number;
   enforceMaximumWords: boolean;
 }): TranscriptWord[][] => {
@@ -823,8 +845,7 @@ const buildBalancedSubtitleWordGroups = ({
     );
     return group.length === 1 ||
       !isThai ||
-      /\p{Script=Latin}/u.test(text) ||
-      readGraphemeCount(text) <= maximumGraphemes;
+      readEstimatedSubtitleWidth(text) <= maximumWidthUnits;
   };
   const flush = () => {
     if (current.length > 0) {
@@ -941,7 +962,7 @@ const buildSubtitleSegments = ({
     words,
     isThai,
     maximumWords: Math.max(1, wordsPerLine),
-    maximumGraphemes: maximumThaiSubtitleGraphemes,
+    maximumWidthUnits: maximumThaiSubtitleWidthUnits,
     minimumDurationSeconds,
     enforceMaximumWords
   });
@@ -1201,7 +1222,7 @@ const repairThaiSubtitleCueBoundaries = (
 const constrainThaiSubtitleCueLength = (
   segments: TranscriptSegment[],
   language: string,
-  maximumGraphemes = maximumThaiSubtitleGraphemes
+  maximumWidthUnits = maximumThaiSubtitleWidthUnits
 ): TranscriptSegment[] => {
   if (normalizeTranscriptionLanguage(language) !== 'th') {
     return segments;
@@ -1209,8 +1230,7 @@ const constrainThaiSubtitleCueLength = (
 
   return segments.flatMap((segment) => {
     if (
-      /\s/u.test(segment.text) ||
-      readGraphemeCount(segment.text) <= maximumGraphemes
+      readEstimatedSubtitleWidth(segment.text) <= maximumWidthUnits
     ) {
       return [segment];
     }
@@ -1220,7 +1240,7 @@ const constrainThaiSubtitleCueLength = (
       words,
       isThai: true,
       maximumWords: Math.max(1, words.length),
-      maximumGraphemes,
+      maximumWidthUnits,
       minimumDurationSeconds: minimumEstimatedSubtitleDurationSeconds,
       enforceMaximumWords: true
     });
@@ -1270,15 +1290,15 @@ const mergeShortSubtitleSegments = (
   segments: TranscriptSegment[],
   minimumDurationSeconds = minimumEstimatedSubtitleDurationSeconds,
   maximumGapSeconds = 0.5,
-  maximumGraphemes?: number,
+  maximumWidthUnits?: number,
   maximumWords?: number
 ): TranscriptSegment[] => {
   const merged: TranscriptSegment[] = [];
   const canMergeText = (left: string, right: string): boolean => {
     const joinedText = joinSubtitleText(left, right);
-    const fitsGraphemes =
-      maximumGraphemes === undefined ||
-      readGraphemeCount(joinedText) <= maximumGraphemes;
+    const fitsWidth =
+      maximumWidthUnits === undefined ||
+      readEstimatedSubtitleWidth(joinedText) <= maximumWidthUnits;
     const fitsWords =
       maximumWords === undefined ||
       rebuildThaiWordsFromSegment({
@@ -1286,7 +1306,7 @@ const mergeShortSubtitleSegments = (
         start: 0,
         end: 1
       }).length <= maximumWords;
-    return fitsGraphemes && fitsWords;
+    return fitsWidth && fitsWords;
   };
 
   for (const segment of segments) {
@@ -1657,7 +1677,7 @@ export const buildAiEditRecipe = ({
           minimumEstimatedSubtitleDurationSeconds,
           0.5,
           transcriptLanguage === 'th'
-            ? maximumThaiSubtitleGraphemes
+            ? maximumThaiSubtitleWidthUnits
             : undefined,
           enforceSubtitleWordLimit && transcriptLanguage === 'th'
             ? subtitleWordsPerLine

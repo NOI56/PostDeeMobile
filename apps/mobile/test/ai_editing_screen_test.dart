@@ -112,6 +112,7 @@ AiEditPrepareResult _createPrepareFixture({
   ),
   double transcriptDurationSeconds = 45,
   List<AiEditTranscriptWordResult>? validatedSubtitleWords,
+  List<ClipTranscriptSegment>? subtitleSegments,
 }) =>
     AiEditPrepareResult(
       quota: const AiEditQuota(
@@ -144,14 +145,15 @@ AiEditPrepareResult _createPrepareFixture({
         ),
         subtitles: AiEditSubtitlesResult(
           enabled: true,
-          segments: [
-            ClipTranscriptSegment(
-              text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
-              start: 0,
-              end: 10,
-              words: validatedSubtitleWords,
-            ),
-          ],
+          segments: subtitleSegments ??
+              [
+                ClipTranscriptSegment(
+                  text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
+                  start: 0,
+                  end: 10,
+                  words: validatedSubtitleWords,
+                ),
+              ],
           style: const AiEditSubtitleStyleResult(
             mode: 'bold',
             color: '#FFFFFF',
@@ -1514,6 +1516,69 @@ void main() {
     expect(
       renderRequest.subtitleAlignment,
       BurnSubtitleAlignment.middle,
+    );
+  });
+
+  testWidgets('keeps the final subtitle cue whole within the target tolerance',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'subtitle-tail-boundary.mp4',
+      durationSeconds: 30,
+    );
+    final renderedVideo =
+        _createRenderedVideoFixture('subtitle-tail-boundary-result.mp4');
+    final renderRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          extractAudio: _extractAudioFixture,
+          createUpload: (_) async => const UploadResult(
+            id: 'subtitle-tail-boundary-upload',
+            videoS3Key: 'uploads/subtitle-tail-boundary.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(
+            transcriptDurationSeconds: 30,
+            subtitleSegments: const [
+              ClipTranscriptSegment(
+                text: 'ประโยคท้ายต้องแสดงให้จบ',
+                start: 20.4,
+                end: 21.6,
+              ),
+            ],
+          ),
+          burnVideo: (request) async {
+            renderRequests.add(request);
+            return renderedVideo;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _setTargetDuration(tester, 20);
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(renderRequests, hasLength(1));
+    final request = renderRequests.single;
+    expect(
+      request.silenceRanges.any(
+        (range) =>
+            (range.start - 21.6).abs() < 0.001 &&
+            (range.end - 30).abs() < 0.001,
+      ),
+      isTrue,
+    );
+    expect(request.outputDurationSeconds, closeTo(20.6, 0.001));
+    expect(request.maxOutputDurationSeconds, closeTo(20.6, 0.001));
+    expect(
+      request.maxOutputDurationSeconds! - 20,
+      lessThanOrEqualTo(1),
     );
   });
 

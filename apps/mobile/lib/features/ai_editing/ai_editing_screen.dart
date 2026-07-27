@@ -23,6 +23,7 @@ import 'edit_styles.dart';
 import 'review_video_timeline.dart';
 import 'style_options.dart';
 import 'subtitle_burn_video_processor.dart';
+import 'subtitle_timeline_alignment.dart';
 import 'subtitle_studio/subtitle_draft_store.dart';
 import 'subtitle_studio/subtitle_project.dart';
 import 'subtitle_studio/subtitle_project_identity.dart';
@@ -1421,6 +1422,14 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         subtitleSegments,
         sourceDuration,
       );
+      if (!_isUsingOriginalDuration) {
+        cutRanges = alignTargetTailToSubtitleBoundary(
+          cuts: cutRanges,
+          subtitleSegments: subtitleSegments,
+          durationSeconds: sourceDuration,
+          targetSeconds: _selectedDurationSeconds.toDouble(),
+        );
+      }
     }
 
     final speed = options.speed ?? 1;
@@ -1600,8 +1609,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           result.file.parent.path,
       },
       outputDurationSeconds: outputDuration,
-      maxOutputDurationSeconds:
-          _isUsingOriginalDuration ? null : _selectedDurationSeconds.toDouble(),
+      maxOutputDurationSeconds: _isUsingOriginalDuration
+          ? null
+          : math.min(
+              _selectedDurationSeconds + 1.0,
+              math.max(
+                _selectedDurationSeconds.toDouble(),
+                outputDuration ?? _selectedDurationSeconds.toDouble(),
+              ),
+            ),
       onProgress: reportProgress,
       renderPurpose: purpose,
       maxVideoDimension: previewProfile?.maxVideoDimension,

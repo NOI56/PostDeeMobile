@@ -12,6 +12,8 @@ typedef AiEditAudioStreamProbe = Future<bool> Function(File source);
 typedef AiEditWorkingDirectoryFactory = Future<Directory> Function();
 
 const aiEditAudioChunkSeconds = 30.0;
+const _aiEditAudioProbeAttempts = 2;
+const _defaultAiEditAudioProbeRetryDelay = Duration(milliseconds: 200);
 
 double balancedAiEditAudioChunkSeconds(double durationSeconds) {
   if (!durationSeconds.isFinite || durationSeconds <= 0) {
@@ -124,17 +126,20 @@ class AiEditAudioExtractor {
     AiEditAudioStreamProbe? hasAudioStream,
     VideoDurationProbe? probeDuration,
     AiEditWorkingDirectoryFactory? createWorkingDirectory,
+    Duration probeRetryDelay = _defaultAiEditAudioProbeRetryDelay,
   })  : _runFfmpeg = runFfmpeg ?? _runNativeFfmpeg,
         _hasAudioStream = hasAudioStream ?? _probeNativeAudioStream,
         _probeDuration =
             probeDuration ?? const FfprobeVideoDurationProbe().call,
         _createWorkingDirectory =
-            createWorkingDirectory ?? _createSystemWorkingDirectory;
+            createWorkingDirectory ?? _createSystemWorkingDirectory,
+        _probeRetryDelay = probeRetryDelay;
 
   final AiEditFfmpegRunner _runFfmpeg;
   final AiEditAudioStreamProbe _hasAudioStream;
   final VideoDurationProbe _probeDuration;
   final AiEditWorkingDirectoryFactory _createWorkingDirectory;
+  final Duration _probeRetryDelay;
 
   Future<AiEditAudioArtifact> extract(File source) async {
     if (!await source.exists()) {
@@ -205,7 +210,10 @@ class AiEditAudioExtractor {
     }
   }
 
-  Future<AiEditAudioChunksArtifact> extractChunks(File source) async {
+  Future<AiEditAudioChunksArtifact> extractChunks(
+    File source, {
+    double? knownDurationSeconds,
+  }) async {
     if (!await source.exists()) {
       throw const AiEditAudioExtractionException(
         AiEditAudioExtractionFailure.sourceMissing,
@@ -218,7 +226,9 @@ class AiEditAudioExtractor {
       );
     }
 
-    final durationSeconds = await _readDurationSafely(source);
+    final durationSeconds = _isUsableDuration(knownDurationSeconds)
+        ? knownDurationSeconds!
+        : await _readDurationSafely(source);
     final chunkSeconds = balancedAiEditAudioChunkSeconds(durationSeconds);
     final segmentTimes = balancedAiEditAudioSegmentTimes(durationSeconds);
     final expectedChunkCount = segmentTimes.length + 1;
@@ -308,32 +318,42 @@ class AiEditAudioExtractor {
   }
 
   Future<bool> _readAudioStreamSafely(File source) async {
-    try {
-      return await _hasAudioStream(source);
-    } catch (_) {
-      throw const AiEditAudioExtractionException(
-        AiEditAudioExtractionFailure.inspectionFailed,
-      );
+    for (var attempt = 1; attempt <= _aiEditAudioProbeAttempts; attempt += 1) {
+      try {
+        return await _hasAudioStream(source);
+      } catch (_) {
+        if (attempt < _aiEditAudioProbeAttempts) {
+          await _waitBeforeProbeRetry();
+        }
+      }
     }
+    throw const AiEditAudioExtractionException(
+      AiEditAudioExtractionFailure.inspectionFailed,
+    );
   }
 
   Future<double> _readDurationSafely(File source) async {
-    try {
-      final durationSeconds = await _probeDuration(source);
-      if (durationSeconds == null ||
-          !durationSeconds.isFinite ||
-          durationSeconds <= 0) {
-        throw const AiEditAudioExtractionException(
-          AiEditAudioExtractionFailure.inspectionFailed,
-        );
+    for (var attempt = 1; attempt <= _aiEditAudioProbeAttempts; attempt += 1) {
+      try {
+        final durationSeconds = await _probeDuration(source);
+        if (_isUsableDuration(durationSeconds)) {
+          return durationSeconds!;
+        }
+      } catch (_) {
+        // A native FFprobe session can fail briefly after file selection.
       }
-      return durationSeconds;
-    } on AiEditAudioExtractionException {
-      rethrow;
-    } catch (_) {
-      throw const AiEditAudioExtractionException(
-        AiEditAudioExtractionFailure.inspectionFailed,
-      );
+      if (attempt < _aiEditAudioProbeAttempts) {
+        await _waitBeforeProbeRetry();
+      }
+    }
+    throw const AiEditAudioExtractionException(
+      AiEditAudioExtractionFailure.inspectionFailed,
+    );
+  }
+
+  Future<void> _waitBeforeProbeRetry() async {
+    if (_probeRetryDelay != Duration.zero) {
+      await Future<void>.delayed(_probeRetryDelay);
     }
   }
 }
@@ -357,6 +377,9 @@ Future<bool> _probeNativeAudioStream(File source) async {
 
 Future<Directory> _createSystemWorkingDirectory() =>
     Directory.systemTemp.createTemp('postdee-ai-edit-audio-');
+
+bool _isUsableDuration(double? durationSeconds) =>
+    durationSeconds != null && durationSeconds.isFinite && durationSeconds > 0;
 
 Future<void> _deleteWorkingDirectoryBestEffort(Directory? directory) async {
   if (directory == null) {

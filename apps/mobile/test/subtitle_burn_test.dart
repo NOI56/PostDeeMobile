@@ -264,6 +264,16 @@ void main() {
     expect(joined, contains('-c:a aac')); // re-encode because of audio filters
   });
 
+  test('caps rendered output at the selected maximum duration', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      maxOutputDurationSec: 30,
+    );
+
+    expect(args, containsAllInOrder(['-t', '30.000']));
+  });
+
   test('copies audio when there are no audio edits', () {
     final args = buildEditFfmpegArguments(
       inputPath: '/in.mp4',

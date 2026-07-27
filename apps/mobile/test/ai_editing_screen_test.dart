@@ -412,6 +412,26 @@ class _FakeReviewVideoController extends VideoPlayerController {
 }
 
 void main() {
+  test('drops stale word metadata unless a cue is word-timed', () {
+    final staleCue = SubtitleCue(
+      cueId: 'stale-cue',
+      sourceStartMs: 0,
+      sourceEndMs: 1000,
+      text: 'ขายดี',
+      timingMode: SubtitleTimingMode.estimated,
+      words: const [
+        SubtitleWord(
+          wordId: 'stale-word',
+          text: 'ขายดี',
+          sourceStartMs: 0,
+          sourceEndMs: 1000,
+        ),
+      ],
+    );
+
+    expect(subtitleWordsForRender(staleCue), isEmpty);
+  });
+
   testWidgets('shows remaining AI editing minutes on setup', (tester) async {
     await tester.pumpWidget(
       _testApp(
@@ -985,7 +1005,8 @@ void main() {
     expect(find.text('Pro · ใช้แล้ว 17/200 นาที'), findsOneWidget);
   });
 
-  testWidgets('refreshes a stale Pro badge when the process check returns Basic',
+  testWidgets(
+      'refreshes a stale Pro badge when the process check returns Basic',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('expired-pro-clip.mp4');
     var createUploadCalls = 0;
@@ -1209,7 +1230,7 @@ void main() {
       _testApp(
         AiEditingScreen(
           pickVideo: () async => pickedVideo,
-          extractAudioChunks: (_) async {
+          extractAudioChunks: (_, {knownDurationSeconds}) async {
             chunksDirectory = Directory.systemTemp.createTempSync(
               'postdee-editor-audio-chunks-',
             );
@@ -1390,6 +1411,7 @@ void main() {
               normalizedX: 0.5,
               normalizedY: 0.5,
               maxLines: 1,
+              animation: 'fade',
             );
             return initialProject.copyWith(
               cues: [
@@ -1443,19 +1465,19 @@ void main() {
     expect(studioInput?.cues.single.text, isNotEmpty);
     expect(renderRequests, hasLength(2));
     final renderRequest = renderRequests.last;
-    expect(renderRequest.segments, hasLength(3));
+    expect(renderRequest.segments, hasLength(1));
+    expect(renderRequest.segments.single.text, editedSubtitle);
+    expect(renderRequest.segments.single.words, isEmpty);
+    expect(renderRequest.subtitleFontName, postDeeSubtitleAnuphanFontName);
     expect(
-      renderRequest.segments
-          .every((segment) => segment.text.characters.length <= 18),
-      isTrue,
+      renderRequest.subtitleFontAssetPath,
+      'assets/fonts/postdee_subtitle/PostDeeSubtitleAnuphan-Bold.ttf',
     );
-    expect(
-      renderRequest.segments.map((segment) => segment.text).join(),
-      editedSubtitle,
-    );
-    expect(renderRequest.subtitleFontName, 'Anuphan');
-    expect(renderRequest.subtitleFontSize, 30);
+    expect(renderRequest.subtitleFontSize, lessThan(30));
+    expect(renderRequest.subtitleFontSize, greaterThanOrEqualTo(6));
     expect(renderRequest.subtitleTextColor, '#00E5A8');
+    expect(renderRequest.activeWordColor, '#FFF45C');
+    expect(renderRequest.subtitleAnimation, 'fade');
     expect(renderRequest.subtitleOutlineColor, '#112233');
     expect(renderRequest.subtitleOutlineWidth, 3);
     expect(renderRequest.subtitleShadowColor, '#445566');

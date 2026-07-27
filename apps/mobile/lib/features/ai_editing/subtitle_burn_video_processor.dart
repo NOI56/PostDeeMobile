@@ -166,7 +166,9 @@ class BurnSubtitleRequest {
     this.subtitleShadowDepth = 0,
     this.preserveTempDirectoryPaths = const {},
     this.outputDurationSeconds,
+    this.maxOutputDurationSeconds,
     this.onProgress,
+    this.onAttemptStarted,
     this.renderPurpose = VideoRenderPurpose.export,
     this.maxVideoDimension,
     this.videoBitrate,
@@ -214,8 +216,14 @@ class BurnSubtitleRequest {
   /// FFmpeg's processed-time statistics into a 0..1 progress fraction.
   final double? outputDurationSeconds;
 
+  /// Hard upper bound selected by the user for the muxed result.
+  final double? maxOutputDurationSeconds;
+
   /// Optional render progress reporter (0..1).
   final RenderProgressCallback? onProgress;
+
+  /// Reports each FFmpeg attempt, starting at 1.
+  final RenderAttemptStartedCallback? onAttemptStarted;
 
   /// Preview renders are intentionally smaller and are never uploaded as the
   /// final social video. Export renders keep the source dimensions.
@@ -228,6 +236,8 @@ class BurnSubtitleRequest {
 
 /// Reports render progress (0..1).
 typedef RenderProgressCallback = void Function(double fraction);
+
+typedef RenderAttemptStartedCallback = void Function(int attempt);
 
 class BurnedSubtitleResult {
   const BurnedSubtitleResult({
@@ -1261,6 +1271,7 @@ List<String> buildEditFfmpegArguments({
   double volume = 1.0,
   double? trimStartSec,
   double? trimEndSec,
+  double? maxOutputDurationSec,
   List<SilenceCutRange> silenceRanges = const [],
   List<String> stickerImagePaths = const [],
   List<(double dx, double dy)> stickerPositions = const [],
@@ -1409,6 +1420,12 @@ List<String> buildEditFfmpegArguments({
 
   if (!hasSilence && audioFilters.isNotEmpty) {
     args.addAll(['-af', audioFilters.join(',')]);
+  }
+
+  if (maxOutputDurationSec != null &&
+      maxOutputDurationSec.isFinite &&
+      maxOutputDurationSec > 0) {
+    args.addAll(['-t', maxOutputDurationSec.toStringAsFixed(3)]);
   }
 
   args.addAll(['-c:v', videoCodec, ...videoEncoderArgs]);
@@ -1629,6 +1646,7 @@ class FfmpegSubtitleBurnVideoProcessor {
     String? failureLogs;
     var activeSubtitlePath = subtitlePath;
     var retriedWithStaticSrt = false;
+    var renderAttempt = 0;
     while (true) {
       render:
       for (final attemptedColorFilter
@@ -1646,6 +1664,8 @@ class FfmpegSubtitleBurnVideoProcessor {
               await outputFile.delete();
             }
 
+            renderAttempt += 1;
+            request.onAttemptStarted?.call(renderAttempt);
             final session = await FFmpegKit.executeWithArgumentsAsync(
               buildEditFfmpegArguments(
                 inputPath: request.inputFile.path,
@@ -1660,6 +1680,7 @@ class FfmpegSubtitleBurnVideoProcessor {
                 volume: request.volume,
                 trimStartSec: request.trimStartSec,
                 trimEndSec: request.trimEndSec,
+                maxOutputDurationSec: request.maxOutputDurationSeconds,
                 silenceRanges: trimmedSilence,
                 stickerImagePaths: stickerPaths,
                 stickerPositions:

@@ -50,11 +50,16 @@ void main() {
 
   test('still returns the picked video when metadata reading fails', () async {
     final videoFile = File('test/uploader_screen_test.dart').absolute;
+    var metadataCalls = 0;
     final picker = GalleryVideoPicker(
       imagePicker: _FakeImagePicker(
         XFile(videoFile.path, name: 'unknown-demo.mp4'),
       ),
-      readVideoDimensions: (_) async => throw const VideoMetadataException(),
+      readVideoDimensions: (_) async {
+        metadataCalls += 1;
+        throw const VideoMetadataException();
+      },
+      metadataRetryDelay: Duration.zero,
     );
 
     final pickedVideo = await picker.pickVideo();
@@ -66,5 +71,28 @@ void main() {
     expect(pickedVideo?.width, isNull);
     expect(pickedVideo?.height, isNull);
     expect(pickedVideo?.durationSeconds, isNull);
+    expect(metadataCalls, 2);
+  });
+
+  test('retries missing duration metadata once', () async {
+    final videoFile = File('test/uploader_screen_test.dart').absolute;
+    var metadataCalls = 0;
+    final picker = GalleryVideoPicker(
+      imagePicker: _FakeImagePicker(XFile(videoFile.path)),
+      readVideoDimensions: (_) async {
+        metadataCalls += 1;
+        return VideoDimensions(
+          width: 1080,
+          height: 1920,
+          durationSeconds: metadataCalls == 1 ? null : 150.5,
+        );
+      },
+      metadataRetryDelay: Duration.zero,
+    );
+
+    final pickedVideo = await picker.pickVideo();
+
+    expect(metadataCalls, 2);
+    expect(pickedVideo?.durationSeconds, 150.5);
   });
 }

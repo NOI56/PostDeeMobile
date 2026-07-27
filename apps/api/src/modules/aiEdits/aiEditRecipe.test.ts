@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  attachValidatedSubtitleWords,
   buildAiEditRecipe,
   readAiEditCapabilities,
   readAiEditRecipeSettings
@@ -1080,6 +1081,24 @@ describe('AI edit recipe pacing settings', () => {
         end: 1.3,
         words
       }
+    ]);
+  });
+
+  it('rejects word timing whose capitalization differs from the cue', () => {
+    expect(attachValidatedSubtitleWords(
+      [{ text: 'Hello', start: 0, end: 0.8 }],
+      [{ word: 'hello', start: 0, end: 0.8 }]
+    )).toEqual([
+      { text: 'Hello', start: 0, end: 0.8, words: [] }
+    ]);
+  });
+
+  it('rejects canonically different word text from the cue', () => {
+    expect(attachValidatedSubtitleWords(
+      [{ text: 'Café', start: 0, end: 0.8 }],
+      [{ word: 'Cafe\u0301', start: 0, end: 0.8 }]
+    )).toEqual([
+      { text: 'Café', start: 0, end: 0.8, words: [] }
     ]);
   });
 

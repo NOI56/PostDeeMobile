@@ -383,9 +383,9 @@ String buildSrtContent(
   bool protectStackedThaiMarks = false,
 }) {
   final buffer = StringBuffer();
+  var cueNumber = 0;
 
-  for (var index = 0; index < segments.length; index += 1) {
-    final segment = segments[index];
+  for (final segment in segments) {
     var text = segment.text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (protectStackedThaiMarks) {
       text = liftStackedThaiToneMarksForRender(text);
@@ -395,7 +395,8 @@ String buildSrtContent(
       continue;
     }
 
-    buffer.writeln('${index + 1}');
+    cueNumber += 1;
+    buffer.writeln('$cueNumber');
     buffer.writeln(
         '${formatSrtTimestamp(segment.start)} --> ${formatSrtTimestamp(segment.end)}');
     buffer.writeln(text);

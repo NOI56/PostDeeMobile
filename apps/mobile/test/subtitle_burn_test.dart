@@ -29,6 +29,17 @@ void main() {
     expect(srt.trim(), isEmpty);
   });
 
+  test('numbers remaining SRT cues sequentially after skipping an empty cue',
+      () {
+    final srt = buildSrtContent(const [
+      SubtitleSegment(text: '   ', start: 0, end: 1),
+      SubtitleSegment(text: 'พร้อมขาย', start: 1, end: 2),
+    ]);
+
+    expect(srt, startsWith('1\n00:00:01,000 --> 00:00:02,000'));
+    expect(srt, isNot(contains('\n2\n')));
+  });
+
   test('keeps every Thai upper and lower mark attached in SRT output', () {
     const thaiMarkCoverage =
         'กั กิ กี กึ กื กุ กู ก็ ก่ ก้ ก๊ ก๋ ก์ กำ กิ่ กี้ กึ๊ กื๋ กุ่ กู้';

@@ -84,7 +84,8 @@ before porting code.
   - field absent is reserved for legacy deployed responses;
   - `words: []` is authoritative and means timing is unsafe/unavailable;
   - non-empty `words` must reconstruct the cue text using only allowed untimed
-    whitespace, punctuation, and symbols;
+    whitespace, punctuation, and symbols, with exact case and Unicode code
+    points;
   - each word must be finite, ordered, non-overlapping, and bounded by its cue.
 - Consumed by Task 2 through `ClipTranscriptSegment.words`.
 
@@ -832,7 +833,9 @@ Add tests proving:
 
 - the real 30-second replay tail cue remains complete;
 - a cue exceeding tolerance moves the boundary before the cue;
-- metadata/audio probe exception is retried exactly once;
+- metadata/audio probe exception or unavailable native result is retried
+  exactly once;
+- rotated stream metadata produces display-oriented width and height;
 - missing/invalid duration is retried once;
 - final rendered duration is capped at selected/source duration;
 - render progress remains visible when native progress polling is unavailable;

@@ -21,6 +21,34 @@ class _FakeImagePicker extends ImagePicker {
 }
 
 void main() {
+  test('uses display-oriented dimensions for rotated portrait video', () {
+    final dimensions = displayOrientedVideoDimensions(
+      width: 1920,
+      height: 1080,
+      streamProperties: const {
+        'tags': {'rotate': '90'},
+      },
+    );
+
+    expect(dimensions.width, 1080);
+    expect(dimensions.height, 1920);
+  });
+
+  test('reads negative rotation from display-matrix side data', () {
+    final dimensions = displayOrientedVideoDimensions(
+      width: 1920,
+      height: 1080,
+      streamProperties: const {
+        'side_data_list': [
+          {'rotation': -90},
+        ],
+      },
+    );
+
+    expect(dimensions.width, 1080);
+    expect(dimensions.height, 1920);
+  });
+
   test('adds real video dimensions from the metadata reader', () async {
     final videoFile = File('test/uploader_screen_test.dart').absolute;
     final picker = GalleryVideoPicker(

@@ -8,7 +8,7 @@ import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
 import 'video_duration_probe.dart';
 
 typedef AiEditFfmpegRunner = Future<bool> Function(List<String> arguments);
-typedef AiEditAudioStreamProbe = Future<bool> Function(File source);
+typedef AiEditAudioStreamProbe = Future<bool?> Function(File source);
 typedef AiEditWorkingDirectoryFactory = Future<Directory> Function();
 
 const aiEditAudioChunkSeconds = 30.0;
@@ -320,11 +320,15 @@ class AiEditAudioExtractor {
   Future<bool> _readAudioStreamSafely(File source) async {
     for (var attempt = 1; attempt <= _aiEditAudioProbeAttempts; attempt += 1) {
       try {
-        return await _hasAudioStream(source);
-      } catch (_) {
-        if (attempt < _aiEditAudioProbeAttempts) {
-          await _waitBeforeProbeRetry();
+        final hasAudioStream = await _hasAudioStream(source);
+        if (hasAudioStream != null) {
+          return hasAudioStream;
         }
+      } catch (_) {
+        // A native FFprobe session can fail briefly after file selection.
+      }
+      if (attempt < _aiEditAudioProbeAttempts) {
+        await _waitBeforeProbeRetry();
       }
     }
     throw const AiEditAudioExtractionException(
@@ -363,11 +367,11 @@ Future<bool> _runNativeFfmpeg(List<String> arguments) async {
   return ReturnCode.isSuccess(await session.getReturnCode());
 }
 
-Future<bool> _probeNativeAudioStream(File source) async {
+Future<bool?> _probeNativeAudioStream(File source) async {
   final session = await FFprobeKit.getMediaInformation(source.path);
   final mediaInformation = session.getMediaInformation();
   if (mediaInformation == null) {
-    return false;
+    return null;
   }
 
   return mediaInformation.getStreams().any(

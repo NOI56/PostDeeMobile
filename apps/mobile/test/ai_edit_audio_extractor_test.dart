@@ -171,6 +171,34 @@ void main() {
     await artifact.cleanup();
   });
 
+  test('retries an unavailable audio-stream result exactly once', () async {
+    var streamProbeCalls = 0;
+    final extractor = AiEditAudioExtractor(
+      hasAudioStream: (_) async {
+        streamProbeCalls += 1;
+        if (streamProbeCalls == 1) {
+          return null;
+        }
+        return true;
+      },
+      runFfmpeg: (arguments) async {
+        await File(arguments.last).writeAsBytes([4, 5, 6]);
+        return true;
+      },
+      createWorkingDirectory: createWorkingDirectory,
+      probeRetryDelay: Duration.zero,
+    );
+
+    final artifact = await extractor.extract(source);
+
+    expect(
+      streamProbeCalls,
+      3,
+      reason: 'source unavailable retry plus output inspection',
+    );
+    await artifact.cleanup();
+  });
+
   test('retries an invalid duration once before continuing', () async {
     var durationProbeCalls = 0;
     final extractor = AiEditAudioExtractor(

@@ -175,6 +175,60 @@ void main() {
     expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
   });
 
+  test('rejects authoritative words whose capitalization differs', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+            text: 'Hello',
+            start: 0.1,
+            end: 0.8,
+            words: [
+              AiEditTranscriptWordResult(
+                word: 'hello',
+                start: 0.1,
+                end: 0.8,
+              ),
+            ],
+          ),
+        ],
+      ),
+      projectId: 'project-case-mismatch',
+      sourceFingerprint: 'source-case-mismatch',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues.single.words, isEmpty);
+    expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+  });
+
+  test('rejects canonically different authoritative word text', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        subtitleSegments: const [
+          ClipTranscriptSegment(
+            text: 'Café',
+            start: 0.1,
+            end: 0.8,
+            words: [
+              AiEditTranscriptWordResult(
+                word: 'Cafe\u0301',
+                start: 0.1,
+                end: 0.8,
+              ),
+            ],
+          ),
+        ],
+      ),
+      projectId: 'project-unicode-mismatch',
+      sourceFingerprint: 'source-unicode-mismatch',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.cues.single.words, isEmpty);
+    expect(project.cues.single.timingMode, SubtitleTimingMode.segment);
+  });
+
   test('legacy response uses safe raw transcript word timing', () {
     final project = mapAiEditRecipeToSubtitleProject(
       recipe: recipeFixture(

@@ -327,6 +327,9 @@ const normalizeTranscriptTextForCoverage = (value: string): string =>
     .toLowerCase()
     .replace(/[\p{P}\p{S}\s]+/gu, '');
 
+const normalizeSubtitleTextForReconstruction = (value: string): string =>
+  value.replace(/[\p{P}\p{S}\s]+/gu, '');
+
 const readThaiWordBoundaryOffsets = (value: string): Set<number> => {
   const boundaries = new Set<number>();
   let offset = 0;
@@ -554,7 +557,7 @@ const readValidTranscriptWords = (
   return sortedWords;
 };
 
-const attachValidatedSubtitleWords = (
+export const attachValidatedSubtitleWords = (
   segments: TranscriptSegment[],
   words: TranscriptWord[]
 ): AiEditSubtitleSegment[] =>
@@ -577,8 +580,8 @@ const attachValidatedSubtitleWords = (
         word.start <
           cueWords[index - 1]!.end - subtitleWordTimingToleranceSeconds
     );
-    const cueText = normalizeTranscriptTextForCoverage(segment.text);
-    const reconstructedText = normalizeTranscriptTextForCoverage(
+    const cueText = normalizeSubtitleTextForReconstruction(segment.text);
+    const reconstructedText = normalizeSubtitleTextForReconstruction(
       cueWords.map((word) => word.word).join('')
     );
 

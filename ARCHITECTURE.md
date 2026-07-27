@@ -658,6 +658,10 @@ outline/shadow depth, fade/pop effect, and safe top/middle/bottom alignment) to
 libass. Complete validated cue-word timing produces escaped ASS active-word
 events. Missing, edited, incomplete, or unsafe timing uses static SRT, and an
 explicit subtitle/libass failure may retry through that static fallback.
+Server and mobile both fail closed unless timed words reconstruct the cue with
+the same case and Unicode code points after only untimed separators are
+removed. Media probes retry one unavailable native result, and rotated video
+metadata is converted to display-oriented width/height before one-line fitting.
 For silence cuts, video frames use the
 selected keep timeline while audio keep ranges are reset and concatenated, so
 both streams finish together after local preview re-renders.

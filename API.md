@@ -966,8 +966,10 @@ Each `recipe.subtitles.segments[]` keeps the compatibility fields `text`,
 `{ word, start, end }` on the source timeline. An absent `words` field means a
 legacy response; a present empty array means the server deliberately rejected
 word timing; a non-empty array is used only after every item and the complete
-cue reconstruction pass validation. Clients must not invent active-word timing
-when the authoritative array is empty or malformed.
+cue reconstruction pass validation. Reconstruction is exact and case-sensitive
+after removing only untimed whitespace, punctuation, and symbols; canonically
+different Unicode text fails closed to `words: []`. Clients must not invent
+active-word timing when the authoritative array is empty or malformed.
 
 Current mobile builds convert `recipe.subtitles`, transcript metadata, and cut
 ranges into a local versioned `SubtitleProject` for Subtitle Studio. Editing,

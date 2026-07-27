@@ -21,6 +21,54 @@ class VideoDimensions {
   final double? durationSeconds;
 }
 
+VideoDimensions displayOrientedVideoDimensions({
+  required int width,
+  required int height,
+  Map<dynamic, dynamic>? streamProperties,
+  double? durationSeconds,
+}) {
+  final rotation = _readVideoRotationDegrees(streamProperties);
+  final normalizedRotation = ((rotation.round() % 360) + 360) % 360;
+  final swapsDimensions = normalizedRotation == 90 || normalizedRotation == 270;
+
+  return VideoDimensions(
+    width: swapsDimensions ? height : width,
+    height: swapsDimensions ? width : height,
+    durationSeconds: durationSeconds,
+  );
+}
+
+double _readVideoRotationDegrees(Map<dynamic, dynamic>? streamProperties) {
+  if (streamProperties == null) {
+    return 0;
+  }
+
+  final sideData = streamProperties['side_data_list'];
+  if (sideData is List) {
+    for (final entry in sideData) {
+      if (entry is Map) {
+        final rotation = _readRotationNumber(entry['rotation']);
+        if (rotation != null) {
+          return rotation;
+        }
+      }
+    }
+  }
+
+  final tags = streamProperties['tags'];
+  if (tags is Map) {
+    return _readRotationNumber(tags['rotate']) ?? 0;
+  }
+  return 0;
+}
+
+double? _readRotationNumber(dynamic value) {
+  if (value is num) {
+    return value.toDouble();
+  }
+  return value is String ? double.tryParse(value.trim()) : null;
+}
+
 class VideoMetadataException implements Exception {
   const VideoMetadataException([this.message = 'อ่านขนาดวิดีโอไม่ได้']);
 
@@ -60,9 +108,10 @@ class FfmpegVideoMetadataReader {
           continue;
         }
 
-        return VideoDimensions(
+        return displayOrientedVideoDimensions(
           width: width,
           height: height,
+          streamProperties: stream.getAllProperties(),
           durationSeconds: durationSeconds,
         );
       }

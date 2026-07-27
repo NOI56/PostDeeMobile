@@ -476,6 +476,199 @@ describe('createPostPeerPublisher', () => {
     });
   });
 
+  it('uses the selected frame time as the TikTok cover without resolving an image URL', async () => {
+    const calls: { body: Record<string, unknown> }[] = [];
+    const resolveVideoUrl = vi.fn(async (key: string) => `https://cdn.test/${key}`);
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      resolveVideoUrl,
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ externalPostId: 'tiktok-video-123' })
+        };
+      }
+    });
+
+    await publisher.publish({
+      postId: 'post-1',
+      videoS3Key: 'uploads/videos/post-1.mp4',
+      coverImageS3Key: 'uploads/covers/post-1.jpg',
+      coverFrameTimeMs: 4200,
+      platform: 'TIKTOK'
+    });
+
+    expect(resolveVideoUrl).toHaveBeenCalledTimes(1);
+    expect(resolveVideoUrl).toHaveBeenCalledWith('uploads/videos/post-1.mp4');
+    expect(resolveVideoUrl).not.toHaveBeenCalledWith('uploads/covers/post-1.jpg');
+    expect(calls[0].body).toMatchObject({
+      platforms: [
+        {
+          platformSpecificData: {
+            privacyLevel: 'SELF_ONLY',
+            draft: false,
+            videoCoverTimestampMs: 4200
+          }
+        }
+      ]
+    });
+  });
+
+  it('uses a signed Instagram cover URL when a custom cover image is available', async () => {
+    const calls: { body: Record<string, unknown> }[] = [];
+    const resolveVideoUrl = vi.fn(async (key: string) => `https://cdn.test/${key}`);
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { INSTAGRAM_REELS: 'postpeer-instagram' },
+      resolveVideoUrl,
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ externalPostId: 'instagram-reel-123' })
+        };
+      }
+    });
+
+    await publisher.publish({
+      postId: 'post-1',
+      videoS3Key: 'uploads/videos/post-1.mp4',
+      coverImageS3Key: 'uploads/covers/post-1.jpg',
+      coverFrameTimeMs: 4200,
+      platform: 'INSTAGRAM_REELS'
+    });
+
+    expect(resolveVideoUrl).toHaveBeenCalledTimes(2);
+    expect(resolveVideoUrl).toHaveBeenCalledWith('uploads/videos/post-1.mp4');
+    expect(resolveVideoUrl).toHaveBeenCalledWith('uploads/covers/post-1.jpg');
+    expect(calls[0].body).toMatchObject({
+      platforms: [
+        {
+          platformSpecificData: {
+            coverUrl: 'https://cdn.test/uploads/covers/post-1.jpg'
+          }
+        }
+      ]
+    });
+    expect(JSON.stringify(calls[0].body)).not.toContain('thumbOffset');
+  });
+
+  it('falls back to the selected frame time for Instagram when there is no custom image', async () => {
+    const calls: { body: Record<string, unknown> }[] = [];
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { INSTAGRAM_REELS: 'postpeer-instagram' },
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ externalPostId: 'instagram-reel-123' })
+        };
+      }
+    });
+
+    await publisher.publish({
+      postId: 'post-1',
+      coverFrameTimeMs: 4200,
+      platform: 'INSTAGRAM_REELS'
+    });
+
+    expect(calls[0].body).toMatchObject({
+      platforms: [{ platformSpecificData: { thumbOffset: 4200 } }]
+    });
+  });
+
+  it('uses a signed Facebook video thumbnail URL for a custom cover image', async () => {
+    const calls: { body: Record<string, unknown> }[] = [];
+    const resolveVideoUrl = vi.fn(async (key: string) => `https://cdn.test/${key}`);
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { FACEBOOK_REELS: 'postpeer-facebook' },
+      resolveVideoUrl,
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ externalPostId: 'facebook-video-123' })
+        };
+      }
+    });
+
+    await publisher.publish({
+      postId: 'post-1',
+      videoS3Key: 'uploads/videos/post-1.mp4',
+      coverImageS3Key: 'uploads/covers/post-1.jpg',
+      platform: 'FACEBOOK_REELS'
+    });
+
+    expect(resolveVideoUrl).toHaveBeenCalledTimes(2);
+    expect(resolveVideoUrl).toHaveBeenCalledWith('uploads/videos/post-1.mp4');
+    expect(resolveVideoUrl).toHaveBeenCalledWith('uploads/covers/post-1.jpg');
+    expect(calls[0].body).toMatchObject({
+      platforms: [
+        {
+          platformSpecificData: {
+            videoThumbnailUrl: 'https://cdn.test/uploads/covers/post-1.jpg'
+          }
+        }
+      ]
+    });
+  });
+
+  it('does not resolve or send a custom thumbnail for YouTube Shorts', async () => {
+    const calls: { body: Record<string, unknown> }[] = [];
+    const resolveVideoUrl = vi.fn(async (key: string) => `https://cdn.test/${key}`);
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { YOUTUBE_SHORTS: 'postpeer-youtube' },
+      resolveVideoUrl,
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ externalPostId: 'youtube-video-123' })
+        };
+      }
+    });
+
+    await publisher.publish({
+      postId: 'post-1',
+      videoS3Key: 'uploads/videos/post-1.mp4',
+      coverImageS3Key: 'uploads/covers/post-1.jpg',
+      coverFrameTimeMs: 4200,
+      platform: 'YOUTUBE_SHORTS'
+    });
+
+    expect(resolveVideoUrl).toHaveBeenCalledTimes(1);
+    expect(resolveVideoUrl).toHaveBeenCalledWith('uploads/videos/post-1.mp4');
+    expect(resolveVideoUrl).not.toHaveBeenCalledWith('uploads/covers/post-1.jpg');
+    expect(calls[0].body).toMatchObject({
+      platforms: [
+        {
+          platformSpecificData: {
+            title: 'PostDee video',
+            visibility: 'private'
+          }
+        }
+      ]
+    });
+    expect(JSON.stringify(calls[0].body)).not.toMatch(
+      /cover|thumbnail|thumbOffset/i
+    );
+  });
+
   it('fails when PostPeer reports a top-level unsuccessful result', async () => {
     const publisher = createPostPeerPublisher({
       apiKey: 'pp-key',

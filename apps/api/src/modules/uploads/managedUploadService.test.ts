@@ -29,7 +29,7 @@ const metadata = {
   sizeBytes: 17
 };
 
-const createService = ({ completionDrainSeconds = 120 } = {}) => {
+const createService = ({ completionDrainSeconds = 120, partSizeBytes = 8 } = {}) => {
   const storage = createStorage();
   const store = createInMemoryUploadSessionStore({
     now: () => '2026-07-13T10:00:00.000Z'
@@ -37,7 +37,7 @@ const createService = ({ completionDrainSeconds = 120 } = {}) => {
   const service = createManagedUploadService({
     storage,
     store,
-    partSizeBytes: 8,
+    partSizeBytes,
     sessionExpiresSeconds: 3600,
     now: () => new Date('2026-07-13T10:00:00.000Z'),
     idFactory: () => 'session-1',
@@ -262,12 +262,112 @@ describe('managed upload service', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('allows a completed JPEG upload that satisfies use-specific constraints', async () => {
+    const { service } = createService({ partSizeBytes: 2_048 });
+    const upload = await service.create(
+      {
+        fileName: 'cover.jpg',
+        contentType: 'IMAGE/JPEG; charset=binary',
+        sizeBytes: 1_024
+      },
+      'seller-1'
+    );
+    await service.complete('session-1', 'seller-1', [
+      { partNumber: 1, etag: 'etag-1' }
+    ]);
+
+    await expect(
+      service.assertReadyForUse('seller-1', upload.videoS3Key, {
+        allowLegacy: false,
+        acceptedContentTypes: ['image/jpeg', 'image/png'],
+        maxSizeBytes: 2 * 1024 * 1024
+      })
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects a completed upload whose declared content type is not accepted', async () => {
+    const { service } = createService({ partSizeBytes: 2_048 });
+    const upload = await service.create(
+      {
+        fileName: 'cover.webp',
+        contentType: 'image/webp',
+        sizeBytes: 1_024
+      },
+      'seller-1'
+    );
+    await service.complete('session-1', 'seller-1', [
+      { partNumber: 1, etag: 'etag-1' }
+    ]);
+
+    await expect(
+      service.assertReadyForUse('seller-1', upload.videoS3Key, {
+        allowLegacy: false,
+        acceptedContentTypes: ['image/jpeg', 'image/png'],
+        maxSizeBytes: 2 * 1024 * 1024
+      })
+    ).rejects.toMatchObject({
+      statusCode: 415,
+      code: 'UPLOAD_CONTENT_TYPE_NOT_ALLOWED'
+    });
+  });
+
+  it('rejects a completed upload that exceeds its use-specific size limit', async () => {
+    const maxSizeBytes = 2 * 1024 * 1024;
+    const { service } = createService({ partSizeBytes: maxSizeBytes + 2 });
+    const upload = await service.create(
+      {
+        fileName: 'cover.png',
+        contentType: 'image/png',
+        sizeBytes: maxSizeBytes + 1
+      },
+      'seller-1'
+    );
+    await service.complete('session-1', 'seller-1', [
+      { partNumber: 1, etag: 'etag-1' }
+    ]);
+
+    await expect(
+      service.assertReadyForUse('seller-1', upload.videoS3Key, {
+        allowLegacy: false,
+        acceptedContentTypes: ['image/jpeg', 'image/png'],
+        maxSizeBytes
+      })
+    ).rejects.toMatchObject({
+      statusCode: 413,
+      code: 'UPLOAD_FILE_TOO_LARGE'
+    });
+  });
+
+  it('reports an incomplete upload before applying use-specific constraints', async () => {
+    const { service } = createService({ partSizeBytes: 2_048 });
+    const upload = await service.create(
+      {
+        fileName: 'cover.webp',
+        contentType: 'image/webp',
+        sizeBytes: 1_024
+      },
+      'seller-1'
+    );
+
+    await expect(
+      service.assertReadyForUse('seller-1', upload.videoS3Key, {
+        allowLegacy: false,
+        acceptedContentTypes: ['image/jpeg', 'image/png'],
+        maxSizeBytes: 2 * 1024 * 1024
+      })
+    ).rejects.toMatchObject({ code: 'UPLOAD_NOT_READY' });
+  });
+
   it('allows keys without a session only during the legacy migration window', async () => {
     const { service } = createService();
     const legacyKey = 'uploads/seller-1/legacy/video.mp4';
 
     await expect(
-      service.assertReadyForUse('seller-1', legacyKey, { allowLegacy: true })
+      service.assertReadyForUse('seller-1', legacyKey, {
+        allowLegacy: true,
+        acceptedContentTypes: ['image/jpeg', 'image/png'],
+        maxSizeBytes: 2 * 1024 * 1024
+      })
     ).resolves.toBeUndefined();
     await expect(
       service.assertReadyForUse('seller-1', legacyKey, { allowLegacy: false })

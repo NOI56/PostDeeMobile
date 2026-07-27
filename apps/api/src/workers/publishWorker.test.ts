@@ -354,6 +354,38 @@ describe('processPublishJob', () => {
       })
     );
   });
+
+  it('passes the selected cover image and frame time to every platform publisher', async () => {
+    const publisher = {
+      publish: vi.fn(async ({ platform }) => publishedResult(platform))
+    };
+
+    await processPublishJob({
+      jobData: {
+        ...baseJobData,
+        coverImageS3Key: 'uploads/covers/post-1.jpg',
+        coverFrameTimeMs: 4200
+      },
+      publisher,
+      platformPublishStore: { recordResults: vi.fn(async () => []) }
+    });
+
+    expect(publisher.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        coverImageS3Key: 'uploads/covers/post-1.jpg',
+        coverFrameTimeMs: 4200,
+        platform: 'TIKTOK'
+      })
+    );
+    expect(publisher.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        coverImageS3Key: 'uploads/covers/post-1.jpg',
+        coverFrameTimeMs: 4200,
+        platform: 'YOUTUBE_SHORTS'
+      })
+    );
+  });
+
   it('publishes to every selected platform and cleans up the uploaded video after all succeed', async () => {
     const publisher = {
       publish: vi.fn(async ({ platform }) => ({
@@ -371,7 +403,10 @@ describe('processPublishJob', () => {
     };
 
     const result = await processPublishJob({
-      jobData: baseJobData,
+      jobData: {
+        ...baseJobData,
+        coverImageS3Key: 'uploads/cover.jpg'
+      },
       publisher,
       storage,
       platformPublishStore,
@@ -383,15 +418,19 @@ describe('processPublishJob', () => {
       postId: 'post-1',
       caption: 'Caption',
       videoS3Key: 'uploads/video.mp4',
+      coverImageS3Key: 'uploads/cover.jpg',
       platform: 'TIKTOK'
     });
     expect(publisher.publish).toHaveBeenCalledWith({
       postId: 'post-1',
       caption: 'Caption',
       videoS3Key: 'uploads/video.mp4',
+      coverImageS3Key: 'uploads/cover.jpg',
       platform: 'YOUTUBE_SHORTS'
     });
     expect(storage.deleteVideo).toHaveBeenCalledWith('uploads/video.mp4');
+    expect(storage.deleteVideo).toHaveBeenCalledWith('uploads/cover.jpg');
+    expect(storage.deleteVideo).toHaveBeenCalledTimes(2);
     expect(platformPublishStore.recordResults).toHaveBeenCalledWith({
       postId: 'post-1',
       results: [
@@ -428,10 +467,50 @@ describe('processPublishJob', () => {
       ],
       cleanup: {
         status: 'DELETED',
-        videoS3Key: 'uploads/video.mp4'
+        videoS3Key: 'uploads/video.mp4',
+        coverImageS3Key: 'uploads/cover.jpg'
       }
     });
   });
+
+  it.each(['uploads/video.mp4', 'uploads/cover.jpg'])(
+    'attempts every media cleanup when deleting %s fails',
+    async (failingKey) => {
+      const storage = {
+        deleteVideo: vi.fn(async (key: string) => {
+          if (key === failingKey) {
+            throw new Error('r2 cleanup down');
+          }
+        })
+      };
+
+      const result = await processPublishJob({
+        jobData: {
+          ...baseJobData,
+          coverImageS3Key: 'uploads/cover.jpg'
+        },
+        publisher: {
+          publish: vi.fn(async ({ platform }) => publishedResult(platform))
+        },
+        storage,
+        platformPublishStore: { recordResults: vi.fn(async () => []) },
+        deleteVideoAfterPublish: true
+      });
+
+      expect(storage.deleteVideo).toHaveBeenCalledWith('uploads/video.mp4');
+      expect(storage.deleteVideo).toHaveBeenCalledWith('uploads/cover.jpg');
+      expect(storage.deleteVideo).toHaveBeenCalledTimes(2);
+      expect(result).toMatchObject({
+        status: 'PUBLISHED',
+        cleanup: {
+          status: 'FAILED',
+          videoS3Key: 'uploads/video.mp4',
+          coverImageS3Key: 'uploads/cover.jpg',
+          errorMessage: 'Video cleanup failed. Please try again later.'
+        }
+      });
+    }
+  );
 
   it('does NOT delete the video by default, even when all platforms succeed', async () => {
     const publisher = {

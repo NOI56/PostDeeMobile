@@ -54,6 +54,43 @@ describe('createPublishScheduler', () => {
     expect(post.status).toBe('PUBLISHED');
   });
 
+  it('passes cover metadata from memory-scheduled posts to the publisher', async () => {
+    const postStore = createPostStore();
+    const platformPublishStore = createInMemoryPlatformPublishStore();
+    const publisher = {
+      publish: vi.fn(async ({ postId, platform }) => ({
+        platform,
+        status: 'PUBLISHED' as const,
+        externalPostId: `${platform}-${postId}`,
+        publishedAt: '2026-07-16T00:00:00.000Z'
+      }))
+    };
+
+    await postStore.create({
+      userId: 'seller-cover-memory',
+      caption: 'Memory cover',
+      videoS3Key: 'uploads/seller-cover-memory/video/clip.mp4',
+      coverImageS3Key: 'uploads/seller-cover-memory/cover/cover.jpg',
+      coverFrameTimeMs: 0,
+      platforms: ['INSTAGRAM_REELS']
+    });
+
+    const scheduler = createPublishScheduler({
+      postStore,
+      platformPublishStore,
+      publisher
+    });
+    await scheduler.runOnce();
+
+    expect(publisher.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        coverImageS3Key: 'uploads/seller-cover-memory/cover/cover.jpg',
+        coverFrameTimeMs: 0,
+        platform: 'INSTAGRAM_REELS'
+      })
+    );
+  });
+
   it('marks a partial publish (some platforms failed) as PARTIAL_PUBLISHED, not FAILED', async () => {
     const postStore = createPostStore();
     const platformPublishStore = createInMemoryPlatformPublishStore();

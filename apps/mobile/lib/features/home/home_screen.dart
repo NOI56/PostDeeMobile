@@ -21,6 +21,7 @@ typedef HomeRecentPostsLoader = Future<List<PostSummaryResult>> Function();
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
+    this.isActive = true,
     this.loadAnalytics,
     this.loadSubscription,
     this.loadRecentPosts,
@@ -32,6 +33,10 @@ class HomeScreen extends StatefulWidget {
     this.userName,
   });
 
+  /// Whether the home tab is currently visible in the app shell.
+  ///
+  /// The latest-post list refreshes whenever this changes from false to true.
+  final bool isActive;
   final HomeAnalyticsLoader? loadAnalytics;
   final HomeSubscriptionLoader? loadSubscription;
   final HomeRecentPostsLoader? loadRecentPosts;
@@ -57,6 +62,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingAnalytics = false;
   bool _isLoadingSubscription = true;
   bool _isLoadingPosts = true;
+  bool _postsLoadInProgress = false;
+  bool _postsReloadPending = false;
   String? _analyticsErrorMessage;
   String? _subscriptionErrorMessage;
   var _subscriptionLoadGeneration = 0;
@@ -66,10 +73,28 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadSubscription();
     _loadAnalytics();
-    _loadRecentPosts();
+    if (widget.isActive) {
+      _loadRecentPosts();
+    } else {
+      _isLoadingPosts = false;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!oldWidget.isActive && widget.isActive) {
+      _loadRecentPosts();
+    }
   }
 
   Future<void> _loadRecentPosts() async {
+    if (_postsLoadInProgress) {
+      _postsReloadPending = widget.isActive;
+      return;
+    }
+    _postsLoadInProgress = true;
     setState(() => _isLoadingPosts = true);
 
     try {
@@ -89,9 +114,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() => _recentPosts = const []);
     } finally {
+      _postsLoadInProgress = false;
       if (mounted) {
         setState(() => _isLoadingPosts = false);
       }
+    }
+
+    final shouldReload = _postsReloadPending && mounted && widget.isActive;
+    _postsReloadPending = false;
+    if (shouldReload) {
+      await _loadRecentPosts();
     }
   }
 

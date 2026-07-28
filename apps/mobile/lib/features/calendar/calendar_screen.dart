@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,30 +10,45 @@ import '../platforms/social_platform.dart';
 import '../shared/postdee_notice.dart';
 
 typedef ScheduledPostsLoader = Future<List<ScheduledPostResult>> Function();
+typedef CalendarTimeConverter = DateTime Function(DateTime value);
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({
     super.key,
     this.refreshToken = 0,
+    this.isActive = true,
     this.loadScheduledPosts,
     this.onAddPost,
+    this.onOpenPostDetail,
+    this.toLocalTime,
   });
 
   final int refreshToken;
+  final bool isActive;
   final ScheduledPostsLoader? loadScheduledPosts;
+  final CalendarTimeConverter? toLocalTime;
 
   /// Jump to the upload flow to schedule a new post.
   final VoidCallback? onAddPost;
+
+  /// Open a read-only result for a post that has finished publishing.
+  final ValueChanged<ScheduledPostResult>? onOpenPostDetail;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class _CalendarScreenState extends State<CalendarScreen>
+    with WidgetsBindingObserver {
+  static const _queuedRefreshInterval = Duration(seconds: 30);
+
   final _apiClient = PostDeeApiClient();
   bool _isLoading = true;
+  bool _loadInProgress = false;
+  bool _appIsResumed = true;
   String? _errorMessage;
   List<ScheduledPostResult> _posts = const [];
+  Timer? _queuedRefreshTimer;
   late DateTime _visibleMonth;
   DateTime? _selectedDay;
   String _platformFilter = 'all';
@@ -40,24 +56,64 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _appIsResumed =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     final now = DateTime.now();
     _visibleMonth = DateTime(now.year, now.month);
-    _loadPosts();
+    if (widget.isActive) {
+      unawaited(_loadPosts());
+    } else {
+      _isLoading = false;
+    }
   }
 
   @override
   void didUpdateWidget(covariant CalendarScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.refreshToken != widget.refreshToken) {
-      _loadPosts();
+    final becameActive = !oldWidget.isActive && widget.isActive;
+    final refreshRequested = oldWidget.refreshToken != widget.refreshToken;
+
+    if (!widget.isActive) {
+      _queuedRefreshTimer?.cancel();
+      _queuedRefreshTimer = null;
+    } else if (becameActive || refreshRequested) {
+      unawaited(_loadPosts(silent: _posts.isNotEmpty));
     }
   }
 
-  Future<void> _loadPosts() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appIsResumed = state == AppLifecycleState.resumed;
+    if (!_appIsResumed) {
+      _queuedRefreshTimer?.cancel();
+      _queuedRefreshTimer = null;
+      return;
+    }
+
+    if (widget.isActive) {
+      unawaited(_loadPosts(silent: _posts.isNotEmpty));
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _queuedRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadPosts({bool silent = false}) async {
+    if (_loadInProgress) return;
+    _loadInProgress = true;
+
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
       final loader = widget.loadScheduledPosts ?? _apiClient.listScheduledPosts;
@@ -67,34 +123,71 @@ class _CalendarScreenState extends State<CalendarScreen> {
         return;
       }
 
-      final sorted = [...posts]
-        ..sort((left, right) => left.scheduledAt.compareTo(right.scheduledAt));
+      final sorted = [...posts]..sort((left, right) =>
+          _calendarTimeFor(left).compareTo(_calendarTimeFor(right)));
 
       setState(() {
         _posts = sorted;
+        _errorMessage = null;
         // Until the user picks a day, follow the first scheduled post so the
         // day list below the grid is never pointlessly empty.
         if (_selectedDay == null && sorted.isNotEmpty) {
-          final first = sorted.first.scheduledAt.toLocal();
+          final first = _calendarTimeFor(sorted.first);
           _selectedDay = DateTime(first.year, first.month, first.day);
           _visibleMonth = DateTime(first.year, first.month);
         }
       });
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _errorMessage = error.message);
+      if (!silent || _posts.isEmpty) {
+        setState(() => _errorMessage = error.message);
+      }
     } on SocketException {
       if (!mounted) return;
-      setState(() => _errorMessage = 'เชื่อมต่อ PostDee API ไม่ได้');
+      if (!silent || _posts.isEmpty) {
+        setState(() => _errorMessage = 'เชื่อมต่อ PostDee API ไม่ได้');
+      }
     } catch (_) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'โหลดปฏิทินโพสต์ไม่สำเร็จ');
+      if (!silent || _posts.isEmpty) {
+        setState(() => _errorMessage = 'โหลดปฏิทินโพสต์ไม่สำเร็จ');
+      }
     } finally {
+      _loadInProgress = false;
       if (mounted) {
         setState(() => _isLoading = false);
+        _syncQueuedRefresh();
       }
     }
   }
+
+  void _syncQueuedRefresh() {
+    _queuedRefreshTimer?.cancel();
+    _queuedRefreshTimer = null;
+
+    final hasPendingPost = _posts.any(_needsStatusRefresh);
+    if (!mounted || !_appIsResumed || !widget.isActive || !hasPendingPost) {
+      return;
+    }
+
+    _queuedRefreshTimer = Timer(_queuedRefreshInterval, () {
+      _queuedRefreshTimer = null;
+      if (mounted && _appIsResumed && widget.isActive) {
+        unawaited(_loadPosts(silent: true));
+      }
+    });
+  }
+
+  DateTime _calendarTimeFor(ScheduledPostResult post) {
+    final status = post.status.toUpperCase();
+    final isPublished = status == 'PUBLISHED' || status == 'PARTIAL_PUBLISHED';
+    final timestamp =
+        isPublished ? post.publishedAt ?? post.scheduledAt : post.scheduledAt;
+    return _toLocalTime(timestamp);
+  }
+
+  DateTime _toLocalTime(DateTime value) =>
+      widget.toLocalTime?.call(value) ?? value.toLocal();
 
   // The prototype always keeps one day selected; default to today.
   DateTime get _activeDay {
@@ -113,7 +206,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Map<String, Color> get _dayDotColors {
     final colors = <String, Color>{};
     for (final post in _visiblePosts) {
-      final key = _dayKey(post.scheduledAt.toLocal());
+      final key = _dayKey(_calendarTimeFor(post));
       if (colors.containsKey(key)) continue;
       final platform = _platformFor(post.platforms.firstOrNull ?? '');
       colors[key] = platform?.displayColor ?? AppTheme.accent;
@@ -122,7 +215,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   List<ScheduledPostResult> get _dayPosts => _visiblePosts
-      .where((p) => _isSameDay(p.scheduledAt.toLocal(), _activeDay))
+      .where((p) => _isSameDay(_calendarTimeFor(p), _activeDay))
       .toList();
 
   void _changeMonth(int delta) {
@@ -135,7 +228,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
     setState(() => _selectedDay = date);
   }
 
+  VoidCallback? _postTapHandler(ScheduledPostResult post) {
+    if (_canEditQueue(post)) {
+      return () => _showPostActions(post);
+    }
+
+    if (_canOpenPostDetail(post) && widget.onOpenPostDetail != null) {
+      return () => widget.onOpenPostDetail!(post);
+    }
+
+    return null;
+  }
+
   Future<void> _showPostActions(ScheduledPostResult post) async {
+    if (!_canEditQueue(post)) return;
+
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppTheme.charcoal,
@@ -181,7 +288,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _reschedule(ScheduledPostResult post) async {
-    final current = post.scheduledAt.toLocal();
+    if (!_canEditQueue(post)) return;
+
+    final current = _toLocalTime(post.scheduledAt);
     final date = await showDatePicker(
       context: context,
       initialDate: current,
@@ -222,6 +331,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _cancel(ScheduledPostResult post) async {
+    if (!_canEditQueue(post)) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -613,7 +724,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
         )
       else
         for (final post in dayPosts) ...[
-          _DayPostRow(post: post, onTap: () => _showPostActions(post)),
+          _DayPostRow(
+            post: post,
+            displayAt: _calendarTimeFor(post),
+            onTap: _postTapHandler(post),
+          ),
           const SizedBox(height: 9),
         ],
     ];
@@ -693,20 +808,24 @@ class _FilterChip extends StatelessWidget {
 }
 
 class _DayPostRow extends StatelessWidget {
-  const _DayPostRow({required this.post, required this.onTap});
+  const _DayPostRow({
+    required this.post,
+    required this.displayAt,
+    required this.onTap,
+  });
 
   final ScheduledPostResult post;
-  final VoidCallback onTap;
+  final DateTime displayAt;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final scheduledAt = post.scheduledAt.toLocal();
     final platform = _platformFor(post.platforms.firstOrNull ?? '');
     final tint = platform?.displayColor ?? AppTheme.accent;
     final isScheduled = post.status == 'QUEUED';
 
     return Semantics(
-      button: true,
+      button: onTap != null,
       label: post.caption,
       child: GestureDetector(
         onTap: onTap,
@@ -756,7 +875,7 @@ class _DayPostRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${_statusLabel(post.status)} · ${_formatTime(scheduledAt)}',
+                      '${_statusLabel(post.status)} · ${_formatTime(displayAt)}',
                       style: TextStyle(
                         fontSize: 11.5,
                         color: AppTheme.textMuted,
@@ -765,7 +884,8 @@ class _DayPostRow extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, size: 20, color: AppTheme.textMuted),
+              if (onTap != null)
+                Icon(Icons.chevron_right, size: 20, color: AppTheme.textMuted),
             ],
           ),
         ),
@@ -891,6 +1011,21 @@ bool _isSameDay(DateTime left, DateTime right) =>
     left.month == right.month &&
     left.day == right.day;
 
+bool _canEditQueue(ScheduledPostResult post) =>
+    post.status.toUpperCase() == 'QUEUED';
+
+bool _canOpenPostDetail(ScheduledPostResult post) {
+  final status = post.status.toUpperCase();
+  return status == 'PUBLISHED' ||
+      status == 'PARTIAL_PUBLISHED' ||
+      status == 'FAILED';
+}
+
+bool _needsStatusRefresh(ScheduledPostResult post) {
+  final status = post.status.toUpperCase();
+  return status == 'QUEUED' || status == 'PUBLISHING';
+}
+
 String _formatTime(DateTime date) =>
     '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 
@@ -937,6 +1072,8 @@ String _statusLabel(String status) {
       return 'กำลังโพสต์';
     case 'PUBLISHED':
       return 'เผยแพร่แล้ว';
+    case 'PARTIAL_PUBLISHED':
+      return 'เผยแพร่บางช่องทาง';
     case 'FAILED':
       return 'โพสต์ไม่สำเร็จ';
     default:

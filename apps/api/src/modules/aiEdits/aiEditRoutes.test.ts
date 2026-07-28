@@ -260,6 +260,62 @@ describe('ai edit routes', () => {
     }
   );
 
+  it('meters prepare usage only after the edit recipe succeeds', async () => {
+    const transcribe = vi.fn(async () => ({
+      text: 'retry after planner failure',
+      language: 'en',
+      durationSeconds: 60,
+      segments: [
+        { text: 'retry after planner failure', start: 0, end: 60 }
+      ],
+      words: [],
+      model: 'test-whisper'
+    }));
+    const plan = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('planner unavailable'))
+      .mockResolvedValueOnce({
+        cuts: [{ start: 30, end: 60 }],
+        summary: 'keep the first half',
+        model: 'test-planner'
+      });
+    const app = createApp({
+      transcriptionProvider: { transcribe },
+      editPlanProvider: { plan }
+    });
+    const headers = { 'x-postdee-subscription-plan': 'PRO' };
+    const body = {
+      videoS3Key: ownedUploadKey('local-dev-user', 'planner-retry.mp4'),
+      durationSeconds: 60,
+      targetDurationSeconds: 30
+    };
+
+    await request(app)
+      .post('/ai-edits/prepare')
+      .set(headers)
+      .send(body)
+      .expect(500);
+
+    const afterFailure = await request(app)
+      .get('/ai-edits/quota')
+      .set(headers)
+      .expect(200);
+    expect(afterFailure.body.quota.usedMinutes).toBe(0);
+
+    const retry = await request(app)
+      .post('/ai-edits/prepare')
+      .set(headers)
+      .send(body)
+      .expect(200);
+    expect(retry.body.quota.usedMinutes).toBe(1);
+
+    const afterSuccess = await request(app)
+      .get('/ai-edits/quota')
+      .set(headers)
+      .expect(200);
+    expect(afterSuccess.body.quota.usedMinutes).toBe(1);
+  });
+
   it('prepares a mobile render recipe from the AI editing UI capabilities', async () => {
     const transcribe = vi.fn(async () => ({
       text: 'ราคา 99 บาท ส่งฟรีวันนี้ กดตะกร้าได้เลย',

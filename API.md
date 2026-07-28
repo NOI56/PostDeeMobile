@@ -862,9 +862,11 @@ chosen style/prompt, and capability toggles such as `subtitle`, `silence`,
 
 This endpoint is Pro-gated and minute-metered like `/ai-edits/transcribe`: the
 client `durationSeconds` is a pre-check estimate, the backend transcribes the
-stored clip, then reserves the actual transcribed minutes before returning the
-recipe. It does **not** render video on the server; mobile still renders/export
-with FFmpeg.
+stored clip and builds the requested edit plan/recipe, then atomically reserves
+the actual transcribed minutes immediately before returning success. A failed
+planner or invalid recipe does not consume quota; the final reservation still
+prevents concurrent requests from exceeding the monthly limit. It does **not**
+render video on the server; mobile still renders/export with FFmpeg.
 
 Current mobile clients split source audio into balanced chunks no longer than
 30 seconds. Every chunk is created through `POST /uploads` with `.m4a`,

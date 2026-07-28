@@ -589,8 +589,10 @@ requests remain supported, and legacy videos are not automatically deleted.
 `POST /ai-edits/prepare` combines the AI editing UI
 capability toggles, selected style/prompt, transcript, cut plan, overlay hints,
 and quota into one mobile render recipe. The API pre-checks estimated duration, then reserves
-actual transcribed minutes before a successful response so parallel requests do
-not exceed the monthly quota. Mobile caches that successful recipe and maps its
+actual transcribed minutes only after the edit plan and recipe succeed, immediately
+before the successful response. This avoids charging failed planner/recipe attempts
+while the atomic reservation still stops parallel requests from exceeding the
+monthly quota. Mobile caches that successful recipe and maps its
 subtitle segments and source-timeline cuts into a versioned local
 `SubtitleProject`. Mobile renders a lightweight preview and opens result review
 first. Subtitle Studio opens only from the explicit review action:

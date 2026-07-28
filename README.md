@@ -537,7 +537,10 @@ Current mobile pieces:
 - Pro AI editing backend exposes `POST /ai-edits/prepare`, which turns the
   selected clip, UI capability toggles, style/prompt, and settings into a
   mobile FFmpeg render recipe. It meters the same 200 monthly AI editing minutes
-  as transcription and does not render video server-side. Groq transcription
+  as transcription only after the requested edit plan and recipe succeed; a
+  failed planner/recipe retry does not consume quota. The final atomic
+  reservation still enforces the monthly limit. It does not render video
+  server-side. Groq transcription
   sends the ISO-639-1 Thai hint (`th`) and requests both word and segment
   timestamps without a spelling prompt, preventing provider context from leaking
   into unrelated clip text. Optional segment confidence/no-speech/compression

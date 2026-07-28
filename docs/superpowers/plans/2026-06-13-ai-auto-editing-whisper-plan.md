@@ -17,6 +17,11 @@
 > `AI_TRANSCRIPTION_PROVIDER_FAILED` before quota reservation when transcription
 > is unavailable. Mobile shows a Thai retry message instead of `Request failed`.
 >
+> 2026-07-28 quota-finalization update: `/ai-edits/prepare` reserves actual
+> transcribed minutes only after the requested edit plan and recipe succeed.
+> Planner/recipe failures can be retried without consuming quota, while the
+> final atomic reservation still enforces the monthly limit under concurrency.
+>
 > 2026-07-22 target-length update: the customer flow no longer preselects 30
 > seconds. The seller must choose 30/60/custom before processing, and the
 > selected value is sent as `targetDurationSeconds` for AI highlight planning.

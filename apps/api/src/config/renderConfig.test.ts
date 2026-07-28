@@ -34,6 +34,9 @@ describe('render.yaml production config', () => {
     expectEnvValue(source, 'TRANSCRIPTION_PROVIDER', 'groq');
     expectEnvValue(source, 'EDIT_PLAN_PROVIDER', 'groq');
     expectEnvSecret(source, 'GROQ_API_KEY');
+    expectEnvSecret(source, 'ELEVENLABS_API_KEY');
+    expectEnvValue(source, 'ELEVENLABS_TRANSCRIPTION_MODEL', 'scribe_v2');
+    expectEnvValue(source, 'ELEVENLABS_TRANSCRIPTION_KEYTERMS', '""');
     expectEnvValue(source, 'SOCIAL_PUBLISHER', 'postpeer');
     expectEnvSecret(source, 'POSTPEER_API_KEY');
     expectEnvSecret(source, 'GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN');

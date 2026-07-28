@@ -70,7 +70,11 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 - `render.yaml` และ `render.staging.yaml` ใน `main` ตั้ง
   `TRANSCRIPTION_PROVIDER=groq` ดังนั้น Production และ Staging ที่สร้างจาก
   Blueprint ปัจจุบันใช้ Groq Whisper
-- ElevenLabs Scribe v2 ยังเป็นงานทดลองและไม่ได้เปิดใน Blueprint ทั้งสองไฟล์
+- ElevenLabs Scribe v2 เป็นตัวเลือกที่รองรับแล้ว และ Blueprint ทั้งสองไฟล์
+  เตรียมชื่อ key/model ไว้ แต่ยังไม่เลือกใช้เป็นค่าเริ่มต้น
+- ก่อนสลับเป็น `TRANSCRIPTION_PROVIDER=elevenlabs` ให้ใช้คำสั่ง
+  `npm run benchmark:transcription` เปรียบเทียบผลที่ลบข้อมูลลับแล้วกับ Groq
+  และเว้น `ELEVENLABS_TRANSCRIPTION_KEYTERMS` ว่างไว้หากยังไม่ได้วัดความคุ้มค่า
 - การมี API key หรือค่ารุ่นโมเดลอยู่ใน Dashboard ไม่ได้แปลว่าโมเดลนั้นถูกเรียก
   ต้องตรวจค่า `TRANSCRIPTION_PROVIDER` ของ service ที่ Deploy จริงทุกครั้ง
 - ระบบตัดช่วงเงียบใช้ช่องว่างจากเวลา word/segment ของ transcript ปัจจุบันยังไม่มี

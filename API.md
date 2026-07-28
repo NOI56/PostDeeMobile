@@ -1648,9 +1648,12 @@ PostgreSQL.
 | `GEMINI_CAPTION_MODEL` | `gemini-2.5-flash-lite` | Gemini caption model |
 | `OPENAI_API_KEY` | `...` | Legacy OpenAI API key |
 | `OPENAI_CAPTION_MODEL` | `gpt-4o-mini` | Legacy OpenAI caption model |
-| `TRANSCRIPTION_PROVIDER` | `mock`, `openai`, `groq` | AI caption language detection and AI edit transcription provider |
+| `TRANSCRIPTION_PROVIDER` | `mock`, `openai`, `groq`, `elevenlabs` | AI caption language detection and AI edit transcription provider |
 | `GROQ_API_KEY` | `...` | Groq API key for AI caption detection and AI edit transcription |
 | `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3` | Groq transcription model |
+| `ELEVENLABS_API_KEY` | `...` | Server-only ElevenLabs Speech-to-Text API key |
+| `ELEVENLABS_TRANSCRIPTION_MODEL` | `scribe_v2` | ElevenLabs batch transcription model |
+| `ELEVENLABS_TRANSCRIPTION_KEYTERMS` | empty | Optional comma/newline-separated brand terms; blank avoids the provider keyterm surcharge |
 | `WHISPER_MODEL` | `whisper-1` | Legacy OpenAI transcription model |
 | `EDIT_PLAN_PROVIDER` | `mock`, `openai`, `groq` | Brain for `POST /ai-edits/plan`; `mock` is rule-based, the others call an LLM and fall back to mock on failure |
 | `OPENAI_EDIT_PLAN_MODEL` | `gpt-4o-mini` | OpenAI chat model for edit planning |

@@ -76,6 +76,12 @@ services:
         value: groq
       - key: GROQ_API_KEY
         sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_TRANSCRIPTION_MODEL
+        value: scribe_v2
+      - key: ELEVENLABS_TRANSCRIPTION_KEYTERMS
+        value: ""
       - key: SOCIAL_PUBLISHER
         value: disabled
       - key: AUTH_PROVIDER

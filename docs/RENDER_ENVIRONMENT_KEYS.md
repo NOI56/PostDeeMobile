@@ -83,6 +83,7 @@ Render Dashboard.
 | `CLOUDFLARE_R2_ENDPOINT` | R2 video storage | Usually optional | Override endpoint when needed. If blank, backend can use the default account endpoint. |
 | `GEMINI_API_KEY` | AI caption from real clip | Yes | Required because `CAPTION_PROVIDER=gemini`. |
 | `GROQ_API_KEY` | AI auto editing transcription and edit planning | Yes | Required because `TRANSCRIPTION_PROVIDER=groq` and `EDIT_PLAN_PROVIDER=groq`. |
+| `ELEVENLABS_API_KEY` | Optional Scribe v2 transcription benchmark/rollout | No | Server-only. Required only after changing `TRANSCRIPTION_PROVIDER` to `elevenlabs`. |
 | `POSTPEER_API_KEY` | Social publishing | Yes | Required because `SOCIAL_PUBLISHER=postpeer`. |
 | `FIREBASE_PROJECT_ID` | Firebase Auth token verification | Yes | Project id, not a private key. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase account deletion and future push sender | Yes | Present in the live service. Keep secret; it is required while `FIREBASE_AUTH_DELETE_ENABLED=true` and before changing `PUSH_SENDER` to `firebase`. |
@@ -99,6 +100,8 @@ intentionally want a different value.
 | --- | --- | --- |
 | `GEMINI_CAPTION_MODEL` | `gemini-2.5-flash-lite` | Caption model. |
 | `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3` | AI editing transcription model. |
+| `ELEVENLABS_TRANSCRIPTION_MODEL` | `scribe_v2` | Optional ElevenLabs batch transcription model. |
+| `ELEVENLABS_TRANSCRIPTION_KEYTERMS` | empty | Optional brand terms. Keep blank until measured because keyterm prompting adds provider cost. |
 | `GROQ_EDIT_PLAN_MODEL` | `llama-3.3-70b-versatile` | AI edit-plan model. |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | PostPeer API host. |
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Five-minute signed upload URL lifetime; mobile retries once only when the URL explicitly expires. |

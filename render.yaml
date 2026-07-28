@@ -63,13 +63,23 @@ services:
         value: gemini
       - key: GEMINI_API_KEY
         sync: false
-      # --- Transcription + edit planning: Groq (AI auto-editing) ---
+      # --- Transcription + edit planning (AI auto-editing) ---
+      # Groq remains the default until the sanitized comparison report shows
+      # that ElevenLabs materially improves Thai accuracy for the extra cost.
       - key: TRANSCRIPTION_PROVIDER
         value: groq
       - key: EDIT_PLAN_PROVIDER
         value: groq
       - key: GROQ_API_KEY
         sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_TRANSCRIPTION_MODEL
+        value: scribe_v2
+      # Empty by default: keyterm prompting adds provider cost. Enable only
+      # after measuring it with the comparison script.
+      - key: ELEVENLABS_TRANSCRIPTION_KEYTERMS
+        value: ""
       # --- Social posting: PostPeer ---
       # Per-user connected accounts are resolved from the social connection
       # store. Shared POSTPEER_*_ACCOUNT_ID values are forbidden in production

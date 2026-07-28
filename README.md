@@ -43,10 +43,10 @@ apps/
 - Both `render.yaml` and `render.staging.yaml` currently set
   `TRANSCRIPTION_PROVIDER=groq`; Groq Whisper is therefore the configured
   transcription provider for Production and Staging builds from `main`.
-- ElevenLabs Scribe v2 work is experimental and is not enabled by either active
-  blueprint. A provider mentioned in a dated plan, branch, or local environment
-  must not be described as live until the active blueprint and deployed Render
-  environment both select it.
+- ElevenLabs Scribe v2 is now a supported optional backend. Both active
+  blueprints declare its secret/model settings, but still select Groq by
+  default. Switch `TRANSCRIPTION_PROVIDER=elevenlabs` only after the sanitized
+  Groq/ElevenLabs benchmark shows a worthwhile Thai-accuracy improvement.
 - Silence cleanup currently detects validated gaps between transcript
   word/segment timestamps. It does not yet use waveform decibels, FFmpeg
   `silencedetect`, or VAD as a second confirmation layer.
@@ -65,6 +65,9 @@ Current backend pieces:
 - Optional Cloudflare R2 video storage adapter selectable with `VIDEO_STORAGE=r2`, including signed upload and signed download access scaffolds
 - Optional Gemini caption adapter selectable with `CAPTION_PROVIDER=gemini`
 - Optional Groq transcription adapter selectable with `TRANSCRIPTION_PROVIDER=groq`
+- Optional ElevenLabs Scribe v2 adapter selectable with
+  `TRANSCRIPTION_PROVIDER=elevenlabs`; brand-name keyterms are opt-in because
+  the provider charges extra for keyterm prompting
 - Legacy S3/OpenAI adapters remain available with `VIDEO_STORAGE=s3` and `CAPTION_PROVIDER=openai`
 - Mock/Firebase auth middleware selectable with `AUTH_PROVIDER=firebase`
 - RevenueCat webhook receiver for Starter and Pro subscription entitlements
@@ -818,7 +821,13 @@ Queue/storage scaffold switches:
 - `RATE_LIMIT_WINDOW_MS=60000` and `RATE_LIMIT_MAX_REQUESTS=300` cap requests per IP per window; exceeding the cap returns `429` with code `RATE_LIMITED` (`GET /health` is exempt). Auth, upload, AI, and social-connection routes also have tighter fixed per-IP buckets.
 - `AWS_S3_UPLOAD_EXPIRES_SECONDS=900` controls how long legacy S3 signed upload URLs remain usable.
 - `CAPTION_PROVIDER=mock` uses the local Thai template; `CAPTION_PROVIDER=gemini` calls Gemini with `GEMINI_CAPTION_MODEL` and `GEMINI_API_KEY`; `CAPTION_PROVIDER=openai` remains available as a legacy path.
-- `TRANSCRIPTION_PROVIDER=mock` uses the local Thai transcript for AI caption language detection and AI editing; `TRANSCRIPTION_PROVIDER=groq` calls Groq with `GROQ_TRANSCRIPTION_MODEL` and `GROQ_API_KEY`; `TRANSCRIPTION_PROVIDER=openai` remains available as a legacy path.
+- `TRANSCRIPTION_PROVIDER=mock` uses the local Thai transcript for AI caption
+  language detection and AI editing; `TRANSCRIPTION_PROVIDER=groq` calls Groq
+  with `GROQ_TRANSCRIPTION_MODEL` and `GROQ_API_KEY`;
+  `TRANSCRIPTION_PROVIDER=elevenlabs` calls Scribe v2 with
+  `ELEVENLABS_API_KEY`, `ELEVENLABS_TRANSCRIPTION_MODEL`, and optional
+  `ELEVENLABS_TRANSCRIPTION_KEYTERMS`; `TRANSCRIPTION_PROVIDER=openai` remains
+  available as a legacy path.
 - `AUTH_PROVIDER=mock` uses development headers; `AUTH_PROVIDER=firebase`
   requires `FIREBASE_PROJECT_ID`. It verifies Google Secure Token certificates
   by default, or Firebase Admin revocation/user existence when

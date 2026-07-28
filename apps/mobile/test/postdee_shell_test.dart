@@ -757,6 +757,185 @@ void main() {
     expect(find.text('Scheduled shell clip'), findsOneWidget);
   });
 
+  testWidgets('refreshes calendar whenever the user returns to its tab',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+    var calendarLoadCount = 0;
+
+    sessionStore.signIn(
+      const AuthSession(
+        idToken: 'firebase-id-token',
+        email: 'seller@example.com',
+        displayName: 'PostDee Seller',
+      ),
+    );
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: PostDeeShell(
+          languageController: languageController,
+          loadScheduledPosts: () async {
+            calendarLoadCount += 1;
+            return const [];
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // IndexedStack creates the calendar up front, but an inactive tab should
+    // not call the API until the user actually opens it.
+    expect(calendarLoadCount, 0);
+
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pumpAndSettle();
+    expect(calendarLoadCount, 1);
+
+    await tester.tap(_referenceNavButton('Home'));
+    await tester.pumpAndSettle();
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pumpAndSettle();
+    expect(calendarLoadCount, 2);
+  });
+
+  testWidgets('opens published calendar posts in the detail screen',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+
+    sessionStore.signIn(
+      const AuthSession(
+        idToken: 'firebase-id-token',
+        email: 'seller@example.com',
+        displayName: 'PostDee Seller',
+      ),
+    );
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+
+    final publishedAt = DateTime(2026, 7, 16, 19, 25);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: PostDeeShell(
+          languageController: languageController,
+          loadScheduledPosts: () async => [
+            ScheduledPostResult(
+              id: 'published-calendar-post',
+              caption: 'Published calendar clip',
+              videoS3Key: 'uploads/published.mp4',
+              platforms: const ['YOUTUBE_SHORTS'],
+              scheduledAt: publishedAt,
+              publishedAt: publishedAt,
+              status: 'PUBLISHED',
+              createdAt: publishedAt.subtract(const Duration(minutes: 10)),
+              platformResults: [
+                PostPlatformResult(
+                  postId: 'published-calendar-post',
+                  platform: 'YOUTUBE_SHORTS',
+                  status: 'PUBLISHED',
+                  externalPostId: 'https://youtube.example/private-video',
+                  publishedAt: publishedAt,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Published calendar clip'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Published calendar clip'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('รายละเอียดโพสต์'), findsOneWidget);
+    expect(find.text('เผยแพร่สำเร็จ'), findsOneWidget);
+  });
+
+  testWidgets('refreshes latest home posts whenever the user returns home',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+    var recentPostsLoadCount = 0;
+
+    sessionStore.signIn(
+      const AuthSession(
+        idToken: 'firebase-id-token',
+        email: 'seller@example.com',
+        displayName: 'PostDee Seller',
+      ),
+    );
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: PostDeeShell(
+          languageController: languageController,
+          loadRecentPosts: () async {
+            recentPostsLoadCount += 1;
+            return const [];
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(recentPostsLoadCount, 1);
+
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pumpAndSettle();
+    expect(recentPostsLoadCount, 1);
+
+    await tester.tap(_referenceNavButton('Home'));
+    await tester.pumpAndSettle();
+    expect(recentPostsLoadCount, 2);
+  });
+
   testWidgets('shows first-run onboarding once, then goes to home',
       (tester) async {
     SharedPreferences.setMockInitialValues({});

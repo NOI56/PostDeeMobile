@@ -1157,20 +1157,52 @@ void main() {
   test('ScheduledPostResult parses calendar post payloads', () {
     final post = ScheduledPostResult.fromJson({
       'id': 'post-1',
+      'userId': 'seller-1',
       'caption': 'Launch clip',
       'videoS3Key': 'uploads/launch.mp4',
       'platforms': ['TIKTOK', 'YOUTUBE_SHORTS'],
+      'scheduledAt': '2026-06-07T11:30:00.000Z',
+      'status': 'PARTIAL_PUBLISHED',
+      'publishedAt': '2026-06-07T11:31:00.000Z',
+      'createdAt': '2026-06-01T00:00:00.000Z',
+      'platformResults': [
+        {
+          'postId': 'post-1',
+          'platform': 'TIKTOK',
+          'status': 'PUBLISHED',
+          'publishedAt': '2026-06-07T11:31:00.000Z',
+        },
+      ],
+    });
+
+    expect(post.id, 'post-1');
+    expect(post.userId, 'seller-1');
+    expect(post.caption, 'Launch clip');
+    expect(post.platforms, ['TIKTOK', 'YOUTUBE_SHORTS']);
+    expect(
+        post.scheduledAt.toUtc().toIso8601String(), '2026-06-07T11:30:00.000Z');
+    expect(post.status, 'PARTIAL_PUBLISHED');
+    expect(post.publishedAt?.toUtc().toIso8601String(),
+        '2026-06-07T11:31:00.000Z');
+    expect(post.platformResults, hasLength(1));
+    expect(post.platformResults.single.platform, 'TIKTOK');
+  });
+
+  test('ScheduledPostResult keeps optional calendar fields backward compatible',
+      () {
+    final post = ScheduledPostResult.fromJson({
+      'id': 'post-legacy',
+      'caption': 'Legacy clip',
+      'videoS3Key': 'uploads/legacy.mp4',
+      'platforms': ['YOUTUBE_SHORTS'],
       'scheduledAt': '2026-06-07T11:30:00.000Z',
       'status': 'QUEUED',
       'createdAt': '2026-06-01T00:00:00.000Z',
     });
 
-    expect(post.id, 'post-1');
-    expect(post.caption, 'Launch clip');
-    expect(post.platforms, ['TIKTOK', 'YOUTUBE_SHORTS']);
-    expect(
-        post.scheduledAt.toUtc().toIso8601String(), '2026-06-07T11:30:00.000Z');
-    expect(post.status, 'QUEUED');
+    expect(post.userId, isNull);
+    expect(post.publishedAt, isNull);
+    expect(post.platformResults, isEmpty);
   });
 
   test('PostSummaryResult parses honest per-platform publish results', () {

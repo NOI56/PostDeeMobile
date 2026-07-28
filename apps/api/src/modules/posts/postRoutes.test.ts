@@ -67,6 +67,49 @@ describe('post routes', () => {
     ]);
   });
 
+  it('accepts schedules up to 30 days and rejects anything later', async () => {
+    const now = new Date('2026-06-01T00:00:00.000Z');
+    const app = createApp({ now: () => now });
+    const baseRequest = {
+      caption: 'Post inside scheduling window',
+      platforms: ['TIKTOK'],
+      subscriptionPlan: 'PRO'
+    };
+
+    const accepted = await request(app)
+      .post('/posts')
+      .send({
+        ...baseRequest,
+        videoS3Key: ownedUploadKey('local-dev-user', 'day-30.mp4'),
+        scheduledAt: '2026-07-01T00:00:00.000Z'
+      })
+      .expect(201);
+
+    await request(app)
+      .post('/posts')
+      .send({
+        ...baseRequest,
+        videoS3Key: ownedUploadKey('local-dev-user', 'over-day-30.mp4'),
+        scheduledAt: '2026-07-01T00:00:00.001Z'
+      })
+      .expect(400)
+      .expect({
+        status: 'error',
+        code: 'SCHEDULE_LIMIT_EXCEEDED',
+        message: 'Posts can be scheduled up to 30 days in advance'
+      });
+
+    await request(app)
+      .patch(`/posts/${accepted.body.post.id}`)
+      .send({ scheduledAt: '2026-07-01T00:00:00.001Z' })
+      .expect(400)
+      .expect({
+        status: 'error',
+        code: 'SCHEDULE_LIMIT_EXCEEDED',
+        message: 'Posts can be scheduled up to 30 days in advance'
+      });
+  });
+
   it('stores and queues cover metadata only after both uploads are ready', async () => {
     const app = express();
     const router = express.Router();

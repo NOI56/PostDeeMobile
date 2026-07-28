@@ -114,6 +114,26 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  test('limits scheduled posts to 30 days from now', () {
+    final now = DateTime.utc(2026, 7, 17, 9);
+
+    expect(
+      isPostScheduleWithinLimit(
+        scheduledAt: now.add(const Duration(days: 30)),
+        now: now,
+      ),
+      isTrue,
+    );
+    expect(
+      isPostScheduleWithinLimit(
+        scheduledAt:
+            now.add(const Duration(days: 30, milliseconds: 1)),
+        now: now,
+      ),
+      isFalse,
+    );
+  });
+
   final uploaderScroll = find.byType(Scrollable).first;
 
   testWidgets('shows and selects only platforms connected by the real status',
@@ -274,7 +294,9 @@ void main() {
     expect(
         find.byKey(const ValueKey('uploader-step-schedule')), findsOneWidget);
     expect(
-      find.text('ตั้งเวลาได้ในแพ็กเกจ Starter ขึ้นไป'),
+      find.text(
+        'ตั้งเวลาได้ล่วงหน้าสูงสุด 30 วันในแพ็กเกจ Starter ขึ้นไป',
+      ),
       findsOneWidget,
     );
     expect(find.text('ตั้งเวลาใช้ได้ใน Starter/Pro'), findsNothing);

@@ -455,6 +455,128 @@ void main() {
     );
   });
 
+  testWidgets(
+      'loads latest posts only while home is active and refreshes on return',
+      (tester) async {
+    var loadCount = 0;
+    var homeIsActive = false;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return HomeScreen(
+              isActive: homeIsActive,
+              loadAnalytics: () async => const AnalyticsSummaryResult(
+                totalViews: 0,
+                totalLikes: 0,
+                platforms: [],
+              ),
+              loadSubscription: () async => const SubscriptionStatusResult(
+                userId: 'seller',
+                plan: 'BASIC',
+                status: 'ACTIVE',
+                canSchedule: false,
+                canUseAiCaptions: false,
+                canUseAnalytics: false,
+              ),
+              loadRecentPosts: () async {
+                loadCount += 1;
+                return const [];
+              },
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(loadCount, 0);
+
+    setHostState(() => homeIsActive = true);
+    await tester.pumpAndSettle();
+    expect(loadCount, 1);
+
+    setHostState(() => homeIsActive = false);
+    await tester.pumpAndSettle();
+    expect(loadCount, 1);
+
+    setHostState(() => homeIsActive = true);
+    await tester.pumpAndSettle();
+    expect(loadCount, 2);
+  });
+
+  testWidgets('queues a home refresh instead of overlapping post loads',
+      (tester) async {
+    final firstLoad = Completer<List<PostSummaryResult>>();
+    var loadCount = 0;
+    var inFlight = 0;
+    var maxInFlight = 0;
+    var homeIsActive = true;
+    late StateSetter setHostState;
+
+    Future<List<PostSummaryResult>> loadRecentPosts() async {
+      loadCount += 1;
+      inFlight += 1;
+      if (inFlight > maxInFlight) {
+        maxInFlight = inFlight;
+      }
+
+      try {
+        if (loadCount == 1) {
+          return await firstLoad.future;
+        }
+        return const [];
+      } finally {
+        inFlight -= 1;
+      }
+    }
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return HomeScreen(
+              isActive: homeIsActive,
+              loadAnalytics: () async => const AnalyticsSummaryResult(
+                totalViews: 0,
+                totalLikes: 0,
+                platforms: [],
+              ),
+              loadSubscription: () async => const SubscriptionStatusResult(
+                userId: 'seller',
+                plan: 'BASIC',
+                status: 'ACTIVE',
+                canSchedule: false,
+                canUseAiCaptions: false,
+                canUseAnalytics: false,
+              ),
+              loadRecentPosts: loadRecentPosts,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(loadCount, 1);
+
+    setHostState(() => homeIsActive = false);
+    await tester.pump();
+    setHostState(() => homeIsActive = true);
+    await tester.pump();
+
+    expect(loadCount, 1);
+    expect(maxInFlight, 1);
+
+    firstLoad.complete(const []);
+    await tester.pumpAndSettle();
+
+    expect(loadCount, 2);
+    expect(maxInFlight, 1);
+  });
+
   testWidgets('shows phase 2 growth tool previews on the home dashboard',
       (tester) async {
     await tester.pumpWidget(

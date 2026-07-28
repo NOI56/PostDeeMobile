@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createGroqTranscriptionProvider } from './transcriptionProvider.js';
+import { createElevenLabsTranscriptionProvider } from './transcriptionProvider.js';
 
 describe('media-neutral transcription input', () => {
   it('passes the complete audio input to the storage fetcher', async () => {
@@ -9,14 +9,18 @@ describe('media-neutral transcription input', () => {
       filename: 'clip.m4a',
       contentType: 'audio/mp4'
     }));
-    const provider = createGroqTranscriptionProvider({
-      apiKey: 'groq-key',
-      model: 'whisper-large-v3',
+    const provider = createElevenLabsTranscriptionProvider({
+      apiKey: 'elevenlabs-key',
+      model: 'scribe_v2',
       fetchAudio,
       fetchImpl: async () => ({
         ok: true,
         status: 200,
-        json: async () => ({ text: 'สวัสดี', language: 'th', duration: 1 })
+        json: async () => ({
+          text: 'สวัสดี',
+          language_code: 'tha',
+          words: [{ text: 'สวัสดี', type: 'word', start: 0, end: 1 }]
+        })
       })
     });
     const input = {

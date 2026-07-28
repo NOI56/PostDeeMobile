@@ -67,14 +67,14 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       # --- Transcription + edit planning (AI auto-editing) ---
-      # Groq remains the default until the sanitized comparison report shows
-      # that ElevenLabs materially improves Thai accuracy for the extra cost.
+      # ElevenLabs produces the timed transcript. Gemini inspects the visual
+      # proxy and transcript; PostDee rules are the final local fallback.
       - key: TRANSCRIPTION_PROVIDER
-        value: groq
+        value: elevenlabs
       - key: EDIT_PLAN_PROVIDER
-        value: groq
-      - key: GROQ_API_KEY
-        sync: false
+        value: gemini
+      - key: GEMINI_EDIT_PLAN_MODEL
+        value: gemini-2.5-flash-lite
       - key: ELEVENLABS_API_KEY
         sync: false
       - key: ELEVENLABS_TRANSCRIPTION_MODEL

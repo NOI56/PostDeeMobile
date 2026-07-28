@@ -44,6 +44,14 @@ type OpenAiChatCompletionResponse = {
   choices?: Array<{ message?: { content?: string } }>;
 };
 
+type GeminiGenerateContentResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{ text?: string }>;
+    };
+  }>;
+};
+
 /** Per-style keyword keep config, mirroring the mobile edit styles. */
 const styleKeepConfig: Record<
   string,
@@ -658,7 +666,7 @@ export const parseLlmEditPlan = (
 };
 
 /**
- * Edit planner backed by an OpenAI-compatible chat API (OpenAI or Groq). Any
+ * Edit planner backed by an OpenAI-compatible chat API. Any
  * network/parse failure transparently falls back to [fallback] (the rule-based
  * mock) so the endpoint stays resilient.
  */
@@ -745,6 +753,101 @@ export const createOpenAiCompatibleEditPlanProvider = ({
   }
 });
 
+/**
+ * Gemini transcript planner used when a visual proxy is unavailable or its
+ * analysis fails. Any provider/network response problem falls back to the
+ * deterministic PostDee rules, so no second remote provider is required.
+ */
+export const createGeminiEditPlanProvider = ({
+  apiKey,
+  model,
+  fallback,
+  fetchImpl = fetch as unknown as FetchImpl
+}: {
+  apiKey: string;
+  model: string;
+  fallback: EditPlanProvider;
+  fetchImpl?: FetchImpl;
+}): EditPlanProvider => ({
+  plan: async (request) => {
+    try {
+      const planningRequest =
+        request.targetDurationSeconds !== undefined
+          ? {
+              ...request,
+              segments: request.segments.filter(isReliableHighlightSegment)
+            }
+          : request;
+      const endpointUrl =
+        `https://generativelanguage.googleapis.com/v1beta/models/` +
+        `${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const response = await fetchImpl(endpointUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: editPlanSystemPrompt }]
+          },
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: buildEditPlanUserPrompt(planningRequest) }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json'
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Gemini edit plan failed with status ${response.status ?? 'unknown'}`
+        );
+      }
+
+      const payload = (await response.json()) as GeminiGenerateContentResponse;
+      const content = payload.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text ?? '')
+        .join('')
+        .trim();
+
+      if (!content) {
+        throw new Error('Gemini edit plan returned no content');
+      }
+
+      const result = parseLlmEditPlan(content, request.durationSeconds, model);
+      return request.targetDurationSeconds !== undefined &&
+        !request.styleId &&
+        (!request.prompt || request.prompt.trim().length === 0)
+        ? {
+            ...result,
+            cuts: buildCoherentHighlightCuts({
+              suggestedCuts: result.cuts,
+              segments: request.segments,
+              durationSeconds: request.durationSeconds,
+              targetDurationSeconds: request.targetDurationSeconds
+            })
+          }
+        : request.targetDurationSeconds !== undefined
+          ? {
+              ...result,
+              cuts: trimToTarget(
+                result.cuts,
+                request.durationSeconds,
+                request.targetDurationSeconds
+              )
+            }
+          : result;
+    } catch {
+      return fallback.plan(request);
+    }
+  }
+});
+
 export const createEditPlanProviderFromConfig = ({
   config,
   fetchImpl
@@ -753,9 +856,9 @@ export const createEditPlanProviderFromConfig = ({
     ServerConfig,
     | 'editPlanProvider'
     | 'openAiApiKey'
-    | 'groqApiKey'
+    | 'geminiApiKey'
     | 'openAiEditPlanModel'
-    | 'groqEditPlanModel'
+    | 'geminiEditPlanModel'
   >;
   fetchImpl?: FetchImpl;
 }): EditPlanProvider => {
@@ -776,16 +879,16 @@ export const createEditPlanProviderFromConfig = ({
     });
   }
 
-  if (config.editPlanProvider === 'groq') {
-    if (!config.groqApiKey) {
-      throw new Error('GROQ_API_KEY is required when EDIT_PLAN_PROVIDER is groq');
+  if (config.editPlanProvider === 'gemini') {
+    if (!config.geminiApiKey) {
+      throw new Error(
+        'GEMINI_API_KEY is required when EDIT_PLAN_PROVIDER is gemini'
+      );
     }
 
-    return createOpenAiCompatibleEditPlanProvider({
-      apiKey: config.groqApiKey,
-      model: config.groqEditPlanModel,
-      endpointUrl: 'https://api.groq.com/openai/v1/chat/completions',
-      failureLabel: 'Groq edit plan',
+    return createGeminiEditPlanProvider({
+      apiKey: config.geminiApiKey,
+      model: config.geminiEditPlanModel,
       fallback,
       fetchImpl
     });

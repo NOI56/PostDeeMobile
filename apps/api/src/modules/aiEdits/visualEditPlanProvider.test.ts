@@ -62,6 +62,7 @@ describe('visual edit plan provider', () => {
     };
     const fetchImpl = vi.fn(async (url: string, init: RequestInit = {}) => {
       if (url.includes(':generateContent')) {
+        expect(url).toContain('/models/gemini-test:generateContent');
         expect(String(init.body)).toContain('ราคา 99 บาท');
         expect(String(init.body)).toContain('fileUri');
         return response({

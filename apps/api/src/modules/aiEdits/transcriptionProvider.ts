@@ -325,7 +325,7 @@ const createOpenAiCompatibleTranscriptionProvider = ({
     );
     form.append('model', model);
     // PostDee transcription is Thai-first. The compatible speech APIs accept
-    // an ISO-639-1 hint; Groq documents improved accuracy and latency from it.
+    // an ISO-639-1 hint; OpenAI-compatible services can use it to improve accuracy.
     form.append('language', 'th');
     if (prompt?.trim()) {
       form.append('prompt', prompt.trim());
@@ -403,30 +403,6 @@ export const createWhisperTranscriptionProvider = ({
   });
 
 /**
- * Real Thai transcription via Groq's OpenAI-compatible speech-to-text API.
- * `whisper-large-v3` is the default top-quality Groq model.
- */
-export const createGroqTranscriptionProvider = ({
-  apiKey,
-  model,
-  fetchAudio,
-  fetchImpl
-}: {
-  apiKey: string;
-  model: string;
-  fetchAudio: FetchAudio;
-  fetchImpl?: FetchImpl;
-}): TranscriptionProvider =>
-  createOpenAiCompatibleTranscriptionProvider({
-    apiKey,
-    model,
-    fetchAudio,
-    fetchImpl,
-    endpointUrl: 'https://api.groq.com/openai/v1/audio/transcriptions',
-    failureLabel: 'Groq transcription'
-  });
-
-/**
  * Real Thai transcription via ElevenLabs Scribe. Spacing events rebuild
  * mixed-language text; only valid word events become timed subtitle words.
  */
@@ -491,8 +467,6 @@ export const createTranscriptionProviderFromConfig = ({
     | 'transcriptionProvider'
     | 'openAiApiKey'
     | 'whisperModel'
-    | 'groqApiKey'
-    | 'groqTranscriptionModel'
     | 'elevenLabsApiKey'
     | 'elevenLabsTranscriptionModel'
     | 'elevenLabsTranscriptionKeyterms'
@@ -511,22 +485,6 @@ export const createTranscriptionProviderFromConfig = ({
     return createWhisperTranscriptionProvider({
       apiKey: config.openAiApiKey,
       model: config.whisperModel,
-      fetchAudio
-    });
-  }
-
-  if (config.transcriptionProvider === 'groq') {
-    if (!config.groqApiKey) {
-      throw new Error('GROQ_API_KEY is required when TRANSCRIPTION_PROVIDER is groq');
-    }
-
-    if (!fetchAudio) {
-      throw new Error('A fetchAudio implementation is required for Groq transcription');
-    }
-
-    return createGroqTranscriptionProvider({
-      apiKey: config.groqApiKey,
-      model: config.groqTranscriptionModel,
       fetchAudio
     });
   }

@@ -65,6 +65,7 @@ foreach ($blockedKey in @(
     'POSTDEE_MOCK_SUBSCRIPTION_PLAN',
     'GEMINI_API_KEY',
     'GROQ_API_KEY',
+    'ELEVENLABS_API_KEY',
     'REVENUECAT_WEBHOOK_AUTH_TOKEN'
   )) {
   if ($merged.Contains($blockedKey)) {

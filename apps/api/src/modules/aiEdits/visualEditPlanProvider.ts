@@ -227,6 +227,6 @@ export const createVisualEditPlanProviderFromConfig = ({
   }
   return createGeminiVisualEditPlanProvider({
     apiKey: config.geminiApiKey,
-    model: config.geminiCaptionModel
+    model: config.geminiEditPlanModel
   });
 };

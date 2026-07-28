@@ -608,7 +608,7 @@ const readGraphemeCount = (value: string): number =>
   ).length;
 
 /**
- * Groq can return Thai "word" timestamps as individual characters. Rebuild
+ * Some providers can return Thai "word" timestamps as individual characters. Rebuild
  * readable word boundaries from each reliable segment and estimate the timing
  * proportionally inside that segment. This keeps Thai words intact while still
  * preserving the provider's trustworthy segment-level timeline.

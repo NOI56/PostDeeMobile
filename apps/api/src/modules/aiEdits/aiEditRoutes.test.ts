@@ -231,7 +231,7 @@ describe('ai edit routes', () => {
     'returns a safe JSON error when transcription fails on %s',
     async (endpoint) => {
       const transcribe = vi.fn(async () => {
-        throw new Error('Groq transcription failed: secret provider detail');
+        throw new Error('Transcription failed: secret provider detail');
       });
       const app = createApp({ transcriptionProvider: { transcribe } });
 

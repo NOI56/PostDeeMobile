@@ -96,8 +96,8 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | ตั้งเวลาโพสต์บน Cloud | BullMQ/Redis adapter มีในโค้ด | เปิด Upstash + worker แยก, ใช้ Prisma และทดสอบ delayed job, restart, retry, cancel |
 | Firebase Email/Google/Phone Auth | gateway มีในแอปและ API; release SHA/OAuth ตรงกับ APK ที่เซ็นแล้ว | ทดสอบ Email/Google/Phone บน Internal testing AAB และมือถือจริง |
 | Starter/Pro | Paywall และ RevenueCat gateway มีในโค้ด | สร้าง Google Play products/offerings, ใส่ Android production SDK key และทดสอบซื้อ ต่ออายุ ยกเลิก คืนเงิน และ restore |
-| AI แคปชั่นจากคลิป | Gemini/Groq adapters และ quota มีในโค้ด | ทดสอบ provider, โควตา, frame flow และ usage ledger ด้วยบัญชี Starter/Pro จริง |
-| Pro AI ตัดต่อ | renderer จริงรองรับซับ, ตัดช่วงเงียบ, ตัดคำฟุ่มเฟือย และแสงสี | ทดสอบ Groq + upload + FFmpeg + review + post/manual editor บนอุปกรณ์จริงหลายรุ่น |
+| AI แคปชั่นจากคลิป | Gemini adapter และ quota มีในโค้ด | ทดสอบ provider, โควตา, frame flow และ usage ledger ด้วยบัญชี Starter/Pro จริง |
+| Pro AI ตัดต่อ | ElevenLabs ถอดเสียง, Gemini เลือกช่วง และ renderer จริงรองรับซับ/ตัดช่วงเงียบ/คำฟุ่มเฟือย/แสงสี | ทดสอบ provider + upload + FFmpeg + review + post/manual editor บนอุปกรณ์จริงหลายรุ่น |
 | Analytics | API/UI ใช้ข้อมูล backend และไม่สร้างตัวเลขปลอม | ต้องมีผลโพสต์จริงจาก provider และตรวจช่วงวันที่/ยอดจากบัญชีจริง |
 | Push notification | FCM mobile/server code มี | เปิด Firebase sender, ทดสอบ permission, token refresh, logout/unregister และ invalid-token cleanup |
 | ลบบัญชีครบทุกระบบ | มี in-app flow และ backend cleanup barrier | ตรวจ production credentials, R2/PostPeer/Firebase cleanup, RevenueCat behavior และ public deletion URL |
@@ -145,7 +145,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | Phone number | Firebase Phone Auth สำหรับ Basic quota | Authentication, fraud/abuse prevention | เป็น optional หรือ required ต่อผู้ใช้แต่ละแพ็กเกจ |
 | User IDs | Firebase UID, internal user ID, social connection IDs | Account management, cross-service linking | การส่งต่อ Firebase, RevenueCat, PostPeer และ backend |
 | Purchase history | product, entitlement, renewal/cancel/refund state | Purchases, subscription entitlement | Google Play Billing และ RevenueCat Data Safety docs |
-| Photos and videos | วิดีโอที่ผู้ใช้เลือก และ frames ที่ Pro อาจสกัด | Upload, publishing, AI caption/edit | retention ใน R2, Gemini/Groq และการลบหลังงานเสร็จ |
+| Photos and videos | วิดีโอที่ผู้ใช้เลือก และ frames ที่ Pro อาจสกัด | Upload, publishing, AI caption/edit | retention ใน R2, Gemini/ElevenLabs และการลบหลังงานเสร็จ |
 | Audio files / voice content | เสียงภายในวิดีโอที่ส่งถอดเสียง | AI caption/edit | provider, region, retention และการใช้เพื่อ train model หรือไม่ |
 | Other user-generated content | แคปชั่น, template, post metadata, schedule | App functionality | store ที่ใช้จริงและระยะเก็บ |
 | App interactions | เหตุการณ์ใช้งานที่ส่ง Firebase Analytics | Analytics | production เปิด monitoring อัตโนมัติเมื่อ Firebase เปิด |
@@ -158,7 +158,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 - Google Play Billing และ RevenueCat
 - Render API/PostgreSQL
 - Cloudflare R2
-- Gemini และ/หรือ Groq ตาม production configuration
+- Gemini และ ElevenLabs ตาม production configuration
 - PostPeer เมื่อเปิด social connection/publishing
 - Upstash Redis เมื่อเปิด durable scheduling
 

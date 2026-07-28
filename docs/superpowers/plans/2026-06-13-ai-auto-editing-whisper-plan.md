@@ -8,7 +8,11 @@
 
 > Status: the mobile flow stays in `ai_editing_screen.dart` through **setup → prepare/render → result review**. The user previews the AI result and uses review checkboxes to remove or restore supported edits; every change automatically re-renders locally from the original clip before the accepted result continues to Upload/Post.
 >
-> Original plan name referenced Whisper-1. The current production direction is Groq `whisper-large-v3` for transcription, with the same quota ledger and mobile FFmpeg export flow.
+> Original plan name referenced Whisper-1 and later Groq. As of 2026-07-28,
+> the active runtime direction is ElevenLabs Scribe v2 transcription, Gemini
+> visual/transcript planning, deterministic PostDee-rule fallback, and the same
+> quota ledger/mobile FFmpeg export flow. Provider-specific Groq steps below are
+> retained only as implementation history.
 >
 > 2026-07-03 update: `POST /ai-edits/prepare` now turns the Claude Design AI editing UI toggles, style/prompt, transcript, cut suggestions, overlays, and render hints into a mobile FFmpeg recipe. Server-side video rendering remains out of scope.
 >

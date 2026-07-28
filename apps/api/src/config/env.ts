@@ -16,9 +16,8 @@ export type SocialPublisherKind = 'mock' | 'disabled' | 'postpeer';
 export type TranscriptionProviderKind =
   | 'mock'
   | 'openai'
-  | 'groq'
   | 'elevenlabs';
-export type EditPlanProviderKind = 'mock' | 'openai' | 'groq';
+export type EditPlanProviderKind = 'mock' | 'openai' | 'gemini';
 export type AppleAppStoreEnvironmentKind = 'sandbox' | 'production';
 
 export type ServerConfig = {
@@ -42,7 +41,6 @@ export type ServerConfig = {
   rateLimitWindowMs: number;
   rateLimitMaxRequests: number;
   openAiApiKey?: string;
-  groqApiKey?: string;
   elevenLabsApiKey?: string;
   geminiApiKey?: string;
   billingProvider: BillingProviderKind;
@@ -92,12 +90,11 @@ export type ServerConfig = {
   postPeerFacebookAccountId?: string;
   transcriptionProvider: TranscriptionProviderKind;
   whisperModel: string;
-  groqTranscriptionModel: string;
   elevenLabsTranscriptionModel: string;
   elevenLabsTranscriptionKeyterms: string[];
   editPlanProvider: EditPlanProviderKind;
   openAiEditPlanModel: string;
-  groqEditPlanModel: string;
+  geminiEditPlanModel: string;
   aiEditUsageStore: AiEditUsageStoreKind;
   mockUserId: string;
 };
@@ -339,11 +336,10 @@ const readTranscriptionProvider = (env: EnvSource): TranscriptionProviderKind =>
   if (
     value !== 'mock' &&
     value !== 'openai' &&
-    value !== 'groq' &&
     value !== 'elevenlabs'
   ) {
     throw new Error(
-      'TRANSCRIPTION_PROVIDER must be mock, openai, groq, or elevenlabs'
+      'TRANSCRIPTION_PROVIDER must be mock, openai, or elevenlabs'
     );
   }
 
@@ -353,8 +349,8 @@ const readTranscriptionProvider = (env: EnvSource): TranscriptionProviderKind =>
 const readEditPlanProvider = (env: EnvSource): EditPlanProviderKind => {
   const value = readOptional(env, 'EDIT_PLAN_PROVIDER') ?? 'mock';
 
-  if (value !== 'mock' && value !== 'openai' && value !== 'groq') {
-    throw new Error('EDIT_PLAN_PROVIDER must be mock, openai, or groq');
+  if (value !== 'mock' && value !== 'openai' && value !== 'gemini') {
+    throw new Error('EDIT_PLAN_PROVIDER must be mock, openai, or gemini');
   }
 
   return value;
@@ -510,7 +506,6 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     rateLimitWindowMs: readPositiveInteger(env, 'RATE_LIMIT_WINDOW_MS', 60_000),
     rateLimitMaxRequests: readPositiveInteger(env, 'RATE_LIMIT_MAX_REQUESTS', 300),
     openAiApiKey: readOptional(env, 'OPENAI_API_KEY'),
-    groqApiKey: readOptional(env, 'GROQ_API_KEY'),
     elevenLabsApiKey: readOptional(env, 'ELEVENLABS_API_KEY'),
     geminiApiKey: readOptional(env, 'GEMINI_API_KEY'),
     billingProvider: readBillingProvider(env),
@@ -575,15 +570,14 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     postPeerFacebookAccountId: readOptional(env, 'POSTPEER_FACEBOOK_ACCOUNT_ID'),
     transcriptionProvider: readTranscriptionProvider(env),
     whisperModel: readOptional(env, 'WHISPER_MODEL') ?? 'whisper-1',
-    groqTranscriptionModel: readOptional(env, 'GROQ_TRANSCRIPTION_MODEL') ?? 'whisper-large-v3',
     elevenLabsTranscriptionModel:
       readOptional(env, 'ELEVENLABS_TRANSCRIPTION_MODEL') ?? 'scribe_v2',
     elevenLabsTranscriptionKeyterms:
       readElevenLabsTranscriptionKeyterms(env),
     editPlanProvider: readEditPlanProvider(env),
     openAiEditPlanModel: readOptional(env, 'OPENAI_EDIT_PLAN_MODEL') ?? 'gpt-4o-mini',
-    groqEditPlanModel:
-      readOptional(env, 'GROQ_EDIT_PLAN_MODEL') ?? 'llama-3.3-70b-versatile',
+    geminiEditPlanModel:
+      readOptional(env, 'GEMINI_EDIT_PLAN_MODEL') ?? 'gemini-2.5-flash-lite',
     aiEditUsageStore: readAiEditUsageStore(env),
     mockUserId: readOptional(env, 'MOCK_USER_ID') ?? 'local-dev-user'
   };

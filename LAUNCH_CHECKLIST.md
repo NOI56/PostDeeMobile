@@ -29,7 +29,7 @@
 - [ ] ยืนยันสิทธิ์ Play Console ด้วยมือถือ Android จริง แล้วสร้าง Play Console
       app/subscriptions, service credentials และ internal testing; Emulator ใช้
       ยืนยันบัญชีขั้นตอนนี้ไม่ได้
-- [ ] เปลี่ยน R2/Gemini/Groq เป็น credentials ของ Staging จริงก่อน functional smoke
+- [ ] เปลี่ยน R2/Gemini/ElevenLabs เป็น credentials ของ Staging จริงก่อน functional smoke
 - [x] ตั้ง Staging เริ่มต้นเป็น `SOCIAL_PUBLISHER=disabled`; กำหนดให้สลับ
       PostPeer เฉพาะ controlled test ด้วยบัญชีทดสอบแล้วสลับกลับ
 - [x] เตรียม Android Debug Firebase config แยกด้วย application id
@@ -51,13 +51,13 @@
 | `BILLING_PROVIDER` | `mock` → `store` หรือ `revenuecat` | webhook token + REST key (ดูข้อ 6) |
 | `VIDEO_STORAGE` | `mock` → `r2` | `CLOUDFLARE_R2_*` |
 | `CAPTION_PROVIDER` | `mock` → `gemini` | `GEMINI_API_KEY` |
-| `TRANSCRIPTION_PROVIDER` | `mock` → `groq` | `GROQ_API_KEY` |
-| `EDIT_PLAN_PROVIDER` | `mock` → `groq` (หรือ `openai`) | `GROQ_API_KEY` |
+| `TRANSCRIPTION_PROVIDER` | `mock` → `elevenlabs` | `ELEVENLABS_API_KEY` |
+| `EDIT_PLAN_PROVIDER` | `mock` → `gemini` (หรือ `openai`) | `GEMINI_API_KEY` |
 | `SOCIAL_PUBLISHER` | `mock` → `postpeer` | (ดูข้อ 5) |
 | `PUBLISH_QUEUE` | `memory` → `bullmq` | `REDIS_URL` (Upstash) |
 | `*_STORE` (post/subscription/analytics/template/captionUsage/aiEditUsage) | `memory` → `prisma` | `DATABASE_URL` |
 
-> ✅ ทดสอบแล้วว่าคีย์ใช้ได้จริง: **Gemini, Cloudflare R2, Groq**
+> ✅ ทดสอบแล้วว่าคีย์ใช้ได้จริง: **Gemini, Cloudflare R2, ElevenLabs**
 
 ---
 

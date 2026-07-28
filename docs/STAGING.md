@@ -15,9 +15,9 @@ R2 จาก Android Debug ผ่านแล้วบางส่วน; Stagin
   Firebase UID หลัง deploy backend และตั้ง server REST key แล้ว
 - R2 รับวิดีโอทดสอบจากแอปได้จริงแล้ว แต่ยังต้องตรวจยืนยันว่า bucket Production ไม่มี
   object จากรอบทดสอบและลบ object ทดสอบที่อัปโหลดสำเร็จด้วยตนเอง
-- ตั้ง `GROQ_API_KEY` ชุด Staging บน Render แล้ว แต่รอบทดสอบ AI edit เดิมส่ง
-  วิดีโอ 38 MB ทั้งไฟล์และหยุดที่ transcription เพราะเกินขนาดไฟล์ของ provider
-  โดยโควตายังคงเดิม รุ่นแก้ไขจะแยกเสียง M4A ก่อนส่งและยังต้อง deploy/test ซ้ำ
+- ตั้ง `ELEVENLABS_API_KEY` ชุด Staging บน Render แล้ว และรุ่นปัจจุบันแยกเสียง
+  M4A ขนาดเล็กก่อนส่งถอดเสียง; ยังต้อง deploy/test คลิป 38 MB ซ้ำเพื่อยืนยัน
+  timing, cleanup และโควตา
   ส่วน Gemini ยังต้องตรวจ credential/function แยก และ Social ยัง
   `disabled` และยังไม่ผ่าน connected-account E2E
 
@@ -67,18 +67,15 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN`: ใช้ RevenueCat Test Store/webhook ของ Staging
 - `REVENUECAT_REST_API_V1_KEY`: server-only key สำหรับอ่าน subscriber ตอนผู้ใช้
   กด Restore; ห้ามใช้ mobile SDK key แทนและห้ามใส่ใน Flutter
-- `GEMINI_API_KEY` และ `GROQ_API_KEY`: ควรใช้ key จำกัดโควตาสำหรับ Staging
+- `GEMINI_API_KEY` และ `ELEVENLABS_API_KEY`: ควรใช้ key จำกัดโควตาสำหรับ Staging
 
 ## สถานะ AI transcription ที่ถือเป็นข้อมูลจริง
 
 - `render.yaml` และ `render.staging.yaml` ใน `main` ตั้ง
-  `TRANSCRIPTION_PROVIDER=groq` ดังนั้น Production และ Staging ที่สร้างจาก
-  Blueprint ปัจจุบันใช้ Groq Whisper
-- ElevenLabs Scribe v2 เป็นตัวเลือกที่รองรับแล้ว และ Blueprint ทั้งสองไฟล์
-  เตรียมชื่อ key/model ไว้ แต่ยังไม่เลือกใช้เป็นค่าเริ่มต้น
-- ก่อนสลับเป็น `TRANSCRIPTION_PROVIDER=elevenlabs` ให้ใช้คำสั่ง
-  `npm run benchmark:transcription` เปรียบเทียบผลที่ลบข้อมูลลับแล้วกับ Groq
-  และเว้น `ELEVENLABS_TRANSCRIPTION_KEYTERMS` ว่างไว้หากยังไม่ได้วัดความคุ้มค่า
+  `TRANSCRIPTION_PROVIDER=elevenlabs` และ `EDIT_PLAN_PROVIDER=gemini`
+- ElevenLabs Scribe v2 เป็นตัวถอดเสียงพร้อมเวลา ส่วน Gemini ใช้วิดีโอพร็อกซี
+  และ transcript เพื่อเลือกช่วง; หาก Gemini ใช้งานไม่ได้จะใช้กฎ PostDee
+- เว้น `ELEVENLABS_TRANSCRIPTION_KEYTERMS` ว่างไว้จนกว่าจะวัดความคุ้มค่า
 - การมี API key หรือค่ารุ่นโมเดลอยู่ใน Dashboard ไม่ได้แปลว่าโมเดลนั้นถูกเรียก
   ต้องตรวจค่า `TRANSCRIPTION_PROVIDER` ของ service ที่ Deploy จริงทุกครั้ง
 - ระบบตัดช่วงเงียบใช้ช่องว่างจากเวลา word/segment ของ transcript ปัจจุบันยังไม่มี
@@ -127,7 +124,7 @@ Copy-Item staging.local.example.json staging.local.json
 ยังใช้ Firebase Production หากเปลี่ยนเครื่อง/CI ต้องเพิ่ม Debug SHA-1/SHA-256 ของ
 keystore ใหม่นั้นใน Firebase Staging ก่อน Google Sign-In จะทำงาน
 
-`/health` ตรวจเพียงว่า process ของ API ตอบได้ ไม่ได้ตรวจ R2, Firebase, Gemini/Groq
+`/health` ตรวจเพียงว่า process ของ API ตอบได้ ไม่ได้ตรวจ R2, Firebase, Gemini/ElevenLabs
 หรือ RevenueCat จึงต้องผ่าน smoke test ด้านล่างก่อนเรียก Staging ว่าใช้งานฟังก์ชันจริงได้
 
 ก่อนทดสอบ Firebase ต้องสร้าง mobile staging Firebase config ที่ตรงกับ
@@ -143,9 +140,10 @@ keystore ใหม่นั้นใน Firebase Staging ก่อน Google Sig
 - [ ] Firebase Email/Password login ด้วยบัญชี Staging
 - [ ] อัปโหลดไฟล์ไป bucket Staging และยืนยันว่าไม่มี object ใน bucket Production
       (อัปโหลดจาก Android ผ่านแล้ว แต่การยืนยันขอบเขต bucket และ cleanup ยังไม่ครบ)
-- [ ] AI caption และ AI edit ใช้โควตา/ข้อมูลของบัญชีทดสอบ (`GROQ_API_KEY` ชุด
-      Staging ตั้งแล้ว; ต้อง deploy รุ่นแยกเสียงและทดสอบคลิป 38 MB ซ้ำ พร้อมยืนยัน
-      ว่า R2/Groq รับเฉพาะ M4A ชั่วคราว, cleanup สำเร็จ, provider failure ตอบ JSON
+- [ ] AI caption และ AI edit ใช้โควตา/ข้อมูลของบัญชีทดสอบ (`GEMINI_API_KEY`
+      และ `ELEVENLABS_API_KEY` ชุด Staging ตั้งแล้ว; ต้อง deploy รุ่นแยกเสียงและ
+      ทดสอบคลิป 38 MB ซ้ำ พร้อมยืนยันว่า ElevenLabs รับเฉพาะ M4A ชั่วคราว,
+      Gemini รับเฉพาะ visual proxy, cleanup สำเร็จ, provider failure ตอบ JSON
       502 โดยไม่หักโควตา และแอปแสดงข้อความลองใหม่ภาษาไทย)
 - [ ] เปิด/ปิดความสามารถ AI แล้ว preview และเวลาใน timeline ถูกต้อง
 - [x] RevenueCat Test Store purchase ให้ entitlement Pro กับ Firebase UID ทดสอบ

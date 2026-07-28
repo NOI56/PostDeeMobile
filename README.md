@@ -33,7 +33,7 @@ apps/
   service credentials และ Google Play purchase จริงยังทำไม่ได้จนกว่าจะยืนยันสิทธิ์
   ด้วยมือถือ Android จริง; Emulator ใช้ยืนยันขั้นตอนนี้ไม่ได้
 - Render Staging ติดตาม branch `main` แล้ว การอัปโหลด R2 จากแอปผ่าน และตั้ง
-  `GROQ_API_KEY` ชุด Staging แล้ว รอบเดิมที่ส่งวิดีโอ 38 MB ทั้งไฟล์หยุดที่
+  `GEMINI_API_KEY`/`ELEVENLABS_API_KEY` ชุด Staging แล้ว รอบเดิมที่ส่งวิดีโอ 38 MB ทั้งไฟล์หยุดที่
   transcription เพราะเกินขนาดไฟล์ของ provider โดยโควตาไม่เปลี่ยน โค้ดปัจจุบันจึง
   แยกเสียง M4A ขนาดเล็กก่อนอัปโหลด; ยังต้อง deploy แล้วทดสอบคลิปเดิมซ้ำก่อนนับว่า
   AI edit ผ่าน E2E
@@ -50,13 +50,11 @@ running service. Video storage continues to use Cloudflare R2.
 
 ## AI Editing Runtime Source of Truth
 
-- Both `render.yaml` and `render.staging.yaml` currently set
-  `TRANSCRIPTION_PROVIDER=groq`; Groq Whisper is therefore the configured
-  transcription provider for Production and Staging builds from `main`.
-- ElevenLabs Scribe v2 is now a supported optional backend. Both active
-  blueprints declare its secret/model settings, but still select Groq by
-  default. Switch `TRANSCRIPTION_PROVIDER=elevenlabs` only after the sanitized
-  Groq/ElevenLabs benchmark shows a worthwhile Thai-accuracy improvement.
+- Both `render.yaml` and `render.staging.yaml` set
+  `TRANSCRIPTION_PROVIDER=elevenlabs` and `EDIT_PLAN_PROVIDER=gemini`.
+  ElevenLabs Scribe v2 produces timed Thai transcripts, Gemini plans from the
+  full visual proxy and transcript, and deterministic PostDee rules are the
+  final fallback. Groq is not selectable in runtime configuration.
 - Silence cleanup currently detects validated gaps between transcript
   word/segment timestamps. It does not yet use waveform decibels, FFmpeg
   `silencedetect`, or VAD as a second confirmation layer.
@@ -74,8 +72,7 @@ Current backend pieces:
 - Optional BullMQ publish queue adapter selectable with `PUBLISH_QUEUE=bullmq`
 - Optional Cloudflare R2 video storage adapter selectable with `VIDEO_STORAGE=r2`, including signed upload and signed download access scaffolds
 - Optional Gemini caption adapter selectable with `CAPTION_PROVIDER=gemini`
-- Optional Groq transcription adapter selectable with `TRANSCRIPTION_PROVIDER=groq`
-- Optional ElevenLabs Scribe v2 adapter selectable with
+- ElevenLabs Scribe v2 adapter selectable with
   `TRANSCRIPTION_PROVIDER=elevenlabs`; brand-name keyterms are opt-in because
   the provider charges extra for keyterm prompting
 - Legacy S3/OpenAI adapters remain available with `VIDEO_STORAGE=s3` and `CAPTION_PROVIDER=openai`
@@ -139,7 +136,7 @@ the platform before trying again, so a retry cannot silently create a duplicate.
 ### Backend API
 
 The API defaults to mock-safe/local adapters. When explicitly configured, it
-can call real R2, Gemini, Groq, Firebase, PostPeer, and RevenueCat services.
+can call real R2, Gemini, ElevenLabs, Firebase, PostPeer, and RevenueCat services.
 Having an adapter in code does not mean its provider-level production test has
 passed; see `docs/GO_LIVE.md` for the current activation checklist.
 
@@ -259,7 +256,7 @@ AI provider.
   production should use `CAPTION_USAGE_STORE=prisma` after the Prisma migration
   is applied.
 - In local mode, `TRANSCRIPTION_PROVIDER=mock` returns a safe Thai transcript.
-  In production, `TRANSCRIPTION_PROVIDER=groq` or `openai` downloads the stored
+  In production, `TRANSCRIPTION_PROVIDER=elevenlabs` or legacy `openai` downloads the stored
   clip through signed storage access and sends it to the speech provider.
 - It still does not sample real frames from the uploaded video.
 
@@ -270,7 +267,7 @@ The legacy AI Clip Review endpoint is no longer mounted. Requests to
 
 Reason: it overlaps with AI caption from the real clip and made the package
 copy confusing. Useful ideas from the old mock review output should move into
-AI caption from the real clip or the future Pro Groq Whisper auto editing flow.
+AI caption from the real clip or the Pro ElevenLabs + Gemini auto-editing flow.
 
 #### `GET /templates` and `POST /templates`
 
@@ -550,15 +547,13 @@ Current mobile pieces:
   as transcription only after the requested edit plan and recipe succeed; a
   failed planner/recipe retry does not consume quota. The final atomic
   reservation still enforces the monthly limit. It does not render video
-  server-side. Groq transcription
-  sends the ISO-639-1 Thai hint (`th`) and requests both word and segment
-  timestamps without a spelling prompt, preventing provider context from leaking
-  into unrelated clip text. Optional segment confidence/no-speech/compression
+  server-side. ElevenLabs transcription returns timed words and segments
+  without a free-form spelling prompt. Optional segment confidence/no-speech/compression
   signals are retained for highlight quality checks and to omit unreliable ranges
   or clearly unexpected mixed-script recognition noise from burned subtitle
   lines. Normal Latin product/place names remain allowed. The backend validates word timing
   coverage before using it for precise silence/filler cuts and subtitle timing;
-  incomplete timing falls back to segments. Groq Thai character-level tokens
+  incomplete timing falls back to segments. Provider Thai character-level tokens
   still drive precise gaps, but subtitle text falls back to readable segments.
   Whitespace-only provider tokens are ignored during validation; malformed
   tokens containing real transcript text still fail closed.
@@ -835,9 +830,7 @@ Queue/storage scaffold switches:
 - `AWS_S3_UPLOAD_EXPIRES_SECONDS=900` controls how long legacy S3 signed upload URLs remain usable.
 - `CAPTION_PROVIDER=mock` uses the local Thai template; `CAPTION_PROVIDER=gemini` calls Gemini with `GEMINI_CAPTION_MODEL` and `GEMINI_API_KEY`; `CAPTION_PROVIDER=openai` remains available as a legacy path.
 - `TRANSCRIPTION_PROVIDER=mock` uses the local Thai transcript for AI caption
-  language detection and AI editing; `TRANSCRIPTION_PROVIDER=groq` calls Groq
-  with `GROQ_TRANSCRIPTION_MODEL` and `GROQ_API_KEY`;
-  `TRANSCRIPTION_PROVIDER=elevenlabs` calls Scribe v2 with
+  language detection and AI editing; `TRANSCRIPTION_PROVIDER=elevenlabs` calls Scribe v2 with
   `ELEVENLABS_API_KEY`, `ELEVENLABS_TRANSCRIPTION_MODEL`, and optional
   `ELEVENLABS_TRANSCRIPTION_KEYTERMS`; `TRANSCRIPTION_PROVIDER=openai` remains
   available as a legacy path.
@@ -854,7 +847,7 @@ Seed helpers:
 
 ## Roadmap
 
-See `ROADMAP.md` for the build roadmap. It includes the current Phase 1 core app work, planned pricing with Basic, Starter 199, and Pro 299, AI caption from the real clip, Pro Groq Whisper auto editing, and Phase 2 growth features such as Link in Bio, EP tools, watermarking, hashtag radar, AI comment center, viral alerts, and Team and Editor Access.
+See `ROADMAP.md` for the build roadmap. It includes the current Phase 1 core app work, planned pricing with Basic, Starter 199, and Pro 299, AI caption from the real clip, Pro ElevenLabs + Gemini auto editing, and Phase 2 growth features such as Link in Bio, EP tools, watermarking, hashtag radar, AI comment center, viral alerts, and Team and Editor Access.
 
 ## Current Limits
 

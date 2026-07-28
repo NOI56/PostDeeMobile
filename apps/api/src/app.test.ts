@@ -28,11 +28,13 @@ describe('PostDee API scaffold', () => {
       .expect(404);
   });
 
-  it('creates the app with Groq transcription and R2 video storage configured', () => {
-    const appWithGroq = createApp({
+  it('creates the app with ElevenLabs transcription, Gemini planning, and R2 configured', () => {
+    const configuredApp = createApp({
       config: readServerConfig({
-        TRANSCRIPTION_PROVIDER: 'groq',
-        GROQ_API_KEY: 'groq-key',
+        TRANSCRIPTION_PROVIDER: 'elevenlabs',
+        ELEVENLABS_API_KEY: 'elevenlabs-key',
+        EDIT_PLAN_PROVIDER: 'gemini',
+        GEMINI_API_KEY: 'gemini-key',
         VIDEO_STORAGE: 'r2',
         CLOUDFLARE_R2_BUCKET: 'postdee-r2-temp'
       }),
@@ -43,6 +45,6 @@ describe('PostDee API scaffold', () => {
       }
     });
 
-    expect(appWithGroq).toBeDefined();
+    expect(configuredApp).toBeDefined();
   });
 });

@@ -812,7 +812,7 @@ describe('AI edit recipe pacing settings', () => {
     ]);
   });
 
-  it('ignores Groq whitespace tokens while validating fragmented fillers', () => {
+  it('ignores provider whitespace tokens while validating fragmented fillers', () => {
     const recipe = buildRecipe({
       capabilities: { filler: true },
       language: 'Thai',

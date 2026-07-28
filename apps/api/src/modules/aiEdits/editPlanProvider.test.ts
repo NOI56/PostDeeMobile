@@ -4,6 +4,8 @@ import {
   buildCoherentHighlightCuts,
   buildHighlightCuts,
   buildKeywordKeepCuts,
+  createEditPlanProviderFromConfig,
+  createGeminiEditPlanProvider,
   createMockEditPlanProvider,
   createOpenAiCompatibleEditPlanProvider,
   hasWeakThaiOpening,
@@ -13,6 +15,7 @@ import {
   parsePromptInstruction,
   trimToTarget
 } from './editPlanProvider.js';
+import { readServerConfig } from '../../config/env.js';
 
 describe('edit plan provider', () => {
   it('matches keywords case-insensitively', () => {
@@ -317,5 +320,122 @@ describe('edit plan provider', () => {
     // Mock fallback handled the target-length trim.
     expect(result.model).toBe('mock-rule');
     expect(result.cuts).toEqual([{ start: 5, end: 10 }]);
+  });
+
+  it('uses Gemini to plan from the timestamped transcript', async () => {
+    let requestedUrl = '';
+    let requestedBody: Record<string, unknown> | undefined;
+    const provider = createGeminiEditPlanProvider({
+      apiKey: 'gemini-key',
+      model: 'gemini-2.5-flash-lite',
+      fallback: createMockEditPlanProvider(),
+      fetchImpl: async (url, init) => {
+        requestedUrl = url;
+        requestedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return {
+          ok: true,
+          json: async () => ({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      text:
+                        '{"cuts":[{"start":0,"end":5}],"summary":"เลือกช่วงขายที่ชัดที่สุด"}'
+                    }
+                  ]
+                }
+              }
+            ]
+          })
+        };
+      }
+    });
+
+    const result = await provider.plan({
+      durationSeconds: 30,
+      targetDurationSeconds: 25,
+      segments: [
+        { text: 'ประโยคเปิดที่น่าสนใจ', start: 5, end: 10 },
+        { text: 'อธิบายจุดเด่นของสินค้า', start: 10, end: 30 }
+      ]
+    });
+
+    expect(requestedUrl).toContain(
+      '/models/gemini-2.5-flash-lite:generateContent'
+    );
+    expect(requestedUrl).toContain('key=gemini-key');
+    expect(requestedBody).toMatchObject({
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: 'application/json'
+      }
+    });
+    expect(result.model).toBe('gemini-2.5-flash-lite');
+    expect(result.cuts).toEqual([{ start: 0, end: 5 }]);
+  });
+
+  it('selects Gemini from config and falls back to PostDee rules', async () => {
+    const config = readServerConfig({
+      EDIT_PLAN_PROVIDER: 'gemini',
+      GEMINI_API_KEY: 'gemini-key',
+      GEMINI_EDIT_PLAN_MODEL: 'gemini-2.5-flash-lite'
+    });
+    const provider = createEditPlanProviderFromConfig({
+      config,
+      fetchImpl: async () => ({
+        ok: false,
+        status: 503,
+        json: async () => ({})
+      })
+    });
+
+    const result = await provider.plan({
+      durationSeconds: 10,
+      targetDurationSeconds: 5,
+      segments: []
+    });
+
+    expect(result.model).toBe('mock-highlight-rule');
+    expect(result.cuts).toEqual([{ start: 5, end: 10 }]);
+  });
+
+  it.each([
+    { label: 'empty', payload: { candidates: [] } },
+    {
+      label: 'malformed',
+      payload: {
+        candidates: [{ content: { parts: [{ text: 'not-json' }] } }]
+      }
+    }
+  ])('falls back to PostDee rules for a $label Gemini response', async ({
+    payload
+  }) => {
+    const provider = createGeminiEditPlanProvider({
+      apiKey: 'gemini-key',
+      model: 'gemini-2.5-flash-lite',
+      fallback: createMockEditPlanProvider(),
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => payload
+      })
+    });
+
+    const result = await provider.plan({
+      durationSeconds: 10,
+      targetDurationSeconds: 5,
+      segments: []
+    });
+
+    expect(result.model).toBe('mock-highlight-rule');
+    expect(result.cuts).toEqual([{ start: 5, end: 10 }]);
+  });
+
+  it('requires a Gemini key when Gemini edit planning is selected', () => {
+    const config = readServerConfig({ EDIT_PLAN_PROVIDER: 'gemini' });
+
+    expect(() => createEditPlanProviderFromConfig({ config })).toThrow(
+      'GEMINI_API_KEY is required when EDIT_PLAN_PROVIDER is gemini'
+    );
   });
 });

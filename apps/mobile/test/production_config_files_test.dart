@@ -28,6 +28,7 @@ void main() {
     expect(defines.containsKey('POSTDEE_MOCK_SUBSCRIPTION_PLAN'), isFalse);
     expect(defines.containsKey('GEMINI_API_KEY'), isFalse);
     expect(defines.containsKey('GROQ_API_KEY'), isFalse);
+    expect(defines.containsKey('ELEVENLABS_API_KEY'), isFalse);
     expect(defines.containsKey('REVENUECAT_WEBHOOK_AUTH_TOKEN'), isFalse);
   });
   test('production helper blocks non-production RevenueCat SDK keys', () async {

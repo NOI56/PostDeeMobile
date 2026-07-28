@@ -64,8 +64,8 @@ These are present in `render.yaml` with fixed values or a Render-managed source.
 | `PUBLISH_QUEUE` | Blueprint value | `memory` | Intentional for one Render web instance. |
 | `VIDEO_STORAGE` | Blueprint value | `r2` | Requires Cloudflare R2 keys below. |
 | `CAPTION_PROVIDER` | Blueprint value | `gemini` | Requires `GEMINI_API_KEY`. |
-| `TRANSCRIPTION_PROVIDER` | Blueprint value | `groq` | Requires `GROQ_API_KEY`. |
-| `EDIT_PLAN_PROVIDER` | Blueprint value | `groq` | Uses the same `GROQ_API_KEY`. |
+| `TRANSCRIPTION_PROVIDER` | Blueprint value | `elevenlabs` | Requires `ELEVENLABS_API_KEY`. |
+| `EDIT_PLAN_PROVIDER` | Blueprint value | `gemini` | Uses `GEMINI_API_KEY`; PostDee rules are the final fallback. |
 | `SOCIAL_PUBLISHER` | Blueprint value | `postpeer` | Requires `POSTPEER_API_KEY`. |
 | `AUTH_PROVIDER` | Blueprint value | `firebase` | Requires `FIREBASE_PROJECT_ID`. |
 | `FIREBASE_AUTH_DELETE_ENABLED` | Blueprint value | `true` | Keeps Firebase UID deletion and revoked-token checks enabled; requires `FIREBASE_SERVICE_ACCOUNT_JSON`. |
@@ -89,9 +89,8 @@ Render Dashboard.
 | `CLOUDFLARE_R2_ACCESS_KEY_ID` | R2 video storage | Yes | R2 S3-compatible access key id. |
 | `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | R2 video storage | Yes | Secret key. |
 | `CLOUDFLARE_R2_ENDPOINT` | R2 video storage | Usually optional | Override endpoint when needed. If blank, backend can use the default account endpoint. |
-| `GEMINI_API_KEY` | AI caption from real clip | Yes | Required because `CAPTION_PROVIDER=gemini`. |
-| `GROQ_API_KEY` | AI auto editing transcription and edit planning | Yes | Required because `TRANSCRIPTION_PROVIDER=groq` and `EDIT_PLAN_PROVIDER=groq`. |
-| `ELEVENLABS_API_KEY` | Optional Scribe v2 transcription benchmark/rollout | No | Server-only. Required only after changing `TRANSCRIPTION_PROVIDER` to `elevenlabs`. |
+| `GEMINI_API_KEY` | AI caption and edit planning from real clip | Yes | Required because `CAPTION_PROVIDER=gemini` and `EDIT_PLAN_PROVIDER=gemini`. |
+| `ELEVENLABS_API_KEY` | Scribe v2 transcription | Yes | Server-only. Required because `TRANSCRIPTION_PROVIDER=elevenlabs`. |
 | `POSTPEER_API_KEY` | Social publishing | Yes | Required because `SOCIAL_PUBLISHER=postpeer`. |
 | `FIREBASE_PROJECT_ID` | Firebase Auth token verification | Yes | Project id, not a private key. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase account deletion and future push sender | Yes | Present in the live service. Keep secret; it is required while `FIREBASE_AUTH_DELETE_ENABLED=true` and before changing `PUSH_SENDER` to `firebase`. |
@@ -107,10 +106,9 @@ intentionally want a different value.
 | Key | Default | Notes |
 | --- | --- | --- |
 | `GEMINI_CAPTION_MODEL` | `gemini-2.5-flash-lite` | Caption model. |
-| `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3` | AI editing transcription model. |
-| `ELEVENLABS_TRANSCRIPTION_MODEL` | `scribe_v2` | Optional ElevenLabs batch transcription model. |
+| `GEMINI_EDIT_PLAN_MODEL` | `gemini-2.5-flash-lite` | Visual and transcript edit-planning model. |
+| `ELEVENLABS_TRANSCRIPTION_MODEL` | `scribe_v2` | AI editing batch transcription model. |
 | `ELEVENLABS_TRANSCRIPTION_KEYTERMS` | empty | Optional brand terms. Keep blank until measured because keyterm prompting adds provider cost. |
-| `GROQ_EDIT_PLAN_MODEL` | `llama-3.3-70b-versatile` | AI edit-plan model. |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | PostPeer API host. |
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Five-minute signed upload URL lifetime; mobile retries once only when the URL explicitly expires. |
 | `UPLOAD_PROTOCOL_MODE` | `legacy` | Use `dual` during the mobile rollout; use `multipart` only after old app versions are blocked. |
@@ -217,7 +215,7 @@ Required now and confirmed present:
 - `CLOUDFLARE_R2_ACCESS_KEY_ID`
 - `CLOUDFLARE_R2_SECRET_ACCESS_KEY`
 - `GEMINI_API_KEY`
-- `GROQ_API_KEY`
+- `ELEVENLABS_API_KEY`
 - `POSTPEER_API_KEY`
 - `FIREBASE_PROJECT_ID`
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN`
@@ -245,8 +243,8 @@ chat. Revoke or rotate that API key in Render before relying on it again.
 ## Current Repo-Based Conclusion
 
 From `render.yaml`, the production blueprint already declares the correct key
-names for database persistence, R2 video storage, Gemini captions, Groq AI
-editing, PostPeer publishing, Firebase auth, RevenueCat billing, and AI edit
+names for database persistence, R2 video storage, Gemini captions/edit planning,
+ElevenLabs transcription, PostPeer publishing, Firebase auth, RevenueCat billing, and AI edit
 usage persistence.
 
 Both blueprints now declare `REVENUECAT_REST_API_V1_KEY` as `sync: false`. The

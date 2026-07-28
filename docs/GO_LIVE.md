@@ -19,7 +19,7 @@ and `REVENUECAT_REST_API_V1_KEY` was configured in Render Staging. The RevenueCa
 Play app/products/entitlements/default offering, production Android public SDK
 key, and signed AAB are prepared. Play Console app/subscriptions, internal
 testing, service credentials, real Google Play purchase, lifecycle, physical
-Android, R2, Gemini/Groq,
+Android, R2, Gemini/ElevenLabs,
 Phone Auth, and social publishing still need dedicated Staging
 credentials and functional tests. Mock push and Firebase deletion remain off,
 and social publishing stays fail-closed `disabled` except during a controlled
@@ -181,21 +181,24 @@ physical Android remain unverified.
 - Keep the existing `/billing/store/verify` path only as a legacy scaffold, not
   the preferred production billing path.
 
-## 6. AI auto editing — Groq Whisper transcription
+## 6. AI auto editing — ElevenLabs transcription + Gemini planning
 
 Backend transcription is ready (`POST /ai-edits/transcribe`, Pro-gated), and the
 UI-facing recipe endpoint is ready (`POST /ai-edits/prepare`, Pro-gated and
-minute-metered). Local
-defaults return a mock Thai transcript; the Render blueprint sets Groq providers
-and needs `GROQ_API_KEY` before real transcription tests.
+minute-metered). Local defaults return a mock Thai transcript; the Render
+blueprint uses ElevenLabs Scribe v2 for timed transcription and Gemini for both
+visual and transcript planning.
 
-- `TRANSCRIPTION_PROVIDER=groq`
-- `EDIT_PLAN_PROVIDER=groq`
-- `GROQ_API_KEY=...`
-- Optional: `GROQ_TRANSCRIPTION_MODEL` (default `whisper-large-v3`)
+- `TRANSCRIPTION_PROVIDER=elevenlabs`
+- `EDIT_PLAN_PROVIDER=gemini`
+- `ELEVENLABS_API_KEY=...`
+- `GEMINI_API_KEY=...`
+- `GEMINI_EDIT_PLAN_MODEL=gemini-2.5-flash-lite`
+- Optional: `ELEVENLABS_TRANSCRIPTION_MODEL` (default `scribe_v2`)
 - Keep `VIDEO_STORAGE=r2` configured so the backend can create signed download
-  URLs for the bounded temporary M4A chunks sent to Groq. The original video
-  remains on the phone for preview and final export.
+  URLs for the bounded temporary M4A chunks sent to ElevenLabs and the visual
+  proxy sent to Gemini. The original video remains on the phone for preview and
+  final export.
 
 Mobile flow is wired: the Edit tab picks a real clip, can call
 `/ai-edits/transcribe` for captions or `/ai-edits/prepare` for the full UI
@@ -215,11 +218,9 @@ The prepare recipe now supports honest pace controls. `silencePreset` uses
 the minimum validated word-timing gap, with segment gaps as a conservative
 fallback. The threshold also covers leading/trailing silence when duration is
 valid, and overlapping timing ranges are merged before gaps are calculated.
-Thai character-level Groq timings still drive gaps, but subtitle text falls back
-to readable transcript segments. Groq receives the Thai language hint and both
-word/segment timestamps. It deliberately receives no spelling prompt because a
-real-clip test showed that provider context could leak into the returned Thai
-transcript.
+Provider word timings drive gaps, while subtitle text falls back to readable
+transcript segments when word coverage is incomplete. ElevenLabs receives only
+the bounded audio and optional approved keyterms.
 `fillerWords` matches only the
 normalized exact allowlist `เอ่อ`, `อ่า`, `แบบว่า`, `คือว่า`, `ประมาณว่า`; it
 does not use substring matching on normal tokens. Exact `เออ` maps to `เอ่อ`,
@@ -277,8 +278,9 @@ card reads it. The ledger persists when `AI_EDIT_USAGE_STORE=prisma` (add it to
 `.env` alongside the other `*_STORE=prisma` settings; default is memory). The
 `AiEditUsage` table migration is already applied.
 
-Still TODO for full AI editing: verify Groq Thai timing, fragmented-token
-fallback, and cut quality with natural speech on physical phones; consider
+Still TODO for full AI editing: verify ElevenLabs Thai timing, fragmented-token
+fallback, Gemini cut quality, and the PostDee-rule fallback with natural speech
+on physical phones; consider
 FFmpeg audio silence detection or VAD as a second confirmation layer if
 transcript timing is not accurate enough (neither is active today);
 turn planned recipe capabilities such as beat sync, auto-reframe, audio

@@ -27,7 +27,6 @@ describe('readServerConfig', () => {
       rateLimitWindowMs: 60_000,
       rateLimitMaxRequests: 300,
       openAiApiKey: undefined,
-      groqApiKey: undefined,
       elevenLabsApiKey: undefined,
       geminiApiKey: undefined,
       billingProvider: 'mock',
@@ -77,12 +76,11 @@ describe('readServerConfig', () => {
       postPeerFacebookAccountId: undefined,
       transcriptionProvider: 'mock',
       whisperModel: 'whisper-1',
-      groqTranscriptionModel: 'whisper-large-v3',
       elevenLabsTranscriptionModel: 'scribe_v2',
       elevenLabsTranscriptionKeyterms: [],
       editPlanProvider: 'mock',
       openAiEditPlanModel: 'gpt-4o-mini',
-      groqEditPlanModel: 'llama-3.3-70b-versatile',
+      geminiEditPlanModel: 'gemini-2.5-flash-lite',
       aiEditUsageStore: 'memory',
       mockUserId: 'local-dev-user'
     });
@@ -110,7 +108,6 @@ describe('readServerConfig', () => {
       RATE_LIMIT_WINDOW_MS: '30000',
       RATE_LIMIT_MAX_REQUESTS: '50',
       OPENAI_API_KEY: 'openai-key',
-      GROQ_API_KEY: 'groq-key',
       ELEVENLABS_API_KEY: 'elevenlabs-key',
       ELEVENLABS_TRANSCRIPTION_MODEL: 'scribe_v2',
       ELEVENLABS_TRANSCRIPTION_KEYTERMS:
@@ -144,6 +141,7 @@ describe('readServerConfig', () => {
       CAPTION_PROVIDER: 'gemini',
       OPENAI_CAPTION_MODEL: 'gpt-4o-mini',
       GEMINI_CAPTION_MODEL: 'gemini-2.5-flash-lite',
+      GEMINI_EDIT_PLAN_MODEL: 'gemini-2.5-flash-lite',
       AUTH_PROVIDER: 'firebase',
       SOCIAL_PUBLISHER: 'postpeer',
       POSTPEER_API_KEY: 'postpeer-key',
@@ -154,8 +152,7 @@ describe('readServerConfig', () => {
       POSTPEER_YOUTUBE_ACCOUNT_ID: 'postpeer-youtube',
       POSTPEER_INSTAGRAM_ACCOUNT_ID: 'postpeer-instagram',
       POSTPEER_FACEBOOK_ACCOUNT_ID: 'postpeer-facebook',
-      TRANSCRIPTION_PROVIDER: 'groq',
-      GROQ_TRANSCRIPTION_MODEL: 'whisper-large-v3',
+      TRANSCRIPTION_PROVIDER: 'elevenlabs',
       MOCK_USER_ID: 'mock-user-1'
     });
 
@@ -180,7 +177,6 @@ describe('readServerConfig', () => {
       rateLimitWindowMs: 30000,
       rateLimitMaxRequests: 50,
       openAiApiKey: 'openai-key',
-      groqApiKey: 'groq-key',
       elevenLabsApiKey: 'elevenlabs-key',
       geminiApiKey: 'gemini-key',
       billingProvider: 'store',
@@ -211,6 +207,7 @@ describe('readServerConfig', () => {
       captionProvider: 'gemini',
       openAiCaptionModel: 'gpt-4o-mini',
       geminiCaptionModel: 'gemini-2.5-flash-lite',
+      geminiEditPlanModel: 'gemini-2.5-flash-lite',
       authProvider: 'firebase',
       socialPublisher: 'postpeer',
       postPeerApiKey: 'postpeer-key',
@@ -221,8 +218,7 @@ describe('readServerConfig', () => {
       postPeerYoutubeAccountId: 'postpeer-youtube',
       postPeerInstagramAccountId: 'postpeer-instagram',
       postPeerFacebookAccountId: 'postpeer-facebook',
-      transcriptionProvider: 'groq',
-      groqTranscriptionModel: 'whisper-large-v3',
+      transcriptionProvider: 'elevenlabs',
       elevenLabsTranscriptionModel: 'scribe_v2',
       elevenLabsTranscriptionKeyterms: [
         'PostDee',
@@ -231,6 +227,26 @@ describe('readServerConfig', () => {
       ],
       mockUserId: 'mock-user-1'
     });
+  });
+
+  it('accepts Gemini as the edit planning provider', () => {
+    const config = readServerConfig({
+      EDIT_PLAN_PROVIDER: 'gemini',
+      GEMINI_API_KEY: 'gemini-key',
+      GEMINI_EDIT_PLAN_MODEL: 'gemini-2.5-flash'
+    });
+
+    expect(config.editPlanProvider).toBe('gemini');
+    expect(config.geminiEditPlanModel).toBe('gemini-2.5-flash');
+  });
+
+  it('rejects Groq as a runtime transcription or edit planning provider', () => {
+    expect(() =>
+      readServerConfig({ TRANSCRIPTION_PROVIDER: 'groq' })
+    ).toThrow('TRANSCRIPTION_PROVIDER must be mock, openai, or elevenlabs');
+    expect(() =>
+      readServerConfig({ EDIT_PLAN_PROVIDER: 'groq' })
+    ).toThrow('EDIT_PLAN_PROVIDER must be mock, openai, or gemini');
   });
 
   it('rejects invalid Firebase account deletion flags', () => {
@@ -530,7 +546,7 @@ describe('readServerConfig', () => {
 
   it('rejects invalid TRANSCRIPTION_PROVIDER values', () => {
     expect(() => readServerConfig({ TRANSCRIPTION_PROVIDER: 'local' })).toThrow(
-      'TRANSCRIPTION_PROVIDER must be mock, openai, groq, or elevenlabs'
+      'TRANSCRIPTION_PROVIDER must be mock, openai, or elevenlabs'
     );
   });
 

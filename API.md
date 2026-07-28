@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-This document describes the current Express + TypeScript scaffold in `apps/api`. It is written for local development and integration planning. Production integrations for social publishing, live analytics, Cloudflare R2, real-clip AI captioning, Pro Groq Whisper auto editing, Firebase, Apple App Store, and Google Play still require real credentials and provider-level testing.
+This document describes the current Express + TypeScript scaffold in `apps/api`. It is written for local development and integration planning. Production integrations for social publishing, live analytics, Cloudflare R2, real-clip AI captioning, Pro ElevenLabs + Gemini auto editing, Firebase, Apple App Store, and Google Play still require real credentials and provider-level testing.
 
 ## Base URL
 
@@ -100,7 +100,7 @@ The backend reads `phone_number` from the verified Firebase ID token and treats 
 | Cloud scheduling | No | Yes | Yes |
 | Calendar for scheduled posts | No | Yes | Yes |
 | AI caption from real clip | No | Audio-only, 50 generations/month scaffolded | Audio + selected frames, 120 generations/month scaffolded |
-| AI auto editing with Groq Whisper | No | No | 200 minutes/month scaffolded |
+| AI auto editing with ElevenLabs + Gemini | No | No | 200 minutes/month scaffolded |
 | AI audio review as a separate feature | No | No | No |
 | Unified Analytics | No | No | Yes |
 | Hashtag radar and AI comment center | No | No | Yes |
@@ -115,7 +115,7 @@ Important rules:
 - Starter users can post immediately, schedule posts, use the calendar, and use
   real-clip AI captioning from audio after a selected clip.
 - Pro users unlock analytics, hashtag radar, AI comment center, team/editor
-  access, visual-frame AI captioning, and Groq Whisper auto editing scaffolds.
+  access, visual-frame AI captioning, and ElevenLabs + Gemini auto editing scaffolds.
 - Prompt-only caption generation may still exist in the API while the app
   transitions, but it should not be the main paid package promise.
 - Secret provider keys must stay on the backend, never inside the Flutter app.
@@ -691,11 +691,11 @@ Requires Starter or Pro.
   `AUDIO_WITH_FRAMES`, also sending the `selectedFrameKeys` images). Gemini
   retries transient failures and falls back to a secondary model, then to the
   local template caption if it still fails, so a caption is always returned.
-- When no Gemini provider is configured, it falls back to the legacy path: the
-  configured `TRANSCRIPTION_PROVIDER` (e.g. Groq Whisper) transcribes the clip
+- When no Gemini caption provider is configured, it falls back to the legacy path:
+  the configured `TRANSCRIPTION_PROVIDER` (ElevenLabs or legacy OpenAI) transcribes the clip
   and a local template builds the caption.
-- Note: Groq Whisper is otherwise reserved for the auto-editing/subtitle flow
-  (which needs accurate timestamps); the caption path prefers Gemini.
+- The auto-editing/subtitle flow uses ElevenLabs because it needs accurate
+  timestamps; the caption path prefers Gemini.
 - Frame sampling itself (extracting `selectedFrameKeys` from the video) is done
   by the mobile app via FFmpeg, which uploads the frames as images before
   calling this endpoint. Pending real-device verification.
@@ -790,7 +790,7 @@ Reason:
 
 - It overlapped with AI caption from the real clip.
 - It exposed confusing package flags such as AI audio review and AI video review.
-- The current product plan sells real-clip captioning and future Pro Groq Whisper
+- The current product plan sells real-clip captioning and Pro ElevenLabs + Gemini
   auto editing instead.
 
 Current behavior:
@@ -822,15 +822,13 @@ usage past the configured store limit. Current clients send ordered
 `audioChunks`; legacy clients may send one `audioS3Key` or `videoS3Key`.
 Exactly one of those three media forms is required. Response includes
 `transcript` (text, language, durationSeconds, segments[], words[]) and `quota`.
-The Groq adapter sends `language=th` and requests both `word` and `segment`
-timestamp granularities. It deliberately sends no spelling prompt because a
-real-clip test showed that provider context could leak into the returned Thai
-transcript. Segment responses retain optional `avgLogprob`,
+The ElevenLabs adapter requests word-level timing and sends no free-form spelling
+prompt. Segment responses retain optional `avgLogprob`,
 `noSpeechProbability`, and `compressionRatio` quality signals when the provider
 returns them.
 Validated word timing is preferred for subtitle timing and silence-gap cuts,
 while segments remain the conservative fallback when timing coverage is partial
-or Groq returns Thai character-level tokens that are not readable subtitle words.
+or a provider returns Thai character-level tokens that are not readable subtitle words.
 Whitespace-only/punctuation-only timing tokens are ignored, while invalid tokens
 that contain transcript text invalidate word-level timing and trigger fallback.
 
@@ -1018,7 +1016,7 @@ a finite `transcript.durationSeconds`:
 `อ่า`, `แบบว่า`, `คือว่า`, and `ประมาณว่า`. The backend normalizes NFC and
 removes surrounding whitespace, punctuation, and symbols before comparing a
 normal transcript word; `เออ` is an exact transcription alias for `เอ่อ` but a
-longer token such as `เออแล้ว` does not match. When Groq returns a validated Thai
+longer token such as `เออแล้ว` does not match. When a provider returns a validated Thai
 character-token stream, the backend may conservatively reassemble adjacent
 fragments that equal an allowlisted filler. Reassembly cannot cross a timing
 gap and requires a real gap or verified Thai word/text boundaries; short
@@ -1074,8 +1072,8 @@ Returns a structured cut plan for an auto-edit style or a free-form prompt,
 computed from an already-transcribed clip. Pro-gated but **not** minute-metered.
 
 Local mode uses the rule-based mock (`model: "mock-rule"`). Staging/production
-may use the configured Groq/OpenAI planner and falls back to the mock on provider
-failure.
+uses Gemini for transcript planning and falls back to the PostDee rules on
+provider failure.
 
 If `visualProxyS3Key` is present, owned by the authenticated user, and a Gemini
 key is configured, the API downloads the proxy, uploads it to Gemini Files API,
@@ -1648,18 +1646,16 @@ PostgreSQL.
 | `CAPTION_PROVIDER` | `mock`, `gemini`, `openai` | Caption provider |
 | `GEMINI_API_KEY` | `...` | Gemini API key |
 | `GEMINI_CAPTION_MODEL` | `gemini-2.5-flash-lite` | Gemini caption model |
+| `GEMINI_EDIT_PLAN_MODEL` | `gemini-2.5-flash-lite` | Gemini visual/transcript edit-planning model |
 | `OPENAI_API_KEY` | `...` | Legacy OpenAI API key |
 | `OPENAI_CAPTION_MODEL` | `gpt-4o-mini` | Legacy OpenAI caption model |
-| `TRANSCRIPTION_PROVIDER` | `mock`, `openai`, `groq`, `elevenlabs` | AI caption language detection and AI edit transcription provider |
-| `GROQ_API_KEY` | `...` | Groq API key for AI caption detection and AI edit transcription |
-| `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3` | Groq transcription model |
+| `TRANSCRIPTION_PROVIDER` | `mock`, `openai`, `elevenlabs` | AI caption language detection and AI edit transcription provider |
 | `ELEVENLABS_API_KEY` | `...` | Server-only ElevenLabs Speech-to-Text API key |
 | `ELEVENLABS_TRANSCRIPTION_MODEL` | `scribe_v2` | ElevenLabs batch transcription model |
 | `ELEVENLABS_TRANSCRIPTION_KEYTERMS` | empty | Optional comma/newline-separated brand terms; blank avoids the provider keyterm surcharge |
 | `WHISPER_MODEL` | `whisper-1` | Legacy OpenAI transcription model |
-| `EDIT_PLAN_PROVIDER` | `mock`, `openai`, `groq` | Brain for `POST /ai-edits/plan`; `mock` is rule-based, the others call an LLM and fall back to mock on failure |
+| `EDIT_PLAN_PROVIDER` | `mock`, `openai`, `gemini` | Brain for `POST /ai-edits/plan`; `mock` is rule-based, the others call an LLM and fall back to mock on failure |
 | `OPENAI_EDIT_PLAN_MODEL` | `gpt-4o-mini` | OpenAI chat model for edit planning |
-| `GROQ_EDIT_PLAN_MODEL` | `llama-3.3-70b-versatile` | Groq chat model for edit planning |
 | `BILLING_PROVIDER` | `mock`, `store`, `revenuecat` | Billing verifier adapter |
 | `REVENUECAT_WEBHOOK_AUTH_TOKEN` | `...` | Bearer token required by the RevenueCat webhook endpoint |
 | `REVENUECAT_REST_API_V1_KEY` | `...` | Server-only secret used to read a subscriber during authenticated restore/resync |
@@ -1710,16 +1706,15 @@ The following work is still required before production launch:
 - Store social access tokens securely only if direct platform APIs replace the
   PostPeer provider later.
 - Complete provider-level R2 upload and cleanup testing.
-- Test real-clip caption transcription with real R2 videos and Groq before
+- Test real-clip caption/transcription with real R2 videos, Gemini, and ElevenLabs before
   production launch. Mobile frame extraction/upload (up to 3 frames) is
   implemented and still needs real-device/provider verification.
 - Apply and verify the Prisma `RealClipCaptionUsage` migration in production
   before selling paid AI caption quotas.
-- Keep legacy AI review compatibility flags false while building real-clip AI
-  captioning and Pro Groq Whisper editing.
-- Design Pro AI auto editing jobs with Groq Whisper transcription, minute quotas,
-  top-up handling, mobile FFmpeg export, retries, and failure handling before
-  implementation.
+- Keep legacy AI review compatibility flags false while validating real-clip AI
+  captioning and Pro ElevenLabs + Gemini editing.
+- Validate Pro AI auto editing with ElevenLabs transcription, Gemini planning,
+  minute quotas, top-up handling, mobile FFmpeg export, retries, and failure handling.
 - Complete Firebase Google Sign-In and Phone Auth device testing.
 - RevenueCat Test Store purchase and true Restore/resync E2E pass on the Android
   Emulator after the current backend was deployed and

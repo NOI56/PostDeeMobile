@@ -685,18 +685,6 @@ export const registerAiEditRoutes = (
         ? Math.ceil(transcript.durationSeconds / 60)
         : estimatedMinutes;
 
-    const reservation = await aiEditUsageStore.reserve({
-      userId: authUser.id,
-      monthKey,
-      minutes: billedMinutes,
-      limit: aiEditMonthlyMinuteLimit
-    });
-
-    if (!reservation.ok) {
-      sendAiEditQuotaExceededResponse(response);
-      return;
-    }
-
     const styleId = readRequiredString(request.body?.styleId);
     const prompt = readRequiredString(request.body?.prompt);
     const targetDurationSeconds = readPositiveNumber(
@@ -723,6 +711,21 @@ export const registerAiEditRoutes = (
       prompt,
       plan: editPlan
     });
+
+    // Do not consume paid minutes until every fallible recipe step succeeds.
+    // The atomic reservation still enforces the monthly limit if concurrent
+    // requests passed the earlier inexpensive pre-check.
+    const reservation = await aiEditUsageStore.reserve({
+      userId: authUser.id,
+      monthKey,
+      minutes: billedMinutes,
+      limit: aiEditMonthlyMinuteLimit
+    });
+
+    if (!reservation.ok) {
+      sendAiEditQuotaExceededResponse(response);
+      return;
+    }
 
       response.json({
         status: 'ok',

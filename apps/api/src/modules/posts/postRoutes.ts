@@ -43,6 +43,12 @@ const readOptionalIsoDate = (value: unknown) => {
   return Number.isNaN(timestamp) ? undefined : new Date(timestamp).toISOString();
 };
 
+export const maxScheduleAheadDays = 30;
+const maxScheduleAheadMs = maxScheduleAheadDays * 24 * 60 * 60 * 1000;
+
+const isScheduleBeyondLimit = (scheduledAt: string, now: Date) =>
+  Date.parse(scheduledAt) > now.getTime() + maxScheduleAheadMs;
+
 const readOptionalCoverImageKey = (value: unknown) => {
   if (value === undefined || value === null) {
     return { ok: true as const, value: undefined };
@@ -115,9 +121,11 @@ export const registerPostRoutes = (
     allowSubscriptionPlanOverride?: boolean;
     assertUploadReady?: (ownerId: string, videoS3Key: string) => Promise<void>;
     assertCoverUploadReady?: (ownerId: string, coverImageS3Key: string) => Promise<void>;
+    now?: () => Date;
   } = {}
 ) => {
   const allowSubscriptionPlanOverride = options.allowSubscriptionPlanOverride ?? true;
+  const now = options.now ?? (() => new Date());
 
   router.get('/posts', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
@@ -201,6 +209,15 @@ export const registerPostRoutes = (
 
     const coverImageS3Key = coverImageKeyResult.value;
     const coverFrameTimeMs = coverFrameTimeResult.value;
+
+    if (scheduledAt && isScheduleBeyondLimit(scheduledAt, now())) {
+      response.status(400).json({
+        status: 'error',
+        code: 'SCHEDULE_LIMIT_EXCEEDED',
+        message: 'Posts can be scheduled up to 30 days in advance'
+      });
+      return;
+    }
 
     if (!isStorageKeyOwnedByUser({ videoS3Key, userId: authUser.id })) {
       response.status(403).json({
@@ -356,6 +373,15 @@ export const registerPostRoutes = (
       response.status(400).json({
         status: 'error',
         message: 'scheduledAt must be a valid ISO date'
+      });
+      return;
+    }
+
+    if (isScheduleBeyondLimit(scheduledAt, now())) {
+      response.status(400).json({
+        status: 'error',
+        code: 'SCHEDULE_LIMIT_EXCEEDED',
+        message: 'Posts can be scheduled up to 30 days in advance'
       });
       return;
     }

@@ -1462,6 +1462,9 @@ class ScheduledPostResult {
     required this.scheduledAt,
     required this.status,
     required this.createdAt,
+    this.userId,
+    this.publishedAt,
+    this.platformResults = const [],
   });
 
   final String id;
@@ -1471,8 +1474,21 @@ class ScheduledPostResult {
   final DateTime scheduledAt;
   final String status;
   final DateTime createdAt;
+  final String? userId;
+  final DateTime? publishedAt;
+  final List<PostPlatformResult> platformResults;
 
   factory ScheduledPostResult.fromJson(Map<String, Object?> json) {
+    String? optionalString(Object? value) {
+      if (value is! String || value.trim().isEmpty) return null;
+      return value.trim();
+    }
+
+    DateTime? optionalDate(Object? value) {
+      final date = optionalString(value);
+      return date == null ? null : DateTime.tryParse(date);
+    }
+
     final scheduledAt = json['scheduledAt'];
     final createdAt = json['createdAt'];
 
@@ -1494,6 +1510,12 @@ class ScheduledPostResult {
       scheduledAt: DateTime.parse(scheduledAt),
       status: json['status'] as String,
       createdAt: DateTime.parse(createdAt),
+      userId: optionalString(json['userId']),
+      publishedAt: optionalDate(json['publishedAt']),
+      platformResults: (json['platformResults'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(PostPlatformResult.fromJson)
+          .toList(),
     );
   }
 }

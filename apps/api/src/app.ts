@@ -171,6 +171,7 @@ type AppOptions = {
   platformPublishStore?: PlatformPublishStore;
   uploadSessionStore?: UploadSessionStore;
   managedUploadService?: ManagedUploadService;
+  now?: () => Date;
 };
 
 const readFileNameFromStorageKey = (videoS3Key: string) =>
@@ -544,7 +545,8 @@ export const createApp = (options: AppOptions = {}) => {
               acceptedContentTypes: postCoverUploadPolicy.acceptedContentTypes,
               maxSizeBytes: postCoverUploadPolicy.maxSizeBytes
             })
-        : undefined
+        : undefined,
+      now: options.now
     }
   );
   registerPublishQueueRoutes(router, accountAwareAuthMiddleware, publishQueue);

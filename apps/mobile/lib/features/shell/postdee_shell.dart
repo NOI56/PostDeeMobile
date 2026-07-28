@@ -26,6 +26,7 @@ import '../notifications/notifications_screen.dart';
 import '../notifications/push_messaging_gateway.dart';
 import '../onboarding/onboarding_flow.dart';
 import '../profile/profile_screen.dart';
+import '../posts/post_detail_screen.dart';
 import '../shared/postdee_undo_toast.dart';
 import '../templates/templates_screen.dart';
 import '../uploader/uploader_screen.dart';
@@ -42,6 +43,7 @@ class PostDeeShell extends StatefulWidget {
     this.themeController,
     this.loadScheduledPosts,
     this.loadSubscription,
+    this.loadRecentPosts,
     this.pickVideo,
     this.createUpload,
     this.uploadVideoFile,
@@ -58,6 +60,7 @@ class PostDeeShell extends StatefulWidget {
   final PostDeeThemeController? themeController;
   final ScheduledPostsLoader? loadScheduledPosts;
   final UploaderSubscriptionLoader? loadSubscription;
+  final HomeRecentPostsLoader? loadRecentPosts;
   final UploaderVideoPicker? pickVideo;
   final UploaderUploadCreator? createUpload;
   final UploaderVideoUploader? uploadVideoFile;
@@ -130,7 +133,9 @@ class _PostDeeShellState extends State<PostDeeShell> {
 
   List<Widget> _buildScreens() => [
         HomeScreen(
+          isActive: _selectedIndex == 0,
           loadSubscription: widget.loadSubscription,
+          loadRecentPosts: widget.loadRecentPosts,
           onCreatePost: () => _selectTab(2),
           onViewAllPosts: () => _selectTab(3),
           onOpenNotifications: _openNotifications,
@@ -158,8 +163,10 @@ class _PostDeeShellState extends State<PostDeeShell> {
         ),
         CalendarScreen(
           refreshToken: _calendarRefreshToken,
+          isActive: _selectedIndex == 3,
           loadScheduledPosts: widget.loadScheduledPosts,
           onAddPost: () => _selectTab(2),
+          onOpenPostDetail: _openCalendarPostDetail,
         ),
         const AnalyticsScreen(showTitle: true),
         // Profile is the 4th nav tab per the design handoff (no pushed route).
@@ -227,6 +234,30 @@ class _PostDeeShellState extends State<PostDeeShell> {
       _calendarRefreshToken += 1;
       _selectedIndex = 3;
     });
+  }
+
+  Future<void> _openCalendarPostDetail(ScheduledPostResult post) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (context) => PostDetailScreen(
+          post: PostSummaryResult(
+            id: post.id,
+            caption: post.caption,
+            videoS3Key: post.videoS3Key,
+            platforms: post.platforms,
+            status: post.status,
+            createdAt: post.createdAt,
+            scheduledAt: post.scheduledAt,
+            publishedAt: post.publishedAt,
+            platformResults: post.platformResults,
+          ),
+        ),
+      ),
+    );
+
+    if (changed == true && mounted) {
+      setState(() => _calendarRefreshToken += 1);
+    }
   }
 
   Future<void> _handleDeleteAccount() async {

@@ -43,6 +43,14 @@ typedef UploaderScheduledPostCreated = void Function(QueuedPostResult post);
 typedef UploaderConnectionsLoader = Future<List<SocialConnectionResult>>
     Function();
 
+const postScheduleLimit = Duration(days: 30);
+
+bool isPostScheduleWithinLimit({
+  required DateTime scheduledAt,
+  required DateTime now,
+}) =>
+    !scheduledAt.isAfter(now.add(postScheduleLimit));
+
 class UploaderScreen extends StatefulWidget {
   const UploaderScreen({
     super.key,
@@ -459,7 +467,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       context: context,
       initialDate: _selectedScheduleDate ?? _scheduleDateFromToday(1),
       firstDate: today,
-      lastDate: today.add(const Duration(days: 365)),
+      lastDate: today.add(postScheduleLimit),
     );
 
     if (picked == null || !mounted) {
@@ -1041,6 +1049,18 @@ class _UploaderScreenState extends State<UploaderScreen> {
     if (scheduledAt != null && !scheduledAt.isAfter(widget.now())) {
       setState(() {
         _errorMessage = 'เวลาตั้งโพสต์ต้องเป็นเวลาในอนาคต';
+        _successMessage = null;
+      });
+      return null;
+    }
+
+    if (scheduledAt != null &&
+        !isPostScheduleWithinLimit(
+          scheduledAt: scheduledAt,
+          now: widget.now(),
+        )) {
+      setState(() {
+        _errorMessage = 'ตั้งเวลาโพสต์ล่วงหน้าได้สูงสุด 30 วัน';
         _successMessage = null;
       });
       return null;
@@ -2796,7 +2816,7 @@ class _SchedulePanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'ตั้งเวลาได้ในแพ็กเกจ Starter ขึ้นไป',
+                    'ตั้งเวลาได้ล่วงหน้าสูงสุด 30 วันในแพ็กเกจ Starter ขึ้นไป',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(

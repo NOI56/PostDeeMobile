@@ -69,7 +69,9 @@ Current mobile pieces:
 - Light and dark Flutter themes; light is the current default.
 - Home dashboard with total views, total likes, subscription status, Basic Phone OTP verification, and Starter/Pro CTAs.
 - Universal uploader screen with 9:16 metadata validation and platform toggles.
-- Calendar tab for scheduled posts and refresh after scheduling.
+- Calendar tab refreshes only while visible, polls queued/publishing posts every
+  30 seconds, displays terminal posts by their actual publish time, and opens
+  completed results read-only.
 - Upload AI caption entry point after a video is selected.
 - AI editing advanced settings use a single-open accordion. Beat sync remains
   visible but locked as `เร็ว ๆ นี้` in production; internal QA can expose its
@@ -330,7 +332,8 @@ Rules:
 - Basic users can create real-time posts only.
 - Basic users must verify a phone number before using the free quota.
 - Basic users are limited to 3 post units per month after phone verification.
-- Starter and Pro can schedule posts.
+- Starter and Pro can schedule posts up to 30 days in advance. The mobile date
+  picker and post API enforce the same limit.
 - Starter is limited to 120 post units per month.
 - Pro is limited to 250 post units per month.
 - Post units count by selected platform, not post row.

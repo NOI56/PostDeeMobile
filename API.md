@@ -379,6 +379,7 @@ Rules:
   `videoS3Key` or `coverImageS3Key` can be used. Legacy owner-scoped video keys
   remain accepted only while the server is in `legacy` or `dual` rollout mode.
 - If `scheduledAt` is present, the user must be Starter or Pro.
+- `scheduledAt` cannot be more than 30 days after the server's current time.
 - Basic users must have a verified phone number before using the free quota.
 - Basic is limited to 3 post units per month after phone verification.
 - Starter is limited to 120 post units per month.

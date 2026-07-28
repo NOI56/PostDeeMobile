@@ -517,7 +517,8 @@ Current mobile pieces:
 - Generated Android and iOS platform folders with app display name `PostDee`
 - Home dashboard with manual refresh for total views and likes from `GET /analytics/summary`, plus automatic analytics refresh after the plan becomes Pro
 - Universal uploader screen with 9:16 validation, real video selection, saved
-  caption templates, scheduling checks, connected platform selection, and a
+  caption templates, scheduling checks capped at 30 days in advance, connected
+  platform selection, and a
   functional cover editor. A seller can scrub to a source-video frame, add Thai
   text, choose Prompt or Anuphan, adjust weight, size, colors, and position, then
   review the cover before posting. Mobile renders a 1080x1920 JPEG; Instagram
@@ -525,7 +526,9 @@ Current mobile pieces:
   Shorts leaves final cover selection to the YouTube mobile app. The compact
   tool area still exposes only `ตัดคลิปเป็น EP`; the removed manual editor,
   automatic-watermark, and advanced-mode cards must not return.
-- Calendar tab for scheduled posts, plus AI caption entry points from Upload after a clip is selected
+- Calendar tab that refreshes when opened, polls queued/publishing posts while
+  visible, uses the real publish time, and opens completed results read-only;
+  plus AI caption entry points from Upload after a clip is selected
 - Mobile API client and Upload UI call `POST /captions/generate-from-clip` for
   the new real-clip caption scaffold after a clip is selected.
 - Pro AI editing backend exposes `POST /ai-edits/prepare`, which turns the

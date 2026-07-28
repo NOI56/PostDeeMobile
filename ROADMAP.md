@@ -182,11 +182,14 @@ Planned order:
 3. Redesign Upload: vertical video preview, functional cover editor (video
    frame, Thai text, font/style/position, rendered 1080x1920 image, secure
    upload, preview, and platform-aware delivery), platform toggles,
-   schedule/date/time controls, draft state, and a single clear Post CTA. The
+   schedule/date/time controls capped at 30 days in advance, draft state, and a
+   single clear Post CTA. The
    cover editor implementation now exists; real connected-account publishing
    still requires staging verification.
-4. Refine Calendar and Upload AI Caption: scheduled-post calendar, refresh after
-   scheduled posts, and real-clip AI captioning after a video is selected.
+4. Refine Calendar and Upload AI Caption: the calendar now refreshes when
+   visible, polls live post states, and opens completed results read-only;
+   real connected-account verification and real-clip AI captioning after video
+   selection remain.
 5. Redesign Analytics: date filter chips, KPI cards, views trend chart,
    platform comparison bars, and Thai labels for all visible metrics.
 6. Add Profile/navigation pass: replace the current Templates bottom tab with

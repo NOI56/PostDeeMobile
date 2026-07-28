@@ -11,7 +11,10 @@ services:
     numInstances: 1
     buildCommand: (npm install --include=dev && npm run prisma:generate && npm run build) || (cd apps/api && npm install --include=dev && npm run prisma:generate && npm run build)
     preDeployCommand: npm run prisma:migrate:deploy || (cd apps/api && npm run prisma:migrate:deploy)
-    startCommand: npm run start || (cd apps/api && npm run start)
+    # Keep native optional packages available for build tools, then remove dev
+    # dependencies and unused firebase-admin Firestore/Storage modules only
+    # after the Prisma migration has completed.
+    startCommand: npm prune --omit=dev --omit=optional && npm run start || (cd apps/api && npm prune --omit=dev --omit=optional && npm run start)
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

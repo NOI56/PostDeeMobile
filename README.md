@@ -38,6 +38,16 @@ apps/
   แยกเสียง M4A ขนาดเล็กก่อนอัปโหลด; ยังต้อง deploy แล้วทดสอบคลิปเดิมซ้ำก่อนนับว่า
   AI edit ผ่าน E2E
 
+## Backend Runtime Dependency Boundary
+
+GitHub CI installs all optional packages because native build and test tools use
+platform-specific optional binaries. Its production audit excludes optional
+packages that are not part of the PostDee runtime. Render completes the build
+and Prisma migration first, then prunes development and optional packages before
+starting the API. PostDee uses `firebase-admin` for Auth and FCM only; the
+optional Firestore and Google Cloud Storage clients are not shipped in the
+running service. Video storage continues to use Cloudflare R2.
+
 ## AI Editing Runtime Source of Truth
 
 - Both `render.yaml` and `render.staging.yaml` currently set

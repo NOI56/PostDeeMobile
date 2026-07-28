@@ -33,6 +33,10 @@ bucket วิดีโอ Firebase project หรือ webhook token ชุด�
 - Database/User: `postdee_staging`
 - Region: Singapore
 - Branch: `main`
+- Build/test keeps platform-native optional tools; after the Prisma migration,
+  startup prunes development and optional packages. Firebase Auth remains
+  available, while unused Firestore/Google Cloud Storage clients are not kept in
+  the running Staging service.
 - Web/Database plan: `free`
 - Production safety guards ยังเปิดผ่าน `NODE_ENV=production`
 - Push และ Firebase account deletion ยังปิดไว้ในรอบแรก

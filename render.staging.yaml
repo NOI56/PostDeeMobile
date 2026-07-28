@@ -21,7 +21,9 @@ services:
     autoDeployTrigger: checksPass
     numInstances: 1
     buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
-    startCommand: npm run prisma:migrate:deploy && npm run start
+    # Prisma CLI and native build packages must remain available through the
+    # migration. Remove dev and unused optional modules before serving traffic.
+    startCommand: npm run prisma:migrate:deploy && npm prune --omit=dev --omit=optional && npm run start
     healthCheckPath: /health
     envVars:
       # Keep production guards enabled so staging exercises the same safety

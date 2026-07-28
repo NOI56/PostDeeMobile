@@ -25,10 +25,19 @@ describe('render.staging.yaml isolated staging config', () => {
     expect(source).toContain('branch: main');
     expect(source).toContain('autoDeployTrigger: checksPass');
     expect(source).not.toContain('preDeployCommand:');
-    expect(source).toContain(
-      'startCommand: npm run prisma:migrate:deploy && npm run start',
-    );
+    expect(source).toContain('startCommand: npm run prisma:migrate:deploy');
     expect(source).toMatch(/ipAllowList:\s*\[\]/);
+  });
+
+  it('keeps native build tools through migration and prunes unused runtime modules before start', async () => {
+    const source = await readStagingConfig();
+
+    expect(source).toContain(
+      'buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build',
+    );
+    expect(source).toContain(
+      'startCommand: npm run prisma:migrate:deploy && npm prune --omit=dev --omit=optional && npm run start',
+    );
   });
 
   it('keeps production safety guards and Prisma stores enabled', async () => {

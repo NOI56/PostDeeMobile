@@ -56,6 +56,19 @@ RevenueCat และ PostPeer ชุดทดสอบแยกกัน รา�
 Android Debug เพิ่ม suffix `.staging` และใช้ `src/debug/google-services.json`;
 Profile/Release ยังคงใช้ Firebase Production จึงห้ามผสมกับ Staging Dart defines
 
+## Backend Runtime Dependency Boundary
+
+The backend imports `firebase-admin/app`, `firebase-admin/auth`, and the root
+messaging API for Firebase Auth and FCM. It does not use the optional Firestore
+or Google Cloud Storage clients; persistent application data remains in Render
+PostgreSQL through Prisma and video media remains in Cloudflare R2.
+
+CI keeps optional native packages during build and test, but its production
+audit excludes unused optional packages. Render keeps the same build-time
+packages through Prisma migration and prunes development plus optional packages
+before the API starts. This avoids removing platform-native build tools too
+early while keeping unused Firebase clients out of the running service.
+
 ## Mobile App
 
 Path:

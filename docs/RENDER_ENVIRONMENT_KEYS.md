@@ -28,6 +28,14 @@ cannot prove which hidden secret values are already present in the live Render
 Dashboard unless someone checks the dashboard or provides safe read-only Render
 access. Treat every `sync: false` key below as "must confirm in Render".
 
+Dependency boundary: CI installs optional native build/test packages, then
+audits the runtime dependency set with optional packages excluded. Both Render
+blueprints keep those build packages through Prisma migration and run
+`npm prune --omit=dev --omit=optional` before starting the API. PostDee uses
+`firebase-admin` Auth/FCM only, so its optional Firestore and Google Cloud
+Storage clients are intentionally absent from the running service. Cloudflare
+R2 remains the video storage provider.
+
 ## Status Legend
 
 - `Blueprint value`: committed in `render.yaml`; Render should set it from the

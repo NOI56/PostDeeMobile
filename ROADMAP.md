@@ -104,6 +104,12 @@ Primary backend choices:
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
 | Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile registration, `POST /devices`, notifier, and firebase-admin sender exist; mock remains default | Add the service account, set `PUSH_SENDER=firebase`, enable APNs/iOS capabilities, and test on a real device. |
 
+Render runtime hardening keeps `firebase-admin` Auth/FCM support but removes its
+unused optional Firestore and Google Cloud Storage clients after the build and
+Prisma migration. CI still installs platform-native optional build tools, while
+the production dependency audit excludes optional modules that are not shipped
+in the running service.
+
 ### AI auto-editing update (2026-07-23)
 
 The table's earlier audio-only deployment note is superseded. Groq M4A

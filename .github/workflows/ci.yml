@@ -42,7 +42,7 @@ jobs:
         run: npm run prisma:validate
 
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --omit=optional --audit-level=high
 
   mobile:
     name: Flutter Mobile

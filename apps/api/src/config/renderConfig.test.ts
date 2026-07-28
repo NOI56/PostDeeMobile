@@ -70,7 +70,7 @@ describe('render.yaml production config', () => {
     expect(source).toMatch(/numInstances: 1/);
   });
 
-  it('installs build dependencies without assuming Render can see the lockfile', async () => {
+  it('keeps native build tools through migration and prunes unused runtime modules before start', async () => {
     const source = await readRenderConfig();
 
     expect(source).toContain(
@@ -82,6 +82,8 @@ describe('render.yaml production config', () => {
     expect(source).toContain(
       'preDeployCommand: npm run prisma:migrate:deploy || (cd apps/api',
     );
-    expect(source).toContain('startCommand: npm run start || (cd apps/api');
+    expect(source).toContain(
+      'startCommand: npm prune --omit=dev --omit=optional && npm run start || (cd apps/api && npm prune --omit=dev --omit=optional && npm run start)',
+    );
   });
 });

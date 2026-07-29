@@ -576,6 +576,51 @@ void main() {
     );
   });
 
+  test('keeps the live hippo superstar name complete at the target tail', () {
+    const cuts = [
+      SilenceCutRange(start: 28.916, end: 45),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'เป็นน้องของ',
+          start: 27.964,
+          end: 28.916,
+        ),
+        SubtitleSegment(
+          text: 'พี่หมูตุ๋นฮิปโปซุปเปอร์สตาร์',
+          start: 28.916,
+          end: 30.927,
+        ),
+        SubtitleSegment(
+          text: 'ของ',
+          start: 30.927,
+          end: 31.244,
+        ),
+        SubtitleSegment(
+          text: 'สวนสัตว์เปิดเขาเขียว',
+          start: 31.244,
+          end: 32.879,
+        ),
+        SubtitleSegment(
+          text: 'โดยน้องเป็นลูกตัวที่เจ็ด',
+          start: 32.879,
+          end: 34.2,
+        ),
+      ],
+      durationSeconds: 45,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.single.start, closeTo(30.927, 0.001));
+    expect(
+      estimateResultSeconds(durationSeconds: 45, cutRanges: adjusted),
+      inInclusiveRange(27, 33),
+    );
+  });
+
   test('stops before a dangling comparison clause after ครั้งหนึ่ง', () {
     const cuts = [
       SilenceCutRange(start: 0, end: 0.956),
@@ -715,6 +760,65 @@ void main() {
     );
 
     expect(adjusted.last.start, 41);
+  });
+
+  test('keeps a standalone ของ cue linked to its following complement', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'ยอดขาย', start: 39, end: 40),
+        SubtitleSegment(text: 'ของ', start: 40, end: 40.3),
+        SubtitleSegment(text: 'ร้านเพิ่มขึ้น', start: 40.3, end: 41),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.last.start, 41);
+  });
+
+  test('never ends on a standalone ของ before a real pause', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40.3, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'ยอดขาย', start: 39, end: 40),
+        SubtitleSegment(text: 'ของ', start: 40, end: 40.3),
+        SubtitleSegment(text: 'ร้านเพิ่มขึ้น', start: 40.8, end: 41.5),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30.3,
+    );
+
+    expect(adjusted.last.start, 40);
+  });
+
+  test('does not treat a normal word ending in ของ as a dangling relation', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'ซื้อของ', start: 39, end: 40),
+        SubtitleSegment(text: 'วันนี้กลับบ้าน', start: 40, end: 41),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted, cuts);
   });
 
   test('does not roll back เหตุการณ์ after an incomplete หรือ cue', () {

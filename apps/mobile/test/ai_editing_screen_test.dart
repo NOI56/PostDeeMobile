@@ -104,6 +104,19 @@ BurnedSubtitleResult _createRenderedVideoFixture(
   );
 }
 
+const _finePlanningSegmentsFixture = [
+  ClipTranscriptSegment(
+    text: 'รีวิวสินค้า',
+    start: 0.25,
+    end: 4.75,
+  ),
+  ClipTranscriptSegment(
+    text: 'ชิ้นนี้ดีมาก',
+    start: 4.75,
+    end: 9.5,
+  ),
+];
+
 AiEditPrepareResult _createPrepareFixture({
   AiEditPlanResult plan = const AiEditPlanResult(
     cuts: [],
@@ -111,6 +124,13 @@ AiEditPrepareResult _createPrepareFixture({
     model: 'none',
   ),
   double transcriptDurationSeconds = 45,
+  List<ClipTranscriptSegment> subtitleSegments = const [
+    ClipTranscriptSegment(
+      text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
+      start: 0,
+      end: 10,
+    ),
+  ],
 }) =>
     AiEditPrepareResult(
       quota: const AiEditQuota(
@@ -141,16 +161,10 @@ AiEditPrepareResult _createPrepareFixture({
           words: [],
           model: 'test',
         ),
-        subtitles: const AiEditSubtitlesResult(
-          enabled: true,
-          segments: [
-            ClipTranscriptSegment(
-              text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
-              start: 0,
-              end: 10,
-            ),
-          ],
-          style: AiEditSubtitleStyleResult(
+        subtitles: AiEditSubtitlesResult(
+          enabled: subtitleSegments.isNotEmpty,
+          segments: subtitleSegments,
+          style: const AiEditSubtitleStyleResult(
             mode: 'bold',
             color: '#FFFFFF',
             wordsPerLine: 3,
@@ -578,7 +592,9 @@ void main() {
             );
           },
           uploadVideoFile: (_, __) async {},
-          prepareEdit: (_) async => _createPrepareFixture(),
+          prepareEdit: (_) async => _createPrepareFixture(
+            subtitleSegments: _finePlanningSegmentsFixture,
+          ),
           planEdit: (request) async {
             planRequests.add(request);
             return const AiEditPlanResult(
@@ -607,6 +623,14 @@ void main() {
     );
     expect(planRequests.single.durationSeconds, 45);
     expect(planRequests.single.targetDurationSeconds, 30);
+    expect(
+      planRequests.single.segments.map((segment) => segment.text),
+      ['รีวิวสินค้า', 'ชิ้นนี้ดีมาก'],
+    );
+    expect(planRequests.single.segments.first.start, 0.25);
+    expect(planRequests.single.segments.first.end, 4.75);
+    expect(planRequests.single.segments.last.start, 4.75);
+    expect(planRequests.single.segments.last.end, 9.5);
     expect(cleanedProxyKeys, ['uploads/seller/visual-proxy.mp4']);
     expect(visualProxyExtractions, 1);
     expect(File(localProxyPath!).existsSync(), isTrue);
@@ -2526,7 +2550,9 @@ void main() {
           uploadVideoFile: (_, __) async {},
           prepareEdit: (request) async {
             prepareRequests.add(request);
-            return _createPrepareFixture();
+            return _createPrepareFixture(
+              subtitleSegments: _finePlanningSegmentsFixture,
+            );
           },
           planEdit: (request) async {
             planRequests.add(request);
@@ -2558,7 +2584,78 @@ void main() {
     expect(prepareRequests.first.durationSeconds, 150);
     expect(planRequests, hasLength(1));
     expect(planRequests.single.targetDurationSeconds, 60);
+    expect(
+      planRequests.single.segments.map((segment) => segment.text),
+      ['รีวิวสินค้า', 'ชิ้นนี้ดีมาก'],
+    );
+    expect(planRequests.single.segments.first.start, 0.25);
+    expect(planRequests.single.segments.first.end, 4.75);
+    expect(planRequests.single.segments.last.start, 4.75);
+    expect(planRequests.single.segments.last.end, 9.5);
     expect(find.text('setup-result-2.mp4'), findsOneWidget);
+  });
+
+  testWidgets(
+      'cached replan falls back to coarse transcript segments when fine subtitles are unavailable',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('setup-coarse-fallback.mp4');
+    final firstResult =
+        _createRenderedVideoFixture('setup-coarse-fallback-result-1.mp4');
+    final secondResult =
+        _createRenderedVideoFixture('setup-coarse-fallback-result-2.mp4');
+    final planRequests = <AiEditPlanRequest>[];
+    var renderCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-setup-coarse-fallback',
+            videoS3Key: 'uploads/setup-coarse-fallback.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(
+            subtitleSegments: const [],
+          ),
+          planEdit: (request) async {
+            planRequests.add(request);
+            return const AiEditPlanResult(
+              cuts: [AiEditCut(start: 0, end: 5)],
+              summary: 'เลือกช่วงใหม่จากข้อมูลสำรอง',
+              model: 'test-plan',
+            );
+          },
+          burnVideo: (_) async {
+            renderCalls += 1;
+            return renderCalls == 1 ? firstResult : secondResult;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ตั้งค่าใหม่'));
+    await tester.pumpAndSettle();
+    await _setTargetDuration(tester, 60);
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(planRequests, hasLength(1));
+    expect(planRequests.single.segments, hasLength(2));
+    expect(
+      planRequests.single.segments.map((segment) => segment.text),
+      ['รีวิวสินค้าชิ้นนี้ดีมาก', 'ราคาคุ้มมาก'],
+    );
+    expect(planRequests.single.segments.first.start, 0);
+    expect(planRequests.single.segments.last.end, 20);
+    expect(find.text('setup-coarse-fallback-result-2.mp4'), findsOneWidget);
   });
 
   testWidgets('returns to the previous result when new setup rendering fails',

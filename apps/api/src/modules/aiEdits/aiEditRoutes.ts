@@ -11,6 +11,7 @@ import {
   type AiEditUsageStore
 } from './aiEditUsageStore.js';
 import {
+  buildAiEditPlanningSegments,
   buildAiEditRecipe,
   readAiEditCapabilities,
   readAiEditRecipeSettings
@@ -723,10 +724,19 @@ export const registerAiEditRoutes = (
     const targetDurationSeconds = readPositiveNumber(
       request.body?.targetDurationSeconds
     );
+    const capabilities = readAiEditCapabilities(request.body?.capabilities);
+    const settings = readAiEditRecipeSettings(request.body?.settings);
+    const planningSegments =
+      targetDurationSeconds !== undefined && !styleId && !prompt
+        ? buildAiEditPlanningSegments({
+            transcript: timelineTranscript,
+            settings
+          })
+        : timelineTranscript.segments;
     const editPlan =
       styleId || prompt || targetDurationSeconds
         ? await editPlanProvider.plan({
-            segments: transcript.segments,
+            segments: planningSegments,
             durationSeconds,
             targetDurationSeconds,
             styleId,
@@ -736,8 +746,8 @@ export const registerAiEditRoutes = (
 
     const recipe = buildAiEditRecipe({
       transcript: timelineTranscript,
-      capabilities: readAiEditCapabilities(request.body?.capabilities),
-      settings: readAiEditRecipeSettings(request.body?.settings),
+      capabilities,
+      settings,
       styleId,
       prompt,
       plan: editPlan
@@ -838,7 +848,24 @@ export const registerAiEditRoutes = (
       return;
     }
 
-    const segments = readSegments(request.body?.segments);
+    const requestSegments = readSegments(request.body?.segments);
+    const segments =
+      targetDurationSeconds !== undefined && !styleId && !prompt
+        ? buildAiEditPlanningSegments({
+            transcript: {
+              text: requestSegments.map((segment) => segment.text).join(''),
+              language: requestSegments.some((segment) =>
+                /\p{Script=Thai}/u.test(segment.text)
+              )
+                ? 'th'
+                : 'en',
+              durationSeconds,
+              segments: requestSegments,
+              words: [],
+              model: 'client-transcript'
+            }
+          })
+        : requestSegments;
     const fallbackPlan = () =>
       editPlanProvider.plan({
         segments,

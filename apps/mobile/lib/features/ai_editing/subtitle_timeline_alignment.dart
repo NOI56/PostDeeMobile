@@ -33,6 +33,7 @@ const _joinedThaiContinuationEndings = <String>{
   'เพราะว่า',
   'เนื่องจาก',
   'สำหรับ',
+  'น้องของ',
 };
 
 const _indivisibleThaiTermsAcrossCues = <String>{
@@ -57,6 +58,10 @@ const _thaiListItemEndings = <String>{
   'กลุ่ม',
   'ประเภท',
   'หมวดหมู่',
+};
+
+const _thaiCompleteTitleTailEndings = <String>{
+  'ซุปเปอร์สตาร์',
 };
 
 const _thaiCompleteClauseEndingsBeforePossessiveSubject = <String>{
@@ -171,6 +176,7 @@ bool _thaiCueNeedsContinuation(
 }) {
   final normalized = _normalizedTailText(text);
   if (normalized.isEmpty) return false;
+  if (normalized == 'ของ') return true;
 
   final tokens = normalized
       .split(_subtitleTokenSeparators)
@@ -216,10 +222,18 @@ bool _isSafeThaiSemanticTail(
   if (normalized.isEmpty) {
     return false;
   }
+  // "ของ" can connect two adjacent cues, but is never a complete ending by
+  // itself. Keep linkage and tail-safety as separate decisions.
+  if (normalized == 'ของ') {
+    return false;
+  }
   if (_thaiQuantityTail.hasMatch(normalized)) {
     return true;
   }
   if (_thaiCompleteTimeTail.hasMatch(normalized)) {
+    return true;
+  }
+  if (_thaiCompleteTitleTailEndings.any(normalized.endsWith)) {
     return true;
   }
 

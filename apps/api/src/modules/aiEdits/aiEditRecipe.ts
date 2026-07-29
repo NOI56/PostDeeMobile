@@ -1,4 +1,8 @@
-import type { EditPlanCut, EditPlanResult } from './editPlanProvider.js';
+import type {
+  EditPlanCut,
+  EditPlanResult,
+  EditPlanSegment
+} from './editPlanProvider.js';
 import {
   isReliableTranscriptSegment,
   normalizeTranscriptionLanguage,
@@ -1365,4 +1369,43 @@ export const buildAiEditRecipe = ({
       watermark: buildCapabilityStatus({ key: 'watermark', enabled: capabilities.watermark })
     }
   };
+};
+
+/**
+ * Builds the fine transcript timeline used only for AI cut planning.
+ *
+ * Planning must use the same word-aware boundaries as subtitles even when the
+ * user turns automatic captions off. The returned shape remains the existing
+ * EditPlanSegment contract; subtitle-only word metadata is intentionally not
+ * exposed to callers.
+ */
+export const buildAiEditPlanningSegments = ({
+  transcript,
+  settings = {}
+}: {
+  transcript: TranscriptionResult;
+  settings?: AiEditRecipeSettings;
+}): EditPlanSegment[] => {
+  const planningRecipe = buildAiEditRecipe({
+    transcript,
+    capabilities: {
+      ...defaultCapabilities,
+      subtitle: true,
+      silence: false
+    },
+    settings
+  });
+
+  return planningRecipe.subtitles.segments.map(
+    ({ text, start, end, avgLogprob, noSpeechProbability, compressionRatio }) => ({
+      text,
+      start,
+      end,
+      ...(avgLogprob !== undefined ? { avgLogprob } : {}),
+      ...(noSpeechProbability !== undefined
+        ? { noSpeechProbability }
+        : {}),
+      ...(compressionRatio !== undefined ? { compressionRatio } : {})
+    })
+  );
 };

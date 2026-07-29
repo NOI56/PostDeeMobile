@@ -352,7 +352,14 @@ describe('AI edit recipe pacing settings', () => {
     expect(subtitleTexts).not.toContainEqual(expect.stringMatching(/^าร/u));
   });
 
-  it.each(['ดุ๊กดิ๊ก', 'ซุปเปอร์สตาร์', 'สวนสัตว์เขาเขียว'])(
+  it.each([
+    'ดุ๊กดิ๊ก',
+    'โซเชียล',
+    'ซุปเปอร์สตาร์',
+    'ฮิปโปซุปเปอร์สตาร์',
+    'สวนสัตว์เขาเขียว',
+    'สวนสัตว์เปิดเขาเขียว'
+  ])(
     'keeps the real Thai term %s in one subtitle cue',
     (text) => {
       const recipe = buildRecipe({

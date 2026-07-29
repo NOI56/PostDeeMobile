@@ -13,8 +13,11 @@ const maximumThaiFragmentOverlapSeconds = 0.02;
 // boundaries are used by transcript repair or subtitle cue construction.
 const indivisibleThaiSubtitleTerms = [
   'ดุ๊กดิ๊ก',
+  'โซเชียล',
   'ซุปเปอร์สตาร์',
-  'สวนสัตว์เขาเขียว'
+  'ฮิปโปซุปเปอร์สตาร์',
+  'สวนสัตว์เขาเขียว',
+  'สวนสัตว์เปิดเขาเขียว'
 ] as const;
 
 export type ThaiSubtitleWordPart = {
@@ -28,10 +31,13 @@ const normalizeTranscriptTextForBoundaries = (value: string): string =>
     .toLowerCase()
     .replace(/[\p{P}\p{S}\s]+/gu, '');
 
-const readIndivisibleTermEndIndex = (
+const readIndivisibleTermMatch = (
   parts: ThaiSubtitleWordPart[],
   startIndex: number
-): number | undefined => {
+): {
+  endIndex: number;
+  matchedEndOffset: number;
+} | undefined => {
   for (const term of indivisibleThaiSubtitleTerms) {
     let candidate = '';
 
@@ -41,9 +47,23 @@ const readIndivisibleTermEndIndex = (
         break;
       }
 
+      const previousLength = candidate.length;
       candidate += part.segment;
       if (candidate === term) {
-        return index;
+        return {
+          endIndex: index,
+          matchedEndOffset: part.segment.length
+        };
+      }
+      if (candidate.startsWith(term)) {
+        const matchedEndOffset = term.length - previousLength;
+        if (
+          matchedEndOffset > 0 &&
+          matchedEndOffset < part.segment.length
+        ) {
+          return { endIndex: index, matchedEndOffset };
+        }
+        break;
       }
       if (!term.startsWith(candidate)) {
         break;
@@ -67,20 +87,36 @@ export const readThaiSubtitleWordParts = (
   const parts: ThaiSubtitleWordPart[] = [];
 
   for (let index = 0; index < rawParts.length; index += 1) {
-    const endIndex = readIndivisibleTermEndIndex(rawParts, index);
-    if (endIndex === undefined) {
+    const match = readIndivisibleTermMatch(rawParts, index);
+    if (match === undefined) {
       parts.push(rawParts[index]!);
       continue;
     }
 
+    const matchedEndPart = rawParts[match.endIndex]!;
     parts.push({
-      segment: rawParts
-        .slice(index, endIndex + 1)
-        .map((part) => part.segment)
+      segment: [
+        ...rawParts
+          .slice(index, match.endIndex)
+          .map((part) => part.segment),
+        matchedEndPart.segment.slice(0, match.matchedEndOffset)
+      ]
         .join(''),
       isWordLike: true
     });
-    index = endIndex;
+
+    const remainingEndPart = matchedEndPart.segment.slice(
+      match.matchedEndOffset
+    );
+    if (remainingEndPart) {
+      rawParts[match.endIndex] = {
+        segment: remainingEndPart,
+        isWordLike: matchedEndPart.isWordLike
+      };
+      index = match.endIndex - 1;
+    } else {
+      index = match.endIndex;
+    }
   }
 
   return parts;

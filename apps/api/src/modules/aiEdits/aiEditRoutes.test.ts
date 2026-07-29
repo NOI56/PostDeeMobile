@@ -521,6 +521,180 @@ describe('ai edit routes', () => {
     });
   });
 
+  it('plans on fine word-derived boundaries even when automatic captions are off',
+      async () => {
+    const rawText =
+      'สนามฟุตบอลเหมือนทุกวันนี้มันก็เริ่มเรื่องใหม่ที่น่าสนใจมาก';
+    const plan = vi.fn(async ({
+      segments,
+      durationSeconds,
+      targetDurationSeconds
+    }: {
+      segments: Array<{ text: string; start: number; end: number }>;
+      durationSeconds: number;
+      targetDurationSeconds?: number;
+    }) => {
+      const completeThought = segments.find(
+        (segment) => segment.text === 'ทุกวันนี้'
+      );
+      expect(completeThought?.start).toBe(11.136);
+
+      const keptStart = completeThought?.start ?? 10;
+      const keptEnd = keptStart + (targetDurationSeconds ?? 30);
+      return {
+        cuts: [
+          { start: 0, end: keptStart },
+          { start: keptEnd, end: durationSeconds }
+        ],
+        summary: 'เริ่มจากประโยคที่สมบูรณ์',
+        model: 'test-fine-planner'
+      };
+    });
+    const transcribe = vi.fn(async () => ({
+      text: rawText,
+      language: 'th',
+      durationSeconds: 45,
+      segments: [{ text: rawText, start: 10, end: 15 }],
+      words: [
+        { word: 'สนาม', start: 10, end: 10.35 },
+        { word: 'ฟุตบอล', start: 10.35, end: 10.8 },
+        { word: 'เหมือน', start: 10.8, end: 11.136 },
+        { word: 'ทุก', start: 11.136, end: 11.35 },
+        { word: 'วัน', start: 11.35, end: 11.55 },
+        { word: 'นี้', start: 11.55, end: 11.75 },
+        { word: 'มัน', start: 11.75, end: 11.95 },
+        { word: 'ก็', start: 11.95, end: 12.1 },
+        { word: 'เริ่ม', start: 12.1, end: 12.55 },
+        { word: 'เรื่อง', start: 12.55, end: 13 },
+        { word: 'ใหม่', start: 13, end: 13.35 },
+        { word: 'ที่', start: 13.35, end: 13.55 },
+        { word: 'น่า', start: 13.55, end: 13.85 },
+        { word: 'สนใจ', start: 13.85, end: 14.3 },
+        { word: 'มาก', start: 14.3, end: 15 }
+      ],
+      model: 'scribe_v2'
+    }));
+    const app = createApp({
+      transcriptionProvider: { transcribe },
+      editPlanProvider: { plan }
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'fine-boundary.mp4'),
+        durationSeconds: 45,
+        targetDurationSeconds: 30,
+        capabilities: { subtitle: false, silence: false },
+        settings: { subtitleWordsPerLine: 3 }
+      })
+      .expect(200);
+
+    expect(plan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        segments: expect.arrayContaining([
+          expect.objectContaining({
+            text: 'สนามฟุตบอลเหมือน',
+            end: 11.136
+          }),
+          expect.objectContaining({
+            text: 'ทุกวันนี้',
+            start: 11.136
+          })
+        ])
+      })
+    );
+    expect(response.body.recipe.subtitles).toMatchObject({
+      enabled: false,
+      segments: []
+    });
+    expect(response.body.recipe.plan.cuts[0]).toEqual({
+      start: 0,
+      end: 11.136
+    });
+    expect(response.body.recipe.cutRanges[0]).toEqual({
+      start: 0,
+      end: 11.136
+    });
+  });
+
+  it('preserves coarse question and answer segments for style planning', async () => {
+    const styleSegments = [
+      { text: 'ใช้ยังไง?', start: 0, end: 2 },
+      { text: 'เปิดฝาแล้วใช้งานได้เลย', start: 2, end: 8 }
+    ];
+    const plan = vi.fn(async ({
+      segments
+    }: {
+      segments: Array<{ text: string; start: number; end: number }>;
+    }) => {
+      expect(segments).toEqual(styleSegments);
+      return {
+        cuts: [{ start: 8, end: 10 }],
+        summary: 'เก็บคำถามและคำตอบครบ',
+        model: 'test-style-planner'
+      };
+    });
+    const app = createApp({
+      transcriptionProvider: {
+        transcribe: async () => ({
+          text: 'ใช้ยังไง? เปิดฝาแล้วใช้งานได้เลย',
+          language: 'th',
+          durationSeconds: 10,
+          segments: styleSegments,
+          words: [],
+          model: 'scribe_v2'
+        })
+      },
+      editPlanProvider: { plan }
+    });
+
+    await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'qa-style.mp4'),
+        durationSeconds: 10,
+        styleId: 'qa'
+      })
+      .expect(200);
+
+    expect(plan).toHaveBeenCalledOnce();
+  });
+
+  it('preserves client segment groups for a style-only replan', async () => {
+    const styleSegments = [
+      { text: 'ใช้ยังไง?', start: 0, end: 2 },
+      { text: 'เปิดฝาแล้วใช้งานได้เลย', start: 2, end: 8 }
+    ];
+    const plan = vi.fn(async ({
+      segments
+    }: {
+      segments: Array<{ text: string; start: number; end: number }>;
+    }) => {
+      expect(segments).toEqual(styleSegments);
+      return {
+        cuts: [{ start: 8, end: 10 }],
+        summary: 'เก็บคำถามและคำตอบครบ',
+        model: 'test-style-planner'
+      };
+    });
+    const app = createApp({ editPlanProvider: { plan } });
+
+    await request(app)
+      .post('/ai-edits/plan')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        durationSeconds: 10,
+        styleId: 'qa',
+        segments: styleSegments
+      })
+      .expect(200);
+
+    expect(plan).toHaveBeenCalledOnce();
+  });
+
   it('uses the full media timeline when ElevenLabs ends before the video', async () => {
     const plan = vi.fn(async () => ({
       cuts: [],
@@ -699,6 +873,7 @@ describe('ai edit routes', () => {
         video: expect.objectContaining({ mimeType: 'video/mp4' })
       })
     );
+    expect(visualPlan.mock.calls[0]?.[0].segments.length).toBeGreaterThan(2);
     expect(fetchClipMedia).toHaveBeenCalledOnce();
     expect(fetchClipMedia).toHaveBeenCalledWith(proxyKey);
     expect(deleteVideo).toHaveBeenCalledWith(proxyKey);
@@ -719,6 +894,9 @@ describe('ai edit routes', () => {
       summary: 'ใช้แผนจากเสียง',
       model: 'audio-fallback'
     }));
+    const visualPlan = vi.fn(async () => {
+      throw new Error('Gemini unavailable');
+    });
     const proxyKey = ownedUploadKey(
       'local-dev-user',
       'visual-proxy.mp4',
@@ -726,11 +904,7 @@ describe('ai edit routes', () => {
     );
     const app = createApp({
       editPlanProvider: { plan: audioPlan },
-      visualEditPlanProvider: {
-        plan: async () => {
-          throw new Error('Gemini unavailable');
-        }
-      },
+      visualEditPlanProvider: { plan: visualPlan },
       fetchClipMedia: async () => ({
         data: new Uint8Array([1]),
         mimeType: 'video/mp4'
@@ -743,12 +917,20 @@ describe('ai edit routes', () => {
       .send({
         durationSeconds: 20,
         targetDurationSeconds: 10,
-        segments: [{ text: 'ขายสินค้า', start: 0, end: 20 }],
+        segments: [
+          {
+            text: 'สนามฟุตบอลเหมือนทุกวันนี้มันก็เริ่มเรื่องใหม่',
+            start: 0,
+            end: 20
+          }
+        ],
         visualProxyS3Key: proxyKey
       })
       .expect(200);
 
+    expect(visualPlan.mock.calls[0]?.[0].segments.length).toBeGreaterThan(1);
     expect(audioPlan).toHaveBeenCalledOnce();
+    expect(audioPlan.mock.calls[0]?.[0].segments.length).toBeGreaterThan(1);
     expect(response.body.plan.model).toBe('audio-fallback');
   });
 

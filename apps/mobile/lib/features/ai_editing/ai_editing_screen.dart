@@ -67,6 +67,15 @@ typedef ReviewVideoControllerFactory = VideoPlayerController Function(
   File file,
 );
 
+List<ClipTranscriptSegment> _planningSegmentsForRecipe(
+  AiEditRecipeResult recipe,
+) {
+  final fineSubtitleSegments = recipe.subtitles.segments;
+  return fineSubtitleSegments.isNotEmpty
+      ? fineSubtitleSegments
+      : recipe.transcript.segments;
+}
+
 /// Keeps a stalled entitlement request from locking the AI editor forever.
 const aiEditEntitlementCheckTimeout = Duration(seconds: 30);
 
@@ -829,11 +838,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               () => _processingTitle = 'กำลังเลือกช่วงที่ดีที่สุดให้ใหม่...',
             );
           }
-          final transcript = previousAnalysis.recipe.transcript;
+          final recipe = previousAnalysis.recipe;
+          final transcript = recipe.transcript;
           final planEdit = widget.planEdit ?? _apiClient.requestAiEditPlan;
           final plan = await planEdit(
             AiEditPlanRequest(
-              segments: transcript.segments,
+              segments: _planningSegmentsForRecipe(recipe),
               durationSeconds: transcript.durationSeconds,
               targetDurationSeconds: _selectedDurationSeconds.toDouble(),
             ),
@@ -1091,7 +1101,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       final planEdit = widget.planEdit ?? _apiClient.requestAiEditPlan;
       final visualPlan = await planEdit(
         AiEditPlanRequest(
-          segments: transcript.segments,
+          segments: _planningSegmentsForRecipe(prepared.recipe),
           durationSeconds: transcript.durationSeconds,
           targetDurationSeconds: targetDurationSeconds,
           visualProxyS3Key: remoteProxyKey,

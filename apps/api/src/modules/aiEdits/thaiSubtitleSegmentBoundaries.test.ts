@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { repairThaiSubtitleSegmentBoundaries } from './thaiSubtitleSegmentBoundaries.js';
+import {
+  readThaiSubtitleWordParts,
+  repairThaiSubtitleSegmentBoundaries
+} from './thaiSubtitleSegmentBoundaries.js';
 
 describe('Thai subtitle segment boundary repair', () => {
   it('merges adjacent provider fragments split inside one Thai word', () => {
@@ -76,6 +79,31 @@ describe('Thai subtitle segment boundary repair', () => {
         { text: 'สวน', start: 0, end: 0.35 },
         { text: 'สัตว์เขาเขียว', start: 0.35, end: 1.2 }
       ]
+    },
+    {
+      text: 'ดาวโซเชียลมาแรง',
+      fragments: [
+        { text: 'ดาวโซเชีย', start: 0, end: 0.7 },
+        { text: 'ลมาแรง', start: 0.7, end: 1.4 }
+      ]
+    },
+    {
+      text: 'สวนสัตว์เปิดเขาเขียว',
+      fragments: [
+        { text: 'สวนสัตว์เปิด', start: 0, end: 0.8 },
+        { text: 'เขาเขียว', start: 0.8, end: 1.5 }
+      ]
+    },
+    {
+      text: 'พี่หมูตุ๋นฮิปโปซุปเปอร์สตาร์ของสวนสัตว์',
+      fragments: [
+        { text: 'พี่หมูตุ๋นฮิปโป', start: 0, end: 0.95 },
+        {
+          text: 'ซุปเปอร์สตาร์ของสวนสัตว์',
+          start: 0.95,
+          end: 2.1
+        }
+      ]
     }
   ])(
     'keeps the real Thai term $text intact across provider fragments',
@@ -104,5 +132,45 @@ describe('Thai subtitle segment boundary repair', () => {
       { text: 'วันนี้', start: 0, end: 0.5 },
       { text: 'ไปตลาด', start: 0.55, end: 1.3 }
     ]);
+  });
+
+  it('does not join a protected term across a real pause', () => {
+    expect(
+      repairThaiSubtitleSegmentBoundaries(
+        [
+          { text: 'ฮิปโป', start: 0, end: 0.8 },
+          { text: 'ซุปเปอร์สตาร์', start: 1, end: 1.8 }
+        ],
+        'th',
+        'ฮิปโปซุปเปอร์สตาร์'
+      )
+    ).toEqual([
+      { text: 'ฮิปโป', start: 0, end: 0.8 },
+      { text: 'ซุปเปอร์สตาร์', start: 1, end: 1.8 }
+    ]);
+  });
+
+  it('does not join a similar but unprotected phrase', () => {
+    expect(
+      repairThaiSubtitleSegmentBoundaries(
+        [
+          { text: 'ฮิปโป', start: 0, end: 0.8 },
+          { text: 'ซุปเปอร์มาร์เก็ต', start: 0.82, end: 1.8 }
+        ],
+        'th',
+        'ฮิปโปซุปเปอร์มาร์เก็ต'
+      )
+    ).toEqual([
+      { text: 'ฮิปโป', start: 0, end: 0.8 },
+      { text: 'ซุปเปอร์มาร์เก็ต', start: 0.82, end: 1.8 }
+    ]);
+  });
+
+  it('extracts a protected loanword when Intl joins its last letter to the next Thai word', () => {
+    expect(
+      readThaiSubtitleWordParts('ดาวโซเชียลมาแรง')
+        .filter((part) => part.isWordLike)
+        .map((part) => part.segment)
+    ).toEqual(['ดาว', 'โซเชียล', 'มา', 'แรง']);
   });
 });

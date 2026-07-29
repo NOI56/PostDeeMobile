@@ -157,15 +157,33 @@ const weakThaiOpeningPrefixes = [
   'ของมาจาก'
 ];
 
+const strongThaiHookOpeningPrefixes = [
+  'หยุดก่อน',
+  'รู้ไหม',
+  'รู้มั้ย',
+  'มาดูกัน',
+  'ฟังก่อน',
+  'อย่าเพิ่ง',
+  'ห้ามพลาด'
+];
+
+const normalizeOpeningText = (text: string) =>
+  text.trim().replace(/^[\s"'“”‘’()[\]{}.,!?…:;–—-]+/u, '');
+
 /**
  * Detects short-clips that would begin like a continuation of an earlier
  * sentence. This is a soft signal only; a genuinely strong hook can still win.
  */
 export const hasWeakThaiOpening = (text: string): boolean => {
-  const normalized = text
-    .trim()
-    .replace(/^[\s"'“”‘’()[\]{}.,!?…:;–—-]+/u, '');
+  const normalized = normalizeOpeningText(text);
   return weakThaiOpeningPrefixes.some((prefix) => normalized.startsWith(prefix));
+};
+
+const hasStrongThaiHookOpening = (text: string): boolean => {
+  const normalized = normalizeOpeningText(text);
+  return strongThaiHookOpeningPrefixes.some((prefix) =>
+    normalized.startsWith(prefix)
+  );
 };
 
 const scoreHighlightSegment = (
@@ -238,6 +256,10 @@ const MINIMUM_MEANINGFUL_SPEECH_SECONDS = 0.5;
 const MINIMUM_MEANINGFUL_SPEECH_RATIO = 0.1;
 const MAXIMUM_MEANINGFUL_SPEECH_SECONDS = 3;
 const MAXIMUM_COMPARABLE_DURATION_GAP_SECONDS = 3;
+const MAXIMUM_CONTINUOUS_OPENING_GAP_SECONDS = 0.35;
+const MAXIMUM_CONTINUOUS_OPENING_OVERLAP_SECONDS = 0.05;
+const MAXIMUM_FRAGMENT_OPENING_SECONDS = 2.5;
+const sentenceEndingPunctuation = /[.!?ฯ…]["'”’)\]}]*$/u;
 
 type WeightedEditPlanRange = EditPlanCut & { weight: number };
 
@@ -421,6 +443,49 @@ const candidateWindowStarts = (
 };
 
 /**
+ * Flags a short cue that begins immediately after unfinished speech. Thai ASR
+ * providers often emit sub-second cues without punctuation, so a raw cue edge
+ * is not necessarily a natural opening. Small timestamp overlap is accepted as
+ * provider jitter, while a complete punctuated hook remains eligible.
+ */
+export const opensDuringContinuousSpeech = (
+  openingSegment: EditPlanSegment,
+  segments: EditPlanSegment[]
+): boolean => {
+  const orderedSegments = [...segments].sort(
+    (left, right) => left.start - right.start || left.end - right.end
+  );
+  const openingIndex = orderedSegments.indexOf(openingSegment);
+  if (
+    openingIndex <= 0 ||
+    openingSegment.start <= CUE_BOUNDARY_EPSILON_SECONDS ||
+    sentenceEndingPunctuation.test(openingSegment.text.trim()) ||
+    hasStrongThaiHookOpening(openingSegment.text) ||
+    openingSegment.end - openingSegment.start >
+      MAXIMUM_FRAGMENT_OPENING_SECONDS
+  ) {
+    return false;
+  }
+
+  for (let index = openingIndex - 1; index >= 0; index -= 1) {
+    const previous = orderedSegments[index]!;
+    if (
+      previous.end >
+      openingSegment.start + MAXIMUM_CONTINUOUS_OPENING_OVERLAP_SECONDS
+    ) {
+      return false;
+    }
+    const gap = Math.max(0, openingSegment.start - previous.end);
+    if (gap > MAXIMUM_CONTINUOUS_OPENING_GAP_SECONDS) {
+      return false;
+    }
+    return !sentenceEndingPunctuation.test(previous.text.trim());
+  }
+
+  return false;
+};
+
+/**
  * Converts scattered suggestions into the best single story window. This makes
  * the result predictable for talking-head clips and prevents jump-cut montages.
  */
@@ -497,7 +562,9 @@ export const buildCoherentHighlightCuts = ({
       (segment) => segment.end > start + 0.001 && segment.start < end - 0.001
     );
     const openingPenalty =
-      openingSegment && hasWeakThaiOpening(openingSegment.text)
+      openingSegment &&
+      (hasWeakThaiOpening(openingSegment.text) ||
+        opensDuringContinuousSpeech(openingSegment, reliableSegments))
         ? Math.max(0, weakOpeningPenalty)
         : 0;
     const score =

@@ -11,6 +11,7 @@ import {
   hasWeakThaiOpening,
   isReliableHighlightSegment,
   matchesAnyKeyword,
+  opensDuringContinuousSpeech,
   parseLlmEditPlan,
   parsePromptInstruction,
   trimToTarget
@@ -111,6 +112,100 @@ describe('edit plan provider', () => {
       { start: 0, end: 12 },
       { start: 30, end: 40 }
     ]);
+  });
+
+  it('does not open on a cue that continues uninterrupted Thai speech', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'เนื้อหาก่อนหน้า', start: 8, end: 10 },
+        { text: 'ตามที่เรา', start: 10, end: 12 },
+        {
+          text: 'ประโยคใหม่ที่เริ่มหลังจังหวะพัก',
+          start: 12.5,
+          end: 20
+        },
+        { text: 'รายละเอียดที่เล่าต่อ', start: 20, end: 30 },
+        { text: 'ช่วงปิดของประโยคใหม่', start: 30, end: 32.5 },
+        { text: 'บทสรุป', start: 32.5, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts).toEqual([
+      { start: 0, end: 12.5 },
+      { start: 32.5, end: 40 }
+    ]);
+  });
+
+  it('keeps a complete short hook even when previous speech is close', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'เนื้อหาก่อนหน้า', start: 8, end: 10 },
+        { text: 'หยุดก่อน', start: 10, end: 12 },
+        { text: 'ประโยคสำรองหลังจังหวะพัก', start: 12.5, end: 20 },
+        { text: 'รายละเอียดที่เล่าต่อ', start: 20, end: 30 },
+        { text: 'ช่วงปิดของประโยคสำรอง', start: 30, end: 32.5 },
+        { text: 'บทสรุป', start: 32.5, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts).toEqual([
+      { start: 0, end: 10 },
+      { start: 30, end: 40 }
+    ]);
+  });
+
+  it('handles timing jitter and safe boundaries for short openings', () => {
+    const previous = { text: 'เนื้อหาก่อนหน้า', start: 8, end: 10.01 };
+    const fragment = { text: 'ตามที่เรา', start: 10, end: 12 };
+
+    expect(
+      opensDuringContinuousSpeech(fragment, [fragment, previous])
+    ).toBe(true);
+    const ambiguousContinuation = {
+      text: 'ต้องดูแลต่อเนื่อง',
+      start: 10,
+      end: 12
+    };
+    expect(
+      opensDuringContinuousSpeech(ambiguousContinuation, [
+        previous,
+        ambiguousContinuation
+      ])
+    ).toBe(true);
+    const completeHook = { text: 'หยุดก่อน!', start: 10, end: 12 };
+    expect(
+      opensDuringContinuousSpeech(completeHook, [previous, completeHook])
+    ).toBe(false);
+    expect(
+      opensDuringContinuousSpeech(fragment, [
+        { text: 'จบประโยคก่อนหน้า.', start: 8, end: 10 },
+        fragment
+      ])
+    ).toBe(false);
+    expect(
+      opensDuringContinuousSpeech(fragment, [
+        { text: 'มีจังหวะพัก', start: 8, end: 9.649 },
+        fragment
+      ])
+    ).toBe(false);
+    const longOpening = { text: 'ประโยคสมบูรณ์', start: 10, end: 12.501 };
+    expect(
+      opensDuringContinuousSpeech(longOpening, [previous, longOpening])
+    ).toBe(false);
   });
 
   it('does not start or end the kept clip inside a transcript cue', () => {

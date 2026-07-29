@@ -5,7 +5,8 @@ import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_stud
 
 void main() {
   test('restores a matching draft and keeps edit actions undoable', () async {
-    final initial = _project();
+    final initial =
+        _project().copyWith(recipeFingerprint: 'recipe-current-result');
     final draft = initial.copyWith(
       cues: [initial.cues.first.copyWith(text: 'ฉบับร่าง')],
       revision: 3,
@@ -29,6 +30,30 @@ void main() {
     expect(controller.project.cues.first.text, 'ฉบับร่าง');
     controller.redo();
     expect(controller.project.cues.first.text, 'แก้แล้ว');
+  });
+
+  test('does not let an older AI result draft replace fresh subtitles',
+      () async {
+    final initial =
+        _project().copyWith(recipeFingerprint: 'recipe-fresh-result');
+    final staleDraft = _project().copyWith(
+      cues: [initial.cues.first.copyWith(text: 'stale fragment')],
+      recipeFingerprint: 'recipe-old-result',
+      revision: 3,
+    );
+    final store = _MemoryDraftStore(staleDraft);
+    final controller = SubtitleStudioController(
+      initialProject: initial,
+      draftStore: store,
+      now: () => DateTime.utc(2026, 7, 29, 12),
+      idGenerator: () => 'new-cue',
+    );
+
+    await controller.initialize();
+
+    expect(controller.project.toJson(), initial.toJson());
+    expect(store.saved, same(staleDraft));
+    expect(controller.validationMessage, contains('ผล AI รุ่นก่อน'));
   });
 
   test('ignores a draft from an older cue segmentation identity', () async {

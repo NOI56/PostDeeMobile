@@ -1006,6 +1006,148 @@ void main() {
   });
 
   testWidgets(
+      'locks processing before a delayed Pro check so a double tap starts one render',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('double-tap-clip.mp4');
+    final renderedVideo = _createRenderedVideoFixture('double-tap-result.mp4');
+    final processSubscription = Completer<SubscriptionStatusResult>();
+    var subscriptionChecks = 0;
+    var prepareCalls = 0;
+    var renderCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () {
+            subscriptionChecks += 1;
+            if (subscriptionChecks == 1) {
+              return Future.value(_subscriptionFixture('PRO'));
+            }
+            return processSubscription.future;
+          },
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 17,
+            remainingMinutes: 183,
+          ),
+          createUpload: (_) async => const UploadResult(
+            id: 'double-tap-upload',
+            videoS3Key: 'uploads/double-tap-clip.m4a',
+            storageProvider: 'r2',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          burnVideo: (_) async {
+            renderCalls += 1;
+            return renderedVideo;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    final processButton = find.byKey(const ValueKey('ai-process-button'));
+    await tester.tap(processButton);
+    await tester.tap(processButton);
+    await tester.pump();
+
+    expect(find.text('กำลังตรวจสอบแพ็กเกจ...'), findsOneWidget);
+    expect(subscriptionChecks, 2);
+    expect(prepareCalls, 0);
+    expect(renderCalls, 0);
+
+    processSubscription.complete(_subscriptionFixture('PRO'));
+    await tester.pumpAndSettle();
+
+    expect(prepareCalls, 1);
+    expect(renderCalls, 1);
+    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
+  });
+
+  testWidgets(
+      'releases the processing lock when the Pro check exceeds its deadline',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('subscription-timeout.mp4');
+    final delayedSubscription = Completer<SubscriptionStatusResult>();
+    var subscriptionChecks = 0;
+    var prepareCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () {
+            subscriptionChecks += 1;
+            if (subscriptionChecks == 1) {
+              return Future.value(_subscriptionFixture('PRO'));
+            }
+            return delayedSubscription.future;
+          },
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 17,
+            remainingMinutes: 183,
+          ),
+          createUpload: (_) async => const UploadResult(
+            id: 'subscription-timeout-upload',
+            videoS3Key: 'uploads/subscription-timeout.m4a',
+            storageProvider: 'r2',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          burnVideo: (_) async =>
+              _createRenderedVideoFixture('subscription-timeout-result.mp4'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pump();
+
+    expect(find.text('กำลังตรวจสอบแพ็กเกจ...'), findsOneWidget);
+    await tester.pump(aiEditEntitlementCheckTimeout);
+    await tester.pump();
+
+    expect(
+      find.text('ตรวจสอบแพ็กเกจนานเกินไป ลองใหม่อีกครั้ง'),
+      findsOneWidget,
+    );
+    expect(prepareCalls, 0);
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.byKey(const ValueKey('ai-process-button')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+
+    // Completing the original request after its deadline must not resume the
+    // abandoned upload/render flow or mutate the screen a second time.
+    delayedSubscription.complete(_subscriptionFixture('PRO'));
+    await tester.pump();
+    expect(prepareCalls, 0);
+    expect(find.byKey(const ValueKey('ai-result-review')), findsNothing);
+  });
+
+  testWidgets(
       'refreshes a stale Pro badge when the process check returns Basic',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('expired-pro-clip.mp4');
@@ -2109,6 +2251,68 @@ void main() {
           .onPressed,
       isNotNull,
     );
+  });
+
+  testWidgets(
+      'shows indeterminate preparation instead of a frozen zero percent before FFmpeg reports time',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('starting-preview.mp4');
+    final renderResult = Completer<BurnedSubtitleResult>();
+    BurnSubtitleRequest? activeRenderRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-starting-preview',
+            videoS3Key: 'uploads/starting-preview.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (request) async {
+            activeRenderRequest = request;
+            await request.cancellationToken?.attach(() async {
+              if (!renderResult.isCompleted) {
+                renderResult.completeError(
+                  const SubtitleBurnException('render cancelled'),
+                );
+              }
+            });
+            return renderResult.future;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('ai-processing-spinner')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-render-progress')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('ai-render-progress-percent')),
+      findsNothing,
+    );
+    expect(find.text('0%'), findsNothing);
+    expect(find.byKey(const ValueKey('ai-render-cancel')), findsOneWidget);
+
+    // Once FFmpeg produces a real processed timestamp, the UI switches from
+    // preparation state to a truthful determinate percentage.
+    activeRenderRequest!.onProgress?.call(0.42);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('ai-processing-spinner')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-render-progress')), findsOneWidget);
+    expect(find.text('42%'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('ai-render-cancel')));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('uses a light preview and exports full quality before posting',
@@ -3824,7 +4028,13 @@ void main() {
     expect(prepareRequest?.settings.subtitleColor, '#FFFFFF');
     expect(prepareRequest?.settings.subtitleWordsPerLine, 1);
     expect(prepareRequest?.settings.subtitlePosition, 'top');
-    expect(burnRequest?.subtitleFontSize, 17);
+    expect(
+      burnRequest?.subtitleFontSize,
+      allOf(greaterThanOrEqualTo(6), lessThanOrEqualTo(17)),
+      reason:
+          'the selected small size is an upper bound; a long Thai cue may shrink '
+          'further to stay on one line without being split mid-word',
+    );
     expect(burnRequest?.subtitleAtBottom, isFalse);
   });
 

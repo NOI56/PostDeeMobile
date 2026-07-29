@@ -60,16 +60,25 @@ class SubtitleStudioController extends ChangeNotifier {
     if (_initialized) return;
     try {
       final draft = await _draftStore.loadDraft(_initialProject.projectId);
-      if (draft != null &&
+      final matchesSource = draft != null &&
           draft.projectId == _initialProject.projectId &&
           draft.sourceFingerprint == _initialProject.sourceFingerprint &&
-          draft.sourceDurationMs == _initialProject.sourceDurationMs) {
+          draft.sourceDurationMs == _initialProject.sourceDurationMs;
+      final matchesRecipe =
+          draft?.recipeFingerprint == _initialProject.recipeFingerprint;
+      if (matchesSource && matchesRecipe) {
+        final compatibleDraft = draft;
         _editor = SubtitleProjectEditor(
-          project: draft,
+          project: compatibleDraft,
           idGenerator: _idGenerator,
           now: _now,
         );
-        _selectedCueId = draft.cues.isEmpty ? null : draft.cues.first.cueId;
+        _selectedCueId = compatibleDraft.cues.isEmpty
+            ? null
+            : compatibleDraft.cues.first.cueId;
+      } else if (matchesSource && !matchesRecipe) {
+        _validationMessage =
+            'พบฉบับร่างจากผล AI รุ่นก่อน จึงเริ่มจากซับล่าสุดแทน';
       }
     } catch (_) {
       _validationMessage =

@@ -25,10 +25,20 @@ void main() {
       );
 
   test('round-trips a versioned project through JSON', () {
-    final original = validProject();
+    final original =
+        validProject().copyWith(recipeFingerprint: 'recipe-baseline-123');
     final decoded = SubtitleProject.fromJson(original.toJson());
 
     expect(decoded.toJson(), original.toJson());
+    expect(decoded.recipeFingerprint, 'recipe-baseline-123');
+  });
+
+  test('keeps legacy drafts readable without a recipe fingerprint', () {
+    final legacyJson = validProject().toJson()..remove('recipeFingerprint');
+
+    final decoded = SubtitleProject.fromJson(legacyJson);
+
+    expect(decoded.recipeFingerprint, isNull);
   });
 
   test('rejects overlapping cues', () {

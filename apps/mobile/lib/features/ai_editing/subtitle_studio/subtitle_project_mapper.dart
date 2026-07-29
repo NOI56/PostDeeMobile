@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../../core/network/postdee_api_client.dart';
 import '../style_options.dart';
 import '../subtitle_burn_video_processor.dart';
@@ -36,9 +38,10 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
         ),
       )
       .toList(growable: false);
-  final preparedSegments = rechunkSubtitleByMaxChars(
+  final preparedSegments = prepareSubtitleSegmentsForLocalRender(
     sourceSegments,
-    maxCharsPerCue,
+    language: recipe.transcript.language,
+    maximumCharacters: maxCharsPerCue,
   )
       .map(
         (segment) => _MappedRange(
@@ -120,15 +123,24 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
     }
   }
   final cutRanges = _mergeCutRanges(mappedCutRanges);
+  final defaultStyle = _mapStyle(recipe.subtitles.style);
+  final recipeFingerprint = _buildRecipeFingerprint(
+    sourceDurationMs: sourceDurationMs,
+    language: recipe.transcript.language,
+    cues: cues,
+    defaultStyle: defaultStyle,
+    cutRanges: cutRanges,
+  );
 
   final project = SubtitleProject(
     schemaVersion: 1,
     projectId: projectId,
     sourceFingerprint: sourceFingerprint,
+    recipeFingerprint: recipeFingerprint,
     sourceDurationMs: sourceDurationMs,
     language: recipe.transcript.language,
     cues: cues,
-    defaultStyle: _mapStyle(recipe.subtitles.style),
+    defaultStyle: defaultStyle,
     cutRanges: cutRanges,
     revision: 0,
     createdAt: now,
@@ -136,6 +148,36 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
   );
   validateSubtitleProject(project);
   return project;
+}
+
+String _buildRecipeFingerprint({
+  required int sourceDurationMs,
+  required String language,
+  required List<SubtitleCue> cues,
+  required SubtitleStyle defaultStyle,
+  required List<SubtitleCutRange> cutRanges,
+}) {
+  final baseline = jsonEncode({
+    'sourceDurationMs': sourceDurationMs,
+    'language': language,
+    'cues': cues.map((cue) => cue.toJson()).toList(growable: false),
+    'defaultStyle': defaultStyle.toJson(),
+    'cutRanges':
+        cutRanges.map((range) => range.toJson()).toList(growable: false),
+  });
+  return 'recipe-${_fnv1a64Hex(baseline)}';
+}
+
+String _fnv1a64Hex(String value) {
+  final offsetBasis = BigInt.parse('cbf29ce484222325', radix: 16);
+  final prime = BigInt.parse('100000001b3', radix: 16);
+  final mask = BigInt.parse('ffffffffffffffff', radix: 16);
+  var hash = offsetBasis;
+  for (final byte in utf8.encode(value)) {
+    hash ^= BigInt.from(byte);
+    hash = (hash * prime) & mask;
+  }
+  return hash.toRadixString(16).padLeft(16, '0');
 }
 
 List<SubtitleCutRange> _mergeCutRanges(List<SubtitleCutRange> ranges) {

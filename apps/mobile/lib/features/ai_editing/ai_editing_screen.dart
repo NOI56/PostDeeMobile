@@ -66,6 +66,10 @@ typedef AiEditQuotaLoader = Future<AiEditQuota> Function();
 typedef ReviewVideoControllerFactory = VideoPlayerController Function(
   File file,
 );
+
+/// Keeps a stalled entitlement request from locking the AI editor forever.
+const aiEditEntitlementCheckTimeout = Duration(seconds: 30);
+
 typedef SubtitleStudioLauncher = Future<SubtitleProject?> Function(
   BuildContext context,
   File sourceFile,
@@ -734,6 +738,16 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       return;
     }
 
+    // Lock synchronously before the first await. Without this, a second tap
+    // can enter while the Pro entitlement request is still pending and start
+    // a duplicate upload/render pipeline.
+    setState(() {
+      _processing = true;
+      _processingTitle = 'กำลังตรวจสอบแพ็กเกจ...';
+      _renderProgress = null;
+      _renderCancelRequested = false;
+    });
+
     final shouldCheckSubscription = widget.loadSubscription != null ||
         (widget.createUpload == null &&
             widget.uploadVideoFile == null &&
@@ -742,7 +756,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       try {
         final loadSubscription =
             widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
-        final subscription = await loadSubscription();
+        final subscription = await loadSubscription().timeout(
+          aiEditEntitlementCheckTimeout,
+        );
         if (!mounted) {
           return;
         }
@@ -758,11 +774,31 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         }
       } on ApiException catch (error) {
         if (mounted) {
+          setState(() {
+            _processing = false;
+            _renderProgress = null;
+            _renderCancelRequested = false;
+          });
           _showError(_friendlyAiError(error));
+        }
+        return;
+      } on TimeoutException {
+        if (mounted) {
+          setState(() {
+            _processing = false;
+            _renderProgress = null;
+            _renderCancelRequested = false;
+          });
+          _showError('ตรวจสอบแพ็กเกจนานเกินไป ลองใหม่อีกครั้ง');
         }
         return;
       } catch (_) {
         if (mounted) {
+          setState(() {
+            _processing = false;
+            _renderProgress = null;
+            _renderCancelRequested = false;
+          });
           _showError('ตรวจสอบแพ็กเกจไม่สำเร็จ ลองใหม่อีกครั้ง');
         }
         return;
@@ -771,7 +807,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
     final file = File(picked.path);
     setState(() {
-      _processing = true;
       _processingTitle = 'AI กำลังวิเคราะห์คลิป...';
       _renderProgress = null;
       _renderCancelRequested = false;
@@ -917,7 +952,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _aiEditQuotaLoadFailed = false;
         _preparedEdit = preparedResult;
         _processingTitle = 'กำลังสร้างวิดีโอตัวอย่าง...';
-        _renderProgress = 0;
+        // FFmpeg can spend tens of seconds initialising the encoder before it
+        // reports the first processed timestamp. Keep the indicator
+        // indeterminate until a real progress value arrives instead of
+        // presenting a frozen and misleading 0%.
+        _renderProgress = null;
       });
 
       final reviewCapabilities =
@@ -1629,7 +1668,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         }
         setState(() {
           _processingTitle = 'กำลังลองวิธีสร้างวิดีโอสำรอง...';
-          _renderProgress = 0;
+          _renderProgress = null;
         });
       },
       renderPurpose: purpose,
@@ -2029,7 +2068,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
     setState(() {
       _updatingReviewPreview = true;
-      _renderProgress = 0;
+      _renderProgress = null;
       _renderCancelRequested = false;
     });
 
@@ -2106,7 +2145,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     setState(() {
       _subtitleProject = edited;
       _updatingReviewPreview = true;
-      _renderProgress = 0;
+      _renderProgress = null;
       _renderCancelRequested = false;
     });
     try {
@@ -2181,7 +2220,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       setState(() {
         _processing = true;
         _processingTitle = 'กำลังสร้างวิดีโอคุณภาพเต็ม...';
-        _renderProgress = 0;
+        _renderProgress = null;
         _renderCancelRequested = false;
       });
 

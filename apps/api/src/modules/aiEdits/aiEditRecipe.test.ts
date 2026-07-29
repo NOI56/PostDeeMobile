@@ -250,6 +250,57 @@ describe('AI edit recipe pacing settings', () => {
     ).toBe(true);
   });
 
+  it('repairs a Thai word split across stored transcript segments', () => {
+    const text =
+      'คะเก็บชีวิตสองข้างต่างๆก็จะมีอาหารที่ที่ส่วนใหญ่';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds: 120.785,
+      settings: { subtitleWordsPerLine: 2 },
+      segments: [
+        { text: 'คะเก็บชีวิ', start: 112.912, end: 113.742 },
+        { text: 'ตสองข้าง', start: 113.742, end: 114.531 },
+        { text: 'ต่างๆก็จะมีอาห', start: 118.878, end: 119.843 },
+        { text: 'ารที่ที่ส่วนใหญ่', start: 119.843, end: 120.785 }
+      ],
+      words: []
+    });
+    const subtitleTexts = recipe.subtitles.segments.map(
+      (segment) => segment.text
+    );
+
+    expect(subtitleTexts.join('')).toBe(text);
+    expect(subtitleTexts).not.toContainEqual(expect.stringMatching(/ชีวิ$/u));
+    expect(subtitleTexts).not.toContainEqual(expect.stringMatching(/^ตสอง/u));
+    expect(subtitleTexts).not.toContainEqual(expect.stringMatching(/อาห$/u));
+    expect(subtitleTexts).not.toContainEqual(expect.stringMatching(/^าร/u));
+  });
+
+  it('rebuilds a short ElevenLabs token pair split inside a Thai word', () => {
+    const text = 'ต่างๆก็จะมีอาหารที่ต้องการ';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds: 5.2,
+      settings: { subtitleWordsPerLine: 1 },
+      segments: [{ text, start: 0, end: 5.2 }],
+      words: [
+        { word: 'ต่างๆก็จะมีอาห', start: 0, end: 4.1 },
+        { word: 'ารที่ต้องการ', start: 4.1, end: 5.2 }
+      ]
+    });
+    const subtitleTexts = recipe.subtitles.segments.map(
+      (segment) => segment.text
+    );
+
+    expect(subtitleTexts.join('')).toBe(text);
+    expect(subtitleTexts).not.toContainEqual(expect.stringMatching(/อาห$/u));
+    expect(subtitleTexts).not.toContainEqual(expect.stringMatching(/^าร/u));
+  });
+
   it('merges provider subtitle fragments that are too short to read', () => {
     const recipe = buildRecipe({
       capabilities: { subtitle: true },

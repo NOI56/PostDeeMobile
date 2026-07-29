@@ -59,7 +59,8 @@ const visualEditSystemPrompt =
   'story window for the requested duration. Prefer a clear hook, visible ' +
   'product, demonstration, benefit, proof, offer, and call to action. Reject ' +
   'blurry, empty, duplicate, or visually confusing moments. Keep complete ' +
-  'speech sentences and chronological order. Do not open with a Thai sentence ' +
+  'speech sentences and chronological order. Never place a cut boundary inside ' +
+  'a transcript segment; keep or remove each segment whole. Do not open with a Thai sentence ' +
   'fragment such as "แต่", "แล้ว", "โดย", "ซึ่ง", or "ของมาจาก" when a ' +
   'complete nearby sentence is available. Return ONLY JSON: ' +
   '{"cuts":[{"start":<sec>,"end":<sec>}],"summary":"<short Thai summary>"}. ' +

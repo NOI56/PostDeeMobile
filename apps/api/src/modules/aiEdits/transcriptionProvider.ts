@@ -137,9 +137,15 @@ type ElevenLabsTimedWord = TranscriptWord & {
 const elevenLabsPauseBoundarySeconds = 0.55;
 const elevenLabsMaxSegmentSeconds = 4;
 const elevenLabsMaxSegmentGraphemes = 32;
+const elevenLabsEmergencyPauseBoundarySeconds = 2;
+const elevenLabsEmergencyMaxSegmentSeconds = 8;
+const elevenLabsEmergencyMaxSegmentGraphemes = 64;
 const terminalTranscriptPunctuation = /[.!?。！？…ฯ]$/u;
 const thaiGraphemeSegmenter = new Intl.Segmenter('th', {
   granularity: 'grapheme'
+});
+const thaiWordSegmenter = new Intl.Segmenter('th', {
+  granularity: 'word'
 });
 
 const isElevenLabsEvent = (
@@ -167,6 +173,23 @@ const isValidElevenLabsTimedWord = (
 
 const countGraphemes = (value: string): number =>
   Array.from(thaiGraphemeSegmenter.segment(value)).length;
+
+const readElevenLabsSemanticBoundaryOffsets = (
+  timedWords: ElevenLabsTimedWord[]
+): Set<number> => {
+  const text = timedWords
+    .map((word) => word.displayText)
+    .join('')
+    .normalize('NFC');
+  const boundaries = new Set<number>([0, text.length]);
+
+  for (const part of thaiWordSegmenter.segment(text)) {
+    boundaries.add(part.index);
+    boundaries.add(part.index + part.segment.length);
+  }
+
+  return boundaries;
+};
 
 const readElevenLabsTimedWords = (
   events: ElevenLabsTranscriptEvent[]
@@ -198,6 +221,9 @@ const buildElevenLabsSegments = (
   timedWords: ElevenLabsTimedWord[]
 ): TranscriptSegment[] => {
   const segments: TranscriptSegment[] = [];
+  const semanticBoundaryOffsets =
+    readElevenLabsSemanticBoundaryOffsets(timedWords);
+  let consumedTextLength = 0;
   let current:
     | {
         text: string;
@@ -216,29 +242,49 @@ const buildElevenLabsSegments = (
   };
 
   for (const timedWord of timedWords) {
+    const displayText = timedWord.displayText.normalize('NFC');
+    const pauseSeconds = current
+      ? timedWord.start - current.end
+      : 0;
     if (
       current &&
-      timedWord.start - current.end >= elevenLabsPauseBoundarySeconds
+      pauseSeconds >= elevenLabsPauseBoundarySeconds &&
+      (
+        semanticBoundaryOffsets.has(consumedTextLength) ||
+        pauseSeconds >= elevenLabsEmergencyPauseBoundarySeconds
+      )
     ) {
       flush();
     }
 
     if (!current) {
       current = {
-        text: timedWord.displayText,
+        text: displayText,
         start: timedWord.start,
         end: timedWord.end
       };
     } else {
-      current.text += timedWord.displayText;
+      current.text += displayText;
       current.end = timedWord.end;
     }
+    consumedTextLength += displayText.length;
 
     const normalizedText = current.text.normalize('NFC').trim();
+    const normalizedGraphemeCount = countGraphemes(normalizedText);
+    const reachedForcedSegmentLimit =
+      current.end - current.start >= elevenLabsMaxSegmentSeconds ||
+      normalizedGraphemeCount >= elevenLabsMaxSegmentGraphemes;
+    const reachedEmergencySegmentLimit =
+      current.end - current.start >= elevenLabsEmergencyMaxSegmentSeconds ||
+      normalizedGraphemeCount >=
+        elevenLabsEmergencyMaxSegmentGraphemes;
     if (
       terminalTranscriptPunctuation.test(timedWord.word) ||
-      current.end - current.start >= elevenLabsMaxSegmentSeconds ||
-      countGraphemes(normalizedText) >= elevenLabsMaxSegmentGraphemes
+      reachedEmergencySegmentLimit ||
+      (
+        reachedForcedSegmentLimit &&
+        semanticBoundaryOffsets.has(consumedTextLength)
+      )
     ) {
       flush();
     }

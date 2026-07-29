@@ -238,6 +238,7 @@ class SubtitleProject {
     required this.schemaVersion,
     required this.projectId,
     required this.sourceFingerprint,
+    this.recipeFingerprint,
     required this.sourceDurationMs,
     required this.language,
     required List<SubtitleCue> cues,
@@ -252,6 +253,7 @@ class SubtitleProject {
   final int schemaVersion;
   final String projectId;
   final String sourceFingerprint;
+  final String? recipeFingerprint;
   final int sourceDurationMs;
   final String language;
   final List<SubtitleCue> cues;
@@ -265,6 +267,7 @@ class SubtitleProject {
     int? schemaVersion,
     String? projectId,
     String? sourceFingerprint,
+    String? recipeFingerprint,
     int? sourceDurationMs,
     String? language,
     List<SubtitleCue>? cues,
@@ -278,6 +281,7 @@ class SubtitleProject {
         schemaVersion: schemaVersion ?? this.schemaVersion,
         projectId: projectId ?? this.projectId,
         sourceFingerprint: sourceFingerprint ?? this.sourceFingerprint,
+        recipeFingerprint: recipeFingerprint ?? this.recipeFingerprint,
         sourceDurationMs: sourceDurationMs ?? this.sourceDurationMs,
         language: language ?? this.language,
         cues: cues ?? this.cues,
@@ -292,6 +296,7 @@ class SubtitleProject {
         'schemaVersion': schemaVersion,
         'projectId': projectId,
         'sourceFingerprint': sourceFingerprint,
+        if (recipeFingerprint != null) 'recipeFingerprint': recipeFingerprint,
         'sourceDurationMs': sourceDurationMs,
         'language': language,
         'cues': cues.map((cue) => cue.toJson()).toList(growable: false),
@@ -308,6 +313,7 @@ class SubtitleProject {
       schemaVersion: _requiredInt(json, 'schemaVersion'),
       projectId: _requiredString(json, 'projectId'),
       sourceFingerprint: _requiredString(json, 'sourceFingerprint'),
+      recipeFingerprint: _optionalString(json, 'recipeFingerprint'),
       sourceDurationMs: _requiredInt(json, 'sourceDurationMs'),
       language: _requiredString(json, 'language'),
       cues: _objectList(json, 'cues')
@@ -334,6 +340,9 @@ void validateSubtitleProject(SubtitleProject project) {
   }
   _validateNonEmpty(project.projectId, 'project ID');
   _validateNonEmpty(project.sourceFingerprint, 'source fingerprint');
+  if (project.recipeFingerprint != null) {
+    _validateNonEmpty(project.recipeFingerprint!, 'recipe fingerprint');
+  }
   _validateNonEmpty(project.language, 'language');
   if (project.sourceDurationMs <= 0) {
     throw const SubtitleProjectValidationException(

@@ -200,6 +200,127 @@ describe('transcription provider', () => {
     ]);
   });
 
+  it('does not split an ElevenLabs Thai word at a forced segment boundary', async () => {
+    const provider = createElevenLabsTranscriptionProvider({
+      apiKey: 'elevenlabs-key',
+      model: 'scribe_v2',
+      fetchAudio: async () => ({
+        data: new Uint8Array([1]),
+        filename: 'clip.m4a',
+        contentType: 'audio/mp4'
+      }),
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          language_code: 'tha',
+          text: 'ต่างๆก็จะมีอาหารที่ต้องการ',
+          words: [
+            {
+              type: 'word',
+              text: 'ต่างๆก็จะมีอาห',
+              start: 0,
+              end: 4.1
+            },
+            {
+              type: 'word',
+              text: 'ารที่ต้องการ',
+              start: 4.1,
+              end: 5.2
+            }
+          ]
+        })
+      })
+    });
+
+    const result = await provider.transcribe(
+      legacyVideoInput('uploads/thai-mid-word-boundary')
+    );
+
+    expect(result.segments).toEqual([
+      {
+        text: 'ต่างๆก็จะมีอาหารที่ต้องการ',
+        start: 0,
+        end: 5.2
+      }
+    ]);
+  });
+
+  it('uses an emergency cap for one unknown token split into many events', async () => {
+    const provider = createElevenLabsTranscriptionProvider({
+      apiKey: 'elevenlabs-key',
+      model: 'scribe_v2',
+      fetchAudio: async () => ({
+        data: new Uint8Array([1]),
+        filename: 'clip.m4a',
+        contentType: 'audio/mp4'
+      }),
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          language_code: 'tha',
+          text: 'x'.repeat(100),
+          words: Array.from({ length: 100 }, (_, index) => ({
+            type: 'word',
+            text: 'x',
+            start: index * 0.1,
+            end: (index + 1) * 0.1
+          }))
+        })
+      })
+    });
+
+    const result = await provider.transcribe(
+      legacyVideoInput('uploads/unknown-long-token')
+    );
+
+    expect(result.segments.length).toBeGreaterThan(1);
+    expect(
+      result.segments.every(
+        (segment) =>
+          segment.end - segment.start <= 8 + Number.EPSILON &&
+          segment.text.length <= 64
+      )
+    ).toBe(true);
+    expect(result.segments.map((segment) => segment.text).join('')).toBe(
+      'x'.repeat(100)
+    );
+  });
+
+  it('does not bridge an unusually long pause inside an unknown token', async () => {
+    const provider = createElevenLabsTranscriptionProvider({
+      apiKey: 'elevenlabs-key',
+      model: 'scribe_v2',
+      fetchAudio: async () => ({
+        data: new Uint8Array([1]),
+        filename: 'clip.m4a',
+        contentType: 'audio/mp4'
+      }),
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          language_code: 'tha',
+          text: 'ชีวิต',
+          words: [
+            { type: 'word', text: 'ชีวิ', start: 0, end: 1 },
+            { type: 'word', text: 'ต', start: 3.1, end: 3.5 }
+          ]
+        })
+      })
+    });
+
+    const result = await provider.transcribe(
+      legacyVideoInput('uploads/unknown-token-long-pause')
+    );
+
+    expect(result.segments).toEqual([
+      { text: 'ชีวิ', start: 0, end: 1 },
+      { text: 'ต', start: 3.1, end: 3.5 }
+    ]);
+  });
+
   it('reports ElevenLabs provider failures without exposing the response body', async () => {
     const provider = createElevenLabsTranscriptionProvider({
       apiKey: 'elevenlabs-key',

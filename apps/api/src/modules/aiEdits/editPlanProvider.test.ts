@@ -109,7 +109,171 @@ describe('edit plan provider', () => {
 
     expect(cuts).toEqual([
       { start: 0, end: 12 },
-      { start: 32, end: 40 }
+      { start: 30, end: 40 }
+    ]);
+  });
+
+  it('does not start or end the kept clip inside a transcript cue', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 112.762 },
+        { start: 142.762, end: 150.649 }
+      ],
+      segments: [
+        {
+          text: 'opening cue from the live Thai clip',
+          start: 112.081,
+          end: 112.912
+        },
+        {
+          text: 'closing cue from the live Thai clip',
+          start: 142.2,
+          end: 143.1
+        }
+      ],
+      durationSeconds: 150.649,
+      targetDurationSeconds: 30
+    });
+
+    expect(cuts).toEqual([
+      { start: 0, end: 113.1 },
+      { start: 143.1, end: 150.649 }
+    ]);
+  });
+
+  it('repairs a Thai word split before accepting a shared segment boundary', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 113.742 },
+        { start: 123.742, end: 130 }
+      ],
+      segments: [
+        { text: 'คะเก็บชีวิ', start: 112.912, end: 113.742 },
+        { text: 'ตสองข้าง', start: 113.742, end: 114.531 },
+        { text: 'ประโยคถัดไป', start: 114.531, end: 123.742 }
+      ],
+      durationSeconds: 130,
+      targetDurationSeconds: 10
+    });
+
+    expect(cuts[0]?.end).not.toBe(113.742);
+    expect(cuts[0]?.end).toBe(114.531);
+  });
+
+  it('rejects a snapped candidate that keeps only a silent gap', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'first complete cue', start: 0, end: 20 },
+        { text: 'second complete cue', start: 21, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 0
+    });
+
+    expect(cuts).toEqual([{ start: 0, end: 20 }]);
+  });
+
+  it('keeps the exact target as fallback when one cue exceeds the target', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [{ text: 'one long complete cue', start: 0, end: 40 }],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 0
+    });
+
+    expect(cuts).toEqual([
+      { start: 0, end: 10 },
+      { start: 30, end: 40 }
+    ]);
+  });
+
+  it('rejects a suggested window with negligible speech when a meaningful alternative exists', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 60 }
+      ],
+      segments: [
+        { text: 'tiny speech fragment', start: 29.99, end: 30 },
+        { text: 'complete spoken alternative', start: 40, end: 42 }
+      ],
+      durationSeconds: 60,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 0
+    });
+
+    expect(cuts).toEqual([
+      { start: 0, end: 22 },
+      { start: 42, end: 60 }
+    ]);
+  });
+
+  it('does not count duplicate overlapping cues as extra spoken time', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [{ start: 30, end: 60 }],
+      segments: [
+        { text: 'duplicate cue one', start: 10, end: 12 },
+        { text: 'duplicate cue two', start: 10, end: 12 },
+        { text: 'meaningful alternative', start: 40, end: 43 }
+      ],
+      durationSeconds: 60,
+      targetDurationSeconds: 30,
+      weakOpeningPenalty: 0
+    });
+
+    expect(cuts).toEqual([
+      { start: 0, end: 13 },
+      { start: 43, end: 60 }
+    ]);
+  });
+
+  it('does not let duplicate highlight signals change the chosen window', () => {
+    const firstHighlight = { text: 'ราคา', start: 0, end: 5 };
+    const strongerHighlight = { text: 'ราคากด', start: 20, end: 25 };
+    const request = {
+      suggestedCuts: [],
+      durationSeconds: 30,
+      targetDurationSeconds: 10,
+      weakOpeningPenalty: 0
+    };
+    const withoutDuplicate = buildCoherentHighlightCuts({
+      ...request,
+      segments: [firstHighlight, strongerHighlight]
+    });
+    const withDuplicate = buildCoherentHighlightCuts({
+      ...request,
+      segments: [firstHighlight, { ...firstHighlight }, strongerHighlight]
+    });
+
+    expect(withDuplicate).toEqual(withoutDuplicate);
+  });
+
+  it('prefers an exact safe target over a much shorter suggested window', () => {
+    const boundaries = [0, 12, 22, 32, 42, 52, 60];
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [{ start: 20, end: 60 }],
+      segments: boundaries.slice(0, -1).map((start, index) => ({
+        text: `complete cue ${index + 1}`,
+        start,
+        end: boundaries[index + 1]!
+      })),
+      durationSeconds: 60,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 0
+    });
+
+    expect(cuts).toEqual([
+      { start: 0, end: 12 },
+      { start: 32, end: 60 }
     ]);
   });
 

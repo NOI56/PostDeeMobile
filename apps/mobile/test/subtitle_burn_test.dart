@@ -254,6 +254,111 @@ void main() {
     expect(file.content, contains('one missing'));
   });
 
+  test(
+      'turns a long leading cut into input seek and shifts the render timeline',
+      () {
+    final timeline = prepareFfmpegRenderTimeline(
+      segments: const [
+        SubtitleSegment(
+          text: 'keep',
+          start: 110.5,
+          end: 112,
+          words: [
+            SubtitleWordTiming(text: 'keep', start: 110.5, end: 111),
+          ],
+        ),
+        SubtitleSegment(text: 'later', start: 128, end: 129),
+      ],
+      silenceRanges: const [
+        SilenceCutRange(start: 0, end: 110.312),
+        SilenceCutRange(start: 126.710, end: 127.387),
+        SilenceCutRange(start: 140.148, end: 148.709),
+      ],
+    );
+
+    expect(timeline.inputSeekSec, closeTo(110.312, 0.000001));
+    expect(timeline.ffmpegTrimStartSec, isNull);
+    expect(timeline.ffmpegTrimEndSec, isNull);
+    expect(timeline.segments.first.start, closeTo(0.188, 0.000001));
+    expect(timeline.segments.first.end, closeTo(1.688, 0.000001));
+    expect(
+      timeline.segments.first.words.single.start,
+      closeTo(0.188, 0.000001),
+    );
+    expect(
+      timeline.segments.first.words.single.end,
+      closeTo(0.688, 0.000001),
+    );
+    expect(timeline.silenceRanges, hasLength(2));
+    expect(timeline.silenceRanges[0].start, closeTo(16.398, 0.000001));
+    expect(timeline.silenceRanges[0].end, closeTo(17.075, 0.000001));
+    expect(timeline.silenceRanges[1].start, closeTo(29.836, 0.000001));
+    expect(timeline.silenceRanges[1].end, closeTo(38.397, 0.000001));
+  });
+
+  test('combines an existing trim start with a leading cut exactly once', () {
+    final timeline = prepareFfmpegRenderTimeline(
+      segments: const [
+        SubtitleSegment(text: 'keep', start: 12, end: 13),
+      ],
+      silenceRanges: const [
+        SilenceCutRange(start: 5, end: 10),
+        SilenceCutRange(start: 14, end: 15),
+      ],
+      trimStartSec: 5,
+      trimEndSec: 20,
+    );
+
+    expect(timeline.inputSeekSec, 10);
+    expect(timeline.ffmpegTrimStartSec, isNull);
+    expect(timeline.ffmpegTrimEndSec, 10);
+    expect(timeline.segments.single.start, 2);
+    expect(timeline.segments.single.end, 3);
+    expect(timeline.silenceRanges.single.start, 4);
+    expect(timeline.silenceRanges.single.end, 5);
+  });
+
+  test('preserves the existing trim behavior when there is no leading cut', () {
+    final timeline = prepareFfmpegRenderTimeline(
+      segments: const [
+        SubtitleSegment(text: 'keep', start: 5, end: 6),
+      ],
+      silenceRanges: const [
+        SilenceCutRange(start: 7, end: 8),
+      ],
+      trimStartSec: 2,
+      trimEndSec: 10,
+    );
+
+    expect(timeline.inputSeekSec, isNull);
+    expect(timeline.ffmpegTrimStartSec, 2);
+    expect(timeline.ffmpegTrimEndSec, 10);
+    expect(timeline.segments.single.start, 3);
+    expect(timeline.silenceRanges.single.start, 5);
+    expect(timeline.silenceRanges.single.end, 6);
+  });
+
+  test('places the optimized input seek before the main FFmpeg input', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      inputSeekSec: 110.312,
+      silenceRanges: const [
+        SilenceCutRange(start: 16.398, end: 17.075),
+      ],
+    );
+
+    final seekIndex = args.indexOf('-ss');
+    final inputIndex = args.indexOf('-i');
+    expect(seekIndex, greaterThanOrEqualTo(0));
+    expect(seekIndex, lessThan(inputIndex));
+    expect(args[seekIndex + 1], '110.312');
+    expect(
+      args.join(' '),
+      contains("select='not(between(t,16.398,17.075))'"),
+    );
+  });
+
   test('builds ffmpeg args for trim, speed, volume and subtitles', () {
     final args = buildEditFfmpegArguments(
       inputPath: '/in.mp4',
@@ -268,6 +373,7 @@ void main() {
 
     expect(joined, contains('-ss 4.000'));
     expect(joined, contains('-to 10.000'));
+    expect(args.indexOf('-i'), lessThan(args.indexOf('-ss')));
     expect(joined, contains('subtitles='));
     expect(joined, contains('setpts=0.5000*PTS'));
     expect(joined, contains('atempo=2.000'));
@@ -529,6 +635,131 @@ void main() {
     expect(long.maxVideoFrameRate, 20);
   });
 
+  test('uses a short encoder startup deadline for previews', () {
+    expect(
+      ffmpegStartupTimeoutForPurpose(VideoRenderPurpose.preview),
+      const Duration(seconds: 30),
+    );
+    expect(
+      ffmpegStartupTimeoutForPurpose(VideoRenderPurpose.export),
+      const Duration(seconds: 90),
+    );
+  });
+
+  test('times out only while an FFmpeg attempt has no processed media time',
+      () {
+    expect(
+      shouldTimeoutFfmpegStartupAttempt(
+        purpose: VideoRenderPurpose.preview,
+        elapsed: const Duration(seconds: 29),
+        hasProcessedTime: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldTimeoutFfmpegStartupAttempt(
+        purpose: VideoRenderPurpose.preview,
+        elapsed: const Duration(seconds: 30),
+        hasProcessedTime: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldTimeoutFfmpegStartupAttempt(
+        purpose: VideoRenderPurpose.preview,
+        elapsed: const Duration(minutes: 5),
+        hasProcessedTime: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldTimeoutFfmpegStartupAttempt(
+        purpose: VideoRenderPurpose.export,
+        elapsed: const Duration(seconds: 89),
+        hasProcessedTime: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldTimeoutFfmpegStartupAttempt(
+        purpose: VideoRenderPurpose.export,
+        elapsed: const Duration(seconds: 90),
+        hasProcessedTime: false,
+      ),
+      isTrue,
+    );
+  });
+
+  test('accepts a terminal FFmpeg attempt before applying startup timeout', () {
+    expect(
+      shouldTimeoutFfmpegStartupAttempt(
+        purpose: VideoRenderPurpose.preview,
+        elapsed: const Duration(minutes: 1),
+        hasProcessedTime: false,
+        sessionIsTerminal: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldTimeoutFfmpegStartupAttempt(
+        purpose: VideoRenderPurpose.preview,
+        elapsed: const Duration(minutes: 1),
+        hasProcessedTime: false,
+        progressReportedEnd: true,
+      ),
+      isFalse,
+    );
+  });
+
+  test('treats an internal startup-timeout cancel as an encoder fallback', () {
+    expect(
+      shouldAbortCancelledFfmpegAttempt(
+        returnCodeValue: 255,
+        startupTimedOut: true,
+        userCancellationRequested: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldAbortCancelledFfmpegAttempt(
+        returnCodeValue: 255,
+        startupTimedOut: false,
+        userCancellationRequested: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldAbortCancelledFfmpegAttempt(
+        returnCodeValue: 255,
+        startupTimedOut: true,
+        userCancellationRequested: true,
+      ),
+      isTrue,
+    );
+  });
+
+  test('keeps raw FFmpeg diagnostics out of the user-facing error', () {
+    final rawLogs = List.filled(
+      200,
+      'ffmpeg version n7.1 Copyright encoder trace /private/input.mp4',
+    ).join('\n');
+
+    final previewMessage = userFacingFfmpegRenderFailureMessage(
+      purpose: VideoRenderPurpose.preview,
+      diagnosticDetails: rawLogs,
+    );
+    final exportMessage = userFacingFfmpegRenderFailureMessage(
+      purpose: VideoRenderPurpose.export,
+      diagnosticDetails: rawLogs,
+    );
+
+    expect(previewMessage, 'สร้างวิดีโอตัวอย่างไม่สำเร็จ กรุณาลองใหม่');
+    expect(exportMessage, 'สร้างวิดีโอคุณภาพเต็มไม่สำเร็จ กรุณาลองใหม่');
+    expect(previewMessage.toLowerCase(), isNot(contains('ffmpeg')));
+    expect(previewMessage, isNot(contains('/private/input.mp4')));
+    expect(previewMessage.length, lessThan(100));
+  });
+
   test('writes FFmpeg progress to a file that can be polled on Android', () {
     final args = buildEditFfmpegArguments(
       inputPath: '/in.mp4',
@@ -558,6 +789,39 @@ void main() {
       closeTo(7.654321, 0.000001),
     );
     expect(parseFfmpegProgressSeconds('progress=continue\n'), isNull);
+  });
+
+  test(
+      'combines live FFmpeg callback and progress-file time without freezing or regressing',
+      () {
+    final updates = <double>[];
+    final tracker = FfmpegRenderProgressTracker(
+      outputDurationSeconds: 30,
+      onProgress: updates.add,
+    );
+
+    // Encoder initialisation can stay silent for tens of seconds.
+    tracker.reportProcessedSeconds(null);
+    tracker.reportProcessedSeconds(0);
+    expect(updates, isEmpty);
+
+    // The live statistics callback normally arrives first.
+    tracker.reportProcessedSeconds(0.6);
+    // The progress file may then report a newer value.
+    tracker.reportProcessedSeconds(9);
+    // A delayed callback must not move the UI backwards.
+    tracker.reportProcessedSeconds(6);
+    // FFmpeg can report slightly beyond the expected duration.
+    tracker.reportProcessedSeconds(31);
+
+    expect(
+      updates,
+      orderedEquals([
+        closeTo(0.02, 0.000001),
+        closeTo(0.3, 0.000001),
+        closeTo(0.99, 0.000001),
+      ]),
+    );
   });
 
   test('detects FFmpeg completion from the polled progress file', () {

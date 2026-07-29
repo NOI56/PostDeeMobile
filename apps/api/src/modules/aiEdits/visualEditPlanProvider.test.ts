@@ -164,4 +164,66 @@ describe('visual edit plan provider', () => {
       name: 'files/postdee-empty'
     });
   });
+
+  it('keeps Gemini cut boundaries outside transcript cues', async () => {
+    const filesClient = {
+      upload: vi.fn(async () => ({
+        name: 'files/postdee-boundary',
+        uri: 'https://files.local/postdee-boundary',
+        mimeType: 'video/mp4',
+        state: 'ACTIVE'
+      })),
+      get: vi.fn(),
+      delete: vi.fn(async () => ({}))
+    };
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit = {}) => {
+      if (url.includes(':generateContent')) {
+        return response({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      cuts: [
+                        { start: 0, end: 112.762 },
+                        { start: 142.762, end: 150.649 }
+                      ],
+                      summary: 'live regression'
+                    })
+                  }
+                ]
+              }
+            }
+          ]
+        });
+      }
+      throw new Error(`Unexpected request: ${init.method ?? 'GET'} ${url}`);
+    });
+    const provider = createGeminiVisualEditPlanProvider({
+      apiKey: 'test-key',
+      model: 'gemini-test',
+      filesClient,
+      fetchImpl,
+      sleep: async () => undefined
+    });
+
+    const result = await provider.plan({
+      durationSeconds: 150.649,
+      targetDurationSeconds: 30,
+      segments: [
+        { text: 'opening cue', start: 112.081, end: 112.912 },
+        { text: 'closing cue', start: 142.2, end: 143.1 }
+      ],
+      video: {
+        data: new Uint8Array([1]),
+        mimeType: 'video/mp4'
+      }
+    });
+
+    expect(result.cuts).toEqual([
+      { start: 0, end: 113.1 },
+      { start: 143.1, end: 150.649 }
+    ]);
+  });
 });

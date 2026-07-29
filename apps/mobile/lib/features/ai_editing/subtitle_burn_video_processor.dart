@@ -4,6 +4,7 @@ import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new_video/session_state.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'subtitle_word_timing_safety.dart';
@@ -77,6 +78,50 @@ class SilenceCutRange {
 }
 
 enum VideoRenderPurpose { preview, export }
+
+/// Maximum time an encoder attempt may spend without producing any processed
+/// media timestamp. Preview attempts fail over quickly so the user is not left
+/// watching an indefinite spinner; full exports allow slower device startup.
+Duration ffmpegStartupTimeoutForPurpose(VideoRenderPurpose purpose) =>
+    switch (purpose) {
+      VideoRenderPurpose.preview => const Duration(seconds: 30),
+      VideoRenderPurpose.export => const Duration(seconds: 90),
+    };
+
+bool shouldTimeoutFfmpegStartupAttempt({
+  required VideoRenderPurpose purpose,
+  required Duration elapsed,
+  required bool hasProcessedTime,
+  bool sessionIsTerminal = false,
+  bool progressReportedEnd = false,
+}) =>
+    !sessionIsTerminal &&
+    !progressReportedEnd &&
+    !hasProcessedTime &&
+    elapsed >= ffmpegStartupTimeoutForPurpose(purpose);
+
+/// Distinguishes the user's cancel action from the renderer cancelling a
+/// stalled encoder so it can safely try the next fallback.
+bool shouldAbortCancelledFfmpegAttempt({
+  required int? returnCodeValue,
+  required bool startupTimedOut,
+  required bool userCancellationRequested,
+}) =>
+    userCancellationRequested ||
+    (!startupTimedOut && returnCodeValue == ReturnCode.cancel);
+
+/// Returns a short, actionable message safe for the app UI. FFmpeg diagnostics
+/// may contain thousands of lines and device file paths, so they must remain
+/// in developer logs rather than being interpolated here.
+String userFacingFfmpegRenderFailureMessage({
+  required VideoRenderPurpose purpose,
+  String? diagnosticDetails,
+}) =>
+    switch (purpose) {
+      VideoRenderPurpose.preview => 'สร้างวิดีโอตัวอย่างไม่สำเร็จ กรุณาลองใหม่',
+      VideoRenderPurpose.export =>
+        'สร้างวิดีโอคุณภาพเต็มไม่สำเร็จ กรุณาลองใหม่',
+    };
 
 class VideoPreviewProfile {
   const VideoPreviewProfile({
@@ -312,6 +357,43 @@ double? parseFfmpegProgressSeconds(String content) {
     return null;
   }
   return hours * 3600 + minutes * 60 + seconds;
+}
+
+/// Combines processed-media time reported by FFmpeg's statistics callback and
+/// `-progress` file into one monotonic UI fraction.
+///
+/// Android devices do not always deliver both channels reliably. Whichever
+/// channel reports a newer media time first advances the progress indicator,
+/// while delayed values from the other channel are ignored.
+class FfmpegRenderProgressTracker {
+  FfmpegRenderProgressTracker({
+    required this.outputDurationSeconds,
+    required this.onProgress,
+  });
+
+  final double outputDurationSeconds;
+  final RenderProgressCallback onProgress;
+
+  double _lastFraction = 0;
+
+  void reportProcessedSeconds(double? processedSeconds) {
+    if (processedSeconds == null ||
+        !processedSeconds.isFinite ||
+        processedSeconds <= 0 ||
+        !outputDurationSeconds.isFinite ||
+        outputDurationSeconds <= 0) {
+      return;
+    }
+
+    final fraction =
+        (processedSeconds / outputDurationSeconds).clamp(0.0, 0.99).toDouble();
+    if (fraction <= _lastFraction) {
+      return;
+    }
+
+    _lastFraction = fraction;
+    onProgress(fraction);
+  }
 }
 
 /// FFmpeg writes this final marker even when the Android async completion
@@ -1046,6 +1128,84 @@ List<SilenceCutRange> clipSilenceToTrim(
   ];
 }
 
+class FfmpegRenderTimeline {
+  const FfmpegRenderTimeline({
+    required this.segments,
+    required this.silenceRanges,
+    required this.inputSeekSec,
+    required this.ffmpegTrimStartSec,
+    required this.ffmpegTrimEndSec,
+  });
+
+  final List<SubtitleSegment> segments;
+  final List<SilenceCutRange> silenceRanges;
+
+  /// Fast input-side seek used only when the entire beginning is removed.
+  final double? inputSeekSec;
+
+  /// Existing output-side trim values retained when no leading-cut
+  /// optimisation is possible.
+  final double? ffmpegTrimStartSec;
+  final double? ffmpegTrimEndSec;
+}
+
+/// Prepares one consistent timeline for subtitles, cuts, and FFmpeg trim
+/// arguments. A cut that begins exactly at zero means no frame before its end
+/// can appear in the result, so FFmpeg may safely seek the main input there
+/// instead of decoding and discarding the whole leading section.
+FfmpegRenderTimeline prepareFfmpegRenderTimeline({
+  required List<SubtitleSegment> segments,
+  required List<SilenceCutRange> silenceRanges,
+  double? trimStartSec,
+  double? trimEndSec,
+}) {
+  final trimmedSegments = clipSegmentsToTrim(
+    segments,
+    trimStartSec: trimStartSec,
+    trimEndSec: trimEndSec,
+  );
+  final trimmedSilence = clipSilenceToTrim(
+    silenceRanges,
+    trimStartSec: trimStartSec,
+    trimEndSec: trimEndSec,
+  );
+  final normalizedSilence = _normalizeSilenceRanges(trimmedSilence);
+  final leadingCutEnd = normalizedSilence.isNotEmpty &&
+          normalizedSilence.first.start.abs() <= 0.000001
+      ? normalizedSilence.first.end
+      : 0.0;
+
+  if (leadingCutEnd <= 0) {
+    return FfmpegRenderTimeline(
+      segments: trimmedSegments,
+      silenceRanges: trimmedSilence,
+      inputSeekSec: null,
+      ffmpegTrimStartSec: trimStartSec,
+      ffmpegTrimEndSec: trimEndSec,
+    );
+  }
+
+  final sourceTrimStart = trimStartSec ?? 0;
+  final inputSeekSec = sourceTrimStart + leadingCutEnd;
+  final adjustedTrimEnd = trimEndSec == null
+      ? null
+      : (trimEndSec - inputSeekSec).clamp(0, double.infinity).toDouble();
+
+  return FfmpegRenderTimeline(
+    segments: clipSegmentsToTrim(
+      trimmedSegments,
+      trimStartSec: leadingCutEnd,
+    ),
+    silenceRanges: clipSilenceToTrim(
+      normalizedSilence,
+      trimStartSec: leadingCutEnd,
+    ),
+    inputSeekSec: inputSeekSec,
+    ffmpegTrimStartSec: null,
+    ffmpegTrimEndSec: adjustedTrimEnd,
+  );
+}
+
 /// Builds the color-grade video filter for a preset look plus brightness /
 /// contrast adjustments (editor values are -1..1). Returns '' for "normal".
 /// Pure + testable.
@@ -1270,6 +1430,7 @@ List<String> buildEditFfmpegArguments({
   List<String> drawTextFilters = const [],
   double speed = 1.0,
   double volume = 1.0,
+  double? inputSeekSec,
   double? trimStartSec,
   double? trimEndSec,
   double? maxOutputDurationSec,
@@ -1300,6 +1461,9 @@ List<String> buildEditFfmpegArguments({
       progressPath,
       '-nostats',
     ]);
+  }
+  if (inputSeekSec != null && inputSeekSec.isFinite && inputSeekSec > 0) {
+    args.addAll(['-ss', inputSeekSec.toStringAsFixed(3)]);
   }
   args.addAll(['-i', inputPath]);
 
@@ -1531,16 +1695,14 @@ class FfmpegSubtitleBurnVideoProcessor {
       },
     );
 
-    final trimmedSegments = clipSegmentsToTrim(
-      request.segments,
+    final renderTimeline = prepareFfmpegRenderTimeline(
+      segments: request.segments,
+      silenceRanges: request.silenceRanges,
       trimStartSec: request.trimStartSec,
       trimEndSec: request.trimEndSec,
     );
-    final trimmedSilence = clipSilenceToTrim(
-      request.silenceRanges,
-      trimStartSec: request.trimStartSec,
-      trimEndSec: request.trimEndSec,
-    );
+    final trimmedSegments = renderTimeline.segments;
+    final trimmedSilence = renderTimeline.silenceRanges;
     final colorFilter = buildColorFilter(
       filterIndex: request.filterIndex,
       brightness: request.brightness,
@@ -1568,6 +1730,7 @@ class FfmpegSubtitleBurnVideoProcessor {
         request.stickerImagePaths.isNotEmpty ||
         request.speed != 1.0 ||
         request.volume != 1.0 ||
+        renderTimeline.inputSeekSec != null ||
         (request.trimStartSec != null && request.trimStartSec! > 0) ||
         request.trimEndSec != null;
 
@@ -1667,6 +1830,27 @@ class FfmpegSubtitleBurnVideoProcessor {
 
             renderAttempt += 1;
             request.onAttemptStarted?.call(renderAttempt);
+            final progressTracker =
+                onProgress != null && outDuration != null && outDuration > 0
+                    ? FfmpegRenderProgressTracker(
+                        outputDurationSeconds: outDuration,
+                        onProgress: onProgress,
+                      )
+                    : null;
+            var acceptsStatistics = true;
+            var hasProcessedTime = false;
+            var startupTimedOut = false;
+            final startupStopwatch = Stopwatch()..start();
+
+            void reportProcessedSeconds(double? processedSeconds) {
+              if (processedSeconds != null &&
+                  processedSeconds.isFinite &&
+                  processedSeconds > 0) {
+                hasProcessedTime = true;
+              }
+              progressTracker?.reportProcessedSeconds(processedSeconds);
+            }
+
             final session = await FFmpegKit.executeWithArgumentsAsync(
               buildEditFfmpegArguments(
                 inputPath: request.inputFile.path,
@@ -1679,8 +1863,9 @@ class FfmpegSubtitleBurnVideoProcessor {
                 drawTextFilters: drawTextFilters,
                 speed: request.speed,
                 volume: request.volume,
-                trimStartSec: request.trimStartSec,
-                trimEndSec: request.trimEndSec,
+                inputSeekSec: renderTimeline.inputSeekSec,
+                trimStartSec: renderTimeline.ffmpegTrimStartSec,
+                trimEndSec: renderTimeline.ffmpegTrimEndSec,
                 maxOutputDurationSec: request.maxOutputDurationSeconds,
                 silenceRanges: trimmedSilence,
                 stickerImagePaths: stickerPaths,
@@ -1701,6 +1886,13 @@ class FfmpegSubtitleBurnVideoProcessor {
                 maxVideoFrameRate: request.maxVideoFrameRate,
                 progressPath: progressFile.path,
               ),
+              null,
+              null,
+              (statistics) {
+                if (acceptsStatistics) {
+                  reportProcessedSeconds(statistics.getTime() / 1000);
+                }
+              },
             );
             Future<void> cancelSession() => session.cancel();
             await request.cancellationToken?.attach(cancelSession);
@@ -1720,35 +1912,70 @@ class FfmpegSubtitleBurnVideoProcessor {
                   // FFmpeg may be replacing the progress file while it is read.
                 }
 
-                if (onProgress != null &&
-                    outDuration != null &&
-                    outDuration > 0) {
-                  if (processedSeconds == null) {
-                    final statistics =
-                        await session.getLastReceivedStatistics();
-                    if (statistics != null) {
-                      processedSeconds = statistics.getTime() / 1000;
-                    }
-                  }
-                  if (processedSeconds != null) {
-                    onProgress(
-                      (processedSeconds / outDuration).clamp(0.0, 0.99),
-                    );
+                if (processedSeconds == null) {
+                  final statistics = await session.getLastReceivedStatistics();
+                  if (statistics != null) {
+                    processedSeconds = statistics.getTime() / 1000;
                   }
                 }
+                reportProcessedSeconds(processedSeconds);
 
+                // A device may finish the output without delivering a positive
+                // statistics timestamp. Accept that terminal state (or
+                // FFmpeg's own progress=end marker) before applying the
+                // no-progress startup deadline.
                 final state = await session.getState();
-                if (state == SessionState.completed ||
-                    state == SessionState.failed ||
-                    progressReportedEnd) {
+                final sessionIsTerminal = state == SessionState.completed ||
+                    state == SessionState.failed;
+                if (sessionIsTerminal || progressReportedEnd) {
                   break;
                 }
+
+                if (shouldTimeoutFfmpegStartupAttempt(
+                  purpose: request.renderPurpose,
+                  elapsed: startupStopwatch.elapsed,
+                  hasProcessedTime: hasProcessedTime,
+                  sessionIsTerminal: sessionIsTerminal,
+                  progressReportedEnd: progressReportedEnd,
+                )) {
+                  startupTimedOut = true;
+                  acceptsStatistics = false;
+                  await session.cancel();
+                  break;
+                }
+
                 await Future<void>.delayed(
                   const Duration(milliseconds: 250),
                 );
               }
             } finally {
+              startupStopwatch.stop();
+              acceptsStatistics = false;
               request.cancellationToken?.detach(cancelSession);
+            }
+            if (startupTimedOut) {
+              // Do not start the fallback while the timed-out native session
+              // is still alive. A bounded wait avoids overlapping FFmpeg
+              // sessions if cancellation itself fails on a device.
+              var stopped = false;
+              final cancellationWait = Stopwatch()..start();
+              while (cancellationWait.elapsed < const Duration(seconds: 5)) {
+                final state = await session.getState();
+                if (state == SessionState.completed ||
+                    state == SessionState.failed) {
+                  stopped = true;
+                  break;
+                }
+                await Future<void>.delayed(
+                  const Duration(milliseconds: 100),
+                );
+              }
+              cancellationWait.stop();
+              if (!stopped) {
+                throw const SubtitleBurnException(
+                  'หยุดตัวเข้ารหัสที่ไม่ตอบสนองไม่สำเร็จ กรุณาลองใหม่',
+                );
+              }
             }
             if (progressReportedEnd) {
               // Give the native muxer a brief moment to close the output before
@@ -1756,6 +1983,20 @@ class FfmpegSubtitleBurnVideoProcessor {
               await Future<void>.delayed(const Duration(milliseconds: 250));
             }
             final returnCode = await session.getReturnCode();
+            if (shouldAbortCancelledFfmpegAttempt(
+              returnCodeValue: returnCode?.getValue(),
+              startupTimedOut: startupTimedOut,
+              userCancellationRequested:
+                  request.cancellationToken?.isCancelled ?? false,
+            )) {
+              throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
+            }
+            if (startupTimedOut) {
+              failureLogs =
+                  'encoder ${encoder.codec} produced no media time before '
+                  '${ffmpegStartupTimeoutForPurpose(request.renderPurpose).inSeconds}s';
+              continue;
+            }
 
             if (shouldVerifyFfmpegOutput(
               returnCodeValue: returnCode?.getValue(),
@@ -1774,11 +2015,6 @@ class FfmpegSubtitleBurnVideoProcessor {
               failureLogs =
                   'encoder ${encoder.codec} exited 0 but wrote no video stream';
               continue;
-            }
-
-            // A cancel aborts the whole export — don't fall back to other paths.
-            if (ReturnCode.isCancel(returnCode)) {
-              throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
             }
 
             final logs = await session.getAllLogsAsString();
@@ -1814,7 +2050,15 @@ class FfmpegSubtitleBurnVideoProcessor {
     }
 
     if (!renderedOk) {
-      throw SubtitleBurnException('เรนเดอร์วิดีโอไม่สำเร็จ: $failureLogs');
+      if (failureLogs != null && failureLogs.trim().isNotEmpty) {
+        debugPrint('PostDee FFmpeg render failure:\n$failureLogs');
+      }
+      throw SubtitleBurnException(
+        userFacingFfmpegRenderFailureMessage(
+          purpose: request.renderPurpose,
+          diagnosticDetails: failureLogs,
+        ),
+      );
     }
 
     if (!await outputFile.exists()) {

@@ -278,6 +278,56 @@ void main() {
     );
   });
 
+  test(
+      'does not restore a 0.15 second tail from the adjacent previous subtitle',
+      () {
+    const segments = [
+      SubtitleSegment(
+        text: 'ไปแล้วก็ตีตั๋ว',
+        start: 29,
+        end: 29.985,
+      ),
+      SubtitleSegment(
+        text: 'ครั้งนึงแล้วก็นั่งล่อง',
+        start: 29.985,
+        end: 30.921,
+      ),
+    ];
+    final adjusted = alignLeadingCutToFirstSubtitle(
+      const [
+        SilenceCutRange(start: 0, end: 30.321),
+        SilenceCutRange(start: 90.321, end: 150.641),
+      ],
+      segments,
+      150.641,
+    );
+
+    // The previous cue touches the retained cue, so there is no real silent
+    // gap available for pre-roll.
+    expect(adjusted.first.end, closeTo(29.985, 0.001));
+
+    final timeline = prepareFfmpegRenderTimeline(
+      segments: segments,
+      silenceRanges: adjusted,
+    );
+    expect(timeline.inputSeekSec, closeTo(29.985, 0.001));
+    expect(
+      timeline.segments.map((segment) => segment.text),
+      ['ครั้งนึงแล้วก็นั่งล่อง'],
+    );
+    expect(timeline.segments.single.start, closeTo(0, 0.001));
+    expect(
+      timeline.segments,
+      isNot(
+        contains(
+          isA<SubtitleSegment>()
+              .having((segment) => segment.start, 'start', 0)
+              .having((segment) => segment.end, 'end', closeTo(0.15, 0.001)),
+        ),
+      ),
+    );
+  });
+
   test('does not move an intentionally long visual opening', () {
     const cuts = [
       SilenceCutRange(start: 0, end: 2),

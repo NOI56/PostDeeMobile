@@ -816,9 +816,12 @@ available to any authenticated user.
 
 Transcribes uploaded analysis audio (Thai). Meters usage against a monthly minute quota
 (`200` min); returns `402` `AI_EDIT_QUOTA_EXCEEDED` when exhausted. The client
-`durationSeconds` is only a pre-check estimate; the backend reserves the actual
-transcribed minutes before returning success so concurrent requests cannot push
-usage past the configured store limit. Current clients send ordered
+`durationSeconds` is the client-probed media duration used for pre-check and
+timeline recovery. Before returning success, the backend reserves minutes from
+the longer valid value between media and provider-transcript duration, so an
+early provider endpoint cannot reduce usage and concurrent requests cannot push
+usage past the configured store limit. The response still reports the raw
+provider transcript duration. Current clients send ordered
 `audioChunks`; legacy clients may send one `audioS3Key` or `videoS3Key`.
 Exactly one of those three media forms is required. Response includes
 `transcript` (text, language, durationSeconds, segments[], words[]) and `quota`.
@@ -859,9 +862,12 @@ chosen style/prompt, and capability toggles such as `subtitle`, `silence`,
 `filler`, `hook`, `zoom`, `color`, `cta`, `pricetag`, and `watermark`.
 
 This endpoint is Pro-gated and minute-metered like `/ai-edits/transcribe`: the
-client `durationSeconds` is a pre-check estimate, the backend transcribes the
-stored clip and builds the requested edit plan/recipe, then atomically reserves
-the actual transcribed minutes immediately before returning success. A failed
+client `durationSeconds` is the media timeline estimate, the backend transcribes
+the stored clip and builds the requested edit plan/recipe, then atomically
+reserves minutes from the longer valid media/transcript duration immediately
+before returning success. That same longer duration is used by the planner and
+`recipe.transcript.durationSeconds`, while word/segment endpoints retain their
+provider timestamps. A failed
 planner or invalid recipe does not consume quota; the final reservation still
 prevents concurrent requests from exceeding the monthly limit. It does **not**
 render video on the server; mobile still renders/export with FFmpeg.
@@ -876,19 +882,23 @@ sequentially, shifts their local word/segment timestamps onto the source
 timeline, clips AAC/container timing overrun at the next chunk boundary, merges
 one non-overlapping transcript, and reserves quota once from the combined
 duration. `durationSeconds` must describe the source clip for the quota
-pre-check, not the requested output length. All owned chunks are deleted in the
-cleanup path even if a later
+pre-check, not the requested output length. It is currently supplied by the
+official client and combined with the provider timeline; server-side media
+probing and an API-side 600-second ceiling remain required before public
+tamper-resistant billing. All owned chunks are deleted in the cleanup path even if a later
 provider call fails. Legacy clients may send exactly one `audioS3Key` or one
 `videoS3Key`; legacy video objects are not auto-deleted. Sending multiple media
 forms or no media form is rejected.
 
-`targetDurationSeconds` is the desired result length (30, 60, or a positive
-custom value). It is separate from `durationSeconds`, which is only the initial
-source-duration/quota estimate. Current mobile clients omit the target when the
-duration slider is at the rightmost “keep original” position. When a target is present, the edit planner selects
+`targetDurationSeconds` is an optional positive desired result length. It is
+separate from `durationSeconds`, which is the source-duration/quota estimate.
+Current mobile clients accept sources up to 10 minutes and use one slider from
+5 seconds to at most 3 minutes (or from 1 second when the source is shorter than
+5 seconds), capped by the source length. They omit the target at the rightmost
+“keep original” position. When a target is present, the edit planner selects
 one strongest continuous story window from reliable transcript segments and
 returns the complementary ranges to remove. Provider prompt leakage and segments
-that cross the configured Whisper confidence/no-speech/compression thresholds are
+that cross the configured provider/segment quality thresholds are
 excluded from highlight scoring and from rendered subtitle lines. Their timing
 still remains available to silence detection so uncertain speech is not mistaken
 for a silent gap. Thai-first transcripts containing clearly unexpected scripts
@@ -983,6 +993,12 @@ cue reconstruction pass validation. Reconstruction is exact and case-sensitive
 after removing only untimed whitespace, punctuation, and symbols; canonically
 different Unicode text fails closed to `words: []`. Clients must not invent
 active-word timing when the authoritative array is empty or malformed.
+For Thai recipes, provider tokens are expanded at semantic word boundaries and
+each multi-token final server cue is limited to at most five semantic words and
+20 graphemes. One indivisible brand name, URL, or other token may exceed 20
+graphemes rather than being split mid-token; it is emitted as its own cue and is
+never merged with neighboring tokens. Minimum-readable-duration and tail merges
+may keep a short cue rather than exceed either multi-token limit.
 
 Current mobile builds convert `recipe.subtitles`, transcript metadata, and cut
 ranges into a local versioned `SubtitleProject` for Subtitle Studio. Editing,
@@ -1054,9 +1070,9 @@ That summary describes pre-render detections and must not be presented as the
 exact duration removed from the exported clip.
 
 After one successful metered prepare, mobile keeps the transcript in memory for
-the selected source and settings. Changing only 30/60/custom duration calls the
-non-metered `/ai-edits/plan` endpoint with that transcript and does not upload or
-transcribe the audio again. Changing analysis settings or selecting another
+the selected source and settings. Changing only the duration slider calls the
+non-metered `/ai-edits/plan` endpoint with that transcript and does not upload
+or transcribe the audio again. Changing analysis settings or selecting another
 source still requires a new metered prepare.
 
 When the target is shorter than the transcript, current mobile builds create a

@@ -1,6 +1,12 @@
 # Latest AI Editing and Subtitle Studio Main Integration Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **Status (2026-07-29):** Implemented and integrated into remote `main`.
+> This is retained as a historical execution record; unchecked boxes below do
+> not mean the capability is absent from the current app. Fresh Pixel 8 quality
+> acceptance after the 2026-07-29 subtitle fixes remains a separate release
+> gate.
 
 **Goal:** Make `main` the single authoritative PostDee app containing the latest approved AI result-review and Subtitle Studio behavior while retaining only `ตัดคลิปเป็น EP` in the uploader tools.
 

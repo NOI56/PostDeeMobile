@@ -66,13 +66,16 @@ PostDee already has the expensive and technically risky foundations:
 
 - `/ai-edits/prepare` checks the Pro plan, ownership, AI-editing quota, obtains a
   transcript, builds the cut plan, and returns a mobile render recipe.
-- The transcription provider returns overall text, segment timestamps, and word
-  timestamps. Groq/OpenAI requests ask for both word and segment timing.
+- ElevenLabs Scribe v2 returns overall text, segment timestamps, and word
+  timestamps. Gemini 2.5 Flash-Lite uses the validated transcript and a
+  whole-duration visual proxy to plan the shortened story window.
 - The backend validates timing coverage and falls back to readable segments when
   Thai word timing is fragmented or incomplete.
-- Mobile extracts and uploads a small temporary M4A for the current production
-  AI capabilities while the original source video remains on the phone.
-- Mobile builds SRT, bundles Prompt Bold, uses FFmpeg/libass to burn subtitles,
+- Mobile extracts and uploads bounded temporary M4A chunks and, when shortening,
+  one low-bandwidth whole-duration visual proxy while the original source video
+  remains on the phone.
+- Mobile builds SRT/ASS, bundles Bai Jamjuree, Prompt, and Anuphan, uses
+  FFmpeg/libass to burn subtitles,
   tries hardware H.264 first, falls back safely, and verifies that the output
   still contains a video stream.
 - The current screen already offers three subtitle sizes, three text-density
@@ -92,8 +95,8 @@ subtitle project and a live editor between `prepare` and the final FFmpeg render
 | Adjust cue start/end | Timed lines observed | No | MVP with safe nudge controls; waveform later |
 | Undo/redo and autosave | Yes | No | MVP |
 | Live subtitle preview | Yes | Static setup preview + rendered review | MVP with Flutter overlay |
-| Font, size, colours, outline, shadow | Yes | Prompt, size, white/black fixed | MVP, whole-clip style first |
-| Current-word highlight | Yes | No | MVP after timing-quality fallback is implemented |
+| Font, size, colours, outline, shadow | Yes | Bai Jamjuree/Prompt/Anuphan and whole-clip controls | Implemented; parity tests remain |
+| Current-word highlight | Yes | Validated ASS timing with static fallback | Implemented |
 | Per-line style/position | Yes | No | Data model supports it; UI after MVP |
 | Text animations | Yes | No | Phase 2, start with a small verified set |
 | Sound effect per cue | Yes | Capability key only, no renderer | Phase 2 after licensing/audio tests |
@@ -480,3 +483,30 @@ When the scope is approved and implementation begins, update together:
 - `README.md`: document the customer flow and what is production-verified.
 - `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md`: replace
   the old deferred subtitle controls only after their exported behavior passes.
+
+## 13. AI-edit subtitle quality addendum (2026-07-29)
+
+The approved AI-edit quality implementation adds these invariants before a
+Subtitle Studio draft is opened:
+
+- the server emits each multi-token final Thai cue at no more than 5 semantic
+  words and 20 grapheme clusters, while preserving provider timing and avoiding
+  a split in the middle of a Thai word. One indivisible longer brand/URL token
+  stays whole in an isolated cue and mobile shrinks it from measured width;
+- planning, quota, and recipe construction use the longer duration from the
+  official client's media probe and the transcription timeline, while provider
+  word timestamps remain unchanged. A server-side M4A/MP4 duration probe and
+  API 600-second limit remain required before public billing;
+- mobile leading pre-roll is allowed only inside a real silent gap, so it cannot
+  pull the previous adjacent subtitle into the rendered clip;
+- when the selected tail ends on a dangling Thai connector, mobile preserves
+  the opening/Hook and internal cuts, then moves only the trailing boundary to
+  the first complete phrase. The shared alignment/render allowance is 10% of
+  target bounded to 1–3 seconds; if no phrase fits, the dangling cue is omitted.
+  This does not replace or duplicate the separate three-second hook scoring
+  system.
+
+Focused API and mobile regression tests cover these rules. Production readiness
+still requires a fresh Pixel 8 render of the Thai 2:30 test clip, followed by
+inspection of the first cue, maximum cue width, final phrase, output duration,
+and the generated media file.

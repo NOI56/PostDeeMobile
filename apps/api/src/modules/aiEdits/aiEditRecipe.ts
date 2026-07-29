@@ -320,6 +320,8 @@ const minimumFragmentedTokenCount = 4;
 const fragmentedFillerBoundarySeconds = 0.08;
 const minimumEstimatedSubtitleDurationSeconds = 0.7;
 const maximumEstimatedThaiWordsPerCue = 2;
+const maximumThaiSemanticWordsPerCue = 5;
+const maximumThaiGraphemesPerCue = 20;
 const subtitleWordTimingToleranceSeconds = 1e-6;
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
@@ -645,6 +647,40 @@ const readGraphemeCount = (value: string): number =>
     new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(value)
   ).length;
 
+const readThaiSemanticWordCount = (value: string): number =>
+  Array.from(
+    new Intl.Segmenter('th', { granularity: 'word' }).segment(value)
+  ).filter(
+    (segment) =>
+      segment.isWordLike && /\p{Letter}/u.test(segment.segment)
+  ).length;
+
+const isWithinThaiSubtitleCueLimits = (value: string): boolean =>
+  readThaiSemanticWordCount(value) <= maximumThaiSemanticWordsPerCue &&
+  readGraphemeCount(value) <= maximumThaiGraphemesPerCue;
+
+const buildSubtitleLineText = (
+  words: TranscriptWord[],
+  isThai: boolean
+): string =>
+  words
+    .map((word) => word.word.trim())
+    .filter(Boolean)
+    .reduce((text, word, wordIndex, tokens) => {
+      if (wordIndex === 0) {
+        return word;
+      }
+
+      const previousWord = tokens[wordIndex - 1]!;
+      const previousIsNumber = isNumericSubtitleToken(previousWord);
+      const wordIsNumber = isNumericSubtitleToken(word);
+      const needsSpace = !isThai ||
+        /\p{Script=Latin}/u.test(previousWord) ||
+        /\p{Script=Latin}/u.test(word) ||
+        previousIsNumber !== wordIsNumber;
+      return `${text}${needsSpace ? ' ' : ''}${word}`;
+    }, '');
+
 /**
  * Some providers can return Thai "word" timestamps as individual characters. Rebuild
  * readable word boundaries from each reliable segment and estimate the timing
@@ -709,15 +745,55 @@ const buildSubtitleSegments = ({
   const isThai = normalizeTranscriptionLanguage(language) === 'th';
   const segments: TranscriptSegment[] = [];
   const groups: TranscriptWord[][] = [];
+  const subtitleWords = isThai
+    ? words.flatMap((word) => {
+        const semanticWords = rebuildThaiWordsFromSegment({
+          text: word.word,
+          start: word.start,
+          end: word.end
+        });
+        return semanticWords.length > 0 ? semanticWords : [word];
+      })
+    : words;
   let current: TranscriptWord[] = [];
 
-  for (const word of words) {
+  for (const word of subtitleWords) {
+    const candidate = [...current, word];
+    if (
+      isThai &&
+      current.length > 0 &&
+      !isWithinThaiSubtitleCueLimits(buildSubtitleLineText(candidate, true))
+    ) {
+      groups.push(current);
+      current = [];
+    }
+
     current.push(word);
-    if (current.length < wordsPerLine) {
+    const currentText = buildSubtitleLineText(current, isThai);
+    // A brand, URL, or other single provider token can be wider than 20
+    // graphemes. Splitting it would corrupt the word, so flush it intact as its
+    // own cue. The strict candidate/merge checks keep every other token out of
+    // that cue.
+    const isIndivisibleOverlongThaiToken =
+      isThai &&
+      current.length === 1 &&
+      !isWithinThaiSubtitleCueLimits(currentText);
+    if (current.length < wordsPerLine && !isIndivisibleOverlongThaiToken) {
       continue;
     }
     const duration = current.at(-1)!.end - current[0]!.start;
-    if (minimumDurationSeconds <= 0 || duration >= minimumDurationSeconds) {
+    const reachedThaiSafetyLimit =
+      isThai &&
+      (
+        readThaiSemanticWordCount(currentText) >= maximumThaiSemanticWordsPerCue ||
+        readGraphemeCount(currentText) >= maximumThaiGraphemesPerCue ||
+        isIndivisibleOverlongThaiToken
+      );
+    if (
+      minimumDurationSeconds <= 0 ||
+      duration >= minimumDurationSeconds ||
+      reachedThaiSafetyLimit
+    ) {
       groups.push(current);
       current = [];
     }
@@ -729,8 +805,15 @@ const buildSubtitleSegments = ({
     const last = groups.at(-1)!;
     const lastDuration = last.at(-1)!.end - last[0]!.start;
     if (lastDuration < minimumDurationSeconds) {
-      groups[groups.length - 2]!.push(...last);
-      groups.pop();
+      const previous = groups[groups.length - 2]!;
+      const candidate = [...previous, ...last];
+      if (
+        !isThai ||
+        isWithinThaiSubtitleCueLimits(buildSubtitleLineText(candidate, true))
+      ) {
+        previous.push(...last);
+        groups.pop();
+      }
     }
   }
 
@@ -742,22 +825,7 @@ const buildSubtitleSegments = ({
       continue;
     }
 
-    const lineText = lineWords
-      .map((word) => word.word.trim())
-      .reduce((text, word, wordIndex, tokens) => {
-        if (wordIndex === 0) {
-          return word;
-        }
-
-        const previousWord = tokens[wordIndex - 1]!;
-        const previousIsNumber = isNumericSubtitleToken(previousWord);
-        const wordIsNumber = isNumericSubtitleToken(word);
-        const needsSpace = !isThai ||
-          /\p{Script=Latin}/u.test(previousWord) ||
-          /\p{Script=Latin}/u.test(word) ||
-          previousIsNumber !== wordIsNumber;
-        return `${text}${needsSpace ? ' ' : ''}${word}`;
-      }, '');
+    const lineText = buildSubtitleLineText(lineWords, isThai);
 
     segments.push({
       text: lineText,
@@ -815,23 +883,29 @@ const joinSubtitleText = (left: string, right: string): string => {
 
 const mergeShortSubtitleSegments = (
   segments: TranscriptSegment[],
+  language: string,
   minimumDurationSeconds = minimumEstimatedSubtitleDurationSeconds,
   maximumGapSeconds = 0.5
 ): TranscriptSegment[] => {
   const merged: TranscriptSegment[] = [];
+  const isThai = normalizeTranscriptionLanguage(language) === 'th';
 
   for (const segment of segments) {
     const previous = merged.at(-1);
     const previousDuration = previous ? previous.end - previous.start : 0;
     const gap = previous ? segment.start - previous.end : Number.POSITIVE_INFINITY;
+    const joinedText = previous
+      ? joinSubtitleText(previous.text, segment.text)
+      : segment.text;
     if (
       previous &&
       previousDuration < minimumDurationSeconds &&
       gap >= -Number.EPSILON &&
-      gap <= maximumGapSeconds
+      gap <= maximumGapSeconds &&
+      (!isThai || isWithinThaiSubtitleCueLimits(joinedText))
     ) {
       merged[merged.length - 1] = {
-        text: joinSubtitleText(previous.text, segment.text),
+        text: joinedText,
         start: previous.start,
         end: Math.max(previous.end, segment.end)
       };
@@ -844,9 +918,14 @@ const mergeShortSubtitleSegments = (
   const previous = merged.at(-2);
   if (last && previous && last.end - last.start < minimumDurationSeconds) {
     const gap = last.start - previous.end;
-    if (gap >= -Number.EPSILON && gap <= maximumGapSeconds) {
+    const joinedText = joinSubtitleText(previous.text, last.text);
+    if (
+      gap >= -Number.EPSILON &&
+      gap <= maximumGapSeconds &&
+      (!isThai || isWithinThaiSubtitleCueLimits(joinedText))
+    ) {
       merged.splice(merged.length - 2, 2, {
-        text: joinSubtitleText(previous.text, last.text),
+        text: joinedText,
         start: previous.start,
         end: Math.max(previous.end, last.end)
       });
@@ -1175,7 +1254,10 @@ export const buildAiEditRecipe = ({
           })
         : fallbackSubtitleSegments)
     : [];
-  const subtitleSegments = mergeShortSubtitleSegments(preparedSubtitleSegments);
+  const subtitleSegments = mergeShortSubtitleSegments(
+    preparedSubtitleSegments,
+    transcriptLanguage
+  );
   const subtitleSegmentsWithValidatedWords =
     capabilities.subtitle &&
     reliableValidTranscriptWords &&

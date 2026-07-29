@@ -471,7 +471,9 @@ List<SilenceCutRange> alignLeadingCutToFirstSubtitle(
   final sortedSegments = [...segments]
     ..sort((left, right) => left.start.compareTo(right.start));
   SubtitleSegment? firstRetainedSubtitle;
-  for (final segment in sortedSegments) {
+  var firstRetainedSubtitleIndex = -1;
+  for (var index = 0; index < sortedSegments.length; index += 1) {
+    final segment = sortedSegments[index];
     if (segment.text.trim().isEmpty || segment.end <= leadingCut.end + 0.001) {
       continue;
     }
@@ -481,6 +483,7 @@ List<SilenceCutRange> alignLeadingCutToFirstSubtitle(
     );
     if (!fullyRemoved) {
       firstRetainedSubtitle = segment;
+      firstRetainedSubtitleIndex = index;
       break;
     }
   }
@@ -498,8 +501,34 @@ List<SilenceCutRange> alignLeadingCutToFirstSubtitle(
     return normalizedCuts;
   }
 
+  var safePreRollSeconds =
+      subtitlePreRollSeconds.clamp(0.0, double.infinity).toDouble();
+  double? previousSubtitleEnd;
+  for (var index = 0; index < firstRetainedSubtitleIndex; index += 1) {
+    final previous = sortedSegments[index];
+    if (previous.text.trim().isEmpty ||
+        !previous.start.isFinite ||
+        !previous.end.isFinite ||
+        previous.end <= previous.start) {
+      continue;
+    }
+    if (previousSubtitleEnd == null || previous.end > previousSubtitleEnd) {
+      previousSubtitleEnd = previous.end;
+    }
+  }
+  if (previousSubtitleEnd != null) {
+    final silentGap =
+        (firstRetainedSubtitle.start - previousSubtitleEnd).clamp(
+      0.0,
+      double.infinity,
+    );
+    if (silentGap < safePreRollSeconds) {
+      safePreRollSeconds = silentGap.toDouble();
+    }
+  }
+
   final alignedEnd =
-      (firstRetainedSubtitle.start - subtitlePreRollSeconds).clamp(
+      (firstRetainedSubtitle.start - safePreRollSeconds).clamp(
     0.0,
     durationSeconds,
   );

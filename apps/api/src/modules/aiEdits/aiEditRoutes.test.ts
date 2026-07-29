@@ -88,6 +88,36 @@ describe('ai edit routes', () => {
     expect(after.body.quota.remainingMinutes).toBe(197);
   });
 
+  it('meters the longer media timeline when transcription ends just before a minute boundary', async () => {
+    const transcribe = vi.fn(async () => ({
+      text: 'provider stopped before the media ended',
+      language: 'en',
+      durationSeconds: 119.9,
+      segments: [
+        {
+          text: 'provider stopped before the media ended',
+          start: 0,
+          end: 119.9
+        }
+      ],
+      words: [],
+      model: 'test-whisper'
+    }));
+    const app = createApp({ transcriptionProvider: { transcribe } });
+
+    const response = await request(app)
+      .post('/ai-edits/transcribe')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'early-ending.mp4'),
+        durationSeconds: 120.001
+      })
+      .expect(200);
+
+    expect(response.body.transcript.durationSeconds).toBe(119.9);
+    expect(response.body.quota.usedMinutes).toBe(3);
+  });
+
   it('blocks transcription when the minute quota is exceeded', async () => {
     const app = createApp();
 
@@ -489,6 +519,62 @@ describe('ai edit routes', () => {
       ],
       model: 'test-planner'
     });
+  });
+
+  it('uses the full media timeline when ElevenLabs ends before the video', async () => {
+    const plan = vi.fn(async () => ({
+      cuts: [],
+      summary: 'keep the selected thirty seconds',
+      model: 'test-planner'
+    }));
+    const transcribe = vi.fn(async () => ({
+      text: 'คำสุดท้ายก่อนช่วงภาพท้ายคลิป',
+      language: 'th',
+      durationSeconds: 148.709,
+      segments: [
+        {
+          text: 'คำสุดท้ายก่อนช่วงภาพท้ายคลิป',
+          start: 147.5,
+          end: 148.709
+        }
+      ],
+      words: [
+        {
+          word: 'คลิป',
+          start: 148.2,
+          end: 148.709
+        }
+      ],
+      model: 'scribe_v2'
+    }));
+    const app = createApp({
+      transcriptionProvider: { transcribe },
+      editPlanProvider: { plan }
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'full-timeline.mp4'),
+        durationSeconds: 150.635,
+        targetDurationSeconds: 30,
+        capabilities: { subtitle: true }
+      })
+      .expect(200);
+
+    expect(plan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        durationSeconds: 150.635,
+        targetDurationSeconds: 30
+      })
+    );
+    expect(response.body.recipe.transcript.durationSeconds).toBe(150.635);
+    expect(response.body.recipe.transcript.words.at(-1)).toMatchObject({
+      word: 'คลิป',
+      end: 148.709
+    });
+    expect(response.body.quota.usedMinutes).toBe(3);
   });
 
   it('sanitizes unsupported beat music settings without claiming they were applied', async () => {

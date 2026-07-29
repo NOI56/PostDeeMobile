@@ -71,6 +71,57 @@ const readLegacySubtitleSegmentFields = (
 ) =>
   segments.map(({ text, start, end }) => ({ text, start, end }));
 
+const readThaiSemanticWords = (value: string): string[] =>
+  Array.from(
+    new Intl.Segmenter('th', { granularity: 'word' }).segment(value)
+  )
+    .filter((segment) => segment.isWordLike)
+    .map((segment) => segment.segment);
+
+const readThaiGraphemeCount = (value: string): number =>
+  Array.from(
+    new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(value)
+  ).length;
+
+const expectSafeThaiSubtitleCues = ({
+  sourceText,
+  sourceStart,
+  sourceEnd,
+  segments
+}: {
+  sourceText: string;
+  sourceStart: number;
+  sourceEnd: number;
+  segments: Array<{ text: string; start: number; end: number }>;
+}) => {
+  expect(segments.map((segment) => segment.text).join('')).toBe(sourceText);
+  expect(segments[0]?.start).toBeCloseTo(sourceStart);
+  expect(segments.at(-1)?.end).toBeCloseTo(sourceEnd);
+  for (let index = 1; index < segments.length; index += 1) {
+    expect(segments[index]?.start).toBeCloseTo(segments[index - 1]!.end);
+  }
+  expect(
+    segments.every(
+      (segment) =>
+        readThaiSemanticWords(segment.text).length <= 5 &&
+        readThaiGraphemeCount(segment.text) <= 20
+    )
+  ).toBe(true);
+
+  const semanticBoundaries = new Set<string>();
+  let semanticPrefix = '';
+  for (const word of readThaiSemanticWords(sourceText)) {
+    semanticPrefix += word;
+    semanticBoundaries.add(semanticPrefix);
+  }
+
+  let subtitlePrefix = '';
+  for (const segment of segments) {
+    subtitlePrefix += segment.text;
+    expect(semanticBoundaries.has(subtitlePrefix)).toBe(true);
+  }
+};
+
 describe('AI edit recipe pacing settings', () => {
   it.each([
     ['natural', 1],
@@ -341,6 +392,151 @@ describe('AI edit recipe pacing settings', () => {
       { text: 'ดูของใหม่นะ', start: 0.8, end: 1.6 }
     ]);
   });
+
+  it('caps live Thai cues when minimum-duration grouping would overfill them', () => {
+    const text = 'แต่จะเป็นอาหารข้างทางต่างๆ';
+    const durationSeconds = 0.6;
+    const characters = Array.from(text);
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds,
+      settings: { subtitleWordsPerLine: 5 },
+      segments: [{ text, start: 0, end: durationSeconds }],
+      words: characters.map((word, index) => ({
+        word,
+        start: index * durationSeconds / characters.length,
+        end: (index + 1) * durationSeconds / characters.length
+      }))
+    });
+
+    expectSafeThaiSubtitleCues({
+      sourceText: text,
+      sourceStart: 0,
+      sourceEnd: durationSeconds,
+      segments: recipe.subtitles.segments
+    });
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
+  });
+
+  it('does not tail-merge a live Thai cue beyond its safe limits', () => {
+    const text = 'นักท่องเที่ยวไม่ใช่ร้านอาหาร';
+    const semanticWords = readThaiSemanticWords(text);
+    const words = semanticWords.map((word, index) => ({
+      word,
+      start: index * 0.2,
+      end: (index + 1) * 0.2
+    }));
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds: 1.2,
+      settings: { subtitleWordsPerLine: 5 },
+      segments: [{ text, start: 0, end: 1.2 }],
+      words
+    });
+
+    expectSafeThaiSubtitleCues({
+      sourceText: text,
+      sourceStart: 0,
+      sourceEnd: 1.2,
+      segments: recipe.subtitles.segments
+    });
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
+  });
+
+  it('caps Thai cue width even when it contains no more than five words', () => {
+    const text = 'ประชาสัมพันธ์สินค้าออนไลน์คุณภาพ';
+    const semanticWords = readThaiSemanticWords(text);
+    const words = semanticWords.map((word, index) => ({
+      word,
+      start: index * 0.25,
+      end: (index + 1) * 0.25
+    }));
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds: 1,
+      settings: { subtitleWordsPerLine: 5 },
+      segments: [{ text, start: 0, end: 1 }],
+      words
+    });
+
+    expect(readThaiSemanticWords(text)).toHaveLength(4);
+    expect(readThaiGraphemeCount(text)).toBeGreaterThan(20);
+    expectSafeThaiSubtitleCues({
+      sourceText: text,
+      sourceStart: 0,
+      sourceEnd: 1,
+      segments: recipe.subtitles.segments
+    });
+    expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
+  });
+
+  it.each([
+    {
+      position: 'leading',
+      text: 'supercalifragilisticexpialidocious ดี',
+      words: [
+        {
+          word: 'supercalifragilisticexpialidocious',
+          start: 0,
+          end: 0.2
+        },
+        { word: 'ดี', start: 0.2, end: 1 }
+      ],
+      expectedTexts: ['supercalifragilisticexpialidocious', 'ดี'],
+      expectedStart: 0,
+      expectedEnd: 0.2
+    },
+    {
+      position: 'trailing',
+      text: 'ดี supercalifragilisticexpialidocious',
+      words: [
+        { word: 'ดี', start: 0, end: 0.8 },
+        {
+          word: 'supercalifragilisticexpialidocious',
+          start: 0.8,
+          end: 1
+        }
+      ],
+      expectedTexts: ['ดี', 'supercalifragilisticexpialidocious'],
+      expectedStart: 0.8,
+      expectedEnd: 1
+    }
+  ])(
+    'keeps an indivisible overlong $position token whole and isolated',
+    ({ text, words, expectedTexts, expectedStart, expectedEnd }) => {
+      const recipe = buildRecipe({
+        capabilities: { subtitle: true },
+        language: 'Thai',
+        text,
+        durationSeconds: 1,
+        settings: { subtitleWordsPerLine: 5 },
+        segments: [{ text, start: 0, end: 1 }],
+        words
+      });
+      const segments = recipe.subtitles.segments;
+      const overlongCue = segments.find(
+        (segment) => segment.text === 'supercalifragilisticexpialidocious'
+      );
+
+      expect(segments.map((segment) => segment.text)).toEqual(expectedTexts);
+      expect(overlongCue).toBeDefined();
+      expect(readThaiSemanticWords(overlongCue!.text)).toHaveLength(1);
+      expect(readThaiGraphemeCount(overlongCue!.text)).toBeGreaterThan(20);
+      expect(overlongCue!.start).toBeCloseTo(expectedStart);
+      expect(overlongCue!.end).toBeCloseTo(expectedEnd);
+      expect(overlongCue!.words).toEqual([
+        expect.objectContaining({
+          word: 'supercalifragilisticexpialidocious'
+        })
+      ]);
+    }
+  );
 
   it('omits low-confidence and leaked prompt ranges from rendered subtitles', () => {
     const recipe = buildRecipe({

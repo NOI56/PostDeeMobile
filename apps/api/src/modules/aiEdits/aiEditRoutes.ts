@@ -42,6 +42,20 @@ const readPositiveNumber = (value: unknown) => {
   return value;
 };
 
+const resolveTimelineDurationSeconds = ({
+  mediaDurationSeconds,
+  transcriptDurationSeconds,
+  fallbackDurationSeconds
+}: {
+  mediaDurationSeconds?: number;
+  transcriptDurationSeconds: number;
+  fallbackDurationSeconds: number;
+}) =>
+  Math.max(
+    mediaDurationSeconds ?? 0,
+    readPositiveNumber(transcriptDurationSeconds) ?? 0
+  ) || fallbackDurationSeconds;
+
 const readVisualProxyKey = (value: unknown) => {
   if (value === undefined) {
     return { ok: true as const, key: undefined };
@@ -553,13 +567,16 @@ export const registerAiEditRoutes = (
         return;
       }
 
-    // Client-provided duration is only a pre-check estimate to reject obviously
-    // over-quota requests before spending a transcription call. Actual metering
-    // (below) uses the real clip duration the provider returns, so a client
-    // cannot under-report duration to bypass the monthly limit.
+    // Client-provided duration is a first-party pre-check estimate. Final
+    // metering uses the longer client/provider timeline to recover ordinary
+    // early provider endpoints. A server-side media probe is still required
+    // before this field can be treated as tamper-resistant billing evidence.
+    const mediaDurationSeconds = readPositiveNumber(
+      request.body?.durationSeconds
+    );
     const estimatedMinutes = Math.max(
       1,
-      Math.ceil((readPositiveNumber(request.body?.durationSeconds) ?? 60) / 60)
+      Math.ceil((mediaDurationSeconds ?? 60) / 60)
     );
     const monthKey = readCurrentAiEditMonthKey();
     const usedMinutes = await aiEditUsageStore.sumMinutesForMonth({
@@ -586,11 +603,15 @@ export const registerAiEditRoutes = (
       return;
     }
 
-    // Meter the real transcribed duration, not the client estimate.
-    const billedMinutes =
-      transcript.durationSeconds > 0
-        ? Math.ceil(transcript.durationSeconds / 60)
-        : estimatedMinutes;
+    const timelineDurationSeconds = resolveTimelineDurationSeconds({
+      mediaDurationSeconds,
+      transcriptDurationSeconds: transcript.durationSeconds,
+      fallbackDurationSeconds: estimatedMinutes * 60
+    });
+    // Bill the longest available client/provider timeline. This corrects a
+    // normal early provider endpoint when the official client reports media
+    // duration, but does not replace a future server-side media probe.
+    const billedMinutes = Math.ceil(timelineDurationSeconds / 60);
 
     const reservation = await aiEditUsageStore.reserve({
       userId: authUser.id,
@@ -653,8 +674,14 @@ export const registerAiEditRoutes = (
         return;
       }
 
-    const estimatedDurationSeconds = readPositiveNumber(request.body?.durationSeconds) ?? 60;
-    const estimatedMinutes = Math.max(1, Math.ceil(estimatedDurationSeconds / 60));
+    const mediaDurationSeconds = readPositiveNumber(
+      request.body?.durationSeconds
+    );
+    const estimatedDurationSeconds = mediaDurationSeconds ?? 60;
+    const estimatedMinutes = Math.max(
+      1,
+      Math.ceil(estimatedDurationSeconds / 60)
+    );
     const monthKey = readCurrentAiEditMonthKey();
     const usedMinutes = await aiEditUsageStore.sumMinutesForMonth({
       userId: authUser.id,
@@ -680,18 +707,22 @@ export const registerAiEditRoutes = (
       return;
     }
 
-    const billedMinutes =
-      transcript.durationSeconds > 0
-        ? Math.ceil(transcript.durationSeconds / 60)
-        : estimatedMinutes;
+    const durationSeconds = resolveTimelineDurationSeconds({
+      mediaDurationSeconds,
+      transcriptDurationSeconds: transcript.durationSeconds,
+      fallbackDurationSeconds: estimatedDurationSeconds
+    });
+    const timelineTranscript =
+      durationSeconds === transcript.durationSeconds
+        ? transcript
+        : { ...transcript, durationSeconds };
+    const billedMinutes = Math.ceil(durationSeconds / 60);
 
     const styleId = readRequiredString(request.body?.styleId);
     const prompt = readRequiredString(request.body?.prompt);
     const targetDurationSeconds = readPositiveNumber(
       request.body?.targetDurationSeconds
     );
-    const durationSeconds =
-      transcript.durationSeconds > 0 ? transcript.durationSeconds : estimatedDurationSeconds;
     const editPlan =
       styleId || prompt || targetDurationSeconds
         ? await editPlanProvider.plan({
@@ -704,7 +735,7 @@ export const registerAiEditRoutes = (
         : undefined;
 
     const recipe = buildAiEditRecipe({
-      transcript,
+      transcript: timelineTranscript,
       capabilities: readAiEditCapabilities(request.body?.capabilities),
       settings: readAiEditRecipeSettings(request.body?.settings),
       styleId,

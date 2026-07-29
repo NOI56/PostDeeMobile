@@ -8,7 +8,9 @@ window. Do not rely on a sparse set of still images.
 
 ## Architecture
 
-1. Groq transcription remains the metered first pass and audio-only fallback.
+1. ElevenLabs Scribe v2 is the metered transcription pass. Gemini transcript
+   planning and deterministic PostDee rules are the visual-planning fallbacks;
+   Groq is no longer in the AI-edit runtime.
 2. When the requested result is shorter than the transcript, Flutter creates a
    whole-duration proxy with `fps=1,scale=360:-2`, MPEG-4 video, mono 16 kHz AAC,
    and no duration cap.

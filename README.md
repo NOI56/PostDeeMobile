@@ -582,11 +582,19 @@ Current mobile pieces:
   file upload, processing-state polling, and deletion use Google's official
   `@google/genai` server SDK so the app does not maintain a fragile resumable
   upload protocol itself.
-- The full source duration is sent as `durationSeconds` for the quota pre-check.
-  A selected 30/60/custom shortened duration is sent separately as
-  `targetDurationSeconds`; the target is omitted at the rightmost “keep
-  original” stop so provider timing drift cannot trim the final fraction of the
-  clip or trigger an unnecessary visual proxy. The edit
+- The full source duration is sent as `durationSeconds` for quota pre-check,
+  planning, and recipe timeline recovery. The backend uses the longer valid
+  value between that client-reported media duration and the provider transcript
+  duration. This recovers trailing video/silence when the official app reports
+  native FFprobe duration. A server-side media-duration probe and API-side
+  10-minute limit remain release blockers before public billing can treat the
+  value as tamper-resistant.
+  Current mobile accepts source clips up to 10 minutes. After selection, one
+  duration slider requests from 5 seconds up to 3 minutes (or from 1 second for
+  a source shorter than 5 seconds), capped by the source length. Its rightmost
+  stop means “keep original” and omits `targetDurationSeconds`, so provider
+  timing drift cannot trim the final fraction of the clip or trigger an
+  unnecessary visual proxy. The edit
   planner excludes known prompt leakage and low-quality segments, then uses
   transcript selling signals (hook, benefit, proof, offer, and CTA) to choose one
   continuous story window. Thai continuation fragments such as `แต่`, `แล้ว`,
@@ -594,19 +602,27 @@ Current mobile pieces:
   nearby sentence is available; the local duration cap remains a
   safety guard for old or malformed recipes. If incomplete transcript/silence
   timing would leave less media than requested, mobile restores neighboring
-  context around the selected moments so a 30/60/custom request does not
+  context around the selected moments so a slider-selected request does not
   collapse into a near-empty result. If a leading target-length cut intersects
   a subtitle cue, mobile moves the cut just before that cue and balances the
   result at the tail, preventing the shortened clip from opening mid-sentence.
-- After the first successful metered prepare, changing only 30/60/custom reuses
-  the same in-memory transcript and calls non-metered `POST /ai-edits/plan`.
+  The 0.15-second pre-roll is used only when that time is a real subtitle-free
+  gap. If the target would end on a dangling Thai connector such as `ก็`, mobile
+  keeps the opening/Hook and internal AI cuts unchanged, then moves only the
+  trailing boundary to the first nearby complete phrase. The semantic allowance
+  is 10% of the selected target, bounded to 1–3 seconds; if no complete phrase
+  fits, the dangling cue is removed instead. The renderer uses the same limit,
+  and this does not enable or duplicate the separate three-second hook feature.
+- After the first successful metered prepare, changing only the duration slider
+  reuses the same in-memory transcript and calls non-metered
+  `POST /ai-edits/plan`.
   Audio is not uploaded or transcribed again unless the source or analysis
   settings change.
 - When automatic subtitles are available, mobile first renders a lightweight
   result and opens result review. Subtitle Studio opens only from the explicit
   “edit subtitles” review action. The user can edit text and
   timing, add/delete/split/merge cues, undo/redo, and change the bundled
-  Prompt/Anuphan font, size, text colour, outline, shadow, and safe
+  Bai Jamjuree/Prompt/Anuphan font, size, text colour, outline, shadow, and safe
   top/middle/bottom position while the Flutter preview updates immediately.
   Subtitle cues use one line in both new and restored drafts; legacy two-line
   draft styles are migrated to one line when loaded.
@@ -615,9 +631,14 @@ Current mobile pieces:
   AI endpoint.
 - Thai subtitle preparation rejects unsafe character-fragment timing and keeps
   the API's readable Thai cue boundaries instead of splitting an unspaced phrase.
-  Typeface-size rules cap visible density at 3, 4, or 5 words (karaoke uses one)
-  and both preview and export scale inside the same one-line safe area instead
-  of clipping or adding an ellipsis.
+  The API expands provider fragments to semantic Thai words and enforces a final
+  safety ceiling of five words and 20 graphemes for multi-token cues. An
+  indivisible brand name, URL, or other single token may exceed 20 graphemes so
+  it is not cut in half; it is isolated from neighboring tokens and mobile
+  measures its real width before shrinking the font for preview/export.
+  Typeface-size rules can request a lower 3/4/5-word density (karaoke
+  uses one), and both preview and export stay inside the same one-line safe area
+  instead of clipping or adding an ellipsis.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.
@@ -633,8 +654,12 @@ Current mobile pieces:
   and mobile accepts FFmpeg's own `progress=end` marker when an Android
   completion callback is lost. The output must still contain a real video
   stream. At 99%, the UI says that it is verifying the video instead of leaving
-  users with what looks like a frozen progress screen. Renders can be cancelled
-  or retried, and identical local results are reused.
+  users with what looks like a frozen progress screen. A Pro entitlement
+  preflight releases the screen after 30 seconds instead of locking the editor.
+  FFmpeg startup with no processed-time, terminal session, or exact
+  `progress=end` signal times out after 30 seconds for preview and 90 seconds
+  for full export. Renders can be cancelled or retried, and identical local
+  results are reused.
   Choosing Post creates a separate full-source-dimension export before opening
   Upload/Post, so the lightweight preview is never published.
 - The AI editing header loads `GET /ai-edits/quota` and shows the authenticated
@@ -646,7 +671,10 @@ Current mobile pieces:
   active-word colour, fade/pop effect, outline, shadow, and safe alignment into
   the final MP4. Validated complete word timing uses escaped ASS active-word
   events; missing, incomplete, edited, or unsafe timing falls back to readable
-  static SRT without inventing word timing.
+  static SRT without inventing word timing. Subtitles are burned against the
+  original source timeline before kept ranges are compacted, so a diagnostic
+  SRT can legitimately end later than the shortened MP4; cues inside removed
+  ranges do not appear in the final video.
   Silence removal compacts kept audio ranges with
   `atrim` + `concat` so the audio ends with the shortened video instead of
   continuing after the final frame.

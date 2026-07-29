@@ -68,7 +68,8 @@ Pro should be the plan for serious sellers, creators, and shops that want to gro
 - Viral alert notification.
 - Future video insight can be considered later only if it does not reintroduce
   the removed standalone AI Clip Review product.
-- AI auto editing with Groq Whisper: 200 minutes per month, per the AI auto editing plan.
+- AI auto editing with ElevenLabs Scribe v2 transcription and Gemini planning:
+  200 minutes per month, per the AI auto editing plan.
 - Link in Bio advanced page, including future click or campaign insights.
 - Team and editor access.
   - The shop owner can invite an admin/editor to help prepare uploads, captions, and scheduled posts.
@@ -91,7 +92,8 @@ Do not include "AI audio clip review" in Starter or Pro package lists for now.
 
 Reason:
 
-- It overlaps with AI caption from real clip and the planned Groq Whisper auto editing flow.
+- It overlaps with AI caption from real clip and the ElevenLabs/Gemini auto
+  editing flow.
 - Users are more likely to understand "AI caption from your clip" than a separate "audio review" feature.
 - Future direction: merge useful audio-review ideas into AI caption from a real clip transcript.
 
@@ -114,7 +116,7 @@ inside real-clip captioning instead of kept as a separate review feature.
   Remaining production work:
   - AI caption from real clip now has a mock-safe endpoint and memory/Prisma
     quota ledger options, plus transcription-backed language/market context.
-    Production still needs real R2/Groq clip testing and the Prisma migration
+    Production still needs real R2/ElevenLabs/Gemini clip testing and the Prisma migration
     applied and verified against a real PostgreSQL database.
   - Team and editor access needs Pro entitlement checks, invite records, role permissions, revoke access, and an activity log.
   - Social account credentials/tokens must stay owner-scoped and never be exposed to invited editors.

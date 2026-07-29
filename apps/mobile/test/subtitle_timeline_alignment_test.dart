@@ -59,4 +59,331 @@ void main() {
 
     expect(adjusted, cuts);
   });
+
+  test(
+      'keeps the opening exactly and extends the real Thai fixture to a complete phrase',
+      () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 109.308),
+      SilenceCutRange(start: 126.711, end: 127.387),
+      SilenceCutRange(start: 140.548, end: 148.709),
+    ];
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'ครั้งนึงแล้วก็นั่งล่อง',
+          start: 109.308,
+          end: 110.782,
+        ),
+        SubtitleSegment(
+          text: 'เรือไปเรื่อยๆ',
+          start: 110.782,
+          end: 112.081,
+        ),
+        SubtitleSegment(
+          text: 'โชคดีที่',
+          start: 137.734,
+          end: 138.561,
+        ),
+        SubtitleSegment(
+          text: 'ออฟฟิศอยู่',
+          start: 138.561,
+          end: 139.720,
+        ),
+        SubtitleSegment(
+          text: 'ที่บ้านก็',
+          start: 139.720,
+          end: 140.548,
+        ),
+        SubtitleSegment(
+          text: 'ไม่ต้องออก',
+          start: 140.548,
+          end: 141.403,
+        ),
+        SubtitleSegment(
+          text: 'เดินทางมาก',
+          start: 141.403,
+          end: 142.256,
+        ),
+        SubtitleSegment(
+          text: 'แต่ก็จะมีออกไป',
+          start: 142.256,
+          end: 143.088,
+        ),
+      ],
+      durationSeconds: 148.709,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted[0].start, cuts[0].start);
+    expect(adjusted[0].end, cuts[0].end);
+    expect(adjusted[1].start, cuts[1].start);
+    expect(adjusted[1].end, cuts[1].end);
+    expect(adjusted.last.start, closeTo(142.256, 0.001));
+    expect(adjusted.last.end, cuts.last.end);
+
+    final resultSeconds = estimateResultSeconds(
+      durationSeconds: 148.709,
+      cutRanges: adjusted,
+    );
+    expect(resultSeconds, closeTo(32.272, 0.001));
+    expect((resultSeconds - 30).abs(), lessThanOrEqualTo(3));
+  });
+
+  test('completes the real Thai phrase when the old tail crosses its first cue',
+      () {
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: const [
+        SilenceCutRange(start: 0, end: 109.308),
+        SilenceCutRange(start: 126.711, end: 127.387),
+        SilenceCutRange(start: 140.4, end: 148.709),
+      ],
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'ที่บ้านก็',
+          start: 139.720,
+          end: 140.548,
+        ),
+        SubtitleSegment(
+          text: 'ไม่ต้องออก',
+          start: 140.548,
+          end: 141.403,
+        ),
+        SubtitleSegment(
+          text: 'เดินทางมาก',
+          start: 141.403,
+          end: 142.256,
+        ),
+        SubtitleSegment(
+          text: 'แต่ก็จะมีออกไป',
+          start: 142.256,
+          end: 143.088,
+        ),
+      ],
+      durationSeconds: 148.709,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.first.end, 109.308);
+    expect(adjusted.last.start, closeTo(142.256, 0.001));
+    final resultSeconds = estimateResultSeconds(
+      durationSeconds: 148.709,
+      cutRanges: adjusted,
+    );
+    expect((resultSeconds - 30).abs(), lessThanOrEqualTo(3));
+  });
+
+  test('never treats Thai substrings as standalone continuation words', () {
+    for (final completeThaiWord in ['แต่งตัว', 'สถานที่', 'เมื่อวาน']) {
+      const cuts = [
+        SilenceCutRange(start: 0, end: 10),
+        SilenceCutRange(start: 40, end: 50),
+      ];
+
+      final adjusted = alignTargetTailToSubtitleBoundary(
+        cuts: cuts,
+        subtitleSegments: [
+          SubtitleSegment(
+            text: completeThaiWord,
+            start: 38,
+            end: 40,
+          ),
+          const SubtitleSegment(
+            text: 'ประโยคใหม่ที่ไม่เกี่ยวกัน',
+            start: 40,
+            end: 41,
+          ),
+        ],
+        durationSeconds: 50,
+        targetSeconds: 30,
+      );
+
+      expect(adjusted, cuts, reason: completeThaiWord);
+    }
+  });
+
+  test('does not move the opening while completing a dangling Thai tail', () {
+    for (final openingText in ['แต่งตัว', 'เมื่อวาน']) {
+      const cuts = [
+        SilenceCutRange(start: 0, end: 10),
+        SilenceCutRange(start: 40, end: 50),
+      ];
+
+      final adjusted = alignTargetTailToSubtitleBoundary(
+        cuts: cuts,
+        subtitleSegments: [
+          SubtitleSegment(text: openingText, start: 10, end: 12),
+          const SubtitleSegment(text: 'ที่บ้านก็', start: 39, end: 40),
+          const SubtitleSegment(text: 'จบครบแล้ว', start: 40, end: 41),
+        ],
+        durationSeconds: 50,
+        targetSeconds: 30,
+      );
+
+      expect(adjusted.first.start, cuts.first.start, reason: openingText);
+      expect(adjusted.first.end, cuts.first.end, reason: openingText);
+      expect(adjusted.last.start, 41, reason: openingText);
+    }
+  });
+
+  test('recognizes common Thai continuation endings without spaces', () {
+    for (final danglingText in [
+      'โชคดีที่',
+      'กำลังจะ',
+      'เพราะว่า',
+    ]) {
+      const cuts = [
+        SilenceCutRange(start: 0, end: 10),
+        SilenceCutRange(start: 40, end: 50),
+      ];
+
+      final adjusted = alignTargetTailToSubtitleBoundary(
+        cuts: cuts,
+        subtitleSegments: [
+          SubtitleSegment(text: danglingText, start: 39, end: 40),
+          const SubtitleSegment(
+            text: 'ประโยคนี้จบสมบูรณ์',
+            start: 40,
+            end: 41,
+          ),
+        ],
+        durationSeconds: 50,
+        targetSeconds: 30,
+      );
+
+      expect(adjusted.first, cuts.first, reason: danglingText);
+      expect(adjusted.last.start, 41, reason: danglingText);
+      expect(adjusted.last.end, 50, reason: danglingText);
+    }
+  });
+
+  test('continues a Thai location phrase ending in อยู่', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'ออฟฟิศอยู่', start: 39, end: 40),
+        SubtitleSegment(text: 'ที่บ้าน', start: 40, end: 41),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.first, cuts.first);
+    expect(adjusted.last.start, 41);
+    expect(adjusted.last.end, 50);
+  });
+
+  test('does not extend complete Thai sentences that end in อยู่', () {
+    for (final completeText in [
+      'ฉันรออยู่',
+      'ร้านยังเปิดอยู่',
+      'ฉันทำงานอยู่',
+    ]) {
+      const cuts = [
+        SilenceCutRange(start: 0, end: 10),
+        SilenceCutRange(start: 40, end: 50),
+      ];
+
+      final adjusted = alignTargetTailToSubtitleBoundary(
+        cuts: cuts,
+        subtitleSegments: [
+          SubtitleSegment(text: completeText, start: 39, end: 40),
+          const SubtitleSegment(
+            text: 'ประโยคใหม่ไม่เกี่ยวกัน',
+            start: 40,
+            end: 41,
+          ),
+        ],
+        durationSeconds: 50,
+        targetSeconds: 30,
+      );
+
+      expect(adjusted, cuts, reason: completeText);
+    }
+  });
+
+  test('keeps phrase completion that ends exactly at source EOF', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 49, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'กำลังจะ', start: 48, end: 49),
+        SubtitleSegment(text: 'จบประโยคพอดี', start: 49, end: 50),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 39,
+    );
+
+    expect(adjusted, const [SilenceCutRange(start: 0, end: 10)]);
+    expect(
+      estimateResultSeconds(durationSeconds: 50, cutRanges: adjusted),
+      40,
+    );
+  });
+
+  test('does not extend a Thai phrase beyond three seconds from target', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'ที่บ้านก็', start: 39, end: 40),
+        SubtitleSegment(text: 'ยังเล่าต่อ', start: 40, end: 42.5),
+        SubtitleSegment(text: 'เกินเวลาที่อนุญาต', start: 42.5, end: 43.2),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    final resultSeconds = estimateResultSeconds(
+      durationSeconds: 50,
+      cutRanges: adjusted,
+    );
+    expect(adjusted.first.end, cuts.first.end);
+    expect(adjusted.last.start, 39);
+    expect((resultSeconds - 30).abs(), lessThanOrEqualTo(3));
+  });
+
+  test('bounds semantic tail tolerance for short and long targets', () {
+    expect(aiEditSemanticTailToleranceSeconds(targetSeconds: 5), 1);
+    expect(aiEditSemanticTailToleranceSeconds(targetSeconds: 30), 3);
+    expect(aiEditSemanticTailToleranceSeconds(targetSeconds: 60), 3);
+  });
+
+  test('keeps the renderer cap aligned with the semantic tail allowance', () {
+    expect(
+      aiEditMaximumOutputDurationSeconds(
+        targetSeconds: 30,
+        estimatedOutputSeconds: 32.272,
+      ),
+      closeTo(32.272, 0.001),
+    );
+    expect(
+      aiEditMaximumOutputDurationSeconds(
+        targetSeconds: 30,
+        estimatedOutputSeconds: 100,
+      ),
+      33,
+    );
+    expect(
+      aiEditMaximumOutputDurationSeconds(
+        targetSeconds: 5,
+        estimatedOutputSeconds: 8,
+      ),
+      6,
+    );
+  });
 }

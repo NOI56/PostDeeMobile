@@ -1654,12 +1654,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       outputDurationSeconds: outputDuration,
       maxOutputDurationSeconds: _isUsingOriginalDuration
           ? null
-          : math.min(
-              _selectedDurationSeconds + 1.0,
-              math.max(
-                _selectedDurationSeconds.toDouble(),
-                outputDuration ?? _selectedDurationSeconds.toDouble(),
-              ),
+          : aiEditMaximumOutputDurationSeconds(
+              targetSeconds: _selectedDurationSeconds.toDouble(),
+              estimatedOutputSeconds: outputDuration,
             ),
       onProgress: reportProgress,
       onAttemptStarted: (attempt) {

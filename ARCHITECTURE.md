@@ -625,8 +625,15 @@ available if a new render fails. The user can then continue either to
 Upload/Post or the manual editor. Mobile handles FFmpeg
 subtitle burn-in, silence cutting, supported visual adjustments, and final MP4
 export; capabilities marked `planned` are not shown as already applied.
-The source duration travels as `durationSeconds` for quota preflight. A selected
-30/60/custom shortened result travels separately as `targetDurationSeconds`;
+The official client reports source duration as `durationSeconds` for quota
+preflight and media timeline recovery. Prepare uses the longer available
+client/provider duration for planning, recipe duration, and quota reservation,
+while preserving provider word/segment endpoints. This is correct for the
+current first-party app but is not a tamper-resistant server measurement; a
+server-side M4A/MP4 duration probe and API 600-second ceiling remain public
+release gates. Mobile accepts sources up to 10 minutes and sends a
+slider-selected shortened result from 5 seconds up to 3 minutes (or from 1
+second for a source under 5 seconds) separately as `targetDurationSeconds`;
 mobile omits it when the slider is at “keep original”. The first successful prepare stores its transcript in
 the current mobile editing session. A duration-only change calls the non-metered
 `POST /ai-edits/plan` with that cached transcript instead of uploading and
@@ -657,11 +664,19 @@ retaining their speech timing for conservative silence detection.
 Mobile still applies a final target cap as a compatibility safety guard.
 If the combined AI/silence/filler cuts leave less media than requested, that
 guard proportionally restores nearby context while preserving every selected
-moment. This prevents incomplete transcript timing from turning a 30/60/custom
+moment. This prevents incomplete transcript timing from turning a slider target
 request into a near-empty clip. A separate subtitle-boundary guard detects when
 the leading target cut lands inside a spoken cue, moves the opening just before
 that cue with a small pre-roll, and balances the duration at the trailing cut so
-the result remains exact without opening mid-sentence.
+the result stays near target without opening mid-sentence.
+Pre-roll is limited to the real subtitle-free gap, so adjacent cues cannot leak
+a 0.15-second tail from the previous sentence. If the final visible cue ends in
+a dangling Thai connector, mobile preserves the opening and all internal
+AI/silence cuts, then moves only the trailing boundary to the earliest complete
+phrase. The allowed semantic tail is 10% of target bounded to 1–3 seconds, and
+the FFmpeg hard cap uses that same allowance. If no complete phrase fits, mobile
+moves the tail before the dangling cue. The separate three-second hook feature
+remains unchanged.
 If transcription fails, the API returns the stable
 `AI_TRANSCRIPTION_PROVIDER_FAILED` code with HTTP 502 before quota reservation;
 provider internals are not exposed. Mobile translates that code into a Thai
@@ -681,7 +696,10 @@ local file because Android completion/statistics callbacks are not reliable on
 all devices. Mobile polls that file and treats its exact `progress=end` marker
 as a lost-callback fallback, but accepts the result only after probing a real
 video stream. The progress UI labels this final 99% probe as video verification
-so the user can distinguish finalization from a stalled encoder. It supports
+so the user can distinguish finalization from a stalled encoder. Entitlement
+preflight stops waiting after 30 seconds. FFmpeg startup is considered stalled
+only when there is no processed-time, terminal session, or exact `progress=end`
+signal for 30 seconds in preview or 90 seconds in full export. It supports
 cancellation and timeouts, and
 caches identical successful renders for the current editing session. Entering
 Upload/Post triggers a separate full-source-dimension render, so preview media
@@ -693,6 +711,10 @@ outline/shadow depth, fade/pop effect, and safe top/middle/bottom alignment) to
 libass. Complete validated cue-word timing produces escaped ASS active-word
 events. Missing, edited, incomplete, or unsafe timing uses static SRT, and an
 explicit subtitle/libass failure may retry through that static fallback.
+Subtitle files stay on the original source timeline and are burned before video
+and audio keep ranges are compacted. A diagnostic SRT may therefore extend past
+the shortened MP4 without indicating a timing bug; removed-range cues never
+appear in the final output.
 Server and mobile both fail closed unless timed words reconstruct the cue with
 the same case and Unicode code points after only untimed separators are
 removed. Media probes retry one unavailable native result, and rotated video
@@ -711,7 +733,15 @@ gaps are calculated. Provider Thai character-level timings remain useful for gap
 detection, while subtitle text falls back to segments instead of being split
 into individual characters. Thai fallback segments that are long or contain
 several words are rebuilt with estimated Thai word boundaries and capped at
-two estimated words per cue. Mobile presents each cue on one subtitle line;
+two estimated words per cue.
+all multi-token Thai recipe paths additionally enforce no more than five
+semantic words and 20 graphemes per cue before mobile rendering, including
+short-cue and tail merges. An indivisible single token may exceed the grapheme
+ceiling to avoid cutting a brand name or URL in half; the server isolates it in
+one cue and mobile measures real width before shrinking the preview/export
+font. Provider fragments are expanded with Thai word segmentation and timing
+is distributed across the original span without cutting through a word.
+Mobile presents each cue on one subtitle line;
 legacy two-line draft styles normalize to one line when loaded. The
 transcription request carries no free-form PostDee spelling prompt because
 real-clip validation showed provider context leaking

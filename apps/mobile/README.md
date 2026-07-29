@@ -159,8 +159,24 @@ another AI-editing minute.
 Validated cue-level word timing can drive active-word colour in preview and ASS
 export. Edited, incomplete, malformed, or rejected word timing falls back to a
 static one-line subtitle. Bundled Thai-safe Bai Jamjuree, Anuphan, and Prompt
-fonts share the same safe-area sizing in preview and export. The uploader tool
-area remains intentionally EP-only.
+fonts share the same safe-area sizing in preview and export. Prepared Thai cues
+with multiple tokens are capped server-side at five semantic words and 20
+graphemes. An indivisible longer brand/URL token remains whole in an isolated
+cue, and mobile shrinks its font from measured preview/export width. Source clips are
+limited to 10 minutes; the shortening slider runs from 5 seconds to at most 3
+minutes (or from 1 second for a source under 5 seconds), and its right edge keeps
+the original. Opening pre-roll
+uses only a real subtitle-free gap, and a target that would end on a dangling
+Thai connector keeps its opening/internal cuts and moves only the tail to the
+first complete phrase. Semantic overrun is 10% of target, bounded to 1–3
+seconds, and the renderer uses the same cap; if no phrase fits, the dangling cue
+is omitted. This is independent of the disabled three-second hook feature. The
+uploader tool area remains intentionally EP-only.
+Entitlement preflight releases after 30 seconds. A render with no processed
+time, terminal session, or exact `progress=end` signal stops after 30 seconds
+for preview and 90 seconds for full export. Static SRT/ASS events are authored
+on the original source timeline before kept ranges are compacted, so diagnostic
+subtitle time can extend past a shortened result without appearing in it.
 
 ## Profile Draft
 

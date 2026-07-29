@@ -360,6 +360,123 @@ void main() {
     );
   });
 
+  test(
+      'shortens the latest Thai clip to a complete phrase when forward completion is too long',
+      () {
+    const cuts = [
+      SilenceCutRange(start: 16.829, end: 17.505),
+      SilenceCutRange(start: 31.610, end: 40.753),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'ที่บ้านทำงาน',
+          start: 27.020,
+          end: 27.852,
+        ),
+        SubtitleSegment(
+          text: 'โชคดีที่',
+          start: 27.852,
+          end: 28.679,
+        ),
+        SubtitleSegment(
+          text: 'ออฟฟิศอยู่',
+          start: 28.679,
+          end: 29.838,
+        ),
+        SubtitleSegment(
+          text: 'ที่บ้านก็',
+          start: 29.838,
+          end: 30.666,
+        ),
+        SubtitleSegment(
+          text: 'ไม่ต้องออกเดิน',
+          start: 30.666,
+          end: 31.610,
+        ),
+        SubtitleSegment(
+          text: 'ทางมากแต่ก็',
+          start: 31.610,
+          end: 32.383,
+        ),
+        SubtitleSegment(
+          text: 'จะมีออกไปเดิน',
+          start: 32.383,
+          end: 33.327,
+        ),
+        SubtitleSegment(
+          text: 'พาข้างนอก',
+          start: 33.327,
+          end: 34.047,
+        ),
+      ],
+      durationSeconds: 40.753,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.first, cuts.first);
+    expect(adjusted.last.start, closeTo(27.852, 0.001));
+    expect(adjusted.last.end, cuts.last.end);
+    expect(
+      estimateResultSeconds(
+        durationSeconds: 40.753,
+        cutRanges: adjusted,
+      ),
+      closeTo(27.176, 0.001),
+    );
+  });
+
+  test('keeps the target when no complete earlier phrase fits the tolerance',
+      () {
+    const cuts = [
+      SilenceCutRange(start: 10, end: 11),
+      SilenceCutRange(start: 31, end: 40),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'ประโยคก่อนหน้า', start: 25, end: 27),
+        SubtitleSegment(text: 'โชคดีที่', start: 27, end: 28),
+        SubtitleSegment(text: 'ออฟฟิศอยู่', start: 28, end: 29),
+        SubtitleSegment(text: 'ที่บ้านก็', start: 29, end: 30),
+        SubtitleSegment(text: 'ไม่ต้องออกเดิน', start: 30, end: 31),
+        SubtitleSegment(text: 'ทางมากแต่ก็', start: 31, end: 33.5),
+        SubtitleSegment(text: 'จะมีออกไปเดิน', start: 33.5, end: 35),
+      ],
+      durationSeconds: 40,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted, cuts);
+  });
+
+  test('does not shorten to an arbitrary cue inside continuous Thai speech',
+      () {
+    const cuts = [
+      SilenceCutRange(start: 10, end: 11),
+      SilenceCutRange(start: 31, end: 40),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'ประโยคก่อนหน้า', start: 27, end: 28),
+        SubtitleSegment(text: 'ฉันอยากซื้อ', start: 28, end: 29),
+        SubtitleSegment(text: 'โทรศัพท์เครื่องใหม่', start: 29, end: 30),
+        SubtitleSegment(text: 'ราคาไม่แพง', start: 30, end: 31),
+        SubtitleSegment(text: 'รุ่นนี้ใช้งานได้ดี', start: 31, end: 33.5),
+        SubtitleSegment(text: 'เหมาะกับทุกคน', start: 33.5, end: 35),
+      ],
+      durationSeconds: 40,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted, cuts);
+  });
+
   test('keeps an exact Thai cue edge when the next cue starts a new thought',
       () {
     const cuts = [SilenceCutRange(start: 20, end: 30)];

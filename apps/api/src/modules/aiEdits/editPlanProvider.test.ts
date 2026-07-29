@@ -143,6 +143,105 @@ describe('edit plan provider', () => {
     ]);
   });
 
+  it('backs the live Thai opening up to a nearby sentence boundary', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 110.183 },
+        { start: 140.183, end: 150 }
+      ],
+      segments: [
+        {
+          text: 'เป็นเหมือนกับเป็นเอ่อโบ๊ทบัสแบบนี้ค่ะ',
+          start: 105.344,
+          end: 108.166
+        },
+        { text: 'แล้วก็ไปแล้ว', start: 108.166, end: 109.03 },
+        {
+          text: 'ก็ตีตั๋วครั้งนึงแล้ว',
+          start: 109.03,
+          end: 110.182
+        },
+        { text: 'ก็นั่งล่อง', start: 110.183, end: 110.895 },
+        { text: 'เรือไปเรื่อยๆ', start: 110.895, end: 112.081 },
+        { text: 'ถ่ายรูปนะ', start: 112.081, end: 112.912 },
+        { text: 'คะเก็บชีวิ', start: 112.912, end: 113.742 },
+        { text: 'ตสองข้าง', start: 113.742, end: 114.531 },
+        {
+          text: 'ระหว่างทางพอหิวก็หยุดหาอาหาร',
+          start: 114.531,
+          end: 138.166
+        },
+        { text: 'ช่วงท้ายของเรื่องนี้', start: 138.166, end: 140.183 },
+        { text: 'บทสรุป', start: 140.183, end: 150 }
+      ],
+      durationSeconds: 150,
+      targetDurationSeconds: 30,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts).toEqual([
+      { start: 0, end: 108.166 },
+      { start: 138.166, end: 150 }
+    ]);
+  });
+
+  it('keeps the selected window when no earlier sentence boundary is nearby',
+      () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'previous uninterrupted context', start: 0, end: 10 },
+        { text: 'ก็นั่งล่อง', start: 10, end: 12 },
+        { text: 'เรือไปเรื่อยๆ', start: 12, end: 14 },
+        {
+          text: 'รายละเอียดช่วงหลักที่ยังอยู่ในเรื่องเดียวกัน',
+          start: 14,
+          end: 30
+        },
+        { text: 'บทสรุป', start: 30, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts[0]?.end).toBe(10);
+  });
+
+  it('prefers a nearby complete opening over a closer weak conjunction', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 50 }
+      ],
+      segments: [
+        { text: 'เรื่องก่อนหน้า.', start: 0, end: 7 },
+        { text: 'วิธีนี้เริ่มเรื่องใหม่', start: 7, end: 8 },
+        { text: 'แล้วค่อยเล่าต่อ', start: 8.5, end: 9.2 },
+        { text: 'บริบทก่อนหน้า', start: 9.2, end: 10 },
+        { text: 'ก็นั่งล่อง', start: 10, end: 12 },
+        { text: 'รายละเอียดหนึ่ง', start: 12, end: 14 },
+        { text: 'รายละเอียดสอง', start: 14, end: 16 },
+        { text: 'รายละเอียดสาม', start: 16, end: 18 },
+        { text: 'รายละเอียดสี่', start: 18, end: 20 },
+        { text: 'รายละเอียดห้า', start: 20, end: 22 },
+        { text: 'รายละเอียดหก', start: 22, end: 24 },
+        { text: 'รายละเอียดเจ็ด', start: 24, end: 26 },
+        { text: 'รายละเอียดแปด', start: 26, end: 28 },
+        { text: 'รายละเอียดเก้า', start: 28, end: 30 },
+        { text: 'บทสรุป', start: 30, end: 50 }
+      ],
+      durationSeconds: 50,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 100
+    });
+
+    expect(cuts[0]?.end).toBe(7);
+  });
+
   it('keeps a complete short hook even when previous speech is close', () => {
     const cuts = buildCoherentHighlightCuts({
       suggestedCuts: [
@@ -190,6 +289,21 @@ describe('edit plan provider', () => {
     expect(
       opensDuringContinuousSpeech(completeHook, [previous, completeHook])
     ).toBe(false);
+    const politeContinuation = {
+      text: 'มันช่วยได้จริงค่ะ',
+      start: 10,
+      end: 12
+    };
+    expect(
+      opensDuringContinuousSpeech(politeContinuation, [
+        {
+          text: 'สิ่งที่อยากบอกก็คือ',
+          start: 8,
+          end: 10
+        },
+        politeContinuation
+      ])
+    ).toBe(true);
     expect(
       opensDuringContinuousSpeech(fragment, [
         { text: 'จบประโยคก่อนหน้า.', start: 8, end: 10 },

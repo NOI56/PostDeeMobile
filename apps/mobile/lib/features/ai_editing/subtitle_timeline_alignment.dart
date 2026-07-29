@@ -61,12 +61,14 @@ const _joinedThaiThoughtTransitions = <String>{
   'สุดท้าย',
   'ต่อมา',
   'ทีนี้',
+  'โชคดีที่',
 };
 
 final _trailingSubtitleSeparators = RegExp(r'[\s.,!?;:ฯๆ…]+$');
 final _leadingSubtitleSeparators = RegExp(r'^[\s.,!?;:ฯๆ…]+');
 final _subtitleTokenSeparators = RegExp(r'[\s.,!?;:ฯๆ…]+');
 final _thaiScript = RegExp(r'[\u0E00-\u0E7F]');
+final _sentenceEndingSubtitlePunctuation = RegExp(r'[.!?ฯ…][\s”’")\]}]*$');
 
 String _normalizedTailText(String text) =>
     text.trim().toLowerCase().replaceFirst(_trailingSubtitleSeparators, '');
@@ -332,6 +334,38 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
     return null;
   }
 
+  List<SilenceCutRange>? completePhraseBefore(int startingCueIndex) {
+    for (var index = startingCueIndex - 1; index >= 0; index -= 1) {
+      if (cueNeedsContinuationAt(index)) {
+        continue;
+      }
+      final segment = sortedSegments[index];
+      final followingIndex = index + 1;
+      final hasFollowingCue = followingIndex < sortedSegments.length;
+      final followingCue =
+          hasFollowingCue ? sortedSegments[followingIndex] : null;
+      final followingGap = followingCue == null
+          ? double.infinity
+          : followingCue.start - segment.end;
+      final isPhraseBoundary =
+          _sentenceEndingSubtitlePunctuation.hasMatch(segment.text.trim()) ||
+              followingCue == null ||
+              _startsNewThaiThought(followingCue.text) ||
+              followingGap > maximumContinuationGapSeconds + 0.001;
+      if (!isPhraseBoundary) {
+        continue;
+      }
+      final candidate = candidateFor(
+        segment.end,
+        allowedTargetDeviationSeconds: semanticTailTolerance,
+      );
+      if (candidate != null) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
   if (crossingCue != null) {
     return completePhraseAfter(crossingCueIndex) ??
         candidateFor(
@@ -385,7 +419,9 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
         gap <= 0.05 &&
         !_startsNewThaiThought(followingCue.text);
     if (isContinuousThaiSpeech) {
-      return completePhraseAfter(lastRetainedCueIndex) ?? cuts;
+      return completePhraseAfter(lastRetainedCueIndex) ??
+          completePhraseBefore(lastRetainedCueIndex) ??
+          cuts;
     }
   }
 

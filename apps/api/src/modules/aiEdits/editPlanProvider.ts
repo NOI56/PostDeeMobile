@@ -259,7 +259,17 @@ const MAXIMUM_COMPARABLE_DURATION_GAP_SECONDS = 3;
 const MAXIMUM_CONTINUOUS_OPENING_GAP_SECONDS = 0.35;
 const MAXIMUM_CONTINUOUS_OPENING_OVERLAP_SECONDS = 0.05;
 const MAXIMUM_FRAGMENT_OPENING_SECONDS = 2.5;
+const MAXIMUM_OPENING_CONTEXT_SECONDS = 3;
 const sentenceEndingPunctuation = /[.!?ฯ…]["'”’)\]}]*$/u;
+const spokenThaiSentenceEnding =
+  /(?:ครับ|ค่ะ|คะ|จ้ะ|จ้า|ฮะ|ฮ่ะ)[.!?ฯ…]*["'”’)\]}]*$/u;
+const endsSpokenSentence = (text: string): boolean => {
+  const normalized = text.trim();
+  return (
+    sentenceEndingPunctuation.test(normalized) ||
+    spokenThaiSentenceEnding.test(normalized)
+  );
+};
 
 type WeightedEditPlanRange = EditPlanCut & { weight: number };
 
@@ -479,7 +489,7 @@ export const opensDuringContinuousSpeech = (
     if (gap > MAXIMUM_CONTINUOUS_OPENING_GAP_SECONDS) {
       return false;
     }
-    return !sentenceEndingPunctuation.test(previous.text.trim());
+    return !endsSpokenSentence(previous.text);
   }
 
   return false;
@@ -561,10 +571,13 @@ export const buildCoherentHighlightCuts = ({
     const openingSegment = reliableSegments.find(
       (segment) => segment.end > start + 0.001 && segment.start < end - 0.001
     );
+    const continuousOpening =
+      openingSegment != null &&
+      opensDuringContinuousSpeech(openingSegment, reliableSegments);
+    const weakOpening =
+      openingSegment != null && hasWeakThaiOpening(openingSegment.text);
     const openingPenalty =
-      openingSegment &&
-      (hasWeakThaiOpening(openingSegment.text) ||
-        opensDuringContinuousSpeech(openingSegment, reliableSegments))
+      openingSegment && (weakOpening || continuousOpening)
         ? Math.max(0, weakOpeningPenalty)
         : 0;
     const score =
@@ -574,7 +587,7 @@ export const buildCoherentHighlightCuts = ({
       unreliableCoverage * 100 -
       openingPenalty;
 
-    return { score, reliableCoverage };
+    return { score, reliableCoverage, continuousOpening, weakOpening };
   };
 
   const firstStart = starts[0] ?? 0;
@@ -589,6 +602,10 @@ export const buildCoherentHighlightCuts = ({
   let bestSafeRange: EditPlanCut | undefined;
   let bestSafeScore = Number.NEGATIVE_INFINITY;
   let bestSafeDurationGap = Number.POSITIVE_INFINITY;
+  const naturalOpeningRanges: Array<{
+    range: EditPlanCut;
+    weakOpening: boolean;
+  }> = [];
   const minimumKeptDurationSeconds = Math.min(
     targetDurationSeconds,
     Math.max(1, targetDurationSeconds * 0.5)
@@ -661,6 +678,16 @@ export const buildCoherentHighlightCuts = ({
     if (!hasEnoughSpeech) {
       continue;
     }
+    if (
+      !metrics.continuousOpening &&
+      durationGap <=
+        comparableDurationGapSeconds + CUE_BOUNDARY_EPSILON_SECONDS
+    ) {
+      naturalOpeningRanges.push({
+        range: snappedRange,
+        weakOpening: metrics.weakOpening
+      });
+    }
 
     const isMateriallyCloser =
       durationGap <
@@ -684,10 +711,28 @@ export const buildCoherentHighlightCuts = ({
     }
   }
 
-  return cutsOutsideKeptRanges(
-    [bestRange ?? bestSafeRange ?? fallbackRange],
-    durationSeconds
-  );
+  let selectedRange = bestRange ?? bestSafeRange ?? fallbackRange;
+  if (scoreRange(selectedRange).continuousOpening) {
+    const nearbyEarlierNaturalRanges = naturalOpeningRanges
+      .filter(
+        (candidate) =>
+          candidate.range.start <
+            selectedRange.start - CUE_BOUNDARY_EPSILON_SECONDS &&
+          selectedRange.start - candidate.range.start <=
+            MAXIMUM_OPENING_CONTEXT_SECONDS + CUE_BOUNDARY_EPSILON_SECONDS
+      )
+      .sort(
+        (left, right) => right.range.start - left.range.start
+      );
+    const nearbyEarlierNaturalRange =
+      nearbyEarlierNaturalRanges.find((candidate) => !candidate.weakOpening)
+        ?.range ?? nearbyEarlierNaturalRanges[0]?.range;
+    if (nearbyEarlierNaturalRange) {
+      selectedRange = nearbyEarlierNaturalRange;
+    }
+  }
+
+  return cutsOutsideKeptRanges([selectedRange], durationSeconds);
 };
 
 /** Selects strong Thai selling moments while preserving their timeline order. */

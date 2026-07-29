@@ -167,6 +167,37 @@ const strongThaiHookOpeningPrefixes = [
   'ห้ามพลาด'
 ];
 
+const clearThaiThoughtOpeningPrefixes = [
+  'ทุกวันนี้',
+  'ทีนี้',
+  'ตอนนี้',
+  'วันนี้',
+  'ต่อมา',
+  'จากนั้น',
+  'ความแตกต่าง',
+  'สาเหตุ',
+  'ปัญหา',
+  'วิธีนี้',
+  'เรื่องนี้'
+];
+
+const midAnswerThaiOpeningPrefixes = ['กันก่อนเมื่อก่อน'];
+const incompleteThaiOpeningEndings = [
+  'เหมือน',
+  'เพราะว่า',
+  'เนื่องจาก',
+  'หมายความว่า',
+  'คิดว่า',
+  'บอกว่า',
+  'พูดว่า',
+  'คือ',
+  'และ',
+  'แต่',
+  'โดย',
+  'ซึ่ง',
+  'เพื่อ'
+];
+
 const normalizeOpeningText = (text: string) =>
   text.trim().replace(/^[\s"'“”‘’()[\]{}.,!?…:;–—-]+/u, '');
 
@@ -183,6 +214,30 @@ const hasStrongThaiHookOpening = (text: string): boolean => {
   const normalized = normalizeOpeningText(text);
   return strongThaiHookOpeningPrefixes.some((prefix) =>
     normalized.startsWith(prefix)
+  );
+};
+
+const hasClearThaiThoughtOpening = (text: string): boolean => {
+  const normalized = normalizeOpeningText(text);
+  return clearThaiThoughtOpeningPrefixes.some((prefix) =>
+    normalized.startsWith(prefix)
+  );
+};
+
+const hasLikelyMidAnswerThaiOpening = (text: string): boolean => {
+  if (hasStrongThaiHookOpening(text)) {
+    return false;
+  }
+
+  const normalized = normalizeOpeningText(text);
+  return (
+    hasWeakThaiOpening(normalized) ||
+    midAnswerThaiOpeningPrefixes.some((prefix) =>
+      normalized.startsWith(prefix)
+    ) ||
+    incompleteThaiOpeningEndings.some((ending) =>
+      normalized.endsWith(ending)
+    )
   );
 };
 
@@ -571,11 +626,27 @@ export const buildCoherentHighlightCuts = ({
     const openingSegment = reliableSegments.find(
       (segment) => segment.end > start + 0.001 && segment.start < end - 0.001
     );
+    const hasNearbyFragmentOpening =
+      openingSegment != null &&
+      reliableSegments.some(
+        (segment) =>
+          segment.start <
+            openingSegment.start - CUE_BOUNDARY_EPSILON_SECONDS &&
+          openingSegment.start - segment.start <=
+            MAXIMUM_OPENING_CONTEXT_SECONDS +
+              CUE_BOUNDARY_EPSILON_SECONDS &&
+          hasLikelyMidAnswerThaiOpening(segment.text)
+      );
     const continuousOpening =
       openingSegment != null &&
-      opensDuringContinuousSpeech(openingSegment, reliableSegments);
+      opensDuringContinuousSpeech(openingSegment, reliableSegments) &&
+      !(
+        hasNearbyFragmentOpening &&
+        hasClearThaiThoughtOpening(openingSegment.text)
+      );
     const weakOpening =
-      openingSegment != null && hasWeakThaiOpening(openingSegment.text);
+      openingSegment != null &&
+      hasLikelyMidAnswerThaiOpening(openingSegment.text);
     const openingPenalty =
       openingSegment && (weakOpening || continuousOpening)
         ? Math.max(0, weakOpeningPenalty)

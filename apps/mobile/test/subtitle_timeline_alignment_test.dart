@@ -453,6 +453,309 @@ void main() {
     expect(adjusted, cuts);
   });
 
+  test('rolls back a standalone Thai noun at the end of the selected clip', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 2.714),
+      SilenceCutRange(start: 32.714, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'คนในกลุ่ม',
+          start: 29.281,
+          end: 29.994,
+        ),
+        SubtitleSegment(
+          text: 'ต่างๆชาติต่างๆ',
+          start: 29.994,
+          end: 31.113,
+        ),
+        SubtitleSegment(
+          text: 'หรือศาสนา',
+          start: 31.193,
+          end: 32.004,
+        ),
+        SubtitleSegment(
+          text: 'เหตุการณ์',
+          start: 32.004,
+          end: 32.714,
+        ),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.last.start, closeTo(32.004, 0.001));
+    expect(
+      estimateResultSeconds(durationSeconds: 50, cutRanges: adjusted),
+      inInclusiveRange(27, 33),
+    );
+  });
+
+  test('extends a Thai ranking phrase through its country complement', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 0.502),
+      SilenceCutRange(start: 30.502, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'ที่อันดับหนึ่ง',
+          start: 29.516,
+          end: 30.502,
+        ),
+        SubtitleSegment(
+          text: 'ของประเทศ',
+          start: 30.502,
+          end: 31.611,
+        ),
+        SubtitleSegment(
+          text: 'เลยสำหรับ',
+          start: 31.611,
+          end: 32.473,
+        ),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.last.start, closeTo(31.611, 0.001));
+    expect(
+      estimateResultSeconds(durationSeconds: 50, cutRanges: adjusted),
+      inInclusiveRange(27, 33),
+    );
+  });
+
+  test('extends the live zoo vote phrase to its complete audience count', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 0.018),
+      SilenceCutRange(start: 30.018, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'โหวตของสวน',
+          start: 29.281,
+          end: 30.018,
+        ),
+        SubtitleSegment(
+          text: 'สัตว์เขาเขียวที่',
+          start: 30.018,
+          end: 30.830,
+        ),
+        SubtitleSegment(
+          text: 'มีผู้โหวตถึง',
+          start: 30.830,
+          end: 31.695,
+        ),
+        SubtitleSegment(
+          text: 'สองหมื่นคน',
+          start: 31.695,
+          end: 32.560,
+        ),
+        SubtitleSegment(
+          text: 'เลือกชื่อหมูเด้ง',
+          start: 32.560,
+          end: 33.750,
+        ),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.last.start, closeTo(32.560, 0.001));
+    expect(
+      estimateResultSeconds(durationSeconds: 50, cutRanges: adjusted),
+      inInclusiveRange(27, 33),
+    );
+  });
+
+  test('stops before a dangling comparison clause after ครั้งหนึ่ง', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 0.956),
+      SilenceCutRange(start: 30.956, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'ก็มาชิงกันอีก',
+          start: 28.801,
+          end: 29.674,
+        ),
+        SubtitleSegment(
+          text: 'ครั้งหนึ่ง',
+          start: 29.674,
+          end: 30.256,
+        ),
+        SubtitleSegment(
+          text: 'ว่านกใครร้องมาก',
+          start: 30.256,
+          end: 30.956,
+        ),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.last.start, closeTo(30.256, 0.001));
+    expect(
+      estimateResultSeconds(durationSeconds: 50, cutRanges: adjusted),
+      inInclusiveRange(27, 33),
+    );
+  });
+
+  test('keeps a punctuated Thai noun as a complete ending', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'สรุปเรื่องทั้งหมด',
+          start: 38,
+          end: 39,
+        ),
+        SubtitleSegment(
+          text: 'เหตุการณ์.',
+          start: 39,
+          end: 40,
+        ),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted, cuts);
+  });
+
+  test('keeps ว่า as a complement after a speech verb', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'เขาบอก', start: 38, end: 39),
+        SubtitleSegment(text: 'ว่าเรื่องนี้ดี', start: 39, end: 40),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted, cuts);
+  });
+
+  test('does not remove a complete standalone noun after an imperative', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'ดู', start: 38, end: 39),
+        SubtitleSegment(text: 'รายละเอียด', start: 39, end: 40),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted, cuts);
+  });
+
+  test('does not extend into a new phrase merely because it starts with ของ',
+      () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'จบแล้ว', start: 39, end: 40),
+        SubtitleSegment(text: 'ของใหม่เข้าพรุ่งนี้', start: 40, end: 41),
+        SubtitleSegment(text: 'เตรียมตัวได้เลย', start: 41, end: 42),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted, cuts);
+  });
+
+  test('keeps a normal possessive complement that starts with ของ', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'ยอดขาย', start: 39, end: 40),
+        SubtitleSegment(text: 'ของร้านเพิ่มขึ้น', start: 40, end: 41),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.last.start, 41);
+  });
+
+  test('does not roll back เหตุการณ์ after an incomplete หรือ cue', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'หรือดู', start: 38, end: 39),
+        SubtitleSegment(text: 'เหตุการณ์', start: 39, end: 40),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted, cuts);
+  });
+
+  test('does not treat ประเทศ as complete before its country name', () {
+    const cuts = [
+      SilenceCutRange(start: 0, end: 10),
+      SilenceCutRange(start: 40, end: 50),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'กำลังจะ', start: 39, end: 40),
+        SubtitleSegment(text: 'เดินทางไปประเทศ', start: 40, end: 41),
+        SubtitleSegment(text: 'ญี่ปุ่นเพื่อทำงาน', start: 41, end: 44),
+      ],
+      durationSeconds: 50,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.last.start, 39);
+  });
+
   test('does not shorten to an arbitrary cue inside continuous Thai speech',
       () {
     const cuts = [

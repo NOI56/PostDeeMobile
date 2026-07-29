@@ -55,6 +55,41 @@ describe('Thai subtitle segment boundary repair', () => {
     ]);
   });
 
+  it.each([
+    {
+      text: 'ดุ๊กดิ๊ก',
+      fragments: [
+        { text: 'ดุ๊', start: 0, end: 0.45 },
+        { text: 'กดิ๊ก', start: 0.45, end: 1 }
+      ]
+    },
+    {
+      text: 'ซุปเปอร์สตาร์',
+      fragments: [
+        { text: 'ซุปเปอร์ส', start: 0, end: 0.75 },
+        { text: 'ตาร์', start: 0.75, end: 1.2 }
+      ]
+    },
+    {
+      text: 'สวนสัตว์เขาเขียว',
+      fragments: [
+        { text: 'สวน', start: 0, end: 0.35 },
+        { text: 'สัตว์เขาเขียว', start: 0.35, end: 1.2 }
+      ]
+    }
+  ])(
+    'keeps the real Thai term $text intact across provider fragments',
+    ({ text, fragments }) => {
+      expect(
+        repairThaiSubtitleSegmentBoundaries(fragments, 'th', text)
+      ).toEqual([{
+        text,
+        start: fragments[0]!.start,
+        end: fragments.at(-1)!.end
+      }]);
+    }
+  );
+
   it('keeps adjacent segments separate at a real Thai word boundary', () => {
     expect(
       repairThaiSubtitleSegmentBoundaries(

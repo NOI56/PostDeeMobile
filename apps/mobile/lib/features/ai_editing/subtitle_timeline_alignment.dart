@@ -32,6 +32,57 @@ const _joinedThaiContinuationEndings = <String>{
   'ก็จะ',
   'เพราะว่า',
   'เนื่องจาก',
+  'สำหรับ',
+};
+
+const _indivisibleThaiTermsAcrossCues = <String>{
+  'สวนสัตว์',
+};
+
+const _standaloneThaiTailSubjectFragments = <String>{
+  'เหตุการณ์',
+};
+
+const _thaiListContinuationPrefixes = <String>{
+  'หรือ',
+  'และ',
+};
+
+const _thaiListItemEndings = <String>{
+  'ศาสนา',
+  'เชื้อชาติ',
+  'ชาติ',
+  'เพศ',
+  'อายุ',
+  'กลุ่ม',
+  'ประเภท',
+  'หมวดหมู่',
+};
+
+const _thaiCompleteClauseEndingsBeforePossessiveSubject = <String>{
+  'แล้ว',
+  'เลย',
+  'ครับ',
+  'ค่ะ',
+  'คะ',
+  'นะ',
+  'จบ',
+  'เสร็จ',
+  'เรียบร้อย',
+};
+
+const _thaiSpeechComplementVerbEndings = <String>{
+  'บอก',
+  'พูด',
+  'คิด',
+  'เห็น',
+  'เล่า',
+  'ยืนยัน',
+  'แจ้ง',
+  'รู้',
+  'เชื่อ',
+  'ถาม',
+  'ตอบ',
 };
 
 const _thaiLocationComplementPrefixes = <String>{
@@ -69,9 +120,42 @@ final _leadingSubtitleSeparators = RegExp(r'^[\s.,!?;:ฯๆ…]+');
 final _subtitleTokenSeparators = RegExp(r'[\s.,!?;:ฯๆ…]+');
 final _thaiScript = RegExp(r'[\u0E00-\u0E7F]');
 final _sentenceEndingSubtitlePunctuation = RegExp(r'[.!?ฯ…][\s”’")\]}]*$');
+final _thaiRankingTail = RegExp(
+  r'(?:อันดับ|ลำดับ)(?:แรก|หนึ่ง|สอง|สาม|สี่|ห้า|หก|เจ็ด|แปด|เก้า|สิบ|\d+)$',
+);
+final _thaiQuantityTail = RegExp(
+  r'(?:\d+(?:[.,]\d+)?|(?:ศูนย์|หนึ่ง|สอง|สาม|สี่|ห้า|หก|เจ็ด|แปด|เก้า|สิบ|ร้อย|พัน|หมื่น|แสน|ล้าน)+)'
+  r'(?:คน|บาท|เปอร์เซ็นต์|ครั้ง|วัน|เดือน|ปี|ชิ้น|รายการ|วินาที|นาที|ชั่วโมง)$',
+);
+final _thaiCompleteTimeTail =
+    RegExp(r'(?:ครั้งหนึ่ง|ครั้งแรก|อีกครั้งหนึ่ง|วันหนึ่ง)$');
 
 String _normalizedTailText(String text) =>
     text.trim().toLowerCase().replaceFirst(_trailingSubtitleSeparators, '');
+
+bool _crossesIndivisibleThaiTerm(String current, String following) {
+  for (final term in _indivisibleThaiTermsAcrossCues) {
+    for (var split = 1; split < term.length; split += 1) {
+      if (current.endsWith(term.substring(0, split)) &&
+          following.startsWith(term.substring(split))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool _isThaiPossessiveComplementPair(String preceding, String following) {
+  if (!following.startsWith('ของ') || preceding.isEmpty) {
+    return false;
+  }
+  if (_thaiRankingTail.hasMatch(preceding)) {
+    return true;
+  }
+  return !_thaiCompleteClauseEndingsBeforePossessiveSubject.any(
+    preceding.endsWith,
+  );
+}
 
 /// Conservative Thai tail check.
 ///
@@ -106,10 +190,69 @@ bool _thaiCueNeedsContinuation(
       ?.trim()
       .toLowerCase()
       .replaceFirst(_leadingSubtitleSeparators, '');
+  if (normalizedFollowing != null && normalizedFollowing.isNotEmpty) {
+    if (_isThaiPossessiveComplementPair(normalized, normalizedFollowing) ||
+        _crossesIndivisibleThaiTerm(normalized, normalizedFollowing)) {
+      return true;
+    }
+  }
   return normalized.endsWith('อยู่') &&
       normalizedFollowing != null &&
       normalizedFollowing.isNotEmpty &&
       _thaiLocationComplementPrefixes.any(normalizedFollowing.startsWith);
+}
+
+bool _hasExplicitSentenceEnding(String text) =>
+    _sentenceEndingSubtitlePunctuation.hasMatch(text.trim());
+
+bool _isSafeThaiSemanticTail(
+  String text, {
+  String? precedingText,
+}) {
+  if (_hasExplicitSentenceEnding(text)) {
+    return true;
+  }
+  final normalized = _normalizedTailText(text);
+  if (normalized.isEmpty) {
+    return false;
+  }
+  if (_thaiQuantityTail.hasMatch(normalized)) {
+    return true;
+  }
+  if (_thaiCompleteTimeTail.hasMatch(normalized)) {
+    return true;
+  }
+
+  final normalizedPreceding =
+      precedingText == null ? '' : _normalizedTailText(precedingText);
+  return _isThaiPossessiveComplementPair(
+    normalizedPreceding,
+    normalized,
+  );
+}
+
+bool _thaiCueShouldRollBackAtTail(
+  String text, {
+  String? precedingText,
+}) {
+  if (_hasExplicitSentenceEnding(text)) {
+    return false;
+  }
+  final normalized = _normalizedTailText(text);
+  final normalizedPreceding =
+      precedingText == null ? '' : _normalizedTailText(precedingText);
+  if (_standaloneThaiTailSubjectFragments.contains(normalized)) {
+    return _thaiListContinuationPrefixes.any(
+          normalizedPreceding.startsWith,
+        ) &&
+        _thaiListItemEndings.any(normalizedPreceding.endsWith);
+  }
+  final followsSpeechComplementVerb = _thaiSpeechComplementVerbEndings.any(
+    normalizedPreceding.endsWith,
+  );
+  return normalized.startsWith('ว่า') &&
+      !followsSpeechComplementVerb &&
+      _isSafeThaiSemanticTail(normalizedPreceding);
 }
 
 bool _startsNewThaiThought(String text) {
@@ -127,6 +270,23 @@ bool _startsNewThaiThought(String text) {
   return tokens.isNotEmpty &&
       _standaloneThaiContinuationWords.contains(tokens.first) &&
       (tokens.length > 1 || tokens.single == normalized);
+}
+
+bool _startsNewThaiThoughtAfter(String precedingText, String text) {
+  if (_startsNewThaiThought(text)) {
+    return true;
+  }
+  final preceding = _normalizedTailText(precedingText);
+  final current =
+      text.trim().toLowerCase().replaceFirst(_leadingSubtitleSeparators, '');
+  if (current.startsWith('ของ') &&
+      !_isThaiPossessiveComplementPair(preceding, current)) {
+    return true;
+  }
+  return _thaiCueShouldRollBackAtTail(
+    text,
+    precedingText: precedingText,
+  );
 }
 
 /// Allows a small semantic tail without turning a very short request into a
@@ -231,6 +391,14 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
     );
   }
 
+  bool cueShouldRollBackAt(int index) {
+    final precedingText = index > 0 ? sortedSegments[index - 1].text : null;
+    return _thaiCueShouldRollBackAtTail(
+      sortedSegments[index].text,
+      precedingText: precedingText,
+    );
+  }
+
   List<SilenceCutRange>? candidateFor(
     double candidateBoundary, {
     required double allowedTargetDeviationSeconds,
@@ -282,6 +450,13 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
   }
 
   if (crossingCue != null) {
+    if (cueShouldRollBackAt(crossingCueIndex)) {
+      return candidateFor(
+            crossingCue.start,
+            allowedTargetDeviationSeconds: semanticTailTolerance,
+          ) ??
+          cuts;
+    }
     if (!cueNeedsContinuationAt(crossingCueIndex)) {
       return candidateFor(
             crossingCue.end,
@@ -297,13 +472,17 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
 
   List<SilenceCutRange>? completePhraseAfter(int startingCueIndex) {
     var phraseEnd = sortedSegments[startingCueIndex].end;
+    List<SilenceCutRange>? lastSafeCandidate;
     for (var index = startingCueIndex + 1;
         index < sortedSegments.length;
         index += 1) {
       final next = sortedSegments[index];
       final gap = next.start - phraseEnd;
       if (gap > maximumContinuationGapSeconds + 0.001 ||
-          _startsNewThaiThought(next.text)) {
+          _startsNewThaiThoughtAfter(
+            sortedSegments[index - 1].text,
+            next.text,
+          )) {
         break;
       }
       if (next.end <= phraseEnd) {
@@ -317,10 +496,19 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
       if (candidate == null) {
         break;
       }
+      if (_isSafeThaiSemanticTail(
+        next.text,
+        precedingText: sortedSegments[index - 1].text,
+      )) {
+        lastSafeCandidate = candidate;
+      }
 
       final hasFollowingCue = index + 1 < sortedSegments.length;
       final nextStartsNewThought = hasFollowingCue &&
-          _startsNewThaiThought(sortedSegments[index + 1].text);
+          _startsNewThaiThoughtAfter(
+            next.text,
+            sortedSegments[index + 1].text,
+          );
       final nextGap = hasFollowingCue
           ? sortedSegments[index + 1].start - phraseEnd
           : double.infinity;
@@ -331,7 +519,7 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
         return candidate;
       }
     }
-    return null;
+    return lastSafeCandidate;
   }
 
   List<SilenceCutRange>? completePhraseBefore(int startingCueIndex) {
@@ -350,7 +538,10 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
       final isPhraseBoundary =
           _sentenceEndingSubtitlePunctuation.hasMatch(segment.text.trim()) ||
               followingCue == null ||
-              _startsNewThaiThought(followingCue.text) ||
+              _startsNewThaiThoughtAfter(
+                segment.text,
+                followingCue.text,
+              ) ||
               followingGap > maximumContinuationGapSeconds + 0.001;
       if (!isPhraseBoundary) {
         continue;
@@ -393,6 +584,14 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
     return cuts;
   }
 
+  if (cueShouldRollBackAt(lastRetainedCueIndex)) {
+    return candidateFor(
+          lastRetainedCue.start,
+          allowedTargetDeviationSeconds: semanticTailTolerance,
+        ) ??
+        cuts;
+  }
+
   if (cueNeedsContinuationAt(lastRetainedCueIndex)) {
     return completePhraseAfter(lastRetainedCueIndex) ??
         candidateFor(
@@ -417,7 +616,10 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
         _thaiScript.hasMatch(followingCue.text) &&
         gap >= -0.001 &&
         gap <= 0.05 &&
-        !_startsNewThaiThought(followingCue.text);
+        !_startsNewThaiThoughtAfter(
+          lastRetainedCue.text,
+          followingCue.text,
+        );
     if (isContinuousThaiSpeech) {
       return completePhraseAfter(lastRetainedCueIndex) ??
           completePhraseBefore(lastRetainedCueIndex) ??

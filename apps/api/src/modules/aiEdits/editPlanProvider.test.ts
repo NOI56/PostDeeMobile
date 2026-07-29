@@ -211,6 +211,192 @@ describe('edit plan provider', () => {
     expect(cuts[0]?.end).toBe(10);
   });
 
+  it.each([
+    {
+      name: 'natural interview',
+      opening: {
+        text: 'สนามฟุตบอลเหมือน',
+        start: 10,
+        end: 11.136
+      },
+      nextThought: {
+        text: 'ทุกวันนี้มันก็',
+        start: 11.136,
+        end: 11.809
+      }
+    },
+    {
+      name: 'noisy interview',
+      opening: {
+        text: 'กันก่อนเมื่อก่อน',
+        start: 10,
+        end: 10.756
+      },
+      nextThought: {
+        text: 'ทีนี้เขาก็',
+        start: 11.317,
+        end: 12.055
+      }
+    }
+  ])(
+    'moves a mid-answer $name opening forward to the next complete thought',
+    ({ opening, nextThought }) => {
+      const cuts = buildCoherentHighlightCuts({
+        suggestedCuts: [
+          { start: 0, end: 10 },
+          { start: 30, end: 40 }
+        ],
+        segments: [
+          opening,
+          nextThought,
+          {
+            text: 'เล่าใจความสำคัญต่อจนจบประโยค',
+            start: nextThought.end,
+            end: 20
+          },
+          { text: 'รายละเอียดประกอบ', start: 20, end: 30 },
+          { text: 'บทสรุป', start: 30, end: 40 }
+        ],
+        durationSeconds: 40,
+        targetDurationSeconds: 20,
+        weakOpeningPenalty: 300
+      });
+
+      expect(cuts[0]?.end).toBe(nextThought.start);
+    }
+  );
+
+  it('does not move a strong hook forward when it is the first available cue',
+      () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'หยุดก่อน', start: 10, end: 10.8 },
+        { text: 'ทีนี้เขาก็เริ่มอธิบาย', start: 10.8, end: 12 },
+        { text: 'ใจความสำคัญ', start: 12, end: 20 },
+        { text: 'รายละเอียดประกอบ', start: 20, end: 30 },
+        { text: 'บทสรุป', start: 30, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts[0]?.end).toBe(10);
+  });
+
+  it('keeps a complete opening that happens to begin with กันก่อน', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'กันก่อน แล้วค่อยลงมือ', start: 10, end: 11 },
+        { text: 'ตอนนี้เราเริ่มอธิบาย', start: 11, end: 12 },
+        { text: 'ใจความสำคัญ', start: 12, end: 20 },
+        { text: 'รายละเอียดประกอบ', start: 20, end: 30 },
+        { text: 'บทสรุป', start: 30, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts[0]?.end).toBe(10);
+  });
+
+  it('does not mistake a complete Thai word ending in ที่ for a fragment',
+      () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'สถานที่', start: 10, end: 11 },
+        { text: 'ตอนนี้เราเริ่มอธิบาย', start: 11, end: 12 },
+        { text: 'ใจความสำคัญ', start: 12, end: 20 },
+        { text: 'รายละเอียดประกอบ', start: 20, end: 30 },
+        { text: 'บทสรุป', start: 30, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts[0]?.end).toBe(10);
+  });
+
+  it('does not replace a fragment opening with another incomplete cue', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'สนามฟุตบอลเหมือน', start: 10, end: 11 },
+        { text: 'สำหรับ', start: 11, end: 12 },
+        { text: 'ผู้ที่กำลังเลือกสินค้า', start: 12, end: 20 },
+        { text: 'รายละเอียดประกอบ', start: 20, end: 30 },
+        { text: 'บทสรุป', start: 30, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts[0]?.end).not.toBe(11);
+  });
+
+  it('does not skip more than three seconds to repair a fragment opening',
+      () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'สนามฟุตบอลเหมือน', start: 10, end: 11 },
+        { text: 'คำอธิบายที่พูดต่อเนื่อง', start: 11, end: 13.1 },
+        { text: 'ทุกวันนี้มันก็เริ่มเรื่องใหม่', start: 13.1, end: 15 },
+        { text: 'ใจความสำคัญ', start: 15, end: 20 },
+        { text: 'รายละเอียดประกอบ', start: 20, end: 30 },
+        { text: 'บทสรุป', start: 30, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts[0]?.end).toBe(10);
+  });
+
+  it('does not grant an opening-repair bonus beyond three seconds', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 33.1, end: 50 }
+      ],
+      segments: [
+        { text: 'สนามฟุตบอลเหมือน', start: 10, end: 11 },
+        { text: 'คำอธิบายที่พูดต่อเนื่อง', start: 11, end: 13.1 },
+        { text: 'ทุกวันนี้มันก็เริ่มเรื่องใหม่', start: 13.1, end: 15 },
+        { text: 'ใจความสำคัญ', start: 15, end: 30 },
+        { text: 'รายละเอียดประกอบ', start: 30, end: 33.1 },
+        { text: 'บทสรุป', start: 33.1, end: 50 }
+      ],
+      durationSeconds: 50,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts[0]?.end).not.toBe(13.1);
+  });
+
   it('prefers a nearby complete opening over a closer weak conjunction', () => {
     const cuts = buildCoherentHighlightCuts({
       suggestedCuts: [

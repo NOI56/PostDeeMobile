@@ -8,20 +8,91 @@ import {
 const maximumThaiFragmentGapSeconds = 0.12;
 const maximumThaiFragmentOverlapSeconds = 0.02;
 
+// Intl.Segmenter is dictionary-based and can split a real Thai word at a
+// dictionary boundary. Keep confirmed production words together before the
+// boundaries are used by transcript repair or subtitle cue construction.
+const indivisibleThaiSubtitleTerms = [
+  'ดุ๊กดิ๊ก',
+  'ซุปเปอร์สตาร์',
+  'สวนสัตว์เขาเขียว'
+] as const;
+
+export type ThaiSubtitleWordPart = {
+  segment: string;
+  isWordLike: boolean;
+};
+
 const normalizeTranscriptTextForBoundaries = (value: string): string =>
   value
     .normalize('NFC')
     .toLowerCase()
     .replace(/[\p{P}\p{S}\s]+/gu, '');
 
-const readThaiWordBoundaryOffsets = (value: string): Set<number> => {
+const readIndivisibleTermEndIndex = (
+  parts: ThaiSubtitleWordPart[],
+  startIndex: number
+): number | undefined => {
+  for (const term of indivisibleThaiSubtitleTerms) {
+    let candidate = '';
+
+    for (let index = startIndex; index < parts.length; index += 1) {
+      const part = parts[index]!;
+      if (!part.isWordLike) {
+        break;
+      }
+
+      candidate += part.segment;
+      if (candidate === term) {
+        return index;
+      }
+      if (!term.startsWith(candidate)) {
+        break;
+      }
+    }
+  }
+
+  return undefined;
+};
+
+export const readThaiSubtitleWordParts = (
+  value: string
+): ThaiSubtitleWordPart[] => {
+  const rawParts = Array.from(
+    new Intl.Segmenter('th', { granularity: 'word' })
+      .segment(value.normalize('NFC'))
+  ).map((part) => ({
+    segment: part.segment,
+    isWordLike: part.isWordLike === true
+  }));
+  const parts: ThaiSubtitleWordPart[] = [];
+
+  for (let index = 0; index < rawParts.length; index += 1) {
+    const endIndex = readIndivisibleTermEndIndex(rawParts, index);
+    if (endIndex === undefined) {
+      parts.push(rawParts[index]!);
+      continue;
+    }
+
+    parts.push({
+      segment: rawParts
+        .slice(index, endIndex + 1)
+        .map((part) => part.segment)
+        .join(''),
+      isWordLike: true
+    });
+    index = endIndex;
+  }
+
+  return parts;
+};
+
+export const readThaiSubtitleWordBoundaryOffsets = (
+  value: string
+): Set<number> => {
   const boundaries = new Set<number>();
   let offset = 0;
 
-  const segments = new Intl.Segmenter('th', {
-    granularity: 'word'
-  }).segment(value);
-  for (const segment of segments) {
+  for (const segment of readThaiSubtitleWordParts(value)) {
     const normalizedSegment =
       normalizeTranscriptTextForBoundaries(segment.segment);
     const segmentLength = Array.from(normalizedSegment).length;
@@ -76,7 +147,8 @@ export const repairThaiSubtitleSegmentBoundaries = (
     normalizedReferenceText === combinedText
       ? referenceText
       : segments.map((segment) => segment.text).join('');
-  const wordBoundaries = readThaiWordBoundaryOffsets(semanticReferenceText);
+  const wordBoundaries =
+    readThaiSubtitleWordBoundaryOffsets(semanticReferenceText);
   const repaired: TranscriptSegment[] = [{ ...segments[0]! }];
   let boundaryOffset = Array.from(normalizedSegmentTexts[0]!).length;
 

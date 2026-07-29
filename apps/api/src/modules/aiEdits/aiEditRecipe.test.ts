@@ -352,6 +352,25 @@ describe('AI edit recipe pacing settings', () => {
     expect(subtitleTexts).not.toContainEqual(expect.stringMatching(/^าร/u));
   });
 
+  it.each(['ดุ๊กดิ๊ก', 'ซุปเปอร์สตาร์', 'สวนสัตว์เขาเขียว'])(
+    'keeps the real Thai term %s in one subtitle cue',
+    (text) => {
+      const recipe = buildRecipe({
+        capabilities: { subtitle: true },
+        language: 'Thai',
+        text,
+        durationSeconds: 4,
+        settings: { subtitleWordsPerLine: 1 },
+        segments: [{ text, start: 0, end: 4 }],
+        words: []
+      });
+
+      expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
+        { text, start: 0, end: 4 }
+      ]);
+    }
+  );
+
   it('merges provider subtitle fragments that are too short to read', () => {
     const recipe = buildRecipe({
       capabilities: { subtitle: true },

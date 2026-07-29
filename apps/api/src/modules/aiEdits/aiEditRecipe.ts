@@ -6,7 +6,11 @@ import {
   type TranscriptWord,
   type TranscriptionResult
 } from './transcriptionProvider.js';
-import { repairThaiSubtitleSegmentBoundaries } from './thaiSubtitleSegmentBoundaries.js';
+import {
+  readThaiSubtitleWordBoundaryOffsets,
+  readThaiSubtitleWordParts,
+  repairThaiSubtitleSegmentBoundaries
+} from './thaiSubtitleSegmentBoundaries.js';
 
 export const aiEditCapabilityKeys = [
   'subtitle',
@@ -333,24 +337,6 @@ const normalizeTranscriptTextForCoverage = (value: string): string =>
 const normalizeSubtitleTextForReconstruction = (value: string): string =>
   value.replace(/[\p{P}\p{S}\s]+/gu, '');
 
-const readThaiWordBoundaryOffsets = (value: string): Set<number> => {
-  const boundaries = new Set<number>();
-  let offset = 0;
-
-  const segments = new Intl.Segmenter('th', { granularity: 'word' }).segment(value);
-  for (const segment of segments) {
-    const normalizedSegment = normalizeTranscriptTextForCoverage(segment.segment);
-    const segmentLength = Array.from(normalizedSegment).length;
-    if (segment.isWordLike && segmentLength > 0) {
-      boundaries.add(offset);
-      boundaries.add(offset + segmentLength);
-    }
-    offset += segmentLength;
-  }
-
-  return boundaries;
-};
-
 const hasFinitePositiveDuration = (value?: number): value is number =>
   value !== undefined && Number.isFinite(value) && value > 0;
 
@@ -404,9 +390,7 @@ const hasFragmentedThaiWordTimings = (
   const hasStandaloneCombiningMark = words.some((word) =>
     /^\p{M}+$/u.test(word.word.trim().normalize('NFD'))
   );
-  const referenceWordTokens = Array.from(
-    new Intl.Segmenter('th', { granularity: 'word' }).segment(referenceText)
-  )
+  const referenceWordTokens = readThaiSubtitleWordParts(referenceText)
     .filter((segment) => segment.isWordLike)
     .map((segment) => normalizeTranscriptTextForCoverage(segment.segment))
     .filter(Boolean);
@@ -417,7 +401,8 @@ const hasFragmentedThaiWordTimings = (
   const providerTextStartOffset = providerTextStartIndex < 0
     ? -1
     : Array.from(normalizedReference.slice(0, providerTextStartIndex)).length;
-  const referenceWordBoundaries = readThaiWordBoundaryOffsets(referenceText);
+  const referenceWordBoundaries =
+    readThaiSubtitleWordBoundaryOffsets(referenceText);
   let providerBoundaryOffset = providerTextStartOffset;
   const hasTightBoundaryInsideThaiWord =
     providerTextStartOffset >= 0 &&
@@ -648,9 +633,7 @@ const readGraphemeCount = (value: string): number =>
   ).length;
 
 const readThaiSemanticWordCount = (value: string): number =>
-  Array.from(
-    new Intl.Segmenter('th', { granularity: 'word' }).segment(value)
-  ).filter(
+  readThaiSubtitleWordParts(value).filter(
     (segment) =>
       segment.isWordLike && /\p{Letter}/u.test(segment.segment)
   ).length;
@@ -691,8 +674,7 @@ const rebuildThaiWordsFromSegment = (
   segment: TranscriptSegment
 ): TranscriptWord[] => {
   const tokens: string[] = [];
-  const segmented = new Intl.Segmenter('th', { granularity: 'word' })
-    .segment(segment.text.normalize('NFC').trim());
+  const segmented = readThaiSubtitleWordParts(segment.text.trim());
 
   for (const part of segmented) {
     const value = part.segment.normalize('NFC');
@@ -1020,7 +1002,8 @@ const findFillerRanges = (
       fragmentOffsets.at(-1)! + Array.from(fragment.text).length
     );
   }
-  const referenceWordBoundaries = readThaiWordBoundaryOffsets(referenceText);
+  const referenceWordBoundaries =
+    readThaiSubtitleWordBoundaryOffsets(referenceText);
   const transcriptStart = referenceText.normalize('NFC').trimStart();
   const fragmentedRanges: EditPlanCut[] = [];
 

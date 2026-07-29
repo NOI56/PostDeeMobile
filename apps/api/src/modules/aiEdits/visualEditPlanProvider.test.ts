@@ -123,6 +123,164 @@ describe('visual edit plan provider', () => {
     expect(deletedFiles).toEqual(['files/postdee-visual']);
   });
 
+  it.each([
+    {
+      label: 'an identical second JSON object',
+      duplicatePlan: true
+    },
+    {
+      label: 'trailing explanatory text',
+      duplicatePlan: false
+    }
+  ])('uses one complete JSON plan when Gemini adds $label', async ({
+    duplicatePlan
+  }) => {
+    const filesClient = {
+      upload: vi.fn(async () => ({
+        name: 'files/postdee-extra-content',
+        uri: 'https://files.local/postdee-extra-content',
+        mimeType: 'video/mp4',
+        state: 'ACTIVE' as const
+      })),
+      get: vi.fn(),
+      delete: vi.fn(async () => ({}))
+    };
+    const firstPlan = {
+      cuts: [
+        { start: 0, end: 10 },
+        { start: 55, end: 100 }
+      ],
+      summary: 'ใช้แผน JSON ก้อนแรก'
+    };
+    const suffix = duplicatePlan
+      ? `\n${JSON.stringify(firstPlan)}`
+      : '\nI selected the strongest complete story window.';
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit = {}) => {
+      if (url.includes(':generateContent')) {
+        return response({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: `${JSON.stringify(firstPlan)}${suffix}` }]
+              }
+            }
+          ]
+        });
+      }
+      throw new Error(`Unexpected request: ${init.method ?? 'GET'} ${url}`);
+    });
+    const provider = createGeminiVisualEditPlanProvider({
+      apiKey: 'test-key',
+      model: 'gemini-test',
+      filesClient,
+      fetchImpl,
+      sleep: async () => undefined
+    });
+
+    const result = await provider.plan({
+      durationSeconds: 100,
+      targetDurationSeconds: 45,
+      segments: [
+        { text: 'ราคา 99 บาท กดตะกร้าได้เลย', start: 45, end: 55 }
+      ],
+      video: {
+        data: new Uint8Array([1, 2, 3]),
+        mimeType: 'video/mp4'
+      }
+    });
+
+    expect(result).toEqual({
+      cuts: [
+        { start: 0, end: 10 },
+        { start: 55, end: 100 }
+      ],
+      summary: 'ใช้แผน JSON ก้อนแรก',
+      model: 'gemini-test-visual'
+    });
+    expect(filesClient.delete).toHaveBeenCalledWith({
+      name: 'files/postdee-extra-content'
+    });
+  });
+
+  it.each([
+    {
+      label: 'malformed first JSON when valid JSON follows it',
+      content:
+        '{"cuts":[}]\n' +
+        '{"cuts":[{"start":0,"end":10}],"summary":"must not recover"}',
+      expectedMessage: undefined
+    },
+    {
+      label: 'an invalid first plan shape when valid JSON follows it',
+      content:
+        '{}\n' +
+        '{"cuts":[{"start":0,"end":10}],"summary":"must not replace primary"}',
+      expectedMessage: 'invalid plan shape'
+    },
+    {
+      label: 'two conflicting JSON plans',
+      content:
+        '{"cuts":[{"start":0,"end":10}],"summary":"first"}\n' +
+        '{"cuts":[{"start":10,"end":20}],"summary":"second"}',
+      expectedMessage: 'conflicting plans'
+    },
+    {
+      label: 'a conflicting plan after prose and a Markdown fence',
+      content:
+        '{"cuts":[{"start":0,"end":10}],"summary":"first"}\n' +
+        'I reconsidered the visual sequence.\n```json\n' +
+        '{"cuts":[{"start":10,"end":20}],"summary":"second"}\n```',
+      expectedMessage: 'conflicting plans'
+    }
+  ])('rejects $label', async ({ content, expectedMessage }) => {
+    const filesClient = {
+      upload: vi.fn(async () => ({
+        name: 'files/postdee-malformed-first',
+        uri: 'https://files.local/postdee-malformed-first',
+        mimeType: 'video/mp4',
+        state: 'ACTIVE' as const
+      })),
+      get: vi.fn(),
+      delete: vi.fn(async () => ({}))
+    };
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit = {}) => {
+      if (url.includes(':generateContent')) {
+        return response({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: content }]
+              }
+            }
+          ]
+        });
+      }
+      throw new Error(`Unexpected request: ${init.method ?? 'GET'} ${url}`);
+    });
+    const provider = createGeminiVisualEditPlanProvider({
+      apiKey: 'test-key',
+      model: 'gemini-test',
+      filesClient,
+      fetchImpl,
+      sleep: async () => undefined
+    });
+
+    await expect(
+      provider.plan({
+        durationSeconds: 30,
+        targetDurationSeconds: 20,
+        segments: [],
+        video: {
+          data: new Uint8Array([1]),
+          mimeType: 'video/mp4'
+        }
+      })
+    ).rejects.toThrow(expectedMessage);
+    expect(filesClient.delete).toHaveBeenCalledWith({
+      name: 'files/postdee-malformed-first'
+    });
+  });
+
   it('rejects an unusable Gemini response so callers can fall back to audio',
       async () => {
     const filesClient = {

@@ -20,7 +20,6 @@ const _standaloneThaiContinuationWords = <String>{
   'จะ',
   'ต้อง',
   'ไม่',
-  'อยู่',
 };
 
 const _joinedThaiContinuationEndings = <String>{
@@ -67,6 +66,7 @@ const _joinedThaiThoughtTransitions = <String>{
 final _trailingSubtitleSeparators = RegExp(r'[\s.,!?;:ฯๆ…]+$');
 final _leadingSubtitleSeparators = RegExp(r'^[\s.,!?;:ฯๆ…]+');
 final _subtitleTokenSeparators = RegExp(r'[\s.,!?;:ฯๆ…]+');
+final _thaiScript = RegExp(r'[\u0E00-\u0E7F]');
 
 String _normalizedTailText(String text) =>
     text.trim().toLowerCase().replaceFirst(_trailingSubtitleSeparators, '');
@@ -355,15 +355,39 @@ List<SilenceCutRange> alignTargetTailToSubtitleBoundary({
   }
 
   final lastRetainedCue = sortedSegments[lastRetainedCueIndex];
-  if ((lastRetainedCue.end - boundary).abs() > 0.001 ||
-      !cueNeedsContinuationAt(lastRetainedCueIndex)) {
+  if ((lastRetainedCue.end - boundary).abs() > 0.001) {
     return cuts;
   }
 
-  return completePhraseAfter(lastRetainedCueIndex) ??
-      candidateFor(
-        lastRetainedCue.start,
-        allowedTargetDeviationSeconds: toleranceSeconds,
-      ) ??
-      cuts;
+  if (cueNeedsContinuationAt(lastRetainedCueIndex)) {
+    return completePhraseAfter(lastRetainedCueIndex) ??
+        candidateFor(
+          lastRetainedCue.start,
+          allowedTargetDeviationSeconds: toleranceSeconds,
+        ) ??
+        cuts;
+  }
+
+  // Thai providers commonly split one uninterrupted sentence into short cues
+  // without punctuation. When the target lands exactly between two such cues,
+  // continue only to a nearby detectable phrase boundary. If no boundary fits
+  // the semantic-tail allowance, preserve the original target instead of
+  // shortening or extending it speculatively.
+  final followingIndex = lastRetainedCueIndex + 1;
+  if (followingIndex < sortedSegments.length) {
+    final followingCue = sortedSegments[followingIndex];
+    final gap = followingCue.start - lastRetainedCue.end;
+    final hasEnoughPhraseContext = followingIndex + 1 < sortedSegments.length;
+    final isContinuousThaiSpeech = hasEnoughPhraseContext &&
+        _thaiScript.hasMatch(lastRetainedCue.text) &&
+        _thaiScript.hasMatch(followingCue.text) &&
+        gap >= -0.001 &&
+        gap <= 0.05 &&
+        !_startsNewThaiThought(followingCue.text);
+    if (isContinuousThaiSpeech) {
+      return completePhraseAfter(lastRetainedCueIndex) ?? cuts;
+    }
+  }
+
+  return cuts;
 }

@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util';
+
 import { GoogleGenAI } from '@google/genai';
 
 import type { ServerConfig } from '../../config/env.js';
@@ -74,6 +76,91 @@ const readGeminiText = (payload: unknown) => {
     .join('')
     .trim();
   return text.length > 0 ? text : undefined;
+};
+
+const splitFirstCompleteJsonObject = (
+  content: string
+): { json: string; trailing: string } => {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('{')) {
+    return { json: trimmed, trailing: '' };
+  }
+
+  let depth = 0;
+  let insideString = false;
+  let escaped = false;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const character = trimmed[index];
+    if (insideString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        insideString = false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      insideString = true;
+    } else if (character === '{') {
+      depth += 1;
+    } else if (character === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          json: trimmed.slice(0, index + 1),
+          trailing: trimmed.slice(index + 1)
+        };
+      }
+    }
+  }
+
+  return { json: trimmed, trailing: '' };
+};
+
+const parseVisualPlanShape = (content: string): Record<string, unknown> => {
+  const parsed = JSON.parse(content) as unknown;
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    Array.isArray(parsed)
+  ) {
+    throw new Error('Visual edit plan provider returned a non-object plan');
+  }
+
+  const record = parsed as Record<string, unknown>;
+  if (!Array.isArray(record.cuts) || typeof record.summary !== 'string') {
+    throw new Error('Visual edit plan provider returned an invalid plan shape');
+  }
+  return record;
+};
+
+/**
+ * Accepts one complete visual plan plus optional explanatory text. Repeated
+ * JSON is accepted only when it is an exact duplicate; conflicting plans stay
+ * ambiguous and use the existing audio fallback. The primary JSON must also
+ * contain the required plan fields, so `{}` cannot hide a later valid plan.
+ */
+const readUnambiguousVisualPlanJson = (content: string): string => {
+  const first = splitFirstCompleteJsonObject(content);
+  const primary = parseVisualPlanShape(first.json);
+  let remaining = first.trailing.trim();
+
+  while (remaining.includes('{')) {
+    const nextObjectStart = remaining.indexOf('{');
+    const duplicate = splitFirstCompleteJsonObject(
+      remaining.slice(nextObjectStart)
+    );
+    const parsedDuplicate = parseVisualPlanShape(duplicate.json);
+    if (!isDeepStrictEqual(parsedDuplicate, primary)) {
+      throw new Error('Visual edit plan provider returned conflicting plans');
+    }
+    remaining = duplicate.trailing.trim();
+  }
+
+  return first.json;
 };
 
 const readGeminiFile = (payload: unknown): GeminiFile => {
@@ -192,7 +279,11 @@ export const createGeminiVisualEditPlanProvider = ({
       if (!content) {
         throw new Error('Visual edit plan provider returned no content');
       }
-      const parsed = parseLlmEditPlan(content, input.durationSeconds, model);
+      const parsed = parseLlmEditPlan(
+        readUnambiguousVisualPlanJson(content),
+        input.durationSeconds,
+        model
+      );
       return {
         ...parsed,
         cuts: buildCoherentHighlightCuts({

@@ -264,26 +264,30 @@ void main() {
       SilenceCutRange(start: 40, end: 50),
     ];
 
-    final adjusted = alignTargetTailToSubtitleBoundary(
-      cuts: cuts,
-      subtitleSegments: const [
-        SubtitleSegment(text: 'ออฟฟิศอยู่', start: 39, end: 40),
-        SubtitleSegment(text: 'ที่บ้าน', start: 40, end: 41),
-      ],
-      durationSeconds: 50,
-      targetSeconds: 30,
-    );
+    for (final danglingText in ['ออฟฟิศอยู่', 'ออฟฟิศ อยู่', 'อยู่']) {
+      final adjusted = alignTargetTailToSubtitleBoundary(
+        cuts: cuts,
+        subtitleSegments: [
+          SubtitleSegment(text: danglingText, start: 39, end: 40),
+          const SubtitleSegment(text: 'ที่บ้าน', start: 40, end: 41),
+        ],
+        durationSeconds: 50,
+        targetSeconds: 30,
+      );
 
-    expect(adjusted.first, cuts.first);
-    expect(adjusted.last.start, 41);
-    expect(adjusted.last.end, 50);
+      expect(adjusted.first, cuts.first, reason: danglingText);
+      expect(adjusted.last.start, 41, reason: danglingText);
+      expect(adjusted.last.end, 50, reason: danglingText);
+    }
   });
 
   test('does not extend complete Thai sentences that end in อยู่', () {
     for (final completeText in [
       'ฉันรออยู่',
+      'ฉันรอ อยู่',
       'ร้านยังเปิดอยู่',
       'ฉันทำงานอยู่',
+      'อยู่',
     ]) {
       const cuts = [
         SilenceCutRange(start: 0, end: 10),
@@ -306,6 +310,71 @@ void main() {
 
       expect(adjusted, cuts, reason: completeText);
     }
+  });
+
+  test(
+      'extends the live Thai clip from an exact cue edge to the next phrase boundary',
+      () {
+    const cuts = [
+      SilenceCutRange(start: 4.532, end: 5.168),
+      SilenceCutRange(start: 30.889, end: 59.348),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'ไม่ใช่อาหารที่ขาย',
+          start: 30.056,
+          end: 30.889,
+        ),
+        SubtitleSegment(
+          text: 'นักท่องเที่ยวไม่ใช่',
+          start: 30.889,
+          end: 31.723,
+        ),
+        SubtitleSegment(
+          text: 'ร้านอาหาร',
+          start: 31.723,
+          end: 32.235,
+        ),
+        SubtitleSegment(
+          text: 'แต่จะเป็นอาหาร',
+          start: 32.236,
+          end: 33.076,
+        ),
+      ],
+      durationSeconds: 59.348,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.first, cuts.first);
+    expect(adjusted.last.start, closeTo(32.235, 0.001));
+    expect(adjusted.last.end, cuts.last.end);
+    expect(
+      estimateResultSeconds(
+        durationSeconds: 59.348,
+        cutRanges: adjusted,
+      ),
+      closeTo(31.599, 0.001),
+    );
+  });
+
+  test('keeps an exact Thai cue edge when the next cue starts a new thought',
+      () {
+    const cuts = [SilenceCutRange(start: 20, end: 30)];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(text: 'ประโยคนี้จบแล้ว', start: 19, end: 20),
+        SubtitleSegment(text: 'แต่จะเริ่มเรื่องใหม่', start: 20, end: 21),
+      ],
+      durationSeconds: 30,
+      targetSeconds: 20,
+    );
+
+    expect(adjusted, cuts);
   });
 
   test('keeps phrase completion that ends exactly at source EOF', () {

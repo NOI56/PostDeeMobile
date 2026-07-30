@@ -80,7 +80,7 @@ describe('readServerConfig', () => {
       elevenLabsTranscriptionKeyterms: [],
       editPlanProvider: 'mock',
       openAiEditPlanModel: 'gpt-4o-mini',
-      geminiEditPlanModel: 'gemini-2.5-flash-lite',
+      geminiEditPlanModel: 'gemini-3.5-flash-lite',
       aiEditUsageStore: 'memory',
       mockUserId: 'local-dev-user'
     });

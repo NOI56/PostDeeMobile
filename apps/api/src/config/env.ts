@@ -577,7 +577,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     editPlanProvider: readEditPlanProvider(env),
     openAiEditPlanModel: readOptional(env, 'OPENAI_EDIT_PLAN_MODEL') ?? 'gpt-4o-mini',
     geminiEditPlanModel:
-      readOptional(env, 'GEMINI_EDIT_PLAN_MODEL') ?? 'gemini-2.5-flash-lite',
+      readOptional(env, 'GEMINI_EDIT_PLAN_MODEL') ?? 'gemini-3.5-flash-lite',
     aiEditUsageStore: readAiEditUsageStore(env),
     mockUserId: readOptional(env, 'MOCK_USER_ID') ?? 'local-dev-user'
   };

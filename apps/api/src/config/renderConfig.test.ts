@@ -30,10 +30,11 @@ describe('render.yaml production config', () => {
     const source = await readRenderConfig();
 
     expectEnvValue(source, 'CAPTION_PROVIDER', 'gemini');
+    expectEnvValue(source, 'GEMINI_CAPTION_MODEL', 'gemini-2.5-flash-lite');
     expectEnvSecret(source, 'GEMINI_API_KEY');
     expectEnvValue(source, 'TRANSCRIPTION_PROVIDER', 'elevenlabs');
     expectEnvValue(source, 'EDIT_PLAN_PROVIDER', 'gemini');
-    expectEnvValue(source, 'GEMINI_EDIT_PLAN_MODEL', 'gemini-2.5-flash-lite');
+    expectEnvValue(source, 'GEMINI_EDIT_PLAN_MODEL', 'gemini-3.5-flash-lite');
     expect(source).not.toContain('GROQ_');
     expectEnvSecret(source, 'ELEVENLABS_API_KEY');
     expectEnvValue(source, 'ELEVENLABS_TRANSCRIPTION_MODEL', 'scribe_v2');

@@ -76,8 +76,9 @@ describe('render.staging.yaml isolated staging config', () => {
     expectEnvValue(source, 'ELEVENLABS_TRANSCRIPTION_MODEL', 'scribe_v2');
     expectEnvValue(source, 'ELEVENLABS_TRANSCRIPTION_KEYTERMS', '""');
     expectEnvValue(source, 'TRANSCRIPTION_PROVIDER', 'elevenlabs');
+    expectEnvValue(source, 'GEMINI_CAPTION_MODEL', 'gemini-2.5-flash-lite');
     expectEnvValue(source, 'EDIT_PLAN_PROVIDER', 'gemini');
-    expectEnvValue(source, 'GEMINI_EDIT_PLAN_MODEL', 'gemini-2.5-flash-lite');
+    expectEnvValue(source, 'GEMINI_EDIT_PLAN_MODEL', 'gemini-3.5-flash-lite');
     expect(source).not.toContain('GROQ_');
     expect(source).not.toContain('POSTPEER_TIKTOK_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_YOUTUBE_ACCOUNT_ID');

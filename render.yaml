@@ -64,6 +64,8 @@ services:
       # --- AI caption: Gemini (listens to clip; Pro also sees frames) ---
       - key: CAPTION_PROVIDER
         value: gemini
+      - key: GEMINI_CAPTION_MODEL
+        value: gemini-2.5-flash-lite
       - key: GEMINI_API_KEY
         sync: false
       # --- Transcription + edit planning (AI auto-editing) ---
@@ -74,7 +76,7 @@ services:
       - key: EDIT_PLAN_PROVIDER
         value: gemini
       - key: GEMINI_EDIT_PLAN_MODEL
-        value: gemini-2.5-flash-lite
+        value: gemini-3.5-flash-lite
       - key: ELEVENLABS_API_KEY
         sync: false
       - key: ELEVENLABS_TRANSCRIPTION_MODEL

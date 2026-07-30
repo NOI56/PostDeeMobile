@@ -62,7 +62,18 @@ describe('visual edit plan provider', () => {
     };
     const fetchImpl = vi.fn(async (url: string, init: RequestInit = {}) => {
       if (url.includes(':generateContent')) {
-        expect(url).toContain('/models/gemini-test:generateContent');
+        const body = JSON.parse(String(init.body)) as {
+          generationConfig?: Record<string, unknown>;
+          contents?: unknown[];
+        };
+
+        expect(url).toContain(
+          '/models/gemini-3.5-flash-lite:generateContent'
+        );
+        expect(body.generationConfig).toEqual({
+          responseMimeType: 'application/json'
+        });
+        expect(body.generationConfig).not.toHaveProperty('temperature');
         expect(String(init.body)).toContain('ราคา 99 บาท');
         expect(String(init.body)).toContain('fileUri');
         return response({
@@ -89,7 +100,7 @@ describe('visual edit plan provider', () => {
     });
     const provider = createGeminiVisualEditPlanProvider({
       apiKey: 'test-key',
-      model: 'gemini-test',
+      model: 'gemini-3.5-flash-lite',
       filesClient,
       fetchImpl,
       sleep: async () => undefined
@@ -114,7 +125,7 @@ describe('visual edit plan provider', () => {
         { start: 55, end: 100 }
       ],
       summary: 'เลือกภาพสินค้าและช่วงเสนอราคา',
-      model: 'gemini-test-visual'
+      model: 'gemini-3.5-flash-lite-visual'
     });
     expect(filesClient.upload).toHaveBeenCalledOnce();
     expect(filesClient.get).toHaveBeenCalledWith({

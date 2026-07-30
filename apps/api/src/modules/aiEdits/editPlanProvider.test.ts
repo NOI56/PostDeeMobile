@@ -886,7 +886,7 @@ describe('edit plan provider', () => {
     let requestedBody: Record<string, unknown> | undefined;
     const provider = createGeminiEditPlanProvider({
       apiKey: 'gemini-key',
-      model: 'gemini-2.5-flash-lite',
+      model: 'gemini-3.5-flash-lite',
       fallback: createMockEditPlanProvider(),
       fetchImpl: async (url, init) => {
         requestedUrl = url;
@@ -921,16 +921,14 @@ describe('edit plan provider', () => {
     });
 
     expect(requestedUrl).toContain(
-      '/models/gemini-2.5-flash-lite:generateContent'
+      '/models/gemini-3.5-flash-lite:generateContent'
     );
     expect(requestedUrl).toContain('key=gemini-key');
-    expect(requestedBody).toMatchObject({
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: 'application/json'
-      }
+    expect(requestedBody?.generationConfig).toEqual({
+      responseMimeType: 'application/json'
     });
-    expect(result.model).toBe('gemini-2.5-flash-lite');
+    expect(requestedBody?.generationConfig).not.toHaveProperty('temperature');
+    expect(result.model).toBe('gemini-3.5-flash-lite');
     expect(result.cuts).toEqual([{ start: 0, end: 5 }]);
   });
 
@@ -938,7 +936,7 @@ describe('edit plan provider', () => {
     const config = readServerConfig({
       EDIT_PLAN_PROVIDER: 'gemini',
       GEMINI_API_KEY: 'gemini-key',
-      GEMINI_EDIT_PLAN_MODEL: 'gemini-2.5-flash-lite'
+      GEMINI_EDIT_PLAN_MODEL: 'gemini-3.5-flash-lite'
     });
     const provider = createEditPlanProviderFromConfig({
       config,

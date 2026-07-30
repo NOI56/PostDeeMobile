@@ -38,6 +38,7 @@ const _joinedThaiContinuationEndings = <String>{
 
 const _indivisibleThaiTermsAcrossCues = <String>{
   'สวนสัตว์',
+  'อีกครั้งหนึ่ง',
 };
 
 const _standaloneThaiTailSubjectFragments = <String>{

@@ -657,6 +657,36 @@ void main() {
     );
   });
 
+  test('completes อีกครั้งหนึ่ง when the target lands after อีก', () {
+    const cuts = [
+      SilenceCutRange(start: 30.870, end: 45),
+    ];
+
+    final adjusted = alignTargetTailToSubtitleBoundary(
+      cuts: cuts,
+      subtitleSegments: const [
+        SubtitleSegment(
+          text: 'ก็มาชิงกันอีก',
+          start: 29.997,
+          end: 30.870,
+        ),
+        SubtitleSegment(
+          text: 'ครั้งหนึ่ง',
+          start: 30.870,
+          end: 31.452,
+        ),
+      ],
+      durationSeconds: 45,
+      targetSeconds: 30,
+    );
+
+    expect(adjusted.single.start, closeTo(31.452, 0.001));
+    expect(
+      estimateResultSeconds(durationSeconds: 45, cutRanges: adjusted),
+      inInclusiveRange(27, 33),
+    );
+  });
+
   test('keeps a punctuated Thai noun as a complete ending', () {
     const cuts = [
       SilenceCutRange(start: 0, end: 10),

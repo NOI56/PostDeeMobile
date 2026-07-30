@@ -260,7 +260,7 @@ This keeps the schema usable for Apple App Store, Google Play, or other future b
 | Video storage | `VIDEO_STORAGE=mock`, `UPLOAD_PROTOCOL_MODE=legacy` | `VIDEO_STORAGE=r2`, with `UPLOAD_PROTOCOL_MODE=dual` during rollout and strict `multipart` after old clients are retired |
 | Captions | `CAPTION_PROVIDER=mock` | Real-clip caption provider using backend AI |
 | Caption usage | `CAPTION_USAGE_STORE=memory` | `CAPTION_USAGE_STORE=prisma` |
-| AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | ElevenLabs Scribe v2 transcribes, Gemini plans from visual proxy/transcript, PostDee rules are the final fallback; FFmpeg export stays on mobile |
+| AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | ElevenLabs Scribe v2 transcribes; `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite` plans from visual proxy/transcript with structured JSON and provider-default sampling (no explicit `temperature`); PostDee rules are the final fallback; FFmpeg export stays on mobile |
 | Auth | `AUTH_PROVIDER=mock` | `AUTH_PROVIDER=firebase` |
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
 | Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; `FACEBOOK_REELS` currently targets Facebook Page Video; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
@@ -507,6 +507,10 @@ GEMINI_CAPTION_MODEL="gemini-2.5-flash-lite"
 GEMINI_API_KEY="..."
 ```
 
+The configured primary caption model retries transient failures, then falls
+back directly to the existing local template; no secondary Gemini model is
+attempted.
+
 Production SEO fields should be generated in the same AI call when possible:
 
 - `seoKeywords`
@@ -558,6 +562,7 @@ sequenceDiagram
   participant A as API
   participant Sub as Subscription Store
   participant W as ElevenLabs Scribe v2
+  participant G as Gemini 3.5 Flash-Lite
   participant F as Mobile FFmpeg
 
   M->>A: Request transcript or prepare recipe for selected clip
@@ -565,6 +570,8 @@ sequenceDiagram
   alt User is Pro with minutes
     A->>W: Transcribe audio with word + segment timestamps
     W-->>A: transcript + word timing + segment timing
+    A->>G: Plan transcript and visual proxy with structured JSON (no explicit temperature)
+    G-->>A: coherent target-length story window
     A-->>M: editable transcript data or mobile render recipe
     M->>F: Render adaptive lightweight preview from original clip
     F-->>M: reviewable MP4
@@ -645,12 +652,14 @@ For a result shorter than the transcript, mobile creates a whole-duration visual
 proxy rather than a sparse frame set: 360 px H.264 at 1 fps plus mono 16 kHz AAC.
 The proxy is purpose-limited to 50 MiB, user-owned in R2, downloaded once by the
 API, uploaded to Gemini Files API, and paired with timestamped transcript
-segments. Gemini therefore sees the full clip timeline and audio before choosing
-cuts. The API falls back to Gemini transcript planning if visual download,
-upload, processing, or generation fails; if Gemini itself is unavailable,
-deterministic PostDee rules produce the final plan. The original source remains on
-device and is always used for preview/full-quality rendering. Mobile retains one
-local proxy for the current source so duration-only replans skip FFmpeg proxy
+segments. `gemini-3.5-flash-lite` therefore sees the full clip timeline and
+audio before choosing cuts. Both transcript and visual GenerateContent requests
+require structured JSON and use provider-default sampling without
+`generationConfig.temperature`. The API falls back to Gemini transcript planning
+if visual download, upload, processing, or generation fails; if Gemini itself is
+unavailable, deterministic PostDee rules produce the final plan. The original
+source remains on device and is always used for preview/full-quality rendering.
+Mobile retains one local proxy for the current source so duration-only replans skip FFmpeg proxy
 extraction; replacing/removing the source or leaving the screen deletes it.
 Gemini and R2 copies remain request-scoped. Gemini file upload, status polling,
 and deletion use the official `@google/genai` server SDK instead of maintaining

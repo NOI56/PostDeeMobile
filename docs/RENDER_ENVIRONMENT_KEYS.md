@@ -98,15 +98,18 @@ Render Dashboard.
 | `REVENUECAT_REST_API_V1_KEY` | RevenueCat subscriber lookup after user Restore | Before enabling Restore | Server-only secret. Never use the mobile/Test Store SDK key here and never expose it to Flutter. Without it, `POST /billing/revenuecat/resync` returns `501 REVENUECAT_RESYNC_NOT_CONFIGURED`. |
 | `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN` | Legacy Google Play RTDN endpoint | Only if that endpoint is used | Blueprint declares it; RevenueCat is still the preferred billing path. |
 
-## Defaults Not Needed In Render Unless Overriding
+## Model Defaults and Explicit Blueprint Pins
 
-The backend has safe defaults for these. Add them to Render only when you
-intentionally want a different value.
+Production and Staging explicitly pin both Gemini model values in their
+blueprints. `gemini-3.5-flash-lite` edit requests keep structured JSON output
+and omit `generationConfig.temperature`. The configured `gemini-2.5-flash-lite`
+caption primary retries transient failures, then falls back directly to the
+existing local template; no secondary Gemini model is attempted.
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `GEMINI_CAPTION_MODEL` | `gemini-2.5-flash-lite` | Caption model. |
-| `GEMINI_EDIT_PLAN_MODEL` | `gemini-2.5-flash-lite` | Visual and transcript edit-planning model. |
+| `GEMINI_CAPTION_MODEL` | `gemini-2.5-flash-lite` | Explicit Production and Staging caption-model pin. |
+| `GEMINI_EDIT_PLAN_MODEL` | `gemini-3.5-flash-lite` | Explicit Production and Staging visual/transcript edit-planning-model pin. |
 | `ELEVENLABS_TRANSCRIPTION_MODEL` | `scribe_v2` | AI editing batch transcription model. |
 | `ELEVENLABS_TRANSCRIPTION_KEYTERMS` | empty | Optional brand terms. Keep blank until measured because keyterm prompting adds provider cost. |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | PostPeer API host. |

@@ -67,7 +67,7 @@ PostDee already has the expensive and technically risky foundations:
 - `/ai-edits/prepare` checks the Pro plan, ownership, AI-editing quota, obtains a
   transcript, builds the cut plan, and returns a mobile render recipe.
 - ElevenLabs Scribe v2 returns overall text, segment timestamps, and word
-  timestamps. Gemini 2.5 Flash-Lite uses the validated transcript and a
+  timestamps. Gemini 3.5 Flash-Lite uses the validated transcript and a
   whole-duration visual proxy to plan the shortened story window.
 - The backend validates timing coverage and falls back to readable segments when
   Thai word timing is fragmented or incomplete.

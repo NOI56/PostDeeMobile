@@ -29,9 +29,10 @@ The backend currently supports safe scaffold flows for:
 - Post creation and queue handoff
 - Caption generation through mock, Gemini, or legacy OpenAI providers. The
   product direction is real-clip captioning after a video is selected. Remote
-  providers retry transient failures (e.g. a Gemini 503) with backoff and Gemini
-  also falls back to a secondary model before `POST /captions/generate` degrades
-  to the local template caption.
+  providers retry transient failures (e.g. a Gemini 503) with backoff. Gemini
+  uses the configured primary `gemini-2.5-flash-lite`, then
+  `POST /captions/generate` degrades directly to the local template caption;
+  no secondary Gemini model is attempted.
 - Real-clip caption scaffold at `POST /captions/generate-from-clip`, with
   Starter/Pro mode selection, authenticated media-key ownership checks,
   optional temporary AI media cleanup, and monthly quota reservation through
@@ -689,8 +690,9 @@ Requires Starter or Pro.
 - When `CAPTION_PROVIDER=gemini`, this endpoint sends the clip to Gemini to
   listen and write the caption directly (Starter = audio only; Pro =
   `AUDIO_WITH_FRAMES`, also sending the `selectedFrameKeys` images). Gemini
-  retries transient failures and falls back to a secondary model, then to the
-  local template caption if it still fails, so a caption is always returned.
+  retries transient failures on configured-primary `gemini-2.5-flash-lite`,
+  then falls back directly to the local template caption, so a caption is
+  always returned. No secondary Gemini model is attempted.
 - When no Gemini caption provider is configured, it falls back to the legacy path:
   the configured `TRANSCRIPTION_PROVIDER` (ElevenLabs or legacy OpenAI) transcribes the clip
   and a local template builds the caption.
@@ -1088,8 +1090,10 @@ Returns a structured cut plan for an auto-edit style or a free-form prompt,
 computed from an already-transcribed clip. Pro-gated but **not** minute-metered.
 
 Local mode uses the rule-based mock (`model: "mock-rule"`). Staging/production
-uses Gemini for transcript planning and falls back to the PostDee rules on
-provider failure.
+uses `gemini-3.5-flash-lite` for transcript planning and falls back to the
+PostDee rules on provider failure. Both transcript and visual GenerateContent
+requests require structured JSON and use provider-default sampling without an
+explicit `generationConfig.temperature`.
 
 If `visualProxyS3Key` is present, owned by the authenticated user, and a Gemini
 key is configured, the API downloads the proxy, uploads it to Gemini Files API,
@@ -1662,7 +1666,7 @@ PostgreSQL.
 | `CAPTION_PROVIDER` | `mock`, `gemini`, `openai` | Caption provider |
 | `GEMINI_API_KEY` | `...` | Gemini API key |
 | `GEMINI_CAPTION_MODEL` | `gemini-2.5-flash-lite` | Gemini caption model |
-| `GEMINI_EDIT_PLAN_MODEL` | `gemini-2.5-flash-lite` | Gemini visual/transcript edit-planning model |
+| `GEMINI_EDIT_PLAN_MODEL` | `gemini-3.5-flash-lite` | Gemini visual/transcript edit-planning model |
 | `OPENAI_API_KEY` | `...` | Legacy OpenAI API key |
 | `OPENAI_CAPTION_MODEL` | `gpt-4o-mini` | Legacy OpenAI caption model |
 | `TRANSCRIPTION_PROVIDER` | `mock`, `openai`, `elevenlabs` | AI caption language detection and AI edit transcription provider |

@@ -51,10 +51,12 @@ running service. Video storage continues to use Cloudflare R2.
 ## AI Editing Runtime Source of Truth
 
 - Both `render.yaml` and `render.staging.yaml` set
-  `TRANSCRIPTION_PROVIDER=elevenlabs` and `EDIT_PLAN_PROVIDER=gemini`.
-  ElevenLabs Scribe v2 produces timed Thai transcripts, Gemini plans from the
-  full visual proxy and transcript, and deterministic PostDee rules are the
-  final fallback. Groq is not selectable in runtime configuration.
+  `TRANSCRIPTION_PROVIDER=elevenlabs`, `EDIT_PLAN_PROVIDER=gemini`, and
+  `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite`. ElevenLabs Scribe v2
+  produces timed Thai transcripts; Gemini 3.5 plans from the full visual proxy
+  and transcript with structured JSON and provider-default sampling (no
+  explicit `temperature`); deterministic PostDee rules are the final fallback.
+  Groq is not selectable in runtime configuration.
 - Silence cleanup currently detects validated gaps between transcript
   word/segment timestamps. It does not yet use waveform decibels, FFmpeg
   `silencedetect`, or VAD as a second confirmation layer.
@@ -856,7 +858,8 @@ Queue/storage scaffold switches:
 - `UPLOAD_MAX_SIZE_BYTES=524288000` controls the maximum declared upload size accepted by `POST /uploads`.
 - `RATE_LIMIT_WINDOW_MS=60000` and `RATE_LIMIT_MAX_REQUESTS=300` cap requests per IP per window; exceeding the cap returns `429` with code `RATE_LIMITED` (`GET /health` is exempt). Auth, upload, AI, and social-connection routes also have tighter fixed per-IP buckets.
 - `AWS_S3_UPLOAD_EXPIRES_SECONDS=900` controls how long legacy S3 signed upload URLs remain usable.
-- `CAPTION_PROVIDER=mock` uses the local Thai template; `CAPTION_PROVIDER=gemini` calls Gemini with `GEMINI_CAPTION_MODEL` and `GEMINI_API_KEY`; `CAPTION_PROVIDER=openai` remains available as a legacy path.
+- `CAPTION_PROVIDER=mock` uses the local Thai template; `CAPTION_PROVIDER=gemini` calls the configured primary `GEMINI_CAPTION_MODEL=gemini-2.5-flash-lite` with `GEMINI_API_KEY`, retries transient failures, then falls back directly to the local template without trying a secondary Gemini model; `CAPTION_PROVIDER=openai` remains available as a legacy path.
+- `EDIT_PLAN_PROVIDER=gemini` uses `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite` for transcript and visual planning. Both requests require structured JSON and use provider-default sampling without an explicit `temperature`.
 - `TRANSCRIPTION_PROVIDER=mock` uses the local Thai transcript for AI caption
   language detection and AI editing; `TRANSCRIPTION_PROVIDER=elevenlabs` calls Scribe v2 with
   `ELEVENLABS_API_KEY`, `ELEVENLABS_TRANSCRIPTION_MODEL`, and optional

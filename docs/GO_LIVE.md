@@ -46,7 +46,10 @@ user-owned PostPeer connections.
 
 - `CAPTION_PROVIDER=gemini` (already set)
 - `GEMINI_API_KEY=...` — free from Google AI Studio (https://aistudio.google.com/apikey)
-- Optional: `GEMINI_CAPTION_MODEL` (default `gemini-2.5-flash-lite`)
+- `GEMINI_CAPTION_MODEL=gemini-2.5-flash-lite` (explicitly pinned in Production and Staging)
+- The configured primary caption model retries transient failures, then falls
+  back directly to the existing local template; no secondary Gemini model is
+  attempted.
 
 ## 2. Social publishing — PostPeer (unlocks real posting)
 
@@ -193,12 +196,14 @@ visual and transcript planning.
 - `EDIT_PLAN_PROVIDER=gemini`
 - `ELEVENLABS_API_KEY=...`
 - `GEMINI_API_KEY=...`
-- `GEMINI_EDIT_PLAN_MODEL=gemini-2.5-flash-lite`
+- `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite` (explicitly pinned in Production and Staging)
 - Optional: `ELEVENLABS_TRANSCRIPTION_MODEL` (default `scribe_v2`)
 - Keep `VIDEO_STORAGE=r2` configured so the backend can create signed download
   URLs for the bounded temporary M4A chunks sent to ElevenLabs and the visual
   proxy sent to Gemini. The original video remains on the phone for preview and
   final export.
+- Gemini 3.5 transcript and visual requests keep structured JSON output and
+  use provider-default sampling: omit `generationConfig.temperature`.
 
 Mobile flow is wired: the Edit tab picks a real clip, can call
 `/ai-edits/transcribe` for captions or `/ai-edits/prepare` for the full UI

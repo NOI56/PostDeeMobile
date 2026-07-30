@@ -73,6 +73,12 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 
 - `render.yaml` และ `render.staging.yaml` ใน `main` ตั้ง
   `TRANSCRIPTION_PROVIDER=elevenlabs` และ `EDIT_PLAN_PROVIDER=gemini`
+- Staging explicitly pins `GEMINI_CAPTION_MODEL=gemini-2.5-flash-lite` and
+  `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite`.
+- Gemini 3.5 transcript and visual requests keep structured JSON output and
+  omit `generationConfig.temperature`. The configured Gemini 2.5 caption
+  primary retries transient failures, then falls back directly to the existing
+  local template; no secondary Gemini model is attempted.
 - ElevenLabs Scribe v2 เป็นตัวถอดเสียงพร้อมเวลา ส่วน Gemini ใช้วิดีโอพร็อกซี
   และ transcript เพื่อเลือกช่วง; หาก Gemini ใช้งานไม่ได้จะใช้กฎ PostDee
 - เว้น `ELEVENLABS_TRANSCRIPTION_KEYTERMS` ว่างไว้จนกว่าจะวัดความคุ้มค่า

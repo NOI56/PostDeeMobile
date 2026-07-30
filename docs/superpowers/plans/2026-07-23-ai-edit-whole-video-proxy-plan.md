@@ -2,6 +2,10 @@
 
 **Status:** Implemented locally on `main`; real Gemini/R2 device E2E is still a release gate.
 
+> Current runtime update (2026-07-30): transcript and visual planning use
+> `gemini-3.5-flash-lite`. Both GenerateContent payloads keep structured JSON
+> output and omit `generationConfig.temperature`.
+
 **Goal:** Let the edit planner see the complete clip timeline, hear its audio,
 and use the timestamped Thai transcript before choosing a target-length story
 window. Do not rely on a sparse set of still images.
@@ -51,6 +55,8 @@ Its full audio track and the transcript preserve speech context between frames.
 
 - API provider test: whole byte payload upload, Files API polling, transcript +
   file URI request, target trim, and Gemini file deletion.
+- API provider test: both Gemini 3.5 GenerateContent payloads retain structured
+  JSON output and omit `generationConfig.temperature`.
 - API route tests: owned proxy, fallback, foreign-key rejection, and R2 cleanup.
 - Upload tests: accepted shape plus extension, MIME, dimensions, and 50 MiB cap.
 - Flutter extractor tests: no `-t`, full-duration FFmpeg arguments, empty output,

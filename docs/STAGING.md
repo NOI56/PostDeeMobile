@@ -73,7 +73,8 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 
 - `render.yaml` และ `render.staging.yaml` ใน `main` ตั้ง
   `TRANSCRIPTION_PROVIDER=elevenlabs` และ `EDIT_PLAN_PROVIDER=gemini`
-- Staging explicitly pins `GEMINI_CAPTION_MODEL=gemini-2.5-flash-lite` and
+- Production (`render.yaml`) and Staging (`render.staging.yaml`) explicitly pin
+  `GEMINI_CAPTION_MODEL=gemini-2.5-flash-lite` and
   `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite`.
 - Gemini 3.5 transcript and visual requests keep structured JSON output and
   omit `generationConfig.temperature`. The configured Gemini 2.5 caption

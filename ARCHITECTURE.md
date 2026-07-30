@@ -565,24 +565,28 @@ sequenceDiagram
   participant G as Gemini 3.5 Flash-Lite
   participant F as Mobile FFmpeg
 
-  M->>A: Request transcript or prepare recipe for selected clip
+  M->>A: POST /ai-edits/transcribe or /ai-edits/prepare
   A->>Sub: Check Pro plan and editing minutes
   alt User is Pro with minutes
     A->>W: Transcribe audio with word + segment timestamps
     W-->>A: transcript + word timing + segment timing
-    A->>G: Plan transcript and visual proxy with structured JSON (no explicit temperature)
-    G-->>A: coherent target-length story window
-    A-->>M: editable transcript data or mobile render recipe
-    M->>F: Render adaptive lightweight preview from original clip
-    F-->>M: reviewable MP4
-    M-->>M: Stay on AI review and toggle supported edits off or back on
-    M->>F: Automatically re-render preview from original clip after each toggle
-    alt User chooses Post
-      M->>F: Render full-source-dimension export
-      F-->>M: publishable MP4
-      M-->>M: Open Upload/Post with full-quality result
-    else User chooses more editing
-      M-->>M: Open manual editor with latest result
+    alt /ai-edits/transcribe
+      A-->>M: transcript + quota
+    else /ai-edits/prepare
+      A->>G: Plan transcript and visual proxy with structured JSON (no explicit temperature)
+      G-->>A: coherent target-length story window
+      A-->>M: mobile render recipe + transcript + quota
+      M->>F: Render adaptive lightweight preview from original clip
+      F-->>M: reviewable MP4
+      M-->>M: Stay on AI review and toggle supported edits off or back on
+      M->>F: Automatically re-render preview from original clip after each toggle
+      alt User chooses Post
+        M->>F: Render full-source-dimension export
+        F-->>M: publishable MP4
+        M-->>M: Open Upload/Post with full-quality result
+      else User chooses more editing
+        M-->>M: Open manual editor with latest result
+      end
     end
   else Basic or Starter
     A-->>M: 402 PRO_REQUIRED

@@ -284,8 +284,8 @@ export const createGeminiRealClipCaptionProvider = ({
 
 /**
  * Builds the Gemini real-clip caption provider when CAPTION_PROVIDER=gemini and
- * a key is set. Returns undefined otherwise, so the caption route falls back to
- * its legacy/local behavior.
+ * a key is set. The provider retries the configured model; if it still fails,
+ * the caption route falls back to its local template behavior.
  */
 export const createRealClipCaptionProviderFromConfig = ({
   config,
@@ -305,9 +305,6 @@ export const createRealClipCaptionProviderFromConfig = ({
   return createGeminiRealClipCaptionProvider({
     apiKey: config.geminiApiKey,
     model: config.geminiCaptionModel,
-    fallbackModels: ['gemini-2.0-flash'].filter(
-      (fallbackModel) => fallbackModel !== config.geminiCaptionModel
-    ),
     fetchImpl
   });
 };

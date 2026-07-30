@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createGeminiRealClipCaptionProvider } from './realClipCaptionProvider.js';
+import {
+  createGeminiRealClipCaptionProvider,
+  createRealClipCaptionProviderFromConfig
+} from './realClipCaptionProvider.js';
 
 const jsonResponse = (payload: unknown) => ({
   ok: true as const,
@@ -122,7 +125,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
-      fallbackModels: ['gemini-2.0-flash'],
+      fallbackModels: ['gemini-secondary'],
       fetchImpl,
       sleep: async () => {},
       maxAttempts: 2
@@ -134,7 +137,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
       audio
     });
 
-    expect(result.model).toBe('gemini-2.0-flash');
+    expect(result.model).toBe('gemini-secondary');
   });
 
   it('throws on invalid JSON so the route can fall back to template', async () => {
@@ -169,7 +172,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
-      fallbackModels: ['gemini-2.0-flash'],
+      fallbackModels: ['gemini-secondary'],
       fetchImpl,
       sleep: async () => {},
       maxAttempts: 3
@@ -183,5 +186,34 @@ describe('createGeminiRealClipCaptionProvider', () => {
       })
     ).rejects.toThrow('status 401');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('createRealClipCaptionProviderFromConfig', () => {
+  it('uses only the configured Gemini model before the route fallback', async () => {
+    const requestedUrls: string[] = [];
+    const provider = createRealClipCaptionProviderFromConfig({
+      config: {
+        captionProvider: 'gemini',
+        geminiApiKey: 'gemini-key',
+        geminiCaptionModel: 'gemini-2.5-flash-lite'
+      },
+      fetchImpl: async (url) => {
+        requestedUrls.push(url);
+        return { ok: false, status: 400, json: async () => ({}) };
+      }
+    });
+
+    expect(provider).toBeDefined();
+    await expect(
+      provider!.generate({
+        request: { videoS3Key: 'uploads/u/clip.mp4', selectedFrameKeys: [] },
+        mode: 'AUDIO_ONLY',
+        audio
+      })
+    ).rejects.toThrow('status 400');
+    expect(requestedUrls).toEqual([
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=gemini-key'
+    ]);
   });
 });

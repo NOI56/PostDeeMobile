@@ -217,6 +217,29 @@ describe('createCaptionGeneratorFromConfig', () => {
     });
   });
 
+  it('uses only the configured Gemini model before the route fallback', async () => {
+    const requestedUrls: string[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      requestedUrls.push(url);
+      return { ok: false, status: 400, json: async () => ({}) };
+    });
+    const generator = createCaptionGeneratorFromConfig({
+      config: {
+        captionProvider: 'gemini',
+        openAiApiKey: undefined,
+        geminiApiKey: 'gemini-key',
+        openAiCaptionModel: 'gpt-4o-mini',
+        geminiCaptionModel: 'gemini-2.5-flash-lite'
+      },
+      fetchImpl
+    });
+
+    await expect(generator.generate(['skincare'])).rejects.toThrow('status 400');
+    expect(requestedUrls).toEqual([
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=gemini-key'
+    ]);
+  });
+
   it('retries Gemini on a transient 503 then succeeds', async () => {
     let calls = 0;
     const fetchImpl = vi.fn(async () => {
@@ -288,7 +311,7 @@ describe('createCaptionGeneratorFromConfig', () => {
     const generator = createGeminiCaptionGenerator({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
-      fallbackModels: ['gemini-2.0-flash'],
+      fallbackModels: ['gemini-secondary'],
       fetchImpl,
       sleep: async () => {},
       maxAttempts: 2
@@ -296,7 +319,7 @@ describe('createCaptionGeneratorFromConfig', () => {
 
     const caption = await generator.generate(['skincare']);
 
-    expect(caption.model).toBe('gemini-2.0-flash');
+    expect(caption.model).toBe('gemini-secondary');
     // primary tried twice (maxAttempts), then the fallback once.
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
@@ -310,7 +333,7 @@ describe('createCaptionGeneratorFromConfig', () => {
     const generator = createGeminiCaptionGenerator({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
-      fallbackModels: ['gemini-2.0-flash'],
+      fallbackModels: ['gemini-secondary'],
       fetchImpl,
       sleep: async () => {},
       maxAttempts: 3

@@ -7,10 +7,6 @@ export const thaiAffiliateCaptionSystemPrompt =
 const affiliateLinkPlaceholder = '[ใส่ลิงก์ Affiliate ที่นี่]';
 const fallbackHashtags = ['#ของดีบอกต่อ', '#ช้อปออนไลน์', '#โปรดี', '#รีวิวจริง', '#สายช้อป'];
 
-// Broadly-available Gemini model(s) to try when the configured model is
-// overloaded, before the caption route degrades to the local template.
-const defaultGeminiFallbackModels = ['gemini-2.0-flash'];
-
 export type CaptionGeneratorResult = {
   caption: string;
   hashtags: string[];
@@ -342,11 +338,6 @@ export const createCaptionGeneratorFromConfig = ({
     return createGeminiCaptionGenerator({
       apiKey: config.geminiApiKey,
       model: config.geminiCaptionModel,
-      // Try a different, broadly-available model before degrading to the local
-      // template when the primary model is overloaded (503).
-      fallbackModels: defaultGeminiFallbackModels.filter(
-        (fallbackModel) => fallbackModel !== config.geminiCaptionModel
-      ),
       fetchImpl
     });
   }

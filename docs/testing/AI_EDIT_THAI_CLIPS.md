@@ -35,9 +35,13 @@ powershell -ExecutionPolicy Bypass -File scripts/test-ai-edit-visual-proxy.ps1 `
 
 All proxies cover the complete timeline at 1 fps, use 360 px width, remain far
 below the 50 MiB API cap, and differ from source duration by less than one second.
-This proves transport coverage, not editorial quality. Real cut-quality scoring
-is blocked locally until `GEMINI_API_KEY`, R2, and authenticated staging mobile
-are available together.
+This proves transport coverage, not editorial quality. The original local
+credential blocker no longer describes the current repository baseline: the
+operational documents record configured Staging provider paths, but secret
+values cannot be verified from Git. The remaining release gate is a fresh,
+authenticated Staging run of these fixtures on the deployed build, followed by
+Thai editorial scoring and physical-device preview/export checks. Reconfirm the
+hidden Render credentials before each controlled provider run.
 
 ## Duration policy
 

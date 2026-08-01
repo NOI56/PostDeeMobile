@@ -2,7 +2,11 @@
 
 PostDee backend API reference.
 
-This document describes the current Express + TypeScript scaffold in `apps/api`. It is written for local development and integration planning. Production integrations for social publishing, live analytics, Cloudflare R2, real-clip AI captioning, Pro ElevenLabs + Gemini auto editing, Firebase, Apple App Store, and Google Play still require real credentials and provider-level testing.
+This document describes the current Express + TypeScript API in `apps/api`.
+Implemented adapters remain mock-safe for local development, while production
+readiness for social publishing, live analytics, Cloudflare R2, real-clip AI
+captioning, Pro ElevenLabs + Gemini auto editing, Firebase, Apple App Store, and
+Google Play still depends on the provider/device release gates listed below.
 
 ## Base URL
 
@@ -20,7 +24,7 @@ apps/api
 
 ## Current Status
 
-The backend currently supports safe scaffold flows for:
+The backend currently supports:
 
 - Health checks
 - Mock or Firebase authentication
@@ -33,7 +37,7 @@ The backend currently supports safe scaffold flows for:
   uses the configured primary `gemini-2.5-flash-lite`, then
   `POST /captions/generate` degrades directly to the local template caption;
   no secondary Gemini model is attempted.
-- Real-clip caption scaffold at `POST /captions/generate-from-clip`, with
+- Real-clip caption flow at `POST /captions/generate-from-clip`, with
   Starter/Pro mode selection, authenticated media-key ownership checks,
   optional temporary AI media cleanup, and monthly quota reservation through
   memory or Prisma-backed usage storage.
@@ -92,6 +96,10 @@ The backend reads `phone_number` from the verified Firebase ID token and treats 
 
 ## Plans And Entitlements
 
+This table records the intended package contract, not a claim that every listed
+benefit is production-ready. The active paywall must advertise only features
+whose complete provider/device flow has passed its release gate.
+
 | Feature | Basic | Starter | Pro |
 | --- | --- | --- | --- |
 | Price | Free | 199 THB/month | 299 THB/month |
@@ -100,8 +108,8 @@ The backend reads `phone_number` from the verified Firebase ID token and treats 
 | Real-time posting | Yes | Yes | Yes |
 | Cloud scheduling | No | Yes | Yes |
 | Calendar for scheduled posts | No | Yes | Yes |
-| AI caption from real clip | No | Audio-only, 50 generations/month scaffolded | Audio + selected frames, 120 generations/month scaffolded |
-| AI auto editing with ElevenLabs + Gemini | No | No | 200 minutes/month scaffolded |
+| AI caption from real clip | No | Audio-only, 50 generations/month implemented; production provider/device verification remains | Audio + selected frames, 120 generations/month implemented; production provider/device verification remains |
+| AI auto editing with ElevenLabs + Gemini | No | No | 200 minutes/month implemented; physical-device and provider acceptance remains |
 | AI audio review as a separate feature | No | No | No |
 | Unified Analytics | No | No | Yes |
 | Hashtag radar and AI comment center | No | No | Yes |
@@ -115,8 +123,10 @@ Important rules:
   units.
 - Starter users can post immediately, schedule posts, use the calendar, and use
   real-clip AI captioning from audio after a selected clip.
-- Pro users unlock analytics, hashtag radar, AI comment center, team/editor
-  access, visual-frame AI captioning, and ElevenLabs + Gemini auto editing scaffolds.
+- Pro users currently unlock implemented analytics, visual-frame AI captioning,
+  and the ElevenLabs + Gemini auto-editing flow subject to their listed release
+  gates. Hashtag radar, AI comment center, and team/editor access remain planned
+  package benefits and must not appear as active paywall promises yet.
 - Prompt-only caption generation may still exist in the API while the app
   transitions, but it should not be the main paid package promise.
 - Secret provider keys must stay on the backend, never inside the Flutter app.

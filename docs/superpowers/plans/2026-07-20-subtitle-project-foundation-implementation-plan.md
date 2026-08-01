@@ -2,6 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Document status (implemented):** the Subtitle Project domain, validation,
+> editing, bounded undo/redo, mapping, and local draft foundation are integrated
+> into `main`. Unchecked boxes and pre-integration constraints below are kept as
+> the execution record and do not describe current missing functionality.
+>
 **Goal:** Build the tested, non-visual Subtitle Studio foundation: a versioned subtitle project, safe editing/undo operations, a mapper from the existing AI recipe, and an injectable local draft store.
 
 **Architecture:** Add focused pure-Dart files under `features/ai_editing/subtitle_studio/`. Keep all cue times on the original source timeline, treat raw provider word timing as untrusted, and make every committed edit pass the same project validator. This milestone does not change the customer flow, API, Prisma, renderer, package rules, or quota behavior.

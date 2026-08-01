@@ -10,18 +10,20 @@ third-party accounts.
 
 ## Staging Gate
 
-The Staging Blueprint/database are created on Render and the API `/health`
-passes. Dedicated Android Debug Firebase/Google login through the Staging API
-also passes on the Emulator. RevenueCat Test Store configuration and webhook
-transport/auth smoke pass, and Test Store purchase E2E passes with a Firebase
-UID. True Restore/resync E2E also passes after the current backend was deployed
-and `REVENUECAT_REST_API_V1_KEY` was configured in Render Staging. The RevenueCat
-Play app/products/entitlements/default offering, production Android public SDK
-key, and signed AAB are prepared. Play Console app/subscriptions, internal
+The repository defines an isolated Staging Blueprint/database and records a
+successful API `/health` check. It also records earlier Android Debug
+Firebase/Google login, RevenueCat Test Store purchase, and Restore/resync tests
+through Staging. Those records are not proof that the hidden credentials or the
+same E2E flows still pass for the current release candidate; recheck the Render
+Dashboard without exposing values and rerun the applicable smoke tests. Project
+records say the RevenueCat Play app/products/entitlements/default offering,
+production Android public SDK key, and signed AAB were prepared; recheck the
+provider dashboard and build artifact. Play Console app/subscriptions, internal
 testing, service credentials, real Google Play purchase, lifecycle, physical
 Android, R2, Gemini/ElevenLabs,
-Phone Auth, and social publishing still need dedicated Staging
-credentials and functional tests. Mock push and Firebase deletion remain off,
+Phone Auth, and social publishing still need current-candidate tests. Hidden
+Staging credentials must be confirmed in the Dashboard before those tests.
+Mock push and Firebase deletion remain off,
 and social publishing stays fail-closed `disabled` except during a controlled
 test account run.
 Complete `docs/STAGING.md` before deploying this release candidate to Production;
@@ -32,20 +34,21 @@ user-owned PostPeer connections.
 
 | Area | Status | Switch |
 | --- | --- | --- |
-| Database (Postgres/Prisma) | ✅ **Live** | `*_STORE=prisma` + `DATABASE_URL` |
-| Scheduling worker | ✅ **Live** (in-process, DB-backed) | none — runs with `PUBLISH_QUEUE=memory` |
-| Caption from keywords (Gemini) | ⚙️ ready | Render sets `CAPTION_PROVIDER=gemini`; add `GEMINI_API_KEY` |
+| Database (Postgres/Prisma) | ⚙️ configured in Blueprints; current Live check required | `*_STORE=prisma` + Render-managed `DATABASE_URL` |
+| Scheduling worker | ⚙️ configured in-process; current Live check required | one instance with `PUBLISH_QUEUE=memory` |
+| Caption from keywords (Gemini) | ⚙️ repo-ready, Live secret/function check required | Render declares `CAPTION_PROVIDER=gemini` and `GEMINI_API_KEY` as a hidden value; confirm the key in each environment and run the current release candidate |
 | Social publishing (PostPeer) | blocked pending connected-account E2E | Per-user connect/refresh/disconnect, named pseudonymous profiles, async result polling, safe-only retries, and `GET /posts.platformResults` exist; configure the test key/accounts and run controlled publishing |
 | Video upload (Cloudflare R2) | ⚙️ ready | `VIDEO_STORAGE=r2` + R2 creds |
-| Auth (Firebase) | ✅ Android Debug Staging Google path passed; Production/iOS/Phone/physical-device tests remain | `AUTH_PROVIDER=firebase` + project |
-| Account deletion | ⚙️ ready, deployment test required | `FIREBASE_AUTH_DELETE_ENABLED=true` + service account; verify R2 prefix and Firebase UID deletion |
-| Subscriptions (RevenueCat / App Store / Play) | ⚙️ Test Store purchase + true Restore/resync E2E passed; RevenueCat Play config and signed AAB ready; Play Console and real-store/device tests pending | `BILLING_PROVIDER=revenuecat` + webhook token + server REST key |
+| Auth (Firebase) | ⚙️ recorded Android Debug Staging Google pass; rerun current candidate; Production/iOS/Phone/physical-device tests remain | `AUTH_PROVIDER=firebase` + environment-specific project |
+| Account deletion | ⚙️ Production repo-ready; current Live/device verification required | Production commits `FIREBASE_AUTH_DELETE_ENABLED=true` and therefore requires `FIREBASE_SERVICE_ACCOUNT_JSON`; Staging keeps deletion false. Confirm the Production secret, then verify R2 prefix and Firebase UID deletion on the current candidate |
+| Subscriptions (RevenueCat / App Store / Play) | ⚙️ recorded Test Store purchase + Restore/resync pass and prepared Play configuration/AAB; recheck provider/build state and rerun current candidate; real-store/device tests pending | `BILLING_PROVIDER=revenuecat` + environment-specific webhook token + server REST key |
 | Durable queue (Redis/BullMQ) | ⚙️ optional | `PUBLISH_QUEUE=bullmq` + `POST_STORE=prisma` + `DATABASE_URL` + `REDIS_URL` + run worker |
 
 ## 1. Gemini caption (free key — easiest)
 
 - `CAPTION_PROVIDER=gemini` (already set)
-- `GEMINI_API_KEY=...` — free from Google AI Studio (https://aistudio.google.com/apikey)
+- `GEMINI_API_KEY=...` — hidden Dashboard secret declared by both Blueprints;
+  repository files cannot confirm its current value or validity
 - `GEMINI_CAPTION_MODEL=gemini-2.5-flash-lite` (explicitly pinned in Production and Staging)
 - The configured primary caption model retries transient failures, then falls
   back directly to the existing local template; no secondary Gemini model is
@@ -102,20 +105,27 @@ user-owned PostPeer connections.
 
 ## 4. Auth — Firebase (unlocks Apple Sign-In, phone OTP, push)
 
-Staging currently uses Firebase project `project-798caf7e-85b8-45e3-af7` and
-Android Debug application id `com.postdee.postdee_mobile.staging`. Email/Password
-and Google providers are enabled; Google login, token verification, and the
-authenticated Home/API response passed on the Android Emulator. The Android API
-key is restricted by package + Debug SHA-1. This does not prove Production,
-Phone Auth, iOS, or physical-device readiness.
+The recorded Staging setup used Firebase project
+`project-798caf7e-85b8-45e3-af7` and Android Debug application id
+`com.postdee.postdee_mobile.staging`. It records Email/Password and Google as
+enabled plus an Emulator login/token/API pass. Confirm the current hidden
+`FIREBASE_PROJECT_ID`, provider state, and API-key restrictions before rerunning;
+the historical result does not prove Production, Phone Auth, iOS, or
+physical-device readiness.
 
 - Create a Firebase project, enable Google + Apple + Phone sign-in.
 - `AUTH_PROVIDER=firebase`
 - `FIREBASE_PROJECT_ID=...`
-- `FIREBASE_SERVICE_ACCOUNT_JSON=...`
+- Production: `FIREBASE_SERVICE_ACCOUNT_JSON=...` must be present because
+  `render.yaml` commits `FIREBASE_AUTH_DELETE_ENABLED=true`. Confirm presence in
+  the Production Dashboard without copying the value.
+- Staging: `render.staging.yaml` commits `FIREBASE_AUTH_DELETE_ENABLED=false`
+  and does not declare the service-account secret.
 - `FIREBASE_AUTH_DELETE_ENABLED=true` enables Firebase UID deletion and Admin
-  token revocation/user-existence checks. Keep it false until the service
-  account is installed; the delete endpoint fails closed without mutating data.
+  token revocation/user-existence checks. Never enable it in an environment
+  before that environment's service account is installed. Production already
+  commits it as true, so the secret is a deploy prerequisite; Staging remains
+  false. The delete endpoint fails closed without mutating data.
 - Mobile: build with `--dart-define=ENABLE_FIREBASE_AUTH=true` and add the real
   `google-services.json` / Firebase config. See `FIREBASE_SETUP.md`.
 - Set an R2 lifecycle rule for `uploads/` as a race-condition safety net, then
@@ -136,17 +146,14 @@ Phone Auth, iOS, or physical-device readiness.
 
 ## 5. Subscriptions — RevenueCat
 
-The PostDee RevenueCat project now has Test Store Starter/Pro products,
-entitlements, a current offering, and an authenticated sandbox-only Staging
-webhook. The dashboard transport test returned HTTP 202 and was safely ignored
-because its generic `test_product` is intentionally unmapped. This proves only
-webhook reachability/auth. Separately, a Test Store purchase completed end to end
-on the Android Emulator with the Firebase uid and fake test price; it did not
-charge real money. Restore UI/SDK also passed before true server resync was
-added; the current backend is now deployed with its server key and true
-Restore/resync E2E passes. RevenueCat also has its Play Store app, Starter/Pro
-products, entitlements, default offering, and production Android public SDK key,
-and a signed AAB is ready. Renewal, cancel, refund, Play Console app/subscriptions,
+Project records say RevenueCat Test Store Starter/Pro products, entitlements, a
+current offering, and an authenticated sandbox-only Staging webhook were set up.
+They also record an HTTP 202 transport test, an Emulator Test Store purchase,
+and a later true Restore/resync run with a Firebase uid. Treat these as dated
+evidence: confirm the current Dashboard configuration and rerun the current
+release candidate. The same records say the Play Store app, products,
+entitlements, default offering, production Android public SDK key, and signed
+AAB were prepared. Renewal, cancel, refund, Play Console app/subscriptions,
 internal testing, Google service credentials, real Google Play purchase, and
 physical Android remain unverified.
 
@@ -169,10 +176,11 @@ physical Android remain unverified.
   `https://<api-host>/billing/revenuecat/webhooks`.
 - Configure RevenueCat to send `Authorization: Bearer <token>` matching
   `REVENUECAT_WEBHOOK_AUTH_TOKEN`.
-- The backend containing `POST /billing/revenuecat/resync` is deployed to Staging,
-  `REVENUECAT_REST_API_V1_KEY` is configured in Render, and user-initiated Restore
-  passes: mobile SDK restore → authenticated backend resync →
-  `GET /billing/subscription` shows the reconciled plan.
+- A recorded Staging run passed mobile SDK restore → authenticated
+  `POST /billing/revenuecat/resync` → `GET /billing/subscription`. Before
+  Production, confirm `REVENUECAT_REST_API_V1_KEY` is still present in the
+  intended environment and rerun that flow on the current release candidate.
+  Do not treat an SDK-only callback or the historical run as sufficient proof.
 - Mobile has a `purchases_flutter` gateway behind
   `ENABLE_REVENUECAT_BILLING=true`. For local Test Store runs, pass the ignored
   `apps/mobile/revenuecat.local.json` file with
@@ -205,10 +213,11 @@ visual and transcript planning.
 - Gemini 3.5 transcript and visual requests keep structured JSON output and
   use provider-default sampling: omit `generationConfig.temperature`.
 
-Mobile flow is wired: the Edit tab picks a real clip, can call
-`/ai-edits/transcribe` for captions or `/ai-edits/prepare` for the full UI
-capability recipe,
-and on export burns the transcript subtitles into the real clip on-device with
+Mobile flow is wired: the current AI Editing screen picks a real clip and calls
+`/ai-edits/prepare` for its UI capability recipe. `/ai-edits/transcribe` remains
+an authenticated backend/compatibility endpoint and API-client method; it is not
+a separate user-facing transcription path in the current screen. On export the
+app burns the transcript subtitles into the real clip on-device with
 FFmpeg (`subtitle_burn_video_processor.dart`) → a real subtitled MP4.
 
 The FFmpeg export now renders trim + speed + volume + subtitle burn-in +
@@ -319,8 +328,15 @@ the database.
 
 ## Highest-leverage order
 
-1. **Gemini key** — instant, free.
-2. **R2** — needed before PostPeer (real video URL).
-3. **PostPeer** — controlled real posting; analytics ingestion is separate.
-4. **Firebase** — auth, Apple Sign-In, OTP, push (4 features).
-5. **RevenueCat billing** — paid subscriptions.
+1. **Reconfirm Staging secrets and rerun AI/R2 tests** — use the current release
+   candidate and the Thai real-clip rubric; do not copy secrets into logs.
+2. **Play Console and RevenueCat real-store testing** — complete physical-device
+   account verification, Internal Testing purchase/restore, and lifecycle events.
+3. **PostPeer controlled publishing** — connect disposable per-user accounts and
+   verify provider results before enabling social publishing.
+4. **Firebase production/device completion** — test Google, Apple, Phone Auth,
+   FCM/APNs, and account deletion on supported physical devices.
+5. **R2 isolation and cleanup** — verify environment-specific buckets, temporary
+   object cleanup, and safe lifecycle prefixes.
+6. **BullMQ/Redis only when needed** — move scheduling to a separate worker before
+   multi-instance scaling or when independent queue operations become necessary.

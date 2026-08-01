@@ -5,6 +5,10 @@
 > ภาพรวม: โครงสร้างหลักและ adapter มีแล้ว แต่ provider/device E2E หลายรายการยัง
 > ไม่ผ่าน จึงยังห้ามถือว่าเปิดใช้จริงครบ เพื่อลดความเสี่ยงให้ตั้งค่าชุดทดสอบและ
 > ผ่านเช็กลิสต์ตามลำดับด้านล่างก่อน Production
+>
+> ช่อง `[x]` ที่อ้าง provider หรือ E2E คือบันทึกผลทดสอบในอดีต ไม่ได้ยืนยันว่า
+> secret ปัจจุบันหรือ release candidate ล่าสุดยังผ่าน ต้องตรวจ Dashboard โดยไม่
+> เปิดเผยค่าและรันทดสอบที่เกี่ยวข้องซ้ำก่อน Production
 
 ---
 
@@ -12,9 +16,10 @@
 
 - [x] เตรียม `render.staging.yaml` และเทสต์ว่าชื่อ service/database แยกจาก Production
 - [x] ตรวจสิทธิ์และสร้าง Free PostgreSQL แยกสำเร็จโดยไม่ใช้ฐาน Production ร่วมกัน
-- [x] สร้าง Blueprint `postdee-api-staging` จาก branch
-      `codex/ai-edit-thai-timing-staging`
-- [x] ใส่ dummy staging-only values สำหรับ health-only โดยไม่ใช้ Production credentials
+- [x] สร้าง Blueprint `postdee-api-staging` และตั้งให้ติดตาม branch `main`
+- [x] รอบสร้างเริ่มต้นใช้ค่า Staging สำหรับ health-only โดยไม่ใช้ Production
+      credentials; ค่า secret ปัจจุบันมองไม่เห็นจาก repository และต้องตรวจใน
+      Render Dashboard ก่อน functional smoke ทุกครั้ง
 - [x] API deploy, Prisma migration และ `GET /health` ผ่านบน Render Staging
 - [x] สร้าง Firebase Staging, เปิด Email/Google, จำกัด Android API key และตั้ง
       `FIREBASE_PROJECT_ID` บน Render ให้ตรงกัน
@@ -29,13 +34,17 @@
 - [ ] ยืนยันสิทธิ์ Play Console ด้วยมือถือ Android จริง แล้วสร้าง Play Console
       app/subscriptions, service credentials และ internal testing; Emulator ใช้
       ยืนยันบัญชีขั้นตอนนี้ไม่ได้
-- [ ] เปลี่ยน R2/Gemini/ElevenLabs เป็น credentials ของ Staging จริงก่อน functional smoke
+- [ ] ยืนยันใน Render Dashboard ว่า R2/Gemini/ElevenLabs เป็น credentials ของ
+      Staging จริงและยังใช้งานได้ก่อน functional smoke ห้ามอนุมานจากชื่อ
+      `sync: false` ใน Blueprint ว่าค่าจริงถูกตั้งแล้ว
 - [x] ตั้ง Staging เริ่มต้นเป็น `SOCIAL_PUBLISHER=disabled`; กำหนดให้สลับ
       PostPeer เฉพาะ controlled test ด้วยบัญชีทดสอบแล้วสลับกลับ
 - [x] เตรียม Android Debug Firebase config แยกด้วย application id
       `com.postdee.postdee_mobile.staging`; Release ยังใช้ Production
 - [x] Android Emulator ผ่าน Google Sign-In → Firebase ID token → Render Staging API
-- [ ] ผ่าน smoke test ใน `docs/STAGING.md` ก่อน merge หรือ deploy Production
+- [ ] ผ่าน smoke test ใน `docs/STAGING.md` บน release candidate เดียวกันก่อน
+      deploy Production การ merge เข้า `main` และ Staging `/health` ผ่านอย่างเดียว
+      ยังไม่ถือว่า provider E2E ผ่าน
 
 ---
 
@@ -52,12 +61,14 @@
 | `VIDEO_STORAGE` | `mock` → `r2` | `CLOUDFLARE_R2_*` |
 | `CAPTION_PROVIDER` | `mock` → `gemini` | `GEMINI_API_KEY` |
 | `TRANSCRIPTION_PROVIDER` | `mock` → `elevenlabs` | `ELEVENLABS_API_KEY` |
-| `EDIT_PLAN_PROVIDER` | `mock` → `gemini` (หรือ `openai`) | `GEMINI_API_KEY` |
+| `EDIT_PLAN_PROVIDER` | `mock` → `gemini` | `GEMINI_API_KEY` |
 | `SOCIAL_PUBLISHER` | `mock` → `postpeer` | (ดูข้อ 5) |
-| `PUBLISH_QUEUE` | `memory` → `bullmq` | `REDIS_URL` (Upstash) |
+| `PUBLISH_QUEUE` | คง `memory` สำหรับหนึ่ง instance; เปลี่ยนเป็น `bullmq` เมื่อต้องการ durable/scale | `REDIS_URL` (Upstash) + worker แยก |
 | `*_STORE` (post/subscription/analytics/template/captionUsage/aiEditUsage) | `memory` → `prisma` | `DATABASE_URL` |
 
-> ✅ ทดสอบแล้วว่าคีย์ใช้ได้จริง: **Gemini, Cloudflare R2, ElevenLabs**
+> มีบันทึกการทดสอบเดิมของ **Gemini, Cloudflare R2 และ ElevenLabs** แต่ repository
+> ยืนยันค่า secret หรือความพร้อมปัจจุบันไม่ได้ ต้องตรวจ Dashboard และทดสอบใหม่กับ
+> release candidate ที่จะปล่อย
 
 ---
 
@@ -157,9 +168,13 @@
   1. ตั้ง `FIREBASE_SERVICE_ACCOUNT_JSON` ใน Render (service account key จาก Firebase Console → Project Settings → Service Accounts, เก็บเป็นความลับ)
   2. สลับ `PUSH_SENDER=firebase` (ทำหลังใส่ key แล้วเท่านั้น ไม่งั้น API จะ crash ตอนเริ่ม)
   3. ทดสอบส่ง push จริงบนเครื่อง
-- [ ] ตั้ง `FIREBASE_AUTH_DELETE_ENABLED=true` หลังใส่ service account แล้ว
-      จากนั้นทดสอบลบบัญชีจริง; โหมดนี้ใช้ Firebase Admin ตรวจ token ที่ถูก
-      revoke/ลบแล้วด้วย
+- [ ] Production Blueprint ตั้ง `FIREBASE_AUTH_DELETE_ENABLED=true` แล้ว จึงต้อง
+      ยืนยันว่า `FIREBASE_SERVICE_ACCOUNT_JSON` มีอยู่ใน Production Dashboard
+      ก่อน deploy และทดสอบลบบัญชีจริงบน release candidate; repository ยืนยันค่า
+      secret ไม่ได้ โหมดนี้ใช้ Firebase Admin ตรวจ token ที่ถูก revoke/ลบแล้วด้วย
+- [x] Staging Blueprint คง `FIREBASE_AUTH_DELETE_ENABLED=false` และไม่ประกาศ
+      `FIREBASE_SERVICE_ACCOUNT_JSON` จนกว่าจะมี controlled deletion test ที่ใช้
+      service account ชุด Staging โดยเฉพาะ
 
 ---
 

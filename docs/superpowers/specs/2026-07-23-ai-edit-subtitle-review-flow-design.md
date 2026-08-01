@@ -1,5 +1,9 @@
 # AI Edit Subtitle Review Flow Design
 
+> **Document status (implemented):** the context below describes the old flow
+> that this design replaced. Current `main` renders result review first and
+> opens Subtitle Studio only when the user explicitly requests subtitle edits.
+
 ## Context
 
 After AI analysis, the current mobile flow opens Subtitle Studio automatically

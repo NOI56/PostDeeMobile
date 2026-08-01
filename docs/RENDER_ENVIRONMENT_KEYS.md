@@ -1,7 +1,8 @@
 # Render Environment Keys
 
-Last checked from repository files and the latest recorded live Render service
-snapshot: 2026-07-15.
+Repository configuration reviewed: 2026-08-01. The only recorded Render API
+snapshot in this file is from 2026-07-03; it is historical evidence, not proof
+of the current Dashboard state.
 
 This file is the shared checklist for PostDee Render environment variables.
 Do not paste real secret values into this file. Store real values only in the
@@ -47,7 +48,7 @@ R2 remains the video storage provider.
   backend default.
 - `Do not set`: unsafe or forbidden in production.
 
-## Blueprint Values Already Declared
+## Production Blueprint Values Already Declared
 
 These are present in `render.yaml` with fixed values or a Render-managed source.
 
@@ -76,7 +77,7 @@ These are present in `render.yaml` with fixed values or a Render-managed source.
 | `REVENUECAT_STARTER_PRODUCT_ID` | Blueprint value | `postdee_starter_monthly` | Maps RevenueCat product to Starter. |
 | `REVENUECAT_PRO_PRODUCT_ID` | Blueprint value | `postdee_pro_monthly` | Maps RevenueCat product to Pro. |
 
-## Dashboard Secrets To Confirm In Render
+## Production Dashboard Secrets To Confirm In Render
 
 These keys are declared with `sync: false` in `render.yaml`. Their names are in
 the blueprint, but the real values are hidden and must be confirmed in the
@@ -93,10 +94,29 @@ Render Dashboard.
 | `ELEVENLABS_API_KEY` | Scribe v2 transcription | Yes | Server-only. Required because `TRANSCRIPTION_PROVIDER=elevenlabs`. |
 | `POSTPEER_API_KEY` | Social publishing | Yes | Required because `SOCIAL_PUBLISHER=postpeer`. |
 | `FIREBASE_PROJECT_ID` | Firebase Auth token verification | Yes | Project id, not a private key. |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase account deletion and future push sender | Yes | Present in the live service. Keep secret; it is required while `FIREBASE_AUTH_DELETE_ENABLED=true` and before changing `PUSH_SENDER` to `firebase`. |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase account deletion and future push sender | Yes | Required by the committed Production configuration because `FIREBASE_AUTH_DELETE_ENABLED=true`. The repository cannot confirm whether the hidden value is currently present. Keep it secret and verify it in Render before deploy. |
 | `REVENUECAT_WEBHOOK_AUTH_TOKEN` | RevenueCat webhook auth | Yes | Production startup fails without this when `BILLING_PROVIDER=revenuecat`. |
 | `REVENUECAT_REST_API_V1_KEY` | RevenueCat subscriber lookup after user Restore | Before enabling Restore | Server-only secret. Never use the mobile/Test Store SDK key here and never expose it to Flutter. Without it, `POST /billing/revenuecat/resync` returns `501 REVENUECAT_RESYNC_NOT_CONFIGURED`. |
 | `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN` | Legacy Google Play RTDN endpoint | Only if that endpoint is used | Blueprint declares it; RevenueCat is still the preferred billing path. |
+
+## Staging Blueprint Differences
+
+`render.staging.yaml` deliberately does not use every Production value. Keep
+these differences when syncing the Staging Blueprint:
+
+| Key | Staging blueprint value | Difference from Production |
+| --- | --- | --- |
+| `DATABASE_URL` | `postdee-postgres-staging.connectionString` | Uses the isolated Staging database. |
+| `SOCIAL_PUBLISHER` | `disabled` | Fails closed unless an operator intentionally enables a controlled PostPeer test. No `POSTPEER_API_KEY` is declared by the Staging Blueprint. |
+| `FIREBASE_AUTH_DELETE_ENABLED` | `false` | Prevents Staging account deletion from requiring Firebase Admin credentials. |
+| `PUSH_SENDER` | `mock` | Does not send real push notifications. |
+
+The Staging Blueprint declares its own `sync: false` entries for R2,
+`GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `FIREBASE_PROJECT_ID`, and the two
+RevenueCat server secrets. Their values must belong to Staging and must be
+confirmed in the Staging service Dashboard. It intentionally does not declare
+`FIREBASE_SERVICE_ACCOUNT_JSON` or `POSTPEER_API_KEY` while deletion is off and
+social publishing is disabled.
 
 ## Model Defaults and Explicit Blueprint Pins
 
@@ -200,18 +220,21 @@ Notes:
   <https://api-docs.render.com/reference/list-services> and
   <https://api-docs.render.com/reference/get-env-vars-for-service>.
 
-## Latest Live Render Check
+## Historical Live Render Check
 
-Last checked from the Render API: 2026-07-03.
+Recorded Render API check: 2026-07-03. Do not use this snapshot to infer which
+secrets are present now; the committed Blueprint requirements have changed
+since it was captured.
 
 Service: `postdee-api`
 Service id: `srv-d8uf2sbtqb8s73b6ptmg`
 
-Result of that dated snapshot: the keys required by the backend configuration at
-the time were present. No secret values were copied into this file. The newer
-`REVENUECAT_REST_API_V1_KEY` was not part of that check and remains unconfirmed.
+Result at that time: the keys required by the backend configuration then in use
+were present. No secret values were copied into this file. The snapshot did not
+check `REVENUECAT_REST_API_V1_KEY` and predates the current Production setting
+`FIREBASE_AUTH_DELETE_ENABLED=true`.
 
-Required now and confirmed present:
+Confirmed present only in that historical snapshot:
 
 - `CLOUDFLARE_R2_BUCKET`
 - `CLOUDFLARE_R2_ACCOUNT_ID`
@@ -223,15 +246,18 @@ Required now and confirmed present:
 - `FIREBASE_PROJECT_ID`
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN`
 
-Optional / later keys:
+Historical missing/unconfirmed keys:
 
 - `CLOUDFLARE_R2_ENDPOINT` is present.
-- `FIREBASE_SERVICE_ACCOUNT_JSON` is missing, which is acceptable while
-  `PUSH_SENDER=mock`.
+- `FIREBASE_SERVICE_ACCOUNT_JSON` was missing in the 2026-07-03 snapshot. That
+  was acceptable for the configuration used then, but is **not** sufficient for
+  the current committed Production Blueprint because account deletion is now
+  enabled. Recheck it before the next Production deploy.
 - `GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN` is missing, which is acceptable while
   RevenueCat is the main billing path.
-- `REVENUECAT_REST_API_V1_KEY` is not confirmed in the dated snapshot. It must be
-  added separately to Staging and Production before enabling true Restore/resync.
+- `REVENUECAT_REST_API_V1_KEY` was not confirmed in the dated snapshot. Recorded
+  Staging tests say Restore/resync was configured later, but current Staging and
+  Production presence must still be checked independently in Render.
 
 Forbidden production keys confirmed absent:
 
@@ -250,8 +276,9 @@ names for database persistence, R2 video storage, Gemini captions/edit planning,
 ElevenLabs transcription, PostPeer publishing, Firebase auth, RevenueCat billing, and AI edit
 usage persistence.
 
-Both blueprints now declare `REVENUECAT_REST_API_V1_KEY` as `sync: false`. The
-latest recorded live Render API check confirms only the earlier hidden values on
-`postdee-api`; it does not confirm the newly introduced RevenueCat REST key.
-Apply the updated blueprints, then recheck both `postdee-api-staging` and
-`postdee-api` without printing its value.
+Both blueprints declare `REVENUECAT_REST_API_V1_KEY` as `sync: false`. The
+historical Render API snapshot does not prove the current value of that key or
+`FIREBASE_SERVICE_ACCOUNT_JSON`. Recheck `postdee-api-staging` and
+`postdee-api` independently without printing any value, and record the check
+date rather than replacing repository requirements with an unverified Live
+claim.

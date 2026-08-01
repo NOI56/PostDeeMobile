@@ -123,10 +123,12 @@ only for the direct staging command below; the production helper never reads it:
 
 Use `STORE_STARTER_MONTHLY_PRODUCT_ID=postdee_starter_monthly` and
 `STORE_PRO_MONTHLY_PRODUCT_ID=postdee_pro_monthly` as the default product ids.
-The current RevenueCat SDK key is a Test Store key, so do not submit an App
-Store or Google Play release with this local file. Production still needs real
-Apple App Store / Google Play subscription products, RevenueCat offerings,
-sandbox/device purchase testing, and renewal/cancel/refund webhook verification.
+The ignored local RevenueCat file contains a Test Store key, so do not submit an
+App Store or Google Play release with that file. RevenueCat's Play app,
+products, entitlements, default offering, and production Android public SDK key
+are prepared. Release work still needs the Play Console app/subscriptions,
+service credentials, Internal Testing purchase/restore on a physical Android
+device, the matching App Store setup, and renewal/cancel/refund verification.
 
 ## Publishing Status
 

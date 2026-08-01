@@ -144,13 +144,13 @@ Backend stack:
 - TypeScript
 - Prisma
 - PostgreSQL schema (Render)
-- Upstash Redis/BullMQ scaffold
-- Cloudflare R2 video storage scaffold
+- Upstash Redis/BullMQ adapter (not enabled in the current single-instance deployment)
+- Cloudflare R2 video storage and managed multipart adapters
 - Firebase ID token verifier
 - Firebase Cloud Messaging (FCM) sender
-- Gemini caption provider scaffold
-- ElevenLabs Scribe v2 transcription + Gemini AI auto-editing scaffold
-- RevenueCat webhook receiver scaffold
+- Gemini caption provider with production provider/device verification remaining
+- ElevenLabs Scribe v2 transcription + Gemini AI auto-editing recipe flow with physical-device acceptance remaining
+- RevenueCat webhook and authenticated Restore/resync adapters
 - Sentry error tracking is planned; it is not integrated yet
 
 Main route groups:
@@ -486,7 +486,7 @@ sequenceDiagram
 Current local mode has two caption routes:
 
 - `POST /captions/generate` remains the legacy keyword scaffold, but paid users still spend monthly AI caption quota and each keyword is capped at 80 characters.
-- `POST /captions/generate-from-clip` is the new clip-first scaffold with
+- `POST /captions/generate-from-clip` is the implemented clip-first flow with
   Starter audio-only mode, Pro audio plus selected-frame mode, SEO fields, hook
   ideas, transcription-backed language/market context, authenticated media-key
   ownership checks, opt-in cleanup for AI-only clip/frame uploads, and monthly

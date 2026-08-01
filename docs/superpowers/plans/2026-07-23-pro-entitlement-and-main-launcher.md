@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Document status (implemented):** the authoritative entitlement refresh and
+> `main`-only desktop launcher behavior are in place. The promotional entitlement
+> steps were a time-bounded Staging operation for one tester, not a permanent
+> product bypass. Unchecked boxes below are an execution record, not current
+> release tasks.
+>
 **Goal:** Keep the AI editing package UI consistent with the backend, give the current staging tester a durable Pro entitlement, and make the desktop shortcut install only the `main` app.
 
 **Architecture:** The process-time entitlement request remains authoritative and now refreshes the cached badge state. The existing desktop launcher resolves the worktree whose branch is exactly `main` and keeps ignored staging configuration in the root checkout. RevenueCat receives an account-specific promotional entitlement instead of a global bypass.

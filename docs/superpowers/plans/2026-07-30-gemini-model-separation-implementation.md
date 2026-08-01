@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Document status (implemented):** current `main`, Production, and Staging pin
+> AI edit planning to `gemini-3.5-flash-lite` and caption generation to
+> `gemini-2.5-flash-lite`. Checkboxes, code snippets, and references to the
+> retired Gemini 2.0 fallback below are the migration execution record, not
+> current TODOs or runtime alternatives.
+>
 **Goal:** Use `gemini-3.5-flash-lite` for transcript and visual AI edit planning while keeping `gemini-2.5-flash-lite` as the primary caption model.
 
 **Architecture:** Keep the existing provider boundaries and use the two existing environment variables as the source of truth. Migrate only AI edit planning to Gemini 3.5, remove sampling parameters that Gemini 3.5 no longer accepts, and stop production caption factories from trying the retired Gemini 2.0 fallback before the existing local-template fallback.

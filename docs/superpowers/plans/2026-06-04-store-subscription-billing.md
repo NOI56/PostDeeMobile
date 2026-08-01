@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
+> **Document status:** historical first-pass billing scaffold. Current package
+> behavior uses Basic, Starter, and Pro, with RevenueCat as the preferred
+> production entitlement path. The direct Apple/Google verification route below
+> remains only as legacy compatibility, and the checked steps record the earlier
+> implementation rather than the current release checklist.
+>
 **Goal:** Replace Stripe as the main mobile Pro payment flow with Apple App Store and Google Play subscription scaffolding.
 
 **Architecture:** Keep the existing Basic/Pro entitlement store and feature gates. Mobile starts a Store Subscription flow and backend verifies a store purchase payload before activating Pro. This first pass is a safe scaffold: Apple/Google real receipt verification is represented by strict request validation and a mock provider until real product IDs and service credentials are available.

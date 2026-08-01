@@ -1,8 +1,10 @@
 # PostDee Subtitle Studio — Research and Implementation Plan
 
-> Status: Approved for phased implementation on 20 July 2026. This document does
-> not by itself change the current package, quota, API contract, or production
-> architecture; each phase still requires its verification gate.
+> **Document status:** approved research plan with an implementation record.
+> The core editor is integrated into `main`; unchecked boxes are retained for
+> historical execution context or the explicitly remaining physical-device and
+> preview/export acceptance gates. Current behavior is summarized in the
+> implementation update below.
 
 **Goal:** Extend the existing PostDee AI Editing flow with a mobile subtitle
 editor that lets a seller correct Thai captions, adjust timing and styling,
@@ -81,20 +83,21 @@ PostDee already has the expensive and technically risky foundations:
 - The current screen already offers three subtitle sizes, three text-density
   choices, top/bottom position, and final review before Upload/Post.
 
-The main missing part is not transcription. It is a persistent, editable
-subtitle project and a live editor between `prepare` and the final FFmpeg render.
+At the time of the original research, the main missing part was a persistent,
+editable subtitle project and live editor. That gap has since been implemented;
+the current remaining gates are summarized under Implementation phases.
 
 ## 3. Feature decision matrix
 
 | Capability | SaduakSub observed | PostDee now | Decision |
 | --- | --- | --- | --- |
 | Timed Thai transcription | Yes | Yes | Reuse current provider and validation |
-| Edit text per cue | Yes | No | MVP |
-| Add/delete/split/merge cue | Add line observed | No | MVP |
-| Seek and replay one cue | Yes | No | MVP |
-| Adjust cue start/end | Timed lines observed | No | MVP with safe nudge controls; waveform later |
-| Undo/redo and autosave | Yes | No | MVP |
-| Live subtitle preview | Yes | Static setup preview + rendered review | MVP with Flutter overlay |
+| Edit text per cue | Yes | Yes | Implemented |
+| Add/delete/split/merge cue | Add line observed | Yes | Implemented |
+| Seek and replay one cue | Yes | Yes | Implemented |
+| Adjust cue start/end | Timed lines observed | Yes | Safe nudge controls implemented; waveform remains future work |
+| Undo/redo and autosave | Yes | Yes | Implemented with bounded history and local draft recovery |
+| Live subtitle preview | Yes | Yes | Implemented with a Flutter overlay; golden parity tests remain |
 | Font, size, colours, outline, shadow | Yes | Bai Jamjuree/Prompt/Anuphan and whole-clip controls | Implemented; parity tests remain |
 | Current-word highlight | Yes | Validated ASS timing with static fallback | Implemented |
 | Per-line style/position | Yes | No | Data model supports it; UI after MVP |
@@ -110,7 +113,8 @@ subtitle project and a live editor between `prepare` and the final FFmpeg render
 Select video
   -> choose AI target length and options
   -> upload temporary audio and prepare one transcript/cut recipe
-  -> open Subtitle Studio
+  -> render and open result review
+  -> optionally open Subtitle Studio from the explicit edit action
   -> correct words and timing
   -> choose whole-clip style and preview instantly
   -> confirm once
@@ -214,8 +218,9 @@ Only expose style controls that have a verified equivalent in both paths.
 
 Keep FFmpeg/libass and the current encoder fallback. Add an ASS builder because
 ASS supports named styles, per-event overrides, positioning, outline, shadow,
-and timed word states that SRT cannot represent. Keep the existing SRT path as a
-feature-flagged fallback during rollout.
+and timed word states that SRT cannot represent. The implemented renderer uses
+static SRT as an automatic safety fallback when ASS or word timing is
+unavailable; there is no separate Subtitle Studio runtime feature flag.
 
 Recommended fallback hierarchy:
 
@@ -336,8 +341,10 @@ Work:
       cancellation, temp cleanup, audio/video cut synchronization, and progress.
 - [x] Run one final render after confirmation, then reuse current result review
       and Upload/Post handoff.
-- [ ] Put Subtitle Studio/ASS export behind a feature flag until real-device
-      acceptance passes; preserve the current SRT route as rollback.
+- [x] Historical rollout decision: no runtime feature flag was added. Subtitle
+      Studio is integrated into `main`, and static SRT remains an automatic
+      renderer fallback. Fresh physical Android/iPhone acceptance remains the
+      release gate.
 
 ### Phase 4 — Production hardening and MVP release gate
 

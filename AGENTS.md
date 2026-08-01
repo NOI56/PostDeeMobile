@@ -4,7 +4,7 @@ Working guide for Codex and AI assistants helping to develop the PostDee project
 
 ## Project Goals
 
-PostDee is a mobile app for online sellers, creators, and affiliate marketers in Thailand. The main goal is to upload a single vertical video, then post or schedule it to TikTok, YouTube Shorts, Instagram Reels, Facebook Reels, Shopee Video, and Lazada Video from one place.
+PostDee is a mobile app for online sellers, creators, and affiliate marketers in Thailand. The long-term goal is to upload a single vertical video, then post or schedule it to TikTok, YouTube Shorts, Instagram Reels, Facebook, Shopee Video, and Lazada Video from one place. The current PostPeer production path covers TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video. Do not advertise Facebook Reels, Shopee Video, or Lazada Video as working destinations until their provider mappings and end-to-end tests pass.
 
 ## How to work with this project
 
@@ -58,7 +58,7 @@ Current Stack:
 - PostgreSQL schema
 - Redis + BullMQ queue adapters
 - Mock, Cloudflare R2, and legacy S3 video storage adapters
-- Mock, Gemini, Groq, and legacy OpenAI AI adapters
+- Mock and Gemini planning/caption adapters, ElevenLabs transcription, and legacy OpenAI adapters; Groq is intentionally rejected by current runtime configuration
 - Mock/Firebase auth plus Firebase Admin push adapter
 - Memory/Prisma stores, PostPeer publisher, and RevenueCat billing adapters
 

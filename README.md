@@ -32,11 +32,12 @@ apps/
   signed AAB สำหรับอัปโหลด แต่ Play Console app/subscriptions, internal testing,
   service credentials และ Google Play purchase จริงยังทำไม่ได้จนกว่าจะยืนยันสิทธิ์
   ด้วยมือถือ Android จริง; Emulator ใช้ยืนยันขั้นตอนนี้ไม่ได้
-- Render Staging ติดตาม branch `main` แล้ว การอัปโหลด R2 จากแอปผ่าน และตั้ง
-  `GEMINI_API_KEY`/`ELEVENLABS_API_KEY` ชุด Staging แล้ว รอบเดิมที่ส่งวิดีโอ 38 MB ทั้งไฟล์หยุดที่
-  transcription เพราะเกินขนาดไฟล์ของ provider โดยโควตาไม่เปลี่ยน โค้ดปัจจุบันจึง
-  แยกเสียง M4A ขนาดเล็กก่อนอัปโหลด; ยังต้อง deploy แล้วทดสอบคลิปเดิมซ้ำก่อนนับว่า
-  AI edit ผ่าน E2E
+- Render Staging ติดตาม branch `main` แล้ว บันทึกการทดสอบเดิมระบุว่าการอัปโหลด
+  R2 จากแอปผ่านและเคยตั้ง `GEMINI_API_KEY`/`ELEVENLABS_API_KEY` ชุด Staging
+  รอบเดิมที่ส่งวิดีโอ 38 MB ทั้งไฟล์หยุดที่ transcription เพราะเกินขนาดไฟล์ของ
+  provider โดยโควตาไม่เปลี่ยน โค้ดปัจจุบันจึงแยกเสียง M4A ขนาดเล็กก่อนอัปโหลด;
+  backend ปัจจุบัน deploy แล้ว แต่ยังต้องยืนยัน secret ใน Dashboard และทดสอบคลิป
+  เดิมซ้ำบน release candidate ก่อนนับว่า AI edit ผ่าน E2E
 
 ## Backend Runtime Dependency Boundary
 
@@ -70,7 +71,7 @@ Current backend pieces:
 - `GET /health`
 - Mock-safe route implementations for uploads, posts, captions, templates,
   analytics, and billing
-- In-memory stores for posts, templates, and publish queue placeholders
+- In-memory stores for local posts, templates, and single-process publish queue testing
 - Optional BullMQ publish queue adapter selectable with `PUBLISH_QUEUE=bullmq`
 - Optional Cloudflare R2 video storage adapter selectable with `VIDEO_STORAGE=r2`, including signed upload and signed download access scaffolds
 - Optional Gemini caption adapter selectable with `CAPTION_PROVIDER=gemini`

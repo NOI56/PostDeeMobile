@@ -1,5 +1,11 @@
 # Pro Entitlement Consistency and Main Launcher Design
 
+> **Document status (implemented):** the stale-badge issue and launcher routing
+> described below were historical inputs to this design. Current launcher builds
+> from the worktree on `main`, and the backend entitlement check remains
+> authoritative. The one-tester promotional entitlement was temporary Staging
+> setup, not a global bypass.
+
 ## Context
 
 The AI editing screen can display a cached Pro badge after a RevenueCat Test

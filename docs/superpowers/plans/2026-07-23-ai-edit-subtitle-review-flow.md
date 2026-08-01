@@ -2,6 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Document status (implemented):** this flow is integrated into `main`.
+> AI editing renders and opens result review first; Subtitle Studio opens only
+> from the explicit edit-subtitles action. Unchecked boxes below are retained as
+> the execution record and are not current TODOs.
+>
 **Goal:** Make one-tap AI editing render a captioned preview and reach result review without opening Subtitle Studio automatically.
 
 **Architecture:** Keep mapping the AI recipe into a `SubtitleProject`, but store that project directly in `AiEditingScreen` state before rendering. Reuse the existing review action to open Subtitle Studio explicitly and re-render after a saved edit.

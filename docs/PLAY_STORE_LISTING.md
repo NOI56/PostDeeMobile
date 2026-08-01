@@ -1,6 +1,6 @@
 # Google Play listing draft — PostDee
 
-อัปเดตล่าสุด: 15 กรกฎาคม 2026
+อัปเดตล่าสุด: 1 สิงหาคม 2026
 
 สถานะ: **เอกสารเตรียมข้อมูลเท่านั้น — ยังห้าม Submit หรือเปิด Production**
 
@@ -93,11 +93,11 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | ความสามารถ | สถานะจริง | เงื่อนไขก่อนเพิ่มใน Store copy/ภาพ |
 | --- | --- | --- |
 | โพสต์ TikTok, YouTube Shorts, Instagram Reels และ Facebook Page Video | PostPeer per-user connection/publisher, async polling และผลรายแพลตฟอร์มมีในโค้ด; `FACEBOOK_REELS` เป็นชื่อภายในเท่านั้น | เชื่อมบัญชี disposable จริงและทดสอบตั้งแต่อัปโหลดถึง provider URL/ID และ `GET /posts.platformResults`; ห้ามเรียก Facebook ว่า Reels จน provider รองรับจริง |
-| ตั้งเวลาโพสต์บน Cloud | BullMQ/Redis adapter มีในโค้ด | เปิด Upstash + worker แยก, ใช้ Prisma และทดสอบ delayed job, restart, retry, cancel |
+| ตั้งเวลาโพสต์บน Cloud | ตัวประมวลผลใน API แบบหนึ่ง instance และ Prisma ใช้งานอยู่; BullMQ/Redis adapter มีในโค้ด | ทดสอบ delayed job/restart/retry/cancel ของแบบปัจจุบัน และเปิด Upstash + worker แยกก่อนเพิ่มหลาย instance หรือต้องการ durable queue |
 | Firebase Email/Google/Phone Auth | gateway มีในแอปและ API; release SHA/OAuth ตรงกับ APK ที่เซ็นแล้ว | ทดสอบ Email/Google/Phone บน Internal testing AAB และมือถือจริง |
-| Starter/Pro | Paywall และ RevenueCat gateway มีในโค้ด | สร้าง Google Play products/offerings, ใส่ Android production SDK key และทดสอบซื้อ ต่ออายุ ยกเลิก คืนเงิน และ restore |
+| Starter/Pro | Paywall, RevenueCat gateway, Play products/entitlements/default offering และ production Android public SDK key เตรียมแล้ว | สร้าง Play Console app/subscriptions และ service credentials จากนั้นทดสอบซื้อ ต่ออายุ ยกเลิก คืนเงิน และ restore ผ่าน Internal Testing บนมือถือจริง |
 | AI แคปชั่นจากคลิป | Gemini adapter และ quota มีในโค้ด | ทดสอบ provider, โควตา, frame flow และ usage ledger ด้วยบัญชี Starter/Pro จริง |
-| Pro AI ตัดต่อ | ElevenLabs ถอดเสียง, Gemini เลือกช่วง และ renderer จริงรองรับซับ/ตัดช่วงเงียบ/คำฟุ่มเฟือย/แสงสี | ทดสอบ provider + upload + FFmpeg + review + post/manual editor บนอุปกรณ์จริงหลายรุ่น |
+| Pro AI ตัดต่อ | ElevenLabs ถอดเสียง, Gemini เลือกช่วง และ renderer จริงรองรับซับ/ตัดช่วงเงียบ/จัดการคำพูดซ้ำ/แสงสี | ทดสอบ provider + upload + FFmpeg + review + post/manual editor บนอุปกรณ์จริงหลายรุ่น |
 | Analytics | API/UI ใช้ข้อมูล backend และไม่สร้างตัวเลขปลอม | ต้องมีผลโพสต์จริงจาก provider และตรวจช่วงวันที่/ยอดจากบัญชีจริง |
 | Push notification | FCM mobile/server code มี | เปิด Firebase sender, ทดสอบ permission, token refresh, logout/unregister และ invalid-token cleanup |
 | ลบบัญชีครบทุกระบบ | มี in-app flow และ backend cleanup barrier | ตรวจ production credentials, R2/PostPeer/Firebase cleanup, RevenueCat behavior และ public deletion URL |

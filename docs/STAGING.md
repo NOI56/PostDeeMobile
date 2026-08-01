@@ -1,24 +1,27 @@
 # PostDee Staging
 
-สถานะ ณ 22 กรกฎาคม 2026: **Render/Database, Google Auth, RevenueCat และการอัปโหลด
-R2 จาก Android Debug ผ่านแล้วบางส่วน; Staging ยังไม่ใช่ release gate**
+ทบทวนเอกสาร ณ 1 สิงหาคม 2026: **Blueprint ใน repository ติดตาม `main` แต่การ
+deploy สำเร็จหรือ `/health` ผ่านไม่ได้ยืนยันว่า R2, Gemini/ElevenLabs, Firebase,
+RevenueCat หรือ PostPeer ผ่าน E2E ใน release candidate เดียวกัน** ผลที่ระบุว่า
+ผ่านด้านล่างเป็นบันทึกการทดสอบเดิมและต้องตรวจซ้ำตามรายการก่อน Production
 
 - Blueprint: `postdee-staging` (`exs-d9bb3it7vvec73ceggl0`)
 - API: `postdee-api-staging` (`srv-d9bb72ojs32c739osa5g`)
 - URL: `https://postdee-api-staging.onrender.com`
 - Database: `postdee-postgres-staging` Free (`dpg-d9bb66ojs32c739oqt10-a`)
 - Database expiry: 14 สิงหาคม 2026
-- Firebase: project `project-798caf7e-85b8-45e3-af7`, Email/Google เปิดแล้ว;
+- บันทึกเดิม — Firebase: project `project-798caf7e-85b8-45e3-af7`, Email/Google เปิดแล้ว;
   Google Sign-In → Firebase ID token → Render Staging API ผ่านบน Android Emulator
-- RevenueCat: Test Store products/entitlements/current offering และ sandbox-only
+- บันทึกเดิม — RevenueCat: Test Store products/entitlements/current offering และ sandbox-only
   webhook ตั้งแล้ว; purchase และ true Restore/resync E2E ผ่านบน Emulator ด้วย
   Firebase UID หลัง deploy backend และตั้ง server REST key แล้ว
-- R2 รับวิดีโอทดสอบจากแอปได้จริงแล้ว แต่ยังต้องตรวจยืนยันว่า bucket Production ไม่มี
+- บันทึกเดิมระบุว่า R2 รับวิดีโอทดสอบจากแอปได้ แต่ยังต้องตรวจยืนยันว่า bucket Production ไม่มี
   object จากรอบทดสอบและลบ object ทดสอบที่อัปโหลดสำเร็จด้วยตนเอง
-- ตั้ง `ELEVENLABS_API_KEY` ชุด Staging บน Render แล้ว และรุ่นปัจจุบันแยกเสียง
-  M4A ขนาดเล็กก่อนส่งถอดเสียง; ยังต้อง deploy/test คลิป 38 MB ซ้ำเพื่อยืนยัน
-  timing, cleanup และโควตา
-  ส่วน Gemini ยังต้องตรวจ credential/function แยก และ Social ยัง
+- บันทึกการทดสอบเดิมระบุว่าเคยตั้ง `ELEVENLABS_API_KEY` ชุด Staging แล้ว และ
+  รุ่นปัจจุบันแยกเสียง M4A ขนาดเล็กก่อนส่งถอดเสียง อย่างไรก็ตาม repository
+  มองไม่เห็นค่า secret ปัจจุบัน จึงต้องยืนยัน Dashboard และทดสอบคลิป 38 MB ซ้ำ
+  บน release candidate เพื่อยืนยัน timing, cleanup และโควตา
+  ส่วน Gemini ยังต้องผ่าน functional E2E แยก และ Social ยัง
   `disabled` และยังไม่ผ่าน connected-account E2E
 
 Staging ใช้ทดสอบโค้ดและผู้ให้บริการจริงก่อนส่งเข้า Production โดยต้องไม่ใช้ฐานข้อมูล
@@ -88,8 +91,9 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 - ระบบตัดช่วงเงียบใช้ช่องว่างจากเวลา word/segment ของ transcript ปัจจุบันยังไม่มี
   VAD, การวัดเดซิเบล หรือ FFmpeg `silencedetect` มายืนยันเสียงจริงอีกชั้น
 
-ในรอบแรกไม่มี `FIREBASE_SERVICE_ACCOUNT_JSON`, ใช้ `PUSH_SENDER=mock` และ
-`FIREBASE_AUTH_DELETE_ENABLED=false` เพื่อป้องกันการลบผู้ใช้หรือยิง Push ผิดระบบ
+`render.staging.yaml` ปัจจุบันไม่ประกาศ `FIREBASE_SERVICE_ACCOUNT_JSON`, ใช้
+`PUSH_SENDER=mock` และ `FIREBASE_AUTH_DELETE_ENABLED=false` เพื่อป้องกันการลบ
+ผู้ใช้หรือยิง Push ผิดระบบ
 รวมถึงใช้ `SOCIAL_PUBLISHER=disabled` ซึ่งจะล้มเหลวแบบชัดเจนและไม่สร้างโพสต์ปลอม
 เมื่อจะทดสอบ Social จริง ให้เพิ่ม `POSTPEER_API_KEY` ชุดทดสอบใน Dashboard แล้ว
 สลับเป็น `SOCIAL_PUBLISHER=postpeer` เฉพาะช่วงทดสอบแบบควบคุม
@@ -102,9 +106,11 @@ controlled-first คือ YouTube `private` และ TikTok `SELF_ONLY` (`draf
 Retry ทำได้เฉพาะ error ที่ยืนยันว่า provider ยังไม่รับงาน; outcome ที่ไม่แน่นอนต้อง
 ตรวจปลายทางก่อนกดใหม่
 
-ค่าปัจจุบันของ Render Staging ใช้ `FIREBASE_PROJECT_ID=project-798caf7e-85b8-45e3-af7`
-แล้ว ส่วน Android API key จำกัดไว้เฉพาะ package
+บันทึกเดิมระบุว่า Render Staging ใช้
+`FIREBASE_PROJECT_ID=project-798caf7e-85b8-45e3-af7` ส่วน Android API key จำกัดไว้เฉพาะ package
 `com.postdee.postdee_mobile.staging` และ Debug SHA-1 ของเครื่องทดสอบ
+ต้องยืนยันชื่อ project ปัจจุบันใน Dashboard ก่อนทดสอบ เพราะ Blueprint เก็บค่านี้
+เป็น `sync: false`
 
 ## ขั้นตอนสร้างใหม่หรือกู้คืน Staging
 
@@ -141,15 +147,20 @@ keystore ใหม่นั้นใน Firebase Staging ก่อน Google Sig
 ถ้าหน้าสรุปก่อนสร้างแสดงทรัพยากร Production หรือยอดเงินที่ไม่คาดไว้ ให้ยกเลิกและ
 ตรวจ Blueprint path/ชื่อ service ใหม่ก่อนเสมอ
 
-## Smoke test ก่อนอนุญาตให้ merge
+## Smoke test ก่อนอนุญาตให้ deploy Production
+
+Staging Blueprint ติดตาม `main` และ deploy เมื่อ checks ผ่าน ดังนั้นการ merge
+เข้า `main` เป็นเพียงการส่งโค้ดไป Staging ไม่ใช่หลักฐานว่า checklist นี้ผ่าน
+รายการด้านล่างเป็น release gate ก่อนนำ release candidate เดียวกันขึ้น Production
 
 - [x] Firebase Google login, ID token และ API user/quota response ด้วยบัญชี Staging
 - [ ] Firebase Email/Password login ด้วยบัญชี Staging
 - [ ] อัปโหลดไฟล์ไป bucket Staging และยืนยันว่าไม่มี object ใน bucket Production
       (อัปโหลดจาก Android ผ่านแล้ว แต่การยืนยันขอบเขต bucket และ cleanup ยังไม่ครบ)
-- [ ] AI caption และ AI edit ใช้โควตา/ข้อมูลของบัญชีทดสอบ (`GEMINI_API_KEY`
-      และ `ELEVENLABS_API_KEY` ชุด Staging ตั้งแล้ว; ต้อง deploy รุ่นแยกเสียงและ
-      ทดสอบคลิป 38 MB ซ้ำ พร้อมยืนยันว่า ElevenLabs รับเฉพาะ M4A ชั่วคราว,
+- [ ] AI caption และ AI edit ใช้โควตา/ข้อมูลของบัญชีทดสอบ หลังยืนยันว่า
+      `GEMINI_API_KEY` และ `ELEVENLABS_API_KEY` ใน Dashboard เป็นชุด Staging
+      และ release candidate ล่าสุด deploy แล้ว ให้ทดสอบคลิป 38 MB ซ้ำ พร้อม
+      ยืนยันว่า ElevenLabs รับเฉพาะ M4A ชั่วคราว,
       Gemini รับเฉพาะ visual proxy, cleanup สำเร็จ, provider failure ตอบ JSON
       502 โดยไม่หักโควตา และแอปแสดงข้อความลองใหม่ภาษาไทย)
 - [ ] เปิด/ปิดความสามารถ AI แล้ว preview และเวลาใน timeline ถูกต้อง

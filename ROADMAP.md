@@ -66,9 +66,9 @@ Current status:
   setup and a real Google Play purchase remain blocked by the required physical
   Android account verification. R2 upload from Android now passes, while
   production-bucket isolation and cleanup still need confirmation. Lifecycle,
-  Gemini/ElevenLabs, Phone Auth, and controlled social publishing still need functional
-  staging credentials and smoke tests. Render Staging and its Blueprint now track
-  `main`.
+  Gemini/ElevenLabs, Phone Auth, and controlled social publishing still need
+  current-candidate smoke tests after their environment-specific credentials are
+  reconfirmed in the Dashboard. Render Staging and its Blueprint now track `main`.
 - Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
   mock/provider code have been removed from the active app path. Subscription
   compatibility flags remain false for older clients.
@@ -94,11 +94,11 @@ Primary backend choices:
 | --- | --- | --- | --- | --- |
 | API hosting | Render Web Service | Run the Node.js/Express API from `apps/api` | Render blueprint exists; web instance is pinned to 1 while `PUBLISH_QUEUE=memory` | Start with one API service. Add a separate worker service when BullMQ scheduling is enabled. |
 | Database | Render PostgreSQL | Store users, posts, templates, subscriptions, and publish metrics through Prisma | Prisma schema and repositories exist | Use Render PostgreSQL first before considering Neon, Supabase, or self-hosted PostgreSQL. Set all Prisma-backed stores to `prisma` only after migrations and seed flow are verified. |
-| Queue / scheduling | Upstash Redis + BullMQ | Schedule publish jobs and let a worker process delayed posts | BullMQ adapter exists; queue handoff failures return 503, stale rescheduled jobs are skipped, and config now requires shared Prisma posts for BullMQ | Use `PUBLISH_QUEUE=bullmq`, `POST_STORE=prisma`, `DATABASE_URL`, and `REDIS_URL` after Upstash is configured. Keep the in-memory queue for local development only. |
+| Queue / scheduling | Upstash Redis + BullMQ | Schedule publish jobs and let a worker process delayed posts | BullMQ adapter exists; queue handoff failures return 503, stale rescheduled jobs are skipped, and config now requires shared Prisma posts for BullMQ. The deployed single-instance service currently uses an in-process scheduler that polls Prisma for due posts, so pending scheduled records survive an API restart, but execution is still tied to the web process. | Keep `PUBLISH_QUEUE=memory` for local development or the current one-instance deployment. Do not scale that mode above one API instance or treat it as an independently operated worker. Before multi-instance/worker isolation or stronger queue operations are required, use `PUBLISH_QUEUE=bullmq`, `POST_STORE=prisma`, `DATABASE_URL`, `REDIS_URL`, and a separate worker service. |
 | Video storage | Cloudflare R2 | Store temporary upload videos and signed upload/download URLs | R2 adapter and managed multipart sessions exist | Use `VIDEO_STORAGE=r2` with `UPLOAD_PROTOCOL_MODE=dual` during rollout. New clients opt in to `multipart-v1`; move to strict `multipart` after old clients are retired. Keep videos temporary and delete after successful publishing where possible. |
 | Auth | Firebase Auth | Google Sign-In, Firebase ID token verification, and Phone Auth for Basic quota unlock | Dedicated Android Debug Staging config and Google login/token/API smoke pass on Emulator; Production, iOS, Phone Auth, and physical-device tests remain | Keep Debug Staging on `com.postdee.postdee_mobile.staging`; do not mix its Dart defines with Profile/Release Firebase files. |
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to configured-primary Gemini 2.5 Flash-Lite, retries transient failures, then falls back directly to the local template; media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`) | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
-| AI auto editing | ElevenLabs Scribe v2 + Gemini 3.5 Flash-Lite + mobile FFmpeg | Pro subtitle transcription, visual/transcript highlight planning, optional silence/repeated-speech cleanup, subtitle burn-in, phone-side review, and video export | Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, automatic adjacent-repeat detection, per-occurrence keep/remove review, subtitle-safe cleanup, detected count/time summary, reversible supported capabilities, and Post/manual-editor exits exist. Mobile accepts sources up to 10 minutes, extracts bounded temporary M4A chunks and a whole-duration visual proxy, and offers a 5-second-to-3-minute shortening slider whose right edge keeps the original. ElevenLabs produces timing; Gemini 3.5 selects one coherent story window with structured JSON and provider-default sampling (no explicit `temperature`); deterministic PostDee rules are the final fallback. Groq is no longer selectable by runtime configuration. Production beat sync and the 3-second hook remain locked behind default-off compile-time flags. | Deploy to Staging and repeat the 38 MB real-clip E2E. Confirm only M4A reaches ElevenLabs, only the visual proxy reaches Gemini, temporary media is deleted, fallback rules work when Gemini fails, chosen moments are coherent, repeated-word choices match audio and subtitles, and the original video renders locally. Re-check provider pricing/docs before production launch. |
+| AI auto editing | ElevenLabs Scribe v2 + Gemini 3.5 Flash-Lite + mobile FFmpeg | Pro subtitle transcription, visual/transcript highlight planning, optional silence/repeated-speech cleanup, subtitle burn-in, phone-side review, and video export | Backend route, `/ai-edits/prepare` recipe contract, quota ledger, mobile FFmpeg flow, silence presets, automatic adjacent-repeat detection, per-occurrence keep/remove review, subtitle-safe cleanup, detected count/time summary, reversible supported capabilities, and Post/manual-editor exits exist. Mobile accepts sources up to 10 minutes, extracts bounded temporary M4A chunks and a whole-duration visual proxy, and offers a 5-second-to-3-minute shortening slider whose right edge keeps the original. ElevenLabs produces timing; Gemini 3.5 selects one coherent story window with structured JSON and provider-default sampling (no explicit `temperature`); deterministic PostDee rules are the final fallback. Groq is no longer selectable by runtime configuration. Production beat sync and the 3-second hook remain locked behind default-off compile-time flags. | On the deployed current candidate, reconfirm hidden Staging credentials and repeat the 38 MB real-clip E2E. Confirm only M4A reaches ElevenLabs, only the visual proxy reaches Gemini, temporary media is deleted, fallback rules work when Gemini fails, chosen moments are coherent, repeated-word choices match audio and subtitles, and the original video renders locally. Re-check provider pricing/docs before production launch. |
 | Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase and true Restore/resync E2E pass on Emulator; RevenueCat Play config, production Android public SDK key, and signed AAB are ready | Verify Play Console access on a physical Android device, then create the Play app/subscriptions/service credentials/internal testing and test lifecycle plus real Google Play/App Store purchases before claiming production billing E2E. |
 | Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect/refresh/provider-first disconnect are wired; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; YouTube defaults private and TikTok SELF_ONLY for controlled testing; connected-account E2E is still pending | `FACEBOOK_REELS` is an internal compatibility value for Page Video, not a Reels claim. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
@@ -158,7 +158,13 @@ Recommended activation order:
 11. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
 12. Harden Pro AI auto editing with persistent job/session recovery, top-up handling, and real-device tests of the setup-to-review-to-post/manual-editor flow before production launch.
 
-## Mobile UI Refresh Plan
+## Mobile UI Direction
+
+The current app uses the light theme by default and keeps dark theme support.
+The dated 2026-06-06 ultra-dark implementation checklist is a historical visual
+direction and is superseded wherever it conflicts with this light-default
+product decision. Keep its verified navigation and behavior improvements, but
+do not restore the older theme just because an unchecked historical step remains.
 
 Goal: make the Flutter app feel like a polished Thai mobile product before
 connecting more production providers. This UI work should stay incremental and
@@ -258,13 +264,33 @@ Recommended order:
 These narrower plans live outside this roadmap. ROADMAP is the high-level map;
 when product direction changes, update both the detailed plan and this file.
 
-| Plan file | ROADMAP sync status | Notes |
+Plan status uses five groups:
+
+- **ใช้งานอยู่**: current product or package direction.
+- **ทำบางส่วน**: the core exists, but named release or follow-up work remains.
+- **อนาคต**: approved direction that has not started. There is currently no
+  whole plan file in this group; future-only work is listed in Phase 2, Global
+  Readiness, and the remaining phases of partial plans.
+- **ประวัติ**: completed implementation record; unchecked execution boxes do
+  not mean that the capability is absent.
+- **ถูกแทนที่**: an older approach that must not override the current runtime.
+
+| Plan file | Status | Notes |
 | --- | --- | --- |
-| `docs/superpowers/plans/2026-06-13-subscription-packages-plan.md` | Synced into Planned Pricing below | Current source of truth for Basic, Starter 199, Pro 299, package limits, paused AI audio review, and Team & Editor Access positioning. |
-| `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md` | Historical implementation plan, superseded for provider choice | The original Groq design informed the route and timing contracts; current runtime uses ElevenLabs Scribe v2, Gemini planning, PostDee-rule fallback, and mobile FFmpeg. |
-| `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md` | Reflected in the Mobile UI Refresh Plan | Older task checklist for the approved Thai ultra-dark mobile UI. Some details may need another sync after the Calendar/Profile navigation changes. |
-| `docs/superpowers/plans/2026-06-04-store-subscription-billing.md` | Reflected in backend services and store compliance | Store subscription scaffold is represented here, while RevenueCat remains the preferred production subscription management direction. |
-| `docs/superpowers/plans/2026-06-21-production-foundation-revenuecat-plan.md` | Synced with the current billing foundation | Webhooks and true Restore/resync are verified on Staging; the addendum records the prepared RevenueCat Play configuration/AAB and remaining Play Console physical-device verification. |
+| `docs/superpowers/plans/2026-06-04-store-subscription-billing.md` | ถูกแทนที่ | The direct Apple/Google verification scaffold is retained for history and compatibility; RevenueCat is the production subscription direction. |
+| `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md` | ถูกแทนที่ | The ultra-dark checklist is historical. The current app is light by default with optional dark theme; retain only behavior and navigation improvements that still match the current UI. |
+| `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md` | ถูกแทนที่ | The original Groq provider choice is retired. Current AI editing uses ElevenLabs Scribe v2, Gemini planning, PostDee-rule fallback, and mobile FFmpeg; dated timing and safety notes remain useful history. |
+| `docs/superpowers/plans/2026-06-13-subscription-packages-plan.md` | ใช้งานอยู่ | Current positioning source for Basic, Starter 199, Pro 299, quotas, paused AI audio review, and Team & Editor Access. Active paywalls must still hide benefits that are not end-to-end ready. |
+| `docs/superpowers/plans/2026-06-21-production-foundation-revenuecat-plan.md` | ทำบางส่วน | Webhook, Test Store purchase, Restore/resync, Play configuration, and signed AAB foundations exist; physical Play Console verification and real Google Play/App Store purchases remain. |
+| `docs/superpowers/plans/2026-06-26-postpeer-user-social-connections.md` | ถูกแทนที่ | The proposed signed-state callback flow was replaced by PostPeer profile state and explicit refresh polling. Use API/architecture docs for the runtime; real connected-account publishing remains a release test, not an unchecked-plan count. |
+| `docs/superpowers/plans/2026-07-18-ai-edit-audio-only-media-plan.md` | ประวัติ | Implemented M4A transcription/cleanup milestone. The later whole-video visual proxy supersedes only its earlier no-visual-proxy boundary. |
+| `docs/superpowers/plans/2026-07-20-subtitle-project-foundation-implementation-plan.md` | ประวัติ | The versioned project, validated edits, bounded undo/redo, recipe mapping, and local draft foundation are implemented; unchecked task boxes are retained as an execution record. |
+| `docs/superpowers/plans/2026-07-20-subtitle-studio-plan.md` | ทำบางส่วน | Core editor, live preview, Thai-safe fonts, ASS/static fallback, and result-review entry exist. Brand preset persistence, parity evidence, physical-device hardening, post-MVP effects, and optional cloud sync remain. |
+| `docs/superpowers/plans/2026-07-23-ai-edit-subtitle-review-flow.md` | ประวัติ | Implemented flow: render and show result review first; open Subtitle Studio only from the explicit review action. |
+| `docs/superpowers/plans/2026-07-23-ai-edit-whole-video-proxy-plan.md` | ทำบางส่วน | Whole-duration 360p visual planning is implemented on `main`; deployed R2/Gemini device quality evidence remains a release gate. |
+| `docs/superpowers/plans/2026-07-23-pro-entitlement-and-main-launcher.md` | ประวัติ | The package badge refresh and desktop launcher-to-`main` work are implemented; operational entitlement expiry still follows RevenueCat. |
+| `docs/superpowers/plans/2026-07-28-latest-ai-subtitle-main-integration.md` | ประวัติ | Explicitly integrated into remote `main`; its unchecked boxes are historical, while fresh real-device quality acceptance remains tracked separately. |
+| `docs/superpowers/plans/2026-07-30-gemini-model-separation-implementation.md` | ประวัติ | Implemented model split: Gemini 3.5 Flash-Lite for edit planning and Gemini 2.5 Flash-Lite for captions, with the retired caption fallback removed. |
 
 ## Planned Pricing
 
@@ -306,7 +332,10 @@ Package rules:
 
 ## Phase 2: Growth Features
 
-These features should start after the core posting and scheduling flow is usable with real provider APIs.
+Items 1-7 below are future growth features that should start after the core
+posting and scheduling flow is usable with real provider APIs. Item 8 records
+production hardening for the AI editing system that already exists on `main`;
+it is not a future feature waiting to be built from zero.
 
 Recommended order:
 
@@ -346,8 +375,8 @@ Recommended order:
    - Editors can prepare posts and schedules without seeing social account passwords.
    - Use role-based access around connected OAuth accounts.
 
-8. AI Auto Editing With ElevenLabs + Gemini
-   - Pro users can request Thai transcription, cut silence, burn in subtitles, review the phone-rendered result, and remove supported AI edits they do not want.
+8. Harden the Existing AI Auto Editing System
+   - The existing ElevenLabs + Gemini + mobile FFmpeg flow already lets Pro users request Thai transcription, cut silence, burn in subtitles, review the phone-rendered result, and remove supported AI edits they do not want. Remaining work in this item is release hardening, provider evidence, recovery, and physical-device quality testing.
    - Mobile starts every optional capability off. The seller must explicitly enable subtitles, silence cleanup, repeated-speech cleanup, or colour adjustment; with no optional capability selected, target-length shortening can still run by itself. Review summaries and renders honor only the selected capabilities. Acceptance tests keep the original duration and enable one capability at a time before testing combined flows.
    - Backend handles auth, quota, temporary storage, ElevenLabs Scribe v2 transcription, Gemini 3.5 Flash-Lite visual/transcript planning with structured JSON and provider-default sampling (no explicit `temperature`), and deterministic rule fallback. It validates word timing before using it for silence/repeated-speech cuts and subtitle timing, falls back to segments when coverage is incomplete, and keeps Thai character-level timing for gaps while using readable segment subtitles.
    - Mobile re-renders accepted capabilities from the original clip, then lets the user continue to posting or open the manual editor.

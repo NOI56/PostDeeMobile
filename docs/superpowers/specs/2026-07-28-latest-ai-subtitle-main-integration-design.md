@@ -1,5 +1,9 @@
 # Latest AI Editing and Subtitle Studio Main Integration Design
 
+> **Document status (implemented):** this design has been integrated into
+> `main`. References to the former Staging branch describe the source used during
+> integration, not a second current app or an active merge task.
+
 ## Goal
 
 Make `main` the single authoritative mobile app again by selectively bringing

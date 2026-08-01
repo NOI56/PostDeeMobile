@@ -1,5 +1,11 @@
 # Mobile UI Refresh Implementation Plan
 
+> **Document status:** historical execution record. The current app uses the
+> light theme by default and later approved screen designs supersede the
+> ultra-dark direction described below. Unchecked boxes are not current product
+> TODOs; use `README.md`, `ROADMAP.md`, and the current Flutter screens for the
+> active UI.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Refresh the Flutter mobile app into the approved Thai ultra-dark creator UI while preserving the current backend, auth, billing, upload, caption, template, and analytics behavior.

@@ -1,5 +1,12 @@
 # Production Foundation RevenueCat Implementation Plan
 
+> **Document status (partially complete):** the backend webhook, Test Store
+> purchase, authenticated Restore/resync, RevenueCat Play configuration, and
+> signed AAB foundations are recorded as implemented. Play Console setup, real
+> Google Play/App Store purchases, lifecycle events, and physical-device
+> verification remain current release work. Reconfirm provider Dashboard state
+> before relying on dated checked items below.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the first production-safe RevenueCat subscription foundation for PostDee backend and deployment configuration.

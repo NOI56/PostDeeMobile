@@ -616,7 +616,12 @@ and quota into one mobile render recipe. The API pre-checks estimated duration, 
 actual transcribed minutes only after the edit plan and recipe succeed, immediately
 before the successful response. This avoids charging failed planner/recipe attempts
 while the atomic reservation still stops parallel requests from exceeding the
-monthly quota. Mobile caches that successful recipe and maps its
+monthly quota. Mobile setup owns the optional-capability selection state: every
+supported switch starts off and only explicit user selections are sent as
+enabled. A no-capability request is still meaningful for target-length-only
+shortening. Review summaries and local processors must gate provider detections
+by the matching selected capability so data returned for one analysis cannot
+silently activate another edit. Mobile caches that successful recipe and maps its
 subtitle segments and source-timeline cuts into a versioned local
 `SubtitleProject`. Mobile renders a lightweight preview and opens result review
 first. Subtitle Studio opens only from the explicit review action:

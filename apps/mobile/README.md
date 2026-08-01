@@ -156,6 +156,12 @@ subtitle editor. The user opens Subtitle Studio explicitly from review. Local
 text/time/style edits and re-renders reuse the prepared recipe and do not consume
 another AI-editing minute.
 
+Every optional AI capability starts off when setup opens. The user explicitly
+enables subtitles, silence cleanup, repeated-speech cleanup, or colour
+adjustment. Leaving all of them off runs only target-length shortening. Isolated
+acceptance tests keep the original duration and enable exactly one capability;
+combined tests are separate.
+
 Validated cue-level word timing can drive active-word colour in preview and ASS
 export. Edited, incomplete, malformed, or rejected word timing falls back to a
 static one-line subtitle. Bundled Thai-safe Bai Jamjuree, Anuphan, and Prompt

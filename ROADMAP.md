@@ -348,6 +348,7 @@ Recommended order:
 
 8. AI Auto Editing With ElevenLabs + Gemini
    - Pro users can request Thai transcription, cut silence, burn in subtitles, review the phone-rendered result, and remove supported AI edits they do not want.
+   - Mobile starts every optional capability off. The seller must explicitly enable subtitles, silence cleanup, repeated-speech cleanup, or colour adjustment; with no optional capability selected, target-length shortening can still run by itself. Review summaries and renders honor only the selected capabilities. Acceptance tests keep the original duration and enable one capability at a time before testing combined flows.
    - Backend handles auth, quota, temporary storage, ElevenLabs Scribe v2 transcription, Gemini 3.5 Flash-Lite visual/transcript planning with structured JSON and provider-default sampling (no explicit `temperature`), and deterministic rule fallback. It validates word timing before using it for silence/repeated-speech cuts and subtitle timing, falls back to segments when coverage is incomplete, and keeps Thai character-level timing for gaps while using readable segment subtitles.
    - Mobile re-renders accepted capabilities from the original clip, then lets the user continue to posting or open the manual editor.
    - Review uses an adaptive 540p/20 fps preview for sources longer than one minute (720p/24 fps for shorter sources), reports FFmpeg processed-time progress, supports cancel/retry, and reuses identical results. Going to Post renders a separate full-source-dimension file.

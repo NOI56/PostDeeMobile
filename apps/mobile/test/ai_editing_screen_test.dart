@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -647,8 +648,28 @@ Widget _testApp(Widget child) => MaterialApp(
       home: Scaffold(body: child),
     );
 
+Future<void> _enableCapability(WidgetTester tester, String capabilityId) async {
+  final capability = find.byKey(
+    ValueKey('ai-capability-$capabilityId'),
+    skipOffstage: false,
+  );
+  await tester.scrollUntilVisible(
+    capability,
+    350,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  if (tester.getSemantics(capability).flagsCollection.isToggled !=
+      Tristate.isTrue) {
+    await tester.tap(capability);
+    await tester.pumpAndSettle();
+  }
+}
+
 Future<void> _openAdvancedPanel(
     WidgetTester tester, String capabilityId) async {
+  await _enableCapability(tester, capabilityId);
+
   final disclosure = find.byKey(
     ValueKey('ai-advanced-disclosure-$capabilityId'),
     skipOffstage: false,
@@ -881,6 +902,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'subtitle');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -1052,6 +1074,65 @@ void main() {
       tester.getTopLeft(subtitleCard).dy,
       lessThan(tester.getTopLeft(silenceCard).dy),
     );
+  });
+
+  testWidgets('starts every available AI capability turned off',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _testApp(
+        const AiEditingScreen(
+          enableExperimentalAiHook: true,
+          enableExperimentalBeatSync: true,
+        ),
+      ),
+    );
+
+    expect(
+      find.text('เริ่มต้นปิดทั้งหมด เลือกเปิดเฉพาะสิ่งที่ต้องการ'),
+      findsOneWidget,
+    );
+
+    for (final entry in const {
+      'subtitle': 'ใส่ซับอัตโนมัติ',
+      'silence': 'ตัดช่วงเงียบ',
+      'filler': 'จัดการคำพูดซ้ำ',
+      'hook': 'ไฮไลต์ 3 วิแรก',
+      'beatsync': 'ตัดจังหวะตามบีตเพลง',
+      'color': 'ปรับสี/แสงอัตโนมัติ',
+    }.entries) {
+      final capability = find.byKey(
+        ValueKey('ai-capability-${entry.key}'),
+        skipOffstage: false,
+      );
+      await tester.scrollUntilVisible(
+        capability,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(capability),
+        isSemantics(
+          label: entry.value,
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasToggledState: true,
+          isToggled: false,
+          hasTapAction: true,
+        ),
+      );
+    }
+
+    expect(
+      find.byKey(
+        const ValueKey('ai-speech-reduction-mode-selector'),
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
+    semantics.dispose();
   });
 
   testWidgets('keeps a selected clip on the setup screen until processing',
@@ -1931,6 +2012,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'subtitle');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -2419,6 +2501,8 @@ void main() {
   testWidgets('review explains when device rendering skips the color filter',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('color-fallback.mp4');
+    AiEditPrepareRequest? prepareRequest;
+    BurnSubtitleRequest? burnRequest;
     final renderedVideo = _createRenderedVideoFixture(
       'color-fallback-result.mp4',
       colorFilterSkipped: true,
@@ -2427,6 +2511,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: null,
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
@@ -2436,17 +2521,37 @@ void main() {
             storageProvider: 's3',
           ),
           uploadVideoFile: (_, __) async {},
-          prepareEdit: (_) async => _createPrepareFixture(),
-          burnVideo: (_) async => renderedVideo,
+          prepareEdit: (request) async {
+            prepareRequest = request;
+            return _createPrepareFixture();
+          },
+          burnVideo: (request) async {
+            burnRequest = request;
+            return renderedVideo;
+          },
         ),
       ),
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'color');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
+    expect(prepareRequest?.capabilities['subtitle'], isFalse);
+    expect(prepareRequest?.capabilities['silence'], isFalse);
+    expect(prepareRequest?.capabilities['filler'], isFalse);
+    expect(prepareRequest?.capabilities['color'], isTrue);
+    expect(burnRequest?.segments, isEmpty);
+    expect(
+      burnRequest?.silenceRanges
+          .map((range) => '${range.start}-${range.end}')
+          .toList(),
+      isEmpty,
+    );
+    expect(burnRequest?.filterIndex, greaterThan(0));
+    expect(burnRequest?.brightness, greaterThan(0));
     expect(
         find.byKey(const ValueKey('ai-color-filter-skipped')), findsOneWidget);
     expect(
@@ -2488,6 +2593,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -2758,6 +2864,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -2830,6 +2937,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -2905,6 +3013,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('ตั้งค่าใหม่'));
@@ -2972,6 +3081,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('ตั้งค่าใหม่'));
@@ -3031,6 +3141,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('ตั้งค่าใหม่'));
@@ -3116,7 +3227,7 @@ void main() {
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
   });
 
-  testWidgets('uses the original clip when every real AI edit is removed',
+  testWidgets('uses the original clip when no extra AI edit is selected',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('keep-original.mp4');
     var renderCalls = 0;
@@ -3143,18 +3254,6 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    final colorSwitch = find.byKey(
-      const ValueKey('ai-capability-color'),
-      skipOffstage: false,
-    );
-    await tester.scrollUntilVisible(
-      colorSwitch,
-      350,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(colorSwitch);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
@@ -3204,6 +3303,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -3250,7 +3350,8 @@ void main() {
     );
   });
 
-  testWidgets('review summarizes silence and repeated speech', (tester) async {
+  testWidgets('review summarizes only the selected silence analysis',
+      (tester) async {
     final pickedVideo = _createPickedVideoFixture('analysis-summary.mp4');
 
     await tester.pumpWidget(
@@ -3274,6 +3375,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -3295,12 +3397,69 @@ void main() {
     );
     expect(
       find.descendant(of: summary, matching: find.textContaining('2 คำ')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: summary,
+        matching: find.textContaining(RegExp(r'4(?:\.0)? วินาที')),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('review summarizes only the selected repeated-speech analysis',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('speech-summary.mp4');
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-speech-summary',
+            videoS3Key: 'uploads/speech-summary.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createAnalysisPrepareFixture(),
+          burnVideo: (_) async =>
+              _createRenderedVideoFixture('speech-summary-result.mp4'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'filler');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final summary = find.byKey(
+      const ValueKey('ai-review-analysis-summary'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      summary,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: summary, matching: find.textContaining('2 ช่วง')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: summary, matching: find.textContaining('2 คำ')),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: summary,
-        matching: find.textContaining(RegExp(r'5(?:\.0)? วินาที')),
+        matching: find.textContaining(RegExp(r'1(?:\.0)? วินาที')),
       ),
       findsOneWidget,
     );
@@ -3338,6 +3497,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'subtitle');
+    await _enableCapability(tester, 'filler');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -3417,6 +3578,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'filler');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -3499,6 +3661,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _openAdvancedPanel(tester, 'filler');
     final manualMode = find.byKey(
       const ValueKey('ai-speech-reduction-mode-manual'),
       skipOffstage: false,
@@ -3595,6 +3758,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'filler');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -3662,6 +3826,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'filler');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -3748,6 +3913,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'filler');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -3814,6 +3980,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _openAdvancedPanel(tester, 'filler');
     final manualMode = find.byKey(
       const ValueKey('ai-speech-reduction-mode-manual'),
       skipOffstage: false,
@@ -3865,6 +4032,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'filler');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -3934,6 +4102,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
     final checksBeforeUpdate = subscriptionChecks;
@@ -4015,6 +4184,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'filler');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -4054,7 +4224,7 @@ void main() {
     );
   });
 
-  testWidgets('review analysis does not guess when status data is missing',
+  testWidgets('review marks analysis that the user did not select',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('analysis-zero.mp4');
 
@@ -4097,7 +4267,7 @@ void main() {
     expect(
       find.descendant(
         of: summary,
-        matching: find.text('ไม่มีข้อมูลผลตรวจ'),
+        matching: find.text('ไม่ได้เลือก'),
       ),
       findsNWidgets(2),
     );
@@ -4159,6 +4329,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -4516,8 +4687,8 @@ void main() {
     ]) {
       expect(
         prepareRequest?.capabilities[capability],
-        isTrue,
-        reason: '$capability has a real production renderer',
+        isFalse,
+        reason: '$capability must wait for the user to select it',
       );
     }
     semantics.dispose();
@@ -4960,40 +5131,13 @@ void main() {
   });
 
   testWidgets(
-      'repeated-speech setup offers AI or manual selection without chips',
+      'repeated-speech modes stay collapsed until the disclosure is opened',
       (tester) async {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(_testApp(const AiEditingScreen()));
-
-    await _openAdvancedPanel(tester, 'silence');
-
-    expect(
-      find.byKey(const ValueKey('ai-advanced-silence'), skipOffstage: false),
-      findsOneWidget,
-    );
     expect(
       find.byKey(const ValueKey('ai-advanced-filler'), skipOffstage: false),
       findsNothing,
-    );
-
-    for (final preset in const ['natural', 'balanced', 'compact']) {
-      final chip = find.byKey(
-        ValueKey('ai-silence-preset-$preset'),
-        skipOffstage: false,
-      );
-      expect(chip, findsOneWidget);
-      expect(tester.getSize(chip).height, greaterThanOrEqualTo(44));
-    }
-    expect(
-      tester.getSemantics(
-        find.byKey(const ValueKey('ai-silence-preset-balanced')),
-      ),
-      isSemantics(
-        isButton: true,
-        hasSelectedState: true,
-        isSelected: true,
-        hasTapAction: true,
-      ),
     );
 
     for (final word in const [
@@ -5010,12 +5154,21 @@ void main() {
       );
       expect(chip, findsNothing);
     }
+    final fillerDisclosure = find.byKey(
+      const ValueKey('ai-advanced-disclosure-filler'),
+      skipOffstage: false,
+    );
+    expect(fillerDisclosure, findsOneWidget);
     expect(
-      find.byKey(
-        const ValueKey('ai-advanced-disclosure-filler'),
-        skipOffstage: false,
+      tester.getSemantics(fillerDisclosure),
+      isSemantics(
+        isButton: true,
+        hasEnabledState: true,
+        isEnabled: false,
+        hasExpandedState: true,
+        isExpanded: false,
+        hasTapAction: false,
       ),
-      findsNothing,
     );
     expect(find.text('จัดการคำพูดซ้ำ', skipOffstage: false), findsOneWidget);
     final aiMode = find.byKey(
@@ -5025,6 +5178,42 @@ void main() {
     final manualMode = find.byKey(
       const ValueKey('ai-speech-reduction-mode-manual'),
       skipOffstage: false,
+    );
+    expect(aiMode, findsNothing);
+    expect(manualMode, findsNothing);
+
+    await _enableCapability(tester, 'filler');
+    expect(
+      tester.getSemantics(fillerDisclosure),
+      isSemantics(
+        hasExpandedState: true,
+        isExpanded: false,
+        hasTapAction: true,
+      ),
+    );
+
+    await tester.scrollUntilVisible(
+      fillerDisclosure,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(fillerDisclosure);
+    await tester.pumpAndSettle();
+    await tester.tap(fillerDisclosure);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getSemantics(fillerDisclosure),
+      isSemantics(
+        hasExpandedState: true,
+        isExpanded: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('ai-advanced-filler'), skipOffstage: false),
+      findsOneWidget,
     );
     expect(aiMode, findsOneWidget);
     expect(manualMode, findsOneWidget);
@@ -5043,6 +5232,21 @@ void main() {
         isButton: true,
         hasSelectedState: true,
         isSelected: false,
+        hasTapAction: true,
+      ),
+    );
+
+    await tester.ensureVisible(fillerDisclosure);
+    await tester.pumpAndSettle();
+    await tester.tap(fillerDisclosure);
+    await tester.pumpAndSettle();
+    expect(aiMode, findsNothing);
+    expect(manualMode, findsNothing);
+    expect(
+      tester.getSemantics(fillerDisclosure),
+      isSemantics(
+        hasExpandedState: true,
+        isExpanded: false,
         hasTapAction: true,
       ),
     );
@@ -5115,6 +5319,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: null,
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
@@ -5164,6 +5369,10 @@ void main() {
     expect(prepareRequest?.settings.subtitleColor, '#FFFFFF');
     expect(prepareRequest?.settings.subtitleWordsPerLine, 1);
     expect(prepareRequest?.settings.subtitlePosition, 'top');
+    expect(prepareRequest?.capabilities['subtitle'], isTrue);
+    expect(prepareRequest?.capabilities['silence'], isFalse);
+    expect(prepareRequest?.capabilities['filler'], isFalse);
+    expect(prepareRequest?.capabilities['color'], isFalse);
     expect(
       burnRequest?.subtitleFontSize,
       allOf(greaterThanOrEqualTo(6), lessThanOrEqualTo(17)),
@@ -5172,16 +5381,23 @@ void main() {
           'further to stay on one line without being split mid-word',
     );
     expect(burnRequest?.subtitleAtBottom, isFalse);
+    expect(
+      burnRequest?.silenceRanges
+          .map((range) => '${range.start}-${range.end}')
+          .toList(),
+      isEmpty,
+    );
   });
 
-  testWidgets('sends automatic repeated-speech mode without a fixed word list',
-      (tester) async {
+  testWidgets('sends only the selected silence preset', (tester) async {
     final pickedVideo = _createPickedVideoFixture('pace-settings.mp4');
     AiEditPrepareRequest? prepareRequest;
+    BurnSubtitleRequest? burnRequest;
 
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: null,
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
@@ -5195,8 +5411,10 @@ void main() {
             prepareRequest = request;
             return _createPrepareFixture();
           },
-          burnVideo: (_) async =>
-              _createRenderedVideoFixture('pace-settings-result.mp4'),
+          burnVideo: (request) async {
+            burnRequest = request;
+            return _createRenderedVideoFixture('pace-settings-result.mp4');
+          },
         ),
       ),
     );
@@ -5222,14 +5440,83 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(prepareRequest?.settings.silencePreset, 'natural');
+    expect(prepareRequest?.capabilities['subtitle'], isFalse);
+    expect(prepareRequest?.capabilities['silence'], isTrue);
+    expect(prepareRequest?.capabilities['filler'], isFalse);
+    expect(prepareRequest?.capabilities['color'], isFalse);
+    expect(burnRequest?.segments, isEmpty);
+    expect(
+      burnRequest?.silenceRanges.any(
+        (range) => range.start == 10 && range.end == 11,
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets('sends only automatic repeated speech without a fixed word list',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('speech-settings.mp4');
+    AiEditPrepareRequest? prepareRequest;
+    BurnSubtitleRequest? burnRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-speech-settings',
+            videoS3Key: 'uploads/speech-settings.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (request) async {
+            prepareRequest = request;
+            return _createAnalysisPrepareFixture();
+          },
+          burnVideo: (request) async {
+            burnRequest = request;
+            return _createRenderedVideoFixture('speech-settings-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'filler');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
     expect(prepareRequest?.settings.speechReductionMode, 'auto');
     expect(prepareRequest?.settings.fillerWords, isNull);
+    expect(prepareRequest?.capabilities['subtitle'], isFalse);
+    expect(prepareRequest?.capabilities['silence'], isFalse);
+    expect(prepareRequest?.capabilities['filler'], isTrue);
+    expect(prepareRequest?.capabilities['color'], isFalse);
+    expect(burnRequest?.segments, isEmpty);
+    expect(
+      burnRequest?.silenceRanges.where(
+        (range) => range.start == 10 || range.start == 20,
+      ),
+      isEmpty,
+    );
+    expect(
+      burnRequest?.silenceRanges.where(
+        (range) => range.start == 3 || range.start == 8,
+      ),
+      hasLength(2),
+    );
   });
 
   testWidgets('settings accordion opens one capability at a time',
       (tester) async {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(_testApp(const AiEditingScreen()));
+
+    await _enableCapability(tester, 'silence');
 
     expect(
       find.byKey(const ValueKey('ai-advanced-toggle')),
@@ -5360,22 +5647,43 @@ void main() {
     );
     expect(tester.takeException(), isNull);
 
-    expect(
-      find.byKey(
-        const ValueKey('ai-advanced-disclosure-filler'),
-        skipOffstage: false,
-      ),
-      findsNothing,
+    final fillerDisclosure = find.byKey(
+      const ValueKey('ai-advanced-disclosure-filler'),
+      skipOffstage: false,
     );
+    expect(fillerDisclosure, findsOneWidget);
+
+    await _enableCapability(tester, 'filler');
 
     await tester.scrollUntilVisible(
-      find.text('ชุดตั้งค่า (Preset)', skipOffstage: false),
+      fillerDisclosure,
+      420,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(fillerDisclosure);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ai-advanced-filler'), skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('ai-speech-reduction-mode-ai'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.scrollUntilVisible(
+      find.text('ใครเป็นคนเลือกคำที่จะตัด', skipOffstage: false),
       420,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('ชุดตั้งค่า (Preset)'), findsOneWidget);
+    expect(find.text('ใครเป็นคนเลือกคำที่จะตัด'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

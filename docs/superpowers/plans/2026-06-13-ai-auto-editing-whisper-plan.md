@@ -50,6 +50,13 @@
 > before protected cleanup is unioned; subtitle and media removal share one
 > fail-closed validated range. Legacy filler fields remain for older clients.
 >
+> 2026-08-01 opt-in capability update: every optional AI editing switch starts
+> off. The seller explicitly enables only the desired capability, while an
+> all-off setup remains valid for target-length-only shortening. Review and
+> rendering ignore unselected provider detections. Acceptance tests keep the
+> original duration and enable subtitle, silence, repeated speech, or colour one
+> at a time before any combined-flow coverage.
+>
 > 2026-07-11 update: mobile now caches a successful prepare recipe, shows a playable result review, supports reversible subtitle/silence/filler/color edits that are actually rendered, and keeps `planned` capabilities out of the applied list. Local retry does not call the minute-metered prepare endpoint again.
 >
 > 2026-07-12 automatic-preview update: changing a supported edit checkbox immediately starts a local preview re-render from the original clip. Controls are locked while FFmpeg runs, the previous playable preview remains visible, and a failed update restores both the last accepted checkbox state and video.

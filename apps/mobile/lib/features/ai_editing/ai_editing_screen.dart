@@ -182,6 +182,7 @@ const _capabilityDefinitions = <_AiCapabilityDefinition>[
     title: 'จัดการคำพูดซ้ำ',
     description:
         'AI ตรวจหาคำหรือวลีที่พูดซ้ำ แล้วเลือกได้ว่าจะให้ AI ตัดหรือเลือกเอง',
+    hasAdvancedSettings: true,
   ),
   _AiCapabilityDefinition(
     id: 'hook',
@@ -481,14 +482,14 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _SpeechReductionSelectionMode.ai;
 
   final Map<String, bool> _capabilities = {
-    'subtitle': true,
-    'silence': true,
-    'filler': true,
+    'subtitle': false,
+    'silence': false,
+    'filler': false,
     'hook': false,
     'beatsync': false,
     'zoom': false,
     'reframe': false,
-    'color': true,
+    'color': false,
     'audio': false,
     'translate': false,
     'pricetag': false,
@@ -531,9 +532,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _customDurationSeconds = initialTarget.clamp(1, 180);
         _customDurationController.text = _customDurationSeconds.toString();
       }
-    }
-    if (widget.enableExperimentalBeatSync) {
-      _capabilities['beatsync'] = true;
     }
     unawaited(_loadAiEditQuota());
   }
@@ -2597,7 +2595,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _sectionHeading(
           icon: Icons.auto_fix_high,
           title: 'ให้ AI จัดการให้',
-          description: 'เลือกได้หลายอย่าง — เปิด/ปิดได้ตามใจ',
+          description: 'เริ่มต้นปิดทั้งหมด เลือกเปิดเฉพาะสิ่งที่ต้องการ',
         ),
         const SizedBox(height: 12),
         ..._buildCapabilityGroups(),
@@ -3017,14 +3015,20 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   Widget _buildAnalysisSummary() {
     final recipe = _preparedEdit?.recipe;
-    final silenceRanges = recipe?.silenceRanges ?? const <AiEditCut>[];
-    final hasStructuredSpeechReduction = recipe != null &&
+    final silenceRequested = _capabilities['silence'] ?? false;
+    final repeatedSpeechRequested = _capabilities['filler'] ?? false;
+    final silenceRanges = silenceRequested
+        ? recipe?.silenceRanges ?? const <AiEditCut>[]
+        : const <AiEditCut>[];
+    final hasStructuredSpeechReduction = repeatedSpeechRequested &&
+        recipe != null &&
         recipe.speechReduction.isReady &&
         buildSpeechReductionReviewGroups(recipe.speechReduction).isNotEmpty;
-    final legacyRepeatedSpeechRanges =
-        recipe == null || hasStructuredSpeechReduction
-            ? const <AiEditCut>[]
-            : recipe.fillerRanges;
+    final legacyRepeatedSpeechRanges = !repeatedSpeechRequested ||
+            recipe == null ||
+            hasStructuredSpeechReduction
+        ? const <AiEditCut>[]
+        : recipe.fillerRanges;
     final speechSummary = !hasStructuredSpeechReduction
         ? null
         : summarizeSpeechReductionSelection(
@@ -3158,6 +3162,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     required int count,
     required String unit,
   }) {
+    if (!(_capabilities[capabilityId] ?? false)) {
+      return (text: 'ไม่ได้เลือก', isNotDetected: false);
+    }
     if (count > 0) {
       return (text: 'พบ $count $unit', isNotDetected: false);
     }
@@ -4364,66 +4371,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               ],
             ),
           ),
-          if (definition.id == 'filler' && available && enabled)
-            Container(
-              key: const ValueKey('ai-speech-reduction-mode-selector'),
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ใครเป็นคนเลือกคำที่จะตัด',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _choiceChip(
-                        key: const ValueKey('ai-speech-reduction-mode-ai'),
-                        label: 'AI เลือกให้',
-                        selected: _speechReductionSelectionMode ==
-                            _SpeechReductionSelectionMode.ai,
-                        onTap: () => setState(() {
-                          _speechReductionSelectionMode =
-                              _SpeechReductionSelectionMode.ai;
-                        }),
-                      ),
-                      _choiceChip(
-                        key: const ValueKey(
-                          'ai-speech-reduction-mode-manual',
-                        ),
-                        label: 'เลือกเอง',
-                        selected: _speechReductionSelectionMode ==
-                            _SpeechReductionSelectionMode.manual,
-                        onTap: () => setState(() {
-                          _speechReductionSelectionMode =
-                              _SpeechReductionSelectionMode.manual;
-                        }),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    _speechReductionSelectionMode ==
-                            _SpeechReductionSelectionMode.ai
-                        ? 'ตัดจุดที่ AI มั่นใจให้ก่อน และแก้คืนภายหลังได้'
-                        : 'AI ตรวจหาอย่างเดียว ยังไม่ตัดจนกว่าคุณจะเลือก',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      height: 1.4,
-                      color: AppTheme.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           if (showAdvanced)
             Container(
               key: ValueKey('ai-advanced-${definition.id}'),
@@ -4442,6 +4389,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   Widget _buildAdvancedPanel(String id) {
     return switch (id) {
       'silence' => _buildSilenceAdvanced(),
+      'filler' => _buildSpeechReductionAdvanced(),
       'subtitle' => _buildSubtitleAdvanced(),
       'cta' => _buildCtaAdvanced(),
       'beatsync' => _buildBeatSyncAdvanced(),
@@ -4452,6 +4400,61 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       'translate' => _buildTranslationAdvanced(),
       _ => const SizedBox.shrink(),
     };
+  }
+
+  Widget _buildSpeechReductionAdvanced() {
+    return Column(
+      key: const ValueKey('ai-speech-reduction-mode-selector'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'ใครเป็นคนเลือกคำที่จะตัด',
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _choiceChip(
+              key: const ValueKey('ai-speech-reduction-mode-ai'),
+              label: 'AI เลือกให้',
+              selected: _speechReductionSelectionMode ==
+                  _SpeechReductionSelectionMode.ai,
+              onTap: () => setState(() {
+                _speechReductionSelectionMode =
+                    _SpeechReductionSelectionMode.ai;
+              }),
+            ),
+            _choiceChip(
+              key: const ValueKey('ai-speech-reduction-mode-manual'),
+              label: 'เลือกเอง',
+              selected: _speechReductionSelectionMode ==
+                  _SpeechReductionSelectionMode.manual,
+              onTap: () => setState(() {
+                _speechReductionSelectionMode =
+                    _SpeechReductionSelectionMode.manual;
+              }),
+            ),
+          ],
+        ),
+        const SizedBox(height: 7),
+        Text(
+          _speechReductionSelectionMode == _SpeechReductionSelectionMode.ai
+              ? 'ตัดจุดที่ AI มั่นใจให้ก่อน และแก้คืนภายหลังได้'
+              : 'AI ตรวจหาอย่างเดียว ยังไม่ตัดจนกว่าคุณจะเลือก',
+          style: TextStyle(
+            fontSize: 10.5,
+            height: 1.4,
+            color: AppTheme.textMuted,
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildSilenceAdvanced() {
@@ -5721,7 +5724,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],

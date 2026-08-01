@@ -862,6 +862,11 @@ Builds the UI-facing mobile render recipe for the AI editing screen. This is the
 backend contract for the Claude Design flow: the app sends the selected clip,
 chosen style/prompt, and capability toggles such as `subtitle`, `silence`,
 `filler`, `hook`, `zoom`, `color`, `cta`, `pricetag`, and `watermark`.
+Current mobile clients start every optional capability off and explicitly send
+`false` for capabilities the user did not enable. A request with every optional
+capability disabled remains valid when the user wants only target-length
+shortening; recipe consumers must not infer subtitle, silence, repeated-speech,
+or colour work from provider data when its matching toggle is false.
 
 This endpoint is Pro-gated and minute-metered like `/ai-edits/transcribe`: the
 client `durationSeconds` is the media timeline estimate, the backend transcribes

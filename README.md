@@ -559,6 +559,14 @@ Current mobile pieces:
   still drive precise gaps, but subtitle text falls back to readable segments.
   Whitespace-only provider tokens are ignored during validation; malformed
   tokens containing real transcript text still fail closed.
+- The AI editing setup starts every optional capability switch off, including
+  subtitles, silence cleanup, repeated-speech cleanup, and colour adjustment.
+  The seller explicitly enables only the work they want; leaving all switches
+  off still permits base target-length shortening. Requests, result summaries,
+  and local rendering ignore unselected capabilities. Feature acceptance tests
+  keep the target at the original duration and enable one capability at a time
+  so subtitle, silence, repeated-speech, and colour behaviour are verified in
+  isolation before any combined-flow test.
 - For the production capability set, mobile extracts mono 16 kHz AAC at 64 kbps
   into balanced temporary `.m4a` chunks no longer than 30 seconds, uploads them
   with `purpose=ai-edit-audio`, and sends ordered `audioChunks` to the backend.

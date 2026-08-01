@@ -40,6 +40,16 @@
 > fixture reached a 30-second preview and a 29.994667-second full export, then
 > opened the Post flow.
 >
+> 2026-08-01 repeated-speech update: current mobile removes the fixed filler
+> chips and offers `AI เลือกให้` or `เลือกเอง`; both send
+> `speechReductionMode: auto`. The API recommends only safely
+> timed adjacent repeated words/phrases, reports distributed frequent words
+> without selecting them, and returns stable occurrence IDs. Review supports
+> keep/remove per safe occurrence. AI mode starts from recommendations, while
+> manual mode starts empty and ignores legacy automatic filler ranges. Story fitting and subtitle alignment happen
+> before protected cleanup is unioned; subtitle and media removal share one
+> fail-closed validated range. Legacy filler fields remain for older clients.
+>
 > 2026-07-11 update: mobile now caches a successful prepare recipe, shows a playable result review, supports reversible subtitle/silence/filler/color edits that are actually rendered, and keeps `planned` capabilities out of the applied list. Local retry does not call the minute-metered prepare endpoint again.
 >
 > 2026-07-12 automatic-preview update: changing a supported edit checkbox immediately starts a local preview re-render from the original clip. Controls are locked while FFmpeg runs, the previous playable preview remains visible, and a failed update restores both the last accepted checkbox state and video.
@@ -52,10 +62,12 @@
 > 2026-07-12 pace update (revised 2026-07-14): silence cleanup uses
 > `natural` (1.0 s), `balanced` (0.6 s default), or `compact` (0.4 s) validated
 > word-gap thresholds with segment fallback, overlap-safe range merging, and
-> qualifying leading/trailing gaps when duration is valid. Filler cleanup uses exact
-> normalized matches from the five-word allowlist `เอ่อ`, `อ่า`, `แบบว่า`,
-> `คือว่า`, `ประมาณว่า`; missing legacy input means all five, while explicit
-> empty input means none. Review shows detected range counts and combined
+> qualifying leading/trailing gaps when duration is valid. Legacy filler cleanup
+> used exact normalized matches from the six-word allowlist `เอ่อ`, `อ่า`, `อาฮะ`,
+> `แบบว่า`, `คือว่า`, `ประมาณว่า`; missing legacy input means the original five
+> and explicit empty input means none. Current mobile no longer sends that list:
+> it sends `speechReductionMode: auto` and reviews stable repeated-speech
+> occurrences instead. Review shows detected range counts and combined
 > detected time. The 3-second hook stays locked in production by default-false
 > `ENABLE_EXPERIMENTAL_AI_HOOK`; internal exposure remains `planned` with no renderer.
 >
@@ -64,7 +76,7 @@
 > 2026-07-13 quota visibility update: the AI editing header shows exact remaining/used Pro minutes from `GET /ai-edits/quota`, updates immediately from the metered `prepare.quota` response, and supports a non-metered tap-to-refresh action.
 >
 > 2026-07-14 capability-honesty update: production enables only subtitle,
-> silence, filler-word cuts, and color/light adjustment. Reframe, zoom, audio
+> silence, repeated-speech cleanup, and color/light adjustment. Reframe, zoom, audio
 > cleanup, translation, price tags, CTA cards, and the AI-page watermark stay
 > locked as `เร็ว ๆ นี้`, are sent disabled by mobile, and remain `planned` in
 > the API until real exported-video processors are verified.
@@ -132,7 +144,7 @@ The first implementation direction is **Approach 1: Hybrid low-cost architecture
   - word timing
   - confidence/error metadata where available
 
-### 2. Auto-cut silence and filler words
+### 2. Auto-cut silence and repeated speech
 
 - Detect silent gaps from validated word timing first, with segment timing as a
   conservative fallback.
@@ -140,17 +152,25 @@ The first implementation direction is **Approach 1: Hybrid low-cost architecture
   trailing silence when a finite media duration is available.
 - Let the user choose a 1.0 s `natural`, 0.6 s `balanced`, or 0.4 s `compact`
   minimum gap; missing/invalid input stays backward compatible with `balanced`.
-- Let the user choose from the exact allowlist `เอ่อ`, `อ่า`, `แบบว่า`,
-  `คือว่า`, `ประมาณว่า`. Missing legacy `fillerWords` means all five; an
-  explicit empty list means no filler cuts and never falls back implicitly.
-- Treat exact transcript `เออ` as the `เอ่อ` alias. Reassemble only a validated
-  Thai character-token stream across tight timing and verified Thai word/text
-  boundaries, or timing boundaries on both sides when reference text is
-  unavailable; do not substring-match longer semantic tokens.
+- Current mobile offers local AI-selected and user-selected modes; both send
+  `speechReductionMode: auto` and remove the fixed filler-word chip list. AI
+  mode starts from recommended cuts, while manual mode starts empty and ignores
+  legacy filler cuts. Detect adjacent repeated Thai words or one-to-three
+  word phrases only when complete word timing proves the boundaries. Keep the
+  last occurrence and expose every safe earlier occurrence as an editable
+  keep/remove choice.
+- Report words used at least three times across separate sentences, but keep
+  them by default. Do not auto-cut negation, `ๆ`, numbers/prices, sentence
+  boundaries, fragmented character tokens, or incomplete timing. Keep legacy
+  `fillerWords` behavior for older clients only.
 - Later, improve accuracy with FFmpeg silence detection.
 - Let users preview the suggested cuts before exporting.
-- Show detected silence/filler counts and their combined pre-render time without
+- Show detected silence/repeated-speech groups, selected occurrences, and their combined pre-render time without
   promising the same number of seconds will disappear from the final clip.
+- Fit and align story-plan cuts before applying silence/repetition cleanup cuts
+  in full; never restore a selected occurrence just to fill the target. Remove
+  the same word from timed subtitles first, and reject the media cut if that
+  subtitle mapping is unsafe.
 - Keep the first version conservative so it does not cut natural pauses too aggressively.
 
 ### 3. Flexible subtitle editing
@@ -201,9 +221,10 @@ Backend should not render video in the first version. Rendering video server-sid
 - Display transcription progress.
 - Show subtitle editor and style controls.
 - Preview silence cut suggestions.
-- Configure the silence preset and exact filler-word allowlist; require at least
-  one filler word while that capability is enabled.
-- Show detected silence/filler counts and combined detected time in result review.
+- Configure the silence preset and automatic repeated-speech detection without
+  exposing a fixed word list.
+- Show detected silence/repeated-speech groups and let the user keep/remove each
+  safely timed occurrence in result review.
 - Keep the opening hook locked as `เร็ว ๆ นี้` when
   `ENABLE_EXPERIMENTAL_AI_HOOK=false`; an internal true value exposes setup UI
   only and does not add highlight selection or timeline rendering.
@@ -268,8 +289,8 @@ These numbers are planning estimates. Before implementation or launch, verify cu
 - Present advanced capability settings as a single-open accordion with no
   default expansion. Keep beat sync locked as `เร็ว ๆ นี้` unless an internal
   QA build explicitly enables `ENABLE_EXPERIMENTAL_BEAT_SYNC=true`.
-- Add real silence/filler advanced settings, preserve them in presets/snapshots,
-  and show detected counts/time after analysis. Keep the hook locked unless an
+- Add real silence settings plus repeated-speech occurrence review, preserve
+  safe choices during re-render, and show detected counts/time after analysis. Keep the hook locked unless an
   internal QA build sets `ENABLE_EXPERIMENTAL_AI_HOOK=true`; even then its recipe
   status remains `planned` and it must not appear as applied.
 
@@ -329,10 +350,10 @@ These numbers are planning estimates. Before implementation or launch, verify cu
 - Basic users are blocked with a clear upgrade message.
 - Failed transcription/export does not silently consume quota without a recoverable state.
 - Tests cover backend quota rules and mobile happy path/error states.
-- Silence preset thresholds and exact filler allowlist semantics are covered by
-  backend/client/UI tests, including missing legacy fields versus explicit empty
-  `fillerWords`.
-- Result review labels silence/filler counts and combined time as detections,
+- Silence preset thresholds, automatic repeated-speech safety rules, per-item
+  keep/remove choices, and legacy filler compatibility are covered by
+  backend/client/UI tests.
+- Result review labels silence/repeated-speech counts and combined time as detections,
   not guaranteed exported-duration savings.
 - Production keeps `ENABLE_EXPERIMENTAL_AI_HOOK=false` until a real hook analyzer
   and timeline renderer exist; internal requests remain `planned`.

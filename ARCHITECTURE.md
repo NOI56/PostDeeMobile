@@ -675,10 +675,12 @@ The recipe also omits those unreliable time ranges from user-facing subtitle
 lines, including clearly unexpected mixed-script recognition noise, while
 retaining their speech timing for conservative silence detection.
 Mobile still applies a final target cap as a compatibility safety guard.
-If the combined AI/silence/filler cuts leave less media than requested, that
-guard proportionally restores nearby context while preserving every selected
-moment. This prevents incomplete transcript timing from turning a slider target
-request into a near-empty clip. A separate subtitle-boundary guard detects when
+The target guard restores nearby context only within the AI story-plan cuts.
+Validated silence and repeated-speech cleanup ranges stay immutable and are
+unioned after story fitting, so a removed word can never return merely to fill
+the slider target. This prevents incomplete transcript timing from turning a
+slider request into a near-empty clip without sacrificing confirmed cleanup. A
+separate subtitle-boundary guard detects when
 the leading target cut lands inside a spoken cue, moves the opening just before
 that cue with a small pre-roll, and balances the duration at the trailing cut so
 the result stays near target without opening mid-sentence.
@@ -763,17 +765,24 @@ compression signals are retained for highlight and rendered-subtitle quality
 gating.
 Whitespace-only provider tokens do not invalidate an otherwise complete timing
 stream; malformed tokens containing transcript text still fail closed.
-Missing or invalid preset values use `balanced`. `fillerWords` is an
-exact, normalized allowlist limited to `เอ่อ`, `อ่า`, `แบบว่า`, `คือว่า`, and
-`ประมาณว่า`; `เออ` is an exact alias of `เอ่อ`, and validated fragmented Thai
-tokens are reassembled only across tight timing and verified Thai word/text
-boundaries. A missing field keeps the legacy
-all-five behavior, while an explicit empty or fully invalid list fails closed
-with no filler cuts. The API
-returns detected silence/filler ranges and mobile renders the supported cuts.
-The review summarizes range counts and their combined detected time before
-rendering; it does not claim that the final clip duration changes by exactly the
-same amount.
+Missing or invalid silence preset values use `balanced`. Mobile exposes local
+`AI เลือกให้` and `เลือกเอง` modes, but both send `speechReductionMode: auto`
+instead of a fixed filler-word allowlist so they reuse the same AI analysis.
+The API builds stable repeated-speech groups and occurrence IDs only from a
+complete, trusted Thai word timeline. Adjacent repeated words/phrases can be
+recommended for removal; distributed frequent words are reported but retained.
+Negation, emphasis marks, numbers/prices, fragmented tokens, sentence
+boundaries, and unsafe timing fail closed. Legacy `fillerWords`/`fillerRanges`
+semantics remain available only for older clients.
+AI mode starts from the API's `defaultCutRanges`; manual mode starts from an
+explicit empty selection and ignores legacy-only filler cuts. Mobile stores
+subsequent keep/remove choices by occurrence ID. It fits and aligns the AI
+story-plan cuts first, sanitizes the matching source-timeline subtitle words,
+and then unions protected silence/repetition cleanup ranges. A cleanup range is
+never resized to restore target length, and a range that cannot be removed from
+an enabled subtitle safely is not cut from audio/video either. The review shows
+detected groups and selected occurrences without promising the exact final
+duration savings.
 
 The opening 3-second hook has no highlight selector or timeline renderer yet.
 `ENABLE_EXPERIMENTAL_AI_HOOK` defaults to `false`, so production mobile locks it

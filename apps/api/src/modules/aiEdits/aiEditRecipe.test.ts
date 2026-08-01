@@ -1026,6 +1026,330 @@ describe('AI edit recipe pacing settings', () => {
     expect(recipe.fillerRanges).toEqual([{ start: 0, end: 0.3 }]);
   });
 
+  it('suggests removing the earlier adjacent repeated Thai word', () => {
+    const recipe = buildRecipe({
+      capabilities: { filler: true },
+      text: 'สินค้าสินค้ารายการ',
+      segments: [
+        { text: 'สินค้าสินค้ารายการ', start: 0, end: 1.3 },
+      ],
+      settings: { speechReductionMode: 'auto' },
+      words: [
+        { word: 'สินค้า', start: 0, end: 0.4 },
+        { word: 'สินค้า', start: 0.45, end: 0.85 },
+        { word: 'รายการ', start: 0.9, end: 1.3 },
+      ],
+    });
+
+    expect(recipe.speechReduction?.status).toBe('ready');
+    expect(recipe.speechReduction?.groups).toHaveLength(1);
+    expect(recipe.speechReduction?.groups[0]).toMatchObject({
+      text: 'สินค้า',
+      normalizedText: 'สินค้า',
+      totalOccurrences: 2,
+    });
+    expect(recipe.speechReduction?.occurrences).toEqual([
+      expect.objectContaining({
+        text: 'สินค้า',
+        start: 0,
+        end: 0.4,
+        occurrenceIndex: 1,
+        occurrenceCount: 2,
+        kind: 'adjacent-word',
+        recommendation: 'cut',
+        canAutoRemove: true,
+        selectedByDefault: true,
+      }),
+      expect.objectContaining({
+        text: 'สินค้า',
+        start: 0.45,
+        end: 0.85,
+        occurrenceIndex: 2,
+        occurrenceCount: 2,
+        kind: 'adjacent-word',
+        recommendation: 'keep',
+        canAutoRemove: false,
+        selectedByDefault: false,
+      }),
+    ]);
+    expect(recipe.speechReduction?.defaultCutRanges).toEqual([
+      expect.objectContaining({ start: 0, end: 0.4 }),
+    ]);
+    expect(recipe.fillerRanges).toEqual([{ start: 0, end: 0.4 }]);
+    expect(recipe.cutRanges).toContainEqual({ start: 0, end: 0.4 });
+  });
+
+  it('keeps only the last anchor in an adjacent run and returns stable IDs', () => {
+    const buildRepeatedRecipe = () => buildRecipe({
+      capabilities: { filler: true },
+      text: 'สินค้าสินค้าสินค้า',
+      segments: [{ text: 'สินค้าสินค้าสินค้า', start: 0, end: 1.3 }],
+      settings: { speechReductionMode: 'auto' },
+      words: [
+        { word: 'สินค้า', start: 0, end: 0.4 },
+        { word: 'สินค้า', start: 0.45, end: 0.85 },
+        { word: 'สินค้า', start: 0.9, end: 1.3 },
+      ],
+    });
+    const first = buildRepeatedRecipe();
+    const second = buildRepeatedRecipe();
+
+    expect(first.speechReduction).toEqual(second.speechReduction);
+    expect(first.speechReduction?.groups[0]?.id).toMatch(/^srg_[a-f0-9]{16}$/u);
+    expect(first.speechReduction?.occurrences.map((item) => item.recommendation))
+      .toEqual(['cut', 'cut', 'keep']);
+    expect(first.speechReduction?.defaultCutRanges).toHaveLength(2);
+  });
+
+  it('suggests removing the earlier adjacent repeated Thai phrase', () => {
+    const recipe = buildRecipe({
+      capabilities: { filler: true },
+      text: 'สินค้าคุณภาพสินค้าคุณภาพรายการ',
+      segments: [
+        {
+          text: 'สินค้าคุณภาพสินค้าคุณภาพรายการ',
+          start: 0,
+          end: 2.2,
+        },
+      ],
+      settings: { speechReductionMode: 'auto' },
+      words: [
+        { word: 'สินค้า', start: 0, end: 0.4 },
+        { word: 'คุณภาพ', start: 0.45, end: 0.85 },
+        { word: 'สินค้า', start: 0.9, end: 1.3 },
+        { word: 'คุณภาพ', start: 1.35, end: 1.75 },
+        { word: 'รายการ', start: 1.8, end: 2.2 },
+      ],
+    });
+
+    expect(recipe.speechReduction?.groups).toHaveLength(1);
+    expect(recipe.speechReduction?.groups[0]).toMatchObject({
+      text: 'สินค้าคุณภาพ',
+      totalOccurrences: 2,
+    });
+    expect(recipe.speechReduction?.occurrences).toEqual([
+      expect.objectContaining({
+        text: 'สินค้าคุณภาพ',
+        start: 0,
+        end: 0.85,
+        kind: 'adjacent-phrase',
+        recommendation: 'cut',
+      }),
+      expect.objectContaining({
+        text: 'สินค้าคุณภาพ',
+        start: 0.9,
+        end: 1.75,
+        kind: 'adjacent-phrase',
+        recommendation: 'keep',
+      }),
+    ]);
+    expect(recipe.fillerRanges).toEqual([{ start: 0, end: 0.85 }]);
+  });
+
+  it('allows an adjacent restart with a common Thai word but keeps it globally protected', () => {
+    const recipe = buildRecipe({
+      capabilities: { filler: true },
+      text: 'เราเราจะไป',
+      segments: [{ text: 'เราเราจะไป', start: 0, end: 0.9 }],
+      settings: { speechReductionMode: 'auto' },
+      words: [
+        { word: 'เรา', start: 0, end: 0.2 },
+        { word: 'เรา', start: 0.25, end: 0.45 },
+        { word: 'จะ', start: 0.5, end: 0.65 },
+        { word: 'ไป', start: 0.7, end: 0.9 },
+      ],
+    });
+
+    expect(recipe.speechReduction?.groups).toHaveLength(1);
+    expect(recipe.speechReduction?.occurrences).toEqual([
+      expect.objectContaining({
+        text: 'เรา',
+        recommendation: 'cut',
+        canAutoRemove: true,
+      }),
+      expect.objectContaining({
+        text: 'เรา',
+        recommendation: 'keep',
+        canAutoRemove: false,
+      }),
+    ]);
+    expect(recipe.fillerRanges).toEqual([{ start: 0, end: 0.2 }]);
+  });
+
+  it('reports a distributed frequent Thai word but keeps every occurrence', () => {
+    const recipe = buildRecipe({
+      capabilities: { filler: true },
+      text: 'สินค้ารายการสินค้าคุณภาพสินค้า',
+      segments: [
+        { text: 'สินค้ารายการ', start: 0, end: 0.9 },
+        { text: 'สินค้าคุณภาพ', start: 2, end: 2.9 },
+        { text: 'สินค้า', start: 4, end: 4.4 },
+      ],
+      durationSeconds: 4.4,
+      settings: { speechReductionMode: 'auto' },
+      words: [
+        { word: 'สินค้า', start: 0, end: 0.4 },
+        { word: 'รายการ', start: 0.5, end: 0.9 },
+        { word: 'สินค้า', start: 2, end: 2.4 },
+        { word: 'คุณภาพ', start: 2.5, end: 2.9 },
+        { word: 'สินค้า', start: 4, end: 4.4 },
+      ],
+    });
+
+    expect(recipe.speechReduction?.groups).toHaveLength(1);
+    expect(recipe.speechReduction?.groups[0]).toMatchObject({
+      text: 'สินค้า',
+      totalOccurrences: 3,
+    });
+    expect(recipe.speechReduction?.occurrences).toHaveLength(3);
+    expect(recipe.speechReduction?.occurrences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'frequent-only',
+          recommendation: 'keep',
+          canAutoRemove: false,
+          selectedByDefault: false,
+        }),
+      ]),
+    );
+    expect(recipe.speechReduction?.defaultCutRanges).toEqual([]);
+    expect(recipe.fillerRanges).toEqual([]);
+  });
+
+  it('keeps intentional repeated negation and protected short words', () => {
+    const recipe = buildRecipe({
+      capabilities: { filler: true },
+      text: 'ไม่ไม่สินค้า',
+      segments: [{ text: 'ไม่ไม่สินค้า', start: 0, end: 0.9 }],
+      settings: { speechReductionMode: 'auto' },
+      words: [
+        { word: 'ไม่', start: 0, end: 0.2 },
+        { word: 'ไม่', start: 0.25, end: 0.45 },
+        { word: 'สินค้า', start: 0.5, end: 0.9 },
+      ],
+    });
+
+    expect(recipe.speechReduction).toMatchObject({
+      status: 'ready',
+      groups: [],
+      occurrences: [],
+      defaultCutRanges: [],
+    });
+    expect(recipe.fillerRanges).toEqual([]);
+  });
+
+  it.each([
+    {
+      label: 'overlapping timing',
+      text: 'สินค้าสินค้า',
+      words: [
+        { word: 'สินค้า', start: 0, end: 0.5 },
+        { word: 'สินค้า', start: 0.4, end: 0.8 },
+      ],
+      expectedReason: 'unsafe-word-timing',
+    },
+    {
+      label: 'unverified fragmented Thai timing',
+      text: 'สินค้าสินค้า',
+      words: [
+        { word: 'ส', start: 0, end: 0.05 },
+        { word: 'ิ', start: 0.05, end: 0.1 },
+        { word: 'น', start: 0.1, end: 0.15 },
+        { word: 'ค', start: 0.15, end: 0.2 },
+        { word: '้', start: 0.2, end: 0.25 },
+        { word: 'า', start: 0.25, end: 0.3 },
+        { word: 'ส', start: 0.3, end: 0.35 },
+        { word: 'ิ', start: 0.35, end: 0.4 },
+        { word: 'น', start: 0.4, end: 0.45 },
+        { word: 'ค', start: 0.45, end: 0.5 },
+        { word: '้', start: 0.5, end: 0.55 },
+        { word: 'า', start: 0.55, end: 0.6 },
+      ],
+      expectedReason: 'fragmented-word-timing',
+    },
+  ])('fails closed for $label in speech reduction mode', ({
+    text,
+    words,
+    expectedReason,
+  }) => {
+    const recipe = buildRecipe({
+      capabilities: { filler: true },
+      text,
+      segments: [{ text, start: 0, end: words.at(-1)!.end }],
+      settings: { speechReductionMode: 'auto' },
+      words,
+    });
+
+    expect(recipe.speechReduction).toMatchObject({
+      status: 'unavailable',
+      unavailableReason: expectedReason,
+      groups: [],
+      occurrences: [],
+      defaultCutRanges: [],
+    });
+    expect(recipe.fillerRanges).toEqual([]);
+  });
+
+  it('keeps the legacy fixed filler behavior when speech reduction mode is omitted', () => {
+    const recipe = buildRecipe({
+      capabilities: { filler: true },
+      settings: { fillerWords: ['เอ่อ'] },
+      words: [
+        { word: 'เอ่อ', start: 0, end: 0.2 },
+        { word: 'สินค้า', start: 0.25, end: 0.7 },
+      ],
+    });
+
+    expect(recipe.speechReduction).toBeUndefined();
+    expect(recipe.fillerRanges).toEqual([{ start: 0, end: 0.2 }]);
+    expect(recipe.cutRanges).toContainEqual({ start: 0, end: 0.2 });
+  });
+
+  it('removes a fragmented weak อะฮะ opening before the first real word', () => {
+    const recipe = buildRecipe({
+      capabilities: { filler: true },
+      language: 'Thai',
+      text: 'อะฮะเราก็เลยมาเลี้ยงนก',
+      segments: [
+        { text: 'อะฮะเราก็เลยมาเลี้ยงนก', start: 0, end: 1.2 },
+      ],
+      settings: { fillerWords: ['อาฮะ'] },
+      words: [
+        { word: 'อะ', start: 0, end: 0.14 },
+        { word: 'ฮะ', start: 0.14, end: 0.28 },
+        { word: 'เรา', start: 0.28, end: 0.5 },
+        { word: 'ก็เลยมาเลี้ยงนก', start: 0.5, end: 1.2 },
+      ],
+    });
+
+    expect(recipe.fillerRanges).toEqual([{ start: 0, end: 0.28 }]);
+  });
+
+  it('matches exact อะฮะ as the transcription alias of selected อาฮะ', () => {
+    const recipe = buildRecipe({
+      capabilities: { filler: true },
+      settings: { fillerWords: ['อาฮะ'] },
+      words: [
+        { word: 'อะฮะ', start: 0, end: 0.28 },
+        { word: 'เรา', start: 0.28, end: 0.5 },
+      ],
+    });
+
+    expect(recipe.fillerRanges).toEqual([{ start: 0, end: 0.28 }]);
+  });
+
+  it('does not cut อะฮะ from a larger token without a safe timing boundary', () => {
+    const recipe = buildRecipe({
+      capabilities: { filler: true },
+      language: 'Thai',
+      text: 'อะฮะเรา',
+      settings: { fillerWords: ['อาฮะ'] },
+      words: [{ word: 'อะฮะเรา', start: 0, end: 0.5 }],
+    });
+
+    expect(recipe.fillerRanges).toEqual([]);
+  });
+
   it('matches normalized filler words exactly without cutting longer words', () => {
     const recipe = buildRecipe({
       capabilities: { filler: true },

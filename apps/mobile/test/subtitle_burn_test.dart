@@ -254,6 +254,119 @@ void main() {
     expect(file.content, contains('one missing'));
   });
 
+  test('removes an internal selected occurrence and splits the timed cue', () {
+    final result = sanitizeSubtitleSegmentsForCleanupCuts(
+      segments: const [
+        SubtitleSegment(
+          text: 'เรา เอ่อ จะไป',
+          start: 0,
+          end: 1.5,
+          words: [
+            SubtitleWordTiming(text: 'เรา', start: 0, end: 0.3),
+            SubtitleWordTiming(text: 'เอ่อ', start: 0.3, end: 0.6),
+            SubtitleWordTiming(text: 'จะไป', start: 0.6, end: 1.5),
+          ],
+        ),
+      ],
+      requestedCuts: const [SilenceCutRange(start: 0.3, end: 0.6)],
+      subtitlesEnabled: true,
+    );
+    final sanitized = result.segments;
+
+    expect(result.appliedCleanupRanges, hasLength(1));
+    expect(sanitized, hasLength(2));
+    expect(sanitized.map((segment) => segment.text), ['เรา', 'จะไป']);
+    expect(sanitized[0].start, closeTo(0, 0.001));
+    expect(sanitized[0].end, closeTo(0.3, 0.001));
+    expect(sanitized[1].start, closeTo(0.6, 0.001));
+    expect(sanitized[1].end, closeTo(1.5, 0.001));
+    expect(
+      sanitized.expand((segment) => segment.words).map((word) => word.text),
+      ['เรา', 'จะไป'],
+    );
+    expect(sanitized.map((segment) => segment.text).join(),
+        isNot(contains('เอ่อ')));
+  });
+
+  test('keeps a cue unchanged when no selected cut covers a complete word', () {
+    const cue = SubtitleSegment(
+      text: 'เรา เอ่อ จะไป',
+      start: 0,
+      end: 1.5,
+      words: [
+        SubtitleWordTiming(text: 'เรา', start: 0, end: 0.3),
+        SubtitleWordTiming(text: 'เอ่อ', start: 0.3, end: 0.6),
+        SubtitleWordTiming(text: 'จะไป', start: 0.6, end: 1.5),
+      ],
+    );
+
+    final result = sanitizeSubtitleSegmentsForCleanupCuts(
+      segments: const [cue],
+      requestedCuts: const [SilenceCutRange(start: 0.35, end: 0.55)],
+      subtitlesEnabled: true,
+    );
+    final sanitized = result.segments;
+
+    expect(result.appliedCleanupRanges, isEmpty);
+    expect(sanitized, hasLength(1));
+    expect(identical(sanitized.single, cue), isTrue);
+  });
+
+  test('fails closed when a partial cleanup has no valid word timing', () {
+    const cue = SubtitleSegment(
+      text: 'เรา เอ่อ จะไป',
+      start: 0,
+      end: 1.5,
+    );
+
+    final result = sanitizeSubtitleSegmentsForCleanupCuts(
+      segments: const [cue],
+      requestedCuts: const [SilenceCutRange(start: 0.3, end: 0.6)],
+      subtitlesEnabled: true,
+    );
+    final sanitized = result.segments;
+
+    expect(result.appliedCleanupRanges, isEmpty);
+    expect(sanitized, hasLength(1));
+    expect(identical(sanitized.single, cue), isTrue);
+    expect(sanitized.single.text, 'เรา เอ่อ จะไป');
+  });
+
+  test('removes a whole cue when a selected cut safely covers it', () {
+    final result = sanitizeSubtitleSegmentsForCleanupCuts(
+      segments: const [
+        SubtitleSegment(
+          text: 'เอ่อ',
+          start: 0.3,
+          end: 0.6,
+          words: [
+            SubtitleWordTiming(text: 'เอ่อ', start: 0.3, end: 0.6),
+          ],
+        ),
+      ],
+      requestedCuts: const [SilenceCutRange(start: 0.2, end: 0.7)],
+      subtitlesEnabled: true,
+    );
+
+    expect(result.appliedCleanupRanges, hasLength(1));
+    expect(result.segments, isEmpty);
+  });
+
+  test('allows all requested cleanup cuts when subtitles are disabled', () {
+    final result = sanitizeSubtitleSegmentsForCleanupCuts(
+      segments: const [
+        SubtitleSegment(text: 'เอ่อ', start: 0.3, end: 0.6),
+      ],
+      requestedCuts: const [SilenceCutRange(start: 0.3, end: 0.6)],
+      subtitlesEnabled: false,
+    );
+
+    expect(result.appliedCleanupRanges, hasLength(1));
+    expect(result.appliedCleanupRanges.single.start, closeTo(0.3, 0.001));
+    expect(result.appliedCleanupRanges.single.end, closeTo(0.6, 0.001));
+    expect(result.segments, hasLength(1));
+  });
+
   test(
       'turns a long leading cut into input seek and shifts the render timeline',
       () {

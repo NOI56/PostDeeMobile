@@ -226,17 +226,24 @@ valid, and overlapping timing ranges are merged before gaps are calculated.
 Provider word timings drive gaps, while subtitle text falls back to readable
 transcript segments when word coverage is incomplete. ElevenLabs receives only
 the bounded audio and optional approved keyterms.
-`fillerWords` matches only the
-normalized exact allowlist `เอ่อ`, `อ่า`, `แบบว่า`, `คือว่า`, `ประมาณว่า`; it
-does not use substring matching on normal tokens. Exact `เออ` maps to `เอ่อ`,
-whitespace-only provider tokens are ignored, and validated fragmented Thai
-tokens are reassembled only across tight timing and verified Thai word/text
-boundaries. Meaningful tokens with invalid timing still fail closed. Missing
-legacy input checks all five words, while explicit `[]` (or input that sanitizes
-empty) produces no filler cuts. Mobile prevents an empty selection while the
-filler feature remains enabled.
+Current mobile offers `AI เลือกให้` and `เลือกเอง`; both send
+`speechReductionMode: auto` and do not show fixed word chips. The backend may
+recommend removing only adjacent repeated Thai words or
+one-to-three-word phrases backed by complete trusted timing. It keeps the last
+occurrence, reports distributed frequent words without cutting them, and fails
+closed for negation, `ๆ`, numbers/prices, sentence boundaries, fragmented
+tokens, or unsafe timing. Legacy `fillerWords` remains accepted only for older
+clients.
+AI mode starts with safe recommendations selected. Manual mode starts empty,
+ignores legacy-only filler ranges, and waits for explicit user selection.
+Mobile then lets the user keep/remove every safe occurrence. It fits the AI story
+window first, removes the same selected word from source-timeline subtitles,
+and unions validated silence/repetition cuts afterward. Do not restore or
+shrink any cleanup range merely to reach the selected duration. If a subtitle
+word cannot be mapped safely, reject that media cut too; a slightly shorter
+result is expected and truthful.
 
-Result review displays detected silence/filler counts and the merged/clamped
+Result review displays detected silence/repeated-speech counts and the merged/clamped
 detected time from recipe ranges before rendering. Treat this as an analysis summary,
 not an exact promise about how many seconds the exported clip will lose.
 

@@ -113,6 +113,208 @@ class AiEditCut {
   }
 }
 
+class AiEditSpeechReductionGroupResult {
+  const AiEditSpeechReductionGroupResult({
+    required this.id,
+    required this.text,
+    required this.normalizedText,
+    required this.totalOccurrences,
+    required this.occurrenceIds,
+  });
+
+  final String id;
+  final String text;
+  final String normalizedText;
+  final int totalOccurrences;
+  final List<String> occurrenceIds;
+
+  factory AiEditSpeechReductionGroupResult.fromJson(
+    Map<String, Object?> json,
+  ) {
+    final rawOccurrenceIds = json['occurrenceIds'];
+    final parsedTotal = (json['totalOccurrences'] as num?)?.round() ?? 0;
+    return AiEditSpeechReductionGroupResult(
+      id: (json['id'] as String? ?? '').trim(),
+      text: (json['text'] as String? ?? '').trim(),
+      normalizedText: (json['normalizedText'] as String? ?? '').trim(),
+      totalOccurrences: parsedTotal < 0 ? 0 : parsedTotal,
+      occurrenceIds: rawOccurrenceIds is List<dynamic>
+          ? rawOccurrenceIds
+              .whereType<String>()
+              .map((id) => id.trim())
+              .where((id) => id.isNotEmpty)
+              .toList(growable: false)
+          : const <String>[],
+    );
+  }
+}
+
+class AiEditSpeechReductionOccurrenceResult {
+  const AiEditSpeechReductionOccurrenceResult({
+    required this.id,
+    required this.groupId,
+    required this.text,
+    required this.normalizedText,
+    required this.start,
+    required this.end,
+    required this.occurrenceIndex,
+    required this.occurrenceCount,
+    required this.kind,
+    required this.recommendation,
+    required this.selectedByDefault,
+    required this.confidence,
+    required this.contextBefore,
+    required this.contextAfter,
+    required this.canAutoRemove,
+  });
+
+  final String id;
+  final String groupId;
+  final String text;
+  final String normalizedText;
+  final double start;
+  final double end;
+  final int occurrenceIndex;
+  final int occurrenceCount;
+  final String kind;
+  final String recommendation;
+  final bool selectedByDefault;
+  final double confidence;
+  final String contextBefore;
+  final String contextAfter;
+  final bool canAutoRemove;
+
+  factory AiEditSpeechReductionOccurrenceResult.fromJson(
+    Map<String, Object?> json,
+  ) {
+    const supportedKinds = {
+      'adjacent-word',
+      'adjacent-phrase',
+      'frequent-only',
+    };
+    final rawKind = json['kind'] as String? ?? '';
+    final hasSupportedKind = supportedKinds.contains(rawKind);
+    final kind = hasSupportedKind ? rawKind : 'frequent-only';
+    final canAutoRemove = hasSupportedKind &&
+        kind != 'frequent-only' &&
+        (json['canAutoRemove'] as bool? ?? false);
+    final rawConfidence = (json['confidence'] as num?)?.toDouble() ?? 0.0;
+    final confidence =
+        rawConfidence.isFinite ? rawConfidence.clamp(0.0, 1.0).toDouble() : 0.0;
+    final rawOccurrenceIndex = (json['occurrenceIndex'] as num?)?.round() ?? 0;
+    final rawOccurrenceCount = (json['occurrenceCount'] as num?)?.round() ?? 0;
+
+    return AiEditSpeechReductionOccurrenceResult(
+      id: (json['id'] as String? ?? '').trim(),
+      groupId: (json['groupId'] as String? ?? '').trim(),
+      text: (json['text'] as String? ?? '').trim(),
+      normalizedText: (json['normalizedText'] as String? ?? '').trim(),
+      start: (json['start'] as num?)?.toDouble() ?? 0,
+      end: (json['end'] as num?)?.toDouble() ?? 0,
+      occurrenceIndex: rawOccurrenceIndex < 0 ? 0 : rawOccurrenceIndex,
+      occurrenceCount: rawOccurrenceCount < 0 ? 0 : rawOccurrenceCount,
+      kind: kind,
+      recommendation:
+          canAutoRemove && json['recommendation'] == 'cut' ? 'cut' : 'keep',
+      selectedByDefault:
+          canAutoRemove && (json['selectedByDefault'] as bool? ?? false),
+      confidence: confidence,
+      contextBefore: json['contextBefore'] as String? ?? '',
+      contextAfter: json['contextAfter'] as String? ?? '',
+      canAutoRemove: canAutoRemove,
+    );
+  }
+}
+
+class AiEditSpeechReductionCutResult {
+  const AiEditSpeechReductionCutResult({
+    required this.occurrenceId,
+    required this.start,
+    required this.end,
+  });
+
+  final String occurrenceId;
+  final double start;
+  final double end;
+
+  factory AiEditSpeechReductionCutResult.fromJson(
+    Map<String, Object?> json,
+  ) {
+    return AiEditSpeechReductionCutResult(
+      occurrenceId: (json['occurrenceId'] as String? ?? '').trim(),
+      start: (json['start'] as num?)?.toDouble() ?? 0,
+      end: (json['end'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
+class AiEditSpeechReductionResult {
+  const AiEditSpeechReductionResult({
+    required this.version,
+    required this.status,
+    required this.groups,
+    required this.occurrences,
+    required this.defaultCutRanges,
+    this.unavailableReason,
+  });
+
+  const AiEditSpeechReductionResult.unavailable({
+    this.unavailableReason,
+  })  : version = 1,
+        status = 'unavailable',
+        groups = const <AiEditSpeechReductionGroupResult>[],
+        occurrences = const <AiEditSpeechReductionOccurrenceResult>[],
+        defaultCutRanges = const <AiEditSpeechReductionCutResult>[];
+
+  final int version;
+  final String status;
+  final String? unavailableReason;
+  final List<AiEditSpeechReductionGroupResult> groups;
+  final List<AiEditSpeechReductionOccurrenceResult> occurrences;
+  final List<AiEditSpeechReductionCutResult> defaultCutRanges;
+
+  bool get isReady => status == 'ready';
+
+  factory AiEditSpeechReductionResult.fromJson(Map<String, Object?> json) {
+    final status = json['status'] as String?;
+    final unavailableReason = json['unavailableReason'] as String?;
+    if (status != 'ready') {
+      return AiEditSpeechReductionResult.unavailable(
+        unavailableReason: unavailableReason,
+      );
+    }
+
+    final rawGroups = json['groups'];
+    final rawOccurrences = json['occurrences'];
+    final rawDefaultCutRanges = json['defaultCutRanges'];
+    final parsedVersion = (json['version'] as num?)?.round() ?? 1;
+
+    return AiEditSpeechReductionResult(
+      version: parsedVersion < 1 ? 1 : parsedVersion,
+      status: 'ready',
+      unavailableReason: unavailableReason,
+      groups: rawGroups is List<dynamic>
+          ? rawGroups
+              .whereType<Map<String, Object?>>()
+              .map(AiEditSpeechReductionGroupResult.fromJson)
+              .toList(growable: false)
+          : const <AiEditSpeechReductionGroupResult>[],
+      occurrences: rawOccurrences is List<dynamic>
+          ? rawOccurrences
+              .whereType<Map<String, Object?>>()
+              .map(AiEditSpeechReductionOccurrenceResult.fromJson)
+              .toList(growable: false)
+          : const <AiEditSpeechReductionOccurrenceResult>[],
+      defaultCutRanges: rawDefaultCutRanges is List<dynamic>
+          ? rawDefaultCutRanges
+              .whereType<Map<String, Object?>>()
+              .map(AiEditSpeechReductionCutResult.fromJson)
+              .toList(growable: false)
+          : const <AiEditSpeechReductionCutResult>[],
+    );
+  }
+}
+
 class AiEditPlanResult {
   const AiEditPlanResult({
     required this.cuts,
@@ -237,6 +439,7 @@ class AiEditPrepareSettings {
     this.zoomLevel,
     this.silencePreset,
     this.fillerWords,
+    this.speechReductionMode,
     this.music,
   });
 
@@ -252,6 +455,7 @@ class AiEditPrepareSettings {
   final String? zoomLevel;
   final String? silencePreset;
   final List<String>? fillerWords;
+  final String? speechReductionMode;
   final AiEditMusicSettings? music;
 
   Map<String, Object?> toJson() => {
@@ -268,6 +472,8 @@ class AiEditPrepareSettings {
         if (zoomLevel != null) 'zoomLevel': zoomLevel,
         if (silencePreset != null) 'silencePreset': silencePreset,
         if (fillerWords != null) 'fillerWords': fillerWords,
+        if (speechReductionMode != null)
+          'speechReductionMode': speechReductionMode,
         if (music != null) 'music': music!.toJson(),
       };
 }
@@ -550,6 +756,7 @@ class AiEditRecipeResult {
         musicVolumeDuringSpeech: 0.12,
       ),
     ),
+    this.speechReduction = const AiEditSpeechReductionResult.unavailable(),
     this.styleId,
     this.prompt,
   });
@@ -566,6 +773,7 @@ class AiEditRecipeResult {
   final List<AiEditCut> fillerRanges;
   final AiEditPlanResult plan;
   final AiEditMusicResult music;
+  final AiEditSpeechReductionResult speechReduction;
   final Map<String, AiEditCapabilityStatusResult> capabilities;
 
   AiEditRecipeResult withPlan(AiEditPlanResult updatedPlan) {
@@ -586,6 +794,7 @@ class AiEditRecipeResult {
       fillerRanges: fillerRanges,
       plan: updatedPlan,
       music: music,
+      speechReduction: speechReduction,
       capabilities: capabilities,
     );
   }
@@ -603,6 +812,7 @@ class AiEditRecipeResult {
     final rawCapabilities = json['capabilities'];
     final rawPlan = json['plan'];
     final rawMusic = json['music'];
+    final rawSpeechReduction = json['speechReduction'];
     final capabilities = <String, AiEditCapabilityStatusResult>{};
 
     if (rawCapabilities is Map<String, Object?>) {
@@ -640,6 +850,9 @@ class AiEditRecipeResult {
       music: AiEditMusicResult.fromJson(
         rawMusic is Map<String, Object?> ? rawMusic : const <String, Object?>{},
       ),
+      speechReduction: rawSpeechReduction is Map<String, Object?>
+          ? AiEditSpeechReductionResult.fromJson(rawSpeechReduction)
+          : const AiEditSpeechReductionResult.unavailable(),
       capabilities: capabilities,
     );
   }

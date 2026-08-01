@@ -1326,6 +1326,7 @@ void main() {
           subtitlePosition: 'bottom',
           ctaText: 'กดตะกร้าเลย',
           silencePreset: 'natural',
+          speechReductionMode: 'auto',
           fillerWords: ['เอ่อ', 'แบบว่า'],
           music: AiEditMusicSettings(
             source: 'library',
@@ -1356,6 +1357,7 @@ void main() {
           'subtitlePosition': 'bottom',
           'ctaText': 'กดตะกร้าเลย',
           'silencePreset': 'natural',
+          'speechReductionMode': 'auto',
           'fillerWords': ['เอ่อ', 'แบบว่า'],
           'music': {
             'source': 'library',
@@ -1371,6 +1373,146 @@ void main() {
         },
       },
     );
+  });
+
+  test('AiEditRecipeResult parses speech reduction review contract', () {
+    final recipe = AiEditRecipeResult.fromJson({
+      'version': 1,
+      'status': 'ready',
+      'renderMode': 'mobile-ffmpeg',
+      'speechReduction': {
+        'version': 1,
+        'status': 'ready',
+        'groups': [
+          {
+            'id': 'group-1',
+            'text': 'really really',
+            'normalizedText': 'really',
+            'totalOccurrences': 2,
+            'occurrenceIds': ['occurrence-1', 'occurrence-2'],
+          },
+        ],
+        'occurrences': [
+          {
+            'id': 'occurrence-1',
+            'groupId': 'group-1',
+            'text': 'really',
+            'normalizedText': 'really',
+            'start': 1.2,
+            'end': 1.45,
+            'occurrenceIndex': 1,
+            'occurrenceCount': 2,
+            'kind': 'adjacent-word',
+            'recommendation': 'cut',
+            'selectedByDefault': true,
+            'confidence': 0.92,
+            'contextBefore': 'This is',
+            'contextAfter': 'good',
+            'canAutoRemove': true,
+          },
+        ],
+        'defaultCutRanges': [
+          {
+            'occurrenceId': 'occurrence-1',
+            'start': 1.18,
+            'end': 1.47,
+          },
+        ],
+      },
+    });
+
+    expect(recipe.speechReduction.isReady, isTrue);
+    expect(recipe.speechReduction.version, 1);
+    expect(recipe.speechReduction.groups.single.id, 'group-1');
+    expect(recipe.speechReduction.groups.single.normalizedText, 'really');
+    expect(recipe.speechReduction.groups.single.totalOccurrences, 2);
+    expect(
+      recipe.speechReduction.groups.single.occurrenceIds,
+      ['occurrence-1', 'occurrence-2'],
+    );
+    final occurrence = recipe.speechReduction.occurrences.single;
+    expect(occurrence.kind, 'adjacent-word');
+    expect(occurrence.recommendation, 'cut');
+    expect(occurrence.occurrenceIndex, 1);
+    expect(occurrence.occurrenceCount, 2);
+    expect(occurrence.confidence, 0.92);
+    expect(occurrence.canAutoRemove, isTrue);
+    expect(recipe.speechReduction.defaultCutRanges.single.start, 1.18);
+  });
+
+  test('AiEditRecipeResult keeps legacy speech reduction safely unavailable',
+      () {
+    final legacy = AiEditRecipeResult.fromJson({
+      'version': 1,
+      'status': 'ready',
+      'renderMode': 'mobile-ffmpeg',
+    });
+
+    expect(legacy.speechReduction.isReady, isFalse);
+    expect(legacy.speechReduction.status, 'unavailable');
+    expect(legacy.speechReduction.groups, isEmpty);
+    expect(legacy.speechReduction.occurrences, isEmpty);
+    expect(legacy.speechReduction.defaultCutRanges, isEmpty);
+  });
+
+  test('speech reduction parser fails closed for an unknown contract', () {
+    final reduction = AiEditSpeechReductionResult.fromJson({
+      'version': 99,
+      'status': 'future-status',
+      'groups': [
+        {
+          'id': 'unsafe-group',
+          'text': 'future',
+          'totalOccurrences': 1,
+          'occurrenceIds': ['unsafe-occurrence'],
+        },
+      ],
+      'occurrences': [
+        {
+          'id': 'unsafe-occurrence',
+          'groupId': 'unsafe-group',
+          'text': 'future',
+          'start': 1,
+          'end': 2,
+          'kind': 'future-kind',
+          'recommendation': 'cut',
+          'selectedByDefault': true,
+          'canAutoRemove': true,
+        },
+      ],
+    });
+
+    expect(reduction.status, 'unavailable');
+    expect(reduction.groups, isEmpty);
+    expect(reduction.occurrences, isEmpty);
+    expect(reduction.defaultCutRanges, isEmpty);
+  });
+
+  test('speech reduction parser keeps an unknown occurrence kind unselected',
+      () {
+    final reduction = AiEditSpeechReductionResult.fromJson({
+      'version': 1,
+      'status': 'ready',
+      'occurrences': [
+        {
+          'id': 'future-occurrence',
+          'groupId': 'future-group',
+          'text': 'future',
+          'start': 1,
+          'end': 2,
+          'kind': 'future-kind',
+          'recommendation': 'cut',
+          'selectedByDefault': true,
+          'canAutoRemove': true,
+        },
+      ],
+    });
+
+    final occurrence = reduction.occurrences.single;
+    expect(occurrence.kind, 'frequent-only');
+    expect(occurrence.recommendation, 'keep');
+    expect(occurrence.selectedByDefault, isFalse);
+    expect(occurrence.canAutoRemove, isFalse);
   });
 
   test('prepareAiEdit posts the request and parses the mobile recipe',

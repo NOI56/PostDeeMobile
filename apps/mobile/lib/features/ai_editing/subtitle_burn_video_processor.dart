@@ -77,6 +77,16 @@ class SilenceCutRange {
   final double end;
 }
 
+class SubtitleCleanupResult {
+  const SubtitleCleanupResult({
+    required this.segments,
+    required this.appliedCleanupRanges,
+  });
+
+  final List<SubtitleSegment> segments;
+  final List<SilenceCutRange> appliedCleanupRanges;
+}
+
 enum VideoRenderPurpose { preview, export }
 
 /// Maximum time an encoder attempt may spend without producing any processed
@@ -1080,6 +1090,163 @@ List<SubtitleSegment> clipSegmentsToTrim(
   }
 
   return clipped;
+}
+
+/// Removes subtitle words only when a requested cleanup range can also be
+/// applied safely to the source media. The caller must use
+/// [SubtitleCleanupResult.appliedCleanupRanges] for the video/audio cut so the
+/// rendered subtitle and media always use the same ranges.
+SubtitleCleanupResult sanitizeSubtitleSegmentsForCleanupCuts({
+  required List<SubtitleSegment> segments,
+  required List<SilenceCutRange> requestedCuts,
+  required bool subtitlesEnabled,
+}) {
+  final normalizedCuts = _normalizeSilenceRanges(requestedCuts);
+  if (normalizedCuts.isEmpty) {
+    return SubtitleCleanupResult(
+      segments: segments,
+      appliedCleanupRanges: const [],
+    );
+  }
+  if (!subtitlesEnabled) {
+    return SubtitleCleanupResult(
+      segments: segments,
+      appliedCleanupRanges: normalizedCuts,
+    );
+  }
+
+  const timingTolerance = 0.001;
+  bool overlaps(
+    double firstStart,
+    double firstEnd,
+    double secondStart,
+    double secondEnd,
+  ) =>
+      firstStart < secondEnd - timingTolerance &&
+      firstEnd > secondStart + timingTolerance;
+
+  final appliedCuts = <SilenceCutRange>[];
+  for (final cut in normalizedCuts) {
+    var isSafe = true;
+    for (final segment in segments) {
+      if (!overlaps(cut.start, cut.end, segment.start, segment.end)) {
+        continue;
+      }
+
+      final resolvedWords = _resolveSubtitleWords(segment);
+      if (resolvedWords.isEmpty ||
+          resolvedWords.length != segment.words.length) {
+        isSafe = false;
+        break;
+      }
+
+      for (final word in segment.words) {
+        if (!overlaps(cut.start, cut.end, word.start, word.end)) {
+          continue;
+        }
+        final fullyCovered = cut.start <= word.start + timingTolerance &&
+            cut.end >= word.end - timingTolerance;
+        if (!fullyCovered) {
+          isSafe = false;
+          break;
+        }
+      }
+      if (!isSafe) {
+        break;
+      }
+    }
+    if (isSafe) {
+      appliedCuts.add(cut);
+    }
+  }
+
+  final appliedCleanupRanges = _normalizeSilenceRanges(appliedCuts);
+  if (appliedCleanupRanges.isEmpty) {
+    return SubtitleCleanupResult(
+      segments: segments,
+      appliedCleanupRanges: const [],
+    );
+  }
+
+  final sanitizedSegments = <SubtitleSegment>[];
+  for (final segment in segments) {
+    final touchingCuts = [
+      for (final cut in appliedCleanupRanges)
+        if (overlaps(cut.start, cut.end, segment.start, segment.end)) cut,
+    ];
+    if (touchingCuts.isEmpty) {
+      sanitizedSegments.add(segment);
+      continue;
+    }
+
+    final resolvedWords = _resolveSubtitleWords(segment);
+    if (resolvedWords.isEmpty || resolvedWords.length != segment.words.length) {
+      // Every touching cut should already have been rejected above. Keep the
+      // original cue if malformed data reaches this point for any reason.
+      sanitizedSegments.add(segment);
+      continue;
+    }
+
+    final removedWordIndexes = <int>{};
+    for (var index = 0; index < segment.words.length; index += 1) {
+      final word = segment.words[index];
+      if (touchingCuts.any(
+        (cut) =>
+            cut.start <= word.start + timingTolerance &&
+            cut.end >= word.end - timingTolerance,
+      )) {
+        removedWordIndexes.add(index);
+      }
+    }
+    if (removedWordIndexes.isEmpty) {
+      sanitizedSegments.add(segment);
+      continue;
+    }
+    if (removedWordIndexes.length == segment.words.length) {
+      continue;
+    }
+
+    final sentence = _flattenSubtitleText(segment.text);
+    var groupStart = 0;
+    while (groupStart < segment.words.length) {
+      while (groupStart < segment.words.length &&
+          removedWordIndexes.contains(groupStart)) {
+        groupStart += 1;
+      }
+      if (groupStart >= segment.words.length) {
+        break;
+      }
+
+      var groupEnd = groupStart;
+      while (groupEnd + 1 < segment.words.length &&
+          !removedWordIndexes.contains(groupEnd + 1)) {
+        groupEnd += 1;
+      }
+
+      final textStart =
+          groupStart == 0 ? 0 : resolvedWords[groupStart].textStart;
+      final textEnd = groupEnd == segment.words.length - 1
+          ? sentence.length
+          : resolvedWords[groupEnd].textEnd;
+      final text = sentence.substring(textStart, textEnd).trim();
+      if (text.isNotEmpty) {
+        sanitizedSegments.add(
+          SubtitleSegment(
+            text: text,
+            start: segment.words[groupStart].start,
+            end: segment.words[groupEnd].end,
+            words: segment.words.sublist(groupStart, groupEnd + 1),
+          ),
+        );
+      }
+      groupStart = groupEnd + 1;
+    }
+  }
+
+  return SubtitleCleanupResult(
+    segments: sanitizedSegments,
+    appliedCleanupRanges: appliedCleanupRanges,
+  );
 }
 
 /// Finds silent gaps between consecutive transcript segments longer than

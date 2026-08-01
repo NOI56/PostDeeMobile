@@ -21,6 +21,7 @@ import 'ai_edit_visual_proxy_extractor.dart';
 import 'beat_music_picker.dart';
 import 'edit_styles.dart';
 import 'review_video_timeline.dart';
+import 'speech_reduction_review.dart';
 import 'style_options.dart';
 import 'subtitle_burn_video_processor.dart';
 import 'subtitle_timeline_alignment.dart';
@@ -104,6 +105,18 @@ enum _AiDurationMode { unselected, seconds30, seconds60, custom }
 
 enum _AiEditingStage { setup, review }
 
+enum _SpeechReductionSelectionMode { ai, manual }
+
+class _PreparedRecipeRenderResult {
+  const _PreparedRecipeRenderResult({
+    required this.video,
+    required this.appliedSpeechOccurrenceIds,
+  });
+
+  final BurnedSubtitleResult video;
+  final Set<String> appliedSpeechOccurrenceIds;
+}
+
 const _maxAiEditSourceDurationSeconds = 600;
 const _maxAiShortenedDurationSeconds = 180;
 const _originalDurationSliderStop = 181.0;
@@ -119,14 +132,6 @@ const _capabilityGroupDisplayOrder = <_AiCapabilityGroup>[
 enum _BeatMusicSource { auto, library, device, original }
 
 enum _BeatCutIntensity { smooth, balanced, energetic }
-
-const _fillerWordOptions = <String>[
-  'เอ่อ',
-  'อ่า',
-  'แบบว่า',
-  'คือว่า',
-  'ประมาณว่า',
-];
 
 const _requiredMusicPublishingPlatforms = <String>{
   'TikTok',
@@ -174,9 +179,9 @@ const _capabilityDefinitions = <_AiCapabilityDefinition>[
     id: 'filler',
     group: _AiCapabilityGroup.pace,
     icon: Icons.voice_over_off_outlined,
-    title: 'ตัดคำฟุ่มเฟือย',
-    description: 'ตัดคำที่เลือกเมื่อพบพร้อมเวลาในคำถอดเสียง',
-    hasAdvancedSettings: true,
+    title: 'จัดการคำพูดซ้ำ',
+    description:
+        'AI ตรวจหาคำหรือวลีที่พูดซ้ำ แล้วเลือกได้ว่าจะให้ AI ตัดหรือเลือกเอง',
   ),
   _AiCapabilityDefinition(
     id: 'hook',
@@ -276,6 +281,7 @@ class _AiPreset {
   _AiPreset({
     required this.name,
     required this.capabilities,
+    required this.speechReductionSelectionMode,
     required this.subtitleStyle,
     required this.subtitleColor,
     required this.subtitleWords,
@@ -288,7 +294,6 @@ class _AiPreset {
     required this.beatIntensity,
     required this.duckMusicDuringSpeech,
     required this.silencePreset,
-    required this.fillerWords,
     required this.toneFilter,
     required this.zoomLevel,
     required this.clipSpeed,
@@ -296,6 +301,7 @@ class _AiPreset {
 
   final String name;
   final Map<String, bool> capabilities;
+  final _SpeechReductionSelectionMode speechReductionSelectionMode;
   final String subtitleStyle;
   final Color subtitleColor;
   final String subtitleWords;
@@ -308,7 +314,6 @@ class _AiPreset {
   final _BeatCutIntensity beatIntensity;
   final bool duckMusicDuringSpeech;
   final String silencePreset;
-  final Set<String> fillerWords;
   final String toneFilter;
   final String zoomLevel;
   final double clipSpeed;
@@ -319,6 +324,7 @@ class _AiSetupSnapshot {
     required this.durationMode,
     required this.customDurationSeconds,
     required this.capabilities,
+    required this.speechReductionSelectionMode,
     required this.subtitleStyle,
     required this.subtitleColor,
     required this.subtitleWords,
@@ -336,7 +342,6 @@ class _AiSetupSnapshot {
     required this.duckMusicDuringSpeech,
     required this.confirmedMusicRights,
     required this.silencePreset,
-    required this.fillerWords,
     required this.toneFilter,
     required this.toneStrength,
     required this.zoomLevel,
@@ -347,6 +352,7 @@ class _AiSetupSnapshot {
   final _AiDurationMode durationMode;
   final int customDurationSeconds;
   final Map<String, bool> capabilities;
+  final _SpeechReductionSelectionMode speechReductionSelectionMode;
   final String subtitleStyle;
   final Color subtitleColor;
   final String subtitleWords;
@@ -364,7 +370,6 @@ class _AiSetupSnapshot {
   final bool duckMusicDuringSpeech;
   final bool confirmedMusicRights;
   final String silencePreset;
-  final Set<String> fillerWords;
   final String toneFilter;
   final double toneStrength;
   final String zoomLevel;
@@ -451,6 +456,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   _AiEditingStage _stage = _AiEditingStage.setup;
   final Map<String, bool> _reviewCapabilities = {};
   final Map<String, bool> _appliedReviewCapabilities = {};
+  final Set<String> _reviewRemovedSpeechOccurrenceIds = {};
+  final Set<String> _appliedRemovedSpeechOccurrenceIds = {};
   final Map<String, Duration> _reviewVideoDurations = {};
   ReviewVideoSource _reviewVideoSource = ReviewVideoSource.ai;
   int _reviewResultRevision = 0;
@@ -470,6 +477,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   bool _renderCancelRequested = false;
   _AiDurationMode _durationMode = _AiDurationMode.unselected;
   int _customDurationSeconds = 45;
+  _SpeechReductionSelectionMode _speechReductionSelectionMode =
+      _SpeechReductionSelectionMode.ai;
 
   final Map<String, bool> _capabilities = {
     'subtitle': true,
@@ -501,7 +510,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   bool _duckMusicDuringSpeech = true;
   bool _confirmedMusicRights = false;
   String _silencePreset = 'balanced';
-  final Set<String> _selectedFillerWords = {..._fillerWordOptions};
   String _toneFilter = 'bright';
   double _toneStrength = 0.6;
   String _zoomLevel = 'medium';
@@ -600,7 +608,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Future<void> _pickVideo() async {
-    if (_isPickingVideo) return;
+    if (_isPickingVideo || _processing || _updatingReviewPreview) return;
     final picker = widget.pickVideo ?? GalleryVideoPicker().pickVideo;
     setState(() => _isPickingVideo = true);
 
@@ -649,6 +657,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _acceptedSetup = null;
         _reviewCapabilities.clear();
         _appliedReviewCapabilities.clear();
+        _reviewRemovedSpeechOccurrenceIds.clear();
+        _appliedRemovedSpeechOccurrenceIds.clear();
         _reviewVideoDurations.clear();
         _reviewVideoSource = ReviewVideoSource.ai;
         _reviewResultRevision = 0;
@@ -687,14 +697,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         for (final entry in _capabilities.entries)
           entry.key: _isCapabilityAvailable(entry.key) && entry.value,
       };
-
-  List<String> get _selectedFillerWordsInOrder => [
-        for (final word in _fillerWordOptions)
-          if (_selectedFillerWords.contains(word)) word,
-      ];
-
-  bool get _fillerSelectionComplete =>
-      !_isCapabilityEnabled('filler') || _selectedFillerWords.isNotEmpty;
 
   bool get _beatMusicSelectionComplete {
     if (!_isCapabilityEnabled('beatsync')) {
@@ -743,7 +745,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   Future<void> _processVideo() async {
     final picked = _selectedVideo;
-    if (picked == null || !_hasSelectedDuration || _processing) {
+    if (picked == null ||
+        !_hasSelectedDuration ||
+        _processing ||
+        _updatingReviewPreview) {
       return;
     }
 
@@ -971,6 +976,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
       final reviewCapabilities =
           _buildReviewCapabilities(preparedResult.recipe);
+      final recommendedSpeechOccurrenceIds = {
+        for (final cut
+            in preparedResult.recipe.speechReduction.defaultCutRanges)
+          cut.occurrenceId,
+      };
+      final initialSpeechOccurrenceIds =
+          _speechReductionSelectionMode == _SpeechReductionSelectionMode.ai
+              ? recommendedSpeechOccurrenceIds
+              : <String>{};
       if (reviewCapabilities['subtitle'] == true) {
         final identity = buildSubtitleProjectIdentity(
           sourceFile: file,
@@ -994,10 +1008,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           _subtitleProject = initialProject;
         });
       }
-      final result = await _renderPreparedRecipe(
+      final rendered = await _renderPreparedRecipe(
         recipe: preparedResult.recipe,
         capabilities: reviewCapabilities,
+        removedSpeechOccurrenceIds: initialSpeechOccurrenceIds,
       );
+      final result = rendered.video;
+      final selectedSpeechOccurrenceIds = reviewCapabilities['filler'] == true
+          ? rendered.appliedSpeechOccurrenceIds
+          : initialSpeechOccurrenceIds;
 
       if (result.colorFilterSkipped) {
         reviewCapabilities.remove('color');
@@ -1015,6 +1034,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           _appliedReviewCapabilities
             ..clear()
             ..addAll(reviewCapabilities);
+          _reviewRemovedSpeechOccurrenceIds
+            ..clear()
+            ..addAll(selectedSpeechOccurrenceIds);
+          _appliedRemovedSpeechOccurrenceIds
+            ..clear()
+            ..addAll(selectedSpeechOccurrenceIds);
           _stage = _AiEditingStage.review;
           _processing = false;
           _renderProgress = null;
@@ -1160,7 +1185,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         toneFilter: _toneFilter,
         zoomLevel: _zoomLevel,
         silencePreset: _silencePreset,
-        fillerWords: _selectedFillerWordsInOrder,
+        speechReductionMode: 'auto',
         music: AiEditMusicSettings(
           source: switch (effectiveMusicSource) {
             _BeatMusicSource.auto => 'auto',
@@ -1368,6 +1393,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _reviewCapabilities
           ..clear()
           ..addAll(_appliedReviewCapabilities);
+        _reviewRemovedSpeechOccurrenceIds
+          ..clear()
+          ..addAll(_appliedRemovedSpeechOccurrenceIds);
         _stage = _AiEditingStage.review;
       }
     });
@@ -1380,6 +1408,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final subtitle = recipe.capabilities['subtitle'];
     final silence = recipe.capabilities['silence'];
     final filler = recipe.capabilities['filler'];
+    final hasStructuredSpeechReduction = recipe.speechReduction.isReady &&
+        buildSpeechReductionReviewGroups(recipe.speechReduction).isNotEmpty;
+    final canUseLegacySpeechReduction =
+        _speechReductionSelectionMode == _SpeechReductionSelectionMode.ai &&
+            (filler?.isApplied ?? false) &&
+            recipe.fillerRanges.isNotEmpty;
 
     return {
       if ((_capabilities['subtitle'] ?? false) &&
@@ -1391,16 +1425,16 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           recipe.silenceRanges.isNotEmpty)
         'silence': true,
       if ((_capabilities['filler'] ?? false) &&
-          (filler?.isApplied ?? false) &&
-          recipe.fillerRanges.isNotEmpty)
+          (hasStructuredSpeechReduction || canUseLegacySpeechReduction))
         'filler': true,
       if (_capabilities['color'] ?? false) 'color': true,
     };
   }
 
-  Future<BurnedSubtitleResult> _renderPreparedRecipe({
+  Future<_PreparedRecipeRenderResult> _renderPreparedRecipe({
     required AiEditRecipeResult recipe,
     required Map<String, bool> capabilities,
+    Set<String>? removedSpeechOccurrenceIds,
     VideoRenderPurpose purpose = VideoRenderPurpose.preview,
   }) async {
     final picked = _selectedVideo;
@@ -1410,23 +1444,28 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
     final originalFile = File(picked.path);
     final options = _buildEditOptions(capabilities);
-    var cutRanges = <SilenceCutRange>[
-      // Style/free-prompt cuts come from the AI plan and are independent of
-      // the silence/filler review toggles below.
+    var planCutRanges = <SilenceCutRange>[
+      // Style/free-prompt cuts determine the requested story window.
       for (final range in recipe.plan.cuts)
         SilenceCutRange(start: range.start, end: range.end),
-      if (capabilities['silence'] ?? false)
-        for (final range in recipe.silenceRanges)
-          SilenceCutRange(start: range.start, end: range.end),
+    ];
+    final requestedSpeechCleanupRanges = <SilenceCutRange>[
       if (capabilities['filler'] ?? false)
-        for (final range in recipe.fillerRanges)
+        for (final range in recipe.speechReduction.isReady
+            ? buildSpeechReductionCutRanges(
+                recipe.speechReduction,
+                removedSpeechOccurrenceIds,
+              )
+            : _speechReductionSelectionMode == _SpeechReductionSelectionMode.ai
+                ? recipe.fillerRanges
+                : const <AiEditCut>[])
           SilenceCutRange(start: range.start, end: range.end),
     ];
 
     final sourceDuration = recipe.transcript.durationSeconds;
     if (sourceDuration > 0) {
-      cutRanges = withTargetLength(
-        cutRanges,
+      planCutRanges = withTargetLength(
+        planCutRanges,
         sourceDuration,
         _isUsingOriginalDuration
             ? sourceDuration
@@ -1437,7 +1476,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final studioProject =
         capabilities['subtitle'] == true ? _subtitleProject : null;
     final studioStyle = studioProject?.defaultStyle;
-    var subtitleSegments = <SubtitleSegment>[
+    var sourceTimelineSubtitleSegments = <SubtitleSegment>[
       if (studioProject != null)
         for (final cue in studioProject.cues)
           SubtitleSegment(
@@ -1463,27 +1502,65 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             ],
           ),
     ];
+    // A repeated word may sit inside a longer subtitle cue. Remove the same
+    // word from the source-timeline subtitle before cutting the media. If the
+    // word timing cannot be proven, the helper rejects that cut so audio and
+    // on-screen text can never disagree.
+    final sanitizedSpeechCleanup = sanitizeSubtitleSegmentsForCleanupCuts(
+      segments: sourceTimelineSubtitleSegments,
+      requestedCuts: requestedSpeechCleanupRanges,
+      subtitlesEnabled: (capabilities['subtitle'] ?? false) &&
+          sourceTimelineSubtitleSegments.isNotEmpty,
+    );
+    sourceTimelineSubtitleSegments = sanitizedSpeechCleanup.segments;
+    final appliedSpeechOccurrenceIds = recipe.speechReduction.isReady
+        ? resolveAppliedSpeechReductionSelection(
+            recipe.speechReduction,
+            removedSpeechOccurrenceIds,
+            [
+              for (final range in sanitizedSpeechCleanup.appliedCleanupRanges)
+                AiEditCut(start: range.start, end: range.end),
+            ],
+          )
+        : const <String>{};
     final subtitleMaxChars = options.subtitleMaxChars;
-    subtitleSegments = prepareSubtitleSegmentsForLocalRender(
-      subtitleSegments,
+    var subtitleSegments = prepareSubtitleSegmentsForLocalRender(
+      sourceTimelineSubtitleSegments,
       language: recipe.transcript.language,
       maximumCharacters: subtitleMaxChars,
     );
+
     if (sourceDuration > 0 && subtitleSegments.isNotEmpty) {
-      cutRanges = alignLeadingCutToFirstSubtitle(
-        cutRanges,
+      planCutRanges = alignLeadingCutToFirstSubtitle(
+        planCutRanges,
         subtitleSegments,
         sourceDuration,
       );
       if (!_isUsingOriginalDuration) {
-        cutRanges = alignTargetTailToSubtitleBoundary(
-          cuts: cutRanges,
+        planCutRanges = alignTargetTailToSubtitleBoundary(
+          cuts: planCutRanges,
           subtitleSegments: subtitleSegments,
           durationSeconds: sourceDuration,
           targetSeconds: _selectedDurationSeconds.toDouble(),
         );
       }
     }
+
+    final cleanupCutRanges = <SilenceCutRange>[
+      // Cleanup is intentionally unioned only after story fitting/alignment.
+      // It must never be shortened or restored merely to hit an exact target.
+      if (capabilities['silence'] ?? false)
+        for (final range in recipe.silenceRanges)
+          SilenceCutRange(start: range.start, end: range.end),
+      ...sanitizedSpeechCleanup.appliedCleanupRanges,
+    ];
+    final cutRanges = sourceDuration > 0
+        ? mergeProtectedCutRanges(
+            planCuts: planCutRanges,
+            cleanupCuts: cleanupCutRanges,
+            durationSeconds: sourceDuration,
+          )
+        : <SilenceCutRange>[...planCutRanges, ...cleanupCutRanges];
 
     final speed = options.speed ?? 1;
     final previewProfile = purpose == VideoRenderPurpose.preview
@@ -1538,13 +1615,17 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         (options.brightness ?? 0).abs() > 0.0001 ||
         (options.contrast ?? 0).abs() > 0.0001;
     if (!needsLocalRender) {
-      return BurnedSubtitleResult(
-        file: originalFile,
-        fileName: picked.name.trim().isNotEmpty
-            ? picked.name.trim()
-            : _readFileNameFromPath(picked.path),
-        sizeBytes:
-            picked.sizeBytes > 0 ? picked.sizeBytes : originalFile.lengthSync(),
+      return _PreparedRecipeRenderResult(
+        video: BurnedSubtitleResult(
+          file: originalFile,
+          fileName: picked.name.trim().isNotEmpty
+              ? picked.name.trim()
+              : _readFileNameFromPath(picked.path),
+          sizeBytes: picked.sizeBytes > 0
+              ? picked.sizeBytes
+              : originalFile.lengthSync(),
+        ),
+        appliedSpeechOccurrenceIds: appliedSpeechOccurrenceIds,
       );
     }
 
@@ -1598,7 +1679,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     });
     final cachedResult = _renderResultsBySignature[renderSignature];
     if (cachedResult != null && cachedResult.file.existsSync()) {
-      return cachedResult;
+      return _PreparedRecipeRenderResult(
+        video: cachedResult,
+        appliedSpeechOccurrenceIds: appliedSpeechOccurrenceIds,
+      );
     }
     _renderResultsBySignature.remove(renderSignature);
 
@@ -1701,7 +1785,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       );
       reportProgress(1);
       _renderResultsBySignature[renderSignature] = result;
-      return result;
+      return _PreparedRecipeRenderResult(
+        video: result,
+        appliedSpeechOccurrenceIds: appliedSpeechOccurrenceIds,
+      );
     } finally {
       if (mounted && identical(_activeRenderCancellation, cancellationToken)) {
         setState(() => _activeRenderCancellation = null);
@@ -1825,6 +1912,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       durationMode: _durationMode,
       customDurationSeconds: _customDurationSeconds,
       capabilities: Map<String, bool>.from(_capabilities),
+      speechReductionSelectionMode: _speechReductionSelectionMode,
       subtitleStyle: _subtitleStyle,
       subtitleColor: _subtitleColor,
       subtitleWords: _subtitleWords,
@@ -1842,7 +1930,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       duckMusicDuringSpeech: _duckMusicDuringSpeech,
       confirmedMusicRights: _confirmedMusicRights,
       silencePreset: _silencePreset,
-      fillerWords: Set<String>.from(_selectedFillerWords),
       toneFilter: _toneFilter,
       toneStrength: _toneStrength,
       zoomLevel: _zoomLevel,
@@ -1857,6 +1944,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     _capabilities
       ..clear()
       ..addAll(snapshot.capabilities);
+    _speechReductionSelectionMode = snapshot.speechReductionSelectionMode;
     _subtitleStyle = snapshot.subtitleStyle;
     _subtitleColor = snapshot.subtitleColor;
     _subtitleWords = snapshot.subtitleWords;
@@ -1874,9 +1962,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     _duckMusicDuringSpeech = snapshot.duckMusicDuringSpeech;
     _confirmedMusicRights = snapshot.confirmedMusicRights;
     _silencePreset = snapshot.silencePreset;
-    _selectedFillerWords
-      ..clear()
-      ..addAll(snapshot.fillerWords);
     _toneFilter = snapshot.toneFilter;
     _toneStrength = snapshot.toneStrength;
     _zoomLevel = snapshot.zoomLevel;
@@ -1997,12 +2082,20 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       ..._reviewCapabilities.keys,
       ..._appliedReviewCapabilities.keys,
     };
-    return keys.any(
+    final capabilitiesChanged = keys.any(
       (key) =>
           (_reviewCapabilities[key] ?? false) !=
           (_appliedReviewCapabilities[key] ?? false),
     );
+    return capabilitiesChanged ||
+        !_sameStringSet(
+          _reviewRemovedSpeechOccurrenceIds,
+          _appliedRemovedSpeechOccurrenceIds,
+        );
   }
+
+  bool _sameStringSet(Set<String> left, Set<String> right) =>
+      left.length == right.length && left.containsAll(right);
 
   void _prepareReviewForResult(BurnedSubtitleResult result) {
     final originalPath = _selectedVideo?.path;
@@ -2080,10 +2173,18 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     });
 
     try {
-      final result = await _renderPreparedRecipe(
+      final requestedSpeechOccurrenceIds =
+          Set<String>.from(_reviewRemovedSpeechOccurrenceIds);
+      final rendered = await _renderPreparedRecipe(
         recipe: prepared.recipe,
         capabilities: Map<String, bool>.from(_reviewCapabilities),
+        removedSpeechOccurrenceIds: requestedSpeechOccurrenceIds,
       );
+      final result = rendered.video;
+      final selectedSpeechOccurrenceIds =
+          (_reviewCapabilities['filler'] ?? false)
+              ? rendered.appliedSpeechOccurrenceIds
+              : requestedSpeechOccurrenceIds;
       if (!mounted) {
         return;
       }
@@ -2096,6 +2197,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _appliedReviewCapabilities
           ..clear()
           ..addAll(_reviewCapabilities);
+        _appliedRemovedSpeechOccurrenceIds
+          ..clear()
+          ..addAll(selectedSpeechOccurrenceIds);
+        _reviewRemovedSpeechOccurrenceIds
+          ..clear()
+          ..addAll(selectedSpeechOccurrenceIds);
         _syncSetupCapabilitiesFromReview();
         _acceptedSetup = _captureSetupSnapshot();
         _updatingReviewPreview = false;
@@ -2111,6 +2218,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           _reviewCapabilities
             ..clear()
             ..addAll(_appliedReviewCapabilities);
+          _reviewRemovedSpeechOccurrenceIds
+            ..clear()
+            ..addAll(_appliedRemovedSpeechOccurrenceIds);
         });
         _showError('${error.message} · ผลลัพธ์เดิมยังอยู่');
       }
@@ -2123,6 +2233,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           _reviewCapabilities
             ..clear()
             ..addAll(_appliedReviewCapabilities);
+          _reviewRemovedSpeechOccurrenceIds
+            ..clear()
+            ..addAll(_appliedRemovedSpeechOccurrenceIds);
         });
         _showError('อัปเดตคลิปไม่สำเร็จ · ผลลัพธ์เดิมยังอยู่');
       }
@@ -2156,14 +2269,28 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _renderCancelRequested = false;
     });
     try {
-      final result = await _renderPreparedRecipe(
+      final requestedSpeechOccurrenceIds =
+          Set<String>.from(_appliedRemovedSpeechOccurrenceIds);
+      final rendered = await _renderPreparedRecipe(
         recipe: prepared.recipe,
         capabilities: Map<String, bool>.from(_appliedReviewCapabilities),
+        removedSpeechOccurrenceIds: requestedSpeechOccurrenceIds,
       );
+      final result = rendered.video;
+      final selectedSpeechOccurrenceIds =
+          (_appliedReviewCapabilities['filler'] ?? false)
+              ? rendered.appliedSpeechOccurrenceIds
+              : requestedSpeechOccurrenceIds;
       if (!mounted) return;
       setState(() {
         _renderedResult = result;
         _prepareReviewForResult(result);
+        _appliedRemovedSpeechOccurrenceIds
+          ..clear()
+          ..addAll(selectedSpeechOccurrenceIds);
+        _reviewRemovedSpeechOccurrenceIds
+          ..clear()
+          ..addAll(selectedSpeechOccurrenceIds);
         _updatingReviewPreview = false;
         _renderProgress = null;
         _renderCancelRequested = false;
@@ -2202,14 +2329,23 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _reviewCapabilities
         ..clear()
         ..addAll(_appliedReviewCapabilities);
+      _reviewRemovedSpeechOccurrenceIds
+        ..clear()
+        ..addAll(_appliedRemovedSpeechOccurrenceIds);
     });
   }
 
   void _returnToSetup() {
+    if (_processing || _updatingReviewPreview) {
+      return;
+    }
     setState(() {
       _reviewCapabilities
         ..clear()
         ..addAll(_appliedReviewCapabilities);
+      _reviewRemovedSpeechOccurrenceIds
+        ..clear()
+        ..addAll(_appliedRemovedSpeechOccurrenceIds);
       _syncSetupCapabilitiesFromReview();
       _acceptedSetup = _captureSetupSnapshot();
       _stage = _AiEditingStage.setup;
@@ -2232,11 +2368,14 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       });
 
       try {
-        result = await _renderPreparedRecipe(
+        final rendered = await _renderPreparedRecipe(
           recipe: prepared.recipe,
           capabilities: Map<String, bool>.from(_appliedReviewCapabilities),
+          removedSpeechOccurrenceIds:
+              Set<String>.from(_appliedRemovedSpeechOccurrenceIds),
           purpose: VideoRenderPurpose.export,
         );
+        result = rendered.video;
       } on SubtitleBurnException catch (error) {
         _handleProcessingFailure(error.message);
         return;
@@ -2341,6 +2480,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   void _handleBack() {
+    if (_processing || _updatingReviewPreview) {
+      return;
+    }
     if (_stage == _AiEditingStage.review) {
       _returnToSetup();
       return;
@@ -2361,6 +2503,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _AiPreset(
           name: 'ชุดที่ ${_presets.length + 1}',
           capabilities: Map<String, bool>.from(_capabilities),
+          speechReductionSelectionMode: _speechReductionSelectionMode,
           subtitleStyle: _subtitleStyle,
           subtitleColor: _subtitleColor,
           subtitleWords: _subtitleWords,
@@ -2375,7 +2518,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           beatIntensity: _beatIntensity,
           duckMusicDuringSpeech: _duckMusicDuringSpeech,
           silencePreset: _silencePreset,
-          fillerWords: Set<String>.from(_selectedFillerWords),
           toneFilter: _toneFilter,
           zoomLevel: _zoomLevel,
           clipSpeed: _clipSpeed,
@@ -2398,6 +2540,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _capabilities
         ..clear()
         ..addAll(preset.capabilities);
+      _speechReductionSelectionMode = preset.speechReductionSelectionMode;
       _subtitleStyle = preset.subtitleStyle;
       _subtitleColor = preset.subtitleColor;
       _subtitleWords = preset.subtitleWords;
@@ -2412,9 +2555,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _beatIntensity = preset.beatIntensity;
       _duckMusicDuringSpeech = preset.duckMusicDuringSpeech;
       _silencePreset = preset.silencePreset;
-      _selectedFillerWords
-        ..clear()
-        ..addAll(preset.fillerWords);
       _toneFilter = preset.toneFilter;
       _zoomLevel = preset.zoomLevel;
       _clipSpeed = preset.clipSpeed;
@@ -2523,10 +2663,16 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ? null
         : _reviewVideoDurations[selectedVideo.path] ?? transcriptDuration;
     final aiDuration = _reviewVideoDurations[result.file.path];
+    final speechReduction = _preparedEdit?.recipe.speechReduction;
+    final hasStructuredSpeechReduction = speechReduction != null &&
+        speechReduction.isReady &&
+        buildSpeechReductionReviewGroups(speechReduction).isNotEmpty;
 
     final appliedDefinitions = [
       for (final definition in _capabilityDefinitions)
-        if (_reviewCapabilities.containsKey(definition.id)) definition,
+        if ((definition.id != 'filler' || !hasStructuredSpeechReduction) &&
+            _reviewCapabilities.containsKey(definition.id))
+          definition,
     ];
     final notAppliedDefinitions = [
       for (final definition in _capabilityDefinitions)
@@ -2591,7 +2737,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                 ),
               ),
               TextButton(
-                onPressed: _returnToSetup,
+                onPressed: _updatingReviewPreview ? null : _returnToSetup,
                 child: const Text('ตั้งค่าใหม่'),
               ),
             ],
@@ -2731,12 +2877,18 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ),
         const SizedBox(height: 14),
         _buildAnalysisSummary(),
+        if (hasStructuredSpeechReduction) ...[
+          const SizedBox(height: 12),
+          _buildSpeechReductionReview(),
+        ],
         if (_subtitleProject != null &&
             (_appliedReviewCapabilities['subtitle'] ?? false)) ...[
           const SizedBox(height: 12),
           OutlinedButton.icon(
             key: const ValueKey('ai-review-edit-subtitles'),
-            onPressed: _updatingReviewPreview ? null : _editReviewSubtitles,
+            onPressed: _updatingReviewPreview || _reviewIsDirty
+                ? null
+                : _editReviewSubtitles,
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(double.infinity, 48),
               foregroundColor: AppTheme.accentCyanInk,
@@ -2756,7 +2908,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _sectionHeading(
           icon: Icons.auto_awesome,
           title: 'AI ทำอะไรให้แล้ว',
-          description: 'เอาติ๊กออกหรือใส่กลับ พรีวิวจะอัปเดตให้อัตโนมัติ',
+          description: 'เลือกสิ่งที่ต้องการเก็บหรือตัด แล้วกดอัปเดตคลิป',
         ),
         const SizedBox(height: 12),
         for (final definition in appliedDefinitions) ...[
@@ -2866,19 +3018,65 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   Widget _buildAnalysisSummary() {
     final recipe = _preparedEdit?.recipe;
     final silenceRanges = recipe?.silenceRanges ?? const <AiEditCut>[];
-    final fillerRanges = recipe?.fillerRanges ?? const <AiEditCut>[];
+    final hasStructuredSpeechReduction = recipe != null &&
+        recipe.speechReduction.isReady &&
+        buildSpeechReductionReviewGroups(recipe.speechReduction).isNotEmpty;
+    final legacyRepeatedSpeechRanges =
+        recipe == null || hasStructuredSpeechReduction
+            ? const <AiEditCut>[]
+            : recipe.fillerRanges;
+    final speechSummary = !hasStructuredSpeechReduction
+        ? null
+        : summarizeSpeechReductionSelection(
+            recipe.speechReduction,
+            _reviewRemovedSpeechOccurrenceIds,
+          );
+    final selectedRepeatedSpeechRanges =
+        recipe == null || !(_reviewCapabilities['filler'] ?? false)
+            ? const <AiEditCut>[]
+            : hasStructuredSpeechReduction
+                ? buildSpeechReductionCutRanges(
+                    recipe.speechReduction,
+                    _reviewRemovedSpeechOccurrenceIds,
+                  )
+                : legacyRepeatedSpeechRanges;
     final silenceStatus = _analysisDetectionStatus(
       capabilityId: 'silence',
       count: silenceRanges.length,
       unit: 'ช่วง',
     );
-    final fillerStatus = _analysisDetectionStatus(
-      capabilityId: 'filler',
-      count: fillerRanges.length,
-      unit: 'คำ',
-    );
-    final detectedSeconds = _mergedDetectedSeconds(
-      [...silenceRanges, ...fillerRanges],
+    final speechUnavailableReason = hasStructuredSpeechReduction
+        ? null
+        : recipe?.speechReduction.unavailableReason;
+    final fillerStatus = speechSummary != null && speechSummary.totalGroups > 0
+        ? (
+            text: 'พบ ${speechSummary.totalGroups} คำ · '
+                'เลือกตัด ${speechSummary.selectedOccurrences} จุด',
+            isNotDetected: false,
+          )
+        : legacyRepeatedSpeechRanges.isNotEmpty
+            ? (
+                text: 'พบ ${legacyRepeatedSpeechRanges.length} จุด · '
+                    'เลือกตัด ${(_reviewCapabilities['filler'] ?? false) ? legacyRepeatedSpeechRanges.length : 0} จุด',
+                isNotDetected: false,
+              )
+            : speechUnavailableReason != null
+                ? (
+                    text: speechUnavailableReason == 'unsupported-language'
+                        ? 'ยังรองรับการตรวจอัตโนมัติเฉพาะภาษาไทย'
+                        : 'ตรวจไม่ได้ · เวลาแต่ละคำไม่ชัดพอ',
+                    isNotDetected: false,
+                  )
+                : _analysisDetectionStatus(
+                    capabilityId: 'filler',
+                    count: 0,
+                    unit: 'คำ',
+                  );
+    final selectedCutSeconds = _mergedDetectedSeconds(
+      [
+        if (_reviewCapabilities['silence'] ?? false) ...silenceRanges,
+        ...selectedRepeatedSpeechRanges,
+      ],
       maxSeconds: recipe?.transcript.durationSeconds,
     );
 
@@ -2925,16 +3123,16 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           _analysisSummaryRow(
             key: ValueKey(
               fillerStatus.isNotDetected
-                  ? 'ai-review-not-detected-filler'
-                  : 'ai-review-analysis-filler-status',
+                  ? 'ai-review-not-detected-repeated-speech'
+                  : 'ai-review-analysis-repeated-speech-status',
             ),
             icon: Icons.voice_over_off_outlined,
-            label: 'คำฟุ่มเฟือย',
+            label: 'คำพูดซ้ำ',
             value: fillerStatus.text,
           ),
           const SizedBox(height: 10),
           Text(
-            'เวลาที่ตรวจพบรวม ${_formatAnalysisSeconds(detectedSeconds)} วินาที',
+            'เวลาที่จะตัดรวม ${_formatAnalysisSeconds(selectedCutSeconds)} วินาที',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -2943,7 +3141,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'ตัวเลขนี้คือช่วงที่ตรวจพบก่อนสร้างคลิปจริง ผลลัพธ์อาจสั้นลงไม่เท่ากันตามความยาวที่เลือก',
+            'ตัวเลขนี้เปลี่ยนตามช่วงเงียบและคำพูดซ้ำที่เลือกตัด ผลลัพธ์จริงอาจต่างเล็กน้อยเมื่อนำช่วงที่ติดกันมารวมกัน',
             style: TextStyle(
               fontSize: 10.5,
               height: 1.4,
@@ -3006,6 +3204,291 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSpeechReductionReview() {
+    final recipe = _preparedEdit?.recipe;
+    if (recipe == null) return const SizedBox.shrink();
+    final groups = buildSpeechReductionReviewGroups(recipe.speechReduction);
+    if (groups.isEmpty) return const SizedBox.shrink();
+
+    final enabled = _reviewCapabilities['filler'] ?? false;
+    final summary = summarizeSpeechReductionSelection(
+      recipe.speechReduction,
+      _reviewRemovedSpeechOccurrenceIds,
+    );
+
+    return Container(
+      key: const ValueKey('ai-review-speech-reduction'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: enabled
+              ? AppTheme.accent.withValues(alpha: 0.4)
+              : AppTheme.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _iconBox(Icons.record_voice_over_outlined, enabled: enabled),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'เลือกคำพูดซ้ำที่จะตัด',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'พบ ${summary.totalGroups} คำ · '
+                      'เลือกตัด ${summary.selectedOccurrences} จุด',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Checkbox(
+                key: const ValueKey('ai-review-capability-filler'),
+                value: enabled,
+                onChanged: _updatingReviewPreview
+                    ? null
+                    : (value) {
+                        if (value != null) {
+                          unawaited(_toggleReviewCapability('filler', value));
+                        }
+                      },
+                activeColor: AppTheme.accent,
+                checkColor: Colors.white,
+                side: BorderSide(color: AppTheme.border),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _speechReductionSelectionMode == _SpeechReductionSelectionMode.ai
+                ? 'AI เลือกตัดเฉพาะจุดที่พูดซ้ำติดกันและมั่นใจเรื่องเวลา '
+                    'คุณเปลี่ยนแต่ละจุดเป็นเก็บไว้ได้'
+                : 'AI ตรวจพบคำพูดซ้ำให้แล้ว แต่ยังไม่ตัดออก '
+                    'เลือกแต่ละจุดที่ต้องการตัดแล้วกดอัปเดตคลิป',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.45,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (var groupIndex = 0;
+              groupIndex < groups.length;
+              groupIndex += 1) ...[
+            if (groupIndex > 0) const SizedBox(height: 10),
+            _buildSpeechReductionGroup(groups[groupIndex], enabled: enabled),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSpeechReductionGroup(
+    SpeechReductionReviewGroup group, {
+    required bool enabled,
+  }) {
+    final removable = group.occurrences
+        .where((occurrence) => occurrence.canAutoRemove)
+        .toList(growable: false);
+    final selectedCount = removable
+        .where(
+          (occurrence) =>
+              _reviewRemovedSpeechOccurrenceIds.contains(occurrence.id),
+        )
+        .length;
+
+    return Container(
+      key: ValueKey('ai-repeated-word-${group.id}'),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: AppTheme.glassDeep,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '“${group.text}” · พูด ${group.occurrences.length} ครั้ง',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+              if (removable.isNotEmpty)
+                Text(
+                  'ตัด $selectedCount จุด',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.accentCyanInk,
+                  ),
+                ),
+            ],
+          ),
+          if (removable.isEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'พบหลายครั้งแต่กระจายอยู่คนละประโยค ระบบจึงเก็บไว้ทั้งหมด',
+              style: TextStyle(
+                fontSize: 10.5,
+                height: 1.4,
+                color: AppTheme.textMuted,
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 7),
+            Row(
+              children: [
+                TextButton(
+                  key: ValueKey('ai-repeated-word-default-${group.id}'),
+                  onPressed: !enabled || _updatingReviewPreview
+                      ? null
+                      : () => setState(() {
+                            for (final occurrence in removable) {
+                              if (occurrence.selectedByDefault) {
+                                _reviewRemovedSpeechOccurrenceIds
+                                    .add(occurrence.id);
+                              } else {
+                                _reviewRemovedSpeechOccurrenceIds
+                                    .remove(occurrence.id);
+                              }
+                            }
+                          }),
+                  child: const Text('ใช้ที่ AI แนะนำ'),
+                ),
+                TextButton(
+                  key: ValueKey('ai-repeated-word-keep-${group.id}'),
+                  onPressed: !enabled || _updatingReviewPreview
+                      ? null
+                      : () => setState(() {
+                            _reviewRemovedSpeechOccurrenceIds.removeAll(
+                              removable.map((occurrence) => occurrence.id),
+                            );
+                          }),
+                  child: const Text('เก็บทั้งหมด'),
+                ),
+              ],
+            ),
+            for (final occurrence in removable)
+              _buildSpeechReductionOccurrence(
+                occurrence,
+                enabled: enabled,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSpeechReductionOccurrence(
+    AiEditSpeechReductionOccurrenceResult occurrence, {
+    required bool enabled,
+  }) {
+    final removed = _reviewRemovedSpeechOccurrenceIds.contains(occurrence.id);
+    final context = [
+      occurrence.contextBefore,
+      occurrence.text,
+      occurrence.contextAfter
+    ].where((part) => part.trim().isNotEmpty).join(' ');
+    final reason =
+        occurrence.kind == 'adjacent-phrase' ? 'วลีซ้ำติดกัน' : 'คำซ้ำติดกัน';
+
+    return Container(
+      key: ValueKey('ai-repeated-occurrence-${occurrence.id}'),
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.fromLTRB(9, 7, 4, 7),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$reason · ${_formatDurationSeconds(occurrence.start)}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                if (context.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    context,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.35,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Text(
+            removed ? 'ตัด' : 'เก็บ',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: removed ? AppTheme.accentCyanInk : AppTheme.textMuted,
+            ),
+          ),
+          Checkbox(
+            key: ValueKey('ai-repeated-remove-${occurrence.id}'),
+            value: removed,
+            onChanged: !enabled || _updatingReviewPreview
+                ? null
+                : (value) => setState(() {
+                      if (value ?? false) {
+                        _reviewRemovedSpeechOccurrenceIds.add(occurrence.id);
+                      } else {
+                        _reviewRemovedSpeechOccurrenceIds.remove(occurrence.id);
+                      }
+                    }),
+            activeColor: AppTheme.accent,
+            checkColor: Colors.white,
+            side: BorderSide(color: AppTheme.border),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -3287,7 +3770,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               key: const ValueKey('ai-editing-back'),
-              onTap: _handleBack,
+              onTap: _processing || _updatingReviewPreview ? null : _handleBack,
               borderRadius: BorderRadius.circular(12),
               child: SizedBox(
                 width: 40,
@@ -3405,6 +3888,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             child: InkWell(
               key: const ValueKey('ai-remove-video'),
               onTap: () async {
+                if (_processing || _updatingReviewPreview) {
+                  return;
+                }
                 await _releaseCachedVisualProxy();
                 if (!mounted) {
                   return;
@@ -3422,6 +3908,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                   _acceptedSetup = null;
                   _reviewCapabilities.clear();
                   _appliedReviewCapabilities.clear();
+                  _reviewRemovedSpeechOccurrenceIds.clear();
+                  _appliedRemovedSpeechOccurrenceIds.clear();
                   _reviewVideoDurations.clear();
                   _reviewVideoSource = ReviewVideoSource.ai;
                   _reviewResultRevision = 0;
@@ -3876,6 +4364,66 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               ],
             ),
           ),
+          if (definition.id == 'filler' && available && enabled)
+            Container(
+              key: const ValueKey('ai-speech-reduction-mode-selector'),
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ใครเป็นคนเลือกคำที่จะตัด',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _choiceChip(
+                        key: const ValueKey('ai-speech-reduction-mode-ai'),
+                        label: 'AI เลือกให้',
+                        selected: _speechReductionSelectionMode ==
+                            _SpeechReductionSelectionMode.ai,
+                        onTap: () => setState(() {
+                          _speechReductionSelectionMode =
+                              _SpeechReductionSelectionMode.ai;
+                        }),
+                      ),
+                      _choiceChip(
+                        key: const ValueKey(
+                          'ai-speech-reduction-mode-manual',
+                        ),
+                        label: 'เลือกเอง',
+                        selected: _speechReductionSelectionMode ==
+                            _SpeechReductionSelectionMode.manual,
+                        onTap: () => setState(() {
+                          _speechReductionSelectionMode =
+                              _SpeechReductionSelectionMode.manual;
+                        }),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    _speechReductionSelectionMode ==
+                            _SpeechReductionSelectionMode.ai
+                        ? 'ตัดจุดที่ AI มั่นใจให้ก่อน และแก้คืนภายหลังได้'
+                        : 'AI ตรวจหาอย่างเดียว ยังไม่ตัดจนกว่าคุณจะเลือก',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.4,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (showAdvanced)
             Container(
               key: ValueKey('ai-advanced-${definition.id}'),
@@ -3894,7 +4442,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   Widget _buildAdvancedPanel(String id) {
     return switch (id) {
       'silence' => _buildSilenceAdvanced(),
-      'filler' => _buildFillerAdvanced(),
       'subtitle' => _buildSubtitleAdvanced(),
       'cta' => _buildCtaAdvanced(),
       'beatsync' => _buildBeatSyncAdvanced(),
@@ -3938,65 +4485,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             color: AppTheme.textMuted,
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _buildFillerAdvanced() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _advancedLabel('คำที่ระบบจะลองตรวจหา'),
-        Wrap(
-          spacing: 7,
-          runSpacing: 7,
-          children: [
-            for (final word in _fillerWordOptions)
-              _choiceChip(
-                key: ValueKey('ai-filler-word-$word'),
-                label: word,
-                selected: _selectedFillerWords.contains(word),
-                onTap: () => setState(() {
-                  if (_selectedFillerWords.contains(word)) {
-                    _selectedFillerWords.remove(word);
-                  } else {
-                    _selectedFillerWords.add(word);
-                  }
-                }),
-              ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'ระบบตัดเฉพาะคำที่เลือกและตรวจพบพร้อมเวลาในคำถอดเสียง',
-          style: TextStyle(
-            fontSize: 10.5,
-            height: 1.45,
-            color: AppTheme.textMuted,
-          ),
-        ),
-        if (_selectedFillerWords.isEmpty) ...[
-          const SizedBox(height: 9),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: const Color(0xFFF59E0B).withValues(alpha: 0.32),
-              ),
-            ),
-            child: const Text(
-              'เลือกอย่างน้อย 1 คำ หรือปิดฟังก์ชันตัดคำฟุ่มเฟือย',
-              style: TextStyle(
-                color: Color(0xFF92400E),
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -5197,18 +5685,16 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final canProcess = hasVideo &&
         _hasSelectedDuration &&
         !_processing &&
-        _fillerSelectionComplete;
+        !_updatingReviewPreview;
     final usesPendingMusic = _isCapabilityEnabled('beatsync') &&
         _musicSource != _BeatMusicSource.original;
     final label = !hasVideo
         ? 'เพิ่มวิดีโอก่อน'
         : !_hasSelectedDuration
             ? 'เลือกความยาวก่อน'
-            : !_fillerSelectionComplete
-                ? 'เลือกคำฟุ่มเฟือยอย่างน้อย 1 คำ'
-                : usesPendingMusic
-                    ? 'ตัดต่อโดยยังไม่ใส่เพลง'
-                    : 'ให้ AI ตัดต่อให้เลย';
+            : usesPendingMusic
+                ? 'ตัดต่อโดยยังไม่ใส่เพลง'
+                : 'ให้ AI ตัดต่อให้เลย';
     return ElevatedButton(
       key: const ValueKey('ai-process-button'),
       onPressed: canProcess ? _processVideo : null,

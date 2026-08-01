@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type {
   EditPlanCut,
   EditPlanResult,
@@ -46,6 +48,53 @@ export type AiEditCapabilityStatus = {
 export type AiEditMusicSource = 'auto' | 'library' | 'device' | 'original';
 export type AiEditBeatIntensity = 'smooth' | 'balanced' | 'energetic';
 export type AiEditSilencePreset = 'natural' | 'balanced' | 'compact';
+export type AiEditSpeechReductionMode = 'auto';
+
+export type AiEditSpeechReductionOccurrenceKind =
+  | 'adjacent-word'
+  | 'adjacent-phrase'
+  | 'frequent-only';
+
+export type AiEditSpeechReductionOccurrence = {
+  id: string;
+  groupId: string;
+  text: string;
+  normalizedText: string;
+  start: number;
+  end: number;
+  occurrenceIndex: number;
+  occurrenceCount: number;
+  kind: AiEditSpeechReductionOccurrenceKind;
+  recommendation: 'cut' | 'keep';
+  canAutoRemove: boolean;
+  selectedByDefault: boolean;
+  contextBefore: string;
+  contextAfter: string;
+};
+
+export type AiEditSpeechReductionGroup = {
+  id: string;
+  text: string;
+  normalizedText: string;
+  totalOccurrences: number;
+  occurrenceIds: string[];
+};
+
+export type AiEditSpeechReductionCut = EditPlanCut & {
+  occurrenceId: string;
+};
+
+export type AiEditSpeechReduction = {
+  version: 1;
+  status: 'ready' | 'unavailable';
+  unavailableReason?:
+    | 'unsupported-language'
+    | 'unsafe-word-timing'
+    | 'fragmented-word-timing';
+  groups: AiEditSpeechReductionGroup[];
+  occurrences: AiEditSpeechReductionOccurrence[];
+  defaultCutRanges: AiEditSpeechReductionCut[];
+};
 
 export type AiEditMusicSettings = {
   source: AiEditMusicSource;
@@ -72,6 +121,7 @@ export type AiEditRecipeSettings = {
   zoomLevel?: string;
   silencePreset?: AiEditSilencePreset;
   fillerWords?: string[];
+  speechReductionMode?: AiEditSpeechReductionMode;
   music?: AiEditMusicSettings;
 };
 
@@ -106,6 +156,7 @@ export type AiEditRecipe = {
   cutRanges: EditPlanCut[];
   silenceRanges: EditPlanCut[];
   fillerRanges: EditPlanCut[];
+  speechReduction?: AiEditSpeechReduction;
   plan: {
     cuts: EditPlanCut[];
     summary: string;
@@ -154,8 +205,18 @@ const plannedCapabilities = new Set<AiEditCapabilityKey>([
   'watermark'
 ]);
 
-const defaultFillerWords = ['เอ่อ', 'อ่า', 'แบบว่า', 'คือว่า', 'ประมาณว่า'];
-const supportedFillerWords = new Set(defaultFillerWords);
+const defaultFillerWords = [
+  'เอ่อ',
+  'อ่า',
+  'แบบว่า',
+  'คือว่า',
+  'ประมาณว่า'
+];
+const supportedFillerWords = new Set([...defaultFillerWords, 'อาฮะ']);
+const fillerWordAliases = new Map([
+  ['เออ', 'เอ่อ'],
+  ['อะฮะ', 'อาฮะ']
+]);
 const silencePresets = new Set<AiEditSilencePreset>([
   'natural',
   'balanced',
@@ -166,6 +227,7 @@ const silenceMinGapSeconds: Record<AiEditSilencePreset, number> = {
   balanced: 0.6,
   compact: 0.4
 };
+const speechReductionModes = new Set<AiEditSpeechReductionMode>(['auto']);
 const musicSources = new Set<AiEditMusicSource>(['auto', 'library', 'device', 'original']);
 const beatIntensities = new Set<AiEditBeatIntensity>(['smooth', 'balanced', 'energetic']);
 const defaultMusicSettings: AiEditMusicSettings = {
@@ -203,7 +265,7 @@ const normalizeFillerWord = (value: string): string =>
 
 const canonicalizeFillerWord = (value: string): string => {
   const normalized = normalizeFillerWord(value);
-  return normalized === 'เออ' ? 'เอ่อ' : normalized;
+  return fillerWordAliases.get(normalized) ?? normalized;
 };
 
 const readFillerWords = (value: unknown): string[] | undefined => {
@@ -303,6 +365,11 @@ export const readAiEditRecipeSettings = (value: unknown): AiEditRecipeSettings =
     silencePresets.has(rawSilencePreset as AiEditSilencePreset)
     ? rawSilencePreset as AiEditSilencePreset
     : undefined;
+  const rawSpeechReductionMode = readString(record.speechReductionMode);
+  const speechReductionMode = rawSpeechReductionMode &&
+    speechReductionModes.has(rawSpeechReductionMode as AiEditSpeechReductionMode)
+    ? rawSpeechReductionMode as AiEditSpeechReductionMode
+    : undefined;
 
   return {
     subtitleStyle: readString(record.subtitleStyle),
@@ -317,6 +384,7 @@ export const readAiEditRecipeSettings = (value: unknown): AiEditRecipeSettings =
     zoomLevel: readString(record.zoomLevel),
     silencePreset,
     fillerWords: readFillerWords(record.fillerWords),
+    speechReductionMode,
     music: readAiEditMusicSettings(record.music)
   };
 };
@@ -331,6 +399,45 @@ const maximumEstimatedThaiWordsPerCue = 2;
 const maximumThaiSemanticWordsPerCue = 5;
 const maximumThaiGraphemesPerCue = 20;
 const subtitleWordTimingToleranceSeconds = 1e-6;
+const maximumAdjacentRepeatGapSeconds = 0.35;
+const maximumRepeatedPhraseWords = 3;
+const minimumFrequentOccurrenceCount = 3;
+const speechReductionContextWordCount = 2;
+const neverAutoRemoveSpeechReductionWords = new Set([
+  'ไม่',
+  'ราคา',
+  'บาท',
+  'เปอร์เซ็นต์',
+  'ส่วนลด',
+  'โปรโมชั่น'
+]);
+const frequentOnlyProtectedSpeechReductionWords = new Set([
+  ...neverAutoRemoveSpeechReductionWords,
+  'ก็',
+  'จะ',
+  'ที่',
+  'และ',
+  'หรือ',
+  'แต่',
+  'แล้ว',
+  'เรา',
+  'เขา',
+  'มัน',
+  'คือ',
+  'ว่า',
+  'ของ',
+  'ใน',
+  'ไป',
+  'มา',
+  'ให้',
+  'ได้',
+  'มี',
+  'เป็น',
+  'ครับ',
+  'ค่ะ',
+  'คะ',
+  'นะ'
+]);
 
 const normalizeTranscriptTextForCoverage = (value: string): string =>
   value
@@ -983,7 +1090,12 @@ const findFillerRanges = (
   referenceText = ''
 ): EditPlanCut[] => {
   const selectedWords = new Set(fillerWords.map(canonicalizeFillerWord));
-  const selectedWordList = [...selectedWords];
+  const selectedWordVariants = [
+    ...selectedWords,
+    ...[...fillerWordAliases]
+      .filter(([, canonical]) => selectedWords.has(canonical))
+      .map(([alias]) => alias)
+  ];
   const sortedWords = [...words].sort(
     (a, b) => a.start - b.start || a.end - b.end
   );
@@ -1065,7 +1177,7 @@ const findFillerRanges = (
         }
       }
 
-      const canStillMatch = selectedWordList.some((selectedWord) =>
+      const canStillMatch = selectedWordVariants.some((selectedWord) =>
         selectedWord.startsWith(canonicalText)
       );
       if (!canStillMatch) {
@@ -1082,6 +1194,444 @@ const findFillerRanges = (
         ) === index
     )
   );
+};
+
+type SpeechReductionToken = {
+  text: string;
+  normalizedText: string;
+  start: number;
+  end: number;
+  sourceIndex: number;
+  endsSentence: boolean;
+};
+
+const buildSpeechReductionId = (
+  prefix: 'srg' | 'sro',
+  parts: Array<string | number>
+): string => {
+  const digest = createHash('sha256')
+    .update(parts.join('|'))
+    .digest('hex')
+    .slice(0, 16);
+  return `${prefix}_${digest}`;
+};
+
+const buildUnavailableSpeechReduction = (
+  unavailableReason: NonNullable<AiEditSpeechReduction['unavailableReason']>
+): AiEditSpeechReduction => ({
+  version: 1,
+  status: 'unavailable',
+  unavailableReason,
+  groups: [],
+  occurrences: [],
+  defaultCutRanges: []
+});
+
+const readSpeechReductionTokens = (
+  words: TranscriptWord[]
+): SpeechReductionToken[] | undefined => {
+  const tokens: SpeechReductionToken[] = [];
+
+  for (const [sourceIndex, word] of words.entries()) {
+    const normalizedProviderText = word.word.trim().normalize('NFC');
+    const semanticParts = readThaiSubtitleWordParts(normalizedProviderText)
+      .filter(
+        (part) =>
+          part.isWordLike &&
+          normalizeTranscriptTextForCoverage(part.segment).length > 0
+      );
+
+    // A provider timestamp spanning multiple semantic words cannot identify a
+    // safe cut boundary. Keep the whole transcript instead of estimating one.
+    if (semanticParts.length !== 1) {
+      return undefined;
+    }
+
+    const text = semanticParts[0]!.segment.trim().normalize('NFC');
+    const normalizedText = normalizeTranscriptTextForCoverage(text);
+    if (normalizedText.length === 0) {
+      return undefined;
+    }
+
+    tokens.push({
+      text,
+      normalizedText,
+      start: word.start,
+      end: word.end,
+      sourceIndex,
+      endsSentence: /[.!?ฯ]+(?:["'”’\)\]]*)\s*$/u.test(normalizedProviderText)
+    });
+  }
+
+  return tokens;
+};
+
+const canSuggestAdjacentSpeechReductionForToken = (
+  token: SpeechReductionToken
+): boolean =>
+  /^\p{Script=Thai}+$/u.test(token.normalizedText) &&
+  !token.normalizedText.includes('ๆ') &&
+  !/[\p{Number}฿$€£¥]/u.test(token.text) &&
+  !neverAutoRemoveSpeechReductionWords.has(token.normalizedText);
+
+const canReportFrequentSpeechReductionToken = (
+  token: SpeechReductionToken
+): boolean =>
+  canSuggestAdjacentSpeechReductionForToken(token) &&
+  readGraphemeCount(token.normalizedText) >= 3 &&
+  !frequentOnlyProtectedSpeechReductionWords.has(token.normalizedText);
+
+const hasSafeAdjacentSpeechBoundary = (
+  left: SpeechReductionToken,
+  right: SpeechReductionToken
+): boolean => {
+  const gap = right.start - left.end;
+  return (
+    !left.endsSentence &&
+    gap >= -Number.EPSILON &&
+    gap <= maximumAdjacentRepeatGapSeconds
+  );
+};
+
+const readSpeechReductionContext = (
+  tokens: SpeechReductionToken[],
+  startIndex: number,
+  endIndex: number
+): { contextBefore: string; contextAfter: string } => ({
+  contextBefore: tokens
+    .slice(
+      Math.max(0, startIndex - speechReductionContextWordCount),
+      startIndex
+    )
+    .map((token) => token.text)
+    .join(''),
+  contextAfter: tokens
+    .slice(endIndex, endIndex + speechReductionContextWordCount)
+    .map((token) => token.text)
+    .join('')
+});
+
+const buildReadySpeechReduction = (
+  tokens: SpeechReductionToken[]
+): AiEditSpeechReduction => {
+  const groups: AiEditSpeechReductionGroup[] = [];
+  const occurrences: AiEditSpeechReductionOccurrence[] = [];
+  const defaultCutRanges: AiEditSpeechReductionCut[] = [];
+  const consumedTokenIndexes = new Set<number>();
+
+  for (let startIndex = 0; startIndex < tokens.length; startIndex += 1) {
+    if (consumedTokenIndexes.has(startIndex)) {
+      continue;
+    }
+
+    let foundAdjacentRepeat = false;
+    for (
+      let phraseWordCount = maximumRepeatedPhraseWords;
+      phraseWordCount >= 1;
+      phraseWordCount -= 1
+    ) {
+      if (startIndex + phraseWordCount * 2 > tokens.length) {
+        continue;
+      }
+
+      const baseTokens = tokens.slice(
+        startIndex,
+        startIndex + phraseWordCount
+      );
+      if (!baseTokens.every(canSuggestAdjacentSpeechReductionForToken)) {
+        continue;
+      }
+      if (
+        phraseWordCount > 1 &&
+        baseTokens.every(
+          (token) => token.normalizedText === baseTokens[0]!.normalizedText
+        )
+      ) {
+        continue;
+      }
+      if (
+        baseTokens.some(
+          (token, index) =>
+            index > 0 &&
+            !hasSafeAdjacentSpeechBoundary(baseTokens[index - 1]!, token)
+        )
+      ) {
+        continue;
+      }
+
+      const matchesPhraseAt = (candidateStartIndex: number): boolean => {
+        const candidateEndIndex = candidateStartIndex + phraseWordCount;
+        if (candidateEndIndex > tokens.length) {
+          return false;
+        }
+
+        const candidateTokens = tokens.slice(
+          candidateStartIndex,
+          candidateEndIndex
+        );
+        if (
+          candidateTokens.some(
+            (token, index) =>
+              consumedTokenIndexes.has(candidateStartIndex + index) ||
+              !canSuggestAdjacentSpeechReductionForToken(token) ||
+              token.normalizedText !== baseTokens[index]!.normalizedText
+          )
+        ) {
+          return false;
+        }
+
+        const boundaryStartIndex = Math.max(startIndex + 1, candidateStartIndex);
+        for (
+          let tokenIndex = boundaryStartIndex;
+          tokenIndex < candidateEndIndex;
+          tokenIndex += 1
+        ) {
+          if (
+            !hasSafeAdjacentSpeechBoundary(
+              tokens[tokenIndex - 1]!,
+              tokens[tokenIndex]!
+            )
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      };
+
+      if (!matchesPhraseAt(startIndex + phraseWordCount)) {
+        continue;
+      }
+
+      let occurrenceCount = 2;
+      while (
+        matchesPhraseAt(startIndex + occurrenceCount * phraseWordCount)
+      ) {
+        occurrenceCount += 1;
+      }
+
+      const normalizedText = baseTokens
+        .map((token) => token.normalizedText)
+        .join('');
+      const text = baseTokens.map((token) => token.text).join('');
+      const runEndIndex = startIndex + occurrenceCount * phraseWordCount;
+      const groupId = buildSpeechReductionId('srg', [
+        'adjacent',
+        normalizedText,
+        Math.round(tokens[startIndex]!.start * 1000),
+        Math.round(tokens[runEndIndex - 1]!.end * 1000)
+      ]);
+      const occurrenceIds: string[] = [];
+
+      for (
+        let occurrenceOffset = 0;
+        occurrenceOffset < occurrenceCount;
+        occurrenceOffset += 1
+      ) {
+        const occurrenceStartIndex =
+          startIndex + occurrenceOffset * phraseWordCount;
+        const occurrenceEndIndex = occurrenceStartIndex + phraseWordCount;
+        const first = tokens[occurrenceStartIndex]!;
+        const last = tokens[occurrenceEndIndex - 1]!;
+        const isAnchorOccurrence = occurrenceOffset === occurrenceCount - 1;
+        const occurrenceId = buildSpeechReductionId('sro', [
+          groupId,
+          occurrenceOffset + 1,
+          Math.round(first.start * 1000),
+          Math.round(last.end * 1000)
+        ]);
+        const context = readSpeechReductionContext(
+          tokens,
+          occurrenceStartIndex,
+          occurrenceEndIndex
+        );
+
+        occurrenceIds.push(occurrenceId);
+        occurrences.push({
+          id: occurrenceId,
+          groupId,
+          text,
+          normalizedText,
+          start: first.start,
+          end: last.end,
+          occurrenceIndex: occurrenceOffset + 1,
+          occurrenceCount,
+          kind: phraseWordCount === 1
+            ? 'adjacent-word'
+            : 'adjacent-phrase',
+          recommendation: isAnchorOccurrence ? 'keep' : 'cut',
+          canAutoRemove: !isAnchorOccurrence,
+          selectedByDefault: !isAnchorOccurrence,
+          ...context
+        });
+
+        if (!isAnchorOccurrence) {
+          defaultCutRanges.push({
+            occurrenceId,
+            start: first.start,
+            end: last.end
+          });
+        }
+      }
+
+      groups.push({
+        id: groupId,
+        text,
+        normalizedText,
+        totalOccurrences: occurrenceCount,
+        occurrenceIds
+      });
+      for (
+        let tokenIndex = startIndex;
+        tokenIndex < runEndIndex;
+        tokenIndex += 1
+      ) {
+        consumedTokenIndexes.add(tokenIndex);
+      }
+      startIndex = runEndIndex - 1;
+      foundAdjacentRepeat = true;
+      break;
+    }
+
+    if (foundAdjacentRepeat) {
+      continue;
+    }
+  }
+
+  const frequentTokens = new Map<string, SpeechReductionToken[]>();
+  for (const [tokenIndex, token] of tokens.entries()) {
+    if (
+      consumedTokenIndexes.has(tokenIndex) ||
+      !canReportFrequentSpeechReductionToken(token)
+    ) {
+      continue;
+    }
+
+    const matches = frequentTokens.get(token.normalizedText) ?? [];
+    matches.push(token);
+    frequentTokens.set(token.normalizedText, matches);
+  }
+
+  const frequentEntries = [...frequentTokens.entries()]
+    .filter(([, matches]) => matches.length >= minimumFrequentOccurrenceCount)
+    .sort(
+      ([leftText, leftMatches], [rightText, rightMatches]) =>
+        leftMatches[0]!.start - rightMatches[0]!.start ||
+        leftText.localeCompare(rightText, 'th')
+    );
+  for (const [normalizedText, matches] of frequentEntries) {
+    const groupId = buildSpeechReductionId('srg', [
+      'frequent',
+      normalizedText
+    ]);
+    const occurrenceIds: string[] = [];
+
+    for (const [occurrenceOffset, token] of matches.entries()) {
+      const occurrenceId = buildSpeechReductionId('sro', [
+        groupId,
+        occurrenceOffset + 1,
+        Math.round(token.start * 1000),
+        Math.round(token.end * 1000)
+      ]);
+      const context = readSpeechReductionContext(
+        tokens,
+        token.sourceIndex,
+        token.sourceIndex + 1
+      );
+      occurrenceIds.push(occurrenceId);
+      occurrences.push({
+        id: occurrenceId,
+        groupId,
+        text: token.text,
+        normalizedText,
+        start: token.start,
+        end: token.end,
+        occurrenceIndex: occurrenceOffset + 1,
+        occurrenceCount: matches.length,
+        kind: 'frequent-only',
+        recommendation: 'keep',
+        canAutoRemove: false,
+        selectedByDefault: false,
+        ...context
+      });
+    }
+
+    groups.push({
+      id: groupId,
+      text: matches[0]!.text,
+      normalizedText,
+      totalOccurrences: matches.length,
+      occurrenceIds
+    });
+  }
+
+  occurrences.sort(
+    (left, right) =>
+      left.start - right.start ||
+      left.end - right.end ||
+      left.id.localeCompare(right.id)
+  );
+  defaultCutRanges.sort(
+    (left, right) =>
+      left.start - right.start ||
+      left.end - right.end ||
+      left.occurrenceId.localeCompare(right.occurrenceId)
+  );
+  const occurrenceStartById = new Map(
+    occurrences.map((occurrence) => [occurrence.id, occurrence.start])
+  );
+  groups.sort(
+    (left, right) =>
+      (occurrenceStartById.get(left.occurrenceIds[0]!) ?? 0) -
+        (occurrenceStartById.get(right.occurrenceIds[0]!) ?? 0) ||
+      left.id.localeCompare(right.id)
+  );
+
+  return {
+    version: 1,
+    status: 'ready',
+    groups,
+    occurrences,
+    defaultCutRanges
+  };
+};
+
+const buildSpeechReduction = ({
+  language,
+  words,
+  fragmentedThaiWordTimings,
+  referenceText
+}: {
+  language: string;
+  words: TranscriptWord[] | undefined;
+  fragmentedThaiWordTimings: boolean;
+  referenceText: string;
+}): AiEditSpeechReduction => {
+  if (normalizeTranscriptionLanguage(language) !== 'th') {
+    return buildUnavailableSpeechReduction('unsupported-language');
+  }
+  if (!words || words.length === 0) {
+    return buildUnavailableSpeechReduction('unsafe-word-timing');
+  }
+  if (fragmentedThaiWordTimings) {
+    return buildUnavailableSpeechReduction('fragmented-word-timing');
+  }
+
+  const normalizedReferenceText =
+    normalizeTranscriptTextForCoverage(referenceText);
+  const normalizedWordText = normalizeTranscriptTextForCoverage(
+    words.map((word) => word.word).join('')
+  );
+  const tokens = readSpeechReductionTokens(words);
+  if (
+    !tokens ||
+    normalizedReferenceText.length === 0 ||
+    normalizedWordText !== normalizedReferenceText
+  ) {
+    return buildUnavailableSpeechReduction('unsafe-word-timing');
+  }
+
+  return buildReadySpeechReduction(tokens);
 };
 
 const inferPriceText = (transcriptText: string): string => {
@@ -1265,13 +1815,27 @@ export const buildAiEditRecipe = ({
           : validTranscriptWords ?? []
       )
     : [];
+  const speechReduction =
+    capabilities.filler && settings.speechReductionMode === 'auto'
+      ? buildSpeechReduction({
+          language: transcriptLanguage,
+          words: reliableValidTranscriptWords,
+          fragmentedThaiWordTimings,
+          referenceText: transcriptReferenceText
+        })
+      : undefined;
   const fillerRanges = capabilities.filler
-    ? findFillerRanges(
-        reliableSafeTranscriptWords,
-        settings.fillerWords ?? defaultFillerWords,
-        fragmentedThaiWordTimings,
-        transcriptReferenceText
-      )
+    ? speechReduction
+      ? speechReduction.defaultCutRanges.map(({ start, end }) => ({
+          start,
+          end
+        }))
+      : findFillerRanges(
+          reliableSafeTranscriptWords,
+          settings.fillerWords ?? defaultFillerWords,
+          fragmentedThaiWordTimings,
+          transcriptReferenceText
+        )
     : [];
   const planCuts = plan?.cuts ?? [];
   const priceText = settings.priceText ?? inferPriceText(transcript.text);
@@ -1305,6 +1869,7 @@ export const buildAiEditRecipe = ({
     cutRanges: sortRanges([...planCuts, ...silenceRanges, ...fillerRanges]),
     silenceRanges,
     fillerRanges,
+    ...(speechReduction ? { speechReduction } : {}),
     plan: {
       cuts: planCuts,
       summary: plan?.summary ?? '',
@@ -1351,10 +1916,22 @@ export const buildAiEditRecipe = ({
       filler: buildCapabilityStatus({
         key: 'filler',
         enabled: capabilities.filler,
-        state: fillerRanges.length > 0 ? 'applied' : 'hinted',
-        message: fillerRanges.length > 0
-          ? 'พบคำฟุ่มเฟือยจาก word timing แล้ว'
-          : 'รับค่าไว้แล้ว แต่ยังไม่พบคำฟุ่มเฟือยจาก transcript รอบนี้'
+        state: speechReduction
+          ? speechReduction.groups.length > 0
+            ? 'applied'
+            : 'hinted'
+          : fillerRanges.length > 0
+            ? 'applied'
+            : 'hinted',
+        message: speechReduction
+          ? speechReduction.status === 'unavailable'
+            ? 'ยังตรวจคำพูดซ้ำไม่ได้ เพราะเวลารายคำรอบนี้ไม่ปลอดภัยต่อการตัด'
+            : speechReduction.groups.length > 0
+              ? 'ตรวจคำพูดซ้ำแล้ว พร้อมรายการให้เลือกตัดหรือเก็บทีละจุด'
+              : 'ตรวจคำพูดซ้ำแล้ว แต่ไม่พบจุดที่ควรเสนอให้ตัด'
+          : fillerRanges.length > 0
+            ? 'พบคำฟุ่มเฟือยจาก word timing แล้ว'
+            : 'รับค่าไว้แล้ว แต่ยังไม่พบคำฟุ่มเฟือยจาก transcript รอบนี้'
       }),
       hook: buildCapabilityStatus({ key: 'hook', enabled: capabilities.hook }),
       beatsync: buildCapabilityStatus({ key: 'beatsync', enabled: capabilities.beatsync }),

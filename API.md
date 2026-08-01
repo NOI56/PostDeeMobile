@@ -943,7 +943,7 @@ Request:
   },
   "settings": {
     "silencePreset": "balanced",
-    "fillerWords": ["เอ่อ", "อ่า", "แบบว่า", "คือว่า", "ประมาณว่า"],
+    "speechReductionMode": "auto",
     "ctaText": "กดตะกร้าเลย",
     "priceText": "99 บาท",
     "watermarkText": "Meena Shop",
@@ -972,7 +972,9 @@ Response includes:
 - `recipe.renderMode: "mobile-ffmpeg"`
 - `recipe.transcript` with text, language, duration, segments, words, and model
 - `recipe.subtitles` for mobile subtitle burn-in
-- `recipe.cutRanges`, `silenceRanges`, and `fillerRanges`
+- `recipe.cutRanges`, `silenceRanges`, and legacy-compatible `fillerRanges`
+- optional `recipe.speechReduction` with stable repeated-word groups,
+  occurrences, recommendations, and `defaultCutRanges`
 - `recipe.plan`, including transcript-selected cuts, a short summary, and the
   planner model identifier
 - `recipe.overlays` for future CTA, price tag, and watermark processors; the
@@ -1010,7 +1012,8 @@ AI-edit minutes. Mobile renders and opens result review first; Subtitle Studio
 opens only from the explicit review action. Validated cue words drive active-word
 preview/export. Edited or unsafe cues use a static one-line fallback.
 
-Production mobile enables only `subtitle`, `silence`, `filler`, and `color`,
+Production mobile enables only `subtitle`, `silence`, `filler` (shown to users
+as repeated-speech cleanup), and `color`,
 because those four have a real local renderer. The setup UI locks auto-reframe,
 zoom, audio cleanup, subtitle translation, price tag, CTA, and the AI-page
 watermark as `เร็ว ๆ นี้` and sends them as `false`.
@@ -1030,18 +1033,51 @@ a finite `transcript.durationSeconds`:
 - `balanced`: 0.6 second (also used when the field is missing or invalid)
 - `compact`: 0.4 second
 
-`settings.fillerWords` is an exact allowlist. Supported values are `เอ่อ`,
-`อ่า`, `แบบว่า`, `คือว่า`, and `ประมาณว่า`. The backend normalizes NFC and
+Current mobile has local `AI เลือกให้` and `เลือกเอง` selection modes. Both send
+`settings.speechReductionMode: "auto"` and no fixed word list, allowing the same
+analysis to be reused without another metered transcription. For a validated
+Thai word timeline, the response adds:
+
+- `speechReduction.status`: `ready` or `unavailable`; unavailable timing is
+  fail-closed and creates no automatic cuts.
+- `groups[]`: the repeated word/phrase and all stable occurrence IDs.
+- `occurrences[]`: source start/end, context, repetition kind, recommendation,
+  and whether the occurrence is safe to remove.
+- `defaultCutRanges[]`: only safe adjacent repeats selected by default.
+
+The automatic detector checks repeated one-to-three-word phrases whose two
+occurrences are no more than 0.35 seconds apart, removes earlier occurrences,
+and preserves the final occurrence. A word found at least three times but
+spread through separate sentences is reported as `frequent-only` and kept by
+default. Negation, `ๆ`, numbers/prices, sentence boundaries, fragmented Thai
+tokens, and incomplete timing are never cut automatically. AI mode initially
+selects `defaultCutRanges`; manual mode initially selects no occurrence. The
+mobile review can keep or remove each safe occurrence; unknown or non-removable
+IDs are discarded fail-closed. Manual mode also ignores legacy-only
+`fillerRanges` so it cannot remove speech before the user chooses.
+
+`settings.fillerWords` is the legacy-client exact allowlist. Supported values are `เอ่อ`,
+`อ่า`, `อาฮะ`, `แบบว่า`, `คือว่า`, and `ประมาณว่า`. The backend normalizes NFC and
 removes surrounding whitespace, punctuation, and symbols before comparing a
-normal transcript word; `เออ` is an exact transcription alias for `เอ่อ` but a
+normal transcript word; `เออ` and `อะฮะ` are exact transcription aliases for
+`เอ่อ` and `อาฮะ`, but a
 longer token such as `เออแล้ว` does not match. When a provider returns a validated Thai
 character-token stream, the backend may conservatively reassemble adjacent
 fragments that equal an allowlisted filler. Reassembly cannot cross a timing
 gap and requires a real gap or verified Thai word/text boundaries; short
-prefixes remain stricter. Omitting the field preserves legacy behavior and checks all
-five words. Sending `[]`, a non-array value, or
+prefixes remain stricter. Omitting `speechReductionMode` preserves legacy
+behavior and checks the original five words when `fillerWords` is also absent.
+Sending `[]`, a non-array value, or
 an array that sanitizes to no supported values fails closed and produces no
 filler ranges; it does not fall back to the legacy list.
+Mobile fits and aligns `recipe.plan.cuts` to the requested story duration first
+and only then unions silence and selected repeated-speech cleanup without
+shrinking it. The rendered
+clip can therefore be slightly shorter than `targetDurationSeconds`, but a
+selected cleanup occurrence is never restored merely to fill the requested
+duration. When subtitles are enabled, mobile removes the same validated timed
+word from subtitle cues before burn-in. If a selected range cannot map to a
+complete subtitle word, both the subtitle change and media cut are rejected.
 
 Production mobile builds send `hook: false` because
 `ENABLE_EXPERIMENTAL_AI_HOOK` defaults to `false`. If an internal or legacy
@@ -1065,9 +1101,9 @@ successful recipe instead of calling this minute-metered endpoint again.
 Capabilities marked `planned`, `hinted`, or `skipped` must not be presented as
 already applied to the preview.
 
-Mobile derives the review's detected counts from `silenceRanges.length` and
-`fillerRanges.length`, then merges overlapping/clamped ranges before displaying
-the detected time.
+Mobile derives the review's repeated-speech count from `speechReduction.groups`
+and the user's selected occurrence IDs, then merges selected/clamped cleanup
+ranges before displaying the detected time.
 That summary describes pre-render detections and must not be presented as the
 exact duration removed from the exported clip.
 

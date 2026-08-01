@@ -183,28 +183,54 @@ List<SilenceCutRange> withTargetLength(
     accumulated += length;
   }
 
-  if (keepUntil != null && keepUntil < durationSeconds) {
-    return _normalizeCutRanges(
-      [
-        ...normalizedCuts,
-        SilenceCutRange(start: keepUntil, end: durationSeconds),
-      ],
-      durationSeconds,
-    );
+  if (keepUntil != null) {
+    if (keepUntil < durationSeconds) {
+      return _normalizeCutRanges(
+        [
+          ...normalizedCuts,
+          SilenceCutRange(start: keepUntil, end: durationSeconds),
+        ],
+        durationSeconds,
+      );
+    }
+
+    // The chosen keep ranges already fit the target exactly and end at the
+    // source boundary. Returning the original plan preserves that selection;
+    // falling through would incorrectly restore or move existing cuts.
+    return normalizedCuts;
   }
 
   // The selected speech/highlight ranges are shorter than requested. Restore
-  // context proportionally from the edges of every cut while preserving all
-  // moments that AI selected.
+  // context from cut edges while preserving all moments that AI selected.
+  // Keep a leading AI boundary fixed whenever enough source remains after it:
+  // scaling that cut can pull the opening back into the middle of the previous
+  // Thai sentence even though the server selected a natural boundary.
   if (accumulated > 0 && normalizedCuts.isNotEmpty) {
     final totalCutSeconds = durationSeconds - accumulated;
     final secondsToRestore = desiredSeconds - accumulated;
-    final remainingCutFraction =
-        ((totalCutSeconds - secondsToRestore) / totalCutSeconds)
-            .clamp(0.0, 1.0);
+    final targetCutSeconds = totalCutSeconds - secondsToRestore;
+    final leadingCut =
+        normalizedCuts.first.start <= 0.001 ? normalizedCuts.first : null;
+    final leadingCutSeconds = leadingCut?.end ?? 0.0;
+    final canPreserveLeadingBoundary = leadingCut != null &&
+        leadingCutSeconds <= targetCutSeconds + 0.001 &&
+        normalizedCuts.length > 1;
+    final fixedCutSeconds =
+        canPreserveLeadingBoundary ? leadingCutSeconds : 0.0;
+    final scalableCutSeconds = totalCutSeconds - fixedCutSeconds;
+    final remainingScalableCutSeconds =
+        (targetCutSeconds - fixedCutSeconds).clamp(0.0, scalableCutSeconds);
+    final remainingCutFraction = scalableCutSeconds <= 0
+        ? 0.0
+        : (remainingScalableCutSeconds / scalableCutSeconds).clamp(0.0, 1.0);
     final adjusted = <SilenceCutRange>[];
 
-    for (final cut in normalizedCuts) {
+    for (var index = 0; index < normalizedCuts.length; index += 1) {
+      final cut = normalizedCuts[index];
+      if (canPreserveLeadingBoundary && index == 0) {
+        adjusted.add(cut);
+        continue;
+      }
       final remainingLength = (cut.end - cut.start) * remainingCutFraction;
       if (remainingLength <= 0.001) {
         continue;
@@ -240,6 +266,45 @@ List<SilenceCutRange> withTargetLength(
   return [
     SilenceCutRange(start: desiredSeconds, end: durationSeconds),
   ];
+}
+
+/// Unions an already-fitted story plan with protected cleanup cuts without
+/// resizing either input. Call this only after target fitting and story-boundary
+/// alignment so exact filler/silence ranges remain unchanged.
+List<SilenceCutRange> mergeProtectedCutRanges({
+  required List<SilenceCutRange> planCuts,
+  required List<SilenceCutRange> cleanupCuts,
+  required double durationSeconds,
+}) =>
+    _normalizeCutRanges(
+      [...planCuts, ...cleanupCuts],
+      durationSeconds,
+    );
+
+/// Fits only the AI story-plan cuts to the requested duration, then applies
+/// detected silence/filler cuts in full. Cleanup cuts must stay protected;
+/// otherwise target restoration can put a few frames of a removed filler word
+/// back into the rendered clip.
+List<SilenceCutRange> fitPlanAndCleanupCutsToTarget({
+  required List<SilenceCutRange> planCuts,
+  required List<SilenceCutRange> cleanupCuts,
+  required double durationSeconds,
+  required double targetSeconds,
+}) {
+  if (durationSeconds <= 0) {
+    return [...planCuts, ...cleanupCuts];
+  }
+
+  final fittedPlanCuts = withTargetLength(
+    planCuts,
+    durationSeconds,
+    targetSeconds,
+  );
+  return mergeProtectedCutRanges(
+    planCuts: fittedPlanCuts,
+    cleanupCuts: cleanupCuts,
+    durationSeconds: durationSeconds,
+  );
 }
 
 /// Splits a line into pieces near [maxChars], preferring to break at spaces.
@@ -517,8 +582,7 @@ List<SilenceCutRange> alignLeadingCutToFirstSubtitle(
     }
   }
   if (previousSubtitleEnd != null) {
-    final silentGap =
-        (firstRetainedSubtitle.start - previousSubtitleEnd).clamp(
+    final silentGap = (firstRetainedSubtitle.start - previousSubtitleEnd).clamp(
       0.0,
       double.infinity,
     );
@@ -527,8 +591,7 @@ List<SilenceCutRange> alignLeadingCutToFirstSubtitle(
     }
   }
 
-  final alignedEnd =
-      (firstRetainedSubtitle.start - safePreRollSeconds).clamp(
+  final alignedEnd = (firstRetainedSubtitle.start - safePreRollSeconds).clamp(
     0.0,
     durationSeconds,
   );

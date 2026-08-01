@@ -235,6 +235,54 @@ AiEditPrepareResult _createNoOpPrepareFixture() => const AiEditPrepareResult(
       ),
     );
 
+AiEditPrepareResult _createLegacyFillerPrepareFixture() =>
+    const AiEditPrepareResult(
+      quota: AiEditQuota(
+        limitMinutes: 60,
+        usedMinutes: 1,
+        remainingMinutes: 59,
+      ),
+      recipe: AiEditRecipeResult(
+        version: 1,
+        status: 'ready',
+        renderMode: 'mobile-ffmpeg',
+        transcript: AiEditTranscriptResult(
+          text: 'legacy filler response',
+          language: 'th',
+          durationSeconds: 45,
+          segments: [],
+          words: [],
+          model: 'legacy-test',
+        ),
+        subtitles: AiEditSubtitlesResult(
+          enabled: false,
+          segments: [],
+          style: AiEditSubtitleStyleResult(
+            mode: 'bold',
+            color: '#FFFFFF',
+            wordsPerLine: 3,
+            position: 'bottom',
+          ),
+        ),
+        cutRanges: [
+          AiEditCut(start: 3, end: 3.5),
+          AiEditCut(start: 8, end: 8.5),
+        ],
+        silenceRanges: [],
+        fillerRanges: [
+          AiEditCut(start: 3, end: 3.5),
+          AiEditCut(start: 8, end: 8.5),
+        ],
+        capabilities: {
+          'filler': AiEditCapabilityStatusResult(
+            enabled: true,
+            state: 'applied',
+            message: 'legacy filler ranges applied',
+          ),
+        },
+      ),
+    );
+
 AiEditPrepareResult _createAnalysisPrepareFixture() =>
     const AiEditPrepareResult(
       quota: AiEditQuota(
@@ -273,17 +321,119 @@ AiEditPrepareResult _createAnalysisPrepareFixture() =>
         cutRanges: [
           AiEditCut(start: 10, end: 12),
           AiEditCut(start: 20, end: 22),
-          AiEditCut(start: 10.5, end: 11),
-          AiEditCut(start: 20.5, end: 21),
+          AiEditCut(start: 3, end: 3.5),
+          AiEditCut(start: 8, end: 8.5),
         ],
         silenceRanges: [
           AiEditCut(start: 10, end: 12),
           AiEditCut(start: 20, end: 22),
         ],
         fillerRanges: [
-          AiEditCut(start: 10.5, end: 11),
-          AiEditCut(start: 20.5, end: 21),
+          AiEditCut(start: 3, end: 3.5),
+          AiEditCut(start: 8, end: 8.5),
         ],
+        speechReduction: AiEditSpeechReductionResult(
+          version: 1,
+          status: 'ready',
+          groups: [
+            AiEditSpeechReductionGroupResult(
+              id: 'group-we',
+              text: 'เรา',
+              normalizedText: 'เรา',
+              totalOccurrences: 2,
+              occurrenceIds: ['we-cut', 'we-keep'],
+            ),
+            AiEditSpeechReductionGroupResult(
+              id: 'group-good',
+              text: 'ดี',
+              normalizedText: 'ดี',
+              totalOccurrences: 2,
+              occurrenceIds: ['good-cut', 'good-keep'],
+            ),
+          ],
+          occurrences: [
+            AiEditSpeechReductionOccurrenceResult(
+              id: 'we-cut',
+              groupId: 'group-we',
+              text: 'เรา',
+              normalizedText: 'เรา',
+              start: 3,
+              end: 3.5,
+              occurrenceIndex: 1,
+              occurrenceCount: 2,
+              kind: 'adjacent-word',
+              recommendation: 'cut',
+              selectedByDefault: true,
+              confidence: 0.96,
+              contextBefore: '',
+              contextAfter: 'เราจะไป',
+              canAutoRemove: true,
+            ),
+            AiEditSpeechReductionOccurrenceResult(
+              id: 'we-keep',
+              groupId: 'group-we',
+              text: 'เรา',
+              normalizedText: 'เรา',
+              start: 3.55,
+              end: 3.9,
+              occurrenceIndex: 2,
+              occurrenceCount: 2,
+              kind: 'adjacent-word',
+              recommendation: 'keep',
+              selectedByDefault: false,
+              confidence: 0.96,
+              contextBefore: 'เรา',
+              contextAfter: 'จะไป',
+              canAutoRemove: false,
+            ),
+            AiEditSpeechReductionOccurrenceResult(
+              id: 'good-cut',
+              groupId: 'group-good',
+              text: 'ดี',
+              normalizedText: 'ดี',
+              start: 8,
+              end: 8.5,
+              occurrenceIndex: 1,
+              occurrenceCount: 2,
+              kind: 'adjacent-word',
+              recommendation: 'cut',
+              selectedByDefault: true,
+              confidence: 0.95,
+              contextBefore: 'สินค้า',
+              contextAfter: 'ดีมาก',
+              canAutoRemove: true,
+            ),
+            AiEditSpeechReductionOccurrenceResult(
+              id: 'good-keep',
+              groupId: 'group-good',
+              text: 'ดี',
+              normalizedText: 'ดี',
+              start: 8.55,
+              end: 8.9,
+              occurrenceIndex: 2,
+              occurrenceCount: 2,
+              kind: 'adjacent-word',
+              recommendation: 'keep',
+              selectedByDefault: false,
+              confidence: 0.95,
+              contextBefore: 'ดี',
+              contextAfter: 'มาก',
+              canAutoRemove: false,
+            ),
+          ],
+          defaultCutRanges: [
+            AiEditSpeechReductionCutResult(
+              occurrenceId: 'we-cut',
+              start: 3,
+              end: 3.5,
+            ),
+            AiEditSpeechReductionCutResult(
+              occurrenceId: 'good-cut',
+              start: 8,
+              end: 8.5,
+            ),
+          ],
+        ),
         capabilities: {
           'silence': AiEditCapabilityStatusResult(
             enabled: true,
@@ -298,6 +448,189 @@ AiEditPrepareResult _createAnalysisPrepareFixture() =>
         },
       ),
     );
+
+AiEditPrepareResult _createSpeechAndSubtitlePrepareFixture() {
+  final base = _createAnalysisPrepareFixture();
+  final recipe = base.recipe;
+  return AiEditPrepareResult(
+    quota: base.quota,
+    recipe: AiEditRecipeResult(
+      version: recipe.version,
+      status: recipe.status,
+      renderMode: recipe.renderMode,
+      styleId: recipe.styleId,
+      prompt: recipe.prompt,
+      transcript: recipe.transcript,
+      subtitles: const AiEditSubtitlesResult(
+        enabled: true,
+        segments: [
+          ClipTranscriptSegment(
+            text: 'เรา',
+            start: 3,
+            end: 3.5,
+            words: [
+              AiEditTranscriptWordResult(word: 'เรา', start: 3, end: 3.5),
+            ],
+          ),
+          ClipTranscriptSegment(
+            text: 'ดี',
+            start: 8,
+            end: 8.5,
+            words: [
+              AiEditTranscriptWordResult(word: 'ดี', start: 8, end: 8.5),
+            ],
+          ),
+        ],
+        style: AiEditSubtitleStyleResult(
+          mode: 'bold',
+          color: '#FFFFFF',
+          wordsPerLine: 3,
+          position: 'bottom',
+        ),
+      ),
+      cutRanges: recipe.cutRanges,
+      silenceRanges: recipe.silenceRanges,
+      fillerRanges: recipe.fillerRanges,
+      plan: recipe.plan,
+      music: recipe.music,
+      speechReduction: recipe.speechReduction,
+      capabilities: {
+        ...recipe.capabilities,
+        'subtitle': const AiEditCapabilityStatusResult(
+          enabled: true,
+          state: 'applied',
+          message: 'subtitle applied',
+        ),
+      },
+    ),
+  );
+}
+
+AiEditPrepareResult _createLongEnglishSpeechReductionFixture() {
+  const words = [
+    AiEditTranscriptWordResult(word: 'today', start: 0, end: 0.8),
+    AiEditTranscriptWordResult(word: 'um', start: 1, end: 1.4),
+    AiEditTranscriptWordResult(word: 'um', start: 1.4, end: 1.8),
+    AiEditTranscriptWordResult(word: 'we', start: 2, end: 2.3),
+    AiEditTranscriptWordResult(word: 'are', start: 2.3, end: 2.6),
+    AiEditTranscriptWordResult(word: 'reviewing', start: 2.6, end: 3.3),
+    AiEditTranscriptWordResult(word: 'this', start: 3.3, end: 3.6),
+    AiEditTranscriptWordResult(word: 'excellent', start: 3.6, end: 4.3),
+    AiEditTranscriptWordResult(word: 'product', start: 4.3, end: 4.9),
+    AiEditTranscriptWordResult(word: 'for', start: 4.9, end: 5.2),
+    AiEditTranscriptWordResult(word: 'everyone', start: 5.2, end: 5.8),
+  ];
+  const longCue = ClipTranscriptSegment(
+    text: 'today um um we are reviewing this excellent product for everyone',
+    start: 0,
+    end: 6,
+    words: words,
+  );
+
+  return const AiEditPrepareResult(
+    quota: AiEditQuota(
+      limitMinutes: 60,
+      usedMinutes: 1,
+      remainingMinutes: 59,
+    ),
+    recipe: AiEditRecipeResult(
+      version: 1,
+      status: 'ready',
+      renderMode: 'mobile-ffmpeg',
+      transcript: AiEditTranscriptResult(
+        text:
+            'today um um we are reviewing this excellent product for everyone',
+        language: 'en',
+        durationSeconds: 45,
+        segments: [longCue],
+        words: words,
+        model: 'test',
+      ),
+      subtitles: AiEditSubtitlesResult(
+        enabled: true,
+        segments: [longCue],
+        style: AiEditSubtitleStyleResult(
+          mode: 'bold',
+          color: '#FFFFFF',
+          wordsPerLine: 3,
+          position: 'bottom',
+        ),
+      ),
+      cutRanges: [AiEditCut(start: 1, end: 1.4)],
+      silenceRanges: [],
+      fillerRanges: [AiEditCut(start: 1, end: 1.4)],
+      plan: AiEditPlanResult(cuts: [], summary: '', model: 'none'),
+      speechReduction: AiEditSpeechReductionResult(
+        version: 1,
+        status: 'ready',
+        groups: [
+          AiEditSpeechReductionGroupResult(
+            id: 'group-um',
+            text: 'um',
+            normalizedText: 'um',
+            totalOccurrences: 2,
+            occurrenceIds: ['um-cut', 'um-keep'],
+          ),
+        ],
+        occurrences: [
+          AiEditSpeechReductionOccurrenceResult(
+            id: 'um-cut',
+            groupId: 'group-um',
+            text: 'um',
+            normalizedText: 'um',
+            start: 1,
+            end: 1.4,
+            occurrenceIndex: 1,
+            occurrenceCount: 2,
+            kind: 'adjacent-word',
+            recommendation: 'cut',
+            selectedByDefault: true,
+            confidence: 0.98,
+            contextBefore: 'today',
+            contextAfter: 'um we are reviewing',
+            canAutoRemove: true,
+          ),
+          AiEditSpeechReductionOccurrenceResult(
+            id: 'um-keep',
+            groupId: 'group-um',
+            text: 'um',
+            normalizedText: 'um',
+            start: 1.4,
+            end: 1.8,
+            occurrenceIndex: 2,
+            occurrenceCount: 2,
+            kind: 'adjacent-word',
+            recommendation: 'keep',
+            selectedByDefault: false,
+            confidence: 0.98,
+            contextBefore: 'today um',
+            contextAfter: 'we are reviewing',
+            canAutoRemove: false,
+          ),
+        ],
+        defaultCutRanges: [
+          AiEditSpeechReductionCutResult(
+            occurrenceId: 'um-cut',
+            start: 1,
+            end: 1.4,
+          ),
+        ],
+      ),
+      capabilities: {
+        'subtitle': AiEditCapabilityStatusResult(
+          enabled: true,
+          state: 'applied',
+          message: 'subtitles applied',
+        ),
+        'filler': AiEditCapabilityStatusResult(
+          enabled: true,
+          state: 'applied',
+          message: 'repeated speech detected',
+        ),
+      },
+    ),
+  );
+}
 
 SubscriptionStatusResult _subscriptionFixture(String plan) =>
     SubscriptionStatusResult(
@@ -2917,8 +3250,7 @@ void main() {
     );
   });
 
-  testWidgets('review summarizes detected silence filler words and saved time',
-      (tester) async {
+  testWidgets('review summarizes silence and repeated speech', (tester) async {
     final pickedVideo = _createPickedVideoFixture('analysis-summary.mp4');
 
     await tester.pumpWidget(
@@ -2968,8 +3300,691 @@ void main() {
     expect(
       find.descendant(
         of: summary,
-        matching: find.textContaining(RegExp(r'4(?:\.0)? วินาที')),
+        matching: find.textContaining(RegExp(r'5(?:\.0)? วินาที')),
       ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('dirty repeated-speech selection disables subtitle editing',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('dirty-speech-subtitle.mp4');
+    var studioLaunches = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-dirty-speech-subtitle',
+            videoS3Key: 'uploads/dirty-speech-subtitle.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createSpeechAndSubtitlePrepareFixture(),
+          subtitleStudioLauncher:
+              (context, sourceFile, initialProject, draftStore) async {
+            studioLaunches += 1;
+            return initialProject;
+          },
+          burnVideo: (_) async => _createRenderedVideoFixture(
+            'dirty-speech-subtitle-result.mp4',
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final occurrence = find.byKey(
+      const ValueKey('ai-repeated-remove-we-cut'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      occurrence,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(occurrence);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ai-review-update'), skipOffstage: false),
+      findsOneWidget,
+    );
+
+    final editSubtitles = find.byKey(
+      const ValueKey('ai-review-edit-subtitles'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      editSubtitles,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    final wasDisabled =
+        tester.widget<OutlinedButton>(editSubtitles).onPressed == null;
+
+    await tester.tap(editSubtitles);
+    await tester.pumpAndSettle();
+
+    expect(
+      {
+        'disabled': wasDisabled,
+        'studioLaunches': studioLaunches,
+      },
+      {
+        'disabled': true,
+        'studioLaunches': 0,
+      },
+    );
+  });
+
+  testWidgets(
+      'review lets the user keep one repeated-word occurrence before rerender',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('speech-choice.mp4');
+    final burnRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-speech-choice',
+            videoS3Key: 'uploads/speech-choice.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createAnalysisPrepareFixture(),
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            return _createRenderedVideoFixture(
+              'speech-choice-result-${burnRequests.length}.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final keepFirst = find.byKey(
+      const ValueKey('ai-repeated-remove-we-cut'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      keepFirst,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(keepFirst).value, isTrue);
+    await tester.tap(keepFirst);
+    await tester.pumpAndSettle();
+
+    final update = find.byKey(
+      const ValueKey('ai-review-update'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      update,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(update);
+    await _pumpUntilPreviewUpdateFinishes(tester);
+
+    expect(burnRequests, hasLength(2));
+    final updatedCuts = burnRequests.last.silenceRanges;
+    expect(
+      updatedCuts.any(
+        (range) =>
+            (range.start - 3).abs() < 0.001 && (range.end - 3.5).abs() < 0.001,
+      ),
+      isFalse,
+    );
+    expect(
+      updatedCuts.any(
+        (range) =>
+            (range.start - 8).abs() < 0.001 && (range.end - 8.5).abs() < 0.001,
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets(
+      'manual repeated-speech mode waits for the user to choose each cut',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('speech-manual.mp4');
+    final burnRequests = <BurnSubtitleRequest>[];
+    AiEditPrepareRequest? prepareRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-speech-manual',
+            videoS3Key: 'uploads/speech-manual.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (request) async {
+            prepareRequest = request;
+            return _createAnalysisPrepareFixture();
+          },
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            return _createRenderedVideoFixture(
+              'speech-manual-result-${burnRequests.length}.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    final manualMode = find.byKey(
+      const ValueKey('ai-speech-reduction-mode-manual'),
+      skipOffstage: false,
+    );
+    await tester.ensureVisible(manualMode);
+    await tester.pumpAndSettle();
+    await tester.tap(manualMode);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(burnRequests, hasLength(1));
+    expect(prepareRequest?.settings.speechReductionMode, 'auto');
+    expect(
+      burnRequests.first.silenceRanges.any(
+        (range) =>
+            ((range.start - 3).abs() < 0.001 &&
+                (range.end - 3.5).abs() < 0.001) ||
+            ((range.start - 8).abs() < 0.001 &&
+                (range.end - 8.5).abs() < 0.001),
+      ),
+      isFalse,
+    );
+
+    final occurrence = find.byKey(
+      const ValueKey('ai-repeated-remove-we-cut'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      occurrence,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(occurrence).value, isFalse);
+    await tester.tap(occurrence);
+    await tester.pumpAndSettle();
+
+    final update = find.byKey(
+      const ValueKey('ai-review-update'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      update,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(update);
+    await _pumpUntilPreviewUpdateFinishes(tester);
+
+    expect(burnRequests, hasLength(2));
+    expect(
+      burnRequests.last.silenceRanges.any(
+        (range) =>
+            (range.start - 3).abs() < 0.001 && (range.end - 3.5).abs() < 0.001,
+      ),
+      isTrue,
+    );
+    expect(
+      burnRequests.last.silenceRanges.any(
+        (range) =>
+            (range.start - 8).abs() < 0.001 && (range.end - 8.5).abs() < 0.001,
+      ),
+      isFalse,
+    );
+  });
+
+  testWidgets(
+      'long non-Thai timed subtitle keeps its structured repeated-speech cut',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('english-repeated.mp4');
+    final burnRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-english-repeated',
+            videoS3Key: 'uploads/english-repeated.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createLongEnglishSpeechReductionFixture(),
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            return _createRenderedVideoFixture('english-repeated-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(burnRequests, hasLength(1));
+    expect(
+      burnRequests.single.silenceRanges.any(
+        (range) =>
+            (range.start - 1).abs() < 0.001 && (range.end - 1.4).abs() < 0.001,
+      ),
+      isTrue,
+      reason: 'The validated structured occurrence must reach the renderer.',
+    );
+
+    final occurrenceCheckbox = find.byKey(
+      const ValueKey('ai-repeated-remove-um-cut'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      occurrenceCheckbox,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(occurrenceCheckbox).value, isTrue);
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey('ai-repeated-occurrence-um-cut'),
+          skipOffstage: false,
+        ),
+        matching: find.text('ตัด'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      're-enabling structured filler restores AI-selected occurrences and cuts',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('speech-toggle.mp4');
+    final burnRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-speech-toggle',
+            videoS3Key: 'uploads/speech-toggle.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createAnalysisPrepareFixture(),
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            return _createRenderedVideoFixture(
+              'speech-toggle-result-${burnRequests.length}.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final fillerToggle = find.byKey(
+      const ValueKey('ai-review-capability-filler'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      fillerToggle,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(fillerToggle).value, isTrue);
+
+    await tester.tap(fillerToggle);
+    await _pumpUntilPreviewUpdateFinishes(tester);
+    expect(tester.widget<Checkbox>(fillerToggle).value, isFalse);
+
+    await tester.scrollUntilVisible(
+      fillerToggle,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(fillerToggle);
+    await _pumpUntilPreviewUpdateFinishes(tester);
+
+    expect(
+      burnRequests,
+      hasLength(2),
+      reason: 'Re-enabling the same selection should reuse its safe preview.',
+    );
+    final restoredCuts = burnRequests.first.silenceRanges;
+    expect(
+      restoredCuts.any(
+        (range) =>
+            (range.start - 3).abs() < 0.001 && (range.end - 3.5).abs() < 0.001,
+      ),
+      isTrue,
+      reason: 'Re-enabling filler must restore the AI-selected cut.',
+    );
+
+    final restoredOccurrence = find.byKey(
+      const ValueKey('ai-repeated-remove-we-cut'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      restoredOccurrence,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(restoredOccurrence).value, isTrue);
+  });
+
+  testWidgets(
+      'legacy filler ranges remain controllable without speech reduction',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('legacy-filler.mp4');
+    final burnRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-legacy-filler',
+            videoS3Key: 'uploads/legacy-filler.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createLegacyFillerPrepareFixture(),
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            return _createRenderedVideoFixture(
+              'legacy-filler-result-${burnRequests.length}.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final fillerToggle = find.byKey(
+      const ValueKey('ai-review-capability-filler'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      fillerToggle,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      fillerToggle,
+      findsOneWidget,
+      reason: 'A legacy filler cut must still be removable in review.',
+    );
+    expect(tester.widget<Checkbox>(fillerToggle).value, isTrue);
+    expect(
+      burnRequests.first.silenceRanges
+          .where((range) => range.start == 3 || range.start == 8),
+      hasLength(2),
+    );
+
+    await tester.tap(fillerToggle);
+    await _pumpUntilPreviewUpdateFinishes(tester);
+
+    expect(burnRequests, hasLength(2));
+    expect(
+      burnRequests.last.silenceRanges
+          .where((range) => range.start == 3 || range.start == 8),
+      isEmpty,
+    );
+  });
+
+  testWidgets('manual repeated-speech mode never applies legacy filler ranges',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('legacy-manual-filler.mp4');
+    final burnRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-legacy-manual-filler',
+            videoS3Key: 'uploads/legacy-manual-filler.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createLegacyFillerPrepareFixture(),
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            return _createRenderedVideoFixture(
+              'legacy-manual-filler-result.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    final manualMode = find.byKey(
+      const ValueKey('ai-speech-reduction-mode-manual'),
+      skipOffstage: false,
+    );
+    await tester.ensureVisible(manualMode);
+    await tester.pumpAndSettle();
+    await tester.tap(manualMode);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(burnRequests, hasLength(1));
+    expect(
+      burnRequests.single.silenceRanges
+          .where((range) => range.start == 3 || range.start == 8),
+      isEmpty,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('ai-review-capability-filler'),
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('legacy filler ranges remain visible in the analysis summary',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('legacy-summary.mp4');
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-legacy-summary',
+            videoS3Key: 'uploads/legacy-summary.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createLegacyFillerPrepareFixture(),
+          burnVideo: (_) async =>
+              _createRenderedVideoFixture('legacy-summary-result.mp4'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final summary = find.byKey(
+      const ValueKey('ai-review-analysis-summary'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      summary,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    final summaryText = tester
+        .widgetList<Text>(
+            find.descendant(of: summary, matching: find.byType(Text)))
+        .map((widget) => widget.data ?? '')
+        .join(' ');
+    expect(summaryText, contains('พบ 2'));
+    expect(summaryText, contains('เลือกตัด 2'));
+    expect(summaryText, contains('1 วินาที'));
+  });
+
+  testWidgets(
+      'back cannot expose setup or start another process during review update',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('pending-back.mp4');
+    final firstResult = _createRenderedVideoFixture('pending-back-first.mp4');
+    final updatedResult =
+        _createRenderedVideoFixture('pending-back-update.mp4');
+    final pendingUpdate = Completer<BurnedSubtitleResult>();
+    addTearDown(() {
+      if (!pendingUpdate.isCompleted) {
+        pendingUpdate.complete(updatedResult);
+      }
+    });
+    var renderCalls = 0;
+    var subscriptionChecks = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-pending-back',
+            videoS3Key: 'uploads/pending-back.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          loadSubscription: () async {
+            subscriptionChecks += 1;
+            return _subscriptionFixture('PRO');
+          },
+          burnVideo: (_) {
+            renderCalls += 1;
+            return renderCalls == 1
+                ? Future.value(firstResult)
+                : pendingUpdate.future;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    final checksBeforeUpdate = subscriptionChecks;
+
+    final silenceToggle = find.byKey(
+      const ValueKey('ai-review-capability-silence'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      silenceToggle,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(silenceToggle);
+    await tester.pump();
+    expect(renderCalls, 2);
+    expect(
+      find.byKey(
+        const ValueKey('ai-review-preview-updating'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-editing-back')));
+    await tester.pump();
+    final processButton = find.byKey(
+      const ValueKey('ai-process-button'),
+      skipOffstage: false,
+    );
+    final exposedSetup = processButton.evaluate().isNotEmpty;
+    if (exposedSetup) {
+      final button = tester.widget<ElevatedButton>(processButton);
+      button.onPressed?.call();
+      await tester.pump();
+      await tester.pump();
+    }
+
+    pendingUpdate.complete(updatedResult);
+    await tester.pumpAndSettle();
+
+    expect(
+      exposedSetup,
+      isFalse,
+      reason: 'Back must not leave review while its preview render is active.',
+    );
+    expect(subscriptionChecks, checksBeforeUpdate);
+    expect(renderCalls, 2);
+    expect(
+      find.byKey(const ValueKey('ai-result-review')),
       findsOneWidget,
     );
   });
@@ -3004,7 +4019,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final fillerResult = find.byKey(
-      const ValueKey('ai-review-not-detected-filler'),
+      const ValueKey('ai-review-not-detected-repeated-speech'),
       skipOffstage: false,
     );
     await tester.scrollUntilVisible(
@@ -3016,7 +4031,7 @@ void main() {
 
     expect(fillerResult, findsOneWidget);
     expect(
-      find.descendant(of: fillerResult, matching: find.text('คำฟุ่มเฟือย')),
+      find.descendant(of: fillerResult, matching: find.text('คำพูดซ้ำ')),
       findsOneWidget,
     );
     expect(
@@ -3095,7 +4110,7 @@ void main() {
     );
     expect(
       find.byKey(
-        const ValueKey('ai-review-not-detected-filler'),
+        const ValueKey('ai-review-not-detected-repeated-speech'),
         skipOffstage: false,
       ),
       findsNothing,
@@ -3944,7 +4959,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('silence and filler settings use the advanced accordion',
+  testWidgets(
+      'repeated-speech setup offers AI or manual selection without chips',
       (tester) async {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(_testApp(const AiEditingScreen()));
@@ -3980,33 +4996,56 @@ void main() {
       ),
     );
 
-    await _openAdvancedPanel(tester, 'filler');
-    expect(
-      find.byKey(const ValueKey('ai-advanced-silence'), skipOffstage: false),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey('ai-advanced-filler'), skipOffstage: false),
-      findsOneWidget,
-    );
-
-    for (final word in const ['เอ่อ', 'อ่า', 'แบบว่า', 'คือว่า', 'ประมาณว่า']) {
+    for (final word in const [
+      'เอ่อ',
+      'อ่า',
+      'อาฮะ',
+      'แบบว่า',
+      'คือว่า',
+      'ประมาณว่า',
+    ]) {
       final chip = find.byKey(
         ValueKey('ai-filler-word-$word'),
         skipOffstage: false,
       );
-      expect(chip, findsOneWidget);
-      expect(tester.getSize(chip).height, greaterThanOrEqualTo(44));
-      expect(
-        tester.getSemantics(chip),
-        isSemantics(
-          isButton: true,
-          hasSelectedState: true,
-          isSelected: true,
-          hasTapAction: true,
-        ),
-      );
+      expect(chip, findsNothing);
     }
+    expect(
+      find.byKey(
+        const ValueKey('ai-advanced-disclosure-filler'),
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
+    expect(find.text('จัดการคำพูดซ้ำ', skipOffstage: false), findsOneWidget);
+    final aiMode = find.byKey(
+      const ValueKey('ai-speech-reduction-mode-ai'),
+      skipOffstage: false,
+    );
+    final manualMode = find.byKey(
+      const ValueKey('ai-speech-reduction-mode-manual'),
+      skipOffstage: false,
+    );
+    expect(aiMode, findsOneWidget);
+    expect(manualMode, findsOneWidget);
+    expect(
+      tester.getSemantics(aiMode),
+      isSemantics(
+        isButton: true,
+        hasSelectedState: true,
+        isSelected: true,
+        hasTapAction: true,
+      ),
+    );
+    expect(
+      tester.getSemantics(manualMode),
+      isSemantics(
+        isButton: true,
+        hasSelectedState: true,
+        isSelected: false,
+        hasTapAction: true,
+      ),
+    );
     semantics.dispose();
   });
 
@@ -4135,8 +5174,7 @@ void main() {
     expect(burnRequest?.subtitleAtBottom, isFalse);
   });
 
-  testWidgets(
-      'sends silence preset and selected filler words while blocking an empty selection',
+  testWidgets('sends automatic repeated-speech mode without a fixed word list',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('pace-settings.mp4');
     AiEditPrepareRequest? prepareRequest;
@@ -4172,48 +5210,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await _openAdvancedPanel(tester, 'filler');
-    const fillerWords = ['เอ่อ', 'อ่า', 'แบบว่า', 'คือว่า', 'ประมาณว่า'];
-    for (final word in fillerWords) {
-      final chip = find.byKey(
-        ValueKey('ai-filler-word-$word'),
-        skipOffstage: false,
-      );
-      await tester.scrollUntilVisible(
-        chip,
-        120,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(chip);
-      await tester.pumpAndSettle();
-    }
-
-    expect(
-      tester
-          .widget<ElevatedButton>(
-            find.byKey(const ValueKey('ai-process-button')),
-          )
-          .onPressed,
-      isNull,
-      reason: 'filler removal must not run without at least one selected word',
-    );
-
-    for (final word in const ['เอ่อ', 'แบบว่า']) {
-      final chip = find.byKey(
-        ValueKey('ai-filler-word-$word'),
-        skipOffstage: false,
-      );
-      await tester.scrollUntilVisible(
-        chip,
-        120,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(chip);
-      await tester.pumpAndSettle();
-    }
-
     expect(
       tester
           .widget<ElevatedButton>(
@@ -4226,7 +5222,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(prepareRequest?.settings.silencePreset, 'natural');
-    expect(prepareRequest?.settings.fillerWords, ['เอ่อ', 'แบบว่า']);
+    expect(prepareRequest?.settings.speechReductionMode, 'auto');
+    expect(prepareRequest?.settings.fillerWords, isNull);
   });
 
   testWidgets('settings accordion opens one capability at a time',
@@ -4363,12 +5360,13 @@ void main() {
     );
     expect(tester.takeException(), isNull);
 
-    await _openAdvancedPanel(tester, 'filler');
     expect(
-      find.byKey(const ValueKey('ai-advanced-filler'), skipOffstage: false),
-      findsOneWidget,
+      find.byKey(
+        const ValueKey('ai-advanced-disclosure-filler'),
+        skipOffstage: false,
+      ),
+      findsNothing,
     );
-    expect(tester.takeException(), isNull);
 
     await tester.scrollUntilVisible(
       find.text('ชุดตั้งค่า (Preset)', skipOffstage: false),

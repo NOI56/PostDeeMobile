@@ -554,7 +554,7 @@ Current mobile pieces:
   signals are retained for highlight quality checks and to omit unreliable ranges
   or clearly unexpected mixed-script recognition noise from burned subtitle
   lines. Normal Latin product/place names remain allowed. The backend validates word timing
-  coverage before using it for precise silence/filler cuts and subtitle timing;
+  coverage before using it for precise silence/repeated-speech cuts and subtitle timing;
   incomplete timing falls back to segments. Provider Thai character-level tokens
   still drive precise gaps, but subtitle text falls back to readable segments.
   Whitespace-only provider tokens are ignored during validation; malformed
@@ -685,20 +685,30 @@ Current mobile pieces:
   `natural` = 1.0 s, `balanced` = 0.6 s (the default), and `compact` = 0.4 s.
   A qualifying gap before the first spoken range or after the last spoken range
   is included when the provider returns a valid media duration.
-  `fillerWords` is an exact allowlist containing only
-  `เอ่อ`, `อ่า`, `แบบว่า`, `คือว่า`, and `ประมาณว่า`; matching trims surrounding
-  whitespace/punctuation instead of using substring matches on normal word
-  tokens. The exact transcript alias `เออ` maps to `เอ่อ`; a detected Thai
-  character-token stream may be conservatively reassembled for the same
-  allowlist only across tight timing and verified Thai word/text boundaries. A missing
-  `fillerWords` field keeps the legacy all-five default, while an explicit empty
-  array means no filler-word cuts. Mobile requires at least one selected word
-  while the filler capability is enabled.
-- Result review shows the number of detected silence and filler ranges plus
-  their combined detected time from the prepare recipe. These are pre-render
+  The setup offers `AI เลือกให้` (default) and `เลือกเอง`. Both choices send
+  `speechReductionMode: "auto"` so one analysis can report repeated
+  Thai words or phrases with stable occurrence IDs and source timing. Only
+  adjacent repeats within 0.35 seconds are selected for removal by default;
+  the last occurrence is retained. A word used three or more times in separate
+  sentences is shown for awareness but kept, because removing a product name or
+  important subject could damage meaning. Negation, `ๆ`, numbers/prices,
+  fragmented tokens, and unsafe timing fail closed. AI mode starts with those
+  recommendations selected; manual mode starts with none selected. The review
+  then lets the user keep or remove each safe occurrence before re-rendering.
+  `fillerWords` and `fillerRanges` remain as a legacy-client compatibility path;
+  the current setup no longer displays a fixed filler-word chip list, and
+  manual mode never applies legacy filler ranges automatically.
+- Result review shows detected silence and repeated-speech groups, the number
+  of selected safe occurrences, and their combined detected time. These are pre-render
   detections, not a promise that the exported clip saves exactly that duration.
+  Mobile fits the AI story plan to the requested length before applying these
+  cleanup ranges, so duration restoration cannot put removed silence or repeated speech
+  audio back; the final export may therefore be slightly shorter than requested.
+  When subtitles are enabled, the selected word is also removed from its
+  source-timeline cue before burn-in. If that word cannot be mapped safely, the
+  media cut is rejected too so subtitle text and speech never disagree.
 - Production exposes only the AI editing capabilities with a real mobile
-  renderer: subtitle, silence, filler-word cuts, and color/light adjustment.
+  renderer: subtitle, silence, repeated-speech cleanup, and color/light adjustment.
   Auto-reframe, zoom, audio cleanup, translation, price tags, CTA cards, and
   the AI-page watermark are locked as `เร็ว ๆ นี้` and sent to the API as
   disabled until their exported-video processors pass real-device tests.

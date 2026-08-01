@@ -38,11 +38,16 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
         ),
       )
       .toList(growable: false);
-  final preparedSegments = prepareSubtitleSegmentsForLocalRender(
-    sourceSegments,
-    language: recipe.transcript.language,
-    maximumCharacters: maxCharsPerCue,
-  )
+  // Keep server-validated cue/word boundaries intact while creating the
+  // editable project. The renderer can re-chunk display text later, after its
+  // cleanup safety pass has used these source-timeline word timings.
+  final preparedSegments = (usesValidatedCueWordContract
+          ? sourceSegments
+          : prepareSubtitleSegmentsForLocalRender(
+              sourceSegments,
+              language: recipe.transcript.language,
+              maximumCharacters: maxCharsPerCue,
+            ))
       .map(
         (segment) => _MappedRange(
           text: segment.text,

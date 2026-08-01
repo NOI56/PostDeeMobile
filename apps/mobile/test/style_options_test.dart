@@ -58,8 +58,91 @@ void main() {
     );
   });
 
+  test('keeps an exact target window that ends at the source duration', () {
+    final cuts = withTargetLength(
+      const [SilenceCutRange(start: 0, end: 15)],
+      45,
+      30,
+    );
+
+    expect(cuts, hasLength(1));
+    expect(cuts.single.start, closeTo(0, 0.001));
+    expect(cuts.single.end, closeTo(15, 0.001));
+    expect(
+      estimateResultSeconds(durationSeconds: 45, cutRanges: cuts),
+      closeTo(30, 0.001),
+    );
+  });
+
+  test('keeps exact leading and internal cuts when the final keep reaches end',
+      () {
+    final cuts = withTargetLength(
+      const [
+        SilenceCutRange(start: 0, end: 10),
+        SilenceCutRange(start: 20, end: 25),
+      ],
+      45,
+      30,
+    );
+
+    expect(cuts, hasLength(2));
+    expect(cuts[0].start, closeTo(0, 0.001));
+    expect(cuts[0].end, closeTo(10, 0.001));
+    expect(cuts[1].start, closeTo(20, 0.001));
+    expect(cuts[1].end, closeTo(25, 0.001));
+    expect(
+      estimateResultSeconds(durationSeconds: 45, cutRanges: cuts),
+      closeTo(30, 0.001),
+    );
+  });
+
   test('no trim when the clip is already under target', () {
     expect(withTargetLength(const [], 5, 30), isEmpty);
+  });
+
+  test('target restoration never puts a detected filler back into the clip',
+      () {
+    final cuts = fitPlanAndCleanupCutsToTarget(
+      planCuts: const [
+        SilenceCutRange(start: 0, end: 10),
+        SilenceCutRange(start: 40, end: 45),
+      ],
+      cleanupCuts: const [
+        SilenceCutRange(start: 20, end: 20.28),
+      ],
+      durationSeconds: 45,
+      targetSeconds: 30,
+    );
+
+    expect(
+      cuts,
+      contains(
+        isA<SilenceCutRange>()
+            .having((cut) => cut.start, 'start', closeTo(20, 0.001))
+            .having((cut) => cut.end, 'end', closeTo(20.28, 0.001)),
+      ),
+    );
+    expect(
+      estimateResultSeconds(durationSeconds: 45, cutRanges: cuts),
+      closeTo(29.72, 0.001),
+    );
+  });
+
+  test('merges protected cleanup after fitting without changing its range', () {
+    final cuts = mergeProtectedCutRanges(
+      planCuts: const [
+        SilenceCutRange(start: 0, end: 10),
+        SilenceCutRange(start: 40, end: 45),
+      ],
+      cleanupCuts: const [
+        SilenceCutRange(start: 20, end: 20.28),
+      ],
+      durationSeconds: 45,
+    );
+
+    expect(cuts, hasLength(3));
+    expect(cuts[1].start, closeTo(20, 0.001));
+    expect(cuts[1].end, closeTo(20.28, 0.001));
   });
 
   test('restores context when AI cuts leave less than the target length', () {
@@ -325,6 +408,93 @@ void main() {
               .having((segment) => segment.end, 'end', closeTo(0.15, 0.001)),
         ),
       ),
+    );
+  });
+
+  test('keeps the natural opening when restoring target-length context', () {
+    const segments = [
+      SubtitleSegment(
+        text: 'เพราะฉะนั้นก็จะไป',
+        start: 9.137,
+        end: 10.380,
+      ),
+      SubtitleSegment(
+        text: 'ไปมามาระหว่าง',
+        start: 10.380,
+        end: 11.392,
+      ),
+      SubtitleSegment(
+        text: 'บ้านแล้วก็สยาม',
+        start: 11.392,
+        end: 12.319,
+      ),
+      // A real 561 ms pause marks the next spoken thought. Moving to this
+      // boundary repairs the selected sentence; it is not a hook search.
+      SubtitleSegment(
+        text: 'เป็นคนเมือง',
+        start: 12.880,
+        end: 14.034,
+      ),
+      SubtitleSegment(
+        text: 'แท้ๆ เลยค่ะ',
+        start: 14.034,
+        end: 15.574,
+      ),
+    ];
+
+    final restored = withTargetLength(
+      const [
+        // The API selected 12.880 as the natural opening. The old
+        // proportional restoration shrank this cut to exactly 11.392 and
+        // exposed the middle of "ไปมามาระหว่างบ้านแล้วก็สยาม".
+        SilenceCutRange(start: 0, end: 12.880),
+        SilenceCutRange(start: 40.920730337, end: 45),
+      ],
+      45,
+      30,
+    );
+    final adjusted = alignLeadingCutToFirstSubtitle(
+      restored,
+      segments,
+      45,
+    );
+
+    expect(adjusted.first.end, closeTo(12.880, 0.001));
+    expect(adjusted.last.start, closeTo(42.880, 0.001));
+    expect(
+      estimateResultSeconds(
+        durationSeconds: 45,
+        cutRanges: adjusted,
+      ),
+      closeTo(30, 0.001),
+    );
+
+    final timeline = prepareFfmpegRenderTimeline(
+      segments: segments,
+      silenceRanges: adjusted,
+    );
+    expect(timeline.inputSeekSec, closeTo(12.880, 0.001));
+    expect(timeline.segments.first.text, 'เป็นคนเมือง');
+    expect(timeline.segments.first.start, closeTo(0, 0.001));
+  });
+
+  test('restores leading context only when the target cannot fit after it', () {
+    final adjusted = withTargetLength(
+      const [
+        SilenceCutRange(start: 0, end: 8),
+        SilenceCutRange(start: 9, end: 10),
+      ],
+      10,
+      6,
+    );
+
+    expect(adjusted.first.end, lessThan(8));
+    expect(
+      estimateResultSeconds(
+        durationSeconds: 10,
+        cutRanges: adjusted,
+      ),
+      closeTo(6, 0.001),
     );
   });
 

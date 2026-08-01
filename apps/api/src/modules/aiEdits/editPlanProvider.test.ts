@@ -69,6 +69,7 @@ describe('edit plan provider', () => {
     expect(hasWeakThaiOpening('แล้วเราค่อยไปขั้นตอนถัดไป')).toBe(true);
     expect(hasWeakThaiOpening('ของมาจากตลาดใกล้บ้าน')).toBe(true);
     expect(hasWeakThaiOpening('อาฮะเราก็เลยลองวิธีนี้')).toBe(true);
+    expect(hasWeakThaiOpening('อะฮะเราก็เลยลองวิธีนี้')).toBe(true);
     expect(hasWeakThaiOpening('วิธีนี้ช่วยประหยัดเวลาได้จริง')).toBe(false);
   });
 

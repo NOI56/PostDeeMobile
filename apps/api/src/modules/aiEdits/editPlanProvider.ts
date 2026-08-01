@@ -155,7 +155,8 @@ const weakThaiOpeningPrefixes = [
   'หรือ',
   'ก็',
   'ของมาจาก',
-  'อาฮะ'
+  'อาฮะ',
+  'อะฮะ'
 ];
 
 const strongThaiHookOpeningPrefixes = [

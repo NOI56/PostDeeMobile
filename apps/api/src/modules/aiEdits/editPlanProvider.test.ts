@@ -68,6 +68,7 @@ describe('edit plan provider', () => {
     expect(hasWeakThaiOpening('แต่ไม่ได้ช่วยเรื่องนี้')).toBe(true);
     expect(hasWeakThaiOpening('แล้วเราค่อยไปขั้นตอนถัดไป')).toBe(true);
     expect(hasWeakThaiOpening('ของมาจากตลาดใกล้บ้าน')).toBe(true);
+    expect(hasWeakThaiOpening('อาฮะเราก็เลยลองวิธีนี้')).toBe(true);
     expect(hasWeakThaiOpening('วิธีนี้ช่วยประหยัดเวลาได้จริง')).toBe(false);
   });
 
@@ -183,6 +184,39 @@ describe('edit plan provider', () => {
       { start: 0, end: 108.166 },
       { start: 138.166, end: 150 }
     ]);
+  });
+
+  it('moves a live Thai list fragment forward to the next paused sentence', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 79.322 },
+        { start: 139.322, end: 150.635 }
+      ],
+      segments: [
+        { text: 'บริบทก่อนหน้า', start: 70, end: 75.151 },
+        { text: 'ของของมาจาก', start: 75.151, end: 76.107 },
+        { text: 'เชียงใหม่ของ', start: 76.107, end: 77.094 },
+        { text: 'มาจากภูเก็ตมาจาก', start: 77.094, end: 78.477 },
+        { text: 'สมุยมาจาก', start: 78.477, end: 79.322 },
+        { text: 'ทุกๆที่ในเมือง', start: 79.322, end: 80.378 },
+        { text: 'ไทยมารวมที่จตุจักร', start: 80.378, end: 81.857 },
+        // A real 620 ms pause marks the next spoken sentence. Repairing to
+        // this cue is boundary cleanup, not the separate three-second hook.
+        { text: 'ถ้าคนที่เคย', start: 82.477, end: 90 },
+        { text: 'ไปรับรองว่าหนึ่งวันไม่พอ', start: 90, end: 100 },
+        { text: 'ต้องกลับมาอีกเพื่อหาของ', start: 100, end: 110 },
+        { text: 'ที่ตัวเองต้องการ', start: 110, end: 120 },
+        { text: 'เพราะจะมีของมาใหม่', start: 120, end: 130 },
+        { text: 'ตลอดทั้งสัปดาห์', start: 130, end: 139.322 },
+        { text: 'ประโยคปิดช่วงที่เลือก', start: 139.322, end: 142.477 },
+        { text: 'บริบทถัดไป', start: 142.477, end: 150.635 }
+      ],
+      durationSeconds: 150.635,
+      targetDurationSeconds: 60,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts[0]?.end).toBe(82.477);
   });
 
   it('keeps the selected window when no earlier sentence boundary is nearby',
@@ -365,6 +399,29 @@ describe('edit plan provider', () => {
         { text: 'ทุกวันนี้มันก็เริ่มเรื่องใหม่', start: 13.1, end: 15 },
         { text: 'ใจความสำคัญ', start: 15, end: 20 },
         { text: 'รายละเอียดประกอบ', start: 20, end: 30 },
+        { text: 'บทสรุป', start: 30, end: 40 }
+      ],
+      durationSeconds: 40,
+      targetDurationSeconds: 20,
+      weakOpeningPenalty: 300
+    });
+
+    expect(cuts[0]?.end).toBe(10);
+  });
+
+  it('does not turn paused-boundary repair into a distant hook search', () => {
+    const cuts = buildCoherentHighlightCuts({
+      suggestedCuts: [
+        { start: 0, end: 10 },
+        { start: 30, end: 40 }
+      ],
+      segments: [
+        { text: 'เนื้อหาก่อนหน้า', start: 8, end: 10 },
+        { text: 'ทุกๆที่ในเมือง', start: 10, end: 11 },
+        { text: 'ไทยมารวมที่นี่', start: 11, end: 13.5 },
+        { text: 'ถ้าคนที่เคย', start: 15, end: 16 },
+        { text: 'ประโยคใหม่ที่พูดต่อ', start: 16, end: 25 },
+        { text: 'รายละเอียดประกอบ', start: 25, end: 30 },
         { text: 'บทสรุป', start: 30, end: 40 }
       ],
       durationSeconds: 40,

@@ -154,7 +154,8 @@ const weakThaiOpeningPrefixes = [
   'และ',
   'หรือ',
   'ก็',
-  'ของมาจาก'
+  'ของมาจาก',
+  'อาฮะ'
 ];
 
 const strongThaiHookOpeningPrefixes = [
@@ -315,6 +316,11 @@ const MAXIMUM_CONTINUOUS_OPENING_GAP_SECONDS = 0.35;
 const MAXIMUM_CONTINUOUS_OPENING_OVERLAP_SECONDS = 0.05;
 const MAXIMUM_FRAGMENT_OPENING_SECONDS = 2.5;
 const MAXIMUM_OPENING_CONTEXT_SECONDS = 3;
+// Allow one ASR-sized timing tolerance beyond the three-second repair window,
+// but only when the replacement cue begins after a genuine spoken pause. This
+// keeps boundary cleanup separate from the optional three-second hook feature.
+const MAXIMUM_PAUSED_OPENING_REPAIR_SECONDS =
+  MAXIMUM_OPENING_CONTEXT_SECONDS + MAXIMUM_CONTINUOUS_OPENING_GAP_SECONDS;
 const sentenceEndingPunctuation = /[.!?ฯ…]["'”’)\]}]*$/u;
 const spokenThaiSentenceEnding =
   /(?:ครับ|ค่ะ|คะ|จ้ะ|จ้า|ฮะ|ฮ่ะ)[.!?ฯ…]*["'”’)\]}]*$/u;
@@ -548,6 +554,37 @@ export const opensDuringContinuousSpeech = (
   }
 
   return false;
+};
+
+const startsAfterNaturalSpeechPause = (
+  range: EditPlanCut,
+  segments: EditPlanSegment[]
+): boolean => {
+  const orderedSegments = [...segments].sort(
+    (left, right) => left.start - right.start || left.end - right.end
+  );
+  const openingIndex = orderedSegments.findIndex(
+    (segment) =>
+      segment.end > range.start + CUE_BOUNDARY_EPSILON_SECONDS &&
+      segment.start < range.end - CUE_BOUNDARY_EPSILON_SECONDS
+  );
+  if (openingIndex <= 0) {
+    return false;
+  }
+
+  const opening = orderedSegments[openingIndex]!;
+  const previous = orderedSegments[openingIndex - 1]!;
+  if (
+    previous.end >
+    opening.start + MAXIMUM_CONTINUOUS_OPENING_OVERLAP_SECONDS
+  ) {
+    return false;
+  }
+
+  return (
+    opening.start - previous.end >
+    MAXIMUM_CONTINUOUS_OPENING_GAP_SECONDS
+  );
 };
 
 /**
@@ -800,6 +837,22 @@ export const buildCoherentHighlightCuts = ({
         ?.range ?? nearbyEarlierNaturalRanges[0]?.range;
     if (nearbyEarlierNaturalRange) {
       selectedRange = nearbyEarlierNaturalRange;
+    } else {
+      const nearbyFollowingPausedRange = naturalOpeningRanges
+        .filter(
+          (candidate) =>
+            !candidate.weakOpening &&
+            candidate.range.start >
+              selectedRange.start + CUE_BOUNDARY_EPSILON_SECONDS &&
+            candidate.range.start - selectedRange.start <=
+              MAXIMUM_PAUSED_OPENING_REPAIR_SECONDS +
+                CUE_BOUNDARY_EPSILON_SECONDS &&
+            startsAfterNaturalSpeechPause(candidate.range, reliableSegments)
+        )
+        .sort((left, right) => left.range.start - right.range.start)[0]?.range;
+      if (nearbyFollowingPausedRange) {
+        selectedRange = nearbyFollowingPausedRange;
+      }
     }
   }
 

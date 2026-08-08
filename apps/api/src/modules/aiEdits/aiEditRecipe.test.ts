@@ -122,6 +122,36 @@ const expectSafeThaiSubtitleCues = ({
   }
 };
 
+describe('AI edit capability defaults', () => {
+  it('keeps every optional capability disabled when omitted', () => {
+    expect(readAiEditCapabilities(undefined)).toEqual({
+      subtitle: false,
+      silence: false,
+      filler: false,
+      hook: false,
+      beatsync: false,
+      reframe: false,
+      zoom: false,
+      color: false,
+      sfx: false,
+      audio: false,
+      translate: false,
+      pricetag: false,
+      cta: false,
+      watermark: false
+    });
+  });
+
+  it('does not enable hidden capabilities when one capability is selected', () => {
+    expect(readAiEditCapabilities({ color: true })).toMatchObject({
+      color: true,
+      subtitle: false,
+      silence: false,
+      filler: false
+    });
+  });
+});
+
 describe('AI edit recipe pacing settings', () => {
   it.each([
     ['natural', 1],

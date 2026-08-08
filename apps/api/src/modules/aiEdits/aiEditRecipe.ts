@@ -175,22 +175,9 @@ export type AiEditRecipe = {
   capabilities: Record<AiEditCapabilityKey, AiEditCapabilityStatus>;
 };
 
-const defaultCapabilities: AiEditCapabilityFlags = {
-  subtitle: true,
-  silence: true,
-  filler: false,
-  hook: false,
-  beatsync: false,
-  reframe: false,
-  zoom: false,
-  color: false,
-  sfx: false,
-  audio: false,
-  translate: false,
-  pricetag: false,
-  cta: false,
-  watermark: false
-};
+const defaultCapabilities: AiEditCapabilityFlags = Object.fromEntries(
+  aiEditCapabilityKeys.map((key) => [key, false])
+) as AiEditCapabilityFlags;
 
 const plannedCapabilities = new Set<AiEditCapabilityKey>([
   'hook',

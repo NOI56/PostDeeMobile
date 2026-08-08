@@ -236,6 +236,45 @@ AiEditPrepareResult _createNoOpPrepareFixture() => const AiEditPrepareResult(
       ),
     );
 
+AiEditPrepareResult _createTimingUnavailablePrepareFixture() {
+  final base = _createPrepareFixture(subtitleSegments: const []);
+  final recipe = base.recipe;
+  return AiEditPrepareResult(
+    quota: base.quota,
+    recipe: AiEditRecipeResult(
+      version: recipe.version,
+      status: recipe.status,
+      renderMode: recipe.renderMode,
+      transcript: recipe.transcript,
+      subtitles: const AiEditSubtitlesResult(
+        enabled: false,
+        segments: [],
+        style: AiEditSubtitleStyleResult(
+          mode: 'bold',
+          color: '#FFFFFF',
+          wordsPerLine: 3,
+          position: 'bottom',
+        ),
+      ),
+      cutRanges: const [],
+      silenceRanges: const [],
+      fillerRanges: const [],
+      capabilities: const {
+        'subtitle': AiEditCapabilityStatusResult(
+          enabled: true,
+          state: 'unavailable',
+          message: 'ยืนยันเวลาเสียงไม่ได้',
+        ),
+        'silence': AiEditCapabilityStatusResult(
+          enabled: true,
+          state: 'unavailable',
+          message: 'ยืนยันเวลาเสียงไม่ได้',
+        ),
+      },
+    ),
+  );
+}
+
 AiEditPrepareResult _createLegacyFillerPrepareFixture() =>
     const AiEditPrepareResult(
       quota: AiEditQuota(
@@ -948,7 +987,12 @@ void main() {
           },
           uploadVideoFile: (_, __) async {},
           prepareEdit: (_) async => _createPrepareFixture(
-            subtitleSegments: _finePlanningSegmentsFixture,
+            subtitleSegments: const [],
+            plan: const AiEditPlanResult(
+              cuts: [AiEditCut(start: 30, end: 45)],
+              summary: 'audio plan passed the server timing guard',
+              model: 'gemini-test-audio',
+            ),
           ),
           planEdit: (request) async {
             planRequests.add(request);
@@ -980,12 +1024,12 @@ void main() {
     expect(planRequests.single.targetDurationSeconds, 30);
     expect(
       planRequests.single.segments.map((segment) => segment.text),
-      ['รีวิวสินค้า', 'ชิ้นนี้ดีมาก'],
+      ['รีวิวสินค้าชิ้นนี้ดีมาก', 'ราคาคุ้มมาก'],
     );
-    expect(planRequests.single.segments.first.start, 0.25);
-    expect(planRequests.single.segments.first.end, 4.75);
-    expect(planRequests.single.segments.last.start, 4.75);
-    expect(planRequests.single.segments.last.end, 9.5);
+    expect(planRequests.single.segments.first.start, 0);
+    expect(planRequests.single.segments.first.end, 10);
+    expect(planRequests.single.segments.last.start, 11);
+    expect(planRequests.single.segments.last.end, 20);
     expect(cleanedProxyKeys, ['uploads/seller/visual-proxy.mp4']);
     expect(visualProxyExtractions, 1);
     expect(File(localProxyPath!).existsSync(), isTrue);
@@ -1688,6 +1732,58 @@ void main() {
           .onPressed,
       isNotNull,
     );
+  });
+
+  testWidgets('shows a timing evidence message and does not start rendering',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('timing-unavailable.mp4');
+    var renderCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 8,
+            remainingMinutes: 192,
+          ),
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'timing-unavailable-upload',
+            videoS3Key: 'uploads/timing-unavailable.mp4',
+            storageProvider: 'r2',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            throw const ApiException(
+              'Transcript timing evidence is unavailable',
+              statusCode: HttpStatus.unprocessableEntity,
+              code: 'AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE',
+            );
+          },
+          burnVideo: (_) async {
+            renderCalls += 1;
+            return _createRenderedVideoFixture(
+              'timing-unavailable-should-not-render.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('ยืนยันเวลาเสียงไม่ได้ กรุณาลองใหม่'),
+      findsOneWidget,
+    );
+    expect(renderCalls, 0);
+    expect(find.byKey(const ValueKey('ai-result-review')), findsNothing);
   });
 
   testWidgets('renders then stays on the AI result review screen',
@@ -3038,13 +3134,14 @@ void main() {
   });
 
   testWidgets(
-      'cached replan falls back to coarse transcript segments when fine subtitles are unavailable',
+      'cached replan requests fresh prepare when trusted segments are unavailable',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('setup-coarse-fallback.mp4');
     final firstResult =
         _createRenderedVideoFixture('setup-coarse-fallback-result-1.mp4');
     final secondResult =
         _createRenderedVideoFixture('setup-coarse-fallback-result-2.mp4');
+    final prepareRequests = <AiEditPrepareRequest>[];
     final planRequests = <AiEditPlanRequest>[];
     var renderCalls = 0;
 
@@ -3060,9 +3157,20 @@ void main() {
             storageProvider: 's3',
           ),
           uploadVideoFile: (_, __) async {},
-          prepareEdit: (_) async => _createPrepareFixture(
-            subtitleSegments: const [],
-          ),
+          prepareEdit: (request) async {
+            prepareRequests.add(request);
+            if (prepareRequests.length == 1) {
+              return _createPrepareFixture(subtitleSegments: const []);
+            }
+            return _createPrepareFixture(
+              subtitleSegments: _finePlanningSegmentsFixture,
+              plan: const AiEditPlanResult(
+                cuts: [AiEditCut(start: 0, end: 5)],
+                summary: 'เลือกช่วงใหม่จากหลักฐานที่ยืนยันแล้ว',
+                model: 'test-plan',
+              ),
+            );
+          },
           planEdit: (request) async {
             planRequests.add(request);
             return const AiEditPlanResult(
@@ -3090,15 +3198,84 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
-    expect(planRequests, hasLength(1));
-    expect(planRequests.single.segments, hasLength(2));
-    expect(
-      planRequests.single.segments.map((segment) => segment.text),
-      ['รีวิวสินค้าชิ้นนี้ดีมาก', 'ราคาคุ้มมาก'],
-    );
-    expect(planRequests.single.segments.first.start, 0);
-    expect(planRequests.single.segments.last.end, 20);
+    expect(prepareRequests, hasLength(2));
+    expect(prepareRequests.last.targetDurationSeconds, 60);
+    expect(planRequests, isEmpty);
+    expect(renderCalls, 2);
     expect(find.text('setup-coarse-fallback-result-2.mp4'), findsOneWidget);
+  });
+
+  testWidgets(
+      'cached untrusted transcript retries prepare and keeps the old result on 422',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('timing-retry-source.mp4');
+    final prepareRequests = <AiEditPrepareRequest>[];
+    var planCalls = 0;
+    var renderCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-timing-retry',
+            videoS3Key: 'uploads/timing-retry-source.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (request) async {
+            prepareRequests.add(request);
+            if (prepareRequests.length == 1) {
+              return _createTimingUnavailablePrepareFixture();
+            }
+            throw const ApiException(
+              'Transcript timing evidence is unavailable',
+              statusCode: HttpStatus.unprocessableEntity,
+              code: 'AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE',
+            );
+          },
+          planEdit: (_) async {
+            planCalls += 1;
+            return const AiEditPlanResult(
+              cuts: [AiEditCut(start: 0, end: 5)],
+              summary: 'must not be used',
+              model: 'unsafe-test-plan',
+            );
+          },
+          burnVideo: (_) async {
+            renderCalls += 1;
+            return _createRenderedVideoFixture('must-not-render.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
+    final rendersBeforeRetry = renderCalls;
+
+    await tester.tap(find.text('ตั้งค่าใหม่'));
+    await tester.pumpAndSettle();
+    await _setTargetDuration(tester, 60);
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(prepareRequests, hasLength(2));
+    expect(prepareRequests.last.targetDurationSeconds, 60);
+    expect(planCalls, 0);
+    expect(renderCalls, rendersBeforeRetry);
+    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
+    expect(
+      find.text('ยืนยันเวลาเสียงไม่ได้ กรุณาลองใหม่ · ผลลัพธ์เดิมยังอยู่'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('returns to the previous result when new setup rendering fails',

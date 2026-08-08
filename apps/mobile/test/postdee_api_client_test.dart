@@ -1455,6 +1455,50 @@ void main() {
     expect(legacy.speechReduction.defaultCutRanges, isEmpty);
   });
 
+  test('withPlan keeps silence candidates out of executable cut ranges', () {
+    final recipeWithSilenceCandidate = AiEditRecipeResult.fromJson(const {
+      'version': 1,
+      'status': 'ready',
+      'renderMode': 'mobile-ffmpeg',
+      'transcript': {
+        'text': '',
+        'language': 'th',
+        'durationSeconds': 40,
+        'segments': <Object?>[],
+        'words': <Object?>[],
+        'model': 'test',
+      },
+      'subtitles': {
+        'enabled': false,
+        'segments': <Object?>[],
+        'style': <String, Object?>{},
+      },
+      'cutRanges': [
+        {'start': 5, 'end': 6},
+      ],
+      'silenceRanges': [
+        {'start': 5, 'end': 6},
+      ],
+      'fillerRanges': <Object?>[],
+      'capabilities': <String, Object?>{},
+    });
+
+    final updated = recipeWithSilenceCandidate.withPlan(
+      const AiEditPlanResult(
+        cuts: [AiEditCut(start: 20, end: 30)],
+        summary: 'test',
+        model: 'test',
+      ),
+    );
+
+    expect(updated.cutRanges, hasLength(1));
+    expect(updated.cutRanges.single.start, 20);
+    expect(updated.cutRanges.single.end, 30);
+    expect(updated.silenceRanges, hasLength(1));
+    expect(updated.silenceRanges.single.start, 5);
+    expect(updated.silenceRanges.single.end, 6);
+  });
+
   test('speech reduction parser fails closed for an unknown contract', () {
     final reduction = AiEditSpeechReductionResult.fromJson({
       'version': 99,
@@ -1586,7 +1630,6 @@ void main() {
               },
             },
             'cutRanges': [
-              {'start': 2, 'end': 3},
               {'start': 6, 'end': 7},
             ],
             'silenceRanges': [
@@ -1636,7 +1679,8 @@ void main() {
       expect(result.recipe.transcript.language, 'th');
       expect(result.recipe.transcript.segments, hasLength(2));
       expect(result.recipe.transcript.words.single.word, 'สวัสดี');
-      expect(result.recipe.cutRanges, hasLength(2));
+      expect(result.recipe.cutRanges, hasLength(1));
+      expect(result.recipe.cutRanges.single.start, 6);
       expect(result.recipe.silenceRanges.single.end, 3);
       expect(result.recipe.fillerRanges, isEmpty);
       expect(result.recipe.plan.cuts.single.start, 6);
@@ -1654,6 +1698,66 @@ void main() {
       );
       expect(result.recipe.capabilities['subtitle']?.state, 'applied');
       expect(result.recipe.capabilities['silence']?.message, 'พบช่วงเงียบแล้ว');
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  test('prepareAiEdit preserves timing evidence unavailable error contract',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final apiClient = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        authHeaders: PostDeeApiAuthHeaders(
+          authTokenProvider: () async => null,
+          mockUserId: 'seller-test',
+          mockSubscriptionPlan: 'PRO',
+        ),
+      );
+      final resultFuture = apiClient.prepareAiEdit(
+        const AiEditPrepareRequest(
+          videoS3Key: 'uploads/seller-test/video.mp4',
+          durationSeconds: 12,
+          targetDurationSeconds: 6,
+        ),
+      );
+      final expectation = expectLater(
+        resultFuture,
+        throwsA(
+          isA<ApiException>()
+              .having(
+                (error) => error.statusCode,
+                'statusCode',
+                HttpStatus.unprocessableEntity,
+              )
+              .having(
+                (error) => error.code,
+                'code',
+                'AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE',
+              )
+              .having(
+                (error) => error.message,
+                'message',
+                'Transcript timing evidence is unavailable',
+              ),
+        ),
+      );
+      final request = await server.first;
+
+      _writeJsonResponse(
+        request.response,
+        const {
+          'status': 'error',
+          'code': 'AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE',
+          'message': 'Transcript timing evidence is unavailable',
+        },
+        statusCode: HttpStatus.unprocessableEntity,
+      );
+      await request.response.close();
+
+      await expectation;
     } finally {
       await server.close(force: true);
     }

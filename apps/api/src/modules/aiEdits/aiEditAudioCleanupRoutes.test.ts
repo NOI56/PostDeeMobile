@@ -13,7 +13,9 @@ const transcript = {
   durationSeconds: 60,
   segments: [{ text: 'สวัสดีค่ะ', start: 0, end: 1 }],
   words: [{ word: 'สวัสดีค่ะ', start: 0, end: 1 }],
-  model: 'test-whisper'
+  model: 'test-whisper',
+  timingIntegrity: 'trusted' as const,
+  hasTimedAudioEvents: false
 };
 
 describe('AI edit audio cleanup safety', () => {

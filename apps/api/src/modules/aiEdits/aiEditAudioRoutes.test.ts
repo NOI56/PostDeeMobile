@@ -13,7 +13,9 @@ const transcript = {
   durationSeconds: 60,
   segments: [{ text: 'สวัสดีค่ะ', start: 0, end: 1 }],
   words: [{ word: 'สวัสดีค่ะ', start: 0, end: 1 }],
-  model: 'test-whisper'
+  model: 'test-whisper',
+  timingIntegrity: 'trusted' as const,
+  hasTimedAudioEvents: false
 };
 
 const createStorageWithDeleteSpy = () => {
@@ -61,6 +63,84 @@ describe('AI edit audio routes', () => {
     expect(deleteVideo).toHaveBeenCalledWith(audioS3Key);
   });
 
+  it('preserves timing fields for a single audio chunk', async () => {
+    const audioS3Key = ownedUploadKey(
+      'local-dev-user',
+      'chunk-000.m4a',
+      'chunks'
+    );
+    const transcribe = vi.fn(async () => ({
+      ...transcript,
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: true
+    }));
+    const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
+    const app = createApp({ transcriptionProvider: { transcribe }, videoStorage });
+
+    const response = await request(app)
+      .post('/ai-edits/transcribe')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        audioChunks: [{ audioS3Key, startSeconds: 0 }],
+        durationSeconds: 60
+      })
+      .expect(200);
+
+    expect(response.body.transcript).toMatchObject({
+      timingIntegrity: 'trusted',
+      hasTimedAudioEvents: true
+    });
+    expect(deleteVideo).toHaveBeenCalledWith(audioS3Key);
+  });
+
+  it('merges trusted chunk timing and ORs timed audio events', async () => {
+    const firstKey = ownedUploadKey('local-dev-user', 'chunk-000.m4a', 'chunks');
+    const secondKey = ownedUploadKey('local-dev-user', 'chunk-001.m4a', 'chunks');
+    const transcribe = vi.fn(async ({ mediaS3Key }: { mediaS3Key: string }) => ({
+      ...transcript,
+      text: mediaS3Key === firstKey ? 'chunk one' : 'chunk two',
+      durationSeconds: 30,
+      segments: [
+        {
+          text: mediaS3Key === firstKey ? 'chunk one' : 'chunk two',
+          start: 0,
+          end: 1
+        }
+      ],
+      words: [
+        {
+          word: mediaS3Key === firstKey ? 'one' : 'two',
+          start: 0,
+          end: 1
+        }
+      ],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: mediaS3Key === secondKey
+    }));
+    const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
+    const app = createApp({ transcriptionProvider: { transcribe }, videoStorage });
+
+    const response = await request(app)
+      .post('/ai-edits/transcribe')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        audioChunks: [
+          { audioS3Key: firstKey, startSeconds: 0 },
+          { audioS3Key: secondKey, startSeconds: 30 }
+        ],
+        durationSeconds: 60
+      })
+      .expect(200);
+
+    expect(response.body.transcript).toMatchObject({
+      timingIntegrity: 'trusted',
+      hasTimedAudioEvents: true
+    });
+    expect(deleteVideo).toHaveBeenCalledTimes(2);
+    expect(deleteVideo).toHaveBeenCalledWith(firstKey);
+    expect(deleteVideo).toHaveBeenCalledWith(secondKey);
+  });
+
   it('merges ordered audio chunks into one complete transcript and deletes every chunk', async () => {
     const firstKey = ownedUploadKey('local-dev-user', 'chunk-000.m4a', 'chunks');
     const secondKey = ownedUploadKey('local-dev-user', 'chunk-001.m4a', 'chunks');
@@ -72,7 +152,9 @@ describe('AI edit audio routes', () => {
           durationSeconds: 30,
           segments: [{ text: 'สวัสดีค่ะ', start: 0.2, end: 1.1 }],
           words: [{ word: 'สวัสดีค่ะ', start: 0.2, end: 1.1 }],
-          model: 'test-whisper'
+          model: 'test-whisper',
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false
         };
       }
 
@@ -82,7 +164,9 @@ describe('AI edit audio routes', () => {
         durationSeconds: 30,
         segments: [{ text: 'ช่วงต่อไป', start: 0.1, end: 1.2 }],
         words: [{ word: 'ช่วงต่อไป', start: 0.1, end: 1.2 }],
-        model: 'test-whisper'
+        model: 'test-whisper',
+        timingIntegrity: 'trusted' as const,
+        hasTimedAudioEvents: true
       };
     });
     const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
@@ -120,7 +204,59 @@ describe('AI edit audio routes', () => {
     expect(deleteVideo).toHaveBeenCalledWith(secondKey);
   });
 
-  it('clips AAC timing overrun at chunk boundaries so subtitle segments never overlap', async () => {
+  it('rejects target editing when a middle audio chunk has untrusted timing', async () => {
+    const firstKey = ownedUploadKey('local-dev-user', 'chunk-000.m4a', 'chunks');
+    const secondKey = ownedUploadKey('local-dev-user', 'chunk-001.m4a', 'chunks');
+    const thirdKey = ownedUploadKey('local-dev-user', 'chunk-002.m4a', 'chunks');
+    const plan = vi.fn(async () => ({
+      cuts: [],
+      summary: 'test',
+      model: 'test-planner'
+    }));
+    const transcribe = vi.fn(async ({ mediaS3Key }: { mediaS3Key: string }) => ({
+      text: mediaS3Key,
+      language: 'en',
+      durationSeconds: 20,
+      segments: [{ text: mediaS3Key, start: 0, end: 1 }],
+      words: [{ word: mediaS3Key, start: 0, end: 1 }],
+      model: 'test-whisper',
+      timingIntegrity:
+        mediaS3Key === secondKey ? 'untrusted' as const : 'trusted' as const,
+      hasTimedAudioEvents: false
+    }));
+    const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
+    const app = createApp({
+      transcriptionProvider: { transcribe },
+      editPlanProvider: { plan },
+      videoStorage
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        audioChunks: [
+          { audioS3Key: firstKey, startSeconds: 0 },
+          { audioS3Key: secondKey, startSeconds: 20 },
+          { audioS3Key: thirdKey, startSeconds: 40 }
+        ],
+        durationSeconds: 60,
+        targetDurationSeconds: 30,
+        capabilities: { subtitle: true }
+      })
+      .expect(422);
+
+    expect(response.body.code).toBe('AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE');
+    expect(response.body.recipe).toBeUndefined();
+    expect(transcribe).toHaveBeenCalledTimes(3);
+    expect(plan).not.toHaveBeenCalled();
+    expect(deleteVideo).toHaveBeenCalledTimes(3);
+    expect(deleteVideo).toHaveBeenCalledWith(firstKey);
+    expect(deleteVideo).toHaveBeenCalledWith(secondKey);
+    expect(deleteVideo).toHaveBeenCalledWith(thirdKey);
+  });
+
+  it('fails closed when AAC timing must be clipped at a chunk boundary', async () => {
     const firstKey = ownedUploadKey(
       'local-dev-user',
       'chunk-000.m4a',
@@ -143,7 +279,9 @@ describe('AI edit audio routes', () => {
           words: [
             { word: 'ประโยคก่อนรอยต่อ', start: 29.4, end: 30.08 }
           ],
-          model: 'test-whisper'
+          model: 'test-whisper',
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false
         };
       }
 
@@ -157,7 +295,9 @@ describe('AI edit audio routes', () => {
         words: [
           { word: 'ประโยคหลังรอยต่อ', start: 0, end: 0.8 }
         ],
-        model: 'test-whisper'
+        model: 'test-whisper',
+        timingIntegrity: 'trusted' as const,
+        hasTimedAudioEvents: false
       };
     });
     const { videoStorage } = createStorageWithDeleteSpy();
@@ -175,7 +315,6 @@ describe('AI edit audio routes', () => {
           { audioS3Key: secondKey, startSeconds: 30 }
         ],
         durationSeconds: 60,
-        targetDurationSeconds: 60,
         capabilities: { subtitle: true }
       })
       .expect(200);
@@ -184,24 +323,9 @@ describe('AI edit audio routes', () => {
       { text: 'ประโยคก่อนรอยต่อ', start: 29.4, end: 30 },
       { text: 'ประโยคหลังรอยต่อ', start: 30, end: 30.8 }
     ]);
-    expect(response.body.recipe.subtitles.segments).toEqual([
-      {
-        text: 'ประโยคก่อนรอยต่อ',
-        start: 29.4,
-        end: 30,
-        words: [
-          { word: 'ประโยคก่อนรอยต่อ', start: 29.4, end: 30 }
-        ]
-      },
-      {
-        text: 'ประโยคหลังรอยต่อ',
-        start: 30,
-        end: 30.8,
-        words: [
-          { word: 'ประโยคหลังรอยต่อ', start: 30, end: 30.8 }
-        ]
-      }
-    ]);
+    expect(response.body.recipe.subtitles.segments).toEqual([]);
+    expect(response.body.recipe.cutRanges).toEqual([]);
+    expect(response.body.recipe.capabilities.subtitle.state).toBe('hinted');
   });
 
   it('rejects audio chunks when one key belongs to another user', async () => {

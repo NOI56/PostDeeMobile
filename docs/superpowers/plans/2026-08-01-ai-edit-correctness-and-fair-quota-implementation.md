@@ -33,7 +33,7 @@
 
 **Interfaces:** ไม่เปลี่ยน API contract; `readAiEditCapabilities(undefined)` ยังคงคืน `AiEditCapabilityFlags` ครบทุก key แต่เป็น `false` ทั้งหมด
 
-- [ ] **Step 1: เพิ่ม failing tests สำหรับค่า default และคำขอแบบเปิดทีละตัว**
+- [x] **Step 1: เพิ่ม failing tests สำหรับค่า default และคำขอแบบเปิดทีละตัว**
 
 เพิ่มใน `aiEditRecipe.test.ts`:
 
@@ -69,7 +69,7 @@ describe('AI edit capability defaults', () => {
 });
 ```
 
-- [ ] **Step 2: รัน test เพื่อยืนยันว่า RED เพราะ subtitle/silence ยังเป็น true**
+- [x] **Step 2: รัน test เพื่อยืนยันว่า RED เพราะ subtitle/silence ยังเป็น true**
 
 Run from worktree root:
 
@@ -81,7 +81,7 @@ if ($redExitCode -eq 0) { throw "Expected capability-default test to fail before
 
 Expected: test `keeps every optional capability disabled when omitted` fails on `subtitle` and `silence`.
 
-- [ ] **Step 3: เปลี่ยน `defaultCapabilities` ให้ false ครบทุก key**
+- [x] **Step 3: เปลี่ยน `defaultCapabilities` ให้ false ครบทุก key**
 
 ```ts
 const defaultCapabilities: AiEditCapabilityFlags = Object.fromEntries(
@@ -91,7 +91,7 @@ const defaultCapabilities: AiEditCapabilityFlags = Object.fromEntries(
 
 คง `readAiEditCapabilities()` ให้ clone defaults ก่อนอ่าน boolean ที่ client ส่งมา ห้ามเพิ่ม fallback เปิด subtitle/silence ใน route.
 
-- [ ] **Step 4: รัน focused test และตรวจ diff**
+- [x] **Step 4: รัน focused test และตรวจ diff**
 
 ```powershell
 npm.cmd --prefix apps/api run test -- src/modules/aiEdits/aiEditRecipe.test.ts
@@ -100,7 +100,7 @@ git diff --check
 if ($LASTEXITCODE -ne 0) { throw "Whitespace validation failed" }
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add apps/api/src/modules/aiEdits/aiEditRecipe.ts apps/api/src/modules/aiEdits/aiEditRecipe.test.ts
@@ -152,7 +152,7 @@ type TranscriptionResult = {
 
 `AiEditRecipe.silenceRanges` ยังคงชื่อเดิมเพื่อไม่ทำลาย client เก่า แต่ความหมายใหม่คือ candidate; `AiEditRecipe.cutRanges` ต้องไม่รวม candidate เหล่านี้
 
-- [ ] **Step 1: แก้/เพิ่ม API tests ให้บังคับ contract ใหม่**
+- [x] **Step 1: แก้/เพิ่ม API tests ให้บังคับ contract ใหม่**
 
 เพิ่ม case ที่มีช่วงเงียบหัว, กลาง, ท้าย:
 
@@ -186,7 +186,7 @@ it('reports only internal transcript gaps as silence candidates', () => {
 
 เพิ่ม route/API-client regression สำหรับ `422 AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE`: target/style/prompt request ต้องไม่มี planner/recipe/quota mutation และ mobile แปลงเป็นข้อความ “ยืนยันเวลาเสียงไม่ได้ กรุณาลองใหม่” โดยไม่เริ่ม render. Subtitle-only untrusted ต้องคืน burn subtitle ว่างและสถานะ unavailable ไม่ใช่ซับบางส่วน.
 
-- [ ] **Step 2: เพิ่ม mobile model regression test สำหรับ `withPlan()`**
+- [x] **Step 2: เพิ่ม mobile model regression test สำหรับ `withPlan()`**
 
 ใน `postdee_api_client_test.dart` สร้าง recipe ที่มี `silenceRanges` แล้วเรียก `withPlan()`:
 
@@ -232,7 +232,7 @@ test('withPlan keeps silence candidates out of executable cut ranges', () {
 });
 ```
 
-- [ ] **Step 3: รัน RED**
+- [x] **Step 3: รัน RED**
 
 ```powershell
 npm.cmd --prefix apps/api run test -- src/modules/aiEdits/transcriptionProvider.test.ts src/modules/aiEdits/aiEditRecipe.test.ts src/modules/aiEdits/aiEditRoutes.test.ts src/modules/aiEdits/aiEditAudioRoutes.test.ts src/modules/aiEdits/aiEditAudioCleanupRoutes.test.ts src/modules/captions/captionRoutes.test.ts
@@ -251,7 +251,7 @@ if ($apiRedExitCode -eq 0 -or $mobileRedExitCode -eq 0) {
 
 Expected: API ยังสร้าง edge ranges/รวม silence ใน `cutRanges`, ไม่มี timing-integrity contract/การ propagate ข้าม chunks; Dart `withPlan()` ยัง fold candidate กลับเข้า final cuts.
 
-- [ ] **Step 4: ทำ API ให้สร้างเฉพาะ internal candidates**
+- [x] **Step 4: ทำ API ให้สร้างเฉพาะ internal candidates**
 
 แทน `findSilenceRanges` ด้วย logic ต่อไปนี้:
 
@@ -299,7 +299,7 @@ silenceRanges: sortRanges(silenceRanges),
 
 ตั้ง silence status เป็น `hinted` พร้อมข้อความว่า mobile ต้องยืนยัน waveform; ห้าม state `applied` เพียงเพราะพบ transcript gap.
 
-- [ ] **Step 5: แก้ `AiEditRecipeResult.withPlan()` ไม่ให้ candidate รั่วกลับเข้า cuts**
+- [x] **Step 5: แก้ `AiEditRecipeResult.withPlan()` ไม่ให้ candidate รั่วกลับเข้า cuts**
 
 ```dart
 cutRanges: [
@@ -308,7 +308,7 @@ cutRanges: [
 ],
 ```
 
-- [ ] **Step 6: รัน GREEN และ commit**
+- [x] **Step 6: รัน GREEN และ commit**
 
 ```powershell
 npm.cmd --prefix apps/api run test -- src/modules/aiEdits/transcriptionProvider.test.ts src/modules/aiEdits/aiEditRecipe.test.ts src/modules/aiEdits/aiEditRoutes.test.ts src/modules/aiEdits/aiEditAudioRoutes.test.ts src/modules/aiEdits/aiEditAudioCleanupRoutes.test.ts src/modules/captions/captionRoutes.test.ts

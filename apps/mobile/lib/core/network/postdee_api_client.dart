@@ -787,7 +787,6 @@ class AiEditRecipeResult {
       subtitles: subtitles,
       cutRanges: [
         ...updatedPlan.cuts,
-        ...silenceRanges,
         ...fillerRanges,
       ],
       silenceRanges: silenceRanges,

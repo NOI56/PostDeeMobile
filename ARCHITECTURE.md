@@ -603,10 +603,11 @@ extracts mono 16 kHz/64 kbps AAC into balanced temporary M4A chunks no longer
 than 30 seconds and uploads only those files with the narrow `ai-edit-audio`
 purpose. Balanced chunking avoids a very short final request while keeping every
 part within the speech provider's short audio context. Backend validates ownership of every
-chunk, transcribes them sequentially, shifts local timing back onto the source
-timeline, clips segment/word timing at the next chunk boundary to remove AAC
-container overrun, merges one non-overlapping transcript, meters the combined
-duration once, and cleans
+chunk, transcribes them sequentially, and shifts local timing back onto the
+source timeline. If a segment or word would need to be clipped or dropped at a
+chunk boundary, the complete merged timeline becomes untrusted and cannot
+authorize planning or cuts. A trusted merged transcript is metered once, and
+the backend cleans
 all temporary audio even after a partial failure; the untouched original video
 remains local for rendering. Legacy single `audioS3Key` and `videoS3Key`
 requests remain supported, and legacy videos are not automatically deleted.
@@ -639,8 +640,11 @@ re-render from the original clip when supported edits are removed or restored,
 without another metered prepare request. The last successful preview remains
 available if a new render fails. The user can then continue either to
 Upload/Post or the manual editor. Mobile handles FFmpeg
-subtitle burn-in, silence cutting, supported visual adjustments, and final MP4
-export; capabilities marked `planned` are not shown as already applied.
+subtitle burn-in, supported visual adjustments, and final MP4 export. A silence
+cut processor exists, but the current API supplies candidate ranges only; it
+stays inactive until mobile waveform verification approves those ranges in
+Tasks 6–7. Capabilities marked `planned` or `hinted` are not shown as already
+applied.
 The official client reports source duration as `durationSeconds` for quota
 preflight and media timeline recovery. Prepare uses the longer available
 client/provider duration for planning, recipe duration, and quota reservation,

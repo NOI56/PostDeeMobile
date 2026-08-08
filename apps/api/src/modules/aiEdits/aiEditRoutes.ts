@@ -14,7 +14,8 @@ import {
   buildAiEditPlanningSegments,
   buildAiEditRecipe,
   readAiEditCapabilities,
-  readAiEditRecipeSettings
+  readAiEditRecipeSettings,
+  readStrictTranscriptEvidence
 } from './aiEditRecipe.js';
 import type {
   EditPlanProvider,
@@ -218,25 +219,60 @@ const shiftTranscriptionResult = (
   startSeconds: number,
   endSeconds?: number
 ): TranscriptionResult => {
+  let timingPreserved = result.timingIntegrity === 'trusted';
   const shiftAndClipRanges = <T extends { start: number; end: number }>(
     ranges: T[]
-  ): T[] =>
-    ranges.flatMap((range) => {
-      const start = Math.max(startSeconds, startSeconds + range.start);
+  ): T[] => {
+    const shifted: T[] = [];
+    for (const range of ranges) {
+      const shiftedStart = startSeconds + range.start;
       const shiftedEnd = startSeconds + range.end;
-      const end =
-        endSeconds === undefined ? shiftedEnd : Math.min(shiftedEnd, endSeconds);
-      if (end <= start) {
-        return [];
+      if (
+        !Number.isFinite(shiftedStart) ||
+        !Number.isFinite(shiftedEnd) ||
+        shiftedStart < startSeconds ||
+        shiftedEnd <= shiftedStart
+      ) {
+        timingPreserved = false;
+        continue;
       }
-      return [{ ...range, start, end }];
-    });
+
+      const end = endSeconds === undefined
+        ? shiftedEnd
+        : Math.min(shiftedEnd, endSeconds);
+      if (end !== shiftedEnd) {
+        timingPreserved = false;
+      }
+      if (end <= shiftedStart) {
+        timingPreserved = false;
+        continue;
+      }
+      shifted.push({ ...range, start: shiftedStart, end });
+    }
+    return shifted;
+  };
+
+  const shiftedDurationSeconds = startSeconds + result.durationSeconds;
+  if (
+    !Number.isFinite(shiftedDurationSeconds) ||
+    (endSeconds !== undefined && shiftedDurationSeconds > endSeconds)
+  ) {
+    timingPreserved = false;
+  }
+
+  const segments = shiftAndClipRanges(result.segments);
+  const words = shiftAndClipRanges(result.words);
 
   return {
     ...result,
-    durationSeconds: endSeconds ?? startSeconds + result.durationSeconds,
-    segments: shiftAndClipRanges(result.segments),
-    words: shiftAndClipRanges(result.words)
+    durationSeconds:
+      endSeconds ??
+      (Number.isFinite(shiftedDurationSeconds)
+        ? shiftedDurationSeconds
+        : startSeconds),
+    segments,
+    words,
+    timingIntegrity: timingPreserved ? 'trusted' : 'untrusted'
   };
 };
 
@@ -266,18 +302,28 @@ const mergeChunkedTranscriptions = (
     ),
     segments: shifted.flatMap((chunk) => chunk.segments),
     words: shifted.flatMap((chunk) => chunk.words),
+    timingIntegrity: shifted.every(
+      (chunk) => chunk.timingIntegrity === 'trusted'
+    )
+      ? 'trusted'
+      : 'untrusted',
+    hasTimedAudioEvents: shifted.some((chunk) => chunk.hasTimedAudioEvents),
     model: shifted.find((chunk) => chunk.model.trim())?.model ?? ''
   };
 };
 
-const readSegments = (value: unknown): EditPlanSegment[] => {
+const readSegments = (
+  value: unknown,
+  durationSeconds: number
+): EditPlanSegment[] | undefined => {
   if (!Array.isArray(value)) {
-    return [];
+    return undefined;
   }
 
-  return value.flatMap((item) => {
+  const segments: EditPlanSegment[] = [];
+  for (const item of value) {
     if (typeof item !== 'object' || item === null) {
-      return [];
+      return undefined;
     }
 
     const record = item as Record<string, unknown>;
@@ -285,26 +331,26 @@ const readSegments = (value: unknown): EditPlanSegment[] => {
     const end = record.end;
 
     if (typeof start !== 'number' || typeof end !== 'number') {
-      return [];
+      return undefined;
     }
 
-    return [
-      {
-        text: typeof record.text === 'string' ? record.text : '',
-        start,
-        end,
-        ...(typeof record.avgLogprob === 'number'
-          ? { avgLogprob: record.avgLogprob }
-          : {}),
-        ...(typeof record.noSpeechProbability === 'number'
-          ? { noSpeechProbability: record.noSpeechProbability }
-          : {}),
-        ...(typeof record.compressionRatio === 'number'
-          ? { compressionRatio: record.compressionRatio }
-          : {})
-      }
-    ];
-  });
+    segments.push({
+      text: typeof record.text === 'string' ? record.text : '',
+      start,
+      end,
+      ...(typeof record.avgLogprob === 'number'
+        ? { avgLogprob: record.avgLogprob }
+        : {}),
+      ...(typeof record.noSpeechProbability === 'number'
+        ? { noSpeechProbability: record.noSpeechProbability }
+        : {}),
+      ...(typeof record.compressionRatio === 'number'
+        ? { compressionRatio: record.compressionRatio }
+        : {})
+    });
+  }
+
+  return readStrictTranscriptEvidence(segments, durationSeconds);
 };
 
 const buildQuota = (usedMinutes: number) => ({
@@ -360,6 +406,14 @@ const sendAiEditQuotaExceededResponse = (response: Response) => {
     status: 'error',
     code: 'AI_EDIT_QUOTA_EXCEEDED',
     message: `AI editing is limited to ${aiEditMonthlyMinuteLimit} minutes per month`
+  });
+};
+
+const sendTimingEvidenceUnavailableResponse = (response: Response) => {
+  response.status(422).json({
+    status: 'error',
+    code: 'AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE',
+    message: 'Transcript timing evidence is unavailable'
   });
 };
 
@@ -726,13 +780,41 @@ export const registerAiEditRoutes = (
     );
     const capabilities = readAiEditCapabilities(request.body?.capabilities);
     const settings = readAiEditRecipeSettings(request.body?.settings);
+    const strictSegments = readStrictTranscriptEvidence(
+      timelineTranscript.segments,
+      durationSeconds
+    );
+    const strictWords = readStrictTranscriptEvidence(
+      timelineTranscript.words,
+      durationSeconds
+    );
+    const hasTrustedTimingEvidence =
+      timelineTranscript.timingIntegrity === 'trusted' &&
+      strictSegments !== undefined &&
+      strictWords !== undefined;
+
+    if (
+      (styleId || prompt || targetDurationSeconds !== undefined) &&
+      !hasTrustedTimingEvidence
+    ) {
+      sendTimingEvidenceUnavailableResponse(response);
+      return;
+    }
+
+    const verifiedTimelineTranscript = hasTrustedTimingEvidence
+      ? {
+          ...timelineTranscript,
+          segments: strictSegments,
+          words: strictWords
+        }
+      : timelineTranscript;
     const planningSegments =
       targetDurationSeconds !== undefined && !styleId && !prompt
         ? buildAiEditPlanningSegments({
-            transcript: timelineTranscript,
+            transcript: verifiedTimelineTranscript,
             settings
           })
-        : timelineTranscript.segments;
+        : verifiedTimelineTranscript.segments;
     const editPlan =
       styleId || prompt || targetDurationSeconds
         ? await editPlanProvider.plan({
@@ -745,7 +827,7 @@ export const registerAiEditRoutes = (
         : undefined;
 
     const recipe = buildAiEditRecipe({
-      transcript: timelineTranscript,
+      transcript: verifiedTimelineTranscript,
       capabilities,
       settings,
       styleId,
@@ -848,34 +930,45 @@ export const registerAiEditRoutes = (
       return;
     }
 
-    const requestSegments = readSegments(request.body?.segments);
-    const segments =
-      targetDurationSeconds !== undefined && !styleId && !prompt
-        ? buildAiEditPlanningSegments({
-            transcript: {
-              text: requestSegments.map((segment) => segment.text).join(''),
-              language: requestSegments.some((segment) =>
-                /\p{Script=Thai}/u.test(segment.text)
-              )
-                ? 'th'
-                : 'en',
-              durationSeconds,
-              segments: requestSegments,
-              words: [],
-              model: 'client-transcript'
-            }
-          })
-        : requestSegments;
-    const fallbackPlan = () =>
-      editPlanProvider.plan({
-        segments,
-        durationSeconds,
-        targetDurationSeconds,
-        styleId,
-        prompt
-      });
-
     try {
+      const requestSegments = readSegments(
+        request.body?.segments,
+        durationSeconds
+      );
+
+      if (requestSegments === undefined) {
+        sendTimingEvidenceUnavailableResponse(response);
+        return;
+      }
+
+      const segments =
+        targetDurationSeconds !== undefined && !styleId && !prompt
+          ? buildAiEditPlanningSegments({
+              transcript: {
+                text: requestSegments.map((segment) => segment.text).join(''),
+                language: requestSegments.some((segment) =>
+                  /\p{Script=Thai}/u.test(segment.text)
+                )
+                  ? 'th'
+                  : 'en',
+                durationSeconds,
+                segments: requestSegments,
+                words: [],
+                timingIntegrity: 'trusted',
+                hasTimedAudioEvents: false,
+                model: 'client-transcript'
+              }
+            })
+          : requestSegments;
+      const fallbackPlan = () =>
+        editPlanProvider.plan({
+          segments,
+          durationSeconds,
+          targetDurationSeconds,
+          styleId,
+          prompt
+        });
+
       let plan;
       if (
         visualProxyS3Key &&

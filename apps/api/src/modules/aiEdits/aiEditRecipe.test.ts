@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   attachValidatedSubtitleWords,
+  buildAiEditPlanningSegments,
   buildAiEditRecipe,
   readAiEditCapabilities,
-  readAiEditRecipeSettings
+  readAiEditRecipeSettings,
+  readStrictTranscriptEvidence
 } from './aiEditRecipe.js';
 import type {
   TranscriptSegment,
@@ -17,13 +19,17 @@ const buildTranscript = ({
   segments = [],
   words = [],
   language = 'th',
-  durationSeconds
+  durationSeconds,
+  timingIntegrity = 'trusted',
+  hasTimedAudioEvents = false
 }: {
   text?: string;
   segments?: TranscriptSegment[];
   words?: TranscriptWord[];
   language?: string;
   durationSeconds?: number;
+  timingIntegrity?: 'trusted' | 'untrusted';
+  hasTimedAudioEvents?: boolean;
 } = {}): TranscriptionResult => ({
   text,
   language,
@@ -34,6 +40,8 @@ const buildTranscript = ({
   ),
   segments,
   words,
+  timingIntegrity,
+  hasTimedAudioEvents,
   model: 'test-whisper'
 });
 
@@ -43,6 +51,8 @@ const buildRecipe = ({
   words,
   language,
   durationSeconds,
+  timingIntegrity,
+  hasTimedAudioEvents,
   capabilities,
   settings
 }: {
@@ -51,11 +61,21 @@ const buildRecipe = ({
   words?: TranscriptWord[];
   language?: string;
   durationSeconds?: number;
+  timingIntegrity?: 'trusted' | 'untrusted';
+  hasTimedAudioEvents?: boolean;
   capabilities: Record<string, boolean>;
   settings?: unknown;
 }) =>
   buildAiEditRecipe({
-    transcript: buildTranscript({ text, segments, words, language, durationSeconds }),
+    transcript: buildTranscript({
+      text,
+      segments,
+      words,
+      language,
+      durationSeconds,
+      timingIntegrity,
+      hasTimedAudioEvents
+    }),
     capabilities: readAiEditCapabilities({
       subtitle: false,
       silence: false,
@@ -484,20 +504,21 @@ describe('AI edit recipe pacing settings', () => {
       start: index * 0.2,
       end: (index + 1) * 0.2
     }));
+    const durationSeconds = words.length * 0.2;
     const recipe = buildRecipe({
       capabilities: { subtitle: true },
       language: 'Thai',
       text,
-      durationSeconds: 1.2,
+      durationSeconds,
       settings: { subtitleWordsPerLine: 5 },
-      segments: [{ text, start: 0, end: 1.2 }],
+      segments: [{ text, start: 0, end: durationSeconds }],
       words
     });
 
     expectSafeThaiSubtitleCues({
       sourceText: text,
       sourceStart: 0,
-      sourceEnd: 1.2,
+      sourceEnd: durationSeconds,
       segments: recipe.subtitles.segments
     });
     expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
@@ -710,18 +731,22 @@ describe('AI edit recipe pacing settings', () => {
       .toEqual(segments);
   });
 
-  it('detects silence at the start and end of the transcript timeline', () => {
+  it('reports only internal transcript gaps as silence candidates', () => {
     const recipe = buildRecipe({
       capabilities: { silence: true },
-      durationSeconds: 3,
-      segments: [{ text: 'สวัสดี', start: 0.8, end: 2 }],
-      words: [{ word: 'สวัสดี', start: 0.8, end: 2 }]
+      text: 'หนึ่ง สอง',
+      durationSeconds: 10,
+      segments: [
+        { text: 'หนึ่ง', start: 2, end: 3 },
+        { text: 'สอง', start: 5, end: 6 }
+      ]
     });
 
-    expect(recipe.silenceRanges).toEqual([
-      { start: 0, end: 0.8 },
-      { start: 2, end: 3 }
-    ]);
+    expect(recipe.silenceRanges).toEqual([{ start: 3, end: 5 }]);
+    expect(recipe.cutRanges).not.toContainEqual({ start: 3, end: 5 });
+    expect(recipe.cutRanges).not.toContainEqual({ start: 0, end: 2 });
+    expect(recipe.cutRanges).not.toContainEqual({ start: 6, end: 10 });
+    expect(recipe.capabilities.silence.state).toBe('hinted');
   });
 
   it('does not cut transcript-covered edges when word timing uses tolerance', () => {
@@ -747,10 +772,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.silenceRanges).toEqual([
-      { start: 0, end: 5 },
-      { start: 6, end: 12 }
-    ]);
+    expect(recipe.silenceRanges).toEqual([]);
   });
 
   it('rejects word timings that straddle outside segment edges', () => {
@@ -765,10 +787,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.silenceRanges).toEqual([
-      { start: 0, end: 5 },
-      { start: 6, end: 12 }
-    ]);
+    expect(recipe.silenceRanges).toEqual([]);
   });
 
   it('does not trim edges from partial words when no segments exist', () => {
@@ -796,6 +815,75 @@ describe('AI edit recipe pacing settings', () => {
     expect(recipe.silenceRanges).toEqual([]);
   });
 
+  it.each([
+    ['negative start', [{ start: -1, end: 1 }]],
+    ['end beyond duration', [{ start: 5, end: 999 }]],
+    ['non-finite start', [{ start: Number.NaN, end: 2 }]],
+    ['non-finite end', [{ start: 1, end: Number.POSITIVE_INFINITY }]],
+    ['zero length', [{ start: 1, end: 1 }]],
+    ['backward order', [
+      { start: 5, end: 6 },
+      { start: 1, end: 2 }
+    ]],
+    ['overlap', [
+      { start: 0, end: 2 },
+      { start: 1.5, end: 3 }
+    ]]
+  ])('rejects an unsafe %s transcript timeline without clamping', (_, ranges) => {
+    expect(readStrictTranscriptEvidence(ranges, 20)).toBeUndefined();
+  });
+
+  it('keeps subtitle and silence output empty when timing integrity is untrusted', () => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true, silence: true },
+      timingIntegrity: 'untrusted',
+      text: 'ชุมชน เอ่อ ชุมชน',
+      durationSeconds: 4,
+      segments: [
+        { text: 'ชุมชน', start: 0, end: 1 },
+        { text: 'ชุมชน', start: 3, end: 4 }
+      ],
+      words: [
+        { word: 'ชุมชน', start: 0, end: 1 },
+        { word: 'ชุมชน', start: 3, end: 4 }
+      ]
+    });
+
+    expect(recipe.subtitles.segments).toEqual([]);
+    expect(recipe.silenceRanges).toEqual([]);
+    expect(recipe.cutRanges).toEqual([]);
+    expect(recipe.capabilities.subtitle.state).toBe('hinted');
+    expect(recipe.capabilities.silence.state).toBe('hinted');
+  });
+
+  it('does not claim timing output was applied when trusted input is malformed', () => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true, silence: true },
+      durationSeconds: 20,
+      segments: [{ text: 'เวลาเกินคลิป', start: 5, end: 999 }]
+    });
+
+    expect(recipe.subtitles.segments).toEqual([]);
+    expect(recipe.silenceRanges).toEqual([]);
+    expect(recipe.cutRanges).toEqual([]);
+    expect(recipe.capabilities.subtitle.state).toBe('hinted');
+    expect(recipe.capabilities.silence.state).toBe('hinted');
+  });
+
+  it('does not build planning segments from untrusted timing evidence', () => {
+    expect(buildAiEditPlanningSegments({
+      transcript: buildTranscript({
+        text: 'ช่วงแรก ช่วงสอง',
+        timingIntegrity: 'untrusted',
+        durationSeconds: 4,
+        segments: [
+          { text: 'ช่วงแรก', start: 0, end: 1 },
+          { text: 'ช่วงสอง', start: 3, end: 4 }
+        ]
+      })
+    })).toEqual([]);
+  });
+
   it('fails silence detection closed when transcript segments were dropped', () => {
     const recipe = buildRecipe({
       capabilities: { subtitle: true, silence: true },
@@ -809,9 +897,7 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.silenceRanges).toEqual([]);
-    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
-      { text: 'ช่วงแรก', start: 0, end: 1 }
-    ]);
+    expect(recipe.subtitles.segments).toEqual([]);
   });
 
   it('does not report silence inside overlapping timing ranges', () => {
@@ -832,15 +918,10 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.silenceRanges).toEqual([]);
-    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
-      { text: 'ช่วงหลัก', start: 0, end: 10 },
-      { text: 'ซ้อนหนึ่ง', start: 1, end: 2 },
-      { text: 'ซ้อนสอง', start: 5, end: 6 },
-      { text: 'ซ้อนสาม', start: 9, end: 10 }
-    ]);
+    expect(recipe.subtitles.segments).toEqual([]);
   });
 
-  it('ignores empty segment placeholders when valid words are available', () => {
+  it('fails closed when an empty segment placeholder has invalid timing', () => {
     const recipe = buildRecipe({
       capabilities: { subtitle: true },
       language: 'Thai',
@@ -855,11 +936,7 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
-      .not.toEqual([{ text: '', start: 0, end: 0 }]);
-    expect(recipe.subtitles.segments.map((segment) => segment.text).join('')).toBe(
-      'สวัสดี'
-    );
+    expect(recipe.subtitles.segments).toEqual([]);
   });
 
   it('falls back to segments when valid word timings cover only part of the transcript', () => {
@@ -927,7 +1004,7 @@ describe('AI edit recipe pacing settings', () => {
     expect(recipe.silenceRanges).toEqual([]);
   });
 
-  it('falls back to transcript segments when word timings are invalid', () => {
+  it('does not infer silence when any word timing is invalid', () => {
     const recipe = buildRecipe({
       capabilities: { silence: true },
       segments: [
@@ -937,7 +1014,7 @@ describe('AI edit recipe pacing settings', () => {
       words: [{ word: 'เวลาผิด', start: 0.5, end: 0.5 }]
     });
 
-    expect(recipe.silenceRanges).toEqual([{ start: 1, end: 1.8 }]);
+    expect(recipe.silenceRanges).toEqual([]);
   });
 
   it('groups Thai word timings into subtitle lines without inserting spaces', () => {
@@ -1030,7 +1107,7 @@ describe('AI edit recipe pacing settings', () => {
     ]);
   });
 
-  it('falls back to transcript segments for subtitles when word timings are invalid', () => {
+  it('does not burn subtitles when any word timing is invalid', () => {
     const segments = [{ text: 'ใช้ซับเดิม', start: 0, end: 1 }];
     const recipe = buildRecipe({
       capabilities: { subtitle: true },
@@ -1038,8 +1115,7 @@ describe('AI edit recipe pacing settings', () => {
       words: [{ word: 'เวลาผิด', start: 0.5, end: 0.5 }]
     });
 
-    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
-      .toEqual(segments);
+    expect(recipe.subtitles.segments).toEqual([]);
   });
 
   it('uses only supported filler words selected by the request', () => {
@@ -1742,8 +1818,6 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(recipe.subtitles.segments).toEqual([
-      { text: 'one two', start: 0, end: 1.2, words: [] }
-    ]);
+    expect(recipe.subtitles.segments).toEqual([]);
   });
 });

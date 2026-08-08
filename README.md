@@ -550,16 +550,16 @@ Current mobile pieces:
   as transcription only after the requested edit plan and recipe succeed; a
   failed planner/recipe retry does not consume quota. The final atomic
   reservation still enforces the monthly limit. It does not render video
-  server-side. ElevenLabs transcription returns timed words and segments
-  without a free-form spelling prompt. Optional segment confidence/no-speech/compression
+  server-side. ElevenLabs transcription returns timed words, segments, and
+  non-speech audio-event tags without a free-form spelling prompt. Optional segment confidence/no-speech/compression
   signals are retained for highlight quality checks and to omit unreliable ranges
   or clearly unexpected mixed-script recognition noise from burned subtitle
-  lines. Normal Latin product/place names remain allowed. The backend validates word timing
-  coverage before using it for precise silence/repeated-speech cuts and subtitle timing;
-  incomplete timing falls back to segments. Provider Thai character-level tokens
-  still drive precise gaps, but subtitle text falls back to readable segments.
-  Whitespace-only provider tokens are ignored during validation; malformed
-  tokens containing real transcript text still fail closed.
+  lines. Normal Latin product/place names remain allowed. The backend validates the
+  complete provider timing timeline before using it for subtitles, planning,
+  repeated-speech cleanup, or silence candidates. A malformed, missing,
+  overlapping, backwards, clipped, or out-of-range timed event fails closed for
+  editing; a partial display subset may still be retained for diagnostics but is
+  never treated as safe cut evidence.
 - The AI editing setup starts every optional capability switch off, including
   subtitles, silence cleanup, repeated-speech cleanup, and colour adjustment.
   The seller explicitly enables only the work they want; leaving all switches
@@ -573,9 +573,12 @@ Current mobile pieces:
   with `purpose=ai-edit-audio`, and sends ordered `audioChunks` to the backend.
   This keeps the whole source timeline while avoiding a tiny final chunk and
   long-form leading-speech omissions. The backend transcribes each chunk,
-  restores source-relative timestamps, clips AAC timing overrun at every chunk
-  boundary, merges one non-overlapping transcript, and meters the combined
-  duration once. The original video stays on the phone for FFmpeg
+  restores source-relative timestamps, and merges one transcript only when no
+  timed item had to be clipped or dropped at a chunk boundary. Any such timing
+  damage marks the combined result untrusted so planning stops safely instead
+  of cutting from a repaired-looking subset. A successful metered prepare
+  reserves usage at most once for the combined request. The original video
+  stays on the phone for FFmpeg
   rendering. Local and remote temporary audio are cleaned best-effort after the
   prepare call; legacy single `audioS3Key` and `videoS3Key` clients remain
   compatible.

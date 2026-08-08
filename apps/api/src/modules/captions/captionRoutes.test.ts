@@ -723,7 +723,9 @@ describe('caption routes', () => {
       durationSeconds: 9,
       segments: [{ text: 'この商品は朝の準備を楽にします', start: 0, end: 9 }],
       words: [],
-      model: 'test-whisper'
+      model: 'test-whisper',
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false
     }));
     const appWithTranscript = createApp({
       transcriptionProvider: { transcribe }

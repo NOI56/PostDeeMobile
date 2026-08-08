@@ -44,6 +44,8 @@ export const isReliableTranscriptSegment = (
   return true;
 };
 
+export type TranscriptTimingIntegrity = 'trusted' | 'untrusted';
+
 export type TranscriptionResult = {
   text: string;
   language: string;
@@ -51,6 +53,8 @@ export type TranscriptionResult = {
   segments: TranscriptSegment[];
   words: TranscriptWord[];
   model: string;
+  timingIntegrity: TranscriptTimingIntegrity;
+  hasTimedAudioEvents: boolean;
 };
 
 export type TranscriptionMediaKind = 'audio' | 'legacy-video';
@@ -103,18 +107,156 @@ type FetchResponse = {
 type FetchImpl = (url: string, init: RequestInit) => Promise<FetchResponse>;
 
 type TranscriptionApiResponse = {
-  text?: string;
-  language?: string;
-  duration?: number;
-  segments?: Array<{
-    text?: string;
-    start?: number;
-    end?: number;
-    avg_logprob?: number;
-    no_speech_prob?: number;
-    compression_ratio?: number;
-  }>;
-  words?: Array<{ word?: string; start?: number; end?: number }>;
+  text?: unknown;
+  language?: unknown;
+  duration?: unknown;
+  segments?: unknown;
+  words?: unknown;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const normalizeTranscriptCoverage = (value: string): string =>
+  value.normalize('NFC').replace(/\s+/gu, ' ').trim();
+
+const normalizeSemanticTranscriptCoverage = (value: string): string =>
+  normalizeTranscriptCoverage(value).replace(/\s+/gu, '');
+
+const hasValidTimedBounds = (
+  value: Record<string, unknown>,
+  durationSeconds?: number
+): value is Record<string, unknown> & { start: number; end: number } =>
+  isFiniteNumber(value.start) &&
+  value.start >= 0 &&
+  isFiniteNumber(value.end) &&
+  value.end > value.start &&
+  (durationSeconds === undefined || value.end <= durationSeconds);
+
+const readOpenAiSegments = (
+  value: unknown,
+  durationSeconds?: number
+): { segments: TranscriptSegment[]; trusted: boolean } => {
+  if (!Array.isArray(value)) return { segments: [], trusted: false };
+
+  const segments: TranscriptSegment[] = [];
+  let trusted = true;
+  let previousEnd: number | undefined;
+  for (const item of value) {
+    if (
+      !isRecord(item) ||
+      typeof item.text !== 'string' ||
+      item.text.trim().length === 0 ||
+      !hasValidTimedBounds(item, durationSeconds) ||
+      (previousEnd !== undefined && item.start < previousEnd)
+    ) {
+      trusted = false;
+      continue;
+    }
+
+    const segment: TranscriptSegment = {
+      text: item.text.trim(),
+      start: item.start,
+      end: item.end
+    };
+    if (isFiniteNumber(item.avg_logprob)) {
+      segment.avgLogprob = item.avg_logprob;
+    }
+    if (isFiniteNumber(item.no_speech_prob)) {
+      segment.noSpeechProbability = item.no_speech_prob;
+    }
+    if (isFiniteNumber(item.compression_ratio)) {
+      segment.compressionRatio = item.compression_ratio;
+    }
+    segments.push(segment);
+    previousEnd = item.end;
+  }
+
+  return { segments, trusted };
+};
+
+const readOpenAiWords = (
+  value: unknown,
+  durationSeconds?: number
+): { words: TranscriptWord[]; trusted: boolean } => {
+  if (!Array.isArray(value)) return { words: [], trusted: false };
+
+  const words: TranscriptWord[] = [];
+  let trusted = true;
+  let previousEnd: number | undefined;
+  for (const item of value) {
+    if (
+      !isRecord(item) ||
+      typeof item.word !== 'string' ||
+      item.word.trim().length === 0 ||
+      !hasValidTimedBounds(item, durationSeconds) ||
+      (previousEnd !== undefined && item.start < previousEnd)
+    ) {
+      trusted = false;
+      continue;
+    }
+
+    words.push({ word: item.word.trim(), start: item.start, end: item.end });
+    previousEnd = item.end;
+  }
+
+  return { words, trusted };
+};
+
+const normalizeOpenAiCompatibleTranscription = (
+  value: unknown,
+  model: string
+): TranscriptionResult => {
+  const payload = isRecord(value) ? (value as TranscriptionApiResponse) : {};
+  const durationSeconds =
+    isFiniteNumber(payload.duration) && payload.duration > 0
+      ? payload.duration
+      : 0;
+  const hasTrustedDuration = durationSeconds > 0;
+  const durationLimit = hasTrustedDuration ? durationSeconds : undefined;
+  const segmentEvidence = readOpenAiSegments(payload.segments, durationLimit);
+  const wordEvidence = readOpenAiWords(payload.words, durationLimit);
+  const segmentsAbsent = payload.segments === undefined;
+  const wordsAbsent = payload.words === undefined;
+  const hasProvidedTimingStream =
+    Array.isArray(payload.segments) || Array.isArray(payload.words);
+  const rawText = typeof payload.text === 'string' ? payload.text : '';
+  const textCoverage = normalizeSemanticTranscriptCoverage(rawText);
+  const segmentCoverage = normalizeSemanticTranscriptCoverage(
+    segmentEvidence.segments.map((segment) => segment.text).join('')
+  );
+  const wordCoverage = normalizeSemanticTranscriptCoverage(
+    wordEvidence.words.map((word) => word.word).join('')
+  );
+  const hasCompleteTimingCoverage =
+    textCoverage.length === 0 ||
+    (segmentEvidence.segments.length > 0 && segmentCoverage === textCoverage) ||
+    (wordEvidence.words.length > 0 && wordCoverage === textCoverage);
+  const hasStructurallyValidStreams =
+    (segmentsAbsent || segmentEvidence.trusted) &&
+    (wordsAbsent || wordEvidence.trusted);
+
+  return {
+    text: rawText,
+    language: normalizeTranscriptionLanguage(
+      typeof payload.language === 'string' ? payload.language : undefined
+    ),
+    durationSeconds,
+    segments: segmentEvidence.segments,
+    words: wordEvidence.words,
+    model,
+    timingIntegrity:
+      hasTrustedDuration &&
+      hasProvidedTimingStream &&
+      hasStructurallyValidStreams &&
+      hasCompleteTimingCoverage
+        ? 'trusted'
+        : 'untrusted',
+    hasTimedAudioEvents: false
+  };
 };
 
 type ElevenLabsTranscriptEvent = {
@@ -148,11 +290,6 @@ const thaiWordSegmenter = new Intl.Segmenter('th', {
   granularity: 'word'
 });
 
-const isElevenLabsEvent = (
-  value: unknown
-): value is ElevenLabsTranscriptEvent =>
-  typeof value === 'object' && value !== null;
-
 const isValidElevenLabsTimedWord = (
   event: ElevenLabsTranscriptEvent
 ): event is ElevenLabsTranscriptEvent & {
@@ -169,7 +306,118 @@ const isValidElevenLabsTimedWord = (
   event.start >= 0 &&
   typeof event.end === 'number' &&
   Number.isFinite(event.end) &&
-  event.end >= event.start;
+  event.end > event.start;
+
+const isValidElevenLabsTimedAudioEvent = (
+  event: ElevenLabsTranscriptEvent
+): event is ElevenLabsTranscriptEvent & {
+  text: string;
+  start: number;
+  end: number;
+  type: 'audio_event';
+} =>
+  event.type === 'audio_event' &&
+  typeof event.text === 'string' &&
+  event.text.trim().length > 0 &&
+  typeof event.start === 'number' &&
+  Number.isFinite(event.start) &&
+  event.start >= 0 &&
+  typeof event.end === 'number' &&
+  Number.isFinite(event.end) &&
+  event.end > event.start;
+
+const isValidElevenLabsSpacing = (
+  event: ElevenLabsTranscriptEvent
+): event is ElevenLabsTranscriptEvent & { text: string; type: 'spacing' } =>
+  event.type === 'spacing' && typeof event.text === 'string';
+
+type AuditedElevenLabsEvents = {
+  events: ElevenLabsTranscriptEvent[];
+  timingIntegrity: TranscriptTimingIntegrity;
+  hasTimedAudioEvents: boolean;
+  durationSeconds: number;
+};
+
+const auditElevenLabsEvents = (value: unknown): AuditedElevenLabsEvents => {
+  if (!Array.isArray(value)) {
+    return {
+      events: [],
+      timingIntegrity: 'untrusted',
+      hasTimedAudioEvents: false,
+      durationSeconds: 0
+    };
+  }
+
+  const events: ElevenLabsTranscriptEvent[] = [];
+  let trusted = true;
+  let hasTimedAudioEvents = false;
+  let previousTimedEnd: number | undefined;
+  let durationSeconds = 0;
+
+  for (const item of value) {
+    if (!isRecord(item)) {
+      trusted = false;
+      continue;
+    }
+
+    const event = item as ElevenLabsTranscriptEvent;
+    if (isValidElevenLabsSpacing(event)) {
+      events.push(event);
+      continue;
+    }
+
+    const isWord = isValidElevenLabsTimedWord(event);
+    const isAudioEvent = isValidElevenLabsTimedAudioEvent(event);
+    if (!isWord && !isAudioEvent) {
+      trusted = false;
+      continue;
+    }
+
+    if (previousTimedEnd !== undefined && event.start < previousTimedEnd) {
+      trusted = false;
+      continue;
+    }
+
+    events.push(event);
+    previousTimedEnd = event.end;
+    durationSeconds = Math.max(durationSeconds, event.end);
+    if (isAudioEvent) hasTimedAudioEvents = true;
+  }
+
+  return {
+    events,
+    timingIntegrity: trusted ? 'trusted' : 'untrusted',
+    hasTimedAudioEvents,
+    durationSeconds
+  };
+};
+
+const readElevenLabsSpeechCoverage = (
+  events: ElevenLabsTranscriptEvent[]
+): string =>
+  normalizeTranscriptCoverage(
+    events
+      .filter(
+        (event) =>
+          isValidElevenLabsTimedWord(event) ||
+          isValidElevenLabsSpacing(event)
+      )
+      .map((event) => event.text as string)
+      .join('')
+  );
+
+const readElevenLabsProviderSpeechCoverage = (
+  providerText: string,
+  events: ElevenLabsTranscriptEvent[]
+): string => {
+  let speechText = providerText.normalize('NFC');
+  for (const event of events) {
+    if (!isValidElevenLabsTimedAudioEvent(event)) continue;
+    const label = event.text.normalize('NFC').trim();
+    if (label.length > 0) speechText = speechText.replace(label, ' ');
+  }
+  return normalizeTranscriptCoverage(speechText);
+};
 
 const countGraphemes = (value: string): number =>
   Array.from(thaiGraphemeSegmenter.segment(value)).length;
@@ -302,30 +550,37 @@ const normalizeElevenLabsTranscription = (
     typeof value === 'object' && value !== null
       ? (value as ElevenLabsTranscriptionResponse)
       : {};
-  const events = Array.isArray(payload.words)
-    ? payload.words.filter(isElevenLabsEvent)
-    : [];
+  const auditedEvents = auditElevenLabsEvents(payload.words);
+  const events = auditedEvents.events;
   const timedWords = readElevenLabsTimedWords(events);
   const fallbackText = timedWords.map((word) => word.displayText).join('');
-  const text =
+  const providerText =
     typeof payload.text === 'string'
       ? payload.text.normalize('NFC').trim()
-      : fallbackText.normalize('NFC').trim();
+      : undefined;
+  const text =
+    providerText ?? fallbackText.normalize('NFC').trim();
   const language =
     typeof payload.language_code === 'string'
       ? payload.language_code
       : undefined;
+  const hasCompleteSpeechCoverage =
+    providerText === undefined ||
+    readElevenLabsProviderSpeechCoverage(providerText, events) ===
+      readElevenLabsSpeechCoverage(events);
 
   return {
     text,
     language: normalizeTranscriptionLanguage(language),
-    durationSeconds: timedWords.reduce(
-      (duration, word) => Math.max(duration, word.end),
-      0
-    ),
+    durationSeconds: auditedEvents.durationSeconds,
     segments: buildElevenLabsSegments(timedWords),
     words: timedWords.map(({ word, start, end }) => ({ word, start, end })),
-    model
+    model,
+    timingIntegrity:
+      auditedEvents.timingIntegrity === 'trusted' && hasCompleteSpeechCoverage
+        ? 'trusted'
+        : 'untrusted',
+    hasTimedAudioEvents: auditedEvents.hasTimedAudioEvents
   };
 };
 
@@ -340,7 +595,9 @@ export const createMockTranscriptionProvider = (): TranscriptionProvider => ({
       { text: 'กดลิงก์ในไบโอสั่งได้เลยนะคะ', start: 12, end: 18 }
     ],
     words: [],
-    model: 'mock-whisper'
+    model: 'mock-whisper',
+    timingIntegrity: 'trusted',
+    hasTimedAudioEvents: false
   })
 });
 
@@ -392,33 +649,7 @@ const createOpenAiCompatibleTranscriptionProvider = ({
       );
     }
 
-    const payload = (await response.json()) as TranscriptionApiResponse;
-
-    return {
-      text: payload.text ?? '',
-      language: normalizeTranscriptionLanguage(payload.language),
-      durationSeconds: payload.duration ?? 0,
-      segments: (payload.segments ?? []).map((segment) => ({
-        text: (segment.text ?? '').trim(),
-        start: segment.start ?? 0,
-        end: segment.end ?? 0,
-        ...(typeof segment.avg_logprob === 'number'
-          ? { avgLogprob: segment.avg_logprob }
-          : {}),
-        ...(typeof segment.no_speech_prob === 'number'
-          ? { noSpeechProbability: segment.no_speech_prob }
-          : {}),
-        ...(typeof segment.compression_ratio === 'number'
-          ? { compressionRatio: segment.compression_ratio }
-          : {})
-      })),
-      words: (payload.words ?? []).map((word) => ({
-        word: word.word ?? '',
-        start: word.start ?? 0,
-        end: word.end ?? 0
-      })),
-      model
-    };
+    return normalizeOpenAiCompatibleTranscription(await response.json(), model);
   }
 });
 
@@ -476,7 +707,7 @@ export const createElevenLabsTranscriptionProvider = ({
     form.append('model_id', model);
     form.append('language_code', 'th');
     form.append('timestamps_granularity', 'word');
-    form.append('tag_audio_events', 'false');
+    form.append('tag_audio_events', 'true');
     form.append('diarize', 'false');
     form.append('no_verbatim', 'false');
     for (const keyterm of keyterms) {

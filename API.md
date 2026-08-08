@@ -837,15 +837,15 @@ provider transcript duration. Current clients send ordered
 `audioChunks`; legacy clients may send one `audioS3Key` or `videoS3Key`.
 Exactly one of those three media forms is required. Response includes
 `transcript` (text, language, durationSeconds, segments[], words[]) and `quota`.
-The ElevenLabs adapter requests word-level timing and sends no free-form spelling
-prompt. Segment responses retain optional `avgLogprob`,
+The ElevenLabs adapter requests word-level timing plus non-speech audio-event
+tags and sends no free-form spelling prompt. Segment responses retain optional `avgLogprob`,
 `noSpeechProbability`, and `compressionRatio` quality signals when the provider
 returns them.
-Validated word timing is preferred for subtitle timing and silence-gap cuts,
-while segments remain the conservative fallback when timing coverage is partial
-or a provider returns Thai character-level tokens that are not readable subtitle words.
-Whitespace-only/punctuation-only timing tokens are ignored, while invalid tokens
-that contain transcript text invalidate word-level timing and trigger fallback.
+Provider timing is audited as one complete timeline before AI editing may use it.
+The API can retain a valid display subset for diagnostics, but one malformed,
+missing, overlapping, backwards, or out-of-range timed event marks the complete
+timeline untrusted. Partial evidence must not authorize subtitles, highlight
+planning, repeated-speech cleanup, or silence removal.
 
 If the configured transcription provider is unavailable, both this endpoint and
 `POST /ai-edits/prepare` return `502` JSON without reserving quota:
@@ -895,10 +895,12 @@ Current mobile clients split source audio into balanced chunks no longer than
 25 MiB. The client sends ordered `audioChunks` with the source-relative start
 time of every chunk. The first start must be zero; keys must be unique,
 user-owned, ordered, and limited to 40 chunks. The backend transcribes chunks
-sequentially, shifts their local word/segment timestamps onto the source
-timeline, clips AAC/container timing overrun at the next chunk boundary, merges
-one non-overlapping transcript, and reserves quota once from the combined
-duration. `durationSeconds` must describe the source clip for the quota
+sequentially and shifts their local word/segment timestamps onto the source
+timeline. If shifting would clip or drop any timing at a chunk boundary, the
+merged timeline is marked untrusted instead of treating the clipped subset as
+safe editing evidence. The route still cleans every temporary chunk, and any
+successful metered prepare reserves usage at most once for the combined request.
+`durationSeconds` must describe the source clip for the quota
 pre-check, not the requested output length. It is currently supplied by the
 official client and combined with the provider timeline; server-side media
 probing and an API-side 600-second ceiling remain required before public
@@ -982,12 +984,27 @@ call `POST /ai-edits/audio/cleanup` with `{ "audioS3Key": "..." }`. Cleanup is
 authenticated, owner-scoped, and idempotent. Chunked clients call it once for
 each orphaned chunk.
 
+When a style, prompt, or target length needs transcript timing but that timing
+cannot be verified, the endpoint stops before planning, recipe creation, or
+quota reservation and returns `422`:
+
+```json
+{
+  "status": "error",
+  "code": "AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE",
+  "message": "Transcript timing evidence is unavailable"
+}
+```
+
 Response includes:
 
 - `recipe.renderMode: "mobile-ffmpeg"`
 - `recipe.transcript` with text, language, duration, segments, words, and model
 - `recipe.subtitles` for mobile subtitle burn-in
-- `recipe.cutRanges`, `silenceRanges`, and legacy-compatible `fillerRanges`
+- `recipe.cutRanges` with executable planner/repeated-speech cuts,
+  `silenceRanges` as internal transcript-gap candidates that mobile must verify
+  against the waveform before cutting, and legacy-compatible `fillerRanges`.
+  Silence candidates are never folded into `cutRanges`.
 - optional `recipe.speechReduction` with stable repeated-word groups,
   occurrences, recommendations, and `defaultCutRanges`
 - `recipe.plan`, including transcript-selected cuts, a short summary, and the

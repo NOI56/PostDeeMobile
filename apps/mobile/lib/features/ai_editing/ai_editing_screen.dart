@@ -68,13 +68,21 @@ typedef ReviewVideoControllerFactory = VideoPlayerController Function(
   File file,
 );
 
-List<ClipTranscriptSegment> _planningSegmentsForRecipe(
+List<ClipTranscriptSegment> _trustedPlanningSegmentsForRecipe(
   AiEditRecipeResult recipe,
 ) {
-  final fineSubtitleSegments = recipe.subtitles.segments;
-  return fineSubtitleSegments.isNotEmpty
-      ? fineSubtitleSegments
-      : recipe.transcript.segments;
+  final subtitleSegments = recipe.subtitles.segments;
+  if (subtitleSegments.isNotEmpty) {
+    return subtitleSegments;
+  }
+
+  final planModel = recipe.plan.model.trim().toLowerCase();
+  // A non-placeholder plan is the current API signal that /prepare passed
+  // the server timing guard even when automatic subtitles were not requested.
+  final hasServerValidatedPlan = planModel.isNotEmpty && planModel != 'none';
+  return hasServerValidatedPlan
+      ? recipe.transcript.segments
+      : const <ClipTranscriptSegment>[];
 }
 
 /// Keeps a stalled entitlement request from locking the AI editor forever.
@@ -836,34 +844,39 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         final previousAnalysis =
             _preparedEditsByAnalysisSignature[analysisSignature];
         if (previousAnalysis != null) {
-          if (mounted) {
-            setState(
-              () => _processingTitle = 'กำลังเลือกช่วงที่ดีที่สุดให้ใหม่...',
+          final planningSegments =
+              _trustedPlanningSegmentsForRecipe(previousAnalysis.recipe);
+          if (planningSegments.isNotEmpty) {
+            if (mounted) {
+              setState(
+                () => _processingTitle = 'กำลังเลือกช่วงที่ดีที่สุดให้ใหม่...',
+              );
+            }
+            final recipe = previousAnalysis.recipe;
+            final transcript = recipe.transcript;
+            final planEdit = widget.planEdit ?? _apiClient.requestAiEditPlan;
+            final plan = await planEdit(
+              AiEditPlanRequest(
+                segments: planningSegments,
+                durationSeconds: transcript.durationSeconds,
+                targetDurationSeconds: _selectedDurationSeconds.toDouble(),
+              ),
             );
+            if (!mounted) {
+              return;
+            }
+            prepared = AiEditPrepareResult(
+              recipe: previousAnalysis.recipe.withPlan(plan),
+              quota: previousAnalysis.quota,
+            );
+            prepared = await _enhancePreparedEditWithVisualProxy(
+              sourceFile: file,
+              prepared: prepared,
+            );
+            _preparedEditsBySignature[prepareSignature] = prepared;
           }
-          final recipe = previousAnalysis.recipe;
-          final transcript = recipe.transcript;
-          final planEdit = widget.planEdit ?? _apiClient.requestAiEditPlan;
-          final plan = await planEdit(
-            AiEditPlanRequest(
-              segments: _planningSegmentsForRecipe(recipe),
-              durationSeconds: transcript.durationSeconds,
-              targetDurationSeconds: _selectedDurationSeconds.toDouble(),
-            ),
-          );
-          if (!mounted) {
-            return;
-          }
-          prepared = AiEditPrepareResult(
-            recipe: previousAnalysis.recipe.withPlan(plan),
-            quota: previousAnalysis.quota,
-          );
-          prepared = await _enhancePreparedEditWithVisualProxy(
-            sourceFile: file,
-            prepared: prepared,
-          );
-          _preparedEditsBySignature[prepareSignature] = prepared;
-        } else {
+        }
+        if (prepared == null) {
           AiEditAudioArtifact? audioArtifact;
           AiEditAudioChunksArtifact? audioChunksArtifact;
           final remoteAudioKeys = <String>[];
@@ -1073,9 +1086,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     required AiEditPrepareResult prepared,
   }) async {
     final transcript = prepared.recipe.transcript;
+    final planningSegments = _trustedPlanningSegmentsForRecipe(prepared.recipe);
     final targetDurationSeconds = _selectedDurationSeconds.toDouble();
     if (!_shouldAttemptVisualProxy ||
         _isUsingOriginalDuration ||
+        planningSegments.isEmpty ||
         transcript.durationSeconds <= 0 ||
         targetDurationSeconds >= transcript.durationSeconds - 0.5) {
       return prepared;
@@ -1124,7 +1139,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       final planEdit = widget.planEdit ?? _apiClient.requestAiEditPlan;
       final visualPlan = await planEdit(
         AiEditPlanRequest(
-          segments: _planningSegmentsForRecipe(prepared.recipe),
+          segments: planningSegments,
           durationSeconds: transcript.durationSeconds,
           targetDurationSeconds: targetDurationSeconds,
           visualProxyS3Key: remoteProxyKey,
@@ -1977,6 +1992,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   String _friendlyAiError(ApiException error) {
+    if (error.code == 'AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE') {
+      return 'ยืนยันเวลาเสียงไม่ได้ กรุณาลองใหม่';
+    }
     if (error.code == 'AI_TRANSCRIPTION_PROVIDER_FAILED') {
       return 'ระบบถอดเสียง AI ยังไม่พร้อม กรุณาลองใหม่อีกครั้ง';
     }

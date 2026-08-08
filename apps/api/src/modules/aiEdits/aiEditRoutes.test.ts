@@ -22,6 +22,121 @@ describe('ai edit routes', () => {
     expect(response.body.transcript.segments.length).toBeGreaterThan(0);
   });
 
+  it('merges trusted audio chunks and preserves timed audio event evidence', async () => {
+    const transcripts = [
+      {
+        text: 'first',
+        language: 'en',
+        durationSeconds: 10,
+        segments: [{ text: 'first', start: 1, end: 9 }],
+        words: [{ word: 'first', start: 1, end: 2 }],
+        timingIntegrity: 'trusted' as const,
+        hasTimedAudioEvents: true,
+        model: 'test-scribe'
+      },
+      {
+        text: 'second',
+        language: 'en',
+        durationSeconds: 5,
+        segments: [{ text: 'second', start: 0, end: 5 }],
+        words: [{ word: 'second', start: 0, end: 1 }],
+        timingIntegrity: 'trusted' as const,
+        hasTimedAudioEvents: false,
+        model: 'test-scribe'
+      }
+    ];
+    let callIndex = 0;
+    const transcribe = vi.fn(async () => transcripts[callIndex++]!);
+    const app = createApp({ transcriptionProvider: { transcribe } });
+
+    const response = await request(app)
+      .post('/ai-edits/transcribe')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        audioChunks: [
+          {
+            audioS3Key: ownedUploadKey('local-dev-user', 'part-1.m4a'),
+            startSeconds: 0
+          },
+          {
+            audioS3Key: ownedUploadKey('local-dev-user', 'part-2.m4a'),
+            startSeconds: 10
+          }
+        ],
+        durationSeconds: 15
+      })
+      .expect(200);
+
+    expect(response.body.transcript).toMatchObject({
+      durationSeconds: 15,
+      timingIntegrity: 'trusted',
+      hasTimedAudioEvents: true,
+      segments: [
+        { text: 'first', start: 1, end: 9 },
+        { text: 'second', start: 10, end: 15 }
+      ]
+    });
+  });
+
+  it.each([
+    ['clips', { text: 'clipped', start: 8, end: 12 }, 1],
+    ['drops', { text: 'dropped', start: 11, end: 12 }, 0]
+  ])(
+    'marks merged timing untrusted when a chunk boundary %s a timed range',
+    async (_description, firstSegment, expectedFirstChunkSegments) => {
+      const transcripts = [
+        {
+          text: firstSegment.text,
+          language: 'en',
+          durationSeconds: 12,
+          segments: [firstSegment],
+          words: [],
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false,
+          model: 'test-scribe'
+        },
+        {
+          text: 'second',
+          language: 'en',
+          durationSeconds: 5,
+          segments: [{ text: 'second', start: 0, end: 5 }],
+          words: [],
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false,
+          model: 'test-scribe'
+        }
+      ];
+      let callIndex = 0;
+      const transcribe = vi.fn(async () => transcripts[callIndex++]!);
+      const app = createApp({ transcriptionProvider: { transcribe } });
+
+      const response = await request(app)
+        .post('/ai-edits/transcribe')
+        .set('x-postdee-subscription-plan', 'PRO')
+        .send({
+          audioChunks: [
+            {
+              audioS3Key: ownedUploadKey('local-dev-user', 'part-1.m4a'),
+              startSeconds: 0
+            },
+            {
+              audioS3Key: ownedUploadKey('local-dev-user', 'part-2.m4a'),
+              startSeconds: 10
+            }
+          ],
+          durationSeconds: 15
+        })
+        .expect(200);
+
+      expect(response.body.transcript.timingIntegrity).toBe('untrusted');
+      expect(
+        response.body.transcript.segments.filter(
+          (segment: { text: string }) => segment.text === firstSegment.text
+        )
+      ).toHaveLength(expectedFirstChunkSegments);
+    }
+  );
+
   it('blocks transcription for non-Pro users', async () => {
     const app = createApp();
 
@@ -55,6 +170,8 @@ describe('ai edit routes', () => {
       durationSeconds: 150,
       segments: [],
       words: [],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
       model: 'test-whisper'
     }));
     const app = createApp({ transcriptionProvider: { transcribe } });
@@ -101,6 +218,8 @@ describe('ai edit routes', () => {
         }
       ],
       words: [],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
       model: 'test-whisper'
     }));
     const app = createApp({ transcriptionProvider: { transcribe } });
@@ -157,6 +276,8 @@ describe('ai edit routes', () => {
           durationSeconds: 199 * 60,
           segments: [],
           words: [],
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false,
           model: 'test-whisper'
         };
       }
@@ -175,6 +296,8 @@ describe('ai edit routes', () => {
         durationSeconds: 60,
         segments: [],
         words: [],
+        timingIntegrity: 'trusted' as const,
+        hasTimedAudioEvents: false,
         model: 'test-whisper'
       };
     });
@@ -236,6 +359,8 @@ describe('ai edit routes', () => {
       durationSeconds: 1,
       segments: [],
       words: [],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
       model: 'test-whisper'
     }));
     const app = createApp({
@@ -290,6 +415,150 @@ describe('ai edit routes', () => {
     }
   );
 
+  it.each([
+    ['style', { styleId: 'flash_sale' }],
+    ['prompt', { prompt: 'keep the strongest claim' }],
+    [
+      'target duration',
+      { targetDurationSeconds: 10, capabilities: { subtitle: true } }
+    ]
+  ])(
+    'rejects %s planning before planner and quota reservation when timing is untrusted',
+    async (_description, planningRequest) => {
+      const transcribe = vi.fn(async () => ({
+        text: 'usable display text',
+        language: 'en',
+        durationSeconds: 20,
+        segments: [{ text: 'usable display text', start: 0, end: 20 }],
+        words: [],
+        timingIntegrity: 'untrusted' as const,
+        hasTimedAudioEvents: false,
+        model: 'test-scribe'
+      }));
+      const plan = vi.fn(async () => ({
+        cuts: [],
+        summary: 'must not run',
+        model: 'test-planner'
+      }));
+      const app = createApp({
+        transcriptionProvider: { transcribe },
+        editPlanProvider: { plan }
+      });
+      const headers = { 'x-postdee-subscription-plan': 'PRO' };
+
+      const response = await request(app)
+        .post('/ai-edits/prepare')
+        .set(headers)
+        .send({
+          videoS3Key: ownedUploadKey('local-dev-user', 'untrusted.mp4'),
+          durationSeconds: 20,
+          ...planningRequest
+        })
+        .expect(422);
+
+      expect(response.body).toMatchObject({
+        status: 'error',
+        code: 'AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE',
+        message: 'Transcript timing evidence is unavailable'
+      });
+      expect(plan).not.toHaveBeenCalled();
+
+      const quota = await request(app)
+        .get('/ai-edits/quota')
+        .set(headers)
+        .expect(200);
+      expect(quota.body.quota.usedMinutes).toBe(0);
+    }
+  );
+
+  it.each([
+    [
+      'overshoots the media duration',
+      [{ text: 'bad end', start: 0, end: 999 }]
+    ],
+    [
+      'moves backwards in provider order',
+      [
+        { text: 'later', start: 10, end: 15 },
+        { text: 'earlier', start: 0, end: 5 }
+      ]
+    ]
+  ])(
+    'rejects trusted provider timing that %s before planning',
+    async (_description, segments) => {
+      const transcribe = vi.fn(async () => ({
+        text: 'provider accidentally marked malformed timing trusted',
+        language: 'en',
+        durationSeconds: 20,
+        segments,
+        words: [],
+        timingIntegrity: 'trusted' as const,
+        hasTimedAudioEvents: false,
+        model: 'test-scribe'
+      }));
+      const plan = vi.fn(async () => ({
+        cuts: [],
+        summary: 'must not run',
+        model: 'test-planner'
+      }));
+      const app = createApp({
+        transcriptionProvider: { transcribe },
+        editPlanProvider: { plan }
+      });
+
+      const response = await request(app)
+        .post('/ai-edits/prepare')
+        .set('x-postdee-subscription-plan', 'PRO')
+        .send({
+          videoS3Key: ownedUploadKey('local-dev-user', 'malformed.mp4'),
+          durationSeconds: 20,
+          styleId: 'flash_sale'
+        })
+        .expect(422);
+
+      expect(response.body.code).toBe('AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE');
+      expect(plan).not.toHaveBeenCalled();
+    }
+  );
+
+  it('returns a safe non-executable recipe for subtitle and silence on untrusted timing',
+      async () => {
+    const transcribe = vi.fn(async () => ({
+      text: 'first second',
+      language: 'en',
+      durationSeconds: 10,
+      segments: [
+        { text: 'first', start: 1, end: 2 },
+        { text: 'second', start: 4, end: 5 }
+      ],
+      words: [],
+      timingIntegrity: 'untrusted' as const,
+      hasTimedAudioEvents: false,
+      model: 'test-scribe'
+    }));
+    const app = createApp({ transcriptionProvider: { transcribe } });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'safe-recipe.mp4'),
+        durationSeconds: 10,
+        capabilities: { subtitle: true, silence: true }
+      })
+      .expect(200);
+
+    expect(response.body.recipe).toMatchObject({
+      subtitles: { segments: [] },
+      cutRanges: [],
+      silenceRanges: [],
+      capabilities: {
+        subtitle: { state: 'hinted' },
+        silence: { state: 'hinted' }
+      }
+    });
+  });
+
   it('meters prepare usage only after the edit recipe succeeds', async () => {
     const transcribe = vi.fn(async () => ({
       text: 'retry after planner failure',
@@ -299,6 +568,8 @@ describe('ai edit routes', () => {
         { text: 'retry after planner failure', start: 0, end: 60 }
       ],
       words: [],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
       model: 'test-whisper'
     }));
     const plan = vi
@@ -361,6 +632,8 @@ describe('ai edit routes', () => {
         { word: '99', start: 4.5, end: 4.8 },
         { word: 'บาท', start: 4.9, end: 5.2 }
       ],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
       model: 'test-whisper'
     }));
     const app = createApp({ transcriptionProvider: { transcribe } });
@@ -457,11 +730,14 @@ describe('ai edit routes', () => {
         }
       }
     });
-    expect(response.body.recipe.cutRanges).toContainEqual({ start: 0, end: 4 });
-    expect(response.body.recipe.cutRanges).toContainEqual({ start: 7, end: 65 });
-    expect(response.body.recipe.cutRanges).toContainEqual({ start: 2, end: 4 });
+    expect(response.body.recipe.silenceRanges).toEqual([
+      { start: 2, end: 4 },
+      { start: 7, end: 10 }
+    ]);
+    expect(response.body.recipe.cutRanges).not.toContainEqual({ start: 2, end: 4 });
+    expect(response.body.recipe.cutRanges).not.toContainEqual({ start: 7, end: 10 });
     expect(response.body.recipe.capabilities.subtitle.state).toBe('applied');
-    expect(response.body.recipe.capabilities.silence.state).toBe('applied');
+    expect(response.body.recipe.capabilities.silence.state).toBe('hinted');
     expect(response.body.recipe.capabilities.cta.state).toBe('planned');
     expect(response.body.recipe.capabilities.beatsync.state).toBe('planned');
     expect(response.body.recipe.capabilities.translate.state).toBe('planned');
@@ -488,6 +764,8 @@ describe('ai edit routes', () => {
         { text: 'กดตะกร้าเลย', start: 15, end: 18 }
       ],
       words: [],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
       model: 'test-whisper'
     }));
     const app = createApp({
@@ -572,6 +850,8 @@ describe('ai edit routes', () => {
         { word: 'สนใจ', start: 13.85, end: 14.3 },
         { word: 'มาก', start: 14.3, end: 15 }
       ],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
       model: 'scribe_v2'
     }));
     const app = createApp({
@@ -644,6 +924,8 @@ describe('ai edit routes', () => {
           durationSeconds: 10,
           segments: styleSegments,
           words: [],
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false,
           model: 'scribe_v2'
         })
       },
@@ -695,6 +977,98 @@ describe('ai edit routes', () => {
     expect(plan).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ['is not an array', 'not-an-array'],
+    [
+      'contains an item that would previously be silently dropped',
+      [
+        { text: 'valid', start: 0, end: 2 },
+        null
+      ]
+    ],
+    [
+      'overshoots the media duration',
+      [{ text: 'overshoot', start: 0, end: 11 }]
+    ],
+    [
+      'overlaps in raw client order',
+      [
+        { text: 'first', start: 0, end: 6 },
+        { text: 'second', start: 5, end: 8 }
+      ]
+    ],
+    [
+      'moves backwards in raw client order',
+      [
+        { text: 'later', start: 5, end: 8 },
+        { text: 'earlier', start: 0, end: 4 }
+      ]
+    ]
+  ])('rejects a plan before the planner when segments %s', async (_description, segments) => {
+    const plan = vi.fn(async () => ({
+      cuts: [],
+      summary: 'must not run',
+      model: 'test-planner'
+    }));
+    const app = createApp({ editPlanProvider: { plan } });
+
+    const response = await request(app)
+      .post('/ai-edits/plan')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        durationSeconds: 10,
+        styleId: 'flash_sale',
+        segments
+      })
+      .expect(422);
+
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE'
+    });
+    expect(plan).not.toHaveBeenCalled();
+  });
+
+  it('cleans an owned visual proxy when invalid segment timing returns 422', async () => {
+    const plan = vi.fn(async () => ({
+      cuts: [],
+      summary: 'must not run',
+      model: 'test-planner'
+    }));
+    const fetchClipMedia = vi.fn(async () => ({
+      data: new Uint8Array([1]),
+      mimeType: 'video/mp4'
+    }));
+    const deleteVideo = vi.fn(async () => undefined);
+    const proxyKey = ownedUploadKey(
+      'local-dev-user',
+      'invalid-timing-proxy.mp4',
+      'invalid-timing-proxy'
+    );
+    const app = createApp({
+      editPlanProvider: { plan },
+      fetchClipMedia,
+      videoStorage: { ...createMockVideoStorage(), deleteVideo }
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/plan')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        durationSeconds: 10,
+        targetDurationSeconds: 5,
+        segments: [{ text: 'overshoot', start: 0, end: 11 }],
+        visualProxyS3Key: proxyKey
+      })
+      .expect(422);
+
+    expect(response.body.code).toBe('AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE');
+    expect(plan).not.toHaveBeenCalled();
+    expect(fetchClipMedia).not.toHaveBeenCalled();
+    expect(deleteVideo).toHaveBeenCalledOnce();
+    expect(deleteVideo).toHaveBeenCalledWith(proxyKey);
+  });
+
   it('uses the full media timeline when ElevenLabs ends before the video', async () => {
     const plan = vi.fn(async () => ({
       cuts: [],
@@ -719,6 +1093,8 @@ describe('ai edit routes', () => {
           end: 148.709
         }
       ],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
       model: 'scribe_v2'
     }));
     const app = createApp({

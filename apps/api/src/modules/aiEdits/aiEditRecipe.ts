@@ -463,6 +463,34 @@ const readSafeTimedRange = (
   return { start: range.start, end: range.end };
 };
 
+export const readStrictTranscriptEvidence = <T extends TimedRange>(
+  ranges: readonly T[],
+  durationSeconds: number
+): T[] | undefined => {
+  if (!hasFinitePositiveDuration(durationSeconds)) {
+    return undefined;
+  }
+
+  const strict: T[] = [];
+  let previousEnd: number | undefined;
+  for (const range of ranges) {
+    if (
+      !Number.isFinite(range.start) ||
+      !Number.isFinite(range.end) ||
+      range.start < 0 ||
+      range.end <= range.start ||
+      range.end > durationSeconds ||
+      (previousEnd !== undefined && range.start < previousEnd)
+    ) {
+      return undefined;
+    }
+    strict.push({ ...range });
+    previousEnd = range.end;
+  }
+
+  return strict;
+};
+
 const hasFragmentedThaiWordTimings = (
   words: TranscriptWord[],
   language: string,
@@ -1015,59 +1043,30 @@ const mergeShortSubtitleSegments = (
   return merged;
 };
 
-const findSilenceRanges = (
+const findInternalSilenceCandidates = (
   ranges: TimedRange[],
   minGapSeconds = 0.6,
-  durationSeconds?: number,
-  edgeRanges = ranges
+  durationSeconds?: number
 ): EditPlanCut[] => {
-  const sorted = ranges
-    .flatMap((range) => {
-      const safeRange = readSafeTimedRange(range, durationSeconds);
-      return safeRange ? [safeRange] : [];
-    })
-    .sort((a, b) => a.start - b.start || a.end - b.end);
-  const safeEdgeRanges = edgeRanges
-    .flatMap((range) => {
-      const safeRange = readSafeTimedRange(range, durationSeconds);
-      return safeRange ? [safeRange] : [];
-    })
-    .sort((a, b) => a.start - b.start || a.end - b.end);
-
-  if (sorted.length === 0 || safeEdgeRanges.length === 0) {
+  if (!hasFinitePositiveDuration(durationSeconds)) {
     return [];
   }
+  const strict = readStrictTranscriptEvidence(ranges, durationSeconds);
+  if (!strict || strict.length < 2) return [];
+  const sorted = [...strict].sort(
+    (left, right) => left.start - right.start || left.end - right.end
+  );
 
-  const silenceRanges: EditPlanCut[] = [];
-  const first = sorted[0]!;
-  const firstEdge = safeEdgeRanges[0]!;
-  const lastEdgeEnd = Math.max(...safeEdgeRanges.map((range) => range.end));
-  let activeEnd = Math.max(0, first.end);
-
-  if (firstEdge.start + Number.EPSILON >= minGapSeconds) {
-    silenceRanges.push({ start: 0, end: firstEdge.start });
-  }
-
+  const candidates: EditPlanCut[] = [];
+  let activeEnd = sorted[0]!.end;
   for (let index = 1; index < sorted.length; index += 1) {
     const next = sorted[index]!;
-    const start = activeEnd;
-    const end = Math.max(start, next.start);
-
-    if (end - start + Number.EPSILON >= minGapSeconds) {
-      silenceRanges.push({ start, end });
+    if (next.start - activeEnd + Number.EPSILON >= minGapSeconds) {
+      candidates.push({ start: activeEnd, end: next.start });
     }
-
     activeEnd = Math.max(activeEnd, next.end);
   }
-
-  if (
-    hasFinitePositiveDuration(durationSeconds) &&
-    durationSeconds - lastEdgeEnd + Number.EPSILON >= minGapSeconds
-  ) {
-    silenceRanges.push({ start: lastEdgeEnd, end: durationSeconds });
-  }
-
-  return silenceRanges;
+  return candidates;
 };
 
 const findFillerRanges = (
@@ -1681,28 +1680,49 @@ export const buildAiEditRecipe = ({
 }): AiEditRecipe => {
   const subtitleWordsPerLine = settings.subtitleWordsPerLine ?? 2;
   const transcriptLanguage = normalizeTranscriptionLanguage(transcript.language);
-  const validTranscriptSegments = readValidTranscriptSegments(
-    transcript.segments,
-    transcript.durationSeconds
-  );
-  const reliableTranscriptSegments = validTranscriptSegments.filter(
+  const timingEvidenceTrusted = transcript.timingIntegrity === 'trusted';
+  const strictTranscriptSegments = timingEvidenceTrusted
+    ? readStrictTranscriptEvidence(
+        transcript.segments,
+        transcript.durationSeconds
+      )
+    : undefined;
+  const strictTranscriptWords = timingEvidenceTrusted
+    ? readStrictTranscriptEvidence(transcript.words, transcript.durationSeconds)
+    : undefined;
+  const hasStrictTranscriptTimeline =
+    strictTranscriptSegments !== undefined && strictTranscriptWords !== undefined;
+  const validTranscriptSegments = hasStrictTranscriptTimeline
+    ? readValidTranscriptSegments(
+        strictTranscriptSegments,
+        transcript.durationSeconds
+      )
+    : [];
+  const strictReliableTranscriptSegments = strictTranscriptSegments?.filter(
     isReliableTranscriptSegment
-  );
+  ) ?? [];
+  const reliableTranscriptSegments = hasStrictTranscriptTimeline
+    ? strictReliableTranscriptSegments
+    : [];
   const unreliableTranscriptSegments = validTranscriptSegments.filter(
     (segment) => !isReliableTranscriptSegment(segment)
   );
   const transcriptSegmentsAreComplete =
     validTranscriptSegments.length === transcript.segments.length;
-  const safeTranscriptWords = readSafeTranscriptWords(
-    transcript.words,
-    transcript.durationSeconds
-  );
-  const validTranscriptWords = readValidTranscriptWords(
-    transcript.words,
-    validTranscriptSegments,
-    transcript.text,
-    transcript.durationSeconds
-  );
+  const safeTranscriptWords = hasStrictTranscriptTimeline
+    ? readSafeTranscriptWords(
+        strictTranscriptWords,
+        transcript.durationSeconds
+      )
+    : [];
+  const validTranscriptWords = hasStrictTranscriptTimeline
+    ? readValidTranscriptWords(
+        strictTranscriptWords,
+        validTranscriptSegments,
+        transcript.text,
+        transcript.durationSeconds
+      )
+    : undefined;
   const wordOverlapsUnreliableSegment = (word: TranscriptWord): boolean =>
     unreliableTranscriptSegments.some(
       (segment) => word.start < segment.end && word.end > segment.start
@@ -1733,6 +1753,7 @@ export const buildAiEditRecipe = ({
     normalizedTranscriptText.length > 0 &&
     normalizedWordText === normalizedTranscriptText;
   const hasReliableSilenceTimeline =
+    hasStrictTranscriptTimeline &&
     transcriptSegmentsAreComplete &&
     (
       validTranscriptSegments.length > 0 ||
@@ -1793,13 +1814,10 @@ export const buildAiEditRecipe = ({
       : subtitleSegments.map((segment) => ({ ...segment, words: [] }));
   const silencePreset = settings.silencePreset ?? 'balanced';
   const silenceRanges = capabilities.silence && hasReliableSilenceTimeline
-    ? findSilenceRanges(
+    ? findInternalSilenceCandidates(
         validTranscriptWords ?? validTranscriptSegments,
         silenceMinGapSeconds[silencePreset],
-        transcript.durationSeconds,
-        validTranscriptSegments.length > 0
-          ? validTranscriptSegments
-          : validTranscriptWords ?? []
+        transcript.durationSeconds
       )
     : [];
   const speechReduction =
@@ -1824,7 +1842,7 @@ export const buildAiEditRecipe = ({
           transcriptReferenceText
         )
     : [];
-  const planCuts = plan?.cuts ?? [];
+  const planCuts = hasStrictTranscriptTimeline ? plan?.cuts ?? [] : [];
   const priceText = settings.priceText ?? inferPriceText(transcript.text);
   const ctaText = settings.ctaText ?? 'กดตะกร้าเลย';
   const watermarkText = settings.watermarkText ?? 'PostDee';
@@ -1853,7 +1871,7 @@ export const buildAiEditRecipe = ({
         position: settings.subtitlePosition ?? 'bottom'
       }
     },
-    cutRanges: sortRanges([...planCuts, ...silenceRanges, ...fillerRanges]),
+    cutRanges: sortRanges([...planCuts, ...fillerRanges]),
     silenceRanges,
     fillerRanges,
     ...(speechReduction ? { speechReduction } : {}),
@@ -1889,16 +1907,24 @@ export const buildAiEditRecipe = ({
       subtitle: buildCapabilityStatus({
         key: 'subtitle',
         enabled: capabilities.subtitle,
-        state: 'applied',
-        message: 'ถอดเสียงเป็นซับพร้อมเวลาให้ mobile renderer แล้ว'
+        state: hasStrictTranscriptTimeline && subtitleSegments.length > 0
+          ? 'applied'
+          : 'hinted',
+        message: !hasStrictTranscriptTimeline
+          ? 'ยืนยันเวลาเสียงไม่ได้ จึงยังไม่สร้างซับสำหรับเรนเดอร์'
+          : subtitleSegments.length > 0
+            ? 'ถอดเสียงเป็นซับพร้อมเวลาให้ mobile renderer แล้ว'
+            : 'ยังไม่พบคำพูดที่มีเวลาปลอดภัยสำหรับสร้างซับ'
       }),
       silence: buildCapabilityStatus({
         key: 'silence',
         enabled: capabilities.silence,
-        state: silenceRanges.length > 0 ? 'applied' : 'hinted',
-        message: silenceRanges.length > 0
-          ? 'หาช่วงเงียบจากช่องว่างของ transcript แล้ว'
-          : 'รับค่าไว้แล้ว แต่ยังไม่พบช่วงเงียบจาก transcript รอบนี้'
+        state: 'hinted',
+        message: !hasReliableSilenceTimeline
+          ? 'ยืนยันเวลาเสียงไม่ได้ จึงยังไม่ส่งช่วงเงียบให้ตรวจต่อ'
+          : silenceRanges.length > 0
+            ? 'พบตำแหน่งที่อาจเงียบ รอมือถือยืนยันจาก waveform ก่อนตัด'
+            : 'ตรวจ transcript แล้ว แต่ยังไม่พบช่วงเงียบภายในคลิป'
       }),
       filler: buildCapabilityStatus({
         key: 'filler',

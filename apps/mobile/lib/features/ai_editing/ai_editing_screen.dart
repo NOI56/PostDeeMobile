@@ -260,6 +260,13 @@ const _capabilityDefinitions = <_AiCapabilityDefinition>[
     hasAdvancedSettings: true,
   ),
   _AiCapabilityDefinition(
+    id: 'sfx',
+    group: _AiCapabilityGroup.look,
+    icon: Icons.graphic_eq_rounded,
+    title: 'AI ใส่เอฟเฟกต์เสียงให้',
+    description: 'AI เลือกเสียงให้เข้ากับเหตุการณ์และจังหวะของคลิป',
+  ),
+  _AiCapabilityDefinition(
     id: 'subtitle',
     group: _AiCapabilityGroup.sales,
     icon: Icons.closed_caption_outlined,
@@ -305,6 +312,11 @@ const _deferredCapabilityIds = <String>{
   'pricetag',
   'cta',
   'watermark',
+};
+
+const _retiredSetupCapabilityIds = <String>{
+  'color',
+  'audio',
 };
 
 class _AiPreset {
@@ -445,6 +457,7 @@ class AiEditingScreen extends StatefulWidget {
     this.musicCatalog = const [],
     this.enableExperimentalBeatSync = AppConfig.enableExperimentalBeatSync,
     this.enableExperimentalAiHook = AppConfig.enableExperimentalAiHook,
+    this.showRetiredCapabilitiesForTesting = false,
     this.reviewVideoControllerFactory,
     this.subtitleFrameControllerFactory,
     this.subtitleStudioLauncher,
@@ -472,6 +485,10 @@ class AiEditingScreen extends StatefulWidget {
   final List<PostDeeMusicTrack> musicCatalog;
   final bool enableExperimentalBeatSync;
   final bool enableExperimentalAiHook;
+
+  /// Keeps retired setup controls reachable only for legacy widget tests.
+  @visibleForTesting
+  final bool showRetiredCapabilitiesForTesting;
   final ReviewVideoControllerFactory? reviewVideoControllerFactory;
   final AiSubtitleFrameControllerFactory? subtitleFrameControllerFactory;
   final SubtitleStudioLauncher? subtitleStudioLauncher;
@@ -551,6 +568,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     'zoom': false,
     'reframe': false,
     'color': false,
+    'sfx': false,
     'audio': false,
     'translate': false,
     'pricetag': false,
@@ -736,7 +754,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         'beatsync' => widget.enableExperimentalBeatSync,
         'hook' => widget.enableExperimentalAiHook,
         'silence' => widget.safetyFlags.verifiedSilenceEnabled,
-        'subtitle' || 'filler' || 'color' => true,
+        'subtitle' || 'filler' => true,
+        'color' => widget.showRetiredCapabilitiesForTesting,
         _ => false,
       };
 
@@ -1697,7 +1716,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           (_capabilities['filler'] ?? false) &&
           (hasStructuredSpeechReduction || canUseLegacySpeechReduction))
         'filler': true,
-      if (_capabilities['color'] ?? false) 'color': true,
+      if (_isCapabilityEnabled('color')) 'color': true,
     };
   }
 
@@ -2382,6 +2401,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     _capabilities
       ..clear()
       ..addAll(snapshot.capabilities);
+    _disableRetiredSetupCapabilities();
     _speechReductionSelectionMode = snapshot.speechReductionSelectionMode;
     _subtitleStyle = snapshot.subtitleStyle;
     _subtitleColor = snapshot.subtitleColor;
@@ -2416,7 +2436,16 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     for (final entry in _appliedReviewCapabilities.entries) {
       _capabilities[entry.key] = entry.value;
     }
+    _disableRetiredSetupCapabilities();
     _collapseAdvancedIfUnavailable();
+  }
+
+  void _disableRetiredSetupCapabilities() {
+    if (!widget.showRetiredCapabilitiesForTesting) {
+      _capabilities['color'] = false;
+    }
+    _capabilities['audio'] = false;
+    _capabilities['sfx'] = false;
   }
 
   String _friendlyAiError(ApiException error) {
@@ -3041,6 +3070,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _capabilities
         ..clear()
         ..addAll(preset.capabilities);
+      _disableRetiredSetupCapabilities();
       _speechReductionSelectionMode = preset.speechReductionSelectionMode;
       _subtitleStyle = preset.subtitleStyle;
       _subtitleColor = preset.subtitleColor;
@@ -4800,7 +4830,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ),
         for (final definition in _capabilityDefinitions.where(
           (item) =>
-              item.group == group && !_deferredCapabilityIds.contains(item.id),
+              item.group == group &&
+              !_deferredCapabilityIds.contains(item.id) &&
+              (widget.showRetiredCapabilitiesForTesting ||
+                  !_retiredSetupCapabilityIds.contains(item.id)),
         )) ...[
           _buildCapabilityCard(definition),
           const SizedBox(height: 9),
@@ -4830,6 +4863,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                 'zoom' => 'ระบบวิเคราะห์จุดสำคัญและซูมลงในคลิปจริงกำลังพัฒนา',
                 'audio' =>
                   'ระบบลดเสียงรบกวนและปรับเสียงพูดในคลิปจริงกำลังพัฒนา',
+                'sfx' =>
+                  'ระบบวิเคราะห์เหตุการณ์และใส่เอฟเฟกต์เสียงลงคลิปจริงกำลังพัฒนา',
                 'translate' =>
                   'ระบบแปลและเรนเดอร์ซับหลายภาษาในคลิปจริงกำลังพัฒนา',
                 'pricetag' =>

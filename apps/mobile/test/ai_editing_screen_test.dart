@@ -1254,6 +1254,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           pickVideo: () async => sources[sourceIndex++],
           loadSubscription: () async => _subscriptionFixture('PRO'),
           extractAudio: _extractAudioFixture,
@@ -1375,6 +1376,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           safetyFlags: const AiEditSafetyFlags(
             verifiedSilenceEnabled: false,
           ),
@@ -1447,6 +1449,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           safetyFlags: const AiEditSafetyFlags(
             automaticRepeatCutsEnabled: false,
           ),
@@ -1706,6 +1709,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           initialTargetDurationSeconds: null,
           pickVideo: () async => pickedVideo,
           loadSubscription: () async => _subscriptionFixture('PRO'),
@@ -1772,6 +1776,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           initialTargetDurationSeconds: null,
           pickVideo: () async => pickedVideo,
           loadSubscription: () async => _subscriptionFixture('PRO'),
@@ -1841,6 +1846,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           initialTargetDurationSeconds: null,
           pickVideo: () async => pickedVideo,
           loadSubscription: () async => _subscriptionFixture('BASIC'),
@@ -1897,6 +1903,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           initialTargetDurationSeconds: 30,
           pickVideo: () async => pickedVideo,
           loadSubscription: () async => _subscriptionFixture('PRO'),
@@ -1953,6 +1960,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           initialTargetDurationSeconds: null,
           pickVideo: () async => pickedVideo,
           loadSubscription: () async => _subscriptionFixture('PRO'),
@@ -1997,6 +2005,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           initialTargetDurationSeconds: null,
           pickVideo: () async => pickedVideo,
           loadSubscription: () async => _subscriptionFixture('PRO'),
@@ -2079,6 +2088,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           initialTargetDurationSeconds: null,
           pickVideo: () async => sources[sourceIndex++],
           loadSubscription: () async => _subscriptionFixture('PRO'),
@@ -2495,7 +2505,6 @@ void main() {
       'filler': 'จัดการคำพูดซ้ำ',
       'hook': 'ไฮไลต์ 3 วิแรก',
       'beatsync': 'ตัดจังหวะตามบีตเพลง',
-      'color': 'ปรับสี/แสงอัตโนมัติ',
     }.entries) {
       final capability = find.byKey(
         ValueKey('ai-capability-${entry.key}'),
@@ -4382,6 +4391,7 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          showRetiredCapabilitiesForTesting: true,
           initialTargetDurationSeconds: null,
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
@@ -6788,12 +6798,19 @@ void main() {
         'ซูมเข้าตอนสำคัญ',
         'ระบบวิเคราะห์จุดสำคัญและซูมลงในคลิปจริงกำลังพัฒนา',
       ),
-      'audio': (
-        'ปรับเสียงให้ชัด',
-        'ระบบลดเสียงรบกวนและปรับเสียงพูดในคลิปจริงกำลังพัฒนา',
+      'sfx': (
+        'AI ใส่เอฟเฟกต์เสียงให้',
+        'ระบบวิเคราะห์เหตุการณ์และใส่เอฟเฟกต์เสียงลงคลิปจริงกำลังพัฒนา',
       ),
     };
-    const hiddenCapabilities = ['translate', 'pricetag', 'cta', 'watermark'];
+    const hiddenCapabilities = [
+      'color',
+      'audio',
+      'translate',
+      'pricetag',
+      'cta',
+      'watermark',
+    ];
 
     await tester.pumpWidget(
       _testApp(
@@ -6832,11 +6849,27 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final capabilityBadge = find.byKey(
+        ValueKey('ai-capability-badge-${entry.key}'),
+      );
+      expect(capabilityBadge, findsOneWidget);
       expect(
-        find.byKey(ValueKey('ai-capability-badge-${entry.key}')),
+        find.descendant(
+          of: capabilityBadge,
+          matching: find.text('เร็ว ๆ นี้'),
+        ),
         findsOneWidget,
       );
       expect(find.text(entry.value.$2), findsOneWidget);
+      expect(tester.getSize(capabilitySwitch).width, greaterThanOrEqualTo(44));
+      expect(tester.getSize(capabilitySwitch).height, greaterThanOrEqualTo(44));
+      expect(
+        find.byKey(
+          ValueKey('ai-advanced-disclosure-${entry.key}'),
+          skipOffstage: false,
+        ),
+        findsNothing,
+      );
       expect(
         tester.getSemantics(capabilitySwitch),
         isSemantics(
@@ -6860,6 +6893,8 @@ void main() {
         findsNothing,
       );
     }
+    expect(find.text('ปรับสี/แสงอัตโนมัติ'), findsNothing);
+    expect(find.text('ปรับเสียงให้ชัด'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
@@ -6878,7 +6913,6 @@ void main() {
       'subtitle',
       'silence',
       'filler',
-      'color',
     ]) {
       expect(
         prepareRequest?.capabilities[capability],
@@ -7785,7 +7819,11 @@ void main() {
   testWidgets('settings accordion opens one capability at a time',
       (tester) async {
     final semantics = tester.ensureSemantics();
-    await tester.pumpWidget(_testApp(const AiEditingScreen()));
+    await tester.pumpWidget(
+      _testApp(
+        const AiEditingScreen(showRetiredCapabilitiesForTesting: true),
+      ),
+    );
 
     await _enableCapability(tester, 'silence');
 

@@ -40,6 +40,13 @@ const _postDeeMarkSafeFontAssets = <String, Set<String>>{
   },
 };
 
+/// Returns exactly the bytes represented by [data], excluding any prefix or
+/// suffix that belongs to the backing buffer but is outside the ByteData view.
+@visibleForTesting
+Uint8List exactByteDataView(ByteData data) {
+  return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+}
+
 /// Keeps ASS typography tied to a 540-unit video height while matching the
 /// display-oriented frame aspect. This makes X/Y, font fitting, and safe-area
 /// calculations use one isotropic coordinate space for portrait, tall, and
@@ -261,6 +268,7 @@ class BurnSubtitleRequest {
     this.textOverlays = const [],
     this.stickerImagePaths = const [],
     this.stickerPositions = const [],
+    this.soundEffects = const [],
     this.subtitleFontSize = 18,
     this.subtitleAtBottom = true,
     this.subtitleAlignment,
@@ -305,6 +313,7 @@ class BurnSubtitleRequest {
   /// video at [stickerPositions] (parallel list of normalized centers).
   final List<String> stickerImagePaths;
   final List<(double dx, double dy)> stickerPositions;
+  final List<BurnSoundEffectAsset> soundEffects;
 
   /// Burned subtitle font size and whether it sits at the bottom (vs top).
   final double subtitleFontSize;
@@ -351,6 +360,89 @@ class BurnSubtitleRequest {
   final String? videoBitrate;
   final int? maxVideoFrameRate;
   final RenderCancellationToken? cancellationToken;
+}
+
+const maxBurnSoundEffectsPerVideo = 8;
+
+class BurnSoundEffectAsset {
+  const BurnSoundEffectAsset({
+    required this.assetPath,
+    required this.startSeconds,
+    required this.volume,
+  });
+
+  final String assetPath;
+  final double startSeconds;
+  final double volume;
+}
+
+class ResolvedBurnSoundEffectInput {
+  const ResolvedBurnSoundEffectInput({
+    required this.inputPath,
+    required this.startSeconds,
+    required this.volume,
+  });
+
+  final String inputPath;
+  final double startSeconds;
+  final double volume;
+}
+
+void validateBurnSoundEffectRequest({
+  required List<BurnSoundEffectAsset> soundEffects,
+  required bool sourceHasAudio,
+  required double? outputDurationSeconds,
+  double speed = 1,
+  double? trimStartSec,
+  double? trimEndSec,
+  double? maxOutputDurationSeconds,
+  List<SilenceCutRange> silenceRanges = const [],
+}) {
+  if (soundEffects.isEmpty) {
+    return;
+  }
+  if (!sourceHasAudio) {
+    throw const SubtitleBurnException(
+      'วิดีโอนี้ไม่มีเสียงเดิม จึงยังใส่เอฟเฟกต์เสียงไม่ได้',
+    );
+  }
+  if (soundEffects.length > maxBurnSoundEffectsPerVideo) {
+    throw const SubtitleBurnException(
+      'ใส่เอฟเฟกต์เสียงได้ไม่เกิน 8 จุดต่อคลิป',
+    );
+  }
+  if (outputDurationSeconds == null ||
+      !outputDurationSeconds.isFinite ||
+      outputDurationSeconds <= 0) {
+    throw const SubtitleBurnException(
+      'ยืนยันความยาววิดีโอไม่ได้ จึงยังใส่เอฟเฟกต์เสียงไม่ได้',
+    );
+  }
+  if ((speed - 1).abs() > 0.0001 ||
+      (trimStartSec != null && trimStartSec > 0) ||
+      trimEndSec != null ||
+      maxOutputDurationSeconds != null ||
+      silenceRanges.isNotEmpty) {
+    throw const SubtitleBurnException(
+      'รอบนี้ใส่เอฟเฟกต์เสียงได้เฉพาะคลิปความยาวต้นฉบับที่ยังไม่ตัด',
+    );
+  }
+
+  for (final effect in soundEffects) {
+    final assetPath = effect.assetPath.trim();
+    if (!assetPath.startsWith('assets/sfx/') ||
+        !assetPath.toLowerCase().endsWith('.wav')) {
+      throw const SubtitleBurnException('ไม่พบไฟล์เอฟเฟกต์เสียงที่ปลอดภัย');
+    }
+    if (!effect.startSeconds.isFinite ||
+        effect.startSeconds < 0 ||
+        effect.startSeconds >= outputDurationSeconds) {
+      throw const SubtitleBurnException('ตำแหน่งเอฟเฟกต์เสียงอยู่นอกวิดีโอ');
+    }
+    if (!effect.volume.isFinite || effect.volume <= 0 || effect.volume > 1) {
+      throw const SubtitleBurnException('ระดับเสียงเอฟเฟกต์ไม่ถูกต้อง');
+    }
+  }
 }
 
 /// Reports render progress (0..1).
@@ -1680,6 +1772,7 @@ List<SilenceCutRange> _normalizeSilenceRanges(
 String _buildAudioSilenceConcatFilter(
   List<SilenceCutRange> silenceRanges, {
   List<String> trailingFilters = const [],
+  String outputLabel = 'aout',
 }) {
   final keepRanges = <(double, double?)>[];
   var cursor = 0.0;
@@ -1701,7 +1794,7 @@ String _buildAudioSilenceConcatFilter(
       'asetpts=PTS-STARTPTS',
       ...trailingFilters,
     ];
-    return '[0:a]${filters.join(',')}[aout]';
+    return '[0:a]${filters.join(',')}[$outputLabel]';
   }
 
   final segments = <String>[];
@@ -1720,7 +1813,8 @@ String _buildAudioSilenceConcatFilter(
   final trailing =
       trailingFilters.isEmpty ? '' : ',${trailingFilters.join(',')}';
   segments.add(
-    '${labels.join()}concat=n=${labels.length}:v=0:a=1$trailing[aout]',
+    '${labels.join()}concat=n=${labels.length}:v=0:a=1'
+    '$trailing[$outputLabel]',
   );
   return segments.join(';');
 }
@@ -1747,6 +1841,8 @@ List<String> buildEditFfmpegArguments({
   List<SilenceCutRange> silenceRanges = const [],
   List<String> stickerImagePaths = const [],
   List<(double dx, double dy)> stickerPositions = const [],
+  List<ResolvedBurnSoundEffectInput> soundEffectInputs = const [],
+  double? soundEffectTimelineDurationSec,
   double subtitleFontSize = 18,
   bool subtitleAtBottom = true,
   BurnSubtitleAlignment? subtitleAlignment,
@@ -1781,6 +1877,9 @@ List<String> buildEditFfmpegArguments({
   for (final stickerPath in stickerImagePaths) {
     args.addAll(['-i', stickerPath]);
   }
+  for (final soundEffect in soundEffectInputs) {
+    args.addAll(['-i', soundEffect.inputPath]);
+  }
 
   if (trimStartSec != null && trimStartSec > 0) {
     args.addAll(['-ss', trimStartSec.toStringAsFixed(3)]);
@@ -1791,6 +1890,17 @@ List<String> buildEditFfmpegArguments({
 
   final normalizedSilenceRanges = _normalizeSilenceRanges(silenceRanges);
   final hasSilence = normalizedSilenceRanges.isNotEmpty;
+  final hasSoundEffects = soundEffectInputs.isNotEmpty;
+  if (hasSoundEffects &&
+      (soundEffectTimelineDurationSec == null ||
+          !soundEffectTimelineDurationSec.isFinite ||
+          soundEffectTimelineDurationSec <= 0)) {
+    throw ArgumentError.value(
+      soundEffectTimelineDurationSec,
+      'soundEffectTimelineDurationSec',
+      'must be finite and greater than zero when mixing sound effects',
+    );
+  }
   // Single-quoted so the commas inside between(t,..) survive filtergraph parsing.
   final keepExpr = normalizedSilenceRanges
       .map((range) =>
@@ -1864,12 +1974,62 @@ List<String> buildEditFfmpegArguments({
       ),
     );
   }
-  if (hasSilence) {
+  if (hasSilence && !hasSoundEffects) {
     complexFilters.add(
       _buildAudioSilenceConcatFilter(
         normalizedSilenceRanges,
         trailingFilters: audioFilters,
       ),
+    );
+  }
+  if (hasSoundEffects) {
+    final soundEffectTimelineFilters = <String>[
+      'aresample=48000',
+      'aformat=sample_fmts=fltp:channel_layouts=stereo',
+      'apad=whole_dur=${soundEffectTimelineDurationSec!.toStringAsFixed(3)}',
+      'atrim=duration=${soundEffectTimelineDurationSec.toStringAsFixed(3)}',
+      'asetpts=PTS-STARTPTS',
+    ];
+    if (hasSilence) {
+      complexFilters.add(
+        _buildAudioSilenceConcatFilter(
+          normalizedSilenceRanges,
+          trailingFilters: [
+            ...audioFilters,
+            ...soundEffectTimelineFilters,
+          ],
+          outputLabel: 'amain',
+        ),
+      );
+    } else {
+      final mainAudioFilters = <String>[
+        ...audioFilters,
+        ...soundEffectTimelineFilters,
+      ];
+      complexFilters.add('[0:a]${mainAudioFilters.join(',')}[amain]');
+    }
+
+    final soundEffectLabels = <String>[];
+    final firstSoundEffectInputIndex = 1 + stickerImagePaths.length;
+    for (var index = 0; index < soundEffectInputs.length; index += 1) {
+      final soundEffect = soundEffectInputs[index];
+      final inputIndex = firstSoundEffectInputIndex + index;
+      final delayMilliseconds = (soundEffect.startSeconds * 1000).round();
+      final label = 'sfx$index';
+      complexFilters.add(
+        '[$inputIndex:a]aresample=48000,'
+        'aformat=sample_fmts=fltp:channel_layouts=stereo,'
+        'asetpts=PTS-STARTPTS,'
+        'volume=${soundEffect.volume.toStringAsFixed(3)},'
+        'adelay=$delayMilliseconds|$delayMilliseconds[$label]',
+      );
+      soundEffectLabels.add('[$label]');
+    }
+    complexFilters.add(
+      '[amain]${soundEffectLabels.join()}'
+      'amix=inputs=${soundEffectInputs.length + 1}:duration=first:'
+      'dropout_transition=0:normalize=0,'
+      'alimiter=limit=0.891251:level=false[aout]',
     );
   }
 
@@ -1888,12 +2048,15 @@ List<String> buildEditFfmpegArguments({
       }
       args.addAll(['-map', '0:v:0?']);
     }
-    args.addAll(['-map', hasSilence ? '[aout]' : '0:a?']);
+    args.addAll([
+      '-map',
+      hasSilence || hasSoundEffects ? '[aout]' : '0:a?',
+    ]);
   } else if (videoFilters.isNotEmpty) {
     args.addAll(['-vf', videoFilters.join(',')]);
   }
 
-  if (!hasSilence && audioFilters.isNotEmpty) {
+  if (!hasSilence && !hasSoundEffects && audioFilters.isNotEmpty) {
     args.addAll(['-af', audioFilters.join(',')]);
   }
 
@@ -1904,7 +2067,7 @@ List<String> buildEditFfmpegArguments({
   }
 
   args.addAll(['-c:v', videoCodec, ...videoEncoderArgs]);
-  args.addAll(hasSilence || audioFilters.isNotEmpty
+  args.addAll(hasSilence || hasSoundEffects || audioFilters.isNotEmpty
       ? ['-c:a', 'aac']
       : ['-c:a', 'copy']);
   args.addAll(['-movflags', '+faststart', outputPath]);
@@ -1949,6 +2112,17 @@ Future<int> purgeEditTempDirs(
   return removed;
 }
 
+Future<void> _deleteRenderTempDirBestEffort(Directory directory) async {
+  try {
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
+    }
+  } catch (_) {
+    // A decoder or FFmpeg process may still be releasing the directory.
+    // The next render also purges stale PostDee directories.
+  }
+}
+
 /// Probes a rendered file and returns its stream types (e.g. `['video',
 /// 'audio']`), or null when the file can't be read.
 typedef RenderedStreamTypesProbe = Future<List<String?>?> Function(String path);
@@ -1959,6 +2133,16 @@ typedef RenderedStreamTypesProbe = Future<List<String?>?> Function(String path);
 /// code alone doesn't prove the render worked. Pure + testable.
 bool renderedOutputHasVideo(Iterable<String?>? streamTypes) =>
     streamTypes != null && streamTypes.contains('video');
+
+bool renderedOutputHasRequiredStreams(
+  Iterable<String?>? streamTypes, {
+  required bool requireAudio,
+}) {
+  if (!renderedOutputHasVideo(streamTypes)) {
+    return false;
+  }
+  return !requireAudio || streamTypes!.contains('audio');
+}
 
 /// Default [RenderedStreamTypesProbe]: FFprobe on the rendered file.
 Future<List<String?>?> ffprobeStreamTypes(String path) async {
@@ -1998,6 +2182,19 @@ class FfmpegSubtitleBurnVideoProcessor {
     );
     if (!await request.inputFile.exists()) {
       throw const SubtitleBurnException('ไม่พบไฟล์วิดีโอสำหรับใส่ซับ');
+    }
+    if (request.soundEffects.isNotEmpty) {
+      final sourceStreamTypes = await probeStreamTypes(request.inputFile.path);
+      validateBurnSoundEffectRequest(
+        soundEffects: request.soundEffects,
+        sourceHasAudio: sourceStreamTypes?.contains('audio') ?? false,
+        outputDurationSeconds: request.outputDurationSeconds,
+        speed: request.speed,
+        trimStartSec: request.trimStartSec,
+        trimEndSec: request.trimEndSec,
+        maxOutputDurationSeconds: request.maxOutputDurationSeconds,
+        silenceRanges: request.silenceRanges,
+      );
     }
 
     // Reclaim earlier exports while keeping this input and its sticker dirs.
@@ -2046,6 +2243,7 @@ class FfmpegSubtitleBurnVideoProcessor {
         colorFilter.isNotEmpty ||
         hasText ||
         request.stickerImagePaths.isNotEmpty ||
+        request.soundEffects.isNotEmpty ||
         request.speed != 1.0 ||
         request.volume != 1.0 ||
         renderTimeline.inputSeekSec != null ||
@@ -2056,342 +2254,384 @@ class FfmpegSubtitleBurnVideoProcessor {
       throw const SubtitleBurnException('ยังไม่มีการแก้ไขให้เรนเดอร์');
     }
 
-    final workingDirectory =
-        await Directory.systemTemp.createTemp('postdee-edit-');
-    final separator = Platform.pathSeparator;
+    final workingDirectory = await (renderTempDirectory ?? Directory.systemTemp)
+        .createTemp('postdee-edit-');
+    try {
+      final separator = Platform.pathSeparator;
 
-    String? renderFontPath;
-    if (hasSubtitles || hasText) {
-      final bundle = assetBundle ?? rootBundle;
-      final fontData = await bundle.load(selectedFontAsset);
-      final fontAssetName = selectedFontAsset.split(RegExp(r'[\\/]')).last;
-      final safeFontAssetName = fontAssetName.toLowerCase().endsWith('.ttf')
-          ? fontAssetName
-          : 'subtitle-font.ttf';
-      final fontFile = File(
-        '${workingDirectory.path}$separator$safeFontAssetName',
-      );
-      await fontFile.writeAsBytes(fontData.buffer.asUint8List());
-      renderFontPath = fontFile.path;
-    }
-
-    String? subtitlePath;
-    if (hasSubtitles) {
-      final subtitleFile = File(
-        '${workingDirectory.path}$separator${subtitleFileContent.fileName}',
-      );
-      await subtitleFile.writeAsString(subtitleFileContent.content);
-      subtitlePath = subtitleFile.path;
-    }
-
-    var drawTextFilters = const <String>[];
-    if (hasText) {
-      drawTextFilters = buildDrawTextFilters(
-        request.textOverlays,
-        fontPath: renderFontPath!,
-      );
-    }
-
-    final outputFile = File(
-      '${workingDirectory.path}$separator${editedVideoOutputFileName(
-        request.fileName,
-        hasSubtitles: hasSubtitles,
-      )}',
-    );
-    final progressFile = File(
-      '${workingDirectory.path}${separator}render-progress.txt',
-    );
-
-    // Prefer the platform hardware H.264 encoder for quality/compatibility,
-    // then fall back to the universal MPEG-4 path if it fails on a device.
-    final primary = hardwareH264Encoder(
-      isAndroid: Platform.isAndroid,
-      isIOS: Platform.isIOS,
-      videoBitrate: request.videoBitrate ?? '6M',
-    );
-    final encoders = <VideoEncoderOption>[
-      primary,
-      if (primary.codec != fallbackMpeg4Encoder.codec) fallbackMpeg4Encoder,
-    ];
-
-    // Try the full render (with stickers) first; if the overlay step fails on a
-    // device, retry without stickers so the rest of the edit still exports.
-    final stickerVariants = request.stickerImagePaths.isEmpty
-        ? <List<String>>[const []]
-        : <List<String>>[request.stickerImagePaths, const []];
-
-    // Poll FFmpeg's progress file, with native statistics as a fallback,
-    // instead of depending on the package's Android async callback event sink.
-    // That event sink can be unavailable even while FFmpeg runs normally.
-    final outDuration = request.outputDurationSeconds;
-    final onProgress = request.onProgress;
-
-    var renderedOk = false;
-    var colorFilterSkipped = false;
-    String? failureLogs;
-    var activeSubtitlePath = subtitlePath;
-    var retriedWithStaticSrt = false;
-    var renderAttempt = 0;
-    while (true) {
-      render:
-      for (final attemptedColorFilter
-          in buildColorFilterFallbacks(colorFilter)) {
-        for (final stickerPaths in stickerVariants) {
-          for (final encoder in encoders) {
-            if (request.cancellationToken?.isCancelled ?? false) {
-              throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
-            }
-
-            if (await progressFile.exists()) {
-              await progressFile.delete();
-            }
-            if (await outputFile.exists()) {
-              await outputFile.delete();
-            }
-
-            renderAttempt += 1;
-            request.onAttemptStarted?.call(renderAttempt);
-            final progressTracker =
-                onProgress != null && outDuration != null && outDuration > 0
-                    ? FfmpegRenderProgressTracker(
-                        outputDurationSeconds: outDuration,
-                        onProgress: onProgress,
-                      )
-                    : null;
-            var acceptsStatistics = true;
-            var hasProcessedTime = false;
-            var startupTimedOut = false;
-            final startupStopwatch = Stopwatch()..start();
-
-            void reportProcessedSeconds(double? processedSeconds) {
-              if (processedSeconds != null &&
-                  processedSeconds.isFinite &&
-                  processedSeconds > 0) {
-                hasProcessedTime = true;
-              }
-              progressTracker?.reportProcessedSeconds(processedSeconds);
-            }
-
-            final session = await FFmpegKit.executeWithArgumentsAsync(
-              buildEditFfmpegArguments(
-                inputPath: request.inputFile.path,
-                outputPath: outputFile.path,
-                subtitlePath: activeSubtitlePath,
-                subtitleFontsDirectory:
-                    hasSubtitles ? workingDirectory.path : null,
-                subtitleFontName: request.subtitleFontName,
-                colorFilter: attemptedColorFilter,
-                drawTextFilters: drawTextFilters,
-                speed: request.speed,
-                volume: request.volume,
-                inputSeekSec: renderTimeline.inputSeekSec,
-                trimStartSec: renderTimeline.ffmpegTrimStartSec,
-                trimEndSec: renderTimeline.ffmpegTrimEndSec,
-                maxOutputDurationSec: request.maxOutputDurationSeconds,
-                silenceRanges: trimmedSilence,
-                stickerImagePaths: stickerPaths,
-                stickerPositions:
-                    stickerPaths.isEmpty ? const [] : request.stickerPositions,
-                subtitleFontSize: request.subtitleFontSize,
-                subtitleAtBottom: request.subtitleAtBottom,
-                subtitleAlignment: request.subtitleAlignment,
-                subtitleTextColor: request.subtitleTextColor,
-                subtitleOutlineColor: request.subtitleOutlineColor,
-                subtitleOutlineWidth: request.subtitleOutlineWidth,
-                subtitleShadowColor: request.subtitleShadowColor,
-                subtitleShadowDepth: request.subtitleShadowDepth,
-                videoCodec: encoder.codec,
-                videoEncoderArgs: encoder.encoderArgs,
-                scaleEvenDimensions: encoder.scaleEvenDimensions,
-                maxVideoDimension: request.maxVideoDimension,
-                maxVideoFrameRate: request.maxVideoFrameRate,
-                progressPath: progressFile.path,
-              ),
-              null,
-              null,
-              (statistics) {
-                if (acceptsStatistics) {
-                  reportProcessedSeconds(statistics.getTime() / 1000);
-                }
-              },
+      final resolvedSoundEffects = <ResolvedBurnSoundEffectInput>[];
+      if (request.soundEffects.isNotEmpty) {
+        final bundle = assetBundle ?? rootBundle;
+        for (var index = 0; index < request.soundEffects.length; index += 1) {
+          final effect = request.soundEffects[index];
+          try {
+            final data = await bundle.load(effect.assetPath);
+            final effectFile = File(
+              '${workingDirectory.path}${separator}sfx-'
+              '${index.toString().padLeft(3, '0')}.wav',
             );
-            Future<void> cancelSession() => session.cancel();
-            await request.cancellationToken?.attach(cancelSession);
-            var progressReportedEnd = false;
-            try {
-              while (true) {
-                double? processedSeconds;
-                try {
-                  if (await progressFile.exists()) {
-                    final progressContent = await progressFile.readAsString();
-                    processedSeconds =
-                        parseFfmpegProgressSeconds(progressContent);
-                    progressReportedEnd = progressReportedEnd ||
-                        ffmpegProgressReportedEnd(progressContent);
-                  }
-                } on FileSystemException {
-                  // FFmpeg may be replacing the progress file while it is read.
-                }
-
-                if (processedSeconds == null) {
-                  final statistics = await session.getLastReceivedStatistics();
-                  if (statistics != null) {
-                    processedSeconds = statistics.getTime() / 1000;
-                  }
-                }
-                reportProcessedSeconds(processedSeconds);
-
-                // A device may finish the output without delivering a positive
-                // statistics timestamp. Accept that terminal state (or
-                // FFmpeg's own progress=end marker) before applying the
-                // no-progress startup deadline.
-                final state = await session.getState();
-                final sessionIsTerminal = state == SessionState.completed ||
-                    state == SessionState.failed;
-                if (sessionIsTerminal || progressReportedEnd) {
-                  break;
-                }
-
-                if (shouldTimeoutFfmpegStartupAttempt(
-                  purpose: request.renderPurpose,
-                  elapsed: startupStopwatch.elapsed,
-                  hasProcessedTime: hasProcessedTime,
-                  sessionIsTerminal: sessionIsTerminal,
-                  progressReportedEnd: progressReportedEnd,
-                )) {
-                  startupTimedOut = true;
-                  acceptsStatistics = false;
-                  await session.cancel();
-                  break;
-                }
-
-                await Future<void>.delayed(
-                  const Duration(milliseconds: 250),
-                );
-              }
-            } finally {
-              startupStopwatch.stop();
-              acceptsStatistics = false;
-              request.cancellationToken?.detach(cancelSession);
-            }
-            if (startupTimedOut) {
-              // Do not start the fallback while the timed-out native session
-              // is still alive. A bounded wait avoids overlapping FFmpeg
-              // sessions if cancellation itself fails on a device.
-              var stopped = false;
-              final cancellationWait = Stopwatch()..start();
-              while (cancellationWait.elapsed < const Duration(seconds: 5)) {
-                final state = await session.getState();
-                if (state == SessionState.completed ||
-                    state == SessionState.failed) {
-                  stopped = true;
-                  break;
-                }
-                await Future<void>.delayed(
-                  const Duration(milliseconds: 100),
-                );
-              }
-              cancellationWait.stop();
-              if (!stopped) {
-                throw const SubtitleBurnException(
-                  'หยุดตัวเข้ารหัสที่ไม่ตอบสนองไม่สำเร็จ กรุณาลองใหม่',
-                );
-              }
-            }
-            if (progressReportedEnd) {
-              // Give the native muxer a brief moment to close the output before
-              // probing it when the Flutter callback was the only missing event.
-              await Future<void>.delayed(const Duration(milliseconds: 250));
-            }
-            final returnCode = await session.getReturnCode();
-            if (shouldAbortCancelledFfmpegAttempt(
-              returnCodeValue: returnCode?.getValue(),
-              startupTimedOut: startupTimedOut,
-              userCancellationRequested:
-                  request.cancellationToken?.isCancelled ?? false,
-            )) {
-              throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
-            }
-            if (startupTimedOut) {
-              failureLogs =
-                  'encoder ${encoder.codec} produced no media time before '
-                  '${ffmpegStartupTimeoutForPurpose(request.renderPurpose).inSeconds}s';
-              continue;
-            }
-
-            if (shouldVerifyFfmpegOutput(
-              returnCodeValue: returnCode?.getValue(),
-              progressReportedEnd: progressReportedEnd,
-            )) {
-              // Trust but verify: some hardware encoders exit 0 while writing an
-              // audio-only file. Only accept output with a real video stream.
-              if (renderedOutputHasVideo(
-                  await probeStreamTypes(outputFile.path))) {
-                renderedOk = true;
-                colorFilterSkipped =
-                    colorFilter.isNotEmpty && attemptedColorFilter.isEmpty;
-                failureLogs = null;
-                break render;
-              }
-              failureLogs =
-                  'encoder ${encoder.codec} exited 0 but wrote no video stream';
-              continue;
-            }
-
-            final logs = await session.getAllLogsAsString();
-            failureLogs = logs == null || logs.trim().isEmpty
-                ? 'FFmpeg return code: $returnCode'
-                : logs.trim();
+            await effectFile.writeAsBytes(exactByteDataView(data));
+            resolvedSoundEffects.add(
+              ResolvedBurnSoundEffectInput(
+                inputPath: effectFile.path,
+                startSeconds: effect.startSeconds,
+                volume: effect.volume,
+              ),
+            );
+          } catch (_) {
+            throw const SubtitleBurnException(
+              'โหลดเอฟเฟกต์เสียงไม่สำเร็จ กรุณาลองใหม่',
+            );
           }
         }
       }
 
-      if (renderedOk) break;
-      if (!shouldRetryAssRenderWithStaticSrt(
-        subtitleFileName: subtitleFileContent.fileName,
-        failureLogs: failureLogs,
-        cancellationRequested: request.cancellationToken?.isCancelled ?? false,
-        alreadyRetried: retriedWithStaticSrt,
-        preserveCustomPosition: request.subtitleNormalizedX != null,
-      )) {
-        break;
+      String? renderFontPath;
+      if (hasSubtitles || hasText) {
+        final bundle = assetBundle ?? rootBundle;
+        final fontData = await bundle.load(selectedFontAsset);
+        final fontAssetName = selectedFontAsset.split(RegExp(r'[\\/]')).last;
+        final safeFontAssetName = fontAssetName.toLowerCase().endsWith('.ttf')
+            ? fontAssetName
+            : 'subtitle-font.ttf';
+        final fontFile = File(
+          '${workingDirectory.path}$separator$safeFontAssetName',
+        );
+        await fontFile.writeAsBytes(exactByteDataView(fontData));
+        renderFontPath = fontFile.path;
       }
 
-      final staticSrt = buildSrtContent(
-        trimmedSegments,
-        protectStackedThaiMarks: protectStackedThaiMarks,
-      );
-      if (staticSrt.trim().isEmpty) break;
-      final fallbackFile = File(
-        '${workingDirectory.path}${separator}captions-fallback.srt',
-      );
-      await fallbackFile.writeAsString(staticSrt);
-      activeSubtitlePath = fallbackFile.path;
-      retriedWithStaticSrt = true;
-      failureLogs = null;
-    }
-
-    if (!renderedOk) {
-      if (failureLogs != null && failureLogs.trim().isNotEmpty) {
-        debugPrint('PostDee FFmpeg render failure:\n$failureLogs');
+      String? subtitlePath;
+      if (hasSubtitles) {
+        final subtitleFile = File(
+          '${workingDirectory.path}$separator${subtitleFileContent.fileName}',
+        );
+        await subtitleFile.writeAsString(subtitleFileContent.content);
+        subtitlePath = subtitleFile.path;
       }
-      throw SubtitleBurnException(
-        userFacingFfmpegRenderFailureMessage(
-          purpose: request.renderPurpose,
-          diagnosticDetails: failureLogs,
-        ),
+
+      var drawTextFilters = const <String>[];
+      if (hasText) {
+        drawTextFilters = buildDrawTextFilters(
+          request.textOverlays,
+          fontPath: renderFontPath!,
+        );
+      }
+
+      final outputFile = File(
+        '${workingDirectory.path}$separator${editedVideoOutputFileName(
+          request.fileName,
+          hasSubtitles: hasSubtitles,
+        )}',
       );
-    }
+      final progressFile = File(
+        '${workingDirectory.path}${separator}render-progress.txt',
+      );
 
-    if (!await outputFile.exists()) {
-      throw const SubtitleBurnException('เรนเดอร์แล้วแต่ไม่พบไฟล์ผลลัพธ์');
-    }
+      // Prefer the platform hardware H.264 encoder for quality/compatibility,
+      // then fall back to the universal MPEG-4 path if it fails on a device.
+      final primary = hardwareH264Encoder(
+        isAndroid: Platform.isAndroid,
+        isIOS: Platform.isIOS,
+        videoBitrate: request.videoBitrate ?? '6M',
+      );
+      final encoders = <VideoEncoderOption>[
+        primary,
+        if (primary.codec != fallbackMpeg4Encoder.codec) fallbackMpeg4Encoder,
+      ];
 
-    return BurnedSubtitleResult(
-      file: outputFile,
-      fileName: outputFile.uri.pathSegments.last,
-      sizeBytes: await outputFile.length(),
-      colorFilterSkipped: colorFilterSkipped,
-    );
+      // Try the full render (with stickers) first; if the overlay step fails on a
+      // device, retry without stickers so the rest of the edit still exports.
+      final stickerVariants = request.stickerImagePaths.isEmpty
+          ? <List<String>>[const []]
+          : <List<String>>[request.stickerImagePaths, const []];
+
+      // Poll FFmpeg's progress file, with native statistics as a fallback,
+      // instead of depending on the package's Android async callback event sink.
+      // That event sink can be unavailable even while FFmpeg runs normally.
+      final outDuration = request.outputDurationSeconds;
+      final onProgress = request.onProgress;
+
+      var renderedOk = false;
+      var colorFilterSkipped = false;
+      String? failureLogs;
+      var activeSubtitlePath = subtitlePath;
+      var retriedWithStaticSrt = false;
+      var renderAttempt = 0;
+      while (true) {
+        render:
+        for (final attemptedColorFilter
+            in buildColorFilterFallbacks(colorFilter)) {
+          for (final stickerPaths in stickerVariants) {
+            for (final encoder in encoders) {
+              if (request.cancellationToken?.isCancelled ?? false) {
+                throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
+              }
+
+              if (await progressFile.exists()) {
+                await progressFile.delete();
+              }
+              if (await outputFile.exists()) {
+                await outputFile.delete();
+              }
+
+              renderAttempt += 1;
+              request.onAttemptStarted?.call(renderAttempt);
+              final progressTracker =
+                  onProgress != null && outDuration != null && outDuration > 0
+                      ? FfmpegRenderProgressTracker(
+                          outputDurationSeconds: outDuration,
+                          onProgress: onProgress,
+                        )
+                      : null;
+              var acceptsStatistics = true;
+              var hasProcessedTime = false;
+              var startupTimedOut = false;
+              final startupStopwatch = Stopwatch()..start();
+
+              void reportProcessedSeconds(double? processedSeconds) {
+                if (processedSeconds != null &&
+                    processedSeconds.isFinite &&
+                    processedSeconds > 0) {
+                  hasProcessedTime = true;
+                }
+                progressTracker?.reportProcessedSeconds(processedSeconds);
+              }
+
+              final session = await FFmpegKit.executeWithArgumentsAsync(
+                buildEditFfmpegArguments(
+                  inputPath: request.inputFile.path,
+                  outputPath: outputFile.path,
+                  subtitlePath: activeSubtitlePath,
+                  subtitleFontsDirectory:
+                      hasSubtitles ? workingDirectory.path : null,
+                  subtitleFontName: request.subtitleFontName,
+                  colorFilter: attemptedColorFilter,
+                  drawTextFilters: drawTextFilters,
+                  speed: request.speed,
+                  volume: request.volume,
+                  inputSeekSec: renderTimeline.inputSeekSec,
+                  trimStartSec: renderTimeline.ffmpegTrimStartSec,
+                  trimEndSec: renderTimeline.ffmpegTrimEndSec,
+                  maxOutputDurationSec: request.maxOutputDurationSeconds,
+                  silenceRanges: trimmedSilence,
+                  stickerImagePaths: stickerPaths,
+                  stickerPositions: stickerPaths.isEmpty
+                      ? const []
+                      : request.stickerPositions,
+                  soundEffectInputs: resolvedSoundEffects,
+                  soundEffectTimelineDurationSec: request.soundEffects.isEmpty
+                      ? null
+                      : request.outputDurationSeconds,
+                  subtitleFontSize: request.subtitleFontSize,
+                  subtitleAtBottom: request.subtitleAtBottom,
+                  subtitleAlignment: request.subtitleAlignment,
+                  subtitleTextColor: request.subtitleTextColor,
+                  subtitleOutlineColor: request.subtitleOutlineColor,
+                  subtitleOutlineWidth: request.subtitleOutlineWidth,
+                  subtitleShadowColor: request.subtitleShadowColor,
+                  subtitleShadowDepth: request.subtitleShadowDepth,
+                  videoCodec: encoder.codec,
+                  videoEncoderArgs: encoder.encoderArgs,
+                  scaleEvenDimensions: encoder.scaleEvenDimensions,
+                  maxVideoDimension: request.maxVideoDimension,
+                  maxVideoFrameRate: request.maxVideoFrameRate,
+                  progressPath: progressFile.path,
+                ),
+                null,
+                null,
+                (statistics) {
+                  if (acceptsStatistics) {
+                    reportProcessedSeconds(statistics.getTime() / 1000);
+                  }
+                },
+              );
+              Future<void> cancelSession() => session.cancel();
+              await request.cancellationToken?.attach(cancelSession);
+              var progressReportedEnd = false;
+              try {
+                while (true) {
+                  double? processedSeconds;
+                  try {
+                    if (await progressFile.exists()) {
+                      final progressContent = await progressFile.readAsString();
+                      processedSeconds =
+                          parseFfmpegProgressSeconds(progressContent);
+                      progressReportedEnd = progressReportedEnd ||
+                          ffmpegProgressReportedEnd(progressContent);
+                    }
+                  } on FileSystemException {
+                    // FFmpeg may be replacing the progress file while it is read.
+                  }
+
+                  if (processedSeconds == null) {
+                    final statistics =
+                        await session.getLastReceivedStatistics();
+                    if (statistics != null) {
+                      processedSeconds = statistics.getTime() / 1000;
+                    }
+                  }
+                  reportProcessedSeconds(processedSeconds);
+
+                  // A device may finish the output without delivering a positive
+                  // statistics timestamp. Accept that terminal state (or
+                  // FFmpeg's own progress=end marker) before applying the
+                  // no-progress startup deadline.
+                  final state = await session.getState();
+                  final sessionIsTerminal = state == SessionState.completed ||
+                      state == SessionState.failed;
+                  if (sessionIsTerminal || progressReportedEnd) {
+                    break;
+                  }
+
+                  if (shouldTimeoutFfmpegStartupAttempt(
+                    purpose: request.renderPurpose,
+                    elapsed: startupStopwatch.elapsed,
+                    hasProcessedTime: hasProcessedTime,
+                    sessionIsTerminal: sessionIsTerminal,
+                    progressReportedEnd: progressReportedEnd,
+                  )) {
+                    startupTimedOut = true;
+                    acceptsStatistics = false;
+                    await session.cancel();
+                    break;
+                  }
+
+                  await Future<void>.delayed(
+                    const Duration(milliseconds: 250),
+                  );
+                }
+              } finally {
+                startupStopwatch.stop();
+                acceptsStatistics = false;
+                request.cancellationToken?.detach(cancelSession);
+              }
+              if (startupTimedOut) {
+                // Do not start the fallback while the timed-out native session
+                // is still alive. A bounded wait avoids overlapping FFmpeg
+                // sessions if cancellation itself fails on a device.
+                var stopped = false;
+                final cancellationWait = Stopwatch()..start();
+                while (cancellationWait.elapsed < const Duration(seconds: 5)) {
+                  final state = await session.getState();
+                  if (state == SessionState.completed ||
+                      state == SessionState.failed) {
+                    stopped = true;
+                    break;
+                  }
+                  await Future<void>.delayed(
+                    const Duration(milliseconds: 100),
+                  );
+                }
+                cancellationWait.stop();
+                if (!stopped) {
+                  throw const SubtitleBurnException(
+                    'หยุดตัวเข้ารหัสที่ไม่ตอบสนองไม่สำเร็จ กรุณาลองใหม่',
+                  );
+                }
+              }
+              if (progressReportedEnd) {
+                // Give the native muxer a brief moment to close the output before
+                // probing it when the Flutter callback was the only missing event.
+                await Future<void>.delayed(const Duration(milliseconds: 250));
+              }
+              final returnCode = await session.getReturnCode();
+              if (shouldAbortCancelledFfmpegAttempt(
+                returnCodeValue: returnCode?.getValue(),
+                startupTimedOut: startupTimedOut,
+                userCancellationRequested:
+                    request.cancellationToken?.isCancelled ?? false,
+              )) {
+                throw const SubtitleBurnException('ยกเลิกการเรนเดอร์แล้ว');
+              }
+              if (startupTimedOut) {
+                failureLogs =
+                    'encoder ${encoder.codec} produced no media time before '
+                    '${ffmpegStartupTimeoutForPurpose(request.renderPurpose).inSeconds}s';
+                continue;
+              }
+
+              if (shouldVerifyFfmpegOutput(
+                returnCodeValue: returnCode?.getValue(),
+                progressReportedEnd: progressReportedEnd,
+              )) {
+                // Trust but verify: some hardware encoders exit 0 while writing an
+                // audio-only file. Only accept output with a real video stream.
+                if (renderedOutputHasRequiredStreams(
+                  await probeStreamTypes(outputFile.path),
+                  requireAudio: request.soundEffects.isNotEmpty,
+                )) {
+                  renderedOk = true;
+                  colorFilterSkipped =
+                      colorFilter.isNotEmpty && attemptedColorFilter.isEmpty;
+                  failureLogs = null;
+                  break render;
+                }
+                failureLogs = request.soundEffects.isNotEmpty
+                    ? 'encoder ${encoder.codec} exited 0 but wrote no video/audio streams'
+                    : 'encoder ${encoder.codec} exited 0 but wrote no video stream';
+                continue;
+              }
+
+              final logs = await session.getAllLogsAsString();
+              failureLogs = logs == null || logs.trim().isEmpty
+                  ? 'FFmpeg return code: $returnCode'
+                  : logs.trim();
+            }
+          }
+        }
+
+        if (renderedOk) break;
+        if (!shouldRetryAssRenderWithStaticSrt(
+          subtitleFileName: subtitleFileContent.fileName,
+          failureLogs: failureLogs,
+          cancellationRequested:
+              request.cancellationToken?.isCancelled ?? false,
+          alreadyRetried: retriedWithStaticSrt,
+          preserveCustomPosition: request.subtitleNormalizedX != null,
+        )) {
+          break;
+        }
+
+        final staticSrt = buildSrtContent(
+          trimmedSegments,
+          protectStackedThaiMarks: protectStackedThaiMarks,
+        );
+        if (staticSrt.trim().isEmpty) break;
+        final fallbackFile = File(
+          '${workingDirectory.path}${separator}captions-fallback.srt',
+        );
+        await fallbackFile.writeAsString(staticSrt);
+        activeSubtitlePath = fallbackFile.path;
+        retriedWithStaticSrt = true;
+        failureLogs = null;
+      }
+
+      if (!renderedOk) {
+        if (failureLogs != null && failureLogs.trim().isNotEmpty) {
+          debugPrint('PostDee FFmpeg render failure:\n$failureLogs');
+        }
+        throw SubtitleBurnException(
+          userFacingFfmpegRenderFailureMessage(
+            purpose: request.renderPurpose,
+            diagnosticDetails: failureLogs,
+          ),
+        );
+      }
+
+      if (!await outputFile.exists()) {
+        throw const SubtitleBurnException('เรนเดอร์แล้วแต่ไม่พบไฟล์ผลลัพธ์');
+      }
+
+      return BurnedSubtitleResult(
+        file: outputFile,
+        fileName: outputFile.uri.pathSegments.last,
+        sizeBytes: await outputFile.length(),
+        colorFilterSkipped: colorFilterSkipped,
+      );
+    } catch (_) {
+      await _deleteRenderTempDirBestEffort(workingDirectory);
+      rethrow;
+    }
   }
 }

@@ -38,6 +38,7 @@ flutter:
   assets:
     - assets/images/brand/
     - assets/images/platforms/
+    - assets/sfx/
   fonts:
     - family: Anuphan
       fonts:

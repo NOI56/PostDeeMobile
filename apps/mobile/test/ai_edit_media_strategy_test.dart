@@ -10,7 +10,7 @@ void main() {
         'filler': true,
         'color': true,
         'zoom': false,
-      }, usesOriginalDuration: true),
+      }, usesOriginalDuration: true, hasManualSoundEffects: false),
       AiEditAnalysisMode.audioOnly,
     );
   });
@@ -20,6 +20,7 @@ void main() {
       selectAiEditAnalysisMode(
         {'color': true},
         usesOriginalDuration: true,
+        hasManualSoundEffects: false,
       ),
       AiEditAnalysisMode.localRenderOnly,
     );
@@ -30,6 +31,7 @@ void main() {
       selectAiEditAnalysisMode(
         {'color': true},
         usesOriginalDuration: false,
+        hasManualSoundEffects: false,
       ),
       AiEditAnalysisMode.audioOnly,
     );
@@ -41,6 +43,7 @@ void main() {
         selectAiEditAnalysisMode(
           {'color': true, additionalCapability: true},
           usesOriginalDuration: true,
+          hasManualSoundEffects: false,
         ),
         AiEditAnalysisMode.audioOnly,
       );
@@ -52,6 +55,7 @@ void main() {
       () => selectAiEditAnalysisMode(
         {'subtitle': true, 'zoom': true},
         usesOriginalDuration: true,
+        hasManualSoundEffects: false,
       ),
       throwsA(isA<UnsupportedAiEditAnalysisException>()),
     );
@@ -59,6 +63,7 @@ void main() {
       () => selectAiEditAnalysisMode(
         {'future_visual_ai': true},
         usesOriginalDuration: true,
+        hasManualSoundEffects: false,
       ),
       throwsA(isA<UnsupportedAiEditAnalysisException>()),
     );
@@ -69,8 +74,45 @@ void main() {
       selectAiEditAnalysisMode(
         {'future_visual_ai': false},
         usesOriginalDuration: true,
+        hasManualSoundEffects: false,
       ),
       AiEditAnalysisMode.audioOnly,
     );
+  });
+
+  test('routes manual sound effects at original duration to local render', () {
+    expect(
+      selectAiEditAnalysisMode(
+        const {},
+        usesOriginalDuration: true,
+        hasManualSoundEffects: true,
+      ),
+      AiEditAnalysisMode.localRenderOnly,
+    );
+  });
+
+  test('fails closed when manual sound effects need a changed timeline', () {
+    for (final scenario in [
+      () => selectAiEditAnalysisMode(
+            const {},
+            usesOriginalDuration: false,
+            hasManualSoundEffects: true,
+          ),
+      () => selectAiEditAnalysisMode(
+            const {'subtitle': true},
+            usesOriginalDuration: true,
+            hasManualSoundEffects: true,
+          ),
+      () => selectAiEditAnalysisMode(
+            const {'sfx': true},
+            usesOriginalDuration: true,
+            hasManualSoundEffects: false,
+          ),
+    ]) {
+      expect(
+        scenario,
+        throwsA(isA<UnsupportedAiEditAnalysisException>()),
+      );
+    }
   });
 }

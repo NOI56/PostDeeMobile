@@ -593,9 +593,14 @@ Current mobile pieces:
   seller-facing colour/light and audio-cleanup cards are hidden while their
   internal contracts remain compatible with older results. A replacement
   `AI ใส่เอฟเฟกต์เสียงให้` card is visible only as a disabled `เร็ว ๆ นี้`
-  placeholder, so it cannot call AI or consume quota before a real processor
-  exists. Requests, result summaries, and local rendering ignore unselected or
-  unavailable capabilities.
+  placeholder, so it cannot call AI or consume quota. A separate, default-hidden
+  internal QA tool can place up to eight PostDee-generated sound effects on an
+  original-duration clip, choose time and volume, edit them again in review,
+  and reuse the same placements in full export. This path renders locally,
+  never enables API capability `sfx`, and does not upload, prepare, or meter AI
+  minutes. It remains hidden from sellers until in-app listening and real-device
+  A/V-sync acceptance pass; shortening/cut cleanup with manual effects fails
+  closed until a proven timeline mapper exists.
 - For the production capability set, mobile extracts mono 16 kHz AAC at 64 kbps
   into balanced temporary `.m4a` chunks no longer than 30 seconds, uploads them
   with `purpose=ai-edit-audio`, and sends ordered `audioChunks` to the backend.
@@ -799,9 +804,12 @@ Current mobile pieces:
   real mobile path: subtitle, silence, and repeated-speech cleanup. The existing
   color/light renderer remains as compatibility-tested internal support, but
   its setup card and the audio-cleanup card are hidden. Auto-reframe, zoom, the
-  new AI sound-effects card, translation, price tags, CTA cards, and the AI-page
-  watermark are locked as `เร็ว ๆ นี้` and sent to the API as disabled until
-  their exported-video processors pass real-device tests.
+  AI-selected sound-effects card, translation, price tags, CTA cards, and the
+  AI-page watermark are locked as `เร็ว ๆ นี้` and sent to the API as disabled.
+  Manual sound effects are a separate, default-hidden local QA tool backed by
+  ten procedural WAV assets with recorded hashes; they do not claim AI
+  selection and remain behind in-app listening plus real-device audio
+  acceptance.
 - Beat-sync advanced settings now let the user keep the original audio or pick
   an owned MP3/M4A/WAV file through Flutter's `file_selector`, confirm usage rights, choose
   cut intensity, music volume, and voice ducking, and send those choices in the

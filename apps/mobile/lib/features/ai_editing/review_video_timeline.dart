@@ -23,6 +23,7 @@ String formatReviewVideoClock(Duration duration) {
 String formatReviewVideoComparison({
   required Duration? originalDuration,
   required Duration? aiDuration,
+  String resultLabel = 'ผล AI',
 }) {
   final original = originalDuration;
   final ai = aiDuration;
@@ -30,7 +31,7 @@ String formatReviewVideoComparison({
       original <= Duration.zero ||
       ai == null ||
       ai <= Duration.zero) {
-    return 'ต้นฉบับ --:-- → ผล AI --:-- · กำลังอ่านความยาวคลิป';
+    return 'ต้นฉบับ --:-- → $resultLabel --:-- · กำลังอ่านความยาวคลิป';
   }
 
   final differenceMilliseconds = ai.inMilliseconds - original.inMilliseconds;
@@ -42,7 +43,7 @@ String formatReviewVideoComparison({
           : 'ยาวขึ้น${_formatReviewDurationDifference(absoluteDifference)}';
 
   return 'ต้นฉบับ ${formatReviewVideoClock(original)} '
-      '→ ผล AI ${formatReviewVideoClock(ai)} · $differenceLabel';
+      '→ $resultLabel ${formatReviewVideoClock(ai)} · $differenceLabel';
 }
 
 String _formatReviewDurationDifference(int milliseconds) {
@@ -59,12 +60,13 @@ String _formatReviewDurationDifference(int milliseconds) {
 String _reviewVideoComparisonSemantics({
   required Duration? originalDuration,
   required Duration? aiDuration,
+  required String resultLabel,
 }) {
   if (originalDuration == null ||
       originalDuration <= Duration.zero ||
       aiDuration == null ||
       aiDuration <= Duration.zero) {
-    return 'กำลังอ่านความยาววิดีโอต้นฉบับและผล AI';
+    return 'กำลังอ่านความยาววิดีโอต้นฉบับและ$resultLabel';
   }
 
   final differenceMilliseconds =
@@ -76,7 +78,7 @@ String _reviewVideoComparisonSemantics({
           ? 'สั้นลง${_formatReviewDurationDifference(absoluteDifference)}'
           : 'ยาวขึ้น${_formatReviewDurationDifference(absoluteDifference)}';
   return 'ต้นฉบับ ${originalDuration.inSeconds} วินาที '
-      'ผล AI ${aiDuration.inSeconds} วินาที $differenceLabel';
+      '$resultLabel ${aiDuration.inSeconds} วินาที $differenceLabel';
 }
 
 class ReviewVideoCompareHeader extends StatelessWidget {
@@ -85,6 +87,7 @@ class ReviewVideoCompareHeader extends StatelessWidget {
     required this.selectedSource,
     required this.originalDuration,
     required this.aiDuration,
+    this.resultLabel = 'ผล AI',
     required this.enabled,
     required this.onSourceSelected,
   });
@@ -92,6 +95,7 @@ class ReviewVideoCompareHeader extends StatelessWidget {
   final ReviewVideoSource selectedSource;
   final Duration? originalDuration;
   final Duration? aiDuration;
+  final String resultLabel;
   final bool enabled;
   final ValueChanged<ReviewVideoSource> onSourceSelected;
 
@@ -100,6 +104,7 @@ class ReviewVideoCompareHeader extends StatelessWidget {
     final comparisonLabel = formatReviewVideoComparison(
       originalDuration: originalDuration,
       aiDuration: aiDuration,
+      resultLabel: resultLabel,
     );
 
     return Column(
@@ -127,7 +132,7 @@ class ReviewVideoCompareHeader extends StatelessWidget {
               Expanded(
                 child: _ReviewVideoSourceButton(
                   key: const ValueKey('ai-review-source-ai'),
-                  label: 'ผล AI',
+                  label: resultLabel,
                   selected: selectedSource == ReviewVideoSource.ai,
                   enabled: enabled,
                   onTap: () => onSourceSelected(ReviewVideoSource.ai),
@@ -141,6 +146,7 @@ class ReviewVideoCompareHeader extends StatelessWidget {
           label: _reviewVideoComparisonSemantics(
             originalDuration: originalDuration,
             aiDuration: aiDuration,
+            resultLabel: resultLabel,
           ),
           child: ExcludeSemantics(
             child: Text(
@@ -270,8 +276,7 @@ class ReviewVideoTimeline extends StatelessWidget {
     final durationLabel = formatReviewVideoClock(duration);
 
     Duration readSeekDuration(double value) => Duration(
-          milliseconds:
-              value.round().clamp(0, maximumPositionMilliseconds),
+          milliseconds: value.round().clamp(0, maximumPositionMilliseconds),
         );
 
     return Column(

@@ -1127,6 +1127,17 @@ disabled card `AI ใส่เอฟเฟกต์เสียงให้` wit
 `color`, `audio`, and `sfx` as `false`. Only `color` retains a supported
 internal/legacy render path; `audio` and `sfx` remain planned and non-executable.
 
+Manual sound-effect placement is intentionally outside this API capability
+contract and remains behind a default-off internal mobile QA gate. That tool can
+attach at most eight catalogued PostDee procedural sounds to an uncut,
+original-duration clip and mix them in the local FFmpeg renderer.
+That flow keeps `capabilities.sfx=false`, creates no upload, does not call
+`/ai-edits/prepare`, and does not reserve AI-edit minutes. Any shortened,
+cut-cleanup, non-1×, unknown-asset, out-of-range, or source-without-audio request
+fails closed. Future AI selection must return validated catalog IDs and times
+through a separately reviewed contract; it must not reuse the manual list as
+proof that the current API applied SFX.
+
 Capabilities that need future analysis or rendering, including beat sync, the
 opening hook/highlight, auto-reframe, zoom, SFX/music choice, audio cleanup,
 subtitle translation, price tag, CTA, and the AI-page watermark, are accepted

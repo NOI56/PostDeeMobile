@@ -1,10 +1,32 @@
 import 'dart:io';
-import 'dart:ui' show Size;
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 
+class _FailingSoundEffectAssetBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) async {
+    throw StateError('missing test asset: $key');
+  }
+}
+
 void main() {
+  test('copies only the selected ByteData view for bundled render assets', () {
+    final backingBytes = Uint8List.fromList([
+      0xAA,
+      0xBB,
+      0x52,
+      0x49,
+      0x46,
+      0x46,
+      0xCC,
+    ]);
+    final view = ByteData.sublistView(backingBytes, 2, 6);
+
+    expect(exactByteDataView(view), [0x52, 0x49, 0x46, 0x46]);
+  });
+
   test('names edited output from actual subtitle content', () {
     expect(
       editedVideoOutputFileName(
@@ -806,6 +828,166 @@ void main() {
     expect(joined, isNot(contains('aselect=')));
   });
 
+  test('mixes timed sound effects after sticker inputs and limits the peak',
+      () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      stickerImagePaths: const ['/one.png', '/two.png'],
+      soundEffectInputs: const [
+        ResolvedBurnSoundEffectInput(
+          inputPath: '/soft-pop.wav',
+          startSeconds: 1.25,
+          volume: 0.25,
+        ),
+        ResolvedBurnSoundEffectInput(
+          inputPath: '/ding.wav',
+          startSeconds: 4,
+          volume: 0.3,
+        ),
+      ],
+      soundEffectTimelineDurationSec: 8,
+    );
+    final joined = args.join(' ');
+
+    expect(joined, contains('-i /one.png -i /two.png'));
+    expect(joined, contains('-i /soft-pop.wav -i /ding.wav'));
+    expect(joined, contains('[3:a]aresample=48000'));
+    expect(joined, contains('volume=0.250,adelay=1250|1250[sfx0]'));
+    expect(joined, contains('[4:a]aresample=48000'));
+    expect(joined, contains('volume=0.300,adelay=4000|4000[sfx1]'));
+    expect(
+      joined,
+      contains('apad=whole_dur=8.000,atrim=duration=8.000,'),
+    );
+    expect(
+      joined,
+      contains(
+        '[amain][sfx0][sfx1]amix=inputs=3:duration=first:'
+        'dropout_transition=0:normalize=0,alimiter=limit=0.891251:'
+        'level=false[aout]',
+      ),
+    );
+    expect(joined, contains('-map [vout] -map [aout]'));
+    expect(joined, contains('-c:a aac'));
+  });
+
+  test('requires a finite output timeline when mixing sound effects', () {
+    expect(
+      () => buildEditFfmpegArguments(
+        inputPath: '/in.mp4',
+        outputPath: '/out.mp4',
+        soundEffectInputs: const [
+          ResolvedBurnSoundEffectInput(
+            inputPath: '/soft-pop.wav',
+            startSeconds: 1,
+            volume: 0.25,
+          ),
+        ],
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('keeps the legacy audio path when there are no sound effects', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      colorFilter: 'hue=s=0',
+    );
+    final joined = args.join(' ');
+
+    expect(joined, isNot(contains('[amain]')));
+    expect(joined, isNot(contains('amix=')));
+    expect(joined, contains('-c:a copy'));
+  });
+
+  test('accepts manual sound effects only on an uncut original audio timeline',
+      () {
+    const soundEffects = [
+      BurnSoundEffectAsset(
+        assetPath: 'assets/sfx/soft_pop.wav',
+        startSeconds: 1,
+        volume: 0.25,
+      ),
+    ];
+
+    expect(
+      () => validateBurnSoundEffectRequest(
+        soundEffects: soundEffects,
+        sourceHasAudio: true,
+        outputDurationSeconds: 10,
+      ),
+      returnsNormally,
+    );
+
+    for (final invalid in [
+      () => validateBurnSoundEffectRequest(
+            soundEffects: soundEffects,
+            sourceHasAudio: false,
+            outputDurationSeconds: 10,
+          ),
+      () => validateBurnSoundEffectRequest(
+            soundEffects: soundEffects,
+            sourceHasAudio: true,
+            outputDurationSeconds: 10,
+            speed: 1.1,
+          ),
+      () => validateBurnSoundEffectRequest(
+            soundEffects: soundEffects,
+            sourceHasAudio: true,
+            outputDurationSeconds: 10,
+            trimStartSec: 1,
+          ),
+      () => validateBurnSoundEffectRequest(
+            soundEffects: soundEffects,
+            sourceHasAudio: true,
+            outputDurationSeconds: 10,
+            silenceRanges: const [SilenceCutRange(start: 2, end: 3)],
+          ),
+      () => validateBurnSoundEffectRequest(
+            soundEffects: soundEffects,
+            sourceHasAudio: true,
+            outputDurationSeconds: 10,
+            maxOutputDurationSeconds: 9,
+          ),
+    ]) {
+      expect(invalid, throwsA(isA<SubtitleBurnException>()));
+    }
+  });
+
+  test('rejects malformed sound effect values and unsafe counts', () {
+    expect(
+      () => validateBurnSoundEffectRequest(
+        soundEffects: const [
+          BurnSoundEffectAsset(
+            assetPath: '',
+            startSeconds: 0,
+            volume: 0.25,
+          ),
+        ],
+        sourceHasAudio: true,
+        outputDurationSeconds: 10,
+      ),
+      throwsA(isA<SubtitleBurnException>()),
+    );
+    expect(
+      () => validateBurnSoundEffectRequest(
+        soundEffects: List.generate(
+          maxBurnSoundEffectsPerVideo + 1,
+          (index) => BurnSoundEffectAsset(
+            assetPath: 'assets/sfx/soft_pop.wav',
+            startSeconds: index.toDouble(),
+            volume: 0.25,
+          ),
+        ),
+        sourceHasAudio: true,
+        outputDurationSeconds: 20,
+      ),
+      throwsA(isA<SubtitleBurnException>()),
+    );
+  });
+
   test('sorts and merges overlapping silence ranges before rendering', () {
     final args = buildEditFfmpegArguments(
       inputPath: '/in.mp4',
@@ -1303,6 +1485,56 @@ void main() {
     expect(other.existsSync(), isTrue);
   });
 
+  test('removes a new render workspace when a sound asset cannot load',
+      () async {
+    final base = Directory.systemTemp.createTempSync('postdee-sfx-cleanup-');
+    addTearDown(() {
+      if (base.existsSync()) base.deleteSync(recursive: true);
+    });
+    final input = File(
+      '${base.path}${Platform.pathSeparator}source.mp4',
+    )..writeAsBytesSync([0, 1, 2]);
+    final processor = FfmpegSubtitleBurnVideoProcessor(
+      assetBundle: _FailingSoundEffectAssetBundle(),
+      renderTempDirectory: base,
+      probeStreamTypes: (_) async => const ['video', 'audio'],
+    );
+
+    await expectLater(
+      processor(
+        BurnSubtitleRequest(
+          inputFile: input,
+          fileName: 'source.mp4',
+          segments: const [],
+          outputDurationSeconds: 3,
+          soundEffects: const [
+            BurnSoundEffectAsset(
+              assetPath: 'assets/sfx/soft_pop.wav',
+              startSeconds: 1,
+              volume: 0.25,
+            ),
+          ],
+        ),
+      ),
+      throwsA(
+        isA<SubtitleBurnException>().having(
+          (error) => error.message,
+          'message',
+          contains('โหลดเอฟเฟกต์เสียงไม่สำเร็จ'),
+        ),
+      ),
+    );
+
+    final leftoverRenderDirectories =
+        base.listSync().whereType<Directory>().where(
+              (directory) => directory.path
+                  .split(RegExp(r'[\\/]'))
+                  .last
+                  .startsWith('postdee-edit-'),
+            );
+    expect(leftoverRenderDirectories, isEmpty);
+  });
+
   test('renderer keeps its input temp dir while removing other stale dirs',
       () async {
     final base =
@@ -1421,5 +1653,27 @@ void main() {
     expect(renderedOutputHasVideo(['audio', null]), isFalse);
     expect(renderedOutputHasVideo([]), isFalse);
     expect(renderedOutputHasVideo(null), isFalse);
+  });
+
+  test('requires both video and audio when sound effects were requested', () {
+    expect(
+      renderedOutputHasRequiredStreams(
+        ['video', 'audio'],
+        requireAudio: true,
+      ),
+      isTrue,
+    );
+    expect(
+      renderedOutputHasRequiredStreams(['video'], requireAudio: true),
+      isFalse,
+    );
+    expect(
+      renderedOutputHasRequiredStreams(['audio'], requireAudio: true),
+      isFalse,
+    );
+    expect(
+      renderedOutputHasRequiredStreams(['video'], requireAudio: false),
+      isTrue,
+    );
   });
 }

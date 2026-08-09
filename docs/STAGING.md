@@ -91,6 +91,11 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 - ทุก optional toggle ของ AI edit เริ่มปิด หน้า seller-facing ให้ผู้ใช้เปิดได้
   เฉพาะ subtitle, silence และ repeated-speech; target-only ยังคงทำงานได้โดยไม่
   เปิด toggle ส่วนการ์ด colour/audio ถูกซ่อน และ SFX แสดงเป็น `เร็ว ๆ นี้`
+- การ์ด AI SFX ข้างต้นยังปิดเหมือนเดิม ส่วนเครื่องมือภายใน
+  `เพิ่มเอฟเฟกต์เสียงเอง` ถูกซ่อนหลัง test flag สำหรับ QA เท่านั้น รองรับเฉพาะ
+  คลิปความยาวต้นฉบับ ใช้ procedural WAV ภายในแอป, render บนเครื่อง, คง
+  `sfx=false` และต้องไม่มี upload/prepare/AI-minute change. ห้ามเปิดให้ผู้ใช้ทั่วไป
+  จนกว่าจะฟัง preview/full export และตรวจ A/V sync บน Pixel 8 กับ iPhone จริง
 - Transcript gaps are silence candidates only. The Android/iOS client confirms
   each candidate against the source waveform before rendering; failed or
   ambiguous verification keeps the original audio. Mobile ใช้ FFmpeg

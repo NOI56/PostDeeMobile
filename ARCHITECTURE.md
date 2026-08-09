@@ -767,6 +767,17 @@ and restored presets are forced off so no invisible edit can run. Mobile shows
 Auto-reframe, zoom, SFX, audio cleanup, translation, price tags, CTA cards, and
 the AI-page watermark remain `planned`; mobile sends them disabled instead of
 implying that their recipe hints changed the exported file.
+Manual sound effects use a separate local state, remain behind a default-off
+internal QA gate, and never enable that AI capability. A strict catalog maps
+ten PostDee procedural IDs to bundled 48 kHz
+stereo WAV assets. Placements are validated, sorted, capped at eight, included
+in the render-cache signature, copied into the render workspace, delayed and
+mixed after sticker inputs, limited, and encoded to AAC. The first release
+accepts only an audio-bearing, uncut, original-duration, 1× source; preview,
+review edits, and full export share the accepted placement list atomically.
+No ducking or source-to-output cut mapping is claimed yet. The seller-facing
+tool remains hidden until in-app preview plus Android/iPhone listening and
+A/V-sync acceptance pass.
 The AI header independently reads the authenticated monthly quota and replaces
 that value with `prepare.quota` as soon as a metered recipe succeeds. Local
 preview re-renders and manual quota refreshes do not call the metered endpoint.

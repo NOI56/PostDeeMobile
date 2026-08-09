@@ -282,8 +282,15 @@ as an analysis summary, not an exact promise about how many seconds the exported
 clip will lose.
 
 The shared/manual FFmpeg pipeline supports color presets, brightness/contrast,
-and centered `drawtext` overlays. The current AI `_renderPreparedRecipe` path
-applies supported visual adjustments but does not yet pass CTA, price, or
+centered `drawtext` overlays, and (behind a default-off internal QA gate) up to
+eight bundled procedural sound effects for an uncut original-duration local
+render. Manual effects are delayed, mixed
+with the source audio, limited, encoded to AAC, and reused atomically across
+preview/review/export without enabling API `sfx` or metering AI minutes. The
+in-app preview button and physical Android/iPhone listening, level, and A/V-sync
+evidence are still pending, so keep the manual tool hidden and do not advertise
+AI-selected sound effects or ship this path as release-accepted yet. The current AI `_renderPreparedRecipe`
+path applies supported visual adjustments but does not yet pass CTA, price, or
 watermark text overlays into the renderer. Do not present those overlays as
 applied in the AI preview until that wiring exists.
 

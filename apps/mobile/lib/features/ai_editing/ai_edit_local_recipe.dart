@@ -1,7 +1,44 @@
 import '../../core/network/postdee_api_client.dart';
+import 'ai_edit_sound_effects.dart';
 
 AiEditRecipeResult buildLocalColorAiEditRecipe({
   required double durationSeconds,
+}) {
+  return _buildLocalAiEditRecipe(
+    durationSeconds: durationSeconds,
+    model: 'local-color-preset',
+    summary: 'ปรับสีบนอุปกรณ์',
+    capability: 'color',
+    capabilityMessage: 'ปรับสีบนอุปกรณ์',
+  );
+}
+
+AiEditRecipeResult buildLocalManualSoundEffectsAiEditRecipe({
+  required double durationSeconds,
+  required int effectCount,
+}) {
+  if (effectCount <= 0 || effectCount > maxAiEditSoundEffectsPerVideo) {
+    throw ArgumentError.value(
+      effectCount,
+      'effectCount',
+      'must be between 1 and $maxAiEditSoundEffectsPerVideo',
+    );
+  }
+  return _buildLocalAiEditRecipe(
+    durationSeconds: durationSeconds,
+    model: 'local-manual-sfx',
+    summary: 'เพิ่มเอฟเฟกต์เสียง $effectCount จุดบนอุปกรณ์',
+    capability: 'manualSfx',
+    capabilityMessage: 'เพิ่มเอฟเฟกต์เสียง $effectCount จุดบนอุปกรณ์',
+  );
+}
+
+AiEditRecipeResult _buildLocalAiEditRecipe({
+  required double durationSeconds,
+  required String model,
+  required String summary,
+  required String capability,
+  required String capabilityMessage,
 }) {
   if (!durationSeconds.isFinite || durationSeconds <= 0) {
     throw ArgumentError.value(
@@ -28,7 +65,7 @@ AiEditRecipeResult buildLocalColorAiEditRecipe({
       segments: const [],
       boundarySegments: const [],
       words: const [],
-      model: 'local-color-preset',
+      model: model,
     ),
     subtitles: const AiEditSubtitlesResult(
       enabled: false,
@@ -43,20 +80,29 @@ AiEditRecipeResult buildLocalColorAiEditRecipe({
     cutRanges: const [],
     silenceRanges: const [],
     fillerRanges: const [],
-    plan: const AiEditPlanResult(
-      cuts: [],
-      summary: 'ปรับสีบนอุปกรณ์',
-      model: 'local-color-preset',
+    plan: AiEditPlanResult(
+      cuts: const [],
+      summary: summary,
+      model: model,
     ),
-    capabilities: const {
+    capabilities: {
       'subtitle': skipped,
       'silence': skipped,
       'filler': skipped,
-      'color': AiEditCapabilityStatusResult(
-        enabled: true,
-        state: 'applied',
-        message: 'ปรับสีบนอุปกรณ์',
-      ),
+      'color': capability == 'color'
+          ? AiEditCapabilityStatusResult(
+              enabled: true,
+              state: 'applied',
+              message: capabilityMessage,
+            )
+          : skipped,
+      'sfx': skipped,
+      if (capability == 'manualSfx')
+        'manualSfx': AiEditCapabilityStatusResult(
+          enabled: true,
+          state: 'applied',
+          message: capabilityMessage,
+        ),
     },
   );
 }

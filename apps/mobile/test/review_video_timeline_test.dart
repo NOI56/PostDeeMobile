@@ -41,6 +41,25 @@ void main() {
     );
   });
 
+  test('supports a neutral result label for local-only edits', () {
+    expect(
+      formatReviewVideoComparison(
+        originalDuration: const Duration(seconds: 20),
+        aiDuration: const Duration(seconds: 20),
+        resultLabel: 'ผลลัพธ์',
+      ),
+      'ต้นฉบับ 00:20 → ผลลัพธ์ 00:20 · ความยาวเท่าเดิม',
+    );
+    expect(
+      formatReviewVideoComparison(
+        originalDuration: null,
+        aiDuration: null,
+        resultLabel: 'ผลลัพธ์',
+      ),
+      'ต้นฉบับ --:-- → ผลลัพธ์ --:-- · กำลังอ่านความยาวคลิป',
+    );
+  });
+
   testWidgets('switches between original and AI review sources',
       (tester) async {
     final selectedSources = <ReviewVideoSource>[];
@@ -77,6 +96,41 @@ void main() {
       find.byKey(const ValueKey('ai-review-source-original')),
     );
     expect(selectedSources, [ReviewVideoSource.original]);
+  });
+
+  testWidgets('uses the neutral label in local-only review controls',
+      (tester) async {
+    await tester.pumpWidget(
+      _testApp(
+        ReviewVideoCompareHeader(
+          selectedSource: ReviewVideoSource.ai,
+          originalDuration: const Duration(seconds: 25),
+          aiDuration: const Duration(seconds: 25),
+          resultLabel: 'ผลลัพธ์',
+          enabled: true,
+          onSourceSelected: (_) {},
+        ),
+      ),
+    );
+
+    expect(
+      find.text('ต้นฉบับ 00:25 → ผลลัพธ์ 00:25 · ความยาวเท่าเดิม'),
+      findsOneWidget,
+    );
+    expect(find.text('ผลลัพธ์'), findsOneWidget);
+    expect(find.text('ผล AI'), findsNothing);
+    expect(
+      tester.getSemantics(
+        find.byKey(const ValueKey('ai-review-source-ai')),
+      ),
+      isSemantics(
+        label: 'ผลลัพธ์',
+        isButton: true,
+        hasSelectedState: true,
+        isSelected: true,
+        hasTapAction: true,
+      ),
+    );
   });
 
   test('formats review video clocks and clamps the remaining seconds', () {

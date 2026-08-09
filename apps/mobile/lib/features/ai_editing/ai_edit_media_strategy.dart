@@ -19,6 +19,7 @@ const _supportedCapabilities = {
 AiEditAnalysisMode selectAiEditAnalysisMode(
   Map<String, bool> capabilities, {
   required bool usesOriginalDuration,
+  required bool hasManualSoundEffects,
 }) {
   final enabledCapabilities = capabilities.entries
       .where((entry) => entry.value)
@@ -27,6 +28,15 @@ AiEditAnalysisMode selectAiEditAnalysisMode(
   final unsupported = enabledCapabilities.difference(_supportedCapabilities);
   if (unsupported.isNotEmpty) {
     throw UnsupportedAiEditAnalysisException(unsupported.first);
+  }
+
+  if (hasManualSoundEffects) {
+    if (!usesOriginalDuration || enabledCapabilities.isNotEmpty) {
+      throw const UnsupportedAiEditAnalysisException(
+        'เอฟเฟกต์เสียงร่วมกับการตัดต่อ AI',
+      );
+    }
+    return AiEditAnalysisMode.localRenderOnly;
   }
 
   if (usesOriginalDuration &&

@@ -10,6 +10,7 @@ import {
   readCurrentAiEditMonthKey,
   type AiEditUsageStore
 } from './aiEditUsageStore.js';
+import { shouldReserveAiEditMinutes } from './aiEditUsagePolicy.js';
 import {
   buildAiEditPlanningSegments,
   buildAiEditRecipe,
@@ -729,6 +730,50 @@ export const registerAiEditRoutes = (
         return;
       }
 
+    let settings;
+    try {
+      settings = readAiEditRecipeSettings(request.body?.settings);
+    } catch (error) {
+      if (error instanceof RangeError) {
+        response.status(400).json({
+          status: 'error',
+          code: 'INVALID_AI_EDIT_SETTINGS',
+          message: error.message
+        });
+        return;
+      }
+      throw error;
+    }
+
+    const styleId = readRequiredString(request.body?.styleId);
+    const prompt = readRequiredString(request.body?.prompt);
+    const targetDurationSeconds = readPositiveNumber(
+      request.body?.targetDurationSeconds
+    );
+    const capabilities = readAiEditCapabilities(request.body?.capabilities);
+    const hasExplicitPlanRequest = Boolean(
+      styleId || prompt || targetDurationSeconds !== undefined
+    );
+    const isLegacyRequest =
+      request.body?.capabilities === undefined && !hasExplicitPlanRequest;
+    const hasSupportedAnalysisRequest =
+      hasExplicitPlanRequest ||
+      capabilities.subtitle ||
+      capabilities.silence ||
+      capabilities.filler;
+
+    // Color and the other local renderer controls do not need an AI provider.
+    // Keep this inside the cleanup scope so an already-uploaded temporary audio
+    // file is still deleted even though no paid analysis starts.
+    if (!isLegacyRequest && !hasSupportedAnalysisRequest) {
+      response.status(400).json({
+        status: 'error',
+        code: 'AI_EDIT_NO_ANALYSIS_REQUESTED',
+        message: 'เลือกงาน AI ที่ต้องการก่อนเริ่มวิเคราะห์'
+      });
+      return;
+    }
+
     const mediaDurationSeconds = readPositiveNumber(
       request.body?.durationSeconds
     );
@@ -773,13 +818,6 @@ export const registerAiEditRoutes = (
         : { ...transcript, durationSeconds };
     const billedMinutes = Math.ceil(durationSeconds / 60);
 
-    const styleId = readRequiredString(request.body?.styleId);
-    const prompt = readRequiredString(request.body?.prompt);
-    const targetDurationSeconds = readPositiveNumber(
-      request.body?.targetDurationSeconds
-    );
-    const capabilities = readAiEditCapabilities(request.body?.capabilities);
-    const settings = readAiEditRecipeSettings(request.body?.settings);
     const strictSegments = readStrictTranscriptEvidence(
       timelineTranscript.segments,
       durationSeconds
@@ -832,12 +870,33 @@ export const registerAiEditRoutes = (
       settings,
       styleId,
       prompt,
-      plan: editPlan
+      plan: editPlan,
+      hasExplicitPlanRequest
     });
 
-    // Do not consume paid minutes until every fallible recipe step succeeds.
-    // The atomic reservation still enforces the monthly limit if concurrent
-    // requests passed the earlier inexpensive pre-check.
+    if (!shouldReserveAiEditMinutes({
+      outcomes: recipe.analysisOutcomes,
+      isLegacyRequest
+    })) {
+      // Read the current total again instead of returning the preliminary
+      // value; another request may have reserved minutes while this analysis
+      // was running.
+      const currentUsedMinutes = await aiEditUsageStore.sumMinutesForMonth({
+        userId: authUser.id,
+        monthKey
+      });
+      response.json({
+        status: 'ok',
+        recipe,
+        quota: buildQuota(currentUsedMinutes)
+      });
+      return;
+    }
+
+    // Do not consume paid minutes until every fallible recipe step succeeds
+    // and at least one requested analysis has a usable result. The atomic
+    // reservation still enforces the monthly limit if concurrent requests
+    // passed the earlier inexpensive pre-check.
     const reservation = await aiEditUsageStore.reserve({
       userId: authUser.id,
       monthKey,

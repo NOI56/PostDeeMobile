@@ -8,6 +8,7 @@ import {
   readAiEditRecipeSettings,
   readStrictTranscriptEvidence
 } from './aiEditRecipe.js';
+import type { EditPlanResult } from './editPlanProvider.js';
 import type {
   TranscriptSegment,
   TranscriptWord,
@@ -54,7 +55,9 @@ const buildRecipe = ({
   timingIntegrity,
   hasTimedAudioEvents,
   capabilities,
-  settings
+  settings,
+  hasExplicitPlanRequest,
+  plan
 }: {
   text?: string;
   segments?: TranscriptSegment[];
@@ -65,6 +68,8 @@ const buildRecipe = ({
   hasTimedAudioEvents?: boolean;
   capabilities: Record<string, boolean>;
   settings?: unknown;
+  hasExplicitPlanRequest?: boolean;
+  plan?: EditPlanResult;
 }) =>
   buildAiEditRecipe({
     transcript: buildTranscript({
@@ -83,7 +88,9 @@ const buildRecipe = ({
       hook: false,
       ...capabilities
     }),
-    settings: readAiEditRecipeSettings(settings)
+    settings: readAiEditRecipeSettings(settings),
+    hasExplicitPlanRequest: hasExplicitPlanRequest ?? false,
+    plan
   });
 
 const readLegacySubtitleSegmentFields = (
@@ -168,6 +175,370 @@ describe('AI edit capability defaults', () => {
       subtitle: false,
       silence: false,
       filler: false
+    });
+  });
+});
+
+describe('AI edit analysis outcomes', () => {
+  const notRequested = {
+    plan: 'not-requested',
+    subtitle: 'not-requested',
+    silence: 'not-requested',
+    speechReduction: 'not-requested'
+  } as const;
+
+  it('marks every outcome not requested when no analysis was selected', () => {
+    expect(buildRecipe({ capabilities: {} }).analysisOutcomes)
+      .toEqual(notRequested);
+  });
+
+  it('records only a usable explicit plan as succeeded', () => {
+    const plan: EditPlanResult = {
+      cuts: [{ start: 0, end: 1 }],
+      summary: 'shortened',
+      model: 'test-plan'
+    };
+
+    expect(buildRecipe({
+      capabilities: {},
+      hasExplicitPlanRequest: true,
+      plan
+    }).analysisOutcomes.plan).toBe('succeeded');
+    expect(buildRecipe({
+      capabilities: {},
+      hasExplicitPlanRequest: true
+    }).analysisOutcomes.plan).toBe('unavailable');
+  });
+
+  it('requires at least one safe subtitle segment for subtitle success', () => {
+    expect(buildRecipe({
+      capabilities: { subtitle: true },
+      text: 'สินค้า',
+      segments: [{ text: 'สินค้า', start: 0, end: 1 }],
+      words: [{ word: 'สินค้า', start: 0, end: 1 }],
+      durationSeconds: 1
+    }).analysisOutcomes.subtitle).toBe('succeeded');
+
+    expect(buildRecipe({
+      capabilities: { subtitle: true },
+      text: 'สินค้า',
+      segments: [{ text: 'สินค้า', start: 0, end: 1 }],
+      words: [{ word: 'สินค้า', start: 0, end: 1 }],
+      durationSeconds: 1,
+      timingIntegrity: 'untrusted'
+    }).analysisOutcomes.subtitle).toBe('unavailable');
+  });
+
+  it('counts a safe silence analysis even when it finds no candidate', () => {
+    const safe = buildRecipe({
+      capabilities: { silence: true },
+      text: 'สินค้า',
+      segments: [{ text: 'สินค้า', start: 0, end: 1 }],
+      words: [{ word: 'สินค้า', start: 0, end: 1 }],
+      durationSeconds: 1
+    });
+    const unsafe = buildRecipe({
+      capabilities: { silence: true },
+      text: 'สินค้า',
+      segments: [{ text: 'สินค้า', start: 0, end: 1 }],
+      words: [{ word: 'สินค้า', start: 0, end: 1 }],
+      durationSeconds: 1,
+      timingIntegrity: 'untrusted'
+    });
+
+    expect(safe.silenceRanges).toEqual([]);
+    expect(safe.analysisOutcomes.silence).toBe('succeeded');
+    expect(unsafe.analysisOutcomes.silence).toBe('unavailable');
+  });
+
+  it('uses the actual repeated-speech result instead of the requested flag', () => {
+    const ready = buildRecipe({
+      capabilities: { filler: true },
+      text: 'ชุมชน ชุมชน',
+      segments: [{ text: 'ชุมชน ชุมชน', start: 0, end: 1 }],
+      words: [
+        { word: 'ชุมชน', start: 0, end: 0.4 },
+        { word: 'ชุมชน', start: 0.5, end: 1 }
+      ],
+      durationSeconds: 1,
+      settings: { speechReductionMode: 'auto' }
+    });
+    const unavailable = buildRecipe({
+      capabilities: { filler: true },
+      text: 'ชุมชน ชุมชน',
+      segments: [{ text: 'ชุมชน ชุมชน', start: 0, end: 1 }],
+      words: [
+        { word: 'ชุม', start: 0, end: 0.1 },
+        { word: 'ชล', start: 0.2, end: 0.4 },
+        { word: 'ชุมชน', start: 0.5, end: 1 }
+      ],
+      durationSeconds: 1,
+      settings: { speechReductionMode: 'auto' }
+    });
+
+    expect(ready.analysisOutcomes.speechReduction).toBe('succeeded');
+    expect(unavailable.analysisOutcomes.speechReduction).toBe('unavailable');
+  });
+
+  it('meters only a usable legacy fixed-filler result', () => {
+    const found = buildRecipe({
+      capabilities: { filler: true },
+      words: [
+        { word: 'เอ่อ', start: 0, end: 0.2 },
+        { word: 'สินค้า', start: 0.3, end: 0.8 }
+      ],
+      durationSeconds: 1,
+      settings: { fillerWords: ['เอ่อ'] }
+    });
+    const absent = buildRecipe({
+      capabilities: { filler: true },
+      words: [{ word: 'สินค้า', start: 0, end: 0.8 }],
+      durationSeconds: 1,
+      settings: { fillerWords: ['เอ่อ'] }
+    });
+
+    expect(found.fillerRanges).toEqual([{ start: 0, end: 0.2 }]);
+    expect(found.analysisOutcomes.speechReduction).toBe('succeeded');
+    expect(absent.fillerRanges).toEqual([]);
+    expect(absent.analysisOutcomes.speechReduction).toBe('unavailable');
+  });
+});
+
+describe('AI edit transcript boundary evidence', () => {
+  it('repairs a Thai word split across raw transcript segments even when subtitles are off', () => {
+    const recipe = buildRecipe({
+      capabilities: {},
+      language: 'Thai',
+      text: 'ดุ๊กดิ๊กมาก',
+      durationSeconds: 2,
+      segments: [
+        { text: 'ดุ๊ก', start: 0, end: 1 },
+        { text: 'ดิ๊กมาก', start: 1, end: 2 }
+      ]
+    });
+
+    expect(recipe.subtitles.enabled).toBe(false);
+    expect(recipe.subtitles.segments).toEqual([]);
+    expect(recipe.transcript.segments).toEqual([
+      { text: 'ดุ๊ก', start: 0, end: 1 },
+      { text: 'ดิ๊กมาก', start: 1, end: 2 }
+    ]);
+    expect(recipe.transcript.boundarySegments).toEqual([
+      { text: 'ดุ๊กดิ๊กมาก', start: 0, end: 2 }
+    ]);
+  });
+
+  it('fails boundary evidence closed when provider timing is untrusted', () => {
+    const recipe = buildRecipe({
+      capabilities: {},
+      language: 'th',
+      text: 'ดุ๊กดิ๊กมาก',
+      durationSeconds: 2,
+      timingIntegrity: 'untrusted',
+      segments: [
+        { text: 'ดุ๊ก', start: 0, end: 1 },
+        { text: 'ดิ๊กมาก', start: 1, end: 2 }
+      ]
+    });
+
+    expect(recipe.transcript.boundarySegments).toEqual([]);
+  });
+
+  it('rejects the whole boundary timeline instead of clamping an invalid segment', () => {
+    const recipe = buildRecipe({
+      capabilities: {},
+      language: 'th',
+      text: 'ช่วงแรกช่วงเวลาเกินคลิป',
+      durationSeconds: 2,
+      segments: [
+        { text: 'ช่วงแรก', start: 0, end: 1 },
+        { text: 'ช่วงเวลาเกินคลิป', start: 1, end: 999 }
+      ]
+    });
+
+    expect(recipe.transcript.segments).toHaveLength(2);
+    expect(recipe.transcript.boundarySegments).toEqual([]);
+  });
+});
+
+describe('AI edit subtitle length settings', () => {
+  it.each([1, 2, 3, 4, 5])(
+    'accepts the backward-compatible %i word limit',
+    (subtitleWordsPerLine) => {
+      expect(
+        readAiEditRecipeSettings({ subtitleWordsPerLine })
+          .subtitleWordsPerLine
+      ).toBe(subtitleWordsPerLine);
+    }
+  );
+
+  it.each([0, 6, -1, 1.5, '3', null])(
+    'rejects an explicit invalid word limit: %s',
+    (subtitleWordsPerLine) => {
+      expect(() =>
+        readAiEditRecipeSettings({ subtitleWordsPerLine })
+      ).toThrow(/subtitleWordsPerLine.*between 1 and 5/i);
+    }
+  );
+});
+
+describe('AI edit cached subtitle length variants', () => {
+  it('builds complete safe 1/3/5-word variants from one trusted transcript', () => {
+    const text = 'มาไปดูของดีราคาถูกมากนะ';
+    const semanticWords = readThaiSemanticWords(text);
+    const durationSeconds = semanticWords.length;
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'th',
+      text,
+      durationSeconds,
+      settings: { subtitleWordsPerLine: 2 },
+      segments: [{ text, start: 0, end: durationSeconds }],
+      words: semanticWords.map((word, index) => ({
+        word,
+        start: index,
+        end: index + 1
+      }))
+    });
+
+    expect(Object.keys(recipe.subtitles.variants ?? {})).toEqual(['1', '3', '5']);
+    for (const [key, maximumWords] of [
+      ['1', 1],
+      ['3', 3],
+      ['5', 5]
+    ] as const) {
+      const segments = recipe.subtitles.variants?.[key] ?? [];
+      expectSafeThaiSubtitleCues({
+        sourceText: text,
+        sourceStart: 0,
+        sourceEnd: durationSeconds,
+        segments
+      });
+      expect(
+        segments.every(
+          (segment) =>
+            readThaiSemanticWords(segment.text).length <= maximumWords
+        )
+      ).toBe(true);
+    }
+
+    expect(recipe.subtitles.variants?.['1'].length)
+      .toBeGreaterThan(recipe.subtitles.variants?.['3'].length ?? 0);
+    expect(recipe.subtitles.variants?.['3'].length)
+      .toBeGreaterThan(recipe.subtitles.variants?.['5'].length ?? 0);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => readThaiSemanticWords(segment.text).length <= 2
+      )
+    ).toBe(true);
+  });
+
+  it('omits cached subtitle variants when subtitles are disabled', () => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: false },
+      text: 'one two three',
+      language: 'en',
+      durationSeconds: 3,
+      segments: [{ text: 'one two three', start: 0, end: 3 }],
+      words: [
+        { word: 'one', start: 0, end: 1 },
+        { word: 'two', start: 1, end: 2 },
+        { word: 'three', start: 2, end: 3 }
+      ]
+    });
+
+    expect(recipe.subtitles.segments).toEqual([]);
+    expect(recipe.subtitles).not.toHaveProperty('variants');
+  });
+});
+
+describe('AI edit subtitle style settings', () => {
+  it('accepts validated colors and paired normalized coordinates', () => {
+    const settings = readAiEditRecipeSettings({
+      subtitleColor: '#a1b2c3',
+      subtitleOutlineColor: '#0f1e2d',
+      subtitleNormalizedX: 0.25,
+      subtitleNormalizedY: 0.6,
+      subtitlePosition: 'top'
+    });
+
+    expect(settings).toMatchObject({
+      subtitleColor: '#A1B2C3',
+      subtitleOutlineColor: '#0F1E2D',
+      subtitleNormalizedX: 0.25,
+      subtitleNormalizedY: 0.6
+    });
+
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      settings
+    });
+
+    expect(recipe.subtitles.style).toEqual({
+      mode: 'bold',
+      color: '#A1B2C3',
+      outlineColor: '#0F1E2D',
+      wordsPerLine: 2,
+      normalizedX: 0.25,
+      normalizedY: 0.6,
+      position: 'middle'
+    });
+  });
+
+  it('keeps the legacy white-on-black style and legacy position when coordinates are absent', () => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      settings: { subtitlePosition: 'top' }
+    });
+
+    expect(recipe.subtitles.style).toEqual({
+      mode: 'bold',
+      color: '#FFFFFF',
+      outlineColor: '#000000',
+      wordsPerLine: 2,
+      position: 'top'
+    });
+    expect(recipe.subtitles.style).not.toHaveProperty('normalizedX');
+    expect(recipe.subtitles.style).not.toHaveProperty('normalizedY');
+  });
+
+  it.each([
+    ['subtitleColor', 'white'],
+    ['subtitleColor', '#FFF'],
+    ['subtitleOutlineColor', '#11223344'],
+    ['subtitleOutlineColor', '#GG2233'],
+    ['subtitleOutlineColor', ''],
+    ['subtitleOutlineColor', null]
+  ])('rejects an explicit invalid %s value: %s', (field, value) => {
+    expect(() =>
+      readAiEditRecipeSettings({ [field]: value })
+    ).toThrow(new RegExp(`${field}.*#RRGGBB`, 'i'));
+  });
+
+  it.each([
+    { subtitleNormalizedX: 0.5 },
+    { subtitleNormalizedY: 0.5 },
+    { subtitleNormalizedX: -0.01, subtitleNormalizedY: 0.5 },
+    { subtitleNormalizedX: 0.5, subtitleNormalizedY: 1.01 },
+    { subtitleNormalizedX: Number.NaN, subtitleNormalizedY: 0.5 },
+    { subtitleNormalizedX: 0.5, subtitleNormalizedY: Number.POSITIVE_INFINITY },
+    { subtitleNormalizedX: '0.5', subtitleNormalizedY: 0.5 },
+    { subtitleNormalizedX: null, subtitleNormalizedY: 0.5 }
+  ])('rejects invalid or unpaired normalized coordinates: $subtitleNormalizedX, $subtitleNormalizedY', (settings) => {
+    expect(() => readAiEditRecipeSettings(settings)).toThrow(
+      /subtitleNormalizedX.*subtitleNormalizedY.*between 0 and 1/i
+    );
+  });
+
+  it('accepts normalized coordinate boundary values', () => {
+    expect(
+      readAiEditRecipeSettings({
+        subtitleNormalizedX: 0,
+        subtitleNormalizedY: 1
+      })
+    ).toMatchObject({
+      subtitleNormalizedX: 0,
+      subtitleNormalizedY: 1
     });
   });
 });
@@ -303,7 +674,34 @@ describe('AI edit recipe pacing settings', () => {
     );
     expect(
       recipe.subtitles.segments.every(
-        (segment) => segment.end - segment.start >= 0.7 - Number.EPSILON
+        (segment) => readThaiSemanticWords(segment.text).length <= 2
+      )
+    ).toBe(true);
+  });
+
+  it('never exceeds the requested word limit for fragmented Thai timings', () => {
+    const text = 'วันนี้เราจะพาไปดูสินค้าคุณภาพดีราคาประหยัด';
+    const tokens = Array.from(text);
+    const durationSeconds = 0.6;
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds,
+      settings: { subtitleWordsPerLine: 1 },
+      segments: [{ text, start: 0, end: durationSeconds }],
+      words: tokens.map((word, index) => ({
+        word,
+        start: index * durationSeconds / tokens.length,
+        end: (index + 1) * durationSeconds / tokens.length
+      }))
+    });
+
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe(text);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => readThaiSemanticWords(segment.text).length <= 1
       )
     ).toBe(true);
   });
@@ -348,6 +746,53 @@ describe('AI edit recipe pacing settings', () => {
       .toBe(text);
     expect(
       recipe.subtitles.segments.every((segment) => segment.text !== text)
+    ).toBe(true);
+  });
+
+  it.each([1, 3, 5])(
+    'never exceeds a %i-word limit for Thai fallback timing',
+    (subtitleWordsPerLine) => {
+      const text = 'วันนี้เราจะพาไปดูสินค้าคุณภาพดีราคาประหยัด';
+      const durationSeconds = 0.6;
+      const recipe = buildRecipe({
+        capabilities: { subtitle: true },
+        language: 'Thai',
+        text,
+        durationSeconds,
+        settings: { subtitleWordsPerLine },
+        segments: [{ text, start: 0, end: durationSeconds }],
+        words: []
+      });
+
+      expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+        .toBe(text);
+      expect(
+        recipe.subtitles.segments.every(
+          (segment) =>
+            readThaiSemanticWords(segment.text).length <= subtitleWordsPerLine
+        )
+      ).toBe(true);
+    }
+  );
+
+  it('never exceeds the requested word limit for non-Thai fallback timing', () => {
+    const text = 'one two three four five';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'en',
+      text,
+      durationSeconds: 0.5,
+      settings: { subtitleWordsPerLine: 3 },
+      segments: [{ text, start: 0, end: 0.5 }],
+      words: []
+    });
+
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(' '))
+      .toBe(text);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => segment.text.split(/\s+/u).length <= 3
+      )
     ).toBe(true);
   });
 
@@ -440,9 +885,15 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
-      { text: 'เช่นช่วงเสาร์อาทิตย์', start: 0, end: 1.2 }
-    ]);
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe('เช่นช่วงเสาร์อาทิตย์');
+    expect(recipe.subtitles.segments[0]?.start).toBe(0);
+    expect(recipe.subtitles.segments.at(-1)?.end).toBe(1.2);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => readThaiSemanticWords(segment.text).length <= 2
+      )
+    ).toBe(true);
   });
 
   it('groups semantic Thai words into readable-duration subtitle cues', () => {
@@ -464,8 +915,10 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
-      { text: 'มีดีมาไป', start: 0, end: 0.8 },
-      { text: 'ดูของใหม่นะ', start: 0.8, end: 1.6 }
+      { text: 'มีดี', start: 0, end: 0.4 },
+      { text: 'มาไป', start: 0.4, end: 0.8 },
+      { text: 'ดูของ', start: 0.8, end: 1.2 },
+      { text: 'ใหม่นะ', start: 1.2, end: 1.6 }
     ]);
   });
 
@@ -522,6 +975,77 @@ describe('AI edit recipe pacing settings', () => {
       segments: recipe.subtitles.segments
     });
     expect(recipe.subtitles.segments.length).toBeGreaterThan(1);
+  });
+
+  it('does not tail-merge a Thai cue beyond the requested word limit', () => {
+    const text = 'สินค้าใหม่ราคาดี';
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'Thai',
+      text,
+      durationSeconds: 1,
+      settings: { subtitleWordsPerLine: 3 },
+      segments: [{ text, start: 0, end: 1 }],
+      words: [
+        { word: 'สินค้า', start: 0, end: 0.3 },
+        { word: 'ใหม่', start: 0.3, end: 0.6 },
+        { word: 'ราคา', start: 0.6, end: 0.9 },
+        { word: 'ดี', start: 0.9, end: 1 }
+      ]
+    });
+
+    expect(recipe.subtitles.segments).toHaveLength(2);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => readThaiSemanticWords(segment.text).length <= 3
+      )
+    ).toBe(true);
+  });
+
+  it('does not tail-merge a non-Thai cue beyond the requested word limit', () => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'en',
+      text: 'one two three four',
+      durationSeconds: 1,
+      settings: { subtitleWordsPerLine: 3 },
+      segments: [{ text: 'one two three four', start: 0, end: 1 }],
+      words: [
+        { word: 'one', start: 0, end: 0.3 },
+        { word: 'two', start: 0.3, end: 0.6 },
+        { word: 'three', start: 0.6, end: 0.9 },
+        { word: 'four', start: 0.9, end: 1 }
+      ]
+    });
+
+    expect(recipe.subtitles.segments).toHaveLength(2);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => segment.text.split(/\s+/u).length <= 3
+      )
+    ).toBe(true);
+  });
+
+  it('splits a non-Thai provider token that contains multiple semantic words', () => {
+    const recipe = buildRecipe({
+      capabilities: { subtitle: true },
+      language: 'en',
+      text: 'one two three four',
+      durationSeconds: 1,
+      settings: { subtitleWordsPerLine: 1 },
+      segments: [{ text: 'one two three four', start: 0, end: 1 }],
+      words: [
+        { word: 'one two', start: 0, end: 0.5 },
+        { word: 'three four', start: 0.5, end: 1 }
+      ]
+    });
+
+    expect(recipe.subtitles.segments.map((segment) => segment.text)).toEqual([
+      'one',
+      'two',
+      'three',
+      'four'
+    ]);
   });
 
   it('caps Thai cue width even when it contains no more than five words', () => {
@@ -684,8 +1208,13 @@ describe('AI edit recipe pacing settings', () => {
       ]
     });
 
-    expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments))
-      .toEqual(segments);
+    expect(recipe.subtitles.segments.map((segment) => segment.text).join(''))
+      .toBe(segments[0]!.text);
+    expect(
+      recipe.subtitles.segments.every(
+        (segment) => readThaiSemanticWords(segment.text).length <= 2
+      )
+    ).toBe(true);
     expect(recipe.fillerRanges).toEqual([{ start: 0, end: 0.2 }]);
   });
 
@@ -703,10 +1232,14 @@ describe('AI edit recipe pacing settings', () => {
       words
     });
 
-    expect(recipe.subtitles.segments).toHaveLength(1);
-    expect(recipe.subtitles.segments[0]?.text).toBe('12 34 56 78 90 12');
+    expect(recipe.subtitles.segments).toHaveLength(3);
+    expect(recipe.subtitles.segments.map((segment) => segment.text)).toEqual([
+      '12 34',
+      '56 78',
+      '90 12'
+    ]);
     expect(recipe.subtitles.segments[0]?.start).toBe(0);
-    expect(recipe.subtitles.segments[0]?.end).toBeCloseTo(1.2);
+    expect(recipe.subtitles.segments.at(-1)?.end).toBeCloseTo(1.2);
   });
 
   it.each([
@@ -850,6 +1383,11 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.subtitles.segments).toEqual([]);
+    expect(recipe.subtitles.variants).toEqual({
+      '1': [],
+      '3': [],
+      '5': []
+    });
     expect(recipe.silenceRanges).toEqual([]);
     expect(recipe.cutRanges).toEqual([]);
     expect(recipe.capabilities.subtitle.state).toBe('hinted');
@@ -1029,7 +1567,8 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
-      { text: 'สวัสดีค่ะวันนี้', start: 0, end: 1.2 }
+      { text: 'สวัสดีค่ะ', start: 0, end: 0.7 },
+      { text: 'วันนี้', start: 0.8, end: 1.2 }
     ]);
   });
 
@@ -1103,7 +1642,8 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(readLegacySubtitleSegmentFields(recipe.subtitles.segments)).toEqual([
-      { text: 'Hello world again', start: 0, end: 1.3 }
+      { text: 'Hello world', start: 0, end: 0.8 },
+      { text: 'again', start: 0.9, end: 1.3 }
     ]);
   });
 
@@ -1116,6 +1656,7 @@ describe('AI edit recipe pacing settings', () => {
     });
 
     expect(recipe.subtitles.segments).toEqual([]);
+    expect(recipe.analysisOutcomes.subtitle).toBe('unavailable');
   });
 
   it('uses only supported filler words selected by the request', () => {
@@ -1341,6 +1882,7 @@ describe('AI edit recipe pacing settings', () => {
       occurrences: [],
       defaultCutRanges: [],
     });
+    expect(recipe.analysisOutcomes.speechReduction).toBe('succeeded');
     expect(recipe.fillerRanges).toEqual([]);
   });
 
@@ -1361,7 +1903,7 @@ describe('AI edit recipe pacing settings', () => {
         { word: 'ส', start: 0, end: 0.05 },
         { word: 'ิ', start: 0.05, end: 0.1 },
         { word: 'น', start: 0.1, end: 0.15 },
-        { word: 'ค', start: 0.15, end: 0.2 },
+        { word: 'ข', start: 0.15, end: 0.2 },
         { word: '้', start: 0.2, end: 0.25 },
         { word: 'า', start: 0.25, end: 0.3 },
         { word: 'ส', start: 0.3, end: 0.35 },
@@ -1394,6 +1936,262 @@ describe('AI edit recipe pacing settings', () => {
       defaultCutRanges: [],
     });
     expect(recipe.fillerRanges).toEqual([]);
+  });
+
+  it('uses exact reconstructed Thai words for adjacent repeat reduction', () => {
+    const words: TranscriptWord[] = [
+      { word: 'ชุม', start: 1, end: 1.2 },
+      { word: 'ชน', start: 1.3, end: 1.5 },
+      { word: 'ชุม', start: 1.6, end: 1.8 },
+      { word: 'ชน', start: 1.9, end: 2.1 },
+    ];
+    const originalWords = structuredClone(words);
+    const recipe = buildRecipe({
+      text: 'ชุมชน ชุมชน',
+      segments: [{ text: 'ชุมชน ชุมชน', start: 1, end: 2.1 }],
+      words,
+      durationSeconds: 3,
+      capabilities: { filler: true },
+      settings: { speechReductionMode: 'auto' },
+    });
+
+    expect(recipe.speechReduction?.status).toBe('ready');
+    expect(recipe.speechReduction?.defaultCutRanges).toEqual([
+      expect.objectContaining({ start: 1, end: 1.5 }),
+    ]);
+    expect(words).toEqual(originalWords);
+  });
+
+  it('does not cut when Thai character fragments cannot be proven exact', () => {
+    const recipe = buildRecipe({
+      text: 'ชุมชน ชุมชน',
+      segments: [{ text: 'ชุมชน ชุมชน', start: 1, end: 3 }],
+      words: [
+        { word: 'ชุม', start: 1, end: 1.1 },
+        { word: 'ชล', start: 1.2, end: 1.5 },
+        { word: 'ชุมชน', start: 2, end: 2.5 },
+      ],
+      durationSeconds: 3,
+      capabilities: { filler: true },
+      settings: { speechReductionMode: 'auto' },
+    });
+
+    expect(recipe.speechReduction).toMatchObject({
+      status: 'unavailable',
+      unavailableReason: 'fragmented-word-timing',
+      defaultCutRanges: [],
+    });
+    expect(recipe.fillerRanges).toEqual([]);
+  });
+
+  it('reports exact fragmented frequent words without auto-cutting them', () => {
+    const recipe = buildRecipe({
+      text: 'ชุมชน รายการ ชุมชน คุณภาพ ชุมชน',
+      segments: [{
+        text: 'ชุมชน รายการ ชุมชน คุณภาพ ชุมชน',
+        start: 0,
+        end: 4.4,
+      }],
+      words: [
+        { word: 'ชุม', start: 0, end: 0.2 },
+        { word: 'ชน', start: 0.25, end: 0.4 },
+        { word: 'รายการ', start: 0.5, end: 0.9 },
+        { word: 'ชุม', start: 2, end: 2.2 },
+        { word: 'ชน', start: 2.25, end: 2.4 },
+        { word: 'คุณภาพ', start: 2.5, end: 2.9 },
+        { word: 'ชุม', start: 4, end: 4.2 },
+        { word: 'ชน', start: 4.25, end: 4.4 },
+      ],
+      durationSeconds: 4.4,
+      capabilities: { filler: true },
+      settings: { speechReductionMode: 'auto' },
+    });
+
+    expect(recipe.speechReduction?.groups).toEqual([
+      expect.objectContaining({
+        text: 'ชุมชน',
+        totalOccurrences: 3,
+      }),
+    ]);
+    expect(recipe.speechReduction?.occurrences).toHaveLength(3);
+    expect(recipe.speechReduction?.occurrences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'frequent-only',
+          canAutoRemove: false,
+          selectedByDefault: false,
+        }),
+      ]),
+    );
+    expect(recipe.speechReduction?.defaultCutRanges).toEqual([]);
+    expect(recipe.fillerRanges).toEqual([]);
+  });
+
+  it('fails closed when an internal Thai fragment gap exceeds 150ms', () => {
+    const recipe = buildRecipe({
+      text: 'ชุมชน ชุมชน',
+      segments: [{ text: 'ชุมชน ชุมชน', start: 1, end: 3 }],
+      words: [
+        { word: 'ชุม', start: 1, end: 1.1 },
+        { word: 'ชน', start: 1.26, end: 1.5 },
+        { word: 'ชุม', start: 1.7, end: 1.9 },
+        { word: 'ชน', start: 2, end: 2.2 },
+      ],
+      durationSeconds: 3,
+      capabilities: { filler: true },
+      settings: { speechReductionMode: 'auto' },
+    });
+
+    expect(recipe.speechReduction).toMatchObject({
+      status: 'unavailable',
+      unavailableReason: 'fragmented-word-timing',
+      defaultCutRanges: [],
+    });
+  });
+
+  it('does not reconstruct a Thai word across transcript segments', () => {
+    const recipe = buildRecipe({
+      text: 'ชุมชน ชุมชน',
+      segments: [
+        { text: 'ชุมชน', start: 1, end: 1.45 },
+        { text: 'ชุมชน', start: 1.45, end: 2.5 },
+      ],
+      words: [
+        { word: 'ชุม', start: 1, end: 1.2 },
+        { word: 'ชน', start: 1.3, end: 1.5 },
+        { word: 'ชุมชน', start: 1.7, end: 2.2 },
+      ],
+      durationSeconds: 3,
+      capabilities: { filler: true },
+      settings: { speechReductionMode: 'auto' },
+    });
+
+    expect(recipe.speechReduction).toMatchObject({
+      status: 'unavailable',
+      defaultCutRanges: [],
+    });
+  });
+
+  it('does not hide provider-order timing errors before repeat detection', () => {
+    const recipe = buildRecipe({
+      text: 'ชุมชน ชุมชน',
+      segments: [{ text: 'ชุมชน ชุมชน', start: 0, end: 2 }],
+      words: [
+        { word: 'ชุมชน', start: 1.2, end: 1.5 },
+        { word: 'ชุมชน', start: 0.5, end: 0.9 },
+      ],
+      durationSeconds: 2,
+      capabilities: { filler: true },
+      settings: { speechReductionMode: 'auto' },
+    });
+
+    expect(recipe.speechReduction).toMatchObject({
+      status: 'unavailable',
+      defaultCutRanges: [],
+    });
+  });
+
+  it('preserves punctuation as a sentence barrier after reconstruction', () => {
+    const recipe = buildRecipe({
+      text: 'ชุมชน? ชุมชน?',
+      segments: [{ text: 'ชุมชน? ชุมชน?', start: 0, end: 2 }],
+      words: [
+        { word: 'ชุมชน?', start: 0.1, end: 0.7 },
+        { word: 'ชุมชน?', start: 1, end: 1.6 },
+      ],
+      durationSeconds: 2,
+      capabilities: { filler: true },
+      settings: { speechReductionMode: 'auto' },
+    });
+
+    expect(recipe.speechReduction).toMatchObject({
+      status: 'ready',
+      groups: [],
+      defaultCutRanges: [],
+    });
+  });
+
+  it('rejects clamped display evidence as a repeat timeline', () => {
+    const recipe = buildRecipe({
+      text: 'ชุมชน ชุมชน',
+      segments: [{ text: 'ชุมชน ชุมชน', start: 5, end: 999 }],
+      words: [
+        { word: 'ชุมชน', start: 5, end: 6 },
+        { word: 'ชุมชน', start: 6.1, end: 7 },
+      ],
+      durationSeconds: 20,
+      capabilities: { filler: true },
+      settings: { speechReductionMode: 'auto' },
+    });
+
+    expect(recipe.speechReduction).toMatchObject({
+      status: 'unavailable',
+      defaultCutRanges: [],
+    });
+  });
+
+  it('does not connect reliable repeat islands across unreliable speech', () => {
+    const recipe = buildRecipe({
+      text: 'ชุมชน เอ่อ ชุมชน',
+      segments: [
+        { text: 'ชุมชน', start: 0, end: 0.4 },
+        {
+          text: 'เอ่อ',
+          start: 0.45,
+          end: 0.7,
+          noSpeechProbability: 0.9,
+        },
+        { text: 'ชุมชน', start: 0.75, end: 1.2 },
+      ],
+      words: [
+        { word: 'ชุมชน', start: 0, end: 0.4 },
+        { word: 'เอ่อ', start: 0.45, end: 0.7 },
+        { word: 'ชุมชน', start: 0.75, end: 1.2 },
+      ],
+      durationSeconds: 1.2,
+      capabilities: { filler: true },
+      settings: { speechReductionMode: 'auto' },
+    });
+
+    expect(recipe.speechReduction).toMatchObject({
+      status: 'unavailable',
+      defaultCutRanges: [],
+    });
+  });
+
+  it.each([
+    {
+      label: 'provider timing integrity is untrusted',
+      timingIntegrity: 'untrusted' as const,
+      hasTimedAudioEvents: false,
+    },
+    {
+      label: 'a timed audio event exists between words',
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: true,
+    },
+  ])('does not auto-cut when $label', ({
+    timingIntegrity,
+    hasTimedAudioEvents,
+  }) => {
+    const recipe = buildRecipe({
+      text: 'ชุมชน ชุมชน',
+      segments: [{ text: 'ชุมชน ชุมชน', start: 0, end: 1.2 }],
+      words: [
+        { word: 'ชุมชน', start: 0, end: 0.4 },
+        { word: 'ชุมชน', start: 0.75, end: 1.2 },
+      ],
+      durationSeconds: 1.2,
+      timingIntegrity,
+      hasTimedAudioEvents,
+      capabilities: { filler: true },
+      settings: { speechReductionMode: 'auto' },
+    });
+
+    expect(recipe.speechReduction).toMatchObject({
+      status: 'unavailable',
+      defaultCutRanges: [],
+    });
   });
 
   it('keeps the legacy fixed filler behavior when speech reduction mode is omitted', () => {
@@ -1779,10 +2577,16 @@ describe('AI edit recipe pacing settings', () => {
 
     expect(recipe.subtitles.segments).toEqual([
       {
-        text: 'Hello world again',
+        text: 'Hello world',
         start: 0,
+        end: 0.8,
+        words: words.slice(0, 2)
+      },
+      {
+        text: 'again',
+        start: 0.9,
         end: 1.3,
-        words
+        words: words.slice(2)
       }
     ]);
   });

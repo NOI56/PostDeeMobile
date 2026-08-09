@@ -194,22 +194,30 @@ class SubtitleStyle {
         'animation': animation,
       };
 
-  factory SubtitleStyle.fromJson(Map<String, Object?> json) => SubtitleStyle(
-        fontId: _requiredString(json, 'fontId'),
-        fontWeight: _requiredInt(json, 'fontWeight'),
-        fontSize: _requiredDouble(json, 'fontSize'),
-        textColor: _requiredString(json, 'textColor'),
-        activeWordColor: _requiredString(json, 'activeWordColor'),
-        outlineColor: _requiredString(json, 'outlineColor'),
-        outlineWidth: _requiredDouble(json, 'outlineWidth'),
-        shadowColor: _requiredString(json, 'shadowColor'),
-        shadowDepth: _requiredDouble(json, 'shadowDepth'),
-        alignment: _alignment(_requiredString(json, 'alignment')),
-        normalizedX: _requiredDouble(json, 'normalizedX'),
-        normalizedY: _requiredDouble(json, 'normalizedY'),
-        maxLines: _readSingleLineMaxLines(json),
-        animation: _optionalString(json, 'animation') ?? 'none',
-      );
+  factory SubtitleStyle.fromJson(Map<String, Object?> json) {
+    final alignment = _alignment(_requiredString(json, 'alignment'));
+    final legacyY = switch (alignment) {
+      SubtitleAlignment.top => 0.12,
+      SubtitleAlignment.middle => 0.5,
+      SubtitleAlignment.bottom => 0.88,
+    };
+    return SubtitleStyle(
+      fontId: _requiredString(json, 'fontId'),
+      fontWeight: _requiredInt(json, 'fontWeight'),
+      fontSize: _requiredDouble(json, 'fontSize'),
+      textColor: _requiredString(json, 'textColor'),
+      activeWordColor: _requiredString(json, 'activeWordColor'),
+      outlineColor: _optionalString(json, 'outlineColor') ?? '#000000',
+      outlineWidth: _requiredDouble(json, 'outlineWidth'),
+      shadowColor: _requiredString(json, 'shadowColor'),
+      shadowDepth: _requiredDouble(json, 'shadowDepth'),
+      alignment: alignment,
+      normalizedX: _optionalDouble(json, 'normalizedX') ?? 0.5,
+      normalizedY: _optionalDouble(json, 'normalizedY') ?? legacyY,
+      maxLines: _readSingleLineMaxLines(json),
+      animation: _optionalString(json, 'animation') ?? 'none',
+    );
+  }
 }
 
 class SubtitleCutRange {
@@ -509,6 +517,13 @@ int _readSingleLineMaxLines(Map<String, Object?> json) {
 
 double _requiredDouble(Map<String, Object?> json, String key) {
   final value = json[key];
+  if (value is num && value.isFinite) return value.toDouble();
+  throw SubtitleProjectValidationException('$key must be a finite number.');
+}
+
+double? _optionalDouble(Map<String, Object?> json, String key) {
+  final value = json[key];
+  if (value == null) return null;
   if (value is num && value.isFinite) return value.toDouble();
   throw SubtitleProjectValidationException('$key must be a finite number.');
 }

@@ -5,6 +5,7 @@ import type {
   EditPlanResult,
   EditPlanSegment
 } from './editPlanProvider.js';
+import type { AiEditAnalysisOutcomes } from './aiEditUsagePolicy.js';
 import {
   isReliableTranscriptSegment,
   normalizeTranscriptionLanguage,
@@ -17,6 +18,7 @@ import {
   readThaiSubtitleWordParts,
   repairThaiSubtitleSegmentBoundaries
 } from './thaiSubtitleSegmentBoundaries.js';
+import { reconstructThaiTimedWords } from './thaiTimedTokenReconstructor.js';
 
 export const aiEditCapabilityKeys = [
   'subtitle',
@@ -111,8 +113,11 @@ export type AiEditMusicSettings = {
 export type AiEditRecipeSettings = {
   subtitleStyle?: string;
   subtitleColor?: string;
+  subtitleOutlineColor?: string;
   subtitleWordsPerLine?: number;
   subtitlePosition?: string;
+  subtitleNormalizedX?: number;
+  subtitleNormalizedY?: number;
   ctaText?: string;
   ctaDesign?: string;
   priceText?: string;
@@ -129,6 +134,12 @@ export type AiEditSubtitleSegment = TranscriptSegment & {
   words: TranscriptWord[];
 };
 
+export type AiEditSubtitleVariantKey = '1' | '3' | '5';
+export type AiEditSubtitleVariants = Record<
+  AiEditSubtitleVariantKey,
+  AiEditSubtitleSegment[]
+>;
+
 export type AiEditRecipe = {
   version: 1;
   status: 'ready';
@@ -140,23 +151,29 @@ export type AiEditRecipe = {
     language: string;
     durationSeconds: number;
     segments: TranscriptSegment[];
+    boundarySegments: TranscriptSegment[];
     words: TranscriptWord[];
     model: string;
   };
   subtitles: {
     enabled: boolean;
     segments: AiEditSubtitleSegment[];
+    variants?: AiEditSubtitleVariants;
     style: {
       mode: string;
       color: string;
+      outlineColor: string;
       wordsPerLine: number;
       position: string;
+      normalizedX?: number;
+      normalizedY?: number;
     };
   };
   cutRanges: EditPlanCut[];
   silenceRanges: EditPlanCut[];
   fillerRanges: EditPlanCut[];
   speechReduction?: AiEditSpeechReduction;
+  analysisOutcomes: AiEditAnalysisOutcomes;
   plan: {
     cuts: EditPlanCut[];
     summary: string;
@@ -226,6 +243,9 @@ const defaultMusicSettings: AiEditMusicSettings = {
     musicVolumeDuringSpeech: 0.12
   }
 };
+const maximumSubtitleWordsPerCue = 5;
+const subtitleVariantWordLimits = [1, 3, 5] as const;
+const subtitleHexColorPattern = /^#[0-9A-F]{6}$/i;
 
 const readString = (value: unknown): string | undefined => {
   if (typeof value !== 'string') {
@@ -236,12 +256,80 @@ const readString = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
-const readPositiveInteger = (value: unknown): number | undefined => {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+const readSubtitleWordsPerLine = (value: unknown): number | undefined => {
+  if (value === undefined) {
     return undefined;
+  }
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > maximumSubtitleWordsPerCue
+  ) {
+    throw new RangeError(
+      `subtitleWordsPerLine must be an integer between 1 and ${maximumSubtitleWordsPerCue}`
+    );
   }
 
   return value;
+};
+
+const readSubtitleHexColor = (
+  value: unknown,
+  fieldName: 'subtitleColor' | 'subtitleOutlineColor'
+): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string' || !subtitleHexColorPattern.test(value)) {
+    throw new RangeError(`${fieldName} must use #RRGGBB format`);
+  }
+
+  return value.toUpperCase();
+};
+
+const readSubtitleNormalizedCoordinates = ({
+  subtitleNormalizedX,
+  subtitleNormalizedY
+}: {
+  subtitleNormalizedX: unknown;
+  subtitleNormalizedY: unknown;
+}): Pick<AiEditRecipeSettings, 'subtitleNormalizedX' | 'subtitleNormalizedY'> => {
+  const hasX = subtitleNormalizedX !== undefined;
+  const hasY = subtitleNormalizedY !== undefined;
+
+  if (!hasX && !hasY) {
+    return {};
+  }
+  if (
+    !hasX ||
+    !hasY ||
+    typeof subtitleNormalizedX !== 'number' ||
+    typeof subtitleNormalizedY !== 'number' ||
+    !Number.isFinite(subtitleNormalizedX) ||
+    !Number.isFinite(subtitleNormalizedY) ||
+    subtitleNormalizedX < 0 ||
+    subtitleNormalizedX > 1 ||
+    subtitleNormalizedY < 0 ||
+    subtitleNormalizedY > 1
+  ) {
+    throw new RangeError(
+      'subtitleNormalizedX and subtitleNormalizedY must be supplied together as finite numbers between 0 and 1'
+    );
+  }
+
+  return { subtitleNormalizedX, subtitleNormalizedY };
+};
+
+const readLegacySubtitlePosition = (normalizedY: number): string => {
+  if (normalizedY < 0.34) {
+    return 'top';
+  }
+  if (normalizedY < 0.67) {
+    return 'middle';
+  }
+
+  return 'bottom';
 };
 
 const normalizeFillerWord = (value: string): string =>
@@ -357,12 +445,21 @@ export const readAiEditRecipeSettings = (value: unknown): AiEditRecipeSettings =
     speechReductionModes.has(rawSpeechReductionMode as AiEditSpeechReductionMode)
     ? rawSpeechReductionMode as AiEditSpeechReductionMode
     : undefined;
+  const normalizedCoordinates = readSubtitleNormalizedCoordinates({
+    subtitleNormalizedX: record.subtitleNormalizedX,
+    subtitleNormalizedY: record.subtitleNormalizedY
+  });
 
   return {
     subtitleStyle: readString(record.subtitleStyle),
-    subtitleColor: readString(record.subtitleColor),
-    subtitleWordsPerLine: readPositiveInteger(record.subtitleWordsPerLine),
+    subtitleColor: readSubtitleHexColor(record.subtitleColor, 'subtitleColor'),
+    subtitleOutlineColor: readSubtitleHexColor(
+      record.subtitleOutlineColor,
+      'subtitleOutlineColor'
+    ),
+    subtitleWordsPerLine: readSubtitleWordsPerLine(record.subtitleWordsPerLine),
     subtitlePosition: readString(record.subtitlePosition),
+    ...normalizedCoordinates,
     ctaText: readString(record.ctaText),
     ctaDesign: readString(record.ctaDesign),
     priceText: readString(record.priceText),
@@ -383,7 +480,7 @@ const minimumFragmentedTokenCount = 4;
 const fragmentedFillerBoundarySeconds = 0.08;
 const minimumEstimatedSubtitleDurationSeconds = 0.7;
 const maximumEstimatedThaiWordsPerCue = 2;
-const maximumThaiSemanticWordsPerCue = 5;
+const maximumThaiSemanticWordsPerCue = maximumSubtitleWordsPerCue;
 const maximumThaiGraphemesPerCue = 20;
 const subtitleWordTimingToleranceSeconds = 1e-6;
 const maximumAdjacentRepeatGapSeconds = 0.35;
@@ -764,6 +861,23 @@ const readThaiSemanticWordCount = (value: string): number =>
       segment.isWordLike && /\p{Letter}/u.test(segment.segment)
   ).length;
 
+const readSubtitleSemanticWordCount = (
+  value: string,
+  language: string
+): number => {
+  const normalizedLanguage = normalizeTranscriptionLanguage(language);
+  if (normalizedLanguage === 'th') {
+    return readThaiSubtitleWordParts(value).filter(
+      (segment) => segment.isWordLike
+    ).length;
+  }
+
+  return Array.from(
+    new Intl.Segmenter(normalizedLanguage || 'en', { granularity: 'word' })
+      .segment(value.normalize('NFC'))
+  ).filter((segment) => segment.isWordLike).length;
+};
+
 const isWithinThaiSubtitleCueLimits = (value: string): boolean =>
   readThaiSemanticWordCount(value) <= maximumThaiSemanticWordsPerCue &&
   readGraphemeCount(value) <= maximumThaiGraphemesPerCue;
@@ -839,6 +953,53 @@ const rebuildThaiWordsFromSegment = (
   });
 };
 
+const rebuildNonThaiWordsFromSegment = (
+  segment: TranscriptSegment,
+  language: string
+): TranscriptWord[] => {
+  const normalizedLanguage = normalizeTranscriptionLanguage(language);
+  const tokens: string[] = [];
+  const parts = Array.from(
+    new Intl.Segmenter(normalizedLanguage || 'en', { granularity: 'word' })
+      .segment(segment.text.trim().normalize('NFC'))
+  );
+
+  for (const part of parts) {
+    if (part.isWordLike) {
+      tokens.push(part.segment);
+      continue;
+    }
+
+    const punctuation = part.segment.trim();
+    if (!punctuation) {
+      continue;
+    }
+    if (tokens.length === 0) {
+      tokens.push(punctuation);
+    } else {
+      tokens[tokens.length - 1] = `${tokens.at(-1)!}${punctuation}`;
+    }
+  }
+
+  if (tokens.length === 0) {
+    return [];
+  }
+
+  const weights = tokens.map((token) => Math.max(1, readGraphemeCount(token)));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  const span = segment.end - segment.start;
+  let elapsedWeight = 0;
+
+  return tokens.map((word, index) => {
+    const start = segment.start + span * elapsedWeight / totalWeight;
+    elapsedWeight += weights[index]!;
+    const end = index === tokens.length - 1
+      ? segment.end
+      : segment.start + span * elapsedWeight / totalWeight;
+    return { word, start, end };
+  });
+};
+
 const buildSubtitleSegments = ({
   words,
   language,
@@ -862,7 +1023,17 @@ const buildSubtitleSegments = ({
         });
         return semanticWords.length > 0 ? semanticWords : [word];
       })
-    : words;
+    : words.flatMap((word) => {
+        const semanticWords = rebuildNonThaiWordsFromSegment(
+          {
+            text: word.word,
+            start: word.start,
+            end: word.end
+          },
+          language
+        );
+        return semanticWords.length > 0 ? semanticWords : [word];
+      });
   let current: TranscriptWord[] = [];
 
   for (const word of subtitleWords) {
@@ -889,22 +1060,8 @@ const buildSubtitleSegments = ({
     if (current.length < wordsPerLine && !isIndivisibleOverlongThaiToken) {
       continue;
     }
-    const duration = current.at(-1)!.end - current[0]!.start;
-    const reachedThaiSafetyLimit =
-      isThai &&
-      (
-        readThaiSemanticWordCount(currentText) >= maximumThaiSemanticWordsPerCue ||
-        readGraphemeCount(currentText) >= maximumThaiGraphemesPerCue ||
-        isIndivisibleOverlongThaiToken
-      );
-    if (
-      minimumDurationSeconds <= 0 ||
-      duration >= minimumDurationSeconds ||
-      reachedThaiSafetyLimit
-    ) {
-      groups.push(current);
-      current = [];
-    }
+    groups.push(current);
+    current = [];
   }
   if (current.length > 0) {
     groups.push(current);
@@ -916,8 +1073,8 @@ const buildSubtitleSegments = ({
       const previous = groups[groups.length - 2]!;
       const candidate = [...previous, ...last];
       if (
-        !isThai ||
-        isWithinThaiSubtitleCueLimits(buildSubtitleLineText(candidate, true))
+        candidate.length <= wordsPerLine &&
+        (!isThai || isWithinThaiSubtitleCueLimits(buildSubtitleLineText(candidate, true)))
       ) {
         previous.push(...last);
         groups.pop();
@@ -963,15 +1120,17 @@ const buildReadableFallbackSubtitleSegments = (
   language: string,
   wordsPerLine: number
 ): TranscriptSegment[] => {
-  if (normalizeTranscriptionLanguage(language) !== 'th') {
-    return segments;
-  }
+  const isThai = normalizeTranscriptionLanguage(language) === 'th';
 
   return segments.flatMap((segment) => {
-    const rebuilt = buildEstimatedThaiSubtitleSegments(
-      [segment],
-      wordsPerLine
-    );
+    const rebuilt = isThai
+      ? buildEstimatedThaiSubtitleSegments([segment], wordsPerLine)
+      : buildSubtitleSegments({
+          words: rebuildNonThaiWordsFromSegment(segment, language),
+          language,
+          wordsPerLine,
+          minimumDurationSeconds: minimumEstimatedSubtitleDurationSeconds
+        });
     return rebuilt.length > 1 ? rebuilt : [segment];
   });
 };
@@ -992,6 +1151,7 @@ const joinSubtitleText = (left: string, right: string): string => {
 const mergeShortSubtitleSegments = (
   segments: TranscriptSegment[],
   language: string,
+  maximumWordsPerCue: number,
   minimumDurationSeconds = minimumEstimatedSubtitleDurationSeconds,
   maximumGapSeconds = 0.5
 ): TranscriptSegment[] => {
@@ -1010,6 +1170,7 @@ const mergeShortSubtitleSegments = (
       previousDuration < minimumDurationSeconds &&
       gap >= -Number.EPSILON &&
       gap <= maximumGapSeconds &&
+      readSubtitleSemanticWordCount(joinedText, language) <= maximumWordsPerCue &&
       (!isThai || isWithinThaiSubtitleCueLimits(joinedText))
     ) {
       merged[merged.length - 1] = {
@@ -1030,6 +1191,7 @@ const mergeShortSubtitleSegments = (
     if (
       gap >= -Number.EPSILON &&
       gap <= maximumGapSeconds &&
+      readSubtitleSemanticWordCount(joinedText, language) <= maximumWordsPerCue &&
       (!isThai || isWithinThaiSubtitleCueLimits(joinedText))
     ) {
       merged.splice(merged.length - 2, 2, {
@@ -1585,22 +1747,19 @@ const buildReadySpeechReduction = (
 const buildSpeechReduction = ({
   language,
   words,
-  fragmentedThaiWordTimings,
+  unsafeReason,
   referenceText
 }: {
   language: string;
   words: TranscriptWord[] | undefined;
-  fragmentedThaiWordTimings: boolean;
+  unsafeReason: 'unsafe-word-timing' | 'fragmented-word-timing';
   referenceText: string;
 }): AiEditSpeechReduction => {
   if (normalizeTranscriptionLanguage(language) !== 'th') {
     return buildUnavailableSpeechReduction('unsupported-language');
   }
   if (!words || words.length === 0) {
-    return buildUnavailableSpeechReduction('unsafe-word-timing');
-  }
-  if (fragmentedThaiWordTimings) {
-    return buildUnavailableSpeechReduction('fragmented-word-timing');
+    return buildUnavailableSpeechReduction(unsafeReason);
   }
 
   const normalizedReferenceText =
@@ -1614,7 +1773,7 @@ const buildSpeechReduction = ({
     normalizedReferenceText.length === 0 ||
     normalizedWordText !== normalizedReferenceText
   ) {
-    return buildUnavailableSpeechReduction('unsafe-word-timing');
+    return buildUnavailableSpeechReduction(unsafeReason);
   }
 
   return buildReadySpeechReduction(tokens);
@@ -1669,7 +1828,8 @@ export const buildAiEditRecipe = ({
   settings,
   styleId,
   prompt,
-  plan
+  plan,
+  hasExplicitPlanRequest
 }: {
   transcript: TranscriptionResult;
   capabilities: AiEditCapabilityFlags;
@@ -1677,8 +1837,23 @@ export const buildAiEditRecipe = ({
   styleId?: string;
   prompt?: string;
   plan?: EditPlanResult;
+  hasExplicitPlanRequest: boolean;
 }): AiEditRecipe => {
-  const subtitleWordsPerLine = settings.subtitleWordsPerLine ?? 2;
+  const subtitleWordsPerLine =
+    readSubtitleWordsPerLine(settings.subtitleWordsPerLine) ?? 2;
+  const subtitleColor =
+    readSubtitleHexColor(settings.subtitleColor, 'subtitleColor') ?? '#FFFFFF';
+  const subtitleOutlineColor = readSubtitleHexColor(
+    settings.subtitleOutlineColor,
+    'subtitleOutlineColor'
+  ) ?? '#000000';
+  const normalizedCoordinates = readSubtitleNormalizedCoordinates({
+    subtitleNormalizedX: settings.subtitleNormalizedX,
+    subtitleNormalizedY: settings.subtitleNormalizedY
+  });
+  const subtitlePosition = normalizedCoordinates.subtitleNormalizedY === undefined
+    ? settings.subtitlePosition ?? 'bottom'
+    : readLegacySubtitlePosition(normalizedCoordinates.subtitleNormalizedY);
   const transcriptLanguage = normalizeTranscriptionLanguage(transcript.language);
   const timingEvidenceTrusted = transcript.timingIntegrity === 'trusted';
   const strictTranscriptSegments = timingEvidenceTrusted
@@ -1701,6 +1876,11 @@ export const buildAiEditRecipe = ({
   const strictReliableTranscriptSegments = strictTranscriptSegments?.filter(
     isReliableTranscriptSegment
   ) ?? [];
+  const transcriptBoundarySegments = repairThaiSubtitleSegmentBoundaries(
+    strictReliableTranscriptSegments,
+    transcriptLanguage,
+    transcript.text
+  );
   const reliableTranscriptSegments = hasStrictTranscriptTimeline
     ? strictReliableTranscriptSegments
     : [];
@@ -1770,13 +1950,35 @@ export const buildAiEditRecipe = ({
         transcriptReferenceText
       )
     : false;
-  const estimatedThaiSubtitleSegments =
-    fragmentedThaiWordTimings && subtitleTranscriptSegments.length > 0
-      ? buildEstimatedThaiSubtitleSegments(
-          subtitleTranscriptSegments,
-          subtitleWordsPerLine
-        )
-      : undefined;
+  const orderedSpeechFragments = strictTranscriptWords ?? [];
+  const hasCompleteRepeatTimeline =
+    timingEvidenceTrusted &&
+    !transcript.hasTimedAudioEvents &&
+    strictTranscriptSegments !== undefined &&
+    strictTranscriptWords !== undefined &&
+    strictTranscriptSegments.length > 0 &&
+    strictReliableTranscriptSegments.length === strictTranscriptSegments.length;
+  const requiresExactThaiWordVerification =
+    hasCompleteRepeatTimeline &&
+    transcriptLanguage === 'th' &&
+    strictReliableTranscriptSegments.length > 0 &&
+    orderedSpeechFragments.length > 0;
+  const reconstructedSpeechWords = requiresExactThaiWordVerification
+    ? reconstructThaiTimedWords({
+        segments: strictReliableTranscriptSegments,
+        fragments: orderedSpeechFragments,
+        durationSeconds: transcript.durationSeconds
+      })
+    : undefined;
+  const speechReductionWords = !hasCompleteRepeatTimeline
+    ? undefined
+    : transcriptLanguage === 'th'
+      ? reconstructedSpeechWords
+      : strictTranscriptWords;
+  const speechReductionUnsafeReason =
+    transcriptLanguage === 'th' && hasCompleteRepeatTimeline
+      ? 'fragmented-word-timing'
+      : 'unsafe-word-timing';
   const subtitleWords = reliableValidTranscriptWords && !fragmentedThaiWordTimings
     ? reliableValidTranscriptWords
     : reliableTranscriptSegments.length === 0 &&
@@ -1784,34 +1986,69 @@ export const buildAiEditRecipe = ({
         reliableSafeTranscriptWords.length > 0
       ? reliableSafeTranscriptWords
       : undefined;
-  const fallbackSubtitleSegments = buildReadableFallbackSubtitleSegments(
-    subtitleTranscriptSegments,
-    transcriptLanguage,
-    subtitleWordsPerLine
-  );
-  const preparedSubtitleSegments = capabilities.subtitle
-    ? estimatedThaiSubtitleSegments ??
-      (subtitleWords
-        ? buildSubtitleSegments({
-            words: subtitleWords,
-            language: transcriptLanguage,
-            wordsPerLine: subtitleWordsPerLine
-          })
-        : fallbackSubtitleSegments)
-    : [];
-  const subtitleSegments = mergeShortSubtitleSegments(
-    preparedSubtitleSegments,
-    transcriptLanguage
-  );
-  const subtitleSegmentsWithValidatedWords =
-    capabilities.subtitle &&
-    reliableValidTranscriptWords &&
-    !fragmentedThaiWordTimings
-      ? attachValidatedSubtitleWords(
-          subtitleSegments,
-          reliableValidTranscriptWords
-        )
-      : subtitleSegments.map((segment) => ({ ...segment, words: [] }));
+  const subtitleSegmentsByWordLimit = new Map<
+    number,
+    {
+      segments: TranscriptSegment[];
+      segmentsWithValidatedWords: AiEditSubtitleSegment[];
+    }
+  >();
+  const buildSubtitleSegmentsForWordLimit = (wordsPerLine: number) => {
+    const cached = subtitleSegmentsByWordLimit.get(wordsPerLine);
+    if (cached) {
+      return cached;
+    }
+
+    const estimatedThaiSubtitleSegments =
+      fragmentedThaiWordTimings && subtitleTranscriptSegments.length > 0
+        ? buildEstimatedThaiSubtitleSegments(
+            subtitleTranscriptSegments,
+            wordsPerLine
+          )
+        : undefined;
+    const fallbackSubtitleSegments = buildReadableFallbackSubtitleSegments(
+      subtitleTranscriptSegments,
+      transcriptLanguage,
+      wordsPerLine
+    );
+    const preparedSubtitleSegments = capabilities.subtitle
+      ? estimatedThaiSubtitleSegments ??
+        (subtitleWords
+          ? buildSubtitleSegments({
+              words: subtitleWords,
+              language: transcriptLanguage,
+              wordsPerLine
+            })
+          : fallbackSubtitleSegments)
+      : [];
+    const segments = mergeShortSubtitleSegments(
+      preparedSubtitleSegments,
+      transcriptLanguage,
+      wordsPerLine
+    );
+    const segmentsWithValidatedWords =
+      capabilities.subtitle &&
+      reliableValidTranscriptWords &&
+      !fragmentedThaiWordTimings
+        ? attachValidatedSubtitleWords(segments, reliableValidTranscriptWords)
+        : segments.map((segment) => ({ ...segment, words: [] }));
+    const result = { segments, segmentsWithValidatedWords };
+    subtitleSegmentsByWordLimit.set(wordsPerLine, result);
+    return result;
+  };
+  const {
+    segments: subtitleSegments,
+    segmentsWithValidatedWords: subtitleSegmentsWithValidatedWords
+  } = buildSubtitleSegmentsForWordLimit(subtitleWordsPerLine);
+  const subtitleVariants = capabilities.subtitle
+    ? Object.fromEntries(
+        subtitleVariantWordLimits.map((wordsPerLine) => [
+          String(wordsPerLine),
+          buildSubtitleSegmentsForWordLimit(wordsPerLine)
+            .segmentsWithValidatedWords
+        ])
+      ) as AiEditSubtitleVariants
+    : undefined;
   const silencePreset = settings.silencePreset ?? 'balanced';
   const silenceRanges = capabilities.silence && hasReliableSilenceTimeline
     ? findInternalSilenceCandidates(
@@ -1824,8 +2061,8 @@ export const buildAiEditRecipe = ({
     capabilities.filler && settings.speechReductionMode === 'auto'
       ? buildSpeechReduction({
           language: transcriptLanguage,
-          words: reliableValidTranscriptWords,
-          fragmentedThaiWordTimings,
+          words: speechReductionWords,
+          unsafeReason: speechReductionUnsafeReason,
           referenceText: transcriptReferenceText
         })
       : undefined;
@@ -1843,6 +2080,30 @@ export const buildAiEditRecipe = ({
         )
     : [];
   const planCuts = hasStrictTranscriptTimeline ? plan?.cuts ?? [] : [];
+  const analysisOutcomes: AiEditAnalysisOutcomes = {
+    plan: !hasExplicitPlanRequest
+      ? 'not-requested'
+      : plan
+        ? 'succeeded'
+        : 'unavailable',
+    subtitle: !capabilities.subtitle
+      ? 'not-requested'
+      : timingEvidenceTrusted && subtitleSegmentsWithValidatedWords.length > 0
+        ? 'succeeded'
+        : 'unavailable',
+    silence: !capabilities.silence
+      ? 'not-requested'
+      : hasReliableSilenceTimeline
+        ? 'succeeded'
+        : 'unavailable',
+    speechReduction: !capabilities.filler
+      ? 'not-requested'
+      : speechReduction?.status === 'ready'
+        ? 'succeeded'
+        : !speechReduction && fillerRanges.length > 0
+          ? 'succeeded'
+          : 'unavailable'
+  };
   const priceText = settings.priceText ?? inferPriceText(transcript.text);
   const ctaText = settings.ctaText ?? 'กดตะกร้าเลย';
   const watermarkText = settings.watermarkText ?? 'PostDee';
@@ -1858,23 +2119,33 @@ export const buildAiEditRecipe = ({
       language: transcriptLanguage,
       durationSeconds: transcript.durationSeconds,
       segments: transcript.segments,
+      boundarySegments: transcriptBoundarySegments,
       words: transcript.words,
       model: transcript.model
     },
     subtitles: {
       enabled: capabilities.subtitle,
       segments: subtitleSegmentsWithValidatedWords,
+      ...(subtitleVariants ? { variants: subtitleVariants } : {}),
       style: {
         mode: settings.subtitleStyle ?? 'bold',
-        color: settings.subtitleColor ?? '#FFFFFF',
+        color: subtitleColor,
+        outlineColor: subtitleOutlineColor,
         wordsPerLine: subtitleWordsPerLine,
-        position: settings.subtitlePosition ?? 'bottom'
+        ...(normalizedCoordinates.subtitleNormalizedX === undefined
+          ? {}
+          : {
+              normalizedX: normalizedCoordinates.subtitleNormalizedX,
+              normalizedY: normalizedCoordinates.subtitleNormalizedY
+            }),
+        position: subtitlePosition
       }
     },
     cutRanges: sortRanges([...planCuts, ...fillerRanges]),
     silenceRanges,
     fillerRanges,
     ...(speechReduction ? { speechReduction } : {}),
+    analysisOutcomes,
     plan: {
       cuts: planCuts,
       summary: plan?.summary ?? '',
@@ -1983,7 +2254,8 @@ export const buildAiEditPlanningSegments = ({
       subtitle: true,
       silence: false
     },
-    settings
+    settings,
+    hasExplicitPlanRequest: false
   });
 
   return planningRecipe.subtitles.segments.map(

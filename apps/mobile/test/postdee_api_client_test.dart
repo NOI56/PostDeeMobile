@@ -125,6 +125,92 @@ void main() {
     }
   });
 
+  test('AI edit transcript parses repaired boundary segments independently',
+      () {
+    final transcript = AiEditTranscriptResult.fromJson(const {
+      'text': 'ดุ๊กดิ๊กมาก',
+      'language': 'th',
+      'durationSeconds': 2,
+      'segments': [
+        {'text': 'ดุ๊ก', 'start': 0, 'end': 1},
+        {'text': 'ดิ๊กมาก', 'start': 1, 'end': 2},
+      ],
+      'boundarySegments': [
+        {'text': 'ดุ๊กดิ๊กมาก', 'start': 0, 'end': 2},
+      ],
+      'words': <Object?>[],
+      'model': 'test-elevenlabs',
+    });
+
+    expect(transcript.segments.map((segment) => segment.text), [
+      'ดุ๊ก',
+      'ดิ๊กมาก',
+    ]);
+    expect(transcript.boundarySegments, hasLength(1));
+    expect(transcript.boundarySegments.single.text, 'ดุ๊กดิ๊กมาก');
+    expect(transcript.boundarySegments.single.start, 0);
+    expect(transcript.boundarySegments.single.end, 2);
+  });
+
+  test('legacy AI edit transcript does not reuse raw segments as boundaries',
+      () {
+    final transcript = AiEditTranscriptResult.fromJson(const {
+      'text': 'ขอบจากผู้ให้บริการ',
+      'language': 'th',
+      'durationSeconds': 2,
+      'segments': [
+        {'text': 'ขอบจากผู้ให้บริการ', 'start': 0, 'end': 2},
+      ],
+      'words': <Object?>[],
+      'model': 'legacy',
+    });
+    final malformed = AiEditTranscriptResult.fromJson(const {
+      'text': 'ขอบเสีย',
+      'language': 'th',
+      'durationSeconds': 2,
+      'segments': <Object?>[],
+      'boundarySegments': 'not-a-list',
+      'words': <Object?>[],
+      'model': 'malformed',
+    });
+
+    expect(transcript.segments, hasLength(1));
+    expect(transcript.boundarySegments, isEmpty);
+    expect(malformed.boundarySegments, isEmpty);
+  });
+
+  test('malformed boundary item invalidates the whole boundary timeline', () {
+    final malformedItems = <Object?>[
+      'not-a-map',
+      {'text': 7, 'start': 1, 'end': 2},
+      {'text': 'ไม่มีเวลาเริ่ม', 'end': 2},
+      {'text': 'เวลาไม่สิ้นสุด', 'start': double.nan, 'end': 2},
+      {'text': 'เกินความยาวคลิป', 'start': 1, 'end': 99},
+    ];
+
+    for (final malformedItem in malformedItems) {
+      final transcript = AiEditTranscriptResult.fromJson({
+        'text': 'ช่วงแรก ช่วงสอง',
+        'language': 'th',
+        'durationSeconds': 3,
+        'segments': const <Object?>[],
+        'boundarySegments': [
+          const {'text': 'ช่วงแรก', 'start': 0, 'end': 1},
+          malformedItem,
+          const {'text': 'ช่วงสอง', 'start': 2, 'end': 3},
+        ],
+        'words': const <Object?>[],
+        'model': 'malformed-boundary',
+      });
+
+      expect(
+        transcript.boundarySegments,
+        isEmpty,
+        reason: 'partial boundary evidence must never survive $malformedItem',
+      );
+    }
+  });
+
   test('VerifyStorePurchaseRequest serializes Android purchase tokens', () {
     expect(
       const VerifyStorePurchaseRequest.android(
@@ -1322,8 +1408,11 @@ void main() {
         settings: AiEditPrepareSettings(
           subtitleStyle: 'bold',
           subtitleColor: '#FFFFFF',
+          subtitleOutlineColor: '#112233',
           subtitleWordsPerLine: 2,
           subtitlePosition: 'bottom',
+          subtitleNormalizedX: 0.27,
+          subtitleNormalizedY: 0.63,
           ctaText: 'กดตะกร้าเลย',
           silencePreset: 'natural',
           speechReductionMode: 'auto',
@@ -1353,8 +1442,11 @@ void main() {
         'settings': {
           'subtitleStyle': 'bold',
           'subtitleColor': '#FFFFFF',
+          'subtitleOutlineColor': '#112233',
           'subtitleWordsPerLine': 2,
           'subtitlePosition': 'bottom',
+          'subtitleNormalizedX': 0.27,
+          'subtitleNormalizedY': 0.63,
           'ctaText': 'กดตะกร้าเลย',
           'silencePreset': 'natural',
           'speechReductionMode': 'auto',
@@ -1373,6 +1465,58 @@ void main() {
         },
       },
     );
+  });
+
+  test('AiEditSubtitleStyleResult parses outline color and normalized position',
+      () {
+    final style = AiEditSubtitleStyleResult.fromJson(const {
+      'mode': 'bold',
+      'color': '#FFFFFF',
+      'wordsPerLine': 3,
+      'position': 'middle',
+      'outlineColor': '#112233',
+      'normalizedX': 0.27,
+      'normalizedY': 0.63,
+    });
+
+    expect(style.outlineColor, '#112233');
+    expect(style.normalizedX, 0.27);
+    expect(style.normalizedY, 0.63);
+  });
+
+  test('AiEditSubtitleStyleResult keeps legacy subtitle style defaults', () {
+    final style = AiEditSubtitleStyleResult.fromJson(const {
+      'mode': 'bold',
+      'color': '#FFFFFF',
+      'wordsPerLine': 2,
+      'position': 'top',
+    });
+
+    expect(style.outlineColor, '#000000');
+    expect(style.normalizedX, isNull);
+    expect(style.normalizedY, isNull);
+    expect(style.position, 'top');
+  });
+
+  test('AiEditSubtitleStyleResult fails safe for invalid custom style values',
+      () {
+    final style = AiEditSubtitleStyleResult.fromJson({
+      'outlineColor': 42,
+      'normalizedX': 'not-a-number',
+      'normalizedY': 1.01,
+    });
+    final malformedColor = AiEditSubtitleStyleResult.fromJson(const {
+      'outlineColor': '#GGGGGG',
+      'normalizedX': double.nan,
+      'normalizedY': -0.01,
+    });
+
+    expect(style.outlineColor, '#000000');
+    expect(style.normalizedX, isNull);
+    expect(style.normalizedY, isNull);
+    expect(malformedColor.outlineColor, '#000000');
+    expect(malformedColor.normalizedX, isNull);
+    expect(malformedColor.normalizedY, isNull);
   });
 
   test('AiEditRecipeResult parses speech reduction review contract', () {
@@ -1453,6 +1597,70 @@ void main() {
     expect(legacy.speechReduction.groups, isEmpty);
     expect(legacy.speechReduction.occurrences, isEmpty);
     expect(legacy.speechReduction.defaultCutRanges, isEmpty);
+  });
+
+  test('AiEditRecipeResult selects a cached subtitle density variant', () {
+    final recipe = AiEditRecipeResult.fromJson(const {
+      'version': 1,
+      'status': 'ready',
+      'renderMode': 'mobile-ffmpeg',
+      'subtitles': {
+        'enabled': true,
+        'segments': [
+          {'text': 'อ่าน ง่าย วันนี้', 'start': 0, 'end': 1},
+        ],
+        'variants': {
+          '1': [
+            {'text': 'อ่าน', 'start': 0, 'end': 0.3},
+            {'text': 'ง่าย', 'start': 0.3, 'end': 0.6},
+            {'text': 'วันนี้', 'start': 0.6, 'end': 1},
+          ],
+          '3': [
+            {'text': 'อ่าน ง่าย วันนี้', 'start': 0, 'end': 1},
+          ],
+          '5': [
+            {'text': 'อ่าน ง่าย วันนี้ ได้เลย', 'start': 0, 'end': 1.2},
+          ],
+        },
+        'style': {
+          'mode': 'outline',
+          'color': '#FFFFFF',
+          'outlineColor': '#000000',
+          'wordsPerLine': 3,
+          'position': 'bottom',
+        },
+      },
+    });
+
+    final oneWordRecipe = recipe.withSubtitleWordsPerLine(1);
+
+    expect(oneWordRecipe, isNotNull);
+    expect(oneWordRecipe!.subtitles.style.wordsPerLine, 1);
+    expect(
+      oneWordRecipe.subtitles.segments.map((segment) => segment.text),
+      ['อ่าน', 'ง่าย', 'วันนี้'],
+    );
+    expect(recipe.withSubtitleWordsPerLine(4), isNull);
+  });
+
+  test('legacy recipe can reuse only its current subtitle density', () {
+    final recipe = AiEditRecipeResult.fromJson(const {
+      'version': 1,
+      'status': 'ready',
+      'renderMode': 'mobile-ffmpeg',
+      'subtitles': {
+        'enabled': true,
+        'segments': [
+          {'text': 'ซับเดิม', 'start': 0, 'end': 1},
+        ],
+        'style': {
+          'wordsPerLine': 2,
+        },
+      },
+    });
+
+    expect(recipe.withSubtitleWordsPerLine(2), same(recipe));
+    expect(recipe.withSubtitleWordsPerLine(1), isNull);
   });
 
   test('withPlan keeps silence candidates out of executable cut ranges', () {

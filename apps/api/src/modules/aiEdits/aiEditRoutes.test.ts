@@ -559,6 +559,454 @@ describe('ai edit routes', () => {
     });
   });
 
+  it.each([
+    ['zero words', { subtitleWordsPerLine: 0 }],
+    ['too many words', { subtitleWordsPerLine: 6 }],
+    ['fractional words', { subtitleWordsPerLine: 2.5 }],
+    ['null words', { subtitleWordsPerLine: null }],
+    ['invalid text colour', { subtitleColor: 'white' }],
+    ['invalid outline colour', { subtitleOutlineColor: '#GGGGGG' }],
+    ['missing Y coordinate', { subtitleNormalizedX: 0.5 }],
+    [
+      'out of range coordinate',
+      { subtitleNormalizedX: 0.5, subtitleNormalizedY: 1.1 }
+    ]
+  ])(
+    'rejects invalid subtitle settings (%s) before transcription and metering',
+    async (_description, settings) => {
+      const transcribe = vi.fn(async () => ({
+        text: 'must not run',
+        language: 'en',
+        durationSeconds: 10,
+        segments: [{ text: 'must not run', start: 0, end: 10 }],
+        words: [],
+        timingIntegrity: 'trusted' as const,
+        hasTimedAudioEvents: false,
+        model: 'test-scribe'
+      }));
+      const app = createApp({ transcriptionProvider: { transcribe } });
+      const headers = { 'x-postdee-subscription-plan': 'PRO' };
+
+      const response = await request(app)
+        .post('/ai-edits/prepare')
+        .set(headers)
+        .send({
+          videoS3Key: ownedUploadKey('local-dev-user', 'invalid-settings.mp4'),
+          durationSeconds: 10,
+          capabilities: { subtitle: true },
+          settings
+        })
+        .expect(400);
+
+      expect(response.body).toMatchObject({
+        status: 'error',
+        code: 'INVALID_AI_EDIT_SETTINGS'
+      });
+      expect(transcribe).not.toHaveBeenCalled();
+
+      const quota = await request(app)
+        .get('/ai-edits/quota')
+        .set(headers)
+        .expect(200);
+      expect(quota.body.quota.usedMinutes).toBe(0);
+    }
+  );
+
+  it.each([
+    ['explicit empty capabilities', {}],
+    ['color-only capabilities', { color: true }]
+  ])(
+    'rejects %s before transcription, planning, and metering',
+    async (_description, capabilities) => {
+      const transcribe = vi.fn(async () => ({
+        text: 'must not run',
+        language: 'en',
+        durationSeconds: 60,
+        segments: [{ text: 'must not run', start: 0, end: 1 }],
+        words: [{ word: 'must', start: 0, end: 0.4 }],
+        timingIntegrity: 'trusted' as const,
+        hasTimedAudioEvents: false,
+        model: 'test-scribe'
+      }));
+      const plan = vi.fn(async () => ({
+        cuts: [],
+        summary: 'must not run',
+        model: 'test-planner'
+      }));
+      const app = createApp({
+        transcriptionProvider: { transcribe },
+        editPlanProvider: { plan }
+      });
+      const headers = { 'x-postdee-subscription-plan': 'PRO' };
+
+      const response = await request(app)
+        .post('/ai-edits/prepare')
+        .set(headers)
+        .send({
+          videoS3Key: ownedUploadKey('local-dev-user', 'local-only.mp4'),
+          durationSeconds: 60,
+          capabilities
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        status: 'error',
+        code: 'AI_EDIT_NO_ANALYSIS_REQUESTED',
+        message: 'เลือกงาน AI ที่ต้องการก่อนเริ่มวิเคราะห์'
+      });
+      expect(transcribe).not.toHaveBeenCalled();
+      expect(plan).not.toHaveBeenCalled();
+
+      const quota = await request(app)
+        .get('/ai-edits/quota')
+        .set(headers)
+        .expect(200);
+      expect(quota.body.quota.usedMinutes).toBe(0);
+    }
+  );
+
+  it('keeps metering a legacy preparation that omits capabilities and planning',
+      async () => {
+    const transcribe = vi.fn(async () => ({
+      text: 'legacy request',
+      language: 'en',
+      durationSeconds: 60,
+      segments: [{ text: 'legacy request', start: 0, end: 1 }],
+      words: [
+        { word: 'legacy', start: 0, end: 0.4 },
+        { word: 'request', start: 0.5, end: 1 }
+      ],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
+      model: 'test-scribe'
+    }));
+    const app = createApp({ transcriptionProvider: { transcribe } });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'legacy.mp4'),
+        durationSeconds: 60
+      })
+      .expect(200);
+
+    expect(transcribe).toHaveBeenCalledTimes(1);
+    expect(response.body.recipe.analysisOutcomes).toEqual({
+      plan: 'not-requested',
+      subtitle: 'not-requested',
+      silence: 'not-requested',
+      speechReduction: 'not-requested'
+    });
+    expect(response.body.quota.usedMinutes).toBe(1);
+  });
+
+  it('meters prepare only when at least one requested analysis succeeds',
+      async () => {
+    const unavailableRepeatTranscript = {
+      text: 'ชุมชน ชุมชน',
+      language: 'th',
+      durationSeconds: 60,
+      segments: [{ text: 'ชุมชน ชุมชน', start: 0, end: 1 }],
+      words: [
+        { word: 'ชุม', start: 0, end: 0.1 },
+        { word: 'ชล', start: 0.2, end: 0.4 },
+        { word: 'ชุมชน', start: 0.5, end: 1 }
+      ],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
+      model: 'test-elevenlabs'
+    };
+    const cases = [
+      {
+        name: 'repeat-only ready',
+        transcript: {
+          ...unavailableRepeatTranscript,
+          words: [
+            { word: 'ชุมชน', start: 0, end: 0.4 },
+            { word: 'ชุมชน', start: 0.5, end: 1 }
+          ]
+        },
+        capabilities: { filler: true },
+        settings: { speechReductionMode: 'auto' },
+        targetDurationSeconds: undefined,
+        planResult: undefined,
+        expectedOutcomes: { speechReduction: 'succeeded' },
+        expectedMinutes: 1
+      },
+      {
+        name: 'repeat analysis ready with no repeated group',
+        transcript: {
+          ...unavailableRepeatTranscript,
+          text: 'สินค้า',
+          segments: [{ text: 'สินค้า', start: 0, end: 1 }],
+          words: [{ word: 'สินค้า', start: 0, end: 1 }]
+        },
+        capabilities: { filler: true },
+        settings: { speechReductionMode: 'auto' },
+        targetDurationSeconds: undefined,
+        planResult: undefined,
+        expectedOutcomes: { speechReduction: 'succeeded' },
+        expectedMinutes: 1
+      },
+      {
+        name: 'legacy fixed filler range success',
+        transcript: {
+          ...unavailableRepeatTranscript,
+          text: 'เอ่อ',
+          segments: [{ text: 'เอ่อ', start: 0, end: 1 }],
+          words: [{ word: 'เอ่อ', start: 0, end: 1 }]
+        },
+        capabilities: { filler: true },
+        settings: {},
+        targetDurationSeconds: undefined,
+        planResult: undefined,
+        expectedOutcomes: { speechReduction: 'succeeded' },
+        expectedMinutes: 1
+      },
+      {
+        name: 'repeat-only unavailable',
+        transcript: unavailableRepeatTranscript,
+        capabilities: { filler: true },
+        settings: { speechReductionMode: 'auto' },
+        targetDurationSeconds: undefined,
+        planResult: undefined,
+        expectedOutcomes: { speechReduction: 'unavailable' },
+        expectedMinutes: 0
+      },
+      {
+        name: 'repeat unavailable plus subtitle success',
+        transcript: unavailableRepeatTranscript,
+        capabilities: { filler: true, subtitle: true },
+        settings: { speechReductionMode: 'auto' },
+        targetDurationSeconds: undefined,
+        planResult: undefined,
+        expectedOutcomes: {
+          speechReduction: 'unavailable',
+          subtitle: 'succeeded'
+        },
+        expectedMinutes: 1
+      },
+      {
+        name: 'repeat unavailable plus subtitle unavailable',
+        transcript: {
+          ...unavailableRepeatTranscript,
+          text: '',
+          segments: [],
+          words: []
+        },
+        capabilities: { filler: true, subtitle: true },
+        settings: { speechReductionMode: 'auto' },
+        targetDurationSeconds: undefined,
+        planResult: undefined,
+        expectedOutcomes: {
+          speechReduction: 'unavailable',
+          subtitle: 'unavailable'
+        },
+        expectedMinutes: 0
+      },
+      {
+        name: 'repeat unavailable plus target plan success',
+        transcript: unavailableRepeatTranscript,
+        capabilities: { filler: true },
+        settings: { speechReductionMode: 'auto' },
+        targetDurationSeconds: 30,
+        planResult: {
+          cuts: [{ start: 30, end: 60 }],
+          summary: 'kept the first half',
+          model: 'test-planner'
+        },
+        expectedOutcomes: {
+          speechReduction: 'unavailable',
+          plan: 'succeeded'
+        },
+        expectedMinutes: 1
+      },
+      {
+        name: 'repeat unavailable plus unusable target plan',
+        transcript: unavailableRepeatTranscript,
+        capabilities: { filler: true },
+        settings: { speechReductionMode: 'auto' },
+        targetDurationSeconds: 30,
+        planResult: null,
+        expectedOutcomes: {
+          speechReduction: 'unavailable',
+          plan: 'unavailable'
+        },
+        expectedMinutes: 0
+      },
+      {
+        name: 'safe silence analysis with no candidate',
+        transcript: {
+          text: 'สินค้า',
+          language: 'th',
+          durationSeconds: 60,
+          segments: [{ text: 'สินค้า', start: 0, end: 1 }],
+          words: [{ word: 'สินค้า', start: 0, end: 1 }],
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false,
+          model: 'test-elevenlabs'
+        },
+        capabilities: { silence: true },
+        settings: {},
+        targetDurationSeconds: undefined,
+        planResult: undefined,
+        expectedOutcomes: { silence: 'succeeded' },
+        expectedMinutes: 1
+      },
+      {
+        name: 'unsafe silence analysis',
+        transcript: {
+          text: 'สินค้า',
+          language: 'th',
+          durationSeconds: 60,
+          segments: [{ text: 'สินค้า', start: 0, end: 1 }],
+          words: [{ word: 'สินค้า', start: 0, end: 1 }],
+          timingIntegrity: 'untrusted' as const,
+          hasTimedAudioEvents: false,
+          model: 'test-elevenlabs'
+        },
+        capabilities: { silence: true },
+        settings: {},
+        targetDurationSeconds: undefined,
+        planResult: undefined,
+        expectedOutcomes: { silence: 'unavailable' },
+        expectedMinutes: 0
+      }
+    ];
+
+    for (const testCase of cases) {
+      const transcribe = vi.fn(async () => testCase.transcript);
+      const plan = vi.fn(async () =>
+        testCase.planResult === null
+          ? undefined as never
+          : testCase.planResult as never
+      );
+      const app = createApp({
+        transcriptionProvider: { transcribe },
+        editPlanProvider: { plan }
+      });
+      const headers = { 'x-postdee-subscription-plan': 'PRO' };
+      const body = {
+        videoS3Key: ownedUploadKey('local-dev-user', `${testCase.name}.mp4`),
+        durationSeconds: 60,
+        capabilities: testCase.capabilities,
+        settings: testCase.settings,
+        ...(testCase.targetDurationSeconds === undefined
+          ? {}
+          : { targetDurationSeconds: testCase.targetDurationSeconds })
+      };
+
+      const response = await request(app)
+        .post('/ai-edits/prepare')
+        .set(headers)
+        .send(body)
+        .expect(200);
+
+      expect(response.body.recipe.analysisOutcomes, testCase.name)
+        .toMatchObject(testCase.expectedOutcomes);
+      if (testCase.name === 'repeat analysis ready with no repeated group') {
+        expect(response.body.recipe.speechReduction).toMatchObject({
+          status: 'ready',
+          groups: []
+        });
+      }
+      if (testCase.name === 'legacy fixed filler range success') {
+        expect(response.body.recipe.speechReduction).toBeUndefined();
+        expect(response.body.recipe.fillerRanges).toEqual([
+          { start: 0, end: 1 }
+        ]);
+      }
+      expect(response.body.quota.usedMinutes, testCase.name)
+        .toBe(testCase.expectedMinutes);
+      const quota = await request(app)
+        .get('/ai-edits/quota')
+        .set(headers)
+        .expect(200);
+      expect(quota.body.quota.usedMinutes, testCase.name)
+        .toBe(testCase.expectedMinutes);
+    }
+  });
+
+  it.each([
+    {
+      name: 'provider timing marked untrusted',
+      timingIntegrity: 'untrusted' as const,
+      hasTimedAudioEvents: false,
+      segments: [{ text: 'ชุมชน ชุมชน', start: 0, end: 1 }],
+      words: [
+        { word: 'ชุมชน', start: 0, end: 0.4 },
+        { word: 'ชุมชน', start: 0.5, end: 1 }
+      ]
+    },
+    {
+      name: 'timed audio event between words',
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: true,
+      segments: [{ text: 'ชุมชน ชุมชน', start: 0, end: 1 }],
+      words: [
+        { word: 'ชุมชน', start: 0, end: 0.4 },
+        { word: 'ชุมชน', start: 0.5, end: 1 }
+      ]
+    },
+    {
+      name: 'unreliable speech between repeated words',
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
+      segments: [
+        { text: 'ชุมชน', start: 0, end: 0.3 },
+        {
+          text: 'เอ่อ',
+          start: 0.3,
+          end: 0.6,
+          noSpeechProbability: 0.9
+        },
+        { text: 'ชุมชน', start: 0.6, end: 1 }
+      ],
+      words: [
+        { word: 'ชุมชน', start: 0, end: 0.3 },
+        { word: 'เอ่อ', start: 0.3, end: 0.6 },
+        { word: 'ชุมชน', start: 0.6, end: 1 }
+      ]
+    }
+  ])(
+    'does not meter repeat-only analysis across $name',
+    async ({ timingIntegrity, hasTimedAudioEvents, segments, words }) => {
+      const transcribe = vi.fn(async () => ({
+        text: segments.map((segment) => segment.text).join(' '),
+        language: 'th',
+        durationSeconds: 60,
+        segments,
+        words,
+        timingIntegrity,
+        hasTimedAudioEvents,
+        model: 'test-elevenlabs'
+      }));
+      const app = createApp({ transcriptionProvider: { transcribe } });
+      const headers = { 'x-postdee-subscription-plan': 'PRO' };
+
+      const response = await request(app)
+        .post('/ai-edits/prepare')
+        .set(headers)
+        .send({
+          videoS3Key: ownedUploadKey('local-dev-user', 'repeat-barrier.mp4'),
+          durationSeconds: 60,
+          capabilities: { filler: true },
+          settings: { speechReductionMode: 'auto' }
+        })
+        .expect(200);
+
+      expect(response.body.recipe.analysisOutcomes.speechReduction)
+        .toBe('unavailable');
+      expect(response.body.recipe.speechReduction).toMatchObject({
+        status: 'unavailable',
+        defaultCutRanges: []
+      });
+      expect(response.body.recipe.cutRanges).toEqual([]);
+      expect(response.body.quota.usedMinutes).toBe(0);
+    }
+  );
+
   it('meters prepare usage only after the edit recipe succeeds', async () => {
     const transcribe = vi.fn(async () => ({
       text: 'retry after planner failure',
@@ -662,6 +1110,11 @@ describe('ai edit routes', () => {
           watermark: true
         },
         settings: {
+          subtitleColor: '#00e5a8',
+          subtitleOutlineColor: '#112233',
+          subtitlePosition: 'top',
+          subtitleNormalizedX: 0.25,
+          subtitleNormalizedY: 0.6,
           ctaText: 'กดตะกร้าเลย',
           priceText: '99 บาท',
           watermarkText: 'Meena Shop',
@@ -700,11 +1153,19 @@ describe('ai edit routes', () => {
       },
       subtitles: {
         enabled: true,
+        style: {
+          color: '#00E5A8',
+          outlineColor: '#112233',
+          normalizedX: 0.25,
+          normalizedY: 0.6,
+          position: 'middle'
+        },
         segments: [
           { text: 'สวัสดีค่ะ', start: 0, end: 2 },
           { text: 'ราคา 99', start: 4, end: 5.125 },
           { text: 'บาทส่ง', start: 5.125, end: 6.0625 },
-          { text: 'ฟรีวันนี้', start: 6.0625, end: 7 },
+          { text: 'ฟรีวัน', start: 6.0625, end: 6.8125 },
+          { text: 'นี้', start: 6.8125, end: 7 },
           { text: 'กดตะกร้า', start: 10, end: 11.75 },
           { text: 'ได้เลย', start: 11.75, end: 13 }
         ]
@@ -741,6 +1202,12 @@ describe('ai edit routes', () => {
     expect(response.body.recipe.capabilities.cta.state).toBe('planned');
     expect(response.body.recipe.capabilities.beatsync.state).toBe('planned');
     expect(response.body.recipe.capabilities.translate.state).toBe('planned');
+    expect(Object.keys(response.body.recipe.subtitles.variants)).toEqual([
+      '1',
+      '3',
+      '5'
+    ]);
+    expect(transcribe).toHaveBeenCalledTimes(1);
   });
 
   it('passes the requested result length to the planner for highlight selection', async () => {
@@ -1136,7 +1603,7 @@ describe('ai edit routes', () => {
       .send({
         videoS3Key: ownedUploadKey('local-dev-user', 'invalid-music.mp4'),
         durationSeconds: 12,
-        capabilities: { beatsync: true },
+        capabilities: { beatsync: true, silence: true },
         settings: {
           music: {
             source: 'spotify',

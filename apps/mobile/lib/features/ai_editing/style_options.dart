@@ -2,26 +2,19 @@ import 'package:characters/characters.dart';
 
 import 'subtitle_burn_video_processor.dart';
 
-/// Keeps automatic subtitles short enough for one vertical-video line.
+/// Maps the user-facing subtitle density to its truthful maximum word count.
 ///
-/// The selected length is a preference. The selected font size is the hard
-/// visual limit so large subtitles never request more words than can fit.
+/// Font fitting is a separate render concern. Changing the font size must not
+/// silently change the 1/3/5-word contract shown to the user.
 int subtitleWordLimitForStyle({
   required String subtitleStyle,
   required String subtitleWords,
-}) {
-  final requestedLimit = switch (subtitleWords) {
-    'karaoke' => 1,
-    'full' => 5,
-    _ => 4,
-  };
-  final visualLimit = switch (subtitleStyle) {
-    'large' => 3,
-    'medium' => 4,
-    _ => 5,
-  };
-  return requestedLimit < visualLimit ? requestedLimit : visualLimit;
-}
+}) =>
+    switch (subtitleWords) {
+      'karaoke' => 1,
+      'full' => 5,
+      _ => 3,
+    };
 
 /// User fine-tuning applied on top of a chosen style. All fields optional; null
 /// means "use the style/clip default".
@@ -421,17 +414,21 @@ bool _isThaiTranscriptLanguage(String language) {
       normalized.startsWith('th-');
 }
 
-/// Preserves Thai cue boundaries already selected by the API.
+/// Preserves cue boundaries already validated by the API.
 ///
-/// The API owns Thai word boundaries. Re-chunking its output again on-device
-/// could merge short cues or split a word by character. Non-Thai legacy output
-/// keeps the existing character-based safety pass.
+/// Re-chunking a validated 1/3/5-word variant again on-device could merge cues
+/// or split a non-Thai word by character. Thai server cues remain authoritative
+/// for backward compatibility, while non-Thai legacy output keeps the existing
+/// character-based safety pass unless [preserveValidatedCues] is true.
 List<SubtitleSegment> prepareSubtitleSegmentsForLocalRender(
   List<SubtitleSegment> segments, {
   required String language,
   required int? maximumCharacters,
+  bool preserveValidatedCues = false,
 }) {
-  if (maximumCharacters == null || _isThaiTranscriptLanguage(language)) {
+  if (maximumCharacters == null ||
+      preserveValidatedCues ||
+      _isThaiTranscriptLanguage(language)) {
     return segments;
   }
   return rechunkSubtitleByMaxChars(segments, maximumCharacters);

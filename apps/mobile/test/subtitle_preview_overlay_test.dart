@@ -1,10 +1,241 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_preview_overlay.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_project.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_studio_controller.dart';
 
 void main() {
+  testWidgets('places subtitle by normalized center coordinates',
+      (tester) async {
+    final style = copySubtitleStyle(
+      SubtitleStyle.defaults,
+      normalizedX: 0.25,
+      normalizedY: 0.40,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            height: 640,
+            child: SubtitlePreviewOverlay(
+              text: 'ซับ',
+              style: style,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final overlayRect = tester.getRect(find.byType(SubtitlePreviewOverlay));
+    final subtitleCenter = tester.getCenter(
+      find.byKey(const ValueKey('subtitle-preview-positioned-content')),
+    );
+    expect(
+      subtitleCenter.dx,
+      closeTo(overlayRect.left + overlayRect.width * 0.25, 1),
+    );
+    expect(
+      subtitleCenter.dy,
+      closeTo(overlayRect.top + overlayRect.height * 0.40, 1),
+    );
+  });
+
+  testWidgets('dragging emits safe normalized coordinates', (tester) async {
+    Offset? changed;
+    final style = copySubtitleStyle(
+      SubtitleStyle.defaults,
+      normalizedX: 0.5,
+      normalizedY: 0.5,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            height: 640,
+            child: SubtitlePreviewOverlay(
+              text: 'ซับ',
+              style: style,
+              onPositionChanged: (position) => changed = position,
+            ),
+          ),
+        ),
+      ),
+    );
+    final overlayRect = tester.getRect(find.byType(SubtitlePreviewOverlay));
+
+    await tester.drag(
+      find.byKey(const ValueKey('subtitle-preview-draggable')),
+      const Offset(72, -128),
+    );
+    await tester.pump();
+
+    expect(changed, isNotNull);
+    expect(changed!.dx, closeTo(0.5 + 72 / overlayRect.width, 0.02));
+    expect(changed!.dy, closeTo(0.5 - 128 / overlayRect.height, 0.02));
+    expect(changed!.dx, inInclusiveRange(0, 1));
+    expect(changed!.dy, inInclusiveRange(0, 1));
+  });
+
+  testWidgets(
+      'longer project text and preview use one effective layout near an edge',
+      (tester) async {
+    final style = copySubtitleStyle(
+      SubtitleStyle.defaults,
+      fontSize: 30,
+      outlineWidth: 2,
+      shadowDepth: 2,
+      normalizedX: 0.08,
+      normalizedY: 0.01,
+    );
+    const texts = <String>[
+      'สั้น',
+      'ข้อความจริงที่ยาวกว่าข้อความตัวอย่างมาก',
+    ];
+    final layout = resolveSubtitleCanvasLayout(
+      texts: texts,
+      style: style,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 304,
+            height: 540,
+            child: SubtitlePreviewOverlay(
+              text: texts.first,
+              layoutTexts: texts,
+              style: style,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final overlayRect = tester.getRect(find.byType(SubtitlePreviewOverlay));
+    final subtitleCenter = tester.getCenter(
+      find.byKey(const ValueKey('subtitle-preview-positioned-content')),
+    );
+    expect(layout.normalizedPosition.dx, greaterThan(style.normalizedX));
+    expect(layout.normalizedPosition.dy, greaterThan(style.normalizedY));
+    expect(
+      subtitleCenter.dx,
+      closeTo(
+        overlayRect.left + overlayRect.width * layout.normalizedPosition.dx,
+        1,
+      ),
+    );
+    expect(
+      subtitleCenter.dy,
+      closeTo(
+        overlayRect.top + overlayRect.height * layout.normalizedPosition.dy,
+        1,
+      ),
+    );
+    expect(
+      tester
+          .widgetList<Text>(find.text(texts.first))
+          .every((text) => text.style?.fontSize == layout.fontSize),
+      isTrue,
+    );
+  });
+
+  testWidgets(
+      'landscape preview resolves the same aspect-aware canvas used by ASS',
+      (tester) async {
+    final style = copySubtitleStyle(
+      SubtitleStyle.defaults,
+      fontSize: 30,
+      normalizedX: 0.05,
+      normalizedY: 0.50,
+    );
+    const texts = <String>['ข้อความยาวใกล้ขอบของคลิปแนวนอน'];
+    final canvasSize = subtitleAssCanvasSizeForDisplay(
+      const Size(320, 180),
+    );
+    final layout = resolveSubtitleCanvasLayout(
+      texts: texts,
+      style: style,
+      canvasSize: canvasSize,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            height: 180,
+            child: SubtitlePreviewOverlay(
+              text: texts.single,
+              layoutTexts: texts,
+              style: style,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final overlayRect = tester.getRect(find.byType(SubtitlePreviewOverlay));
+    final subtitleCenter = tester.getCenter(
+      find.byKey(const ValueKey('subtitle-preview-positioned-content')),
+    );
+    expect(canvasSize, const Size(960, 540));
+    expect(
+      subtitleCenter.dx,
+      closeTo(
+        overlayRect.left + overlayRect.width * layout.normalizedPosition.dx,
+        1,
+      ),
+    );
+    expect(
+      subtitleCenter.dy,
+      closeTo(
+        overlayRect.top + overlayRect.height * layout.normalizedPosition.dy,
+        1,
+      ),
+    );
+  });
+
+  testWidgets('video subtitle preview ignores the system text scale',
+      (tester) async {
+    const text = 'ขนาดในวิดีโอต้องคงเดิม';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: const TextScaler.linear(2),
+            ),
+            child: const Scaffold(
+              body: SizedBox(
+                width: 304,
+                height: 540,
+                child: SubtitlePreviewOverlay(
+                  text: text,
+                  style: SubtitleStyle.defaults,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final renderedTexts = tester.widgetList<Text>(find.text(text)).toList();
+    expect(renderedTexts, hasLength(2));
+    expect(
+      renderedTexts
+          .every((rendered) => rendered.textScaler == TextScaler.noScaling),
+      isTrue,
+    );
+  });
+
   testWidgets('shows draft text immediately with the selected subtitle style',
       (tester) async {
     final style = copySubtitleStyle(
@@ -13,6 +244,7 @@ void main() {
       fontSize: 30,
       textColor: '#00FF00',
       alignment: SubtitleAlignment.top,
+      normalizedY: 0.12,
     );
 
     await tester.pumpWidget(
@@ -41,10 +273,12 @@ void main() {
         matching: find.byType(Padding),
       ),
     );
-    expect(
-      safeAreaPadding.padding,
-      const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-    );
+    final previewSize = tester.getSize(find.byType(SubtitlePreviewOverlay));
+    final padding = safeAreaPadding.padding as EdgeInsets;
+    expect(padding.left, closeTo(24 * previewSize.width / 304, 0.0001));
+    expect(padding.right, closeTo(padding.left, 0.0001));
+    expect(padding.top, closeTo(28 * previewSize.height / 540, 0.0001));
+    expect(padding.bottom, closeTo(padding.top, 0.0001));
     expect(tester.getTopLeft(find.byType(SubtitlePreviewOverlay)).dy,
         lessThan(100));
   });
@@ -83,7 +317,50 @@ void main() {
     );
   });
 
-  testWidgets('can shrink the live preview down to the six-pixel safety floor',
+  testWidgets('scales ASS typography and margins to the preview canvas',
+      (tester) async {
+    final style = copySubtitleStyle(
+      SubtitleStyle.defaults,
+      fontSize: 18,
+      outlineWidth: 2,
+      shadowDepth: 2,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 152,
+            height: 270,
+            child: SubtitlePreviewOverlay(text: 'สเกลตรงกัน', style: style),
+          ),
+        ),
+      ),
+    );
+
+    final renderedTexts = tester.widgetList<Text>(find.text('สเกลตรงกัน'));
+    expect(renderedTexts, hasLength(2));
+    expect(
+      renderedTexts.every((text) => text.style?.fontSize == 9),
+      isTrue,
+    );
+    final outlineText = renderedTexts.singleWhere(
+      (text) => text.style?.foreground != null,
+    );
+    expect(outlineText.style?.foreground?.strokeWidth, 2);
+    final safeAreaPadding = tester.widget<Padding>(
+      find.descendant(
+        of: find.byType(SubtitlePreviewOverlay),
+        matching: find.byType(Padding),
+      ),
+    );
+    expect(
+      safeAreaPadding.padding,
+      const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+    );
+  });
+
+  testWidgets('can shrink the live preview to the scaled safety floor',
       (tester) async {
     final style = copySubtitleStyle(
       SubtitleStyle.defaults,
@@ -106,7 +383,7 @@ void main() {
     final subtitles = tester.widgetList<Text>(find.text(text)).toList();
     expect(subtitles, hasLength(2));
     expect(
-      subtitles.every((subtitle) => subtitle.style?.fontSize == 6),
+      subtitles.every((subtitle) => subtitle.style?.fontSize == 4),
       isTrue,
     );
   });

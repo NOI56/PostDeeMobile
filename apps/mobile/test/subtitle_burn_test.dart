@@ -1,9 +1,54 @@
 import 'dart:io';
+import 'dart:ui' show Size;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 
 void main() {
+  test('names edited output from actual subtitle content', () {
+    expect(
+      editedVideoOutputFileName(
+        'product.review.final.mov',
+        hasSubtitles: true,
+      ),
+      'product.review.final_subtitled.mp4',
+    );
+    expect(
+      editedVideoOutputFileName(
+        'product.review.final.mov',
+        hasSubtitles: false,
+      ),
+      'product.review.final_edited.mp4',
+    );
+    expect(
+      editedVideoOutputFileName('clip', hasSubtitles: false),
+      'clip_edited.mp4',
+    );
+    expect(
+      editedVideoOutputFileName('  clip.mp4  ', hasSubtitles: false),
+      'clip_edited.mp4',
+    );
+  });
+
+  test('uses edited output name when subtitle cues have no content', () {
+    final emptySubtitleFiles = [
+      buildSubtitleFileContent(const []),
+      buildSubtitleFileContent(const [
+        SubtitleSegment(text: '   ', start: 0, end: 1),
+      ]),
+    ];
+
+    for (final subtitleFile in emptySubtitleFiles) {
+      expect(
+        editedVideoOutputFileName(
+          'source.mp4',
+          hasSubtitles: subtitleFile.content.trim().isNotEmpty,
+        ),
+        'source_edited.mp4',
+      );
+    }
+  });
+
   test('formats SRT timestamps as HH:MM:SS,mmm', () {
     expect(formatSrtTimestamp(0), '00:00:00,000');
     expect(formatSrtTimestamp(3.2), '00:00:03,200');
@@ -147,6 +192,165 @@ void main() {
     expect(fade.content, contains(r'{\fad(180,180)}'));
   });
 
+  test(
+      'uses positioned ASS and writes the same normalized position to every cue',
+      () {
+    final file = buildSubtitleFileContent(
+      const [
+        SubtitleSegment(text: 'ประโยคแรก', start: 0, end: 1),
+        SubtitleSegment(text: 'ประโยคถัดไป', start: 1, end: 2),
+      ],
+      normalizedX: 0.25,
+      normalizedY: 0.60,
+    );
+
+    expect(file.fileName, 'captions.ass');
+    expect(file.usesActiveWordTiming, isFalse);
+    final dialogues = file.content
+        .split('\n')
+        .where((line) => line.startsWith('Dialogue:'))
+        .toList(growable: false);
+    expect(dialogues, hasLength(2));
+    expect(
+      dialogues.every((line) => line.contains(r'{\an5\pos(76,324)}')),
+      isTrue,
+    );
+  });
+
+  test('uses the display-oriented aspect for ASS PlayRes and positions', () {
+    final landscapeCanvas = subtitleAssCanvasSizeForDisplay(
+      const Size(1920, 1080),
+    );
+    final tallCanvas = subtitleAssCanvasSizeForDisplay(
+      const Size(1080, 2400),
+    );
+
+    expect(landscapeCanvas, const Size(960, 540));
+    expect(tallCanvas, const Size(243, 540));
+
+    final landscape = buildSubtitleFileContent(
+      const [SubtitleSegment(text: 'แนวนอน', start: 0, end: 1)],
+      normalizedX: 0.25,
+      normalizedY: 0.60,
+      subtitleCanvasSize: landscapeCanvas,
+    );
+    final tall = buildSubtitleFileContent(
+      const [SubtitleSegment(text: 'จอสูง', start: 0, end: 1)],
+      normalizedX: 0.25,
+      normalizedY: 0.60,
+      subtitleCanvasSize: tallCanvas,
+    );
+
+    expect(landscape.content, contains('PlayResX: 960'));
+    expect(landscape.content, contains('PlayResY: 540'));
+    expect(landscape.content, contains(r'{\an5\pos(240,324)}'));
+    expect(tall.content, contains('PlayResX: 243'));
+    expect(tall.content, contains(r'{\an5\pos(61,324)}'));
+  });
+
+  test('rejects an invalid display size for the ASS canvas', () {
+    expect(
+      () => subtitleAssCanvasSizeForDisplay(const Size(0, 1080)),
+      throwsA(isA<SubtitleBurnException>()),
+    );
+    expect(
+      () => subtitleAssCanvasSizeForDisplay(const Size(double.nan, 1080)),
+      throwsA(isA<SubtitleBurnException>()),
+    );
+  });
+
+  test('keeps a custom position on every active-word ASS dialogue', () {
+    final file = buildSubtitleFileContent(
+      const [
+        SubtitleSegment(
+          text: 'ขายดีมาก',
+          start: 0,
+          end: 1,
+          words: [
+            SubtitleWordTiming(text: 'ขาย', start: 0, end: 0.5),
+            SubtitleWordTiming(text: 'ดีมาก', start: 0.5, end: 1),
+          ],
+        ),
+      ],
+      activeWordColor: '#FF0000',
+      normalizedX: 0.75,
+      normalizedY: 0.20,
+    );
+
+    final dialogues = file.content
+        .split('\n')
+        .where((line) => line.startsWith('Dialogue:'))
+        .toList(growable: false);
+    expect(dialogues, isNotEmpty);
+    expect(
+      dialogues.every((line) => line.contains(r'{\an5\pos(228,108)}')),
+      isTrue,
+    );
+  });
+
+  test('accepts inclusive normalized canvas edges', () {
+    final file = buildSubtitleFileContent(
+      const [SubtitleSegment(text: 'ชิดขอบพิกัด', start: 0, end: 1)],
+      normalizedX: 0,
+      normalizedY: 1,
+    );
+
+    expect(file.fileName, 'captions.ass');
+    expect(file.content, contains(r'{\an5\pos(0,540)}'));
+  });
+
+  test('measures safe subtitle width from the selected canvas anchor', () {
+    expect(
+      subtitleSafeAssCanvasWidthAtX(0.5),
+      closeTo(256, 0.001),
+    );
+    expect(
+      subtitleSafeAssCanvasWidthAtX(0.25),
+      closeTo(104, 0.001),
+    );
+    expect(
+      () => subtitleSafeAssCanvasWidthAtX(double.nan),
+      throwsA(isA<SubtitleBurnException>()),
+    );
+  });
+
+  test('does not turn an empty subtitle list into a positioned ASS edit', () {
+    final file = buildSubtitleFileContent(
+      const [SubtitleSegment(text: '   ', start: 0, end: 1)],
+      normalizedX: 0.5,
+      normalizedY: 0.5,
+    );
+
+    expect(file.fileName, 'captions.srt');
+    expect(file.content.trim(), isEmpty);
+  });
+
+  test('rejects incomplete, non-finite, or out-of-range subtitle positions',
+      () {
+    final invalidPositions = <(double?, double?)>[
+      (null, 0.5),
+      (0.5, null),
+      (-0.01, 0.5),
+      (1.01, 0.5),
+      (0.5, -0.01),
+      (0.5, 1.01),
+      (double.nan, 0.5),
+      (0.5, double.infinity),
+    ];
+
+    for (final (x, y) in invalidPositions) {
+      expect(
+        () => buildSubtitleFileContent(
+          const [SubtitleSegment(text: 'ซับ', start: 0, end: 1)],
+          normalizedX: x,
+          normalizedY: y,
+        ),
+        throwsA(isA<SubtitleBurnException>()),
+        reason: 'position ($x, $y) must fail closed',
+      );
+    }
+  });
+
   test('normalizes unknown animation to static SRT', () {
     final file = buildSubtitleFileContent(
       const [SubtitleSegment(text: 'ซับปกติ', start: 0, end: 1)],
@@ -184,6 +388,17 @@ void main() {
         alreadyRetried: false,
       ),
       isFalse,
+    );
+    expect(
+      shouldRetryAssRenderWithStaticSrt(
+        subtitleFileName: 'captions.ass',
+        failureLogs: '[Parsed_subtitles_0] Error applying option force_style',
+        cancellationRequested: false,
+        alreadyRetried: false,
+        preserveCustomPosition: true,
+      ),
+      isFalse,
+      reason: 'an SRT retry would silently discard the selected X/Y position',
     );
   });
 

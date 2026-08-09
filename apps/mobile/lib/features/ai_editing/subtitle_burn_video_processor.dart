@@ -12,8 +12,12 @@ import 'subtitle_word_timing_safety.dart';
 const postDeeSubtitleThaiFontName = 'PostDee Subtitle Thai';
 const postDeeSubtitleAnuphanFontName = 'PostDee Subtitle Anuphan';
 const postDeeSubtitlePromptFontName = 'PostDee Subtitle Prompt';
-const _postDeeSubtitleAssPlayResX = 304;
-const _postDeeSubtitleAssPlayResY = 540;
+const postDeeSubtitleAssCanvasWidth = 304;
+const postDeeSubtitleAssCanvasHeight = 540;
+const postDeeSubtitleAssCanvasSize = Size(
+  304.0,
+  540.0,
+);
 const postDeeSubtitleThaiFontAssetPath =
     'assets/fonts/postdee_subtitle/PostDeeSubtitleThai-Bold.ttf';
 const _postDeeMarkSafeFontAssets = <String, Set<String>>{
@@ -35,6 +39,56 @@ const _postDeeMarkSafeFontAssets = <String, Set<String>>{
     'assets/fonts/postdee_subtitle/PostDeeSubtitlePrompt-Black.ttf',
   },
 };
+
+/// Keeps ASS typography tied to a 540-unit video height while matching the
+/// display-oriented frame aspect. This makes X/Y, font fitting, and safe-area
+/// calculations use one isotropic coordinate space for portrait, tall, and
+/// landscape sources.
+Size subtitleAssCanvasSizeForDisplay(Size displaySize) {
+  if (!displaySize.width.isFinite ||
+      !displaySize.height.isFinite ||
+      displaySize.width <= 0 ||
+      displaySize.height <= 0) {
+    throw const SubtitleBurnException(
+      'ขนาดวิดีโอไม่ถูกต้อง กรุณาเลือกวิดีโอใหม่',
+    );
+  }
+
+  final width =
+      (postDeeSubtitleAssCanvasHeight * displaySize.width / displaySize.height)
+          .round()
+          .clamp(1, 10000);
+  return Size(width.toDouble(), postDeeSubtitleAssCanvasHeight.toDouble());
+}
+
+Size _validatedSubtitleAssCanvasSize(Size? canvasSize) {
+  final resolved = canvasSize ?? postDeeSubtitleAssCanvasSize;
+  if (!resolved.width.isFinite ||
+      !resolved.height.isFinite ||
+      resolved.width <= 0 ||
+      resolved.height <= 0) {
+    throw const SubtitleBurnException(
+      'พื้นที่วิดีโอสำหรับซับไม่ถูกต้อง กรุณาลองใหม่',
+    );
+  }
+  return Size(
+    resolved.width.roundToDouble().clamp(1, 10000).toDouble(),
+    resolved.height.roundToDouble().clamp(1, 10000).toDouble(),
+  );
+}
+
+/// Builds the exported file name from the subtitle content that will actually
+/// be rendered, rather than from the subtitle capability toggle.
+String editedVideoOutputFileName(
+  String fileName, {
+  required bool hasSubtitles,
+}) {
+  final trimmed = fileName.trim();
+  final dotIndex = trimmed.lastIndexOf('.');
+  final baseName = dotIndex <= 0 ? trimmed : trimmed.substring(0, dotIndex);
+  final suffix = hasSubtitles ? 'subtitled' : 'edited';
+  return '${baseName}_$suffix.mp4';
+}
 
 bool shouldProtectStackedThaiMarksForRender({
   required String fontName,
@@ -210,6 +264,9 @@ class BurnSubtitleRequest {
     this.subtitleFontSize = 18,
     this.subtitleAtBottom = true,
     this.subtitleAlignment,
+    this.subtitleNormalizedX,
+    this.subtitleNormalizedY,
+    this.subtitleCanvasSize = postDeeSubtitleAssCanvasSize,
     this.subtitleFontName = postDeeSubtitleThaiFontName,
     this.subtitleFontAssetPath,
     this.subtitleTextColor = '#FFFFFF',
@@ -253,6 +310,13 @@ class BurnSubtitleRequest {
   final double subtitleFontSize;
   final bool subtitleAtBottom;
   final BurnSubtitleAlignment? subtitleAlignment;
+
+  /// Optional subtitle-center coordinates on the video canvas (0..1).
+  /// Both values must be supplied together. When absent, the legacy
+  /// [subtitleAlignment]/[subtitleAtBottom] placement remains in effect.
+  final double? subtitleNormalizedX;
+  final double? subtitleNormalizedY;
+  final Size subtitleCanvasSize;
   final String subtitleFontName;
   final String? subtitleFontAssetPath;
   final String subtitleTextColor;
@@ -701,7 +765,10 @@ String _buildAssSubtitleContent(
   String textColor = '#FFFFFF',
   String subtitleAnimation = 'none',
   bool protectStackedThaiMarks = false,
+  String positionOverride = '',
+  Size canvasSize = postDeeSubtitleAssCanvasSize,
 }) {
+  final resolvedCanvasSize = _validatedSubtitleAssCanvasSize(canvasSize);
   final events = <String>[];
   final usesActiveWords =
       activeWordColor != null && activeWordColor.trim().isNotEmpty;
@@ -725,13 +792,13 @@ String _buildAssSubtitleContent(
         sentence: sentence,
         activeWordColor: null,
         textColor: textColor,
-        prefixOverride: _assAnimationOverride(
+        prefixOverride: '$positionOverride${_assAnimationOverride(
           subtitleAnimation,
           isFirstEvent: true,
           isLastEvent: true,
           cueDurationSeconds: duration,
           eventDurationSeconds: duration,
-        ),
+        )}',
         protectStackedThaiMarks: protectStackedThaiMarks,
       );
       events.add(
@@ -781,13 +848,13 @@ String _buildAssSubtitleContent(
         activeWord: slice.activeWord,
         activeWordColor: activeWordColor,
         textColor: textColor,
-        prefixOverride: _assAnimationOverride(
+        prefixOverride: '$positionOverride${_assAnimationOverride(
           subtitleAnimation,
           isFirstEvent: index == 0,
           isLastEvent: index == slices.length - 1,
           cueDurationSeconds: segment.end - segment.start,
           eventDurationSeconds: eventDuration,
-        ),
+        )}',
         protectStackedThaiMarks: protectStackedThaiMarks,
       );
       events.add(
@@ -801,8 +868,8 @@ String _buildAssSubtitleContent(
   final primaryColor = _assColor(textColor, '#FFFFFF');
   return '[Script Info]\n'
       'ScriptType: v4.00+\n'
-      'PlayResX: $_postDeeSubtitleAssPlayResX\n'
-      'PlayResY: $_postDeeSubtitleAssPlayResY\n'
+      'PlayResX: ${resolvedCanvasSize.width.round()}\n'
+      'PlayResY: ${resolvedCanvasSize.height.round()}\n'
       'WrapStyle: 2\n'
       'ScaledBorderAndShadow: yes\n\n'
       '[V4+ Styles]\n'
@@ -831,6 +898,7 @@ String buildActiveWordAssContent(
       textColor: textColor,
       subtitleAnimation: subtitleAnimation,
       protectStackedThaiMarks: protectStackedThaiMarks,
+      canvasSize: postDeeSubtitleAssCanvasSize,
     );
 
 SubtitleFileContent buildSubtitleFileContent(
@@ -839,16 +907,27 @@ SubtitleFileContent buildSubtitleFileContent(
   String textColor = '#FFFFFF',
   String subtitleAnimation = 'none',
   bool protectStackedThaiMarks = false,
+  double? normalizedX,
+  double? normalizedY,
+  Size? subtitleCanvasSize,
 }) {
+  final canvasSize = _validatedSubtitleAssCanvasSize(subtitleCanvasSize);
   final normalizedActiveColor = activeWordColor?.trim();
   final normalizedAnimation = _normalizeSubtitleAnimation(subtitleAnimation);
+  final positionOverride = _buildAssPositionOverride(
+    normalizedX: normalizedX,
+    normalizedY: normalizedY,
+    canvasSize: canvasSize,
+  );
   final usesActiveWordTiming = normalizedActiveColor != null &&
       normalizedActiveColor.isNotEmpty &&
       _hasValidTimedSubtitleCue(segments);
-  final usesAnimation =
-      normalizedAnimation != 'none' && _hasRenderableSubtitleCue(segments);
+  final hasRenderableSubtitle = _hasRenderableSubtitleCue(segments);
+  final usesAnimation = normalizedAnimation != 'none' && hasRenderableSubtitle;
+  final usesCustomPosition =
+      positionOverride.isNotEmpty && hasRenderableSubtitle;
 
-  if (usesActiveWordTiming || usesAnimation) {
+  if (usesActiveWordTiming || usesAnimation || usesCustomPosition) {
     return SubtitleFileContent(
       fileName: 'captions.ass',
       content: _buildAssSubtitleContent(
@@ -857,6 +936,8 @@ SubtitleFileContent buildSubtitleFileContent(
         textColor: textColor,
         subtitleAnimation: normalizedAnimation,
         protectStackedThaiMarks: protectStackedThaiMarks,
+        positionOverride: positionOverride,
+        canvasSize: canvasSize,
       ),
       usesActiveWordTiming: usesActiveWordTiming,
     );
@@ -877,10 +958,12 @@ bool shouldRetryAssRenderWithStaticSrt({
   required String? failureLogs,
   bool cancellationRequested = false,
   bool alreadyRetried = false,
+  bool preserveCustomPosition = false,
 }) {
   if (subtitleFileName.toLowerCase() != 'captions.ass' ||
       cancellationRequested ||
       alreadyRetried ||
+      preserveCustomPosition ||
       failureLogs == null ||
       failureLogs.trim().isEmpty) {
     return false;
@@ -912,6 +995,66 @@ bool shouldRetryAssRenderWithStaticSrt({
 }
 
 enum BurnSubtitleAlignment { top, middle, bottom }
+
+double subtitleSafeAssCanvasWidthAtX(
+  double normalizedX, {
+  double horizontalMargin = 24,
+  Size canvasSize = postDeeSubtitleAssCanvasSize,
+}) {
+  final resolvedCanvasSize = _validatedSubtitleAssCanvasSize(canvasSize);
+  final canvasWidth = resolvedCanvasSize.width;
+  final scaledHorizontalMargin =
+      horizontalMargin * canvasWidth / postDeeSubtitleAssCanvasWidth;
+  if (!normalizedX.isFinite || normalizedX < 0 || normalizedX > 1) {
+    throw const SubtitleBurnException(
+      'ตำแหน่งซับไม่ถูกต้อง กรุณาเลือกตำแหน่งใหม่',
+    );
+  }
+  if (!horizontalMargin.isFinite ||
+      horizontalMargin < 0 ||
+      scaledHorizontalMargin * 2 >= canvasWidth) {
+    throw const SubtitleBurnException(
+      'พื้นที่ปลอดภัยของซับไม่ถูกต้อง กรุณาลองใหม่',
+    );
+  }
+
+  final centerX = normalizedX * canvasWidth;
+  final leftSpace = centerX - scaledHorizontalMargin;
+  final rightSpace = canvasWidth - scaledHorizontalMargin - centerX;
+  final halfWidth = leftSpace < rightSpace ? leftSpace : rightSpace;
+  return (halfWidth * 2)
+      .clamp(1.0, canvasWidth - scaledHorizontalMargin * 2)
+      .toDouble();
+}
+
+String _buildAssPositionOverride({
+  required double? normalizedX,
+  required double? normalizedY,
+  required Size canvasSize,
+}) {
+  final resolvedCanvasSize = _validatedSubtitleAssCanvasSize(canvasSize);
+  final hasX = normalizedX != null;
+  final hasY = normalizedY != null;
+  if (!hasX && !hasY) return '';
+  if (!hasX ||
+      !hasY ||
+      !normalizedX.isFinite ||
+      !normalizedY.isFinite ||
+      normalizedX < 0 ||
+      normalizedX > 1 ||
+      normalizedY < 0 ||
+      normalizedY > 1) {
+    throw const SubtitleBurnException(
+      'ตำแหน่งซับไม่ถูกต้อง กรุณาเลือกตำแหน่งใหม่',
+    );
+  }
+
+  final playResX = resolvedCanvasSize.width.round();
+  final playResY = resolvedCanvasSize.height.round();
+  final x = (normalizedX * playResX).round().clamp(0, playResX);
+  final y = (normalizedY * playResY).round().clamp(0, playResY);
+  return '{\\an5\\pos($x,$y)}';
+}
 
 /// Builds the libass `force_style` for burned subtitles. Pure + testable.
 String buildSubtitleForceStyle({
@@ -1848,6 +1991,11 @@ class FfmpegSubtitleBurnVideoProcessor {
   final Directory? renderTempDirectory;
 
   Future<BurnedSubtitleResult> call(BurnSubtitleRequest request) async {
+    _buildAssPositionOverride(
+      normalizedX: request.subtitleNormalizedX,
+      normalizedY: request.subtitleNormalizedY,
+      canvasSize: request.subtitleCanvasSize,
+    );
     if (!await request.inputFile.exists()) {
       throw const SubtitleBurnException('ไม่พบไฟล์วิดีโอสำหรับใส่ซับ');
     }
@@ -1888,6 +2036,9 @@ class FfmpegSubtitleBurnVideoProcessor {
       textColor: request.subtitleTextColor,
       subtitleAnimation: request.subtitleAnimation,
       protectStackedThaiMarks: protectStackedThaiMarks,
+      normalizedX: request.subtitleNormalizedX,
+      normalizedY: request.subtitleNormalizedY,
+      subtitleCanvasSize: request.subtitleCanvasSize,
     );
     final hasSubtitles = subtitleFileContent.content.trim().isNotEmpty;
     final hasEdits = hasSubtitles ||
@@ -1942,7 +2093,10 @@ class FfmpegSubtitleBurnVideoProcessor {
     }
 
     final outputFile = File(
-      '${workingDirectory.path}$separator${_subtitledFileName(request.fileName)}',
+      '${workingDirectory.path}$separator${editedVideoOutputFileName(
+        request.fileName,
+        hasSubtitles: hasSubtitles,
+      )}',
     );
     final progressFile = File(
       '${workingDirectory.path}${separator}render-progress.txt',
@@ -2198,6 +2352,7 @@ class FfmpegSubtitleBurnVideoProcessor {
         failureLogs: failureLogs,
         cancellationRequested: request.cancellationToken?.isCancelled ?? false,
         alreadyRetried: retriedWithStaticSrt,
+        preserveCustomPosition: request.subtitleNormalizedX != null,
       )) {
         break;
       }
@@ -2238,16 +2393,5 @@ class FfmpegSubtitleBurnVideoProcessor {
       sizeBytes: await outputFile.length(),
       colorFilterSkipped: colorFilterSkipped,
     );
-  }
-
-  String _subtitledFileName(String fileName) {
-    final trimmed = fileName.trim();
-    final dotIndex = trimmed.lastIndexOf('.');
-
-    if (dotIndex <= 0) {
-      return '${trimmed}_subtitled.mp4';
-    }
-
-    return '${trimmed.substring(0, dotIndex)}_subtitled.mp4';
   }
 }

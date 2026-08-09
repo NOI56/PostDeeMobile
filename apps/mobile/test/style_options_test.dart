@@ -5,35 +5,30 @@ import 'package:postdee_mobile/features/ai_editing/style_options.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 
 void main() {
-  test('caps subtitle words by the selected font size', () {
-    expect(
-      subtitleWordLimitForStyle(
-        subtitleStyle: 'large',
-        subtitleWords: 'full',
-      ),
-      3,
-    );
-    expect(
-      subtitleWordLimitForStyle(
-        subtitleStyle: 'medium',
-        subtitleWords: 'full',
-      ),
-      4,
-    );
-    expect(
-      subtitleWordLimitForStyle(
-        subtitleStyle: 'small',
-        subtitleWords: 'full',
-      ),
-      5,
-    );
-    expect(
-      subtitleWordLimitForStyle(
-        subtitleStyle: 'small',
-        subtitleWords: 'karaoke',
-      ),
-      1,
-    );
+  test('maps subtitle length presets to fixed 1/3/5 word limits', () {
+    for (final subtitleStyle in ['large', 'medium', 'small']) {
+      expect(
+        subtitleWordLimitForStyle(
+          subtitleStyle: subtitleStyle,
+          subtitleWords: 'karaoke',
+        ),
+        1,
+      );
+      expect(
+        subtitleWordLimitForStyle(
+          subtitleStyle: subtitleStyle,
+          subtitleWords: 'few',
+        ),
+        3,
+      );
+      expect(
+        subtitleWordLimitForStyle(
+          subtitleStyle: subtitleStyle,
+          subtitleWords: 'full',
+        ),
+        5,
+      );
+    }
   });
 
   test('target length adds a tail cut to fit', () {
@@ -292,6 +287,26 @@ void main() {
     );
 
     expect(out.map((segment) => segment.text), ['aaaa', 'bbbb']);
+  });
+
+  test('preserves validated API cue boundaries for every language', () {
+    const source = [
+      SubtitleSegment(
+        text: 'internationalization',
+        start: 2,
+        end: 4,
+      ),
+    ];
+
+    final out = prepareSubtitleSegmentsForLocalRender(
+      source,
+      language: 'en',
+      maximumCharacters: 8,
+      preserveValidatedCues: true,
+    );
+
+    expect(out, source);
+    expect(out.single.text, 'internationalization');
   });
 
   test('merges a subtitle fragment that is too short to read', () {

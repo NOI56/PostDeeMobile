@@ -7,8 +7,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_edit_audio_extractor.dart';
+import 'package:postdee_mobile/features/ai_editing/ai_edit_safety_flags.dart';
+import 'package:postdee_mobile/features/ai_editing/ai_edit_silence_verifier.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_editing_screen.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_edit_visual_proxy_extractor.dart';
+import 'package:postdee_mobile/features/ai_editing/ai_subtitle_frame_preview.dart';
 import 'package:postdee_mobile/features/ai_editing/beat_music_picker.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_draft_store.dart';
@@ -19,7 +22,7 @@ import 'package:video_player/video_player.dart';
 
 PickedVideoFile _createPickedVideoFixture(
   String name, {
-  double durationSeconds = 150,
+  double? durationSeconds = 150,
 }) {
   final directory = Directory.systemTemp.createTempSync('postdee-editor-');
   addTearDown(() {
@@ -65,6 +68,40 @@ class _MemorySubtitleDraftStore implements SubtitleDraftStore {
   Future<void> saveDraft(SubtitleProject project) async => saved = project;
 }
 
+class _FakeSubtitleFrameController implements AiSubtitleFrameController {
+  _FakeSubtitleFrameController({required this.fakeDuration});
+
+  final Duration fakeDuration;
+  final List<Duration> seeks = <Duration>[];
+
+  @override
+  Duration get duration => fakeDuration;
+
+  @override
+  Size get encodedSize => const Size(1080, 1920);
+
+  @override
+  int get rotationCorrectionDegrees => 0;
+
+  @override
+  Widget buildView() => const ColoredBox(
+        key: ValueKey('fake-ai-subtitle-frame'),
+        color: Colors.blue,
+      );
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<void> pause() async {}
+
+  @override
+  Future<void> seekTo(Duration position) async => seeks.add(position);
+
+  @override
+  Future<void> dispose() async {}
+}
+
 Future<AiEditAudioArtifact> _extractAudioFixture(File source) {
   final directory = Directory.systemTemp.createTempSync(
     'postdee-editor-audio-',
@@ -77,6 +114,17 @@ Future<AiEditAudioArtifact> _extractAudioFixture(File source) {
     AiEditAudioArtifact(file: file, workingDirectory: directory),
   );
 }
+
+Future<AiEditSilenceVerificationResult> _verifyAllSilenceCandidates({
+  required File sourceFile,
+  required double sourceDurationSeconds,
+  required List<SilenceCutRange> transcriptCandidates,
+  required List<SilenceCutRange> protectedSpeechRanges,
+}) async =>
+    AiEditSilenceVerificationResult(
+      cutRanges: List<SilenceCutRange>.unmodifiable(transcriptCandidates),
+      probeSucceeded: true,
+    );
 
 Future<AiEditVisualProxyArtifact> _extractVisualProxyFixture(File source) {
   final directory = Directory.systemTemp.createTempSync(
@@ -125,6 +173,19 @@ AiEditPrepareResult _createPrepareFixture({
     model: 'none',
   ),
   double transcriptDurationSeconds = 45,
+  List<ClipTranscriptSegment> transcriptSegments = const [
+    ClipTranscriptSegment(
+      text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
+      start: 0,
+      end: 10,
+    ),
+    ClipTranscriptSegment(
+      text: 'ราคาคุ้มมาก',
+      start: 11,
+      end: 20,
+    ),
+  ],
+  List<ClipTranscriptSegment>? transcriptBoundarySegments,
   List<ClipTranscriptSegment> subtitleSegments = const [
     ClipTranscriptSegment(
       text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
@@ -132,6 +193,9 @@ AiEditPrepareResult _createPrepareFixture({
       end: 10,
     ),
   ],
+  Map<int, List<ClipTranscriptSegment>> subtitleVariants =
+      const <int, List<ClipTranscriptSegment>>{},
+  String transcriptLanguage = 'th',
 }) =>
     AiEditPrepareResult(
       quota: const AiEditQuota(
@@ -145,20 +209,10 @@ AiEditPrepareResult _createPrepareFixture({
         renderMode: 'mobile-ffmpeg',
         transcript: AiEditTranscriptResult(
           text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
-          language: 'th',
+          language: transcriptLanguage,
           durationSeconds: transcriptDurationSeconds,
-          segments: const [
-            ClipTranscriptSegment(
-              text: 'รีวิวสินค้าชิ้นนี้ดีมาก',
-              start: 0,
-              end: 10,
-            ),
-            ClipTranscriptSegment(
-              text: 'ราคาคุ้มมาก',
-              start: 11,
-              end: 20,
-            ),
-          ],
+          segments: transcriptSegments,
+          boundarySegments: transcriptBoundarySegments ?? transcriptSegments,
           words: [],
           model: 'test',
         ),
@@ -171,6 +225,7 @@ AiEditPrepareResult _createPrepareFixture({
             wordsPerLine: 3,
             position: 'bottom',
           ),
+          variants: subtitleVariants,
         ),
         cutRanges: [...plan.cuts, const AiEditCut(start: 10, end: 11)],
         silenceRanges: const [AiEditCut(start: 10, end: 11)],
@@ -705,6 +760,25 @@ Future<void> _enableCapability(WidgetTester tester, String capabilityId) async {
   }
 }
 
+Future<void> _disableCapability(
+    WidgetTester tester, String capabilityId) async {
+  final capability = find.byKey(
+    ValueKey('ai-capability-$capabilityId'),
+    skipOffstage: false,
+  );
+  await tester.scrollUntilVisible(
+    capability,
+    350,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  if (tester.getSemantics(capability).flagsCollection.isToggled ==
+      Tristate.isTrue) {
+    await tester.tap(capability);
+    await tester.pumpAndSettle();
+  }
+}
+
 Future<void> _openAdvancedPanel(
     WidgetTester tester, String capabilityId) async {
   await _enableCapability(tester, capabilityId);
@@ -837,6 +911,1284 @@ void main() {
     );
 
     expect(subtitleWordsForRender(staleCue), isEmpty);
+  });
+
+  testWidgets('renders only locally verified silence intersections',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('silence.mp4');
+    BurnSubtitleRequest? burnRequest;
+    var verificationCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'silence-upload',
+            videoS3Key: 'uploads/silence.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          verifySilence: ({
+            required sourceFile,
+            required sourceDurationSeconds,
+            required transcriptCandidates,
+            required protectedSpeechRanges,
+          }) async {
+            verificationCalls += 1;
+            return const AiEditSilenceVerificationResult(
+              cutRanges: [SilenceCutRange(start: 10.1, end: 10.9)],
+              probeSucceeded: true,
+            );
+          },
+          burnVideo: (request) async {
+            burnRequest = request;
+            return _createRenderedVideoFixture('silence-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(verificationCalls, 1);
+    expect(
+      burnRequest!.silenceRanges
+          .where((range) => range.start >= 10 && range.end <= 11)
+          .map((range) => '${range.start}-${range.end}')
+          .toList(),
+      ['10.1-10.9'],
+    );
+  });
+
+  testWidgets('probe failure never renders raw silence candidates',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('silence-failed.mp4');
+    BurnSubtitleRequest? burnRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'silence-failed-upload',
+            videoS3Key: 'uploads/silence-failed.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          verifySilence: ({
+            required sourceFile,
+            required sourceDurationSeconds,
+            required transcriptCandidates,
+            required protectedSpeechRanges,
+          }) async =>
+              const AiEditSilenceVerificationResult.failed(),
+          burnVideo: (request) async {
+            burnRequest = request;
+            return _createRenderedVideoFixture('silence-failed-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      burnRequest!.silenceRanges.any(
+        (range) => range.start < 11 && range.end > 10,
+      ),
+      isFalse,
+    );
+    expect(
+      find.byKey(const ValueKey('ai-silence-verification-retry')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('retries only silence verification without preparing again',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('silence-retry.mp4');
+    var prepareCalls = 0;
+    var verificationCalls = 0;
+    final burnRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'silence-retry-upload',
+            videoS3Key: 'uploads/silence-retry.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          verifySilence: ({
+            required sourceFile,
+            required sourceDurationSeconds,
+            required transcriptCandidates,
+            required protectedSpeechRanges,
+          }) async {
+            verificationCalls += 1;
+            return verificationCalls == 1
+                ? const AiEditSilenceVerificationResult.failed()
+                : const AiEditSilenceVerificationResult(
+                    cutRanges: [
+                      SilenceCutRange(start: 10.1, end: 10.9),
+                    ],
+                    probeSucceeded: true,
+                  );
+          },
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            return _createRenderedVideoFixture(
+              'silence-retry-result-${burnRequests.length}.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(prepareCalls, 1);
+    expect(verificationCalls, 1);
+    final retry = find.byKey(
+      const ValueKey('ai-silence-verification-retry'),
+    );
+    expect(retry, findsOneWidget);
+
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+
+    expect(prepareCalls, 1);
+    expect(verificationCalls, 2);
+    expect(
+      burnRequests.last.silenceRanges
+          .where((range) => range.start >= 10 && range.end <= 11)
+          .map((range) => '${range.start}-${range.end}'),
+      contains('10.1-10.9'),
+    );
+  });
+
+  testWidgets('successful empty silence verification reports no safe range',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('silence-empty.mp4');
+    BurnSubtitleRequest? burnRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'silence-empty-upload',
+            videoS3Key: 'uploads/silence-empty.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          verifySilence: ({
+            required sourceFile,
+            required sourceDurationSeconds,
+            required transcriptCandidates,
+            required protectedSpeechRanges,
+          }) async =>
+              const AiEditSilenceVerificationResult(
+            cutRanges: [],
+            probeSucceeded: true,
+          ),
+          burnVideo: (request) async {
+            burnRequest = request;
+            return _createRenderedVideoFixture('silence-empty-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      burnRequest!.silenceRanges.any(
+        (range) => range.start < 11 && range.end > 10,
+      ),
+      isFalse,
+    );
+    final summary = find.byKey(
+      const ValueKey('ai-review-analysis-summary'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      summary,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('ตรวจแล้ว · ไม่พบช่วงเงียบที่ปลอดภัย'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('ai-review-capability-silence')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('retry success with no safe silence clears the warning',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('silence-retry-empty.mp4');
+    var prepareCalls = 0;
+    var verificationCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'silence-retry-empty-upload',
+            videoS3Key: 'uploads/silence-retry-empty.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          verifySilence: ({
+            required sourceFile,
+            required sourceDurationSeconds,
+            required transcriptCandidates,
+            required protectedSpeechRanges,
+          }) async {
+            verificationCalls += 1;
+            return verificationCalls == 1
+                ? const AiEditSilenceVerificationResult.failed()
+                : const AiEditSilenceVerificationResult(
+                    cutRanges: [],
+                    probeSucceeded: true,
+                  );
+          },
+          burnVideo: (_) async =>
+              _createRenderedVideoFixture('silence-retry-empty-result.mp4'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    final retry = find.byKey(
+      const ValueKey('ai-silence-verification-retry'),
+    );
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+
+    expect(prepareCalls, 1);
+    expect(verificationCalls, 2);
+    expect(retry, findsNothing);
+    final summary = find.byKey(
+      const ValueKey('ai-review-analysis-summary'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      summary,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('ตรวจแล้ว · ไม่พบช่วงเงียบที่ปลอดภัย'), findsOneWidget);
+  });
+
+  testWidgets(
+      'reuses silence verification for review subtitle and export but not a new source',
+      (tester) async {
+    final sourceA = _createPickedVideoFixture(
+      'silence-cache-a.mp4',
+      durationSeconds: 45,
+    );
+    final sourceB = _createPickedVideoFixture(
+      'silence-cache-b.mp4',
+      durationSeconds: 45,
+    );
+    final sources = [sourceA, sourceB];
+    var sourceIndex = 0;
+    var prepareCalls = 0;
+    var verificationCalls = 0;
+    final burnRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => sources[sourceIndex++],
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'silence-cache-upload',
+            videoS3Key: 'uploads/silence-cache.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          verifySilence: ({
+            required sourceFile,
+            required sourceDurationSeconds,
+            required transcriptCandidates,
+            required protectedSpeechRanges,
+          }) async {
+            verificationCalls += 1;
+            return const AiEditSilenceVerificationResult(
+              cutRanges: [SilenceCutRange(start: 10.1, end: 10.9)],
+              probeSucceeded: true,
+            );
+          },
+          subtitleDraftStore: _MemorySubtitleDraftStore(),
+          subtitleStudioLauncher:
+              (context, sourceFile, initialProject, draftStore) async =>
+                  initialProject.copyWith(
+            cues: [
+              initialProject.cues.first.copyWith(text: 'ซับที่แก้แล้ว'),
+              ...initialProject.cues.skip(1),
+            ],
+            revision: initialProject.revision + 1,
+            updatedAt: DateTime.utc(2026, 8, 9),
+          ),
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            return _createRenderedVideoFixture(
+              'silence-cache-result-${burnRequests.length}.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'subtitle');
+    await _enableCapability(tester, 'silence');
+    await _enableCapability(tester, 'color');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    expect((prepareCalls, verificationCalls), (1, 1));
+
+    final colorToggle = find.byKey(
+      const ValueKey('ai-review-capability-color'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      colorToggle,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(colorToggle);
+    await tester.pumpAndSettle();
+    expect(verificationCalls, 1);
+
+    final editSubtitles = find.byKey(
+      const ValueKey('ai-review-edit-subtitles'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      editSubtitles,
+      -300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(editSubtitles);
+    await tester.pumpAndSettle();
+    expect(verificationCalls, 1);
+
+    final postButton = find.byKey(const ValueKey('ai-review-post'));
+    tester.widget<ElevatedButton>(postButton).onPressed!();
+    await tester.pumpAndSettle();
+    expect(verificationCalls, 1);
+    Navigator.of(tester.element(find.byType(UploaderScreen))).pop();
+    await tester.pumpAndSettle();
+
+    final setupButton = find.text('ตั้งค่าใหม่', skipOffstage: false);
+    await tester.scrollUntilVisible(
+      setupButton,
+      -350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(setupButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-remove-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect((prepareCalls, verificationCalls), (2, 2));
+    expect(burnRequests.last.inputFile.path, sourceB.path);
+  });
+
+  testWidgets('verified silence rollback flag disables verifier and raw cuts',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('silence-rollback.mp4');
+    AiEditPrepareRequest? prepareRequest;
+    BurnSubtitleRequest? burnRequest;
+    var verificationCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          safetyFlags: const AiEditSafetyFlags(
+            verifiedSilenceEnabled: false,
+          ),
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'silence-rollback-upload',
+            videoS3Key: 'uploads/silence-rollback.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (request) async {
+            prepareRequest = request;
+            return _createPrepareFixture();
+          },
+          verifySilence: ({
+            required sourceFile,
+            required sourceDurationSeconds,
+            required transcriptCandidates,
+            required protectedSpeechRanges,
+          }) async {
+            verificationCalls += 1;
+            return _verifyAllSilenceCandidates(
+              sourceFile: sourceFile,
+              sourceDurationSeconds: sourceDurationSeconds,
+              transcriptCandidates: transcriptCandidates,
+              protectedSpeechRanges: protectedSpeechRanges,
+            );
+          },
+          burnVideo: (request) async {
+            burnRequest = request;
+            return _createRenderedVideoFixture('silence-rollback-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'silence');
+    await _enableCapability(tester, 'subtitle');
+    await _enableCapability(tester, 'color');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(prepareRequest!.targetDurationSeconds, 30);
+    expect(prepareRequest!.capabilities['silence'], isFalse);
+    expect(prepareRequest!.capabilities['subtitle'], isTrue);
+    expect(prepareRequest!.capabilities['color'], isTrue);
+    expect(verificationCalls, 0);
+    expect(burnRequest!.filterIndex, isNonZero);
+    expect(burnRequest!.segments, isNotEmpty);
+    expect(
+      burnRequest!.silenceRanges.any(
+        (range) => range.start < 11 && range.end > 10,
+      ),
+      isFalse,
+    );
+  });
+
+  testWidgets(
+      'automatic repeat rollback keeps detections read only on every render',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('repeat-rollback.mp4');
+    AiEditPrepareRequest? prepareRequest;
+    final burnRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          safetyFlags: const AiEditSafetyFlags(
+            automaticRepeatCutsEnabled: false,
+          ),
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'repeat-rollback-upload',
+            videoS3Key: 'uploads/repeat-rollback.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (request) async {
+            prepareRequest = request;
+            return _createSpeechAndSubtitlePrepareFixture();
+          },
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            return _createRenderedVideoFixture(
+              'repeat-rollback-${burnRequests.length}.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'filler');
+    await _enableCapability(tester, 'subtitle');
+    await _enableCapability(tester, 'color');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(prepareRequest!.targetDurationSeconds, 30);
+    expect(prepareRequest!.capabilities['filler'], isTrue);
+    expect(prepareRequest!.capabilities['subtitle'], isTrue);
+    expect(prepareRequest!.capabilities['color'], isTrue);
+    final readOnly = find.byKey(
+      const ValueKey('ai-repeat-read-only'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      readOnly,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(readOnly, findsOneWidget);
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byKey(
+              const ValueKey('ai-repeated-remove-we-cut'),
+              skipOffstage: false,
+            ),
+          )
+          .onChanged,
+      isNull,
+    );
+
+    final colorToggle = find.byKey(
+      const ValueKey('ai-review-capability-color'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      colorToggle,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(colorToggle);
+    await tester.pumpAndSettle();
+
+    final postButton = find.byKey(const ValueKey('ai-review-post'));
+    tester.widget<ElevatedButton>(postButton).onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(burnRequests, hasLength(3));
+    for (final request in burnRequests) {
+      expect(request.segments, isNotEmpty);
+      expect(
+        request.silenceRanges.any(
+          (range) =>
+              (range.start < 3.5 && range.end > 3) ||
+              (range.start < 8.5 && range.end > 8),
+        ),
+        isFalse,
+      );
+    }
+  });
+
+  testWidgets('failed pending source keeps and exports the accepted source',
+      (tester) async {
+    final sourceA = _createPickedVideoFixture('accepted-source-a.mp4');
+    final sourceB = _createPickedVideoFixture('pending-source-b.mp4');
+    final resultA = _createRenderedVideoFixture('accepted-result-a.mp4');
+    final exportA = _createRenderedVideoFixture('accepted-export-a.mp4');
+    final picked = <PickedVideoFile>[sourceA, sourceB];
+    final burnInputs = <String>[];
+    final burnSubtitleTexts = <List<String>>[];
+    var pickIndex = 0;
+    var prepareCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => picked[pickIndex++],
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'active-source-upload',
+            videoS3Key: 'uploads/active-source.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            final text = prepareCalls == 1 ? 'ซับคลิปเอ' : 'ซับคลิปบี';
+            final segments = [
+              ClipTranscriptSegment(text: text, start: 0, end: 10),
+            ];
+            return _createPrepareFixture(
+              transcriptSegments: segments,
+              transcriptBoundarySegments: segments,
+              subtitleSegments: segments,
+            );
+          },
+          burnVideo: (request) async {
+            burnInputs.add(request.inputFile.path);
+            burnSubtitleTexts.add(
+              request.segments.map((segment) => segment.text).toList(),
+            );
+            if (request.inputFile.path == sourceB.path) {
+              throw const SubtitleBurnException('render B failed');
+            }
+            return request.renderPurpose == VideoRenderPurpose.export
+                ? exportA
+                : resultA;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'subtitle');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('accepted-result-a.mp4'), findsOneWidget);
+
+    await tester.tap(find.text('ตั้งค่าใหม่'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-remove-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('accepted-result-a.mp4'), findsOneWidget);
+    expect(find.textContaining('ผลลัพธ์เดิมยังอยู่'), findsOneWidget);
+    final postButton = find.byKey(const ValueKey('ai-review-post'));
+    await tester.ensureVisible(postButton);
+    await tester.pumpAndSettle();
+    tester.widget<ElevatedButton>(postButton).onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(burnInputs, [sourceA.path, sourceB.path, sourceA.path]);
+    expect(burnSubtitleTexts, [
+      ['ซับคลิปเอ'],
+      ['ซับคลิปบี'],
+      ['ซับคลิปเอ'],
+    ]);
+    final uploader = tester.widget<UploaderScreen>(find.byType(UploaderScreen));
+    expect(uploader.initialVideoPath, exportA.file.path);
+  });
+
+  testWidgets('subtitle project fingerprint participates in render caching',
+      (tester) async {
+    final source = _createPickedVideoFixture(
+      'project-cache-source.mp4',
+      durationSeconds: 45,
+    );
+    final burnRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => source,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'project-cache-upload',
+            videoS3Key: 'uploads/project-cache-source.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          subtitleDraftStore: _MemorySubtitleDraftStore(),
+          subtitleStudioLauncher:
+              (context, sourceFile, initialProject, draftStore) async =>
+                  initialProject.copyWith(
+            recipeFingerprint: 'edited-project-fingerprint',
+            revision: initialProject.revision + 1,
+            updatedAt: DateTime.utc(2026, 8, 9),
+          ),
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            return _createRenderedVideoFixture(
+              'project-cache-${burnRequests.length}.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'subtitle');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final editSubtitles = find.byKey(
+      const ValueKey('ai-review-edit-subtitles'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      editSubtitles,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(editSubtitles);
+    await tester.pumpAndSettle();
+
+    expect(burnRequests, hasLength(2));
+    expect(
+      burnRequests.last.segments.map((segment) => segment.text),
+      burnRequests.first.segments.map((segment) => segment.text),
+    );
+  });
+
+  testWidgets('color-only original duration checks Pro then renders locally',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('color-local.mp4');
+    var extractCalls = 0;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
+    var prepareCalls = 0;
+    var renderCalls = 0;
+    BurnSubtitleRequest? burnRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 14,
+            remainingMinutes: 186,
+          ),
+          extractAudio: (source) async {
+            extractCalls += 1;
+            return _extractAudioFixture(source);
+          },
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'must-not-upload',
+              videoS3Key: 'uploads/must-not-upload.mp4',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async => uploadCalls += 1,
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          burnVideo: (request) async {
+            renderCalls += 1;
+            burnRequest = request;
+            return _createRenderedVideoFixture('color-local-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'color');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      [extractCalls, createUploadCalls, uploadCalls, prepareCalls],
+      [0, 0, 0, 0],
+    );
+    expect(renderCalls, 1);
+    expect(burnRequest!.segments, isEmpty);
+    expect(burnRequest!.filterIndex, greaterThan(0));
+    expect(find.textContaining('เหลือ 186 นาที'), findsWidgets);
+  });
+
+  testWidgets('color-only unavailable duration fails without side effects',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'color-duration-unavailable.mp4',
+      durationSeconds: null,
+    );
+    var extractCalls = 0;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
+    var prepareCalls = 0;
+    var renderCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 14,
+            remainingMinutes: 186,
+          ),
+          extractAudio: (source) async {
+            extractCalls += 1;
+            return _extractAudioFixture(source);
+          },
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'duration-must-not-upload',
+              videoS3Key: 'uploads/duration-must-not-upload.mp4',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async => uploadCalls += 1,
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          burnVideo: (_) async {
+            renderCalls += 1;
+            return _createRenderedVideoFixture('must-not-render.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(
+        const ValueKey('ai-duration-unavailable'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    await _enableCapability(tester, 'color');
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.byKey(const ValueKey('ai-process-button')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      [extractCalls, createUploadCalls, uploadCalls, prepareCalls, renderCalls],
+      [0, 0, 0, 0, 0],
+    );
+    expect(find.textContaining('เหลือ 186 นาที'), findsWidgets);
+  });
+
+  testWidgets('color-only Basic remains behind the Pro gate', (tester) async {
+    final pickedVideo = _createPickedVideoFixture('color-basic.mp4');
+    var extractCalls = 0;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
+    var prepareCalls = 0;
+    var renderCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('BASIC'),
+          extractAudio: (source) async {
+            extractCalls += 1;
+            return _extractAudioFixture(source);
+          },
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'basic-must-not-upload',
+              videoS3Key: 'uploads/basic-must-not-upload.mp4',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async => uploadCalls += 1,
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          burnVideo: (_) async {
+            renderCalls += 1;
+            return _createRenderedVideoFixture('basic-must-not-render.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'color');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('ปลดล็อก AI ตัดต่อด้วย Pro'),
+      findsOneWidget,
+    );
+    expect(
+      [extractCalls, createUploadCalls, uploadCalls, prepareCalls, renderCalls],
+      [0, 0, 0, 0, 0],
+    );
+  });
+
+  testWidgets('color plus shortening still prepares audio exactly once',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('color-shortened.mp4');
+    var extractCalls = 0;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
+    var prepareCalls = 0;
+    AiEditPrepareRequest? prepareRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: (source) async {
+            extractCalls += 1;
+            return _extractAudioFixture(source);
+          },
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'color-shortened-upload',
+              videoS3Key: 'uploads/color-shortened.mp4',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async => uploadCalls += 1,
+          prepareEdit: (request) async {
+            prepareCalls += 1;
+            prepareRequest = request;
+            return _createPrepareFixture();
+          },
+          burnVideo: (_) async =>
+              _createRenderedVideoFixture('color-shortened-result.mp4'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'color');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      [extractCalls, createUploadCalls, uploadCalls, prepareCalls],
+      [1, 1, 1, 1],
+    );
+    expect(prepareRequest!.targetDurationSeconds, 30);
+  });
+
+  testWidgets('color-only processing copy never says it prepares audio',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('color-local-copy.mp4');
+    final pendingRender = Completer<BurnedSubtitleResult>();
+    addTearDown(() {
+      if (!pendingRender.isCompleted) {
+        pendingRender.complete(
+          _createRenderedVideoFixture('color-local-copy-result.mp4'),
+        );
+      }
+    });
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: (source) => _extractAudioFixture(source),
+          createUpload: (_) async => const UploadResult(
+            id: 'copy-must-not-upload',
+            videoS3Key: 'uploads/copy-must-not-upload.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (_) => pendingRender.future,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'color');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('กำลังปรับสีและแสงบนเครื่อง...'), findsOneWidget);
+    expect(find.textContaining('เตรียมเสียง'), findsNothing);
+
+    pendingRender.complete(
+      _createRenderedVideoFixture('color-local-copy-result.mp4'),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('color-only render retry stays local and keeps quota',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('color-local-retry.mp4');
+    var extractCalls = 0;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
+    var prepareCalls = 0;
+    var renderCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 14,
+            remainingMinutes: 186,
+          ),
+          extractAudio: (source) async {
+            extractCalls += 1;
+            return _extractAudioFixture(source);
+          },
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'retry-must-not-upload',
+              videoS3Key: 'uploads/retry-must-not-upload.mp4',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async => uploadCalls += 1,
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          burnVideo: (_) async {
+            renderCalls += 1;
+            if (renderCalls == 1) {
+              throw const SubtitleBurnException('local render failed');
+            }
+            return _createRenderedVideoFixture('color-local-retry-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'color');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('local render failed'), findsOneWidget);
+
+    final retryButton = tester.widget<ElevatedButton>(
+      find.byKey(const ValueKey('ai-process-button')),
+    );
+    retryButton.onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(
+      [extractCalls, createUploadCalls, uploadCalls, prepareCalls],
+      [0, 0, 0, 0],
+    );
+    expect(renderCalls, 2);
+    expect(find.textContaining('เหลือ 186 นาที'), findsWidgets);
+  });
+
+  testWidgets(
+      'failed local color source keeps accepted subtitle project and export',
+      (tester) async {
+    final sourceA = _createPickedVideoFixture(
+      'accepted-local-source-a.mp4',
+      durationSeconds: 45,
+    );
+    final sourceB = _createPickedVideoFixture(
+      'pending-local-source-b.mp4',
+      durationSeconds: 45,
+    );
+    final resultA = _createRenderedVideoFixture('accepted-local-result-a.mp4');
+    final exportA = _createRenderedVideoFixture('accepted-local-export-a.mp4');
+    final sources = [sourceA, sourceB];
+    final burnRequests = <BurnSubtitleRequest>[];
+    var sourceIndex = 0;
+    var extractCalls = 0;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
+    var prepareCalls = 0;
+    var quotaLoadCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => sources[sourceIndex++],
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          loadAiEditQuota: () async {
+            quotaLoadCalls += 1;
+            final remaining = quotaLoadCalls == 1 ? 186 : 42;
+            return AiEditQuota(
+              limitMinutes: 200,
+              usedMinutes: 200 - remaining,
+              remainingMinutes: remaining,
+            );
+          },
+          extractAudio: (source) async {
+            extractCalls += 1;
+            return _extractAudioFixture(source);
+          },
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'accepted-local-upload',
+              videoS3Key: 'uploads/accepted-local-source-a.mp4',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async => uploadCalls += 1,
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            const segments = [
+              ClipTranscriptSegment(
+                text: 'ซับของผลงานเอ',
+                start: 0,
+                end: 10,
+              ),
+            ];
+            return _createPrepareFixture(
+              transcriptSegments: segments,
+              transcriptBoundarySegments: segments,
+              subtitleSegments: segments,
+            );
+          },
+          burnVideo: (request) async {
+            burnRequests.add(request);
+            if (request.inputFile.path == sourceB.path) {
+              throw const SubtitleBurnException('local render B failed');
+            }
+            return request.renderPurpose == VideoRenderPurpose.export
+                ? exportA
+                : resultA;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'subtitle');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('accepted-local-result-a.mp4'), findsOneWidget);
+
+    final setupButton = find.text('ตั้งค่าใหม่', skipOffstage: false);
+    await tester.scrollUntilVisible(
+      setupButton,
+      -350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(setupButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-remove-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _disableCapability(tester, 'subtitle');
+    await _enableCapability(tester, 'color');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('accepted-local-result-a.mp4'), findsOneWidget);
+    expect(find.textContaining('ผลลัพธ์เดิมยังอยู่'), findsOneWidget);
+    expect(
+      [extractCalls, createUploadCalls, uploadCalls, prepareCalls],
+      [1, 1, 1, 1],
+    );
+    expect(quotaLoadCalls, greaterThanOrEqualTo(2));
+    expect(burnRequests, hasLength(2));
+    expect(burnRequests[0].inputFile.path, sourceA.path);
+    expect(
+      burnRequests[0].segments.map((segment) => segment.text),
+      ['ซับของผลงานเอ'],
+    );
+    expect(burnRequests[1].inputFile.path, sourceB.path);
+    expect(burnRequests[1].segments, isEmpty);
+    expect(burnRequests[1].filterIndex, greaterThan(0));
+
+    final postButton = find.byKey(const ValueKey('ai-review-post'));
+    await tester.ensureVisible(postButton);
+    await tester.pumpAndSettle();
+    tester.widget<ElevatedButton>(postButton).onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(burnRequests, hasLength(3));
+    expect(burnRequests[2].inputFile.path, sourceA.path);
+    expect(
+      burnRequests[2].segments.map((segment) => segment.text),
+      ['ซับของผลงานเอ'],
+    );
+    final uploader = tester.widget<UploaderScreen>(find.byType(UploaderScreen));
+    expect(uploader.initialVideoPath, exportA.file.path);
   });
 
   testWidgets('shows remaining AI editing minutes on setup', (tester) async {
@@ -1786,6 +3138,365 @@ void main() {
     expect(find.byKey(const ValueKey('ai-result-review')), findsNothing);
   });
 
+  testWidgets('uses transcript boundaries without rendering subtitles',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'boundary-only.mp4',
+      durationSeconds: 45,
+    );
+    AiEditPrepareRequest? prepareRequest;
+    BurnSubtitleRequest? renderRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'boundary-upload',
+            videoS3Key: 'uploads/boundary-only.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (request) async {
+            prepareRequest = request;
+            return _createPrepareFixture(
+              transcriptDurationSeconds: 45,
+              transcriptSegments: const [
+                ClipTranscriptSegment(
+                  text: 'เปิดเรื่องสมบูรณ์',
+                  start: 0,
+                  end: 4,
+                ),
+                ClipTranscriptSegment(
+                  text: 'ประโยคที่คร่อมขอบเวลา',
+                  start: 29.5,
+                  end: 30.6,
+                ),
+              ],
+              subtitleSegments: const [],
+              plan: const AiEditPlanResult(
+                cuts: [AiEditCut(start: 30, end: 45)],
+                summary: 'keep the first story window',
+                model: 'test-gemini',
+              ),
+            );
+          },
+          burnVideo: (request) async {
+            renderRequest = request;
+            return _createRenderedVideoFixture('boundary-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(renderRequest, isNotNull);
+    expect(renderRequest!.segments, isEmpty);
+    expect(
+      renderRequest!.silenceRanges,
+      contains(
+        isA<SilenceCutRange>()
+            .having((range) => range.start, 'start', closeTo(30.6, 0.01))
+            .having((range) => range.end, 'end', closeTo(45, 0.01)),
+      ),
+    );
+    expect(renderRequest!.outputDurationSeconds, closeTo(30.6, 0.01));
+    expect(prepareRequest, isNotNull);
+    expect(prepareRequest!.capabilities.values, everyElement(isFalse));
+    expect(
+      find.byKey(const ValueKey('ai-boundary-evidence-unavailable')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('reports missing boundary evidence without inventing a new cut',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'missing-boundary.mp4',
+      durationSeconds: 45,
+    );
+    BurnSubtitleRequest? renderRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'missing-boundary-upload',
+            videoS3Key: 'uploads/missing-boundary.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(
+            transcriptDurationSeconds: 45,
+            transcriptSegments: const [],
+            transcriptBoundarySegments: const [],
+            subtitleSegments: const [],
+            plan: const AiEditPlanResult(
+              cuts: [AiEditCut(start: 30, end: 45)],
+              summary: 'planner story window',
+              model: 'test-gemini',
+            ),
+          ),
+          burnVideo: (request) async {
+            renderRequest = request;
+            return _createRenderedVideoFixture('missing-boundary-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(renderRequest, isNotNull);
+    expect(renderRequest!.segments, isEmpty);
+    expect(
+      renderRequest!.silenceRanges,
+      contains(
+        isA<SilenceCutRange>()
+            .having((range) => range.start, 'start', closeTo(30, 0.01))
+            .having((range) => range.end, 'end', closeTo(45, 0.01)),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('ai-boundary-evidence-unavailable')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'aligns a leading plan cut to transcript boundary when subtitles are off',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'leading-boundary.mp4',
+      durationSeconds: 45,
+    );
+    AiEditPrepareRequest? prepareRequest;
+    BurnSubtitleRequest? renderRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'leading-boundary-upload',
+            videoS3Key: 'uploads/leading-boundary.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (request) async {
+            prepareRequest = request;
+            return _createPrepareFixture(
+              transcriptDurationSeconds: 45,
+              transcriptSegments: const [
+                ClipTranscriptSegment(
+                  text: 'ประโยคเปิดที่คร่อมจุดตัด',
+                  start: 9.4,
+                  end: 10.5,
+                ),
+              ],
+              subtitleSegments: const [],
+              plan: const AiEditPlanResult(
+                cuts: [AiEditCut(start: 0, end: 10)],
+                summary: 'remove the incomplete opening',
+                model: 'test-gemini',
+              ),
+            );
+          },
+          burnVideo: (request) async {
+            renderRequest = request;
+            return _createRenderedVideoFixture('leading-boundary-result.mp4');
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(renderRequest, isNotNull);
+    expect(renderRequest!.segments, isEmpty);
+    expect(
+      renderRequest!.silenceRanges,
+      contains(
+        isA<SilenceCutRange>()
+            .having((range) => range.start, 'start', closeTo(0, 0.01))
+            .having((range) => range.end, 'end', closeTo(9.25, 0.01)),
+      ),
+    );
+    expect(prepareRequest, isNotNull);
+    expect(prepareRequest!.capabilities.values, everyElement(isFalse));
+  });
+
+  testWidgets('clears a stale boundary warning for a reliable new source',
+      (tester) async {
+    final missingVideo = _createPickedVideoFixture(
+      'warning-source-a.mp4',
+      durationSeconds: 45,
+    );
+    final reliableVideo = _createPickedVideoFixture(
+      'warning-source-b.mp4',
+      durationSeconds: 45,
+    );
+    var pickCalls = 0;
+    var prepareCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async =>
+              pickCalls++ == 0 ? missingVideo : reliableVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'warning-boundary-upload',
+            videoS3Key: 'uploads/warning-boundary.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture(
+              transcriptDurationSeconds: 45,
+              transcriptSegments: prepareCalls == 1
+                  ? const []
+                  : const [
+                      ClipTranscriptSegment(
+                        text: 'ประโยคที่คร่อมขอบเวลา',
+                        start: 29.5,
+                        end: 30.6,
+                      ),
+                    ],
+              transcriptBoundarySegments: prepareCalls == 1
+                  ? const []
+                  : const [
+                      ClipTranscriptSegment(
+                        text: 'ประโยคที่คร่อมขอบเวลา',
+                        start: 29.5,
+                        end: 30.6,
+                      ),
+                    ],
+              subtitleSegments: const [],
+              plan: const AiEditPlanResult(
+                cuts: [AiEditCut(start: 30, end: 45)],
+                summary: 'planner story window',
+                model: 'test-gemini',
+              ),
+            );
+          },
+          burnVideo: (_) async =>
+              _createRenderedVideoFixture('warning-boundary-result.mp4'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ai-boundary-evidence-unavailable')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('ตั้งค่าใหม่'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-remove-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(prepareCalls, 2);
+    expect(
+      find.byKey(const ValueKey('ai-boundary-evidence-unavailable')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('clears a stale boundary warning for original duration',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'warning-original.mp4',
+      durationSeconds: 45,
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'warning-original-upload',
+            videoS3Key: 'uploads/warning-original.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(
+            transcriptDurationSeconds: 45,
+            transcriptSegments: const [],
+            transcriptBoundarySegments: const [],
+            subtitleSegments: const [],
+            plan: const AiEditPlanResult(
+              cuts: [AiEditCut(start: 30, end: 45)],
+              summary: 'planner story window',
+              model: 'test-gemini',
+            ),
+          ),
+          burnVideo: (_) async =>
+              _createRenderedVideoFixture('warning-original-result.mp4'),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ai-boundary-evidence-unavailable')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('ตั้งค่าใหม่'));
+    await tester.pumpAndSettle();
+    await _setTargetDuration(tester, 45);
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('ai-boundary-evidence-unavailable')),
+      findsNothing,
+    );
+  });
+
   testWidgets('renders then stays on the AI result review screen',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -2053,8 +3764,7 @@ void main() {
     SubtitleProject? studioInput;
     final renderRequests = <BurnSubtitleRequest>[];
     var studioLaunches = 0;
-    const editedSubtitle =
-        'ซับที่แก้แล้วมีข้อความภาษาไทยยาวเกินขอบและต้องแบ่งให้อ่านง่าย';
+    const editedSubtitle = 'ซับที่แก้แล้วอ่านง่ายขึ้น';
 
     await tester.pumpWidget(
       _testApp(
@@ -2163,6 +3873,68 @@ void main() {
       renderRequest.subtitleAlignment,
       BurnSubtitleAlignment.middle,
     );
+  });
+
+  testWidgets('keeps the reviewed video when a manual subtitle cannot fit',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final pickedVideo = _createPickedVideoFixture('subtitle-too-long.mp4');
+    final renderedVideo = _createRenderedVideoFixture('subtitle-safe.mp4');
+    final renderRequests = <BurnSubtitleRequest>[];
+    final overlongText = List.filled(80, 'ยาว').join();
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          pickVideo: () async => pickedVideo,
+          extractAudio: _extractAudioFixture,
+          createUpload: (_) async => const UploadResult(
+            id: 'subtitle-too-long-upload',
+            videoS3Key: 'uploads/subtitle-too-long.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          subtitleDraftStore: _MemorySubtitleDraftStore(),
+          subtitleStudioLauncher:
+              (context, sourceFile, initialProject, draftStore) async =>
+                  initialProject.copyWith(
+            cues: [initialProject.cues.first.copyWith(text: overlongText)],
+            revision: initialProject.revision + 1,
+            updatedAt: DateTime.utc(2026, 8, 8),
+          ),
+          burnVideo: (request) async {
+            renderRequests.add(request);
+            return renderedVideo;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'subtitle');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('ai-review-edit-subtitles')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.drag(
+      find.byType(Scrollable).first,
+      const Offset(0, -180),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-review-edit-subtitles')));
+    await tester.pumpAndSettle();
+
+    expect(renderRequests, hasLength(1));
+    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
+    expect(find.textContaining('ข้อความซับยาวเกินพื้นที่'), findsOneWidget);
   });
 
   testWidgets('stops before upload when the selected video has no audio',
@@ -2281,7 +4053,10 @@ void main() {
 
   testWidgets('compares original and AI durations and still posts the AI file',
       (tester) async {
-    final pickedVideo = _createPickedVideoFixture('compare-original.mp4');
+    final pickedVideo = _createPickedVideoFixture(
+      'compare-original.mp4',
+      durationSeconds: 45,
+    );
     final renderedVideo = _createRenderedVideoFixture('compare-result.mp4');
 
     await tester.pumpWidget(
@@ -2635,10 +4410,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
-    expect(prepareRequest?.capabilities['subtitle'], isFalse);
-    expect(prepareRequest?.capabilities['silence'], isFalse);
-    expect(prepareRequest?.capabilities['filler'], isFalse);
-    expect(prepareRequest?.capabilities['color'], isTrue);
+    expect(
+      prepareRequest,
+      isNull,
+      reason: 'color-only at original duration must stay on the device',
+    );
     expect(burnRequest?.segments, isEmpty);
     expect(
       burnRequest?.silenceRanges
@@ -2669,6 +4445,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u1',
             videoS3Key: 'uploads/original.mp4',
@@ -2941,6 +4718,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-pending-preview',
             videoS3Key: 'uploads/pending-preview.mp4',
@@ -3013,6 +4791,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-failure',
             videoS3Key: 'uploads/original-failure.mp4',
@@ -3079,6 +4858,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-setup-change',
             videoS3Key: 'uploads/setup-change.mp4',
@@ -3151,6 +4931,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-setup-coarse-fallback',
             videoS3Key: 'uploads/setup-coarse-fallback.mp4',
@@ -3219,6 +5000,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-timing-retry',
             videoS3Key: 'uploads/timing-retry-source.mp4',
@@ -3292,6 +5074,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-setup-failure',
             videoS3Key: 'uploads/setup-failure.mp4',
@@ -3404,6 +5187,237 @@ void main() {
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
   });
 
+  testWidgets(
+      'changing subtitle presentation reuses analysis and renders the new style',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('subtitle-style-cache.mp4');
+    var prepareCalls = 0;
+    final renderRequests = <BurnSubtitleRequest>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-subtitle-style-cache',
+            videoS3Key: 'uploads/subtitle-style-cache.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          burnVideo: (request) async {
+            renderRequests.add(request);
+            return _createRenderedVideoFixture(
+              'subtitle-style-cache-${renderRequests.length}.mp4',
+            );
+          },
+          reviewVideoControllerFactory: (_) => _FakeReviewVideoController(
+            fakeDuration: const Duration(seconds: 30),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'subtitle');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('ตั้งค่าใหม่'));
+    await tester.pumpAndSettle();
+    final disclosure = find.byKey(
+      const ValueKey('ai-advanced-disclosure-subtitle'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      disclosure,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    tester.widget<Semantics>(disclosure).properties.onTap!.call();
+    await tester.pumpAndSettle();
+    final mintTextColor = find.byKey(
+      ValueKey(
+        'ai-subtitle-text-color-${const Color(0xFF00E5A8).toARGB32()}',
+      ),
+      skipOffstage: false,
+    );
+    tester.widget<Semantics>(mintTextColor).properties.onTap!.call();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(prepareCalls, 1);
+    expect(renderRequests, hasLength(2));
+    expect(renderRequests.last.subtitleTextColor, '#00E5A8');
+  });
+
+  testWidgets(
+      'switching subtitle density uses cached variants without preparing again',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('subtitle-density-cache.mp4');
+    var prepareCalls = 0;
+    final renderRequests = <BurnSubtitleRequest>[];
+    const oneWordSegments = [
+      ClipTranscriptSegment(text: 'รีวิว', start: 0, end: 0.3),
+      ClipTranscriptSegment(text: 'สินค้า', start: 0.3, end: 0.6),
+      ClipTranscriptSegment(text: 'ดีมาก', start: 0.6, end: 1),
+    ];
+    const fiveWordSegments = [
+      ClipTranscriptSegment(
+        text: 'รีวิว สินค้า ชิ้นนี้ ดี มาก',
+        start: 0,
+        end: 1,
+      ),
+    ];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-subtitle-density-cache',
+            videoS3Key: 'uploads/subtitle-density-cache.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture(
+              subtitleVariants: const {
+                1: oneWordSegments,
+                3: [
+                  ClipTranscriptSegment(
+                    text: 'รีวิว สินค้า ดีมาก',
+                    start: 0,
+                    end: 1,
+                  ),
+                ],
+                5: fiveWordSegments,
+              },
+            );
+          },
+          burnVideo: (request) async {
+            renderRequests.add(request);
+            return _createRenderedVideoFixture(
+              'subtitle-density-cache-${renderRequests.length}.mp4',
+            );
+          },
+          reviewVideoControllerFactory: (_) => _FakeReviewVideoController(
+            fakeDuration: const Duration(seconds: 30),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _openAdvancedPanel(tester, 'subtitle');
+    tester
+        .widget<Semantics>(
+          find.byKey(
+            const ValueKey('ai-subtitle-length-short'),
+            skipOffstage: false,
+          ),
+        )
+        .properties
+        .onTap!
+        .call();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('ตั้งค่าใหม่'));
+    await tester.pumpAndSettle();
+    tester
+        .widget<Semantics>(
+          find.byKey(
+            const ValueKey('ai-subtitle-length-long'),
+            skipOffstage: false,
+          ),
+        )
+        .properties
+        .onTap!
+        .call();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(prepareCalls, 1);
+    expect(renderRequests, hasLength(2));
+    expect(renderRequests.first.segments, hasLength(3));
+    expect(renderRequests.last.segments, hasLength(1));
+    expect(
+        renderRequests.last.segments.single.text, fiveWordSegments.single.text);
+  });
+
+  testWidgets(
+      'preserves a validated English subtitle variant without splitting a word',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('english-variant.mp4');
+    final renderRequests = <BurnSubtitleRequest>[];
+    const serverCue = ClipTranscriptSegment(
+      text: 'internationalization',
+      start: 0,
+      end: 2,
+      words: [],
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-english-variant',
+            videoS3Key: 'uploads/english-variant.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(
+            transcriptLanguage: 'en',
+            subtitleSegments: const [serverCue],
+            subtitleVariants: const {
+              3: [serverCue],
+            },
+          ),
+          burnVideo: (request) async {
+            renderRequests.add(request);
+            return _createRenderedVideoFixture('english-variant-result.mp4');
+          },
+          reviewVideoControllerFactory: (_) => _FakeReviewVideoController(
+            fakeDuration: const Duration(seconds: 30),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'subtitle');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(renderRequests, hasLength(1));
+    expect(renderRequests.single.segments, hasLength(1));
+    expect(renderRequests.single.segments.single.text, 'internationalization');
+    expect(renderRequests.single.segments.single.start, 0);
+    expect(renderRequests.single.segments.single.end, 2);
+  });
+
   testWidgets('uses the original clip when no extra AI edit is selected',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('keep-original.mp4');
@@ -3460,6 +5474,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-review-status',
             videoS3Key: 'uploads/review-status.mp4',
@@ -3537,6 +5552,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-analysis-summary',
             videoS3Key: 'uploads/analysis-summary.mp4',
@@ -4256,6 +6272,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-pending-back',
             videoS3Key: 'uploads/pending-back.mp4',
@@ -4484,6 +6501,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-removed-setting',
             videoS3Key: 'uploads/removed-setting.mp4',
@@ -5111,7 +7129,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('pending owned music does not block CTA and is normalized',
+  testWidgets('pending owned music keeps CTA available but fails closed',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('music-source-video.mp4');
     final renderedVideo = _createRenderedVideoFixture('music-result.mp4');
@@ -5186,13 +7204,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
-    final music = prepareRequest?.settings.music;
-    expect(prepareRequest?.capabilities['beatsync'], isFalse);
-    expect(music?.source, 'original');
-    expect(music?.beatIntensity, 'balanced');
-    expect(music?.volume, closeTo(0.25, 0.001));
-    expect(music?.ducking.enabled, isTrue);
-    expect(music?.trackId, isNull);
+    expect(prepareRequest, isNull);
+    expect(
+      find.text('ยังไม่รองรับการวิเคราะห์ภาพสำหรับ beatsync'),
+      findsOneWidget,
+    );
     expect(
       find.byKey(
         const ValueKey('ai-review-capability-beatsync'),
@@ -5431,7 +7447,7 @@ void main() {
   });
 
   testWidgets(
-      'subtitle advanced settings only expose options supported by the renderer',
+      'subtitle advanced settings show frame controls colours and truthful lengths',
       (tester) async {
     await tester.pumpWidget(_testApp(const AiEditingScreen()));
 
@@ -5449,36 +7465,48 @@ void main() {
     expect(
       find.descendant(
         of: panel,
-        matching: find.text('สีซับเป็นสีขาวพร้อมขอบดำในเวอร์ชันนี้'),
+        matching: find.text('สีข้อความ'),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: panel,
-        matching: find.text('สั้น (ไม่เกิน 8 ตัวอักษร)'),
+        matching: find.text('สีกรอบ'),
       ),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: panel, matching: find.textContaining('คาราโอเกะ')),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: panel, matching: find.text('กลาง')),
+      find.descendant(
+        of: panel,
+        matching: find.text('คาราโอเกะ · 1 คำ'),
+      ),
       findsOneWidget,
-      reason: 'the only middle option is subtitle size, not a fake position',
     );
     expect(
-      find.byKey(const ValueKey('ai-subtitle-position-center')),
-      findsNothing,
+      find.descendant(
+        of: panel,
+        matching: find.text('อ่านง่าย · สูงสุด 3 คำ'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: panel,
+        matching: find.text('เนื้อหาครบ · สูงสุด 5 คำ'),
+      ),
+      findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey('ai-subtitle-position-top')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey('ai-subtitle-position-bottom')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('ai-subtitle-position-reset')),
       findsOneWidget,
     );
   });
@@ -5490,6 +7518,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final pickedVideo = _createPickedVideoFixture('subtitle-settings.mp4');
+    final frameController = _FakeSubtitleFrameController(
+      fakeDuration: const Duration(seconds: 150),
+    );
     AiEditPrepareRequest? prepareRequest;
     BurnSubtitleRequest? burnRequest;
 
@@ -5500,6 +7531,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          subtitleFrameControllerFactory: (_) => frameController,
           createUpload: (_) async => const UploadResult(
             id: 'u-subtitle-settings',
             videoS3Key: 'uploads/subtitle-settings.mp4',
@@ -5508,7 +7540,17 @@ void main() {
           uploadVideoFile: (_, __) async {},
           prepareEdit: (request) async {
             prepareRequest = request;
-            return _createPrepareFixture();
+            return _createPrepareFixture(
+              subtitleVariants: const {
+                1: [
+                  ClipTranscriptSegment(
+                    text: 'ข้อความจริงที่ยาวกว่าข้อความตัวอย่างมาก',
+                    start: 0,
+                    end: 1,
+                  ),
+                ],
+              },
+            );
           },
           burnVideo: (request) async {
             burnRequest = request;
@@ -5522,30 +7564,70 @@ void main() {
     await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'subtitle');
 
+    expect(
+      find.byKey(const ValueKey('fake-ai-subtitle-frame')),
+      findsOneWidget,
+    );
+    expect(frameController.seeks, [const Duration(seconds: 75)]);
+
     final shortText = find.byKey(
       const ValueKey('ai-subtitle-length-short'),
       skipOffstage: false,
     );
+    tester.widget<Semantics>(shortText).properties.onTap!.call();
+    await tester.pumpAndSettle();
+
+    final draggableSubtitle = find.byKey(
+      const ValueKey('subtitle-preview-draggable'),
+      skipOffstage: false,
+    );
+    await tester.ensureVisible(draggableSubtitle);
+    await tester.pumpAndSettle();
+    final dragTarget = tester.widget<GestureDetector>(draggableSubtitle);
+    final dragStart = tester.getCenter(draggableSubtitle);
+    dragTarget.onPanDown!(DragDownDetails(globalPosition: dragStart));
+    dragTarget.onPanStart!(DragStartDetails(globalPosition: dragStart));
+    dragTarget.onPanUpdate!(
+      DragUpdateDetails(
+        globalPosition: dragStart + const Offset(-120, -56),
+        delta: const Offset(-120, -56),
+      ),
+    );
+    dragTarget.onPanEnd!(DragEndDetails());
+    await tester.pump();
+
     final smallSize = find.byKey(
       const ValueKey('ai-subtitle-size-small'),
       skipOffstage: false,
     );
-    final topPosition = find.byKey(
-      const ValueKey('ai-subtitle-position-top'),
+    final mintTextColor = find.byKey(
+      ValueKey(
+        'ai-subtitle-text-color-${const Color(0xFF00E5A8).toARGB32()}',
+      ),
       skipOffstage: false,
     );
-    tester.widget<Semantics>(shortText).properties.onTap!.call();
+    final whiteOutlineColor = find.byKey(
+      ValueKey(
+        'ai-subtitle-outline-color-${Colors.white.toARGB32()}',
+      ),
+      skipOffstage: false,
+    );
     tester.widget<Semantics>(smallSize).properties.onTap!.call();
-    tester.widget<Semantics>(topPosition).properties.onTap!.call();
+    tester.widget<Semantics>(mintTextColor).properties.onTap!.call();
+    tester.widget<Semantics>(whiteOutlineColor).properties.onTap!.call();
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
     expect(prepareRequest?.settings.subtitleStyle, 'outline');
-    expect(prepareRequest?.settings.subtitleColor, '#FFFFFF');
+    expect(prepareRequest?.settings.subtitleColor, '#00E5A8');
+    expect(prepareRequest?.settings.subtitleOutlineColor, '#FFFFFF');
     expect(prepareRequest?.settings.subtitleWordsPerLine, 1);
-    expect(prepareRequest?.settings.subtitlePosition, 'top');
+    expect(prepareRequest?.settings.subtitlePosition, isNotEmpty);
+    expect(
+        prepareRequest?.settings.subtitleNormalizedX, lessThanOrEqualTo(0.5));
+    expect(prepareRequest?.settings.subtitleNormalizedY, lessThan(0.88));
     expect(prepareRequest?.capabilities['subtitle'], isTrue);
     expect(prepareRequest?.capabilities['silence'], isFalse);
     expect(prepareRequest?.capabilities['filler'], isFalse);
@@ -5557,7 +7639,18 @@ void main() {
           'the selected small size is an upper bound; a long Thai cue may shrink '
           'further to stay on one line without being split mid-word',
     );
-    expect(burnRequest?.subtitleAtBottom, isFalse);
+    expect(burnRequest?.subtitleTextColor, '#00E5A8');
+    expect(burnRequest?.subtitleOutlineColor, '#FFFFFF');
+    expect(
+      burnRequest?.subtitleNormalizedX,
+      greaterThan(prepareRequest!.settings.subtitleNormalizedX!),
+      reason: 'the exported anchor must use the same safe clamp as the preview '
+          'when real subtitle text is longer than the setup placeholder',
+    );
+    expect(
+      burnRequest?.subtitleNormalizedY,
+      closeTo(prepareRequest!.settings.subtitleNormalizedY!, 0.0001),
+    );
     expect(
       burnRequest?.silenceRanges
           .map((range) => '${range.start}-${range.end}')
@@ -5578,6 +7671,7 @@ void main() {
           extractAudio: _extractAudioFixture,
           cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
+          verifySilence: _verifyAllSilenceCandidates,
           createUpload: (_) async => const UploadResult(
             id: 'u-pace-settings',
             videoS3Key: 'uploads/pace-settings.mp4',

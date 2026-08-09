@@ -16,7 +16,12 @@ import '../shared/postdee_status_sheet.dart';
 import '../uploader/uploader_screen.dart';
 import '../uploader/video_picker_service.dart';
 import 'ai_edit_audio_extractor.dart';
+import 'ai_edit_local_recipe.dart';
 import 'ai_edit_media_strategy.dart';
+import 'ai_edit_safety_flags.dart';
+import 'ai_edit_silence_verifier.dart';
+import 'ai_edit_timeline_mapper.dart';
+import 'ai_subtitle_frame_preview.dart';
 import 'ai_edit_visual_proxy_extractor.dart';
 import 'beat_music_picker.dart';
 import 'edit_styles.dart';
@@ -62,6 +67,13 @@ typedef AiEditVisualProxyCleanup = Future<void> Function(
 typedef AiVideoRenderer = Future<BurnedSubtitleResult> Function(
   BurnSubtitleRequest request,
 );
+typedef AiEditSilenceVerification = Future<AiEditSilenceVerificationResult>
+    Function({
+  required File sourceFile,
+  required double sourceDurationSeconds,
+  required List<SilenceCutRange> transcriptCandidates,
+  required List<SilenceCutRange> protectedSpeechRanges,
+});
 typedef EditorSubscriptionLoader = Future<SubscriptionStatusResult> Function();
 typedef AiEditQuotaLoader = Future<AiEditQuota> Function();
 typedef ReviewVideoControllerFactory = VideoPlayerController Function(
@@ -119,15 +131,24 @@ class _PreparedRecipeRenderResult {
   const _PreparedRecipeRenderResult({
     required this.video,
     required this.appliedSpeechOccurrenceIds,
+    required this.appliedCutRanges,
+    required this.boundaryEvidenceWarning,
   });
 
   final BurnedSubtitleResult video;
   final Set<String> appliedSpeechOccurrenceIds;
+  final List<SilenceCutRange> appliedCutRanges;
+  final String? boundaryEvidenceWarning;
 }
 
 const _maxAiEditSourceDurationSeconds = 600;
 const _maxAiShortenedDurationSeconds = 180;
 const _originalDurationSliderStop = 181.0;
+
+String _subtitleHexColor(Color color) {
+  final argb = color.toARGB32().toRadixString(16).padLeft(8, '0');
+  return '#${argb.substring(2).toUpperCase()}';
+}
 
 enum _AiCapabilityGroup { pace, look, sales }
 
@@ -293,8 +314,11 @@ class _AiPreset {
     required this.speechReductionSelectionMode,
     required this.subtitleStyle,
     required this.subtitleColor,
+    required this.subtitleOutlineColor,
     required this.subtitleWords,
     required this.subtitlePosition,
+    required this.subtitleNormalizedX,
+    required this.subtitleNormalizedY,
     required this.ctaDesign,
     required this.musicGenre,
     required this.musicVolume,
@@ -313,8 +337,11 @@ class _AiPreset {
   final _SpeechReductionSelectionMode speechReductionSelectionMode;
   final String subtitleStyle;
   final Color subtitleColor;
+  final Color subtitleOutlineColor;
   final String subtitleWords;
   final String subtitlePosition;
+  final double subtitleNormalizedX;
+  final double subtitleNormalizedY;
   final String ctaDesign;
   final String musicGenre;
   final double musicVolume;
@@ -336,8 +363,11 @@ class _AiSetupSnapshot {
     required this.speechReductionSelectionMode,
     required this.subtitleStyle,
     required this.subtitleColor,
+    required this.subtitleOutlineColor,
     required this.subtitleWords,
     required this.subtitlePosition,
+    required this.subtitleNormalizedX,
+    required this.subtitleNormalizedY,
     required this.ctaText,
     required this.ctaDesign,
     required this.priceNowText,
@@ -364,8 +394,11 @@ class _AiSetupSnapshot {
   final _SpeechReductionSelectionMode speechReductionSelectionMode;
   final String subtitleStyle;
   final Color subtitleColor;
+  final Color subtitleOutlineColor;
   final String subtitleWords;
   final String subtitlePosition;
+  final double subtitleNormalizedX;
+  final double subtitleNormalizedY;
   final String ctaText;
   final String ctaDesign;
   final String priceNowText;
@@ -406,11 +439,14 @@ class AiEditingScreen extends StatefulWidget {
     this.loadAiEditQuota,
     this.initialTargetDurationSeconds = 30,
     this.burnVideo,
+    this.verifySilence,
+    this.safetyFlags = const AiEditSafetyFlags.fromEnvironment(),
     this.pickMusic,
     this.musicCatalog = const [],
     this.enableExperimentalBeatSync = AppConfig.enableExperimentalBeatSync,
     this.enableExperimentalAiHook = AppConfig.enableExperimentalAiHook,
     this.reviewVideoControllerFactory,
+    this.subtitleFrameControllerFactory,
     this.subtitleStudioLauncher,
     this.subtitleDraftStore,
     this.onBack,
@@ -430,11 +466,14 @@ class AiEditingScreen extends StatefulWidget {
   final AiEditQuotaLoader? loadAiEditQuota;
   final int? initialTargetDurationSeconds;
   final AiVideoRenderer? burnVideo;
+  final AiEditSilenceVerification? verifySilence;
+  final AiEditSafetyFlags safetyFlags;
   final BeatMusicPicker? pickMusic;
   final List<PostDeeMusicTrack> musicCatalog;
   final bool enableExperimentalBeatSync;
   final bool enableExperimentalAiHook;
   final ReviewVideoControllerFactory? reviewVideoControllerFactory;
+  final AiSubtitleFrameControllerFactory? subtitleFrameControllerFactory;
   final SubtitleStudioLauncher? subtitleStudioLauncher;
   final SubtitleDraftStore? subtitleDraftStore;
   final VoidCallback? onBack;
@@ -452,7 +491,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   PickedVideoFile? _selectedVideo;
   double? _selectedVideoDurationSeconds;
+  PickedVideoFile? _activeSourceVideo;
+  double? _activeSourceDurationSeconds;
   AiEditPrepareResult? _preparedEdit;
+  AiEditRecipeResult? _activeRecipe;
   SubtitleProject? _subtitleProject;
   SubtitleDraftStore? _resolvedSubtitleDraftStore;
   BurnedSubtitleResult? _renderedResult;
@@ -468,9 +510,20 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   final Set<String> _reviewRemovedSpeechOccurrenceIds = {};
   final Set<String> _appliedRemovedSpeechOccurrenceIds = {};
   final Map<String, Duration> _reviewVideoDurations = {};
+  final AiSubtitleFramePreviewSession _subtitleFramePreviewSession =
+      AiSubtitleFramePreviewSession();
   ReviewVideoSource _reviewVideoSource = ReviewVideoSource.ai;
   int _reviewResultRevision = 0;
   String? _expandedAdvancedCapabilityId;
+  String? _boundaryEvidenceWarning;
+  AiEditSilenceVerificationResult _acceptedSilenceVerification =
+      const AiEditSilenceVerificationResult(
+    cutRanges: [],
+    probeSucceeded: true,
+  );
+  final Map<String, AiEditSilenceVerificationResult>
+      _silenceVerificationBySignature = {};
+  bool _silenceRetryInProgress = false;
   bool _processing = false;
   bool _updatingReviewPreview = false;
   bool _reviewPreviewLoading = false;
@@ -507,8 +560,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   String _subtitleStyle = 'large';
   Color _subtitleColor = Colors.white;
+  Color _subtitleOutlineColor = Colors.black;
   String _subtitleWords = 'few';
   String _subtitlePosition = 'bottom';
+  double _subtitleNormalizedX = 0.5;
+  double _subtitleNormalizedY = 0.88;
   String _ctaDesign = 'pop';
   String _musicGenre = 'fun';
   double _musicVolume = 0.25;
@@ -654,21 +710,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           _customDurationController.text = target.toString();
           _durationMode = _AiDurationMode.custom;
         }
-        _preparedEdit = null;
-        _subtitleProject = null;
-        _preparedEditsBySignature.clear();
-        _preparedEditsByAnalysisSignature.clear();
-        _renderResultsBySignature.clear();
-        _renderedResult = null;
-        _acceptedSetup = null;
-        _reviewCapabilities.clear();
-        _appliedReviewCapabilities.clear();
-        _reviewRemovedSpeechOccurrenceIds.clear();
-        _appliedRemovedSpeechOccurrenceIds.clear();
-        _reviewVideoDurations.clear();
-        _reviewVideoSource = ReviewVideoSource.ai;
-        _reviewResultRevision = 0;
-        _reviewPreviewLoading = false;
+        // This is only the pending source. Keep the accepted review/export
+        // state intact until this source has rendered successfully.
         _stage = _AiEditingStage.setup;
       });
     } on ApiException catch (error) {
@@ -692,7 +735,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   bool _isCapabilityAvailable(String id) => switch (id) {
         'beatsync' => widget.enableExperimentalBeatSync,
         'hook' => widget.enableExperimentalAiHook,
-        'subtitle' || 'silence' || 'filler' || 'color' => true,
+        'silence' => widget.safetyFlags.verifiedSilenceEnabled,
+        'subtitle' || 'filler' || 'color' => true,
         _ => false,
       };
 
@@ -838,131 +882,174 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       }
 
       final prepareSignature = _buildPrepareSignature(picked, file);
-      final analysisSignature = _buildAnalysisSignature(picked, file);
-      var prepared = _preparedEditsBySignature[prepareSignature];
-      if (prepared == null) {
-        final previousAnalysis =
-            _preparedEditsByAnalysisSignature[analysisSignature];
-        if (previousAnalysis != null) {
-          final planningSegments =
-              _trustedPlanningSegmentsForRecipe(previousAnalysis.recipe);
-          if (planningSegments.isNotEmpty) {
-            if (mounted) {
-              setState(
-                () => _processingTitle = 'กำลังเลือกช่วงที่ดีที่สุดให้ใหม่...',
-              );
-            }
-            final recipe = previousAnalysis.recipe;
-            final transcript = recipe.transcript;
-            final planEdit = widget.planEdit ?? _apiClient.requestAiEditPlan;
-            final plan = await planEdit(
-              AiEditPlanRequest(
-                segments: planningSegments,
-                durationSeconds: transcript.durationSeconds,
-                targetDurationSeconds: _selectedDurationSeconds.toDouble(),
-              ),
-            );
-            if (!mounted) {
-              return;
-            }
-            prepared = AiEditPrepareResult(
-              recipe: previousAnalysis.recipe.withPlan(plan),
-              quota: previousAnalysis.quota,
-            );
-            prepared = await _enhancePreparedEditWithVisualProxy(
-              sourceFile: file,
-              prepared: prepared,
-            );
-            _preparedEditsBySignature[prepareSignature] = prepared;
-          }
+      final effectiveCapabilities = Map<String, bool>.from(
+        _effectiveCapabilities,
+      );
+      final analysisMode = selectAiEditAnalysisMode(
+        effectiveCapabilities,
+        usesOriginalDuration: _isUsingOriginalDuration,
+      );
+      AiEditPrepareResult? prepared;
+      AiEditRecipeResult? localRecipe;
+      if (analysisMode == AiEditAnalysisMode.localRenderOnly) {
+        final localDuration =
+            _selectedVideoDurationSeconds ?? picked.durationSeconds;
+        if (localDuration == null ||
+            !localDuration.isFinite ||
+            localDuration <= 0) {
+          throw const SubtitleBurnException(
+            'อ่านความยาววิดีโอต้นฉบับไม่สำเร็จ',
+          );
         }
+        if (mounted) {
+          setState(
+            () => _processingTitle = 'กำลังปรับสีและแสงบนเครื่อง...',
+          );
+        }
+        localRecipe = buildLocalColorAiEditRecipe(
+          durationSeconds: localDuration,
+        );
+      } else {
+        final analysisSignature = _buildAnalysisSignature(picked, file);
+        prepared = _withSelectedSubtitleDensity(
+          _preparedEditsBySignature[prepareSignature],
+        );
         if (prepared == null) {
-          AiEditAudioArtifact? audioArtifact;
-          AiEditAudioChunksArtifact? audioChunksArtifact;
-          final remoteAudioKeys = <String>[];
-          try {
-            selectAiEditAnalysisMode(
-              _buildPrepareRequest('__capability_check__.m4a').capabilities,
+          final previousAnalysis =
+              _preparedEditsByAnalysisSignature[analysisSignature];
+          final previousAnalysisForDensity =
+              _withSelectedSubtitleDensity(previousAnalysis);
+          if (previousAnalysisForDensity != null) {
+            final planningSegments = _trustedPlanningSegmentsForRecipe(
+              previousAnalysisForDensity.recipe,
             );
-            if (mounted) {
-              setState(() => _processingTitle = 'กำลังเตรียมเสียงให้ AI...');
-            }
-
-            final createUpload = widget.createUpload ?? _apiClient.createUpload;
-            final uploadVideoFile =
-                widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-            Future<UploadResult> uploadAudioFile(File audioFile) =>
-                createAndUploadFileWithRetry(
-                  request: CreateUploadRequest(
-                    fileName: _readFileNameFromPath(audioFile.path),
-                    contentType: 'audio/mp4',
-                    sizeBytes: audioFile.lengthSync(),
-                    purpose: 'ai-edit-audio',
-                  ),
-                  file: audioFile,
-                  createUpload: createUpload,
-                  uploadFile: uploadVideoFile,
-                  onRetry: () {
-                    if (mounted) {
-                      setState(() {
-                        _processingTitle =
-                            'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
-                      });
-                    }
-                  },
-                );
-
-            late final AiEditPrepareRequest prepareRequest;
-            if (widget.extractAudio != null) {
-              audioArtifact = await widget.extractAudio!(file);
-              final upload = await uploadAudioFile(audioArtifact.file);
-              remoteAudioKeys.add(upload.videoS3Key);
-              prepareRequest = _buildPrepareRequest(upload.videoS3Key);
-            } else {
-              final extractAudioChunks = widget.extractAudioChunks ??
-                  AiEditAudioExtractor().extractChunks;
-              audioChunksArtifact = await extractAudioChunks(
-                file,
-                knownDurationSeconds: picked.durationSeconds,
-              );
-              final requests = <AiEditAudioChunkRequest>[];
-              for (final chunk in audioChunksArtifact.chunks) {
-                final upload = await uploadAudioFile(chunk.file);
-                remoteAudioKeys.add(upload.videoS3Key);
-                requests.add(
-                  AiEditAudioChunkRequest(
-                    audioS3Key: upload.videoS3Key,
-                    startSeconds: chunk.startSeconds,
-                  ),
+            if (planningSegments.isNotEmpty) {
+              if (mounted) {
+                setState(
+                  () =>
+                      _processingTitle = 'กำลังเลือกช่วงที่ดีที่สุดให้ใหม่...',
                 );
               }
-              prepareRequest = _buildPrepareRequest(
-                null,
-                audioChunks: requests,
+              final recipe = previousAnalysisForDensity.recipe;
+              final transcript = recipe.transcript;
+              final planEdit = widget.planEdit ?? _apiClient.requestAiEditPlan;
+              final plan = await planEdit(
+                AiEditPlanRequest(
+                  segments: planningSegments,
+                  durationSeconds: transcript.durationSeconds,
+                  targetDurationSeconds: _selectedDurationSeconds.toDouble(),
+                ),
               );
+              if (!mounted) {
+                return;
+              }
+              prepared = AiEditPrepareResult(
+                recipe: recipe.withPlan(plan),
+                quota: previousAnalysisForDensity.quota,
+              );
+              prepared = await _enhancePreparedEditWithVisualProxy(
+                sourceFile: file,
+                prepared: prepared,
+              );
+              _preparedEditsBySignature[prepareSignature] = prepared;
             }
+          }
+          if (prepared == null) {
+            AiEditAudioArtifact? audioArtifact;
+            AiEditAudioChunksArtifact? audioChunksArtifact;
+            final remoteAudioKeys = <String>[];
+            try {
+              if (mounted) {
+                setState(
+                  () => _processingTitle = 'กำลังเตรียมเสียงให้ AI...',
+                );
+              }
 
-            final prepareEdit = widget.prepareEdit ?? _apiClient.prepareAiEdit;
-            final preparedFromApi = await prepareEdit(prepareRequest);
-            if (!mounted) {
-              return;
-            }
-            _preparedEditsByAnalysisSignature[analysisSignature] =
-                preparedFromApi;
-            prepared = await _enhancePreparedEditWithVisualProxy(
-              sourceFile: file,
-              prepared: preparedFromApi,
-            );
-            _preparedEditsBySignature[prepareSignature] = prepared;
-          } finally {
-            if (audioArtifact != null) {
-              await _cleanupLocalAudioBestEffort(audioArtifact);
-            }
-            if (audioChunksArtifact != null) {
-              await _cleanupLocalAudioChunksBestEffort(audioChunksArtifact);
-            }
-            for (final remoteAudioKey in remoteAudioKeys) {
-              await _cleanupRemoteAudioBestEffort(remoteAudioKey);
+              final createUpload =
+                  widget.createUpload ?? _apiClient.createUpload;
+              final uploadVideoFile =
+                  widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
+              Future<UploadResult> uploadAudioFile(File audioFile) =>
+                  createAndUploadFileWithRetry(
+                    request: CreateUploadRequest(
+                      fileName: _readFileNameFromPath(audioFile.path),
+                      contentType: 'audio/mp4',
+                      sizeBytes: audioFile.lengthSync(),
+                      purpose: 'ai-edit-audio',
+                    ),
+                    file: audioFile,
+                    createUpload: createUpload,
+                    uploadFile: uploadVideoFile,
+                    onRetry: () {
+                      if (mounted) {
+                        setState(() {
+                          _processingTitle =
+                              'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+                        });
+                      }
+                    },
+                  );
+
+              late final AiEditPrepareRequest prepareRequest;
+              if (widget.extractAudio != null) {
+                audioArtifact = await widget.extractAudio!(file);
+                final upload = await uploadAudioFile(audioArtifact.file);
+                remoteAudioKeys.add(upload.videoS3Key);
+                prepareRequest = _buildPrepareRequest(upload.videoS3Key);
+              } else {
+                final extractAudioChunks = widget.extractAudioChunks ??
+                    AiEditAudioExtractor().extractChunks;
+                audioChunksArtifact = await extractAudioChunks(
+                  file,
+                  knownDurationSeconds: picked.durationSeconds,
+                );
+                final requests = <AiEditAudioChunkRequest>[];
+                for (final chunk in audioChunksArtifact.chunks) {
+                  final upload = await uploadAudioFile(chunk.file);
+                  remoteAudioKeys.add(upload.videoS3Key);
+                  requests.add(
+                    AiEditAudioChunkRequest(
+                      audioS3Key: upload.videoS3Key,
+                      startSeconds: chunk.startSeconds,
+                    ),
+                  );
+                }
+                prepareRequest = _buildPrepareRequest(
+                  null,
+                  audioChunks: requests,
+                );
+              }
+
+              final prepareEdit =
+                  widget.prepareEdit ?? _apiClient.prepareAiEdit;
+              final preparedFromApi = await prepareEdit(prepareRequest);
+              if (!mounted) {
+                return;
+              }
+              _preparedEditsByAnalysisSignature[analysisSignature] =
+                  preparedFromApi;
+              final preparedForDensity =
+                  _withSelectedSubtitleDensity(preparedFromApi);
+              if (preparedForDensity == null) {
+                throw const ApiException(
+                  'เซิร์ฟเวอร์ยังไม่รองรับความยาวซับที่เลือก กรุณาลองใหม่',
+                );
+              }
+              prepared = await _enhancePreparedEditWithVisualProxy(
+                sourceFile: file,
+                prepared: preparedForDensity,
+              );
+              _preparedEditsBySignature[prepareSignature] = prepared;
+            } finally {
+              if (audioArtifact != null) {
+                await _cleanupLocalAudioBestEffort(audioArtifact);
+              }
+              if (audioChunksArtifact != null) {
+                await _cleanupLocalAudioChunksBestEffort(audioChunksArtifact);
+              }
+              for (final remoteAudioKey in remoteAudioKeys) {
+                await _cleanupRemoteAudioBestEffort(remoteAudioKey);
+              }
             }
           }
         }
@@ -972,12 +1059,14 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         return;
       }
       final preparedResult = prepared;
+      final activeRecipe = localRecipe ?? preparedResult?.recipe;
+      if (activeRecipe == null) {
+        throw const ApiException('สร้างแผนตัดต่อไม่สำเร็จ');
+      }
       setState(() {
-        _aiEditQuota = preparedResult.quota;
-        _isLoadingAiEditQuota = false;
-        _aiEditQuotaLoadFailed = false;
-        _preparedEdit = preparedResult;
-        _processingTitle = 'กำลังสร้างวิดีโอตัวอย่าง...';
+        _processingTitle = analysisMode == AiEditAnalysisMode.localRenderOnly
+            ? 'กำลังปรับสีและแสงบนเครื่อง...'
+            : 'กำลังสร้างวิดีโอตัวอย่าง...';
         // FFmpeg can spend tens of seconds initialising the encoder before it
         // reports the first processed timestamp. Keep the indicator
         // indeterminate until a real progress value arrives instead of
@@ -985,49 +1074,73 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _renderProgress = null;
       });
 
-      final reviewCapabilities =
-          _buildReviewCapabilities(preparedResult.recipe);
+      final silenceVerification = effectiveCapabilities['silence'] == true
+          ? await _verifySilenceForRecipe(
+              recipe: activeRecipe,
+              sourceFile: file,
+            )
+          : const AiEditSilenceVerificationResult(
+              cutRanges: [],
+              probeSucceeded: true,
+            );
+      if (!mounted) {
+        return;
+      }
+      final reviewCapabilities = _buildReviewCapabilities(
+        activeRecipe,
+        silenceVerification: silenceVerification,
+      );
       final recommendedSpeechOccurrenceIds = {
-        for (final cut
-            in preparedResult.recipe.speechReduction.defaultCutRanges)
-          cut.occurrenceId,
+        if (widget.safetyFlags.automaticRepeatCutsEnabled)
+          for (final cut in activeRecipe.speechReduction.defaultCutRanges)
+            cut.occurrenceId,
       };
-      final initialSpeechOccurrenceIds =
-          _speechReductionSelectionMode == _SpeechReductionSelectionMode.ai
-              ? recommendedSpeechOccurrenceIds
-              : <String>{};
+      final initialSpeechOccurrenceIds = widget
+                  .safetyFlags.automaticRepeatCutsEnabled &&
+              _speechReductionSelectionMode == _SpeechReductionSelectionMode.ai
+          ? recommendedSpeechOccurrenceIds
+          : <String>{};
+      SubtitleProject? mappedProject;
       if (reviewCapabilities['subtitle'] == true) {
         final identity = buildSubtitleProjectIdentity(
           sourceFile: file,
           setupSignature: prepareSignature,
         );
-        final mappedProject = mapAiEditRecipeToSubtitleProject(
-          recipe: preparedResult.recipe,
+        final baseProject = mapAiEditRecipeToSubtitleProject(
+          recipe: activeRecipe,
           projectId: identity.projectId,
           sourceFingerprint: identity.sourceFingerprint,
           now: DateTime.now().toUtc(),
+          effectiveCutRanges: const [],
           maxCharsPerCue:
               _buildEditOptions(reviewCapabilities).subtitleMaxChars ?? 18,
         );
-        final initialProject = mappedProject.copyWith(
-          defaultStyle: _subtitleStyleForSetup(
-            mappedProject.defaultStyle,
+        mappedProject = applySubtitleSetupStyle(
+          baseProject,
+          _subtitleStyleForSetup(
+            baseProject.defaultStyle,
             reviewCapabilities,
           ),
         );
-        setState(() {
-          _subtitleProject = initialProject;
-        });
       }
       final rendered = await _renderPreparedRecipe(
-        recipe: preparedResult.recipe,
+        recipe: activeRecipe,
+        sourceVideo: picked,
         capabilities: reviewCapabilities,
+        verifiedSilenceRanges: silenceVerification.cutRanges,
+        renderProject: mappedProject,
         removedSpeechOccurrenceIds: initialSpeechOccurrenceIds,
       );
       final result = rendered.video;
-      final selectedSpeechOccurrenceIds = reviewCapabilities['filler'] == true
-          ? rendered.appliedSpeechOccurrenceIds
-          : initialSpeechOccurrenceIds;
+      final projectWithAppliedCuts = _replaceProjectCutsAfterRender(
+        mappedProject,
+        rendered.appliedCutRanges,
+      );
+      final selectedSpeechOccurrenceIds =
+          widget.safetyFlags.automaticRepeatCutsEnabled &&
+                  reviewCapabilities['filler'] == true
+              ? rendered.appliedSpeechOccurrenceIds
+              : <String>{};
 
       if (result.colorFilterSkipped) {
         reviewCapabilities.remove('color');
@@ -1035,9 +1148,29 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
       if (mounted) {
         final acceptedSetup = _captureSetupSnapshot();
+        final pickedDuration = picked.durationSeconds;
+        final transcriptDuration = activeRecipe.transcript.durationSeconds;
+        final acceptedSourceDuration = pickedDuration != null &&
+                pickedDuration.isFinite &&
+                pickedDuration > 0
+            ? pickedDuration
+            : transcriptDuration.isFinite && transcriptDuration > 0
+                ? transcriptDuration
+                : null;
         setState(() {
+          if (preparedResult != null) {
+            _aiEditQuota = preparedResult.quota;
+            _isLoadingAiEditQuota = false;
+            _aiEditQuotaLoadFailed = false;
+          }
+          _activeSourceVideo = picked;
+          _activeSourceDurationSeconds = acceptedSourceDuration;
+          _activeRecipe = activeRecipe;
+          _preparedEdit = preparedResult;
+          _acceptedSilenceVerification = silenceVerification;
+          _subtitleProject = projectWithAppliedCuts;
           _renderedResult = result;
-          _prepareReviewForResult(result);
+          _prepareReviewForResult(result, sourceVideo: picked);
           _acceptedSetup = acceptedSetup;
           _reviewCapabilities
             ..clear()
@@ -1051,6 +1184,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           _appliedRemovedSpeechOccurrenceIds
             ..clear()
             ..addAll(selectedSpeechOccurrenceIds);
+          _boundaryEvidenceWarning = rendered.boundaryEvidenceWarning;
           _stage = _AiEditingStage.review;
           _processing = false;
           _renderProgress = null;
@@ -1188,9 +1322,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       },
       settings: AiEditPrepareSettings(
         subtitleStyle: 'outline',
-        subtitleColor: '#FFFFFF',
+        subtitleColor: _subtitleHexColor(_subtitleColor),
+        subtitleOutlineColor: _subtitleHexColor(_subtitleOutlineColor),
         subtitleWordsPerLine: _subtitleWordsPerLine,
         subtitlePosition: _effectiveSubtitlePosition,
+        subtitleNormalizedX: _subtitleNormalizedX,
+        subtitleNormalizedY: _subtitleNormalizedY,
         ctaText: _ctaController.text.trim(),
         ctaDesign: _ctaDesign,
         priceText: _priceNowController.text.trim(),
@@ -1230,6 +1367,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final request = _buildPrepareRequest('__signature_audio__.m4a').toJson()
       ..remove('audioS3Key')
       ..remove('videoS3Key');
+    _removeReusableSubtitleFormattingFromSignature(request);
 
     return jsonEncode({
       'source': {
@@ -1248,6 +1386,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       ..remove('videoS3Key')
       ..remove('durationSeconds')
       ..remove('targetDurationSeconds');
+    _removeReusableSubtitleFormattingFromSignature(request);
 
     return jsonEncode({
       'source': {
@@ -1258,6 +1397,37 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       },
       'request': request,
     });
+  }
+
+  void _removeReusableSubtitleFormattingFromSignature(
+    Map<String, Object?> request,
+  ) {
+    final settings = request['settings'];
+    if (settings is! Map<String, Object?>) return;
+
+    // Presentation is applied locally. Subtitle density is selected from the
+    // 1/3/5 variants returned by the first prepare response. Keeping these
+    // values out of the key prevents formatting the same transcript from
+    // uploading/transcribing it and consuming the seller's minutes again.
+    settings
+      ..remove('subtitleColor')
+      ..remove('subtitleOutlineColor')
+      ..remove('subtitleWordsPerLine')
+      ..remove('subtitlePosition')
+      ..remove('subtitleNormalizedX')
+      ..remove('subtitleNormalizedY');
+  }
+
+  AiEditPrepareResult? _withSelectedSubtitleDensity(
+    AiEditPrepareResult? prepared,
+  ) {
+    if (prepared == null) return null;
+    final recipe = prepared.recipe.withSubtitleWordsPerLine(
+      _subtitleWordsPerLine,
+    );
+    if (recipe == null) return null;
+    if (identical(recipe, prepared.recipe)) return prepared;
+    return AiEditPrepareResult(recipe: recipe, quota: prepared.quota);
   }
 
   Future<void> _cleanupRemoteAudioBestEffort(String audioS3Key) async {
@@ -1417,9 +1587,94 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     );
   }
 
-  Map<String, bool> _buildReviewCapabilities(AiEditRecipeResult recipe) {
+  List<SilenceCutRange> get _verifiedSilenceRanges =>
+      _acceptedSilenceVerification.cutRanges;
+
+  bool get _silenceVerificationUnavailable =>
+      !_acceptedSilenceVerification.probeSucceeded;
+
+  bool get _acceptedSilenceWasRequested =>
+      widget.safetyFlags.verifiedSilenceEnabled &&
+      ((_acceptedSetup?.capabilities ?? _capabilities)['silence'] ?? false);
+
+  String _buildSilenceVerificationSignature({
+    required File sourceFile,
+    required double durationSeconds,
+    required List<SilenceCutRange> candidates,
+    required List<SilenceCutRange> protectedSpeechRanges,
+  }) =>
+      jsonEncode({
+        'path': sourceFile.absolute.path,
+        'modified': sourceFile.lastModifiedSync().toUtc().toIso8601String(),
+        'durationSeconds': durationSeconds,
+        'candidates': [
+          for (final range in candidates) [range.start, range.end],
+        ],
+        'protectedSpeechRanges': [
+          for (final range in protectedSpeechRanges) [range.start, range.end],
+        ],
+      });
+
+  Future<AiEditSilenceVerificationResult> _verifySilenceForRecipe({
+    required AiEditRecipeResult recipe,
+    required File sourceFile,
+    bool force = false,
+  }) async {
+    final candidates = [
+      for (final range in recipe.silenceRanges)
+        SilenceCutRange(start: range.start, end: range.end),
+    ];
+    if (candidates.isEmpty) {
+      return const AiEditSilenceVerificationResult(
+        cutRanges: [],
+        probeSucceeded: true,
+      );
+    }
+
+    final evidence = mapAiEditTimelineEvidence(recipe.transcript);
+    final signature = _buildSilenceVerificationSignature(
+      sourceFile: sourceFile,
+      durationSeconds: recipe.transcript.durationSeconds,
+      candidates: candidates,
+      protectedSpeechRanges: evidence.protectedSpeechRanges,
+    );
+    if (!force) {
+      final cached = _silenceVerificationBySignature[signature];
+      if (cached != null) {
+        return cached;
+      }
+    }
+
+    final verifier = widget.verifySilence ?? AiEditSilenceVerifier().call;
+    final result = await verifier(
+      sourceFile: sourceFile,
+      sourceDurationSeconds: recipe.transcript.durationSeconds,
+      transcriptCandidates: candidates,
+      protectedSpeechRanges: evidence.protectedSpeechRanges,
+    );
+    if (result.probeSucceeded) {
+      _silenceVerificationBySignature[signature] = result;
+    }
+    return result;
+  }
+
+  SubtitleProject? _replaceProjectCutsAfterRender(
+    SubtitleProject? project,
+    List<SilenceCutRange> appliedCutRanges,
+  ) =>
+      project == null
+          ? null
+          : replaceSubtitleProjectCutRanges(
+              project: project,
+              effectiveCutRanges: appliedCutRanges,
+              now: DateTime.now().toUtc(),
+            );
+
+  Map<String, bool> _buildReviewCapabilities(
+    AiEditRecipeResult recipe, {
+    required AiEditSilenceVerificationResult silenceVerification,
+  }) {
     final subtitle = recipe.capabilities['subtitle'];
-    final silence = recipe.capabilities['silence'];
     final filler = recipe.capabilities['filler'];
     final hasStructuredSpeechReduction = recipe.speechReduction.isReady &&
         buildSpeechReductionReviewGroups(recipe.speechReduction).isNotEmpty;
@@ -1434,40 +1689,154 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           recipe.subtitles.segments.isNotEmpty)
         'subtitle': true,
       if ((_capabilities['silence'] ?? false) &&
-          (silence?.isApplied ?? false) &&
-          recipe.silenceRanges.isNotEmpty)
+          widget.safetyFlags.verifiedSilenceEnabled &&
+          silenceVerification.probeSucceeded &&
+          silenceVerification.cutRanges.isNotEmpty)
         'silence': true,
-      if ((_capabilities['filler'] ?? false) &&
+      if (widget.safetyFlags.automaticRepeatCutsEnabled &&
+          (_capabilities['filler'] ?? false) &&
           (hasStructuredSpeechReduction || canUseLegacySpeechReduction))
         'filler': true,
       if (_capabilities['color'] ?? false) 'color': true,
     };
   }
 
+  Future<void> _retrySilenceVerification() async {
+    if (_silenceRetryInProgress ||
+        _processing ||
+        _updatingReviewPreview ||
+        !widget.safetyFlags.verifiedSilenceEnabled) {
+      return;
+    }
+    final recipe = _activeRecipe;
+    final picked = _activeSourceVideo;
+    if (recipe == null || picked == null) {
+      return;
+    }
+    final renderProject = _subtitleProject;
+    final acceptedCapabilities = Map<String, bool>.from(_reviewCapabilities);
+    final acceptedSpeechOccurrenceIds =
+        Set<String>.from(_reviewRemovedSpeechOccurrenceIds);
+
+    setState(() {
+      _silenceRetryInProgress = true;
+      _updatingReviewPreview = true;
+      _renderProgress = null;
+      _renderCancelRequested = false;
+    });
+    try {
+      final verification = await _verifySilenceForRecipe(
+        recipe: recipe,
+        sourceFile: File(picked.path),
+        force: true,
+      );
+      if (!verification.probeSucceeded) {
+        if (mounted) {
+          setState(() => _acceptedSilenceVerification = verification);
+        }
+        return;
+      }
+
+      final retryCapabilities = Map<String, bool>.from(acceptedCapabilities);
+      if (verification.cutRanges.isNotEmpty) {
+        retryCapabilities['silence'] = true;
+      } else {
+        retryCapabilities.remove('silence');
+      }
+      final requestedSpeechOccurrenceIds =
+          widget.safetyFlags.automaticRepeatCutsEnabled
+              ? acceptedSpeechOccurrenceIds
+              : <String>{};
+      final rendered = await _renderPreparedRecipe(
+        recipe: recipe,
+        sourceVideo: picked,
+        capabilities: retryCapabilities,
+        verifiedSilenceRanges: verification.cutRanges,
+        renderProject: renderProject,
+        removedSpeechOccurrenceIds: requestedSpeechOccurrenceIds,
+      );
+      if (!mounted) return;
+      final updatedProject = _replaceProjectCutsAfterRender(
+        renderProject,
+        rendered.appliedCutRanges,
+      );
+      setState(() {
+        _acceptedSilenceVerification = verification;
+        _reviewCapabilities
+          ..clear()
+          ..addAll(retryCapabilities);
+        _appliedReviewCapabilities
+          ..clear()
+          ..addAll(retryCapabilities);
+        _reviewRemovedSpeechOccurrenceIds
+          ..clear()
+          ..addAll(rendered.appliedSpeechOccurrenceIds);
+        _appliedRemovedSpeechOccurrenceIds
+          ..clear()
+          ..addAll(rendered.appliedSpeechOccurrenceIds);
+        _renderedResult = rendered.video;
+        _subtitleProject = updatedProject;
+        _boundaryEvidenceWarning = rendered.boundaryEvidenceWarning;
+        _prepareReviewForResult(rendered.video, sourceVideo: picked);
+      });
+    } on SubtitleBurnException catch (error) {
+      if (mounted) {
+        _showError('${error.message} · ผลลัพธ์เดิมยังอยู่');
+      }
+    } catch (_) {
+      if (mounted) {
+        _showError('ตรวจช่วงเงียบไม่สำเร็จ · ผลลัพธ์เดิมยังอยู่');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _silenceRetryInProgress = false;
+          _updatingReviewPreview = false;
+          _renderProgress = null;
+          _renderCancelRequested = false;
+        });
+      }
+    }
+  }
+
   Future<_PreparedRecipeRenderResult> _renderPreparedRecipe({
     required AiEditRecipeResult recipe,
+    required PickedVideoFile sourceVideo,
     required Map<String, bool> capabilities,
+    required List<SilenceCutRange> verifiedSilenceRanges,
+    required SubtitleProject? renderProject,
     Set<String>? removedSpeechOccurrenceIds,
     VideoRenderPurpose purpose = VideoRenderPurpose.preview,
   }) async {
-    final picked = _selectedVideo;
-    if (picked == null) {
-      throw const SubtitleBurnException('ไม่พบวิดีโอต้นฉบับ');
-    }
-
+    final picked = sourceVideo;
     final originalFile = File(picked.path);
-    final options = _buildEditOptions(capabilities);
+    final sourceDuration = recipe.transcript.durationSeconds;
+    final requestedTargetSeconds = _selectedDurationSecondsFor(
+      sourceDuration > 0 ? sourceDuration : picked.durationSeconds,
+    );
+    final usingOriginalDuration = _isUsingOriginalDurationFor(
+      sourceDuration > 0 ? sourceDuration : picked.durationSeconds,
+    );
+    final options = _buildEditOptions(
+      capabilities,
+      targetSeconds: requestedTargetSeconds,
+    );
+    final effectiveRemovedSpeechOccurrenceIds =
+        widget.safetyFlags.automaticRepeatCutsEnabled
+            ? (removedSpeechOccurrenceIds ?? const <String>{})
+            : const <String>{};
     var planCutRanges = <SilenceCutRange>[
       // Style/free-prompt cuts determine the requested story window.
       for (final range in recipe.plan.cuts)
         SilenceCutRange(start: range.start, end: range.end),
     ];
     final requestedSpeechCleanupRanges = <SilenceCutRange>[
-      if (capabilities['filler'] ?? false)
+      if (widget.safetyFlags.automaticRepeatCutsEnabled &&
+          (capabilities['filler'] ?? false))
         for (final range in recipe.speechReduction.isReady
             ? buildSpeechReductionCutRanges(
                 recipe.speechReduction,
-                removedSpeechOccurrenceIds,
+                effectiveRemovedSpeechOccurrenceIds,
               )
             : _speechReductionSelectionMode == _SpeechReductionSelectionMode.ai
                 ? recipe.fillerRanges
@@ -1475,19 +1844,24 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           SilenceCutRange(start: range.start, end: range.end),
     ];
 
-    final sourceDuration = recipe.transcript.durationSeconds;
+    final timelineEvidence = mapAiEditTimelineEvidence(recipe.transcript);
+    final boundarySegments = timelineEvidence.boundarySegments;
+    final boundaryEvidenceWarning = !usingOriginalDuration &&
+            !timelineEvidence.hasReliableBoundaries
+        ? 'ไม่พบขอบประโยคที่ยืนยันได้ • ใช้ช่วงเรื่องจาก AI โดยไม่เดาเวลาใหม่'
+        : null;
     if (sourceDuration > 0) {
       planCutRanges = withTargetLength(
         planCutRanges,
         sourceDuration,
-        _isUsingOriginalDuration
+        usingOriginalDuration
             ? sourceDuration
-            : _selectedDurationSeconds.toDouble(),
+            : requestedTargetSeconds.toDouble(),
       );
     }
 
     final studioProject =
-        capabilities['subtitle'] == true ? _subtitleProject : null;
+        capabilities['subtitle'] == true ? renderProject : null;
     final studioStyle = studioProject?.defaultStyle;
     var sourceTimelineSubtitleSegments = <SubtitleSegment>[
       if (studioProject != null)
@@ -1529,7 +1903,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final appliedSpeechOccurrenceIds = recipe.speechReduction.isReady
         ? resolveAppliedSpeechReductionSelection(
             recipe.speechReduction,
-            removedSpeechOccurrenceIds,
+            effectiveRemovedSpeechOccurrenceIds,
             [
               for (final range in sanitizedSpeechCleanup.appliedCleanupRanges)
                 AiEditCut(start: range.start, end: range.end),
@@ -1537,24 +1911,30 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           )
         : const <String>{};
     final subtitleMaxChars = options.subtitleMaxChars;
+    final subtitleWordsPerLine = recipe.subtitles.style.wordsPerLine;
+    final preserveValidatedSubtitleCues = (subtitleWordsPerLine == 1 ||
+            subtitleWordsPerLine == 3 ||
+            subtitleWordsPerLine == 5) &&
+        recipe.subtitles.variants.containsKey(subtitleWordsPerLine);
     var subtitleSegments = prepareSubtitleSegmentsForLocalRender(
       sourceTimelineSubtitleSegments,
       language: recipe.transcript.language,
       maximumCharacters: subtitleMaxChars,
+      preserveValidatedCues: preserveValidatedSubtitleCues,
     );
 
-    if (sourceDuration > 0 && subtitleSegments.isNotEmpty) {
+    if (sourceDuration > 0 && boundarySegments.isNotEmpty) {
       planCutRanges = alignLeadingCutToFirstSubtitle(
         planCutRanges,
-        subtitleSegments,
+        boundarySegments,
         sourceDuration,
       );
-      if (!_isUsingOriginalDuration) {
+      if (!usingOriginalDuration) {
         planCutRanges = alignTargetTailToSubtitleBoundary(
           cuts: planCutRanges,
-          subtitleSegments: subtitleSegments,
+          subtitleSegments: boundarySegments,
           durationSeconds: sourceDuration,
-          targetSeconds: _selectedDurationSeconds.toDouble(),
+          targetSeconds: requestedTargetSeconds.toDouble(),
         );
       }
     }
@@ -1562,9 +1942,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final cleanupCutRanges = <SilenceCutRange>[
       // Cleanup is intentionally unioned only after story fitting/alignment.
       // It must never be shortened or restored merely to hit an exact target.
-      if (capabilities['silence'] ?? false)
-        for (final range in recipe.silenceRanges)
-          SilenceCutRange(start: range.start, end: range.end),
+      if ((capabilities['silence'] ?? false) &&
+          widget.safetyFlags.verifiedSilenceEnabled)
+        ...verifiedSilenceRanges,
       ...sanitizedSpeechCleanup.appliedCleanupRanges,
     ];
     final cutRanges = sourceDuration > 0
@@ -1588,39 +1968,61 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         : null;
     final requestedSubtitleFontSize =
         studioStyle?.fontSize ?? options.subtitleFontSize ?? 18;
-    final sourceWidth = picked.width?.toDouble();
-    final sourceHeight = picked.height?.toDouble();
-    final maximumDimension = previewProfile?.maxVideoDimension.toDouble();
-    final outputWidth = sourceWidth == null ||
-            sourceHeight == null ||
-            sourceWidth <= 0 ||
-            sourceHeight <= 0
+    final subtitleTexts = subtitleSegments.map((segment) => segment.text);
+    final pickedWidth = picked.width?.toDouble();
+    final pickedHeight = picked.height?.toDouble();
+    final subtitleCanvasSize = pickedWidth != null &&
+            pickedHeight != null &&
+            pickedWidth.isFinite &&
+            pickedHeight.isFinite &&
+            pickedWidth > 0 &&
+            pickedHeight > 0
+        ? subtitleAssCanvasSizeForDisplay(Size(pickedWidth, pickedHeight))
+        : postDeeSubtitleAssCanvasSize;
+    final subtitleLayout = studioStyle == null || subtitleSegments.isEmpty
         ? null
-        : maximumDimension != null &&
-                math.max(sourceWidth, sourceHeight) > maximumDimension
-            ? sourceWidth *
-                maximumDimension /
-                math.max(sourceWidth, sourceHeight)
-            : sourceWidth;
-    final subtitleFontSize = subtitleSegments.isEmpty || outputWidth == null
-        ? requestedSubtitleFontSize
-        : fitSubtitleFontSizeForSingleLine(
-            texts: subtitleSegments.map((segment) => segment.text),
-            style: TextStyle(
-              fontFamily: studioStyle?.fontId ?? 'Bai Jamjuree',
-              fontWeight: studioStyle == null
-                  ? FontWeight.w700
-                  : FontWeight.values.firstWhere(
-                      (weight) => weight.value == studioStyle.fontWeight,
-                      orElse: () => FontWeight.w700,
-                    ),
-              fontSize: requestedSubtitleFontSize,
-            ),
-            maxWidth: subtitleSafeWidthForEffect(
-              maxWidth: outputWidth * 0.85,
-              animation: studioStyle?.animation ?? 'none',
-            ),
+        : resolveSubtitleCanvasLayout(
+            texts: subtitleTexts,
+            style: studioStyle,
+            canvasSize: subtitleCanvasSize,
           );
+    final subtitleTextStyle = TextStyle(
+      fontFamily: studioStyle?.fontId ?? 'Bai Jamjuree',
+      fontWeight: studioStyle == null
+          ? FontWeight.w700
+          : FontWeight.values.firstWhere(
+              (weight) => weight.value == studioStyle.fontWeight,
+              orElse: () => FontWeight.w700,
+            ),
+      fontSize: requestedSubtitleFontSize,
+    );
+    final legacySubtitleCanvasWidth = subtitleSafeWidthForEffect(
+      maxWidth: subtitleSafeAssCanvasWidthAtX(
+        0.5,
+        canvasSize: subtitleCanvasSize,
+      ),
+      animation: 'none',
+    );
+    final subtitleFontSize = subtitleLayout?.fontSize ??
+        (subtitleSegments.isEmpty
+            ? requestedSubtitleFontSize
+            : fitSubtitleFontSizeForSingleLine(
+                texts: subtitleTexts,
+                style: subtitleTextStyle,
+                maxWidth: legacySubtitleCanvasWidth,
+              ));
+    final subtitleFits = subtitleLayout?.fitsSingleLine ??
+        subtitleTextFitsSingleLine(
+          texts: subtitleTexts,
+          style: subtitleTextStyle,
+          fontSize: subtitleFontSize,
+          maxWidth: legacySubtitleCanvasWidth,
+        );
+    if (subtitleSegments.isNotEmpty && !subtitleFits) {
+      throw const SubtitleBurnException(
+        'ข้อความซับยาวเกินพื้นที่ กรุณาแบ่งประโยคหรือขยับซับเข้าใกล้กึ่งกลาง',
+      );
+    }
     final needsLocalRender = subtitleSegments.isNotEmpty ||
         cutRanges.isNotEmpty ||
         (speed - 1).abs() > 0.0001 ||
@@ -1639,6 +2041,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               : originalFile.lengthSync(),
         ),
         appliedSpeechOccurrenceIds: appliedSpeechOccurrenceIds,
+        appliedCutRanges: List<SilenceCutRange>.unmodifiable(cutRanges),
+        boundaryEvidenceWarning: boundaryEvidenceWarning,
       );
     }
 
@@ -1652,7 +2056,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         'lastModifiedMs':
             originalFile.lastModifiedSync().millisecondsSinceEpoch,
       },
-      'targetDurationSeconds': _selectedDurationSeconds,
+      'targetDurationSeconds': requestedTargetSeconds,
+      'projectFingerprint': renderProject?.recipeFingerprint,
       'capabilities': {
         for (final entry in sortedCapabilities) entry.key: entry.value,
       },
@@ -1695,6 +2100,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       return _PreparedRecipeRenderResult(
         video: cachedResult,
         appliedSpeechOccurrenceIds: appliedSpeechOccurrenceIds,
+        appliedCutRanges: List<SilenceCutRange>.unmodifiable(cutRanges),
+        boundaryEvidenceWarning: boundaryEvidenceWarning,
       );
     }
     _renderResultsBySignature.remove(renderSignature);
@@ -1742,6 +2149,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       subtitleAlignment: studioStyle == null
           ? null
           : _burnSubtitleAlignment(studioStyle.alignment),
+      subtitleNormalizedX:
+          subtitleLayout?.normalizedPosition.dx ?? studioStyle?.normalizedX,
+      subtitleNormalizedY:
+          subtitleLayout?.normalizedPosition.dy ?? studioStyle?.normalizedY,
+      subtitleCanvasSize: subtitleCanvasSize,
       subtitleFontName: _subtitleRenderFontName(studioStyle),
       subtitleFontAssetPath:
           studioStyle == null ? null : _subtitleFontAssetPath(studioStyle),
@@ -1759,10 +2171,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           result.file.parent.path,
       },
       outputDurationSeconds: outputDuration,
-      maxOutputDurationSeconds: _isUsingOriginalDuration
+      maxOutputDurationSeconds: usingOriginalDuration
           ? null
           : aiEditMaximumOutputDurationSeconds(
-              targetSeconds: _selectedDurationSeconds.toDouble(),
+              targetSeconds: requestedTargetSeconds.toDouble(),
               estimatedOutputSeconds: outputDuration,
             ),
       onProgress: reportProgress,
@@ -1801,6 +2213,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       return _PreparedRecipeRenderResult(
         video: result,
         appliedSpeechOccurrenceIds: appliedSpeechOccurrenceIds,
+        appliedCutRanges: List<SilenceCutRange>.unmodifiable(cutRanges),
+        boundaryEvidenceWarning: boundaryEvidenceWarning,
       );
     } finally {
       if (mounted && identical(_activeRenderCancellation, cancellationToken)) {
@@ -1809,7 +2223,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     }
   }
 
-  EditStyleOptions _buildEditOptions(Map<String, bool> capabilities) {
+  EditStyleOptions _buildEditOptions(
+    Map<String, bool> capabilities, {
+    int? targetSeconds,
+  }) {
     final subtitleOn = capabilities['subtitle'] ?? false;
     final colorOn = capabilities['color'] ?? false;
 
@@ -1832,7 +2249,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     };
 
     return EditStyleOptions(
-      targetSeconds: _selectedDurationSeconds,
+      targetSeconds: targetSeconds ?? _selectedDurationSeconds,
       subtitleMaxChars: subtitleOn ? subtitleMaxChars : null,
       silenceMinGapSec: (capabilities['silence'] ?? false)
           ? switch (_silencePreset) {
@@ -1856,23 +2273,25 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     Map<String, bool> capabilities,
   ) {
     final options = _buildEditOptions(capabilities);
-    final alignment = (options.subtitleAtBottom ?? true)
-        ? SubtitleAlignment.bottom
-        : SubtitleAlignment.top;
+    final alignment = switch (_effectiveSubtitlePosition) {
+      'top' => SubtitleAlignment.top,
+      'middle' => SubtitleAlignment.middle,
+      _ => SubtitleAlignment.bottom,
+    };
 
     return SubtitleStyle(
       fontId: mappedStyle.fontId,
       fontWeight: mappedStyle.fontWeight,
       fontSize: options.subtitleFontSize ?? mappedStyle.fontSize,
-      textColor: mappedStyle.textColor,
+      textColor: _subtitleHexColor(_subtitleColor),
       activeWordColor: mappedStyle.activeWordColor,
-      outlineColor: mappedStyle.outlineColor,
+      outlineColor: _subtitleHexColor(_subtitleOutlineColor),
       outlineWidth: mappedStyle.outlineWidth,
       shadowColor: mappedStyle.shadowColor,
       shadowDepth: mappedStyle.shadowDepth,
       alignment: alignment,
-      normalizedX: mappedStyle.normalizedX,
-      normalizedY: alignment == SubtitleAlignment.top ? 0.12 : 0.88,
+      normalizedX: _subtitleNormalizedX,
+      normalizedY: _subtitleNormalizedY,
       maxLines: mappedStyle.maxLines,
       animation: mappedStyle.animation,
     );
@@ -1883,8 +2302,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         subtitleWords: _subtitleWords,
       );
 
-  String get _effectiveSubtitlePosition =>
-      _subtitlePosition == 'top' ? 'top' : 'bottom';
+  String get _effectiveSubtitlePosition => switch (_subtitleNormalizedY) {
+        < 0.34 => 'top',
+        < 0.67 => 'middle',
+        _ => 'bottom',
+      };
 
   BurnSubtitleAlignment _burnSubtitleAlignment(SubtitleAlignment alignment) =>
       switch (alignment) {
@@ -1928,8 +2350,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       speechReductionSelectionMode: _speechReductionSelectionMode,
       subtitleStyle: _subtitleStyle,
       subtitleColor: _subtitleColor,
+      subtitleOutlineColor: _subtitleOutlineColor,
       subtitleWords: _subtitleWords,
       subtitlePosition: _subtitlePosition,
+      subtitleNormalizedX: _subtitleNormalizedX,
+      subtitleNormalizedY: _subtitleNormalizedY,
       ctaText: _ctaController.text,
       ctaDesign: _ctaDesign,
       priceNowText: _priceNowController.text,
@@ -1960,8 +2385,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     _speechReductionSelectionMode = snapshot.speechReductionSelectionMode;
     _subtitleStyle = snapshot.subtitleStyle;
     _subtitleColor = snapshot.subtitleColor;
+    _subtitleOutlineColor = snapshot.subtitleOutlineColor;
     _subtitleWords = snapshot.subtitleWords;
     _subtitlePosition = snapshot.subtitlePosition;
+    _subtitleNormalizedX = snapshot.subtitleNormalizedX;
+    _subtitleNormalizedY = snapshot.subtitleNormalizedY;
     _ctaController.text = snapshot.ctaText;
     _ctaDesign = snapshot.ctaDesign;
     _priceNowController.text = snapshot.priceNowText;
@@ -2008,13 +2436,19 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   int get _selectedDurationSeconds {
+    return _selectedDurationSecondsFor(_selectedVideoDurationSeconds);
+  }
+
+  int _selectedDurationSecondsFor(double? sourceDurationSeconds) {
     final requested = switch (_durationMode) {
       _AiDurationMode.unselected => 0,
       _AiDurationMode.seconds30 => 30,
       _AiDurationMode.seconds60 => 60,
       _AiDurationMode.custom => _customDurationSeconds,
     };
-    final sourceMaximum = _sourceDurationMaximumSeconds;
+    final sourceMaximum = _sourceDurationMaximumSecondsFor(
+      sourceDurationSeconds,
+    );
     if (sourceMaximum == null || requested <= 0) {
       return requested;
     }
@@ -2024,7 +2458,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   bool get _hasSelectedDuration => _durationMode != _AiDurationMode.unselected;
 
   int? get _sourceDurationMaximumSeconds {
-    final sourceDuration = _selectedVideoDurationSeconds;
+    return _sourceDurationMaximumSecondsFor(_selectedVideoDurationSeconds);
+  }
+
+  int? _sourceDurationMaximumSecondsFor(double? sourceDuration) {
     if (sourceDuration == null ||
         !sourceDuration.isFinite ||
         sourceDuration <= 0) {
@@ -2048,10 +2485,16 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       (_sourceDurationMaximumSeconds ?? 0) > _maxAiShortenedDurationSeconds;
 
   bool get _isUsingOriginalDuration {
-    final sourceMaximum = _sourceDurationMaximumSeconds;
+    return _isUsingOriginalDurationFor(_selectedVideoDurationSeconds);
+  }
+
+  bool _isUsingOriginalDurationFor(double? sourceDurationSeconds) {
+    final sourceMaximum = _sourceDurationMaximumSecondsFor(
+      sourceDurationSeconds,
+    );
     return sourceMaximum != null &&
         _hasSelectedDuration &&
-        _selectedDurationSeconds >= sourceMaximum;
+        _selectedDurationSecondsFor(sourceDurationSeconds) >= sourceMaximum;
   }
 
   double? get _durationSliderMaximum {
@@ -2113,8 +2556,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   bool _sameStringSet(Set<String> left, Set<String> right) =>
       left.length == right.length && left.containsAll(right);
 
-  void _prepareReviewForResult(BurnedSubtitleResult result) {
-    final originalPath = _selectedVideo?.path;
+  void _prepareReviewForResult(
+    BurnedSubtitleResult result, {
+    required PickedVideoFile sourceVideo,
+  }) {
+    final originalPath = sourceVideo.path;
     _reviewVideoDurations.removeWhere((path, _) => path != originalPath);
     _reviewVideoDurations.remove(result.file.path);
     _reviewVideoSource = ReviewVideoSource.ai;
@@ -2128,7 +2574,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     required int revision,
   }) =>
       switch (source) {
-        ReviewVideoSource.original => _selectedVideo?.path == path,
+        ReviewVideoSource.original => _activeSourceVideo?.path == path,
         ReviewVideoSource.ai => _renderedResult?.file.path == path &&
             _reviewResultRevision == revision,
       };
@@ -2174,8 +2620,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Future<void> _updateReviewVideo() async {
-    final prepared = _preparedEdit;
-    if (prepared == null ||
+    final recipe = _activeRecipe;
+    final picked = _activeSourceVideo;
+    if (recipe == null ||
+        picked == null ||
         _processing ||
         _updatingReviewPreview ||
         !_reviewIsDirty) {
@@ -2190,10 +2638,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
     try {
       final requestedSpeechOccurrenceIds =
-          Set<String>.from(_reviewRemovedSpeechOccurrenceIds);
+          widget.safetyFlags.automaticRepeatCutsEnabled
+              ? Set<String>.from(_reviewRemovedSpeechOccurrenceIds)
+              : <String>{};
       final rendered = await _renderPreparedRecipe(
-        recipe: prepared.recipe,
+        recipe: recipe,
+        sourceVideo: picked,
         capabilities: Map<String, bool>.from(_reviewCapabilities),
+        verifiedSilenceRanges: _verifiedSilenceRanges,
+        renderProject: _subtitleProject,
         removedSpeechOccurrenceIds: requestedSpeechOccurrenceIds,
       );
       final result = rendered.video;
@@ -2206,7 +2659,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       }
       setState(() {
         _renderedResult = result;
-        _prepareReviewForResult(result);
+        _subtitleProject = _replaceProjectCutsAfterRender(
+          _subtitleProject,
+          rendered.appliedCutRanges,
+        );
+        _prepareReviewForResult(result, sourceVideo: picked);
         if (result.colorFilterSkipped) {
           _reviewCapabilities.remove('color');
         }
@@ -2219,6 +2676,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _reviewRemovedSpeechOccurrenceIds
           ..clear()
           ..addAll(selectedSpeechOccurrenceIds);
+        _boundaryEvidenceWarning = rendered.boundaryEvidenceWarning;
         _syncSetupCapabilitiesFromReview();
         _acceptedSetup = _captureSetupSnapshot();
         _updatingReviewPreview = false;
@@ -2259,10 +2717,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Future<void> _editReviewSubtitles() async {
-    final prepared = _preparedEdit;
+    final recipe = _activeRecipe;
     final project = _subtitleProject;
-    final picked = _selectedVideo;
-    if (prepared == null ||
+    final picked = _activeSourceVideo;
+    if (recipe == null ||
         project == null ||
         picked == null ||
         _processing ||
@@ -2277,19 +2735,22 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     if (!mounted || edited == null) return;
     validateSubtitleProject(edited);
 
-    final previous = _subtitleProject;
     setState(() {
-      _subtitleProject = edited;
       _updatingReviewPreview = true;
       _renderProgress = null;
       _renderCancelRequested = false;
     });
     try {
       final requestedSpeechOccurrenceIds =
-          Set<String>.from(_appliedRemovedSpeechOccurrenceIds);
+          widget.safetyFlags.automaticRepeatCutsEnabled
+              ? Set<String>.from(_appliedRemovedSpeechOccurrenceIds)
+              : <String>{};
       final rendered = await _renderPreparedRecipe(
-        recipe: prepared.recipe,
+        recipe: recipe,
+        sourceVideo: picked,
         capabilities: Map<String, bool>.from(_appliedReviewCapabilities),
+        verifiedSilenceRanges: _verifiedSilenceRanges,
+        renderProject: edited,
         removedSpeechOccurrenceIds: requestedSpeechOccurrenceIds,
       );
       final result = rendered.video;
@@ -2299,14 +2760,19 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               : requestedSpeechOccurrenceIds;
       if (!mounted) return;
       setState(() {
+        _subtitleProject = _replaceProjectCutsAfterRender(
+          edited,
+          rendered.appliedCutRanges,
+        );
         _renderedResult = result;
-        _prepareReviewForResult(result);
+        _prepareReviewForResult(result, sourceVideo: picked);
         _appliedRemovedSpeechOccurrenceIds
           ..clear()
           ..addAll(selectedSpeechOccurrenceIds);
         _reviewRemovedSpeechOccurrenceIds
           ..clear()
           ..addAll(selectedSpeechOccurrenceIds);
+        _boundaryEvidenceWarning = rendered.boundaryEvidenceWarning;
         _updatingReviewPreview = false;
         _renderProgress = null;
         _renderCancelRequested = false;
@@ -2314,7 +2780,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     } on SubtitleBurnException catch (error) {
       if (!mounted) return;
       setState(() {
-        _subtitleProject = previous;
         _updatingReviewPreview = false;
         _renderProgress = null;
         _renderCancelRequested = false;
@@ -2323,7 +2788,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _subtitleProject = previous;
         _updatingReviewPreview = false;
         _renderProgress = null;
         _renderCancelRequested = false;
@@ -2333,7 +2797,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Future<void> _toggleReviewCapability(String id, bool enabled) async {
-    if (_updatingReviewPreview) {
+    if (_updatingReviewPreview ||
+        (id == 'filler' && !widget.safetyFlags.automaticRepeatCutsEnabled) ||
+        (id == 'silence' && !widget.safetyFlags.verifiedSilenceEnabled)) {
       return;
     }
     setState(() => _reviewCapabilities[id] = enabled);
@@ -2356,6 +2822,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       return;
     }
     setState(() {
+      _selectedVideo = _activeSourceVideo;
+      _selectedVideoDurationSeconds = _activeSourceDurationSeconds;
       _reviewCapabilities
         ..clear()
         ..addAll(_appliedReviewCapabilities);
@@ -2374,8 +2842,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     }
 
     var result = previewResult;
-    final prepared = _preparedEdit;
-    if (prepared != null) {
+    final recipe = _activeRecipe;
+    final picked = _activeSourceVideo;
+    if (recipe != null && picked != null) {
       setState(() {
         _processing = true;
         _processingTitle = 'กำลังสร้างวิดีโอคุณภาพเต็ม...';
@@ -2385,13 +2854,26 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
       try {
         final rendered = await _renderPreparedRecipe(
-          recipe: prepared.recipe,
+          recipe: recipe,
+          sourceVideo: picked,
           capabilities: Map<String, bool>.from(_appliedReviewCapabilities),
+          verifiedSilenceRanges: _verifiedSilenceRanges,
+          renderProject: _subtitleProject,
           removedSpeechOccurrenceIds:
-              Set<String>.from(_appliedRemovedSpeechOccurrenceIds),
+              widget.safetyFlags.automaticRepeatCutsEnabled
+                  ? Set<String>.from(_appliedRemovedSpeechOccurrenceIds)
+                  : <String>{},
           purpose: VideoRenderPurpose.export,
         );
         result = rendered.video;
+        if (mounted) {
+          setState(() {
+            _subtitleProject = _replaceProjectCutsAfterRender(
+              _subtitleProject,
+              rendered.appliedCutRanges,
+            );
+          });
+        }
       } on SubtitleBurnException catch (error) {
         _handleProcessingFailure(error.message);
         return;
@@ -2522,8 +3004,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           speechReductionSelectionMode: _speechReductionSelectionMode,
           subtitleStyle: _subtitleStyle,
           subtitleColor: _subtitleColor,
+          subtitleOutlineColor: _subtitleOutlineColor,
           subtitleWords: _subtitleWords,
           subtitlePosition: _subtitlePosition,
+          subtitleNormalizedX: _subtitleNormalizedX,
+          subtitleNormalizedY: _subtitleNormalizedY,
           ctaDesign: _ctaDesign,
           musicGenre: _musicGenre,
           musicVolume: _musicVolume,
@@ -2559,8 +3044,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _speechReductionSelectionMode = preset.speechReductionSelectionMode;
       _subtitleStyle = preset.subtitleStyle;
       _subtitleColor = preset.subtitleColor;
+      _subtitleOutlineColor = preset.subtitleOutlineColor;
       _subtitleWords = preset.subtitleWords;
       _subtitlePosition = preset.subtitlePosition;
+      _subtitleNormalizedX = preset.subtitleNormalizedX;
+      _subtitleNormalizedY = preset.subtitleNormalizedY;
       _ctaDesign = preset.ctaDesign;
       _musicGenre = preset.musicGenre;
       _musicVolume = preset.musicVolume;
@@ -2634,7 +3122,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       );
     }
 
-    final selectedVideo = _selectedVideo;
+    final selectedVideo = _activeSourceVideo;
     final originalFile =
         selectedVideo == null ? null : File(selectedVideo.path);
     final resultUsesOriginal = originalFile != null &&
@@ -2669,7 +3157,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             : originalFile!.lengthSync()
         : result.sizeBytes;
     final transcriptDurationSeconds =
-        _preparedEdit?.recipe.transcript.durationSeconds ?? 0;
+        _activeRecipe?.transcript.durationSeconds ?? 0;
     final transcriptDuration = transcriptDurationSeconds > 0
         ? Duration(
             milliseconds: (transcriptDurationSeconds * 1000).round(),
@@ -2677,9 +3165,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         : null;
     final originalDuration = selectedVideo == null
         ? null
-        : _reviewVideoDurations[selectedVideo.path] ?? transcriptDuration;
+        : _reviewVideoDurations[selectedVideo.path] ??
+            (_activeSourceDurationSeconds == null
+                ? transcriptDuration
+                : Duration(
+                    milliseconds:
+                        (_activeSourceDurationSeconds! * 1000).round(),
+                  ));
     final aiDuration = _reviewVideoDurations[result.file.path];
-    final speechReduction = _preparedEdit?.recipe.speechReduction;
+    final speechReduction = _activeRecipe?.speechReduction;
     final hasStructuredSpeechReduction = speechReduction != null &&
         speechReduction.isReady &&
         buildSpeechReductionReviewGroups(speechReduction).isNotEmpty;
@@ -2787,6 +3281,86 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary,
                     ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+        if (_boundaryEvidenceWarning != null) ...[
+          Container(
+            key: const ValueKey('ai-boundary-evidence-unavailable'),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: Color(0xFFF59E0B),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _boundaryEvidenceWarning!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+        if (_acceptedSilenceWasRequested &&
+            _silenceVerificationUnavailable) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.graphic_eq_rounded,
+                  size: 18,
+                  color: Color(0xFFF59E0B),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'ยังยืนยันช่วงเงียบจากเสียงจริงไม่ได้ จึงยังไม่ตัดช่วงเงียบ',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.4,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  key: const ValueKey('ai-silence-verification-retry'),
+                  onPressed: _silenceRetryInProgress
+                      ? null
+                      : _retrySilenceVerification,
+                  child: Text(
+                    _silenceRetryInProgress ? 'กำลังตรวจ...' : 'ลองใหม่',
                   ),
                 ),
               ],
@@ -3032,12 +3606,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Widget _buildAnalysisSummary() {
-    final recipe = _preparedEdit?.recipe;
-    final silenceRequested = _capabilities['silence'] ?? false;
-    final repeatedSpeechRequested = _capabilities['filler'] ?? false;
-    final silenceRanges = silenceRequested
-        ? recipe?.silenceRanges ?? const <AiEditCut>[]
-        : const <AiEditCut>[];
+    final recipe = _activeRecipe;
+    final acceptedCapabilities = _acceptedSetup?.capabilities ?? _capabilities;
+    final silenceRequested = widget.safetyFlags.verifiedSilenceEnabled &&
+        (acceptedCapabilities['silence'] ?? false);
+    final repeatedSpeechRequested = acceptedCapabilities['filler'] ?? false;
+    final silenceRanges =
+        silenceRequested && _acceptedSilenceVerification.probeSucceeded
+            ? _verifiedSilenceRanges
+            : const <SilenceCutRange>[];
     final hasStructuredSpeechReduction = repeatedSpeechRequested &&
         recipe != null &&
         recipe.speechReduction.isReady &&
@@ -3062,11 +3639,19 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                     _reviewRemovedSpeechOccurrenceIds,
                   )
                 : legacyRepeatedSpeechRanges;
-    final silenceStatus = _analysisDetectionStatus(
-      capabilityId: 'silence',
-      count: silenceRanges.length,
-      unit: 'ช่วง',
-    );
+    final silenceStatus = !silenceRequested
+        ? (text: 'ไม่ได้เลือก', isNotDetected: false)
+        : _silenceVerificationUnavailable
+            ? (text: 'ตรวจเสียงไม่สำเร็จ · ลองใหม่', isNotDetected: false)
+            : silenceRanges.isNotEmpty
+                ? (
+                    text: 'พบ ${silenceRanges.length} ช่วง',
+                    isNotDetected: false,
+                  )
+                : (
+                    text: 'ตรวจแล้ว · ไม่พบช่วงเงียบที่ปลอดภัย',
+                    isNotDetected: true,
+                  );
     final speechUnavailableReason = hasStructuredSpeechReduction
         ? null
         : recipe?.speechReduction.unavailableReason;
@@ -3096,7 +3681,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                   );
     final selectedCutSeconds = _mergedDetectedSeconds(
       [
-        if (_reviewCapabilities['silence'] ?? false) ...silenceRanges,
+        if (_reviewCapabilities['silence'] ?? false)
+          for (final range in silenceRanges)
+            AiEditCut(start: range.start, end: range.end),
         ...selectedRepeatedSpeechRanges,
       ],
       maxSeconds: recipe?.transcript.durationSeconds,
@@ -3187,7 +3774,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       return (text: 'พบ $count $unit', isNotDetected: false);
     }
 
-    final status = _preparedEdit?.recipe.capabilities[capabilityId];
+    final status = _activeRecipe?.capabilities[capabilityId];
     if (status == null) {
       return (text: 'ไม่มีข้อมูลผลตรวจ', isNotDetected: false);
     }
@@ -3233,12 +3820,14 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Widget _buildSpeechReductionReview() {
-    final recipe = _preparedEdit?.recipe;
+    final recipe = _activeRecipe;
     if (recipe == null) return const SizedBox.shrink();
     final groups = buildSpeechReductionReviewGroups(recipe.speechReduction);
     if (groups.isEmpty) return const SizedBox.shrink();
 
-    final enabled = _reviewCapabilities['filler'] ?? false;
+    final repeatCutsEnabled = widget.safetyFlags.automaticRepeatCutsEnabled;
+    final enabled =
+        repeatCutsEnabled && (_reviewCapabilities['filler'] ?? false);
     final summary = summarizeSpeechReductionSelection(
       recipe.speechReduction,
       _reviewRemovedSpeechOccurrenceIds,
@@ -3290,7 +3879,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               Checkbox(
                 key: const ValueKey('ai-review-capability-filler'),
                 value: enabled,
-                onChanged: _updatingReviewPreview
+                onChanged: _updatingReviewPreview || !repeatCutsEnabled
                     ? null
                     : (value) {
                         if (value != null) {
@@ -3307,6 +3896,27 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             ],
           ),
           const SizedBox(height: 8),
+          if (!repeatCutsEnabled) ...[
+            Container(
+              key: const ValueKey('ai-repeat-read-only'),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.glassDeep,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.borderSoft),
+              ),
+              child: Text(
+                'แสดงผลตรวจอย่างเดียวชั่วคราว · ระบบจะไม่ตัดคำพูดซ้ำ',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  height: 1.4,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           Text(
             _speechReductionSelectionMode == _SpeechReductionSelectionMode.ai
                 ? 'AI เลือกตัดเฉพาะจุดที่พูดซ้ำติดกันและมั่นใจเรื่องเวลา '
@@ -3635,7 +4245,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Widget _buildQuotaIndicator() {
-    final quota = _aiEditQuota;
+    final quota = _aiEditQuota ?? _preparedEdit?.quota;
     final subscription = _aiEditSubscription;
 
     if (quota == null || subscription == null) {
@@ -3924,21 +4534,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                   _selectedVideo = null;
                   _selectedVideoDurationSeconds = null;
                   _durationMode = _AiDurationMode.unselected;
-                  _preparedEdit = null;
-                  _subtitleProject = null;
-                  _preparedEditsBySignature.clear();
-                  _preparedEditsByAnalysisSignature.clear();
-                  _renderResultsBySignature.clear();
-                  _renderedResult = null;
-                  _acceptedSetup = null;
-                  _reviewCapabilities.clear();
-                  _appliedReviewCapabilities.clear();
-                  _reviewRemovedSpeechOccurrenceIds.clear();
-                  _appliedRemovedSpeechOccurrenceIds.clear();
-                  _reviewVideoDurations.clear();
-                  _reviewVideoSource = ReviewVideoSource.ai;
-                  _reviewResultRevision = 0;
-                  _reviewPreviewLoading = false;
+                  // Removing a pending source must not discard the accepted
+                  // result that review/export still owns.
                   _stage = _AiEditingStage.setup;
                 });
               },
@@ -4499,7 +5096,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          'ตรวจจากช่องว่างระหว่างเวลาของคำถอดเสียง ไม่ได้ตรวจเสียงหายใจโดยตรง',
+          'ตรวจซ้ำจากคลื่นเสียงในวิดีโอ และตัดเฉพาะช่วงที่ไม่ทับคำพูด',
           style: TextStyle(
             fontSize: 10.5,
             height: 1.45,
@@ -4511,38 +5108,91 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Widget _buildSubtitleAdvanced() {
-    final alignment = _effectiveSubtitlePosition == 'top'
-        ? Alignment.topCenter
-        : Alignment.bottomCenter;
     final previewText = switch (_subtitleWords) {
       'karaoke' => 'ลด',
-      'full' => 'ลดแรง 50% ส่งฟรีทั้งร้าน',
-      _ => 'ลดแรง 50%',
+      'full' => 'ลดแรง 50% ส่งฟรี วันนี้',
+      _ => 'ลดแรง 50% วันนี้',
     };
+    final previewFontSize = switch (_subtitleStyle) {
+      'small' => 17.0,
+      'medium' => 19.0,
+      _ => 22.0,
+    };
+    final previewStyle = SubtitleStyle(
+      fontId: SubtitleStyle.defaults.fontId,
+      fontWeight: SubtitleStyle.defaults.fontWeight,
+      fontSize: previewFontSize,
+      textColor: _subtitleHexColor(_subtitleColor),
+      activeWordColor: SubtitleStyle.defaults.activeWordColor,
+      outlineColor: _subtitleHexColor(_subtitleOutlineColor),
+      outlineWidth: SubtitleStyle.defaults.outlineWidth,
+      shadowColor: SubtitleStyle.defaults.shadowColor,
+      shadowDepth: SubtitleStyle.defaults.shadowDepth,
+      alignment: switch (_effectiveSubtitlePosition) {
+        'top' => SubtitleAlignment.top,
+        'middle' => SubtitleAlignment.middle,
+        _ => SubtitleAlignment.bottom,
+      },
+      normalizedX: _subtitleNormalizedX,
+      normalizedY: _subtitleNormalizedY,
+      maxLines: 1,
+    );
+    final picked = _selectedVideo;
+    final displaySizeHint = picked?.width != null && picked?.height != null
+        ? Size(picked!.width!.toDouble(), picked.height!.toDouble())
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Align(
-          child: Container(
-            width: 104,
-            height: 184,
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 11),
-            alignment: alignment,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(13),
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFF2A3B5B),
-                  Color(0xFF12141C),
-                  Color(0xFF050507)
-                ],
-                stops: [0, 0.55, 1],
-              ),
+        if (picked != null)
+          AiSubtitleFramePreview(
+            key: ValueKey('ai-subtitle-frame-${picked.path}'),
+            sourceFile: File(picked.path),
+            sourceFingerprint:
+                '${picked.path}|${picked.sizeBytes}|${picked.durationSeconds}',
+            controllerFactory: widget.subtitleFrameControllerFactory,
+            session: _subtitleFramePreviewSession,
+            displaySizeHint: displaySizeHint,
+            maxPreviewWidth: 240,
+            maxPreviewHeight: 320,
+            overlayBuilder: (context, displaySize, position) =>
+                SubtitlePreviewOverlay(
+              text: previewText,
+              style: previewStyle,
+              onPositionChanged: (normalized) {
+                setState(() {
+                  _subtitleNormalizedX = normalized.dx;
+                  _subtitleNormalizedY = normalized.dy;
+                  _subtitlePosition = _effectiveSubtitlePosition;
+                });
+              },
             ),
-            child: _subtitlePreview(previewText),
+          )
+        else
+          const AspectRatio(
+            aspectRatio: 9 / 16,
+            child: ColoredBox(color: Color(0xFF07120D)),
+          ),
+        const SizedBox(height: 8),
+        Center(
+          child: TextButton.icon(
+            key: const ValueKey('ai-subtitle-position-reset'),
+            onPressed: () {
+              setState(() {
+                _subtitleNormalizedX = 0.5;
+                _subtitleNormalizedY = 0.88;
+                _subtitlePosition = 'bottom';
+              });
+            },
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('รีเซ็ตตำแหน่ง'),
+          ),
+        ),
+        Center(
+          child: Text(
+            'ลากข้อความบนภาพเพื่อวางตำแหน่งซับ',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
           ),
         ),
         const SizedBox(height: 14),
@@ -4572,34 +5222,32 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           ],
         ),
         const SizedBox(height: 13),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppTheme.borderSoft),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.info_outline,
-                size: 17,
-                color: AppTheme.textSecondary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'สีซับเป็นสีขาวพร้อมขอบดำในเวอร์ชันนี้',
-                  style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        _subtitleColorChoices(
+          label: 'สีข้อความ',
+          keyPrefix: 'ai-subtitle-text-color',
+          selected: _subtitleColor,
+          colors: const [
+            Colors.white,
+            Color(0xFFFFF45C),
+            Color(0xFF00E5A8),
+            Color(0xFFFF6B6B),
+            Color(0xFF60A5FA),
+          ],
+          onChanged: (color) => setState(() => _subtitleColor = color),
+        ),
+        const SizedBox(height: 13),
+        _subtitleColorChoices(
+          label: 'สีกรอบ',
+          keyPrefix: 'ai-subtitle-outline-color',
+          selected: _subtitleOutlineColor,
+          colors: const [
+            Colors.black,
+            Colors.white,
+            Color(0xFF052E21),
+            Color(0xFF7C2D12),
+            Color(0xFF1E3A8A),
+          ],
+          onChanged: (color) => setState(() => _subtitleOutlineColor = color),
         ),
         const SizedBox(height: 13),
         _advancedLabel('ความยาวต่อช่วงซับ'),
@@ -4609,60 +5257,105 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           children: [
             _choiceChip(
               key: const ValueKey('ai-subtitle-length-short'),
-              label: 'สั้น (ไม่เกิน 8 ตัวอักษร)',
+              label: 'คาราโอเกะ · 1 คำ',
               selected: _subtitleWords == 'karaoke',
               onTap: () => setState(() => _subtitleWords = 'karaoke'),
             ),
             _choiceChip(
               key: const ValueKey('ai-subtitle-length-medium'),
-              label: 'กลาง (ไม่เกิน 18 ตัวอักษร)',
+              label: 'อ่านง่าย · สูงสุด 3 คำ',
               selected: _subtitleWords == 'few',
               onTap: () => setState(() => _subtitleWords = 'few'),
             ),
             _choiceChip(
               key: const ValueKey('ai-subtitle-length-long'),
-              label: 'ยาว (ไม่เกิน 36 ตัวอักษร)',
+              label: 'เนื้อหาครบ · สูงสุด 5 คำ',
               selected: _subtitleWords == 'full',
               onTap: () => setState(() => _subtitleWords = 'full'),
             ),
           ],
         ),
-        const SizedBox(height: 13),
-        _advancedLabel('ตำแหน่งซับ'),
-        Wrap(
-          spacing: 7,
-          children: [
-            for (final option in const [
-              ('top', 'บน'),
-              ('bottom', 'ล่าง'),
-            ])
-              _choiceChip(
-                key: ValueKey('ai-subtitle-position-${option.$1}'),
-                label: option.$2,
-                selected: _effectiveSubtitlePosition == option.$1,
-                onTap: () => setState(() => _subtitlePosition = option.$1),
-              ),
-          ],
+        const SizedBox(height: 8),
+        Text(
+          'AI อาจใช้คำน้อยกว่าที่เลือกเพื่อไม่ให้ซับล้นจอ และจะไม่ตัดกลางคำ',
+          style: TextStyle(
+            color: AppTheme.textMuted,
+            fontSize: 10.5,
+            height: 1.4,
+          ),
         ),
       ],
     );
   }
 
-  Widget _subtitlePreview(String text) {
-    final textStyle = TextStyle(
-      color: Colors.white,
-      fontSize: switch (_subtitleStyle) {
-        'small' => 13,
-        'medium' => 15,
-        _ => 17,
-      },
-      fontWeight: FontWeight.w800,
-      shadows: const [
-        Shadow(color: Colors.black, blurRadius: 1, offset: Offset(1, 1)),
-        Shadow(color: Colors.black, blurRadius: 1, offset: Offset(-1, -1)),
+  Widget _subtitleColorChoices({
+    required String label,
+    required String keyPrefix,
+    required Color selected,
+    required List<Color> colors,
+    required ValueChanged<Color> onChanged,
+  }) {
+    const names = <int, String>{
+      0xFFFFFFFF: 'ขาว',
+      0xFF000000: 'ดำ',
+      0xFFFFF45C: 'เหลือง',
+      0xFF00E5A8: 'เขียวมิ้นต์',
+      0xFFFF6B6B: 'แดง',
+      0xFF60A5FA: 'ฟ้า',
+      0xFF052E21: 'เขียวเข้ม',
+      0xFF7C2D12: 'น้ำตาล',
+      0xFF1E3A8A: 'น้ำเงินเข้ม',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _advancedLabel(label),
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          children: [
+            for (final color in colors)
+              Semantics(
+                key: ValueKey('$keyPrefix-${color.toARGB32()}'),
+                button: true,
+                selected: color.toARGB32() == selected.toARGB32(),
+                onTap: () => onChanged(color),
+                label:
+                    '$label ${names[color.toARGB32()] ?? _subtitleHexColor(color)}',
+                child: ExcludeSemantics(
+                  child: InkWell(
+                    onTap: () => onChanged(color),
+                    customBorder: const CircleBorder(),
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: color.toARGB32() == selected.toARGB32()
+                              ? AppTheme.accent
+                              : AppTheme.border,
+                          width:
+                              color.toARGB32() == selected.toARGB32() ? 3 : 1,
+                        ),
+                      ),
+                      child: color.toARGB32() == selected.toARGB32()
+                          ? Icon(
+                              Icons.check_rounded,
+                              color: color.computeLuminance() > 0.5
+                                  ? Colors.black
+                                  : Colors.white,
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ],
     );
-    return Text(text, textAlign: TextAlign.center, style: textStyle);
   }
 
   Widget _buildCtaAdvanced() {

@@ -79,6 +79,89 @@ List<AiEditTranscriptWordResult> _readValidatedSubtitleWords(Object? rawWords) {
   return List<AiEditTranscriptWordResult>.unmodifiable(words);
 }
 
+List<ClipTranscriptSegment> _readStrictBoundarySegments(
+  Object? rawSegments, {
+  required double durationSeconds,
+}) {
+  if (rawSegments is! List<dynamic> ||
+      !durationSeconds.isFinite ||
+      durationSeconds <= 0) {
+    return const <ClipTranscriptSegment>[];
+  }
+
+  final segments = <ClipTranscriptSegment>[];
+  for (final rawSegment in rawSegments) {
+    if (rawSegment is! Map<String, Object?>) {
+      return const <ClipTranscriptSegment>[];
+    }
+    final text = rawSegment['text'];
+    final rawStart = rawSegment['start'];
+    final rawEnd = rawSegment['end'];
+    if (text is! String ||
+        text.trim().isEmpty ||
+        rawStart is! num ||
+        rawEnd is! num) {
+      return const <ClipTranscriptSegment>[];
+    }
+    final start = rawStart.toDouble();
+    final end = rawEnd.toDouble();
+    if (!start.isFinite ||
+        !end.isFinite ||
+        start < 0 ||
+        end <= start ||
+        end > durationSeconds) {
+      return const <ClipTranscriptSegment>[];
+    }
+
+    final metrics = <String, double?>{};
+    for (final key in const [
+      'avgLogprob',
+      'noSpeechProbability',
+      'compressionRatio',
+    ]) {
+      final rawMetric = rawSegment[key];
+      if (rawMetric != null && rawMetric is! num) {
+        return const <ClipTranscriptSegment>[];
+      }
+      final metric = rawMetric is num ? rawMetric.toDouble() : null;
+      if (metric != null && !metric.isFinite) {
+        return const <ClipTranscriptSegment>[];
+      }
+      metrics[key] = metric;
+    }
+
+    List<AiEditTranscriptWordResult>? words;
+    if (rawSegment.containsKey('words')) {
+      final rawWords = rawSegment['words'];
+      if (rawWords is! List<dynamic>) {
+        return const <ClipTranscriptSegment>[];
+      }
+      words = _readValidatedSubtitleWords(rawWords);
+      if (words.length != rawWords.length ||
+          words.any((word) =>
+              word.word.trim().isEmpty ||
+              word.start < start ||
+              word.end <= word.start ||
+              word.end > end)) {
+        return const <ClipTranscriptSegment>[];
+      }
+    }
+
+    segments.add(
+      ClipTranscriptSegment(
+        text: text,
+        start: start,
+        end: end,
+        words: words,
+        avgLogprob: metrics['avgLogprob'],
+        noSpeechProbability: metrics['noSpeechProbability'],
+        compressionRatio: metrics['compressionRatio'],
+      ),
+    );
+  }
+  return List<ClipTranscriptSegment>.unmodifiable(segments);
+}
+
 class AiEditQuota {
   const AiEditQuota({
     required this.limitMinutes,
@@ -429,8 +512,11 @@ class AiEditPrepareSettings {
   const AiEditPrepareSettings({
     this.subtitleStyle,
     this.subtitleColor,
+    this.subtitleOutlineColor,
     this.subtitleWordsPerLine,
     this.subtitlePosition,
+    this.subtitleNormalizedX,
+    this.subtitleNormalizedY,
     this.ctaText,
     this.ctaDesign,
     this.priceText,
@@ -445,8 +531,11 @@ class AiEditPrepareSettings {
 
   final String? subtitleStyle;
   final String? subtitleColor;
+  final String? subtitleOutlineColor;
   final int? subtitleWordsPerLine;
   final String? subtitlePosition;
+  final double? subtitleNormalizedX;
+  final double? subtitleNormalizedY;
   final String? ctaText;
   final String? ctaDesign;
   final String? priceText;
@@ -461,9 +550,15 @@ class AiEditPrepareSettings {
   Map<String, Object?> toJson() => {
         if (subtitleStyle != null) 'subtitleStyle': subtitleStyle,
         if (subtitleColor != null) 'subtitleColor': subtitleColor,
+        if (subtitleOutlineColor != null)
+          'subtitleOutlineColor': subtitleOutlineColor,
         if (subtitleWordsPerLine != null)
           'subtitleWordsPerLine': subtitleWordsPerLine,
         if (subtitlePosition != null) 'subtitlePosition': subtitlePosition,
+        if (subtitleNormalizedX != null)
+          'subtitleNormalizedX': subtitleNormalizedX,
+        if (subtitleNormalizedY != null)
+          'subtitleNormalizedY': subtitleNormalizedY,
         if (ctaText != null) 'ctaText': ctaText,
         if (ctaDesign != null) 'ctaDesign': ctaDesign,
         if (priceText != null) 'priceText': priceText,
@@ -566,6 +661,7 @@ class AiEditTranscriptResult {
     required this.language,
     required this.durationSeconds,
     required this.segments,
+    this.boundarySegments = const [],
     required this.words,
     required this.model,
   });
@@ -574,23 +670,30 @@ class AiEditTranscriptResult {
   final String language;
   final double durationSeconds;
   final List<ClipTranscriptSegment> segments;
+  final List<ClipTranscriptSegment> boundarySegments;
   final List<AiEditTranscriptWordResult> words;
   final String model;
 
   factory AiEditTranscriptResult.fromJson(Map<String, Object?> json) {
     final rawSegments = json['segments'];
+    final rawBoundarySegments = json['boundarySegments'];
     final rawWords = json['words'];
+    final durationSeconds = (json['durationSeconds'] as num?)?.toDouble() ?? 0;
 
     return AiEditTranscriptResult(
       text: json['text'] as String? ?? '',
       language: json['language'] as String? ?? '',
-      durationSeconds: (json['durationSeconds'] as num?)?.toDouble() ?? 0,
+      durationSeconds: durationSeconds,
       segments: rawSegments is List<dynamic>
           ? rawSegments
               .whereType<Map<String, Object?>>()
               .map(ClipTranscriptSegment.fromJson)
               .toList()
           : <ClipTranscriptSegment>[],
+      boundarySegments: _readStrictBoundarySegments(
+        rawBoundarySegments,
+        durationSeconds: durationSeconds,
+      ),
       words: rawWords is List<dynamic>
           ? rawWords
               .whereType<Map<String, Object?>>()
@@ -608,19 +711,55 @@ class AiEditSubtitleStyleResult {
     required this.color,
     required this.wordsPerLine,
     required this.position,
+    this.outlineColor = '#000000',
+    this.normalizedX,
+    this.normalizedY,
   });
 
   final String mode;
   final String color;
   final int wordsPerLine;
   final String position;
+  final String outlineColor;
+  final double? normalizedX;
+  final double? normalizedY;
+
+  AiEditSubtitleStyleResult withWordsPerLine(int updatedWordsPerLine) =>
+      AiEditSubtitleStyleResult(
+        mode: mode,
+        color: color,
+        wordsPerLine: updatedWordsPerLine,
+        position: position,
+        outlineColor: outlineColor,
+        normalizedX: normalizedX,
+        normalizedY: normalizedY,
+      );
 
   factory AiEditSubtitleStyleResult.fromJson(Map<String, Object?> json) {
+    final position = json['position'] as String? ?? 'bottom';
+    double? readNormalized(String key) {
+      final rawValue = json[key];
+      if (rawValue is! num) {
+        return null;
+      }
+      final value = rawValue.toDouble();
+      return value.isFinite && value >= 0 && value <= 1 ? value : null;
+    }
+
+    final rawOutlineColor = json['outlineColor'];
+    final outlineColor = rawOutlineColor is String &&
+            RegExp(r'^#[0-9A-F]{6}$').hasMatch(rawOutlineColor)
+        ? rawOutlineColor
+        : '#000000';
+
     return AiEditSubtitleStyleResult(
       mode: json['mode'] as String? ?? 'bold',
       color: json['color'] as String? ?? '#FFFFFF',
       wordsPerLine: (json['wordsPerLine'] as num?)?.round() ?? 2,
-      position: json['position'] as String? ?? 'bottom',
+      position: position,
+      outlineColor: outlineColor,
+      normalizedX: readNormalized('normalizedX'),
+      normalizedY: readNormalized('normalizedY'),
     );
   }
 }
@@ -630,15 +769,45 @@ class AiEditSubtitlesResult {
     required this.enabled,
     required this.segments,
     required this.style,
+    this.variants = const <int, List<ClipTranscriptSegment>>{},
   });
 
   final bool enabled;
   final List<ClipTranscriptSegment> segments;
   final AiEditSubtitleStyleResult style;
+  final Map<int, List<ClipTranscriptSegment>> variants;
+
+  AiEditSubtitlesResult? withWordsPerLine(int wordsPerLine) {
+    if (!enabled || style.wordsPerLine == wordsPerLine) return this;
+    final variant = variants[wordsPerLine];
+    if (variant == null) return null;
+
+    return AiEditSubtitlesResult(
+      enabled: enabled,
+      segments: variant,
+      style: style.withWordsPerLine(wordsPerLine),
+      variants: variants,
+    );
+  }
 
   factory AiEditSubtitlesResult.fromJson(Map<String, Object?> json) {
     final rawSegments = json['segments'];
     final rawStyle = json['style'];
+    final rawVariants = json['variants'];
+    final variants = <int, List<ClipTranscriptSegment>>{};
+    if (rawVariants is Map<String, Object?>) {
+      for (final entry in rawVariants.entries) {
+        final wordsPerLine = int.tryParse(entry.key);
+        final rawVariantSegments = entry.value;
+        if (wordsPerLine == null || rawVariantSegments is! List<dynamic>) {
+          continue;
+        }
+        variants[wordsPerLine] = rawVariantSegments
+            .whereType<Map<String, Object?>>()
+            .map(ClipTranscriptSegment.fromJson)
+            .toList(growable: false);
+      }
+    }
 
     return AiEditSubtitlesResult(
       enabled: json['enabled'] as bool? ?? false,
@@ -651,6 +820,7 @@ class AiEditSubtitlesResult {
       style: AiEditSubtitleStyleResult.fromJson(
         rawStyle is Map<String, Object?> ? rawStyle : const <String, Object?>{},
       ),
+      variants: variants,
     );
   }
 }
@@ -775,6 +945,29 @@ class AiEditRecipeResult {
   final AiEditMusicResult music;
   final AiEditSpeechReductionResult speechReduction;
   final Map<String, AiEditCapabilityStatusResult> capabilities;
+
+  AiEditRecipeResult? withSubtitleWordsPerLine(int wordsPerLine) {
+    final updatedSubtitles = subtitles.withWordsPerLine(wordsPerLine);
+    if (updatedSubtitles == null) return null;
+    if (identical(updatedSubtitles, subtitles)) return this;
+
+    return AiEditRecipeResult(
+      version: version,
+      status: status,
+      renderMode: renderMode,
+      styleId: styleId,
+      prompt: prompt,
+      transcript: transcript,
+      subtitles: updatedSubtitles,
+      cutRanges: cutRanges,
+      silenceRanges: silenceRanges,
+      fillerRanges: fillerRanges,
+      plan: plan,
+      music: music,
+      speechReduction: speechReduction,
+      capabilities: capabilities,
+    );
+  }
 
   AiEditRecipeResult withPlan(AiEditPlanResult updatedPlan) {
     return AiEditRecipeResult(

@@ -3,10 +3,40 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_draft_store.dart';
+import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_preview_overlay.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_project.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_studio_screen.dart';
 
 void main() {
+  testWidgets('uses the display-oriented video aspect instead of fixed 9:16',
+      (tester) async {
+    final file = File(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}'
+      'studio-landscape-preview.mp4',
+    )..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SubtitleStudioScreen(
+          sourceFile: file,
+          initialProject: _project(),
+          draftStore: _MemoryDraftStore(),
+          previewDisplaySizeHint: const Size(1920, 1080),
+          videoPreviewBuilder: (_, __) => const ColoredBox(color: Colors.black),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final aspect = tester.widget<AspectRatio>(
+      find.byKey(const ValueKey('subtitle-studio-preview-aspect')),
+    );
+    expect(aspect.aspectRatio, closeTo(16 / 9, 0.0001));
+  });
+
   test('stops only an explicit cue replay at its end', () {
     expect(
       shouldStopSubtitleCueReplay(
@@ -189,6 +219,95 @@ void main() {
       find.byKey(const ValueKey('subtitle-preview-active-words')),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+      'dragging the preview updates position with undo redo and autosave',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final file = File(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}'
+      'studio-position-drag.mp4',
+    )..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    final store = _MemoryDraftStore();
+    SubtitleProject? result;
+    final project = _project();
+    final shortProject = project.copyWith(
+      cues: [project.cues.single.copyWith(text: 'ดี')],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: ElevatedButton(
+              onPressed: () async {
+                result = await Navigator.of(context).push<SubtitleProject>(
+                  MaterialPageRoute(
+                    builder: (_) => SubtitleStudioScreen(
+                      sourceFile: file,
+                      initialProject: shortProject,
+                      draftStore: store,
+                      videoPreviewBuilder: (_, __) =>
+                          const ColoredBox(color: Colors.black),
+                    ),
+                  ),
+                );
+              },
+              child: const Text('open drag studio'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open drag studio'));
+    await tester.pumpAndSettle();
+    final draggable = find.byKey(const ValueKey('subtitle-preview-draggable'));
+    final positioned =
+        find.byKey(const ValueKey('subtitle-preview-positioned-content'));
+    expect(draggable, findsOneWidget);
+    final initialCenter = tester.getCenter(positioned);
+
+    final overlay = tester.widget<SubtitlePreviewOverlay>(
+      find.byType(SubtitlePreviewOverlay),
+    );
+    expect(overlay.onPositionChanged, isNotNull);
+    overlay.onPositionChanged!(const Offset(0.35, 0.60));
+    await tester.pump();
+    final draggedCenter = tester.getCenter(positioned);
+    expect(draggedCenter.dx, lessThan(initialCenter.dx));
+    expect(draggedCenter.dy, lessThan(initialCenter.dy));
+
+    await tester.pump(const Duration(milliseconds: 600));
+    final savedAfterDrag = store.saved!.defaultStyle;
+    expect(savedAfterDrag.normalizedX, 0.35);
+    expect(savedAfterDrag.normalizedY, 0.60);
+
+    await tester.tap(find.byKey(const ValueKey('subtitle-undo')));
+    await tester.pump();
+    expect(
+      tester.getCenter(positioned),
+      within(distance: 0.01, from: initialCenter),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('subtitle-redo')));
+    await tester.pump();
+    expect(
+      tester.getCenter(positioned),
+      within(distance: 0.01, from: draggedCenter),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('subtitle-finish')));
+    await tester.pumpAndSettle();
+    expect(result?.defaultStyle.normalizedX, savedAfterDrag.normalizedX);
+    expect(result?.defaultStyle.normalizedY, savedAfterDrag.normalizedY);
   });
 }
 

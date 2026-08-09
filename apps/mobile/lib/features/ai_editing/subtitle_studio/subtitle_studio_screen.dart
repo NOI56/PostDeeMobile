@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../ai_subtitle_frame_preview.dart';
 import 'subtitle_draft_store.dart';
 import 'subtitle_preview_overlay.dart';
 import 'subtitle_project.dart';
@@ -31,12 +32,14 @@ class SubtitleStudioScreen extends StatefulWidget {
     required this.initialProject,
     required this.draftStore,
     this.videoPreviewBuilder,
+    this.previewDisplaySizeHint,
   });
 
   final File sourceFile;
   final SubtitleProject initialProject;
   final SubtitleDraftStore draftStore;
   final SubtitleVideoPreviewBuilder? videoPreviewBuilder;
+  final Size? previewDisplaySizeHint;
 
   @override
   State<SubtitleStudioScreen> createState() => _SubtitleStudioScreenState();
@@ -330,6 +333,18 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
     );
     final previewText =
         previewCue == null ? '' : _controller.displayTextFor(previewCue);
+    final encodedSize = video?.value.size;
+    final displaySize = _validSubtitleStudioPreviewSize(
+          _videoReady && video != null
+              ? displayOrientedFrameSize(
+                  encodedSize ?? Size.zero,
+                  video.value.rotationCorrection,
+                )
+              : null,
+        ) ??
+        _validSubtitleStudioPreviewSize(widget.previewDisplaySizeHint) ??
+        const Size(9, 16);
+    final previewAspectRatio = displaySize.width / displaySize.height;
 
     return Container(
       color: const Color(0xFF08110E),
@@ -338,10 +353,11 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
         children: [
           Expanded(
             child: Center(
-              child: SizedBox(
-                height: 248,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 248),
                 child: AspectRatio(
-                  aspectRatio: 9 / 16,
+                  key: const ValueKey('subtitle-studio-preview-aspect'),
+                  aspectRatio: previewAspectRatio,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: Stack(
@@ -350,14 +366,7 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
                         if (widget.videoPreviewBuilder case final builder?)
                           builder(context, widget.sourceFile)
                         else if (_videoReady && video != null)
-                          FittedBox(
-                            fit: BoxFit.cover,
-                            child: SizedBox(
-                              width: video.value.size.width,
-                              height: video.value.size.height,
-                              child: VideoPlayer(video),
-                            ),
-                          )
+                          VideoPlayer(video)
                         else
                           const ColoredBox(
                             color: Colors.black,
@@ -370,7 +379,15 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
                           ),
                         SubtitlePreviewOverlay(
                           text: previewText,
+                          layoutTexts: [
+                            for (final cue in _controller.project.cues)
+                              _controller.displayTextFor(cue),
+                          ],
                           style: _controller.project.defaultStyle,
+                          onPositionChanged: (position) => _setStyle(
+                            normalizedX: position.dx,
+                            normalizedY: position.dy,
+                          ),
                           currentPlaybackTimeMs: _sourcePositionMs,
                           cueStartMs: previewCue?.sourceStartMs,
                           cueEndMs: previewCue?.sourceEndMs,
@@ -430,6 +447,17 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
         ],
       ),
     );
+  }
+
+  Size? _validSubtitleStudioPreviewSize(Size? size) {
+    if (size == null ||
+        !size.width.isFinite ||
+        !size.height.isFinite ||
+        size.width <= 0 ||
+        size.height <= 0) {
+      return null;
+    }
+    return size;
   }
 
   Widget _buildTextEditor() {
@@ -983,6 +1011,8 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
     String? shadowColor,
     double? shadowDepth,
     SubtitleAlignment? alignment,
+    double? normalizedX,
+    double? normalizedY,
     int? maxLines,
     String? animation,
   }) {
@@ -998,6 +1028,8 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
         shadowColor: shadowColor,
         shadowDepth: shadowDepth,
         alignment: alignment,
+        normalizedX: normalizedX,
+        normalizedY: normalizedY,
         maxLines: maxLines,
         animation: animation,
       ),

@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
+import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_project.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_project_mapper.dart';
+import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_studio_controller.dart';
 
 void main() {
   AiEditRecipeResult recipeFixture({
@@ -12,6 +14,9 @@ void main() {
     List<AiEditCut> cutRanges = const [AiEditCut(start: 3, end: 4)],
     String color = '#FFFFFF',
     String position = 'bottom',
+    String outlineColor = '#000000',
+    double? normalizedX,
+    double? normalizedY,
   }) {
     return AiEditRecipeResult(
       version: 1,
@@ -49,6 +54,9 @@ void main() {
           color: color,
           wordsPerLine: 2,
           position: position,
+          outlineColor: outlineColor,
+          normalizedX: normalizedX,
+          normalizedY: normalizedY,
         ),
       ),
       cutRanges: cutRanges,
@@ -118,6 +126,25 @@ void main() {
       fresh.recipeFingerprint,
       matches(RegExp(r'^recipe-[0-9a-f]{16}$')),
     );
+  });
+
+  test('rebases the recipe fingerprint when setup style changes', () {
+    final original = mapFixture();
+    final changedStyle = copySubtitleStyle(
+      original.defaultStyle,
+      textColor: '#00E5A8',
+      outlineColor: '#112233',
+      normalizedX: 0.25,
+      normalizedY: 0.6,
+    );
+
+    final changed = applySubtitleSetupStyle(original, changedStyle);
+    final changedAgain = applySubtitleSetupStyle(original, changedStyle);
+
+    expect(changed.defaultStyle, changedStyle);
+    expect(changed.recipeFingerprint, isNot(original.recipeFingerprint));
+    expect(changed.recipeFingerprint, changedAgain.recipeFingerprint);
+    expect(changed.cues, original.cues);
   });
 
   test('preserves long Thai boundaries already selected by the API', () {
@@ -418,6 +445,182 @@ void main() {
     expect(project.updatedAt, DateTime.utc(2026, 7, 20));
   });
 
+  test('explicit empty effective cuts do not leak raw recipe candidates', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        durationSeconds: 20,
+        cutRanges: const [AiEditCut(start: 4.8, end: 6.2)],
+      ),
+      projectId: 'project-verified-cuts',
+      sourceFingerprint: 'source-verified-cuts',
+      now: DateTime.utc(2026, 8, 1),
+      effectiveCutRanges: const [],
+    );
+
+    expect(project.cutRanges, isEmpty);
+  });
+
+  test('explicit effective cuts replace raw recipe candidates', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        durationSeconds: 20,
+        cutRanges: const [AiEditCut(start: 4.8, end: 6.2)],
+      ),
+      projectId: 'project-effective-cuts',
+      sourceFingerprint: 'source-effective-cuts',
+      now: DateTime.utc(2026, 8, 1),
+      effectiveCutRanges: const [AiEditCut(start: 10.1, end: 10.9)],
+    );
+
+    expect(project.cutRanges, hasLength(1));
+    expect(project.cutRanges.single.sourceStartMs, 10100);
+    expect(project.cutRanges.single.sourceEndMs, 10900);
+  });
+
+  test('replaces project cuts and rebases revision time and fingerprint', () {
+    final createdAt = DateTime.utc(2026, 8, 1);
+    final updatedAt = DateTime(2026, 8, 1, 7, 1);
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        durationSeconds: 20,
+        cutRanges: const [AiEditCut(start: 4.8, end: 6.2)],
+      ),
+      projectId: 'project-replaced-cuts',
+      sourceFingerprint: 'source-replaced-cuts',
+      now: createdAt,
+      effectiveCutRanges: const [],
+    );
+
+    final updated = replaceSubtitleProjectCutRanges(
+      project: project,
+      effectiveCutRanges: const [
+        SilenceCutRange(start: 10.1, end: 10.9),
+      ],
+      now: updatedAt,
+    );
+
+    expect(project.cutRanges, isEmpty);
+    expect(updated.cutRanges, hasLength(1));
+    expect(updated.cutRanges.single.sourceStartMs, 10100);
+    expect(updated.cutRanges.single.sourceEndMs, 10900);
+    expect(updated.recipeFingerprint, isNot(project.recipeFingerprint));
+    expect(updated.revision, project.revision + 1);
+    expect(updated.createdAt, createdAt);
+    expect(updated.updatedAt, updatedAt.toUtc());
+    expect(() => validateSubtitleProject(updated), returnsNormally);
+  });
+
+  test('replacement sorts merges and deduplicates effective cuts', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(durationSeconds: 20),
+      projectId: 'project-merged-replacement',
+      sourceFingerprint: 'source-merged-replacement',
+      now: DateTime.utc(2026, 8, 1),
+      effectiveCutRanges: const [],
+    );
+
+    final updated = replaceSubtitleProjectCutRanges(
+      project: project,
+      effectiveCutRanges: const [
+        SilenceCutRange(start: 8, end: 9),
+        SilenceCutRange(start: 3.5, end: 5),
+        SilenceCutRange(start: 3, end: 4),
+        SilenceCutRange(start: 5, end: 6),
+        SilenceCutRange(start: 8, end: 9),
+      ],
+      now: DateTime.utc(2026, 8, 1, 0, 1),
+    );
+
+    expect(updated.cutRanges, hasLength(2));
+    expect(updated.cutRanges[0].sourceStartMs, 3000);
+    expect(updated.cutRanges[0].sourceEndMs, 6000);
+    expect(updated.cutRanges[1].sourceStartMs, 8000);
+    expect(updated.cutRanges[1].sourceEndMs, 9000);
+  });
+
+  test('replacement fingerprint is deterministic for the same cut ranges', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(durationSeconds: 20),
+      projectId: 'project-stable-replacement',
+      sourceFingerprint: 'source-stable-replacement',
+      now: DateTime.utc(2026, 8, 1),
+      effectiveCutRanges: const [],
+    );
+
+    final first = replaceSubtitleProjectCutRanges(
+      project: project,
+      effectiveCutRanges: const [
+        SilenceCutRange(start: 10.1, end: 10.9),
+      ],
+      now: DateTime.utc(2026, 8, 1, 0, 1),
+    );
+    final second = replaceSubtitleProjectCutRanges(
+      project: project,
+      effectiveCutRanges: const [
+        SilenceCutRange(start: 10.1, end: 10.9),
+      ],
+      now: DateTime.utc(2026, 8, 1, 0, 2),
+    );
+
+    expect(first.recipeFingerprint, second.recipeFingerprint);
+    expect(first.updatedAt, isNot(second.updatedAt));
+  });
+
+  test('effective cuts fail closed for invalid nonfinite or out-of-range data',
+      () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(durationSeconds: 20),
+      projectId: 'project-invalid-replacement',
+      sourceFingerprint: 'source-invalid-replacement',
+      now: DateTime.utc(2026, 8, 1),
+      effectiveCutRanges: const [],
+    );
+    final invalidRanges = <SilenceCutRange>[
+      const SilenceCutRange(start: -1, end: 2),
+      const SilenceCutRange(start: 4, end: 3),
+      const SilenceCutRange(start: 19, end: 21),
+      SilenceCutRange(start: double.nan, end: 2),
+      SilenceCutRange(start: 1, end: double.infinity),
+      const SilenceCutRange(start: 1.0001, end: 1.0004),
+    ];
+
+    for (final range in invalidRanges) {
+      expect(
+        () => replaceSubtitleProjectCutRanges(
+          project: project,
+          effectiveCutRanges: [range],
+          now: DateTime.utc(2026, 8, 1, 0, 1),
+        ),
+        throwsA(isA<SubtitleProjectValidationException>()),
+      );
+    }
+  });
+
+  test('mapper effective cuts fail closed instead of falling back to raw cuts',
+      () {
+    for (final effectiveCutRanges in <List<AiEditCut>>[
+      const [AiEditCut(start: -1, end: 2)],
+      const [AiEditCut(start: 4, end: 3)],
+      const [AiEditCut(start: 19, end: 21)],
+      [AiEditCut(start: double.nan, end: 2)],
+      [AiEditCut(start: 1, end: double.infinity)],
+    ]) {
+      expect(
+        () => mapAiEditRecipeToSubtitleProject(
+          recipe: recipeFixture(
+            durationSeconds: 20,
+            cutRanges: const [AiEditCut(start: 3, end: 4)],
+          ),
+          projectId: 'project-invalid-effective-map',
+          sourceFingerprint: 'source-invalid-effective-map',
+          now: DateTime.utc(2026, 8, 1),
+          effectiveCutRanges: effectiveCutRanges,
+        ),
+        throwsA(isA<SubtitleProjectValidationException>()),
+      );
+    }
+  });
+
   test('uses recipe colour and top alignment with Thai-safe defaults', () {
     final project = mapAiEditRecipeToSubtitleProject(
       recipe: recipeFixture(color: '#A1B2C3', position: 'top'),
@@ -429,13 +632,51 @@ void main() {
     expect(project.defaultStyle.fontId, 'Anuphan');
     expect(project.defaultStyle.textColor, '#A1B2C3');
     expect(project.defaultStyle.alignment, SubtitleAlignment.top);
+    expect(project.defaultStyle.normalizedX, 0.5);
+    expect(project.defaultStyle.normalizedY, 0.12);
+  });
+
+  test('prefers normalized recipe position and maps outline colour', () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        position: 'top',
+        outlineColor: '#112233',
+        normalizedX: 0.27,
+        normalizedY: 0.63,
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.defaultStyle.outlineColor, '#112233');
+    expect(project.defaultStyle.alignment, SubtitleAlignment.middle);
+    expect(project.defaultStyle.normalizedX, 0.27);
+    expect(project.defaultStyle.normalizedY, 0.63);
+  });
+
+  test('ignores an incomplete normalized position and keeps legacy mapping',
+      () {
+    final project = mapAiEditRecipeToSubtitleProject(
+      recipe: recipeFixture(
+        position: 'top',
+        normalizedX: 0.27,
+      ),
+      projectId: 'project-1',
+      sourceFingerprint: 'source-1',
+      now: DateTime.utc(2026, 7, 20),
+    );
+
+    expect(project.defaultStyle.alignment, SubtitleAlignment.top);
+    expect(project.defaultStyle.normalizedX, 0.5);
+    expect(project.defaultStyle.normalizedY, 0.12);
   });
 
   test(
       'falls back to default colour and alignment for unsupported style values',
       () {
     final project = mapAiEditRecipeToSubtitleProject(
-      recipe: recipeFixture(color: '#ffffff', position: 'middle'),
+      recipe: recipeFixture(color: '#ffffff', position: 'sideways'),
       projectId: 'project-1',
       sourceFingerprint: 'source-1',
       now: DateTime.utc(2026, 7, 20),

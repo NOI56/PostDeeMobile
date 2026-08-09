@@ -11,6 +11,7 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
   required String projectId,
   required String sourceFingerprint,
   required DateTime now,
+  List<AiEditCut>? effectiveCutRanges,
   int maxCharsPerCue = 18,
 }) {
   final sourceDurationMs = _secondsToMilliseconds(
@@ -105,29 +106,12 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
     );
   }
 
-  final mappedCutRanges = recipe.cutRanges
-      .map(
-        (range) => SubtitleCutRange(
-          sourceStartMs: _secondsToMilliseconds(range.start, 'Cut range'),
-          sourceEndMs: _secondsToMilliseconds(range.end, 'Cut range'),
-        ),
-      )
-      .toList()
-    ..sort(
-      (left, right) => left.sourceStartMs != right.sourceStartMs
-          ? left.sourceStartMs.compareTo(right.sourceStartMs)
-          : left.sourceEndMs.compareTo(right.sourceEndMs),
-    );
-  for (final range in mappedCutRanges) {
-    if (range.sourceStartMs < 0 ||
-        range.sourceEndMs <= range.sourceStartMs ||
-        range.sourceEndMs > sourceDurationMs) {
-      throw const SubtitleProjectValidationException(
-        'Cut range has invalid timing.',
-      );
-    }
-  }
-  final cutRanges = _mergeCutRanges(mappedCutRanges);
+  final cutRanges = _mapCutRanges(
+    ranges: effectiveCutRanges ?? recipe.cutRanges,
+    readStart: (range) => range.start,
+    readEnd: (range) => range.end,
+    sourceDurationMs: sourceDurationMs,
+  );
   final defaultStyle = _mapStyle(recipe.subtitles.style);
   final recipeFingerprint = _buildRecipeFingerprint(
     sourceDurationMs: sourceDurationMs,
@@ -153,6 +137,50 @@ SubtitleProject mapAiEditRecipeToSubtitleProject({
   );
   validateSubtitleProject(project);
   return project;
+}
+
+SubtitleProject replaceSubtitleProjectCutRanges({
+  required SubtitleProject project,
+  required List<SilenceCutRange> effectiveCutRanges,
+  required DateTime now,
+}) {
+  validateSubtitleProject(project);
+  final cutRanges = _mapCutRanges(
+    ranges: effectiveCutRanges,
+    readStart: (range) => range.start,
+    readEnd: (range) => range.end,
+    sourceDurationMs: project.sourceDurationMs,
+  );
+  final recipeFingerprint = _buildRecipeFingerprint(
+    sourceDurationMs: project.sourceDurationMs,
+    language: project.language,
+    cues: project.cues,
+    defaultStyle: project.defaultStyle,
+    cutRanges: cutRanges,
+  );
+  final updated = project.copyWith(
+    recipeFingerprint: recipeFingerprint,
+    cutRanges: cutRanges,
+    revision: project.revision + 1,
+    updatedAt: now.toUtc(),
+  );
+  validateSubtitleProject(updated);
+  return updated;
+}
+
+SubtitleProject applySubtitleSetupStyle(
+  SubtitleProject project,
+  SubtitleStyle style,
+) {
+  final styledProject = project.copyWith(defaultStyle: style);
+  final recipeFingerprint = _buildRecipeFingerprint(
+    sourceDurationMs: styledProject.sourceDurationMs,
+    language: styledProject.language,
+    cues: styledProject.cues,
+    defaultStyle: styledProject.defaultStyle,
+    cutRanges: styledProject.cutRanges,
+  );
+  return styledProject.copyWith(recipeFingerprint: recipeFingerprint);
 }
 
 String _buildRecipeFingerprint({
@@ -205,15 +233,76 @@ List<SubtitleCutRange> _mergeCutRanges(List<SubtitleCutRange> ranges) {
   return merged;
 }
 
+List<SubtitleCutRange> _mapCutRanges<T>({
+  required Iterable<T> ranges,
+  required double Function(T range) readStart,
+  required double Function(T range) readEnd,
+  required int sourceDurationMs,
+}) {
+  final mapped = <SubtitleCutRange>[];
+  final sourceDurationSeconds = sourceDurationMs / 1000;
+  for (final range in ranges) {
+    final start = readStart(range);
+    final end = readEnd(range);
+    if (!start.isFinite || !end.isFinite) {
+      throw const SubtitleProjectValidationException(
+        'Cut range must be finite.',
+      );
+    }
+    if (start < 0 || end <= start || end > sourceDurationSeconds) {
+      throw const SubtitleProjectValidationException(
+        'Cut range has invalid timing.',
+      );
+    }
+
+    final mappedRange = SubtitleCutRange(
+      sourceStartMs: _secondsToMilliseconds(start, 'Cut range'),
+      sourceEndMs: _secondsToMilliseconds(end, 'Cut range'),
+    );
+    if (mappedRange.sourceStartMs < 0 ||
+        mappedRange.sourceEndMs <= mappedRange.sourceStartMs ||
+        mappedRange.sourceEndMs > sourceDurationMs) {
+      throw const SubtitleProjectValidationException(
+        'Cut range has invalid timing.',
+      );
+    }
+    mapped.add(mappedRange);
+  }
+
+  mapped.sort(
+    (left, right) => left.sourceStartMs != right.sourceStartMs
+        ? left.sourceStartMs.compareTo(right.sourceStartMs)
+        : left.sourceEndMs.compareTo(right.sourceEndMs),
+  );
+  return _mergeCutRanges(mapped);
+}
+
 SubtitleStyle _mapStyle(AiEditSubtitleStyleResult style) {
   final defaults = SubtitleStyle.defaults;
   final color = RegExp(r'^#[0-9A-F]{6}$').hasMatch(style.color)
       ? style.color
       : defaults.textColor;
-  final alignment = switch (style.position) {
-    'top' => SubtitleAlignment.top,
-    'bottom' => SubtitleAlignment.bottom,
-    _ => defaults.alignment,
+  final outlineColor = RegExp(r'^#[0-9A-F]{6}$').hasMatch(style.outlineColor)
+      ? style.outlineColor
+      : defaults.outlineColor;
+  final hasNormalizedPosition =
+      style.normalizedX != null && style.normalizedY != null;
+  final alignment = hasNormalizedPosition
+      ? switch (style.normalizedY!) {
+          < 0.34 => SubtitleAlignment.top,
+          < 0.67 => SubtitleAlignment.middle,
+          _ => SubtitleAlignment.bottom,
+        }
+      : switch (style.position) {
+          'top' => SubtitleAlignment.top,
+          'middle' => SubtitleAlignment.middle,
+          'bottom' => SubtitleAlignment.bottom,
+          _ => defaults.alignment,
+        };
+  final legacyY = switch (alignment) {
+    SubtitleAlignment.top => 0.12,
+    SubtitleAlignment.middle => 0.5,
+    SubtitleAlignment.bottom => 0.88,
   };
 
   return SubtitleStyle(
@@ -222,13 +311,14 @@ SubtitleStyle _mapStyle(AiEditSubtitleStyleResult style) {
     fontSize: defaults.fontSize,
     textColor: color,
     activeWordColor: defaults.activeWordColor,
-    outlineColor: defaults.outlineColor,
+    outlineColor: outlineColor,
     outlineWidth: defaults.outlineWidth,
     shadowColor: defaults.shadowColor,
     shadowDepth: defaults.shadowDepth,
     alignment: alignment,
-    normalizedX: defaults.normalizedX,
-    normalizedY: defaults.normalizedY,
+    normalizedX:
+        hasNormalizedPosition ? style.normalizedX! : defaults.normalizedX,
+    normalizedY: hasNormalizedPosition ? style.normalizedY! : legacyY,
     maxLines: defaults.maxLines,
     animation: defaults.animation,
   );

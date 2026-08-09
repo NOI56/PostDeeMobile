@@ -41,6 +41,24 @@ void main() {
     expect(decoded.recipeFingerprint, isNull);
   });
 
+  test('migrates legacy subtitle style without outline and coordinates', () {
+    final json = validProject().toJson();
+    final style = Map<String, Object?>.from(
+      json['defaultStyle']! as Map<String, Object?>,
+    )
+      ..remove('outlineColor')
+      ..remove('normalizedX')
+      ..remove('normalizedY')
+      ..['alignment'] = 'top';
+    json['defaultStyle'] = style;
+
+    final decoded = SubtitleProject.fromJson(json);
+
+    expect(decoded.defaultStyle.outlineColor, '#000000');
+    expect(decoded.defaultStyle.normalizedX, 0.5);
+    expect(decoded.defaultStyle.normalizedY, 0.12);
+  });
+
   test('rejects overlapping cues', () {
     final invalid = validProject().copyWith(cues: [
       SubtitleCue(

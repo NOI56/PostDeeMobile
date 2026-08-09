@@ -1,4 +1,4 @@
-enum AiEditAnalysisMode { audioOnly }
+enum AiEditAnalysisMode { audioOnly, localRenderOnly }
 
 class UnsupportedAiEditAnalysisException implements Exception {
   const UnsupportedAiEditAnalysisException(this.capability);
@@ -9,18 +9,30 @@ class UnsupportedAiEditAnalysisException implements Exception {
   String toString() => 'ยังไม่รองรับการวิเคราะห์ภาพสำหรับ $capability';
 }
 
-const _audioOnlyCapabilities = {
+const _supportedCapabilities = {
   'subtitle',
   'silence',
   'filler',
   'color',
 };
 
-AiEditAnalysisMode selectAiEditAnalysisMode(Map<String, bool> capabilities) {
-  for (final entry in capabilities.entries) {
-    if (entry.value && !_audioOnlyCapabilities.contains(entry.key)) {
-      throw UnsupportedAiEditAnalysisException(entry.key);
-    }
+AiEditAnalysisMode selectAiEditAnalysisMode(
+  Map<String, bool> capabilities, {
+  required bool usesOriginalDuration,
+}) {
+  final enabledCapabilities = capabilities.entries
+      .where((entry) => entry.value)
+      .map((entry) => entry.key)
+      .toSet();
+  final unsupported = enabledCapabilities.difference(_supportedCapabilities);
+  if (unsupported.isNotEmpty) {
+    throw UnsupportedAiEditAnalysisException(unsupported.first);
+  }
+
+  if (usesOriginalDuration &&
+      enabledCapabilities.length == 1 &&
+      enabledCapabilities.single == 'color') {
+    return AiEditAnalysisMode.localRenderOnly;
   }
 
   return AiEditAnalysisMode.audioOnly;

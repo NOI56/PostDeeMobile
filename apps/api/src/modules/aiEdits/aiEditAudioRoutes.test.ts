@@ -63,6 +63,50 @@ describe('AI edit audio routes', () => {
     expect(deleteVideo).toHaveBeenCalledWith(audioS3Key);
   });
 
+  it.each([
+    ['explicit empty capabilities', {}],
+    ['color-only capabilities', { color: true }]
+  ])(
+    'rejects %s without provider work but still deletes owned temporary audio',
+    async (_description, capabilities) => {
+      const audioS3Key = ownedUploadKey('local-dev-user', 'local-only.m4a');
+      const transcribe = vi.fn(async () => transcript);
+      const plan = vi.fn(async () => ({
+        cuts: [],
+        summary: 'must not run',
+        model: 'test-planner'
+      }));
+      const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
+      const app = createApp({
+        transcriptionProvider: { transcribe },
+        editPlanProvider: { plan },
+        videoStorage
+      });
+
+      const response = await request(app)
+        .post('/ai-edits/prepare')
+        .set('x-postdee-subscription-plan', 'PRO')
+        .send({
+          audioS3Key,
+          durationSeconds: 60,
+          capabilities
+        })
+        .expect(400);
+
+      expect(response.body.code).toBe('AI_EDIT_NO_ANALYSIS_REQUESTED');
+      expect(transcribe).not.toHaveBeenCalled();
+      expect(plan).not.toHaveBeenCalled();
+      expect(deleteVideo).toHaveBeenCalledTimes(1);
+      expect(deleteVideo).toHaveBeenCalledWith(audioS3Key);
+
+      const quota = await request(app)
+        .get('/ai-edits/quota')
+        .set('x-postdee-subscription-plan', 'PRO')
+        .expect(200);
+      expect(quota.body.quota.usedMinutes).toBe(0);
+    }
+  );
+
   it('preserves timing fields for a single audio chunk', async () => {
     const audioS3Key = ownedUploadKey(
       'local-dev-user',
@@ -254,6 +298,65 @@ describe('AI edit audio routes', () => {
     expect(deleteVideo).toHaveBeenCalledWith(firstKey);
     expect(deleteVideo).toHaveBeenCalledWith(secondKey);
     expect(deleteVideo).toHaveBeenCalledWith(thirdKey);
+
+    const quota = await request(app)
+      .get('/ai-edits/quota')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .expect(200);
+    expect(quota.body.quota.usedMinutes).toBe(0);
+  });
+
+  it('does not meter unavailable silence and repeat analysis from an untrusted middle chunk',
+      async () => {
+    const firstKey = ownedUploadKey('local-dev-user', 'chunk-000.m4a', 'chunks');
+    const secondKey = ownedUploadKey('local-dev-user', 'chunk-001.m4a', 'chunks');
+    const thirdKey = ownedUploadKey('local-dev-user', 'chunk-002.m4a', 'chunks');
+    const transcribe = vi.fn(async ({ mediaS3Key }: { mediaS3Key: string }) => ({
+      text: mediaS3Key,
+      language: 'en',
+      durationSeconds: 20,
+      segments: [{ text: mediaS3Key, start: 0, end: 1 }],
+      words: [{ word: mediaS3Key, start: 0, end: 1 }],
+      model: 'test-whisper',
+      timingIntegrity:
+        mediaS3Key === secondKey ? 'untrusted' as const : 'trusted' as const,
+      hasTimedAudioEvents: false
+    }));
+    const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
+    const app = createApp({
+      transcriptionProvider: { transcribe },
+      videoStorage
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        audioChunks: [
+          { audioS3Key: firstKey, startSeconds: 0 },
+          { audioS3Key: secondKey, startSeconds: 20 },
+          { audioS3Key: thirdKey, startSeconds: 40 }
+        ],
+        durationSeconds: 60,
+        capabilities: { silence: true, filler: true },
+        settings: { speechReductionMode: 'auto' }
+      })
+      .expect(200);
+
+    expect(response.body.recipe.analysisOutcomes).toMatchObject({
+      silence: 'unavailable',
+      speechReduction: 'unavailable'
+    });
+    expect(response.body.recipe.silenceRanges).toEqual([]);
+    expect(response.body.recipe.cutRanges).toEqual([]);
+    expect(response.body.quota.usedMinutes).toBe(0);
+    expect(deleteVideo).toHaveBeenCalledTimes(3);
+
+    const quota = await request(app)
+      .get('/ai-edits/quota')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .expect(200);
+    expect(quota.body.quota.usedMinutes).toBe(0);
   });
 
   it('fails closed when AAC timing must be clipped at a chunk boundary', async () => {
@@ -300,7 +403,7 @@ describe('AI edit audio routes', () => {
         hasTimedAudioEvents: false
       };
     });
-    const { videoStorage } = createStorageWithDeleteSpy();
+    const { deleteVideo, videoStorage } = createStorageWithDeleteSpy();
     const app = createApp({
       transcriptionProvider: { transcribe },
       videoStorage
@@ -315,7 +418,8 @@ describe('AI edit audio routes', () => {
           { audioS3Key: secondKey, startSeconds: 30 }
         ],
         durationSeconds: 60,
-        capabilities: { subtitle: true }
+        capabilities: { subtitle: true, silence: true, filler: true },
+        settings: { speechReductionMode: 'auto' }
       })
       .expect(200);
 
@@ -326,6 +430,19 @@ describe('AI edit audio routes', () => {
     expect(response.body.recipe.subtitles.segments).toEqual([]);
     expect(response.body.recipe.cutRanges).toEqual([]);
     expect(response.body.recipe.capabilities.subtitle.state).toBe('hinted');
+    expect(response.body.recipe.analysisOutcomes).toMatchObject({
+      subtitle: 'unavailable',
+      silence: 'unavailable',
+      speechReduction: 'unavailable'
+    });
+    expect(response.body.quota.usedMinutes).toBe(0);
+    expect(deleteVideo).toHaveBeenCalledTimes(2);
+
+    const quota = await request(app)
+      .get('/ai-edits/quota')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .expect(200);
+    expect(quota.body.quota.usedMinutes).toBe(0);
   });
 
   it('rejects audio chunks when one key belongs to another user', async () => {

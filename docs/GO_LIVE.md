@@ -213,9 +213,11 @@ Gemini for both visual and transcript planning.
 - Gemini 3.5 transcript and visual requests keep structured JSON output and
   use provider-default sampling: omit `generationConfig.temperature`.
 
-Mobile flow is wired. Every optional capability starts off and the user must
-explicitly enable subtitle, silence, repeated-speech, or colour; target-only
-shortening remains valid with all four off. The screen calls
+Mobile flow is wired. Every optional capability starts off and the seller-facing
+setup currently lets the user explicitly enable subtitle, silence, or
+repeated-speech; target-only shortening remains valid with all three off. The
+older colour renderer remains available only for internal/legacy verification,
+while the seller-facing colour and audio-cleanup cards are hidden. The screen calls
 `/ai-edits/prepare` when target planning or an audio-dependent capability is
 needed. `/ai-edits/transcribe` remains an authenticated backend/compatibility
 endpoint and API-client method; it is not a separate user-facing path.
@@ -330,9 +332,19 @@ behaviour. The ledger persists when `AI_EDIT_USAGE_STORE=prisma` (add it to
 Current Task 9 preparation is recorded in
 `docs/testing/results/2026-08-08-ai-edit-correctness-pixel8.md`: the verified
 implementation is in local commit `43fa6e0`, automated API/mobile checks pass,
-and fresh APK/fixture hashes are recorded. Candidate/deployed Staging SHA,
-health evidence, and every Pixel 8 matrix row remain `PENDING`; none of this
-preflight evidence authorizes Production deployment.
+fresh APK/fixture hashes are recorded, and candidate/deployed Staging SHA
+`6695e5f1d6050e0656c2bfd591fbbad745d80963` plus health evidence match. The
+Pixel 8 `color-local` passed device/render checks without a quota change, but
+direct zero-upload/prepare log evidence remains pending. `target-30` is blocked
+after a new 30-day, Speech-to-Text-only Staging key was installed and an
+environment-only deploy went live on the unchanged SHA. Health returned HTTP
+200, but the 21:57 ICT rerun still failed closed with upstream HTTP `401`, no
+output, and no PostDee quota change. ElevenLabs showed 9,994/10,000 workspace
+credits used (6 remaining), so provider-side quota exhaustion is the leading
+diagnosis; the upstream response detail was not captured to prove the exact
+cause. No payment, plan upgrade, or key revocation was performed. Wait for or
+restore provider quota only with separate approval, then rerun `target-30` once.
+This partial evidence does not authorize Production deployment.
 
 Still TODO for full AI editing: verify ElevenLabs Thai timing, fragmented-token
 fallback, Gemini cut quality, and the PostDee-rule fallback with natural speech

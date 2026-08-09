@@ -88,8 +88,9 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 - เว้น `ELEVENLABS_TRANSCRIPTION_KEYTERMS` ว่างไว้จนกว่าจะวัดความคุ้มค่า
 - การมี API key หรือค่ารุ่นโมเดลอยู่ใน Dashboard ไม่ได้แปลว่าโมเดลนั้นถูกเรียก
   ต้องตรวจค่า `TRANSCRIPTION_PROVIDER` ของ service ที่ Deploy จริงทุกครั้ง
-- ทุก optional toggle ของ AI edit เริ่มปิด ผู้ใช้ต้องเปิด subtitle, silence,
-  repeated-speech หรือ colour เอง; target-only ยังคงทำงานได้โดยไม่เปิด toggle
+- ทุก optional toggle ของ AI edit เริ่มปิด หน้า seller-facing ให้ผู้ใช้เปิดได้
+  เฉพาะ subtitle, silence และ repeated-speech; target-only ยังคงทำงานได้โดยไม่
+  เปิด toggle ส่วนการ์ด colour/audio ถูกซ่อน และ SFX แสดงเป็น `เร็ว ๆ นี้`
 - Transcript gaps are silence candidates only. The Android/iOS client confirms
   each candidate against the source waveform before rendering; failed or
   ambiguous verification keeps the original audio. Mobile ใช้ FFmpeg
@@ -101,10 +102,11 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 - การประกอบเวลา fragment ภาษาไทยเพื่อหาคำพูดซ้ำต้องตรงแบบ exact NFC และอยู่ใน
   reliable segment เดียวกันเท่านั้น หากพิสูจน์ไม่ได้ให้ fail closed และ
   repeat-only ที่ unavailable ไม่ลด AI minutes
-- Color-only edits at original duration render locally for Pro users and do not
-  consume AI editing minutes. เส้นทางนี้ไม่ extract/upload/prepare; colour +
-  shortening หรือความสามารถที่ต้องใช้เสียงยังเรียก prepare หนึ่งครั้ง ส่วน
-  unknown enabled capability ต้องหยุดก่อนเกิด side effect
+- Color-only edits at original duration remain an internal/legacy QA route for
+  Pro users and do not consume AI editing minutes; sellers cannot select this
+  card from the current setup. เส้นทางทดสอบนี้ไม่ extract/upload/prepare;
+  colour + shortening หรือความสามารถที่ต้องใช้เสียงยังเรียก prepareหนึ่งครั้ง
+  ส่วน unknown enabled capability ต้องหยุดก่อนเกิด side effect
 
 `render.staging.yaml` ปัจจุบันไม่ประกาศ `FIREBASE_SERVICE_ACCOUNT_JSON`, ใช้
 `PUSH_SENDER=mock` และ `FIREBASE_AUTH_DELETE_ENABLED=false` เพื่อป้องกันการลบ
@@ -181,12 +183,24 @@ Staging Blueprint ติดตาม `main` และ deploy เมื่อ che
       ยืนยันว่า ElevenLabs รับเฉพาะ M4A ชั่วคราว,
       Gemini รับเฉพาะ visual proxy, cleanup สำเร็จ, provider failure ตอบ JSON
       502 โดยไม่หักโควตา และแอปแสดงข้อความลองใหม่ภาษาไทย)
-- [ ] ยืนยัน `Candidate deploy SHA` ตรงกับ `Deployed Staging SHA` และบันทึก
+      รอบ `6695e5f1d6050e0656c2bfd591fbbad745d80963` ยืนยัน fail-closed/no-charge
+      แล้ว. สร้าง key Staging ใหม่อายุ 30 วัน จำกัดเฉพาะ Speech to Text และ
+      deploy ตัวแปรแวดล้อมบน SHA เดิมแล้ว; health คืน HTTP 200 แต่การ rerun เวลา
+      21:57 ICT ยังได้ upstream HTTP `401`, ไม่มี output และ PostDee quota คงเดิม
+      178/178 นาที. ElevenLabs แสดงใช้ 9,994/10,000 workspace credits เหลือ 6,
+      จึงมีแนวโน้มสูงว่า provider quota ไม่พอ แต่ยังไม่ยืนยันสาเหตุย่อยเพราะไม่มี
+      upstream response detail. ห้ามเปิดเผย secret; รอรอบ reset หรือเติม quota
+      ภายใต้การอนุมัติแยก แล้ว rerun `target-30` เพียงหนึ่งครั้ง
+- [x] ยืนยัน `Candidate deploy SHA` ตรงกับ `Deployed Staging SHA` และบันทึก
       `API runtime code SHA`, health status/time, APK SHA-256 และ fixture SHA-256
       จริงใน `docs/testing/results/2026-08-08-ai-edit-correctness-pixel8.md`
 - [ ] รัน Pixel 8 isolated matrix โดยเปิดทีละความสามารถตาม
       `docs/testing/AI_EDIT_THAI_CLIPS.md`; ต้องรวม target, subtitle, silence,
       repeat-safe, repeat-unsafe, local colour, colour + target และ combined
+      ตอนนี้ `color-local` ผ่าน device/render checks พร้อม full export/no-charge
+      แต่หลักฐานตรงว่าไม่มี upload/prepare ยังรอ Render log; `target-30` ถูกบล็อก
+      ก่อน render/no-charge โดยสอดคล้องอย่างมากกับ provider quota ที่เหลือ 6
+      credits; แถวที่พึ่ง API ยังค้างจน quota กลับมาและ rerun สำเร็จ
 - [ ] บันทึก output codec, FPS, file size, audio peak และ A/V sync จากไฟล์จริง
       รายการเหล่านี้ยังเป็นงานทดสอบค้างและยังห้ามระบุว่า renderer แก้ครบแล้ว
 - [x] RevenueCat Test Store purchase ให้ entitlement Pro กับ Firebase UID ทดสอบ

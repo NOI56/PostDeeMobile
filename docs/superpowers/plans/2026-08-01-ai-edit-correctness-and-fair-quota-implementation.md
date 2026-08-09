@@ -8,7 +8,13 @@
 
 **Tech Stack:** Express + TypeScript + Vitest, Flutter/Dart + flutter_test, ElevenLabs transcript contract, Gemini edit planner, FFmpegKit `silencedetect`, Prisma/memory AI usage stores
 
-**Implementation status (2026-08-09):** Tasks 1–2 are committed locally. The verified Tasks 3–8 implementation is committed locally in `43fa6e0` (`feat: complete safe AI editing and subtitle controls`). Task 9 Steps 1–4 are complete; Steps 5–10 remain. Candidate/deployed Staging SHA, health evidence, and the Pixel 8 matrix remain `PENDING`.
+**Implementation status (2026-08-09):** Tasks 1–2 are committed locally. The verified Tasks 3–8 implementation is committed locally in `43fa6e0` (`feat: complete safe AI editing and subtitle controls`). Task 9 Steps 1–5 are complete. Step 6 started on the exact deployed candidate/APK but is `BLOCKED`: after installing a new 30-day, Speech-to-Text-only Staging key and deploying the environment on the unchanged SHA, `target-30` still failed closed with upstream HTTP `401`, no output, and no PostDee quota change. ElevenLabs showed 9,994/10,000 workspace credits used (6 remaining), so provider-side quota exhaustion is the leading diagnosis, not a confirmed response detail. The independent `color-local` path passed device/render checks without using quota but still needs direct zero-upload/prepare log evidence. Wait for or restore provider quota under separate approval, then rerun `target-30` once before the remaining matrix rows and Steps 7–10.
+
+**Seller UI update (2026-08-09):** the setup screen hides the colour/light and
+audio-cleanup cards without deleting their compatibility contracts. Restored
+hidden values are forced off. It shows `AI ใส่เอฟเฟกต์เสียงให้` only as a
+disabled `เร็ว ๆ นี้` placeholder with `sfx=false`; enabling SFX requires a
+separate processor/licensing/quota plan and real-device verification.
 
 ## Global Constraints
 
@@ -2748,11 +2754,18 @@ try {
 
 > สถานะ 2026-08-09: เอกสารและ PENDING result scaffold sync แล้ว; API tests
 > 914/914, API build, Prisma validation และ Prisma helper typecheck ผ่าน;
-> Flutter tests 759/759 และ `flutter analyze` ผ่าน. Fresh APK SHA-256 คือ
-> `73E535CDF8CE69C1E378C531FA44607BE77C2E4EEFF7F305756D69209ED83A48`.
+> Flutter tests 759/759 และ `flutter analyze` ผ่าน. Fresh post-deploy APK SHA-256 คือ
+> `879E74425CC95B5E1C98831A688F20F687CECD7F8C5F078714C3A4AC789A2145`.
 > Fixtures ทั้ง 6 ไฟล์มี SHA-256 จริงใน result scaffold และ provenance ของ
-> stacked-mark fixture ยืนยันจาก embedded MP4 metadata แล้ว. Steps 5–10 ยังไม่
-> ทำ; deploy SHA, health และผล Pixel 8 matrix ยังคง `PENDING`.
+> stacked-mark fixture ยืนยันจาก embedded MP4 metadata แล้ว. Step 5 deploy Staging
+> สำเร็จที่ `6695e5f1d6050e0656c2bfd591fbbad745d80963` และ health คืน HTTP 200/status ok.
+> Step 6 เริ่มแล้วแต่ถูกบล็อกด้วย transcription provider ของ Staging. คีย์ใหม่
+> อายุ 30 วันและจำกัดเฉพาะ Speech to Text ถูก deploy บน SHA เดิม; health ยัง HTTP
+> 200 แต่ `target-30` เวลา 21:57 ICT ยังได้ upstream HTTP `401`, ไม่มี output และ
+> PostDee quota คง 178/178 นาที. ElevenLabs เหลือ 6/10,000 workspace credits จึง
+> มีแนวโน้มสูงว่า quota ไม่พอ แต่ไม่มี response detail ให้ยืนยันสาเหตุย่อย.
+> `color-local` ผ่าน device/render checks โดยไม่หักโควตา แต่หลักฐานตรงว่าไม่มี
+> upload/prepare ยังรอ Render log ส่วน matrix ที่เหลือและ Steps 7–10 ยังไม่เสร็จ.
 
 ตรวจว่าไฟล์ local config มีอยู่ก่อน:
 
@@ -2816,7 +2829,7 @@ $videoFixtureHashes | Format-Table Path, Hash -AutoSize
 
 อ่าน `QA_REPORT.md` และ SRT เพื่อยืนยันชนิดคลิป/คำพูดซ้ำก่อนทดสอบ; scripted fixture มีคำ `ชุมชน` ต่อเนื่องข้าม cue สำหรับ repeat-safe ส่วน background-noise ใช้ยืนยัน fail-closed. บันทึก SHA-256 ของวิดีโอทุกไฟล์และ source/license ลงผลทดสอบ; ห้าม stage media.
 
-- [ ] **Step 5: Commit เอกสารเตรียมทดสอบ ขออนุญาต และนำ API candidate ขึ้น Staging ก่อน**
+- [x] **Step 5: Commit เอกสารเตรียมทดสอบ ขออนุญาต และนำ API candidate ขึ้น Staging ก่อน**
 
 ยืนยันไฟล์ผลสถานะ `PENDING` ที่สร้างใน Step 1 หรือสร้างด้วย `apply_patch` หากยังไม่มี; ห้ามใช้ shell เขียนเนื้อหาไฟล์. ส่วนหัวต้องมี fields เหล่านี้ตั้งแต่แรก: `Candidate deploy SHA`, `Deployed Staging SHA`, `API runtime code SHA`, `Health status/time`, `Matrix APK SHA-256`, `Fixture SHA-256` และ `Overall status`; ค่าที่ยังไม่ทราบใช้ `PENDING`.
 
@@ -2867,6 +2880,23 @@ if ($health.status -ne 'ok') { throw "Staging health status is not ok" }
 เมื่อ SHA ตรง ให้ใช้ `apply_patch` แทนค่า PENDING ในผลทดสอบด้วย candidate SHA, deployed SHA ที่อ่านจาก Dashboard, API runtime SHA และ health status/time จริง. Matrix เริ่มได้ต่อเมื่อทั้งสอง deploy SHA เป็นเลข 40 หลักและเท่ากัน; นี่เป็นหลักฐานถาวรว่ามือถือทดสอบกับ backend รุ่นใด.
 
 - [ ] **Step 6: ติดตั้งบน Pixel 8 และทดสอบ isolated matrix กับ API SHA ใหม่**
+
+> สถานะ 2026-08-09: ติดตั้ง APK SHA-256 `879E74425CC95B5E1C98831A688F20F687CECD7F8C5F078714C3A4AC789A2145`
+> บน `Pixel_8`/`emulator-5554` และยืนยัน hash ของ fixtures ทั้ง 6 ไฟล์บนเครื่องแล้ว.
+> `target-30` รอบแรกหยุดแบบ fail-closed พร้อมข้อความว่า transcription provider
+> ไม่พร้อมและโควตาคงเดิม 178 นาที. จากนั้นสร้าง key Staging ใหม่อายุ 30 วัน จำกัด
+> เฉพาะ Speech to Text, deploy environment บน SHA เดิม และตรวจ health HTTP 200;
+> rerun เวลา 21:57 ICT ยังได้ upstream ElevenLabs HTTP `401`, ไม่มี output และ
+> PostDee quota คง 178/178 นาที. Request Log ผูกคำขอ 21:57:28 กับ key ใหม่ได้ตรง,
+> ขณะที่ Subscription แสดง 9,994/10,000 workspace credits (เหลือ 6), จึงมีแนวโน้ม
+> สูงว่า provider quota ไม่พอ แต่ยังไม่ยืนยัน exact error detail. ไม่มีการจ่ายเงิน,
+> upgrade แพ็กเกจ, revoke key เก่า หรือ deploy Production.
+> `color-local`
+> ผ่าน device/render checks พร้อม full export `_edited.mp4` และโควตาคงเดิม
+> แต่ direct zero-upload/prepare log evidence ยังรอยืนยัน.
+> Matrix ที่พึ่ง transcription ยัง `PENDING`; รอ quota reset หรือเติม quota ภายใต้
+> การอนุมัติแยกแล้ว rerun `target-30` หนึ่งครั้ง. ไม่สร้าง rollback APK เพราะปัญหานี้
+> ไม่ใช่ silence/repeat capability failure.
 
 หลัง API SHA ใหม่ deploy แล้ว ให้สร้าง APK ซ้ำใน block เดียวกับการติดตั้งเพื่อไม่พึ่งตัวแปรข้ามช่วงขออนุญาตและไม่เผลอใช้ APK เก่า. จากนั้นตรวจว่ามี emulator ที่ boot สำเร็จเพียงเครื่องเดียว, ส่ง fixtures เข้าเครื่อง แล้วติดตั้ง/เปิดแอป Staging:
 

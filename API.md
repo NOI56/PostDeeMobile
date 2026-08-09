@@ -1118,13 +1118,14 @@ preview/export. The response style can carry `outlineColor` and paired
 white/black and top/middle/bottom mapping. Edited or unsafe cues use a static
 one-line fallback.
 
-Production mobile supports only `subtitle`, `silence`, `filler` (shown to users
-as repeated-speech cleanup), and `color`, because those four have a real local
-renderer. Every optional switch starts `false`; the client enables one only
-after an explicit user choice, while target-only shortening remains valid with
-all optional capabilities off. The setup UI locks auto-reframe,
-zoom, audio cleanup, subtitle translation, price tag, CTA, and the AI-page
-watermark as `เร็ว ๆ นี้` and sends them as `false`.
+Production mobile currently lets sellers select only `subtitle`, `silence`, and
+`filler` (shown as repeated-speech cleanup). Every optional switch starts
+`false`; target-only shortening remains valid with all optional capabilities
+off. The seller-facing `color` and `audio` cards are hidden while their API and
+legacy-render compatibility remain intact. The setup UI shows `sfx` as the
+disabled card `AI ใส่เอฟเฟกต์เสียงให้` with a `เร็ว ๆ นี้` badge, and sends
+`color`, `audio`, and `sfx` as `false`. Only `color` retains a supported
+internal/legacy render path; `audio` and `sfx` remain planned and non-executable.
 
 Capabilities that need future analysis or rendering, including beat sync, the
 opening hook/highlight, auto-reframe, zoom, SFX/music choice, audio cleanup,

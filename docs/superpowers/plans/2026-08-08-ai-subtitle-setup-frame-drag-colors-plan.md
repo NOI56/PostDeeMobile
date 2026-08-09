@@ -5,9 +5,14 @@
 >
 > ผลล่าสุด: API ผ่าน 914/914 tests พร้อม build/Prisma/typecheck, Mobile ผ่าน
 > 759/759 tests และ Flutter Analyze ผ่าน. Fresh APK SHA-256 คือ
-> `73E535CDF8CE69C1E378C531FA44607BE77C2E4EEFF7F305756D69209ED83A48`.
-> Candidate/deployed Staging SHA, health evidence และ Pixel 8 isolated matrix
-> ยังคง `PENDING`; ยังไม่ได้ push หรือ deploy
+> `879E74425CC95B5E1C98831A688F20F687CECD7F8C5F078714C3A4AC789A2145`.
+> Candidate/deployed Staging SHA `6695e5f1d6050e0656c2bfd591fbbad745d80963`
+> และ health evidence ตรงกันแล้ว. Pixel 8 `color-local` ผ่าน device/render checks
+> แต่ direct no-call log evidence ยังรออยู่. หลัง deploy key Staging ใหม่ที่จำกัด
+> เฉพาะ Speech to Text บน SHA เดิม `target-30` ยังได้ upstream HTTP `401` และ
+> ElevenLabs เหลือเพียง 6/10,000 workspace credits; provider quota exhaustion จึง
+> เป็นสาเหตุที่มีน้ำหนักมาก แต่ยังไม่ยืนยัน exact response detail. Subtitle/API
+> matrix ยังคงถูกบล็อก
 
 **เป้าหมาย:** ทำให้หน้าตั้งค่าซับก่อนเริ่ม AI แสดงภาพจริงจากคลิป เลื่อนเลือก
 เฟรมตัวอย่างได้หนึ่งเฟรม ลากซับด้วยนิ้ว เลือกสีข้อความและสีกรอบได้ ตัดปุ่ม
@@ -403,7 +408,10 @@
 - Full Flutter tests, analyze, API tests และ API build ผ่าน
 - ทดสอบวิดีโอจริงบน Pixel 8 กับ candidate/deployed Staging SHA ที่ตรงกันให้ผ่าน
   ก่อนอนุมัติ Production หรือ rollout ขั้นสุดท้าย; local implementation commit
-  มีแล้ว แต่ Pixel 8 matrix และ deploy ยังคง `PENDING`
+  และ deploy evidence มีแล้ว, `color-local` ผ่าน device/render checks แต่ direct
+  no-call log evidence ยังรออยู่; subtitle/API matrix ต้อง rerun หลัง provider
+  quota กลับมา โดยเริ่มจาก `target-30` เพียงหนึ่งครั้งและไม่ซื้อ/upgrade โดยไม่มี
+  การอนุมัติแยก
 
 ## 6. สิ่งที่ไม่ทำในรอบนี้
 

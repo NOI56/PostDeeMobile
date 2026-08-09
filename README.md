@@ -66,18 +66,28 @@ running service. Video storage continues to use Cloudflare R2.
   subtitle re-render, and export. Local retry does not transcribe, upload, call
   `/ai-edits/prepare`, or consume another AI-edit minute. A successful probe
   with no safe range is shown separately from a probe failure.
-- Color-only edits at original duration render locally for Pro users and do not
-  consume AI editing minutes. They do not extract audio, upload media, or call
-  `/ai-edits/prepare`; colour plus shortening or any audio-dependent capability
-  keeps the normal API path. Unknown enabled capabilities fail closed before
-  either route starts side effects.
+- The retained color-only compatibility path renders original-duration edits
+  locally for Pro users and does not consume AI editing minutes. It does not
+  extract audio, upload media, or call `/ai-edits/prepare`; the seller-facing
+  setup card is now hidden. Colour plus shortening or any audio-dependent
+  capability keeps the normal API path. Unknown enabled capabilities fail
+  closed before either route starts side effects.
 - Fresh device measurements for output codec, FPS, file size, audio peak, and
-  A/V sync remain a release gate. The repository does not yet claim those
-  renderer acceptance checks are complete.
+  A/V sync remain a release gate. The local colour-only path now has one exact
+  Pixel 8 export measurement, but the API-dependent matrix is blocked and the
+  repository does not claim the renderer acceptance checks are complete.
 - The verified Tasks 3–8 implementation is committed locally in `43fa6e0`.
-  Task 9 documentation, automated verification, and fresh APK/fixture hashes are
-  prepared; deployment identity, Staging health, and the Pixel 8 matrix remain
-  `PENDING`.
+  Task 9 Steps 1–5 are complete, with exact deployed Staging SHA/health and the
+  fresh APK/fixture hashes recorded. Step 6 is `BLOCKED`: a new 30-day,
+  Speech-to-Text-only Staging key was installed and deployed on the unchanged
+  code SHA, but `target-30` still failed closed with upstream HTTP 401 at 21:57
+  ICT, without output or PostDee quota use. ElevenLabs showed 9,994/10,000
+  workspace credits used (6 remaining), so provider-side quota exhaustion is
+  the leading diagnosis; the upstream response detail was not available to
+  prove the exact cause. Colour-only local render/export evidence passed
+  without consuming quota, while direct zero-upload/prepare log evidence
+  remains pending.
+  Remaining matrix rows are open.
 
 ## Backend
 
@@ -577,14 +587,15 @@ Current mobile pieces:
   overlapping, backwards, clipped, or out-of-range timed event fails closed for
   editing; a partial display subset may still be retained for diagnostics but is
   never treated as safe cut evidence.
-- The AI editing setup starts every optional capability switch off, including
-  subtitles, silence cleanup, repeated-speech cleanup, and colour adjustment.
-  The seller explicitly enables only the work they want; leaving all switches
-  off still permits base target-length shortening. Requests, result summaries,
-  and local rendering ignore unselected capabilities. Feature acceptance tests
-  keep the target at the original duration and enable one capability at a time
-  so subtitle, silence, repeated-speech, and colour behaviour are verified in
-  isolation before any combined-flow test.
+- The AI editing setup starts every optional capability switch off. The seller
+  can explicitly enable subtitles, silence cleanup, or repeated-speech cleanup;
+  leaving all switches off still permits base target-length shortening. The
+  seller-facing colour/light and audio-cleanup cards are hidden while their
+  internal contracts remain compatible with older results. A replacement
+  `AI ใส่เอฟเฟกต์เสียงให้` card is visible only as a disabled `เร็ว ๆ นี้`
+  placeholder, so it cannot call AI or consume quota before a real processor
+  exists. Requests, result summaries, and local rendering ignore unselected or
+  unavailable capabilities.
 - For the production capability set, mobile extracts mono 16 kHz AAC at 64 kbps
   into balanced temporary `.m4a` chunks no longer than 30 seconds, uploads them
   with `purpose=ai-edit-audio`, and sends ordered `audioChunks` to the backend.
@@ -784,11 +795,13 @@ Current mobile pieces:
   When subtitles are enabled, the selected word is also removed from its
   source-timeline cue before burn-in. If that word cannot be mapped safely, the
   media cut is rejected too so subtitle text and speech never disagree.
-- Production exposes only the AI editing capabilities with a real mobile
-  renderer: subtitle, silence, repeated-speech cleanup, and color/light adjustment.
-  Auto-reframe, zoom, audio cleanup, translation, price tags, CTA cards, and
-  the AI-page watermark are locked as `เร็ว ๆ นี้` and sent to the API as
-  disabled until their exported-video processors pass real-device tests.
+- Production exposes only the seller-selectable AI editing capabilities with a
+  real mobile path: subtitle, silence, and repeated-speech cleanup. The existing
+  color/light renderer remains as compatibility-tested internal support, but
+  its setup card and the audio-cleanup card are hidden. Auto-reframe, zoom, the
+  new AI sound-effects card, translation, price tags, CTA cards, and the AI-page
+  watermark are locked as `เร็ว ๆ นี้` and sent to the API as disabled until
+  their exported-video processors pass real-device tests.
 - Beat-sync advanced settings now let the user keep the original audio or pick
   an owned MP3/M4A/WAV file through Flutter's `file_selector`, confirm usage rights, choose
   cut intensity, music volume, and voice ducking, and send those choices in the

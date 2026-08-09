@@ -759,11 +759,14 @@ If transcription fails, the API returns the stable
 `AI_TRANSCRIPTION_PROVIDER_FAILED` code with HTTP 502 before quota reservation;
 provider internals are not exposed. Mobile translates that code into a Thai
 retry message and leaves the setup available for another attempt.
-The production capability allowlist is currently `subtitle`, `silence`,
-`filler`, and `color`. Auto-reframe, zoom, audio cleanup, translation, price
-tags, CTA cards, and the AI-page watermark remain `planned`; mobile locks them
-as `เร็ว ๆ นี้` and sends them disabled instead of implying that their recipe
-hints changed the exported file.
+The seller-facing production capability allowlist is currently `subtitle`,
+`silence`, and `filler`. The internal `color` renderer and `audio` contract stay
+available for compatibility with older results, but both setup cards are hidden
+and restored presets are forced off so no invisible edit can run. Mobile shows
+`sfx` as a disabled `AI ใส่เอฟเฟกต์เสียงให้` / `เร็ว ๆ นี้` placeholder.
+Auto-reframe, zoom, SFX, audio cleanup, translation, price tags, CTA cards, and
+the AI-page watermark remain `planned`; mobile sends them disabled instead of
+implying that their recipe hints changed the exported file.
 The AI header independently reads the authenticated monthly quota and replaces
 that value with `prepare.quota` as soon as a metered recipe succeeds. Local
 preview re-renders and manual quota refreshes do not call the metered endpoint.

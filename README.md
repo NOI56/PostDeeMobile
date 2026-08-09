@@ -58,9 +58,26 @@ running service. Video storage continues to use Cloudflare R2.
   and transcript with structured JSON and provider-default sampling (no
   explicit `temperature`); deterministic PostDee rules are the final fallback.
   Groq is not selectable in runtime configuration.
-- Silence cleanup currently detects validated gaps between transcript
-  word/segment timestamps. It does not yet use waveform decibels, FFmpeg
-  `silencedetect`, or VAD as a second confirmation layer.
+- Transcript gaps are silence candidates only. The Android/iOS client confirms
+  each candidate against the source waveform before rendering; failed or
+  ambiguous verification keeps the original audio. The verifier uses FFmpeg
+  `silencedetect`, keeps only padded intersections away from source edges and
+  protected speech, and passes those verified ranges through preview, review,
+  subtitle re-render, and export. Local retry does not transcribe, upload, call
+  `/ai-edits/prepare`, or consume another AI-edit minute. A successful probe
+  with no safe range is shown separately from a probe failure.
+- Color-only edits at original duration render locally for Pro users and do not
+  consume AI editing minutes. They do not extract audio, upload media, or call
+  `/ai-edits/prepare`; colour plus shortening or any audio-dependent capability
+  keeps the normal API path. Unknown enabled capabilities fail closed before
+  either route starts side effects.
+- Fresh device measurements for output codec, FPS, file size, audio peak, and
+  A/V sync remain a release gate. The repository does not yet claim those
+  renderer acceptance checks are complete.
+- The verified Tasks 3–8 implementation is committed locally in `43fa6e0`.
+  Task 9 documentation, automated verification, and fresh APK/fixture hashes are
+  prepared; deployment identity, Staging health, and the Pixel 8 matrix remain
+  `PENDING`.
 
 ## Backend
 
@@ -617,8 +634,15 @@ Current mobile pieces:
   safety guard for old or malformed recipes. If incomplete transcript/silence
   timing would leave less media than requested, mobile restores neighboring
   context around the selected moments so a slider-selected request does not
-  collapse into a near-empty result. If a leading target-length cut intersects
-  a subtitle cue, mobile moves the cut just before that cue and balances the
+  collapse into a near-empty result. The recipe carries repaired
+  `transcript.boundarySegments` separately from visible
+  `subtitles.segments`. Mobile uses only those strict transcript boundaries for
+  opening/tail alignment, including when the subtitle capability is off, while
+  the renderer still receives no subtitle overlay. If the field is missing or
+  its evidence is unavailable, mobile keeps the planner story-window cut,
+  displays a boundary-evidence warning, and never guesses from raw provider
+  segments. If a leading target-length cut intersects a repaired transcript
+  boundary cue, mobile moves the cut just before that cue and balances the
   result at the tail, preventing the shortened clip from opening mid-sentence.
   The 0.15-second pre-roll is used only when that time is a real subtitle-free
   gap. If the target would end on a dangling Thai connector such as `ก็`, mobile
@@ -636,8 +660,11 @@ Current mobile pieces:
   result and opens result review. Subtitle Studio opens only from the explicit
   “edit subtitles” review action. The user can edit text and
   timing, add/delete/split/merge cues, undo/redo, and change the bundled
-  Bai Jamjuree/Prompt/Anuphan font, size, text colour, outline, shadow, and safe
-  top/middle/bottom position while the Flutter preview updates immediately.
+  Bai Jamjuree/Prompt/Anuphan font, size, text colour, outline, shadow, and the
+  free subtitle position while the Flutter preview updates immediately. The
+  setup screen shows a paused real frame from the selected clip, lets the seller
+  scrub to another frame, and lets them drag the subtitle directly. The chosen
+  preview frame is local-only: it is not uploaded and is not used as a cover.
   Subtitle cues use one line in both new and restored drafts; legacy two-line
   draft styles are migrated to one line when loaded.
   Draft JSON is autosaved in app-owned storage and reopening the same source
@@ -650,9 +677,13 @@ Current mobile pieces:
   indivisible brand name, URL, or other single token may exceed 20 graphemes so
   it is not cut in half; it is isolated from neighboring tokens and mobile
   measures its real width before shrinking the font for preview/export.
-  Typeface-size rules can request a lower 3/4/5-word density (karaoke
-  uses one), and both preview and export stay inside the same one-line safe area
-  instead of clipping or adding an ellipsis.
+  The setup choices now state the real density contract: karaoke is at most one
+  word, readable is at most three words, and complete is at most five words.
+  One metered prepare response can include all three cue variants from the same
+  transcript, so changing only 1/3/5, colour, outline, or position in the current
+  editing session does not transcribe the clip or reserve minutes again. Preview
+  and export use the same one-line ASS coordinate contract; an overlong manual
+  cue is rejected with a correction message instead of being silently clipped.
 - Transcription-provider failures return structured HTTP 502
   `AI_TRANSCRIPTION_PROVIDER_FAILED` without consuming AI-edit quota or exposing
   provider details; the mobile screen translates this into a retryable Thai error.
@@ -680,6 +711,18 @@ Current mobile pieces:
   user's exact remaining and used Pro minutes. It updates immediately from the
   metered `prepare` response and can be tapped to refresh without consuming a
   minute.
+- `POST /ai-edits/prepare` reserves minutes only when at least one requested AI
+  outcome is usable. Repeat or silence analysis with unsafe timing does not
+  consume minutes when no other requested analysis succeeds. A safe silence
+  analysis still counts when it completes but finds no gap. Explicit empty or
+  colour-only capability requests stop before transcription. After the local
+  Pro entitlement check, the official mobile client handles colour-only edits
+  that keep the original duration with a cut-free full-duration recipe on the
+  phone: it does not extract audio, upload media, call `prepare`, or change the
+  minute balance. Colour plus a shortened target, subtitles, silence cleanup,
+  or repeated-speech cleanup stays on the normal audio/API route. Any unknown
+  enabled capability fails closed before those side effects. Legacy clients
+  that omit the capability field keep their previous metered behaviour.
 - Android subtitle export gives libass the selected bundled Thai-safe
   Bai Jamjuree, Prompt, or Anuphan font explicitly and maps the selected colour,
   active-word colour, fade/pop effect, outline, shadow, and safe alignment into
@@ -688,28 +731,50 @@ Current mobile pieces:
   static SRT without inventing word timing. Subtitles are burned against the
   original source timeline before kept ranges are compacted, so a diagnostic
   SRT can legitimately end later than the shortened MP4; cues inside removed
-  ranges do not appear in the final video.
+  ranges do not appear in the final video. The output name ends in
+  `_subtitled.mp4` only when real subtitle content is rendered; otherwise it
+  ends in `_edited.mp4`.
   Silence removal compacts kept audio ranges with
   `atrim` + `concat` so the audio ends with the shortened video instead of
   continuing after the final frame.
-- Pace cleanup settings are real recipe inputs. `silencePreset` maps to validated
-  word-timing gaps, falling back to transcript segments, with thresholds of
-  `natural` = 1.0 s, `balanced` = 0.6 s (the default), and `compact` = 0.4 s.
-  A qualifying gap before the first spoken range or after the last spoken range
-  is included when the provider returns a valid media duration.
+- Pace cleanup settings are real recipe inputs. `silencePreset` maps to internal
+  gaps in a complete validated word timeline, or a complete reliable segment
+  timeline when safe word evidence is unavailable, with thresholds of `natural`
+  = 1.0 s, `balanced` = 0.6 s (the default), and `compact` = 0.4 s. Leading and
+  trailing gaps are not candidates. Mobile treats those gaps as non-executable
+  candidates until its waveform verifier succeeds; only verified intersections
+  enter the final cut list. Successful verification, including an empty result,
+  is cached for the exact source and timing evidence. Failed verification is not
+  cached so the user can retry locally.
   The setup offers `AI เลือกให้` (default) and `เลือกเอง`. Both choices send
   `speechReductionMode: "auto"` so one analysis can report repeated
   Thai words or phrases with stable occurrence IDs and source timing. Only
   adjacent repeats within 0.35 seconds are selected for removal by default;
   the last occurrence is retained. A word used three or more times in separate
   sentences is shown for awareness but kept, because removing a product name or
-  important subject could damage meaning. Negation, `ๆ`, numbers/prices,
-  fragmented tokens, and unsafe timing fail closed. AI mode starts with those
-  recommendations selected; manual mode starts with none selected. The review
+  important subject could damage meaning. Thai provider fragments are usable
+  only when they reconstruct one exact NFC-normalized semantic word in raw
+  provider order, inside one reliable segment, with no internal gap above 0.15
+  seconds. This evidence is used only for repeated-speech detection and does not
+  replace subtitle word timing. Negation, `ๆ`, numbers/prices, fragments that
+  cannot be proven exact, timed audio events, and unsafe timing fail closed. AI
+  mode starts with those recommendations selected; manual mode starts with none selected. The review
   then lets the user keep or remove each safe occurrence before re-rendering.
   `fillerWords` and `fillerRanges` remain as a legacy-client compatibility path;
   the current setup no longer displays a fixed filler-word chip list, and
   manual mode never applies legacy filler ranges automatically.
+- Mobile keeps the setup's pending source separate from the accepted source used
+  by review, Subtitle Studio, retry, and export. Source, duration, recipe,
+  verified silence, subtitle project, selected repeat occurrences, and rendered
+  result become active together only after a render succeeds. A failed render
+  for a newly selected clip therefore leaves the previous result intact. The
+  same rule covers local colour retry: retry repeats only the phone-side render,
+  while a failed source B attempt cannot replace the accepted source A state.
+- Build-time rollback flags can disable verified-silence cuts and automatic
+  repeat cuts independently. With repeat cutting disabled, detected groups stay
+  visible as read-only information, all selected occurrence IDs are empty, and
+  every render/export path keeps the speech. Other selected capabilities are
+  unchanged.
 - Result review shows detected silence and repeated-speech groups, the number
   of selected safe occurrences, and their combined detected time. These are pre-render
   detections, not a promise that the exported clip saves exactly that duration.

@@ -8,6 +8,8 @@
 
 **Tech Stack:** Express + TypeScript + Vitest, Flutter/Dart + flutter_test, ElevenLabs transcript contract, Gemini edit planner, FFmpegKit `silencedetect`, Prisma/memory AI usage stores
 
+**Implementation status (2026-08-09):** Tasks 1–2 are committed locally. The verified Tasks 3–8 implementation is committed locally in `43fa6e0` (`feat: complete safe AI editing and subtitle controls`). Task 9 Steps 1–4 are complete; Steps 5–10 remain. Candidate/deployed Staging SHA, health evidence, and the Pixel 8 matrix remain `PENDING`.
+
 ## Global Constraints
 
 - ใช้ TDD ทุก task: เขียน test ให้ล้มก่อน, รันเห็น RED, แก้เท่าที่จำเป็น, แล้วรันเห็น GREEN
@@ -357,7 +359,7 @@ export const reconstructThaiTimedWords = (
 
 `undefined` หมายถึงพิสูจน์ขอบคำไม่ได้และห้าม auto cut; `[]` ใช้เฉพาะ input ว่างที่ถูกต้อง
 
-- [ ] **Step 1: เขียน unit tests ของ reconstructor**
+- [x] **Step 1: เขียน unit tests ของ reconstructor**
 
 อย่างน้อยต้องมี cases ต่อไปนี้:
 
@@ -436,7 +438,7 @@ it.each(['ฯ', '.', '?'])('attaches exact %s punctuation to the previous word',
 
 เพิ่ม test จริงอีกห้ากรณี: ห้ามข้าม segment แม้ข้อความต่อกัน (รวม case fragment แรกอยู่ใน segment แต่ fragment ถัดไปมี `end` เลยขอบ), Unicode NFD/NFC ที่ normalize แล้วตรงต้องผ่าน, ช่องว่างระหว่างสอง semantic words ไม่ต้องมีเวลา, provider ส่ง punctuation fragment ที่เกิน/ไม่ตรงต้องคืน `undefined`, และ provider ส่ง punctuation ติดกับ word token (`ชุมชน?`) ต้องผ่านเมื่อ suffix ใน segment ตรงทุกตัว. ทดสอบทั้ง punctuation ติด token, แยก token และไม่มี timestamp token ตาม contract ที่รองรับ.
 
-- [ ] **Step 2: รัน RED เพราะ module ยังไม่มี**
+- [x] **Step 2: รัน RED เพราะ module ยังไม่มี**
 
 ```powershell
 npm.cmd --prefix apps/api run test -- src/modules/aiEdits/thaiTimedTokenReconstructor.test.ts
@@ -444,7 +446,7 @@ $redExitCode = $LASTEXITCODE
 if ($redExitCode -eq 0) { throw "Expected Thai timing reconstructor test to fail before implementation" }
 ```
 
-- [ ] **Step 3: Implement exact reconstruction เป็น state machine**
+- [x] **Step 3: Implement exact reconstruction เป็น state machine**
 
 กฎ implementation:
 
@@ -561,7 +563,7 @@ if (fragmentIndex !== orderedFragments.length) return undefined;
 
 ห้ามใช้ coverage normalizer ใน helper นี้; exact match ใช้เฉพาะ NFC, outer whitespace และ punctuation suffix ที่ระบุไว้เท่านั้น.
 
-- [ ] **Step 4: เชื่อมเข้า repeated speech จาก raw provider order โดยไม่กระทบ subtitle timings**
+- [x] **Step 4: เชื่อมเข้า repeated speech จาก raw provider order โดยไม่กระทบ subtitle timings**
 
 ต้องเรียก reconstructor ใน `buildAiEditRecipe()` เพราะตัวแปร strict/reliable segments อยู่ใน scope นี้ และต้องอ่าน word timeline ทั้งก้อนโดยรักษาลำดับดิบ. ห้าม filter หลักฐานที่ไม่เชื่อถือออกแล้วนำ reliable islands สองฝั่งมาต่อกัน:
 
@@ -605,7 +607,7 @@ const speechReduction = buildSpeechReduction({
 
 สำหรับภาษาไทยต้องเรียก exact reconstructor ทุกครั้งที่มี strict reliable segments + raw fragments ไม่ใช่ gate ด้วย `hasFragmentedThaiWordTimings()` เดิม เพราะ heuristic เดิมตรวจเฉพาะ fragment เล็กมากบางรูปแบบและพลาดช่องว่าง 0.09–0.15 วินาที. หาก provider timing incomplete, strict timeline ผิด หรือมี segment ใด unreliable ให้ repeat auto-removal ของ recipe ทั้งก้อนเป็น `unavailable`; ห้ามลบ word/segment นั้นแล้วตรวจต่อข้ามช่องว่าง. Heuristic เดิมยังใช้กับ subtitle fallback ได้ แต่ห้ามเป็นผู้อนุญาต repeated-speech cuts. ถ้า reconstruction คืน `undefined` ให้สถานะ `fragmented-word-timing`; ถ้าคืน words ที่ exact ให้ใช้ adjacent repeat detector เดิม ส่วน frequent/distributed repeats ยังคงรายงานอย่างเดียวและ `canAutoRemove == false`.
 
-- [ ] **Step 5: เพิ่ม recipe integration tests**
+- [x] **Step 5: เพิ่ม recipe integration tests**
 
 เพิ่ม tests ใน `aiEditRecipe.test.ts` โดยใช้ helper `buildRecipe()` เดิม:
 
@@ -665,7 +667,10 @@ it('does not cut when Thai character fragments cannot be proven exact', () => {
 
 เพิ่ม valid audio-event barrier regression: words `ชุมชน`, timed audio event `(laughter)`, words `ชุมชน` พร้อม `timingIntegrity: 'trusted'` และ `hasTimedAudioEvents: true`. Subtitle/target path ยังใช้ได้ แต่ repeat ต้อง unavailable/ไม่มี cutและ repeat-only ไม่หักนาที; ห้ามลบ audio event ออกจาก timelineแล้วถือว่าสองคำติดกัน.
 
-- [ ] **Step 6: รัน GREEN และ commit**
+- [x] **Step 6: รัน GREEN และ commit**
+
+> สถานะ 2026-08-09: focused tests, full API 914/914 และ API build ผ่านแล้ว;
+> Step 6 รวมอยู่ใน local commit `43fa6e0` พร้อมชุด Subtitle Setup ที่ตรวจร่วมกัน.
 
 ```powershell
 npm.cmd --prefix apps/api run test -- src/modules/aiEdits/thaiTimedTokenReconstructor.test.ts src/modules/aiEdits/aiEditRecipe.test.ts
@@ -728,7 +733,7 @@ export const shouldReserveAiEditMinutes = ({
 
 Mobile parser อนุญาตให้ไม่อ่าน field ใหม่นี้เพราะใช้ตัดสิน ledger ฝั่ง API เท่านั้น แต่ `API.md` ต้องบันทึก contract ไว้ใน Task 9.
 
-- [ ] **Step 1: เขียน policy matrix test ก่อน**
+- [x] **Step 1: เขียน policy matrix test ก่อน**
 
 ```ts
 const outcomes = (
@@ -772,7 +777,7 @@ it.each([
 
 เพิ่ม regression: request แบบ legacy ที่ไม่มี capability field และไม่มี plan ยังคงคิดนาทีด้วย `isLegacyRequest: true` เพื่อไม่ขยายขอบเขตพฤติกรรมโดยไม่ตั้งใจ; color-only ที่หลุดมาถึง API มีทุก outcome เป็น `not-requested` และไม่คิดนาที.
 
-- [ ] **Step 2: รัน RED**
+- [x] **Step 2: รัน RED**
 
 ```powershell
 npm.cmd --prefix apps/api run test -- src/modules/aiEdits/aiEditUsagePolicy.test.ts
@@ -780,7 +785,7 @@ $redExitCode = $LASTEXITCODE
 if ($redExitCode -eq 0) { throw "Expected AI usage policy test to fail before implementation" }
 ```
 
-- [ ] **Step 3: Implement pure policy**
+- [x] **Step 3: Implement pure policy**
 
 ```ts
 export const shouldReserveAiEditMinutes = ({
@@ -792,7 +797,7 @@ export const shouldReserveAiEditMinutes = ({
 };
 ```
 
-- [ ] **Step 4: ปฏิเสธคำขอที่ไม่มีงาน AI จริงก่อนเรียก provider แล้วเชื่อม policy หลัง recipe**
+- [x] **Step 4: ปฏิเสธคำขอที่ไม่มีงาน AI จริงก่อนเรียก provider แล้วเชื่อม policy หลัง recipe**
 
 ใน `/ai-edits/prepare`:
 
@@ -843,7 +848,7 @@ if (!shouldReserve) {
 
 เพิ่ม route tests สำหรับ explicit `capabilities: {}` และ `{ color: true }`: ตอบ `400 AI_EDIT_NO_ANALYSIS_REQUESTED`, `transcribe`/Gemini/upload-provider call count เป็น 0 และ ledger ไม่เพิ่ม. Legacy request ที่ละ `capabilities` ทั้ง field ยังคงเดินเส้นทางเดิมและคิดนาที. Pure policy ที่คืน false สำหรับ all `not-requested` เป็น defense-in-depth แต่ route validation ต้องกันค่า provider ก่อนเสมอ.
 
-- [ ] **Step 5: เพิ่ม route tests ตรวจ ledger จริง**
+- [x] **Step 5: เพิ่ม route tests ตรวจ ledger จริง**
 
 เพิ่ม route test โดยตรวจยอดจริงก่อน/หลัง (ไม่ต้องเปิด internal store ให้ test):
 
@@ -892,7 +897,7 @@ it('does not meter an unavailable repeat-only preparation', async () => {
 
 หมายเหตุ: คง preliminary quota pre-check ไว้ในรอบนี้; ไม่เปลี่ยน semantics ของ quota-full request ก่อน transcription.
 
-- [ ] **Step 6: รัน GREEN, build และ commit**
+- [x] **Step 6: รัน GREEN, build และ commit**
 
 ```powershell
 npm.cmd --prefix apps/api run test -- src/modules/aiEdits/aiEditUsagePolicy.test.ts src/modules/aiEdits/aiEditRoutes.test.ts src/modules/aiEdits/aiEditAudioRoutes.test.ts
@@ -906,6 +911,10 @@ if ($LASTEXITCODE -ne 0) { throw "git add failed" }
 git commit -m "fix: reserve ai minutes only for usable results"
 if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
 ```
+
+สถานะ 2026-08-09: GREEN tests, full API 914/914, build และ `git diff --check`
+ผ่านแล้ว; Step 6 รวมอยู่ใน local commit `43fa6e0` พร้อมไฟล์ recipe/route และ
+Subtitle Setup ที่ตรวจร่วมกัน.
 
 ---
 
@@ -957,7 +966,7 @@ final List<ClipTranscriptSegment> boundarySegments;
 
 กำหนด constructor parameter เป็น `this.boundarySegments = const []` และ `fromJson` ใช้ `json['boundarySegments']` เมื่อเป็น list มิฉะนั้น `const []`; ทำให้ local recipe และ caller เดิม compile ต่อได้โดยไม่ต้องส่ง field. API ต้องส่ง `boundarySegments` จาก `repairThaiSubtitleSegmentBoundaries(strictReliableTranscriptSegments, language, transcript.text)` ตาม strict validator ใน Task 2 ไม่ใช่ display-safe/clamped segments. ห้ามให้ mobile ใช้ raw `transcript.segments` เป็น sentence boundary เพราะ provider segment อาจแบ่งกลางคำไทย; raw segments/words ยังคงใช้เป็น protected speech ranges แบบอนุรักษนิยม. หาก payload เก่าไม่มี `boundarySegments` ให้ mobile fail closed ด้วยรายการ boundary ว่าง ไม่ fallback ไป raw segment.
 
-- [ ] **Step 1: เขียน mapper tests**
+- [x] **Step 1: เขียน mapper tests**
 
 ```dart
 AiEditTranscriptResult transcriptFixture({
@@ -1073,7 +1082,7 @@ for (final segment in const [
 +              transcriptBoundarySegments ?? transcriptSegments,
 ```
 
-- [ ] **Step 2: รัน RED**
+- [x] **Step 2: รัน RED**
 
 ```powershell
 Push-Location 'apps/mobile'
@@ -1086,7 +1095,7 @@ try {
 if ($redExitCode -eq 0) { throw "Expected timeline mapper test to fail before implementation" }
 ```
 
-- [ ] **Step 3: Implement mapper แบบ fail closed**
+- [x] **Step 3: Implement mapper แบบ fail closed**
 
 ใช้ implementation shape นี้; helper `_mergeRanges` ต้อง sort แล้วรวมเฉพาะช่วงที่ overlap/touch กัน:
 
@@ -1165,7 +1174,7 @@ AiEditTimelineEvidence mapAiEditTimelineEvidence(
 
 ห้าม clamp ค่าเสียหายชัดเจนหรือ mutate input; boundary cues ห้าม merge เพราะแต่ละ cue คือขอบประโยคที่ alignment ต้องรักษา.
 
-- [ ] **Step 4: เพิ่ม widget integration test ก่อนแก้ screen**
+- [x] **Step 4: เพิ่ม widget integration test ก่อนแก้ screen**
 
 สร้าง prepared recipe ที่ `subtitle.enabled == false`, `subtitles.segments == []`, แต่ transcript cue คร่อมปลาย 30 วินาที:
 
@@ -1236,7 +1245,7 @@ testWidgets('uses transcript boundaries without rendering subtitles', (tester) a
 
 Expected RED: cut starts at 30.0 because current screen uses visible subtitle segments for boundary alignment.
 
-- [ ] **Step 5: ใช้ boundary evidence ใน `_renderPreparedRecipe()`**
+- [x] **Step 5: ใช้ boundary evidence ใน `_renderPreparedRecipe()`**
 
 ```dart
 final timelineEvidence = mapAiEditTimelineEvidence(recipe.transcript);
@@ -1273,7 +1282,12 @@ _boundaryEvidenceWarning =
 render widget ที่มี `const ValueKey('ai-boundary-evidence-unavailable')` เมื่อ warning ไม่เป็น null และล้าง warning เมื่อเลือกวิดีโอใหม่. ห้ามแตะ Hook scoring.
 การ assign `_boundaryEvidenceWarning` ต้องทำทุก render ไม่ใช่เฉพาะ failure branch: เมื่อกลับมาใช้ original duration หรือพบ reliable boundary ต้องตั้งเป็น `null` ทันที. เพิ่ม widget test ที่เริ่มจากผลก่อนหน้าซึ่งมี warning แล้ว rerender ด้วย reliable boundary และ original duration เพื่อยืนยันว่า warning เก่าไม่ค้าง.
 
-- [ ] **Step 6: รัน focused tests และ commit**
+- [x] **Step 6: รัน focused tests และ commit**
+
+> สถานะ 2026-08-09: Task 5 พัฒนาแล้ว; focused API recipe tests 165/165 และ
+> focused Flutter tests 704/704 ผ่าน จากนั้น full API 914/914, Mobile 759/759,
+> API build, Flutter analyze และ `git diff --check` ผ่าน; Step 6 รวมอยู่ใน
+> local commit `43fa6e0` พร้อม Subtitle Setup ที่ตรวจร่วมกัน.
 
 ```powershell
 Push-Location 'apps/mobile'
@@ -1355,7 +1369,7 @@ class AiEditSilenceVerifier {
 }
 ```
 
-- [ ] **Step 1: เขียน pure/native-runner tests**
+- [x] **Step 1: เขียน pure/native-runner tests**
 
 ต้องครอบคลุม:
 
@@ -1395,7 +1409,7 @@ test('keeps only padded waveform intersections away from speech', () async {
 });
 ```
 
-- [ ] **Step 2: รัน RED**
+- [x] **Step 2: รัน RED**
 
 ```powershell
 Push-Location 'apps/mobile'
@@ -1408,7 +1422,7 @@ try {
 if ($redExitCode -eq 0) { throw "Expected silence verifier test to fail before implementation" }
 ```
 
-- [ ] **Step 3: Implement parser/intersection และ production runner**
+- [x] **Step 3: Implement parser/intersection และ production runner**
 
 ใช้ `FFmpegKit.executeWithArguments`, `ReturnCode.isSuccess` และ `session.getAllLogsAsString()` ตาม pattern ที่มีใน `subtitle_burn_video_processor.dart`.
 
@@ -1490,7 +1504,11 @@ verified.add(SilenceCutRange(start: paddedStart, end: paddedEnd));
 
 ก่อน loop ให้ทิ้ง candidate ที่ `start <= epsilon` หรือ `end >= duration - epsilon`; normalize finite bounds และ sort/dedupe output. ห้าม split ช่วงเพื่อหลบ protected speech เพราะจะเพิ่มการเดา.
 
-- [ ] **Step 4: รัน GREEN และ commit**
+- [x] **Step 4: รัน GREEN และ commit**
+
+> สถานะ 2026-08-09: Task 6 พัฒนาแล้ว; focused tests 17/17 และ focused analyze
+> ผ่าน จากนั้น full Mobile 759/759, Flutter analyze และ `git diff --check`
+> ผ่าน; Step 4 รวมอยู่ใน local commit `43fa6e0`.
 
 ```powershell
 Push-Location 'apps/mobile'
@@ -1610,7 +1628,7 @@ class _PreparedRecipeRenderResult {
 }
 ```
 
-- [ ] **Step 1: เพิ่ม widget/mapper failing tests**
+- [x] **Step 1: เพิ่ม widget/mapper failing tests**
 
 เริ่มด้วย pure/default tests ของ `AiEditSafetyFlags` และ widget rollback tests: injected silence flag false แล้ว card/effective request/verifier/cuts ปิดทั้งหมด; injected automatic-repeat flag false แล้ว API ยังคืน detection groups ให้ดูได้ แต่ปุ่มเลือกตัดถูกปิด, key `ai-repeat-read-only` ปรากฏ และ initial/review/export ไม่มี repeat cut. Tests ต้องยืนยันซับ/target/color ไม่เปลี่ยนเมื่อปิด flag ใด flagหนึ่ง.
 
@@ -1772,7 +1790,7 @@ expect(updated.cutRanges.single.sourceEndMs, 10900);
 expect(updated.recipeFingerprint, isNot(project.recipeFingerprint));
 ```
 
-- [ ] **Step 2: รัน RED**
+- [x] **Step 2: รัน RED**
 
 ```powershell
 Push-Location 'apps/mobile'
@@ -1789,7 +1807,7 @@ if ($screenRedExitCode -eq 0 -or $mapperRedExitCode -eq 0) {
 }
 ```
 
-- [ ] **Step 3: เก็บผล verify แบบมีสถานะและ cache**
+- [x] **Step 3: เก็บผล verify แบบมีสถานะและ cache**
 
 เพิ่ม state:
 
@@ -1977,7 +1995,7 @@ SubtitleProject? _replaceProjectCutsAfterRender(
 
 ห้ามเรียก `extractAudio`, upload หรือ `prepareEdit`. เมื่อ probe ยังล้มให้คงไฟล์เดิมและ warning. ถ้า probe สำเร็จแต่ไม่พบช่วงที่ตัดได้ ให้ปิด silence capability และแสดง “ตรวจแล้ว · ไม่พบ” แทนการอ้างว่าใช้การตัดช่วงเงียบแล้ว. ปุ่ม retry ใช้ `const ValueKey('ai-silence-verification-retry')` และปิดชั่วคราวระหว่าง probe/render.
 
-- [ ] **Step 4: ส่ง verified ranges ผ่าน render ทั้ง 4 จุด**
+- [x] **Step 4: ส่ง verified ranges ผ่าน render ทั้ง 4 จุด**
 
 แก้ `_renderPreparedRecipe()`:
 
@@ -2055,7 +2073,7 @@ Map<String, bool> _buildReviewCapabilities(
 
 จุดสำคัญคือ silence เข้า capability map เฉพาะเมื่อ probe สำเร็จและมี verified cut จริง. success/empty ไม่เปิด capability แต่ status แยกยังแสดง “ตรวจแล้ว · ไม่พบ”; failure ไม่สร้าง cutและแสดง warning/retry. `_buildAnalysisSummary` ต้องนับเวลาเฉพาะ verified list ไม่อ่าน raw `recipe.silenceRanges` เป็นผลตัดจริง. เพิ่ม widget tests ทั้ง initial success/empty และ retry success/empty ให้ assert ว่า map ไม่มี `silence`, ไม่มี cut ถูกส่งเข้า renderer และ status “ตรวจแล้ว · ไม่พบ” ยังมองเห็น.
 
-- [ ] **Step 5: ป้องกัน candidate รั่วเข้า Subtitle Studio โดยไม่มีวงจรกับ repeat sanitizer**
+- [x] **Step 5: ป้องกัน candidate รั่วเข้า Subtitle Studio โดยไม่มีวงจรกับ repeat sanitizer**
 
 สร้าง subtitle project เริ่มต้นด้วย cue/style เท่านั้นก่อน render เมื่อเปิดซับ เพื่อให้ repeat sanitizer รักษาข้อความกับเสียงตรงกัน แต่ไม่รับ raw cuts. เก็บเป็น local variable, ส่งเข้า `_renderPreparedRecipe(renderProject: mappedProject)` โดยตรง และห้ามเขียน `_subtitleProject` จนกว่า render จะสำเร็จ:
 
@@ -2132,7 +2150,7 @@ final projectWithAppliedCuts = mappedProject == null
 
 เพิ่ม regression widget test ที่มีผลคลิป A และ `_subtitleProject` A อยู่แล้ว จากนั้นเลือกคลิป B ซึ่งมี cue/project คนละชุด: renderer ต้องได้รับ source B + `mappedProject` B และต้องไม่เห็น path/cue ของ A. จากนั้นให้ renderer throw แล้ว assert ว่า active source/duration, accepted recipe/project/preview/verification เดิมยังเป็น A และ export ส่ง source A ให้ renderer. เพิ่มอีก test ให้ cache signatureต่างกันเมื่อ source fingerprint หรือ `recipeFingerprint` ของ `renderProject` ต่างกัน แม้ recipe/capabilities/cuts เท่ากัน.
 
-- [ ] **Step 6: ปรับ existing silence tests ให้ inject verifier**
+- [x] **Step 6: ปรับ existing silence tests ให้ inject verifier**
 
 ประกาศ helper ใน test file แล้วส่งเข้า `AiEditingScreen` ทุก case ที่เปิด silence:
 
@@ -2150,7 +2168,9 @@ Future<AiEditSilenceVerificationResult> _verifyAllSilenceCandidates({
 
 ใช้ helper นี้เฉพาะ tests ที่ไม่ได้กำลังทดสอบ intersection/padding โดยตรง; tests ใหม่ใช้ range 10.1–10.9 ที่กำหนดชัดเจน. ห้ามให้ unit/widget tests เรียก native FFmpeg.
 
-- [ ] **Step 7: รัน mobile suite ที่เกี่ยวข้องและ commit**
+- [x] **Step 7: รัน mobile suite ที่เกี่ยวข้องและ commit**
+
+> สถานะ 2026-08-09: Steps 1–7 พัฒนาและตรวจแล้ว; Task 7 screen tests 96/96 และ safety-flag tests 3/3 ผ่าน รวมถึง targeted mapper/verifier regressions, scoped `flutter analyze` และ `git diff --check`. ชุด implementation รวมอยู่ใน local commit `43fa6e0`; การตรวจ release candidate ต่ออยู่ใน Task 9.
 
 ```powershell
 Push-Location 'apps/mobile'
@@ -2211,7 +2231,7 @@ String editedVideoOutputFileName(
 });
 ```
 
-- [ ] **Step 1: เขียน strategy/local recipe/output-name tests**
+- [x] **Step 1: เขียน strategy/local recipe/output-name tests**
 
 ```dart
 test('routes color-only original duration to local render', () {
@@ -2270,7 +2290,7 @@ test('fails closed for an enabled unknown capability', () {
 
 เพิ่ม table test สำหรับ color+subtitle, color+silence และ color+filler โดย assert `AiEditAnalysisMode.audioOnly` ทุกแถว.
 
-- [ ] **Step 2: เพิ่ม widget tests สำหรับ side-effect counts**
+- [x] **Step 2: เพิ่ม widget tests สำหรับ side-effect counts**
 
 แก้ existing color test ให้จับ side effects ครบ:
 
@@ -2337,7 +2357,7 @@ testWidgets('color-only original duration checks Pro then renders locally',
 
 ทำอีกสี่ tests ด้วย setup เดียวกัน: Basic แสดง Pro sheet และ counters ทุกตัว 0; color + target 30s ทำ extract/create/upload/prepare อย่างละ 1 และ `request.targetDurationSeconds == 30`; ใช้ `Completer<BurnedSubtitleResult>` ค้าง renderer เพื่อ assert ข้อความ local และไม่พบข้อความเตรียมเสียง; renderer รอบแรก throw แล้วกด retry สำเร็จโดย prepare/upload ยัง 0 และ quota ยัง 186. การเรียก `loadAiEditQuota` ใน `initState` เป็น GET เพื่อแสดงยอดและอนุญาตให้เกิดหนึ่งครั้ง.
 
-- [ ] **Step 3: รัน RED**
+- [x] **Step 3: รัน RED**
 
 ```powershell
 Push-Location 'apps/mobile'
@@ -2362,7 +2382,7 @@ if ($failedRedChecks.Count -eq 0) {
 }
 ```
 
-- [ ] **Step 4: Implement selector และ local recipe**
+- [x] **Step 4: Implement selector และ local recipe**
 
 Selector ต้องอ่าน effective capabilities:
 
@@ -2451,7 +2471,7 @@ AiEditRecipeResult buildLocalColorAiEditRecipe({
 
 ห้ามใส่ local recipe ลง `_preparedEditsByAnalysisSignature` เพราะเมื่อผู้ใช้เปิด AI capability เพิ่มภายหลังต้องเรียก prepare ใหม่.
 
-- [ ] **Step 5: แยก local branch ใน `_processVideo()` หลัง Pro check**
+- [x] **Step 5: แยก local branch ใน `_processVideo()` หลัง Pro check**
 
 โครงสร้าง:
 
@@ -2592,7 +2612,7 @@ rg -n "_selectedVideo" apps/mobile/lib/features/ai_editing/ai_editing_screen.dar
 
 หลัง refactor อนุญาตให้เหลือ `_preparedEdit` เฉพาะ field assignment/reset และ API-response-specific logic; ห้ามมี `_preparedEdit?.recipe` เหลืออยู่. Local branch render `activeRecipe` กับไฟล์ต้นฉบับโดยตรง, จุดแสดง quota ใช้ `_aiEditQuota` เดิม และห้ามเขียนทับ quota ใน local branch.
 
-- [ ] **Step 6: ใช้ชื่อ `_edited.mp4` เมื่อไม่มีซับจริง**
+- [x] **Step 6: ใช้ชื่อ `_edited.mp4` เมื่อไม่มีซับจริง**
 
 แทน `_subtitledFileName` ด้วย public pure helper และใช้ค่าที่ renderer คำนวณแล้ว:
 
@@ -2619,7 +2639,12 @@ final outputFile = File(
 
 ต้องอิง subtitle file content จริง ไม่อิง toggle อย่างเดียว.
 
-- [ ] **Step 7: รัน GREEN, mobile regression และ commit**
+- [x] **Step 7: รัน GREEN, mobile regression และ commit**
+
+> สถานะ 2026-08-09: Steps 1–7 พัฒนาและตรวจแล้ว; screen tests 103/103,
+> focused Task 8 dependency tests 84/84 และ full mobile tests 759/759 ผ่าน
+> พร้อม `flutter analyze` ทั้งแอปแบบ `No issues found` และ `git diff --check`
+> ผ่าน. Step 7 รวมอยู่ใน local commit `43fa6e0`; งานถัดไปคือ Task 9.
 
 ```powershell
 Push-Location 'apps/mobile'
@@ -2661,7 +2686,7 @@ if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
 
 แผนเก่าใน `docs/superpowers/plans/` เป็นประวัติและไม่ต้องแก้ย้อนหลัง; ไฟล์ implementation ปัจจุบันด้านบนเป็น plan/status ที่ต้องติ๊กและแนบผลจริง.
 
-- [ ] **Step 1: Sync docs กับ contract ที่พัฒนาเสร็จจริง**
+- [x] **Step 1: Sync docs กับ contract ที่พัฒนาเสร็จจริง**
 
 เอกสารต้องระบุอย่างตรงกัน:
 
@@ -2682,7 +2707,7 @@ ambiguous verification keeps the original audio. Color-only edits at original
 duration render locally for Pro users and do not consume AI editing minutes.
 ```
 
-- [ ] **Step 2: รัน API verification ครบ**
+- [x] **Step 2: รัน API verification ครบ**
 
 Run from worktree root:
 
@@ -2703,7 +2728,7 @@ try {
 }
 ```
 
-- [ ] **Step 3: รัน Flutter verification ครบ**
+- [x] **Step 3: รัน Flutter verification ครบ**
 
 Run from worktree root:
 
@@ -2719,7 +2744,15 @@ try {
 }
 ```
 
-- [ ] **Step 4: สร้าง APK Staging โดยไม่ commit secrets**
+- [x] **Step 4: สร้าง APK Staging โดยไม่ commit secrets**
+
+> สถานะ 2026-08-09: เอกสารและ PENDING result scaffold sync แล้ว; API tests
+> 914/914, API build, Prisma validation และ Prisma helper typecheck ผ่าน;
+> Flutter tests 759/759 และ `flutter analyze` ผ่าน. Fresh APK SHA-256 คือ
+> `73E535CDF8CE69C1E378C531FA44607BE77C2E4EEFF7F305756D69209ED83A48`.
+> Fixtures ทั้ง 6 ไฟล์มี SHA-256 จริงใน result scaffold และ provenance ของ
+> stacked-mark fixture ยืนยันจาก embedded MP4 metadata แล้ว. Steps 5–10 ยังไม่
+> ทำ; deploy SHA, health และผล Pixel 8 matrix ยังคง `PENDING`.
 
 ตรวจว่าไฟล์ local config มีอยู่ก่อน:
 
@@ -2785,7 +2818,7 @@ $videoFixtureHashes | Format-Table Path, Hash -AutoSize
 
 - [ ] **Step 5: Commit เอกสารเตรียมทดสอบ ขออนุญาต และนำ API candidate ขึ้น Staging ก่อน**
 
-สร้างโฟลเดอร์ผลทดสอบที่ยังไม่มี แล้วใช้ `apply_patch` สร้างไฟล์ผลสถานะ `PENDING` จาก schema ใน Step 6; ห้ามใช้ shell เขียนเนื้อหาไฟล์. ส่วนหัวต้องมี fields เหล่านี้ตั้งแต่แรก: `Candidate deploy SHA`, `Deployed Staging SHA`, `API runtime code SHA`, `Health status/time`, `Matrix APK SHA-256`, `Fixture SHA-256` และ `Overall status`; ค่าที่ยังไม่ทราบใช้ `PENDING`.
+ยืนยันไฟล์ผลสถานะ `PENDING` ที่สร้างใน Step 1 หรือสร้างด้วย `apply_patch` หากยังไม่มี; ห้ามใช้ shell เขียนเนื้อหาไฟล์. ส่วนหัวต้องมี fields เหล่านี้ตั้งแต่แรก: `Candidate deploy SHA`, `Deployed Staging SHA`, `API runtime code SHA`, `Health status/time`, `Matrix APK SHA-256`, `Fixture SHA-256` และ `Overall status`; ค่าที่ยังไม่ทราบใช้ `PENDING`.
 
 ```powershell
 if (-not (Test-Path 'docs/testing/results')) {
@@ -2804,7 +2837,7 @@ git log --oneline origin/main..HEAD
 if ($LASTEXITCODE -ne 0) { throw "git log failed" }
 git diff --stat origin/main...HEAD
 if ($LASTEXITCODE -ne 0) { throw "git diff failed" }
-git add README.md ROADMAP.md API.md ARCHITECTURE.md docs/STAGING.md docs/GO_LIVE.md docs/testing/AI_EDIT_THAI_CLIPS.md docs/testing/results/2026-08-08-ai-edit-correctness-pixel8.md docs/superpowers/plans/2026-08-01-ai-edit-correctness-and-fair-quota-implementation.md
+git add README.md ROADMAP.md API.md ARCHITECTURE.md docs/STAGING.md docs/GO_LIVE.md docs/testing/AI_EDIT_THAI_CLIPS.md docs/testing/results/2026-08-08-ai-edit-correctness-pixel8.md docs/superpowers/plans/2026-08-01-ai-edit-correctness-and-fair-quota-implementation.md docs/superpowers/plans/2026-08-08-ai-subtitle-setup-frame-drag-colors-plan.md
 if ($LASTEXITCODE -ne 0) { throw "git add failed" }
 git commit -m "docs: prepare ai edit correctness staging validation"
 if ($LASTEXITCODE -ne 0) { throw "git commit failed" }

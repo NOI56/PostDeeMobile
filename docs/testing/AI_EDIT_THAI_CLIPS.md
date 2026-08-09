@@ -11,6 +11,11 @@ and are not committed.
 | `thai-talking-head-tao-cc-by-sa.webm` | Horizontal Thai talking head, different speaker | 114.24 s | Wikitongues and Teddy Nee / Wikimedia Commons, CC BY-SA 4.0: https://commons.wikimedia.org/wiki/File:WIKITONGUES-_Tao_speaking_Thai.webm |
 | `thai-market-pexels-30139108.mp4` | Fast visual market scene, no speech | 7.96 s | LayG Traveller / Pexels free-use license: https://www.pexels.com/video/30139108/ |
 | `thai-food-demo-pexels-5915856.mp4` | Close-up Thai food demonstration, no speech | 12.28 s | Francesco Navarro / Pexels free-use license: https://www.pexels.com/video/5915856/ |
+| `thai-stacked-marks-30s.mp4` | Local 9:16 Thai subtitle/stacked-mark fixture | 30.03 s | Embedded MP4 metadata identifies title `Thai raw talking-head test clip`, artist `Wikitongues`, and source `WIKITONGUES- Dang speaking Thai, Wikimedia Commons`; comment says it was reframed to 9:16 without cutting content or changing audio; copyright is CC BY-SA 4.0. SHA-256: `89070EC6DB537E4B32BC87A533FB3A14314AF8D6F7A7702416509195A551CC97`. |
+| `qa-thai-news-voiceover-45s.mp4` | Local 45 s news/fast-visual excerpt | 45 s | MGR Online VDO, `"น้องหมูเด้ง" เซเลบสวนสัตว์เปิดเขาเขียว`, CC BY 3.0: https://commons.wikimedia.org/wiki/File:%22น้องหมูเด้ง%22_เซเลบสวนสัตว์เปิดเขาเขียว_-_เรื่องเด่นทั่วไทย.webm |
+| `qa-thai-scripted-clean-45s.mp4` | Local 45 s clean scripted-speech excerpt | 45 s | Los Angeles Police Department, `AAPI Hate Crime PSA - Thai`, public domain: https://commons.wikimedia.org/wiki/File:AAPI_Hate_Crime_PSA_-_Thai.webm |
+| `qa-thai-natural-interview-45s.mp4` | Local 45 s natural-interview excerpt | 45 s | BURIRAM UNITED, `GU Talk EP.07 พี ศศลักษณ์ ไหประโคน`, CC BY 3.0: https://commons.wikimedia.org/wiki/File:GU_Talk_EP.07_พี_ศศลักษณ์_ไหประโคน.webm |
+| `qa-thai-background-noise-45s.mp4` | Local 45 s field-speech/background-noise excerpt | 45 s | FAT MANGO Showreel, `Traditional Bird Singing Contest, Phuket`, CC BY 3.0: https://commons.wikimedia.org/wiki/File:Traditional_Bird_Singing_Contest,_Phuket_-_A_mini_documentary.webm |
 
 The Pexels license permits free use and modification; do not redistribute an
 unaltered stock file as a stock asset or imply endorsement. CC BY-SA derivatives
@@ -53,6 +58,33 @@ hidden Render credentials before each controlled provider run.
   AI shortening at 3:00, then continues down to 0:05.
 - For an original at or below 3:00, never allow the requested result to exceed
   the original duration.
+
+## Current correctness contract and isolated matrix
+
+Every optional subtitle, silence, repeated-speech, and colour switch starts off.
+Test one capability at a time before the combined case; target-only shortening
+is valid with all optional switches off.
+
+Transcript gaps are silence candidates only. The Android/iOS client confirms
+each candidate against the source waveform before rendering; failed or
+ambiguous verification keeps the original audio. Internal repaired
+`transcript.boundarySegments` may align target cuts while visible subtitles are
+off; missing or unsafe evidence keeps the planner cut instead of falling back to
+raw provider segments. Thai repeated-speech fragments must reconstruct by exact
+NFC text in raw provider order inside one reliable segment, or fail closed.
+
+Unavailable-only repeat/subtitle/silence analysis does not consume AI editing
+minutes. Color-only edits at original duration render locally for Pro users and
+do not consume AI editing minutes. Colour plus shortening stays on one prepare
+call; unknown enabled capabilities fail closed before side effects. A local
+colour result without real subtitle content must use `_edited.mp4`.
+
+Use the ten matrix rows in
+`docs/testing/results/2026-08-08-ai-edit-correctness-pixel8.md`. Before running,
+recompute SHA-256 for the APK and every video fixture and record the exact values;
+the documented stacked-mark hash is provenance evidence, not permission to skip
+the matrix-time hash. Output codec, FPS, file size, audio peak, and A/V sync are
+still pending device checks and must not be described as fixed without evidence.
 
 ## Editorial acceptance rubric
 

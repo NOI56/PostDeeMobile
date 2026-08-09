@@ -1,6 +1,6 @@
 # PostDee Staging
 
-ทบทวนเอกสาร ณ 1 สิงหาคม 2026: **Blueprint ใน repository ติดตาม `main` แต่การ
+ทบทวนเอกสาร ณ 9 สิงหาคม 2026: **Blueprint ใน repository ติดตาม `main` แต่การ
 deploy สำเร็จหรือ `/health` ผ่านไม่ได้ยืนยันว่า R2, Gemini/ElevenLabs, Firebase,
 RevenueCat หรือ PostPeer ผ่าน E2E ใน release candidate เดียวกัน** ผลที่ระบุว่า
 ผ่านด้านล่างเป็นบันทึกการทดสอบเดิมและต้องตรวจซ้ำตามรายการก่อน Production
@@ -88,8 +88,23 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 - เว้น `ELEVENLABS_TRANSCRIPTION_KEYTERMS` ว่างไว้จนกว่าจะวัดความคุ้มค่า
 - การมี API key หรือค่ารุ่นโมเดลอยู่ใน Dashboard ไม่ได้แปลว่าโมเดลนั้นถูกเรียก
   ต้องตรวจค่า `TRANSCRIPTION_PROVIDER` ของ service ที่ Deploy จริงทุกครั้ง
-- ระบบตัดช่วงเงียบใช้ช่องว่างจากเวลา word/segment ของ transcript ปัจจุบันยังไม่มี
-  VAD, การวัดเดซิเบล หรือ FFmpeg `silencedetect` มายืนยันเสียงจริงอีกชั้น
+- ทุก optional toggle ของ AI edit เริ่มปิด ผู้ใช้ต้องเปิด subtitle, silence,
+  repeated-speech หรือ colour เอง; target-only ยังคงทำงานได้โดยไม่เปิด toggle
+- Transcript gaps are silence candidates only. The Android/iOS client confirms
+  each candidate against the source waveform before rendering; failed or
+  ambiguous verification keeps the original audio. Mobile ใช้ FFmpeg
+  `silencedetect` เป็น final authority และส่งเฉพาะช่วงที่ยืนยันแล้วไปทุก render
+  path; probe ที่สำเร็จแต่ไม่พบช่วงปลอดภัยแยกจาก probe ที่ล้มเหลว
+- `transcript.boundarySegments` เป็นหลักฐานขอบประโยคภายในสำหรับจัด target แม้
+  ปิดซับที่มองเห็นอยู่; หากหลักฐานไม่ปลอดภัย Mobile เก็บ planner cut เดิมและ
+  แจ้งเตือน โดยไม่ย้อนใช้ raw segment
+- การประกอบเวลา fragment ภาษาไทยเพื่อหาคำพูดซ้ำต้องตรงแบบ exact NFC และอยู่ใน
+  reliable segment เดียวกันเท่านั้น หากพิสูจน์ไม่ได้ให้ fail closed และ
+  repeat-only ที่ unavailable ไม่ลด AI minutes
+- Color-only edits at original duration render locally for Pro users and do not
+  consume AI editing minutes. เส้นทางนี้ไม่ extract/upload/prepare; colour +
+  shortening หรือความสามารถที่ต้องใช้เสียงยังเรียก prepare หนึ่งครั้ง ส่วน
+  unknown enabled capability ต้องหยุดก่อนเกิด side effect
 
 `render.staging.yaml` ปัจจุบันไม่ประกาศ `FIREBASE_SERVICE_ACCOUNT_JSON`, ใช้
 `PUSH_SENDER=mock` และ `FIREBASE_AUTH_DELETE_ENABLED=false` เพื่อป้องกันการลบ
@@ -154,6 +169,9 @@ Staging Blueprint ติดตาม `main` และ deploy เมื่อ che
 รายการด้านล่างเป็น release gate ก่อนนำ release candidate เดียวกันขึ้น Production
 
 - [x] Firebase Google login, ID token และ API user/quota response ด้วยบัญชี Staging
+- [x] Task 9 preflight: API 914/914, build/Prisma/typecheck, Flutter 759/759 และ
+      analyze ผ่าน; fresh APK และ fixture SHA-256 ทั้ง 6 ไฟล์บันทึกใน
+      `docs/testing/results/2026-08-08-ai-edit-correctness-pixel8.md` แล้ว
 - [ ] Firebase Email/Password login ด้วยบัญชี Staging
 - [ ] อัปโหลดไฟล์ไป bucket Staging และยืนยันว่าไม่มี object ใน bucket Production
       (อัปโหลดจาก Android ผ่านแล้ว แต่การยืนยันขอบเขต bucket และ cleanup ยังไม่ครบ)
@@ -163,7 +181,14 @@ Staging Blueprint ติดตาม `main` และ deploy เมื่อ che
       ยืนยันว่า ElevenLabs รับเฉพาะ M4A ชั่วคราว,
       Gemini รับเฉพาะ visual proxy, cleanup สำเร็จ, provider failure ตอบ JSON
       502 โดยไม่หักโควตา และแอปแสดงข้อความลองใหม่ภาษาไทย)
-- [ ] เปิด/ปิดความสามารถ AI แล้ว preview และเวลาใน timeline ถูกต้อง
+- [ ] ยืนยัน `Candidate deploy SHA` ตรงกับ `Deployed Staging SHA` และบันทึก
+      `API runtime code SHA`, health status/time, APK SHA-256 และ fixture SHA-256
+      จริงใน `docs/testing/results/2026-08-08-ai-edit-correctness-pixel8.md`
+- [ ] รัน Pixel 8 isolated matrix โดยเปิดทีละความสามารถตาม
+      `docs/testing/AI_EDIT_THAI_CLIPS.md`; ต้องรวม target, subtitle, silence,
+      repeat-safe, repeat-unsafe, local colour, colour + target และ combined
+- [ ] บันทึก output codec, FPS, file size, audio peak และ A/V sync จากไฟล์จริง
+      รายการเหล่านี้ยังเป็นงานทดสอบค้างและยังห้ามระบุว่า renderer แก้ครบแล้ว
 - [x] RevenueCat Test Store purchase ให้ entitlement Pro กับ Firebase UID ทดสอบ
       บน Android Emulator (ราคาทดสอบ ไม่มีการเรียกเก็บเงินจริง)
 - [x] Deploy backend ที่มี `POST /billing/revenuecat/resync`, ตั้ง

@@ -195,10 +195,10 @@ physical Android remain unverified.
 ## 6. AI auto editing — ElevenLabs transcription + Gemini planning
 
 Backend transcription is ready (`POST /ai-edits/transcribe`, Pro-gated), and the
-UI-facing recipe endpoint is ready (`POST /ai-edits/prepare`, Pro-gated and
-minute-metered). Local defaults return a mock Thai transcript; the Render
-blueprint uses ElevenLabs Scribe v2 for timed transcription and Gemini for both
-visual and transcript planning.
+UI-facing recipe endpoint is ready (`POST /ai-edits/prepare`, Pro-gated with
+outcome-based minute metering). Local defaults return a mock Thai transcript;
+the Render blueprint uses ElevenLabs Scribe v2 for timed transcription and
+Gemini for both visual and transcript planning.
 
 - `TRANSCRIPTION_PROVIDER=elevenlabs`
 - `EDIT_PLAN_PROVIDER=gemini`
@@ -213,28 +213,49 @@ visual and transcript planning.
 - Gemini 3.5 transcript and visual requests keep structured JSON output and
   use provider-default sampling: omit `generationConfig.temperature`.
 
-Mobile flow is wired: the current AI Editing screen picks a real clip and calls
-`/ai-edits/prepare` for its UI capability recipe. `/ai-edits/transcribe` remains
-an authenticated backend/compatibility endpoint and API-client method; it is not
-a separate user-facing transcription path in the current screen. On export the
-app burns the transcript subtitles into the real clip on-device with
-FFmpeg (`subtitle_burn_video_processor.dart`) → a real subtitled MP4.
+Mobile flow is wired. Every optional capability starts off and the user must
+explicitly enable subtitle, silence, repeated-speech, or colour; target-only
+shortening remains valid with all four off. The screen calls
+`/ai-edits/prepare` when target planning or an audio-dependent capability is
+needed. `/ai-edits/transcribe` remains an authenticated backend/compatibility
+endpoint and API-client method; it is not a separate user-facing path.
 
-The FFmpeg export now renders trim + speed + volume + subtitle burn-in +
-silence-cut into the real MP4 (`buildEditFfmpegArguments`, unit-tested). Silence
-ranges are detected from validated backend word timings with transcript-segment
-fallback (`findSilenceRanges` in the recipe builder); the cut subtitles stay in
-sync because subtitles are burned BEFORE the silence
-`select` filter, so the burned pixels travel with their frames.
+Color-only edits at original duration render locally for Pro users and do not
+consume AI editing minutes. This route builds a cut-free full-duration recipe
+without extracting audio, uploading media, or calling `/ai-edits/prepare`.
+Colour plus shortening remains on the normal prepare path, while an unknown
+enabled capability fails closed before either route starts side effects. The
+phone uses `_subtitled.mp4` only when real subtitle content is rendered;
+otherwise it uses `_edited.mp4`.
+
+The FFmpeg export renders trim + speed + volume + optional subtitle burn-in and
+verified silence/repeated-speech cuts into the real MP4
+(`buildEditFfmpegArguments`, unit-tested). Transcript gaps are silence
+candidates only. The Android/iOS client confirms each candidate against the
+source waveform before rendering; failed or ambiguous verification keeps the
+original audio. Mobile uses FFmpeg `silencedetect`, safety padding, protected
+speech, and source-edge checks, then forwards only verified intersections to
+preview, review update, subtitle re-render, and export. A successful empty probe
+is distinct from failure; retry repeats only the local verifier/renderer and
+does not extract, upload, prepare, or charge again. Subtitles are burned before
+the video `select` filter, so accepted subtitle pixels stay with their frames.
 
 The prepare recipe now supports honest pace controls. `silencePreset` uses
 `natural` = 1.0 s, `balanced` = 0.6 s (default/missing), or `compact` = 0.4 s as
 the minimum validated word-timing gap, with segment gaps as a conservative
-fallback. The threshold also covers leading/trailing silence when duration is
-valid, and overlapping timing ranges are merged before gaps are calculated.
+fallback. Leading and trailing gaps are excluded, and overlapping timing ranges
+are merged before internal candidates are calculated.
 Provider word timings drive gaps, while subtitle text falls back to readable
 transcript segments when word coverage is incomplete. ElevenLabs receives only
 the bounded audio and optional approved keyterms.
+
+`recipe.transcript.boundarySegments` is separate from visible subtitle cues and
+lets Mobile align target-only cuts while subtitles are off. Unsafe or missing
+boundary evidence keeps the planner cut and shows a warning; Mobile never
+substitutes raw transcript segments. Thai fragments used for repeated-speech
+timing must match exact NFC text in raw provider order, remain inside one
+reliable segment, and stay within the allowed internal gap. Unprovable evidence
+fails closed instead of becoming a cut.
 Current mobile offers `AI เลือกให้` and `เลือกเอง`; both send
 `speechReductionMode: auto` and do not show fixed word chips. The backend may
 recommend removing only adjacent repeated Thai words or
@@ -252,9 +273,11 @@ shrink any cleanup range merely to reach the selected duration. If a subtitle
 word cannot be mapped safely, reject that media cut too; a slightly shorter
 result is expected and truthful.
 
-Result review displays detected silence/repeated-speech counts and the merged/clamped
-detected time from recipe ranges before rendering. Treat this as an analysis summary,
-not an exact promise about how many seconds the exported clip will lose.
+Result review displays waveform-verified silence counts, selected/sanitized
+repeated-speech occurrences, and their merged/clamped time before rendering. Raw
+silence candidates from the recipe are never counted as approved cuts. Treat this
+as an analysis summary, not an exact promise about how many seconds the exported
+clip will lose.
 
 The shared/manual FFmpeg pipeline supports color presets, brightness/contrast,
 and centered `drawtext` overlays. The current AI `_renderPreparedRecipe` path
@@ -293,17 +316,29 @@ hint. Setting the flag to `true` is allowed only for internal setup-UI QA and
 does not make the hook work.
 
 A per-minute Pro quota ledger is live: `POST /ai-edits/transcribe` and
-`POST /ai-edits/prepare` meter
-minutes (200/month) and `GET /ai-edits/quota` reports usage; the Profile quota
-card reads it. The ledger persists when `AI_EDIT_USAGE_STORE=prisma` (add it to
+`POST /ai-edits/prepare` can meter minutes (200/month) and
+`GET /ai-edits/quota` reports usage; the Profile quota card reads it. Prepare
+reserves minutes only when at least one requested outcome succeeds. An
+unavailable-only repeat/subtitle/silence result is unmetered; safe silence
+analysis that succeeds with zero candidates remains metered. Explicit empty or
+colour-only API requests stop before provider work, the local colour route is
+unmetered, and legacy requests that omit capabilities keep their prior metered
+behaviour. The ledger persists when `AI_EDIT_USAGE_STORE=prisma` (add it to
 `.env` alongside the other `*_STORE=prisma` settings; default is memory). The
 `AiEditUsage` table migration is already applied.
 
+Current Task 9 preparation is recorded in
+`docs/testing/results/2026-08-08-ai-edit-correctness-pixel8.md`: the verified
+implementation is in local commit `43fa6e0`, automated API/mobile checks pass,
+and fresh APK/fixture hashes are recorded. Candidate/deployed Staging SHA,
+health evidence, and every Pixel 8 matrix row remain `PENDING`; none of this
+preflight evidence authorizes Production deployment.
+
 Still TODO for full AI editing: verify ElevenLabs Thai timing, fragmented-token
 fallback, Gemini cut quality, and the PostDee-rule fallback with natural speech
-on physical phones; consider
-FFmpeg audio silence detection or VAD as a second confirmation layer if
-transcript timing is not accurate enough (neither is active today);
+on physical phones; record fresh output codec, FPS, file size, audio peak, and
+A/V sync evidence from the Task 9 Pixel 8 matrix (none of those acceptance
+checks is claimed fixed yet);
 turn planned recipe capabilities such as beat sync, auto-reframe, audio
 cleanup, SFX/music, and
 translation into real processors; sticker image overlays;

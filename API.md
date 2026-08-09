@@ -880,14 +880,17 @@ or colour work from provider data when its matching toggle is false.
 
 This endpoint is Pro-gated and minute-metered like `/ai-edits/transcribe`: the
 client `durationSeconds` is the media timeline estimate, the backend transcribes
-the stored clip and builds the requested edit plan/recipe, then atomically
-reserves minutes from the longer valid media/transcript duration immediately
-before returning success. That same longer duration is used by the planner and
-`recipe.transcript.durationSeconds`, while word/segment endpoints retain their
-provider timestamps. A failed
-planner or invalid recipe does not consume quota; the final reservation still
-prevents concurrent requests from exceeding the monthly limit. It does **not**
-render video on the server; mobile still renders/export with FFmpeg.
+the stored clip and builds the requested edit plan/recipe. It atomically reserves
+minutes from the longer valid media/transcript duration only when at least one
+requested analysis outcome is usable. Repeat-only, subtitle-only, or
+silence-only requests whose timing evidence is unavailable return a diagnostic
+recipe without consuming minutes. A safe silence analysis is successful even
+when it finds no candidate. Failed planners and invalid recipes do not consume
+quota; the final conditional reservation still prevents concurrent requests
+from exceeding the monthly limit. That same longer duration is used by the
+planner and `recipe.transcript.durationSeconds`, while word/segment endpoints
+retain their provider timestamps. It does **not** render video on the server;
+mobile still renders/export with FFmpeg.
 
 Current mobile clients split source audio into balanced chunks no longer than
 30 seconds. Every chunk is created through `POST /uploads` with `.m4a`,
@@ -961,6 +964,11 @@ Request:
   "settings": {
     "silencePreset": "balanced",
     "speechReductionMode": "auto",
+    "subtitleWordsPerLine": 3,
+    "subtitleColor": "#FFFFFF",
+    "subtitleOutlineColor": "#000000",
+    "subtitleNormalizedX": 0.5,
+    "subtitleNormalizedY": 0.88,
     "ctaText": "กดตะกร้าเลย",
     "priceText": "99 บาท",
     "watermarkText": "Meena Shop",
@@ -984,6 +992,35 @@ call `POST /ai-edits/audio/cleanup` with `{ "audioS3Key": "..." }`. Cleanup is
 authenticated, owner-scoped, and idempotent. Chunked clients call it once for
 each orphaned chunk.
 
+When a client explicitly supplies capabilities but selects neither planning,
+subtitles, silence analysis, nor repeated-speech analysis, the endpoint stops
+before transcription and returns `400`:
+
+```json
+{
+  "status": "error",
+  "code": "AI_EDIT_NO_ANALYSIS_REQUESTED",
+  "message": "เลือกงาน AI ที่ต้องการก่อนเริ่มวิเคราะห์"
+}
+```
+
+This includes explicit empty and colour-only requests. Color-only edits at
+original duration render locally for Pro users and do not consume AI editing
+minutes. After checking the local Pro entitlement, the official mobile client
+routes only that colour adjustment to `localRenderOnly`. It builds a cut-free,
+full-duration recipe and renders the original source without extracting audio,
+uploading media, calling `/ai-edits/prepare`, or changing the minute balance.
+Colour plus a shortened target, subtitles, silence cleanup, or repeated-speech
+cleanup stays on the normal audio/API route. Any unknown enabled capability
+fails closed before these side effects. A local retry repeats only rendering,
+and accepted source A remains active if a source B render fails. The output name
+uses `_subtitled.mp4` only when real subtitle content exists; otherwise it uses
+`_edited.mp4`. Temporary owned audio is still cleaned on the API rejection path.
+A legacy request that omits the entire `capabilities` field remains metered for
+backward compatibility. Output codec, FPS, file size, audio peak, and A/V sync
+are phone-renderer acceptance evidence and remain pending device-matrix checks;
+the API response does not claim those measurements are complete.
+
 When a style, prompt, or target length needs transcript timing but that timing
 cannot be verified, the endpoint stops before planning, recipe creation, or
 quota reservation and returns `422`:
@@ -996,17 +1033,41 @@ quota reservation and returns `422`:
 }
 ```
 
+`settings.subtitleWordsPerLine` accepts an explicit integer from 1 through 5;
+the current setup presets use 1, 3, and 5. Text and outline colours must be
+`#RRGGBB`. `subtitleNormalizedX` and `subtitleNormalizedY` are optional but must
+be sent together as finite values from 0 through 1. The normalized position is
+the canonical subtitle centre and takes precedence over legacy
+`subtitlePosition`. Invalid explicit subtitle settings return HTTP `400` with
+`code: "INVALID_AI_EDIT_SETTINGS"` before transcription or quota reservation.
+
 Response includes:
 
 - `recipe.renderMode: "mobile-ffmpeg"`
-- `recipe.transcript` with text, language, duration, segments, words, and model
-- `recipe.subtitles` for mobile subtitle burn-in
+- `recipe.transcript` with text, language, duration, raw `segments`, `words`,
+  repaired `boundarySegments`, and model. Current responses always include the
+  boundary array; it is built only from the complete strict/reliable transcript
+  timeline and stays empty when that evidence cannot be proven.
+- `recipe.subtitles` for mobile subtitle burn-in. When subtitles are enabled,
+  current responses may also include optional `variants` keyed by `"1"`,
+  `"3"`, and `"5"`. All three variants are built from the same validated
+  transcript in one prepare request; `segments` remains the selected variant
+  for backward compatibility.
 - `recipe.cutRanges` with executable planner/repeated-speech cuts,
-  `silenceRanges` as internal transcript-gap candidates that mobile must verify
-  against the waveform before cutting, and legacy-compatible `fillerRanges`.
-  Silence candidates are never folded into `cutRanges`.
+  `silenceRanges` as internal transcript-gap candidates, and legacy-compatible
+  `fillerRanges`. Transcript gaps are silence candidates only. The Android/iOS
+  client confirms each candidate against the source waveform before rendering;
+  failed or ambiguous verification keeps the original audio. Candidates are
+  never folded into `cutRanges` by the API. The client intersects them with
+  FFmpeg waveform silence, applies safety padding, rejects source edges and
+  protected speech, and sends only verified intersections to its local renderer.
 - optional `recipe.speechReduction` with stable repeated-word groups,
   occurrences, recommendations, and `defaultCutRanges`
+- `recipe.analysisOutcomes`, with `plan`, `subtitle`, `silence`, and
+  `speechReduction` set to `not-requested`, `succeeded`, or `unavailable` from
+  the actual result. The API uses this field for its quota decision; clients
+  must not infer billing from enabled toggles alone. The legacy fixed-filler
+  path counts as succeeded only when it produces a real safe filler range.
 - `recipe.plan`, including transcript-selected cuts, a short summary, and the
   planner model identifier
 - `recipe.overlays` for future CTA, price tag, and watermark processors; the
@@ -1019,6 +1080,16 @@ Response includes:
 - `recipe.capabilities`, where each requested UI capability is marked
   `applied`, `hinted`, `planned`, or `skipped`
 - `quota` with `{ limitMinutes, usedMinutes, remainingMinutes }`
+
+`recipe.transcript.boundarySegments` is independent of
+`recipe.subtitles.segments`: it provides source-timeline sentence boundaries
+for cut alignment and does not enable or render subtitles. Mobile can therefore
+align a shortened result while the subtitle capability is off. Older payloads
+without this field are parsed as an empty boundary list, never as raw
+`transcript.segments`. When boundaries are missing or rejected, mobile preserves
+the planner cut unchanged and shows a warning instead of inventing a new cut.
+Valid raw segments, global words, and validated segment words remain separate
+conservative protected-speech evidence.
 
 Each `recipe.subtitles.segments[]` keeps the compatibility fields `text`,
 `start`, and `end`, and may also contain authoritative `words[]`. Every word is
@@ -1042,11 +1113,16 @@ autosave, live preview, local preview render, reopen, and export reuse this
 prepare response; they require no additional API endpoint and consume no extra
 AI-edit minutes. Mobile renders and opens result review first; Subtitle Studio
 opens only from the explicit review action. Validated cue words drive active-word
-preview/export. Edited or unsafe cues use a static one-line fallback.
+preview/export. The response style can carry `outlineColor` and paired
+`normalizedX`/`normalizedY`; older responses without them use the legacy
+white/black and top/middle/bottom mapping. Edited or unsafe cues use a static
+one-line fallback.
 
-Production mobile enables only `subtitle`, `silence`, `filler` (shown to users
-as repeated-speech cleanup), and `color`,
-because those four have a real local renderer. The setup UI locks auto-reframe,
+Production mobile supports only `subtitle`, `silence`, `filler` (shown to users
+as repeated-speech cleanup), and `color`, because those four have a real local
+renderer. Every optional switch starts `false`; the client enables one only
+after an explicit user choice, while target-only shortening remains valid with
+all optional capabilities off. The setup UI locks auto-reframe,
 zoom, audio cleanup, subtitle translation, price tag, CTA, and the AI-page
 watermark as `เร็ว ๆ นี้` and sends them as `false`.
 
@@ -1055,11 +1131,14 @@ opening hook/highlight, auto-reframe, zoom, SFX/music choice, audio cleanup,
 subtitle translation, price tag, CTA, and the AI-page watermark, are accepted
 from older/internal clients but marked `planned` so the UI can stay honest.
 
-`settings.silencePreset` accepts three values and changes the minimum gap
-between validated word timings that becomes a silence range. The recipe falls
-back to transcript segment gaps when word timing is missing or incomplete. It
-also returns qualifying leading and trailing silence; trailing silence requires
-a finite `transcript.durationSeconds`:
+`settings.silencePreset` accepts three values and changes the minimum internal
+gap between validated word timings that becomes a silence candidate. A complete
+reliable segment timeline is used only when safe word evidence is unavailable.
+Leading and trailing gaps are excluded. The mobile verifier is the final
+authority: successful verification, including an empty result, is cached for
+the exact source and timing evidence; failures are not cached. Its retry action
+runs only the local waveform probe and local render, without extracting audio,
+uploading media, calling this endpoint, or reserving more minutes:
 
 - `natural`: 1.0 second
 - `balanced`: 0.6 second (also used when the field is missing or invalid)
@@ -1077,16 +1156,31 @@ Thai word timeline, the response adds:
   and whether the occurrence is safe to remove.
 - `defaultCutRanges[]`: only safe adjacent repeats selected by default.
 
+For Thai repeated-speech detection, character fragments are reconstructed only
+when their text matches exact NFC-normalized semantic words in raw provider
+order, every fragment stays inside the same reliable segment, and each internal
+fragment gap is at most 0.15 seconds. The reconstructed timing is private to
+repeat detection and never replaces subtitle word timing. The detector does not
+sort damaged evidence, cross an unreliable segment, or bridge a timed audio
+event. If any boundary cannot be proven, `speechReduction.status` is
+`unavailable`, `unavailableReason` is `fragmented-word-timing` or
+`unsafe-word-timing`, and `defaultCutRanges` is empty.
+
 The automatic detector checks repeated one-to-three-word phrases whose two
 occurrences are no more than 0.35 seconds apart, removes earlier occurrences,
 and preserves the final occurrence. A word found at least three times but
 spread through separate sentences is reported as `frequent-only` and kept by
-default. Negation, `ๆ`, numbers/prices, sentence boundaries, fragmented Thai
-tokens, and incomplete timing are never cut automatically. AI mode initially
+default. Negation, `ๆ`, numbers/prices, sentence boundaries, Thai fragments that
+cannot be reconstructed exactly, and incomplete timing are never cut
+automatically. AI mode initially
 selects `defaultCutRanges`; manual mode initially selects no occurrence. The
 mobile review can keep or remove each safe occurrence; unknown or non-removable
 IDs are discarded fail-closed. Manual mode also ignores legacy-only
 `fillerRanges` so it cannot remove speech before the user chooses.
+The mobile build-time repeat rollback keeps these detection groups visible but
+read-only, sends no selected occurrence IDs through initial render, review,
+subtitle re-render, or export, and applies no legacy or structured repeat cut.
+This rollback does not change the API request/response contract.
 
 `settings.fillerWords` is the legacy-client exact allowlist. Supported values are `เอ่อ`,
 `อ่า`, `อาฮะ`, `แบบว่า`, `คือว่า`, and `ประมาณว่า`. The backend normalizes NFC and
@@ -1110,6 +1204,11 @@ selected cleanup occurrence is never restored merely to fill the requested
 duration. When subtitles are enabled, mobile removes the same validated timed
 word from subtitle cues before burn-in. If a selected range cannot map to a
 complete subtitle word, both the subtitle change and media cut are rejected.
+The setup source is pending state, separate from the accepted source/recipe used
+by review and export. Mobile commits the active source, duration, recipe,
+verified-silence result, subtitle project, capabilities, repeat selection, and
+rendered result together only after a successful render. A failed new-source
+render therefore cannot pair an old recipe or project with the new file.
 
 Production mobile builds send `hook: false` because
 `ENABLE_EXPERIMENTAL_AI_HOOK` defaults to `false`. If an internal or legacy

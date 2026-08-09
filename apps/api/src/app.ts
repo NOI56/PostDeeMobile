@@ -77,6 +77,10 @@ import {
   type VisualEditPlanProvider,
   createVisualEditPlanProviderFromConfig
 } from './modules/aiEdits/visualEditPlanProvider.js';
+import {
+  type SoundEffectPlanProvider,
+  createSoundEffectPlanProviderFromConfig
+} from './modules/aiEdits/soundEffectPlanProvider.js';
 import type { PrismaAiEditUsageClient } from './modules/aiEdits/prismaAiEditUsageRepository.js';
 import {
   type FetchAudio,
@@ -159,6 +163,7 @@ type AppOptions = {
   fetchClipMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>;
   transcriptionProvider?: TranscriptionProvider;
   editPlanProvider?: EditPlanProvider;
+  soundEffectPlanProvider?: SoundEffectPlanProvider;
   visualEditPlanProvider?: VisualEditPlanProvider;
   storePurchaseVerifier?: StorePurchaseVerifier;
   revenueCatSubscriberClient?: RevenueCatSubscriberClient;
@@ -507,6 +512,9 @@ export const createApp = (options: AppOptions = {}) => {
   });
   const editPlanProvider =
     options.editPlanProvider ?? createEditPlanProviderFromConfig({ config });
+  const soundEffectPlanProvider =
+    options.soundEffectPlanProvider ??
+    createSoundEffectPlanProviderFromConfig({ config });
   const visualEditPlanProvider =
     options.visualEditPlanProvider ??
     createVisualEditPlanProviderFromConfig({ config });
@@ -517,6 +525,7 @@ export const createApp = (options: AppOptions = {}) => {
     subscriptionStore,
     aiEditUsageStore,
     editPlanProvider,
+    soundEffectPlanProvider,
     videoStorage.deleteVideo,
     visualEditPlanProvider,
     fetchClipMedia

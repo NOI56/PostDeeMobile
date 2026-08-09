@@ -10,11 +10,14 @@
 
 **Implementation status (2026-08-09):** Tasks 1–2 are committed locally. The verified Tasks 3–8 implementation is committed locally in `43fa6e0` (`feat: complete safe AI editing and subtitle controls`). Task 9 Steps 1–5 are complete. Step 6 started on the exact deployed candidate/APK but is `BLOCKED`: after installing a new 30-day, Speech-to-Text-only Staging key and deploying the environment on the unchanged SHA, `target-30` still failed closed with upstream HTTP `401`, no output, and no PostDee quota change. ElevenLabs showed 9,994/10,000 workspace credits used (6 remaining), so provider-side quota exhaustion is the leading diagnosis, not a confirmed response detail. The independent `color-local` path passed device/render checks without using quota but still needs direct zero-upload/prepare log evidence. Wait for or restore provider quota under separate approval, then rerun `target-30` once before the remaining matrix rows and Steps 7–10.
 
-**Seller UI update (2026-08-09):** the setup screen hides the colour/light and
+**Seller UI update (2026-08-10):** the setup screen hides the colour/light and
 audio-cleanup cards without deleting their compatibility contracts. Restored
-hidden values are forced off. It shows `AI ใส่เอฟเฟกต์เสียงให้` only as a
-disabled `เร็ว ๆ นี้` placeholder with `sfx=false`; enabling SFX requires a
-separate processor/licensing/quota plan and real-device verification.
+hidden values are forced off. `AI ใส่เอฟเฟกต์เสียงให้` is the only SFX control:
+the manual picker/Studio path is removed, while a dedicated server analysis
+returns only allowlisted PostDee IDs and trusted source anchors. Mobile fixes
+volume, maps anchors through final cuts, and renders from bundled assets. Full
+automated verification now passes; real-device listening and A/V-sync evidence
+remains required before Production.
 
 ## Global Constraints
 

@@ -420,11 +420,9 @@ void validateBurnSoundEffectRequest({
   }
   if ((speed - 1).abs() > 0.0001 ||
       (trimStartSec != null && trimStartSec > 0) ||
-      trimEndSec != null ||
-      maxOutputDurationSeconds != null ||
-      silenceRanges.isNotEmpty) {
+      trimEndSec != null) {
     throw const SubtitleBurnException(
-      'รอบนี้ใส่เอฟเฟกต์เสียงได้เฉพาะคลิปความยาวต้นฉบับที่ยังไม่ตัด',
+      'ตอนนี้เอฟเฟกต์เสียงรองรับความเร็วปกติและยังไม่รองรับการตัดหัวหรือท้ายโดยตรง',
     );
   }
 

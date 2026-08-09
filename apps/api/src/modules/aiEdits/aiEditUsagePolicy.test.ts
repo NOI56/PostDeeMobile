@@ -12,6 +12,7 @@ const outcomes = (
   subtitle: 'not-requested',
   silence: 'not-requested',
   speechReduction: 'not-requested',
+  sfx: 'not-requested',
   ...value
 });
 
@@ -73,6 +74,16 @@ describe('shouldReserveAiEditMinutes', () => {
         speechReduction: 'unavailable',
         plan: 'unavailable'
       }),
+      false
+    ],
+    [
+      'sound-effect analysis succeeded with an empty selection',
+      outcomes({ sfx: 'succeeded' }),
+      true
+    ],
+    [
+      'sound-effect provider unavailable',
+      outcomes({ sfx: 'unavailable' }),
       false
     ],
     [

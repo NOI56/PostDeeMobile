@@ -8,6 +8,7 @@ export type AiEditAnalysisOutcomes = {
   subtitle: AiEditOutcomeState;
   silence: AiEditOutcomeState;
   speechReduction: AiEditOutcomeState;
+  sfx: AiEditOutcomeState;
 };
 
 type AiEditUsagePolicyInput = {

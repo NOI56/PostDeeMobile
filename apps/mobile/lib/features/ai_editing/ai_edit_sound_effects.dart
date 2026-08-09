@@ -1,5 +1,7 @@
 import 'dart:collection';
 
+import '../../core/network/postdee_api_client.dart';
+
 const maxAiEditSoundEffectsPerVideo = 8;
 const defaultAiEditSoundEffectVolume = 0.25;
 
@@ -133,8 +135,8 @@ class AiEditSoundEffectPlacement {
 
   final String soundId;
 
-  /// Output-timeline position. The first release only supports an uncut,
-  /// original-duration local render, so source and output time are identical.
+  /// Output-timeline position after accepted cuts are removed. The first
+  /// release intentionally supports normal playback speed only.
   final double startSeconds;
   final double volume;
 
@@ -198,6 +200,120 @@ List<AiEditSoundEffectPlacement> validateAiEditSoundEffectPlacements(
     return byStart != 0 ? byStart : left.soundId.compareTo(right.soundId);
   });
   return UnmodifiableListView(result);
+}
+
+/// Converts AI anchors on the original source timeline to positions on the
+/// final, cut output timeline. This first contract intentionally supports 1x
+/// playback only; speed-aware mapping must be reviewed separately.
+///
+/// Suggestions that fall inside a removed range are discarded. The API never
+/// controls volume: every surviving suggestion receives the fixed safe mobile
+/// volume.
+List<AiEditSoundEffectPlacement> mapAiEditSoundEffectsToOutputTimeline({
+  required Iterable<AiEditSoundEffectSuggestionResult> suggestions,
+  required Iterable<AiEditCut> finalCutRanges,
+  required double sourceDurationSeconds,
+}) {
+  if (!sourceDurationSeconds.isFinite || sourceDurationSeconds <= 0) {
+    throw const AiEditSoundEffectValidationException(
+      'ยืนยันความยาววิดีโอไม่ได้ จึงยังใส่เอฟเฟกต์เสียงไม่ได้',
+    );
+  }
+
+  final normalizedCuts = _normalizeAiSoundEffectCutRanges(
+    finalCutRanges,
+    sourceDurationSeconds: sourceDurationSeconds,
+  );
+  final removedDurationSeconds = normalizedCuts.fold<double>(
+    0,
+    (total, cut) => total + cut.end - cut.start,
+  );
+  final outputDurationSeconds = sourceDurationSeconds - removedDurationSeconds;
+  if (!outputDurationSeconds.isFinite || outputDurationSeconds <= 0) {
+    throw const AiEditSoundEffectValidationException(
+      'ช่วงที่ตัดทำให้ไม่เหลือวิดีโอสำหรับใส่เอฟเฟกต์เสียง',
+    );
+  }
+
+  final placements = <AiEditSoundEffectPlacement>[];
+  for (final suggestion in suggestions) {
+    final sourceSeconds = suggestion.sourceSeconds;
+    if (!aiEditRecipeKnownSoundEffectIds.contains(suggestion.soundId) ||
+        !sourceSeconds.isFinite ||
+        sourceSeconds < 0 ||
+        sourceSeconds >= sourceDurationSeconds) {
+      throw const AiEditSoundEffectValidationException(
+        'รายการเอฟเฟกต์เสียงจาก AI ไม่ปลอดภัย จึงยังไม่ใส่เสียง',
+      );
+    }
+
+    final isRemoved = normalizedCuts.any(
+      (cut) => sourceSeconds >= cut.start && sourceSeconds < cut.end,
+    );
+    if (isRemoved) {
+      continue;
+    }
+
+    var removedBeforeSeconds = 0.0;
+    for (final cut in normalizedCuts) {
+      if (cut.end <= sourceSeconds) {
+        removedBeforeSeconds += cut.end - cut.start;
+      } else {
+        break;
+      }
+    }
+    placements.add(
+      AiEditSoundEffectPlacement(
+        soundId: suggestion.soundId,
+        startSeconds: sourceSeconds - removedBeforeSeconds,
+        volume: defaultAiEditSoundEffectVolume,
+      ),
+    );
+  }
+
+  return validateAiEditSoundEffectPlacements(
+    placements,
+    outputDurationSeconds: outputDurationSeconds,
+  );
+}
+
+List<AiEditCut> _normalizeAiSoundEffectCutRanges(
+  Iterable<AiEditCut> ranges, {
+  required double sourceDurationSeconds,
+}) {
+  final sorted = <AiEditCut>[];
+  for (final range in ranges) {
+    if (!range.start.isFinite ||
+        !range.end.isFinite ||
+        range.start < 0 ||
+        range.end <= range.start ||
+        range.end > sourceDurationSeconds) {
+      throw const AiEditSoundEffectValidationException(
+        'ช่วงเวลาที่ตัดไม่ปลอดภัย จึงยังใส่เอฟเฟกต์เสียงไม่ได้',
+      );
+    }
+    sorted.add(range);
+  }
+  sorted.sort((left, right) {
+    final byStart = left.start.compareTo(right.start);
+    return byStart != 0 ? byStart : left.end.compareTo(right.end);
+  });
+
+  final merged = <AiEditCut>[];
+  for (final range in sorted) {
+    if (merged.isEmpty || range.start > merged.last.end) {
+      merged.add(range);
+      continue;
+    }
+    final previous = merged.removeLast();
+    merged.add(
+      AiEditCut(
+        start: previous.start,
+        end: previous.end > range.end ? previous.end : range.end,
+      ),
+    );
+  }
+  return List<AiEditCut>.unmodifiable(merged);
 }
 
 double _roundToMilliseconds(double value) =>

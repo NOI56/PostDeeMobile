@@ -9,6 +9,7 @@ import {
   readStrictTranscriptEvidence
 } from './aiEditRecipe.js';
 import type { EditPlanResult } from './editPlanProvider.js';
+import type { SoundEffectPlanResult } from './soundEffectPlanProvider.js';
 import type {
   TranscriptSegment,
   TranscriptWord,
@@ -57,7 +58,8 @@ const buildRecipe = ({
   capabilities,
   settings,
   hasExplicitPlanRequest,
-  plan
+  plan,
+  soundEffectPlan
 }: {
   text?: string;
   segments?: TranscriptSegment[];
@@ -70,6 +72,7 @@ const buildRecipe = ({
   settings?: unknown;
   hasExplicitPlanRequest?: boolean;
   plan?: EditPlanResult;
+  soundEffectPlan?: SoundEffectPlanResult;
 }) =>
   buildAiEditRecipe({
     transcript: buildTranscript({
@@ -90,7 +93,8 @@ const buildRecipe = ({
     }),
     settings: readAiEditRecipeSettings(settings),
     hasExplicitPlanRequest: hasExplicitPlanRequest ?? false,
-    plan
+    plan,
+    soundEffectPlan
   });
 
 const readLegacySubtitleSegmentFields = (
@@ -184,12 +188,57 @@ describe('AI edit analysis outcomes', () => {
     plan: 'not-requested',
     subtitle: 'not-requested',
     silence: 'not-requested',
-    speechReduction: 'not-requested'
+    speechReduction: 'not-requested',
+    sfx: 'not-requested'
   } as const;
 
   it('marks every outcome not requested when no analysis was selected', () => {
     expect(buildRecipe({ capabilities: {} }).analysisOutcomes)
       .toEqual(notRequested);
+  });
+
+  it('records a validated AI sound-effect selection as applied', () => {
+    const soundEffectPlan: SoundEffectPlanResult = {
+      soundEffects: [
+        { soundId: 'attention_boop', sourceSeconds: 0 },
+        { soundId: 'coin_ping', sourceSeconds: 4 }
+      ],
+      summary: 'เน้นช่วงเปิดและราคา',
+      model: 'test-sfx-model'
+    };
+    const recipe = buildRecipe({
+      capabilities: { sfx: true },
+      soundEffectPlan
+    });
+
+    expect(recipe.soundEffects).toEqual(soundEffectPlan.soundEffects);
+    expect(recipe.analysisOutcomes.sfx).toBe('succeeded');
+    expect(recipe.capabilities.sfx.state).toBe('applied');
+  });
+
+  it('counts a valid empty AI sound-effect result as succeeded', () => {
+    const recipe = buildRecipe({
+      capabilities: { sfx: true },
+      soundEffectPlan: {
+        soundEffects: [],
+        summary: 'ไม่ควรใส่เสียงเพิ่ม',
+        model: 'test-sfx-model'
+      }
+    });
+
+    expect(recipe.soundEffects).toEqual([]);
+    expect(recipe.analysisOutcomes.sfx).toBe('succeeded');
+    expect(recipe.capabilities.sfx.state).toBe('applied');
+    expect(recipe.capabilities.sfx.message).toContain('เลือกไม่ใส่');
+  });
+
+  it('fails closed when AI sound-effect analysis is unavailable', () => {
+    const recipe = buildRecipe({ capabilities: { sfx: true } });
+
+    expect(recipe.soundEffects).toEqual([]);
+    expect(recipe.analysisOutcomes.sfx).toBe('unavailable');
+    expect(recipe.capabilities.sfx.state).toBe('hinted');
+    expect(recipe.capabilities.sfx.message).toContain('ยังเลือก');
   });
 
   it('records only a usable explicit plan as succeeded', () => {
@@ -2537,7 +2586,6 @@ describe('AI edit recipe pacing settings', () => {
     'beatsync',
     'reframe',
     'zoom',
-    'sfx',
     'audio',
     'translate',
     'pricetag',

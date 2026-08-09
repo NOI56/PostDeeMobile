@@ -759,25 +759,28 @@ If transcription fails, the API returns the stable
 `AI_TRANSCRIPTION_PROVIDER_FAILED` code with HTTP 502 before quota reservation;
 provider internals are not exposed. Mobile translates that code into a Thai
 retry message and leaves the setup available for another attempt.
-The seller-facing production capability allowlist is currently `subtitle`,
-`silence`, and `filler`. The internal `color` renderer and `audio` contract stay
-available for compatibility with older results, but both setup cards are hidden
-and restored presets are forced off so no invisible edit can run. Mobile shows
-`sfx` as a disabled `AI ใส่เอฟเฟกต์เสียงให้` / `เร็ว ๆ นี้` placeholder.
-Auto-reframe, zoom, SFX, audio cleanup, translation, price tags, CTA cards, and
-the AI-page watermark remain `planned`; mobile sends them disabled instead of
-implying that their recipe hints changed the exported file.
-Manual sound effects use a separate local state, remain behind a default-off
-internal QA gate, and never enable that AI capability. A strict catalog maps
-ten PostDee procedural IDs to bundled 48 kHz
-stereo WAV assets. Placements are validated, sorted, capped at eight, included
-in the render-cache signature, copied into the render workspace, delayed and
-mixed after sticker inputs, limited, and encoded to AAC. The first release
-accepts only an audio-bearing, uncut, original-duration, 1× source; preview,
-review edits, and full export share the accepted placement list atomically.
-No ducking or source-to-output cut mapping is claimed yet. The seller-facing
-tool remains hidden until in-app preview plus Android/iPhone listening and
-A/V-sync acceptance pass.
+The seller-facing production capability allowlist includes `subtitle`,
+`silence`, `filler`, and `sfx`. The internal `color` renderer and `audio`
+contract stay available for compatibility with older results, but both setup
+cards are hidden and restored presets are forced off so no invisible edit can
+run. SFX uses a dedicated AI planner over strict transcript boundaries. The
+planner sees catalog metadata rather than audio assets and can return only an
+allowlisted `soundId` plus a source-timeline anchor. Atomic server validation
+produces the recipe `soundEffects` list and a separate SFX analysis outcome for
+fair quota decisions. Unavailable analysis never falls back to a random sound.
+Auto-reframe, zoom, audio cleanup, translation, price tags, CTA cards, and the
+AI-page watermark remain `planned`.
+
+A strict mobile catalog maps the ten PostDee procedural IDs to bundled 48 kHz
+stereo WAV assets. Mobile fixes volume at 25%, converts source anchors through
+the final merged cut timeline, drops anchors inside removed ranges, and includes
+the resulting output placements in the render-cache signature. FFmpeg copies
+the assets into its private workspace, delays and mixes them after the edited
+source-audio timeline, applies a limiter, and encodes AAC. Preview, review
+rerenders, and full export derive placements from the same accepted recipe.
+Manual selection state and the Sound Effect Studio are not part of the product.
+Physical Android/iPhone listening, level, and A/V-sync evidence remains a
+release gate.
 The AI header independently reads the authenticated monthly quota and replaces
 that value with `prepare.quota` as soon as a metered recipe succeeds. Local
 preview re-renders and manual quota refreshes do not call the metered endpoint.

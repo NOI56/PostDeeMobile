@@ -1118,28 +1118,29 @@ preview/export. The response style can carry `outlineColor` and paired
 white/black and top/middle/bottom mapping. Edited or unsafe cues use a static
 one-line fallback.
 
-Production mobile currently lets sellers select only `subtitle`, `silence`, and
-`filler` (shown as repeated-speech cleanup). Every optional switch starts
-`false`; target-only shortening remains valid with all optional capabilities
-off. The seller-facing `color` and `audio` cards are hidden while their API and
-legacy-render compatibility remain intact. The setup UI shows `sfx` as the
-disabled card `AI ใส่เอฟเฟกต์เสียงให้` with a `เร็ว ๆ นี้` badge, and sends
-`color`, `audio`, and `sfx` as `false`. Only `color` retains a supported
-internal/legacy render path; `audio` and `sfx` remain planned and non-executable.
+Production mobile lets sellers select `subtitle`, `silence`, `filler` (shown as
+repeated-speech cleanup), and `sfx`. Every optional switch starts `false`;
+target-only shortening remains valid with all optional capabilities off. The
+seller-facing `color` and `audio` cards are hidden while their API and
+legacy-render compatibility remain intact. `sfx=true` requests a dedicated AI
+sound-design analysis in `/ai-edits/prepare`; it is not a manual/local-only
+capability.
 
-Manual sound-effect placement is intentionally outside this API capability
-contract and remains behind a default-off internal mobile QA gate. That tool can
-attach at most eight catalogued PostDee procedural sounds to an uncut,
-original-duration clip and mix them in the local FFmpeg renderer.
-That flow keeps `capabilities.sfx=false`, creates no upload, does not call
-`/ai-edits/prepare`, and does not reserve AI-edit minutes. Any shortened,
-cut-cleanup, non-1×, unknown-asset, out-of-range, or source-without-audio request
-fails closed. Future AI selection must return validated catalog IDs and times
-through a separately reviewed contract; it must not reuse the manual list as
-proof that the current API applied SFX.
+An executable recipe may contain
+`soundEffects: [{"soundId": "coin_ping", "sourceSeconds": 4.0}]`.
+`soundId` must be one of the ten bundled PostDee procedural assets and
+`sourceSeconds` must exactly match an allowlisted boundary from trusted source
+timing. The provider receives only catalog metadata and transcript anchors—no
+WAV, asset path, URL, or volume. The complete response is validated atomically,
+sorted, and capped at eight; any unknown field, asset, timestamp, duplicate,
+malformed JSON, provider failure, or unsafe timing makes the SFX
+analysis unavailable with an empty executable list. A valid empty list is a
+completed analysis. Mobile assigns the fixed 25% volume and maps source anchors
+through the final accepted cuts before local FFmpeg rendering. There is no
+seller-facing manual sound picker or placement editor.
 
 Capabilities that need future analysis or rendering, including beat sync, the
-opening hook/highlight, auto-reframe, zoom, SFX/music choice, audio cleanup,
+opening hook/highlight, auto-reframe, zoom, music choice, audio cleanup,
 subtitle translation, price tag, CTA, and the AI-page watermark, are accepted
 from older/internal clients but marked `planned` so the UI can stay honest.
 

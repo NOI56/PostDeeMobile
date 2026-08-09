@@ -872,6 +872,33 @@ void main() {
     expect(joined, contains('-c:a aac'));
   });
 
+  test('mixes output-timeline sound effects after cuts and output cap', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      silenceRanges: const [SilenceCutRange(start: 2, end: 4)],
+      maxOutputDurationSec: 8,
+      soundEffectInputs: const [
+        ResolvedBurnSoundEffectInput(
+          inputPath: '/clean-tap.wav',
+          startSeconds: 3,
+          volume: 0.25,
+        ),
+      ],
+      soundEffectTimelineDurationSec: 8,
+    );
+    final joined = args.join(' ');
+
+    expect(joined, contains('[0:a]atrim=start=0.000:end=2.000'));
+    expect(joined, contains('[0:a]atrim=start=4.000'));
+    expect(joined, contains('concat=n=2:v=0:a=1'));
+    expect(joined, contains('apad=whole_dur=8.000'));
+    expect(joined, contains('atrim=duration=8.000'));
+    expect(joined, contains('adelay=3000|3000[sfx0]'));
+    expect(joined, contains('-t 8.000'));
+    expect(joined, contains('-map [aout]'));
+  });
+
   test('requires a finite output timeline when mixing sound effects', () {
     expect(
       () => buildEditFfmpegArguments(
@@ -902,8 +929,7 @@ void main() {
     expect(joined, contains('-c:a copy'));
   });
 
-  test('accepts manual sound effects only on an uncut original audio timeline',
-      () {
+  test('accepts output-timeline sound effects with cuts and output cap', () {
     const soundEffects = [
       BurnSoundEffectAsset(
         assetPath: 'assets/sfx/soft_pop.wav',
@@ -917,6 +943,8 @@ void main() {
         soundEffects: soundEffects,
         sourceHasAudio: true,
         outputDurationSeconds: 10,
+        silenceRanges: const [SilenceCutRange(start: 2, end: 3)],
+        maxOutputDurationSeconds: 10,
       ),
       returnsNormally,
     );
@@ -943,13 +971,7 @@ void main() {
             soundEffects: soundEffects,
             sourceHasAudio: true,
             outputDurationSeconds: 10,
-            silenceRanges: const [SilenceCutRange(start: 2, end: 3)],
-          ),
-      () => validateBurnSoundEffectRequest(
-            soundEffects: soundEffects,
-            sourceHasAudio: true,
-            outputDurationSeconds: 10,
-            maxOutputDurationSeconds: 9,
+            trimEndSec: 10,
           ),
     ]) {
       expect(invalid, throwsA(isA<SubtitleBurnException>()));

@@ -6,6 +6,10 @@ import type {
   EditPlanSegment
 } from './editPlanProvider.js';
 import type { AiEditAnalysisOutcomes } from './aiEditUsagePolicy.js';
+import type {
+  AiSoundEffectPlacement,
+  SoundEffectPlanResult
+} from './soundEffectPlanProvider.js';
 import {
   isReliableTranscriptSegment,
   normalizeTranscriptionLanguage,
@@ -189,6 +193,8 @@ export type AiEditRecipe = {
     zoomLevel?: string;
   };
   music: AiEditMusicSettings;
+  /** AI-selected bundled effects at absolute source-video timestamps. */
+  soundEffects: AiSoundEffectPlacement[];
   capabilities: Record<AiEditCapabilityKey, AiEditCapabilityStatus>;
 };
 
@@ -201,7 +207,6 @@ const plannedCapabilities = new Set<AiEditCapabilityKey>([
   'beatsync',
   'reframe',
   'zoom',
-  'sfx',
   'audio',
   'translate',
   'pricetag',
@@ -1829,6 +1834,7 @@ export const buildAiEditRecipe = ({
   styleId,
   prompt,
   plan,
+  soundEffectPlan,
   hasExplicitPlanRequest
 }: {
   transcript: TranscriptionResult;
@@ -1837,6 +1843,7 @@ export const buildAiEditRecipe = ({
   styleId?: string;
   prompt?: string;
   plan?: EditPlanResult;
+  soundEffectPlan?: SoundEffectPlanResult;
   hasExplicitPlanRequest: boolean;
 }): AiEditRecipe => {
   const subtitleWordsPerLine =
@@ -2102,7 +2109,12 @@ export const buildAiEditRecipe = ({
         ? 'succeeded'
         : !speechReduction && fillerRanges.length > 0
           ? 'succeeded'
-          : 'unavailable'
+          : 'unavailable',
+    sfx: !capabilities.sfx
+      ? 'not-requested'
+      : soundEffectPlan
+        ? 'succeeded'
+        : 'unavailable'
   };
   const priceText = settings.priceText ?? inferPriceText(transcript.text);
   const ctaText = settings.ctaText ?? 'กดตะกร้าเลย';
@@ -2174,6 +2186,9 @@ export const buildAiEditRecipe = ({
       ...defaultMusicSettings,
       ducking: { ...defaultMusicSettings.ducking }
     },
+    soundEffects: capabilities.sfx
+      ? soundEffectPlan?.soundEffects ?? []
+      : [],
     capabilities: {
       subtitle: buildCapabilityStatus({
         key: 'subtitle',
@@ -2222,7 +2237,16 @@ export const buildAiEditRecipe = ({
       reframe: buildCapabilityStatus({ key: 'reframe', enabled: capabilities.reframe }),
       zoom: buildCapabilityStatus({ key: 'zoom', enabled: capabilities.zoom }),
       color: buildCapabilityStatus({ key: 'color', enabled: capabilities.color }),
-      sfx: buildCapabilityStatus({ key: 'sfx', enabled: capabilities.sfx }),
+      sfx: buildCapabilityStatus({
+        key: 'sfx',
+        enabled: capabilities.sfx,
+        state: soundEffectPlan ? 'applied' : 'hinted',
+        message: !soundEffectPlan
+          ? 'ยังเลือกเอฟเฟกต์เสียงไม่ได้ เพราะผลวิเคราะห์หรือเวลาอ้างอิงไม่พร้อม'
+          : soundEffectPlan.soundEffects.length > 0
+            ? `AI เลือกเอฟเฟกต์เสียงจากคลัง PostDee ${soundEffectPlan.soundEffects.length} จุดแล้ว`
+            : 'AI วิเคราะห์แล้ว และเลือกไม่ใส่เอฟเฟกต์เสียงเพิ่มในคลิปนี้'
+      }),
       audio: buildCapabilityStatus({ key: 'audio', enabled: capabilities.audio }),
       translate: buildCapabilityStatus({ key: 'translate', enabled: capabilities.translate }),
       pricetag: buildCapabilityStatus({ key: 'pricetag', enabled: capabilities.pricetag }),

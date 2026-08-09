@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_edit_audio_extractor.dart';
-import 'package:postdee_mobile/features/ai_editing/ai_edit_sound_effects.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_edit_safety_flags.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_edit_silence_verifier.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_editing_screen.dart';
@@ -197,6 +196,8 @@ AiEditPrepareResult _createPrepareFixture({
   Map<int, List<ClipTranscriptSegment>> subtitleVariants =
       const <int, List<ClipTranscriptSegment>>{},
   String transcriptLanguage = 'th',
+  List<AiEditSoundEffectSuggestionResult> soundEffects = const [],
+  AiEditCapabilityStatusResult? soundEffectsStatus,
 }) =>
     AiEditPrepareResult(
       quota: const AiEditQuota(
@@ -232,27 +233,29 @@ AiEditPrepareResult _createPrepareFixture({
         silenceRanges: const [AiEditCut(start: 10, end: 11)],
         fillerRanges: const [],
         plan: plan,
-        capabilities: const {
-          'subtitle': AiEditCapabilityStatusResult(
+        soundEffects: soundEffects,
+        capabilities: {
+          'subtitle': const AiEditCapabilityStatusResult(
             enabled: true,
             state: 'applied',
             message: 'ใส่ซับแล้ว',
           ),
-          'silence': AiEditCapabilityStatusResult(
+          'silence': const AiEditCapabilityStatusResult(
             enabled: true,
             state: 'applied',
             message: 'ตัดช่วงเงียบแล้ว',
           ),
-          'filler': AiEditCapabilityStatusResult(
+          'filler': const AiEditCapabilityStatusResult(
             enabled: true,
             state: 'hinted',
             message: 'ไม่พบคำฟุ่มเฟือย',
           ),
-          'color': AiEditCapabilityStatusResult(
+          'color': const AiEditCapabilityStatusResult(
             enabled: true,
             state: 'hinted',
             message: 'ให้มือถือปรับสี',
           ),
+          if (soundEffectsStatus != null) 'sfx': soundEffectsStatus,
         },
       ),
     );
@@ -6799,10 +6802,6 @@ void main() {
         'ซูมเข้าตอนสำคัญ',
         'ระบบวิเคราะห์จุดสำคัญและซูมลงในคลิปจริงกำลังพัฒนา',
       ),
-      'sfx': (
-        'AI ใส่เอฟเฟกต์เสียงให้',
-        'ระบบวิเคราะห์เหตุการณ์และใส่เอฟเฟกต์เสียงลงคลิปจริงกำลังพัฒนา',
-      ),
     };
     const hiddenCapabilities = [
       'color',
@@ -6897,6 +6896,34 @@ void main() {
     expect(find.text('ปรับสี/แสงอัตโนมัติ'), findsNothing);
     expect(find.text('ปรับเสียงให้ชัด'), findsNothing);
 
+    final aiSoundEffects = find.byKey(
+      const ValueKey('ai-capability-sfx'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      aiSoundEffects,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('AI ใส่เอฟเฟกต์เสียงให้'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('ai-capability-badge-sfx')),
+      findsNothing,
+    );
+    expect(
+      tester.getSemantics(aiSoundEffects),
+      isSemantics(
+        label: 'AI ใส่เอฟเฟกต์เสียงให้',
+        isButton: true,
+        hasEnabledState: true,
+        isEnabled: true,
+        hasToggledState: true,
+        isToggled: false,
+        hasTapAction: true,
+      ),
+    );
+
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
@@ -6914,6 +6941,7 @@ void main() {
       'subtitle',
       'silence',
       'filler',
+      'sfx',
     ]) {
       expect(
         prepareRequest?.capabilities[capability],
@@ -7942,425 +7970,286 @@ void main() {
   });
 
   testWidgets(
-      'hides manual sound effects by default while keeping the AI card visible',
+      'AI sound effects use audio analysis, map through cuts, and stay identical on export',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture(
-      'production-manual-sfx-hidden.mp4',
-    );
-    await tester.pumpWidget(
-      _testApp(
-        AiEditingScreen(pickVideo: () async => pickedVideo),
-      ),
-    );
-    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(const ValueKey('manual-sfx-card'), skipOffstage: false),
-      findsNothing,
-    );
-    final aiSoundEffects = find.byKey(
-      const ValueKey('ai-capability-sfx'),
-      skipOffstage: false,
-    );
-    await tester.scrollUntilVisible(
-      aiSoundEffects,
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    expect(aiSoundEffects, findsOneWidget);
-    expect(
-      tester.getSemantics(aiSoundEffects).flagsCollection.isEnabled,
-      Tristate.isFalse,
-    );
-    expect(find.text('AI ใส่เอฟเฟกต์เสียงให้'), findsOneWidget);
-  });
-
-  testWidgets('opens manual sound effects separately from the disabled AI card',
-      (tester) async {
-    final pickedVideo = _createPickedVideoFixture(
-      'manual-sfx-setup.mp4',
+      'ai-sfx-source.mp4',
       durationSeconds: 12,
     );
-    double? openedDuration;
-    List<AiEditSoundEffectPlacement>? openedPlacements;
-
-    await tester.pumpWidget(
-      _testApp(
-        AiEditingScreen(
-          showManualSoundEffectsForTesting: true,
-          initialTargetDurationSeconds: null,
-          pickVideo: () async => pickedVideo,
-          soundEffectStudioLauncher: (
-            context,
-            durationSeconds,
-            initialPlacements,
-          ) async {
-            openedDuration = durationSeconds;
-            openedPlacements = initialPlacements;
-            return const [
-              AiEditSoundEffectPlacement(
-                soundId: 'soft_pop',
-                startSeconds: 3.2,
-              ),
-            ];
-          },
-        ),
-      ),
-    );
-
-    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-
-    final open = find.byKey(
-      const ValueKey('manual-sfx-open'),
-      skipOffstage: false,
-    );
-    await tester.scrollUntilVisible(
-      open,
-      420,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(open);
-    await tester.pumpAndSettle();
-
-    expect(openedDuration, 12);
-    expect(openedPlacements, isEmpty);
-    expect(
-      find.byKey(const ValueKey('manual-sfx-count'), skipOffstage: false),
-      findsOneWidget,
-    );
-    expect(find.text('ใส่แล้ว 1 จุด'), findsWidgets);
-    expect(
-      tester
-          .getSemantics(
-            find.byKey(
-              const ValueKey('ai-capability-sfx'),
-              skipOffstage: false,
-            ),
-          )
-          .flagsCollection
-          .isEnabled,
-      Tristate.isFalse,
-    );
-  });
-
-  testWidgets('manual sound effects render locally without AI or quota calls',
-      (tester) async {
-    final pickedVideo = _createPickedVideoFixture(
-      'manual-sfx-local.mp4',
-      durationSeconds: 12,
-    );
+    AiEditPrepareRequest? prepareRequest;
     var createUploadCalls = 0;
     var uploadCalls = 0;
     var prepareCalls = 0;
-    var quotaCalls = 0;
-    var studioCalls = 0;
     final burnRequests = <BurnSubtitleRequest>[];
+    const speechSegments = [
+      ClipTranscriptSegment(text: 'ช่วงแรก', start: 0, end: 2),
+      ClipTranscriptSegment(text: 'ช่วงหลัก', start: 4, end: 12),
+    ];
 
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
-          showManualSoundEffectsForTesting: true,
-          initialTargetDurationSeconds: null,
+          initialTargetDurationSeconds: 10,
           pickVideo: () async => pickedVideo,
           loadSubscription: () async => _subscriptionFixture('PRO'),
-          loadAiEditQuota: () async {
-            quotaCalls += 1;
-            return const AiEditQuota(
-              limitMinutes: 60,
-              usedMinutes: 1,
-              remainingMinutes: 59,
-            );
-          },
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 0,
+            remainingMinutes: 200,
+          ),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           createUpload: (_) async {
             createUploadCalls += 1;
-            throw StateError('manual SFX must not create an upload');
+            return const UploadResult(
+              id: 'ai-sfx-upload',
+              videoS3Key: 'uploads/ai-sfx.m4a',
+              storageProvider: 's3',
+            );
           },
-          uploadVideoFile: (_, __) async {
-            uploadCalls += 1;
-          },
-          prepareEdit: (_) async {
+          uploadVideoFile: (_, __) async => uploadCalls += 1,
+          prepareEdit: (request) async {
             prepareCalls += 1;
-            throw StateError('manual SFX must not call prepare');
-          },
-          soundEffectStudioLauncher: (
-            context,
-            durationSeconds,
-            initialPlacements,
-          ) async {
-            studioCalls += 1;
-            return studioCalls == 1
-                ? const [
-                    AiEditSoundEffectPlacement(
-                      soundId: 'clean_tap',
-                      startSeconds: 1.5,
-                      volume: 0.4,
-                    ),
-                  ]
-                : const [
-                    AiEditSoundEffectPlacement(
-                      soundId: 'soft_pop',
-                      startSeconds: 2.5,
-                      volume: 0.2,
-                    ),
-                  ];
+            prepareRequest = request;
+            return _createPrepareFixture(
+              transcriptDurationSeconds: 12,
+              transcriptSegments: speechSegments,
+              transcriptBoundarySegments: speechSegments,
+              subtitleSegments: const [],
+              plan: const AiEditPlanResult(
+                cuts: [AiEditCut(start: 2, end: 4)],
+                summary: 'ตัดช่วงกลาง',
+                model: 'test-plan',
+              ),
+              soundEffects: const [
+                AiEditSoundEffectSuggestionResult(
+                  soundId: 'clean_tap',
+                  sourceSeconds: 1,
+                ),
+                AiEditSoundEffectSuggestionResult(
+                  soundId: 'soft_pop',
+                  sourceSeconds: 3,
+                ),
+                AiEditSoundEffectSuggestionResult(
+                  soundId: 'sparkle',
+                  sourceSeconds: 6,
+                ),
+              ],
+              soundEffectsStatus: const AiEditCapabilityStatusResult(
+                enabled: true,
+                state: 'applied',
+                message: 'เลือกเอฟเฟกต์เสียงแล้ว',
+              ),
+            );
           },
           burnVideo: (request) async {
             burnRequests.add(request);
             return _createRenderedVideoFixture(
-              'manual-sfx-result-${burnRequests.length}.mp4',
+              'ai-sfx-${request.renderPurpose.name}-${burnRequests.length}.mp4',
             );
           },
         ),
       ),
     );
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
-
-    final open = find.byKey(
-      const ValueKey('manual-sfx-open'),
-      skipOffstage: false,
-    );
-    await tester.scrollUntilVisible(
-      open,
-      420,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(open);
-    await tester.pumpAndSettle();
-    expect(find.text('ใส่เอฟเฟกต์เสียงให้เลย'), findsOneWidget);
+    await _enableCapability(tester, 'sfx');
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
 
-    expect(createUploadCalls, 0);
-    expect(uploadCalls, 0);
-    expect(prepareCalls, 0);
-    // The header may load quota for display, but the local flow must not
-    // replace it with a metered prepare response.
-    expect(quotaCalls, greaterThanOrEqualTo(1));
+    expect(createUploadCalls, 1);
+    expect(uploadCalls, 1);
+    expect(prepareCalls, 1);
+    expect(prepareRequest?.capabilities['sfx'], isTrue);
+    expect(find.text('เหลือ 59 นาที'), findsOneWidget);
     expect(burnRequests, hasLength(1));
-    expect(burnRequests.single.soundEffects, hasLength(1));
+    expect(burnRequests.single.renderPurpose, VideoRenderPurpose.preview);
     expect(
-      burnRequests.single.soundEffects.single.assetPath,
-      'assets/sfx/clean_tap.wav',
+      burnRequests.single.silenceRanges.any(
+        (range) => range.start == 2 && range.end == 4,
+      ),
+      isTrue,
     );
-    expect(burnRequests.single.soundEffects.single.startSeconds, 1.5);
-    expect(burnRequests.single.soundEffects.single.volume, 0.4);
-    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
-    expect(find.text('ใส่เอฟเฟกต์เสียงแล้ว'), findsOneWidget);
-    expect(find.text('ผลลัพธ์'), findsWidgets);
-    expect(find.text('AI ตัดต่อให้แล้ว'), findsNothing);
-    expect(find.text('ผล AI'), findsNothing);
-    expect(find.text('ผลการตรวจของ AI'), findsNothing);
-    await tester.scrollUntilVisible(
+    expect(
+      burnRequests.single.soundEffects
+          .map((effect) => (
+                effect.assetPath,
+                effect.startSeconds,
+                effect.volume,
+              ))
+          .toList(),
+      [
+        ('assets/sfx/clean_tap.wav', 1.0, 0.25),
+        ('assets/sfx/sparkle.wav', 4.0, 0.25),
+      ],
+    );
+    expect(
       find.byKey(
-        const ValueKey('ai-review-analysis-summary'),
+        const ValueKey('ai-review-edit-sound-effects'),
         skipOffstage: false,
       ),
-      350,
-      scrollable: find.byType(Scrollable).first,
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-    expect(find.text('สรุปเอฟเฟกต์เสียง'), findsOneWidget);
-    expect(find.text('ใส่แล้ว 1 จุด'), findsOneWidget);
-
-    final editSoundEffects = find.byKey(
-      const ValueKey('ai-review-edit-sound-effects'),
+    final summary = find.byKey(
+      const ValueKey('ai-sfx-selected-count'),
       skipOffstage: false,
     );
     await tester.scrollUntilVisible(
-      editSoundEffects,
+      summary,
       350,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    await tester.tap(editSoundEffects);
-    await tester.pumpAndSettle();
-
-    expect(studioCalls, 2);
-    expect(burnRequests, hasLength(2));
-    expect(burnRequests.last.soundEffects.single.assetPath,
-        'assets/sfx/soft_pop.wav');
-    expect(burnRequests.last.soundEffects.single.startSeconds, 2.5);
-    expect(burnRequests.last.soundEffects.single.volume, 0.2);
-
-    await tester.tap(find.byKey(const ValueKey('ai-review-post')));
-    await tester.pumpAndSettle();
-
-    expect(burnRequests, hasLength(3));
     expect(
-      burnRequests.last.soundEffects.single.assetPath,
-      'assets/sfx/soft_pop.wav',
+      find.text('AI แนะนำ 3 จุด · ใช้เฉพาะจุดที่เหลือหลังตัด'),
+      findsOneWidget,
     );
-    expect(burnRequests.last.soundEffects.single.startSeconds, 2.5);
-    expect(burnRequests.last.soundEffects.single.volume, 0.2);
-    expect(find.byType(UploaderScreen), findsOneWidget);
-  });
-
-  testWidgets('failed sound effect edit keeps the accepted audio for export',
-      (tester) async {
-    final pickedVideo = _createPickedVideoFixture(
-      'manual-sfx-atomic.mp4',
-      durationSeconds: 12,
-    );
-    var studioCalls = 0;
-    final burnRequests = <BurnSubtitleRequest>[];
-
-    await tester.pumpWidget(
-      _testApp(
-        AiEditingScreen(
-          showManualSoundEffectsForTesting: true,
-          initialTargetDurationSeconds: null,
-          pickVideo: () async => pickedVideo,
-          loadSubscription: () async => _subscriptionFixture('PRO'),
-          soundEffectStudioLauncher: (
-            context,
-            durationSeconds,
-            initialPlacements,
-          ) async {
-            studioCalls += 1;
-            return studioCalls == 1
-                ? const [
-                    AiEditSoundEffectPlacement(
-                      soundId: 'clean_tap',
-                      startSeconds: 1,
-                    ),
-                  ]
-                : const [
-                    AiEditSoundEffectPlacement(
-                      soundId: 'soft_pop',
-                      startSeconds: 2,
-                    ),
-                  ];
-          },
-          burnVideo: (request) async {
-            burnRequests.add(request);
-            if (burnRequests.length == 2) {
-              throw const SubtitleBurnException('render failed');
-            }
-            return _createRenderedVideoFixture(
-              'manual-sfx-atomic-${burnRequests.length}.mp4',
-            );
-          },
-        ),
-      ),
-    );
-
-    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    final open = find.byKey(
-      const ValueKey('manual-sfx-open'),
-      skipOffstage: false,
-    );
-    await tester.scrollUntilVisible(
-      open,
-      420,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(open);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
-    await tester.pumpAndSettle();
-
-    final edit = find.byKey(
-      const ValueKey('ai-review-edit-sound-effects'),
-      skipOffstage: false,
-    );
-    await tester.scrollUntilVisible(
-      edit,
-      350,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(edit);
-    await tester.pumpAndSettle();
-
-    expect(burnRequests, hasLength(2));
-    expect(burnRequests[1].soundEffects.single.assetPath,
-        'assets/sfx/soft_pop.wav');
-    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
 
     final post = find.byKey(const ValueKey('ai-review-post'));
     await tester.ensureVisible(post);
-    await tester.pump();
+    await tester.pumpAndSettle();
     tester.widget<ElevatedButton>(post).onPressed!();
     await tester.pumpAndSettle();
 
-    expect(burnRequests, hasLength(3));
-    expect(burnRequests.last.soundEffects.single.assetPath,
-        'assets/sfx/clean_tap.wav');
+    expect(burnRequests, hasLength(2));
+    expect(burnRequests.last.renderPurpose, VideoRenderPurpose.export);
+    expect(
+      burnRequests.last.soundEffects
+          .map((effect) => (
+                effect.assetPath,
+                effect.startSeconds,
+                effect.volume,
+              ))
+          .toList(),
+      burnRequests.first.soundEffects
+          .map((effect) => (
+                effect.assetPath,
+                effect.startSeconds,
+                effect.volume,
+              ))
+          .toList(),
+    );
     expect(find.byType(UploaderScreen), findsOneWidget);
   });
 
-  testWidgets(
-      'blocks processing when manual sound effects conflict with an AI capability',
+  testWidgets('shows a read-only result when AI decides no sound is needed',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture(
-      'manual-sfx-conflict.mp4',
+      'ai-sfx-empty.mp4',
       durationSeconds: 12,
     );
 
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
-          showManualSoundEffectsForTesting: true,
           initialTargetDurationSeconds: null,
           pickVideo: () async => pickedVideo,
-          soundEffectStudioLauncher: (
-            context,
-            durationSeconds,
-            initialPlacements,
-          ) async =>
-              const [
-            AiEditSoundEffectPlacement(
-              soundId: 'soft_pop',
-              startSeconds: 2,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'ai-sfx-empty-upload',
+            videoS3Key: 'uploads/ai-sfx-empty.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(
+            transcriptDurationSeconds: 12,
+            subtitleSegments: const [],
+            soundEffectsStatus: const AiEditCapabilityStatusResult(
+              enabled: true,
+              state: 'applied',
+              message: 'วิเคราะห์แล้ว',
             ),
-          ],
+          ),
         ),
       ),
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
-    await _enableCapability(tester, 'subtitle');
-    final open = find.byKey(
-      const ValueKey('manual-sfx-open'),
+    await _enableCapability(tester, 'sfx');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final summary = find.byKey(
+      const ValueKey('ai-sfx-selected-count'),
       skipOffstage: false,
     );
     await tester.scrollUntilVisible(
-      open,
-      420,
+      summary,
+      350,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    await tester.tap(open);
-    await tester.pumpAndSettle();
-
+    expect(
+        find.text('วิเคราะห์แล้ว · ไม่จำเป็นต้องเพิ่มเสียง'), findsOneWidget);
     expect(
       find.byKey(
-        const ValueKey('manual-sfx-conflict'),
+        const ValueKey('ai-review-edit-sound-effects'),
         skipOffstage: false,
       ),
-      findsOneWidget,
+      findsNothing,
     );
+  });
+
+  testWidgets('explains when AI sound-effect analysis is unavailable',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture(
+      'ai-sfx-unavailable.mp4',
+      durationSeconds: 12,
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async => _subscriptionFixture('PRO'),
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'ai-sfx-unavailable-upload',
+            videoS3Key: 'uploads/ai-sfx-unavailable.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(
+            transcriptDurationSeconds: 12,
+            subtitleSegments: const [],
+            soundEffectsStatus: const AiEditCapabilityStatusResult(
+              enabled: true,
+              state: 'hinted',
+              message: 'provider unavailable',
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _enableCapability(tester, 'sfx');
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    final summary = find.byKey(
+      const ValueKey('ai-sfx-selected-count'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      summary,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(
-      find.text(
-        'เอฟเฟกต์เสียงที่เลือกเองยังใช้พร้อมการตัดต่ออัตโนมัติไม่ได้ กรุณาปิดความสามารถ AI หรือลบเอฟเฟกต์เสียง',
-        skipOffstage: false,
-      ),
+      find.text('ยังเลือกเอฟเฟกต์เสียงไม่ได้ · คลิปเดิมยังอยู่'),
       findsOneWidget,
     );
-    final processButton = tester.widget<ElevatedButton>(
-      find.byKey(const ValueKey('ai-process-button')),
-    );
-    expect(processButton.onPressed, isNull);
+    expect(find.text('provider unavailable'), findsNothing);
   });
 
   testWidgets('advanced layout fits the 390px reference phone width',

@@ -22,10 +22,16 @@ import type {
   EditPlanProvider,
   EditPlanSegment
 } from './editPlanProvider.js';
-import type {
-  TranscriptionProvider,
-  TranscriptionResult
+import {
+  isReliableTranscriptSegment,
+  type TranscriptionProvider,
+  type TranscriptionResult
 } from './transcriptionProvider.js';
+import {
+  validateSoundEffectPlanResult,
+  type SoundEffectPlanProvider,
+  type SoundEffectPlanResult
+} from './soundEffectPlanProvider.js';
 import type { VisualEditPlanProvider } from './visualEditPlanProvider.js';
 
 const readRequiredString = (value: unknown) => {
@@ -425,6 +431,7 @@ export const registerAiEditRoutes = (
   subscriptionStore: SubscriptionStore,
   aiEditUsageStore: AiEditUsageStore,
   editPlanProvider: EditPlanProvider,
+  soundEffectPlanProvider: SoundEffectPlanProvider,
   deleteMedia: (mediaS3Key: string) => Promise<void>,
   visualEditPlanProvider?: VisualEditPlanProvider,
   fetchVisualMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>
@@ -760,7 +767,8 @@ export const registerAiEditRoutes = (
       hasExplicitPlanRequest ||
       capabilities.subtitle ||
       capabilities.silence ||
-      capabilities.filler;
+      capabilities.filler ||
+      capabilities.sfx;
 
     // Color and the other local renderer controls do not need an AI provider.
     // Keep this inside the cleanup scope so an already-uploaded temporary audio
@@ -832,7 +840,10 @@ export const registerAiEditRoutes = (
       strictWords !== undefined;
 
     if (
-      (styleId || prompt || targetDurationSeconds !== undefined) &&
+      (styleId ||
+        prompt ||
+        targetDurationSeconds !== undefined ||
+        capabilities.sfx) &&
       !hasTrustedTimingEvidence
     ) {
       sendTimingEvidenceUnavailableResponse(response);
@@ -863,6 +874,31 @@ export const registerAiEditRoutes = (
             prompt
           })
         : undefined;
+    let soundEffectPlan: SoundEffectPlanResult | undefined;
+    if (capabilities.sfx) {
+      const soundEffectSegments = verifiedTimelineTranscript.segments.filter(
+        isReliableTranscriptSegment
+      );
+      if (soundEffectSegments.length > 0) {
+        try {
+          const request = {
+            segments: soundEffectSegments,
+            durationSeconds
+          };
+          soundEffectPlan = validateSoundEffectPlanResult(
+            await soundEffectPlanProvider.plan(request),
+            request
+          );
+        } catch (error) {
+          // Sound effects are optional. Provider failure must return an
+          // unavailable outcome without applying effects or consuming quota.
+          console.error(
+            'AI sound-effect provider failed:',
+            error instanceof Error ? error.message : error
+          );
+        }
+      }
+    }
 
     const recipe = buildAiEditRecipe({
       transcript: verifiedTimelineTranscript,
@@ -871,6 +907,7 @@ export const registerAiEditRoutes = (
       styleId,
       prompt,
       plan: editPlan,
+      soundEffectPlan,
       hasExplicitPlanRequest
     });
 

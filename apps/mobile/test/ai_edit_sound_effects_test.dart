@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_edit_sound_effects.dart';
 
 void main() {
@@ -20,6 +21,16 @@ void main() {
       expect(effect.durationSeconds.isFinite, isTrue);
       expect(effect.provenance, AiEditSoundEffectProvenance.postDeeProcedural);
     }
+    expect(
+      postDeeSoundEffectCatalog.map((effect) => effect.id).toSet(),
+      aiEditRecipeKnownSoundEffectIds,
+      reason: 'The API allowlist and bundled catalog must never drift apart.',
+    );
+    expect(
+      maxAiEditSoundEffectsPerVideo,
+      maxAiEditRecipeSoundEffectsPerVideo,
+      reason: 'The API and renderer must enforce one shared item limit.',
+    );
   });
 
   test('bundles every catalog asset as a non-empty WAV file', () async {
@@ -170,5 +181,108 @@ void main() {
       'startSeconds': 2.346,
       'volume': 0.375,
     });
+  });
+
+  test('maps AI source anchors through the final cut timeline', () {
+    final placements = mapAiEditSoundEffectsToOutputTimeline(
+      suggestions: const [
+        AiEditSoundEffectSuggestionResult(
+          soundId: 'soft_pop',
+          sourceSeconds: 1,
+        ),
+        AiEditSoundEffectSuggestionResult(
+          soundId: 'clean_tap',
+          sourceSeconds: 3,
+        ),
+        AiEditSoundEffectSuggestionResult(
+          soundId: 'success_ding',
+          sourceSeconds: 5,
+        ),
+        AiEditSoundEffectSuggestionResult(
+          soundId: 'sparkle',
+          sourceSeconds: 9,
+        ),
+      ],
+      finalCutRanges: const [
+        AiEditCut(start: 2, end: 4),
+        AiEditCut(start: 6, end: 8),
+      ],
+      sourceDurationSeconds: 10,
+    );
+
+    expect(placements.map((item) => item.soundId), [
+      'soft_pop',
+      'success_ding',
+      'sparkle',
+    ]);
+    expect(placements.map((item) => item.startSeconds), [1, 3, 5]);
+    expect(
+      placements.map((item) => item.volume).toSet(),
+      {defaultAiEditSoundEffectVolume},
+      reason: 'The API cannot choose or amplify SFX volume.',
+    );
+  });
+
+  test('drops cut-start anchors and keeps cut-end anchors at the join', () {
+    final placements = mapAiEditSoundEffectsToOutputTimeline(
+      suggestions: const [
+        AiEditSoundEffectSuggestionResult(
+          soundId: 'soft_pop',
+          sourceSeconds: 2,
+        ),
+        AiEditSoundEffectSuggestionResult(
+          soundId: 'clean_tap',
+          sourceSeconds: 4,
+        ),
+      ],
+      finalCutRanges: const [AiEditCut(start: 2, end: 4)],
+      sourceDurationSeconds: 10,
+    );
+
+    expect(placements, hasLength(1));
+    expect(placements.single.soundId, 'clean_tap');
+    expect(placements.single.startSeconds, 2);
+  });
+
+  test('normalizes unsorted overlapping cuts before mapping anchors', () {
+    final placements = mapAiEditSoundEffectsToOutputTimeline(
+      suggestions: const [
+        AiEditSoundEffectSuggestionResult(
+          soundId: 'success_ding',
+          sourceSeconds: 8,
+        ),
+      ],
+      finalCutRanges: const [
+        AiEditCut(start: 5, end: 7),
+        AiEditCut(start: 2, end: 4),
+        AiEditCut(start: 3, end: 6),
+      ],
+      sourceDurationSeconds: 10,
+    );
+
+    expect(placements.single.startSeconds, 3);
+  });
+
+  test('fails closed for an invalid final cut timeline', () {
+    for (final cuts in [
+      const [AiEditCut(start: -1, end: 2)],
+      const [AiEditCut(start: 3, end: 3)],
+      const [AiEditCut(start: 3, end: 11)],
+      const [AiEditCut(start: double.nan, end: 4)],
+    ]) {
+      expect(
+        () => mapAiEditSoundEffectsToOutputTimeline(
+          suggestions: const [
+            AiEditSoundEffectSuggestionResult(
+              soundId: 'soft_pop',
+              sourceSeconds: 1,
+            ),
+          ],
+          finalCutRanges: cuts,
+          sourceDurationSeconds: 10,
+        ),
+        throwsA(isA<AiEditSoundEffectValidationException>()),
+      );
+    }
   });
 }

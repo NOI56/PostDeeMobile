@@ -281,15 +281,16 @@ silence candidates from the recipe are never counted as approved cuts. Treat thi
 as an analysis summary, not an exact promise about how many seconds the exported
 clip will lose.
 
-The shared/manual FFmpeg pipeline supports color presets, brightness/contrast,
-centered `drawtext` overlays, and (behind a default-off internal QA gate) up to
-eight bundled procedural sound effects for an uncut original-duration local
-render. Manual effects are delayed, mixed
-with the source audio, limited, encoded to AAC, and reused atomically across
-preview/review/export without enabling API `sfx` or metering AI minutes. The
-in-app preview button and physical Android/iPhone listening, level, and A/V-sync
-evidence are still pending, so keep the manual tool hidden and do not advertise
-AI-selected sound effects or ship this path as release-accepted yet. The current AI `_renderPreparedRecipe`
+The shared FFmpeg pipeline supports color presets, brightness/contrast,
+centered `drawtext` overlays, and up to eight bundled procedural sound effects.
+The seller does not place sounds manually: a dedicated AI analysis may return
+only a validated PostDee sound ID and trusted source timestamp. Mobile fixes the
+volume, maps anchors through final cuts, delays and mixes the surviving effects
+with source audio, limits the result, encodes AAC, and reuses the same recipe
+across preview/review/export. Provider/timing/parse failure must stay fail closed
+and an unavailable-only request must not be metered. Physical Android/iPhone
+listening, level, and A/V-sync evidence is still pending, so do not mark AI SFX
+release-accepted until that matrix passes. The current AI `_renderPreparedRecipe`
 path applies supported visual adjustments but does not yet pass CTA, price, or
 watermark text overlays into the renderer. Do not present those overlays as
 applied in the AI preview until that wiring exists.
@@ -359,7 +360,7 @@ on physical phones; record fresh output codec, FPS, file size, audio peak, and
 A/V sync evidence from the Task 9 Pixel 8 matrix (none of those acceptance
 checks is claimed fixed yet);
 turn planned recipe capabilities such as beat sync, auto-reframe, audio
-cleanup, SFX/music, and
+cleanup, music selection, and
 translation into real processors; sticker image overlays;
 music upload/storage ownership checks plus a verified cross-platform catalog;
 real top-up purchase through RevenueCat; and verifying FFmpeg on real low-end devices.

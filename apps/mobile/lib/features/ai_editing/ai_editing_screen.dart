@@ -28,7 +28,6 @@ import 'beat_music_picker.dart';
 import 'edit_styles.dart';
 import 'review_video_timeline.dart';
 import 'speech_reduction_review.dart';
-import 'sound_effect_studio_screen.dart';
 import 'style_options.dart';
 import 'subtitle_burn_video_processor.dart';
 import 'subtitle_timeline_alignment.dart';
@@ -107,13 +106,6 @@ typedef SubtitleStudioLauncher = Future<SubtitleProject?> Function(
   File sourceFile,
   SubtitleProject initialProject,
   SubtitleDraftStore draftStore,
-);
-
-typedef SoundEffectStudioLauncher = Future<List<AiEditSoundEffectPlacement>?>
-    Function(
-  BuildContext context,
-  double durationSeconds,
-  List<AiEditSoundEffectPlacement> initialPlacements,
 );
 
 List<SubtitleWordTiming> subtitleWordsForRender(SubtitleCue cue) {
@@ -273,7 +265,7 @@ const _capabilityDefinitions = <_AiCapabilityDefinition>[
     group: _AiCapabilityGroup.look,
     icon: Icons.graphic_eq_rounded,
     title: 'AI ใส่เอฟเฟกต์เสียงให้',
-    description: 'AI เลือกเสียงให้เข้ากับเหตุการณ์และจังหวะของคลิป',
+    description: 'AI เลือกเสียงให้เข้ากับเนื้อหาและจังหวะคำพูดของคลิป',
   ),
   _AiCapabilityDefinition(
     id: 'subtitle',
@@ -407,7 +399,6 @@ class _AiSetupSnapshot {
     required this.zoomLevel,
     required this.clipSpeed,
     required this.translationLanguage,
-    required this.manualSoundEffects,
   });
 
   final _AiDurationMode durationMode;
@@ -439,7 +430,6 @@ class _AiSetupSnapshot {
   final String zoomLevel;
   final double clipSpeed;
   final String translationLanguage;
-  final List<AiEditSoundEffectPlacement> manualSoundEffects;
 }
 
 /// Setup screen that mirrors the AI-editing flow in PostDee.dc.html. A clip is
@@ -469,11 +459,9 @@ class AiEditingScreen extends StatefulWidget {
     this.enableExperimentalBeatSync = AppConfig.enableExperimentalBeatSync,
     this.enableExperimentalAiHook = AppConfig.enableExperimentalAiHook,
     this.showRetiredCapabilitiesForTesting = false,
-    this.showManualSoundEffectsForTesting = false,
     this.reviewVideoControllerFactory,
     this.subtitleFrameControllerFactory,
     this.subtitleStudioLauncher,
-    this.soundEffectStudioLauncher,
     this.subtitleDraftStore,
     this.onBack,
   });
@@ -503,14 +491,9 @@ class AiEditingScreen extends StatefulWidget {
   @visibleForTesting
   final bool showRetiredCapabilitiesForTesting;
 
-  /// Keeps the local-only sound-effect studio out of production until its
-  /// device playback and sync release gates have passed.
-  @visibleForTesting
-  final bool showManualSoundEffectsForTesting;
   final ReviewVideoControllerFactory? reviewVideoControllerFactory;
   final AiSubtitleFrameControllerFactory? subtitleFrameControllerFactory;
   final SubtitleStudioLauncher? subtitleStudioLauncher;
-  final SoundEffectStudioLauncher? soundEffectStudioLauncher;
   final SubtitleDraftStore? subtitleDraftStore;
   final VoidCallback? onBack;
 
@@ -531,8 +514,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   double? _activeSourceDurationSeconds;
   AiEditPrepareResult? _preparedEdit;
   AiEditRecipeResult? _activeRecipe;
-  List<AiEditSoundEffectPlacement> _manualSoundEffects = const [];
-  List<AiEditSoundEffectPlacement> _activeManualSoundEffects = const [];
   SubtitleProject? _subtitleProject;
   SubtitleDraftStore? _resolvedSubtitleDraftStore;
   BurnedSubtitleResult? _renderedResult;
@@ -737,7 +718,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       setState(() {
         _selectedVideo = picked;
         _selectedVideoDurationSeconds = picked.durationSeconds;
-        _manualSoundEffects = const [];
         final sliderMaximum = _durationSliderMaximum;
         if (sliderMaximum == null) {
           _durationMode = _AiDurationMode.unselected;
@@ -776,7 +756,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         'beatsync' => widget.enableExperimentalBeatSync,
         'hook' => widget.enableExperimentalAiHook,
         'silence' => widget.safetyFlags.verifiedSilenceEnabled,
-        'subtitle' || 'filler' => true,
+        'subtitle' || 'filler' || 'sfx' => true,
         'color' => widget.showRetiredCapabilitiesForTesting,
         _ => false,
       };
@@ -840,12 +820,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         !_hasSelectedDuration ||
         _processing ||
         _updatingReviewPreview) {
-      return;
-    }
-
-    final manualSoundEffectsConflict = _manualSoundEffectsConflictReason;
-    if (manualSoundEffectsConflict != null) {
-      _showError(manualSoundEffectsConflict);
       return;
     }
 
@@ -934,16 +908,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       );
       final localDuration =
           _selectedVideoDurationSeconds ?? picked.durationSeconds;
-      final pendingSoundEffects = _manualSoundEffects.isEmpty
-          ? const <AiEditSoundEffectPlacement>[]
-          : validateAiEditSoundEffectPlacements(
-              _manualSoundEffects,
-              outputDurationSeconds: localDuration ?? double.nan,
-            );
       final analysisMode = selectAiEditAnalysisMode(
         effectiveCapabilities,
         usesOriginalDuration: _isUsingOriginalDuration,
-        hasManualSoundEffects: pendingSoundEffects.isNotEmpty,
       );
       AiEditPrepareResult? prepared;
       AiEditRecipeResult? localRecipe;
@@ -957,19 +924,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         }
         if (mounted) {
           setState(
-            () => _processingTitle = pendingSoundEffects.isNotEmpty
-                ? 'กำลังใส่เอฟเฟกต์เสียงบนเครื่อง...'
-                : 'กำลังปรับสีและแสงบนเครื่อง...',
+            () => _processingTitle = 'กำลังปรับสีและแสงบนเครื่อง...',
           );
         }
-        localRecipe = pendingSoundEffects.isNotEmpty
-            ? buildLocalManualSoundEffectsAiEditRecipe(
-                durationSeconds: localDuration,
-                effectCount: pendingSoundEffects.length,
-              )
-            : buildLocalColorAiEditRecipe(
-                durationSeconds: localDuration,
-              );
+        localRecipe = buildLocalColorAiEditRecipe(
+          durationSeconds: localDuration,
+        );
       } else {
         final analysisSignature = _buildAnalysisSignature(picked, file);
         prepared = _withSelectedSubtitleDensity(
@@ -1126,9 +1086,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       }
       setState(() {
         _processingTitle = analysisMode == AiEditAnalysisMode.localRenderOnly
-            ? pendingSoundEffects.isNotEmpty
-                ? 'กำลังใส่เอฟเฟกต์เสียงบนเครื่อง...'
-                : 'กำลังปรับสีและแสงบนเครื่อง...'
+            ? 'กำลังปรับสีและแสงบนเครื่อง...'
             : 'กำลังสร้างวิดีโอตัวอย่าง...';
         // FFmpeg can spend tens of seconds initialising the encoder before it
         // reports the first processed timestamp. Keep the indicator
@@ -1192,7 +1150,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         capabilities: reviewCapabilities,
         verifiedSilenceRanges: silenceVerification.cutRanges,
         renderProject: mappedProject,
-        manualSoundEffects: pendingSoundEffects,
         removedSpeechOccurrenceIds: initialSpeechOccurrenceIds,
       );
       final result = rendered.video;
@@ -1230,10 +1187,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           _activeSourceVideo = picked;
           _activeSourceDurationSeconds = acceptedSourceDuration;
           _activeRecipe = activeRecipe;
-          _activeManualSoundEffects =
-              List<AiEditSoundEffectPlacement>.unmodifiable(
-            pendingSoundEffects,
-          );
           _preparedEdit = preparedResult;
           _acceptedSilenceVerification = silenceVerification;
           _subtitleProject = projectWithAppliedCuts;
@@ -1386,10 +1339,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           _selectedVideoDurationSeconds ?? _selectedDurationSeconds.toDouble(),
       targetDurationSeconds:
           _isUsingOriginalDuration ? null : _selectedDurationSeconds.toDouble(),
-      capabilities: {
-        ...capabilities,
-        'sfx': false,
-      },
+      capabilities: capabilities,
       settings: AiEditPrepareSettings(
         subtitleStyle: 'outline',
         subtitleColor: _subtitleHexColor(_subtitleColor),
@@ -1627,57 +1577,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     );
   }
 
-  Future<List<AiEditSoundEffectPlacement>?> _openSoundEffectStudio({
-    required double durationSeconds,
-    required List<AiEditSoundEffectPlacement> initialPlacements,
-  }) {
-    final launcher = widget.soundEffectStudioLauncher;
-    if (launcher != null) {
-      return launcher(
-        context,
-        durationSeconds,
-        List<AiEditSoundEffectPlacement>.unmodifiable(initialPlacements),
-      );
-    }
-    return Navigator.of(context).push<List<AiEditSoundEffectPlacement>>(
-      MaterialPageRoute<List<AiEditSoundEffectPlacement>>(
-        builder: (_) => SoundEffectStudioScreen(
-          durationSeconds: durationSeconds,
-          initialPlacements: initialPlacements,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _editSetupSoundEffects() async {
-    final duration =
-        _selectedVideoDurationSeconds ?? _selectedVideo?.durationSeconds;
-    if (_selectedVideo == null ||
-        duration == null ||
-        !duration.isFinite ||
-        duration <= 0 ||
-        !_isUsingOriginalDuration ||
-        _processing ||
-        _updatingReviewPreview) {
-      return;
-    }
-
-    final edited = await _openSoundEffectStudio(
-      durationSeconds: duration,
-      initialPlacements: _manualSoundEffects,
-    );
-    if (!mounted || edited == null) return;
-    try {
-      final validated = validateAiEditSoundEffectPlacements(
-        edited,
-        outputDurationSeconds: duration,
-      );
-      setState(() => _manualSoundEffects = validated);
-    } on AiEditSoundEffectValidationException catch (error) {
-      _showError(error.message);
-    }
-  }
-
   void _handleProcessingFailure(String message) {
     if (!mounted) {
       return;
@@ -1797,6 +1696,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }) {
     final subtitle = recipe.capabilities['subtitle'];
     final filler = recipe.capabilities['filler'];
+    final soundEffects = recipe.capabilities['sfx'];
     final hasStructuredSpeechReduction = recipe.speechReduction.isReady &&
         buildSpeechReductionReviewGroups(recipe.speechReduction).isNotEmpty;
     final canUseLegacySpeechReduction =
@@ -1818,6 +1718,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           (_capabilities['filler'] ?? false) &&
           (hasStructuredSpeechReduction || canUseLegacySpeechReduction))
         'filler': true,
+      if ((_capabilities['sfx'] ?? false) && (soundEffects?.isApplied ?? false))
+        'sfx': true,
       if (_isCapabilityEnabled('color')) 'color': true,
     };
   }
@@ -1874,7 +1776,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         capabilities: retryCapabilities,
         verifiedSilenceRanges: verification.cutRanges,
         renderProject: renderProject,
-        manualSoundEffects: _activeManualSoundEffects,
         removedSpeechOccurrenceIds: requestedSpeechOccurrenceIds,
       );
       if (!mounted) return;
@@ -1927,7 +1828,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     required Map<String, bool> capabilities,
     required List<SilenceCutRange> verifiedSilenceRanges,
     required SubtitleProject? renderProject,
-    required List<AiEditSoundEffectPlacement> manualSoundEffects,
     Set<String>? removedSpeechOccurrenceIds,
     VideoRenderPurpose purpose = VideoRenderPurpose.preview,
   }) async {
@@ -2089,20 +1989,23 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             speed: speed,
           )
         : null;
-    if (manualSoundEffects.isNotEmpty &&
-        (!usingOriginalDuration ||
-            cutRanges.isNotEmpty ||
-            (speed - 1).abs() > 0.0001)) {
+    final shouldApplyAiSoundEffects =
+        capabilities['sfx'] == true && recipe.soundEffects.isNotEmpty;
+    if (shouldApplyAiSoundEffects && (speed - 1).abs() > 0.0001) {
       throw const SubtitleBurnException(
-        'ตอนนี้เอฟเฟกต์เสียงใช้ได้เฉพาะคลิปความยาวต้นฉบับที่ไม่ตัดช่วง',
+        'ตอนนี้เอฟเฟกต์เสียงจาก AI รองรับความเร็ววิดีโอปกติเท่านั้น',
       );
     }
-    final validatedSoundEffects = manualSoundEffects.isEmpty
-        ? const <AiEditSoundEffectPlacement>[]
-        : validateAiEditSoundEffectPlacements(
-            manualSoundEffects,
-            outputDurationSeconds: outputDuration ?? sourceDuration,
-          );
+    final validatedSoundEffects = shouldApplyAiSoundEffects
+        ? mapAiEditSoundEffectsToOutputTimeline(
+            suggestions: recipe.soundEffects,
+            finalCutRanges: [
+              for (final range in cutRanges)
+                AiEditCut(start: range.start, end: range.end),
+            ],
+            sourceDurationSeconds: sourceDuration,
+          )
+        : const <AiEditSoundEffectPlacement>[];
     final requestedSubtitleFontSize =
         studioStyle?.fontSize ?? options.subtitleFontSize ?? 18;
     final subtitleTexts = subtitleSegments.map((segment) => segment.text);
@@ -2522,9 +2425,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       zoomLevel: _zoomLevel,
       clipSpeed: _clipSpeed,
       translationLanguage: _translationLanguage,
-      manualSoundEffects: List<AiEditSoundEffectPlacement>.unmodifiable(
-        _manualSoundEffects,
-      ),
     );
   }
 
@@ -2561,9 +2461,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     _zoomLevel = snapshot.zoomLevel;
     _clipSpeed = snapshot.clipSpeed;
     _translationLanguage = snapshot.translationLanguage;
-    _manualSoundEffects = List<AiEditSoundEffectPlacement>.unmodifiable(
-      snapshot.manualSoundEffects,
-    );
     _customDurationController.text = snapshot.customDurationSeconds.toString();
     _collapseAdvancedIfUnavailable();
   }
@@ -2581,7 +2478,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       _capabilities['color'] = false;
     }
     _capabilities['audio'] = false;
-    _capabilities['sfx'] = false;
   }
 
   String _friendlyAiError(ApiException error) {
@@ -2651,22 +2547,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   bool get _isUsingOriginalDuration {
     return _isUsingOriginalDurationFor(_selectedVideoDurationSeconds);
-  }
-
-  bool get _isLocalManualSoundEffectsResult =>
-      _activeRecipe?.transcript.model == 'local-manual-sfx';
-
-  String? get _manualSoundEffectsConflictReason {
-    if (_manualSoundEffects.isEmpty) {
-      return null;
-    }
-    if (!_isUsingOriginalDuration) {
-      return 'เอฟเฟกต์เสียงที่เลือกเองยังใช้กับการย่อคลิปไม่ได้ กรุณาเลือก “ไม่ย่อ · ต้นฉบับ” หรือลบเอฟเฟกต์เสียง';
-    }
-    if (_effectiveCapabilities.values.any((enabled) => enabled)) {
-      return 'เอฟเฟกต์เสียงที่เลือกเองยังใช้พร้อมการตัดต่ออัตโนมัติไม่ได้ กรุณาปิดความสามารถ AI หรือลบเอฟเฟกต์เสียง';
-    }
-    return null;
   }
 
   bool _isUsingOriginalDurationFor(double? sourceDurationSeconds) {
@@ -2828,7 +2708,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         capabilities: Map<String, bool>.from(_reviewCapabilities),
         verifiedSilenceRanges: _verifiedSilenceRanges,
         renderProject: _subtitleProject,
-        manualSoundEffects: _activeManualSoundEffects,
         removedSpeechOccurrenceIds: requestedSpeechOccurrenceIds,
       );
       final result = rendered.video;
@@ -2933,7 +2812,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         capabilities: Map<String, bool>.from(_appliedReviewCapabilities),
         verifiedSilenceRanges: _verifiedSilenceRanges,
         renderProject: edited,
-        manualSoundEffects: _activeManualSoundEffects,
         removedSpeechOccurrenceIds: requestedSpeechOccurrenceIds,
       );
       final result = rendered.video;
@@ -2979,92 +2857,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     }
   }
 
-  Future<void> _editReviewSoundEffects() async {
-    final recipe = _activeRecipe;
-    final picked = _activeSourceVideo;
-    final duration = _activeSourceDurationSeconds ?? picked?.durationSeconds;
-    if (recipe == null ||
-        picked == null ||
-        duration == null ||
-        !duration.isFinite ||
-        duration <= 0 ||
-        _processing ||
-        _updatingReviewPreview ||
-        _reviewIsDirty) {
-      return;
-    }
-
-    final edited = await _openSoundEffectStudio(
-      durationSeconds: duration,
-      initialPlacements: _activeManualSoundEffects,
-    );
-    if (!mounted || edited == null) return;
-
-    try {
-      final validated = validateAiEditSoundEffectPlacements(
-        edited,
-        outputDurationSeconds: duration,
-      );
-      setState(() {
-        _updatingReviewPreview = true;
-        _renderProgress = null;
-        _renderCancelRequested = false;
-      });
-      final rendered = await _renderPreparedRecipe(
-        recipe: recipe,
-        sourceVideo: picked,
-        capabilities: Map<String, bool>.from(_appliedReviewCapabilities),
-        verifiedSilenceRanges: _verifiedSilenceRanges,
-        renderProject: _subtitleProject,
-        manualSoundEffects: validated,
-        removedSpeechOccurrenceIds:
-            widget.safetyFlags.automaticRepeatCutsEnabled
-                ? Set<String>.from(_appliedRemovedSpeechOccurrenceIds)
-                : <String>{},
-      );
-      if (!mounted) return;
-      setState(() {
-        _manualSoundEffects = validated;
-        _activeManualSoundEffects = validated;
-        _renderedResult = rendered.video;
-        _subtitleProject = _replaceProjectCutsAfterRender(
-          _subtitleProject,
-          rendered.appliedCutRanges,
-        );
-        _prepareReviewForResult(rendered.video, sourceVideo: picked);
-        _boundaryEvidenceWarning = rendered.boundaryEvidenceWarning;
-        _acceptedSetup = _captureSetupSnapshot();
-        _updatingReviewPreview = false;
-        _renderProgress = null;
-        _renderCancelRequested = false;
-      });
-    } on AiEditSoundEffectValidationException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _updatingReviewPreview = false;
-        _renderProgress = null;
-        _renderCancelRequested = false;
-      });
-      _showError(error.message);
-    } on SubtitleBurnException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _updatingReviewPreview = false;
-        _renderProgress = null;
-        _renderCancelRequested = false;
-      });
-      _showError('${error.message} • ผลลัพธ์เดิมยังอยู่');
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _updatingReviewPreview = false;
-        _renderProgress = null;
-        _renderCancelRequested = false;
-      });
-      _showError('อัปเดตเอฟเฟกต์เสียงไม่สำเร็จ • ผลลัพธ์เดิมยังอยู่');
-    }
-  }
-
   Future<void> _toggleReviewCapability(String id, bool enabled) async {
     if (_updatingReviewPreview ||
         (id == 'filler' && !widget.safetyFlags.automaticRepeatCutsEnabled) ||
@@ -3093,9 +2885,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     setState(() {
       _selectedVideo = _activeSourceVideo;
       _selectedVideoDurationSeconds = _activeSourceDurationSeconds;
-      _manualSoundEffects = List<AiEditSoundEffectPlacement>.unmodifiable(
-        _activeManualSoundEffects,
-      );
       _reviewCapabilities
         ..clear()
         ..addAll(_appliedReviewCapabilities);
@@ -3131,7 +2920,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           capabilities: Map<String, bool>.from(_appliedReviewCapabilities),
           verifiedSilenceRanges: _verifiedSilenceRanges,
           renderProject: _subtitleProject,
-          manualSoundEffects: _activeManualSoundEffects,
           removedSpeechOccurrenceIds:
               widget.safetyFlags.automaticRepeatCutsEnabled
                   ? Set<String>.from(_appliedRemovedSpeechOccurrenceIds)
@@ -3379,136 +3167,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ),
         const SizedBox(height: 12),
         ..._buildCapabilityGroups(),
-        if (widget.showManualSoundEffectsForTesting) ...[
-          const SizedBox(height: 18),
-          _buildManualSoundEffectsCard(),
-        ],
         const SizedBox(height: 18),
         _buildPresetCard(),
       ],
-    );
-  }
-
-  Widget _buildManualSoundEffectsCard() {
-    final duration =
-        _selectedVideoDurationSeconds ?? _selectedVideo?.durationSeconds;
-    final hasUsableDuration =
-        duration != null && duration.isFinite && duration > 0;
-    final canEdit = _selectedVideo != null &&
-        hasUsableDuration &&
-        _isUsingOriginalDuration &&
-        !_processing &&
-        !_updatingReviewPreview;
-    final count = _manualSoundEffects.length;
-
-    return Container(
-      key: const ValueKey('manual-sfx-card'),
-      padding: const EdgeInsets.all(15),
-      decoration: _cardDecoration(radius: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: AppTheme.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.library_music_outlined,
-                  color: AppTheme.accentCyanInk,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'เพิ่มเอฟเฟกต์เสียงเอง',
-                      style: TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'เลือกเสียง จังหวะ และความดังได้เองบนเครื่อง',
-                      style: TextStyle(
-                        color: AppTheme.textMuted,
-                        fontSize: 11.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.mint,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  'ไม่ใช้โควตา AI',
-                  style: TextStyle(
-                    color: AppTheme.accentCyanInk,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            _selectedVideo == null
-                ? 'เลือกวิดีโอก่อน แล้วตั้งความยาวเป็นต้นฉบับ'
-                : !_isUsingOriginalDuration
-                    ? 'เอฟเฟกต์เสียงรุ่นแรกใช้ได้เมื่อเลือก “ไม่ย่อ · ต้นฉบับ”'
-                    : 'ใส่ได้สูงสุด 8 จุด · ความดังเริ่มต้น 25%',
-            style: TextStyle(
-              color: canEdit ? AppTheme.textSecondary : AppTheme.textMuted,
-              fontSize: 11.5,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  count == 0 ? 'ยังไม่ได้ใส่เสียง' : 'ใส่แล้ว $count จุด',
-                  key: const ValueKey('manual-sfx-count'),
-                  style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              OutlinedButton.icon(
-                key: const ValueKey('manual-sfx-open'),
-                onPressed: canEdit ? _editSetupSoundEffects : null,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(128, 48),
-                  foregroundColor: AppTheme.accentCyanInk,
-                  side: BorderSide(
-                    color: AppTheme.accent.withValues(alpha: 0.55),
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                ),
-                icon: const Icon(Icons.tune_rounded, size: 18),
-                label: Text(count == 0 ? 'เลือกเสียง' : 'แก้ไข'),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 
@@ -3545,8 +3206,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         : showingOriginal
             ? 0
             : _reviewResultRevision;
-    final isLocalManualSoundEffectsResult = _isLocalManualSoundEffectsResult;
-    final resultLabel = isLocalManualSoundEffectsResult ? 'ผลลัพธ์' : 'ผล AI';
+    const resultLabel = 'ผล AI';
     final previewSourceLabel = showingOriginal ? 'ต้นฉบับ' : resultLabel;
     final originalName = selectedVideo == null
         ? ''
@@ -3628,9 +3288,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                     Text(
                       resultUsesOriginal
                           ? 'คลิปนี้ไม่ต้องแก้เพิ่ม'
-                          : isLocalManualSoundEffectsResult
-                              ? 'ใส่เอฟเฟกต์เสียงแล้ว'
-                              : 'AI ตัดต่อให้แล้ว',
+                          : 'AI ตัดต่อให้แล้ว',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -3641,9 +3299,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                     Text(
                       resultUsesOriginal
                           ? 'ไม่พบช่วงที่ต้องเปลี่ยน จึงใช้ไฟล์ต้นฉบับ'
-                          : isLocalManualSoundEffectsResult
-                              ? 'ลองฟังผลงาน แล้วแก้จังหวะหรือความดังก่อนนำไปใช้'
-                              : 'ลองดูผลงาน แล้วปิดสิ่งที่ไม่ชอบได้ก่อนนำไปใช้',
+                          : 'ลองดูผลงาน แล้วปิดสิ่งที่ไม่ชอบได้ก่อนนำไปใช้',
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.4,
@@ -3801,29 +3457,31 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                 ),
                 const SizedBox(height: 10),
               ],
-              _ReviewVideoPreview(
+              KeyedSubtree(
                 key: const ValueKey('ai-review-preview'),
-                file: previewFile,
-                revision: previewRevision,
-                sourceLabel: previewSourceLabel,
-                isUpdating: _updatingReviewPreview,
-                controllerFactory: widget.reviewVideoControllerFactory,
-                onLoadingChanged: (isLoading) {
-                  _setReviewPreviewLoading(
-                    source: selectedSource,
-                    path: previewFile.path,
-                    revision: previewRevision,
-                    isLoading: isLoading,
-                  );
-                },
-                onDurationReady: (duration) {
-                  _rememberReviewVideoDuration(
-                    source: selectedSource,
-                    path: previewFile.path,
-                    revision: previewRevision,
-                    duration: duration,
-                  );
-                },
+                child: _ReviewVideoPreview(
+                  file: previewFile,
+                  revision: previewRevision,
+                  sourceLabel: previewSourceLabel,
+                  isUpdating: _updatingReviewPreview,
+                  controllerFactory: widget.reviewVideoControllerFactory,
+                  onLoadingChanged: (isLoading) {
+                    _setReviewPreviewLoading(
+                      source: selectedSource,
+                      path: previewFile.path,
+                      revision: previewRevision,
+                      isLoading: isLoading,
+                    );
+                  },
+                  onDurationReady: (duration) {
+                    _rememberReviewVideoDuration(
+                      source: selectedSource,
+                      path: previewFile.path,
+                      revision: previewRevision,
+                      duration: duration,
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 10),
               Row(
@@ -3902,42 +3560,11 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             ),
           ),
         ],
-        if (_activeManualSoundEffects.isNotEmpty ||
-            _activeRecipe?.transcript.model == 'local-manual-sfx') ...[
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            key: const ValueKey('ai-review-edit-sound-effects'),
-            onPressed: _updatingReviewPreview || _reviewIsDirty
-                ? null
-                : _editReviewSoundEffects,
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48),
-              foregroundColor: AppTheme.accentCyanInk,
-              side: BorderSide(color: AppTheme.accent.withValues(alpha: 0.55)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            icon: const Icon(Icons.library_music_outlined, size: 19),
-            label: Text(
-              _activeManualSoundEffects.isEmpty
-                  ? 'เพิ่มเอฟเฟกต์เสียง'
-                  : 'แก้เอฟเฟกต์เสียง (${_activeManualSoundEffects.length})',
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
         const SizedBox(height: 20),
         _sectionHeading(
-          icon: isLocalManualSoundEffectsResult
-              ? Icons.library_music_outlined
-              : Icons.auto_awesome,
-          title: isLocalManualSoundEffectsResult
-              ? 'รายการที่ทำกับคลิป'
-              : 'AI ทำอะไรให้แล้ว',
-          description: isLocalManualSoundEffectsResult
-              ? 'ตรวจและแก้เอฟเฟกต์เสียงได้ก่อนนำคลิปไปใช้'
-              : 'เลือกสิ่งที่ต้องการเก็บหรือตัด แล้วกดอัปเดตคลิป',
+          icon: Icons.auto_awesome,
+          title: 'AI ทำอะไรให้แล้ว',
+          description: 'เลือกสิ่งที่ต้องการเก็บหรือตัด แล้วกดอัปเดตคลิป',
         ),
         const SizedBox(height: 12),
         for (final definition in appliedDefinitions) ...[
@@ -4045,65 +3672,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   Widget _buildAnalysisSummary() {
-    if (_isLocalManualSoundEffectsResult) {
-      final effectCount = _activeManualSoundEffects.length;
-      return Container(
-        key: const ValueKey('ai-review-analysis-summary'),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppTheme.mint,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.library_music_outlined,
-                  size: 19,
-                  color: AppTheme.accentCyanInk,
-                ),
-                const SizedBox(width: 7),
-                Expanded(
-                  child: Text(
-                    'สรุปเอฟเฟกต์เสียง',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _analysisSummaryRow(
-              key: const ValueKey('manual-sfx-review-count'),
-              icon: Icons.graphic_eq_rounded,
-              label: 'เอฟเฟกต์เสียง',
-              value: 'ใส่แล้ว $effectCount จุด',
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'วางเสียงตามจังหวะที่เลือก โดยคงความยาวคลิปต้นฉบับ',
-              style: TextStyle(
-                fontSize: 10.5,
-                height: 1.4,
-                color: AppTheme.textMuted,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     final recipe = _activeRecipe;
     final acceptedCapabilities = _acceptedSetup?.capabilities ?? _capabilities;
     final silenceRequested = widget.safetyFlags.verifiedSilenceEnabled &&
         (acceptedCapabilities['silence'] ?? false);
     final repeatedSpeechRequested = acceptedCapabilities['filler'] ?? false;
+    final soundEffectsRequested = acceptedCapabilities['sfx'] ?? false;
+    final soundEffectsStatus = recipe?.capabilities['sfx'];
+    final showSoundEffectsStatus =
+        soundEffectsRequested && soundEffectsStatus != null;
     final silenceRanges =
         silenceRequested && _acceptedSilenceVerification.probeSucceeded
             ? _verifiedSilenceRanges
@@ -4232,6 +3809,19 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             label: 'คำพูดซ้ำ',
             value: fillerStatus.text,
           ),
+          if (showSoundEffectsStatus) ...[
+            const SizedBox(height: 8),
+            _analysisSummaryRow(
+              key: const ValueKey('ai-sfx-selected-count'),
+              icon: Icons.graphic_eq_rounded,
+              label: 'เอฟเฟกต์เสียง',
+              value: !soundEffectsStatus.isApplied
+                  ? 'ยังเลือกเอฟเฟกต์เสียงไม่ได้ · คลิปเดิมยังอยู่'
+                  : recipe!.soundEffects.isEmpty
+                      ? 'วิเคราะห์แล้ว · ไม่จำเป็นต้องเพิ่มเสียง'
+                      : 'AI แนะนำ ${recipe.soundEffects.length} จุด · ใช้เฉพาะจุดที่เหลือหลังตัด',
+            ),
+          ],
           const SizedBox(height: 10),
           Text(
             'เวลาที่จะตัดรวม ${_formatAnalysisSeconds(selectedCutSeconds)} วินาที',
@@ -5026,7 +4616,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                 setState(() {
                   _selectedVideo = null;
                   _selectedVideoDurationSeconds = null;
-                  _manualSoundEffects = const [];
                   _durationMode = _AiDurationMode.unselected;
                   // Removing a pending source must not discard the accepted
                   // result that review/export still owns.
@@ -6895,11 +6484,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   Widget _buildSetupAction() {
     final hasVideo = _selectedVideo != null;
-    final manualSoundEffectsConflict = _manualSoundEffectsConflictReason;
-    final usesManualSoundEffects = _manualSoundEffects.isNotEmpty;
     final canProcess = hasVideo &&
         _hasSelectedDuration &&
-        manualSoundEffectsConflict == null &&
         !_processing &&
         !_updatingReviewPreview;
     final usesPendingMusic = _isCapabilityEnabled('beatsync') &&
@@ -6908,53 +6494,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ? 'เพิ่มวิดีโอก่อน'
         : !_hasSelectedDuration
             ? 'เลือกความยาวก่อน'
-            : manualSoundEffectsConflict != null
-                ? 'แก้การตั้งค่าที่ขัดกันก่อน'
-                : usesPendingMusic
-                    ? 'ตัดต่อโดยยังไม่ใส่เพลง'
-                    : usesManualSoundEffects
-                        ? 'ใส่เอฟเฟกต์เสียงให้เลย'
-                        : 'ให้ AI ตัดต่อให้เลย';
+            : usesPendingMusic
+                ? 'ตัดต่อโดยยังไม่ใส่เพลง'
+                : 'ให้ AI ตัดต่อให้เลย';
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (manualSoundEffectsConflict != null) ...[
-          Container(
-            key: const ValueKey('manual-sfx-conflict'),
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.13),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
-              ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.info_outline,
-                  size: 18,
-                  color: Color(0xFFF59E0B),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    manualSoundEffectsConflict,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      height: 1.4,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-        ],
         ElevatedButton(
           key: const ValueKey('ai-process-button'),
           onPressed: canProcess ? _processVideo : null,
@@ -6974,12 +6519,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                usesManualSoundEffects
-                    ? Icons.library_music_outlined
-                    : Icons.auto_awesome,
-                size: 21,
-              ),
+              const Icon(Icons.auto_awesome, size: 21),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
@@ -7572,7 +7112,6 @@ enum _ReviewVideoLoadState { loading, ready, error }
 
 class _ReviewVideoPreview extends StatefulWidget {
   const _ReviewVideoPreview({
-    super.key,
     required this.file,
     required this.sourceLabel,
     this.revision = 0,

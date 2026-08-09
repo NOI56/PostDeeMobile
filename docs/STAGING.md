@@ -89,13 +89,17 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 - การมี API key หรือค่ารุ่นโมเดลอยู่ใน Dashboard ไม่ได้แปลว่าโมเดลนั้นถูกเรียก
   ต้องตรวจค่า `TRANSCRIPTION_PROVIDER` ของ service ที่ Deploy จริงทุกครั้ง
 - ทุก optional toggle ของ AI edit เริ่มปิด หน้า seller-facing ให้ผู้ใช้เปิดได้
-  เฉพาะ subtitle, silence และ repeated-speech; target-only ยังคงทำงานได้โดยไม่
-  เปิด toggle ส่วนการ์ด colour/audio ถูกซ่อน และ SFX แสดงเป็น `เร็ว ๆ นี้`
-- การ์ด AI SFX ข้างต้นยังปิดเหมือนเดิม ส่วนเครื่องมือภายใน
-  `เพิ่มเอฟเฟกต์เสียงเอง` ถูกซ่อนหลัง test flag สำหรับ QA เท่านั้น รองรับเฉพาะ
-  คลิปความยาวต้นฉบับ ใช้ procedural WAV ภายในแอป, render บนเครื่อง, คง
-  `sfx=false` และต้องไม่มี upload/prepare/AI-minute change. ห้ามเปิดให้ผู้ใช้ทั่วไป
-  จนกว่าจะฟัง preview/full export และตรวจ A/V sync บน Pixel 8 กับ iPhone จริง
+  เฉพาะ subtitle, silence, repeated-speech และ `AI ใส่เอฟเฟกต์เสียงให้`;
+  target-only ยังคงทำงานได้โดยไม่เปิด toggle ส่วนการ์ด colour/audio ถูกซ่อน
+- AI SFX ใช้ `/ai-edits/prepare` และ AI minutes ตาม source duration เมื่อ
+  sound-design analysis สำเร็จ. Recipe คืนเพียง allowlisted `soundId` กับ
+  `sourceSeconds`; Mobile กำหนดเสียงที่ 25%, map ผ่านช่วงตัดจริง และ render จาก
+  procedural WAV ภายในแอป. ไม่มี UI เลือกเสียง/เวลา/ความดังเอง. Provider หรือ
+  timing unavailable ต้องได้รายการว่างแบบ fail closed และ unavailable-only
+  ต้องไม่ลดนาที
+- Staging ยังห้ามอ้าง AI SFX E2E ผ่านจน ElevenLabs quota กลับมา แล้วทดสอบทั้ง
+  original/shortened clip, Preview/full export และ A/V sync บน Pixel 8 กับ
+  iPhone จริง
 - Transcript gaps are silence candidates only. The Android/iOS client confirms
   each candidate against the source waveform before rendering; failed or
   ambiguous verification keeps the original audio. Mobile ใช้ FFmpeg

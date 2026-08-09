@@ -901,6 +901,91 @@ class AiEditMusicResult {
   }
 }
 
+const maxAiEditRecipeSoundEffectsPerVideo = 8;
+
+/// IDs the mobile renderer can resolve to bundled, rights-safe WAV assets.
+///
+/// Keep this allowlist in lockstep with the catalog in
+/// `features/ai_editing/ai_edit_sound_effects.dart`. A focused asset test
+/// protects against either side drifting independently.
+const aiEditRecipeKnownSoundEffectIds = <String>{
+  'soft_pop',
+  'clean_tap',
+  'short_whoosh',
+  'medium_whoosh',
+  'sparkle',
+  'success_ding',
+  'coin_ping',
+  'soft_impact',
+  'short_riser',
+  'attention_boop',
+};
+
+class AiEditSoundEffectSuggestionResult {
+  const AiEditSoundEffectSuggestionResult({
+    required this.soundId,
+    required this.sourceSeconds,
+  });
+
+  final String soundId;
+
+  /// Anchor on the original source timeline. Mobile maps this through the
+  /// final accepted cuts before handing it to the local renderer.
+  final double sourceSeconds;
+}
+
+List<AiEditSoundEffectSuggestionResult> _readAiEditSoundEffects(
+  Object? value, {
+  required double sourceDurationSeconds,
+}) {
+  if (value == null) {
+    return const <AiEditSoundEffectSuggestionResult>[];
+  }
+  if (value is! List<dynamic> ||
+      value.length > maxAiEditRecipeSoundEffectsPerVideo ||
+      !sourceDurationSeconds.isFinite ||
+      sourceDurationSeconds <= 0) {
+    return const <AiEditSoundEffectSuggestionResult>[];
+  }
+
+  final suggestions = <AiEditSoundEffectSuggestionResult>[];
+  final seenSourceAnchors = <double>{};
+  for (final item in value) {
+    if (item is! Map<String, Object?>) {
+      return const <AiEditSoundEffectSuggestionResult>[];
+    }
+    if (item.length != 2 ||
+        !item.containsKey('soundId') ||
+        !item.containsKey('sourceSeconds')) {
+      return const <AiEditSoundEffectSuggestionResult>[];
+    }
+    final soundId = item['soundId'];
+    final rawSourceSeconds = item['sourceSeconds'];
+    final sourceSeconds =
+        rawSourceSeconds is num ? rawSourceSeconds.toDouble() : null;
+    if (soundId is! String ||
+        !aiEditRecipeKnownSoundEffectIds.contains(soundId) ||
+        sourceSeconds == null ||
+        !sourceSeconds.isFinite ||
+        sourceSeconds < 0 ||
+        sourceSeconds >= sourceDurationSeconds) {
+      // Sound effects are an executable recipe. Never keep a seemingly safe
+      // subset when one item proves that the server contract is malformed.
+      return const <AiEditSoundEffectSuggestionResult>[];
+    }
+    if (!seenSourceAnchors.add(sourceSeconds)) {
+      return const <AiEditSoundEffectSuggestionResult>[];
+    }
+    suggestions.add(
+      AiEditSoundEffectSuggestionResult(
+        soundId: soundId,
+        sourceSeconds: sourceSeconds,
+      ),
+    );
+  }
+  return List<AiEditSoundEffectSuggestionResult>.unmodifiable(suggestions);
+}
+
 class AiEditRecipeResult {
   const AiEditRecipeResult({
     required this.version,
@@ -927,6 +1012,7 @@ class AiEditRecipeResult {
       ),
     ),
     this.speechReduction = const AiEditSpeechReductionResult.unavailable(),
+    this.soundEffects = const <AiEditSoundEffectSuggestionResult>[],
     this.styleId,
     this.prompt,
   });
@@ -944,6 +1030,7 @@ class AiEditRecipeResult {
   final AiEditPlanResult plan;
   final AiEditMusicResult music;
   final AiEditSpeechReductionResult speechReduction;
+  final List<AiEditSoundEffectSuggestionResult> soundEffects;
   final Map<String, AiEditCapabilityStatusResult> capabilities;
 
   AiEditRecipeResult? withSubtitleWordsPerLine(int wordsPerLine) {
@@ -965,6 +1052,7 @@ class AiEditRecipeResult {
       plan: plan,
       music: music,
       speechReduction: speechReduction,
+      soundEffects: soundEffects,
       capabilities: capabilities,
     );
   }
@@ -987,6 +1075,7 @@ class AiEditRecipeResult {
       plan: updatedPlan,
       music: music,
       speechReduction: speechReduction,
+      soundEffects: soundEffects,
       capabilities: capabilities,
     );
   }
@@ -1017,17 +1106,18 @@ class AiEditRecipeResult {
       }
     }
 
+    final transcript = AiEditTranscriptResult.fromJson(
+      rawTranscript is Map<String, Object?>
+          ? rawTranscript
+          : const <String, Object?>{},
+    );
     return AiEditRecipeResult(
       version: (json['version'] as num?)?.round() ?? 1,
       status: json['status'] as String? ?? '',
       renderMode: json['renderMode'] as String? ?? '',
       styleId: json['styleId'] as String?,
       prompt: json['prompt'] as String?,
-      transcript: AiEditTranscriptResult.fromJson(
-        rawTranscript is Map<String, Object?>
-            ? rawTranscript
-            : const <String, Object?>{},
-      ),
+      transcript: transcript,
       subtitles: AiEditSubtitlesResult.fromJson(
         rawSubtitles is Map<String, Object?>
             ? rawSubtitles
@@ -1045,6 +1135,10 @@ class AiEditRecipeResult {
       speechReduction: rawSpeechReduction is Map<String, Object?>
           ? AiEditSpeechReductionResult.fromJson(rawSpeechReduction)
           : const AiEditSpeechReductionResult.unavailable(),
+      soundEffects: _readAiEditSoundEffects(
+        json['soundEffects'],
+        sourceDurationSeconds: transcript.durationSeconds,
+      ),
       capabilities: capabilities,
     );
   }

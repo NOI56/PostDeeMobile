@@ -1,5 +1,4 @@
 import '../../core/network/postdee_api_client.dart';
-import 'ai_edit_sound_effects.dart';
 
 AiEditRecipeResult buildLocalColorAiEditRecipe({
   required double durationSeconds,
@@ -10,26 +9,6 @@ AiEditRecipeResult buildLocalColorAiEditRecipe({
     summary: 'ปรับสีบนอุปกรณ์',
     capability: 'color',
     capabilityMessage: 'ปรับสีบนอุปกรณ์',
-  );
-}
-
-AiEditRecipeResult buildLocalManualSoundEffectsAiEditRecipe({
-  required double durationSeconds,
-  required int effectCount,
-}) {
-  if (effectCount <= 0 || effectCount > maxAiEditSoundEffectsPerVideo) {
-    throw ArgumentError.value(
-      effectCount,
-      'effectCount',
-      'must be between 1 and $maxAiEditSoundEffectsPerVideo',
-    );
-  }
-  return _buildLocalAiEditRecipe(
-    durationSeconds: durationSeconds,
-    model: 'local-manual-sfx',
-    summary: 'เพิ่มเอฟเฟกต์เสียง $effectCount จุดบนอุปกรณ์',
-    capability: 'manualSfx',
-    capabilityMessage: 'เพิ่มเอฟเฟกต์เสียง $effectCount จุดบนอุปกรณ์',
   );
 }
 
@@ -97,12 +76,6 @@ AiEditRecipeResult _buildLocalAiEditRecipe({
             )
           : skipped,
       'sfx': skipped,
-      if (capability == 'manualSfx')
-        'manualSfx': AiEditCapabilityStatusResult(
-          enabled: true,
-          state: 'applied',
-          message: capabilityMessage,
-        ),
     },
   );
 }

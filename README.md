@@ -588,19 +588,19 @@ Current mobile pieces:
   editing; a partial display subset may still be retained for diagnostics but is
   never treated as safe cut evidence.
 - The AI editing setup starts every optional capability switch off. The seller
-  can explicitly enable subtitles, silence cleanup, or repeated-speech cleanup;
-  leaving all switches off still permits base target-length shortening. The
-  seller-facing colour/light and audio-cleanup cards are hidden while their
-  internal contracts remain compatible with older results. A replacement
-  `AI ใส่เอฟเฟกต์เสียงให้` card is visible only as a disabled `เร็ว ๆ นี้`
-  placeholder, so it cannot call AI or consume quota. A separate, default-hidden
-  internal QA tool can place up to eight PostDee-generated sound effects on an
-  original-duration clip, choose time and volume, edit them again in review,
-  and reuse the same placements in full export. This path renders locally,
-  never enables API capability `sfx`, and does not upload, prepare, or meter AI
-  minutes. It remains hidden from sellers until in-app listening and real-device
-  A/V-sync acceptance pass; shortening/cut cleanup with manual effects fails
-  closed until a proven timeline mapper exists.
+  can explicitly enable subtitles, silence cleanup, repeated-speech cleanup, or
+  `AI ใส่เอฟเฟกต์เสียงให้`; leaving all switches off still permits base
+  target-length shortening. The seller-facing colour/light and audio-cleanup
+  cards remain hidden while their internal contracts stay compatible with older
+  results. SFX is an AI analysis path, not a manual sound editor: the provider
+  may return only an allowlisted PostDee `soundId` and trusted source timestamp,
+  while mobile fixes volume at 25%, maps each surviving anchor through the final
+  cut timeline, and reuses the same recipe for preview and full export. The app
+  contains no seller-facing sound picker, placement slider, or manual SFX Studio.
+  Provider/timing/parse failure keeps the clip unchanged and does not meter an
+  unavailable-only request; a completed analysis, including a valid empty
+  selection, uses the normal AI-edit minute policy. Real-device listening and
+  A/V-sync acceptance remain required before Production.
 - For the production capability set, mobile extracts mono 16 kHz AAC at 64 kbps
   into balanced temporary `.m4a` chunks no longer than 30 seconds, uploads them
   with `purpose=ai-edit-audio`, and sends ordered `audioChunks` to the backend.
@@ -800,16 +800,15 @@ Current mobile pieces:
   When subtitles are enabled, the selected word is also removed from its
   source-timeline cue before burn-in. If that word cannot be mapped safely, the
   media cut is rejected too so subtitle text and speech never disagree.
-- Production exposes only the seller-selectable AI editing capabilities with a
-  real mobile path: subtitle, silence, and repeated-speech cleanup. The existing
-  color/light renderer remains as compatibility-tested internal support, but
-  its setup card and the audio-cleanup card are hidden. Auto-reframe, zoom, the
-  AI-selected sound-effects card, translation, price tags, CTA cards, and the
-  AI-page watermark are locked as `เร็ว ๆ นี้` and sent to the API as disabled.
-  Manual sound effects are a separate, default-hidden local QA tool backed by
-  ten procedural WAV assets with recorded hashes; they do not claim AI
-  selection and remain behind in-app listening plus real-device audio
-  acceptance.
+- Production exposes only seller-selectable AI editing capabilities with a real
+  mobile path: subtitle, silence, repeated-speech cleanup, and AI-selected sound
+  effects. The existing color/light renderer remains compatibility-tested
+  internal support, but its setup card and the audio-cleanup card are hidden.
+  Auto-reframe, zoom, translation, price tags, CTA cards, and the AI-page
+  watermark remain locked as `เร็ว ๆ นี้`. AI SFX uses ten procedural WAV
+  assets with recorded hashes; the model selects only an allowlisted ID and
+  trusted timestamp, while mobile owns volume, cut-timeline mapping, and local
+  rendering. No manual sound-effect UI remains.
 - Beat-sync advanced settings now let the user keep the original audio or pick
   an owned MP3/M4A/WAV file through Flutter's `file_selector`, confirm usage rights, choose
   cut intensity, music volume, and voice ducking, and send those choices in the

@@ -1707,6 +1707,109 @@ void main() {
     expect(updated.silenceRanges.single.end, 6);
   });
 
+  test('AI edit recipe parses safe sound-effect source anchors', () {
+    final recipe = AiEditRecipeResult.fromJson(const {
+      'transcript': {
+        'durationSeconds': 12,
+      },
+      'soundEffects': [
+        {'soundId': 'soft_pop', 'sourceSeconds': 1.25},
+        {'soundId': 'success_ding', 'sourceSeconds': 9.5},
+      ],
+    });
+
+    expect(recipe.soundEffects, hasLength(2));
+    expect(recipe.soundEffects.first.soundId, 'soft_pop');
+    expect(recipe.soundEffects.first.sourceSeconds, 1.25);
+    expect(recipe.soundEffects.last.soundId, 'success_ding');
+    expect(recipe.soundEffects.last.sourceSeconds, 9.5);
+    expect(
+      () => recipe.soundEffects.add(
+        const AiEditSoundEffectSuggestionResult(
+          soundId: 'clean_tap',
+          sourceSeconds: 2,
+        ),
+      ),
+      throwsUnsupportedError,
+    );
+
+    final replanned = recipe.withPlan(
+      const AiEditPlanResult(
+        cuts: [AiEditCut(start: 3, end: 4)],
+        summary: 'replanned',
+        model: 'test',
+      ),
+    );
+    expect(replanned.soundEffects, same(recipe.soundEffects));
+  });
+
+  test('AI edit recipe rejects the complete sound-effect list if one is unsafe',
+      () {
+    final invalidItems = <Object?>[
+      {'soundId': 'unknown', 'sourceSeconds': 2},
+      {'soundId': 'soft_pop', 'sourceSeconds': -0.1},
+      {'soundId': 'soft_pop', 'sourceSeconds': 12},
+      {'soundId': 'soft_pop', 'sourceSeconds': double.nan},
+      {'soundId': 'soft_pop', 'sourceSeconds': '2'},
+      {
+        'soundId': 'soft_pop',
+        'sourceSeconds': 2,
+        'url': 'https://untrusted.example/sfx.wav',
+      },
+      {
+        'soundId': 'soft_pop',
+        'sourceSeconds': 2,
+        'assetPath': 'assets/sfx/soft_pop.wav',
+      },
+      {'soundId': 'soft_pop', 'sourceSeconds': 2, 'volume': 1},
+      'not-an-object',
+    ];
+
+    for (final invalidItem in invalidItems) {
+      final recipe = AiEditRecipeResult.fromJson({
+        'transcript': const {
+          'durationSeconds': 12,
+        },
+        'soundEffects': [
+          const {'soundId': 'clean_tap', 'sourceSeconds': 1},
+          invalidItem,
+        ],
+      });
+
+      expect(recipe.soundEffects, isEmpty, reason: '$invalidItem');
+    }
+  });
+
+  test('AI edit recipe rejects stacked sound effects at one source anchor', () {
+    final recipe = AiEditRecipeResult.fromJson(const {
+      'transcript': {'durationSeconds': 12},
+      'soundEffects': [
+        {'soundId': 'clean_tap', 'sourceSeconds': 1},
+        {'soundId': 'soft_pop', 'sourceSeconds': 4},
+        {'soundId': 'success_ding', 'sourceSeconds': 4.0},
+      ],
+    });
+
+    expect(recipe.soundEffects, isEmpty);
+  });
+
+  test('AI edit recipe rejects excessive or malformed sound-effect lists', () {
+    final excessive = AiEditRecipeResult.fromJson({
+      'transcript': const {'durationSeconds': 20},
+      'soundEffects': List.generate(
+        9,
+        (index) => {'soundId': 'soft_pop', 'sourceSeconds': index},
+      ),
+    });
+    final malformed = AiEditRecipeResult.fromJson(const {
+      'transcript': {'durationSeconds': 20},
+      'soundEffects': {'soundId': 'soft_pop', 'sourceSeconds': 1},
+    });
+
+    expect(excessive.soundEffects, isEmpty);
+    expect(malformed.soundEffects, isEmpty);
+  });
+
   test('speech reduction parser fails closed for an unknown contract', () {
     final reduction = AiEditSpeechReductionResult.fromJson({
       'version': 99,

@@ -696,9 +696,264 @@ describe('ai edit routes', () => {
       plan: 'not-requested',
       subtitle: 'not-requested',
       silence: 'not-requested',
-      speechReduction: 'not-requested'
+      speechReduction: 'not-requested',
+      sfx: 'not-requested'
     });
     expect(response.body.quota.usedMinutes).toBe(1);
+  });
+
+  it('runs sfx-only analysis from trusted transcript timing and meters success', async () => {
+    const transcribe = vi.fn(async () => ({
+      text: 'ราคา 99 บาท กดตะกร้าได้เลย',
+      language: 'th',
+      durationSeconds: 12,
+      segments: [
+        { text: 'ราคา 99 บาท', start: 2, end: 5 },
+        { text: 'กดตะกร้าได้เลย', start: 8, end: 12 }
+      ],
+      words: [],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
+      model: 'test-scribe'
+    }));
+    const plan = vi.fn(async () => ({
+      soundEffects: [{ soundId: 'coin_ping' as const, sourceSeconds: 2 }],
+      summary: 'เน้นช่วงบอกราคา',
+      model: 'test-sfx-model'
+    }));
+    const app = createApp({
+      transcriptionProvider: { transcribe },
+      soundEffectPlanProvider: { plan }
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'sfx.mp4'),
+        durationSeconds: 12,
+        capabilities: { sfx: true }
+      })
+      .expect(200);
+
+    expect(plan).toHaveBeenCalledWith({
+      durationSeconds: 12,
+      segments: [
+        { text: 'ราคา 99 บาท', start: 2, end: 5 },
+        { text: 'กดตะกร้าได้เลย', start: 8, end: 12 }
+      ]
+    });
+    expect(response.body.recipe.soundEffects).toEqual([
+      { soundId: 'coin_ping', sourceSeconds: 2 }
+    ]);
+    expect(response.body.recipe.analysisOutcomes.sfx).toBe('succeeded');
+    expect(response.body.recipe.capabilities.sfx.state).toBe('applied');
+    expect(response.body.quota.usedMinutes).toBe(1);
+  });
+
+  it('meters a valid empty sfx selection but not an unavailable provider', async () => {
+    const transcript = {
+      text: 'พูดต่อเนื่อง',
+      language: 'th',
+      durationSeconds: 12,
+      segments: [{ text: 'พูดต่อเนื่อง', start: 0, end: 12 }],
+      words: [],
+      timingIntegrity: 'trusted' as const,
+      hasTimedAudioEvents: false,
+      model: 'test-scribe'
+    };
+    const successApp = createApp({
+      transcriptionProvider: { transcribe: vi.fn(async () => transcript) },
+      soundEffectPlanProvider: {
+        plan: vi.fn(async () => ({
+          soundEffects: [],
+          summary: 'ไม่ควรใส่เสียงเพิ่ม',
+          model: 'test-sfx-model'
+        }))
+      }
+    });
+    const unavailableApp = createApp({
+      transcriptionProvider: { transcribe: vi.fn(async () => transcript) },
+      soundEffectPlanProvider: {
+        plan: vi.fn(async () => undefined)
+      }
+    });
+    const body = {
+      videoS3Key: ownedUploadKey('local-dev-user', 'sfx-empty.mp4'),
+      durationSeconds: 12,
+      capabilities: { sfx: true }
+    };
+
+    const success = await request(successApp)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send(body)
+      .expect(200);
+    const unavailable = await request(unavailableApp)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send(body)
+      .expect(200);
+
+    expect(success.body.recipe.analysisOutcomes.sfx).toBe('succeeded');
+    expect(success.body.recipe.capabilities.sfx.state).toBe('applied');
+    expect(success.body.quota.usedMinutes).toBe(1);
+    expect(unavailable.body.recipe.analysisOutcomes.sfx).toBe('unavailable');
+    expect(unavailable.body.recipe.capabilities.sfx.state).toBe('hinted');
+    expect(unavailable.body.recipe.soundEffects).toEqual([]);
+    expect(unavailable.body.quota.usedMinutes).toBe(0);
+  });
+
+  it('fails closed before sfx planning when transcript timing is untrusted', async () => {
+    const plan = vi.fn();
+    const app = createApp({
+      transcriptionProvider: {
+        transcribe: vi.fn(async () => ({
+          text: 'เวลาไม่ปลอดภัย',
+          language: 'th',
+          durationSeconds: 12,
+          segments: [{ text: 'เวลาไม่ปลอดภัย', start: 0, end: 12 }],
+          words: [],
+          timingIntegrity: 'untrusted' as const,
+          hasTimedAudioEvents: false,
+          model: 'test-scribe'
+        }))
+      },
+      soundEffectPlanProvider: { plan }
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'sfx-untrusted.mp4'),
+        durationSeconds: 12,
+        capabilities: { sfx: true }
+      })
+      .expect(422);
+
+    expect(response.body.code).toBe('AI_EDIT_TIMING_EVIDENCE_UNAVAILABLE');
+    expect(plan).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without metering when the injected sfx provider throws', async () => {
+    const app = createApp({
+      transcriptionProvider: {
+        transcribe: vi.fn(async () => ({
+          text: 'ราคา 99 บาท',
+          language: 'th',
+          durationSeconds: 12,
+          segments: [{ text: 'ราคา 99 บาท', start: 2, end: 5 }],
+          words: [],
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false,
+          model: 'test-scribe'
+        }))
+      },
+      soundEffectPlanProvider: {
+        plan: vi.fn(async () => { throw new Error('provider failed'); })
+      }
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'sfx-failed.mp4'),
+        durationSeconds: 12,
+        capabilities: { sfx: true }
+      })
+      .expect(200);
+
+    expect(response.body.recipe.analysisOutcomes.sfx).toBe('unavailable');
+    expect(response.body.recipe.soundEffects).toEqual([]);
+    expect(response.body.quota.usedMinutes).toBe(0);
+  });
+
+  it('filters unreliable transcript segments before sfx planning', async () => {
+    const plan = vi.fn(async () => ({
+      soundEffects: [],
+      summary: 'ไม่ใส่เสียงเพิ่ม',
+      model: 'test-sfx-model'
+    }));
+    const app = createApp({
+      transcriptionProvider: {
+        transcribe: vi.fn(async () => ({
+          text: 'ราคา 99 บาท คำสั่งรั่ว',
+          language: 'th',
+          durationSeconds: 12,
+          segments: [
+            { text: 'ราคา 99 บาท', start: 0, end: 4 },
+            {
+              text: 'ชื่อแอปให้เขียนเป็นภาษาไทยว่า คำสั่งรั่ว',
+              start: 5,
+              end: 8
+            }
+          ],
+          words: [],
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false,
+          model: 'test-scribe'
+        }))
+      },
+      soundEffectPlanProvider: { plan }
+    });
+
+    await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'sfx-filtered.mp4'),
+        durationSeconds: 12,
+        capabilities: { sfx: true }
+      })
+      .expect(200);
+
+    expect(plan).toHaveBeenCalledWith({
+      durationSeconds: 12,
+      segments: [{ text: 'ราคา 99 บาท', start: 0, end: 4 }]
+    });
+  });
+
+  it('rejects an unsafe internal sfx result atomically without metering', async () => {
+    const app = createApp({
+      transcriptionProvider: {
+        transcribe: vi.fn(async () => ({
+          text: 'ราคา 99 บาท',
+          language: 'th',
+          durationSeconds: 12,
+          segments: [{ text: 'ราคา 99 บาท', start: 2, end: 5 }],
+          words: [],
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false,
+          model: 'test-scribe'
+        }))
+      },
+      soundEffectPlanProvider: {
+        plan: vi.fn(async () => ({
+          soundEffects: [
+            { soundId: 'coin_ping' as const, sourceSeconds: 2 },
+            { soundId: 'soft_pop' as const, sourceSeconds: 3 }
+          ],
+          summary: 'contains one invented timestamp',
+          model: 'unsafe-internal-model'
+        }))
+      }
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'sfx-unsafe.mp4'),
+        durationSeconds: 12,
+        capabilities: { sfx: true }
+      })
+      .expect(200);
+
+    expect(response.body.recipe.soundEffects).toEqual([]);
+    expect(response.body.recipe.analysisOutcomes.sfx).toBe('unavailable');
+    expect(response.body.quota.usedMinutes).toBe(0);
   });
 
   it('meters prepare only when at least one requested analysis succeeds',

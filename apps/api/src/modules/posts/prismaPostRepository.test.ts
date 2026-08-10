@@ -3,6 +3,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPrismaPostRepository } from './prismaPostRepository.js';
 
 describe('createPrismaPostRepository', () => {
+  it('counts the global queued and publishing backlog in one atomic aggregate statement', async () => {
+    const count = vi.fn().mockResolvedValue(5);
+    const repository = createPrismaPostRepository({
+      prisma: {
+        post: {
+          count
+        }
+      }
+    });
+
+    expect(await repository.countPublishBacklog()).toBe(5);
+    expect(count).toHaveBeenCalledOnce();
+    expect(count).toHaveBeenCalledWith({
+      where: {
+        status: { in: ['QUEUED', 'PUBLISHING'] }
+      }
+    });
+  });
+
   it('lists posts for a user from Prisma', async () => {
     const createdAt = new Date('2026-06-01T00:00:00.000Z');
     const scheduledAt = new Date('2026-06-02T10:00:00.000Z');

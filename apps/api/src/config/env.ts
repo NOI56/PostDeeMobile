@@ -80,6 +80,7 @@ export type ServerConfig = {
   geminiCaptionModel: string;
   authProvider: AuthProviderKind;
   socialPublisher: SocialPublisherKind;
+  socialPublishRequireEmptyBacklog: boolean;
   postPeerApiKey?: string;
   postPeerApiBaseUrl: string;
   postPeerLegacyRecoveryFingerprint?: string;
@@ -437,6 +438,12 @@ const assertRuntimeStoreConfig = (config: ServerConfig) => {
   if (usesPrismaBackedStore(config) && !config.databaseUrl) {
     throw new Error('DATABASE_URL is required when any Prisma-backed store is enabled');
   }
+
+  if (config.socialPublishRequireEmptyBacklog && config.publishQueue !== 'memory') {
+    throw new Error(
+      'SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG requires PUBLISH_QUEUE=memory'
+    );
+  }
 };
 
 const assertPostPeerLegacyRecoveryConfig = (config: ServerConfig) => {
@@ -553,6 +560,11 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     geminiCaptionModel: readOptional(env, 'GEMINI_CAPTION_MODEL') ?? 'gemini-2.5-flash-lite',
     authProvider: readAuthProvider(env),
     socialPublisher: readSocialPublisher(env),
+    socialPublishRequireEmptyBacklog: readBoolean(
+      env,
+      'SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG',
+      false
+    ),
     postPeerApiKey: readOptional(env, 'POSTPEER_API_KEY'),
     postPeerApiBaseUrl:
       readOptional(env, 'POSTPEER_API_BASE_URL') ?? 'https://api.postpeer.dev',

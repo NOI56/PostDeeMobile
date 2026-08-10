@@ -40,6 +40,7 @@ describe('render.yaml production config', () => {
     expectEnvValue(source, 'ELEVENLABS_TRANSCRIPTION_MODEL', 'scribe_v2');
     expectEnvValue(source, 'ELEVENLABS_TRANSCRIPTION_KEYTERMS', '""');
     expectEnvValue(source, 'SOCIAL_PUBLISHER', 'postpeer');
+    expect(source).not.toContain('SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG');
     expectEnvSecret(source, 'POSTPEER_API_KEY');
     expectEnvSecret(source, 'GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN');
     expectEnvSecret(source, 'FIREBASE_SERVICE_ACCOUNT_JSON');

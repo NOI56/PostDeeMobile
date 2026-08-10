@@ -31,6 +31,9 @@ type PrismaPost = {
 };
 
 type PostDelegate = {
+  count: (args: {
+    where: { status: { in: PrismaPostStatus[] } };
+  }) => Promise<number>;
   findMany: (args: {
     where: {
       userId?: string;
@@ -101,6 +104,12 @@ export const createPrismaPostRepository = ({
 }: {
   prisma: PrismaPostClient;
 }): PostStore => ({
+  countPublishBacklog: async () =>
+    prisma.post.count({
+      where: {
+        status: { in: ['QUEUED', 'PUBLISHING'] }
+      }
+    }),
   list: async (filter) => {
     const scheduledOnly = filter?.scheduledOnly ?? false;
     const posts = await prisma.post.findMany({

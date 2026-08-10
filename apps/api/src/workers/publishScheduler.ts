@@ -13,10 +13,13 @@ import {
 } from './publishWorker.js';
 
 export type PublishScheduler = {
-  start: () => void;
+  start: () => Promise<void>;
   stop: () => void;
   runOnce: () => Promise<void>;
 };
+
+const activationBacklogInspectionFailedMessage =
+  'Social publishing activation blocked: backlog inspection failed';
 
 const wait = async (delayMs: number) =>
   new Promise<void>((resolve) => {
@@ -38,6 +41,7 @@ export const createPublishScheduler = ({
   storage = createMockVideoStorageCleaner(),
   notifier = createNoopPublishNotifier(),
   assertOwnerActive,
+  requireEmptyBacklogOnStart = false,
   intervalMs = 5000,
   now = () => new Date().toISOString(),
   maxPrePublishAttempts = 3,
@@ -50,6 +54,7 @@ export const createPublishScheduler = ({
   storage?: VideoStorageCleaner;
   notifier?: PublishNotifier;
   assertOwnerActive?: (ownerId: string) => Promise<void>;
+  requireEmptyBacklogOnStart?: boolean;
   intervalMs?: number;
   now?: () => string;
   maxPrePublishAttempts?: number;
@@ -149,8 +154,25 @@ export const createPublishScheduler = ({
   };
 
   return {
-    start: () => {
+    start: async () => {
       if (!timer) {
+        if (requireEmptyBacklogOnStart) {
+          let pendingPostCount: Awaited<ReturnType<PostStore['countPublishBacklog']>>;
+
+          try {
+            pendingPostCount = await postStore.countPublishBacklog();
+          } catch {
+            // Do not leak database connection details through deployment logs.
+            throw new Error(activationBacklogInspectionFailedMessage);
+          }
+
+          if (pendingPostCount > 0) {
+            throw new Error(
+              `Social publishing activation blocked: ${pendingPostCount} queued or publishing posts exist`
+            );
+          }
+        }
+
         timer = setInterval(() => {
           void runOnce();
         }, intervalMs);

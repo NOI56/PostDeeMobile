@@ -8,7 +8,7 @@ const config = readServerConfig();
 const app = createApp();
 
 const publishScheduler = app.locals.publishScheduler as PublishScheduler | undefined;
-publishScheduler?.start();
+await publishScheduler?.start();
 
 app.listen(config.port, () => {
   console.log(`PostDee API listening on port ${config.port}`);

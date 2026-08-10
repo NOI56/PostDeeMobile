@@ -3,6 +3,37 @@ import { describe, expect, it } from 'vitest';
 import { createPostStore } from './postStore.js';
 
 describe('createPostStore', () => {
+  it('reports one aggregate queued-or-publishing backlog total', async () => {
+    const store = createPostStore();
+    const queued = await store.create({
+      userId: 'seller-queued',
+      caption: 'queued',
+      videoS3Key: 'uploads/queued.mp4',
+      platforms: ['YOUTUBE_SHORTS']
+    });
+    const publishing = await store.create({
+      userId: 'seller-publishing',
+      caption: 'publishing',
+      videoS3Key: 'uploads/publishing.mp4',
+      platforms: ['YOUTUBE_SHORTS']
+    });
+
+    await store.claimForPublish({
+      postId: publishing.id,
+      expectedRunAt: publishing.scheduledAt ?? publishing.createdAt
+    });
+    await store.updateStatus({ postId: queued.id, status: 'FAILED' });
+    await store.create({
+      userId: 'seller-still-queued',
+      caption: 'future queued',
+      videoS3Key: 'uploads/future.mp4',
+      platforms: ['YOUTUBE_SHORTS'],
+      scheduledAt: '2030-01-01T00:00:00.000Z'
+    });
+
+    expect(await store.countPublishBacklog()).toBe(2);
+  });
+
   it('keeps optional cover metadata with a queued post', async () => {
     const store = createPostStore();
 

@@ -97,6 +97,7 @@ describe('render.staging.yaml isolated staging config', () => {
     expectEnvValue(source, 'PUSH_SENDER', 'mock');
     expectEnvValue(source, 'FIREBASE_AUTH_DELETE_ENABLED', '"false"');
     expectEnvValue(source, 'SOCIAL_PUBLISHER', 'disabled');
+    expectEnvValue(source, 'SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG', '"true"');
     expectEnvValue(source, 'PUBLISH_QUEUE', 'memory');
     expect(source).toMatch(/numInstances: 1/);
   });

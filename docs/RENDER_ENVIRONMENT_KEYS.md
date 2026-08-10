@@ -108,6 +108,7 @@ these differences when syncing the Staging Blueprint:
 | --- | --- | --- |
 | `DATABASE_URL` | `postdee-postgres-staging.connectionString` | Uses the isolated Staging database. |
 | `SOCIAL_PUBLISHER` | `disabled` | Fails closed unless an operator intentionally enables a controlled PostPeer test. No `POSTPEER_API_KEY` is declared by the Staging Blueprint. |
+| `SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG` | `true` | Before a controlled `postpeer` activation, the in-process memory scheduler runs one atomic global aggregate count with status in `QUEUED` or `PUBLISHING` (including future schedules). A non-zero total or inspection failure blocks startup before the HTTP listener. This flag is absent from Production. |
 | `FIREBASE_AUTH_DELETE_ENABLED` | `false` | Prevents Staging account deletion from requiring Firebase Admin credentials. |
 | `PUSH_SENDER` | `mock` | Does not send real push notifications. |
 

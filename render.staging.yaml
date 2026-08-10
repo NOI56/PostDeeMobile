@@ -88,6 +88,10 @@ services:
         value: ""
       - key: SOCIAL_PUBLISHER
         value: disabled
+      # When PostPeer is enabled for a controlled run, refuse to start unless
+      # the global Prisma QUEUED/PUBLISHING backlog is completely empty.
+      - key: SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG
+        value: "true"
       - key: AUTH_PROVIDER
         value: firebase
       - key: FIREBASE_PROJECT_ID

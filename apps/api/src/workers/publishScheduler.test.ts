@@ -5,6 +5,101 @@ import { createPostStore } from '../modules/posts/postStore.js';
 import { createPublishScheduler } from './publishScheduler.js';
 
 describe('createPublishScheduler', () => {
+  it('checks the complete global backlog before starting an opted-in scheduler', async () => {
+    const postStore = createPostStore();
+    const platformPublishStore = createInMemoryPlatformPublishStore();
+    const countPublishBacklog = vi.spyOn(postStore, 'countPublishBacklog');
+    const scheduler = createPublishScheduler({
+      postStore,
+      platformPublishStore,
+      requireEmptyBacklogOnStart: true
+    });
+
+    await scheduler.start();
+    scheduler.stop();
+
+    expect(countPublishBacklog).toHaveBeenCalledOnce();
+  });
+
+  it('refuses to start when any queued post exists, including future work', async () => {
+    const postStore = createPostStore();
+    const platformPublishStore = createInMemoryPlatformPublishStore();
+    await postStore.create({
+      userId: 'seller-future',
+      caption: 'future',
+      videoS3Key: 'uploads/future.mp4',
+      platforms: ['YOUTUBE_SHORTS'],
+      scheduledAt: '2030-01-01T00:00:00.000Z'
+    });
+    const scheduler = createPublishScheduler({
+      postStore,
+      platformPublishStore,
+      requireEmptyBacklogOnStart: true
+    });
+
+    await expect(scheduler.start()).rejects.toThrow(
+      'Social publishing activation blocked: 1 queued or publishing posts exist'
+    );
+  });
+
+  it('refuses to start when a publishing post exists', async () => {
+    const postStore = createPostStore();
+    const platformPublishStore = createInMemoryPlatformPublishStore();
+    const post = await postStore.create({
+      userId: 'seller-publishing',
+      caption: 'publishing',
+      videoS3Key: 'uploads/publishing.mp4',
+      platforms: ['YOUTUBE_SHORTS']
+    });
+    await postStore.claimForPublish({
+      postId: post.id,
+      expectedRunAt: post.createdAt
+    });
+    const scheduler = createPublishScheduler({
+      postStore,
+      platformPublishStore,
+      requireEmptyBacklogOnStart: true
+    });
+
+    await expect(scheduler.start()).rejects.toThrow(
+      'Social publishing activation blocked: 1 queued or publishing posts exist'
+    );
+  });
+
+  it('fails closed without exposing a database error when backlog inspection fails', async () => {
+    const postStore = createPostStore();
+    vi.spyOn(postStore, 'countPublishBacklog').mockRejectedValue(
+      new Error('sensitive database detail that must not reach logs')
+    );
+    const scheduler = createPublishScheduler({
+      postStore,
+      platformPublishStore: createInMemoryPlatformPublishStore(),
+      requireEmptyBacklogOnStart: true
+    });
+
+    const start = scheduler.start();
+    await expect(start).rejects.toThrow(
+      'Social publishing activation blocked: backlog inspection failed'
+    );
+    await expect(start).rejects.not.toThrow('sensitive database detail');
+  });
+
+  it('does not inspect global backlog unless the activation guard is opted in', async () => {
+    const postStore = createPostStore();
+    const countPublishBacklog = vi
+      .spyOn(postStore, 'countPublishBacklog')
+      .mockRejectedValue(new Error('must not be called'));
+    const scheduler = createPublishScheduler({
+      postStore,
+      platformPublishStore: createInMemoryPlatformPublishStore()
+    });
+
+    await scheduler.start();
+    scheduler.stop();
+
+    expect(countPublishBacklog).not.toHaveBeenCalled();
+  });
+
   it('publishes due scheduled posts and leaves future ones QUEUED', async () => {
     const postStore = createPostStore();
     const platformPublishStore = createInMemoryPlatformPublishStore();

@@ -137,6 +137,13 @@ publisher ยัง `disabled`, ใช้บัญชี disposable เชื่
 `SOCIAL_PUBLISHER=postpeer` เฉพาะช่วงทดสอบแบบควบคุม. Scheduler แบบ in-process
 อ่าน post ครบกำหนดจาก Prisma ทุกประมาณ 5 วินาที จึงอาจส่งคิวเก่าทันทีหลังเปิด
 
+Staging Blueprint จึงตั้ง `SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG=true` ไว้ด้วย.
+เมื่อสลับเป็น PostPeer ระบบใช้ aggregate count เพียงคำสั่งเดียวแบบ atomic โดยกรองสถานะที่อยู่ใน
+`QUEUED` หรือ `PUBLISHING` ของ post ทุกผู้ใช้ (รวมรายการที่ตั้งไว้ในอนาคต) ก่อนเริ่ม
+scheduler และก่อนเปิดรับ HTTP traffic. ถ้าจำนวนรวมไม่เป็นศูนย์หรืออ่านฐานข้อมูลไม่ได้
+deploy ใหม่จะไม่เริ่ม โดยไม่อ่านหรือแสดง id, ผู้ใช้, caption หรือ media; Production
+Blueprint ไม่ถูกแก้
+
 โค้ด Social ปัจจุบัน ensure ผู้ใช้ก่อนบันทึก profile, ส่งชื่อ profile แบบ
 pseudonymous ที่ PostPeer กำหนดให้มี, poll ผล `202 pending/publishing` ประมาณ 2 นาที
 โดยไม่สร้าง external id ปลอม และคืน `platformResults` ใน `GET /posts` แล้ว ค่า

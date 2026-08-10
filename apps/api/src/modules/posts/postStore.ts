@@ -64,6 +64,9 @@ export type ClaimPostForPublishInput = {
 
 export type PostStore = {
   list: (filter?: { userId?: string; scheduledOnly?: boolean }) => Promise<QueuedPost[]>;
+  // Global aggregate only: used by the opt-in real-publisher activation guard.
+  // It deliberately returns no post, owner, caption, or media details.
+  countPublishBacklog: () => Promise<number>;
   create: (input: CreatePostInput) => Promise<QueuedPost>;
   // Posts whose time has come: QUEUED with no schedule (post now) or scheduledAt
   // at/before `now`. Used by the publish scheduler.
@@ -100,6 +103,10 @@ export const createPostStore = (): PostStore => {
 
           return (left.scheduledAt ?? '').localeCompare(right.scheduledAt ?? '');
         }),
+    countPublishBacklog: async () =>
+      posts.filter(
+        (post) => post.status === 'QUEUED' || post.status === 'PUBLISHING'
+      ).length,
     create: async (input) => {
       const post: QueuedPost = {
         id: randomUUID(),

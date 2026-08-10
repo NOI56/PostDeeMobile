@@ -962,6 +962,13 @@ Queue/storage scaffold switches:
   and post reschedule fail with `503 SOCIAL_PUBLISHING_UNAVAILABLE`, while
   cancel remains available. `SOCIAL_PUBLISHER=postpeer` calls PostPeer and
   requires `POSTPEER_API_KEY` plus `VIDEO_STORAGE=r2|s3`.
+- `SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG=true` is an opt-in activation guard for
+  the single-process `PUBLISH_QUEUE=memory` scheduler. Before a real PostPeer
+  process starts its scheduler or listens for traffic, it runs one atomic
+  global aggregate count with status in `QUEUED` or `PUBLISHING`; future
+  schedules are therefore included. A non-zero total or inspection error blocks startup
+  without loading post/user/media details. Staging enables this guard; its
+  default is `false`, and the Production Blueprint is unchanged.
 - `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`, `POSTPEER_INSTAGRAM_ACCOUNT_ID`, and `POSTPEER_FACEBOOK_ACCOUNT_ID` are non-production/operator smoke-test integration ids only. Production rejects them and must publish through per-user social connections.
 - New per-user PostPeer profiles use versioned 128-bit HMAC pseudonyms. A lost
   mapping to one older 40-bit profile may be repaired temporarily with both

@@ -78,6 +78,12 @@ user-owned PostPeer connections.
 - Before switching Staging to `postpeer`, inspect and cancel every old `QUEUED`
   or scheduled record. The current single-instance in-process scheduler polls
   Prisma for due posts, so old work can be submitted shortly after the switch.
+- Keep Staging `SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG=true`. A guarded PostPeer
+  deploy starts only when one atomic global aggregate count with status in
+  `QUEUED` or `PUBLISHING` is zero; future schedules are included. A query failure
+  also blocks startup before the scheduler and HTTP listener; the check returns
+  no post/user/media details. This guard is for `PUBLISH_QUEUE=memory` only and
+  is not added to the Production Blueprint.
 - Do not add shared `POSTPEER_*_ACCOUNT_ID` values to production. The per-user
   connect/refresh/disconnect flow is implemented and must be verified with a
   connected test account before production publishing is enabled.

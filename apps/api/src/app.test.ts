@@ -47,4 +47,30 @@ describe('PostDee API scaffold', () => {
 
     expect(configuredApp).toBeDefined();
   });
+
+  it('wires the empty-backlog guard only into real PostPeer scheduler startup', async () => {
+    const guardedApp = createApp({
+      config: readServerConfig({
+        SOCIAL_PUBLISHER: 'postpeer',
+        SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG: 'true',
+        POSTPEER_API_KEY: 'test-postpeer-key'
+      })
+    });
+
+    await request(guardedApp)
+      .post('/posts')
+      .set('x-postdee-user-id', 'staging-guard-test-user')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        caption: 'future staging guard test',
+        videoS3Key: 'uploads/staging-guard-test-user/upload-1/video.mp4',
+        platforms: ['YOUTUBE_SHORTS'],
+        scheduledAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+      })
+      .expect(201);
+
+    await expect(guardedApp.locals.publishScheduler.start()).rejects.toThrow(
+      'Social publishing activation blocked: 1 queued or publishing posts exist'
+    );
+  });
 });

@@ -66,6 +66,7 @@ describe('readServerConfig', () => {
       geminiCaptionModel: 'gemini-2.5-flash-lite',
       authProvider: 'mock',
       socialPublisher: 'mock',
+      socialPublishRequireEmptyBacklog: false,
       postPeerApiKey: undefined,
       postPeerApiBaseUrl: 'https://api.postpeer.dev',
       postPeerLegacyRecoveryFingerprint: undefined,
@@ -486,6 +487,34 @@ describe('readServerConfig', () => {
         POST_STORE: 'memory'
       })
     ).toThrow('PUBLISH_QUEUE=bullmq requires POST_STORE=prisma');
+  });
+
+  it('keeps the real-publisher empty-backlog activation guard opt-in', () => {
+    expect(readServerConfig().socialPublishRequireEmptyBacklog).toBe(false);
+    expect(
+      readServerConfig({
+        SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG: 'true'
+      }).socialPublishRequireEmptyBacklog
+    ).toBe(true);
+  });
+
+  it('rejects an invalid real-publisher empty-backlog activation guard value', () => {
+    expect(() =>
+      readServerConfig({
+        SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG: 'sometimes'
+      })
+    ).toThrow('SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG must be true or false');
+  });
+
+  it('does not allow the in-process activation guard to imply BullMQ worker safety', () => {
+    expect(() =>
+      readServerConfig({
+        SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG: 'true',
+        PUBLISH_QUEUE: 'bullmq',
+        POST_STORE: 'prisma',
+        DATABASE_URL: 'configured-for-test'
+      })
+    ).toThrow('SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG requires PUBLISH_QUEUE=memory');
   });
 
   it('requires DATABASE_URL when a Prisma-backed store is enabled', () => {

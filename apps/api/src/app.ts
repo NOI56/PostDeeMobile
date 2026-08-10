@@ -676,7 +676,10 @@ export const createApp = (options: AppOptions = {}) => {
         deviceTokenStore,
         pushSender: createPushSenderFromConfig({ config })
       }),
-      assertOwnerActive: managedUploadService?.assertOwnerActive
+      assertOwnerActive: managedUploadService?.assertOwnerActive,
+      requireEmptyBacklogOnStart:
+        config.socialPublisher === 'postpeer' &&
+        config.socialPublishRequireEmptyBacklog
     });
   }
 

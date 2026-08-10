@@ -146,6 +146,59 @@ void main() {
     expect(addPostCalls, 0);
   });
 
+  testWidgets('explains when rescheduling is blocked by publishing config',
+      (tester) async {
+    final scheduledAt = DateTime.now().add(const Duration(days: 2));
+    var rescheduleCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: CalendarScreen(
+            loadScheduledPosts: () async => [
+              ScheduledPostResult(
+                id: 'disabled-reschedule',
+                caption: 'โพสต์ที่ต้องการเลื่อนเวลา',
+                videoS3Key: 'uploads/reschedule.mp4',
+                platforms: const ['YOUTUBE_SHORTS'],
+                scheduledAt: scheduledAt,
+                status: 'QUEUED',
+                createdAt: DateTime.now(),
+              ),
+            ],
+            reschedulePost: (postId, next) async {
+              rescheduleCalls += 1;
+              throw const ApiException(
+                'Social publishing is temporarily unavailable. Please try again later.',
+                statusCode: 503,
+                code: socialPublishingUnavailableCode,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('โพสต์ที่ต้องการเลื่อนเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('โพสต์ที่ต้องการเลื่อนเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เลื่อนเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(rescheduleCalls, 1);
+    expect(
+      find.text('ระบบรับงานโพสต์ยังไม่เปิดใช้งาน กรุณาลองใหม่ภายหลัง'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
       'uses the real published time in Bangkok across a UTC day and month',
       (tester) async {

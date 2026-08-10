@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../analytics/analytics_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
+import '../shared/publishing_availability.dart';
 
 /// Post detail (design screen #12). Shows the caption, channels, and honest
 /// status-driven actions: scheduled posts can be published now (reschedule to
@@ -267,6 +268,18 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       await _apiClient.reschedulePost(widget.post.id, DateTime.now());
       if (!mounted) return;
       Navigator.of(context).pop(true);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _isWorking = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isPublishingUnavailable(error)
+                ? publishingUnavailableActionMessage
+                : 'โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง',
+          ),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _isWorking = false);

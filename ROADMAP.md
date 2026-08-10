@@ -83,6 +83,16 @@ Current status:
   the local User first; accepted async posts are polled for roughly two minutes,
   never receive a fabricated external id, and expose persisted per-platform
   results through `GET /posts`. A real connected-account E2E is still pending.
+- Social-post safety now has an authenticated configuration preflight. Mobile
+  checks it before watermark/upload; `POST /posts` and `PATCH /posts/:id`
+  authoritatively return `503 SOCIAL_PUBLISHING_UNAVAILABLE` while the publisher
+  is disabled, and cancel remains available. This prevents new false queued
+  failures in the current client but does not enable or verify PostPeer. Old
+  clients or a config race can still leave a temporary uploaded object.
+- The Production Blueprint currently selects `SOCIAL_PUBLISHER=postpeer` even
+  though connected-account E2E is pending. Treat this as a launch configuration
+  risk; the repository cannot prove the live Render value, and the safety-gate
+  work does not change that Blueprint.
 
 ## Backend Services Plan
 
@@ -100,7 +110,7 @@ Primary backend choices:
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to configured-primary Gemini 2.5 Flash-Lite, retries transient failures, then falls back directly to the local template; media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`) | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
 | AI auto editing | ElevenLabs Scribe v2 + Gemini 3.5 Flash-Lite + mobile FFmpeg | Pro transcript/highlight planning, optional verified-silence/repeated-speech cleanup, AI-selected sound effects, subtitle burn-in, phone-side review, and video export | `/ai-edits/prepare`, fair quota outcomes, waveform-verified silence, safe repeated-speech review, atomic accepted-source state, subtitle-safe rendering, and local colour compatibility exist. AI SFX uses a separate catalog-only planner: it returns at most eight trusted `soundId + sourceSeconds` anchors; mobile fixes volume, maps through final cuts, and mixes bundled procedural WAVs. Manual SFX selection is removed. Production beat sync and the 3-second hook remain default-off. | Tasks 3–8 and deployed identity/health are verified. Pixel 8 `color-local` passed device/render checks, while the main matrix remains blocked: a new STT-only Staging key still received upstream HTTP `401`, PostDee quota stayed unchanged, and ElevenLabs showed only 6/10,000 workspace credits remaining. Wait for or restore provider quota, rerun the API-dependent matrix, then capture AI SFX Preview/full-export listening, peak, and A/V-sync evidence on Android and iPhone before Production. |
 | Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase and true Restore/resync E2E pass on Emulator; RevenueCat Play config, production Android public SDK key, and signed AAB are ready | Verify Play Console access on a physical Android device, then create the Play app/subscriptions/service credentials/internal testing and test lifecycle plus real Google Play/App Store purchases before claiming production billing E2E. |
-| Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect/refresh/provider-first disconnect are wired; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; YouTube defaults private and TikTok SELF_ONLY for controlled testing; connected-account E2E is still pending | `FACEBOOK_REELS` is an internal compatibility value for Page Video, not a Reels claim. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
+| Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect/refresh/provider-first disconnect are wired; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; the config-only readiness gate and fail-fast create/reschedule path exist; YouTube defaults private and TikTok SELF_ONLY for controlled testing; connected-account E2E is still pending | Readiness does not probe PostPeer/accounts. Keep Staging disabled except for a controlled run, clear old queued/scheduled records before enabling, and treat `FACEBOOK_REELS` as Page Video. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
 | Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile registration, `POST /devices`, notifier, and firebase-admin sender exist; mock remains default | Add the service account, set `PUSH_SENDER=firebase`, enable APNs/iOS capabilities, and test on a real device. |
 
@@ -153,10 +163,12 @@ Recommended activation order:
    through Google Play internal testing; complete App Store configuration and
    physical-device sandbox testing separately.
 9. Add Sentry to the API, worker, and mobile app.
-10. Connect per-user PostPeer test accounts, refresh their integration state,
-    and run a controlled real publish E2E. Confirm YouTube `private`, TikTok
-    `SELF_ONLY`, Instagram Reels, Facebook Page Video, the bounded async poll,
-    and `GET /posts.platformResults` before enabling public claims.
+10. While Staging is still disabled, install only its PostPeer key, connect and
+    refresh disposable per-user accounts, and cancel old queued/scheduled work.
+    Enable PostPeer only for a controlled real publish E2E. Confirm readiness,
+    YouTube `private`, TikTok `SELF_ONLY`, Instagram Reels, Facebook Page Video,
+    the bounded async poll, and `GET /posts.platformResults`; then restore
+    `disabled` and verify readiness returns `503` before enabling public claims.
 11. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
 12. Harden Pro AI auto editing with persistent job/session recovery, top-up handling, and real-device tests of the setup-to-review-to-post/manual-editor flow before production launch.
 
@@ -449,10 +461,12 @@ To ensure the app passes store review guidelines, the following must be implemen
 5. Test managed R2 multipart uploads from the mobile app through the backend
    and worker flow, then retire legacy clients and change production from
    `dual` to strict `multipart` mode.
-6. Verify the per-user PostPeer connect/refresh flow and run controlled real
-   publishing with disposable connected accounts. Treat `FACEBOOK_REELS` as
-   Facebook Page Video, verify uncertain outcomes before retrying, and defer
-   individual social API app reviews.
+6. Verify the per-user PostPeer connect/refresh flow while Staging remains
+   disabled, cancel old queued/scheduled records, then run controlled real
+   publishing with disposable connected accounts. Confirm readiness returns to
+   `503` after restoring `disabled`. Treat `FACEBOOK_REELS` as Facebook Page
+   Video, verify uncertain outcomes before retrying, and defer individual social
+   API app reviews.
 7. Continue AI editing job/session persistence, ElevenLabs transcription/Gemini planning hardening, top-up,
    retry/recovery, and real-device testing of pace detections, review counts, export, posting, and manual editing.
 8. Add music upload/ownership storage, license a cross-platform PostDee catalog,

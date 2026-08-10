@@ -1,6 +1,6 @@
 # PostDee Staging
 
-ทบทวนเอกสาร ณ 9 สิงหาคม 2026: **Blueprint ใน repository ติดตาม `main` แต่การ
+ทบทวนเอกสาร ณ 10 สิงหาคม 2026: **Blueprint ใน repository ติดตาม `main` แต่การ
 deploy สำเร็จหรือ `/health` ผ่านไม่ได้ยืนยันว่า R2, Gemini/ElevenLabs, Firebase,
 RevenueCat หรือ PostPeer ผ่าน E2E ใน release candidate เดียวกัน** ผลที่ระบุว่า
 ผ่านด้านล่างเป็นบันทึกการทดสอบเดิมและต้องตรวจซ้ำตามรายการก่อน Production
@@ -120,17 +120,37 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 `render.staging.yaml` ปัจจุบันไม่ประกาศ `FIREBASE_SERVICE_ACCOUNT_JSON`, ใช้
 `PUSH_SENDER=mock` และ `FIREBASE_AUTH_DELETE_ENABLED=false` เพื่อป้องกันการลบ
 ผู้ใช้หรือยิง Push ผิดระบบ
-รวมถึงใช้ `SOCIAL_PUBLISHER=disabled` ซึ่งจะล้มเหลวแบบชัดเจนและไม่สร้างโพสต์ปลอม
-เมื่อจะทดสอบ Social จริง ให้เพิ่ม `POSTPEER_API_KEY` ชุดทดสอบใน Dashboard แล้ว
-สลับเป็น `SOCIAL_PUBLISHER=postpeer` เฉพาะช่วงทดสอบแบบควบคุม
+รวมถึงใช้ `SOCIAL_PUBLISHER=disabled`. ในโค้ดชุดนี้
+`GET /publishing/readiness`, `POST /posts` และ `PATCH /posts/:id` จะตอบ
+`503 SOCIAL_PUBLISHING_UNAVAILABLE`; create/reschedule หยุดก่อนตรวจ upload readiness,
+อ่านโควตา, เขียน post หรือเปลี่ยนคิว ส่วน `DELETE /posts/:id` ยังใช้ยกเลิกคิวเดิมได้
+
+Mobile เรียก readiness หลังยืนยันและก่อนใส่ลายน้ำหรืออัปโหลด พร้อมแสดงข้อความไทย
+เมื่อระบบปิดอยู่ แต่ `acceptingPosts: true` เป็นเพียง config gate ว่า API process
+ไม่ได้ใช้ `disabled` เท่านั้น ไม่ได้ตรวจ PostPeer, R2, queue/worker หรือ connection
+ของผู้ใช้. Client เก่าหรือการเปลี่ยน config หลัง preflight ยังอาจอัปโหลดไฟล์ก่อน
+`POST /posts` ตอบ `503`; object แบบนั้นต้องถูกล้างด้วยนโยบายไฟล์ชั่วคราว
+
+เมื่อจะทดสอบ Social จริง ให้เพิ่ม `POSTPEER_API_KEY` ชุดทดสอบใน Dashboard ขณะที่
+publisher ยัง `disabled`, ใช้บัญชี disposable เชื่อม/refresh, ตรวจและยกเลิก post
+สถานะ `QUEUED`/ตั้งเวลาเดิมทั้งหมดก่อน แล้วจึงสลับเป็น
+`SOCIAL_PUBLISHER=postpeer` เฉพาะช่วงทดสอบแบบควบคุม. Scheduler แบบ in-process
+อ่าน post ครบกำหนดจาก Prisma ทุกประมาณ 5 วินาที จึงอาจส่งคิวเก่าทันทีหลังเปิด
 
 โค้ด Social ปัจจุบัน ensure ผู้ใช้ก่อนบันทึก profile, ส่งชื่อ profile แบบ
 pseudonymous ที่ PostPeer กำหนดให้มี, poll ผล `202 pending/publishing` ประมาณ 2 นาที
 โดยไม่สร้าง external id ปลอม และคืน `platformResults` ใน `GET /posts` แล้ว ค่า
 controlled-first คือ YouTube `private` และ TikTok `SELF_ONLY` (`draft: false`).
 `FACEBOOK_REELS` เป็นชื่อภายในที่ตอนนี้ส่ง Facebook Page Video ไม่ใช่ Reels.
+Instagram/Facebook ไม่มี private/SELF_ONLY guard ใน payload ปัจจุบัน จึงต้องถือว่า
+อาจเผยแพร่จริงและใช้เฉพาะบัญชี disposable ที่ไม่มีผู้ติดตามหรือข้อมูลจริง
 Retry ทำได้เฉพาะ error ที่ยืนยันว่า provider ยังไม่รับงาน; outcome ที่ไม่แน่นอนต้อง
 ตรวจปลายทางก่อนกดใหม่
+
+คำเตือนแยกจาก Staging: `render.yaml` ใน repository ปัจจุบันเลือก
+`SOCIAL_PUBLISHER=postpeer` สำหรับ Production ทั้งที่ connected-account E2E ยังไม่ผ่าน.
+Repository ไม่ยืนยันค่าที่ deploy จริง และงาน safety gate นี้ไม่ได้แก้ Production
+Blueprint; ต้องตัดสินใจนโยบาย fail-closed และยืนยัน Dashboard ก่อนเปิดให้ผู้ใช้จริง
 
 บันทึกเดิมระบุว่า Render Staging ใช้
 `FIREBASE_PROJECT_ID=project-798caf7e-85b8-45e3-af7` ส่วน Android API key จำกัดไว้เฉพาะ package
@@ -224,10 +244,21 @@ Staging Blueprint ติดตาม `main` และ deploy เมื่อ che
       internal testing และทดสอบ Google Play purchase/restore จริง ขั้นตอนเหล่านี้
       ยังติดการยืนยันสิทธิ์ Play Console ด้วยมือถือ Android จริง; Emulator ใช้
       ยืนยันไม่ได้ และ Test Store ไม่ถือเป็นหลักฐานของ flow นี้
+- [ ] Deploy release candidate ที่มี publishing safety gate แล้ว ขณะ
+      `SOCIAL_PUBLISHER=disabled` ต้องยืนยันว่า authenticated
+      `GET /publishing/readiness`, `POST /posts` และ `PATCH /posts/:id` ตอบ
+      `503 SOCIAL_PUBLISHING_UNAVAILABLE`, Mobile แสดงข้อความไทยก่อน watermark/upload,
+      ไม่มี post/quota/queue ใหม่ และ `DELETE /posts/:id` ยังยกเลิกคิวเดิมได้
+- [ ] ตรวจ R2 หลังทดสอบ client เก่าหรือจำลอง race; หากไฟล์ถูกอัปโหลดก่อน
+      authoritative `503` ต้องยืนยันว่า cleanup/lifecycle ลบ object ชั่วคราวนั้น
+- [ ] ก่อนเปิด PostPeer ให้ตรวจและยกเลิก post `QUEUED`/ตั้งเวลาเดิมทั้งหมด และ
+      refresh เฉพาะบัญชี disposable ของ Staging ห้ามใช้บัญชีผู้ใช้หรือ Production
 - [ ] หลังสลับ `SOCIAL_PUBLISHER=postpeer` แบบตั้งใจแล้ว ให้ใช้บัญชี disposable
       เชื่อม/refresh และโพสต์แบบควบคุม: YouTube private, TikTok SELF_ONLY,
       Instagram Reels และ Facebook Page Video จากนั้นตรวจ provider URL,
-      `GET /posts.platformResults` และสลับกลับ `disabled`
+      `GET /posts.platformResults`; `GET /publishing/readiness` ต้องตอบ
+      `acceptingPosts: true` ระหว่างรอบนี้เท่านั้น จากนั้นสลับกลับ `disabled` และ
+      ยืนยัน readiness `503` อีกครั้ง
 - [ ] จำลอง async `202`/ผลไม่แน่นอนเพื่อยืนยันว่ารอ poll แบบ bounded, ไม่สร้าง id
       ปลอม และไม่ retry POST ซ้ำก่อนผู้ทดสอบตรวจปลายทาง
 - [ ] ตั้งเวลา, retry และสถานะล้มเหลวไม่ค้างผิดปกติ

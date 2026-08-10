@@ -73,6 +73,12 @@ const readOptionalCoverFrameTimeMs = (value: unknown) => {
     : { ok: false as const, value: undefined };
 };
 
+const socialPublishingUnavailableResponse = {
+  status: 'error',
+  code: 'SOCIAL_PUBLISHING_UNAVAILABLE',
+  message: 'Social publishing is temporarily unavailable. Please try again later.'
+} as const;
+
 type SubscriptionPlanOverrideResult =
   | {
       ok: true;
@@ -119,13 +125,41 @@ export const registerPostRoutes = (
   platformPublishStore: PlatformPublishStore,
   options: {
     allowSubscriptionPlanOverride?: boolean;
+    socialPublishingEnabled?: boolean;
     assertUploadReady?: (ownerId: string, videoS3Key: string) => Promise<void>;
     assertCoverUploadReady?: (ownerId: string, coverImageS3Key: string) => Promise<void>;
     now?: () => Date;
   } = {}
 ) => {
   const allowSubscriptionPlanOverride = options.allowSubscriptionPlanOverride ?? true;
+  const socialPublishingEnabled = options.socialPublishingEnabled ?? true;
   const now = options.now ?? (() => new Date());
+
+  // This is a fast configuration gate for clients before they upload media. It
+  // intentionally does not probe the external publisher, storage, queue, or a
+  // user's platform connection; POST /posts repeats the same check at the
+  // write boundary.
+  router.get('/publishing/readiness', authMiddleware, (_request, response) => {
+    const authUser = readAuthUser(response.locals);
+
+    if (!authUser) {
+      response.status(401).json({
+        status: 'error',
+        message: 'Authenticated user is required'
+      });
+      return;
+    }
+
+    if (!socialPublishingEnabled) {
+      response.status(503).json(socialPublishingUnavailableResponse);
+      return;
+    }
+
+    response.json({
+      status: 'ok',
+      acceptingPosts: true
+    });
+  });
 
   router.get('/posts', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
@@ -180,6 +214,11 @@ export const registerPostRoutes = (
         status: 'error',
         message: 'Authenticated user is required'
       });
+      return;
+    }
+
+    if (!socialPublishingEnabled) {
+      response.status(503).json(socialPublishingUnavailableResponse);
       return;
     }
 
@@ -364,6 +403,11 @@ export const registerPostRoutes = (
         status: 'error',
         message: 'Authenticated user is required'
       });
+      return;
+    }
+
+    if (!socialPublishingEnabled) {
+      response.status(503).json(socialPublishingUnavailableResponse);
       return;
     }
 

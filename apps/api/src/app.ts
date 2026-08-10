@@ -541,6 +541,7 @@ export const createApp = (options: AppOptions = {}) => {
     {
       allowSubscriptionPlanOverride:
         config.nodeEnv !== 'production' && config.authProvider === 'mock',
+      socialPublishingEnabled: config.socialPublisher !== 'disabled',
       assertUploadReady: managedUploadService
         ? (ownerId, videoS3Key) =>
             managedUploadService.assertReadyForUse(ownerId, videoS3Key, {

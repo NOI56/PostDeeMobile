@@ -30,7 +30,7 @@ The backend currently supports:
 - Mock or Firebase authentication
 - Upload metadata validation, legacy mock/R2/S3 signed upload, managed R2
   multipart sessions, and signed read access scaffolding
-- Post creation and queue handoff
+- Authenticated config-only publishing preflight, post creation, and queue handoff
 - Caption generation through mock, Gemini, or legacy OpenAI providers. The
   product direction is real-clip captioning after a video is selected. Remote
   providers retry transient failures (e.g. a Gemini 503) with backoff. Gemini
@@ -49,9 +49,12 @@ The backend currently supports:
 The backend must not publish through shared PostPeer account ids in production
 (startup rejects them). Production publishing resolves per-user social
 connections. The internal `FACEBOOK_REELS` value currently maps to PostPeer's
-Facebook Page Video capability, not Facebook Reels. Real PostPeer publishing
-must remain disabled until the per-user connect/refresh flow and a controlled
-connected-account E2E test are approved.
+Facebook Page Video capability, not Facebook Reels. Provider-level approval is
+still blocked on the per-user connect/refresh flow and a controlled
+connected-account E2E test. The repository's Production Blueprint nevertheless
+selects `SOCIAL_PUBLISHER=postpeer`; treat that mismatch as a configuration risk,
+not evidence that the deployed environment is ready. This change does not alter
+the Production Blueprint.
 
 ## Authentication
 
@@ -159,6 +162,39 @@ Response:
   "service": "postdee-api"
 }
 ```
+
+### `GET /publishing/readiness`
+
+Authenticated, side-effect-free configuration gate used before a client starts
+new social-post media work.
+
+When the API process is accepting new posts:
+
+```json
+{
+  "status": "ok",
+  "acceptingPosts": true
+}
+```
+
+This `200` response means only that `SOCIAL_PUBLISHER` is not `disabled` for
+this API process. It does not call or verify PostPeer, R2/S3, the publish queue,
+a separate BullMQ worker, or the authenticated user's platform connections. It
+must not be used as provider-level or launch-readiness evidence.
+
+When `SOCIAL_PUBLISHER=disabled`, the response is:
+
+```json
+{
+  "status": "error",
+  "code": "SOCIAL_PUBLISHING_UNAVAILABLE",
+  "message": "Social publishing is temporarily unavailable. Please try again later."
+}
+```
+
+The status is `503`. Current mobile clients call this route before watermarking
+or `POST /uploads`, but `POST /posts` and `PATCH /posts/:id` repeat the same
+authoritative check to close the race between preflight and mutation.
 
 ### `GET /auth/me`
 
@@ -380,6 +416,9 @@ Request:
 
 Rules:
 
+- When `SOCIAL_PUBLISHER=disabled`, the route returns `503` with
+  `SOCIAL_PUBLISHING_UNAVAILABLE` before managed-upload readiness checks,
+  subscription/quota reads, user/post persistence, or queue enqueue.
 - `caption`, `videoS3Key`, and at least one valid platform are required.
 - `videoS3Key` must be an upload key owned by the authenticated user, using the `uploads/<user-id>/<upload-id>/<file>` shape returned by `POST /uploads`.
 - `coverImageS3Key` is optional. When present, it must be an owner-scoped
@@ -422,6 +461,10 @@ Worker behavior:
 - If the publish queue is unavailable while creating or rescheduling a post,
   the API returns `503` with `PUBLISH_QUEUE_UNAVAILABLE` and keeps the post
   store from advancing ahead of the queue.
+- The mobile readiness preflight normally prevents a new upload while social
+  publishing is disabled. An old client or a configuration race can still have
+  uploaded media before this route returns `503`; the route does not delete that
+  pre-existing object, so the temporary-media cleanup policy must remove it.
 
 Local-only request override:
 
@@ -491,12 +534,16 @@ Post limit reached:
 Reschedules an authenticated user's queued post. Body:
 `{ "scheduledAt": "<ISO-8601 date>" }`. The route returns the updated `post`,
 returns `404` for a missing/non-queued user-owned post, and returns `503` when
-the publish queue cannot be rescheduled.
+the publish queue cannot be rescheduled. When social publishing is disabled it
+returns `503 SOCIAL_PUBLISHING_UNAVAILABLE` before reading or changing the post
+or queue schedule.
 
 ### `DELETE /posts/:id`
 
 Deletes an authenticated user's scheduled/queued post and removes its publish
 job. Returns `{ "status": "ok" }` or `404` when no user-owned post is found.
+This cancellation route remains available while social publishing is disabled,
+so queued or scheduled records can be removed safely.
 
 ## Devices And Social Connections
 
@@ -1883,7 +1930,7 @@ PostgreSQL.
 | `CAPTION_USAGE_STORE` | `memory`, `prisma` | Real-clip AI caption monthly usage persistence |
 | `AI_EDIT_USAGE_STORE` | `memory`, `prisma` | AI editing monthly minute usage persistence |
 | `PUBLISH_QUEUE` | `memory`, `bullmq` | Publish queue adapter; `bullmq` requires `POST_STORE=prisma` and `DATABASE_URL` |
-| `SOCIAL_PUBLISHER` | `mock`, `disabled`, `postpeer` | Local fake success, explicit fail-closed staging/maintenance mode, or real PostPeer publishing |
+| `SOCIAL_PUBLISHER` | `mock`, `disabled`, `postpeer` | Local fake success, explicit fail-closed staging/maintenance mode, or real PostPeer publishing. `disabled` makes readiness, post create, and post reschedule return `503 SOCIAL_PUBLISHING_UNAVAILABLE`; cancel remains available |
 | `POSTPEER_API_KEY` | `...` | PostPeer API key for real social publishing |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | Optional PostPeer API host override |
 | `POSTPEER_LEGACY_RECOVERY_FINGERPRINT` | 64 hex characters | Temporary one-user repair proof: `HMAC-SHA256(POSTPEER_API_KEY, "postdee-legacy-recovery:<firebase-user-id>")`; must be paired with the exact profile id and removed after refresh succeeds |

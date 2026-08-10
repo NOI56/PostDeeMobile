@@ -17,6 +17,18 @@
 > for Facebook Page Video, not Reels. Real connected-account E2E is still
 > pending.
 
+> **Current-state safety addendum (2026-08-10):** Authenticated
+> `GET /publishing/readiness` is a configuration-only preflight. Current Mobile calls
+> it before watermark/upload; `POST /posts` and `PATCH /posts/:id` repeat the
+> authoritative gate and return `503 SOCIAL_PUBLISHING_UNAVAILABLE` while
+> `SOCIAL_PUBLISHER=disabled`. `DELETE /posts/:id` remains available. A success
+> response does not probe PostPeer, storage, queue/worker, or account state. Old
+> clients or a config race can upload an object before the authoritative `503`,
+> and old queued/scheduled records must be inspected and canceled before a
+> controlled enablement. Staging remains disabled and real E2E is still pending.
+> The Production Blueprint's existing `postpeer` selection is a separate
+> unresolved launch risk and is not changed by this follow-up.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add user-owned PostPeer social account connections so each authenticated PostDee user publishes to their own connected social accounts.

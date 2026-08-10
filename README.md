@@ -181,6 +181,21 @@ Returns service status.
 }
 ```
 
+#### `GET /publishing/readiness`
+
+Authenticated configuration preflight for new social posts. A `200` response
+with `{ "status": "ok", "acceptingPosts": true }` means only that this API
+process is not configured with `SOCIAL_PUBLISHER=disabled`. It does not probe
+PostPeer, object storage, the publish queue, or the signed-in user's connected
+accounts, and it is not provider-level readiness evidence.
+
+When publishing is disabled, the route returns `503` with
+`SOCIAL_PUBLISHING_UNAVAILABLE`. Current mobile clients call this endpoint
+before watermarking or uploading media and show a Thai unavailable message.
+`POST /posts` and `PATCH /posts/:id` repeat the same authoritative gate in case
+the configuration changes after the preflight; `DELETE /posts/:id` remains
+available so an existing queued post can still be canceled.
+
 #### `GET /auth/me`
 
 Returns the current scaffold auth user. With `AUTH_PROVIDER=mock`, the API uses `MOCK_USER_ID` by default and supports development headers such as `x-postdee-user-id`, `x-postdee-email`, `x-postdee-display-name`, `x-postdee-phone-verified`, and `x-postdee-phone-number`.
@@ -346,6 +361,13 @@ real-time posting only after phone verification and is limited to 3 post units
 per month. Starter is limited to 120 post units per month, and Pro is limited
 to 250 post units per month. A post unit is counted per selected platform, so
 one video posted to four platforms uses four units.
+
+When `SOCIAL_PUBLISHER=disabled`, `POST /posts` returns
+`503 SOCIAL_PUBLISHING_UNAVAILABLE` before managed-upload readiness checks,
+subscription/quota reads, post persistence, or queue enqueue. The mobile
+preflight normally prevents the media upload too, but an old client or a race
+between preflight and submit can already have uploaded an object; that orphan
+must be handled by the normal temporary-media cleanup policy.
 
 #### `GET /queue/jobs`
 
@@ -936,7 +958,9 @@ Queue/storage scaffold switches:
   confirmed are not submitted again; the user must check the destination first.
 - `SOCIAL_PUBLISHER=mock` returns fake success only in local development;
   `SOCIAL_PUBLISHER=disabled` fails closed without contacting a platform and is
-  the initial Staging setting; `SOCIAL_PUBLISHER=postpeer` calls PostPeer and
+  the initial Staging setting. It also makes publishing readiness, post create,
+  and post reschedule fail with `503 SOCIAL_PUBLISHING_UNAVAILABLE`, while
+  cancel remains available. `SOCIAL_PUBLISHER=postpeer` calls PostPeer and
   requires `POSTPEER_API_KEY` plus `VIDEO_STORAGE=r2|s3`.
 - `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`, `POSTPEER_INSTAGRAM_ACCOUNT_ID`, and `POSTPEER_FACEBOOK_ACCOUNT_ID` are non-production/operator smoke-test integration ids only. Production rejects them and must publish through per-user social connections.
 - New per-user PostPeer profiles use versioned 128-bit HMAC pseudonyms. A lost
@@ -999,7 +1023,12 @@ name rather than the Firebase UID/email. `GET /posts` now returns user-scoped
 `private` and TikTok `SELF_ONLY` (`draft: false`) until explicit privacy choices
 are added. Production publishing still requires a connected-account E2E test
 and never uses shared `POSTPEER_*_ACCOUNT_ID` values. The internal
-`FACEBOOK_REELS` value currently targets Facebook Page Video, not Reels.
+`FACEBOOK_REELS` value currently targets Facebook Page Video, not Reels. The
+repository's Production Blueprint currently selects
+`SOCIAL_PUBLISHER=postpeer` even though that provider-level E2E is still
+pending. Treat this as an unresolved configuration risk, not proof that the
+deployed Production environment or a user connection is ready; this safety
+change does not alter the Production Blueprint.
 Real-clip AI captioning/editing,
 Firebase device auth, RevenueCat Google Play purchases, R2 media flow, and
 renewal/refund/cancel handling still need their listed real-device/provider

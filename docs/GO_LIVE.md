@@ -25,7 +25,11 @@ Phone Auth, and social publishing still need current-candidate tests. Hidden
 Staging credentials must be confirmed in the Dashboard before those tests.
 Mock push and Firebase deletion remain off,
 and social publishing stays fail-closed `disabled` except during a controlled
-test account run.
+test account run. In this mode authenticated publishing readiness, post create,
+and post reschedule return `503 SOCIAL_PUBLISHING_UNAVAILABLE`; post cancel stays
+available. Current mobile clients preflight before watermark/upload, but this is
+only a configuration gate and is not proof that PostPeer, storage, the
+queue/worker, or an account connection is healthy.
 Complete `docs/STAGING.md` before deploying this release candidate to Production;
 never point Staging at the Production database, R2 bucket, Firebase project, or
 user-owned PostPeer connections.
@@ -37,7 +41,7 @@ user-owned PostPeer connections.
 | Database (Postgres/Prisma) | ⚙️ configured in Blueprints; current Live check required | `*_STORE=prisma` + Render-managed `DATABASE_URL` |
 | Scheduling worker | ⚙️ configured in-process; current Live check required | one instance with `PUBLISH_QUEUE=memory` |
 | Caption from keywords (Gemini) | ⚙️ repo-ready, Live secret/function check required | Render declares `CAPTION_PROVIDER=gemini` and `GEMINI_API_KEY` as a hidden value; confirm the key in each environment and run the current release candidate |
-| Social publishing (PostPeer) | blocked pending connected-account E2E | Per-user connect/refresh/disconnect, named pseudonymous profiles, async result polling, safe-only retries, and `GET /posts.platformResults` exist; configure the test key/accounts and run controlled publishing |
+| Social publishing (PostPeer) | safety gate repo-implemented; deployed Staging check and connected-account E2E pending | Staging remains `disabled`; readiness plus create/reschedule fail fast, cancel remains available, and Mobile checks before upload. This does not verify or enable PostPeer; configure disposable test accounts and run controlled publishing separately |
 | Video upload (Cloudflare R2) | ⚙️ ready | `VIDEO_STORAGE=r2` + R2 creds |
 | Auth (Firebase) | ⚙️ recorded Android Debug Staging Google pass; rerun current candidate; Production/iOS/Phone/physical-device tests remain | `AUTH_PROVIDER=firebase` + environment-specific project |
 | Account deletion | ⚙️ Production repo-ready; current Live/device verification required | Production commits `FIREBASE_AUTH_DELETE_ENABLED=true` and therefore requires `FIREBASE_SERVICE_ACCOUNT_JSON`; Staging keeps deletion false. Confirm the Production secret, then verify R2 prefix and Firebase UID deletion on the current candidate |
@@ -61,6 +65,19 @@ user-owned PostPeer connections.
 - `SOCIAL_PUBLISHER=postpeer`
 - `POSTPEER_API_KEY=...`
 - Optional: `POSTPEER_API_BASE_URL` (default `https://api.postpeer.dev`)
+- `GET /publishing/readiness` is an authenticated config preflight. Its `200`
+  response `{ "status": "ok", "acceptingPosts": true }` means only that the API
+  process is not set to `SOCIAL_PUBLISHER=disabled`; it does not probe PostPeer,
+  R2/S3, the queue/worker, or user connections.
+- `POST /posts` and `PATCH /posts/:id` enforce the same gate at the write
+  boundary and return `503 SOCIAL_PUBLISHING_UNAVAILABLE` before post/quota/queue
+  mutation. `DELETE /posts/:id` remains available to clear old work.
+- Old clients do not preflight, and configuration can change after a new client
+  preflights. An object uploaded before the authoritative `503` is not removed
+  by the post route; verify temporary-object cleanup/lifecycle behavior.
+- Before switching Staging to `postpeer`, inspect and cancel every old `QUEUED`
+  or scheduled record. The current single-instance in-process scheduler polls
+  Prisma for due posts, so old work can be submitted shortly after the switch.
 - Do not add shared `POSTPEER_*_ACCOUNT_ID` values to production. The per-user
   connect/refresh/disconnect flow is implemented and must be verified with a
   connected test account before production publishing is enabled.
@@ -84,6 +101,9 @@ user-owned PostPeer connections.
 - Controlled-first requests use YouTube visibility `private` and TikTok
   `SELF_ONLY` with `draft: false`. Add explicit user privacy controls before a
   public rollout.
+- Instagram and Facebook currently have no equivalent private/SELF_ONLY guard
+  in the provider payload. Assume a controlled test may become visible and use
+  only empty disposable accounts.
 - `FACEBOOK_REELS` is retained internally for compatibility, but PostPeer
   currently publishes Facebook Page Video, not Facebook Reels. Store copy and
   screenshots must use the real capability.
@@ -94,6 +114,13 @@ user-owned PostPeer connections.
 - Real connected-account publishing has not passed E2E yet. Use disposable
   test accounts and verify the final provider URL/status on every advertised
   capability before changing the status table above.
+
+Configuration risk: `render.yaml` currently commits
+`SOCIAL_PUBLISHER=postpeer` for Production while the provider-level E2E above is
+still pending. The repository cannot confirm the currently deployed Render
+value or secret. This publishing-safety change does not alter that Blueprint;
+resolve the Production fail-closed policy and verify the Dashboard before any
+public rollout. Do not treat `acceptingPosts: true` as launch approval.
 
 ## 3. Video upload — Cloudflare R2
 
@@ -387,8 +414,10 @@ the database.
    candidate and the Thai real-clip rubric; do not copy secrets into logs.
 2. **Play Console and RevenueCat real-store testing** — complete physical-device
    account verification, Internal Testing purchase/restore, and lifecycle events.
-3. **PostPeer controlled publishing** — connect disposable per-user accounts and
-   verify provider results before enabling social publishing.
+3. **PostPeer controlled publishing** — while still disabled, install only the
+   Staging key, connect/refresh disposable accounts, and clear old queued or
+   scheduled work. Enable briefly, verify readiness plus provider results, then
+   restore `disabled` and verify readiness returns `503` again.
 4. **Firebase production/device completion** — test Google, Apple, Phone Auth,
    FCM/APNs, and account deletion on supported physical devices.
 5. **R2 isolation and cleanup** — verify environment-specific buckets, temporary

@@ -14,6 +14,11 @@ import { registerPostRoutes } from './postRoutes.js';
 
 describe('post routes', () => {
   const allPlatforms = ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'];
+  const socialPublishingUnavailableResponse = {
+    status: 'error',
+    code: 'SOCIAL_PUBLISHING_UNAVAILABLE',
+    message: 'Social publishing is temporarily unavailable. Please try again later.'
+  };
   const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
     `uploads/${encodeURIComponent(userId)}/${uploadId}/${fileName}`;
 
@@ -65,6 +70,149 @@ describe('post routes', () => {
     expect(listResponse.body.posts).toEqual([
       { ...createResponse.body.post, platformResults: [] }
     ]);
+  });
+
+  it('reports whether the API accepts new social publishing requests', async () => {
+    const app = createApp();
+    const disabledApp = createApp({
+      config: readServerConfig({ SOCIAL_PUBLISHER: 'disabled' })
+    });
+
+    await request(app).get('/publishing/readiness').expect(200).expect({
+      status: 'ok',
+      acceptingPosts: true
+    });
+    await request(disabledApp)
+      .get('/publishing/readiness')
+      .expect(503)
+      .expect(socialPublishingUnavailableResponse);
+  });
+
+  it('fails before upload-readiness, persistence, quota, or queue side effects when social publishing is disabled', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const inMemoryPublishQueue = createInMemoryPublishQueue();
+    const publishQueue = {
+      ...inMemoryPublishQueue,
+      enqueue: vi.fn(inMemoryPublishQueue.enqueue),
+      reschedule: vi.fn(inMemoryPublishQueue.reschedule)
+    };
+    const userStore = createUserStore();
+    const subscriptionStore = createSubscriptionStore();
+    const ensureUser = vi.spyOn(userStore, 'ensure');
+    const readSubscriptionPlan = vi.spyOn(subscriptionStore, 'getPlan');
+    const reschedulePost = vi.spyOn(postStore, 'reschedule');
+    const assertUploadReady = vi.fn(async () => undefined);
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: 'seller-publishing-disabled',
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+    app.use(express.json());
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      userStore,
+      subscriptionStore,
+      createInMemoryPlatformPublishStore(),
+      {
+        socialPublishingEnabled: false,
+        assertUploadReady
+      }
+    );
+    app.use(router);
+
+    await request(app)
+      .get('/publishing/readiness')
+      .expect(503)
+      .expect(socialPublishingUnavailableResponse);
+
+    await request(app)
+      .post('/posts')
+      .send({
+        caption: 'Must stop before side effects',
+        videoS3Key: ownedUploadKey(
+          'seller-publishing-disabled',
+          'publishing-disabled.mp4'
+        ),
+        platforms: ['TIKTOK']
+      })
+      .expect(503)
+      .expect(socialPublishingUnavailableResponse);
+
+    await request(app)
+      .patch('/posts/not-created')
+      .send({ scheduledAt: '2026-06-03T10:00:00.000Z' })
+      .expect(503)
+      .expect(socialPublishingUnavailableResponse);
+
+    expect(assertUploadReady).not.toHaveBeenCalled();
+    expect(readSubscriptionPlan).not.toHaveBeenCalled();
+    expect(ensureUser).not.toHaveBeenCalled();
+    expect(publishQueue.enqueue).not.toHaveBeenCalled();
+    expect(publishQueue.reschedule).not.toHaveBeenCalled();
+    expect(reschedulePost).not.toHaveBeenCalled();
+    expect(await postStore.list({ userId: 'seller-publishing-disabled' })).toEqual([]);
+    expect(await publishQueue.list({ userId: 'seller-publishing-disabled' })).toEqual([]);
+  });
+
+  it('still allows a queued post to be canceled when social publishing is disabled', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const inMemoryPublishQueue = createInMemoryPublishQueue();
+    const publishQueue = {
+      ...inMemoryPublishQueue,
+      remove: vi.fn(inMemoryPublishQueue.remove)
+    };
+    const post = await postStore.create({
+      userId: 'seller-cancel-disabled',
+      caption: 'Cancel while publishing is disabled',
+      videoS3Key: ownedUploadKey('seller-cancel-disabled', 'cancel.mp4'),
+      platforms: ['TIKTOK'],
+      scheduledAt: '2026-06-03T10:00:00.000Z'
+    });
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: 'seller-cancel-disabled',
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
+      { socialPublishingEnabled: false }
+    );
+    app.use(router);
+
+    await request(app).delete(`/posts/${post.id}`).expect(200).expect({ status: 'ok' });
+
+    expect(await postStore.list({ userId: 'seller-cancel-disabled' })).toEqual([]);
+    expect(publishQueue.remove).toHaveBeenCalledWith(post.id);
   });
 
   it('accepts schedules up to 30 days and rejects anything later', async () => {

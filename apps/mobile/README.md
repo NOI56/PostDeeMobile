@@ -133,10 +133,27 @@ device, the matching App Store setup, and renewal/cancel/refund verification.
 ## Publishing Status
 
 The uploader loads the authenticated user's social connections and only allows
-connected, supported destinations to be selected. A successful `POST /posts`
-response means the post was accepted as `QUEUED` (or scheduled); the mobile UI
-must describe that state as queued, not as proof that every platform has already
-published it. Final platform success or failure comes from the publish worker.
+connected, supported destinations to be selected. After the user confirms, the
+current client calls authenticated `GET /publishing/readiness` before
+watermarking or uploading. A `503 SOCIAL_PUBLISHING_UNAVAILABLE` stops the flow
+with title `ระบบรับงานโพสต์ยังไม่เปิดใช้งานในขณะนี้` and body
+`วิดีโอยังไม่ได้อัปโหลด กรุณาลองใหม่ภายหลัง`; no new upload is started by that
+client path.
+
+The readiness response is only a server-configuration gate. Even
+`acceptingPosts: true` does not verify PostPeer, R2/S3, the queue/worker, or the
+selected user's connection. `POST /posts` is still the authoritative check and
+can return the same `503` if configuration changes after preflight. Older app
+versions do not run the preflight, and a race can leave media that was uploaded
+before the `503`; the current client then says that no post was created and the
+video may be stored temporarily. Normal temporary-media cleanup must cover that
+object. Reschedule/publish-now surfaces a separate Thai unavailable message,
+while cancel remains usable.
+
+A successful `POST /posts` response means the post was accepted as `QUEUED` (or
+scheduled); the mobile UI must describe that state as queued, not as proof that
+every platform has already published it. Final platform success or failure
+comes from the publish worker.
 The app requests `multipart-v1` from `POST /uploads`. When the server runs in
 `dual` or `multipart` mode, it uploads exact file ranges to just-in-time part
 URLs, retries the same failed part up to three times, retains each ETag, and

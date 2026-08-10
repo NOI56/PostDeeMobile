@@ -117,6 +117,7 @@ void main() {
                 ),
               ],
             ),
+            checkPublishingReadiness: () async {},
             pickVideo: () async => pickedVideo,
             openCoverEditor: (context, request) async => CoverEditorResult(
               localImagePath: coverFile.path,

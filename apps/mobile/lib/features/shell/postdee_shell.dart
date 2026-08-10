@@ -48,6 +48,7 @@ class PostDeeShell extends StatefulWidget {
     this.createUpload,
     this.uploadVideoFile,
     this.createPost,
+    this.checkPublishingReadiness,
     this.loadSocialConnections,
     this.deleteAccount,
     this.checkAccountDeletionReady,
@@ -65,6 +66,7 @@ class PostDeeShell extends StatefulWidget {
   final UploaderUploadCreator? createUpload;
   final UploaderVideoUploader? uploadVideoFile;
   final UploaderPostCreator? createPost;
+  final UploaderPublishingReadinessChecker? checkPublishingReadiness;
   final UploaderConnectionsLoader? loadSocialConnections;
   final AccountDeleter? deleteAccount;
   final AccountDeletionReadinessChecker? checkAccountDeletionReady;
@@ -156,6 +158,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
           createUpload: widget.createUpload,
           uploadVideoFile: widget.uploadVideoFile,
           createPost: widget.createPost,
+          checkPublishingReadiness: widget.checkPublishingReadiness,
           loadSocialConnections: widget.loadSocialConnections,
           onScheduledPostCreated: _handleScheduledPostCreated,
           onPublishFinished: () => _selectTab(0),

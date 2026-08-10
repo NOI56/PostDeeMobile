@@ -8,8 +8,13 @@ import '../../core/theme/app_theme.dart';
 import '../platforms/connections_screen.dart' show connectablePlatforms;
 import '../platforms/social_platform.dart';
 import '../shared/postdee_notice.dart';
+import '../shared/publishing_availability.dart';
 
 typedef ScheduledPostsLoader = Future<List<ScheduledPostResult>> Function();
+typedef ScheduledPostRescheduler = Future<ScheduledPostResult> Function(
+  String postId,
+  DateTime scheduledAt,
+);
 typedef CalendarTimeConverter = DateTime Function(DateTime value);
 
 class CalendarScreen extends StatefulWidget {
@@ -18,6 +23,7 @@ class CalendarScreen extends StatefulWidget {
     this.refreshToken = 0,
     this.isActive = true,
     this.loadScheduledPosts,
+    this.reschedulePost,
     this.onAddPost,
     this.onOpenPostDetail,
     this.toLocalTime,
@@ -26,6 +32,7 @@ class CalendarScreen extends StatefulWidget {
   final int refreshToken;
   final bool isActive;
   final ScheduledPostsLoader? loadScheduledPosts;
+  final ScheduledPostRescheduler? reschedulePost;
   final CalendarTimeConverter? toLocalTime;
 
   /// Jump to the upload flow to schedule a new post.
@@ -309,7 +316,21 @@ class _CalendarScreenState extends State<CalendarScreen>
         DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
     try {
-      await _apiClient.reschedulePost(post.id, next);
+      final reschedulePost = widget.reschedulePost ?? _apiClient.reschedulePost;
+      await reschedulePost(post.id, next);
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isPublishingUnavailable(error)
+                  ? publishingUnavailableActionMessage
+                  : 'เลื่อนเวลาไม่สำเร็จ ลองใหม่อีกครั้ง',
+            ),
+          ),
+        );
+      }
+      return;
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

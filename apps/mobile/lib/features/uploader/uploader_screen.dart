@@ -16,6 +16,7 @@ import '../shared/growth_tool_settings_store.dart';
 import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/postdee_status_sheet.dart';
+import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
@@ -39,6 +40,7 @@ typedef UploaderVideoUploader = Future<void> Function(
 );
 typedef UploaderPostCreator = Future<QueuedPostResult> Function(
     CreatePostRequest request);
+typedef UploaderPublishingReadinessChecker = Future<void> Function();
 typedef UploaderScheduledPostCreated = void Function(QueuedPostResult post);
 typedef UploaderConnectionsLoader = Future<List<SocialConnectionResult>>
     Function();
@@ -62,6 +64,7 @@ class UploaderScreen extends StatefulWidget {
     this.createUpload,
     this.uploadVideoFile,
     this.createPost,
+    this.checkPublishingReadiness,
     this.loadSocialConnections,
     this.onScheduledPostCreated,
     this.onPublishFinished,
@@ -89,6 +92,7 @@ class UploaderScreen extends StatefulWidget {
   final UploaderUploadCreator? createUpload;
   final UploaderVideoUploader? uploadVideoFile;
   final UploaderPostCreator? createPost;
+  final UploaderPublishingReadinessChecker? checkPublishingReadiness;
   final UploaderConnectionsLoader? loadSocialConnections;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
   final VoidCallback? onPublishFinished;
@@ -1093,7 +1097,13 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _successMessage = null;
     });
 
+    var didUploadVideo = false;
+
     try {
+      final checkPublishingReadiness = widget.checkPublishingReadiness ??
+          _apiClient.checkPublishingReadiness;
+      await checkPublishingReadiness();
+
       final subscription = await _loadSubscription();
 
       if (scheduledAt != null) {
@@ -1174,6 +1184,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
           }
         },
       );
+      didUploadVideo = true;
       String? coverImageS3Key;
       var selectedCover = _coverResult;
       final shouldUploadCoverImage = selectedCover != null &&
@@ -1286,8 +1297,13 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
       setState(() {
         _errorMessage = null;
+        _successMessage = null;
       });
-      _setUploadStatus(error.message);
+      if (isPublishingUnavailable(error)) {
+        _setPublishingUnavailableStatus(videoWasUploaded: didUploadVideo);
+      } else {
+        _setUploadStatus(error.message);
+      }
       return null;
     } on SocketException {
       unawaited(_analytics.logPublishFailed(reason: 'network'));
@@ -1297,6 +1313,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
       setState(() {
         _errorMessage = null;
+        _successMessage = null;
       });
       _setUploadStatus('เชื่อมต่อ PostDee API ไม่ได้');
       return null;
@@ -1308,6 +1325,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
       setState(() {
         _errorMessage = null;
+        _successMessage = null;
       });
       _setUploadStatus('เกิดข้อผิดพลาดระหว่างสร้างโพสต์');
       return null;
@@ -1318,6 +1336,23 @@ class _UploaderScreenState extends State<UploaderScreen> {
         });
       }
     }
+  }
+
+  void _setPublishingUnavailableStatus({required bool videoWasUploaded}) {
+    final body = videoWasUploaded
+        ? publishingUnavailableAfterUploadMessage
+        : publishingUnavailableBeforeUploadMessage;
+    _pendingInlineError = '$publishingUnavailableTitle $body';
+    _pendingStatusSheet = PostDeeStatusSheetData(
+      icon: Icons.cloud_off_rounded,
+      iconColor: const Color(0xFFF59E0B),
+      iconTint: const Color(0x24F59E0B),
+      title: publishingUnavailableTitle,
+      body: body,
+      primaryLabel: 'รับทราบ',
+      secondaryLabel: null,
+    );
+    _pickVideoAfterStatus = false;
   }
 
   void _setUploadStatus(String message) {

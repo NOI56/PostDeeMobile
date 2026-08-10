@@ -156,6 +156,7 @@ Backend stack:
 Main route groups:
 
 - `GET /health`
+- `GET /publishing/readiness`
 - `GET /auth/me`
 - `POST /uploads`
 - `POST /uploads/:uploadId/parts/:partNumber`
@@ -265,6 +266,12 @@ This keeps the schema usable for Apple App Store, Google Play, or other future b
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
 | Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; `FACEBOOK_REELS` currently targets Facebook Page Video; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
 
+The authenticated `GET /publishing/readiness` route is deliberately only a
+configuration gate: `acceptingPosts: true` means the API process is not using
+`SOCIAL_PUBLISHER=disabled`. It does not probe the provider, storage, queue,
+separate worker, or a user's connections. Post create and reschedule repeat the
+gate at their mutation boundaries; cancellation remains available.
+
 Firebase production account deletion additionally requires
 `FIREBASE_AUTH_DELETE_ENABLED=true` and `FIREBASE_SERVICE_ACCOUNT_JSON`. The API
 uses Firebase Admin token verification with revocation checks in this mode.
@@ -308,6 +315,13 @@ sequenceDiagram
     U->>M: Scrub to a frame and style Thai cover text
     M-->>M: Render a 1080x1920 JPEG
   end
+  U->>M: Confirm publish
+  M->>A: GET /publishing/readiness
+  break SOCIAL_PUBLISHER is disabled
+    A-->>M: 503 SOCIAL_PUBLISHING_UNAVAILABLE
+    M-->>U: Thai unavailable message; stop before upload
+  end
+  A-->>M: 200 acceptingPosts=true
   M->>A: POST /uploads (uploadProtocol: multipart-v1)
   alt Managed multipart in dual/multipart mode
     A->>S: Initiate multipart upload
@@ -329,7 +343,11 @@ sequenceDiagram
     M->>A: POST /uploads for JPEG/PNG cover
     M->>S: Upload rendered cover image
   end
-  M->>A: POST /posts
+  M->>A: POST /posts (authoritative config recheck)
+  break Publishing was disabled after preflight
+    A-->>M: 503 SOCIAL_PUBLISHING_UNAVAILABLE
+    Note over M,S: Uploaded media remains temporary and needs cleanup
+  end
   A->>Q: Enqueue publish job
   A-->>M: post + publishJob
   Q->>W: Run job immediately or at scheduled time
@@ -342,6 +360,19 @@ sequenceDiagram
 
 Rules:
 
+- Mobile checks `GET /publishing/readiness` after confirmation and before
+  watermarking or uploading. A disabled response is shown in Thai and stops the
+  client-side flow.
+- `acceptingPosts: true` is only a configuration signal. It does not prove that
+  PostPeer, R2/S3, the queue/worker, or every selected account is operational.
+- `POST /posts` and `PATCH /posts/:id` return
+  `503 SOCIAL_PUBLISHING_UNAVAILABLE` before upload-readiness, quota, post-store, or
+  queue mutations when publishing is disabled. `DELETE /posts/:id` remains
+  available so users/operators can cancel old queued or scheduled records.
+- Old clients do not run the preflight, and a configuration change can race a
+  new client after its preflight. Media uploaded before the authoritative `503`
+  is not deleted by the post route and must be covered by temporary-object
+  cleanup.
 - Basic users can create real-time posts only.
 - Basic users must verify a phone number before using the free quota.
 - Basic users are limited to 3 post units per month after phone verification.
@@ -992,6 +1023,11 @@ cd apps/mobile
   use YouTube `private` and TikTok `SELF_ONLY` direct posting. Shared
   `POSTPEER_*_ACCOUNT_ID` values are rejected in production. The internal
   `FACEBOOK_REELS` key currently means Facebook Page Video, not Reels.
+- `render.yaml` currently selects `SOCIAL_PUBLISHER=postpeer` while that
+  connected-account E2E remains pending. Repository configuration cannot prove
+  the live Render value or provider health; resolve this fail-closed policy
+  mismatch before launch. The publishing-readiness change does not modify the
+  Production Blueprint.
 - New PostPeer profile names carry a versioned 128-bit HMAC suffix. Legacy
   40-bit profile recovery is disabled by default and can target only one
   operator-approved Firebase user/profile pair through a full HMAC fingerprint

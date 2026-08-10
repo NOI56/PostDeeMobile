@@ -72,6 +72,8 @@ Future<List<SocialConnectionResult>> _loadConnectedSocialConnections() async =>
       SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
     ];
 
+Future<void> _publishingReady() async {}
+
 Future<void> _pickVideoFromPreview(WidgetTester tester) async {
   final pickVideoButton =
       find.byKey(const ValueKey('uploader-video-preview-picker'));
@@ -126,8 +128,7 @@ void main() {
     );
     expect(
       isPostScheduleWithinLimit(
-        scheduledAt:
-            now.add(const Duration(days: 30, milliseconds: 1)),
+        scheduledAt: now.add(const Duration(days: 30, milliseconds: 1)),
         now: now,
       ),
       isFalse,
@@ -685,6 +686,7 @@ void main() {
   testWidgets(
       'generates an AI caption from the selected clip and inserts hashtags',
       (tester) async {
+    var readinessChecks = 0;
     GenerateRealClipCaptionRequest? requestedRequest;
     CreateUploadRequest? createdUploadRequest;
     String? uploadedFilePath;
@@ -696,6 +698,9 @@ void main() {
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
+            checkPublishingReadiness: () async {
+              readinessChecks += 1;
+            },
             pickVideo: () async => pickedVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'starter-user',
@@ -767,6 +772,7 @@ void main() {
     expect(captionField.controller!.text, contains('Generated SEO caption'));
     expect(captionField.controller!.text, contains('#viral'));
     expect(captionField.controller!.text, contains('#postdee'));
+    expect(readinessChecks, 0);
   });
 
   testWidgets('Pro AI captions extract and upload frames for the model to see',
@@ -1074,6 +1080,7 @@ void main() {
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
+            checkPublishingReadiness: _publishingReady,
             pickVideo: () async =>
                 _createPickedVideoFixture('basic-scheduled.mp4'),
             loadSubscription: () async {
@@ -1147,6 +1154,7 @@ void main() {
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
+            checkPublishingReadiness: _publishingReady,
             pickVideo: () async =>
                 _createPickedVideoFixture('quick-scheduled.mp4'),
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1243,6 +1251,7 @@ void main() {
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
+            checkPublishingReadiness: _publishingReady,
             pickVideo: () async =>
                 _createPickedVideoFixture('starter-scheduled.mp4'),
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1381,6 +1390,7 @@ void main() {
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
+            checkPublishingReadiness: _publishingReady,
             analytics: analytics,
             pickVideo: () async => pickedVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1529,6 +1539,7 @@ void main() {
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
+            checkPublishingReadiness: _publishingReady,
             pickVideo: () async => _createPickedVideoFixture('phone-basic.mp4'),
             loadSubscription: () async {
               subscriptionChecks += 1;
@@ -1582,6 +1593,7 @@ void main() {
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
+            checkPublishingReadiness: _publishingReady,
             pickVideo: () async => _createPickedVideoFixture('plan-error.mp4'),
             loadSubscription: () async {
               throw const SocketException('Connection refused');
@@ -1609,6 +1621,163 @@ void main() {
 
     expect(find.text('เชื่อมต่อ PostDee API ไม่ได้'), findsOneWidget);
     expect(find.textContaining('SocketException'), findsNothing);
+  });
+
+  testWidgets(
+      'blocks unavailable publishing before watermark upload and queue creation',
+      (tester) async {
+    var readinessChecks = 0;
+    var subscriptionChecks = 0;
+    var watermarkCalls = 0;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
+    var createPostCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () async =>
+                _createPickedVideoFixture('publisher-disabled.mp4'),
+            checkPublishingReadiness: () async {
+              readinessChecks += 1;
+              throw const ApiException(
+                'Social publishing is temporarily unavailable. Please try again later.',
+                statusCode: HttpStatus.serviceUnavailable,
+                code: socialPublishingUnavailableCode,
+              );
+            },
+            loadSubscription: () async {
+              subscriptionChecks += 1;
+              return const SubscriptionStatusResult(
+                userId: 'seller-pro',
+                plan: 'PRO',
+                status: 'ACTIVE',
+                phoneVerified: true,
+                requiresPhoneVerification: false,
+                canUseFreePostQuota: false,
+                canSchedule: true,
+                canUseAiCaptions: true,
+                canUseAnalytics: true,
+              );
+            },
+            watermarkVideo: (request) async {
+              watermarkCalls += 1;
+              throw StateError('Watermark must not run');
+            },
+            createUpload: (_) async {
+              createUploadCalls += 1;
+              throw StateError('Upload must not be created');
+            },
+            uploadVideoFile: (_, __) async {
+              uploadCalls += 1;
+            },
+            createPost: (_) async {
+              createPostCalls += 1;
+              throw StateError('Post must not be created');
+            },
+          ),
+        ),
+      ),
+    );
+
+    await _pickVideoFromPreview(tester);
+    await _enterUploadCaption(tester);
+    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await _confirmPublishReview(tester);
+
+    expect(readinessChecks, 1);
+    expect(subscriptionChecks, 0);
+    expect(watermarkCalls, 0);
+    expect(createUploadCalls, 0);
+    expect(uploadCalls, 0);
+    expect(createPostCalls, 0);
+    expect(
+      find.text('ระบบรับงานโพสต์ยังไม่เปิดใช้งานในขณะนี้'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('วิดีโอยังไม่ได้อัปโหลด กรุณาลองใหม่ภายหลัง'),
+      findsOneWidget,
+    );
+    expect(find.text('ส่งเข้าคิวแล้ว'), findsNothing);
+  });
+
+  testWidgets(
+      'maps the post fail-fast race without showing a stale queued success',
+      (tester) async {
+    var readinessChecks = 0;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
+    var createPostCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () async =>
+                _createPickedVideoFixture('publisher-stopped-later.mp4'),
+            checkPublishingReadiness: () async {
+              readinessChecks += 1;
+            },
+            loadSubscription: () async => const SubscriptionStatusResult(
+              userId: 'seller-pro',
+              plan: 'PRO',
+              status: 'ACTIVE',
+              phoneVerified: true,
+              requiresPhoneVerification: false,
+              canUseFreePostQuota: false,
+              canSchedule: true,
+              canUseAiCaptions: true,
+              canUseAnalytics: true,
+            ),
+            createUpload: (_) async {
+              createUploadCalls += 1;
+              return const UploadResult(
+                id: 'upload-before-stop',
+                videoS3Key: 'uploads/seller/upload-before-stop/clip.mp4',
+                storageProvider: 'mock',
+              );
+            },
+            uploadVideoFile: (_, __) async {
+              uploadCalls += 1;
+            },
+            createPost: (_) async {
+              createPostCalls += 1;
+              throw const ApiException(
+                'Social publishing is temporarily unavailable. Please try again later.',
+                statusCode: HttpStatus.serviceUnavailable,
+                code: socialPublishingUnavailableCode,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await _pickVideoFromPreview(tester);
+    await _enterUploadCaption(tester);
+    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await _confirmPublishReview(tester);
+
+    expect(readinessChecks, 1);
+    expect(createUploadCalls, 1);
+    expect(uploadCalls, 1);
+    expect(createPostCalls, 1);
+    expect(
+      find.text('ระบบรับงานโพสต์ยังไม่เปิดใช้งานในขณะนี้'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'ยังไม่ได้สร้างโพสต์ และไฟล์วิดีโออาจถูกอัปโหลดไว้ชั่วคราว กรุณาลองใหม่ภายหลัง',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('ส่งเข้าคิวแล้ว'), findsNothing);
+    expect(find.textContaining('จัดคิวโพสต์'), findsNothing);
   });
 
   testWidgets('blocks non 9:16 video dimensions before creating a post',
@@ -1704,6 +1873,7 @@ void main() {
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
+            checkPublishingReadiness: _publishingReady,
             initialVideoPath: videoFile.path,
             initialVideoName: 'edited.mp4',
             initialVideoSizeBytes: 2048,

@@ -681,6 +681,7 @@ void main() {
             storageProvider: 'mock',
           ),
           uploadVideoFile: (_, __) async {},
+          checkPublishingReadiness: () async {},
           createPost: (request) async {
             createdPostRequest = request;
             scheduledPosts = [

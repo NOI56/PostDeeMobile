@@ -78,6 +78,7 @@ void main() {
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
+            checkPublishingReadiness: () async {},
             growthToolSettingsStore: _EnabledWatermarkSettingsStore(
               onLoad: (toolId) => loadedToolId = toolId,
             ),

@@ -24,6 +24,9 @@ PostSummaryResult _post({
 }
 
 class _FakePostApiClient extends PostDeeApiClient {
+  _FakePostApiClient({this.rescheduleError});
+
+  final ApiException? rescheduleError;
   final List<String> cancelledPostIds = [];
   final List<(String, DateTime)> rescheduled = [];
 
@@ -38,6 +41,10 @@ class _FakePostApiClient extends PostDeeApiClient {
     DateTime scheduledAt,
   ) async {
     rescheduled.add((postId, scheduledAt));
+    final error = rescheduleError;
+    if (error != null) {
+      throw error;
+    }
     return ScheduledPostResult(
       id: postId,
       caption: 'โปรโมตครีมกันแดดตัวใหม่',
@@ -117,6 +124,38 @@ void main() {
     // Popped back with a "changed" result so the caller reloads its list.
     expect(popResult, isTrue);
     expect(find.text('open'), findsOneWidget);
+  });
+
+  testWidgets('publish now explains when publishing is disabled',
+      (tester) async {
+    final apiClient = _FakePostApiClient(
+      rescheduleError: const ApiException(
+        'Social publishing is temporarily unavailable. Please try again later.',
+        statusCode: 503,
+        code: socialPublishingUnavailableCode,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PostDetailScreen(
+          post: _post(scheduledAt: DateTime(2026, 7, 10, 18, 30)),
+          apiClient: apiClient,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('post-detail-publish-now')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('โพสต์เลย').last);
+    await tester.pumpAndSettle();
+
+    expect(apiClient.rescheduled, hasLength(1));
+    expect(
+      find.text('ระบบรับงานโพสต์ยังไม่เปิดใช้งาน กรุณาลองใหม่ภายหลัง'),
+      findsOneWidget,
+    );
+    expect(find.text('โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง'), findsNothing);
   });
 
   testWidgets('published post offers analytics instead of publish actions',

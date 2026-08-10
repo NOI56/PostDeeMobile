@@ -68,6 +68,82 @@ void main() {
     expect(health.isOk, isTrue);
   });
 
+  test('checkPublishingReadiness accepts a ready publishing service', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final serverTask = () async {
+      final request = await server.first;
+
+      expect(request.method, 'GET');
+      expect(request.uri.path, '/publishing/readiness');
+      await request.drain<void>();
+      _writeJsonResponse(request.response, {
+        'status': 'ok',
+        'acceptingPosts': true,
+      });
+      await request.response.close();
+    }();
+
+    try {
+      final client = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+      );
+
+      await client.checkPublishingReadiness();
+      await serverTask;
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  test('checkPublishingReadiness preserves the unavailable error contract',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final serverTask = () async {
+      final request = await server.first;
+
+      expect(request.method, 'GET');
+      expect(request.uri.path, '/publishing/readiness');
+      await request.drain<void>();
+      _writeJsonResponse(
+        request.response,
+        {
+          'status': 'error',
+          'code': 'SOCIAL_PUBLISHING_UNAVAILABLE',
+          'message':
+              'Social publishing is temporarily unavailable. Please try again later.',
+        },
+        statusCode: HttpStatus.serviceUnavailable,
+      );
+      await request.response.close();
+    }();
+
+    try {
+      final client = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+      );
+
+      await expectLater(
+        client.checkPublishingReadiness(),
+        throwsA(
+          isA<ApiException>()
+              .having(
+                (error) => error.statusCode,
+                'statusCode',
+                HttpStatus.serviceUnavailable,
+              )
+              .having(
+                (error) => error.code,
+                'code',
+                socialPublishingUnavailableCode,
+              ),
+        ),
+      );
+      await serverTask;
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
   test('subtitle segment parser preserves validated word contract presence',
       () {
     final legacy = ClipTranscriptSegment.fromJson({

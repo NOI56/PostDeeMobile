@@ -4,6 +4,8 @@ import 'dart:io';
 import '../auth/auth_session.dart';
 import '../config/app_config.dart';
 
+const socialPublishingUnavailableCode = 'SOCIAL_PUBLISHING_UNAVAILABLE';
+
 class ApiException implements Exception {
   const ApiException(this.message, {this.statusCode, this.code});
 
@@ -2202,6 +2204,18 @@ class PostDeeApiClient {
     final response = await _getJson('/health');
 
     return ApiHealthResult.fromJson(response);
+  }
+
+  Future<void> checkPublishingReadiness() async {
+    final response = await _getJson('/publishing/readiness');
+
+    if (response['acceptingPosts'] != true) {
+      throw const ApiException(
+        'Social publishing is temporarily unavailable. Please try again later.',
+        statusCode: HttpStatus.serviceUnavailable,
+        code: socialPublishingUnavailableCode,
+      );
+    }
   }
 
   Future<UploadResult> createUpload(CreateUploadRequest request) async {

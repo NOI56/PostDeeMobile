@@ -189,6 +189,11 @@ process is not configured with `SOCIAL_PUBLISHER=disabled`. It does not probe
 PostPeer, object storage, the publish queue, or the signed-in user's connected
 accounts, and it is not provider-level readiness evidence.
 
+Both the accepting `200` response and disabled `503` response set
+`Cache-Control: private, no-store` so a previous readiness result is not stored
+for reuse. This is a defensive response contract; it does not establish that
+caching caused any earlier observation.
+
 When publishing is disabled, the route returns `503` with
 `SOCIAL_PUBLISHING_UNAVAILABLE`. Current mobile clients call this endpoint
 before watermarking or uploading media and show a Thai unavailable message.
@@ -969,6 +974,12 @@ Queue/storage scaffold switches:
   schedules are therefore included. A non-zero total or inspection error blocks startup
   without loading post/user/media details. Staging enables this guard; its
   default is `false`, and the Production Blueprint is unchanged.
+- API startup reads server configuration once and passes that same object to the
+  app and scheduler diagnostics. It logs only the non-secret social mode,
+  publisher name, and whether the empty-backlog guard is enforced. When that
+  guard is enforced, a guard-pass message is emitted only after scheduler
+  startup succeeds; these logs make a future deployment observable but do not
+  retroactively prove that an earlier deployment ran the guard.
 - `POSTPEER_TIKTOK_ACCOUNT_ID`, `POSTPEER_YOUTUBE_ACCOUNT_ID`, `POSTPEER_INSTAGRAM_ACCOUNT_ID`, and `POSTPEER_FACEBOOK_ACCOUNT_ID` are non-production/operator smoke-test integration ids only. Production rejects them and must publish through per-user social connections.
 - New per-user PostPeer profiles use versioned 128-bit HMAC pseudonyms. A lost
   mapping to one older 40-bit profile may be repaired temporarily with both

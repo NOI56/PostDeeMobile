@@ -131,6 +131,10 @@ Mobile เรียก readiness หลังยืนยันและก่�
 ของผู้ใช้. Client เก่าหรือการเปลี่ยน config หลัง preflight ยังอาจอัปโหลดไฟล์ก่อน
 `POST /posts` ตอบ `503`; object แบบนั้นต้องถูกล้างด้วยนโยบายไฟล์ชั่วคราว
 
+readiness ทั้งกรณี `200` และ `503` ส่ง `Cache-Control: private, no-store` เพื่อไม่ให้
+เก็บผลเดิมไว้ใช้ซ้ำ. ค่านี้เป็นมาตรการป้องกันเท่านั้น และไม่ใช่หลักฐานว่า cache คือ
+สาเหตุของผลทดสอบวันที่ 10 สิงหาคม
+
 เมื่อจะทดสอบ Social จริง ให้เพิ่ม `POSTPEER_API_KEY` ชุดทดสอบใน Dashboard ขณะที่
 publisher ยัง `disabled`, ใช้บัญชี disposable เชื่อม/refresh, ตรวจและยกเลิก post
 สถานะ `QUEUED`/ตั้งเวลาเดิมทั้งหมดก่อน แล้วจึงสลับเป็น
@@ -143,6 +147,17 @@ Staging Blueprint จึงตั้ง `SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG=tr
 scheduler และก่อนเปิดรับ HTTP traffic. ถ้าจำนวนรวมไม่เป็นศูนย์หรืออ่านฐานข้อมูลไม่ได้
 deploy ใหม่จะไม่เริ่ม โดยไม่อ่านหรือแสดง id, ผู้ใช้, caption หรือ media; Production
 Blueprint ไม่ถูกแก้
+
+candidate ถัดไปอ่าน config ครั้งเดียวแล้วส่ง object เดียวกันให้ app และขั้นตอนเริ่ม
+scheduler. ตอน startup ต้องเห็น log ที่ไม่มี secret ดังนี้:
+
+- `Social publishing startup: mode=<disabled|enabled>; publisher=<disabled|postpeer>; emptyBacklogGuard=<not-enforced|enforced>`
+- เมื่อเปิด PostPeer พร้อม guard ต้องเห็น `Social publishing activation guard passed: publish backlog is empty`
+  หลัง scheduler start สำเร็จเท่านั้น
+
+ห้ามตีความ deploy Live หรือ log scheduler/listener ทั่วไปเป็น guard pass. ก่อนกดโพสต์
+รอบใหม่ต้องเก็บ startup mode, publisher, guard enforcement, guard-pass log และ
+authenticated readiness `200` พร้อม header `private, no-store` จาก process เดียวกัน
 
 โค้ด Social ปัจจุบัน ensure ผู้ใช้ก่อนบันทึก profile, ส่งชื่อ profile แบบ
 pseudonymous ที่ PostPeer กำหนดให้มี, poll ผล `202 pending/publishing` ประมาณ 2 นาที
@@ -251,21 +266,36 @@ Staging Blueprint ติดตาม `main` และ deploy เมื่อ che
       internal testing และทดสอบ Google Play purchase/restore จริง ขั้นตอนเหล่านี้
       ยังติดการยืนยันสิทธิ์ Play Console ด้วยมือถือ Android จริง; Emulator ใช้
       ยืนยันไม่ได้ และ Test Store ไม่ถือเป็นหลักฐานของ flow นี้
-- [ ] Deploy release candidate ที่มี publishing safety gate แล้ว ขณะ
-      `SOCIAL_PUBLISHER=disabled` ต้องยืนยันว่า authenticated
-      `GET /publishing/readiness`, `POST /posts` และ `PATCH /posts/:id` ตอบ
-      `503 SOCIAL_PUBLISHING_UNAVAILABLE`, Mobile แสดงข้อความไทยก่อน watermark/upload,
-      ไม่มี post/quota/queue ใหม่ และ `DELETE /posts/:id` ยังยกเลิกคิวเดิมได้
+- [x] Deploy release candidate `fcccb89642478ea70b2c89ccc507351f108dcb9e` แล้ว
+      ยืนยันบน Pixel 8 ขณะ `SOCIAL_PUBLISHER=disabled` ว่า Mobile แสดงข้อความไทยจาก
+      authenticated readiness ก่อน watermark/upload และ post units คง `249/250`.
+      หลักฐานอยู่ที่ `docs/testing/results/2026-08-10-social-publishing-pixel8.md`
+- [ ] ทดสอบ deployed write boundary โดยตรงให้ครบว่า authenticated `POST /posts` และ
+      `PATCH /posts/:id` ตอบ `503 SOCIAL_PUBLISHING_UNAVAILABLE` โดยไม่มี post/quota/queue
+      ใหม่ และ `DELETE /posts/:id` ยังยกเลิกคิวเดิมได้. รอบ Pixel 8 ข้างต้นหยุดที่
+      readiness จึงยังไม่ได้เรียกสาม route นี้; automated tests ไม่แทน live evidence
 - [ ] ตรวจ R2 หลังทดสอบ client เก่าหรือจำลอง race; หากไฟล์ถูกอัปโหลดก่อน
       authoritative `503` ต้องยืนยันว่า cleanup/lifecycle ลบ object ชั่วคราวนั้น
-- [ ] ก่อนเปิด PostPeer ให้ตรวจและยกเลิก post `QUEUED`/ตั้งเวลาเดิมทั้งหมด และ
-      refresh เฉพาะบัญชี disposable ของ Staging ห้ามใช้บัญชีผู้ใช้หรือ Production
+- [ ] ทดสอบ activation guard บน Staging SHA เดียวกันพร้อมหลักฐานว่า runtime เห็น
+      `postpeer` และ empty-backlog guard ผ่านจริง. รอบ 10 สิงหาคมมีเพียง env-change
+      deploy ที่ขึ้น Live; log รุ่นนั้นแสดง scheduler/listener เหมือนกันทั้งโหมด
+      `disabled` และ `postpeer` ขณะที่ Mobile ยังได้ unavailable จึงยังยืนยันไม่ได้ว่า
+      atomic global count ของ `QUEUED`/`PUBLISHING` ถูกเรียกบน process นั้น. Deploy
+      candidate diagnostics ใหม่แล้วต้องเก็บ runtime-mode และ guard-pass log ตามด้านบน
+- [ ] ก่อนรอบถัดไปให้ยืนยันว่า connection เป็นบัญชี disposable ของ Staging และ refresh
+      สำเร็จ; ห้ามใช้บัญชีผู้ใช้หรือ Production. รอบนี้ไม่ได้พิสูจน์ account isolation
 - [ ] หลังสลับ `SOCIAL_PUBLISHER=postpeer` แบบตั้งใจแล้ว ให้ใช้บัญชี disposable
       เชื่อม/refresh และโพสต์แบบควบคุม: YouTube private, TikTok SELF_ONLY,
       Instagram Reels และ Facebook Page Video จากนั้นตรวจ provider URL,
       `GET /posts.platformResults`; `GET /publishing/readiness` ต้องตอบ
       `acceptingPosts: true` ระหว่างรอบนี้เท่านั้น จากนั้นสลับกลับ `disabled` และ
       ยืนยัน readiness `503` อีกครั้ง
+      รอบ 10 สิงหาคม 2026 มี env-change deploy ขึ้น Liveและกด YouTube-privateเพียงครั้งเดียว
+      แต่ Mobile ยังตอบ unavailable ก่อน upload, โควตาคง `249/250`, ไม่มี provider
+      URL/id หรือโพสต์ YouTube และไม่มี retry. เนื่องจากไม่มี runtime-mode/guard-pass log
+      ห้ามนับว่า PostPeer หรือ activation guard ถูกใช้งานจริง. Staging rollback เป็น
+      `disabled` แล้ว, deploy/health ผ่าน แต่ยังไม่ได้เก็บ authenticated readiness
+      หลัง rollback แยก
 - [ ] จำลอง async `202`/ผลไม่แน่นอนเพื่อยืนยันว่ารอ poll แบบ bounded, ไม่สร้าง id
       ปลอม และไม่ retry POST ซ้ำก่อนผู้ทดสอบตรวจปลายทาง
 - [ ] ตั้งเวลา, retry และสถานะล้มเหลวไม่ค้างผิดปกติ

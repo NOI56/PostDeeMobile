@@ -196,6 +196,15 @@ The status is `503`. Current mobile clients call this route before watermarking
 or `POST /uploads`, but `POST /posts` and `PATCH /posts/:id` repeat the same
 authoritative check to close the race between preflight and mutation.
 
+Both the accepting `200` response and disabled `503` response include:
+
+```http
+Cache-Control: private, no-store
+```
+
+This prevents readiness responses from being stored for reuse. It is defensive
+and does not identify caching as the cause of any earlier result.
+
 ### `GET /auth/me`
 
 Returns the current authenticated user.

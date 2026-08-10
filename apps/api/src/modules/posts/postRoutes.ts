@@ -140,6 +140,7 @@ export const registerPostRoutes = (
   // user's platform connection; POST /posts repeats the same check at the
   // write boundary.
   router.get('/publishing/readiness', authMiddleware, (_request, response) => {
+    response.setHeader('Cache-Control', 'private, no-store');
     const authUser = readAuthUser(response.locals);
 
     if (!authUser) {

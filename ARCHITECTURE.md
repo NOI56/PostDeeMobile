@@ -270,7 +270,10 @@ The authenticated `GET /publishing/readiness` route is deliberately only a
 configuration gate: `acceptingPosts: true` means the API process is not using
 `SOCIAL_PUBLISHER=disabled`. It does not probe the provider, storage, queue,
 separate worker, or a user's connections. Post create and reschedule repeat the
-gate at their mutation boundaries; cancellation remains available.
+gate at their mutation boundaries; cancellation remains available. Both its
+accepting `200` and disabled `503` responses use
+`Cache-Control: private, no-store`. This prevents storing either readiness result
+but does not prove that caching caused a previous mismatch.
 
 Staging also opts into `SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG=true`. When the
 single-process memory scheduler is paired with `SOCIAL_PUBLISHER=postpeer`, its
@@ -280,6 +283,15 @@ listener; future schedules are included. A non-zero total or query error fails
 closed with no post, owner, caption, or media data loaded or logged. The flag
 defaults to `false`, is rejected with BullMQ because it cannot guard a separate
 worker, and does not change the Production Blueprint.
+
+The API entry point parses `ServerConfig` once and passes the same object into
+`createApp` and the scheduler-start diagnostics, avoiding two independent
+environment reads during one process startup. Before the scheduler starts it
+logs only `mode`, `publisher`, and `emptyBacklogGuard`; no credential, post, user,
+caption, or media value is included. When the PostPeer empty-backlog guard is
+enforced, the explicit guard-pass log is written only after `scheduler.start()`
+resolves. A missing pass log is not success, and this instrumentation does not
+retroactively prove that a previously deployed process ran the guard.
 
 Firebase production account deletion additionally requires
 `FIREBASE_AUTH_DELETE_ENABLED=true` and `FIREBASE_SERVICE_ACCOUNT_JSON`. The API

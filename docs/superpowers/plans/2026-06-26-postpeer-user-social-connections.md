@@ -24,8 +24,21 @@
 > `SOCIAL_PUBLISHER=disabled`. `DELETE /posts/:id` remains available. A success
 > response does not probe PostPeer, storage, queue/worker, or account state. Old
 > clients or a config race can upload an object before the authoritative `503`,
-> and old queued/scheduled records must be inspected and canceled before a
-> controlled enablement. Staging remains disabled and real E2E is still pending.
+> while Staging's opt-in activation guard blocks a real PostPeer process when
+> any global `QUEUED` or `PUBLISHING` record exists or the atomic count fails.
+> On 2026-08-10 the disabled Mobile fail-fast passed and a temporary
+> environment-change deploy became Live, but one YouTube-private action still
+> stopped at readiness before upload with quota unchanged. That release did not
+> log the runtime publisher mode or a successful guard check, so the evidence
+> does not prove that `postpeer` or the empty-backlog guard ran. No provider
+> result or retry occurred. Staging was restored to `disabled`, and real E2E is
+> still pending; see `docs/testing/results/2026-08-10-social-publishing-pixel8.md`.
+> A follow-up candidate adds `Cache-Control: private, no-store` to both readiness
+> `200` and `503`, parses config once for the app and scheduler diagnostics, logs
+> only non-secret mode/publisher/guard enforcement, and emits guard-pass only
+> after scheduler startup succeeds. These changes are not yet deployment
+> evidence, do not prove caching caused the earlier result, and do not turn the
+> prior inconclusive guard run into a pass.
 > The Production Blueprint's existing `postpeer` selection is a separate
 > unresolved launch risk and is not changed by this follow-up.
 

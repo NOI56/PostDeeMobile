@@ -78,14 +78,20 @@ describe('post routes', () => {
       config: readServerConfig({ SOCIAL_PUBLISHER: 'disabled' })
     });
 
-    await request(app).get('/publishing/readiness').expect(200).expect({
-      status: 'ok',
-      acceptingPosts: true
-    });
-    await request(disabledApp)
+    const readyResponse = await request(app)
+      .get('/publishing/readiness')
+      .expect(200)
+      .expect({
+        status: 'ok',
+        acceptingPosts: true
+      });
+    const disabledResponse = await request(disabledApp)
       .get('/publishing/readiness')
       .expect(503)
       .expect(socialPublishingUnavailableResponse);
+
+    expect(readyResponse.headers['cache-control']).toBe('private, no-store');
+    expect(disabledResponse.headers['cache-control']).toBe('private, no-store');
   });
 
   it('fails before upload-readiness, persistence, quota, or queue side effects when social publishing is disabled', async () => {

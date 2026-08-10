@@ -21,7 +21,7 @@ production Android public SDK key, and signed AAB were prepared; recheck the
 provider dashboard and build artifact. Play Console app/subscriptions, internal
 testing, service credentials, real Google Play purchase, lifecycle, physical
 Android, R2, Gemini/ElevenLabs,
-Phone Auth, and social publishing still need current-candidate tests. Hidden
+Phone Auth, and provider-level social publishing still need current-candidate tests. Hidden
 Staging credentials must be confirmed in the Dashboard before those tests.
 Mock push and Firebase deletion remain off,
 and social publishing stays fail-closed `disabled` except during a controlled
@@ -41,7 +41,7 @@ user-owned PostPeer connections.
 | Database (Postgres/Prisma) | ⚙️ configured in Blueprints; current Live check required | `*_STORE=prisma` + Render-managed `DATABASE_URL` |
 | Scheduling worker | ⚙️ configured in-process; current Live check required | one instance with `PUBLISH_QUEUE=memory` |
 | Caption from keywords (Gemini) | ⚙️ repo-ready, Live secret/function check required | Render declares `CAPTION_PROVIDER=gemini` and `GEMINI_API_KEY` as a hidden value; confirm the key in each environment and run the current release candidate |
-| Social publishing (PostPeer) | safety gate repo-implemented; deployed Staging check and connected-account E2E pending | Staging remains `disabled`; readiness plus create/reschedule fail fast, cancel remains available, and Mobile checks before upload. This does not verify or enable PostPeer; configure disposable test accounts and run controlled publishing separately |
+| Social publishing (PostPeer) | disabled Mobile fail-fast passed; runtime activation/guard and connected-account E2E blocked | Staging was restored to `disabled` after one YouTube-private attempt still stopped at readiness before upload with quota unchanged and no provider evidence. The temporary deploy did not expose runtime-mode or guard-pass evidence, so direct deployed activation, write-boundary/cancel checks, and a controlled provider pass remain pending |
 | Video upload (Cloudflare R2) | ⚙️ ready | `VIDEO_STORAGE=r2` + R2 creds |
 | Auth (Firebase) | ⚙️ recorded Android Debug Staging Google pass; rerun current candidate; Production/iOS/Phone/physical-device tests remain | `AUTH_PROVIDER=firebase` + environment-specific project |
 | Account deletion | ⚙️ Production repo-ready; current Live/device verification required | Production commits `FIREBASE_AUTH_DELETE_ENABLED=true` and therefore requires `FIREBASE_SERVICE_ACCOUNT_JSON`; Staging keeps deletion false. Confirm the Production secret, then verify R2 prefix and Firebase UID deletion on the current candidate |
@@ -69,6 +69,9 @@ user-owned PostPeer connections.
   response `{ "status": "ok", "acceptingPosts": true }` means only that the API
   process is not set to `SOCIAL_PUBLISHER=disabled`; it does not probe PostPeer,
   R2/S3, the queue/worker, or user connections.
+- Both readiness `200` and disabled `503` responses set
+  `Cache-Control: private, no-store`. Treat this as a defensive no-storage rule,
+  not proof that caching caused an earlier mismatch.
 - `POST /posts` and `PATCH /posts/:id` enforce the same gate at the write
   boundary and return `503 SOCIAL_PUBLISHING_UNAVAILABLE` before post/quota/queue
   mutation. `DELETE /posts/:id` remains available to clear old work.
@@ -84,6 +87,11 @@ user-owned PostPeer connections.
   also blocks startup before the scheduler and HTTP listener; the check returns
   no post/user/media details. This guard is for `PUBLISH_QUEUE=memory` only and
   is not added to the Production Blueprint.
+- Startup reads config once and passes the same object to the app and scheduler
+  diagnostics. Capture the non-secret `mode`, `publisher`, and
+  `emptyBacklogGuard` startup line. Count activation as passed only when the
+  separate guard-pass line appears after scheduler startup; a Live deploy or
+  generic scheduler/listener log is insufficient.
 - Do not add shared `POSTPEER_*_ACCOUNT_ID` values to production. The per-user
   connect/refresh/disconnect flow is implemented and must be verified with a
   connected test account before production publishing is enabled.
@@ -117,9 +125,17 @@ user-owned PostPeer connections.
   retried. For an unknown network/polling outcome, check PostPeer and the social
   account before retrying manually. `GET /posts` exposes the persisted,
   user-scoped `platformResults` used for that check.
-- Real connected-account publishing has not passed E2E yet. Use disposable
-  test accounts and verify the final provider URL/status on every advertised
-  capability before changing the status table above.
+- Real connected-account publishing has not passed E2E yet. On 2026-08-10 a
+  temporary Staging environment-change deploy became Live, but the release did
+  not log the runtime publisher mode or a successful empty-backlog guard check.
+  The single YouTube-private device attempt still stopped at readiness before
+  upload; no retry or provider result occurred, and Staging was restored to
+  `disabled`. See
+  `docs/testing/results/2026-08-10-social-publishing-pixel8.md`. Diagnose that
+  mismatch by deploying the new diagnostics and capturing the startup/readiness
+  evidence above. The no-store header does not itself diagnose the old result.
+  Use disposable test accounts and verify the final provider URL/status on every
+  advertised capability before changing the status table.
 
 Configuration risk: `render.yaml` currently commits
 `SOCIAL_PUBLISHER=postpeer` for Production while the provider-level E2E above is

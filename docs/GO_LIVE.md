@@ -21,15 +21,15 @@ production Android public SDK key, and signed AAB were prepared; recheck the
 provider dashboard and build artifact. Play Console app/subscriptions, internal
 testing, service credentials, real Google Play purchase, lifecycle, physical
 Android, R2, Gemini/ElevenLabs,
-Phone Auth, and provider-level social publishing still need current-candidate tests. Hidden
+Phone Auth, and the remaining provider-level social publishing paths still need current-candidate tests. Hidden
 Staging credentials must be confirmed in the Dashboard before those tests.
 Mock push and Firebase deletion remain off,
 and social publishing stays fail-closed `disabled` except during a controlled
 test account run. In this mode authenticated publishing readiness, post create,
-and post reschedule return `503 SOCIAL_PUBLISHING_UNAVAILABLE`; post cancel stays
-available. Current mobile clients preflight before watermark/upload, but this is
-only a configuration gate and is not proof that PostPeer, storage, the
-queue/worker, or an account connection is healthy.
+post reschedule, and publish-now return `503 SOCIAL_PUBLISHING_UNAVAILABLE`;
+post cancel stays available. Current mobile clients preflight before
+watermark/upload, but this is only a configuration gate and is not proof that
+PostPeer, storage, the queue/worker, or an account connection is healthy.
 Complete `docs/STAGING.md` before deploying this release candidate to Production;
 never point Staging at the Production database, R2 bucket, Firebase project, or
 user-owned PostPeer connections.
@@ -41,12 +41,12 @@ user-owned PostPeer connections.
 | Database (Postgres/Prisma) | ⚙️ configured in Blueprints; current Live check required | `*_STORE=prisma` + Render-managed `DATABASE_URL` |
 | Scheduling worker | ⚙️ configured in-process; current Live check required | one instance with `PUBLISH_QUEUE=memory` |
 | Caption from keywords (Gemini) | ⚙️ repo-ready, Live secret/function check required | Render declares `CAPTION_PROVIDER=gemini` and `GEMINI_API_KEY` as a hidden value; confirm the key in each environment and run the current release candidate |
-| Social publishing (PostPeer) | disabled Mobile fail-fast passed; runtime activation/guard and connected-account E2E blocked | Staging was restored to `disabled` after one YouTube-private attempt still stopped at readiness before upload with quota unchanged and no provider evidence. The temporary deploy did not expose runtime-mode or guard-pass evidence, so direct deployed activation, write-boundary/cancel checks, and a controlled provider pass remain pending |
+| Social publishing (PostPeer) | earlier controlled YouTube Private E2E passed; Phase 2 release blocked | Apply the settings/outcome migration and API first, verify readiness version 1, inspect legacy backlog, then test TikTok inbox draft, YouTube compliance/visibility, Instagram, Facebook Page publish/draft, target revalidation, scheduling/recovery, and Production. TikTok direct remains off |
 | Video upload (Cloudflare R2) | ⚙️ ready | `VIDEO_STORAGE=r2` + R2 creds |
 | Auth (Firebase) | ⚙️ recorded Android Debug Staging Google pass; rerun current candidate; Production/iOS/Phone/physical-device tests remain | `AUTH_PROVIDER=firebase` + environment-specific project |
-| Account deletion | ⚙️ Production repo-ready; current Live/device verification required | Production commits `FIREBASE_AUTH_DELETE_ENABLED=true` and therefore requires `FIREBASE_SERVICE_ACCOUNT_JSON`; Staging keeps deletion false. Confirm the Production secret, then verify R2 prefix and Firebase UID deletion on the current candidate |
+| Account deletion | blocked; Production disabled | The cleanup saga and durable managed-upload marker exist, but its coordinator is process-local and cannot drain another API instance or lease the worker provider call. Production and Staging keep `FIREBASE_AUTH_DELETE_ENABLED=false`; add a durable full-user-mutation barrier/drain before enabling |
 | Subscriptions (RevenueCat / App Store / Play) | ⚙️ recorded Test Store purchase + Restore/resync pass and prepared Play configuration/AAB; recheck provider/build state and rerun current candidate; real-store/device tests pending | `BILLING_PROVIDER=revenuecat` + environment-specific webhook token + server REST key |
-| Durable queue (Redis/BullMQ) | ⚙️ optional | `PUBLISH_QUEUE=bullmq` + `POST_STORE=prisma` + `DATABASE_URL` + `REDIS_URL` + run worker |
+| Durable queue / publish concurrency | current single-process path only; multi-instance/separate real worker blocked | BullMQ exists, but production scale also requires a database/Redis owner lease or transactional outbox/claim-and-drain boundary across API mutation, worker provider call, and account deletion |
 
 ## 1. Gemini caption (free key — easiest)
 
@@ -66,15 +66,20 @@ user-owned PostPeer connections.
 - `POSTPEER_API_KEY=...`
 - Optional: `POSTPEER_API_BASE_URL` (default `https://api.postpeer.dev`)
 - `GET /publishing/readiness` is an authenticated config preflight. Its `200`
-  response `{ "status": "ok", "acceptingPosts": true }` means only that the API
+  response `{ "status": "ok", "acceptingPosts": true,
+  "platformSettingsVersion": 1 }` means only that the API
   process is not set to `SOCIAL_PUBLISHER=disabled`; it does not probe PostPeer,
   R2/S3, the queue/worker, or user connections.
+- Apply `20260811130000_add_platform_publish_configuration`, deploy the API, and
+  verify version `1` before releasing Phase 2 Mobile. Current Mobile checks both
+  `acceptingPosts` and version >= 1 and fails closed before upload otherwise.
 - Both readiness `200` and disabled `503` responses set
   `Cache-Control: private, no-store`. Treat this as a defensive no-storage rule,
   not proof that caching caused an earlier mismatch.
-- `POST /posts` and `PATCH /posts/:id` enforce the same gate at the write
-  boundary and return `503 SOCIAL_PUBLISHING_UNAVAILABLE` before post/quota/queue
-  mutation. `DELETE /posts/:id` remains available to clear old work.
+- `POST /posts`, `PATCH /posts/:id`, and `POST /posts/:id/publish-now` enforce
+  the same gate at the write boundary and return
+  `503 SOCIAL_PUBLISHING_UNAVAILABLE` before post/quota/queue mutation.
+  `DELETE /posts/:id` remains available to clear old work.
 - Old clients do not preflight, and configuration can change after a new client
   preflights. An object uploaded before the authoritative `503` is not removed
   by the post route; verify temporary-object cleanup/lifecycle behavior.
@@ -112,34 +117,90 @@ user-owned PostPeer connections.
 - A `202 pending/publishing` response is polled through
   `GET /v1/posts/{postId}` for roughly two minutes. The worker accepts success
   only with a real platform URL/id and never creates a fake external id.
-- Controlled-first requests use YouTube visibility `private` and TikTok
-  `SELF_ONLY` with `draft: false`. Add explicit user privacy controls before a
-  public rollout.
-- Instagram and Facebook currently have no equivalent private/SELF_ONLY guard
-  in the provider payload. Assume a controlled test may become visible and use
-  only empty disposable accounts.
+- Phase 2 exact intent is TikTok `INBOX_DRAFT`; YouTube title,
+  Private/Unlisted/Public, made-for-kids, realistic synthetic-media answer, and
+  community-guidelines certification; Instagram share-to-feed; and Facebook
+  Page Video `PUBLISH|PAGE_DRAFT`. TikTok `DIRECT_POST/SELF_ONLY` remains only
+  for legacy persisted work and must stay unavailable to new users until current
+  creator-info, privacy/interaction choices, consent, and TikTok audit pass.
+- Use empty disposable accounts: Instagram has no per-post Private mode, and
+  YouTube may keep requested Unlisted/Public uploads Private until API audit.
 - `FACEBOOK_REELS` is retained internally for compatibility, but PostPeer
   currently publishes Facebook Page Video, not Facebook Reels. Store copy and
   screenshots must use the real capability.
+- Mobile publish drafts are app-owned Application Support files scoped by the
+  stable authenticated user ID. Saving one must not create an API post, upload to R2,
+  contact the provider, enqueue work, or consume post quota; the backend has no
+  `DRAFT` post status. They do not sync between devices, OS backup may include
+  them, queue acceptance deletes the active draft, and a failure before queue
+  acceptance retains it. Verify all of those statements on the release candidate and reconcile
+  Android/iOS backup rules with Privacy/Data Safety before launch.
+- TikTok inbox and Facebook Page drafts are provider drafts, not the local store:
+  pressing Post uploads, queues, calls PostPeer, and consumes one unit per
+  destination. Run provider E2E and verify explicit final draft evidence.
+- Connected destinations must start unselected. Review must show TikTok
+  inbox draft, the completed YouTube visibility/compliance choice, Instagram
+  share-to-feed, and Facebook Page publish/page-draft before confirmation.
+  Details appear only after selecting a row and opening its platform sheet;
+  every row also names its connected account/channel/page. A missing display
+  name/external account id, unknown outcome, or incomplete setting stays blocked
+  and requires refresh/reconnect or correction. Create/reschedule accepts only
+  future times within 30 days; scheduled post detail uses the owner-scoped
+  publish-now command rather than rescheduling to the current time.
+- The post result must preserve the returned lifecycle: queued is not published,
+  publishing is not complete, partial is not full success, and an unknown status
+  must retain the draft and block a success view. A replay must be labelled as
+  the existing item.
+- Each local draft persists one stable `clientRequestId`. The API commits one
+  deterministic owner-scoped post before enqueue: first success returns `201`,
+  a matching retry returns `200 idempotentReplay: true` and repairs a missing
+  `QUEUED` job, while recognized intent mismatch or terminal failed replay
+  returns `409`. Legacy no-key calls remain compatible but are new attempts with
+  no deduplication guarantee. Verify this with Prisma, queue failure, app/API
+  restart, lost response, and exactly-once post-unit evidence.
+- New posts persist explicit settings and an internal target snapshot, recheck
+  the connection before commit, and revalidate it again before the provider
+  call. `platformTargets` and `providerPostId` must never appear in public
+  post/queue/result responses. `deliveryOutcome` is the public truth
+  (`LIVE|PRIVATE|UNLISTED|DRAFT`); internal `PUBLISHED` means requested delivery
+  completed, not necessarily public visibility. Inspect/drain legacy-null
+  queued posts because they have no immutable target snapshot.
+- This idempotency does not cover remote objects. Mobile does not persist
+  completed remote video/cover keys in the draft, so a lost response can cause
+  replacement uploads before the existing post is recovered. Production needs
+  key reuse or superseded-object cleanup plus verified R2 lifecycle evidence.
+- The current owner/post locks are process-local and the worker does not hold
+  them across the provider call. They cover authenticated route mutations and
+  RevenueCat webhook application only inside one API process; a mutation already
+  running in another instance can pass the durable-marker check before deletion
+  and commit afterward. Do not enable
+  production account deletion, multiple API instances, or a separate real
+  publisher worker until a durable repository owner barrier/lease or equivalent
+  transactional outbox/claim-and-drain protocol rejects new writes and drains
+  every in-flight user mutation. Test same- and separate-process races.
 - Only errors explicitly proving that a provider post was not accepted may be
   retried. For an unknown network/polling outcome, check PostPeer and the social
   account before retrying manually. `GET /posts` exposes the persisted,
   user-scoped `platformResults` used for that check.
-- Real connected-account publishing has not passed E2E yet. On 2026-08-10 a
-  temporary Staging environment-change deploy became Live, but the release did
-  not log the runtime publisher mode or a successful empty-backlog guard check.
-  The single YouTube-private device attempt still stopped at readiness before
-  upload; no retry or provider result occurred, and Staging was restored to
-  `disabled`. See
-  `docs/testing/results/2026-08-10-social-publishing-pixel8.md`. Diagnose that
-  mismatch by deploying the new diagnostics and capturing the startup/readiness
-  evidence above. The no-store header does not itself diagnose the old result.
-  Use disposable test accounts and verify the final provider URL/status on every
-  advertised capability before changing the status table.
+- On 2026-08-10, exact Staging SHA
+  `208b4e580ddd2291a7a32e718c2519d785730895` logged `postpeer` mode and a
+  successful empty-backlog guard before one separately authorized YouTube
+  Shorts Private immediate post. One submit reached terminal post/platform
+  `PUBLISHED`, returned a real non-mock external reference, and the destination
+  reported Private. Fresh post units changed exactly once from `249/250` to
+  `248/250`; there was no retry. Staging was then restored to `disabled` with
+  exact disabled-mode/listener/health evidence. The first restoration deploy
+  incorrectly remained enabled and is retained in the result chronology rather
+  than hidden. See
+  `docs/testing/results/2026-08-10-social-publishing-pixel8.md`.
+- This is one controlled Staging capability pass, not launch approval. Use
+  disposable test accounts and verify the final provider URL/status separately
+  for TikTok, Instagram, Facebook, scheduling, and failure recovery. Direct
+  authenticated post-rollback readiness/header evidence remains open.
 
 Configuration risk: `render.yaml` currently commits
-`SOCIAL_PUBLISHER=postpeer` for Production while the provider-level E2E above is
-still pending. The repository cannot confirm the currently deployed Render
+`SOCIAL_PUBLISHER=postpeer` for Production while only the controlled Staging
+YouTube Private path has passed. The repository cannot confirm the currently deployed Render
 value or secret. This publishing-safety change does not alter that Blueprint;
 resolve the Production fail-closed policy and verify the Dashboard before any
 public rollout. Do not treat `acceptingPosts: true` as launch approval.
@@ -165,16 +226,16 @@ physical-device readiness.
 - Create a Firebase project, enable Google + Apple + Phone sign-in.
 - `AUTH_PROVIDER=firebase`
 - `FIREBASE_PROJECT_ID=...`
-- Production: `FIREBASE_SERVICE_ACCOUNT_JSON=...` must be present because
-  `render.yaml` commits `FIREBASE_AUTH_DELETE_ENABLED=true`. Confirm presence in
-  the Production Dashboard without copying the value.
-- Staging: `render.staging.yaml` commits `FIREBASE_AUTH_DELETE_ENABLED=false`
-  and does not declare the service-account secret.
+- Production and Staging keep `FIREBASE_AUTH_DELETE_ENABLED=false`; account
+  deletion is temporarily unavailable until the durable mutation barrier/drain
+  and remaining device/slow-network cleanup gates are complete. Verify the live
+  Dashboard value remains false before release.
+- Staging does not declare the service-account secret.
 - `FIREBASE_AUTH_DELETE_ENABLED=true` enables Firebase UID deletion and Admin
   token revocation/user-existence checks. Never enable it in an environment
-  before that environment's service account is installed. Production already
-  commits it as true, so the secret is a deploy prerequisite; Staging remains
-  false. The delete endpoint fails closed without mutating data.
+  before that environment's service account is installed and the durable
+  mutation-drain design has passed same-process and cross-process race tests.
+  The delete endpoint fails closed without mutating data while disabled.
 - Mobile: build with `--dart-define=ENABLE_FIREBASE_AUTH=true` and add the real
   `google-services.json` / Firebase config. See `FIREBASE_SETUP.md`.
 - Set an R2 lifecycle rule for `uploads/` as a race-condition safety net, then
@@ -418,11 +479,15 @@ mixing, ducking, licensing, and real-device export are all verified.
 Do not enable the AI-hook flag in production until highlight selection, timeline
 reordering, result review, and real-device export are implemented and verified.
 
-## 7. Durable queue — Upstash Redis + BullMQ (optional)
+## 7. Durable queue and multi-process coordination — Upstash Redis + BullMQ
 
-Only needed to run publishing in a separate worker process / get retry
-semantics. The in-process scheduler already publishes due posts reliably from
-the database.
+BullMQ is needed when publishing moves to a separate worker, but enabling it is
+not by itself sufficient for a safe production scale-out. The current in-process
+scheduler can recover due posts from Prisma in a strictly one-instance setup;
+its route/account locks are still local memory, and the worker does not hold one
+through the external provider call. The API locks cannot drain a mutation already
+running in another instance, so this remains an account-deletion release blocker
+and a scaling concern.
 
 - `PUBLISH_QUEUE=bullmq`
 - `POST_STORE=prisma`
@@ -430,19 +495,39 @@ the database.
 - `REDIS_URL=...` (Upstash)
 - Run the worker: `node dist/workers/publishWorkerRunner.js` as a second service.
 
+Before actually running multiple API instances or the separate real publisher
+worker—or enabling production account deletion—add a durable repository owner
+barrier/lease or equivalent transactional outbox/claim-and-drain protocol. It
+must span every user mutation family, worker claim/provider call, and deletion;
+atomically stop new writes, drain in-flight work, then take the cleanup snapshot.
+Prove same-process, separate-process, and crash/restart behavior.
+
 ## Highest-leverage order
 
 1. **Reconfirm Staging secrets and rerun AI/R2 tests** — use the current release
    candidate and the Thai real-clip rubric; do not copy secrets into logs.
 2. **Play Console and RevenueCat real-store testing** — complete physical-device
    account verification, Internal Testing purchase/restore, and lifecycle events.
-3. **PostPeer controlled publishing** — while still disabled, install only the
-   Staging key, connect/refresh disposable accounts, and clear old queued or
-   scheduled work. Enable briefly, verify readiness plus provider results, then
-   restore `disabled` and verify readiness returns `503` again.
-4. **Firebase production/device completion** — test Google, Apple, Phone Auth,
-   FCM/APNs, and account deletion on supported physical devices.
-5. **R2 isolation and cleanup** — verify environment-specific buckets, temporary
+3. **Verify local drafts and scheduling safety** — capture real-device
+   save/restore/account-isolation/backup behavior, zero publish-side effects
+   while saving, progressive per-platform settings, exact-account review plus
+   missing-identity/unknown-outcome blocking, local-versus-provider draft wording,
+   future/+30-day boundaries, and publish-now compensation on the release candidate.
+4. **Finish PostPeer controlled publishing** — keep Staging disabled by default.
+   Apply/verify the migration and readiness version first; inspect legacy
+   backlog. The earlier YouTube Private path passed, but now test TikTok inbox
+   draft, YouTube compliance/visibility, Instagram, Facebook Page publish/draft,
+   target change/redaction, scheduling, and recovery with explicit authorization.
+5. **Firebase production/device completion** — test Google, Apple, Phone Auth,
+   and FCM/APNs on supported devices. Keep account deletion disabled until the
+   durable full-mutation barrier/drain is implemented, then run route-family,
+   worker, slow-network, and physical-device deletion races.
+6. **R2 isolation and cleanup** — verify environment-specific buckets, temporary
    object cleanup, and safe lifecycle prefixes.
-6. **BullMQ/Redis only when needed** — move scheduling to a separate worker before
-   multi-instance scaling or when independent queue operations become necessary.
+7. **Close publish concurrency and orphan-media gates** — add the durable
+   owner/outbox boundary before multi-instance/separate-worker rollout, verify
+   stable-request replay across process restarts, and prove that response-lost
+   replacement uploads are reused or cleaned from R2.
+8. **Finalize legal/store privacy copy** — replace the in-app Privacy Policy and
+   Terms working drafts with reviewed hosted text, then reconcile Android/iOS
+   backup, Data Safety, and App Privacy disclosures with local draft media.

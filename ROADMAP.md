@@ -66,9 +66,11 @@ Current status:
   setup and a real Google Play purchase remain blocked by the required physical
   Android account verification. R2 upload from Android now passes, while
   production-bucket isolation and cleanup still need confirmation. Lifecycle,
-  Gemini/ElevenLabs, Phone Auth, and controlled social publishing still need
-  current-candidate smoke tests after their environment-specific credentials are
-  reconfirmed in the Dashboard. Render Staging and its Blueprint now track `main`.
+  Gemini/ElevenLabs, Phone Auth, and the remaining controlled social publishing
+  paths still need current-candidate smoke tests after their environment-specific
+  credentials are reconfirmed in the Dashboard. One Staging YouTube Shorts
+  Private immediate publish now passes. Render Staging and its Blueprint track
+  `main`.
 - Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
   mock/provider code have been removed from the active app path. Subscription
   compatibility flags remain false for older clients.
@@ -77,37 +79,83 @@ Current status:
   assumptions where the cost is low.
 - Firebase Auth, Render deployments, Upstash, RevenueCat webhooks, uploads,
   analytics, real-clip caption provider hardening, production verification of
-  the Prisma AI caption usage ledger, and PostPeer social posting still need
-  provider-level testing before production use. PostPeer profiles now satisfy
+  the Prisma AI caption usage ledger, and broader PostPeer social posting still
+  need provider-level testing before production use. PostPeer profiles now satisfy
   the required name contract without exposing the Firebase UID/email and ensure
   the local User first; accepted async posts are polled for roughly two minutes,
   never receive a fabricated external id, and expose persisted per-platform
-  results through `GET /posts`. A real connected-account E2E is still pending.
+  results through `GET /posts`. One Staging YouTube Shorts Private immediate
+  connected-account E2E passed; broader platform and Production E2E is pending.
 - Social-post safety now has an authenticated configuration preflight. Mobile
-  checks it before watermark/upload; `POST /posts` and `PATCH /posts/:id`
-  authoritatively return `503 SOCIAL_PUBLISHING_UNAVAILABLE` while the publisher
-  is disabled, and cancel remains available. This prevents new false queued
-  failures in the current client but does not enable or verify PostPeer. Old
-  clients or a config race can still leave a temporary uploaded object.
-- On 2026-08-10, Staging commit
-  `fcccb89642478ea70b2c89ccc507351f108dcb9e` passed CI. The disabled Pixel 8
-  fail-fast check passed. A temporary environment-change deploy became Live,
-  but one later YouTube-private action still reported unavailable before upload
-  with post units unchanged. Because that release did not log the runtime
-  publisher mode or a successful guard check, the evidence does not prove that
-  the process saw `postpeer` or ran the empty-backlog guard. It produced no
-  provider result and was not retried; Staging was restored to `disabled`. This
-  remains a blocked connected-account E2E, recorded in
+  checks it before watermark/upload; `POST /posts`, `PATCH /posts/:id`, and
+  `POST /posts/:id/publish-now` authoritatively return
+  `503 SOCIAL_PUBLISHING_UNAVAILABLE` while the publisher is disabled, and
+  cancel remains available. This prevents new false queued failures in the
+  current client but does not enable or verify PostPeer. Old clients or a config
+  race can still leave a temporary uploaded object.
+- Local publish-draft implementation is present in the current working tree:
+  video/cover/manifest copies live in Application Support under a stable
+  authenticated UID, with no server `DRAFT` post or publish-side
+  API/R2/provider/queue/quota
+  effect when saving. Drafts do not sync across devices and OS backup may include
+  them. Destination selection now starts empty, review states each platform's
+  outcome, schedules must be future and within 30 days, and queued schedules have
+  a dedicated publish-now command. The result UI distinguishes queued,
+  publishing, published, and partial outcomes and retains a draft for an unknown
+  status. Focused automated coverage exists; the final combined suites,
+  real-device verification, and provider E2E remain open until recorded against
+  the release candidate.
+- Phase 2 per-platform configuration is implemented in the working tree without
+  filling the main Upload page with every field: selecting a destination reveals
+  one summary/settings action and opens that platform's sheet. New intent is
+  TikTok inbox draft; complete YouTube title/visibility/kids/synthetic-media/
+  certification; Instagram share-to-feed; and an explicit Facebook Page Video
+  publish/page-draft choice. TikTok direct remains blocked pending creator-info,
+  consent, and audit. Review names the connected account/channel/page and blocks
+  missing identity, incomplete settings, or an unknown outcome. Provider drafts
+  are remote submissions that upload, enqueue, and consume quota—not PostDee
+  local drafts.
+- The API advertises `platformSettingsVersion: 1`, persists settings plus an
+  internal immutable connected-account snapshot, revalidates it before commit
+  and provider call, and redacts provider account/post ids from public responses.
+  `deliveryOutcome` distinguishes live/private/unlisted/provider-draft delivery.
+  The nullable Prisma migration preserves legacy rows, but legacy-null queued
+  work has no target snapshot and must be inspected/drained before activation.
+- Each local publish draft now persists a stable submit request ID. The API
+  commits one deterministic owner-scoped post before enqueue: first success is
+  `201`, a matching replay is `200 idempotentReplay: true` and repairs a missing
+  queue job, while mismatched intent or a terminal failed replay returns `409`.
+  Legacy clients may omit the key but get no deduplication guarantee. This
+  protects post/quota state, not remote uploads; completed R2 keys are not stored
+  in the draft, so lost-response retries can leave unused replacement objects.
+- Route/account-deletion locks are currently process-local and the worker does
+  not hold one across the provider call. The coordinator covers authenticated
+  route mutations and RevenueCat webhook application within one API process,
+  but cannot drain a mutation already running in another instance. Account deletion is not
+  production-safe until a durable repository barrier rejects new user writes
+  and drains all in-flight mutations before cleanup; this is required even for
+  one process and before any multi-instance/separate-worker rollout.
+- On 2026-08-10, the disabled Pixel 8 fail-fast check and an initial controlled
+  action that stopped before upload were recorded on the earlier candidate.
+  Follow-up Staging SHA `208b4e580ddd2291a7a32e718c2519d785730895`
+  then logged `postpeer` mode plus an empty-backlog guard-pass before one
+  separately authorized YouTube Shorts Private action reached terminal
+  `PUBLISHED` with a real non-mock external reference. Fresh quota changed
+  exactly once from `249/250` to `248/250`. The destination reported Private,
+  and the current user had no new `QUEUED`/`PUBLISHING` post. Staging was
+  restored to `disabled`; the first restoration deploy was ineffective and is
+  recorded rather than hidden. See
   `docs/testing/results/2026-08-10-social-publishing-pixel8.md`.
-- The follow-up candidate marks both readiness `200` and `503` responses
+- The deployed follow-up marks both readiness `200` and `503` responses
   `Cache-Control: private, no-store`, supplies one parsed config object to the
   app and scheduler diagnostics, and logs only the non-secret runtime mode,
-  publisher, guard enforcement, and a post-start guard pass. It still needs a
-  Staging deploy and fresh evidence; this does not identify caching as the prior
-  cause or convert the inconclusive guard run into a pass.
+  publisher, guard enforcement, and a post-start guard pass. The controlled
+  retry verified those enabled/guard logs and the final disabled startup log;
+  it does not identify caching as the cause of the earlier blocked action.
 - The Production Blueprint currently selects `SOCIAL_PUBLISHER=postpeer` even
-  though connected-account E2E is pending. Treat this as a launch configuration
-  risk; the repository cannot prove the live Render value, and the safety-gate
+  though broader connected-account E2E and Production verification are pending.
+  Treat this as a launch configuration risk; the repository cannot prove the
+  live Render value, and the safety-gate
   work does not change that Blueprint.
 
 ## Backend Services Plan
@@ -460,9 +508,25 @@ Recommended order:
 To ensure the app passes store review guidelines, the following must be implemented before the first production release:
 1. **Payments**: Use RevenueCat to process all digital subscriptions natively through Apple and Google to comply with in-app purchase rules.
 2. **Authentication**: If Google Sign-In is offered, Apple Sign-In MUST also be implemented in the mobile UI (supported natively by Firebase Auth). Done in code: `FirebaseAppleAuthGateway` uses Firebase `signInWithProvider('apple.com')`. Still needs the Apple provider enabled in Firebase and the iOS "Sign in with Apple" capability before it works on device.
-3. **Account Deletion**: Implemented in code. The Profile screen warns that store subscriptions must be managed separately, iOS/macOS Apple users pass a backend readiness check then reauthenticate and revoke Apple access, and `DELETE /account` requires recent Firebase authentication. It sets a durable deletion barrier before cleanup, blocks later authenticated mutations and worker claims, drains or reconciles an in-flight completion, aborts persisted and orphan R2 multipart sessions, disconnects PostPeer integrations, removes queued jobs/R2 objects/database data, and deletes the Firebase identity last. Late RevenueCat events cannot recreate a missing user, and an account-only verifier supports a lost-response retry only after Firebase confirms the UID is gone. Apple Sign-In remains unavailable on Android/web until server-side token revocation exists there. Legacy and managed-multipart production API/R2/Firebase disposable-account smoke tests pass. Launch completion still requires physical-device end-to-end and slow-network tests, plus a lifecycle rule scoped only after temporary and scheduled media use separate prefixes. Production remains in `dual` rollout mode; the signed-`PUT` replay path is fully closed only after old clients are retired and strict `multipart` mode is enabled.
+3. **Account Deletion**: Partially implemented and temporarily disabled in
+   Production. The Profile screen warns that store subscriptions must be managed
+   separately; iOS/macOS Apple users pass readiness, reauthenticate, and revoke
+   Apple access before `DELETE /account`. The cleanup saga sets a durable marker
+   for the managed-upload owner prefix, reconciles/aborts multipart sessions,
+   disconnects PostPeer integrations, removes queued jobs/R2 objects/database
+   data, and deletes the Firebase identity last. Its owner coordinator is still
+   process-local; it neither drains mutations already running in another API
+   instance nor holds a lease across the worker's provider call. Keep
+   `FIREBASE_AUTH_DELETE_ENABLED=false` until a durable
+   repository barrier rejects new writes and drains all in-flight work, then run
+   physical-device, slow-network, provider-cleanup, and R2 lifecycle tests.
+   Apple Sign-In remains unavailable on Android/web until server-side token
+   revocation exists there. Production also remains in `dual` upload rollout;
+   retire signed-`PUT` clients before switching to strict `multipart` mode.
 4. **Content & Safety**: Rely on Gemini's built-in safety filters to prevent abusive or explicit AI generation.
-5. **Policies**: Host and link a valid Privacy Policy and Terms of Service inside the app.
+5. **Policies**: The in-app Privacy Policy and Terms are working drafts. Finalize
+   and host reviewed HTTPS versions, including the local-draft/Application
+   Support and OS-backup caveats, before store submission.
 
 ## Immediate Next Steps
 

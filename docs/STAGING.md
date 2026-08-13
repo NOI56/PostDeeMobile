@@ -21,8 +21,9 @@ RevenueCat หรือ PostPeer ผ่าน E2E ใน release candidate เ�
   รุ่นปัจจุบันแยกเสียง M4A ขนาดเล็กก่อนส่งถอดเสียง อย่างไรก็ตาม repository
   มองไม่เห็นค่า secret ปัจจุบัน จึงต้องยืนยัน Dashboard และทดสอบคลิป 38 MB ซ้ำ
   บน release candidate เพื่อยืนยัน timing, cleanup และโควตา
-  ส่วน Gemini ยังต้องผ่าน functional E2E แยก และ Social ยัง
-  `disabled` และยังไม่ผ่าน connected-account E2E
+  ส่วน Gemini ยังต้องผ่าน functional E2E แยก ขณะที่ Social ถูกคืนเป็น
+  `disabled` หลังผ่าน connected-account E2E เฉพาะ YouTube Shorts Private
+  แบบโพสต์ทันทีหนึ่งครั้ง; แพลตฟอร์มอื่น การตั้งเวลา และ Production ยังไม่ผ่าน
 
 Staging ใช้ทดสอบโค้ดและผู้ให้บริการจริงก่อนส่งเข้า Production โดยต้องไม่ใช้ฐานข้อมูล
 bucket วิดีโอ Firebase project หรือ webhook token ชุดเดียวกับผู้ใช้จริง
@@ -121,19 +122,49 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 `PUSH_SENDER=mock` และ `FIREBASE_AUTH_DELETE_ENABLED=false` เพื่อป้องกันการลบ
 ผู้ใช้หรือยิง Push ผิดระบบ
 รวมถึงใช้ `SOCIAL_PUBLISHER=disabled`. ในโค้ดชุดนี้
-`GET /publishing/readiness`, `POST /posts` และ `PATCH /posts/:id` จะตอบ
-`503 SOCIAL_PUBLISHING_UNAVAILABLE`; create/reschedule หยุดก่อนตรวจ upload readiness,
-อ่านโควตา, เขียน post หรือเปลี่ยนคิว ส่วน `DELETE /posts/:id` ยังใช้ยกเลิกคิวเดิมได้
+`GET /publishing/readiness`, `POST /posts`, `PATCH /posts/:id` และ
+`POST /posts/:id/publish-now` จะตอบ `503 SOCIAL_PUBLISHING_UNAVAILABLE`;
+create/reschedule/publish-now หยุดก่อนตรวจ upload readiness, อ่านโควตา, เขียน post
+หรือเปลี่ยนคิว ส่วน `DELETE /posts/:id` ยังใช้ยกเลิกคิวเดิมได้
 
 Mobile เรียก readiness หลังยืนยันและก่อนใส่ลายน้ำหรืออัปโหลด พร้อมแสดงข้อความไทย
 เมื่อระบบปิดอยู่ แต่ `acceptingPosts: true` เป็นเพียง config gate ว่า API process
 ไม่ได้ใช้ `disabled` เท่านั้น ไม่ได้ตรวจ PostPeer, R2, queue/worker หรือ connection
-ของผู้ใช้. Client เก่าหรือการเปลี่ยน config หลัง preflight ยังอาจอัปโหลดไฟล์ก่อน
+ของผู้ใช้. เมื่อเปิดรับงาน response ต้องมี `platformSettingsVersion: 1`; ให้ apply
+Prisma migration และ deploy/ตรวจ API ก่อนปล่อย Mobile Phase 2; Mobile ปัจจุบัน
+ตรวจทั้ง `acceptingPosts` และ integer version อย่างน้อย 1 และหยุดก่อน upload หาก
+ไม่มี/ผิดรูปแบบ/เก่ากว่า. Client เก่าหรือการ
+เปลี่ยน config หลัง preflight ยังอาจอัปโหลดไฟล์ก่อน
 `POST /posts` ตอบ `503`; object แบบนั้นต้องถูกล้างด้วยนโยบายไฟล์ชั่วคราว
 
 readiness ทั้งกรณี `200` และ `503` ส่ง `Cache-Control: private, no-store` เพื่อไม่ให้
 เก็บผลเดิมไว้ใช้ซ้ำ. ค่านี้เป็นมาตรการป้องกันเท่านั้น และไม่ใช่หลักฐานว่า cache คือ
 สาเหตุของผลทดสอบวันที่ 10 สิงหาคม
+
+ฉบับร่างโพสต์เป็นข้อมูลในเครื่อง แยกด้วย stable authenticated UID ใต้ Application
+Support และคัดลอกวิดีโอ/หน้าปกไว้ในพื้นที่ของแอป การกดบันทึกร่างไม่สร้าง API Post,
+ไม่อัปโหลด R2, ไม่เรียก provider/queue และไม่ใช้ post quota; backend ไม่มีสถานะ
+`DRAFT`. ร่างไม่ซิงก์ข้ามเครื่อง แต่อาจอยู่ใน OS backup ตามการตั้งค่าอุปกรณ์
+เมื่อโพสต์ถูกรับเข้าคิวแล้ว Mobile จึงลบร่าง; ถ้าขั้นตอนก่อนรับเข้าคิวล้มเหลวต้อง
+เก็บไว้ และถ้าลบหลังเข้าคิวไม่สำเร็จต้องแสดงคำเตือน พฤติกรรมนี้ยังต้องเก็บหลักฐานบน release candidate
+จริงก่อนถือว่าผ่าน
+
+`INBOX_DRAFT` ของ TikTok และ `PAGE_DRAFT` ของ Facebook เป็นร่างที่ provider หลัง
+กด Post ไม่ใช่ร่างในเครื่อง: ต้องอัปโหลด สร้าง server Post เข้าคิว เรียก provider
+และใช้โควตาตามจำนวนปลายทาง
+
+แต่ละร่างเก็บ `clientRequestId` เดิมไว้ตลอดการส่ง รวมถึงหลังแอป restart หรือไม่ได้รับ
+response. API สร้าง post แบบ database-first: ครั้งแรกสำเร็จตอบ `201`; การส่ง key เดิม
+พร้อม intent เดิมตอบ `200 idempotentReplay: true` และซ่อม queue job ที่หายได้; intent
+ที่เปลี่ยนหรือ post เดิมจบ `FAILED` ตอบ `409` โดยไม่อ้างว่าเข้าคิวใหม่ ส่วน client เก่า
+ที่ไม่ส่ง key ยังใช้ได้แต่ไม่มีการป้องกันรายการซ้ำ หาก enqueue ครั้งแรกตอบ `503` แถว
+`QUEUED` จะยังอยู่เพื่อให้ retry key เดิมซ่อมคิว ไม่ใช่ rollback แถวทิ้ง
+
+การป้องกันนี้ครอบคลุม post/โควตา แต่ยังไม่ครอบคลุมไฟล์ remote: ร่างยังไม่เก็บ key
+ของวิดีโอ/หน้าปกที่อัปโหลดสำเร็จ ดังนั้น lost response แล้ว retry อาจอัปโหลด object ใหม่
+ก่อน API คืน post เดิม ต้องพิสูจน์การ reuse/cleanup และ R2 lifecycle ก่อน Production
+หน้าผลลัพธ์ต้องแสดง `QUEUED`, `PUBLISHING`, `PUBLISHED` และ `PARTIAL_PUBLISHED`
+ตาม response จริง; status ที่ไม่รู้จักห้ามแสดงว่าสำเร็จและต้องเก็บร่างไว้
 
 เมื่อจะทดสอบ Social จริง ให้เพิ่ม `POSTPEER_API_KEY` ชุดทดสอบใน Dashboard ขณะที่
 publisher ยัง `disabled`, ใช้บัญชี disposable เชื่อม/refresh, ตรวจและยกเลิก post
@@ -162,15 +193,43 @@ authenticated readiness `200` พร้อม header `private, no-store` จา�
 โค้ด Social ปัจจุบัน ensure ผู้ใช้ก่อนบันทึก profile, ส่งชื่อ profile แบบ
 pseudonymous ที่ PostPeer กำหนดให้มี, poll ผล `202 pending/publishing` ประมาณ 2 นาที
 โดยไม่สร้าง external id ปลอม และคืน `platformResults` ใน `GET /posts` แล้ว ค่า
-controlled-first คือ YouTube `private` และ TikTok `SELF_ONLY` (`draft: false`).
+Phase 2 ใหม่คือ TikTok `INBOX_DRAFT`; YouTube title + Private/Unlisted/Public +
+kids/synthetic/certification; Instagram share-to-feed; Facebook Page Video แบบ
+publish/page-draft. TikTok direct/`SELF_ONLY` เป็น legacy compatibility และยังห้าม
+เปิดให้ client ใหม่จน creator-info/consent/audit ครบ.
 `FACEBOOK_REELS` เป็นชื่อภายในที่ตอนนี้ส่ง Facebook Page Video ไม่ใช่ Reels.
-Instagram/Facebook ไม่มี private/SELF_ONLY guard ใน payload ปัจจุบัน จึงต้องถือว่า
-อาจเผยแพร่จริงและใช้เฉพาะบัญชี disposable ที่ไม่มีผู้ติดตามหรือข้อมูลจริง
+Instagram ไม่มี Private รายโพสต์ และ Facebook `PUBLISH` อาจเผยแพร่จริง จึงต้องใช้
+เฉพาะบัญชี disposable ที่ไม่มีผู้ติดตามหรือข้อมูลจริง ส่วน `PAGE_DRAFT` ต้องมี
+หลักฐาน final draft จาก provider ก่อนถือว่าสำเร็จ
 Retry ทำได้เฉพาะ error ที่ยืนยันว่า provider ยังไม่รับงาน; outcome ที่ไม่แน่นอนต้อง
 ตรวจปลายทางก่อนกดใหม่
 
+Mobile Review ต้องแสดง display name หรือ external account id ของบัญชี/channel/page
+ปลายทางทุกช่อง พร้อม outcome ที่ขอ หากชื่อ/id ว่าง ค่าบังคับไม่ครบ หรือ outcome ยัง
+ระบุไม่ได้ ต้องปิดการยืนยันและให้ refresh/reconnect แทนการเดาเป้าหมาย ข้อมูลที่เห็นใน
+Review ไม่แทน server control: API ยัง resolve/snapshot/revalidate account จริงเอง
+
+Post ใหม่เก็บ `platformSettings` และ internal `platformTargets` snapshot จาก connection
+ปัจจุบัน ตรวจซ้ำก่อน commit และก่อน worker call; connection ที่หายหรือเปลี่ยนต้อง fail
+closed. API/queue response ต้องไม่คืน `platformTargets` หรือ `providerPostId`.
+`deliveryOutcome` สาธารณะมี `LIVE|PRIVATE|UNLISTED|DRAFT`; `PUBLISHED` หมายถึงส่งตาม
+intent สำเร็จ ไม่ได้แปลว่าสาธารณะเสมอ. แถวเก่าอาจเป็น null และ queued legacy row
+อาจไม่มี target snapshot จึงต้อง inspect/drain ก่อนเปิด PostPeer.
+
+owner coordinator เป็น memory map ภายใน API process เดียวและ serialize authenticated
+route mutations กับ RevenueCat webhook application ใน process นั้น แต่ mutation ที่เริ่ม
+ใน API instance อื่นอาจผ่าน durable-marker check ก่อนเริ่มลบแล้ว commit ภายหลังได้
+อีกทั้ง worker ไม่ถือ lock
+ตลอด provider call ดังนั้น account deletion ยังไม่ production-safe แม้รัน process เดียว
+และห้าม scale/แยก real worker จนกว่าจะมี durable repository barrier/lease หรือ
+transactional outbox/claim-and-drain ที่หยุดงานใหม่และ drain ทุก user mutation ก่อน cleanup
+ทั้ง Production และ Staging ต้องคง `FIREBASE_AUTH_DELETE_ENABLED=false` จนกว่าจะผ่าน
+gate นี้และ physical-device/slow-network cleanup tests; การมี service-account secret
+อย่างเดียวไม่ถือว่าพร้อมเปิด
+
 คำเตือนแยกจาก Staging: `render.yaml` ใน repository ปัจจุบันเลือก
-`SOCIAL_PUBLISHER=postpeer` สำหรับ Production ทั้งที่ connected-account E2E ยังไม่ผ่าน.
+`SOCIAL_PUBLISHER=postpeer` สำหรับ Production ทั้งที่ broader connected-account E2E
+และ Production verification ยังไม่ผ่าน.
 Repository ไม่ยืนยันค่าที่ deploy จริง และงาน safety gate นี้ไม่ได้แก้ Production
 Blueprint; ต้องตัดสินใจนโยบาย fail-closed และยืนยัน Dashboard ก่อนเปิดให้ผู้ใช้จริง
 
@@ -222,6 +281,39 @@ Staging Blueprint ติดตาม `main` และ deploy เมื่อ che
 รายการด้านล่างเป็น release gate ก่อนนำ release candidate เดียวกันขึ้น Production
 
 - [x] Firebase Google login, ID token และ API user/quota response ด้วยบัญชี Staging
+- [ ] ทดสอบ local publish draft บน release candidate จริง: save/restart/restore,
+      update/delete, สลับบัญชี, พื้นที่เต็ม และ publish success/failure โดยยืนยันว่า
+      การบันทึกร่างไม่เรียก readiness/upload/create-post, ไม่แตะ R2/provider/queue/quota,
+      ไม่มี server `DRAFT`, queue success ลบร่างและ pre-queue failure เก็บร่างไว้ รวมถึงตรวจ policy
+      Android/iOS backup ให้ตรงกับ Privacy/Data Safety
+- [ ] ยืนยันว่า connection ที่โหลดแล้วเริ่มเลือก 0 ช่องทาง ผู้ใช้ต้องเลือกเองหรือกด
+      `เลือกทั้งหมด`; เลือกแล้วจึงเห็นปุ่มสรุป/ตั้งค่าของช่องนั้น ไม่วางทุก field บน
+      หน้า main. Review ต้องแสดง TikTok inbox draft, YouTube visibility หลังกรอก
+      title/kids/synthetic/certification ครบ, Instagram share-to-feed และ Facebook
+      Page Video publish/page-draft พร้อมชื่อ/id ของบัญชี/channel/page ทุกปลายทาง;
+      TikTok direct, identity ที่หาย, ค่าที่ไม่ครบ และ outcome ที่ไม่รู้ต้อง block
+- [ ] Apply migration `20260811130000_add_platform_publish_configuration`, deploy API
+      ก่อน Mobile และตรวจ readiness `platformSettingsVersion: 1`; ตรวจ Prisma JSON
+      settings/targets กับ delivery outcome/provider id โดย public API/queue/log ไม่
+      เปิดเผย target/provider ids
+- [ ] ทดสอบ immediate/scheduled target snapshot: เปลี่ยนหรือตัด connection หลัง Review,
+      ก่อน commit และก่อน worker call ต้อง fail closed; inspect/drain queued legacy-null
+      backlog ซึ่งไม่มี snapshot ก่อนเปิด PostPeer
+- [ ] ทดสอบ provider delivery จริงแยก `LIVE`, `PRIVATE`, `UNLISTED`, `DRAFT`; TikTok
+      inbox และ Facebook Page draft ต้องมี final provider evidence, ใช้โควตา และ UI
+      ต้องไม่เรียกว่าเผยแพร่สาธารณะ. ทดสอบ YouTube compliance/visibility และคง TikTok
+      direct ปิดไว้จน creator-info/consent/audit ผ่าน
+- [ ] ทดสอบ stable `clientRequestId` กับ Prisma/queue จริง: first `201`, lost-response
+      replay `200 idempotentReplay: true` ได้ post เดิมและซ่อม job, intent mismatch กับ
+      terminal failed replay ตอบ `409`, legacy no-key เป็น attempt ใหม่ และโควตาเพิ่ม
+      เพียงครั้งเดียว รวม restart แอป/เซิร์ฟเวอร์และ queue-enqueue `503`
+- [ ] หลัง idempotency `409` ยืนยันว่า draft เดิมยังอยู่และปุ่ม Post ถูกปิดตาม draft ID,
+      กดซ้ำไม่ upload, ยกเลิกคำเตือนไม่สร้างรายการ และ `เริ่มรายการโพสต์ใหม่` จะสร้าง
+      draft/request ID ใหม่เฉพาะหลังยืนยัน โดยไม่ลบร่างเดิม
+- [ ] ยืนยันผลลัพธ์ Mobile ตาม status จริงทั้ง `QUEUED`, `PUBLISHING`, `PUBLISHED`,
+      `PARTIAL_PUBLISHED`, replay label และ unknown-status ที่ไม่ลบร่าง/ไม่แสดงสำเร็จ
+- [ ] จำลอง lost response หลังอัปโหลด แล้วตรวจว่า video/cover object ที่ไม่ได้ถูกอ้างถึง
+      ถูก reuse หรือลบตามนโยบายจริง ห้ามนับ post-row idempotency ว่าแก้ R2 orphan แล้ว
 - [x] Task 9 preflight: API 914/914, build/Prisma/typecheck, Flutter 759/759 และ
       analyze ผ่าน; fresh APK และ fixture SHA-256 ทั้ง 6 ไฟล์บันทึกใน
       `docs/testing/results/2026-08-08-ai-edit-correctness-pixel8.md` แล้ว
@@ -270,36 +362,49 @@ Staging Blueprint ติดตาม `main` และ deploy เมื่อ che
       ยืนยันบน Pixel 8 ขณะ `SOCIAL_PUBLISHER=disabled` ว่า Mobile แสดงข้อความไทยจาก
       authenticated readiness ก่อน watermark/upload และ post units คง `249/250`.
       หลักฐานอยู่ที่ `docs/testing/results/2026-08-10-social-publishing-pixel8.md`
-- [ ] ทดสอบ deployed write boundary โดยตรงให้ครบว่า authenticated `POST /posts` และ
-      `PATCH /posts/:id` ตอบ `503 SOCIAL_PUBLISHING_UNAVAILABLE` โดยไม่มี post/quota/queue
-      ใหม่ และ `DELETE /posts/:id` ยังยกเลิกคิวเดิมได้. รอบ Pixel 8 ข้างต้นหยุดที่
-      readiness จึงยังไม่ได้เรียกสาม route นี้; automated tests ไม่แทน live evidence
+- [ ] ทดสอบ deployed write boundary โดยตรงให้ครบว่า authenticated `POST /posts`,
+      `PATCH /posts/:id` และ `POST /posts/:id/publish-now` ตอบ
+      `503 SOCIAL_PUBLISHING_UNAVAILABLE` โดยไม่มี post/quota/queue ใหม่ และ
+      `DELETE /posts/:id` ยังยกเลิกคิวเดิมได้. รอบ Pixel 8 ข้างต้นหยุดที่ readiness
+      จึงยังไม่ได้เรียก route เหล่านี้; automated tests ไม่แทน live evidence
 - [ ] ตรวจ R2 หลังทดสอบ client เก่าหรือจำลอง race; หากไฟล์ถูกอัปโหลดก่อน
       authoritative `503` ต้องยืนยันว่า cleanup/lifecycle ลบ object ชั่วคราวนั้น
-- [ ] ทดสอบ activation guard บน Staging SHA เดียวกันพร้อมหลักฐานว่า runtime เห็น
-      `postpeer` และ empty-backlog guard ผ่านจริง. รอบ 10 สิงหาคมมีเพียง env-change
-      deploy ที่ขึ้น Live; log รุ่นนั้นแสดง scheduler/listener เหมือนกันทั้งโหมด
-      `disabled` และ `postpeer` ขณะที่ Mobile ยังได้ unavailable จึงยังยืนยันไม่ได้ว่า
-      atomic global count ของ `QUEUED`/`PUBLISHING` ถูกเรียกบน process นั้น. Deploy
-      candidate diagnostics ใหม่แล้วต้องเก็บ runtime-mode และ guard-pass log ตามด้านบน
+- [x] ทดสอบ activation guard บน Staging SHA
+      `208b4e580ddd2291a7a32e718c2519d785730895`: deploy
+      `dep-d9so44on74is7393ga30` แสดง runtime `enabled` / `postpeer` / guard
+      `enforced`, ตามด้วย empty-backlog guard-pass, listener และ scheduler ก่อนรับโพสต์
 - [ ] ก่อนรอบถัดไปให้ยืนยันว่า connection เป็นบัญชี disposable ของ Staging และ refresh
       สำเร็จ; ห้ามใช้บัญชีผู้ใช้หรือ Production. รอบนี้ไม่ได้พิสูจน์ account isolation
-- [ ] หลังสลับ `SOCIAL_PUBLISHER=postpeer` แบบตั้งใจแล้ว ให้ใช้บัญชี disposable
-      เชื่อม/refresh และโพสต์แบบควบคุม: YouTube private, TikTok SELF_ONLY,
-      Instagram Reels และ Facebook Page Video จากนั้นตรวจ provider URL,
-      `GET /posts.platformResults`; `GET /publishing/readiness` ต้องตอบ
-      `acceptingPosts: true` ระหว่างรอบนี้เท่านั้น จากนั้นสลับกลับ `disabled` และ
-      ยืนยัน readiness `503` อีกครั้ง
-      รอบ 10 สิงหาคม 2026 มี env-change deploy ขึ้น Liveและกด YouTube-privateเพียงครั้งเดียว
-      แต่ Mobile ยังตอบ unavailable ก่อน upload, โควตาคง `249/250`, ไม่มี provider
-      URL/id หรือโพสต์ YouTube และไม่มี retry. เนื่องจากไม่มี runtime-mode/guard-pass log
-      ห้ามนับว่า PostPeer หรือ activation guard ถูกใช้งานจริง. Staging rollback เป็น
-      `disabled` แล้ว, deploy/health ผ่าน แต่ยังไม่ได้เก็บ authenticated readiness
-      หลัง rollback แยก
+- [ ] ทดสอบ connected-account E2E ให้ครบทุกแพลตฟอร์มและเส้นทางที่โฆษณา
+      - [x] YouTube Shorts Private แบบโพสต์ทันทีผ่านหนึ่งครั้งบน Pixel 8:
+        กดส่งหนึ่งครั้ง ไม่มี retry, post/platform จบ `PUBLISHED`, มี provider
+        URL/id จริง (เก็บแบบ private), ปลายทางระบุวิดีโอเป็น Private และโควตาสด
+        เปลี่ยน `249/250` เป็น `248/250`
+      - [ ] TikTok inbox draft, YouTube Phase 2 compliance/visibility, Instagram
+        Reels, Facebook Page Video publish/page-draft, scheduling,
+        ambiguous-outcome/retry และ exact-account/isolation/disposable proof
+- [x] คืน Staging เป็น `SOCIAL_PUBLISHER=disabled` หลังทดสอบ โดย deploy
+      `dep-d9socgon74is7393uedg` แสดง runtime `disabled` / publisher `disabled` /
+      guard `not-enforced`, ไม่มี guard-pass, listener/health ผ่าน และ Environment
+      read-back เป็น `disabled`. Rollback deploy แรก `dep-d9so77h42hec73bejge0`
+      ยังเริ่มเป็น `enabled` จึงถูกบันทึกเป็น rollback ที่ไม่สำเร็จและแก้ซ้ำทันที
+- [ ] เก็บ authenticated readiness หลัง rollback โดยตรงให้ได้ `503
+      SOCIAL_PUBLISHING_UNAVAILABLE` พร้อม `Cache-Control: private, no-store`
 - [ ] จำลอง async `202`/ผลไม่แน่นอนเพื่อยืนยันว่ารอ poll แบบ bounded, ไม่สร้าง id
       ปลอม และไม่ retry POST ซ้ำก่อนผู้ทดสอบตรวจปลายทาง
-- [ ] ตั้งเวลา, retry และสถานะล้มเหลวไม่ค้างผิดปกติ
-- [ ] ลบบัญชีเปิดทดสอบภายหลังเมื่อมี Firebase service account ของ Staging เท่านั้น
+- [ ] ทดสอบ create/reschedule ว่ารับเฉพาะเวลาอนาคตไม่เกิน 30 วัน และทดสอบ
+      owner-scoped `publish-now` ว่าย้าย schedule ที่ยัง `QUEUED` เป็น ready โดย
+      queue failure คงเวลาเดิม; รวม retry และสถานะล้มเหลวไม่ให้ค้างผิดปกติ
+- [ ] ก่อนเปิด account deletion หรือใช้หลาย API instance/separate real worker ให้ลง
+      durable repository owner barrier/lease หรือ transactional outbox/claim-and-drain
+      ครอบทุก authenticated user mutation, RevenueCat webhook และ worker
+      provider call; ต้องหยุด mutation ใหม่, drain งานค้างก่อน cleanup และทดสอบทั้ง
+      process เดียว/ข้าม process โดย process-local entry check ไม่ถือว่าผ่าน
+- [ ] แทน Privacy Policy/Terms ที่แอประบุว่าเป็นเอกสารฉบับร่างด้วยฉบับตรวจทานและ HTTPS
+      URL จริง พร้อมให้ Android Data Safety, iOS App Privacy และ backup disclosure ตรงกับ
+      การเก็บ video/cover ของร่างใน Application Support
+- [ ] เปิดทดสอบลบบัญชีภายหลังเมื่อ full mutation barrier/drain ข้างต้นผ่าน และมี
+      Firebase service account ของ Staging เท่านั้น; ห้ามถือว่ามี secret แล้วพร้อมเปิด
 
 ## การล้างข้อมูล
 

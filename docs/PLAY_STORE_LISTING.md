@@ -92,6 +92,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 
 | ความสามารถ | สถานะจริง | เงื่อนไขก่อนเพิ่มใน Store copy/ภาพ |
 | --- | --- | --- |
+| ฉบับร่างโพสต์ในเครื่อง | Source implementation คัดลอกวิดีโอ/หน้าปก/manifest ไป Application Support แยกตาม stable authenticated UID โดยไม่มี server `DRAFT` หรือ publish-side effect | รัน automated suites และทดสอบ save/restore/delete, สลับบัญชี, พื้นที่เต็ม, queue success/pre-queue failure และ Android/iOS backup บน release candidate ก่อนใช้เป็นคำรับรอง |
 | โพสต์ TikTok, YouTube Shorts, Instagram Reels และ Facebook Page Video | PostPeer per-user connection/publisher, async polling และผลรายแพลตฟอร์มมีในโค้ด; `FACEBOOK_REELS` เป็นชื่อภายในเท่านั้น | เชื่อมบัญชี disposable จริงและทดสอบตั้งแต่อัปโหลดถึง provider URL/ID และ `GET /posts.platformResults`; ห้ามเรียก Facebook ว่า Reels จน provider รองรับจริง |
 | ตั้งเวลาโพสต์บน Cloud | ตัวประมวลผลใน API แบบหนึ่ง instance และ Prisma ใช้งานอยู่; BullMQ/Redis adapter มีในโค้ด | ทดสอบ delayed job/restart/retry/cancel ของแบบปัจจุบัน และเปิด Upstash + worker แยกก่อนเพิ่มหลาย instance หรือต้องการ durable queue |
 | Firebase Email/Google/Phone Auth | gateway มีในแอปและ API; release SHA/OAuth ตรงกับ APK ที่เซ็นแล้ว | ทดสอบ Email/Google/Phone บน Internal testing AAB และมือถือจริง |
@@ -100,7 +101,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | Pro AI ตัดต่อ | ElevenLabs ถอดเสียง, Gemini เลือกช่วง และ renderer จริงรองรับซับ/ตัดช่วงเงียบ/จัดการคำพูดซ้ำ/แสงสี | ทดสอบ provider + upload + FFmpeg + review + post/manual editor บนอุปกรณ์จริงหลายรุ่น |
 | Analytics | API/UI ใช้ข้อมูล backend และไม่สร้างตัวเลขปลอม | ต้องมีผลโพสต์จริงจาก provider และตรวจช่วงวันที่/ยอดจากบัญชีจริง |
 | Push notification | FCM mobile/server code มี | เปิด Firebase sender, ทดสอบ permission, token refresh, logout/unregister และ invalid-token cleanup |
-| ลบบัญชีครบทุกระบบ | มี in-app flow และ backend cleanup barrier | ตรวจ production credentials, R2/PostPeer/Firebase cleanup, RevenueCat behavior และ public deletion URL |
+| ลบบัญชีฝั่งบริการ | มี in-app flow, cleanup saga และ durable managed-upload marker แต่ Production ปิดชั่วคราวเพราะ owner coordinator ยัง process-local | ทำ durable full-user mutation barrier/drain, ตรวจ R2/PostPeer/Firebase cleanup, RevenueCat behavior, physical-device/slow-network race และ public deletion URL ก่อนเปิด; local draft/Application Support และ OS backup ไม่ถูกลบโดย flow ฝั่งบริการ ต้องมี copy/วิธีลบแยกที่ตรงกัน |
 
 ### ห้ามนำไปใส่ Store listing หรือ screenshots ตอนนี้
 
@@ -145,9 +146,9 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | Phone number | Firebase Phone Auth สำหรับ Basic quota | Authentication, fraud/abuse prevention | เป็น optional หรือ required ต่อผู้ใช้แต่ละแพ็กเกจ |
 | User IDs | Firebase UID, internal user ID, social connection IDs | Account management, cross-service linking | การส่งต่อ Firebase, RevenueCat, PostPeer และ backend |
 | Purchase history | product, entitlement, renewal/cancel/refund state | Purchases, subscription entitlement | Google Play Billing และ RevenueCat Data Safety docs |
-| Photos and videos | วิดีโอที่ผู้ใช้เลือก และ frames ที่ Pro อาจสกัด | Upload, publishing, AI caption/edit | retention ใน R2, Gemini/ElevenLabs และการลบหลังงานเสร็จ |
+| Photos and videos | วิดีโอที่ผู้ใช้เลือก, สำเนาวิดีโอ/หน้าปกของ local publish draft และ frames ที่ Pro อาจสกัด | Local draft, upload, publishing, AI caption/edit | การบันทึกร่างยังไม่ส่ง API/R2/provider แต่ Application Support อาจเข้า OS backup; ตรวจ retention ในเครื่อง/backup, R2, Gemini/ElevenLabs และการลบหลังงานเสร็จ |
 | Audio files / voice content | เสียงภายในวิดีโอที่ส่งถอดเสียง | AI caption/edit | provider, region, retention และการใช้เพื่อ train model หรือไม่ |
-| Other user-generated content | แคปชั่น, template, post metadata, schedule | App functionality | store ที่ใช้จริงและระยะเก็บ |
+| Other user-generated content | แคปชั่น, template, post metadata, schedule และ manifest ของ local publish draft | App functionality | แยกข้อมูล Application Support/SharedPreferences ที่ไม่ส่งจนกดโพสต์ออกจากข้อมูล backend/provider และยืนยันระยะเก็บ/backup |
 | App interactions | เหตุการณ์ใช้งานที่ส่ง Firebase Analytics | Analytics | production เปิด monitoring อัตโนมัติเมื่อ Firebase เปิด |
 | Crash logs / diagnostics | Firebase Crashlytics | App stability | SDK defaults, retention และ user association |
 | Device or other IDs | FCM token, Firebase installation/analytics identifiers, RevenueCat app user ID | Push, analytics, subscriptions | ตรวจว่าจัดเป็น collected/shared อย่างไรใน SDK docs |
@@ -176,6 +177,9 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 - [ ] ยืนยันว่า production ทุก endpoint เข้ารหัสระหว่างส่งผ่าน HTTPS/TLS ก่อนตอบ
   “Data is encrypted in transit”
 - [ ] ตัดสินใจว่ามี user opt-out สำหรับ Analytics/Crashlytics หรือไม่ และทำให้คำตอบตรงกับแอป
+- [ ] ตรวจ Android Auto Backup/iOS backup ของ Application Support ใน final binary
+  และตัดสินใจ exclude/retain ให้ตรงกับ Privacy, Terms, account deletion และคำตอบ
+  Data Safety; ห้ามอ้างว่า local draft ไม่ขึ้น cloud หาก OS backup ยังรวมไฟล์
 - [ ] ดาวน์โหลด/อ่าน Data Safety guidance ของ Firebase, RevenueCat และ provider ทุกตัวตามเวอร์ชันใน final AAB
 - [ ] ให้ผู้รับผิดชอบกฎหมาย/PDPA ตรวจคำตอบฉบับสุดท้าย
 

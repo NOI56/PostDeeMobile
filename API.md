@@ -50,8 +50,10 @@ The backend must not publish through shared PostPeer account ids in production
 (startup rejects them). Production publishing resolves per-user social
 connections. The internal `FACEBOOK_REELS` value currently maps to PostPeer's
 Facebook Page Video capability, not Facebook Reels. Provider-level approval is
-still blocked on the per-user connect/refresh flow and a controlled
-connected-account E2E test. The repository's Production Blueprint nevertheless
+still blocked on broader per-user platform, scheduling, failure-recovery, and
+Production tests. One controlled Staging YouTube Shorts Private immediate E2E
+passed on 2026-08-10 with a real non-mock external reference; this is not launch
+approval for other paths. The repository's Production Blueprint nevertheless
 selects `SOCIAL_PUBLISHER=postpeer`; treat that mismatch as a configuration risk,
 not evidence that the deployed environment is ready. This change does not alter
 the Production Blueprint.
@@ -173,14 +175,23 @@ When the API process is accepting new posts:
 ```json
 {
   "status": "ok",
-  "acceptingPosts": true
+  "acceptingPosts": true,
+  "platformSettingsVersion": 1
 }
 ```
 
 This `200` response means only that `SOCIAL_PUBLISHER` is not `disabled` for
-this API process. It does not call or verify PostPeer, R2/S3, the publish queue,
+this API process. `platformSettingsVersion: 1` advertises support for the exact
+per-platform request shapes documented under `POST /posts`; it is not a provider
+capability version. It does not call or verify PostPeer, R2/S3, the publish queue,
 a separate BullMQ worker, or the authenticated user's platform connections. It
 must not be used as provider-level or launch-readiness evidence.
+
+Deployment order is API-first: apply migration
+`20260811130000_add_platform_publish_configuration`, deploy the API, verify this
+field is `1`, and only then release a Mobile build that sends the new settings.
+Current Mobile checks both `acceptingPosts` and an integer version of at least
+`1`; a missing, malformed, or older value fails closed before upload.
 
 When `SOCIAL_PUBLISHER=disabled`, the response is:
 
@@ -193,8 +204,9 @@ When `SOCIAL_PUBLISHER=disabled`, the response is:
 ```
 
 The status is `503`. Current mobile clients call this route before watermarking
-or `POST /uploads`, but `POST /posts` and `PATCH /posts/:id` repeat the same
-authoritative check to close the race between preflight and mutation.
+or `POST /uploads`, but `POST /posts`, `PATCH /posts/:id`, and
+`POST /posts/:id/publish-now` repeat the same authoritative check to close the
+race between preflight and mutation.
 
 Both the accepting `200` response and disabled `503` response include:
 
@@ -361,6 +373,26 @@ has a replay window until strict `multipart` mode is enabled for all clients.
 
 ## Posts
 
+Mobile publish drafts are local files, not API resources. The app copies the
+draft video, optional cover, and manifest to app-owned Application Support
+storage under a stable authenticated user ID (the Firebase UID with real
+authentication). Saving a draft does not call this API,
+R2, PostPeer/social providers, the publish queue, or post-quota accounting. The
+backend therefore has no `PostStatus.DRAFT`; `GET /posts` exposes only server-side
+post lifecycle records. Local drafts do not sync between devices and may be
+included in an operating-system backup according to device settings.
+
+Do not confuse that local draft with a provider draft. TikTok
+`INBOX_DRAFT` and Facebook `PAGE_DRAFT` are delivery choices executed only after
+the user presses Post. They perform readiness/upload/post/queue/provider work and
+consume a post unit, then leave the resulting media as a draft at that provider.
+
+Migration `20260811130000_add_platform_publish_configuration` adds nullable
+`Post.platformSettings` and internal `Post.platformTargets` JSONB snapshots,
+plus nullable `PlatformPublish.deliveryOutcome` and internal
+`PlatformPublish.providerPostId`. Nullable columns keep existing rows readable;
+their compatibility rules are described below.
+
 Supported platform values:
 
 ```text
@@ -392,6 +424,7 @@ Response:
           "platform": "TIKTOK",
           "status": "PUBLISHED",
           "externalPostId": "https://www.tiktok.com/@seller/video/123",
+          "deliveryOutcome": "PRIVATE",
           "publishedAt": "2026-07-15T04:00:00.000Z",
           "views": 0,
           "likes": 0
@@ -473,9 +506,17 @@ Worker behavior:
   cover image or frame offset, Facebook Page Video receives the signed image,
   TikTok Direct Post receives the selected frame time, and YouTube Shorts does
   not receive a custom thumbnail.
-- If the publish queue is unavailable while creating or rescheduling a post,
-  the API returns `503` with `PUBLISH_QUEUE_UNAVAILABLE` and keeps the post
-  store from advancing ahead of the queue.
+- Create is database-first. The API commits one deterministic, owner-scoped
+  `QUEUED` post for a supplied `clientRequestId`, then enqueues it. If enqueue
+  fails, the API returns `503 PUBLISH_QUEUE_UNAVAILABLE` but deliberately keeps
+  that durable post row. A later request with the same key and matching intent
+  finds the row and calls `ensureEnqueued` to repair a missing/unhealthy job.
+  It does not create or charge a second post.
+- Reschedule and publish-now also update the owned `QUEUED` row first with a
+  compare-and-set guard, then replace the queue job. A queue failure attempts a
+  conditional rollback only while the persisted schedule still equals the
+  transition made by that request; it never overwrites a state that has already
+  advanced.
 - The mobile readiness preflight normally prevents a new upload while social
   publishing is disabled. An old client or a configuration race can still have
   uploaded media before this route returns `503`; the route does not delete that
@@ -508,6 +549,16 @@ Success response:
     "coverImageS3Key": "uploads/local-dev-user/cover-upload-id/post-cover.jpg",
     "coverFrameTimeMs": 4200,
     "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
+    "platformSettings": {
+      "TIKTOK": { "publishMode": "INBOX_DRAFT" },
+      "YOUTUBE_SHORTS": {
+        "title": "Launch walkthrough",
+        "visibility": "private",
+        "madeForKids": false,
+        "containsSyntheticMedia": false,
+        "communityGuidelinesCertified": true
+      }
+    },
     "scheduledAt": "2026-06-06T10:00:00.000Z",
     "status": "QUEUED",
     "createdAt": "2026-06-05T08:00:00.000Z"
@@ -523,6 +574,31 @@ Success response:
   }
 }
 ```
+
+The first successful request returns HTTP `201`. A retry with the same supplied
+`clientRequestId` and matching publishing intent returns HTTP `200`, includes
+`"idempotentReplay": true`, and returns the already-persisted post (plus a
+repaired/current job when the post is still `QUEUED`). Reusing a committed key
+for a different recognized publishing intent, including changed platform
+settings, returns HTTP `409` with
+`IDEMPOTENCY_KEY_REUSED`. Replaying a post that has already reached terminal
+`FAILED` returns HTTP `409` with `IDEMPOTENT_POST_FAILED` and its `postId`; it is not
+reported as newly queued. The social-publishing kill switch remains
+authoritative and returns `503` without repairing a replay while disabled.
+
+This protects the post row and quota count, not uploaded objects. The local
+draft currently persists the request ID but not completed remote video/cover
+keys. After a lost response, Mobile can upload replacement objects before the
+API returns the existing post; those unused objects require an explicit
+temporary-media cleanup/lifecycle policy before production.
+
+Legacy Post rows whose new JSON columns are null normalize to the historical
+settings above. Legacy queued rows with no target snapshot still resolve the
+current connected account at execution time, so inspect or drain that backlog
+before activating Phase 2/PostPeer; they do not gain immutable-target safety
+retroactively. Existing platform results with null `deliveryOutcome` remain
+readable but cannot prove whether the old delivery was live, private, unlisted,
+or a provider draft.
 
 Basic user without phone verification:
 
@@ -628,11 +704,22 @@ Permanently deletes the authenticated user's account, owned upload objects,
 Firebase identity, and user-scoped application data. This backs the App Store /
 Google Play required "Delete Account" flow in the profile screen.
 
+Production currently keeps `FIREBASE_AUTH_DELETE_ENABLED=false`; the endpoint
+therefore fails closed before cleanup. The behavior below documents the
+controlled/test path and must not be treated as launch readiness until the
+durable full-user mutation barrier and drain are implemented.
+
 Behavior:
 
-- Marks the owner as deleting before cleanup starts. Later authenticated
-  mutations are rejected, post creation cannot enqueue new work, and the
-  publish worker checks the same barrier before claiming a job.
+- Marks the managed-upload owner as deleting before cleanup starts. This marker
+  is durable for the managed-upload prefix, while the current process-local
+  coordinator serializes authenticated API mutations and RevenueCat webhook
+  application only inside one API process. A mutation already running in another
+  process can pass the durable-marker check before deletion starts and commit
+  afterward. The
+  publish worker atomically claims a due job, then checks the marker before
+  calling a provider without a lease spanning that call. This endpoint is not
+  production-safe until the full mutation-drain gap below is closed.
 - Cancels any queued or scheduled publish jobs for the user's posts.
 - Lists every paginated integration in the user's PostPeer profile and
   disconnects each one through the provider before deleting local records.
@@ -653,8 +740,9 @@ Behavior:
 - With Prisma stores, deletes the `User` row; `onDelete: Cascade` removes every
   related row in one step.
 - With in-memory stores, each store drops the user's records.
-- When Firebase auth is used, `FIREBASE_AUTH_DELETE_ENABLED=true` and
-  `FIREBASE_SERVICE_ACCOUNT_JSON` are required. Firebase identity is deleted
+- When Firebase auth is used in a controlled environment,
+  `FIREBASE_AUTH_DELETE_ENABLED=true` and `FIREBASE_SERVICE_ACCOUNT_JSON` are
+  required. Firebase identity is deleted
   last. Active identities must present an ID token whose `auth_time` is no more
   than five minutes old or receive `403 ACCOUNT_REAUTHENTICATION_REQUIRED`.
 - `auth/user-not-found` is treated as an idempotent success. Other Firebase
@@ -1907,7 +1995,7 @@ PostgreSQL.
 | `AUTH_PROVIDER` | `mock`, `firebase` | Auth adapter |
 | `FIREBASE_PROJECT_ID` | `postdee-prod` | Firebase project id |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | `{...}` | Firebase Admin service account JSON for account deletion and revoked-token checks; keep secret |
-| `FIREBASE_AUTH_DELETE_ENABLED` | `false`, `true` | Enables complete Firebase account deletion and revoked/deleted-token checks; requires the Firebase service account |
+| `FIREBASE_AUTH_DELETE_ENABLED` | `false`, `true` | Enables the current Firebase identity/account cleanup path and revoked/deleted-token checks; requires the service account. Keep account deletion disabled in Production until the full durable user-mutation barrier/drain gap is closed |
 | `PUSH_SENDER` | `mock`, `firebase` | Push sender adapter; keep `mock` until the Firebase sender is verified with the installed Admin SDK |
 | `VIDEO_STORAGE` | `mock`, `r2`, `s3` | Temporary video storage adapter |
 | `CLOUDFLARE_R2_BUCKET` | `postdee-video-temp` | R2 bucket name |
@@ -1965,7 +2053,7 @@ PostgreSQL.
 | `CAPTION_USAGE_STORE` | `memory`, `prisma` | Real-clip AI caption monthly usage persistence |
 | `AI_EDIT_USAGE_STORE` | `memory`, `prisma` | AI editing monthly minute usage persistence |
 | `PUBLISH_QUEUE` | `memory`, `bullmq` | Publish queue adapter; `bullmq` requires `POST_STORE=prisma` and `DATABASE_URL` |
-| `SOCIAL_PUBLISHER` | `mock`, `disabled`, `postpeer` | Local fake success, explicit fail-closed staging/maintenance mode, or real PostPeer publishing. `disabled` makes readiness, post create, and post reschedule return `503 SOCIAL_PUBLISHING_UNAVAILABLE`; cancel remains available |
+| `SOCIAL_PUBLISHER` | `mock`, `disabled`, `postpeer` | Local fake success, explicit fail-closed staging/maintenance mode, or real PostPeer publishing. `disabled` makes readiness, post create, post reschedule, and publish-now return `503 SOCIAL_PUBLISHING_UNAVAILABLE`; cancel remains available |
 | `SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG` | `false`, `true` | Optional `PUBLISH_QUEUE=memory` activation guard. With `postpeer`, startup runs one atomic global aggregate count with status in `QUEUED` or `PUBLISHING` (including future schedules) before starting the scheduler or listening; a non-zero total or inspection failure blocks startup. Defaults to `false`; Staging sets `true` and Production is unchanged |
 | `POSTPEER_API_KEY` | `...` | PostPeer API key for real social publishing |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | Optional PostPeer API host override |
@@ -1983,12 +2071,44 @@ The following work is still required before production launch:
 
 - Verify the per-user PostPeer connect/refresh and full publish-result flow with
   connected test accounts before enabling production user publishing; do not
-  use shared `POSTPEER_*_ACCOUNT_ID` values in production. Controlled-first
-  requests currently force YouTube `private` and TikTok `SELF_ONLY` direct
-  publishing; add explicit user privacy controls before public rollout.
+  use shared `POSTPEER_*_ACCOUNT_ID` values in production. Apply the Phase 2
+  migration/API first, verify `platformSettingsVersion: 1`, and inspect or drain
+  queued legacy-null rows before releasing Mobile.
+- Keep TikTok `DIRECT_POST` disabled until creator-info is loaded immediately
+  before posting, the account's current privacy/interaction choices and consent
+  are represented, and TikTok audit approval is complete. Run controlled
+  provider E2E for TikTok `INBOX_DRAFT` and Facebook `PAGE_DRAFT`; confirm the
+  provider id/final state without exposing internal ids to clients.
+- Complete YouTube compliance/provider verification for title, made-for-kids,
+  synthetic-media disclosure, certification, and Private/Unlisted/Public. The
+  platform may keep non-private uploads Private until its API audit allows the
+  requested visibility.
+- Prove immutable target snapshots on immediate and scheduled posts: connection
+  replacement/disconnect between review, commit, and worker execution must fail
+  closed, while public APIs/logs must redact provider account/post ids.
 - Store social access tokens securely only if direct platform APIs replace the
   PostPeer provider later.
 - Complete provider-level R2 upload and cleanup testing.
+- Close the completed-upload orphan path: a lost create-post response can make
+  Mobile upload a new video/cover before an idempotent replay returns the old
+  post. Persist/reuse completed remote keys or delete superseded objects, and
+  verify the lifecycle rule against real R2 before launch.
+- Account deletion is not production-safe: the current process-local coordinator
+  cannot drain an authenticated mutation already running in another API instance,
+  and the worker does not hold a lease across the provider call. Add a
+  durable repository owner barrier/lease (or equivalent transactional
+  outbox/claim-and-drain protocol) across every user mutation family. It must
+  atomically reject new writes,
+  drain in-flight work before the cleanup snapshot, and span worker
+  claim/provider critical sections. Test same-process and separate-process races
+  before enabling Production deletion, multi-instance API, or a real separate
+  worker.
+- Run the local-draft, stable-request replay, explicit destination, truthful
+  status, future/30-day, and publish-now matrix on physical Android and iPhone
+  release candidates and through controlled Staging provider E2E.
+- Replace the in-app Privacy Policy and Terms working drafts with finalized,
+  hosted legal text, and make Android/iOS backup plus Data Safety/App Privacy
+  disclosures match app-owned draft video/cover storage.
 - Test real-clip caption/transcription with real R2 videos, Gemini, and ElevenLabs before
   production launch. Mobile frame extraction/upload (up to 3 frames) is
   implemented and still needs real-device/provider verification.

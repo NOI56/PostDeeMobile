@@ -14,6 +14,7 @@ export type RevenueCatActiveEntitlement = {
 
 export type RevenueCatSubscriberSnapshot = {
   activeEntitlements: RevenueCatActiveEntitlement[];
+  observedAtMs: number;
 };
 
 export type RevenueCatSubscriberClient = {
@@ -117,11 +118,23 @@ export const createRevenueCatSubscriberClient = ({
           throw new RevenueCatSubscriberProviderError();
         }
 
-        const requestDateMs =
+        let requestDateMs: number;
+
+        if (payload.request_date_ms === undefined) {
+          requestDateMs = now().getTime();
+        } else if (
           typeof payload.request_date_ms === 'number' &&
-          Number.isFinite(payload.request_date_ms)
-            ? payload.request_date_ms
-            : now().getTime();
+          Number.isSafeInteger(payload.request_date_ms) &&
+          payload.request_date_ms > 0
+        ) {
+          requestDateMs = payload.request_date_ms;
+        } else {
+          throw new RevenueCatSubscriberProviderError();
+        }
+
+        if (!Number.isSafeInteger(requestDateMs) || requestDateMs <= 0) {
+          throw new RevenueCatSubscriberProviderError();
+        }
         const activeEntitlements: RevenueCatActiveEntitlement[] = [];
 
         for (const [id, rawEntitlement] of Object.entries(entitlements)) {
@@ -153,7 +166,10 @@ export const createRevenueCatSubscriberClient = ({
           }
         }
 
-        return { activeEntitlements };
+        return {
+          activeEntitlements,
+          observedAtMs: requestDateMs
+        };
       } catch (error) {
         if (error instanceof RevenueCatSubscriberProviderError) {
           throw error;

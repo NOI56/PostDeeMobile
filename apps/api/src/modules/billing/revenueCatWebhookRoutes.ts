@@ -18,8 +18,10 @@ type RevenueCatWebhookConfig = Pick<
 type RevenueCatEvent = {
   type: string;
   appUserId: string;
+  eventId?: string;
   productId?: string;
   entitlementIds: string[];
+  eventTimestampMs?: number;
   expirationAtMs?: number | null;
 };
 
@@ -63,6 +65,11 @@ const readExpiration = (value: unknown) => {
     : undefined;
 };
 
+const readEventTimestamp = (value: unknown) =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+    ? value
+    : undefined;
+
 const readAuthorizationToken = (request: Request) => {
   const authorization = readString(request.headers.authorization);
 
@@ -81,6 +88,7 @@ const readRevenueCatEvent = (body: unknown): RevenueCatEvent | undefined => {
   const event = body.event;
   const type = readString(event.type);
   const appUserId = readString(event.app_user_id);
+  const eventTimestampMs = readEventTimestamp(event.event_timestamp_ms);
 
   if (!type || !appUserId) {
     return undefined;
@@ -89,8 +97,10 @@ const readRevenueCatEvent = (body: unknown): RevenueCatEvent | undefined => {
   return {
     type,
     appUserId,
+    eventId: readString(event.id),
     productId: readString(event.product_id),
     entitlementIds: readStringList(event.entitlement_ids),
+    eventTimestampMs,
     expirationAtMs:
       event.expiration_at_ms === null
         ? null
@@ -126,7 +136,8 @@ const sendInvalidPayload = (response: Response) =>
   response.status(400).json({
     status: 'error',
     code: 'REVENUECAT_WEBHOOK_INVALID',
-    message: 'RevenueCat webhook payload must include event.type and event.app_user_id'
+    message:
+      'RevenueCat webhook payload must include event.type, event.app_user_id, and ordering metadata for actionable events'
   });
 
 const sendUnauthorized = (response: Response) =>
@@ -185,13 +196,25 @@ export const registerRevenueCatWebhookRoutes = ({
       return;
     }
 
+    const inactiveStatus = inactiveStatusByEventType[event.type];
+    const isActionable = activeEventTypes.has(event.type) || Boolean(inactiveStatus);
+
+    if (isActionable && (!event.eventId || event.eventTimestampMs === undefined)) {
+      sendInvalidPayload(response);
+      return;
+    }
+
     const authUser = {
       id: event.appUserId,
       provider: 'firebase' as const
     };
     const billingSubscriptionId = revenueCatBillingSubscriptionId(event.appUserId);
 
-    if (activeEventTypes.has(event.type)) {
+    if (
+      activeEventTypes.has(event.type) &&
+      event.eventId &&
+      event.eventTimestampMs !== undefined
+    ) {
       if (!(await userStore.exists(event.appUserId))) {
         response.status(202).json({
           status: 'ok',
@@ -203,33 +226,40 @@ export const registerRevenueCatWebhookRoutes = ({
       }
 
       const currentPeriodEnd = readExpiration(event.expirationAtMs);
-      const subscription = await subscriptionStore.activatePlan(authUser, plan, {
+      const eventResult = await subscriptionStore.applyRevenueCatEvent({
+        authUser,
         billingSubscriptionId,
+        plan,
+        status: 'ACTIVE',
+        eventId: event.eventId,
+        eventTimestampMs: event.eventTimestampMs,
         ...(currentPeriodEnd !== undefined ? { currentPeriodEnd } : {})
       });
 
       response.json({
         status: 'ok',
-        ignored: false,
+        ignored: !eventResult.applied,
         eventType: event.type,
-        subscription
+        subscription: eventResult.subscription
       });
       return;
     }
 
-    const inactiveStatus = inactiveStatusByEventType[event.type];
-
-    if (inactiveStatus) {
-      const subscription = await subscriptionStore.updateStatusByBillingSubscriptionId({
+    if (inactiveStatus && event.eventId && event.eventTimestampMs !== undefined) {
+      const eventResult = await subscriptionStore.applyRevenueCatEvent({
+        authUser,
         billingSubscriptionId,
-        status: inactiveStatus
+        plan,
+        status: inactiveStatus,
+        eventId: event.eventId,
+        eventTimestampMs: event.eventTimestampMs
       });
 
       response.json({
         status: 'ok',
-        ignored: subscription === null,
+        ignored: !eventResult.applied || eventResult.subscription === null,
         eventType: event.type,
-        subscription
+        subscription: eventResult.subscription
       });
       return;
     }

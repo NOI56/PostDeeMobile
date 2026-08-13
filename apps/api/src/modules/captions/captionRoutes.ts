@@ -10,6 +10,7 @@ import {
   readRealClipCaptionMode
 } from '../subscriptions/subscriptionEntitlements.js';
 import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
+import type { UserStore } from '../users/userStore.js';
 import type { CaptionGenerator } from './captionGeneratorFactory.js';
 import {
   generateLocalAffiliateCaption,
@@ -124,7 +125,8 @@ export const registerCaptionRoutes = (
   realClipCaptionUsageStore: RealClipCaptionUsageStore = createInMemoryRealClipCaptionUsageStore(),
   realClipCaptionProvider?: RealClipCaptionProvider,
   fetchClipMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>,
-  deleteClipMedia?: (videoS3Key: string) => Promise<void>
+  deleteClipMedia?: (videoS3Key: string) => Promise<void>,
+  userStore?: UserStore
 ) => {
   router.post('/captions/generate', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
@@ -160,6 +162,7 @@ export const registerCaptionRoutes = (
 
     const monthKey = readCurrentRealClipCaptionMonthKey();
     const limit = monthlyAiCaptionGenerationLimits[plan];
+    await userStore?.ensure(authUser);
     const reservation = await realClipCaptionUsageStore.reserve({
       userId: authUser.id,
       monthKey,
@@ -307,6 +310,7 @@ export const registerCaptionRoutes = (
         return reservation;
       }
 
+      await userStore?.ensure(authUser);
       const nextReservation = await realClipCaptionUsageStore.reserve({
         userId: authUser.id,
         monthKey,

@@ -365,7 +365,11 @@ Cloud Scheduling requires Starter or Pro. The `BASIC` scaffold path supports
 real-time posting only after phone verification and is limited to 3 post units
 per month. Starter is limited to 120 post units per month, and Pro is limited
 to 250 post units per month. A post unit is counted per selected platform, so
-one video posted to four platforms uses four units.
+one video posted to four platforms uses four units. Repeated platform values
+are collapsed, and the quota check plus post insert is atomic. `scheduledAt`
+must be a valid future RFC 3339 timestamp with `Z` or an explicit `±HH:mm`
+timezone, and no more than 30 days ahead. The API rejects impossible calendar
+dates and normalizes accepted offsets to UTC.
 
 When `SOCIAL_PUBLISHER=disabled`, `POST /posts` returns
 `503 SOCIAL_PUBLISHING_UNAVAILABLE` before managed-upload readiness checks,
@@ -462,10 +466,12 @@ Request shape:
 ```json
 {
   "event": {
+    "id": "event-id-from-revenuecat",
     "type": "INITIAL_PURCHASE",
     "app_user_id": "firebase-user-id",
     "product_id": "postdee_pro_monthly",
     "entitlement_ids": ["pro"],
+    "event_timestamp_ms": 1780444800000,
     "expiration_at_ms": 1780531200000
   }
 }
@@ -474,7 +480,9 @@ Request shape:
 Active purchase and renewal events activate the mapped plan. `EXPIRATION`
 removes paid access. `CANCELLATION`, `SUBSCRIPTION_PAUSED`, and `BILLING_ISSUE`
 are acknowledged without revoking access immediately because the subscription
-can still be active until the paid period actually expires.
+can still be active until the paid period actually expires. Actionable events
+require `id` and `event_timestamp_ms`; the per-user cursor and subscription
+change are atomic, so retries and older events cannot overwrite newer state.
 
 #### `POST /billing/revenuecat/resync`
 
@@ -487,6 +495,12 @@ subscription is deactivated. An active but unmapped entitlement returns a safe
 configuration error without removing existing access.
 Clients must not send or choose another RevenueCat app user id; the route always
 uses the authenticated PostDee user id.
+
+The subscriber response's `request_date_ms` and webhook `event_timestamp_ms`
+share one per-user serializable ordering cursor. Older or equal snapshots/events
+are acknowledged without overwriting newer state. If `request_date_ms` is
+absent, local API receipt time is used; synchronized server clocks are required
+because skew can temporarily suppress a legitimate webhook as apparently old.
 
 This route is not operational in an environment until the current backend is
 deployed and its RevenueCat REST API v1 secret is configured. Provider failures

@@ -2,7 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createApp } from '../../app.js';
+import { createApp as createPostDeeApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
 import { createInMemoryPublishQueue } from '../queue/publishQueue.js';
 import { createInMemoryPlatformPublishStore } from '../platformPublishes/platformPublishStore.js';
@@ -14,6 +14,9 @@ import { registerPostRoutes } from './postRoutes.js';
 
 describe('post routes', () => {
   const allPlatforms = ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'];
+  const futureNow = () => new Date('2026-06-01T00:00:00.000Z');
+  const createApp = (options: Parameters<typeof createPostDeeApp>[0] = {}) =>
+    createPostDeeApp({ now: futureNow, ...options });
   const socialPublishingUnavailableResponse = {
     status: 'error',
     code: 'SOCIAL_PUBLISHING_UNAVAILABLE',
@@ -173,6 +176,35 @@ describe('post routes', () => {
     expect(await publishQueue.list({ userId: 'seller-publishing-disabled' })).toEqual([]);
   });
 
+  it('does not upsert a Prisma user before the app-level disabled publishing gate', async () => {
+    const userUpsert = vi.fn();
+    const app = createApp({
+      config: readServerConfig({ SOCIAL_PUBLISHER: 'disabled' }),
+      prisma: {
+        user: {
+          findUnique: vi.fn(),
+          upsert: userUpsert
+        }
+      } as never
+    });
+
+    await request(app)
+      .post('/posts')
+      .set('x-postdee-user-id', 'seller-disabled-no-user-write')
+      .send({
+        caption: 'Must fail before persistence',
+        videoS3Key: ownedUploadKey(
+          'seller-disabled-no-user-write',
+          'disabled.mp4'
+        ),
+        platforms: ['TIKTOK']
+      })
+      .expect(503)
+      .expect(socialPublishingUnavailableResponse);
+
+    expect(userUpsert).not.toHaveBeenCalled();
+  });
+
   it('still allows a queued post to be canceled when social publishing is disabled', async () => {
     const app = express();
     const router = express.Router();
@@ -262,6 +294,146 @@ describe('post routes', () => {
         code: 'SCHEDULE_LIMIT_EXCEEDED',
         message: 'Posts can be scheduled up to 30 days in advance'
       });
+  });
+
+  it('rejects invalid and past schedules instead of publishing immediately', async () => {
+    const app = createApp({ now: () => new Date('2026-06-10T10:00:00.000Z') });
+    const baseRequest = {
+      caption: 'Schedule must be valid and future',
+      platforms: ['TIKTOK'],
+      subscriptionPlan: 'PRO'
+    };
+
+    await request(app)
+      .post('/posts')
+      .send({
+        ...baseRequest,
+        videoS3Key: ownedUploadKey('local-dev-user', 'invalid-schedule.mp4'),
+        scheduledAt: 'not-a-date'
+      })
+      .expect(400)
+      .expect({
+        status: 'error',
+        message: 'scheduledAt must be a valid ISO date'
+      });
+
+    await request(app)
+      .post('/posts')
+      .send({
+        ...baseRequest,
+        videoS3Key: ownedUploadKey('local-dev-user', 'past-schedule.mp4'),
+        scheduledAt: '2026-06-10T10:00:00.000Z'
+      })
+      .expect(400)
+      .expect({
+        status: 'error',
+        code: 'SCHEDULE_MUST_BE_FUTURE',
+        message: 'scheduledAt must be in the future'
+      });
+  });
+
+  it.each([
+    ['an impossible calendar date', '2026-02-30T10:00:00.000Z'],
+    ['a timestamp without a timezone', '2026-06-15T10:00:00'],
+    ['a date-only value', '2026-06-15'],
+    ['a space-separated timestamp', '2026-06-15 10:00:00Z']
+  ])('rejects %s for create and reschedule', async (_label, scheduledAt) => {
+    const app = createApp({ now: () => new Date('2026-06-01T00:00:00.000Z') });
+    const postId = await createScheduledPost(app);
+
+    await request(app)
+      .post('/posts')
+      .send({
+        caption: 'Strict timestamp create',
+        videoS3Key: ownedUploadKey('local-dev-user', 'strict-create.mp4'),
+        platforms: ['TIKTOK'],
+        subscriptionPlan: 'PRO',
+        scheduledAt
+      })
+      .expect(400)
+      .expect({
+        status: 'error',
+        message: 'scheduledAt must be a valid ISO date'
+      });
+
+    await request(app)
+      .patch(`/posts/${postId}`)
+      .send({ scheduledAt })
+      .expect(400)
+      .expect({
+        status: 'error',
+        message: 'scheduledAt must be a valid ISO date'
+      });
+  });
+
+  it('accepts timezone offsets and valid leap dates, then normalizes them to UTC', async () => {
+    const app = createApp({ now: () => new Date('2028-02-01T00:00:00.000Z') });
+
+    const createResponse = await request(app)
+      .post('/posts')
+      .send({
+        caption: 'Valid offset schedule',
+        videoS3Key: ownedUploadKey('local-dev-user', 'offset.mp4'),
+        platforms: ['TIKTOK'],
+        subscriptionPlan: 'PRO',
+        scheduledAt: '2028-02-29T10:30:45.125+07:00'
+      })
+      .expect(201);
+
+    expect(createResponse.body.post.scheduledAt).toBe(
+      '2028-02-29T03:30:45.125Z'
+    );
+
+    await request(app)
+      .patch(`/posts/${createResponse.body.post.id}`)
+      .send({ scheduledAt: '2028-02-29T11:30:45+07:00' })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.post.scheduledAt).toBe('2028-02-29T04:30:45.000Z');
+      });
+  });
+
+  it('deduplicates platforms before quota accounting, storage, and queueing', async () => {
+    const app = createApp();
+    const userId = 'seller-platform-dedupe';
+
+    const response = await request(app)
+      .post('/posts')
+      .set('x-postdee-user-id', userId)
+      .set('x-postdee-phone-verified', 'true')
+      .send({
+        caption: 'Unique platforms only',
+        videoS3Key: ownedUploadKey(userId, 'dedupe.mp4'),
+        platforms: ['TIKTOK', 'TIKTOK', 'YOUTUBE_SHORTS']
+      })
+      .expect(201);
+
+    expect(response.body.post.platforms).toEqual(['TIKTOK', 'YOUTUBE_SHORTS']);
+    expect(response.body.publishJob.platforms).toEqual(['TIKTOK', 'YOUTUBE_SHORTS']);
+  });
+
+  it('atomically enforces monthly post-unit quota for concurrent requests', async () => {
+    const app = createApp();
+    const userId = 'seller-concurrent-quota';
+    const createTwoUnitPost = (suffix: string) =>
+      request(app)
+        .post('/posts')
+        .set('x-postdee-user-id', userId)
+        .set('x-postdee-phone-verified', 'true')
+        .send({
+          caption: `Concurrent post ${suffix}`,
+          videoS3Key: ownedUploadKey(userId, `concurrent-${suffix}.mp4`),
+          platforms: ['TIKTOK', 'YOUTUBE_SHORTS']
+        });
+
+    const responses = await Promise.all([createTwoUnitPost('a'), createTwoUnitPost('b')]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 402]);
+    const listResponse = await request(app)
+      .get('/posts')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+    expect(listResponse.body.posts).toHaveLength(1);
   });
 
   it('stores and queues cover metadata only after both uploads are ready', async () => {
@@ -554,7 +726,8 @@ describe('post routes', () => {
       authMiddleware,
       createUserStore(),
       createSubscriptionStore(),
-      createInMemoryPlatformPublishStore()
+      createInMemoryPlatformPublishStore(),
+      { now: futureNow }
     );
     app.use(router);
 
@@ -612,7 +785,8 @@ describe('post routes', () => {
       authMiddleware,
       createUserStore(),
       createSubscriptionStore(),
-      createInMemoryPlatformPublishStore()
+      createInMemoryPlatformPublishStore(),
+      { now: futureNow }
     );
     app.use(router);
 
@@ -757,6 +931,19 @@ describe('post routes', () => {
 
   it('upserts the auth user before creating a Prisma-backed post', async () => {
     const createdAt = new Date('2026-06-01T00:00:00.000Z');
+    const post = {
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({
+        id: 'post-1',
+        userId: 'seller-prisma',
+        caption: 'Prisma post',
+        videoS3Key: ownedUploadKey('seller-prisma', 'prisma-video.mp4'),
+        selectedPlatforms: ['TIKTOK'],
+        scheduledAt: null,
+        status: 'QUEUED',
+        createdAt
+      })
+    };
     const prisma = {
       user: {
         upsert: vi.fn().mockResolvedValue({
@@ -768,19 +955,11 @@ describe('post routes', () => {
           updatedAt: createdAt
         })
       },
-      post: {
-        findMany: vi.fn().mockResolvedValue([]),
-        create: vi.fn().mockResolvedValue({
-          id: 'post-1',
-          userId: 'seller-prisma',
-          caption: 'Prisma post',
-          videoS3Key: ownedUploadKey('seller-prisma', 'prisma-video.mp4'),
-          selectedPlatforms: ['TIKTOK'],
-          scheduledAt: null,
-          status: 'QUEUED',
-          createdAt
-        })
-      },
+      post,
+      $transaction: vi.fn(
+        async (operation: (client: { post: typeof post }) => Promise<unknown>) =>
+          operation({ post })
+      ),
       template: {
         findMany: vi.fn(),
         create: vi.fn()
@@ -1090,7 +1269,7 @@ describe('post routes', () => {
     });
 
     try {
-      const app = createApp();
+      const app = createApp({ now: () => new Date() });
 
       vi.setSystemTime(new Date('2026-05-31T12:00:00.000Z'));
 

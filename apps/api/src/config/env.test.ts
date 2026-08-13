@@ -525,6 +525,25 @@ describe('readServerConfig', () => {
     ).toThrow('DATABASE_URL is required when any Prisma-backed store is enabled');
   });
 
+  it('requires DATABASE_URL when managed multipart uploads are enabled', () => {
+    expect(() => readServerConfig({ UPLOAD_PROTOCOL_MODE: 'dual' })).toThrow(
+      'DATABASE_URL is required when any Prisma-backed store is enabled'
+    );
+    expect(() => readServerConfig({ UPLOAD_PROTOCOL_MODE: 'multipart' })).toThrow(
+      'DATABASE_URL is required when any Prisma-backed store is enabled'
+    );
+  });
+
+  it('requires Prisma posts when Prisma analytics are enabled', () => {
+    expect(() =>
+      readServerConfig({
+        DATABASE_URL: 'postgresql://user:pass@localhost:5432/postdee',
+        ANALYTICS_STORE: 'prisma',
+        POST_STORE: 'memory'
+      })
+    ).toThrow('ANALYTICS_STORE=prisma requires POST_STORE=prisma');
+  });
+
   it('rejects invalid VIDEO_STORAGE values', () => {
     expect(() => readServerConfig({ VIDEO_STORAGE: 'filesystem' })).toThrow(
       'VIDEO_STORAGE must be mock, s3, or r2'

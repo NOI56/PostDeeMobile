@@ -428,11 +428,16 @@ const usesPrismaBackedStore = (config: ServerConfig) =>
   config.subscriptionStore === 'prisma' ||
   config.analyticsStore === 'prisma' ||
   config.captionUsageStore === 'prisma' ||
-  config.aiEditUsageStore === 'prisma';
+  config.aiEditUsageStore === 'prisma' ||
+  config.uploadProtocolMode !== 'legacy';
 
 const assertRuntimeStoreConfig = (config: ServerConfig) => {
   if (config.publishQueue === 'bullmq' && config.postStore !== 'prisma') {
     throw new Error('PUBLISH_QUEUE=bullmq requires POST_STORE=prisma');
+  }
+
+  if (config.analyticsStore === 'prisma' && config.postStore !== 'prisma') {
+    throw new Error('ANALYTICS_STORE=prisma requires POST_STORE=prisma');
   }
 
   if (usesPrismaBackedStore(config) && !config.databaseUrl) {

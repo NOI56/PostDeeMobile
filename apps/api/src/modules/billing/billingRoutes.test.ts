@@ -242,7 +242,7 @@ describe('billing routes', () => {
   });
 
   it('activates mock Pro billing for the authenticated user', async () => {
-    const app = createApp();
+    const app = createApp({ now: () => new Date('2026-06-01T00:00:00.000Z') });
 
     const billingResponse = await request(app)
       .post('/billing/mock-success')
@@ -277,7 +277,7 @@ describe('billing routes', () => {
   });
 
   it('activates Pro from a verified Android store subscription purchase', async () => {
-    const app = createApp();
+    const app = createApp({ now: () => new Date('2026-06-01T00:00:00.000Z') });
 
     const billingResponse = await request(app)
       .post('/billing/store/verify')

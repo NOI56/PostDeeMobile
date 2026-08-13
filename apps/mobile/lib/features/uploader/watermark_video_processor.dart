@@ -19,15 +19,39 @@ class WatermarkedVideoResult {
     required this.file,
     required this.fileName,
     required this.sizeBytes,
+    this.temporaryDirectory,
   });
 
   final File file;
   final String fileName;
   final int sizeBytes;
+  final Directory? temporaryDirectory;
+
+  Future<void> cleanupTemporaryFiles() async {
+    final directory = temporaryDirectory;
+    if (directory != null) await _deleteTemporaryDirectory(directory);
+  }
 }
 
-typedef UploaderWatermarkVideoProcessor = Future<WatermarkedVideoResult>
-    Function(WatermarkVideoRequest request);
+typedef UploaderWatermarkVideoProcessor =
+    Future<WatermarkedVideoResult> Function(WatermarkVideoRequest request);
+typedef WatermarkTemporaryDirectoryCreator =
+    Future<Directory> Function(String prefix);
+
+Future<Directory> _createSystemTemporaryDirectory(String prefix) =>
+    Directory.systemTemp.createTemp(prefix);
+
+Future<void> _deleteTemporaryDirectory(Directory directory) {
+  try {
+    if (directory.existsSync()) {
+      directory.deleteSync(recursive: true);
+    }
+  } on FileSystemException {
+    // Cleanup must not turn an otherwise successful upload into a failure.
+  }
+
+  return Future<void>.value();
+}
 
 class WatermarkVideoException implements Exception {
   const WatermarkVideoException(this.message);
@@ -42,55 +66,61 @@ class FfmpegWatermarkVideoProcessor {
   FfmpegWatermarkVideoProcessor({
     AssetBundle? assetBundle,
     this.watermarkAssetPath = 'assets/images/brand/postdee_logo_dark.png',
-  }) : assetBundle = assetBundle ?? rootBundle;
+    WatermarkTemporaryDirectoryCreator? createTemporaryDirectory,
+  }) : assetBundle = assetBundle ?? rootBundle,
+       _createTemporaryDirectory =
+           createTemporaryDirectory ?? _createSystemTemporaryDirectory;
 
   final AssetBundle assetBundle;
   final String watermarkAssetPath;
+  final WatermarkTemporaryDirectoryCreator _createTemporaryDirectory;
 
   Future<WatermarkedVideoResult> call(WatermarkVideoRequest request) async {
     if (!await request.inputFile.exists()) {
       throw const WatermarkVideoException('ไม่พบไฟล์วิดีโอสำหรับใส่ลายน้ำ');
     }
 
-    final workingDirectory = await Directory.systemTemp.createTemp(
+    final workingDirectory = await _createTemporaryDirectory(
       'postdee-watermark-',
     );
-    final watermarkFile = await _copyWatermarkAsset(workingDirectory);
-    final outputFile = File(
-      '${workingDirectory.path}${Platform.pathSeparator}${_watermarkedFileName(request.fileName)}',
-    );
-
-    final session = await FFmpegKit.executeWithArguments(
-      _buildWatermarkArguments(
-        inputPath: request.inputFile.path,
-        watermarkPath: watermarkFile.path,
-        outputPath: outputFile.path,
-      ),
-    );
-    final returnCode = await session.getReturnCode();
-
-    if (!ReturnCode.isSuccess(returnCode)) {
-      final logs = await session.getAllLogsAsString();
-      final details = logs == null || logs.trim().isEmpty
-          ? 'FFmpeg return code: $returnCode'
-          : logs.trim();
-
-      throw WatermarkVideoException(
-        'ใส่ลายน้ำวิดีโอไม่สำเร็จ: $details',
+    try {
+      final watermarkFile = await _copyWatermarkAsset(workingDirectory);
+      final outputFile = File(
+        '${workingDirectory.path}${Platform.pathSeparator}${_watermarkedFileName(request.fileName)}',
       );
-    }
 
-    if (!await outputFile.exists()) {
-      throw const WatermarkVideoException(
-        'ใส่ลายน้ำแล้วแต่ไม่พบไฟล์ผลลัพธ์',
+      final session = await FFmpegKit.executeWithArguments(
+        _buildWatermarkArguments(
+          inputPath: request.inputFile.path,
+          watermarkPath: watermarkFile.path,
+          outputPath: outputFile.path,
+        ),
       );
-    }
+      final returnCode = await session.getReturnCode();
 
-    return WatermarkedVideoResult(
-      file: outputFile,
-      fileName: outputFile.uri.pathSegments.last,
-      sizeBytes: await outputFile.length(),
-    );
+      if (!ReturnCode.isSuccess(returnCode)) {
+        final logs = await session.getAllLogsAsString();
+        final details = logs == null || logs.trim().isEmpty
+            ? 'FFmpeg return code: $returnCode'
+            : logs.trim();
+
+        throw WatermarkVideoException('ใส่ลายน้ำวิดีโอไม่สำเร็จ: $details');
+      }
+
+      if (!await outputFile.exists()) {
+        throw const WatermarkVideoException('ใส่ลายน้ำแล้วแต่ไม่พบไฟล์ผลลัพธ์');
+      }
+
+      return WatermarkedVideoResult(
+        file: outputFile,
+        fileName: outputFile.uri.pathSegments.last,
+        sizeBytes: await outputFile.length(),
+        temporaryDirectory: workingDirectory,
+      );
+    } catch (_) {
+      await _deleteTemporaryDirectory(workingDirectory);
+      rethrow;
+    }
   }
 
   Future<File> _copyWatermarkAsset(Directory workingDirectory) async {

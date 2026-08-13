@@ -619,4 +619,29 @@ describe('processPublishJob', () => {
       }
     });
   });
+
+  it('publishes each unique platform once for legacy jobs with duplicates', async () => {
+    const publisher = {
+      publish: vi.fn(async ({ platform }) => ({
+        platform,
+        status: 'PUBLISHED' as const,
+        externalPostId: `mock-${platform}`,
+        publishedAt: '2026-06-01T00:00:00.000Z'
+      }))
+    };
+
+    const result = await processPublishJob({
+      jobData: {
+        ...baseJobData,
+        platforms: ['TIKTOK', 'TIKTOK', 'YOUTUBE_SHORTS']
+      },
+      publisher
+    });
+
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    expect(result.platformResults.map((item) => item.platform)).toEqual([
+      'TIKTOK',
+      'YOUTUBE_SHORTS'
+    ]);
+  });
 });

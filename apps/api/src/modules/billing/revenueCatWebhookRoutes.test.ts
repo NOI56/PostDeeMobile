@@ -18,11 +18,35 @@ const createRevenueCatApp = () =>
     })
   });
 
-const postRevenueCatWebhook = (app: ReturnType<typeof createRevenueCatApp>, body: unknown) =>
+const postRevenueCatWebhookRaw = (app: ReturnType<typeof createRevenueCatApp>, body: unknown) =>
   request(app)
     .post('/billing/revenuecat/webhooks')
     .set('Authorization', `Bearer ${revenueCatToken}`)
     .send(body);
+
+let revenueCatEventSequence = 0;
+
+const postRevenueCatWebhook = (app: ReturnType<typeof createRevenueCatApp>, body: unknown) => {
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('event' in body) ||
+    typeof body.event !== 'object' ||
+    body.event === null
+  ) {
+    return postRevenueCatWebhookRaw(app, body);
+  }
+
+  revenueCatEventSequence += 1;
+  return postRevenueCatWebhookRaw(app, {
+    ...body,
+    event: {
+      id: `test-revenuecat-event-${revenueCatEventSequence}`,
+      event_timestamp_ms: 1_784_044_800_000 + revenueCatEventSequence,
+      ...body.event
+    }
+  });
+};
 
 const createKnownUser = (app: ReturnType<typeof createRevenueCatApp>, userId: string) =>
   request(app)
@@ -182,6 +206,72 @@ describe('RevenueCat webhooks', () => {
     });
   });
 
+  it('ignores an older expiration that arrives after a newer renewal', async () => {
+    const app = createRevenueCatApp();
+    const userId = 'seller-revenuecat-out-of-order';
+    await createKnownUser(app, userId);
+
+    await postRevenueCatWebhook(app, {
+      event: {
+        id: 'event-renewal-newer',
+        type: 'RENEWAL',
+        app_user_id: userId,
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly',
+        event_timestamp_ms: 1_784_044_800_000,
+        expiration_at_ms: 4_102_444_800_000
+      }
+    }).expect(200);
+
+    const staleResponse = await postRevenueCatWebhook(app, {
+      event: {
+        id: 'event-expiration-older',
+        type: 'EXPIRATION',
+        app_user_id: userId,
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly',
+        event_timestamp_ms: 1_784_044_799_000
+      }
+    }).expect(200);
+
+    expect(staleResponse.body).toMatchObject({
+      status: 'ok',
+      ignored: true,
+      eventType: 'EXPIRATION'
+    });
+    const subscriptionResponse = await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+    expect(subscriptionResponse.body.subscription).toMatchObject({
+      plan: 'PRO',
+      status: 'ACTIVE'
+    });
+  });
+
+  it('idempotently ignores a repeated RevenueCat event', async () => {
+    const app = createRevenueCatApp();
+    const userId = 'seller-revenuecat-duplicate';
+    await createKnownUser(app, userId);
+    const event = {
+      id: 'event-renewal-duplicate',
+      type: 'RENEWAL',
+      app_user_id: userId,
+      entitlement_ids: ['pro'],
+      product_id: 'postdee_pro_monthly',
+      event_timestamp_ms: 1_784_044_800_000
+    };
+
+    await postRevenueCatWebhook(app, { event }).expect(200);
+    const duplicateResponse = await postRevenueCatWebhook(app, { event }).expect(200);
+
+    expect(duplicateResponse.body).toMatchObject({
+      status: 'ok',
+      ignored: true,
+      eventType: 'RENEWAL'
+    });
+  });
+
   it('does not revoke entitlements for non-expiring RevenueCat lifecycle events', async () => {
     const app = createRevenueCatApp();
 
@@ -284,6 +374,24 @@ describe('RevenueCat webhooks', () => {
       ignored: true,
       code: 'REVENUECAT_USER_NOT_FOUND'
     });
+  });
+
+  it('rejects actionable RevenueCat events without valid ordering metadata', async () => {
+    const app = createRevenueCatApp();
+
+    await postRevenueCatWebhookRaw(app, {
+      event: {
+        id: 'event-missing-timestamp',
+        type: 'RENEWAL',
+        app_user_id: 'seller-revenuecat-missing-timestamp',
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly'
+      }
+    })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body.code).toBe('REVENUECAT_WEBHOOK_INVALID');
+      });
   });
 
   it('rejects malformed RevenueCat webhook payloads', async () => {

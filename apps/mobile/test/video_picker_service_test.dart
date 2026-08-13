@@ -49,6 +49,100 @@ void main() {
     expect(dimensions.height, 1920);
   });
 
+  test('reads rotation from direct stream metadata', () {
+    final dimensions = displayOrientedVideoDimensions(
+      width: 1920,
+      height: 1080,
+      streamProperties: const {'rotation_angle': '270'},
+    );
+
+    expect(dimensions.width, 1080);
+    expect(dimensions.height, 1920);
+  });
+
+  group('resolveVideoDimensionsForDisplay', () {
+    test(
+      'uses player display size when Android FFprobe drops rotation',
+      () async {
+        var fallbackCalls = 0;
+        final dimensions = await resolveVideoDimensionsForDisplay(
+          videoPath: 'rotation-90.mp4',
+          width: 960,
+          height: 540,
+          streamProperties: const {
+            'codec_type': 'video',
+            'width': 960,
+            'height': 540,
+            'display_aspect_ratio': '16:9',
+          },
+          durationSeconds: 12.5,
+          readDisplayDimensions: (path) async {
+            fallbackCalls += 1;
+            expect(path, 'rotation-90.mp4');
+            return const VideoDimensions(width: 540, height: 960);
+          },
+        );
+
+        expect(fallbackCalls, 1);
+        expect(dimensions.width, 540);
+        expect(dimensions.height, 960);
+        expect(dimensions.durationSeconds, 12.5);
+      },
+    );
+
+    test('keeps true landscape dimensions returned by the player', () async {
+      final dimensions = await resolveVideoDimensionsForDisplay(
+        videoPath: 'landscape.mp4',
+        width: 960,
+        height: 540,
+        streamProperties: const {'codec_type': 'video'},
+        readDisplayDimensions: (_) async =>
+            const VideoDimensions(width: 960, height: 540),
+      );
+
+      expect(dimensions.width, 960);
+      expect(dimensions.height, 540);
+    });
+
+    test('retains FFprobe dimensions when the player fallback fails', () async {
+      final dimensions = await resolveVideoDimensionsForDisplay(
+        videoPath: 'broken-preview.mp4',
+        width: 960,
+        height: 540,
+        streamProperties: const {'codec_type': 'video'},
+        durationSeconds: 8,
+        readDisplayDimensions: (_) async =>
+            throw StateError('player initialization failed'),
+      );
+
+      expect(dimensions.width, 960);
+      expect(dimensions.height, 540);
+      expect(dimensions.durationSeconds, 8);
+    });
+
+    test('does not call fallback when FFprobe includes rotation', () async {
+      var fallbackCalls = 0;
+      final dimensions = await resolveVideoDimensionsForDisplay(
+        videoPath: 'tagged-rotation.mp4',
+        width: 960,
+        height: 540,
+        streamProperties: const {
+          'side_data_list': [
+            {'rotation': 90},
+          ],
+        },
+        readDisplayDimensions: (_) async {
+          fallbackCalls += 1;
+          return null;
+        },
+      );
+
+      expect(fallbackCalls, 0);
+      expect(dimensions.width, 540);
+      expect(dimensions.height, 960);
+    });
+  });
+
   test('adds real video dimensions from the metadata reader', () async {
     final videoFile = File('test/uploader_screen_test.dart').absolute;
     final picker = GalleryVideoPicker(
@@ -68,7 +162,9 @@ void main() {
     final pickedVideo = await picker.pickVideo();
 
     expect(
-        pickedVideo?.name, videoFile.path.split(Platform.pathSeparator).last);
+      pickedVideo?.name,
+      videoFile.path.split(Platform.pathSeparator).last,
+    );
     expect(pickedVideo?.path, videoFile.path);
     expect(pickedVideo?.sizeBytes, videoFile.lengthSync());
     expect(pickedVideo?.width, 1080);
@@ -93,7 +189,9 @@ void main() {
     final pickedVideo = await picker.pickVideo();
 
     expect(
-        pickedVideo?.name, videoFile.path.split(Platform.pathSeparator).last);
+      pickedVideo?.name,
+      videoFile.path.split(Platform.pathSeparator).last,
+    );
     expect(pickedVideo?.path, videoFile.path);
     expect(pickedVideo?.sizeBytes, videoFile.lengthSync());
     expect(pickedVideo?.width, isNull);

@@ -153,8 +153,9 @@ export const processPublishJob = async ({
 }): Promise<PublishWorkerResult> => {
   const attemptLimit = Math.max(1, Math.floor(maxPublishAttempts));
   const retryBackoffMs = Math.max(0, publishRetryBackoffMs);
+  const uniquePlatforms = [...new Set(jobData.platforms)];
   const platformResults = await Promise.all(
-    jobData.platforms.map(async (platform): Promise<PlatformPublishResult> => {
+    uniquePlatforms.map(async (platform): Promise<PlatformPublishResult> => {
       for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
         try {
           return await publisher.publish({

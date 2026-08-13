@@ -208,4 +208,90 @@ describe('createPrismaPostRepository', () => {
       })
     ).toBe(false);
   });
+
+  it('checks monthly units and creates inside a serializable transaction', async () => {
+    const createdAt = new Date('2026-06-15T10:00:00.000Z');
+    const createdPost = {
+      id: 'post-atomic',
+      userId: 'seller-atomic',
+      caption: 'Atomic post',
+      videoS3Key: 'uploads/seller-atomic/atomic.mp4',
+      selectedPlatforms: ['TIKTOK'] as const,
+      scheduledAt: null,
+      status: 'QUEUED' as const,
+      publishedAt: null,
+      createdAt
+    };
+    const transactionPost = {
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue(createdPost)
+    };
+    const prisma = {
+      post: transactionPost,
+      $transaction: vi.fn(async (operation: (client: unknown) => Promise<unknown>) =>
+        operation({ post: transactionPost })
+      )
+    };
+    const repository = createPrismaPostRepository({ prisma });
+
+    await expect(
+      repository.createWithinMonthlyLimit({
+        userId: 'seller-atomic',
+        caption: 'Atomic post',
+        videoS3Key: 'uploads/seller-atomic/atomic.mp4',
+        platforms: ['TIKTOK'],
+        monthlyPostUnitLimit: 3,
+        now: '2026-06-15T10:00:00.000Z'
+      })
+    ).resolves.toEqual({
+      ok: true,
+      post: expect.objectContaining({ id: 'post-atomic', platforms: ['TIKTOK'] })
+    });
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'Serializable'
+    });
+  });
+
+  it('retries a Prisma write conflict before rechecking quota', async () => {
+    const transactionPost = {
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: 'existing',
+          userId: 'seller-race',
+          caption: 'Existing',
+          videoS3Key: 'uploads/existing.mp4',
+          selectedPlatforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
+          scheduledAt: null,
+          status: 'QUEUED',
+          publishedAt: null,
+          createdAt: new Date('2026-06-15T09:00:00.000Z')
+        }
+      ]),
+      create: vi.fn()
+    };
+    const conflict = Object.assign(new Error('write conflict'), { code: 'P2034' });
+    const prisma = {
+      post: transactionPost,
+      $transaction: vi
+        .fn()
+        .mockRejectedValueOnce(conflict)
+        .mockImplementationOnce((operation: (client: unknown) => Promise<unknown>) =>
+          operation({ post: transactionPost })
+        )
+    };
+    const repository = createPrismaPostRepository({ prisma });
+
+    await expect(
+      repository.createWithinMonthlyLimit({
+        userId: 'seller-race',
+        caption: 'Lost race',
+        videoS3Key: 'uploads/lost.mp4',
+        platforms: ['INSTAGRAM_REELS', 'FACEBOOK_REELS'],
+        monthlyPostUnitLimit: 3,
+        now: '2026-06-15T10:00:00.000Z'
+      })
+    ).resolves.toEqual({ ok: false });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(transactionPost.create).not.toHaveBeenCalled();
+  });
 });

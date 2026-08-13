@@ -843,7 +843,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
     try {
       final video = await picker();
 
-      if (video == null) {
+      if (!mounted || video == null) {
         return;
       }
 
@@ -877,6 +877,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
         hasDimensions: video.width != null && video.height != null,
       ));
     } catch (error) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _errorMessage = 'เลือกวิดีโอไม่ได้: $error';
         _successMessage = null;
@@ -1098,6 +1101,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
     });
 
     var didUploadVideo = false;
+    WatermarkedVideoResult? watermarkedVideoForCleanup;
 
     try {
       final checkPublishingReadiness = widget.checkPublishingReadiness ??
@@ -1156,6 +1160,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
           fileName: fileName,
         );
 
+        watermarkedVideoForCleanup = watermarkedVideo;
         uploadVideoFileForRequest = watermarkedVideo.file;
         uploadFileName = watermarkedVideo.fileName;
         uploadSizeBytes = watermarkedVideo.sizeBytes;
@@ -1165,25 +1170,31 @@ class _UploaderScreenState extends State<UploaderScreen> {
       final createUpload = widget.createUpload ?? _apiClient.createUpload;
       final uploadVideoFile =
           widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-      final upload = await createAndUploadFileWithRetry(
-        request: CreateUploadRequest(
-          fileName: uploadFileName,
-          contentType: 'video/mp4',
-          sizeBytes: uploadSizeBytes,
-          width: width,
-          height: height,
-        ),
-        file: uploadVideoFileForRequest,
-        createUpload: createUpload,
-        uploadFile: uploadVideoFile,
-        onRetry: () {
-          if (mounted) {
-            setState(() {
-              _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
-            });
-          }
-        },
-      );
+      late final UploadResult upload;
+      try {
+        upload = await createAndUploadFileWithRetry(
+          request: CreateUploadRequest(
+            fileName: uploadFileName,
+            contentType: 'video/mp4',
+            sizeBytes: uploadSizeBytes,
+            width: width,
+            height: height,
+          ),
+          file: uploadVideoFileForRequest,
+          createUpload: createUpload,
+          uploadFile: uploadVideoFile,
+          onRetry: () {
+            if (mounted) {
+              setState(() {
+                _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+              });
+            }
+          },
+        );
+      } finally {
+        await watermarkedVideoForCleanup?.cleanupTemporaryFiles();
+        watermarkedVideoForCleanup = null;
+      }
       didUploadVideo = true;
       String? coverImageS3Key;
       var selectedCover = _coverResult;
@@ -1330,6 +1341,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _setUploadStatus('เกิดข้อผิดพลาดระหว่างสร้างโพสต์');
       return null;
     } finally {
+      await watermarkedVideoForCleanup?.cleanupTemporaryFiles();
       if (mounted) {
         setState(() {
           _isSubmitting = false;

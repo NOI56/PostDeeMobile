@@ -13,7 +13,6 @@ import type { SubscriptionPlan, SubscriptionStore } from '../subscriptions/subsc
 import type { UserStore } from '../users/userStore.js';
 import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
 import { type PostStore, isValidPlatform } from './postStore.js';
-import { countCurrentMonthPostUnits } from './postUsage.js';
 
 const readRequiredString = (value: unknown) => {
   if (typeof value !== 'string') {
@@ -29,18 +28,99 @@ const readPlatforms = (value: unknown) => {
     return [];
   }
 
-  return value.filter(isValidPlatform);
+  return [...new Set(value.filter(isValidPlatform))];
 };
 
-const readOptionalIsoDate = (value: unknown) => {
-  const rawDate = readRequiredString(value);
+const isoDateTimeWithTimezonePattern =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|([+-])(\d{2}):(\d{2}))$/;
 
-  if (!rawDate) {
+const isLeapYear = (year: number) =>
+  year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+
+const daysInMonth = (year: number, month: number) => {
+  if (month === 2) {
+    return isLeapYear(year) ? 29 : 28;
+  }
+
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+};
+
+const readStrictIsoDate = (value: string) => {
+  const match = isoDateTimeWithTimezonePattern.exec(value);
+
+  if (!match) {
     return undefined;
   }
 
-  const timestamp = Date.parse(rawDate);
-  return Number.isNaN(timestamp) ? undefined : new Date(timestamp).toISOString();
+  const [
+    ,
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    secondText,
+    fractionText,
+    timezone,
+    offsetSign,
+    offsetHourText,
+    offsetMinuteText
+  ] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const offsetHours = Number(offsetHourText ?? 0);
+  const offsetMinutes = Number(offsetMinuteText ?? 0);
+
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth(year, month) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHours > 23 ||
+    offsetMinutes > 59
+  ) {
+    return undefined;
+  }
+
+  const milliseconds = Number((fractionText ?? '').slice(0, 3).padEnd(3, '0'));
+  const localDate = new Date(0);
+  localDate.setUTCFullYear(year, month - 1, day);
+  localDate.setUTCHours(hour, minute, second, milliseconds);
+  const signedOffsetMinutes =
+    timezone === 'Z'
+      ? 0
+      : (offsetSign === '+' ? 1 : -1) * (offsetHours * 60 + offsetMinutes);
+  const timestamp = localDate.getTime() - signedOffsetMinutes * 60_000;
+
+  if (!Number.isFinite(timestamp)) {
+    return undefined;
+  }
+
+  return new Date(timestamp).toISOString();
+};
+
+const readOptionalIsoDate = (value: unknown) => {
+  if (value === undefined || value === null) {
+    return { ok: true as const, value: undefined };
+  }
+
+  const rawDate = readRequiredString(value);
+
+  if (!rawDate) {
+    return { ok: false as const, value: undefined };
+  }
+
+  const normalizedDate = readStrictIsoDate(rawDate);
+  return normalizedDate === undefined
+    ? { ok: false as const, value: undefined }
+    : { ok: true as const, value: normalizedDate };
 };
 
 export const maxScheduleAheadDays = 30;
@@ -48,6 +128,9 @@ const maxScheduleAheadMs = maxScheduleAheadDays * 24 * 60 * 60 * 1000;
 
 const isScheduleBeyondLimit = (scheduledAt: string, now: Date) =>
   Date.parse(scheduledAt) > now.getTime() + maxScheduleAheadMs;
+
+const isScheduleInPastOrPresent = (scheduledAt: string, now: Date) =>
+  Date.parse(scheduledAt) <= now.getTime();
 
 const readOptionalCoverImageKey = (value: unknown) => {
   if (value === undefined || value === null) {
@@ -205,7 +288,8 @@ export const registerPostRoutes = (
     const caption = readRequiredString(request.body?.caption);
     const videoS3Key = readRequiredString(request.body?.videoS3Key);
     const platforms = readPlatforms(request.body?.platforms);
-    const scheduledAt = readOptionalIsoDate(request.body?.scheduledAt);
+    const scheduledAtResult = readOptionalIsoDate(request.body?.scheduledAt);
+    const scheduledAt = scheduledAtResult.value;
     const coverImageKeyResult = readOptionalCoverImageKey(request.body?.coverImageS3Key);
     const coverFrameTimeResult = readOptionalCoverFrameTimeMs(request.body?.coverFrameTimeMs);
     const subscriptionPlanOverride = readSubscriptionPlanOverride(request.body?.subscriptionPlan);
@@ -231,6 +315,14 @@ export const registerPostRoutes = (
       return;
     }
 
+    if (!scheduledAtResult.ok) {
+      response.status(400).json({
+        status: 'error',
+        message: 'scheduledAt must be a valid ISO date'
+      });
+      return;
+    }
+
     if (!coverImageKeyResult.ok) {
       response.status(400).json({
         status: 'error',
@@ -249,8 +341,18 @@ export const registerPostRoutes = (
 
     const coverImageS3Key = coverImageKeyResult.value;
     const coverFrameTimeMs = coverFrameTimeResult.value;
+    const requestNow = now();
 
-    if (scheduledAt && isScheduleBeyondLimit(scheduledAt, now())) {
+    if (scheduledAt && isScheduleInPastOrPresent(scheduledAt, requestNow)) {
+      response.status(400).json({
+        status: 'error',
+        code: 'SCHEDULE_MUST_BE_FUTURE',
+        message: 'scheduledAt must be in the future'
+      });
+      return;
+    }
+
+    if (scheduledAt && isScheduleBeyondLimit(scheduledAt, requestNow)) {
       response.status(400).json({
         status: 'error',
         code: 'SCHEDULE_LIMIT_EXCEEDED',
@@ -347,10 +449,20 @@ export const registerPostRoutes = (
     }
 
     const monthlyPostLimit = monthlyPostUnitLimits[subscriptionPlan];
-    const usedPostUnits = countCurrentMonthPostUnits(await store.list({ userId: authUser.id }));
-    const requestedPostUnits = platforms.length;
+    const user = await userStore.ensure(authUser);
+    const createResult = await store.createWithinMonthlyLimit({
+      userId: user.id,
+      caption,
+      videoS3Key,
+      ...(coverImageS3Key ? { coverImageS3Key } : {}),
+      ...(coverFrameTimeMs !== undefined ? { coverFrameTimeMs } : {}),
+      platforms,
+      scheduledAt,
+      monthlyPostUnitLimit: monthlyPostLimit,
+      now: requestNow.toISOString()
+    });
 
-    if (usedPostUnits + requestedPostUnits > monthlyPostLimit) {
+    if (!createResult.ok) {
       response.status(402).json({
         status: 'error',
         code: 'POST_LIMIT_REACHED',
@@ -359,16 +471,7 @@ export const registerPostRoutes = (
       return;
     }
 
-    const user = await userStore.ensure(authUser);
-    const post = await store.create({
-      userId: user.id,
-      caption,
-      videoS3Key,
-      ...(coverImageS3Key ? { coverImageS3Key } : {}),
-      ...(coverFrameTimeMs !== undefined ? { coverFrameTimeMs } : {}),
-      platforms,
-      scheduledAt
-    });
+    const post = createResult.post;
     let publishJob;
 
     try {
@@ -412,9 +515,10 @@ export const registerPostRoutes = (
       return;
     }
 
-    const scheduledAt = readOptionalIsoDate(request.body?.scheduledAt);
+    const scheduledAtResult = readOptionalIsoDate(request.body?.scheduledAt);
+    const scheduledAt = scheduledAtResult.value;
 
-    if (!scheduledAt) {
+    if (!scheduledAtResult.ok || !scheduledAt) {
       response.status(400).json({
         status: 'error',
         message: 'scheduledAt must be a valid ISO date'
@@ -422,7 +526,18 @@ export const registerPostRoutes = (
       return;
     }
 
-    if (isScheduleBeyondLimit(scheduledAt, now())) {
+    const requestNow = now();
+
+    if (isScheduleInPastOrPresent(scheduledAt, requestNow)) {
+      response.status(400).json({
+        status: 'error',
+        code: 'SCHEDULE_MUST_BE_FUTURE',
+        message: 'scheduledAt must be in the future'
+      });
+      return;
+    }
+
+    if (isScheduleBeyondLimit(scheduledAt, requestNow)) {
       response.status(400).json({
         status: 'error',
         code: 'SCHEDULE_LIMIT_EXCEEDED',

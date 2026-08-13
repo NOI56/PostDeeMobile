@@ -1,6 +1,7 @@
 import type { RequestHandler, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
+import type { UserStore } from '../users/userStore.js';
 import type { DevicePlatform, DeviceTokenStore } from './deviceTokenStore.js';
 
 const readPlatform = (value: unknown): DevicePlatform | undefined =>
@@ -14,7 +15,8 @@ const readPlatform = (value: unknown): DevicePlatform | undefined =>
 export const registerDeviceRoutes = (
   router: Router,
   authMiddleware: RequestHandler,
-  deviceTokenStore: DeviceTokenStore
+  deviceTokenStore: DeviceTokenStore,
+  userStore: UserStore
 ) => {
   router.post('/devices', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
@@ -38,8 +40,9 @@ export const registerDeviceRoutes = (
       return;
     }
 
+    const user = await userStore.ensure(authUser);
     await deviceTokenStore.register({
-      userId: authUser.id,
+      userId: user.id,
       token,
       platform: readPlatform(request.body?.platform)
     });

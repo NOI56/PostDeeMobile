@@ -5,6 +5,7 @@ import type { RealClipMediaPart } from '../captions/realClipCaptionProvider.js';
 import { MediaDownloadError } from '../storage/mediaDownload.js';
 import { isStorageKeyOwnedByUser } from '../storage/storageKeyPolicy.js';
 import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
+import type { UserStore } from '../users/userStore.js';
 import {
   aiEditMonthlyMinuteLimit,
   readCurrentAiEditMonthKey,
@@ -434,7 +435,8 @@ export const registerAiEditRoutes = (
   soundEffectPlanProvider: SoundEffectPlanProvider,
   deleteMedia: (mediaS3Key: string) => Promise<void>,
   visualEditPlanProvider?: VisualEditPlanProvider,
-  fetchVisualMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>
+  fetchVisualMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>,
+  userStore?: UserStore
 ) => {
   const cleanupTemporaryAudio = async (media: AiEditMedia) => {
     if (!media.deleteAfterUse) {
@@ -676,6 +678,7 @@ export const registerAiEditRoutes = (
     // duration, but does not replace a future server-side media probe.
     const billedMinutes = Math.ceil(timelineDurationSeconds / 60);
 
+    await userStore?.ensure(authUser);
     const reservation = await aiEditUsageStore.reserve({
       userId: authUser.id,
       monthKey,
@@ -934,6 +937,7 @@ export const registerAiEditRoutes = (
     // and at least one requested analysis has a usable result. The atomic
     // reservation still enforces the monthly limit if concurrent requests
     // passed the earlier inexpensive pre-check.
+    await userStore?.ensure(authUser);
     const reservation = await aiEditUsageStore.reserve({
       userId: authUser.id,
       monthKey,

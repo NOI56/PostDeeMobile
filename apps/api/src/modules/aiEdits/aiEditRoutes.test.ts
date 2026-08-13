@@ -2,12 +2,74 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
+import { readServerConfig } from '../../config/env.js';
 import { createMockVideoStorage } from '../storage/videoStorage.js';
 
 const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
   `uploads/${userId}/${uploadId}/${fileName}`;
 
 describe('ai edit routes', () => {
+  it('ensures a Prisma user before inserting relational AI edit usage', async () => {
+    const events: string[] = [];
+    const createdAt = new Date('2026-08-13T00:00:00.000Z');
+    const aiEditUsage = {
+      aggregate: vi.fn(async () => ({ _sum: { minutes: 0 } })),
+      create: vi.fn(async ({ data }) => {
+        events.push('reserve-ai-usage');
+        return { ...data, createdAt };
+      })
+    };
+    const prisma = {
+      user: {
+        findUnique: vi.fn(),
+        upsert: vi.fn(async () => {
+          events.push('ensure-user');
+          return {
+            id: 'seller-ai-fk',
+            firebaseUid: 'mock:seller-ai-fk',
+            email: 'seller-ai-fk@postdee.local',
+            displayName: null,
+            createdAt,
+            updatedAt: createdAt
+          };
+        })
+      },
+      aiEditUsage,
+      $transaction: vi.fn(async (operation) => operation({ aiEditUsage }))
+    };
+    const app = createApp({
+      config: readServerConfig({
+        DATABASE_URL: 'postgresql://postdee:postdee_password@localhost:5432/postdee',
+        AI_EDIT_USAGE_STORE: 'prisma'
+      }),
+      prisma: prisma as never,
+      transcriptionProvider: {
+        transcribe: vi.fn(async () => ({
+          text: 'trusted transcript',
+          language: 'en',
+          durationSeconds: 60,
+          segments: [{ text: 'trusted transcript', start: 0, end: 1 }],
+          words: [{ word: 'trusted', start: 0, end: 0.5 }],
+          timingIntegrity: 'trusted' as const,
+          hasTimedAudioEvents: false,
+          model: 'test-scribe'
+        }))
+      }
+    });
+
+    await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-user-id', 'seller-ai-fk')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('seller-ai-fk', 'clip.mp4'),
+        durationSeconds: 60
+      })
+      .expect(200);
+
+    expect(events).toEqual(['ensure-user', 'reserve-ai-usage']);
+  });
+
   it('transcribes a clip for Pro users', async () => {
     const app = createApp();
 

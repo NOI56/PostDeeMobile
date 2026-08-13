@@ -14,12 +14,14 @@ export const createUserStoreForPostStore = ({
   config: UserStoreConfig;
   prisma?: PrismaUserClient;
 }): UserStore => {
-  if (config.postStore === 'prisma') {
-    if (!prisma) {
-      throw new Error('Prisma user store requires a Prisma client');
-    }
-
+  // Every Prisma-backed relation points at User. Once a Prisma client exists,
+  // keep the canonical user in the same database even when posts use memory.
+  if (prisma) {
     return createPrismaUserRepository({ prisma });
+  }
+
+  if (config.postStore === 'prisma') {
+    throw new Error('Prisma user store requires a Prisma client');
   }
 
   return createUserStore();

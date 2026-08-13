@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createUserStoreForPostStore } from './userStoreFactory.js';
 
 describe('createUserStoreForPostStore', () => {
-  it('uses the in-memory user store when posts are stored in memory', async () => {
+  it('uses the in-memory user store when no Prisma client is available', async () => {
     const store = createUserStoreForPostStore({
       config: {
         postStore: 'memory'
@@ -26,7 +26,7 @@ describe('createUserStoreForPostStore', () => {
     await expect(store.exists('seller-1')).resolves.toBe(false);
   });
 
-  it('uses the Prisma user repository when posts are stored in Prisma', async () => {
+  it('uses the Prisma user repository whenever a Prisma client is available', async () => {
     const now = new Date('2026-06-01T00:00:00.000Z');
     const prisma = {
       user: {
@@ -43,7 +43,7 @@ describe('createUserStoreForPostStore', () => {
     };
     const store = createUserStoreForPostStore({
       config: {
-        postStore: 'prisma'
+        postStore: 'memory'
       },
       prisma
     });

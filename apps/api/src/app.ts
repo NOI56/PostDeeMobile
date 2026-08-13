@@ -182,7 +182,7 @@ type AppOptions = {
 const readFileNameFromStorageKey = (videoS3Key: string) =>
   videoS3Key.split('/').filter(Boolean).at(-1) ?? 'clip.mp4';
 
-const createAccountAwareAuthMiddleware = ({
+export const createAccountAwareAuthMiddleware = ({
   authMiddleware,
   managedUploadService
 }: {
@@ -212,21 +212,21 @@ const createAccountAwareAuthMiddleware = ({
         return;
       }
 
-      void managedUploadService.assertOwnerActive(authUser.id).then(
-        () => next(),
-        (error: unknown) => {
-          if (error instanceof ManagedUploadServiceError) {
-            response.status(error.statusCode).json({
-              status: 'error',
-              code: error.code,
-              message: error.message
-            });
-            return;
-          }
-
-          next(error);
+      void (async () => {
+        await managedUploadService.assertOwnerActive(authUser.id);
+        next();
+      })().catch((error: unknown) => {
+        if (error instanceof ManagedUploadServiceError) {
+          response.status(error.statusCode).json({
+            status: 'error',
+            code: error.code,
+            message: error.message
+          });
+          return;
         }
-      );
+
+        next(error);
+      });
     });
   };
 };
@@ -390,17 +390,19 @@ export const createApp = (options: AppOptions = {}) => {
     config,
     firebaseVerifier: accountDeletionFirebaseVerifier
   });
-  const prismaClient =
-    options.prisma ??
-    (config.templateStore === 'prisma' ||
+  const requiresPrismaClient =
+    config.templateStore === 'prisma' ||
     config.postStore === 'prisma' ||
     config.subscriptionStore === 'prisma' ||
     config.analyticsStore === 'prisma' ||
     config.captionUsageStore === 'prisma' ||
     config.aiEditUsageStore === 'prisma' ||
-    config.uploadProtocolMode !== 'legacy'
-      ? createPrismaClient()
-      : undefined);
+    (config.uploadProtocolMode !== 'legacy' &&
+      !options.managedUploadService &&
+      !options.uploadSessionStore);
+  const prismaClient =
+    options.prisma ??
+    (requiresPrismaClient ? createPrismaClient() : undefined);
   const postStore = createPostStoreFromConfig({
     config,
     prisma: prismaClient as unknown as PrismaPostClient | undefined
@@ -416,7 +418,7 @@ export const createApp = (options: AppOptions = {}) => {
   const publishQueue = createPublishQueueFromConfig({ config });
   const platformPublishStore =
     options.platformPublishStore ??
-    (prismaClient
+    (config.postStore === 'prisma' && prismaClient
       ? createPrismaPlatformPublishRepository({
           prisma: prismaClient as unknown as PrismaPlatformPublishClient
         })
@@ -504,7 +506,8 @@ export const createApp = (options: AppOptions = {}) => {
     options.realClipCaptionProvider ??
       createRealClipCaptionProviderFromConfig({ config }),
     fetchClipMedia,
-    videoStorage.deleteVideo
+    videoStorage.deleteVideo,
+    userStore
   );
   const aiEditUsageStore = createAiEditUsageStoreFromConfig({
     config,
@@ -528,7 +531,8 @@ export const createApp = (options: AppOptions = {}) => {
     soundEffectPlanProvider,
     videoStorage.deleteVideo,
     visualEditPlanProvider,
-    fetchClipMedia
+    fetchClipMedia,
+    userStore
   );
   registerPostRoutes(
     router,
@@ -551,7 +555,7 @@ export const createApp = (options: AppOptions = {}) => {
       assertCoverUploadReady: managedUploadService
         ? (ownerId, coverImageS3Key) =>
             managedUploadService.assertReadyForUse(ownerId, coverImageS3Key, {
-              allowLegacy: config.uploadProtocolMode !== 'multipart',
+              allowLegacy: config.uploadProtocolMode === 'legacy',
               acceptedContentTypes: postCoverUploadPolicy.acceptedContentTypes,
               maxSizeBytes: postCoverUploadPolicy.maxSizeBytes
             })
@@ -623,7 +627,12 @@ export const createApp = (options: AppOptions = {}) => {
             }
           : undefined
     });
-  registerDeviceRoutes(router, accountAwareAuthMiddleware, deviceTokenStore);
+  registerDeviceRoutes(
+    router,
+    accountAwareAuthMiddleware,
+    deviceTokenStore,
+    userStore
+  );
   registerSocialConnectionRoutes(router, accountAwareAuthMiddleware, {
     store: socialConnectionStore,
     connectClient: postPeerConnectClient,

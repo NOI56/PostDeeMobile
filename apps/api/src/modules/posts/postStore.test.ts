@@ -3,6 +3,25 @@ import { describe, expect, it } from 'vitest';
 import { createPostStore } from './postStore.js';
 
 describe('createPostStore', () => {
+  it('checks monthly units and creates atomically for concurrent requests', async () => {
+    const store = createPostStore();
+    const createPost = (suffix: string) =>
+      store.createWithinMonthlyLimit({
+        userId: 'seller-concurrent',
+        caption: `Concurrent ${suffix}`,
+        videoS3Key: `uploads/seller-concurrent/${suffix}.mp4`,
+        platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
+        monthlyPostUnitLimit: 3,
+        now: '2026-06-15T10:00:00.000Z'
+      });
+
+    const results = await Promise.all([createPost('a'), createPost('b')]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toHaveLength(1);
+    await expect(store.list({ userId: 'seller-concurrent' })).resolves.toHaveLength(1);
+  });
+
   it('reports one aggregate queued-or-publishing backlog total', async () => {
     const store = createPostStore();
     const queued = await store.create({

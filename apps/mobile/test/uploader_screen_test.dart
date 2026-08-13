@@ -626,6 +626,68 @@ void main() {
     expect(find.text('mock_video.mp4'), findsNothing);
   });
 
+  testWidgets('ignores a picked video after the uploader is disposed',
+      (tester) async {
+    final picker = Completer<PickedVideoFile?>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () => picker.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('uploader-video-preview-picker')),
+    );
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    picker.complete(
+      const PickedVideoFile(
+        name: 'late-video.mp4',
+        path: 'late-video.mp4',
+        sizeBytes: 1024,
+        width: 1080,
+        height: 1920,
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ignores a picker error after the uploader is disposed',
+      (tester) async {
+    final picker = Completer<PickedVideoFile?>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () => picker.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('uploader-video-preview-picker')),
+    );
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    picker.completeError(StateError('picker failed after dispose'));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('inserts a saved template into the upload caption',
       (tester) async {
     final loadCompleter = Completer<List<TextTemplateResult>>();

@@ -208,4 +208,84 @@ describe('createPrismaSubscriptionRepository', () => {
     });
   });
 
+  it('persists a newer RevenueCat cursor in the same transaction as activation', async () => {
+    const updatedAt = new Date('2026-08-13T00:00:00.000Z');
+    const transaction = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          lastRevenueCatEventTimestampMs: 1_784_044_799_000n,
+          lastRevenueCatEventId: 'event-revenuecat-older'
+        }),
+        update: vi.fn().mockResolvedValue({ id: 'seller-revenuecat-newer' })
+      },
+      subscription: {
+        upsert: vi.fn().mockResolvedValue({
+          userId: 'seller-revenuecat-newer',
+          plan: 'PRO',
+          status: 'ACTIVE',
+          billingSubscriptionId: 'revenuecat:seller-revenuecat-newer',
+          currentPeriodEnd: new Date('2100-01-01T00:00:00.000Z'),
+          updatedAt
+        }),
+        update: vi.fn()
+      }
+    };
+    const prisma = {
+      ...transaction,
+      $transaction: vi.fn(async (callback) => callback(transaction))
+    };
+    const repository = createPrismaSubscriptionRepository({ prisma });
+
+    await expect(
+      repository.applyRevenueCatEvent({
+        authUser: { id: 'seller-revenuecat-newer', provider: 'firebase' },
+        billingSubscriptionId: 'revenuecat:seller-revenuecat-newer',
+        plan: 'PRO',
+        status: 'ACTIVE',
+        eventId: 'event-revenuecat-newer',
+        eventTimestampMs: 1_784_044_800_000,
+        currentPeriodEnd: '2100-01-01T00:00:00.000Z'
+      })
+    ).resolves.toMatchObject({
+      applied: true,
+      subscription: { status: 'ACTIVE' }
+    });
+    expect(transaction.user.update).toHaveBeenCalledOnce();
+    expect(transaction.subscription.upsert).toHaveBeenCalledOnce();
+  });
+
+  it('does not mutate a Prisma subscription for a stale RevenueCat event', async () => {
+    const transaction = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          lastRevenueCatEventTimestampMs: 1_784_044_800_000n,
+          lastRevenueCatEventId: 'event-revenuecat-newer'
+        }),
+        update: vi.fn()
+      },
+      subscription: {
+        upsert: vi.fn(),
+        update: vi.fn()
+      }
+    };
+    const prisma = {
+      ...transaction,
+      $transaction: vi.fn(async (callback) => callback(transaction))
+    };
+    const repository = createPrismaSubscriptionRepository({ prisma });
+
+    await expect(
+      repository.applyRevenueCatEvent({
+        authUser: { id: 'seller-revenuecat-stale', provider: 'firebase' },
+        billingSubscriptionId: 'revenuecat:seller-revenuecat-stale',
+        plan: 'PRO',
+        status: 'CANCELED',
+        eventId: 'event-revenuecat-older',
+        eventTimestampMs: 1_784_044_799_000
+      })
+    ).resolves.toEqual({ applied: false, subscription: null });
+    expect(transaction.user.update).not.toHaveBeenCalled();
+    expect(transaction.subscription.update).not.toHaveBeenCalled();
+  });
+
 });

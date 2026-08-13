@@ -1,5 +1,7 @@
 import type {
   CreatePostInput,
+  CreatePostWithinMonthlyLimitInput,
+  CreatePostWithinMonthlyLimitResult,
   Platform,
   PostStatus,
   PostStore,
@@ -7,6 +9,7 @@ import type {
   ClaimPostForPublishInput,
   UpdatePostStatusInput
 } from './postStore.js';
+import { countCurrentMonthPostUnits } from './postUsage.js';
 
 type PrismaPostStatus =
   | 'DRAFT'
@@ -76,6 +79,10 @@ type PostDelegate = {
 
 export type PrismaPostClient = {
   post: PostDelegate;
+  $transaction?: <Result>(
+    operation: (client: { post: PostDelegate }) => Promise<Result>,
+    options: { isolationLevel: 'Serializable' }
+  ) => Promise<Result>;
 };
 
 const toPostStatus = (status: PrismaPostStatus): PostStatus =>
@@ -98,6 +105,77 @@ const mapPost = (post: PrismaPost): QueuedPost => ({
   publishedAt: post.publishedAt?.toISOString(),
   createdAt: post.createdAt.toISOString()
 });
+
+const createPost = async (postDelegate: PostDelegate, input: CreatePostInput) => {
+  const post = await postDelegate.create({
+    data: {
+      userId: input.userId,
+      caption: input.caption,
+      videoS3Key: input.videoS3Key,
+      ...(input.coverImageS3Key
+        ? { coverImageS3Key: input.coverImageS3Key }
+        : {}),
+      ...(input.coverFrameTimeMs !== undefined
+        ? { coverFrameTimeMs: input.coverFrameTimeMs }
+        : {}),
+      selectedPlatforms: [...input.platforms],
+      scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
+      status: 'QUEUED' as const
+    }
+  });
+
+  return mapPost(post);
+};
+
+const isRetryableTransactionConflict = (error: unknown) =>
+  typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034';
+
+const createWithinMonthlyLimit = async (
+  prisma: PrismaPostClient,
+  input: CreatePostWithinMonthlyLimitInput
+): Promise<CreatePostWithinMonthlyLimitResult> => {
+  if (!prisma.$transaction) {
+    throw new Error('Prisma post store requires transaction support');
+  }
+
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await prisma.$transaction(
+        async (transaction) => {
+          const posts = await transaction.post.findMany({
+            where: { userId: input.userId },
+            orderBy: { createdAt: 'desc' }
+          });
+          const usedPostUnits = countCurrentMonthPostUnits(
+            posts.map((post) => ({
+              createdAt: post.createdAt.toISOString(),
+              platforms: post.selectedPlatforms
+            })),
+            new Date(input.now)
+          );
+
+          if (usedPostUnits + input.platforms.length > input.monthlyPostUnitLimit) {
+            return { ok: false as const };
+          }
+
+          return {
+            ok: true as const,
+            post: await createPost(transaction.post, input)
+          };
+        },
+        { isolationLevel: 'Serializable' }
+      );
+    } catch (error) {
+      if (!isRetryableTransactionConflict(error) || attempt === maxAttempts) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error('Prisma post quota transaction retry exhausted');
+};
 
 export const createPrismaPostRepository = ({
   prisma
@@ -128,26 +206,8 @@ export const createPrismaPostRepository = ({
 
     return posts.map(mapPost);
   },
-  create: async (input: CreatePostInput) => {
-    const post = await prisma.post.create({
-      data: {
-        userId: input.userId,
-        caption: input.caption,
-        videoS3Key: input.videoS3Key,
-        ...(input.coverImageS3Key
-          ? { coverImageS3Key: input.coverImageS3Key }
-          : {}),
-        ...(input.coverFrameTimeMs !== undefined
-          ? { coverFrameTimeMs: input.coverFrameTimeMs }
-          : {}),
-        selectedPlatforms: input.platforms,
-        scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
-        status: 'QUEUED'
-      }
-    });
-
-    return mapPost(post);
-  },
+  create: async (input: CreatePostInput) => createPost(prisma.post, input),
+  createWithinMonthlyLimit: async (input) => createWithinMonthlyLimit(prisma, input),
   listDue: async ({ now }: { now: string }) => {
     const posts = await prisma.post.findMany({
       where: {

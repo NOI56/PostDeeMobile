@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { countCurrentMonthPostUnits } from './postUsage.js';
+
 export type Platform = 'TIKTOK' | 'YOUTUBE_SHORTS' | 'INSTAGRAM_REELS' | 'FACEBOOK_REELS';
 
 const validPlatforms: Platform[] = [
@@ -40,6 +42,15 @@ export type CreatePostInput = {
   scheduledAt?: string;
 };
 
+export type CreatePostWithinMonthlyLimitInput = CreatePostInput & {
+  monthlyPostUnitLimit: number;
+  now: string;
+};
+
+export type CreatePostWithinMonthlyLimitResult =
+  | { ok: true; post: QueuedPost }
+  | { ok: false };
+
 export type UpdatePostStatusInput = {
   postId: string;
   status: PostStatus;
@@ -68,6 +79,11 @@ export type PostStore = {
   // It deliberately returns no post, owner, caption, or media details.
   countPublishBacklog: () => Promise<number>;
   create: (input: CreatePostInput) => Promise<QueuedPost>;
+  // Checks current-month platform units and inserts as one store operation so
+  // concurrent requests cannot overspend the user's quota.
+  createWithinMonthlyLimit: (
+    input: CreatePostWithinMonthlyLimitInput
+  ) => Promise<CreatePostWithinMonthlyLimitResult>;
   // Posts whose time has come: QUEUED with no schedule (post now) or scheduledAt
   // at/before `now`. Used by the publish scheduler.
   listDue: (input: { now: string }) => Promise<QueuedPost[]>;
@@ -90,6 +106,27 @@ export const isValidPlatform = (value: unknown): value is Platform =>
 
 export const createPostStore = (): PostStore => {
   const posts: QueuedPost[] = [];
+  const createPost = (input: CreatePostInput, createdAt = new Date().toISOString()) => {
+    const post: QueuedPost = {
+      id: randomUUID(),
+      userId: input.userId,
+      caption: input.caption,
+      videoS3Key: input.videoS3Key,
+      ...(input.coverImageS3Key
+        ? { coverImageS3Key: input.coverImageS3Key }
+        : {}),
+      ...(input.coverFrameTimeMs !== undefined
+        ? { coverFrameTimeMs: input.coverFrameTimeMs }
+        : {}),
+      platforms: [...input.platforms],
+      scheduledAt: input.scheduledAt,
+      status: 'QUEUED' as const,
+      createdAt
+    };
+
+    posts.push(post);
+    return post;
+  };
 
   return {
     list: async (filter) =>
@@ -107,26 +144,21 @@ export const createPostStore = (): PostStore => {
       posts.filter(
         (post) => post.status === 'QUEUED' || post.status === 'PUBLISHING'
       ).length,
-    create: async (input) => {
-      const post: QueuedPost = {
-        id: randomUUID(),
-        userId: input.userId,
-        caption: input.caption,
-        videoS3Key: input.videoS3Key,
-        ...(input.coverImageS3Key
-          ? { coverImageS3Key: input.coverImageS3Key }
-          : {}),
-        ...(input.coverFrameTimeMs !== undefined
-          ? { coverFrameTimeMs: input.coverFrameTimeMs }
-          : {}),
-        platforms: input.platforms,
-        scheduledAt: input.scheduledAt,
-        status: 'QUEUED',
-        createdAt: new Date().toISOString()
-      };
+    create: async (input) => createPost(input),
+    createWithinMonthlyLimit: async (input) => {
+      const usedPostUnits = countCurrentMonthPostUnits(
+        posts.filter((post) => post.userId === input.userId),
+        new Date(input.now)
+      );
 
-      posts.push(post);
-      return post;
+      if (usedPostUnits + input.platforms.length > input.monthlyPostUnitLimit) {
+        return { ok: false };
+      }
+
+      return {
+        ok: true,
+        post: createPost(input, input.now)
+      };
     },
     listDue: async ({ now }) =>
       posts.filter(

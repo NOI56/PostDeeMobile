@@ -437,13 +437,19 @@ Rules:
 - A managed multipart upload must have status `COMPLETED` before its
   `videoS3Key` or `coverImageS3Key` can be used. Legacy owner-scoped video keys
   remain accepted only while the server is in `legacy` or `dual` rollout mode.
-- If `scheduledAt` is present, the user must be Starter or Pro.
-- `scheduledAt` cannot be more than 30 days after the server's current time.
+- If `scheduledAt` is present, it must use the RFC 3339 shape
+  `YYYY-MM-DDTHH:mm:ss(.fraction)?(Z|±HH:mm)` with a valid calendar date and
+  timezone. The API normalizes it to UTC. It must be strictly after the server's
+  current time, cannot be more than 30 days ahead, and the user must be Starter
+  or Pro.
 - Basic users must have a verified phone number before using the free quota.
 - Basic is limited to 3 post units per month after phone verification.
 - Starter is limited to 120 post units per month.
 - Pro is limited to 250 post units per month.
-- Post units count selected platforms, not post rows.
+- Repeated platform values are collapsed before quota accounting, persistence,
+  and queueing. Post units count unique selected platforms, not post rows.
+- The monthly-unit check and post insert are one atomic store operation; Prisma
+  uses a serializable transaction and retries write conflicts before rechecking.
 
 Worker behavior:
 
@@ -543,7 +549,9 @@ Post limit reached:
 Reschedules an authenticated user's queued post. Body:
 `{ "scheduledAt": "<ISO-8601 date>" }`. The route returns the updated `post`,
 returns `404` for a missing/non-queued user-owned post, and returns `503` when
-the publish queue cannot be rescheduled. When social publishing is disabled it
+the publish queue cannot be rescheduled. The timestamp uses the same strict RFC
+3339 contract as post creation, must be in the future, and must be no more than
+30 days after the server's current time. When social publishing is disabled it
 returns `503 SOCIAL_PUBLISHING_UNAVAILABLE` before reading or changing the post
 or queue schedule.
 
@@ -1588,10 +1596,12 @@ Example request:
 ```json
 {
   "event": {
+    "id": "event-id-from-revenuecat",
     "type": "INITIAL_PURCHASE",
     "app_user_id": "firebase-user-id",
     "product_id": "postdee_pro_monthly",
     "entitlement_ids": ["pro"],
+    "event_timestamp_ms": 1780444800000,
     "expiration_at_ms": 1780531200000
   }
 }
@@ -1615,6 +1625,10 @@ Success response:
 Supported active event types include `INITIAL_PURCHASE`, `RENEWAL`,
 `PRODUCT_CHANGE`, `UNCANCELLATION`, and `NON_RENEWING_PURCHASE`. `EXPIRATION`
 cancels the existing RevenueCat-bound subscription and removes paid access.
+Actionable events must include a non-empty event `id` and positive integer
+`event_timestamp_ms`. The subscription update and per-user ordering cursor are
+committed atomically. A retried event id or a timestamp that is not newer is
+acknowledged with `ignored: true` and cannot overwrite newer entitlement state.
 `CANCELLATION`, `SUBSCRIPTION_PAUSED`, and `BILLING_ISSUE` are acknowledged
 without revoking access immediately because the subscription can still be active
 until the paid period actually expires. Unknown product or entitlement ids return
@@ -1636,9 +1650,21 @@ entitlement/subscription grace-period expiry. When RevenueCat returns no active
 entitlement, only the matching `revenuecat:<uid>` subscription is deactivated;
 paid access from another provider is left unchanged. An active but unmapped
 entitlement is treated as configuration drift and never downgrades the user.
+The subscriber response's positive integer `request_date_ms` advances the same
+per-user ordering cursor used by webhooks, in the same serializable transaction
+as the subscription change. A snapshot older than, or equal to, the stored
+cursor is ignored and the response reports the effective stored plan instead of
+claiming that stale snapshot was applied.
 For an empty RevenueCat result, top-level `plan` is `BASIC` so the client does
 not report a successful Restore; `effectivePlan` separately reports any access
-that remains active from another provider.
+that remains active from another provider. If an empty snapshot is stale,
+top-level `plan` also reports that effective stored plan.
+
+If RevenueCat omits `request_date_ms`, the client records the local API receipt
+time as the observation timestamp. This fallback requires synchronized server
+clocks: clock skew can temporarily make a legitimate webhook appear older.
+Distinct observations with the same millisecond timestamp are deliberately
+treated as equal, so the later arrival does not overwrite the committed state.
 
 Request:
 

@@ -10,6 +10,51 @@ const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
 describe('caption routes', () => {
   const app = createApp();
 
+  it('ensures a Prisma user immediately before reserving relational caption usage', async () => {
+    const events: string[] = [];
+    const createdAt = new Date('2026-08-13T00:00:00.000Z');
+    const usageStore = {
+      countForMonth: vi.fn(async () => 0),
+      record: vi.fn(),
+      reserve: vi.fn(async ({ userId, monthKey }: { userId: string; monthKey: string }) => {
+        events.push('reserve-caption-usage');
+        return {
+          ok: true as const,
+          usedThisMonth: 1,
+          record: { userId, monthKey, createdAt: createdAt.toISOString() }
+        };
+      })
+    };
+    const appWithPrismaUser = createApp({
+      prisma: {
+        user: {
+          findUnique: vi.fn(),
+          upsert: vi.fn(async () => {
+            events.push('ensure-user');
+            return {
+              id: 'seller-caption-fk',
+              firebaseUid: 'mock:seller-caption-fk',
+              email: 'seller-caption-fk@postdee.local',
+              displayName: null,
+              createdAt,
+              updatedAt: createdAt
+            };
+          })
+        }
+      } as never,
+      realClipCaptionUsageStore: usageStore
+    });
+
+    await request(appWithPrismaUser)
+      .post('/captions/generate')
+      .set('x-postdee-user-id', 'seller-caption-fk')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({ keywords: ['caption-fk'] })
+      .expect(200);
+
+    expect(events).toEqual(['ensure-user', 'reserve-caption-usage']);
+  });
+
   it('generates a Thai affiliate caption from one or two keywords', async () => {
     const response = await request(app)
       .post('/captions/generate')

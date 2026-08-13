@@ -73,6 +73,8 @@ model User {
   socialConnections  SocialConnection[]
   postPeerProfile    PostPeerProfile?
   billingCustomerId  String?       @unique
+  lastRevenueCatEventTimestampMs BigInt?
+  lastRevenueCatEventId String?
   monthlyPostCount   Int           @default(0)
   monthlyPostResetAt DateTime?
   createdAt          DateTime      @default(now())

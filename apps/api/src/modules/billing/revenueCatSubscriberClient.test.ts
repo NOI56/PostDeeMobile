@@ -58,6 +58,7 @@ describe('createRevenueCatSubscriberClient', () => {
     });
 
     await expect(client.loadSubscriber('seller/one')).resolves.toEqual({
+      observedAtMs: Date.parse('2026-07-15T00:00:00.000Z'),
       activeEntitlements: [
         {
           id: 'pro',
@@ -84,6 +85,52 @@ describe('createRevenueCatSubscriberClient', () => {
       }
     );
   });
+
+  it('uses the local observation time only when RevenueCat omits request_date_ms', async () => {
+    const client = createRevenueCatSubscriberClient({
+      apiKey: 'rc-secret-key',
+      now: () => new Date('2026-07-15T00:00:00.123Z'),
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          subscriber: {
+            entitlements: {},
+            subscriptions: {}
+          }
+        })
+      })
+    });
+
+    await expect(client.loadSubscriber('seller-1')).resolves.toEqual({
+      observedAtMs: Date.parse('2026-07-15T00:00:00.123Z'),
+      activeEntitlements: []
+    });
+  });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'fails closed for invalid RevenueCat request_date_ms %s',
+    async (requestDateMs) => {
+      const client = createRevenueCatSubscriberClient({
+        apiKey: 'rc-secret-key',
+        fetchImpl: vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            request_date_ms: requestDateMs,
+            subscriber: {
+              entitlements: {},
+              subscriptions: {}
+            }
+          })
+        })
+      });
+
+      await expect(client.loadSubscriber('seller-1')).rejects.toBeInstanceOf(
+        RevenueCatSubscriberProviderError
+      );
+    }
+  );
 
   it('fails closed when RevenueCat returns malformed customer data', async () => {
     const client = createRevenueCatSubscriberClient({

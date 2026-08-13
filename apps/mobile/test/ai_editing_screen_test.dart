@@ -917,6 +917,63 @@ void main() {
     expect(subtitleWordsForRender(staleCue), isEmpty);
   });
 
+  testWidgets('rejects a landscape clip before selecting it for AI editing',
+      (tester) async {
+    final fixture = _createPickedVideoFixture('landscape-ai-clip.mp4');
+    final landscapeVideo = PickedVideoFile(
+      name: fixture.name,
+      path: fixture.path,
+      sizeBytes: fixture.sizeBytes,
+      width: 1920,
+      height: 1080,
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => landscapeVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('landscape-ai-clip.mp4'), findsNothing);
+    expect(find.byKey(const ValueKey('ai-add-video')), findsOneWidget);
+    expect(find.text('ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920'), findsOneWidget);
+  });
+
+  testWidgets('rejects a clip with unknown dimensions for AI editing',
+      (tester) async {
+    final fixture = _createPickedVideoFixture('unknown-size-ai-clip.mp4');
+    final unknownDimensionsVideo = PickedVideoFile(
+      name: fixture.name,
+      path: fixture.path,
+      sizeBytes: fixture.sizeBytes,
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => unknownDimensionsVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('unknown-size-ai-clip.mp4'), findsNothing);
+    expect(find.byKey(const ValueKey('ai-add-video')), findsOneWidget);
+    expect(
+      find.text('อ่านขนาดวิดีโอไม่ได้ กรุณาเลือกวิดีโอใหม่'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('renders only locally verified silence intersections',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('silence.mp4');
@@ -6611,6 +6668,8 @@ void main() {
     expect(find.byType(UploaderScreen), findsOneWidget);
     final uploader = tester.widget<UploaderScreen>(find.byType(UploaderScreen));
     expect(uploader.initialVideoPath, renderedVideo.file.path);
+    expect(uploader.initialVideoWidth, pickedVideo.width);
+    expect(uploader.initialVideoHeight, pickedVideo.height);
   });
 
   testWidgets(

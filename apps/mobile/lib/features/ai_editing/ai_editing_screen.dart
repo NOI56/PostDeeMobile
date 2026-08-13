@@ -704,6 +704,19 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         throw const ApiException('ไม่พบไฟล์วิดีโอในเครื่อง');
       }
 
+      final width = picked.width;
+      final height = picked.height;
+      if (width == null || height == null || width < 1 || height < 1) {
+        throw const ApiException(
+          'อ่านขนาดวิดีโอไม่ได้ กรุณาเลือกวิดีโอใหม่',
+        );
+      }
+      if (!isVerticalNineBySixteen(width: width, height: height)) {
+        throw const ApiException(
+          'ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920',
+        );
+      }
+
       final pickedDuration = picked.durationSeconds;
       if (pickedDuration != null &&
           pickedDuration.isFinite &&
@@ -2970,6 +2983,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               initialVideoPath: result.file.path,
               initialVideoName: result.fileName,
               initialVideoSizeBytes: result.sizeBytes,
+              initialVideoWidth: _selectedVideo?.width,
+              initialVideoHeight: _selectedVideo?.height,
             ),
           ),
         ),

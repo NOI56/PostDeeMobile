@@ -10,7 +10,7 @@ afterEach(() => {
 });
 describe('PostDee mock publishing flow', () => {
   it('creates an upload, generates a caption, queues a post, and exposes the queue job', async () => {
-    const app = createApp();
+    const app = createApp({ now: () => new Date('2026-06-01T00:00:00.000Z') });
 
     const uploadResponse = await request(app)
       .post('/uploads')
@@ -116,7 +116,7 @@ describe('PostDee mock publishing flow', () => {
   });
 
   it('activates Pro and creates a scheduled queue job', async () => {
-    const app = createApp();
+    const app = createApp({ now: () => new Date('2026-06-01T00:00:00.000Z') });
     const userId = 'seller-pro-flow';
     const scheduledAt = '2026-06-05T10:00:00.000Z';
 

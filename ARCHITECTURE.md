@@ -398,10 +398,14 @@ Rules:
 - Basic users must verify a phone number before using the free quota.
 - Basic users are limited to 3 post units per month after phone verification.
 - Starter and Pro can schedule posts up to 30 days in advance. The mobile date
-  picker and post API enforce the same limit.
+  picker and post API enforce the same limit. The API accepts only calendar-valid
+  RFC 3339 timestamps with `Z` or `±HH:mm`, normalizes them to UTC, and rejects
+  past, timezone-free, or malformed values for create and reschedule requests.
 - Starter is limited to 120 post units per month.
 - Pro is limited to 250 post units per month.
-- Post units count by selected platform, not post row.
+- Post units count unique selected platforms, not post rows. Duplicate platform
+  values are collapsed, and the monthly-unit check plus post insert is atomic
+  (a serializable Prisma transaction in the persistent store).
 - Upload metadata is capped by `UPLOAD_MAX_SIZE_BYTES`. Managed multipart part
   sizes are selected by the server, and a post can reference the key only after
   its session reaches `COMPLETED`.
@@ -457,9 +461,14 @@ sequenceDiagram
   RC->>Store: Process payment
   Store-->>RC: Receipt/Token
   RC-->>M: Entitlement unlocked
-  RC->>A: POST /billing/revenuecat/webhooks
-  A->>DB: Activate STARTER or PRO subscription
+  RC->>A: POST webhook with event id + timestamp
+  A->>DB: Atomically advance cursor + apply subscription
 ```
+
+Actionable RevenueCat events require `id` and `event_timestamp_ms`. PostgreSQL
+stores the latest per-user cursor in the same serializable transaction as the
+subscription change; retries and older events are acknowledged without
+overwriting newer entitlement state.
 
 Restore is an explicit user action and uses a separate reconciliation path:
 
@@ -476,8 +485,8 @@ sequenceDiagram
   RC-->>M: Customer info refreshed
   M->>A: POST /billing/revenuecat/resync
   A->>RC: GET subscriber using server REST key
-  RC-->>A: Active entitlements and expiry
-  A->>DB: Reconcile PRO, STARTER, or BASIC
+  RC-->>A: Entitlements, expiry, request_date_ms
+  A->>DB: Atomically advance cursor + reconcile subscription
   A-->>M: Current subscription
 ```
 
@@ -486,7 +495,11 @@ RevenueCat app user id only from the authenticated Firebase user, prefers Pro if
 both paid entitlements are active, and leaves the existing plan unchanged if the
 provider lookup fails. Zero active RevenueCat entitlements deactivates only the
 matching RevenueCat-backed record. Active but unmapped access returns a
-configuration error and does not downgrade the user.
+configuration error and does not downgrade the user. Webhooks and subscriber
+resync share the same per-user serializable cursor, so a stale snapshot cannot
+undo a newer lifecycle event. Equal millisecond timestamps are non-newer. When
+RevenueCat omits `request_date_ms`, the API falls back to local receipt time;
+server clock skew remains an operational risk and clocks must stay synchronized.
 
 Production status and remaining work:
 

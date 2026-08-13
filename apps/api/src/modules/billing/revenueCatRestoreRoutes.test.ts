@@ -19,6 +19,7 @@ const createRevenueCatConfig = (restApiKey = 'rc-secret-key') =>
 describe('RevenueCat subscription resync', () => {
   it('syncs the authenticated user to Pro and ignores body user ids', async () => {
     const loadSubscriber = vi.fn().mockResolvedValue({
+      observedAtMs: 1_784_044_800_001,
       activeEntitlements: [
         {
           id: 'pro',
@@ -61,6 +62,7 @@ describe('RevenueCat subscription resync', () => {
   it('prefers Pro when both paid entitlements are active', async () => {
     const client: RevenueCatSubscriberClient = {
       loadSubscriber: vi.fn().mockResolvedValue({
+        observedAtMs: 1_784_044_800_002,
         activeEntitlements: [
           { id: 'starter', productId: 'postdee_starter_monthly' },
           { id: 'pro', productId: 'postdee_pro_monthly' }
@@ -85,9 +87,13 @@ describe('RevenueCat subscription resync', () => {
     const loadSubscriber = vi
       .fn()
       .mockResolvedValueOnce({
+        observedAtMs: 1_784_044_800_003,
         activeEntitlements: [{ id: 'pro', productId: 'postdee_pro_monthly' }]
       })
-      .mockResolvedValueOnce({ activeEntitlements: [] });
+      .mockResolvedValueOnce({
+        observedAtMs: 1_784_044_800_004,
+        activeEntitlements: []
+      });
     const app = createApp({
       config: createRevenueCatConfig(),
       revenueCatSubscriberClient: { loadSubscriber }
@@ -116,11 +122,192 @@ describe('RevenueCat subscription resync', () => {
     expect(subscriptionResponse.body.subscription.plan).toBe('BASIC');
   });
 
+  it('does not let an older subscriber snapshot cancel a newer webhook renewal', async () => {
+    const userId = 'seller-resync-older-than-webhook';
+    const app = createApp({
+      config: createRevenueCatConfig(),
+      revenueCatSubscriberClient: {
+        loadSubscriber: vi.fn().mockResolvedValue({
+          observedAtMs: 1_784_044_800_100,
+          activeEntitlements: []
+        })
+      }
+    });
+
+    await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+    await request(app)
+      .post('/billing/revenuecat/webhooks')
+      .set('Authorization', 'Bearer revenuecat-webhook-token')
+      .send({
+        event: {
+          id: 'newer-renewal',
+          type: 'RENEWAL',
+          app_user_id: userId,
+          entitlement_ids: ['pro'],
+          product_id: 'postdee_pro_monthly',
+          event_timestamp_ms: 1_784_044_800_200
+        }
+      })
+      .expect(200);
+
+    const staleSyncResponse = await request(app)
+      .post('/billing/revenuecat/resync')
+      .set('x-postdee-user-id', userId)
+      .send({})
+      .expect(200);
+
+    expect(staleSyncResponse.body).toMatchObject({
+      plan: 'PRO',
+      effectivePlan: 'PRO',
+      subscription: null
+    });
+
+    const subscriptionResponse = await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+    expect(subscriptionResponse.body.subscription).toMatchObject({
+      plan: 'PRO',
+      status: 'ACTIVE'
+    });
+  });
+
+  it('does not let an older paid snapshot reactivate a newer webhook expiration', async () => {
+    const userId = 'seller-paid-resync-older-than-expiration';
+    const app = createApp({
+      config: createRevenueCatConfig(),
+      revenueCatSubscriberClient: {
+        loadSubscriber: vi.fn().mockResolvedValue({
+          observedAtMs: 1_784_044_800_500,
+          activeEntitlements: [
+            { id: 'pro', productId: 'postdee_pro_monthly' }
+          ]
+        })
+      }
+    });
+
+    await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+    await request(app)
+      .post('/billing/revenuecat/webhooks')
+      .set('Authorization', 'Bearer revenuecat-webhook-token')
+      .send({
+        event: {
+          id: 'initial-paid-state',
+          type: 'INITIAL_PURCHASE',
+          app_user_id: userId,
+          entitlement_ids: ['pro'],
+          product_id: 'postdee_pro_monthly',
+          event_timestamp_ms: 1_784_044_800_400
+        }
+      })
+      .expect(200);
+    await request(app)
+      .post('/billing/revenuecat/webhooks')
+      .set('Authorization', 'Bearer revenuecat-webhook-token')
+      .send({
+        event: {
+          id: 'newer-expiration',
+          type: 'EXPIRATION',
+          app_user_id: userId,
+          entitlement_ids: ['pro'],
+          product_id: 'postdee_pro_monthly',
+          event_timestamp_ms: 1_784_044_800_600
+        }
+      })
+      .expect(200);
+
+    const staleSyncResponse = await request(app)
+      .post('/billing/revenuecat/resync')
+      .set('x-postdee-user-id', userId)
+      .send({})
+      .expect(200);
+
+    expect(staleSyncResponse.body).toMatchObject({
+      plan: 'BASIC',
+      subscription: null
+    });
+    const subscriptionResponse = await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+    expect(subscriptionResponse.body.subscription).toMatchObject({
+      plan: 'BASIC',
+      status: 'INACTIVE'
+    });
+  });
+
+  it('does not let an older or equal webhook overwrite a newer subscriber snapshot', async () => {
+    const userId = 'seller-resync-newer-than-webhook';
+    const observedAtMs = 1_784_044_800_400;
+    const app = createApp({
+      config: createRevenueCatConfig(),
+      revenueCatSubscriberClient: {
+        loadSubscriber: vi.fn().mockResolvedValue({
+          observedAtMs,
+          activeEntitlements: [
+            { id: 'pro', productId: 'postdee_pro_monthly' }
+          ]
+        })
+      }
+    });
+
+    await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+    await request(app)
+      .post('/billing/revenuecat/resync')
+      .set('x-postdee-user-id', userId)
+      .send({})
+      .expect(200);
+
+    for (const [eventId, eventTimestampMs] of [
+      ['older-expiration', observedAtMs - 1],
+      ['equal-expiration', observedAtMs]
+    ] as const) {
+      await request(app)
+        .post('/billing/revenuecat/webhooks')
+        .set('Authorization', 'Bearer revenuecat-webhook-token')
+        .send({
+          event: {
+            id: eventId,
+            type: 'EXPIRATION',
+            app_user_id: userId,
+            entitlement_ids: ['pro'],
+            product_id: 'postdee_pro_monthly',
+            event_timestamp_ms: eventTimestampMs
+          }
+        })
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body.ignored).toBe(true);
+        });
+    }
+
+    const subscriptionResponse = await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+    expect(subscriptionResponse.body.subscription).toMatchObject({
+      plan: 'PRO',
+      status: 'ACTIVE'
+    });
+  });
+
   it('does not deactivate a subscription verified by another provider', async () => {
     const app = createApp({
       config: createRevenueCatConfig(),
       revenueCatSubscriberClient: {
-        loadSubscriber: vi.fn().mockResolvedValue({ activeEntitlements: [] })
+        loadSubscriber: vi.fn().mockResolvedValue({
+          observedAtMs: 1_784_044_800_005,
+          activeEntitlements: []
+        })
       },
       storePurchaseVerifier: {
         verify: async (purchase) => ({
@@ -142,10 +329,12 @@ describe('RevenueCat subscription resync', () => {
       .set('Authorization', 'Bearer revenuecat-webhook-token')
       .send({
         event: {
+          id: 'event-google-play-expired-revenuecat',
           type: 'INITIAL_PURCHASE',
           app_user_id: 'seller-google-play',
           entitlement_ids: ['pro'],
           product_id: 'postdee_pro_monthly',
+          event_timestamp_ms: 1_784_044_800_000,
           expiration_at_ms: 1
         }
       })
@@ -189,9 +378,11 @@ describe('RevenueCat subscription resync', () => {
     const loadSubscriber = vi
       .fn()
       .mockResolvedValueOnce({
+        observedAtMs: 1_784_044_800_006,
         activeEntitlements: [{ id: 'pro', productId: 'postdee_pro_monthly' }]
       })
       .mockResolvedValueOnce({
+        observedAtMs: 1_784_044_800_007,
         activeEntitlements: [{ id: 'renamed-pro', productId: 'renamed-product' }]
       });
     const app = createApp({
@@ -222,6 +413,7 @@ describe('RevenueCat subscription resync', () => {
     const loadSubscriber = vi
       .fn()
       .mockResolvedValueOnce({
+        observedAtMs: 1_784_044_800_008,
         activeEntitlements: [{ id: 'pro', productId: 'postdee_pro_monthly' }]
       })
       .mockRejectedValueOnce(new Error('upstream secret detail'));

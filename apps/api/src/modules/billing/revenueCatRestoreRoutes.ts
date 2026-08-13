@@ -23,6 +23,17 @@ type RevenueCatRestoreConfig = Pick<
 const revenueCatBillingSubscriptionId = (appUserId: string) =>
   `revenuecat:${appUserId}`;
 
+const buildRevenueCatResyncEventId = ({
+  appUserId,
+  observedAtMs,
+  outcome
+}: {
+  appUserId: string;
+  observedAtMs: number;
+  outcome: string;
+}) =>
+  `revenuecat-resync:${encodeURIComponent(appUserId)}:${observedAtMs}:${outcome}`;
+
 const findMappedEntitlement = (
   entitlements: RevenueCatActiveEntitlement[],
   entitlementId: string,
@@ -90,9 +101,11 @@ export const registerRevenueCatRestoreRoutes = ({
       }
 
       let activeEntitlements: RevenueCatActiveEntitlement[];
+      let observedAtMs: number;
 
       try {
-        ({ activeEntitlements } = await subscriberClient.loadSubscriber(authUser.id));
+        ({ activeEntitlements, observedAtMs } =
+          await subscriberClient.loadSubscriber(authUser.id));
       } catch (error) {
         if (error instanceof RevenueCatSubscriberUnavailableError) {
           response.status(501).json({
@@ -123,35 +136,49 @@ export const registerRevenueCatRestoreRoutes = ({
           return;
         }
 
-        const subscription =
-          await subscriptionStore.updateStatusByBillingSubscriptionId({
-            billingSubscriptionId: revenueCatBillingSubscriptionId(authUser.id),
-            status: 'CANCELED'
-          });
-        const plan = await subscriptionStore.getPlan(authUser);
+        await userStore.ensure(authUser);
+        const eventResult = await subscriptionStore.applyRevenueCatEvent({
+          authUser,
+          billingSubscriptionId: revenueCatBillingSubscriptionId(authUser.id),
+          status: 'CANCELED',
+          eventId: buildRevenueCatResyncEventId({
+            appUserId: authUser.id,
+            observedAtMs,
+            outcome: 'BASIC'
+          }),
+          eventTimestampMs: observedAtMs
+        });
+        const effectivePlan = await subscriptionStore.getPlan(authUser);
         response.json({
           status: 'ok',
-          plan: 'BASIC',
-          effectivePlan: plan,
-          subscription
+          plan: eventResult.applied ? 'BASIC' : effectivePlan,
+          effectivePlan,
+          subscription: eventResult.subscription
         });
         return;
       }
 
       await userStore.ensure(authUser);
-      const subscription = await subscriptionStore.activatePlan(
+      const currentPeriodEnd = paidPlan.entitlement.expiresAt ?? null;
+      const eventResult = await subscriptionStore.applyRevenueCatEvent({
         authUser,
-        paidPlan.plan,
-        {
-          billingSubscriptionId: revenueCatBillingSubscriptionId(authUser.id),
-          currentPeriodEnd: paidPlan.entitlement.expiresAt ?? null
-        }
-      );
+        billingSubscriptionId: revenueCatBillingSubscriptionId(authUser.id),
+        plan: paidPlan.plan,
+        status: 'ACTIVE',
+        eventId: buildRevenueCatResyncEventId({
+          appUserId: authUser.id,
+          observedAtMs,
+          outcome: `${paidPlan.plan}:${currentPeriodEnd ?? 'lifetime'}`
+        }),
+        eventTimestampMs: observedAtMs,
+        currentPeriodEnd
+      });
+      const effectivePlan = await subscriptionStore.getPlan(authUser);
 
       response.json({
         status: 'ok',
-        plan: paidPlan.plan,
-        subscription
+        plan: eventResult.applied ? paidPlan.plan : effectivePlan,
+        subscription: eventResult.subscription
       });
     }
   );

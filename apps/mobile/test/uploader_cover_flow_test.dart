@@ -10,6 +10,8 @@ import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/test_publish_draft_store.dart';
+
 PickedVideoFile _pickedVideo() {
   final directory = Directory.systemTemp.createTempSync('postdee-cover-flow-');
   addTearDown(() {
@@ -46,6 +48,20 @@ Future<void> _enterCaption(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _selectAllPlatforms(WidgetTester tester) async {
+  final scrollable = find.byType(Scrollable).first;
+  final selectAll = find.byKey(const ValueKey('uploader-select-all-platforms'));
+  await tester.scrollUntilVisible(
+    selectAll,
+    300,
+    scrollable: scrollable,
+  );
+  await tester.tap(selectAll);
+  await tester.pumpAndSettle();
+  await tester.drag(scrollable, const Offset(0, 3000));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -66,6 +82,7 @@ void main() {
                 SocialConnectionResult(
                   platform: 'INSTAGRAM_REELS',
                   connected: true,
+                  externalAccountId: 'instagram-seller',
                 ),
               ],
             ),
@@ -85,6 +102,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await _pickVideo(tester);
+    await _selectAllPlatforms(tester);
     await tester.tap(find.byKey(const ValueKey('uploader-cover-edit-button')));
     await tester.pumpAndSettle();
 
@@ -109,11 +127,13 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
             loadSocialConnections: () => SynchronousFuture(
               const [
                 SocialConnectionResult(
                   platform: 'INSTAGRAM_REELS',
                   connected: true,
+                  externalAccountId: 'instagram-seller',
                 ),
               ],
             ),
@@ -172,6 +192,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await _pickVideo(tester);
+    await _selectAllPlatforms(tester);
     await tester.tap(find.byKey(const ValueKey('uploader-cover-edit-button')));
     await tester.pumpAndSettle();
     await _enterCaption(tester);

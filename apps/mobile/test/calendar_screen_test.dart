@@ -41,7 +41,7 @@ void main() {
     // grid with the prototype's "status · time" line.
     expect(find.text('Launch clip'), findsOneWidget);
     expect(find.text('7 มิ.ย. 2026'), findsOneWidget);
-    expect(find.text('ตั้งเวลา · 18:30'), findsOneWidget);
+    expect(find.text('รอส่งตามเวลา · 18:30'), findsOneWidget);
     expect(find.byKey(const ValueKey('calendar-empty')), findsNothing);
     expect(
       find.byKey(const ValueKey('calendar-platform-filters')),
@@ -199,6 +199,102 @@ void main() {
     );
   });
 
+  testWidgets('limits the reschedule date picker to the shared 30-day window',
+      (tester) async {
+    final now = DateTime(2026, 8, 11, 12);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: CalendarScreen(
+            now: () => now,
+            loadScheduledPosts: () async => [
+              ScheduledPostResult(
+                id: 'bounded-reschedule',
+                caption: 'โพสต์ภายในกรอบเวลา',
+                videoS3Key: 'uploads/bounded.mp4',
+                platforms: const ['TIKTOK'],
+                scheduledAt: now.add(const Duration(days: 2)),
+                status: 'QUEUED',
+                createdAt: now,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('โพสต์ภายในกรอบเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('โพสต์ภายในกรอบเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เลื่อนเวลา'));
+    await tester.pumpAndSettle();
+
+    final picker = tester.widget<CalendarDatePicker>(
+      find.byType(CalendarDatePicker),
+    );
+    expect(picker.firstDate, DateTime(2026, 8, 11));
+    expect(picker.lastDate, DateTime(2026, 9, 10));
+  });
+
+  testWidgets('blocks a past reschedule before it reaches the API',
+      (tester) async {
+    final now = DateTime(2026, 8, 11, 12);
+    var rescheduleCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: CalendarScreen(
+            now: () => now,
+            loadScheduledPosts: () async => [
+              ScheduledPostResult(
+                id: 'past-reschedule',
+                caption: 'โพสต์ที่ห้ามเลื่อนไปอดีต',
+                videoS3Key: 'uploads/past.mp4',
+                platforms: const ['YOUTUBE_SHORTS'],
+                scheduledAt: now.subtract(const Duration(hours: 1)),
+                status: 'QUEUED',
+                createdAt: now.subtract(const Duration(days: 1)),
+              ),
+            ],
+            reschedulePost: (postId, next) async {
+              rescheduleCalls += 1;
+              return ScheduledPostResult(
+                id: postId,
+                caption: 'ไม่ควรถูกเรียก',
+                videoS3Key: 'uploads/past.mp4',
+                platforms: const ['YOUTUBE_SHORTS'],
+                scheduledAt: next,
+                status: 'QUEUED',
+                createdAt: now,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('โพสต์ที่ห้ามเลื่อนไปอดีต'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('โพสต์ที่ห้ามเลื่อนไปอดีต'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เลื่อนเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(rescheduleCalls, 0);
+    expect(find.text('เวลาที่เลื่อนต้องเป็นเวลาในอนาคต'), findsOneWidget);
+  });
+
   testWidgets(
       'uses the real published time in Bangkok across a UTC day and month',
       (tester) async {
@@ -228,7 +324,7 @@ void main() {
 
     // 31 Jan 18:30 UTC is 1 Feb 01:30 in Asia/Bangkok.
     expect(find.text('1 ก.พ. 2026'), findsOneWidget);
-    expect(find.text('เผยแพร่แล้ว · 01:30'), findsOneWidget);
+    expect(find.text('ส่งสำเร็จ · 01:30'), findsOneWidget);
     expect(find.text('Published after midnight'), findsOneWidget);
   });
 
@@ -257,7 +353,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('เผยแพร่บางช่องทาง · 09:05'), findsOneWidget);
+    expect(find.text('ส่งสำเร็จบางช่องทาง · 09:05'), findsOneWidget);
     // Only the month-navigation chevron remains; terminal post rows do not
     // show the queue-action chevron.
     expect(find.byIcon(Icons.chevron_right), findsOneWidget);
@@ -269,6 +365,43 @@ void main() {
 
     expect(find.text('เลื่อนเวลา'), findsNothing);
     expect(find.text('ยกเลิกโพสต์'), findsNothing);
+  });
+
+  testWidgets('shows an unknown provider outcome as unconfirmed',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: CalendarScreen(
+            loadScheduledPosts: () async => [
+              ScheduledPostResult(
+                id: 'unknown-outcome',
+                caption: 'Future provider result',
+                videoS3Key: 'uploads/future.mp4',
+                platforms: const ['TIKTOK'],
+                scheduledAt: DateTime(2026, 6, 10, 9),
+                publishedAt: DateTime(2026, 6, 10, 9, 5),
+                status: 'PUBLISHED',
+                createdAt: DateTime(2026, 6, 1),
+                platformResults: const [
+                  PostPlatformResult(
+                    postId: 'unknown-outcome',
+                    platform: 'TIKTOK',
+                    status: 'PUBLISHED',
+                    deliveryOutcome: 'FUTURE_OUTCOME',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ผลยังไม่ยืนยัน · 09:05'), findsOneWidget);
+    expect(find.text('ส่งสำเร็จ · 09:05'), findsNothing);
   });
 
   for (final status in const [
@@ -390,14 +523,14 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pump();
     expect(loadCount, 2);
-    expect(find.text('กำลังโพสต์ · 10:00'), findsOneWidget);
+    expect(find.text('กำลังส่ง · 10:00'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 29));
     expect(loadCount, 2);
     await tester.pump(const Duration(seconds: 1));
     await tester.pump();
     expect(loadCount, 3);
-    expect(find.text('เผยแพร่แล้ว · 10:01'), findsOneWidget);
+    expect(find.text('ส่งสำเร็จ · 10:01'), findsOneWidget);
   });
 
   testWidgets('refreshes after the app resumes', (tester) async {

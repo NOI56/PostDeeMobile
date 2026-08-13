@@ -24,11 +24,11 @@ PostSummaryResult _post({
 }
 
 class _FakePostApiClient extends PostDeeApiClient {
-  _FakePostApiClient({this.rescheduleError});
+  _FakePostApiClient({this.publishNowError});
 
-  final ApiException? rescheduleError;
+  final ApiException? publishNowError;
   final List<String> cancelledPostIds = [];
-  final List<(String, DateTime)> rescheduled = [];
+  final List<String> publishedNowPostIds = [];
 
   @override
   Future<void> cancelPost(String postId) async {
@@ -36,24 +36,12 @@ class _FakePostApiClient extends PostDeeApiClient {
   }
 
   @override
-  Future<ScheduledPostResult> reschedulePost(
-    String postId,
-    DateTime scheduledAt,
-  ) async {
-    rescheduled.add((postId, scheduledAt));
-    final error = rescheduleError;
+  Future<void> publishPostNow(String postId) async {
+    publishedNowPostIds.add(postId);
+    final error = publishNowError;
     if (error != null) {
       throw error;
     }
-    return ScheduledPostResult(
-      id: postId,
-      caption: 'โปรโมตครีมกันแดดตัวใหม่',
-      videoS3Key: 'uploads/clip.mp4',
-      platforms: const ['TIKTOK'],
-      scheduledAt: scheduledAt,
-      status: 'QUEUED',
-      createdAt: DateTime(2026, 7, 1, 10),
-    );
   }
 }
 
@@ -70,18 +58,17 @@ void main() {
     );
 
     expect(find.text('รายละเอียดโพสต์'), findsOneWidget);
-    expect(find.text('ตั้งเวลาไว้'), findsOneWidget);
+    expect(find.text('รอส่งตามเวลา'), findsWidgets);
     expect(find.text('โปรโมตครีมกันแดดตัวใหม่'), findsOneWidget);
     expect(find.text('TikTok'), findsOneWidget);
     expect(find.text('YouTube Shorts'), findsOneWidget);
-    expect(find.text('รอเผยแพร่ตามเวลา'), findsNWidgets(2));
+    expect(find.text('รอส่งตามเวลา'), findsWidgets);
     expect(
         find.byKey(const ValueKey('post-detail-publish-now')), findsOneWidget);
     expect(find.bySemanticsLabel('ยกเลิกโพสต์'), findsOneWidget);
   });
 
-  testWidgets('publish now reschedules the post to the current time',
-      (tester) async {
+  testWidgets('publish now uses the dedicated publish command', (tester) async {
     final apiClient = _FakePostApiClient();
     bool? popResult;
 
@@ -119,8 +106,7 @@ void main() {
     await tester.tap(find.text('โพสต์เลย').last);
     await tester.pumpAndSettle();
 
-    expect(apiClient.rescheduled, hasLength(1));
-    expect(apiClient.rescheduled.single.$1, 'post-1');
+    expect(apiClient.publishedNowPostIds, ['post-1']);
     // Popped back with a "changed" result so the caller reloads its list.
     expect(popResult, isTrue);
     expect(find.text('open'), findsOneWidget);
@@ -129,7 +115,7 @@ void main() {
   testWidgets('publish now explains when publishing is disabled',
       (tester) async {
     final apiClient = _FakePostApiClient(
-      rescheduleError: const ApiException(
+      publishNowError: const ApiException(
         'Social publishing is temporarily unavailable. Please try again later.',
         statusCode: 503,
         code: socialPublishingUnavailableCode,
@@ -150,13 +136,51 @@ void main() {
     await tester.tap(find.text('โพสต์เลย').last);
     await tester.pumpAndSettle();
 
-    expect(apiClient.rescheduled, hasLength(1));
+    expect(apiClient.publishedNowPostIds, ['post-1']);
     expect(
       find.text('ระบบรับงานโพสต์ยังไม่เปิดใช้งาน กรุณาลองใหม่ภายหลัง'),
       findsOneWidget,
     );
     expect(find.text('โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง'), findsNothing);
   });
+
+  for (final errorCase in [
+    (
+      code: scheduledPostNotFoundCode,
+      message: 'ไม่พบโพสต์ที่ตั้งเวลาไว้ กรุณากลับไปตรวจสอบรายการโพสต์',
+    ),
+    (
+      code: publishQueueUnavailableCode,
+      message: 'ระบบคิวโพสต์ยังไม่พร้อม กรุณาลองใหม่ภายหลัง',
+    ),
+  ]) {
+    testWidgets('publish now explains ${errorCase.code}', (tester) async {
+      final apiClient = _FakePostApiClient(
+        publishNowError: ApiException(
+          'Publish now failed',
+          statusCode: 503,
+          code: errorCase.code,
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PostDetailScreen(
+            post: _post(scheduledAt: DateTime(2026, 7, 10, 18, 30)),
+            apiClient: apiClient,
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('post-detail-publish-now')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('โพสต์เลย').last);
+      await tester.pumpAndSettle();
+
+      expect(apiClient.publishedNowPostIds, ['post-1']);
+      expect(find.text(errorCase.message), findsOneWidget);
+    });
+  }
 
   testWidgets('published post offers analytics instead of publish actions',
       (tester) async {
@@ -176,6 +200,69 @@ void main() {
     expect(find.byKey(const ValueKey('post-detail-open-analytics')),
         findsOneWidget);
     expect(find.byKey(const ValueKey('post-detail-publish-now')), findsNothing);
+  });
+
+  testWidgets('shows provider draft delivery without calling it published',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PostDetailScreen(
+          post: _post(
+            status: 'PUBLISHED',
+            publishedAt: DateTime(2026, 7, 2, 9),
+            platforms: const ['TIKTOK'],
+            platformResults: const [
+              PostPlatformResult(
+                postId: 'post-1',
+                platform: 'TIKTOK',
+                status: 'PUBLISHED',
+                deliveryOutcome: 'DRAFT',
+              ),
+            ],
+          ),
+          apiClient: _FakePostApiClient(),
+        ),
+      ),
+    );
+
+    expect(find.text('ส่งเป็นร่างแล้ว'), findsWidgets);
+    expect(find.text('เผยแพร่สำเร็จ'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('post-detail-open-analytics')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('keeps an unknown provider outcome neutral and non-actionable',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PostDetailScreen(
+          post: _post(
+            status: 'PUBLISHED',
+            publishedAt: DateTime(2026, 7, 2, 9),
+            platforms: const ['TIKTOK'],
+            platformResults: const [
+              PostPlatformResult(
+                postId: 'post-1',
+                platform: 'TIKTOK',
+                status: 'PUBLISHED',
+                deliveryOutcome: 'FUTURE_OUTCOME',
+                externalPostId: 'https://tiktok.test/unknown',
+              ),
+            ],
+          ),
+          apiClient: _FakePostApiClient(),
+        ),
+      ),
+    );
+
+    expect(find.text('ผลยังไม่ยืนยัน'), findsWidgets);
+    expect(find.textContaining('tiktok.test/unknown'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('post-detail-open-analytics')),
+      findsNothing,
+    );
   });
 
   testWidgets('shows each platform result, failure reason, and real reference',
@@ -219,13 +306,13 @@ void main() {
       ),
     );
 
-    expect(find.text('สำเร็จบางช่องทาง'), findsOneWidget);
+    expect(find.text('ส่งสำเร็จบางช่องทาง'), findsOneWidget);
     expect(find.text('เผยแพร่สำเร็จ'), findsOneWidget);
     expect(
       find.text('ลิงก์โพสต์: https://tiktok.test/post-1'),
       findsOneWidget,
     );
-    expect(find.text('โพสต์ไม่สำเร็จ'), findsWidgets);
+    expect(find.text('ส่งไม่สำเร็จ'), findsWidgets);
     expect(
       find.text(
         'สาเหตุ: ยังยืนยันผลการโพสต์ไม่ได้ กรุณาตรวจสอบช่องทางนี้ก่อนลองใหม่ เพื่อป้องกันโพสต์ซ้ำ',

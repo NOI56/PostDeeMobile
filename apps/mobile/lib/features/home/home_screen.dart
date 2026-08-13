@@ -12,6 +12,7 @@ import '../notifications/push_notification.dart';
 import '../platforms/social_platform.dart';
 import '../posts/post_detail_screen.dart';
 import '../shared/growth_tool_detail_sheet.dart';
+import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_skeleton.dart';
 
 typedef HomeAnalyticsLoader = Future<AnalyticsSummaryResult> Function();
@@ -1449,15 +1450,35 @@ class _LatestPostRow extends StatelessWidget {
     const draftBg = Color(0xFFEEF2EF);
     const draftInk = Color(0xFF778276);
 
+    if (hasUnconfirmedDeliveryOutcome(post.platformResults)) {
+      return (
+        label: 'ผลยังไม่ยืนยัน',
+        bg: draftBg,
+        ink: draftInk,
+      );
+    }
+
+    final deliveryLabel = aggregatePostDeliveryOutcomeLabel(
+      post.platformResults,
+      compact: true,
+    );
+    if (deliveryLabel != null) {
+      return (
+        label: deliveryLabel,
+        bg: publishedBg,
+        ink: publishedInk,
+      );
+    }
+
     return switch (post.status.toUpperCase()) {
       'PUBLISHED' => (label: 'เผยแพร่', bg: publishedBg, ink: publishedInk),
       'PARTIAL_PUBLISHED' => (
-          label: 'โพสต์บางส่วน',
+          label: 'ส่งบางส่วน',
           bg: scheduledBg,
           ink: scheduledInk,
         ),
       'PUBLISHING' => (
-          label: 'กำลังโพสต์',
+          label: 'กำลังส่ง',
           bg: publishedBg,
           ink: publishedInk,
         ),
@@ -1467,11 +1488,11 @@ class _LatestPostRow extends StatelessWidget {
           ink: const Color(0xFFDC2626),
         ),
       'QUEUED' when post.scheduledAt != null => (
-          label: 'ตั้งเวลา',
+          label: 'รอส่ง',
           bg: scheduledBg,
           ink: scheduledInk,
         ),
-      _ => (label: 'อยู่ในคิว', bg: draftBg, ink: draftInk),
+      _ => (label: 'รอส่ง', bg: draftBg, ink: draftInk),
     };
   }
 

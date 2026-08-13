@@ -7,6 +7,8 @@ import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../platforms/connections_screen.dart' show connectablePlatforms;
 import '../platforms/social_platform.dart';
+import '../shared/post_schedule_policy.dart';
+import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/publishing_availability.dart';
 
@@ -27,6 +29,7 @@ class CalendarScreen extends StatefulWidget {
     this.onAddPost,
     this.onOpenPostDetail,
     this.toLocalTime,
+    this.now,
   });
 
   final int refreshToken;
@@ -34,6 +37,7 @@ class CalendarScreen extends StatefulWidget {
   final ScheduledPostsLoader? loadScheduledPosts;
   final ScheduledPostRescheduler? reschedulePost;
   final CalendarTimeConverter? toLocalTime;
+  final DateTime Function()? now;
 
   /// Jump to the upload flow to schedule a new post.
   final VoidCallback? onAddPost;
@@ -67,7 +71,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     final lifecycleState = WidgetsBinding.instance.lifecycleState;
     _appIsResumed =
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
-    final now = DateTime.now();
+    final now = _now();
     _visibleMonth = DateTime(now.year, now.month);
     if (widget.isActive) {
       unawaited(_loadPosts());
@@ -196,9 +200,11 @@ class _CalendarScreenState extends State<CalendarScreen>
   DateTime _toLocalTime(DateTime value) =>
       widget.toLocalTime?.call(value) ?? value.toLocal();
 
+  DateTime _now() => widget.now?.call() ?? DateTime.now();
+
   // The prototype always keeps one day selected; default to today.
   DateTime get _activeDay {
-    final day = _selectedDay ?? DateTime.now();
+    final day = _selectedDay ?? _now();
     return DateTime(day.year, day.month, day.day);
   }
 
@@ -298,11 +304,24 @@ class _CalendarScreenState extends State<CalendarScreen>
     if (!_canEditQueue(post)) return;
 
     final current = _toLocalTime(post.scheduledAt);
+    final currentNow = _now();
+    final today = DateTime(
+      currentNow.year,
+      currentNow.month,
+      currentNow.day,
+    );
+    final lastDate = today.add(postScheduleLimit);
+    final currentDate = DateTime(current.year, current.month, current.day);
+    final initialDate = currentDate.isBefore(today)
+        ? today
+        : currentDate.isAfter(lastDate)
+            ? lastDate
+            : currentDate;
     final date = await showDatePicker(
       context: context,
-      initialDate: current,
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: lastDate,
     );
     if (date == null || !mounted) return;
 
@@ -314,6 +333,24 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     final next =
         DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final validationNow = _now();
+
+    if (!next.isAfter(validationNow)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('เวลาที่เลื่อนต้องเป็นเวลาในอนาคต')),
+      );
+      return;
+    }
+
+    if (!isPostScheduleWithinLimit(
+      scheduledAt: next,
+      now: validationNow,
+    )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('เลื่อนเวลาได้ล่วงหน้าสูงสุด 30 วัน')),
+      );
+      return;
+    }
 
     try {
       final reschedulePost = widget.reschedulePost ?? _apiClient.reschedulePost;
@@ -896,7 +933,7 @@ class _DayPostRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${_statusLabel(post.status)} · ${_formatTime(displayAt)}',
+                      '${_statusLabel(post)} · ${_formatTime(displayAt)}',
                       style: TextStyle(
                         fontSize: 11.5,
                         color: AppTheme.textMuted,
@@ -1085,19 +1122,25 @@ const _thaiMonthsShort = [
 String _formatThaiDate(DateTime date) =>
     '${date.day} ${_thaiMonthsShort[date.month - 1]} ${date.year}';
 
-String _statusLabel(String status) {
-  switch (status) {
+String _statusLabel(ScheduledPostResult post) {
+  final deliveryLabel = aggregatePostDeliveryOutcomeLabel(
+    post.platformResults,
+    compact: true,
+  );
+  if (deliveryLabel != null) return deliveryLabel;
+
+  switch (post.status.toUpperCase()) {
     case 'QUEUED':
-      return 'ตั้งเวลา';
+      return 'รอส่งตามเวลา';
     case 'PUBLISHING':
-      return 'กำลังโพสต์';
+      return 'กำลังส่ง';
     case 'PUBLISHED':
-      return 'เผยแพร่แล้ว';
+      return 'ส่งสำเร็จ';
     case 'PARTIAL_PUBLISHED':
-      return 'เผยแพร่บางช่องทาง';
+      return 'ส่งสำเร็จบางช่องทาง';
     case 'FAILED':
-      return 'โพสต์ไม่สำเร็จ';
+      return 'ส่งไม่สำเร็จ';
     default:
-      return status;
+      return post.status;
   }
 }

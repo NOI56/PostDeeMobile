@@ -523,6 +523,10 @@ void main() {
 
     expect(find.text('สร้างโพสต์ใหม่'), findsOneWidget);
     expect(find.text('1 · เลือกวิดีโอ'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('uploader-save-draft-button')),
+      findsOneWidget,
+    );
 
     await _tapReferenceNavButton(tester, 'ปฏิทิน');
 

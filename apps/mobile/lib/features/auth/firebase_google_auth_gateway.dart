@@ -21,12 +21,14 @@ class GoogleAccountSnapshot {
 
 class FirebaseUserSnapshot {
   const FirebaseUserSnapshot({
+    required this.userId,
     required this.idToken,
     this.email,
     this.displayName,
     this.emailVerified = false,
   });
 
+  final String userId;
   final String idToken;
   final String? email;
   final String? displayName;
@@ -75,7 +77,8 @@ class FirebaseGoogleAuthGateway implements GoogleAuthGateway {
     final firebaseUser =
         await _firebaseAuthClient.signInWithGoogleIdToken(googleIdToken);
 
-    return AuthSession(
+    return AuthSession.authenticated(
+      userId: firebaseUser.userId,
       idToken: firebaseUser.idToken,
       email: firebaseUser.email ?? googleAccount.email,
       displayName: firebaseUser.displayName ?? googleAccount.displayName,
@@ -120,7 +123,8 @@ class FirebaseWebGoogleAuthGateway implements GoogleAuthGateway {
       );
     }
 
-    return AuthSession(
+    return AuthSession.authenticated(
+      userId: user.uid,
       idToken: idToken,
       email: user.email,
       displayName: user.displayName,
@@ -214,6 +218,7 @@ class FirebaseAuthPackageClient implements FirebaseAuthClient {
     }
 
     return FirebaseUserSnapshot(
+      userId: user.uid,
       idToken: idToken,
       email: user.email,
       displayName: user.displayName,
@@ -230,7 +235,8 @@ class LocalMockGoogleAuthGateway implements GoogleAuthGateway {
 
   @override
   Future<AuthSession> signIn() async {
-    return const AuthSession(
+    return AuthSession.authenticated(
+      userId: localMockAuthUserId,
       idToken: 'local-mock-id-token',
       email: 'demo@postdee.local',
       displayName: 'PostDee Demo',

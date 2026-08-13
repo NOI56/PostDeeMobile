@@ -17,6 +17,30 @@ void main() {
     );
   });
 
+  test('managed result removes its full temporary working directory', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'postdee-watermark-result-',
+    );
+    addTearDown(() async {
+      if (await directory.exists()) await directory.delete(recursive: true);
+    });
+    final output = File(
+      '${directory.path}${Platform.pathSeparator}output.mp4',
+    );
+    await output.writeAsBytes([1, 2, 3], flush: true);
+    final result = WatermarkedVideoResult(
+      file: output,
+      fileName: 'output.mp4',
+      sizeBytes: 3,
+      workingDirectory: directory,
+    );
+
+    await result.cleanupTemporaryFiles();
+    await result.cleanupTemporaryFiles();
+
+    expect(await directory.exists(), isFalse);
+  });
+
   test(
     'a watermark result cleans only its owned temporary directory',
     () async {

@@ -7,10 +7,11 @@ import '../analytics/analytics_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/publishing_availability.dart';
+import '../shared/post_delivery_outcome.dart';
 
 /// Post detail (design screen #12). Shows the caption, channels, and honest
-/// status-driven actions: scheduled posts can be published now (reschedule to
-/// the current time) or cancelled; published posts link to analytics.
+/// status-driven actions: scheduled posts can be published immediately through
+/// the dedicated backend command or cancelled; published posts link to analytics.
 /// Per-post stat tiles from the design are omitted until the API exposes them.
 class PostDetailScreen extends StatefulWidget {
   const PostDetailScreen({super.key, required this.post, this.apiClient});
@@ -33,46 +34,69 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   bool get _isPublished => widget.post.status.toUpperCase() == 'PUBLISHED';
 
-  bool get _hasPublishedChannel =>
-      _isPublished ||
-      widget.post.platformResults.any(
-        (result) => result.status.toUpperCase() == 'PUBLISHED',
+  String? get _deliveryLabel =>
+      aggregatePostDeliveryOutcomeLabel(widget.post.platformResults);
+
+  bool get _hasUnconfirmedOutcome =>
+      hasUnconfirmedDeliveryOutcome(widget.post.platformResults);
+
+  bool get _hasPublishedChannel {
+    final resultsWithOutcome = widget.post.platformResults
+        .where((result) => result.deliveryOutcome != null)
+        .toList();
+    if (resultsWithOutcome.isNotEmpty) {
+      return resultsWithOutcome.any(
+        (result) => isPublishedDeliveryOutcome(result.deliveryOutcome),
       );
+    }
+    return _isPublished ||
+        widget.post.platformResults.any(
+          (result) => result.status.toUpperCase() == 'PUBLISHED',
+        );
+  }
 
   ({String label, IconData icon, Color bg, Color ink}) get _statusMeta {
+    if (_hasUnconfirmedOutcome) {
+      return (
+        label: 'ผลยังไม่ยืนยัน',
+        icon: Icons.help_outline,
+        bg: const Color(0xFFEEF2EF),
+        ink: const Color(0xFF778276),
+      );
+    }
     return switch (widget.post.status.toUpperCase()) {
       'PUBLISHED' => (
-          label: 'เผยแพร่แล้ว',
+          label: _deliveryLabel ?? 'เผยแพร่แล้ว',
           icon: Icons.check_circle,
           bg: const Color(0xFFE2F3EA),
           ink: const Color(0xFF0E9F6E),
         ),
       'QUEUED' when widget.post.scheduledAt != null => (
-          label: 'ตั้งเวลาไว้',
+          label: 'รอส่งตามเวลา',
           icon: Icons.schedule,
           bg: const Color(0xFFFBEFD7),
           ink: const Color(0xFFB5740B),
         ),
       'PUBLISHING' => (
-          label: 'กำลังโพสต์',
+          label: 'กำลังส่ง',
           icon: Icons.sync,
           bg: const Color(0xFFE2F3EA),
           ink: const Color(0xFF0E9F6E),
         ),
       'PARTIAL_PUBLISHED' => (
-          label: 'สำเร็จบางช่องทาง',
+          label: 'ส่งสำเร็จบางช่องทาง',
           icon: Icons.info_outline,
           bg: const Color(0xFFFBEFD7),
           ink: const Color(0xFFB5740B),
         ),
       'FAILED' => (
-          label: 'โพสต์ไม่สำเร็จ',
+          label: 'ส่งไม่สำเร็จ',
           icon: Icons.error_outline,
           bg: const Color(0xFFFDE4E4),
           ink: const Color(0xFFDC2626),
         ),
       _ => (
-          label: 'อยู่ในคิว',
+          label: 'รอส่ง',
           icon: Icons.hourglass_top,
           bg: const Color(0xFFEEF2EF),
           ink: const Color(0xFF778276),
@@ -83,11 +107,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   String get _dateLabel {
     final post = widget.post;
     if (_isPublished && post.publishedAt != null) {
+      final deliveryLabel = _deliveryLabel;
+      if (deliveryLabel != null) {
+        return '$deliveryLabel ${_formatThaiDateTime(post.publishedAt!)}';
+      }
       return 'เผยแพร่ ${_formatThaiDateTime(post.publishedAt!)}';
     }
     if (post.status.toUpperCase() == 'PARTIAL_PUBLISHED' &&
         post.publishedAt != null) {
-      return 'เผยแพร่บางช่องทาง ${_formatThaiDateTime(post.publishedAt!)}';
+      return 'ส่งสำเร็จบางช่องทาง ${_formatThaiDateTime(post.publishedAt!)}';
     }
     if (post.scheduledAt != null) {
       return 'ตั้งเวลา ${_formatThaiDateTime(post.scheduledAt!)}';
@@ -108,19 +136,30 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   String _platformStatLine(SocialPlatform platform) {
-    final resultStatus = _resultFor(platform)?.status.toUpperCase();
+    final result = _resultFor(platform);
+    final deliveryLabel = postDeliveryOutcomeLabel(result?.deliveryOutcome);
+    if (deliveryLabel != null) return deliveryLabel;
+    final resultStatus = result?.status.toUpperCase();
     if (resultStatus == 'PUBLISHED') return 'เผยแพร่สำเร็จ';
-    if (resultStatus == 'FAILED') return 'โพสต์ไม่สำเร็จ';
-    if (resultStatus == 'PUBLISHING') return 'กำลังโพสต์';
-    if (resultStatus == 'PENDING') return 'รอส่งไปยังช่องทาง';
+    if (resultStatus == 'FAILED') return 'ส่งไม่สำเร็จ';
+    if (resultStatus == 'PUBLISHING') return 'กำลังส่ง';
+    if (resultStatus == 'PENDING') return 'รอส่ง';
     if (_isPublished) return 'เผยแพร่แล้ว';
-    if (_isScheduled) return 'รอเผยแพร่ตามเวลา';
-    if (widget.post.status.toUpperCase() == 'FAILED') return 'โพสต์ไม่สำเร็จ';
-    return 'ยังไม่เผยแพร่';
+    if (_isScheduled) return 'รอส่งตามเวลา';
+    if (widget.post.status.toUpperCase() == 'FAILED') return 'ส่งไม่สำเร็จ';
+    return 'รอส่ง';
   }
 
   Color _platformStatusColor(SocialPlatform platform) {
-    return switch (_resultFor(platform)?.status.toUpperCase()) {
+    final result = _resultFor(platform);
+    if (result?.deliveryOutcome != null &&
+        !isKnownDeliveryOutcome(result?.deliveryOutcome)) {
+      return AppTheme.textMuted;
+    }
+    if (postDeliveryOutcomeLabel(result?.deliveryOutcome) != null) {
+      return const Color(0xFF0E9F6E);
+    }
+    return switch (result?.status.toUpperCase()) {
       'PUBLISHED' => const Color(0xFF0E9F6E),
       'FAILED' => const Color(0xFFDC2626),
       _ => AppTheme.textMuted,
@@ -161,10 +200,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     final errorMessage = result?.errorMessage?.trim();
     final externalReference = result?.externalPostId?.trim();
     final hasError = errorMessage != null && errorMessage.isNotEmpty;
-    final hasReference =
-        externalReference != null && externalReference.isNotEmpty;
+    final canTrustReference = result?.deliveryOutcome == null ||
+        isKnownDeliveryOutcome(result?.deliveryOutcome);
+    final hasReference = canTrustReference &&
+        externalReference != null &&
+        externalReference.isNotEmpty;
     final referenceIsLink = externalReference != null &&
         externalReference.isNotEmpty &&
+        (result?.deliveryOutcome == null ||
+            isPublishedDeliveryOutcome(result?.deliveryOutcome)) &&
         _isWebLink(externalReference);
 
     return Container(
@@ -265,7 +309,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     setState(() => _isWorking = true);
     try {
-      await _apiClient.reschedulePost(widget.post.id, DateTime.now());
+      await _apiClient.publishPostNow(widget.post.id);
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } on ApiException catch (error) {
@@ -274,9 +318,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            isPublishingUnavailable(error)
-                ? publishingUnavailableActionMessage
-                : 'โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง',
+            _publishNowErrorMessage(error),
           ),
         ),
       );
@@ -287,6 +329,20 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         const SnackBar(content: Text('โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง')),
       );
     }
+  }
+
+  String _publishNowErrorMessage(ApiException error) {
+    if (isPublishingUnavailable(error)) {
+      return publishingUnavailableActionMessage;
+    }
+
+    return switch (error.code) {
+      scheduledPostNotFoundCode =>
+        'ไม่พบโพสต์ที่ตั้งเวลาไว้ กรุณากลับไปตรวจสอบรายการโพสต์',
+      publishQueueUnavailableCode =>
+        'ระบบคิวโพสต์ยังไม่พร้อม กรุณาลองใหม่ภายหลัง',
+      _ => 'โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง',
+    };
   }
 
   Future<void> _cancelPost() async {

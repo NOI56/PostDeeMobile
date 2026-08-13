@@ -19,24 +19,33 @@ class WatermarkedVideoResult {
     required this.file,
     required this.fileName,
     required this.sizeBytes,
+    this.workingDirectory,
     this.temporaryDirectory,
+    this.cleanup,
   });
 
   final File file;
   final String fileName;
   final int sizeBytes;
+  final Directory? workingDirectory;
   final Directory? temporaryDirectory;
+  final Future<void> Function()? cleanup;
 
   Future<void> cleanupTemporaryFiles() async {
-    final directory = temporaryDirectory;
+    final cleanupOverride = cleanup;
+    if (cleanupOverride != null) {
+      await cleanupOverride();
+      return;
+    }
+    final directory = workingDirectory ?? temporaryDirectory;
     if (directory != null) await _deleteTemporaryDirectory(directory);
   }
 }
 
-typedef UploaderWatermarkVideoProcessor =
-    Future<WatermarkedVideoResult> Function(WatermarkVideoRequest request);
-typedef WatermarkTemporaryDirectoryCreator =
-    Future<Directory> Function(String prefix);
+typedef UploaderWatermarkVideoProcessor = Future<WatermarkedVideoResult>
+    Function(WatermarkVideoRequest request);
+typedef WatermarkTemporaryDirectoryCreator = Future<Directory> Function(
+    String prefix);
 
 Future<Directory> _createSystemTemporaryDirectory(String prefix) =>
     Directory.systemTemp.createTemp(prefix);
@@ -67,9 +76,9 @@ class FfmpegWatermarkVideoProcessor {
     AssetBundle? assetBundle,
     this.watermarkAssetPath = 'assets/images/brand/postdee_logo_dark.png',
     WatermarkTemporaryDirectoryCreator? createTemporaryDirectory,
-  }) : assetBundle = assetBundle ?? rootBundle,
-       _createTemporaryDirectory =
-           createTemporaryDirectory ?? _createSystemTemporaryDirectory;
+  })  : assetBundle = assetBundle ?? rootBundle,
+        _createTemporaryDirectory =
+            createTemporaryDirectory ?? _createSystemTemporaryDirectory;
 
   final AssetBundle assetBundle;
   final String watermarkAssetPath;
@@ -115,7 +124,7 @@ class FfmpegWatermarkVideoProcessor {
         file: outputFile,
         fileName: outputFile.uri.pathSegments.last,
         sizeBytes: await outputFile.length(),
-        temporaryDirectory: workingDirectory,
+        workingDirectory: workingDirectory,
       );
     } catch (_) {
       await _deleteTemporaryDirectory(workingDirectory);
@@ -129,7 +138,13 @@ class FfmpegWatermarkVideoProcessor {
       '${workingDirectory.path}${Platform.pathSeparator}postdee-watermark.png',
     );
 
-    await watermarkFile.writeAsBytes(assetData.buffer.asUint8List());
+    await watermarkFile.writeAsBytes(
+      assetData.buffer.asUint8List(
+        assetData.offsetInBytes,
+        assetData.lengthInBytes,
+      ),
+      flush: true,
+    );
 
     return watermarkFile;
   }

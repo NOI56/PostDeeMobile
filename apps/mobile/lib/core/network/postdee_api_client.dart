@@ -5,13 +5,19 @@ import '../auth/auth_session.dart';
 import '../config/app_config.dart';
 
 const socialPublishingUnavailableCode = 'SOCIAL_PUBLISHING_UNAVAILABLE';
+const platformSettingsUnsupportedCode = 'PLATFORM_SETTINGS_UNSUPPORTED';
+const scheduledPostNotFoundCode = 'SCHEDULED_POST_NOT_FOUND';
+const publishQueueUnavailableCode = 'PUBLISH_QUEUE_UNAVAILABLE';
+const idempotentPostFailedCode = 'IDEMPOTENT_POST_FAILED';
+const idempotencyKeyReusedCode = 'IDEMPOTENCY_KEY_REUSED';
 
 class ApiException implements Exception {
-  const ApiException(this.message, {this.statusCode, this.code});
+  const ApiException(this.message, {this.statusCode, this.code, this.postId});
 
   final String message;
   final int? statusCode;
   final String? code;
+  final String? postId;
 
   @override
   String toString() => 'ApiException($statusCode): $message';
@@ -1205,10 +1211,11 @@ class ApiHealthResult {
 class PostDeeApiAuthHeaders {
   PostDeeApiAuthHeaders({
     AuthTokenProvider? authTokenProvider,
+    PostDeeAuthSessionStore? sessionStore,
     this.mockUserId = AppConfig.mockUserId,
     this.mockSubscriptionPlan = AppConfig.mockSubscriptionPlan,
   }) : authTokenProvider = authTokenProvider ??
-            PostDeeAuthSessionStore.instance.currentIdToken;
+            (sessionStore ?? PostDeeAuthSessionStore.instance).currentIdToken;
 
   final AuthTokenProvider authTokenProvider;
   final String mockUserId;
@@ -1442,25 +1449,31 @@ Future<UploadResult> createAndUploadFileWithRetry({
 
 class CreatePostRequest {
   const CreatePostRequest({
+    required this.clientRequestId,
     required this.caption,
     required this.videoS3Key,
     required this.platforms,
+    this.platformSettings = const {},
     this.scheduledAt,
     this.coverImageS3Key,
     this.coverFrameTimeMs,
   });
 
+  final String clientRequestId;
   final String caption;
   final String videoS3Key;
   final List<String> platforms;
+  final Map<String, Object?> platformSettings;
   final DateTime? scheduledAt;
   final String? coverImageS3Key;
   final int? coverFrameTimeMs;
 
   Map<String, Object?> toJson() => {
+        'clientRequestId': clientRequestId,
         'caption': caption,
         'videoS3Key': videoS3Key,
         'platforms': platforms,
+        if (platformSettings.isNotEmpty) 'platformSettings': platformSettings,
         if (scheduledAt != null)
           'scheduledAt': scheduledAt!.toUtc().toIso8601String(),
         if (coverImageS3Key != null) 'coverImageS3Key': coverImageS3Key,
@@ -1936,14 +1949,21 @@ class QueuedPostResult {
     required this.videoS3Key,
     required this.platforms,
     required this.status,
+    this.idempotentReplay = false,
+    this.platformResults = const [],
   });
 
   final String id;
   final String videoS3Key;
   final List<String> platforms;
   final String status;
+  final bool idempotentReplay;
+  final List<PostPlatformResult> platformResults;
 
-  factory QueuedPostResult.fromJson(Map<String, Object?> json) =>
+  factory QueuedPostResult.fromJson(
+    Map<String, Object?> json, {
+    bool idempotentReplay = false,
+  }) =>
       QueuedPostResult(
         id: json['id'] as String,
         videoS3Key: json['videoS3Key'] as String,
@@ -1951,6 +1971,11 @@ class QueuedPostResult {
             .map((value) => '$value')
             .toList(),
         status: json['status'] as String,
+        idempotentReplay: idempotentReplay,
+        platformResults: (json['platformResults'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, Object?>>()
+            .map(PostPlatformResult.fromJson)
+            .toList(),
       );
 }
 
@@ -2031,6 +2056,7 @@ class PostPlatformResult {
     required this.status,
     this.externalPostId,
     this.errorMessage,
+    this.deliveryOutcome,
     this.publishedAt,
     this.views = 0,
     this.likes = 0,
@@ -2041,6 +2067,7 @@ class PostPlatformResult {
   final String status;
   final String? externalPostId;
   final String? errorMessage;
+  final String? deliveryOutcome;
   final DateTime? publishedAt;
   final int views;
   final int likes;
@@ -2059,6 +2086,7 @@ class PostPlatformResult {
       status: json['status'] as String? ?? '',
       externalPostId: optionalString(json['externalPostId']),
       errorMessage: optionalString(json['errorMessage']),
+      deliveryOutcome: optionalString(json['deliveryOutcome']),
       publishedAt:
           rawPublishedAt == null ? null : DateTime.tryParse(rawPublishedAt),
       views: json['views'] as int? ?? 0,
@@ -2216,6 +2244,14 @@ class PostDeeApiClient {
         code: socialPublishingUnavailableCode,
       );
     }
+
+    final platformSettingsVersion = response['platformSettingsVersion'];
+    if (platformSettingsVersion is! int || platformSettingsVersion < 1) {
+      throw const ApiException(
+        'ระบบโพสต์ยังไม่รองรับการตั้งค่าช่องทางรุ่นนี้ กรุณาอัปเดต PostDee API ก่อนลองใหม่',
+        code: platformSettingsUnsupportedCode,
+      );
+    }
   }
 
   Future<UploadResult> createUpload(CreateUploadRequest request) async {
@@ -2237,7 +2273,21 @@ class PostDeeApiClient {
       throw const ApiException('Post response is missing post data');
     }
 
-    return QueuedPostResult.fromJson(post);
+    return QueuedPostResult.fromJson(
+      post,
+      idempotentReplay: response['idempotentReplay'] == true,
+    );
+  }
+
+  Future<void> publishPostNow(String postId) async {
+    final response = await _postJson(
+      '/posts/${Uri.encodeComponent(postId)}/publish-now',
+      const <String, Object?>{},
+    );
+
+    if (response['status'] != 'ok') {
+      throw const ApiException('Publish-now response is missing ok status');
+    }
   }
 
   Future<ScheduledPostResult> reschedulePost(
@@ -3010,6 +3060,8 @@ class PostDeeApiClient {
         decoded['message'] as String? ?? 'Request failed',
         statusCode: response.statusCode,
         code: decoded['code'] as String?,
+        postId:
+            decoded['postId'] is String ? decoded['postId'] as String : null,
       );
     }
 

@@ -33,6 +33,7 @@ void _writeJsonResponse(
 void main() {
   test('CreatePostRequest serializes optional cover metadata', () {
     final request = CreatePostRequest(
+      clientRequestId: 'draft-123',
       caption: 'สินค้าใหม่',
       videoS3Key: 'uploads/seller/video.mp4',
       platforms: const ['TIKTOK', 'INSTAGRAM_REELS'],
@@ -41,6 +42,7 @@ void main() {
     );
 
     expect(request.toJson(), {
+      'clientRequestId': 'draft-123',
       'caption': 'สินค้าใหม่',
       'videoS3Key': 'uploads/seller/video.mp4',
       'platforms': ['TIKTOK', 'INSTAGRAM_REELS'],
@@ -49,6 +51,7 @@ void main() {
     });
     expect(
       const CreatePostRequest(
+        clientRequestId: 'draft-456',
         caption: 'ไม่มีภาพปก',
         videoS3Key: 'uploads/seller/video.mp4',
         platforms: ['YOUTUBE_SHORTS'],
@@ -79,6 +82,7 @@ void main() {
       _writeJsonResponse(request.response, {
         'status': 'ok',
         'acceptingPosts': true,
+        'platformSettingsVersion': 1,
       });
       await request.response.close();
     }();
@@ -90,6 +94,186 @@ void main() {
 
       await client.checkPublishingReadiness();
       await serverTask;
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  for (final unsupportedVersion in <Object?>[null, 0, 1.0, '1']) {
+    test(
+        'checkPublishingReadiness rejects unsupported platform settings version $unsupportedVersion',
+        () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final serverTask = () async {
+        final request = await server.first;
+
+        expect(request.method, 'GET');
+        expect(request.uri.path, '/publishing/readiness');
+        await request.drain<void>();
+        _writeJsonResponse(request.response, {
+          'status': 'ok',
+          'acceptingPosts': true,
+          if (unsupportedVersion != null)
+            'platformSettingsVersion': unsupportedVersion,
+        });
+        await request.response.close();
+      }();
+
+      try {
+        final client = PostDeeApiClient(
+          baseUrl: 'http://${server.address.address}:${server.port}',
+        );
+
+        await expectLater(
+          client.checkPublishingReadiness(),
+          throwsA(
+            isA<ApiException>()
+                .having(
+                  (error) => error.code,
+                  'code',
+                  platformSettingsUnsupportedCode,
+                )
+                .having(
+                  (error) => error.message,
+                  'message',
+                  contains('อัปเดต PostDee API'),
+                ),
+          ),
+        );
+        await serverTask;
+      } finally {
+        await server.close(force: true);
+      }
+    });
+  }
+
+  test('CreatePostRequest serializes selected platform settings', () {
+    const request = CreatePostRequest(
+      clientRequestId: 'draft-platform-settings',
+      caption: 'สินค้าใหม่',
+      videoS3Key: 'uploads/seller/video.mp4',
+      platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
+      platformSettings: {
+        'TIKTOK': {'publishMode': 'INBOX_DRAFT'},
+        'YOUTUBE_SHORTS': {
+          'title': 'คลิปสินค้า',
+          'visibility': 'unlisted',
+          'madeForKids': false,
+          'containsSyntheticMedia': true,
+          'communityGuidelinesCertified': true,
+        },
+      },
+    );
+
+    expect(
+        request.toJson(),
+        containsPair('platformSettings', {
+          'TIKTOK': {'publishMode': 'INBOX_DRAFT'},
+          'YOUTUBE_SHORTS': {
+            'title': 'คลิปสินค้า',
+            'visibility': 'unlisted',
+            'madeForKids': false,
+            'containsSyntheticMedia': true,
+            'communityGuidelinesCertified': true,
+          },
+        }));
+  });
+
+  test(
+      'createPost exposes an idempotent replay without changing the post shape',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final serverTask = () async {
+      final request = await server.first;
+
+      expect(request.method, 'POST');
+      expect(request.uri.path, '/posts');
+      expect(await _readJsonRequest(request),
+          containsPair('clientRequestId', 'draft-123'));
+      _writeJsonResponse(request.response, {
+        'status': 'ok',
+        'idempotentReplay': true,
+        'post': {
+          'id': 'post-1',
+          'videoS3Key': 'uploads/seller/video.mp4',
+          'platforms': ['TIKTOK'],
+          'status': 'PUBLISHED',
+          'deliveryOutcome': 'DRAFT',
+        },
+      });
+      await request.response.close();
+    }();
+
+    try {
+      final client = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+      );
+      final result = await client.createPost(
+        const CreatePostRequest(
+          clientRequestId: 'draft-123',
+          caption: 'Already published',
+          videoS3Key: 'uploads/seller/video.mp4',
+          platforms: ['TIKTOK'],
+        ),
+      );
+
+      expect(result.id, 'post-1');
+      expect(result.status, 'PUBLISHED');
+      expect(result.idempotentReplay, isTrue);
+      await serverTask;
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  test('createPost exposes a failed idempotent attempt for explicit recovery',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final client = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+      );
+      final resultFuture = client.createPost(
+        const CreatePostRequest(
+          clientRequestId: 'draft-failed-123',
+          caption: 'Failed original attempt',
+          videoS3Key: 'uploads/seller/video.mp4',
+          platforms: ['TIKTOK'],
+        ),
+      );
+      final expectation = expectLater(
+        resultFuture,
+        throwsA(
+          isA<ApiException>()
+              .having(
+                (error) => error.statusCode,
+                'statusCode',
+                HttpStatus.conflict,
+              )
+              .having(
+                (error) => error.code,
+                'code',
+                idempotentPostFailedCode,
+              )
+              .having((error) => error.postId, 'postId', 'post-failed-1'),
+        ),
+      );
+      final request = await server.first;
+      await request.drain<void>();
+      _writeJsonResponse(
+        request.response,
+        {
+          'status': 'error',
+          'code': idempotentPostFailedCode,
+          'message': 'The original post request failed.',
+          'postId': 'post-failed-1',
+        },
+        statusCode: HttpStatus.conflict,
+      );
+      await request.response.close();
+
+      await expectation;
     } finally {
       await server.close(force: true);
     }
@@ -143,6 +327,85 @@ void main() {
       await server.close(force: true);
     }
   });
+
+  test('publishPostNow sends an authenticated command to its endpoint',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final client = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        authHeaders: PostDeeApiAuthHeaders(
+          authTokenProvider: () async => 'firebase-id-token',
+        ),
+      );
+      final resultFuture = client.publishPostNow('post-1');
+      final request = await server.first;
+
+      expect(request.method, 'POST');
+      expect(request.uri.path, '/posts/post-1/publish-now');
+      expect(
+        request.headers.value(HttpHeaders.authorizationHeader),
+        'Bearer firebase-id-token',
+      );
+      expect(await _readJsonRequest(request), isEmpty);
+      _writeJsonResponse(request.response, {'status': 'ok'});
+      await request.response.close();
+
+      await resultFuture;
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  for (final errorCode in [
+    scheduledPostNotFoundCode,
+    socialPublishingUnavailableCode,
+    publishQueueUnavailableCode,
+  ]) {
+    test('publishPostNow preserves the backend $errorCode error', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+      try {
+        final client = PostDeeApiClient(
+          baseUrl: 'http://${server.address.address}:${server.port}',
+        );
+        final resultFuture = client.publishPostNow('post-1');
+        final expectation = expectLater(
+          resultFuture,
+          throwsA(
+            isA<ApiException>()
+                .having(
+                  (error) => error.statusCode,
+                  'statusCode',
+                  HttpStatus.serviceUnavailable,
+                )
+                .having(
+                  (error) => error.code,
+                  'code',
+                  errorCode,
+                ),
+          ),
+        );
+        final request = await server.first;
+        await request.drain<void>();
+        _writeJsonResponse(
+          request.response,
+          {
+            'status': 'error',
+            'code': errorCode,
+            'message': 'Publish-now request failed.',
+          },
+          statusCode: HttpStatus.serviceUnavailable,
+        );
+        await request.response.close();
+
+        await expectation;
+      } finally {
+        await server.close(force: true);
+      }
+    });
+  }
 
   test('subtitle segment parser preserves validated word contract presence',
       () {
@@ -1332,6 +1595,7 @@ void main() {
           'postId': 'post-1',
           'platform': 'TIKTOK',
           'status': 'PUBLISHED',
+          'deliveryOutcome': 'DRAFT',
           'publishedAt': '2026-06-07T11:31:00.000Z',
         },
       ],
@@ -1348,6 +1612,7 @@ void main() {
         '2026-06-07T11:31:00.000Z');
     expect(post.platformResults, hasLength(1));
     expect(post.platformResults.single.platform, 'TIKTOK');
+    expect(post.platformResults.single.deliveryOutcome, 'DRAFT');
   });
 
   test('ScheduledPostResult keeps optional calendar fields backward compatible',

@@ -9,6 +9,8 @@ import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/test_publish_draft_store.dart';
+
 Future<void> _expectTextAfterScrolling(
   WidgetTester tester,
   Finder scrollable,
@@ -66,8 +68,16 @@ PickedVideoFile _createPickedVideoFixture(
 
 Future<List<SocialConnectionResult>> _loadConnectedSocialConnections() async =>
     const [
-      SocialConnectionResult(platform: 'TIKTOK', connected: true),
-      SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: true),
+      SocialConnectionResult(
+        platform: 'TIKTOK',
+        connected: true,
+        externalAccountId: 'tiktok-seller',
+      ),
+      SocialConnectionResult(
+        platform: 'YOUTUBE_SHORTS',
+        connected: true,
+        externalAccountId: 'youtube-seller',
+      ),
       SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
       SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
     ];
@@ -87,19 +97,74 @@ Future<void> _enterUploadCaption(
   WidgetTester tester, {
   String caption = 'Real caption from seller',
 }) async {
+  final scrollable = find.byType(Scrollable).first;
+  await tester.drag(scrollable, const Offset(0, 3000));
+  await tester.pumpAndSettle();
+
+  final selectAllButton =
+      find.byKey(const ValueKey('uploader-select-all-platforms'));
+  for (var attempt = 0;
+      attempt < 10 && selectAllButton.evaluate().isEmpty;
+      attempt += 1) {
+    await tester.drag(scrollable, const Offset(0, -260));
+    await tester.pumpAndSettle();
+  }
+  expect(selectAllButton, findsOneWidget);
+  await tester.ensureVisible(selectAllButton);
+  await tester.pumpAndSettle();
+  final selectAll = tester.widget<TextButton>(selectAllButton);
+  if (selectAll.onPressed != null) {
+    await tester.tap(selectAllButton);
+    await tester.pumpAndSettle();
+  }
+
+  await _completeYouTubeSettingsForTests(tester);
+
   // Caption (step 3) sits above schedule (step 4), so jump back to the top
   // before scrolling down to it — callers may already be past it.
-  await tester.drag(find.byType(Scrollable).first, const Offset(0, 3000));
+  await tester.drag(scrollable, const Offset(0, 3000));
   await tester.pumpAndSettle();
 
   final captionField = find.byKey(const ValueKey('uploader-caption-field'));
   await tester.scrollUntilVisible(
     captionField,
     300,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: scrollable,
   );
   await tester.pumpAndSettle();
   await tester.enterText(captionField, caption);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _completeYouTubeSettingsForTests(WidgetTester tester) async {
+  final settingsButton = find.byKey(
+    const ValueKey('uploader-platform-settings-YOUTUBE_SHORTS'),
+  );
+  if (settingsButton.evaluate().isEmpty) return;
+  await tester.ensureVisible(settingsButton);
+  await tester.pumpAndSettle();
+  await tester.tap(settingsButton);
+  await tester.pumpAndSettle();
+
+  await tester.enterText(
+    find.byKey(const ValueKey('uploader-youtube-title')),
+    'YouTube test title',
+  );
+  for (final key in const [
+    ValueKey('uploader-youtube-made-for-kids-no'),
+    ValueKey('uploader-youtube-synthetic-no'),
+    ValueKey('uploader-youtube-guidelines-certified'),
+  ]) {
+    final control = find.byKey(key);
+    await tester.ensureVisible(control);
+    await tester.pumpAndSettle();
+    await tester.tap(control);
+    await tester.pumpAndSettle();
+  }
+  final save = find.byKey(const ValueKey('uploader-platform-settings-save'));
+  await tester.ensureVisible(save);
+  await tester.pumpAndSettle();
+  await tester.tap(save);
   await tester.pumpAndSettle();
 }
 
@@ -148,6 +213,7 @@ void main() {
               SocialConnectionResult(
                 platform: 'YOUTUBE_SHORTS',
                 connected: true,
+                externalAccountId: 'youtube-seller',
               ),
               SocialConnectionResult(
                 platform: 'INSTAGRAM_REELS',
@@ -171,7 +237,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('เลือกแล้ว 1 ช่องทาง'), findsOneWidget);
+    expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
       findsOneWidget,
@@ -201,7 +267,266 @@ void main() {
       find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
     );
     await tester.pumpAndSettle();
+    expect(find.text('เลือกแล้ว 1 ช่องทาง'), findsOneWidget);
+  });
+
+  testWidgets(
+      'starts with no connected destination selected and offers select or clear all',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: () async => const [
+              SocialConnectionResult(
+                platform: 'TIKTOK',
+                connected: true,
+                externalAccountId: 'tiktok-seller',
+              ),
+              SocialConnectionResult(
+                platform: 'YOUTUBE_SHORTS',
+                connected: true,
+                externalAccountId: 'youtube-seller',
+              ),
+              SocialConnectionResult(
+                platform: 'INSTAGRAM_REELS',
+                connected: true,
+                externalAccountId: 'instagram-seller',
+              ),
+              SocialConnectionResult(
+                platform: 'FACEBOOK_REELS',
+                connected: true,
+                externalAccountId: 'facebook-page',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('อัปโหลดครั้งเดียว แล้วเลือกช่องทางที่ต้องการ'),
+      findsOneWidget,
+    );
+
+    final selectAll =
+        find.byKey(const ValueKey('uploader-select-all-platforms'));
+    await tester.scrollUntilVisible(
+      selectAll,
+      400,
+      scrollable: uploaderScroll,
+    );
+    await tester.pumpAndSettle();
+
     expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
+    expect(find.text('เลือกทั้งหมด'), findsOneWidget);
+    expect(find.text('ล้างทั้งหมด'), findsOneWidget);
+
+    await tester.tap(selectAll);
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกแล้ว 4 ช่องทาง'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('uploader-clear-all-platforms')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
+  });
+
+  testWidgets('reveals compact settings only for a selected platform',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
+            loadSocialConnections: () async => const [
+              SocialConnectionResult(
+                platform: 'TIKTOK',
+                connected: true,
+                displayName: '@seller',
+              ),
+              SocialConnectionResult(
+                platform: 'YOUTUBE_SHORTS',
+                connected: true,
+                externalAccountId: 'channel-123',
+              ),
+              SocialConnectionResult(
+                platform: 'INSTAGRAM_REELS',
+                connected: true,
+                externalAccountId: 'instagram-seller',
+              ),
+              SocialConnectionResult(
+                platform: 'FACEBOOK_REELS',
+                connected: true,
+                externalAccountId: 'facebook-page',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final youtubeRow =
+        find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS'));
+    await tester.scrollUntilVisible(
+      youtubeRow,
+      400,
+      scrollable: uploaderScroll,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(
+        const ValueKey('uploader-platform-settings-YOUTUBE_SHORTS'),
+      ),
+      findsNothing,
+    );
+
+    await tester.tap(youtubeRow);
+    await tester.pumpAndSettle();
+    final youtubeSettings = find.byKey(
+      const ValueKey('uploader-platform-settings-YOUTUBE_SHORTS'),
+    );
+    expect(youtubeSettings, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('uploader-platform-settings-TIKTOK')),
+      findsNothing,
+    );
+    await tester.tap(youtubeSettings);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('uploader-platform-settings-sheet')),
+      findsOneWidget,
+    );
+    expect(find.text('channel-123'), findsOneWidget);
+    final youtubeTitle = find.byKey(const ValueKey('uploader-youtube-title'));
+    await tester.ensureVisible(youtubeTitle);
+    await tester.enterText(
+      youtubeTitle,
+      'รีวิวสินค้าใหม่',
+    );
+    for (final key in const [
+      ValueKey('uploader-youtube-made-for-kids-no'),
+      ValueKey('uploader-youtube-synthetic-no'),
+      ValueKey('uploader-youtube-guidelines-certified'),
+    ]) {
+      final control = find.byKey(key);
+      await tester.ensureVisible(control);
+      await tester.pumpAndSettle();
+      await tester.tap(control);
+      await tester.pumpAndSettle();
+    }
+    final save = find.byKey(const ValueKey('uploader-platform-settings-save'));
+    await tester.ensureVisible(save);
+    await tester.tap(
+      save,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ส่วนตัว · พร้อม'), findsOneWidget);
+  });
+
+  testWidgets(
+      'shows safe TikTok, Instagram and Facebook controls only in sheet',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
+            loadSocialConnections: () async => const [
+              SocialConnectionResult(
+                platform: 'TIKTOK',
+                connected: true,
+                externalAccountId: 'tiktok-seller',
+              ),
+              SocialConnectionResult(
+                platform: 'INSTAGRAM_REELS',
+                connected: true,
+                externalAccountId: 'instagram-seller',
+              ),
+              SocialConnectionResult(
+                platform: 'FACEBOOK_REELS',
+                connected: true,
+                externalAccountId: 'facebook-page',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final apiValue in [
+      'TIKTOK',
+      'INSTAGRAM_REELS',
+      'FACEBOOK_REELS',
+    ]) {
+      final row = find.byKey(ValueKey('uploader-platform-$apiValue'));
+      await tester.ensureVisible(row);
+      await tester.pump();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+    }
+
+    final tiktokSettings =
+        find.byKey(const ValueKey('uploader-platform-settings-TIKTOK'));
+    await tester.ensureVisible(tiktokSettings);
+    await tester.pump();
+    await tester.tap(tiktokSettings);
+    await tester.pumpAndSettle();
+    final direct = tester.widget<OutlinedButton>(
+      find.byKey(const ValueKey('uploader-tiktok-direct-disabled')),
+    );
+    expect(direct.onPressed, isNull);
+    expect(find.text('ส่งเป็นร่างเข้า TikTok'), findsOneWidget);
+    var save = find.byKey(const ValueKey('uploader-platform-settings-save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    final instagramSettings = find.byKey(
+      const ValueKey('uploader-platform-settings-INSTAGRAM_REELS'),
+    );
+    await tester.ensureVisible(instagramSettings);
+    await tester.pump();
+    await tester.tap(instagramSettings);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('ไม่มี Private รายโพสต์'), findsOneWidget);
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(
+              const ValueKey('uploader-instagram-share-to-feed'),
+            ),
+          )
+          .value,
+      isTrue,
+    );
+    save = find.byKey(const ValueKey('uploader-platform-settings-save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    final facebookSettings = find.byKey(
+      const ValueKey('uploader-platform-settings-FACEBOOK_REELS'),
+    );
+    await tester.ensureVisible(facebookSettings);
+    await tester.pump();
+    await tester.tap(facebookSettings);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('uploader-facebook-page-draft')),
+    );
+    await tester.pumpAndSettle();
+    save = find.byKey(const ValueKey('uploader-platform-settings-save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(find.text('ร่างบนเพจ'), findsOneWidget);
   });
 
   RealClipCaptionResult buildRealClipCaptionResult({
@@ -237,7 +562,8 @@ void main() {
     );
 
     expect(find.text('สร้างโพสต์ใหม่'), findsOneWidget);
-    expect(find.text('บันทึกร่าง'), findsNothing);
+    expect(find.text('บันทึกร่าง'), findsOneWidget);
+    expect(find.textContaining('ยังไม่อัปโหลด'), findsOneWidget);
     expect(find.text('เลือกวิดีโอ 9:16'), findsOneWidget);
     expect(find.text('สถานะแพ็กเกจ'), findsNothing);
     expect(find.text('รีเฟรชแพ็กเกจ'), findsNothing);
@@ -522,14 +848,8 @@ void main() {
       ),
     );
 
-    final captionField = find.byKey(const ValueKey('uploader-caption-field'));
-    await tester.scrollUntilVisible(
-      captionField,
-      500,
-      scrollable: uploaderScroll,
-    );
     await tester.pumpAndSettle();
-    await tester.enterText(captionField, 'Real caption from seller');
+    await _enterUploadCaption(tester);
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
     await tester.pumpAndSettle();
 
@@ -1141,6 +1461,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
             pickVideo: () async =>
@@ -1215,6 +1536,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
             pickVideo: () async =>
@@ -1312,6 +1634,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
             pickVideo: () async =>
@@ -1374,15 +1697,14 @@ void main() {
   testWidgets('rejects a scheduled post whose time is already in the past',
       (tester) async {
     var createPostCalls = 0;
+    var currentTime = DateTime(2026, 8, 11, 10);
 
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
-            // Pin "now" far in the future so the default tomorrow 18:30 schedule
-            // counts as being in the past at submit time.
-            now: () => DateTime(2100),
+            now: () => currentTime,
             pickVideo: () async =>
                 _createPickedVideoFixture('past-scheduled.mp4'),
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1430,12 +1752,17 @@ void main() {
     await tester.tap(scheduleButton);
     await tester.pumpAndSettle();
     await _enterUploadCaption(tester);
+    currentTime = DateTime(2026, 8, 13, 10);
 
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
-    await _confirmPublishReview(tester);
+    await tester.pumpAndSettle();
 
     expect(createPostCalls, 0);
-    expect(find.text('เวลาตั้งโพสต์ต้องเป็นเวลาในอนาคต'), findsOneWidget);
+    expect(find.textContaining('เวลาเดิมผ่านไปแล้ว'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('publish-review-confirm')),
+      findsNothing,
+    );
   });
 
   testWidgets('logs safe analytics events when publishing a post',
@@ -1451,6 +1778,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
             analytics: analytics,
@@ -1600,6 +1928,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
             pickVideo: () async => _createPickedVideoFixture('phone-basic.mp4'),
@@ -1654,6 +1983,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
             pickVideo: () async => _createPickedVideoFixture('plan-error.mp4'),
@@ -1699,6 +2029,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async =>
                 _createPickedVideoFixture('publisher-disabled.mp4'),
@@ -1766,6 +2097,109 @@ void main() {
     expect(find.text('ส่งเข้าคิวแล้ว'), findsNothing);
   });
 
+  testWidgets('blocks a selected destination whose account identity is missing',
+      (tester) async {
+    var readinessChecks = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
+            loadSocialConnections: () async => const [
+              SocialConnectionResult(platform: 'TIKTOK', connected: true),
+            ],
+            pickVideo: () async =>
+                _createPickedVideoFixture('missing-target.mp4'),
+            checkPublishingReadiness: () async => readinessChecks += 1,
+          ),
+        ),
+      ),
+    );
+
+    await _pickVideoFromPreview(tester);
+    await _enterUploadCaption(tester);
+    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await tester.pumpAndSettle();
+
+    expect(readinessChecks, 0);
+    expect(
+        find.textContaining('รีเฟรชช่องทางหรือเชื่อมต่อใหม่'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('publish-review-confirm')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('blocks an old API before watermark upload and queue creation',
+      (tester) async {
+    var subscriptionChecks = 0;
+    var watermarkCalls = 0;
+    var createUploadCalls = 0;
+    var uploadCalls = 0;
+    var createPostCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () async => _createPickedVideoFixture('old-api.mp4'),
+            checkPublishingReadiness: () async {
+              throw const ApiException(
+                'ระบบโพสต์ยังไม่รองรับการตั้งค่าช่องทางรุ่นนี้ กรุณาอัปเดต PostDee API ก่อนลองใหม่',
+                code: platformSettingsUnsupportedCode,
+              );
+            },
+            loadSubscription: () async {
+              subscriptionChecks += 1;
+              return const SubscriptionStatusResult(
+                userId: 'seller-pro',
+                plan: 'PRO',
+                status: 'ACTIVE',
+                phoneVerified: true,
+                requiresPhoneVerification: false,
+                canUseFreePostQuota: false,
+                canSchedule: true,
+                canUseAiCaptions: true,
+                canUseAnalytics: true,
+              );
+            },
+            watermarkVideo: (request) async {
+              watermarkCalls += 1;
+              throw StateError('Watermark must not run');
+            },
+            createUpload: (_) async {
+              createUploadCalls += 1;
+              throw StateError('Upload must not be created');
+            },
+            uploadVideoFile: (_, __) async {
+              uploadCalls += 1;
+            },
+            createPost: (_) async {
+              createPostCalls += 1;
+              throw StateError('Post must not be created');
+            },
+          ),
+        ),
+      ),
+    );
+
+    await _pickVideoFromPreview(tester);
+    await _enterUploadCaption(tester);
+    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await _confirmPublishReview(tester);
+
+    expect(subscriptionChecks, 0);
+    expect(watermarkCalls, 0);
+    expect(createUploadCalls, 0);
+    expect(uploadCalls, 0);
+    expect(createPostCalls, 0);
+    expect(find.textContaining('อัปเดต PostDee API'), findsWidgets);
+    expect(find.text('รับรายการแล้ว'), findsNothing);
+  });
+
   testWidgets(
       'maps the post fail-fast race without showing a stale queued success',
       (tester) async {
@@ -1778,6 +2212,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async =>
                 _createPickedVideoFixture('publisher-stopped-later.mp4'),
@@ -1934,6 +2369,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
             initialVideoPath: videoFile.path,

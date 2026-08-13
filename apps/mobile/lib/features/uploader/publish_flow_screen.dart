@@ -4,6 +4,7 @@ import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
+import '../shared/post_delivery_outcome.dart';
 
 enum PublishFlowAction { finish, analytics }
 
@@ -26,7 +27,7 @@ class PublishFlowScreen extends StatefulWidget {
 }
 
 class _PublishFlowScreenState extends State<PublishFlowScreen> {
-  bool _isDone = false;
+  QueuedPostResult? _post;
 
   @override
   void initState() {
@@ -44,15 +45,13 @@ class _PublishFlowScreenState extends State<PublishFlowScreen> {
       return;
     }
 
-    if (mounted) {
-      setState(() => _isDone = true);
-    }
+    setState(() => _post = post);
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _isDone,
+      canPop: _post != null,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: DecoratedBox(
@@ -60,11 +59,12 @@ class _PublishFlowScreenState extends State<PublishFlowScreen> {
           child: SafeArea(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 260),
-              child: _isDone
+              child: _post != null
                   ? _PublishDoneView(
                       key: const ValueKey('publish-flow-done'),
                       platforms: widget.platforms,
                       isScheduled: widget.isScheduled,
+                      post: _post!,
                     )
                   : _PublishingView(
                       key: const ValueKey('publish-flow-posting'),
@@ -112,7 +112,7 @@ class _PublishingView extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'กำลังเตรียมโพสต์สำหรับ $platformCount ช่องทาง',
+              'กำลังเตรียมส่งสำหรับ $platformCount ช่องทาง',
               style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
             ),
           ],
@@ -127,10 +127,77 @@ class _PublishDoneView extends StatelessWidget {
     super.key,
     required this.platforms,
     required this.isScheduled,
+    required this.post,
   });
 
   final List<SocialPlatform> platforms;
   final bool isScheduled;
+  final QueuedPostResult post;
+
+  String? get _deliveryLabel =>
+      aggregatePostDeliveryOutcomeLabel(post.platformResults);
+
+  bool get _hasUnconfirmedOutcome =>
+      hasUnconfirmedDeliveryOutcome(post.platformResults);
+
+  bool get _hasPartialResults {
+    final statuses = post.platformResults
+        .map((result) => result.status.trim().toUpperCase())
+        .toSet();
+    return post.status.toUpperCase() == 'PARTIAL_PUBLISHED' ||
+        (statuses.contains('PUBLISHED') && statuses.contains('FAILED'));
+  }
+
+  String get _title =>
+      _deliveryLabel ??
+      switch (post.status.toUpperCase()) {
+        'PUBLISHING' => 'กำลังส่ง',
+        'PUBLISHED' => 'ส่งสำเร็จ',
+        'PARTIAL_PUBLISHED' => 'ส่งสำเร็จบางช่องทาง',
+        _ => isScheduled ? 'จัดคิวส่งตามเวลาแล้ว' : 'รับรายการแล้ว',
+      };
+
+  String get _body {
+    final platformCount = platforms.length;
+    final deliveryLabel = _deliveryLabel;
+    final isAllProviderDrafts = post.platformResults.isNotEmpty &&
+        post.platformResults.every(
+          (result) => isProviderDraftOutcome(result.deliveryOutcome),
+        );
+    final message = _hasPartialResults
+        ? 'ส่งสำเร็จเพียงบางช่องทาง กรุณาเปิดรายละเอียดเพื่อตรวจช่องทางที่ไม่สำเร็จ'
+        : _hasUnconfirmedOutcome
+            ? 'ระบบรับผลจาก $platformCount ช่องทางแล้ว แต่ยังยืนยันรูปแบบปลายทางไม่ได้'
+            : deliveryLabel != null
+                ? isAllProviderDrafts
+                    ? 'ส่ง $platformCount ช่องทางเป็นร่างแล้ว · ส่งออกจริงและใช้โควตาโพสต์'
+                    : 'ส่ง $platformCount ช่องทางสำเร็จ · $deliveryLabel'
+                : switch (post.status.toUpperCase()) {
+                    'PUBLISHING' =>
+                      'ระบบกำลังส่ง $platformCount ช่องทาง กรุณาตรวจผลอีกครั้งในหน้ารายการโพสต์',
+                    'PUBLISHED' => 'ส่ง $platformCount ช่องทางสำเร็จแล้ว',
+                    'PARTIAL_PUBLISHED' =>
+                      'ส่งสำเร็จเพียงบางช่องทาง กรุณาเปิดรายละเอียดเพื่อตรวจช่องทางที่ไม่สำเร็จ',
+                    _ => isScheduled
+                        ? 'ระบบรับรายการตั้งเวลาสำหรับ $platformCount ช่องทางแล้ว'
+                        : 'ระบบรับรายการ $platformCount ช่องทางแล้ว กำลังส่ง',
+                  };
+    return post.idempotentReplay ? 'พบรายการเดิม · $message' : message;
+  }
+
+  String? _outcomeFor(SocialPlatform platform) {
+    for (final result in post.platformResults) {
+      if (result.platform == platform.apiValue) {
+        return postDeliveryOutcomeLabel(result.deliveryOutcome);
+      }
+    }
+    return null;
+  }
+
+  String _platformLabel(SocialPlatform platform) {
+    final outcome = _outcomeFor(platform);
+    return outcome == null ? platform.label : '${platform.label} · $outcome';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -144,18 +211,24 @@ class _PublishDoneView extends StatelessWidget {
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: AppTheme.mint,
+                color: _hasUnconfirmedOutcome
+                    ? const Color(0xFFEEF2EF)
+                    : AppTheme.mint,
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.check_rounded,
+                _hasUnconfirmedOutcome
+                    ? Icons.help_outline_rounded
+                    : Icons.check_rounded,
                 size: 54,
-                color: AppTheme.accentCyanInk,
+                color: _hasUnconfirmedOutcome
+                    ? AppTheme.textMuted
+                    : AppTheme.accentCyanInk,
               ),
             ),
             const SizedBox(height: 16),
             Text(
-              isScheduled ? 'จัดคิวตั้งเวลาแล้ว' : 'ส่งเข้าคิวแล้ว',
+              _title,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 22,
@@ -165,9 +238,7 @@ class _PublishDoneView extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              isScheduled
-                  ? 'ระบบรับโพสต์ตั้งเวลาสำหรับ ${platforms.length} ช่องทางแล้ว'
-                  : 'ระบบรับโพสต์ ${platforms.length} ช่องทางแล้ว กำลังเผยแพร่',
+              _body,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13.5,
@@ -196,7 +267,7 @@ class _PublishDoneView extends StatelessWidget {
                         SocialPlatformLogo(platform: platform, size: 18),
                         const SizedBox(width: 6),
                         Text(
-                          platform.label,
+                          _platformLabel(platform),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,

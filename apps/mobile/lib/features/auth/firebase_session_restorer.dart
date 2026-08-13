@@ -23,7 +23,8 @@ Future<void> restoreFirebaseSession({
   }
 
   store.signIn(
-    AuthSession(
+    AuthSession.authenticated(
+      userId: user.uid,
       idToken: token,
       email: user.email,
       displayName: user.displayName,

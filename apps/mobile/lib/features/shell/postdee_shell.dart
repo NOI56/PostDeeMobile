@@ -30,10 +30,15 @@ import '../posts/post_detail_screen.dart';
 import '../shared/postdee_undo_toast.dart';
 import '../templates/templates_screen.dart';
 import '../uploader/uploader_screen.dart';
+import '../uploader/publish_draft_store.dart';
+import '../uploader/publish_draft_store_factory.dart';
 import '../uploader/video_picker_service.dart';
 
 typedef AccountDeleter = Future<void> Function();
 typedef AccountDeletionReadinessChecker = Future<bool> Function();
+typedef AccountLocalPublishDraftDeleter = Future<void> Function();
+typedef AccountLocalPublishDraftDeleterLoader
+    = Future<AccountLocalPublishDraftDeleter?> Function();
 
 class PostDeeShell extends StatefulWidget {
   const PostDeeShell({
@@ -52,6 +57,9 @@ class PostDeeShell extends StatefulWidget {
     this.loadSocialConnections,
     this.deleteAccount,
     this.checkAccountDeletionReady,
+    this.deleteLocalPublishDrafts,
+    this.loadLocalPublishDraftDeleter,
+    this.uploaderDraftStore,
     this.accountAccessRevoker,
     this.pushMessagingGateway,
   });
@@ -70,6 +78,9 @@ class PostDeeShell extends StatefulWidget {
   final UploaderConnectionsLoader? loadSocialConnections;
   final AccountDeleter? deleteAccount;
   final AccountDeletionReadinessChecker? checkAccountDeletionReady;
+  final AccountLocalPublishDraftDeleter? deleteLocalPublishDrafts;
+  final AccountLocalPublishDraftDeleterLoader? loadLocalPublishDraftDeleter;
+  final PublishDraftStore? uploaderDraftStore;
   final AccountAccessRevoker? accountAccessRevoker;
   final PushMessagingGateway? pushMessagingGateway;
 
@@ -119,7 +130,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
     if (AppConfig.enableFirebaseAuth &&
         (widget.firebaseBootstrapResult?.isInitialized ?? false)) {
       PostDeeAuthSessionStore.instance
-          .setIdTokenRefresher(firebaseIdTokenRefresher);
+          .setAuthCredentialRefresher(firebaseAuthCredentialRefresher);
     }
     // Start push delivery. The factory returns a no-op gateway unless Firebase
     // is enabled and initialized, so this is harmless in dev and tests.
@@ -153,6 +164,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
           uploadVideoFile: widget.uploadVideoFile,
         ),
         UploaderScreen(
+          draftStore: widget.uploaderDraftStore,
           loadSubscription: widget.loadSubscription,
           pickVideo: widget.pickVideo,
           createUpload: widget.createUpload,
@@ -279,6 +291,16 @@ class _PostDeeShellState extends State<PostDeeShell> {
         (widget.deleteAccount == null
             ? apiClient.checkAccountDeletionReady
             : () async => false);
+    var localDraftCleanupFailed = false;
+    final localDraftDeleterFuture = widget.deleteLocalPublishDrafts != null
+        ? Future<AccountLocalPublishDraftDeleter?>.value(
+            widget.deleteLocalPublishDrafts,
+          )
+        : (widget.loadLocalPublishDraftDeleter ??
+            () async {
+              final store = await createPublishDraftStoreForSession();
+              return store?.deleteAllDrafts;
+            })();
 
     try {
       final identityAlreadyDeleted = await checkAccountDeletionReady();
@@ -286,6 +308,14 @@ class _PostDeeShellState extends State<PostDeeShell> {
         await _accountAccessRevoker.revokeBeforeAccountDeletion();
       }
       await deleteAccount();
+      try {
+        final deleteLocalPublishDrafts = await localDraftDeleterFuture;
+        await deleteLocalPublishDrafts?.call();
+      } catch (_) {
+        // The server account is already deleted. Continue signing out, but
+        // tell the user how to remove any local files the OS would not delete.
+        localDraftCleanupFailed = true;
+      }
 
       if (!mounted) {
         return;
@@ -309,7 +339,9 @@ class _PostDeeShellState extends State<PostDeeShell> {
       }
       showPostDeeUndoToast(
         context,
-        message: 'ลบบัญชีและออกจากระบบแล้ว',
+        message: localDraftCleanupFailed
+            ? 'ลบบัญชีแล้ว แต่ลบร่างในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป'
+            : 'ลบบัญชีและออกจากระบบแล้ว',
       );
     } on AccountAccessRevocationException catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(error.message)));

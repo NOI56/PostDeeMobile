@@ -455,6 +455,100 @@ void main() {
     );
   });
 
+  testWidgets('shows a provider draft outcome on the home dashboard',
+      (tester) async {
+    final deliveredAt = DateTime.now().subtract(const Duration(hours: 1));
+    await tester.pumpWidget(
+      _homeTestApp(
+        HomeScreen(
+          loadAnalytics: () async => const AnalyticsSummaryResult(
+            totalViews: 0,
+            totalLikes: 0,
+            platforms: [],
+          ),
+          loadSubscription: () async => const SubscriptionStatusResult(
+            userId: 'seller',
+            plan: 'BASIC',
+            status: 'ACTIVE',
+            canSchedule: false,
+            canUseAiCaptions: false,
+            canUseAnalytics: false,
+          ),
+          loadRecentPosts: () async => [
+            PostSummaryResult(
+              id: 'draft-p1',
+              caption: 'ส่งร่าง TikTok',
+              videoS3Key: 'clip.mp4',
+              platforms: const ['TIKTOK'],
+              status: 'PUBLISHED',
+              createdAt: deliveredAt,
+              publishedAt: deliveredAt,
+              platformResults: const [
+                PostPlatformResult(
+                  postId: 'draft-p1',
+                  platform: 'TIKTOK',
+                  status: 'PUBLISHED',
+                  deliveryOutcome: 'DRAFT',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ส่งเป็นร่างแล้ว'), findsOneWidget);
+    expect(find.text('เผยแพร่'), findsNothing);
+  });
+
+  testWidgets('does not present an unknown provider outcome as published',
+      (tester) async {
+    final deliveredAt = DateTime.now().subtract(const Duration(hours: 1));
+    await tester.pumpWidget(
+      _homeTestApp(
+        HomeScreen(
+          loadAnalytics: () async => const AnalyticsSummaryResult(
+            totalViews: 0,
+            totalLikes: 0,
+            platforms: [],
+          ),
+          loadSubscription: () async => const SubscriptionStatusResult(
+            userId: 'seller',
+            plan: 'BASIC',
+            status: 'ACTIVE',
+            canSchedule: false,
+            canUseAiCaptions: false,
+            canUseAnalytics: false,
+          ),
+          loadRecentPosts: () async => [
+            PostSummaryResult(
+              id: 'unknown-p1',
+              caption: 'ผลใหม่จากผู้ให้บริการ',
+              videoS3Key: 'clip.mp4',
+              platforms: const ['TIKTOK'],
+              status: 'PUBLISHED',
+              createdAt: deliveredAt,
+              publishedAt: deliveredAt,
+              platformResults: const [
+                PostPlatformResult(
+                  postId: 'unknown-p1',
+                  platform: 'TIKTOK',
+                  status: 'PUBLISHED',
+                  deliveryOutcome: 'FUTURE_OUTCOME',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ผลยังไม่ยืนยัน'), findsOneWidget);
+    expect(find.text('เผยแพร่'), findsNothing);
+  });
+
   testWidgets(
       'loads latest posts only while home is active and refreshes on return',
       (tester) async {

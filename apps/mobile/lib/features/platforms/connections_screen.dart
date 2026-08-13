@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -68,11 +70,11 @@ class ConnectedPlatformsCard extends StatefulWidget {
   final ValueChanged<int>? onConnectionsChanged;
 
   @override
-  State<ConnectedPlatformsCard> createState() =>
-      _ConnectedPlatformsCardState();
+  State<ConnectedPlatformsCard> createState() => _ConnectedPlatformsCardState();
 }
 
-class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
+class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
+    with WidgetsBindingObserver {
   late final PostDeeApiClient _apiClient =
       widget.apiClient ?? PostDeeApiClient();
   late final ConnectUrlLauncher _launch = widget.launchConnectUrl ??
@@ -81,11 +83,41 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
   Map<String, SocialConnectionResult> _statuses = {};
   bool _loading = true;
   String? _busyPlatform;
+  bool _waitingForOAuthReturn = false;
+  bool _leftAppForOAuth = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadConnections();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_waitingForOAuthReturn) return;
+
+    switch (state) {
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        _leftAppForOAuth = true;
+        break;
+      case AppLifecycleState.resumed:
+        if (!_leftAppForOAuth) return;
+        _waitingForOAuthReturn = false;
+        _leftAppForOAuth = false;
+        unawaited(_refresh());
+        break;
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   Future<void> _loadConnections() async {
@@ -122,13 +154,24 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
     try {
       final link =
           await _apiClient.createSocialConnectionLink(platform.apiValue);
-      await _launch(link.connectUrl);
-      // PostPeer OAuth happens in an external browser, so prompt the user to
-      // refresh once they return instead of polling immediately.
-      _showMessage('เปิดหน้าเชื่อมบัญชีแล้ว — เมื่อเสร็จในเบราว์เซอร์ กดปุ่มรีเฟรช');
+      _waitingForOAuthReturn = true;
+      final launched = await _launch(link.connectUrl);
+      if (!launched) {
+        _waitingForOAuthReturn = false;
+        throw StateError('Could not open the PostPeer connect URL.');
+      }
+      // PostPeer OAuth happens in an external browser. The lifecycle observer
+      // refreshes saved integrations when the user returns to PostDee.
+      _showMessage(
+        'เปิดหน้าเชื่อมบัญชีแล้ว — เมื่อเสร็จให้กลับเข้าแอป ระบบจะตรวจให้อัตโนมัติ',
+      );
     } on ApiException catch (error) {
+      _waitingForOAuthReturn = false;
+      _leftAppForOAuth = false;
       _showMessage(error.message);
     } catch (_) {
+      _waitingForOAuthReturn = false;
+      _leftAppForOAuth = false;
       _showMessage('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
       if (mounted) setState(() => _busyPlatform = null);

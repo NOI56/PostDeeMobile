@@ -11,6 +11,8 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
+import 'package:postdee_mobile/features/uploader/publish_draft.dart';
+import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -21,6 +23,49 @@ Finder _referenceNavButton(String label) => find.descendant(
       of: _referenceNav(),
       matching: find.bySemanticsLabel(label),
     );
+
+class _ShellDraftStore implements PublishDraftStore {
+  final Map<String, PublishDraft> drafts = {};
+
+  @override
+  Future<void> deleteAllDrafts() async => drafts.clear();
+
+  @override
+  Future<void> deleteDraft(String draftId) async => drafts.remove(draftId);
+
+  @override
+  Future<List<PublishDraft>> listDrafts() async => drafts.values.toList();
+
+  @override
+  Future<PublishDraft?> loadDraft(String draftId) async => drafts[draftId];
+
+  @override
+  Future<PublishDraft> saveDraft(PublishDraftSaveRequest request) async {
+    final draft = PublishDraft(
+      version: publishDraftManifestVersion,
+      id: request.id,
+      ownerUserId: 'firebase-user-shell',
+      submissionRequestId:
+          'submit_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      createdAt: request.createdAt,
+      updatedAt: request.updatedAt,
+      videoPath: request.videoFile.path,
+      videoName: request.videoName,
+      videoSizeBytes: request.videoFile.lengthSync(),
+      videoWidth: request.videoWidth,
+      videoHeight: request.videoHeight,
+      caption: request.caption,
+      aiGuidance: request.aiGuidance,
+      watermarkEnabled: request.watermarkEnabled,
+      platformApiValues: request.platformApiValues,
+      platformSettings: request.platformSettings,
+      scheduledAt: request.scheduledAt,
+    );
+    drafts[draft.id] = draft;
+    return draft;
+  }
+}
+
 void main() {
   testWidgets('requests notification permission only after tapping the bell',
       (tester) async {
@@ -32,6 +77,7 @@ void main() {
     final pushGateway = _FakePushMessagingGateway();
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -126,6 +172,7 @@ void main() {
 
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -194,6 +241,7 @@ void main() {
 
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -253,6 +301,7 @@ void main() {
 
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -300,6 +349,7 @@ void main() {
 
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -330,6 +380,12 @@ void main() {
             deleteCalls += 1;
             deletionCalls.add('delete');
           },
+          loadLocalPublishDraftDeleter: () async {
+            deletionCalls.add('capture-local-drafts');
+            return () async {
+              deletionCalls.add('local-drafts');
+            };
+          },
         ),
       ),
     );
@@ -348,11 +404,21 @@ void main() {
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('ลบบัญชีถาวร'));
+    tester
+        .widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+        )
+        .onPressed!();
     await tester.pumpAndSettle();
 
     expect(deleteCalls, 1);
-    expect(deletionCalls, ['ready', 'revoke', 'delete']);
+    expect(deletionCalls, [
+      'capture-local-drafts',
+      'ready',
+      'revoke',
+      'delete',
+      'local-drafts',
+    ]);
     // Back on the login gate after the account is removed.
     expect(find.text('Sign in to PostDee'), findsOneWidget);
     expect(
@@ -379,6 +445,77 @@ void main() {
     expect(find.text('เลิกทำ'), findsNothing);
   });
 
+  testWidgets(
+    'still signs out and warns when local draft cleanup cannot finish',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+
+      final sessionStore = PostDeeAuthSessionStore.instance;
+      final languageController = PostDeeLanguageController(
+        initialLocale: const Locale('en'),
+      );
+      sessionStore.signIn(
+        const AuthSession(
+          userId: 'firebase-user-shell',
+          idToken: 'firebase-id-token',
+          email: 'seller@example.com',
+          displayName: 'PostDee Seller',
+        ),
+      );
+      addTearDown(sessionStore.clear);
+      addTearDown(languageController.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark,
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            PostDeeLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: PostDeeLocalizations.supportedLocales,
+          home: PostDeeShell(
+            languageController: languageController,
+            checkAccountDeletionReady: () async => true,
+            deleteAccount: () async {},
+            deleteLocalPublishDrafts: () async {
+              throw const FileSystemException('disk unavailable');
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(_referenceNavButton('Profile'));
+      await tester.pumpAndSettle();
+      final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+      await tester.scrollUntilVisible(
+        deleteButton,
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(deleteButton);
+      await tester.pumpAndSettle();
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+          )
+          .onPressed!();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sign in to PostDee'), findsOneWidget);
+      expect(
+        find.text(
+          'ลบบัญชีแล้ว แต่ลบร่างในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('retries deletion without revoking Apple when identity is gone',
       (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
@@ -389,6 +526,7 @@ void main() {
     final deletionCalls = <String>[];
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
       ),
@@ -415,6 +553,7 @@ void main() {
           },
           accountAccessRevoker: _RecordingAccountAccessRevoker(deletionCalls),
           deleteAccount: () async => deletionCalls.add('delete'),
+          deleteLocalPublishDrafts: () async {},
         ),
       ),
     );
@@ -429,7 +568,11 @@ void main() {
     );
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('ลบบัญชีถาวร'));
+    tester
+        .widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+        )
+        .onPressed!();
     await tester.pumpAndSettle();
 
     expect(deletionCalls, ['ready', 'delete']);
@@ -446,6 +589,7 @@ void main() {
     final deletionCalls = <String>[];
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
       ),
@@ -490,7 +634,11 @@ void main() {
     );
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('ลบบัญชีถาวร'));
+    tester
+        .widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+        )
+        .onPressed!();
     await tester.pumpAndSettle();
 
     expect(deletionCalls, ['ready']);
@@ -508,6 +656,7 @@ void main() {
     );
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
       ),
@@ -549,7 +698,11 @@ void main() {
     );
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('ลบบัญชีถาวร'));
+    tester
+        .widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+        )
+        .onPressed!();
     await tester.pumpAndSettle();
 
     expect(
@@ -572,6 +725,7 @@ void main() {
 
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -629,6 +783,7 @@ void main() {
 
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -651,10 +806,10 @@ void main() {
         home: PostDeeShell(
           languageController: languageController,
           loadSocialConnections: () async => const [
-            SocialConnectionResult(platform: 'TIKTOK', connected: true),
             SocialConnectionResult(
-              platform: 'YOUTUBE_SHORTS',
+              platform: 'TIKTOK',
               connected: true,
+              externalAccountId: 'tiktok-seller',
             ),
           ],
           loadSubscription: () async => const SubscriptionStatusResult(
@@ -703,6 +858,7 @@ void main() {
               status: 'QUEUED',
             );
           },
+          uploaderDraftStore: _ShellDraftStore(),
           loadScheduledPosts: () async {
             calendarLoadCount += 1;
             return scheduledPosts;
@@ -718,6 +874,17 @@ void main() {
     await tester.ensureVisible(pickVideoButton);
     await tester.pumpAndSettle();
     await tester.tap(pickVideoButton);
+    await tester.pumpAndSettle();
+
+    final selectAll =
+        find.byKey(const ValueKey('uploader-select-all-platforms'));
+    await tester.scrollUntilVisible(
+      selectAll,
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(selectAll);
     await tester.pumpAndSettle();
 
     final scheduleButton =
@@ -748,7 +915,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(createdPostRequest?.scheduledAt, isNotNull);
-    expect(find.text('จัดคิวตั้งเวลาแล้ว'), findsOneWidget);
+    expect(find.text('จัดคิวส่งตามเวลาแล้ว'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('publish-flow-finish')));
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Calendar'));
@@ -770,6 +937,7 @@ void main() {
 
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -826,6 +994,7 @@ void main() {
 
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -897,6 +1066,7 @@ void main() {
 
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -948,6 +1118,7 @@ void main() {
 
     sessionStore.signIn(
       const AuthSession(
+        userId: 'firebase-user-shell',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',

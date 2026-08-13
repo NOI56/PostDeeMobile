@@ -29,6 +29,7 @@ void main() {
       () async {
     final firebaseClient = FakeFirebaseAppleAuthClient(
       const FirebaseUserSnapshot(
+        userId: 'firebase-apple-user-123',
         idToken: 'firebase-id-token',
         email: 'apple-seller@example.com',
         displayName: 'Apple Seller',
@@ -41,6 +42,7 @@ void main() {
     final session = await gateway.signIn();
 
     expect(firebaseClient.didSignIn, isTrue);
+    expect(session.userId, 'firebase-apple-user-123');
     expect(session.idToken, 'firebase-id-token');
     expect(session.email, 'apple-seller@example.com');
     expect(session.displayName, 'Apple Seller');
@@ -49,7 +51,10 @@ void main() {
 
   test('FirebaseAppleAuthGateway signs out from Firebase', () async {
     final firebaseClient = FakeFirebaseAppleAuthClient(
-      const FirebaseUserSnapshot(idToken: 'firebase-id-token'),
+      const FirebaseUserSnapshot(
+        userId: 'firebase-apple-user-123',
+        idToken: 'firebase-id-token',
+      ),
     );
     final gateway =
         FirebaseAppleAuthGateway(firebaseAuthClient: firebaseClient);
@@ -91,6 +96,7 @@ void main() {
     final session = await gateway.signIn();
 
     expect(session.isSignedIn, isTrue);
+    expect(session.userId, 'local-mock-user');
     expect(session.email, 'demo.apple@postdee.local');
   });
 

@@ -12,6 +12,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   characters: ^1.4.1
+  crypto: ^3.0.7
   firebase_core: ^4.10.0
   firebase_auth: ^6.5.4
   google_sign_in: ^7.2.0

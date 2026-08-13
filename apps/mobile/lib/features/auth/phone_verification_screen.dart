@@ -37,7 +37,8 @@ class DevMockPhoneVerification {
       );
     }
 
-    return const AuthSession(
+    return AuthSession.authenticated(
+      userId: localMockAuthUserId,
       idToken: 'local-mock-id-token',
       email: 'demo@postdee.local',
       displayName: 'PostDee Demo',

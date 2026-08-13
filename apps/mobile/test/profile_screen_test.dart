@@ -384,6 +384,57 @@ void main() {
     expect(launched, Uri.parse('https://postpeer.test/connect/tiktok'));
   });
 
+  testWidgets('refreshes connections after returning from PostPeer OAuth',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [
+        SocialConnectionResult(platform: 'TIKTOK', connected: false),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+      refreshedConnections: const [
+        SocialConnectionResult(
+          platform: 'TIKTOK',
+          connected: true,
+          displayName: '@seller_one',
+        ),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+      connectLink: SocialConnectLinkResult(
+        connectUrl: Uri.parse('https://postpeer.test/connect/tiktok'),
+        expiresAt: DateTime.utc(2026, 6, 26, 9, 10),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _hostProfile(
+        apiClient: apiClient,
+        launchConnectUrl: (_) async => true,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openConnectionsScreen(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('profile-platform-connect-TIKTOK')),
+    );
+    await tester.pumpAndSettle();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(apiClient.refreshCalls, 1);
+    expect(
+      find.byKey(const ValueKey('profile-platform-disconnect-TIKTOK')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('refreshing pulls connected status from PostPeer',
       (tester) async {
     final apiClient = _FakeSocialApiClient(
@@ -523,6 +574,10 @@ void main() {
     expect(find.text('ก่อนลบบัญชี'), findsOneWidget);
     expect(
       find.textContaining('ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('ฉบับร่างและไฟล์ในเครื่องนี้'),
       findsOneWidget,
     );
     expect(find.text('ลบบัญชีถาวร'), findsOneWidget);

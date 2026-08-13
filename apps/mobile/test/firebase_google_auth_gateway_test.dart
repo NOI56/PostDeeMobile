@@ -60,6 +60,7 @@ void main() {
     );
     final firebaseClient = FakeFirebaseAuthClient(
       const FirebaseUserSnapshot(
+        userId: 'firebase-user-123',
         idToken: 'firebase-id-token',
         email: 'firebase-seller@example.com',
         displayName: 'Firebase Seller',
@@ -74,6 +75,7 @@ void main() {
     final session = await gateway.signIn();
 
     expect(firebaseClient.signedInWithGoogleIdToken, 'google-id-token');
+    expect(session.userId, 'firebase-user-123');
     expect(session.idToken, 'firebase-id-token');
     expect(session.email, 'firebase-seller@example.com');
     expect(session.displayName, 'Firebase Seller');
@@ -90,7 +92,10 @@ void main() {
         ),
       ),
       firebaseAuthClient: FakeFirebaseAuthClient(
-        const FirebaseUserSnapshot(idToken: 'firebase-id-token'),
+        const FirebaseUserSnapshot(
+          userId: 'firebase-user-123',
+          idToken: 'firebase-id-token',
+        ),
       ),
     );
 
@@ -111,7 +116,10 @@ void main() {
         ),
       ),
       firebaseAuthClient: FakeFirebaseAuthClient(
-        const FirebaseUserSnapshot(idToken: 'firebase-id-token'),
+        const FirebaseUserSnapshot(
+          userId: 'firebase-user-123',
+          idToken: 'firebase-id-token',
+        ),
       ),
     );
 
@@ -141,7 +149,10 @@ void main() {
         ),
       ),
       firebaseAuthClient: FakeFirebaseAuthClient(
-        const FirebaseUserSnapshot(idToken: 'firebase-id-token'),
+        const FirebaseUserSnapshot(
+          userId: 'firebase-user-123',
+          idToken: 'firebase-id-token',
+        ),
       ),
     );
 
@@ -166,7 +177,10 @@ void main() {
       const GoogleAccountSnapshot(idToken: 'google-id-token'),
     );
     final firebaseClient = FakeFirebaseAuthClient(
-      const FirebaseUserSnapshot(idToken: 'firebase-id-token'),
+      const FirebaseUserSnapshot(
+        userId: 'firebase-user-123',
+        idToken: 'firebase-id-token',
+      ),
     );
     final gateway = FirebaseGoogleAuthGateway(
       googleClient: googleClient,
@@ -211,6 +225,7 @@ void main() {
     final session = await gateway.signIn();
 
     expect(session.isSignedIn, isTrue);
+    expect(session.userId, 'local-mock-user');
     expect(session.email, 'demo@postdee.local');
     expect(session.displayName, 'PostDee Demo');
   });

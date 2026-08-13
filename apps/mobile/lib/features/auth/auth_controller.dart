@@ -3,6 +3,11 @@ import 'package:flutter/foundation.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/monitoring/postdee_analytics.dart';
 
+/// All local auth gateways represent the same development-only demo account.
+/// Keeping one stable ID mirrors Firebase phone linking and prevents local
+/// per-account data from changing scope when the mock sign-in method changes.
+const localMockAuthUserId = 'local-mock-user';
+
 abstract class GoogleAuthGateway {
   Future<AuthSession> signIn();
 

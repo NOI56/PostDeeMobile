@@ -2,7 +2,7 @@
 # See https://dart.dev/tools/pub/glossary#lockfile
 packages:
   _flutterfire_internals:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: _flutterfire_internals
       sha256: "78f98c1f9c4dbbd22c2bb7b7f17c4a5c06150e8b2cb791a0947979ad0d3dabd5"

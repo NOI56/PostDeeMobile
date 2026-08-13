@@ -133,7 +133,8 @@ class FirebasePhoneVerificationGateway {
       );
     }
 
-    return AuthSession(
+    return AuthSession.authenticated(
+      userId: refreshedUser.uid,
       idToken: idToken,
       email: refreshedUser.email,
       displayName: refreshedUser.displayName,

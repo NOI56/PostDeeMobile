@@ -3,6 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/auth/phone_verification_screen.dart';
 
 void main() {
+  test('local mock verification returns a stable demo user id', () async {
+    final session = await DevMockPhoneVerification.confirmCode(
+      verificationId: 'dev-mock-verification-id',
+      smsCode: DevMockPhoneVerification.demoCode,
+    );
+
+    expect(session.userId, 'local-mock-user');
+  });
+
   testWidgets(
       'does not expose demo OTP when local mock verification is disabled',
       (tester) async {

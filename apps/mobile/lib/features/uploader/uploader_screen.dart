@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/monitoring/postdee_analytics.dart';
 import '../../core/theme/app_theme.dart';
@@ -16,14 +17,21 @@ import '../shared/growth_tool_settings_store.dart';
 import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/postdee_status_sheet.dart';
+import '../shared/post_schedule_policy.dart';
 import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
+import 'platform_publish_settings.dart';
+import 'publish_draft.dart';
+import 'publish_draft_store.dart';
+import 'publish_draft_store_factory.dart';
 import 'publish_flow_screen.dart';
 import 'publish_review_screen.dart';
 import 'video_picker_service.dart';
 import 'watermark_video_processor.dart';
+
+export '../shared/post_schedule_policy.dart';
 
 typedef UploaderTemplateLoader = Future<List<TextTemplateResult>> Function();
 typedef UploaderSubscriptionLoader = Future<SubscriptionStatusResult>
@@ -45,13 +53,9 @@ typedef UploaderScheduledPostCreated = void Function(QueuedPostResult post);
 typedef UploaderConnectionsLoader = Future<List<SocialConnectionResult>>
     Function();
 
-const postScheduleLimit = Duration(days: 30);
-
-bool isPostScheduleWithinLimit({
-  required DateTime scheduledAt,
-  required DateTime now,
-}) =>
-    !scheduledAt.isAfter(now.add(postScheduleLimit));
+class _PublishOwnerChangedException implements Exception {
+  const _PublishOwnerChangedException();
+}
 
 class UploaderScreen extends StatefulWidget {
   const UploaderScreen({
@@ -73,6 +77,7 @@ class UploaderScreen extends StatefulWidget {
     this.watermarkVideo,
     this.openCoverEditor,
     this.coverImageProcessor,
+    this.draftStore,
     this.now = DateTime.now,
     this.extractFrames,
     this.growthToolSettingsStore =
@@ -101,6 +106,7 @@ class UploaderScreen extends StatefulWidget {
   final UploaderWatermarkVideoProcessor? watermarkVideo;
   final UploaderCoverEditorLauncher? openCoverEditor;
   final CoverImageProcessor? coverImageProcessor;
+  final PublishDraftStore? draftStore;
 
   // Wall clock used to reject schedules in the past. Injectable so tests can
   // pin "now" instead of depending on the real time of day.
@@ -138,12 +144,21 @@ class _UploaderScreenState extends State<UploaderScreen> {
   DateTime? _selectedScheduleDate;
   TimeOfDay? _selectedScheduleTime;
   final Set<SocialPlatform> _selectedPlatforms = {};
+  final Set<SocialPlatform> _draftUnavailablePlatforms = {};
   final Set<SocialPlatform> _connectedPlatforms = {};
+  final Map<SocialPlatform, SocialConnectionResult> _connectionDetails = {};
+  PlatformPublishSettings _platformSettings = const PlatformPublishSettings();
   final List<TextTemplateResult> _templates = [];
   bool _isSubmitting = false;
+  bool _isPreparingReview = false;
+  bool _isPreparingSubmission = false;
   bool _isLoadingTemplates = false;
   bool _isGeneratingCaption = false;
   bool _isLoadingConnections = true;
+  bool _isLoadingDrafts = true;
+  bool _draftStoreAvailable = false;
+  bool _isSavingDraft = false;
+  final Set<String> _blockedSubmissionDraftIds = {};
   String? _connectionsErrorMessage;
   String? _successMessage;
   String? _errorMessage;
@@ -151,15 +166,145 @@ class _UploaderScreenState extends State<UploaderScreen> {
   String? _aiCaptionErrorMessage;
   String? _selectedVideoName;
   CoverEditorResult? _coverResult;
+  List<PublishDraft> _drafts = const [];
+  String? _activeDraftId;
+  DateTime? _activeDraftCreatedAt;
+  bool? _activeDraftWatermarkEnabled;
+  String? _resolvedDraftOwnerUserId;
+  Future<PublishDraftStore?>? _draftStoreFuture;
+  BuildContext? _draftSheetContext;
+  int _draftLoadGeneration = 0;
   PostDeeStatusSheetData? _pendingStatusSheet;
   bool _pickVideoAfterStatus = false;
   String? _pendingInlineError;
+
+  bool get _requiresNewSubmissionAttempt {
+    final activeDraftId = _activeDraftId;
+    return activeDraftId != null &&
+        _blockedSubmissionDraftIds.contains(activeDraftId);
+  }
 
   @override
   void initState() {
     super.initState();
     _prefillInitialVideo();
+    if (widget.draftStore == null) {
+      PostDeeAuthSessionStore.instance.addListener(_handleDraftOwnerChanged);
+    }
     unawaited(_loadConnections());
+    unawaited(_loadDrafts());
+  }
+
+  void _handleDraftOwnerChanged() {
+    final nextOwnerUserId =
+        PostDeeAuthSessionStore.instance.session.stableUserId;
+    if (nextOwnerUserId != null &&
+        nextOwnerUserId == _resolvedDraftOwnerUserId &&
+        _draftStoreFuture != null) {
+      return;
+    }
+    _draftLoadGeneration += 1;
+    final draftSheetContext = _draftSheetContext;
+    _draftSheetContext = null;
+    if (draftSheetContext != null && draftSheetContext.mounted) {
+      Navigator.of(draftSheetContext).pop();
+    }
+    _resolvedDraftOwnerUserId = null;
+    _draftStoreFuture = null;
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    final previousCover = _coverResult;
+    setState(() {
+      _drafts = const [];
+      _draftStoreAvailable = false;
+      _isLoadingDrafts = true;
+      _activeDraftId = null;
+      _activeDraftCreatedAt = null;
+      _activeDraftWatermarkEnabled = null;
+      _selectedVideoName = null;
+      _coverResult = null;
+      _captionController.clear();
+      _aiGuidanceController.clear();
+      _fileNameController.clear();
+      _localFilePathController.clear();
+      _sizeBytesController.clear();
+      _widthController.clear();
+      _heightController.clear();
+      _scheduledAtController.clear();
+      _selectedScheduleDate = null;
+      _selectedScheduleTime = null;
+      _selectedPlatforms.clear();
+      _draftUnavailablePlatforms.clear();
+      _connectedPlatforms.clear();
+      _connectionDetails.clear();
+      _platformSettings = const PlatformPublishSettings();
+      _blockedSubmissionDraftIds.clear();
+    });
+    if (previousCover != null) {
+      unawaited(previousCover.cleanupTemporaryFiles());
+    }
+    unawaited(_loadDrafts());
+    unawaited(_loadConnections());
+  }
+
+  Future<void> _loadDrafts() async {
+    final generation = ++_draftLoadGeneration;
+    try {
+      final store = await _resolveDraftStore();
+      if (generation != _draftLoadGeneration) return;
+      if (store == null) {
+        if (mounted) {
+          setState(() {
+            _isLoadingDrafts = false;
+            _draftStoreAvailable = false;
+          });
+        }
+        return;
+      }
+      final drafts = await store.listDrafts();
+      if (!mounted || generation != _draftLoadGeneration) return;
+      setState(() {
+        _drafts = drafts;
+        _isLoadingDrafts = false;
+        _draftStoreAvailable = true;
+      });
+    } catch (_) {
+      if (!mounted || generation != _draftLoadGeneration) return;
+      setState(() {
+        _isLoadingDrafts = false;
+        _draftStoreAvailable = false;
+        _errorMessage = 'โหลดฉบับร่างในเครื่องไม่สำเร็จ';
+      });
+    }
+  }
+
+  Future<PublishDraftStore?> _resolveDraftStore() async {
+    final injectedStore = widget.draftStore;
+    if (injectedStore != null) return injectedStore;
+
+    final ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
+    if (ownerUserId == null) {
+      _resolvedDraftOwnerUserId = null;
+      _draftStoreFuture = null;
+      return null;
+    }
+    if (_resolvedDraftOwnerUserId != ownerUserId || _draftStoreFuture == null) {
+      _resolvedDraftOwnerUserId = ownerUserId;
+      _draftStoreFuture = createPublishDraftStoreForSession();
+    }
+    try {
+      final store = await _draftStoreFuture;
+      if (PostDeeAuthSessionStore.instance.session.stableUserId !=
+          ownerUserId) {
+        return null;
+      }
+      return store;
+    } catch (_) {
+      if (_resolvedDraftOwnerUserId == ownerUserId) {
+        _draftStoreFuture = null;
+      }
+      rethrow;
+    }
   }
 
   Future<void> _loadConnections() async {
@@ -181,22 +326,40 @@ class _UploaderScreenState extends State<UploaderScreen> {
           .map((result) => _platformFromApiValue(result.platform))
           .whereType<SocialPlatform>()
           .toSet();
+      final connectionDetails = <SocialPlatform, SocialConnectionResult>{};
+      for (final result in results.where((result) => result.connected)) {
+        final platform = _platformFromApiValue(result.platform);
+        if (platform != null) connectionDetails[platform] = result;
+      }
 
       setState(() {
+        final desiredPlatforms = {
+          ..._selectedPlatforms,
+          ..._draftUnavailablePlatforms,
+        };
         _connectedPlatforms
           ..clear()
           ..addAll(connected);
-        _selectedPlatforms.removeWhere(
-          (platform) => !_connectedPlatforms.contains(platform),
-        );
-        if (_selectedPlatforms.isEmpty) {
-          _selectedPlatforms.addAll(_connectedPlatforms.take(2));
-        }
+        _connectionDetails
+          ..clear()
+          ..addAll(connectionDetails);
+        _selectedPlatforms
+          ..clear()
+          ..addAll(desiredPlatforms.where(_connectedPlatforms.contains));
+        _draftUnavailablePlatforms
+          ..clear()
+          ..addAll(
+            desiredPlatforms.where(
+              (platform) => !_connectedPlatforms.contains(platform),
+            ),
+          );
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
+        _draftUnavailablePlatforms.addAll(_selectedPlatforms);
         _connectedPlatforms.clear();
+        _connectionDetails.clear();
         _selectedPlatforms.clear();
         _connectionsErrorMessage =
             'ตรวจสอบช่องทางที่เชื่อมต่อไม่สำเร็จ ลองใหม่อีกครั้ง';
@@ -215,6 +378,29 @@ class _UploaderScreenState extends State<UploaderScreen> {
       }
     }
     return null;
+  }
+
+  String? _socialConnectionIdentity(SocialConnectionResult connection) {
+    final displayName = connection.displayName?.trim() ?? '';
+    if (displayName.isNotEmpty) return displayName;
+    final externalAccountId = connection.externalAccountId?.trim() ?? '';
+    return externalAccountId.isEmpty ? null : externalAccountId;
+  }
+
+  SocialPlatform? get _selectedPlatformWithoutIdentity => _selectedPlatforms
+      .where(
+        (platform) =>
+            _connectionDetails[platform] == null ||
+            _socialConnectionIdentity(_connectionDetails[platform]!) == null,
+      )
+      .firstOrNull;
+
+  void _showMissingConnectionIdentityError() {
+    setState(() {
+      _errorMessage =
+          'ยังยืนยันบัญชีหรือเพจปลายทางไม่ได้ กรุณารีเฟรชช่องทางหรือเชื่อมต่อใหม่';
+      _successMessage = null;
+    });
   }
 
   Future<void> _openConnections() async {
@@ -259,6 +445,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
   @override
   void dispose() {
+    if (widget.draftStore == null) {
+      PostDeeAuthSessionStore.instance.removeListener(_handleDraftOwnerChanged);
+    }
     final cover = _coverResult;
     _coverResult = null;
     if (cover != null) {
@@ -399,7 +588,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
   }
 
   DateTime _scheduleDateFromToday(int daysFromToday) {
-    final now = DateTime.now();
+    final now = widget.now().toLocal();
     final today = DateTime(now.year, now.month, now.day);
 
     return today.add(Duration(days: daysFromToday));
@@ -822,6 +1011,35 @@ class _UploaderScreenState extends State<UploaderScreen> {
     }
   }
 
+  Future<bool> _watermarkEnabledForCurrentSelection() async {
+    final requested =
+        _activeDraftWatermarkEnabled ?? await _shouldApplyAutoWatermark();
+    return shouldApplyPostDeeWatermark(
+      requested: requested,
+      selectedPlatforms: {
+        ..._selectedPlatforms,
+        ..._draftUnavailablePlatforms,
+      },
+    );
+  }
+
+  String _platformSettingsError(SocialPlatform platform) {
+    switch (platform) {
+      case SocialPlatform.tiktok:
+        return 'ยังโพสต์ตรงไป TikTok ไม่ได้ เลือกส่งเป็นร่างก่อน';
+      case SocialPlatform.youtubeShorts:
+        return _platformSettings.youtubeValidationMessage ??
+            'ตั้งค่า YouTube ให้ครบก่อนโพสต์';
+      case SocialPlatform.facebookReels:
+        return 'เลือกว่าจะเผยแพร่หรือเก็บเป็นร่างบนเพจก่อน';
+      case SocialPlatform.instagramReels:
+        return 'ตั้งค่า Instagram ให้ครบก่อนโพสต์';
+      case SocialPlatform.shopeeVideo:
+      case SocialPlatform.lazadaVideo:
+        return 'ช่องทางนี้ยังไม่พร้อมให้โพสต์';
+    }
+  }
+
   Future<WatermarkedVideoResult> _applyAutoWatermark({
     required File inputFile,
     required String fileName,
@@ -861,6 +1079,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         return;
       }
 
+      final previousCover = _coverResult;
       setState(() {
         _selectedVideoName = fileName;
         _coverResult = null;
@@ -873,6 +1092,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = null;
         _successMessage = null;
       });
+      if (previousCover != null) {
+        unawaited(previousCover.cleanupTemporaryFiles());
+      }
       unawaited(_analytics.logVideoSelected(
         hasDimensions: video.width != null && video.height != null,
       ));
@@ -887,10 +1109,556 @@ class _UploaderScreenState extends State<UploaderScreen> {
     }
   }
 
+  Future<void> _saveDraft() async {
+    await _persistCurrentDraft(showSavedMessage: true);
+  }
+
+  Future<void> _startNewSubmissionAttempt() async {
+    if (!_requiresNewSubmissionAttempt ||
+        _isSavingDraft ||
+        _isSubmitting ||
+        _isGeneratingCaption) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('เริ่มรายการโพสต์ใหม่?'),
+        content: const Text(
+          'กรุณาตรวจหน้ารายการโพสต์และแพลตฟอร์มปลายทางก่อน '
+          'เพราะรายการเดิมอาจถูกส่งไปแล้ว การเริ่มรายการใหม่อาจโพสต์ซ้ำได้',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            key: const ValueKey('publish-new-attempt-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('ตรวจแล้ว เริ่มรายการใหม่'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final previousDraftId = _activeDraftId;
+    final previousCreatedAt = _activeDraftCreatedAt;
+    setState(() {
+      _activeDraftId = null;
+      _activeDraftCreatedAt = null;
+    });
+    final saved = await _persistCurrentDraft(showSavedMessage: false);
+    if (!mounted) return;
+    if (saved == null) {
+      setState(() {
+        _activeDraftId = previousDraftId;
+        _activeDraftCreatedAt = previousCreatedAt;
+      });
+      return;
+    }
+    setState(() {
+      _successMessage =
+          'สร้างร่างสำหรับรายการโพสต์ใหม่แล้ว กรุณาตรวจทานก่อนโพสต์';
+    });
+  }
+
+  Future<PublishDraft?> _persistCurrentDraft({
+    required bool showSavedMessage,
+  }) async {
+    if (_isSavingDraft || _isSubmitting || _isGeneratingCaption) return null;
+    _isSavingDraft = true;
+    if (mounted) {
+      setState(() {
+        _errorMessage = null;
+        _successMessage = null;
+      });
+    }
+    try {
+      return await _persistCurrentDraftWhileLocked(
+        showSavedMessage: showSavedMessage,
+      );
+    } on FileSystemException {
+      if (!mounted) return null;
+      setState(() {
+        _errorMessage = 'บันทึกร่างไม่สำเร็จ ตรวจสอบพื้นที่ว่างในเครื่อง';
+      });
+      return null;
+    } on PublishDraftValidationException catch (error) {
+      if (!mounted) return null;
+      setState(() => _errorMessage = error.message);
+      return null;
+    } catch (_) {
+      if (!mounted) return null;
+      setState(() => _errorMessage = 'บันทึกร่างในเครื่องไม่สำเร็จ');
+      return null;
+    } finally {
+      if (mounted) setState(() => _isSavingDraft = false);
+    }
+  }
+
+  Future<PublishDraft?> _persistCurrentDraftWhileLocked({
+    required bool showSavedMessage,
+  }) async {
+    final ownerUserIdAtStart = widget.draftStore == null
+        ? PostDeeAuthSessionStore.instance.session.stableUserId
+        : null;
+    final draftGenerationAtStart = _draftLoadGeneration;
+    final store = await _resolveDraftStore();
+    if (!_draftOperationStillOwned(
+      ownerUserId: ownerUserIdAtStart,
+      generation: draftGenerationAtStart,
+    )) {
+      return null;
+    }
+    if (store == null) {
+      setState(() {
+        _errorMessage = 'ยังเปิดพื้นที่เก็บฉบับร่างในเครื่องไม่ได้';
+        _successMessage = null;
+      });
+      return null;
+    }
+
+    final localPath = _localFilePathController.text.trim();
+    final videoFile = localPath.isEmpty ? null : File(localPath);
+    if (videoFile == null ||
+        !videoFile.existsSync() ||
+        videoFile.lengthSync() <= 0) {
+      setState(() {
+        _errorMessage = 'เลือกวิดีโอจากเครื่องก่อนบันทึกร่าง';
+        _successMessage = null;
+      });
+      return null;
+    }
+
+    final rawSchedule = _scheduledAtController.text.trim();
+    final scheduledAt = _readScheduledAt();
+    if (rawSchedule.isNotEmpty && scheduledAt == null) {
+      setState(() {
+        _errorMessage = 'เวลาโพสต์ไม่ถูกต้อง กรุณาเลือกใหม่';
+        _successMessage = null;
+      });
+      return null;
+    }
+
+    final now = widget.now().toUtc();
+    final draftId = _activeDraftId ?? 'draft-${now.microsecondsSinceEpoch}';
+    final createdAt = _activeDraftCreatedAt ?? now;
+    final cover = _coverResult;
+    final coverLease = cover?.retainTemporaryFiles();
+
+    try {
+      final watermarkEnabled = await _watermarkEnabledForCurrentSelection();
+      final desiredPlatforms = {
+        ..._selectedPlatforms,
+        ..._draftUnavailablePlatforms,
+      };
+      final saved = await store.saveDraft(
+        PublishDraftSaveRequest(
+          id: draftId,
+          createdAt: createdAt,
+          updatedAt: now.isBefore(createdAt) ? createdAt : now,
+          videoFile: videoFile,
+          videoName: (_selectedVideoName ?? '').trim().isNotEmpty
+              ? _selectedVideoName!.trim()
+              : _readFileNameFromPath(localPath),
+          videoSizeBytes:
+              _readPositiveInt(_sizeBytesController) ?? videoFile.lengthSync(),
+          videoWidth: _readPositiveInt(_widthController),
+          videoHeight: _readPositiveInt(_heightController),
+          caption: _captionController.text,
+          aiGuidance: _aiGuidanceController.text,
+          watermarkEnabled: watermarkEnabled,
+          platformApiValues:
+              desiredPlatforms.map((platform) => platform.apiValue).toSet(),
+          platformSettings: _platformSettings,
+          scheduledAt: scheduledAt,
+          coverImageFile: cover?.imageFile,
+          coverDesign: cover?.design,
+          coverDurationMs: cover?.durationMs,
+          coverSourceKind: cover?.sourceKind ?? CoverSourceKind.videoFrame,
+          coverSourceImageFile: cover?.sourceImageFile,
+          coverSourceImageName: cover?.sourceImageName,
+        ),
+      );
+      if (!_draftOperationStillOwned(
+        ownerUserId: ownerUserIdAtStart,
+        generation: draftGenerationAtStart,
+      )) {
+        return null;
+      }
+      final drafts = await store.listDrafts();
+      if (!_draftOperationStillOwned(
+        ownerUserId: ownerUserIdAtStart,
+        generation: draftGenerationAtStart,
+      )) {
+        return null;
+      }
+      if (!mounted) return null;
+      final persistedCover = saved.cover?.toEditorResult();
+      setState(() {
+        _activeDraftId = saved.id;
+        _activeDraftCreatedAt = saved.createdAt;
+        _activeDraftWatermarkEnabled = saved.watermarkEnabled;
+        _platformSettings = saved.platformSettings;
+        _selectedVideoName = saved.videoName;
+        _localFilePathController.text = saved.videoPath;
+        _fileNameController.text = saved.videoName;
+        _sizeBytesController.text = saved.videoSizeBytes.toString();
+        _widthController.text = saved.videoWidth?.toString() ?? '';
+        _heightController.text = saved.videoHeight?.toString() ?? '';
+        _coverResult = persistedCover;
+        _drafts = drafts;
+        _successMessage = showSavedMessage
+            ? 'บันทึกร่างในเครื่องแล้ว · ยังไม่อัปโหลด ไม่โพสต์ และไม่ใช้โควตา'
+            : null;
+      });
+      if (cover != null && !identical(cover, persistedCover)) {
+        unawaited(cover.cleanupTemporaryFiles());
+      }
+      return saved;
+    } finally {
+      await coverLease?.release();
+    }
+  }
+
+  bool _draftBelongsToCurrentSession(PublishDraft draft) {
+    if (widget.draftStore != null) return true;
+    final ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
+    return ownerUserId != null &&
+        ownerUserId == draft.ownerUserId &&
+        ownerUserId == _resolvedDraftOwnerUserId;
+  }
+
+  bool _draftOperationStillOwned({
+    required String? ownerUserId,
+    required int generation,
+  }) {
+    if (widget.draftStore != null) return true;
+    return ownerUserId != null &&
+        generation == _draftLoadGeneration &&
+        PostDeeAuthSessionStore.instance.session.stableUserId == ownerUserId &&
+        _resolvedDraftOwnerUserId == ownerUserId;
+  }
+
+  void _showDraftOwnerChangedError() {
+    if (!mounted) return;
+    setState(() {
+      _errorMessage = 'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายการฉบับร่างใหม่';
+      _successMessage = null;
+    });
+  }
+
+  CoverEditorResult? _clearActiveDraftFormState() {
+    final previousCover = _coverResult;
+    final activeDraftId = _activeDraftId;
+    if (activeDraftId != null) {
+      _blockedSubmissionDraftIds.remove(activeDraftId);
+    }
+    _activeDraftId = null;
+    _activeDraftCreatedAt = null;
+    _activeDraftWatermarkEnabled = null;
+    _selectedVideoName = null;
+    _coverResult = null;
+    _captionController.clear();
+    _aiGuidanceController.clear();
+    _fileNameController.clear();
+    _localFilePathController.clear();
+    _sizeBytesController.clear();
+    _widthController.clear();
+    _heightController.clear();
+    _scheduledAtController.clear();
+    _selectedScheduleDate = null;
+    _selectedScheduleTime = null;
+    _selectedPlatforms.clear();
+    _draftUnavailablePlatforms.clear();
+    _platformSettings = const PlatformPublishSettings();
+    return previousCover;
+  }
+
+  Future<void> _restoreDraft(PublishDraft draft) async {
+    if (!_draftBelongsToCurrentSession(draft)) {
+      _showDraftOwnerChangedError();
+      return;
+    }
+    final video = File(draft.videoPath);
+    if (!video.existsSync() || video.lengthSync() <= 0) {
+      setState(() {
+        _errorMessage = 'ไม่พบวิดีโอของฉบับร่างนี้ในเครื่อง';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    final previousCover = _coverResult;
+    final desiredPlatforms = draft.platformApiValues
+        .map(_platformFromApiValue)
+        .whereType<SocialPlatform>()
+        .toSet();
+    final localSchedule = draft.scheduledAt?.toLocal();
+    final scheduleExpired = draft.scheduledAt != null &&
+        !draft.scheduledAt!.isAfter(widget.now().toUtc());
+
+    setState(() {
+      _activeDraftId = draft.id;
+      _activeDraftCreatedAt = draft.createdAt;
+      _activeDraftWatermarkEnabled = draft.watermarkEnabled;
+      _selectedVideoName = draft.videoName;
+      _localFilePathController.text = draft.videoPath;
+      _fileNameController.text = draft.videoName;
+      _sizeBytesController.text = draft.videoSizeBytes.toString();
+      _widthController.text = draft.videoWidth?.toString() ?? '';
+      _heightController.text = draft.videoHeight?.toString() ?? '';
+      _captionController.text = draft.caption;
+      _aiGuidanceController.text = draft.aiGuidance;
+      _selectedPlatforms
+        ..clear()
+        ..addAll(desiredPlatforms.where(_connectedPlatforms.contains));
+      _draftUnavailablePlatforms
+        ..clear()
+        ..addAll(
+          desiredPlatforms.where(
+            (platform) => !_connectedPlatforms.contains(platform),
+          ),
+        );
+      _platformSettings = draft.platformSettings.copyWith(
+        youtubeCommunityGuidelinesCertified: false,
+      );
+      _coverResult = draft.cover?.toEditorResult();
+      _scheduledAtController.text =
+          draft.scheduledAt?.toUtc().toIso8601String() ?? '';
+      _selectedScheduleDate = localSchedule == null
+          ? null
+          : DateTime(
+              localSchedule.year, localSchedule.month, localSchedule.day);
+      _selectedScheduleTime = localSchedule == null
+          ? null
+          : TimeOfDay(hour: localSchedule.hour, minute: localSchedule.minute);
+      _successMessage = 'เปิดฉบับร่างแล้ว';
+      _errorMessage = scheduleExpired
+          ? 'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลยก่อนยืนยัน'
+          : _draftUnavailablePlatforms.isEmpty
+              ? null
+              : 'บางช่องทางในร่างยังไม่ได้เชื่อมต่อ กรุณาเชื่อมใหม่ก่อนโพสต์';
+    });
+    if (previousCover != null && !identical(previousCover, _coverResult)) {
+      unawaited(previousCover.cleanupTemporaryFiles());
+    }
+  }
+
+  Future<void> _deleteDraft(PublishDraft draft) async {
+    final ownerUserIdAtStart = widget.draftStore == null
+        ? PostDeeAuthSessionStore.instance.session.stableUserId
+        : null;
+    final draftGenerationAtStart = _draftLoadGeneration;
+    if (!_draftBelongsToCurrentSession(draft)) {
+      _showDraftOwnerChangedError();
+      return;
+    }
+    final store = await _resolveDraftStore();
+    if (!_draftOperationStillOwned(
+      ownerUserId: ownerUserIdAtStart,
+      generation: draftGenerationAtStart,
+    )) {
+      _showDraftOwnerChangedError();
+      return;
+    }
+    if (store == null || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ลบฉบับร่างนี้?'),
+        content: const Text(
+          'วิดีโอและหน้าปกที่เก็บไว้กับฉบับร่างนี้จะถูกลบจากพื้นที่ของแอป',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            key: const ValueKey('publish-draft-delete-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('ลบร่าง'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!_draftOperationStillOwned(
+      ownerUserId: ownerUserIdAtStart,
+      generation: draftGenerationAtStart,
+    )) {
+      _showDraftOwnerChangedError();
+      return;
+    }
+    final deleted = await _deleteDraftAndConfirmAbsent(store, draft.id);
+    if (!deleted) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'ลบฉบับร่างไม่สำเร็จ');
+      return;
+    }
+    if (!_draftOperationStillOwned(
+      ownerUserId: ownerUserIdAtStart,
+      generation: draftGenerationAtStart,
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    CoverEditorResult? deletedDraftCover;
+    setState(() {
+      _drafts = _drafts.where((candidate) => candidate.id != draft.id).toList();
+      if (_activeDraftId == draft.id) {
+        deletedDraftCover = _clearActiveDraftFormState();
+      }
+      _errorMessage = null;
+      _successMessage = 'ลบฉบับร่างแล้ว';
+    });
+    if (deletedDraftCover != null) {
+      unawaited(deletedDraftCover!.cleanupTemporaryFiles());
+    }
+
+    try {
+      final drafts = await store.listDrafts();
+      if (mounted &&
+          _draftOperationStillOwned(
+            ownerUserId: ownerUserIdAtStart,
+            generation: draftGenerationAtStart,
+          )) {
+        setState(() => _drafts = drafts);
+      }
+    } catch (_) {
+      // The requested draft is already gone and the local list was updated.
+      // A later screen refresh can retry loading the remaining drafts.
+    }
+  }
+
+  Future<bool> _deleteDraftAndConfirmAbsent(
+    PublishDraftStore store,
+    String draftId,
+  ) async {
+    try {
+      await store.deleteDraft(draftId);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _openDrafts() async {
+    if (_isLoadingDrafts) return;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheetContext) {
+          _draftSheetContext = sheetContext;
+          return StatefulBuilder(
+            builder: (context, setSheetState) => SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'ฉบับร่างในเครื่อง',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'ยังไม่อัปโหลด ไม่ส่งไปแพลตฟอร์ม และไม่ใช้โควตา',
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'แอปคัดลอกวิดีโอและหน้าปกไว้ในพื้นที่แอปของเครื่องนี้ '
+                      'ร่างไม่ซิงก์ข้ามอุปกรณ์ และอาจรวมอยู่ในข้อมูลสำรองของระบบ',
+                      style: TextStyle(fontSize: 11.5),
+                    ),
+                    const SizedBox(height: 16),
+                    if (_drafts.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 28),
+                        child: Center(child: Text('ยังไม่มีฉบับร่างในเครื่อง')),
+                      )
+                    else
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: _drafts.length,
+                          separatorBuilder: (_, __) => const Divider(),
+                          itemBuilder: (context, index) {
+                            final draft = _drafts[index];
+                            return ListTile(
+                              key: ValueKey('publish-draft-${draft.id}'),
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.video_file_outlined),
+                              title: Text(
+                                draft.caption.trim().isEmpty
+                                    ? draft.videoName
+                                    : draft.caption.trim(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                '${draft.platformApiValues.length} ช่องทาง · เก็บในเครื่อง',
+                              ),
+                              trailing: IconButton(
+                                key: ValueKey(
+                                  'publish-draft-delete-${draft.id}',
+                                ),
+                                tooltip: 'ลบฉบับร่าง',
+                                onPressed: () async {
+                                  await _deleteDraft(draft);
+                                  if (mounted) setSheetState(() {});
+                                },
+                                icon: const Icon(Icons.delete_outline),
+                              ),
+                              onTap: () async {
+                                Navigator.of(sheetContext).pop();
+                                await _restoreDraft(draft);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } finally {
+      _draftSheetContext = null;
+    }
+  }
+
   /// Design screen #7: show the review summary before actually posting. When
   /// no clip is selected yet, skip straight to [_createPost] so its validation
   /// message shows instead of reviewing an empty post.
   Future<void> _reviewThenPost() async {
+    if (_isPreparingReview ||
+        _isSubmitting ||
+        _isSavingDraft ||
+        _isGeneratingCaption ||
+        _requiresNewSubmissionAttempt) {
+      return;
+    }
+    _isPreparingReview = true;
+    if (mounted) setState(() {});
+    try {
+      await _reviewThenPostWhileLocked();
+    } finally {
+      _isPreparingReview = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _reviewThenPostWhileLocked() async {
     if (_isLoadingConnections) {
       setState(() {
         _errorMessage = 'กำลังตรวจสอบช่องทางที่เชื่อมต่อ กรุณารอสักครู่';
@@ -899,22 +1667,42 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return;
     }
 
+    if (_draftUnavailablePlatforms.isNotEmpty) {
+      setState(() {
+        _errorMessage = 'เชื่อมช่องทางที่เก็บไว้ในร่างให้ครบก่อนโพสต์: '
+            '${_draftUnavailablePlatforms.map((platform) => platform.label).join(', ')}';
+        _successMessage = null;
+      });
+      return;
+    }
+
     if (_selectedPlatforms.isEmpty) {
       final hasConnectionError = _connectionsErrorMessage != null;
+      final hasConnectedPlatforms = _connectedPlatforms.isNotEmpty;
       final shouldContinue = await showPostDeeStatusSheet(
         context,
         data: PostDeeStatusSheetData(
           icon: hasConnectionError
               ? Icons.cloud_off_rounded
-              : Icons.link_off_rounded,
+              : hasConnectedPlatforms
+                  ? Icons.touch_app_outlined
+                  : Icons.link_off_rounded,
           iconColor: const Color(0xFFF59E0B),
           iconTint: const Color(0x24F59E0B),
           title: hasConnectionError
               ? 'ตรวจสอบช่องทางไม่ได้'
-              : 'ยังไม่ได้เชื่อมช่องทาง',
+              : hasConnectedPlatforms
+                  ? 'ยังไม่ได้เลือกช่องทาง'
+                  : 'ยังไม่ได้เชื่อมช่องทาง',
           body: _connectionsErrorMessage ??
-              'ต้องเชื่อมอย่างน้อย 1 ช่องทางก่อนจึงจะเริ่มโพสต์ได้',
-          primaryLabel: hasConnectionError ? 'ลองใหม่' : 'ไปเชื่อมช่องทาง',
+              (hasConnectedPlatforms
+                  ? 'เลือกอย่างน้อย 1 ช่องทางก่อนเริ่มโพสต์'
+                  : 'ต้องเชื่อมอย่างน้อย 1 ช่องทางก่อนจึงจะเริ่มโพสต์ได้'),
+          primaryLabel: hasConnectionError
+              ? 'ลองใหม่'
+              : hasConnectedPlatforms
+                  ? 'เลือกทั้งหมด'
+                  : 'ไปเชื่อมช่องทาง',
           secondaryLabel: 'ไว้ก่อน',
         ),
       );
@@ -922,10 +1710,17 @@ class _UploaderScreenState extends State<UploaderScreen> {
       if (shouldContinue == true && mounted) {
         if (hasConnectionError) {
           await _loadConnections();
+        } else if (hasConnectedPlatforms) {
+          _selectAllConnectedPlatforms();
         } else {
           await _openConnections();
         }
       }
+      return;
+    }
+
+    if (_selectedPlatformWithoutIdentity != null) {
+      _showMissingConnectionIdentityError();
       return;
     }
 
@@ -946,7 +1741,32 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return;
     }
 
-    final watermarkEnabled = await _shouldApplyAutoWatermark();
+    final scheduledAt = _readScheduledAt();
+    if (_scheduledAtController.text.trim().isNotEmpty && scheduledAt == null) {
+      setState(() {
+        _errorMessage = 'เวลาตั้งโพสต์ไม่ถูกต้อง กรุณาเลือกใหม่';
+        _successMessage = null;
+      });
+      return;
+    }
+    final now = widget.now();
+    if (scheduledAt != null && !scheduledAt.isAfter(now)) {
+      setState(() {
+        _errorMessage = 'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลย';
+        _successMessage = null;
+      });
+      return;
+    }
+    if (scheduledAt != null &&
+        !isPostScheduleWithinLimit(scheduledAt: scheduledAt, now: now)) {
+      setState(() {
+        _errorMessage = 'ตั้งเวลาโพสต์ล่วงหน้าได้สูงสุด 30 วัน';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    final watermarkEnabled = await _watermarkEnabledForCurrentSelection();
     if (!mounted) return;
 
     final confirmed = await Navigator.of(context).push<bool>(
@@ -958,6 +1778,12 @@ class _UploaderScreenState extends State<UploaderScreen> {
               SocialPlatform.values.where(_selectedPlatforms.contains).toList(),
           scheduledAt: _readScheduledAt(),
           watermarkEnabled: watermarkEnabled,
+          platformSettings: _platformSettings,
+          connectionDisplayNames: {
+            for (final entry in _connectionDetails.entries)
+              if (_socialConnectionIdentity(entry.value) case final name?)
+                entry.key: name,
+          },
           coverResult: _coverResult,
         ),
       ),
@@ -967,6 +1793,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
     final selectedPlatforms =
         SocialPlatform.values.where(_selectedPlatforms.contains).toList();
+
     final action = await Navigator.of(context).push<PublishFlowAction>(
       MaterialPageRoute<PublishFlowAction>(
         builder: (context) => PublishFlowScreen(
@@ -995,21 +1822,54 @@ class _UploaderScreenState extends State<UploaderScreen> {
   }
 
   Future<QueuedPostResult?> _createPost() async {
+    if (_isPreparingSubmission ||
+        _isSubmitting ||
+        _isGeneratingCaption ||
+        _requiresNewSubmissionAttempt) {
+      return null;
+    }
+    _isPreparingSubmission = true;
+    if (mounted) setState(() {});
+    try {
+      return await _createPostWhileLocked();
+    } finally {
+      _isPreparingSubmission = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<QueuedPostResult?> _createPostWhileLocked() async {
     _pendingStatusSheet = null;
     _pickVideoAfterStatus = false;
     _pendingInlineError = null;
     final caption = _captionController.text.trim();
-    final localFilePath = _localFilePathController.text.trim();
-    final localVideoFile = localFilePath.isEmpty ? null : File(localFilePath);
-    final fileName = _fileNameController.text.trim().isNotEmpty
+    var localFilePath = _localFilePathController.text.trim();
+    var localVideoFile = localFilePath.isEmpty ? null : File(localFilePath);
+    var fileName = _fileNameController.text.trim().isNotEmpty
         ? _fileNameController.text.trim()
         : localVideoFile == null
             ? ''
             : _readFileNameFromPath(localFilePath);
     var sizeBytes = _readPositiveInt(_sizeBytesController);
-    final width = _readPositiveInt(_widthController);
-    final height = _readPositiveInt(_heightController);
+    var width = _readPositiveInt(_widthController);
+    var height = _readPositiveInt(_heightController);
     final scheduledAt = _readScheduledAt();
+
+    final invalidPlatform = _selectedPlatforms
+        .where((platform) => !_platformSettings.canSubmit(platform))
+        .firstOrNull;
+    if (invalidPlatform != null) {
+      setState(() {
+        _errorMessage = _platformSettingsError(invalidPlatform);
+        _successMessage = null;
+      });
+      return null;
+    }
+
+    if (_selectedPlatformWithoutIdentity != null) {
+      _showMissingConnectionIdentityError();
+      return null;
+    }
 
     if (localVideoFile == null) {
       setState(() {
@@ -1094,6 +1954,47 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return null;
     }
 
+    // Persist the complete submission locally before the first remote side
+    // effect. If the app is killed after the server commits but before the
+    // response arrives, reopening this draft reuses the same request ID and
+    // cannot create a second post/quota charge.
+    final submittedDraft = await _persistCurrentDraft(showSavedMessage: false);
+    if (submittedDraft == null) return null;
+    final submittedDraftId = submittedDraft.id;
+    final submittedDraftOwnerUserId = widget.draftStore == null
+        ? PostDeeAuthSessionStore.instance.session.stableUserId
+        : null;
+    final submittedDraftGeneration = _draftLoadGeneration;
+    final submittedDraftStore = await _resolveDraftStore();
+    if (submittedDraftStore == null ||
+        _activeDraftId != submittedDraftId ||
+        !_draftOperationStillOwned(
+          ownerUserId: submittedDraftOwnerUserId,
+          generation: submittedDraftGeneration,
+        )) {
+      _showDraftOwnerChangedError();
+      return null;
+    }
+    bool submissionStillOwned() =>
+        _activeDraftId == submittedDraftId &&
+        _draftOperationStillOwned(
+          ownerUserId: submittedDraftOwnerUserId,
+          generation: submittedDraftGeneration,
+        );
+
+    void ensureSubmissionStillOwned() {
+      if (!submissionStillOwned()) {
+        throw const _PublishOwnerChangedException();
+      }
+    }
+
+    localFilePath = submittedDraft.videoPath;
+    localVideoFile = File(localFilePath);
+    fileName = submittedDraft.videoName;
+    sizeBytes = submittedDraft.videoSizeBytes;
+    width = submittedDraft.videoWidth;
+    height = submittedDraft.videoHeight;
+
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
@@ -1101,14 +2002,17 @@ class _UploaderScreenState extends State<UploaderScreen> {
     });
 
     var didUploadVideo = false;
-    WatermarkedVideoResult? watermarkedVideoForCleanup;
+    WatermarkedVideoResult? generatedWatermarkedVideo;
 
     try {
       final checkPublishingReadiness = widget.checkPublishingReadiness ??
           _apiClient.checkPublishingReadiness;
+      ensureSubmissionStillOwned();
       await checkPublishingReadiness();
+      ensureSubmissionStillOwned();
 
       final subscription = await _loadSubscription();
+      ensureSubmissionStillOwned();
 
       if (scheduledAt != null) {
         if (!subscription.canSchedule) {
@@ -1139,7 +2043,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
       var uploadFileName = fileName;
       var uploadSizeBytes = sizeBytes;
       var didApplyWatermark = false;
-      final shouldApplyWatermark = await _shouldApplyAutoWatermark();
+      final shouldApplyWatermark = await _watermarkEnabledForCurrentSelection();
+      ensureSubmissionStillOwned();
       unawaited(_analytics.logPublishStarted(
         platformCount: _selectedPlatforms.length,
         isScheduled: scheduledAt != null,
@@ -1159,43 +2064,62 @@ class _UploaderScreenState extends State<UploaderScreen> {
           inputFile: localVideoFile,
           fileName: fileName,
         );
+        generatedWatermarkedVideo = watermarkedVideo;
+        ensureSubmissionStillOwned();
 
-        watermarkedVideoForCleanup = watermarkedVideo;
         uploadVideoFileForRequest = watermarkedVideo.file;
         uploadFileName = watermarkedVideo.fileName;
         uploadSizeBytes = watermarkedVideo.sizeBytes;
         didApplyWatermark = true;
       }
 
-      final createUpload = widget.createUpload ?? _apiClient.createUpload;
-      final uploadVideoFile =
+      final rawCreateUpload = widget.createUpload ?? _apiClient.createUpload;
+      final rawUploadVideoFile =
           widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-      late final UploadResult upload;
-      try {
-        upload = await createAndUploadFileWithRetry(
-          request: CreateUploadRequest(
-            fileName: uploadFileName,
-            contentType: 'video/mp4',
-            sizeBytes: uploadSizeBytes,
-            width: width,
-            height: height,
-          ),
-          file: uploadVideoFileForRequest,
-          createUpload: createUpload,
-          uploadFile: uploadVideoFile,
-          onRetry: () {
-            if (mounted) {
-              setState(() {
-                _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
-              });
-            }
-          },
-        );
-      } finally {
-        await watermarkedVideoForCleanup?.cleanupTemporaryFiles();
-        watermarkedVideoForCleanup = null;
+      Future<UploadResult> createUpload(CreateUploadRequest request) async {
+        ensureSubmissionStillOwned();
+        final result = await rawCreateUpload(request);
+        ensureSubmissionStillOwned();
+        return result;
       }
+
+      Future<void> uploadVideoFile(UploadResult upload, File file) async {
+        ensureSubmissionStillOwned();
+        await rawUploadVideoFile(upload, file);
+        ensureSubmissionStillOwned();
+      }
+
+      final upload = await createAndUploadFileWithRetry(
+        request: CreateUploadRequest(
+          fileName: uploadFileName,
+          contentType: 'video/mp4',
+          sizeBytes: uploadSizeBytes,
+          width: width,
+          height: height,
+        ),
+        file: uploadVideoFileForRequest,
+        createUpload: createUpload,
+        uploadFile: uploadVideoFile,
+        onRetry: () {
+          if (mounted) {
+            setState(() {
+              _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+            });
+          }
+        },
+      );
+      ensureSubmissionStillOwned();
       didUploadVideo = true;
+      final uploadedWatermarkedVideo = generatedWatermarkedVideo;
+      if (uploadedWatermarkedVideo != null) {
+        try {
+          await uploadedWatermarkedVideo.cleanupTemporaryFiles();
+          generatedWatermarkedVideo = null;
+        } catch (_) {
+          // The final cleanup block retries. Upload has already completed, so
+          // a local cleanup problem must not create an accidental repost.
+        }
+      }
       String? coverImageS3Key;
       var selectedCover = _coverResult;
       final shouldUploadCoverImage = selectedCover != null &&
@@ -1209,6 +2133,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
           videoFile: localVideoFile,
           fileName: fileName,
         );
+        ensureSubmissionStillOwned();
         selectedCover = cover;
         if (mounted) {
           setState(() {
@@ -1235,17 +2160,79 @@ class _UploaderScreenState extends State<UploaderScreen> {
         }
       }
       final createPost = widget.createPost ?? _apiClient.createPost;
+      ensureSubmissionStillOwned();
       final post = await createPost(
         CreatePostRequest(
+          clientRequestId: submittedDraft.submissionRequestId,
           caption: caption,
           videoS3Key: upload.videoS3Key,
           platforms:
               _selectedPlatforms.map((platform) => platform.apiValue).toList(),
+          platformSettings: submittedDraft.platformSettings.toApiJson(
+            selectedPlatforms: Set<SocialPlatform>.from(_selectedPlatforms),
+          ),
           scheduledAt: scheduledAt,
           coverImageS3Key: coverImageS3Key,
           coverFrameTimeMs: selectedCover?.coverFrameTimeMs,
         ),
       );
+      ensureSubmissionStillOwned();
+      final postStatus = post.status.toUpperCase();
+      const acceptedPostStatuses = {
+        'QUEUED',
+        'PUBLISHING',
+        'PUBLISHED',
+        'PARTIAL_PUBLISHED',
+      };
+      if (!acceptedPostStatuses.contains(postStatus)) {
+        _setUploadStatus(
+          'ระบบตอบสถานะโพสต์ที่ยังยืนยันไม่ได้ กรุณาตรวจรายการโพสต์ก่อนลองใหม่',
+        );
+        return null;
+      }
+      _blockedSubmissionDraftIds.remove(submittedDraftId);
+
+      var draftCleanupWarning = '';
+      if (_activeDraftId == submittedDraftId &&
+          _draftOperationStillOwned(
+            ownerUserId: submittedDraftOwnerUserId,
+            generation: submittedDraftGeneration,
+          )) {
+        final deleted = await _deleteDraftAndConfirmAbsent(
+          submittedDraftStore,
+          submittedDraftId,
+        );
+        if (deleted) {
+          if (_activeDraftId == submittedDraftId &&
+              _draftOperationStillOwned(
+                ownerUserId: submittedDraftOwnerUserId,
+                generation: submittedDraftGeneration,
+              ) &&
+              mounted) {
+            setState(() {
+              _drafts = _drafts
+                  .where((candidate) => candidate.id != submittedDraftId)
+                  .toList();
+              _clearActiveDraftFormState();
+            });
+          }
+          try {
+            final drafts = await submittedDraftStore.listDrafts();
+            if (mounted &&
+                _draftOperationStillOwned(
+                  ownerUserId: submittedDraftOwnerUserId,
+                  generation: submittedDraftGeneration,
+                )) {
+              setState(() => _drafts = drafts);
+            }
+          } catch (_) {
+            draftCleanupWarning = ' · ลบร่างแล้ว แต่รีเฟรชรายการร่างไม่สำเร็จ';
+          }
+        } else {
+          draftCleanupWarning =
+              ' · โพสต์เข้าคิวแล้ว แต่ลบร่างในเครื่องไม่สำเร็จ';
+        }
+      }
 
       if (identical(_coverResult, selectedCover)) {
         if (mounted) {
@@ -1267,16 +2254,26 @@ class _UploaderScreenState extends State<UploaderScreen> {
         return null;
       }
 
-      if (scheduledAt != null) {
+      if (scheduledAt != null && postStatus == 'QUEUED') {
         widget.onScheduledPostCreated?.call(post);
       }
 
       setState(() {
         final watermarkText = didApplyWatermark ? 'ใส่ลายน้ำแล้ว · ' : '';
+        final replayText = post.idempotentReplay ? 'พบรายการเดิม · ' : '';
+        final statusText = switch (postStatus) {
+          'PUBLISHING' => 'กำลังส่ง',
+          'PUBLISHED' => 'ส่งสำเร็จ',
+          'PARTIAL_PUBLISHED' => 'ส่งสำเร็จเพียงบางช่องทาง',
+          _ => 'รับรายการ ${post.platforms.length} ช่องทางแล้ว กำลังส่ง',
+        };
         _successMessage =
-            '$watermarkTextจัดคิวโพสต์ ${post.platforms.length} แพลตฟอร์มแล้ว: ${post.id}';
+            '$watermarkText$replayText$statusText: ${post.id}$draftCleanupWarning';
       });
       return post;
+    } on _PublishOwnerChangedException {
+      _showDraftOwnerChangedError();
+      return null;
     } on CoverImageException catch (error) {
       unawaited(_analytics.logPublishFailed(reason: 'cover'));
       if (!mounted) {
@@ -1312,6 +2309,14 @@ class _UploaderScreenState extends State<UploaderScreen> {
       });
       if (isPublishingUnavailable(error)) {
         _setPublishingUnavailableStatus(videoWasUploaded: didUploadVideo);
+      } else if (error.code == 'IDEMPOTENT_POST_FAILED' ||
+          error.code == 'IDEMPOTENCY_KEY_REUSED') {
+        setState(() => _blockedSubmissionDraftIds.add(submittedDraftId));
+        _setUploadStatus(
+          error.code == 'IDEMPOTENT_POST_FAILED'
+              ? 'รายการโพสต์เดิมจบด้วยสถานะล้มเหลว ร่างยังอยู่ในเครื่อง กรุณาตรวจปลายทางก่อนเริ่มรายการโพสต์ใหม่'
+              : 'ข้อมูลในร่างเปลี่ยนจากคำขอเดิม ร่างยังอยู่ในเครื่อง กรุณาตรวจปลายทางก่อนเริ่มรายการโพสต์ใหม่',
+        );
       } else {
         _setUploadStatus(error.message);
       }
@@ -1341,7 +2346,19 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _setUploadStatus('เกิดข้อผิดพลาดระหว่างสร้างโพสต์');
       return null;
     } finally {
-      await watermarkedVideoForCleanup?.cleanupTemporaryFiles();
+      final watermarkedVideo = generatedWatermarkedVideo;
+      if (watermarkedVideo != null) {
+        try {
+          await watermarkedVideo.cleanupTemporaryFiles();
+        } catch (_) {
+          if (mounted) {
+            setState(() {
+              _errorMessage ??=
+                  'ล้างไฟล์วิดีโอชั่วคราวไม่สำเร็จ กรุณาตรวจพื้นที่ว่างในเครื่อง';
+            });
+          }
+        }
+      }
       if (mounted) {
         setState(() {
           _isSubmitting = false;
@@ -1403,9 +2420,41 @@ class _UploaderScreenState extends State<UploaderScreen> {
     setState(() {
       if (isSelected && _connectedPlatforms.contains(platform)) {
         _selectedPlatforms.add(platform);
+        _draftUnavailablePlatforms.remove(platform);
       } else {
         _selectedPlatforms.remove(platform);
+        _draftUnavailablePlatforms.remove(platform);
       }
+    });
+  }
+
+  Future<void> _openPlatformSettings(SocialPlatform platform) async {
+    final next = await showModalBottomSheet<PlatformPublishSettings>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => _PlatformSettingsSheet(
+        platform: platform,
+        initialSettings: _platformSettings,
+        connection: _connectionDetails[platform],
+      ),
+    );
+    if (!mounted || next == null) return;
+    setState(() => _platformSettings = next);
+  }
+
+  void _selectAllConnectedPlatforms() {
+    setState(() {
+      _selectedPlatforms
+        ..clear()
+        ..addAll(_connectedPlatforms);
+    });
+  }
+
+  void _clearSelectedPlatforms() {
+    setState(() {
+      _selectedPlatforms.clear();
+      _draftUnavailablePlatforms.clear();
     });
   }
 
@@ -1427,104 +2476,126 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isFormBusy = _isSavingDraft ||
+        _isSubmitting ||
+        _isPreparingReview ||
+        _isPreparingSubmission;
     return Stack(
       children: [
         Positioned.fill(
-          child: ListView(
-            key: const ValueKey('uploader-scroll'),
-            padding: const EdgeInsets.fromLTRB(16, AppTheme.spaceMd, 16, 116),
-            children: [
-              const _UploadPageHeader(),
-              const SizedBox(height: AppTheme.spaceLg),
-              const _UploadStepHeader(
-                key: ValueKey('uploader-step-video'),
-                title: '1 · เลือกวิดีโอ',
-              ),
-              const SizedBox(height: AppTheme.spaceSm),
-              _VideoPreviewCard(
-                videoName: _selectedVideoName,
-                coverImagePath: _coverResult?.localImagePath,
-                coverImageBytes: _coverResult?.imageBytes,
-                isSubmitting: _isSubmitting,
-                onPickVideo: _pickVideoFile,
-              ),
-              if (_selectedVideoName != null) ...[
-                const SizedBox(height: 10),
-                Center(
-                  child: OutlinedButton.icon(
-                    key: const ValueKey('uploader-cover-edit-button'),
-                    onPressed: _isSubmitting ? null : _openCoverEditor,
-                    icon: Icon(
-                      _coverResult == null
-                          ? Icons.add_photo_alternate_outlined
-                          : Icons.edit_outlined,
-                      size: 18,
-                    ),
-                    label: Text(
-                      _coverResult == null ? 'แต่งหน้าปก' : 'แก้หน้าปก',
-                    ),
-                  ),
+          child: IgnorePointer(
+            ignoring: isFormBusy,
+            child: ListView(
+              key: const ValueKey('uploader-scroll'),
+              padding: const EdgeInsets.fromLTRB(16, AppTheme.spaceMd, 16, 116),
+              children: [
+                const _UploadPageHeader(),
+                const SizedBox(height: AppTheme.spaceSm),
+                _DraftSummaryCard(
+                  draftCount: _drafts.length,
+                  isLoading: _isLoadingDrafts,
+                  isAvailable: _draftStoreAvailable,
+                  onOpen: _openDrafts,
                 ),
-                if (_coverResult != null)
+                const SizedBox(height: AppTheme.spaceLg),
+                const _UploadStepHeader(
+                  key: ValueKey('uploader-step-video'),
+                  title: '1 · เลือกวิดีโอ',
+                ),
+                const SizedBox(height: AppTheme.spaceSm),
+                _VideoPreviewCard(
+                  videoName: _selectedVideoName,
+                  coverImagePath: _coverResult?.localImagePath,
+                  coverImageBytes: _coverResult?.imageBytes,
+                  isSubmitting: _isSubmitting,
+                  onPickVideo: _pickVideoFile,
+                ),
+                if (_selectedVideoName != null) ...[
+                  const SizedBox(height: 10),
                   Center(
-                    child: Text(
-                      'เลือกเฟรมที่ '
-                      '${formatReviewVideoClock(Duration(milliseconds: _coverResult!.coverFrameTimeMs))}',
-                      key: const ValueKey('uploader-cover-time'),
-                      style: TextStyle(
-                        color: AppTheme.textMuted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('uploader-cover-edit-button'),
+                      onPressed: _isSubmitting ? null : _openCoverEditor,
+                      icon: Icon(
+                        _coverResult == null
+                            ? Icons.add_photo_alternate_outlined
+                            : Icons.edit_outlined,
+                        size: 18,
+                      ),
+                      label: Text(
+                        _coverResult == null ? 'แต่งหน้าปก' : 'แก้หน้าปก',
                       ),
                     ),
                   ),
-              ],
-              const SizedBox(height: AppTheme.spaceLg),
-              _PlatformSelectorSection(
-                selectedPlatforms: _selectedPlatforms,
-                connectedPlatforms: _connectedPlatforms,
-                isLoadingConnections: _isLoadingConnections,
-                connectionsErrorMessage: _connectionsErrorMessage,
-                onPlatformChanged: _setPlatformSelected,
-                onOpenConnections: _openConnections,
-                onRetryConnections: _loadConnections,
-              ),
-              const SizedBox(height: AppTheme.spaceXl),
-              const _UploadStepHeader(
-                key: ValueKey('uploader-step-caption'),
-                title: '3 · แคปชั่น',
-              ),
-              const SizedBox(height: AppTheme.spaceSm),
-              _buildCaptionCard(context),
-              const SizedBox(height: AppTheme.spaceXl),
-              const _UploadStepHeader(
-                key: ValueKey('uploader-step-schedule'),
-                title: '4 · เวลาโพสต์',
-              ),
-              const SizedBox(height: AppTheme.spaceSm),
-              SizedBox(
-                key: const ValueKey('uploader-schedule-panel'),
-                width: double.infinity,
-                child: PostDeeCard(
-                  padding: const EdgeInsets.all(AppTheme.spaceMd),
-                  glowColor: AppTheme.accent,
-                  child: _SchedulePanel(
-                    scheduledAtController: _scheduledAtController,
-                    selectedDate: _selectedScheduleDate,
-                    selectedTime: _selectedScheduleTime,
-                    onPostNow: _clearSchedule,
-                    onSchedule: _useSuggestedSchedule,
-                    onQuickDaySelected: _setQuickScheduleDay,
-                    onTimeSelected: _setQuickScheduleTime,
-                    onPickCustomTime: _pickCustomScheduleTime,
-                    onPickCustomDate: _pickCustomScheduleDate,
+                  if (_coverResult != null)
+                    Center(
+                      child: Text(
+                        'เลือกเฟรมที่ '
+                        '${formatReviewVideoClock(Duration(milliseconds: _coverResult!.coverFrameTimeMs))}',
+                        key: const ValueKey('uploader-cover-time'),
+                        style: TextStyle(
+                          color: AppTheme.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
+                const SizedBox(height: AppTheme.spaceLg),
+                _PlatformSelectorSection(
+                  selectedPlatforms: {
+                    ..._selectedPlatforms,
+                    ..._draftUnavailablePlatforms,
+                  },
+                  connectedPlatforms: _connectedPlatforms,
+                  unavailableDraftPlatforms: _draftUnavailablePlatforms,
+                  isLoadingConnections: _isLoadingConnections,
+                  connectionsErrorMessage: _connectionsErrorMessage,
+                  platformSettings: _platformSettings,
+                  onPlatformChanged: _setPlatformSelected,
+                  onOpenPlatformSettings: _openPlatformSettings,
+                  onSelectAll: _selectAllConnectedPlatforms,
+                  onClearAll: _clearSelectedPlatforms,
+                  onOpenConnections: _openConnections,
+                  onRetryConnections: _loadConnections,
+                ),
+                const SizedBox(height: AppTheme.spaceXl),
+                const _UploadStepHeader(
+                  key: ValueKey('uploader-step-caption'),
+                  title: '3 · แคปชั่น',
+                ),
+                const SizedBox(height: AppTheme.spaceSm),
+                _buildCaptionCard(context),
+                const SizedBox(height: AppTheme.spaceXl),
+                const _UploadStepHeader(
+                  key: ValueKey('uploader-step-schedule'),
+                  title: '4 · เวลาโพสต์',
+                ),
+                const SizedBox(height: AppTheme.spaceSm),
+                SizedBox(
+                  key: const ValueKey('uploader-schedule-panel'),
+                  width: double.infinity,
+                  child: PostDeeCard(
+                    padding: const EdgeInsets.all(AppTheme.spaceMd),
+                    glowColor: AppTheme.accent,
+                    child: _SchedulePanel(
+                      scheduledAtController: _scheduledAtController,
+                      selectedDate: _selectedScheduleDate,
+                      selectedTime: _selectedScheduleTime,
+                      onPostNow: _clearSchedule,
+                      onSchedule: _useSuggestedSchedule,
+                      onQuickDaySelected: _setQuickScheduleDay,
+                      onTimeSelected: _setQuickScheduleTime,
+                      onPickCustomTime: _pickCustomScheduleTime,
+                      onPickCustomDate: _pickCustomScheduleDate,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: AppTheme.spaceLg),
-              const _UploadEpToolSection(),
-              const SizedBox(height: AppTheme.spaceLg),
-            ],
+                const SizedBox(height: AppTheme.spaceLg),
+                const _UploadEpToolSection(),
+                const SizedBox(height: AppTheme.spaceLg),
+              ],
+            ),
           ),
         ),
         _buildStickyActionBar(context),
@@ -1668,12 +2739,122 @@ class _UploaderScreenState extends State<UploaderScreen> {
                 ),
                 const SizedBox(height: AppTheme.spaceSm),
               ],
-              _GradientActionButton(
-                key: const ValueKey('uploader-sticky-post-button'),
-                label: _isSubmitting ? 'กำลังโพสต์...' : 'โพสต์',
-                icon: Icons.send_rounded,
-                onPressed: _isSubmitting ? null : _reviewThenPost,
+              if (_requiresNewSubmissionAttempt) ...[
+                OutlinedButton.icon(
+                  key: const ValueKey('uploader-start-new-publish-attempt'),
+                  onPressed: _isSavingDraft || _isSubmitting
+                      ? null
+                      : _startNewSubmissionAttempt,
+                  icon: const Icon(Icons.add_circle_outline_rounded),
+                  label: const Text('เริ่มรายการโพสต์ใหม่'),
+                ),
+                const SizedBox(height: AppTheme.spaceSm),
+              ],
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('uploader-save-draft-button'),
+                      onPressed: _isSavingDraft ||
+                              _isSubmitting ||
+                              _isGeneratingCaption ||
+                              _isPreparingReview ||
+                              _isPreparingSubmission ||
+                              !_draftStoreAvailable
+                          ? null
+                          : _saveDraft,
+                      icon: const Icon(Icons.save_outlined),
+                      label: Text(
+                        _isSavingDraft ? 'กำลังบันทึก...' : 'บันทึกร่าง',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: _GradientActionButton(
+                      key: const ValueKey('uploader-sticky-post-button'),
+                      label: _isSubmitting || _isPreparingSubmission
+                          ? 'กำลังส่ง...'
+                          : _isPreparingReview
+                              ? 'กำลังเตรียม...'
+                              : 'โพสต์',
+                      icon: Icons.send_rounded,
+                      onPressed: _isSubmitting ||
+                              _isSavingDraft ||
+                              _isGeneratingCaption ||
+                              _isPreparingReview ||
+                              _isPreparingSubmission ||
+                              _requiresNewSubmissionAttempt
+                          ? null
+                          : _reviewThenPost,
+                    ),
+                  ),
+                ],
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DraftSummaryCard extends StatelessWidget {
+  const _DraftSummaryCard({
+    required this.draftCount,
+    required this.isLoading,
+    required this.isAvailable,
+    required this.onOpen,
+  });
+
+  final int draftCount;
+  final bool isLoading;
+  final bool isAvailable;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: isAvailable && !isLoading,
+      label: 'ฉบับร่างในเครื่อง $draftCount รายการ',
+      child: InkWell(
+        key: const ValueKey('uploader-open-drafts'),
+        onTap: isAvailable && !isLoading ? onOpen : null,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          decoration: BoxDecoration(
+            color: AppTheme.glass,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.borderSoft),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.drafts_outlined, size: 21),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isLoading
+                          ? 'กำลังโหลดฉบับร่าง...'
+                          : 'ฉบับร่างในเครื่อง ($draftCount)',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const Text(
+                      'ยังไม่อัปโหลด ไม่โพสต์ และไม่ใช้โควตา',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded),
             ],
           ),
         ),
@@ -1704,7 +2885,7 @@ class _UploadPageHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                'อัปโหลดครั้งเดียว แล้วเตรียมโพสต์ไปทุกช่องทาง',
+                'อัปโหลดครั้งเดียว แล้วเลือกช่องทางที่ต้องการ',
                 style: TextStyle(
                   fontSize: 12.5,
                   color: AppTheme.textSecondary,
@@ -2135,28 +3316,38 @@ class _PlatformSelectorSection extends StatelessWidget {
   const _PlatformSelectorSection({
     required this.selectedPlatforms,
     required this.connectedPlatforms,
+    required this.unavailableDraftPlatforms,
     required this.isLoadingConnections,
     required this.connectionsErrorMessage,
+    required this.platformSettings,
     required this.onPlatformChanged,
+    required this.onOpenPlatformSettings,
+    required this.onSelectAll,
+    required this.onClearAll,
     required this.onOpenConnections,
     required this.onRetryConnections,
   });
 
   final Set<SocialPlatform> selectedPlatforms;
   final Set<SocialPlatform> connectedPlatforms;
+  final Set<SocialPlatform> unavailableDraftPlatforms;
   final bool isLoadingConnections;
   final String? connectionsErrorMessage;
+  final PlatformPublishSettings platformSettings;
   final void Function(SocialPlatform platform, bool isSelected)
       onPlatformChanged;
+  final ValueChanged<SocialPlatform> onOpenPlatformSettings;
+  final VoidCallback onSelectAll;
+  final VoidCallback onClearAll;
   final VoidCallback onOpenConnections;
   final VoidCallback onRetryConnections;
 
   // Short per-platform descriptions from the prototype's connection list.
   static const _subLabels = {
-    SocialPlatform.tiktok: 'โพสต์คลิปสั้นไป TikTok อัตโนมัติ',
+    SocialPlatform.tiktok: 'ส่งคลิปไปแก้ต่อใน TikTok',
     SocialPlatform.youtubeShorts: 'อัปขึ้น YouTube Shorts จากคลิปเดียว',
-    SocialPlatform.instagramReels: 'แชร์ Reels ไป Instagram',
-    SocialPlatform.facebookReels: 'โพสต์วิดีโอลงเพจ Facebook',
+    SocialPlatform.instagramReels: 'เผยแพร่ Reels ตามบัญชีที่เชื่อม',
+    SocialPlatform.facebookReels: 'เลือกเผยแพร่หรือร่างบนเพจ',
     SocialPlatform.shopeeVideo: 'โพสต์วิดีโอขึ้น Shopee Video',
     SocialPlatform.lazadaVideo: 'โพสต์วิดีโอขึ้น Lazada Video',
   };
@@ -2277,8 +3468,43 @@ class _PlatformSelectorSection extends StatelessWidget {
             ),
           ),
         ),
+        if (unavailableDraftPlatforms.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          PostDeeNotice(
+            message: 'ฉบับร่างเลือกไว้แต่ยังไม่ได้เชื่อม: '
+                '${unavailableDraftPlatforms.map((platform) => platform.label).join(', ')}',
+            color: const Color(0xFFB5740B),
+            icon: Icons.link_off_rounded,
+          ),
+        ],
         if (visiblePlatforms.isNotEmpty) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                key: const ValueKey('uploader-select-all-platforms'),
+                onPressed: selectedPlatforms.length == visiblePlatforms.length
+                    ? null
+                    : onSelectAll,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 9),
+                ),
+                child: const Text('เลือกทั้งหมด'),
+              ),
+              TextButton(
+                key: const ValueKey('uploader-clear-all-platforms'),
+                onPressed: selectedPlatforms.isEmpty ? null : onClearAll,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 9),
+                ),
+                child: const Text('ล้างทั้งหมด'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
           Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
@@ -2305,6 +3531,12 @@ class _PlatformSelectorSection extends StatelessWidget {
                     isSelected: selectedPlatforms.contains(
                       visiblePlatforms[index],
                     ),
+                    settingsSummary: _settingsSummary(
+                      visiblePlatforms[index],
+                      platformSettings,
+                    ),
+                    onOpenSettings: () =>
+                        onOpenPlatformSettings(visiblePlatforms[index]),
                     onChanged: (next) => onPlatformChanged(
                       visiblePlatforms[index],
                       next,
@@ -2318,6 +3550,36 @@ class _PlatformSelectorSection extends StatelessWidget {
       ],
     );
   }
+
+  String _settingsSummary(
+    SocialPlatform platform,
+    PlatformPublishSettings settings,
+  ) {
+    switch (platform) {
+      case SocialPlatform.tiktok:
+        return settings.tiktokPublishMode == TikTokPublishMode.inboxDraft
+            ? 'ร่างใน TikTok'
+            : 'ยังไม่พร้อมโพสต์ตรง';
+      case SocialPlatform.youtubeShorts:
+        if (!settings.canSubmit(platform)) return 'ต้องตั้งค่า';
+        return switch (settings.youtubeVisibility) {
+          YouTubeVisibility.private => 'ส่วนตัว · พร้อม',
+          YouTubeVisibility.unlisted => 'ไม่เป็นสาธารณะ · พร้อม',
+          YouTubeVisibility.public => 'สาธารณะ · พร้อม',
+        };
+      case SocialPlatform.instagramReels:
+        return settings.instagramShareToFeed ? 'แชร์ในฟีด' : 'ไม่แชร์ในฟีด';
+      case SocialPlatform.facebookReels:
+        return switch (settings.facebookPublishMode) {
+          FacebookPublishMode.publish => 'เผยแพร่บนเพจ',
+          FacebookPublishMode.pageDraft => 'ร่างบนเพจ',
+          null => 'ต้องตั้งค่า',
+        };
+      case SocialPlatform.shopeeVideo:
+      case SocialPlatform.lazadaVideo:
+        return 'ยังไม่รองรับ';
+    }
+  }
 }
 
 class _PlatformRow extends StatelessWidget {
@@ -2325,13 +3587,17 @@ class _PlatformRow extends StatelessWidget {
     required this.platform,
     required this.subLabel,
     required this.isSelected,
+    required this.settingsSummary,
     required this.onChanged,
+    required this.onOpenSettings,
   });
 
   final SocialPlatform platform;
   final String subLabel;
   final bool isSelected;
+  final String settingsSummary;
   final ValueChanged<bool> onChanged;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -2340,47 +3606,513 @@ class _PlatformRow extends StatelessWidget {
       button: true,
       enabled: true,
       selected: isSelected,
-      child: InkWell(
-        key: ValueKey('uploader-platform-${platform.apiValue}'),
-        onTap: () => onChanged(!isSelected),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              SocialPlatformLogo(platform: platform, size: 36),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      platform.label,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
-                      ),
+      child: Column(
+        children: [
+          InkWell(
+            key: ValueKey('uploader-platform-${platform.apiValue}'),
+            onTap: () => onChanged(!isSelected),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  SocialPlatformLogo(platform: platform, size: 36),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          platform.label,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          subLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 1),
-                    Text(
-                      subLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.textMuted,
-                      ),
+                  ),
+                  const SizedBox(width: 10),
+                  ExcludeSemantics(
+                    child: _PrototypeSwitch(isOn: isSelected),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isSelected)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(62, 0, 12, 10),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  key: ValueKey(
+                    'uploader-platform-settings-${platform.apiValue}',
+                  ),
+                  onPressed: onOpenSettings,
+                  style: OutlinedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
                     ),
-                  ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          settingsSummary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.tune_rounded, size: 17),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 10),
-              ExcludeSemantics(
-                child: _PrototypeSwitch(isOn: isSelected),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlatformSettingsSheet extends StatefulWidget {
+  const _PlatformSettingsSheet({
+    required this.platform,
+    required this.initialSettings,
+    this.connection,
+  });
+
+  final SocialPlatform platform;
+  final PlatformPublishSettings initialSettings;
+  final SocialConnectionResult? connection;
+
+  @override
+  State<_PlatformSettingsSheet> createState() => _PlatformSettingsSheetState();
+}
+
+class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
+  late PlatformPublishSettings _settings;
+  late final TextEditingController _youtubeTitleController;
+
+  @override
+  void initState() {
+    super.initState();
+    _settings = widget.initialSettings;
+    _youtubeTitleController = TextEditingController(
+      text: widget.initialSettings.youtubeTitle,
+    );
+  }
+
+  @override
+  void dispose() {
+    _youtubeTitleController.dispose();
+    super.dispose();
+  }
+
+  PlatformPublishSettings get _currentSettings => _settings.copyWith(
+        youtubeTitle: _youtubeTitleController.text,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final current = _currentSettings;
+    final displayName = widget.connection == null
+        ? ''
+        : (widget.connection!.displayName?.trim().isNotEmpty == true
+            ? widget.connection!.displayName!.trim()
+            : widget.connection!.externalAccountId?.trim() ?? '');
+    final canSave = current.canSubmit(widget.platform);
+
+    return Padding(
+      key: const ValueKey('uploader-platform-settings-sheet'),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.86,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
+              child: Row(
+                children: [
+                  SocialPlatformLogo(platform: widget.platform, size: 34),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          publishReviewPlatformLabel(widget.platform),
+                          style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (displayName.isNotEmpty)
+                          Text(
+                            displayName,
+                            style: TextStyle(
+                              color: AppTheme.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'ปิด',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: AppTheme.borderSoft),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(18),
+                child: _buildSettings(current),
+              ),
+            ),
+            Divider(height: 1, color: AppTheme.borderSoft),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('ยกเลิก'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      key: const ValueKey('uploader-platform-settings-save'),
+                      onPressed: canSave
+                          ? () => Navigator.of(context).pop(current)
+                          : null,
+                      child: const Text('บันทึกการตั้งค่า'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettings(PlatformPublishSettings current) {
+    switch (widget.platform) {
+      case SocialPlatform.tiktok:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.check_circle_rounded),
+              title: Text('ส่งเป็นร่างเข้า TikTok'),
+              subtitle: Text(
+                'ส่งออกจริงและใช้โควตาโพสต์ · ต้องเปิด TikTok เพื่อตั้งค่าต่อ',
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              key: const ValueKey('uploader-tiktok-direct-disabled'),
+              onPressed: null,
+              icon: const Icon(Icons.lock_outline_rounded),
+              label: const Text('โพสต์ตรง · ยังไม่พร้อม'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'โพสต์ตรงจะเปิดเมื่อ PostDee โหลดตัวเลือกความเป็นส่วนตัวและความยินยอมล่าสุดจาก TikTok ได้',
+              style: TextStyle(color: AppTheme.textMuted, height: 1.45),
+            ),
+          ],
+        );
+      case SocialPlatform.youtubeShorts:
+        final validationMessage = current.youtubeValidationMessage;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              key: const ValueKey('uploader-youtube-title'),
+              controller: _youtubeTitleController,
+              maxLength: 100,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'ชื่อวิดีโอ YouTube',
+                helperText: 'แคปชั่นหลักจะใช้เป็นคำอธิบาย',
+              ),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<YouTubeVisibility>(
+              key: const ValueKey('uploader-youtube-visibility'),
+              initialValue: current.youtubeVisibility,
+              decoration: const InputDecoration(labelText: 'การมองเห็น'),
+              items: const [
+                DropdownMenuItem(
+                  value: YouTubeVisibility.private,
+                  child: Text('ส่วนตัว (Private)'),
+                ),
+                DropdownMenuItem(
+                  value: YouTubeVisibility.unlisted,
+                  child: Text('ไม่เป็นสาธารณะ (Unlisted)'),
+                ),
+                DropdownMenuItem(
+                  value: YouTubeVisibility.public,
+                  child: Text('สาธารณะ (Public)'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => _settings = current.copyWith(
+                      youtubeVisibility: value,
+                    ));
+              },
+            ),
+            if (current.youtubeVisibility != YouTubeVisibility.private) ...[
+              const SizedBox(height: 8),
+              Text(
+                'YouTube อาจยังคงวิดีโอเป็น Private จนกว่าจะผ่านการตรวจ API',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
               ),
             ],
+            const SizedBox(height: 18),
+            _BinarySettingRow(
+              title: 'วิดีโอนี้ทำมาเพื่อเด็กหรือไม่?',
+              value: current.youtubeMadeForKids,
+              yesKey: const ValueKey('uploader-youtube-made-for-kids-yes'),
+              noKey: const ValueKey('uploader-youtube-made-for-kids-no'),
+              onChanged: (value) => setState(
+                () => _settings = current.copyWith(youtubeMadeForKids: value),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _BinarySettingRow(
+              title: 'มีสื่อสังเคราะห์ที่ดูเหมือนจริงหรือไม่?',
+              value: current.youtubeContainsSyntheticMedia,
+              yesKey: const ValueKey('uploader-youtube-synthetic-yes'),
+              noKey: const ValueKey('uploader-youtube-synthetic-no'),
+              onChanged: (value) => setState(
+                () => _settings = current.copyWith(
+                  youtubeContainsSyntheticMedia: value,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            CheckboxListTile(
+              key: const ValueKey(
+                'uploader-youtube-guidelines-certified',
+              ),
+              contentPadding: EdgeInsets.zero,
+              value: current.youtubeCommunityGuidelinesCertified,
+              onChanged: (value) => setState(
+                () => _settings = current.copyWith(
+                  youtubeCommunityGuidelinesCertified: value ?? false,
+                ),
+              ),
+              title: const Text(
+                'ฉันยืนยันว่าวิดีโอเป็นไปตามกฎชุมชน YouTube',
+              ),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+            if (validationMessage != null)
+              Text(
+                validationMessage,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+          ],
+        );
+      case SocialPlatform.instagramReels:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const PostDeeNotice(
+              message:
+                  'Instagram ไม่มี Private รายโพสต์ วิดีโอจะเผยแพร่ตามบัญชีที่เชื่อม',
+              color: Color(0xFFB5740B),
+              icon: Icons.info_outline_rounded,
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              key: const ValueKey('uploader-instagram-share-to-feed'),
+              contentPadding: EdgeInsets.zero,
+              value: current.instagramShareToFeed,
+              onChanged: (value) => setState(
+                () => _settings = current.copyWith(
+                  instagramShareToFeed: value,
+                ),
+              ),
+              title: const Text('แชร์ Reels ไปยังฟีด'),
+            ),
+          ],
+        );
+      case SocialPlatform.facebookReels:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _SettingsChoiceButton(
+              key: const ValueKey('uploader-facebook-publish'),
+              label: 'เผยแพร่บนเพจ',
+              isSelected:
+                  current.facebookPublishMode == FacebookPublishMode.publish,
+              onPressed: () => setState(
+                () => _settings = current.copyWith(
+                  facebookPublishMode: FacebookPublishMode.publish,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            _SettingsChoiceButton(
+              key: const ValueKey('uploader-facebook-page-draft'),
+              label: 'เก็บเป็นร่างบนเพจ',
+              subtitle: 'ส่งออกจริงและใช้โควตาโพสต์',
+              isSelected:
+                  current.facebookPublishMode == FacebookPublishMode.pageDraft,
+              onPressed: () => setState(
+                () => _settings = current.copyWith(
+                  facebookPublishMode: FacebookPublishMode.pageDraft,
+                ),
+              ),
+            ),
+          ],
+        );
+      case SocialPlatform.shopeeVideo:
+      case SocialPlatform.lazadaVideo:
+        return const Text('ช่องทางนี้ยังไม่รองรับการโพสต์');
+    }
+  }
+}
+
+class _BinarySettingRow extends StatelessWidget {
+  const _BinarySettingRow({
+    required this.title,
+    required this.value,
+    required this.yesKey,
+    required this.noKey,
+    required this.onChanged,
+  });
+
+  final String title;
+  final bool? value;
+  final Key yesKey;
+  final Key noKey;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.w600,
           ),
         ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _SettingsChoiceButton(
+                key: yesKey,
+                label: 'ใช่',
+                isSelected: value == true,
+                onPressed: () => onChanged(true),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _SettingsChoiceButton(
+                key: noKey,
+                label: 'ไม่ใช่',
+                isSelected: value == false,
+                onPressed: () => onChanged(false),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsChoiceButton extends StatelessWidget {
+  const _SettingsChoiceButton({
+    super.key,
+    required this.label,
+    required this.isSelected,
+    required this.onPressed,
+    this.subtitle,
+  });
+
+  final String label;
+  final String? subtitle;
+  final bool isSelected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        alignment: Alignment.centerLeft,
+        backgroundColor:
+            isSelected ? AppTheme.accent.withValues(alpha: 0.10) : null,
+        side: BorderSide(
+          color: isSelected ? AppTheme.accent : AppTheme.border,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isSelected
+                ? Icons.radio_button_checked_rounded
+                : Icons.radio_button_off_rounded,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: TextStyle(
+                      color: AppTheme.textMuted,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

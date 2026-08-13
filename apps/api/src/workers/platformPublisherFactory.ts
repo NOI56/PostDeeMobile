@@ -1,4 +1,5 @@
 import type { ServerConfig } from '../config/env.js';
+import { buildPlatformTarget } from '../modules/posts/platformTargets.js';
 import {
   isPublishableSocialPlatform,
   type SocialConnectionStore
@@ -62,6 +63,18 @@ export const createPlatformPublisherFromConfig = ({
             isPublishableSocialPlatform(platform)
               ? socialConnectionStore.getAccountId({ userId, platform })
               : undefined
+        : undefined,
+      resolveCurrentPlatformTarget: socialConnectionStore
+        ? async ({ userId, platform }) => {
+            if (!isPublishableSocialPlatform(platform)) {
+              return undefined;
+            }
+            const connection = await socialConnectionStore.getConnection({
+              userId,
+              platform
+            });
+            return connection ? buildPlatformTarget(connection) : undefined;
+          }
         : undefined,
       resolveVideoUrl: createSignedVideoUrlResolver(videoStorage)
     });

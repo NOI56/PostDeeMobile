@@ -19,6 +19,7 @@ import {
   type ManagedUploadService
 } from '../uploads/managedUploadService.js';
 import type { AccountIdentityDeleter } from './firebaseIdentityDeleter.js';
+import type { OwnerMutationCoordinator } from './ownerMutationLock.js';
 
 /**
  * Minimal Prisma surface needed to hard-delete an account. Removing the User row
@@ -50,6 +51,7 @@ export type AccountRouteDependencies = {
     ManagedUploadService,
     'prepareOwnerDeletion' | 'finishOwnerDeletion'
   >;
+  ownerMutationLock?: OwnerMutationCoordinator;
   prisma?: PrismaAccountClient;
   nowSeconds?: () => number;
 };
@@ -82,6 +84,7 @@ export const registerAccountRoutes = (
     videoStorage,
     accountIdentityDeleter,
     managedUploadService,
+    ownerMutationLock,
     prisma,
     nowSeconds = () => Math.floor(Date.now() / 1000)
   } = dependencies;
@@ -165,6 +168,29 @@ export const registerAccountRoutes = (
 
     const userId = authUser.id;
 
+    const currentSeconds = nowSeconds();
+    if (
+      authUser.provider === 'firebase' &&
+      !authUser.identityAlreadyDeleted &&
+      (typeof authUser.authenticatedAtSeconds !== 'number' ||
+        authUser.authenticatedAtSeconds >
+          currentSeconds + allowedAuthenticationClockSkewSeconds ||
+        currentSeconds - authUser.authenticatedAtSeconds > recentAuthenticationWindowSeconds)
+    ) {
+      response.status(403).json({
+        status: 'error',
+        code: 'ACCOUNT_REAUTHENTICATION_REQUIRED',
+        message: 'Sign in again before permanently deleting your account.'
+      });
+      return;
+    }
+
+    const releaseOwnerMutationLock = ownerMutationLock
+      ? await ownerMutationLock.acquire(userId)
+      : () => undefined;
+
+    try {
+
     let postPeerProfileId: string | undefined;
     try {
       postPeerProfileId = await readPostPeerProfileId(userId);
@@ -188,23 +214,7 @@ export const registerAccountRoutes = (
       return;
     }
 
-    const currentSeconds = nowSeconds();
-
-    if (
-      authUser.provider === 'firebase' &&
-      !authUser.identityAlreadyDeleted &&
-      (typeof authUser.authenticatedAtSeconds !== 'number' ||
-        authUser.authenticatedAtSeconds >
-          currentSeconds + allowedAuthenticationClockSkewSeconds ||
-        currentSeconds - authUser.authenticatedAtSeconds > recentAuthenticationWindowSeconds)
-    ) {
-      response.status(403).json({
-        status: 'error',
-        code: 'ACCOUNT_REAUTHENTICATION_REQUIRED',
-        message: 'Sign in again before permanently deleting your account.'
-      });
-      return;
-    }
+    ownerMutationLock?.markDeleting(userId);
 
     // Seal the owner before draining queued/external work so concurrent upload
     // and post requests cannot recreate work after the cleanup snapshots it.
@@ -339,6 +349,10 @@ export const registerAccountRoutes = (
       }
     }
 
+    ownerMutationLock?.markDeleted(userId);
     response.json({ status: 'ok' });
+    } finally {
+      releaseOwnerMutationLock();
+    }
   });
 };

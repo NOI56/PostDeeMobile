@@ -23,8 +23,8 @@ describe('publish notifier', () => {
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith({
       tokens: ['t1', 't2'],
-      title: 'โพสต์สำเร็จ',
-      body: 'คลิปของคุณถูกโพสต์เรียบร้อยแล้ว',
+      title: 'ส่งคลิปสำเร็จ',
+      body: 'ระบบส่งคลิปไปยังช่องทางที่เลือกเรียบร้อยแล้ว แตะเพื่อดูผลลัพธ์',
       data: { postId: 'p1', type: 'publish_result' }
     });
   });
@@ -45,7 +45,7 @@ describe('publish notifier', () => {
     });
 
     expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'โพสต์บางส่วนสำเร็จ' })
+      expect.objectContaining({ title: 'ส่งคลิปสำเร็จบางช่องทาง' })
     );
   });
 

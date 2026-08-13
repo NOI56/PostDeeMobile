@@ -71,6 +71,9 @@ export type SocialConnectionStore = {
   getAccountId: (
     input: GetSocialConnectionAccountIdInput
   ) => Promise<string | undefined>;
+  getConnection: (
+    input: GetSocialConnectionAccountIdInput
+  ) => Promise<SocialConnection | undefined>;
   upsert: (input: UpsertSocialConnectionInput) => Promise<SocialConnection>;
   disconnect: (input: DisconnectSocialConnectionInput) => Promise<boolean>;
   // The PostPeer profile id groups all of a user's connected accounts. It is
@@ -158,6 +161,7 @@ export const createInMemorySocialConnectionStore = ({
       ),
     getAccountId: async (input) =>
       connections.get(connectionKey(input))?.postPeerAccountId,
+    getConnection: async (input) => connections.get(connectionKey(input)),
     upsert: async (input) => {
       const key = connectionKey(input);
       const existingConnection = connections.get(key);

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import { createApp } from './app.js';
 import { readServerConfig } from './config/env.js';
+import { createOwnerMutationLock } from './modules/account/ownerMutationLock.js';
+import { createInMemorySocialConnectionStore } from './modules/socialConnections/socialConnectionStore.js';
 
 describe('PostDee API scaffold', () => {
   const app = createApp();
@@ -28,6 +30,17 @@ describe('PostDee API scaffold', () => {
       .expect(404);
   });
 
+  it('guards the mutating HEAD fallback for billing subscription reads after owner deletion', async () => {
+    const ownerMutationLock = createOwnerMutationLock();
+    ownerMutationLock.markDeleted('seller-head-deleted');
+    const guardedApp = createApp({ ownerMutationLock });
+
+    await request(guardedApp)
+      .head('/billing/subscription')
+      .set('x-postdee-user-id', 'seller-head-deleted')
+      .expect(409);
+  });
+
   it('creates the app with ElevenLabs transcription, Gemini planning, and R2 configured', () => {
     const configuredApp = createApp({
       config: readServerConfig({
@@ -49,12 +62,19 @@ describe('PostDee API scaffold', () => {
   });
 
   it('wires the empty-backlog guard only into real PostPeer scheduler startup', async () => {
+    const socialConnectionStore = createInMemorySocialConnectionStore();
+    await socialConnectionStore.upsert({
+      userId: 'staging-guard-test-user',
+      platform: 'YOUTUBE_SHORTS',
+      postPeerAccountId: 'postpeer-staging-youtube'
+    });
     const guardedApp = createApp({
       config: readServerConfig({
         SOCIAL_PUBLISHER: 'postpeer',
         SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG: 'true',
         POSTPEER_API_KEY: 'test-postpeer-key'
-      })
+      }),
+      socialConnectionStore
     });
 
     await request(guardedApp)

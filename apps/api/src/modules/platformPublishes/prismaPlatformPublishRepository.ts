@@ -14,6 +14,8 @@ type PlatformPublishUpsertArgs = {
   update: {
     status: RecordedPlatformPublish['status'];
     externalPostId: string | null;
+    providerPostId: string | null;
+    deliveryOutcome: RecordedPlatformPublish['deliveryOutcome'] | null;
     errorMessage: string | null;
     publishedAt: Date | null;
   };
@@ -22,6 +24,8 @@ type PlatformPublishUpsertArgs = {
     platform: RecordedPlatformPublish['platform'];
     status: RecordedPlatformPublish['status'];
     externalPostId: string | null;
+    providerPostId: string | null;
+    deliveryOutcome: RecordedPlatformPublish['deliveryOutcome'] | null;
     errorMessage: string | null;
     publishedAt: Date | null;
     views: 0;
@@ -40,6 +44,8 @@ type PlatformPublishDelegate = {
       platform: RecordedPlatformPublish['platform'];
       status: RecordedPlatformPublish['status'];
       externalPostId: string | null;
+      providerPostId: string | null;
+      deliveryOutcome: RecordedPlatformPublish['deliveryOutcome'] | null;
       errorMessage: string | null;
       publishedAt: Date | null;
       views: number;
@@ -61,7 +67,9 @@ const toRecordedResult = (
         postId: input.postId,
         platform: result.platform,
         status: result.status,
-        externalPostId: result.externalPostId,
+        ...(result.externalPostId ? { externalPostId: result.externalPostId } : {}),
+        ...(result.providerPostId ? { providerPostId: result.providerPostId } : {}),
+        deliveryOutcome: result.deliveryOutcome,
         publishedAt: result.publishedAt,
         views: 0,
         likes: 0
@@ -81,6 +89,8 @@ const toRecordedResult = (
 const toUpsertArgs = (result: RecordedPlatformPublish): PlatformPublishUpsertArgs => {
   const publishedAt = result.publishedAt ? new Date(result.publishedAt) : null;
   const externalPostId = result.externalPostId ?? null;
+  const providerPostId = result.providerPostId ?? null;
+  const deliveryOutcome = result.deliveryOutcome ?? null;
   const errorMessage = result.errorMessage ?? null;
 
   return {
@@ -93,6 +103,8 @@ const toUpsertArgs = (result: RecordedPlatformPublish): PlatformPublishUpsertArg
     update: {
       status: result.status,
       externalPostId,
+      providerPostId,
+      deliveryOutcome,
       errorMessage,
       publishedAt
     },
@@ -101,6 +113,8 @@ const toUpsertArgs = (result: RecordedPlatformPublish): PlatformPublishUpsertArg
       platform: result.platform,
       status: result.status,
       externalPostId,
+      providerPostId,
+      deliveryOutcome,
       errorMessage,
       publishedAt,
       views: 0,
@@ -116,6 +130,8 @@ const toRecordedRow = (
   platform: row.platform,
   status: row.status,
   ...(row.externalPostId ? { externalPostId: row.externalPostId } : {}),
+  ...(row.providerPostId ? { providerPostId: row.providerPostId } : {}),
+  ...(row.deliveryOutcome ? { deliveryOutcome: row.deliveryOutcome } : {}),
   ...(row.errorMessage ? { errorMessage: row.errorMessage } : {}),
   ...(row.publishedAt ? { publishedAt: row.publishedAt.toISOString() } : {}),
   views: row.views,

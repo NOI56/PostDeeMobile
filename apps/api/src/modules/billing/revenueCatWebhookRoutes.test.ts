@@ -1,8 +1,13 @@
+import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
+import { createOwnerMutationLock } from '../account/ownerMutationLock.js';
+import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
+import { createUserStore } from '../users/userStore.js';
+import { registerRevenueCatWebhookRoutes } from './revenueCatWebhookRoutes.js';
 
 const revenueCatToken = 'revenuecat-webhook-token';
 
@@ -55,6 +60,53 @@ const createKnownUser = (app: ReturnType<typeof createRevenueCatApp>, userId: st
     .expect(200);
 
 describe('RevenueCat webhooks', () => {
+  it('acknowledges an actionable event without mutating after account deletion seals the owner', async () => {
+    const app = express();
+    const router = express.Router();
+    const userStore = createUserStore();
+    const subscriptionStore = createSubscriptionStore();
+    const ownerMutationLock = createOwnerMutationLock();
+    const userId = 'seller-revenuecat-deleting-race';
+    await userStore.ensure({ id: userId, provider: 'firebase' });
+    ownerMutationLock.markDeleting(userId);
+    app.use(express.json());
+    registerRevenueCatWebhookRoutes({
+      router,
+      config: readServerConfig({
+        BILLING_PROVIDER: 'revenuecat',
+        REVENUECAT_WEBHOOK_AUTH_TOKEN: revenueCatToken,
+        REVENUECAT_STARTER_ENTITLEMENT_ID: 'starter',
+        REVENUECAT_PRO_ENTITLEMENT_ID: 'pro',
+        REVENUECAT_STARTER_PRODUCT_ID: 'postdee_starter_monthly',
+        REVENUECAT_PRO_PRODUCT_ID: 'postdee_pro_monthly'
+      }),
+      userStore,
+      subscriptionStore,
+      ownerMutationLock
+    });
+    app.use(router);
+
+    await postRevenueCatWebhook(app as ReturnType<typeof createRevenueCatApp>, {
+      event: {
+        type: 'RENEWAL',
+        app_user_id: userId,
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly'
+      }
+    })
+      .expect(202)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          status: 'ok',
+          ignored: true,
+          code: 'REVENUECAT_USER_NOT_FOUND'
+        });
+      });
+    await expect(
+      subscriptionStore.getPlan({ id: userId, provider: 'firebase' })
+    ).resolves.toBe('BASIC');
+  });
+
   it('rejects webhook requests without the configured bearer token', async () => {
     const app = createRevenueCatApp();
 

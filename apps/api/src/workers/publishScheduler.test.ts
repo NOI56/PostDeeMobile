@@ -303,7 +303,10 @@ describe('createPublishScheduler', () => {
     await scheduler.runOnce();
 
     const [post] = await postStore.list({ userId: 'seller-preflight-retry' });
-    expect(assertOwnerActive).toHaveBeenCalledTimes(3);
+    // The first two attempts fail during the pre-claim guard. The successful
+    // attempt rechecks the owner after claiming and immediately before the
+    // provider call, closing the deletion race window.
+    expect(assertOwnerActive).toHaveBeenCalledTimes(4);
     expect(publisher.publish).toHaveBeenCalledTimes(1);
     expect(sleep).toHaveBeenNthCalledWith(1, 100);
     expect(sleep).toHaveBeenNthCalledWith(2, 200);

@@ -157,6 +157,8 @@ describe('createPostPeerPublisher', () => {
       platform: 'TIKTOK',
       status: 'PUBLISHED',
       externalPostId: 'https://tiktok.test/@postdee/video/123',
+      providerPostId: 'postpeer-post-1',
+      deliveryOutcome: 'PRIVATE',
       publishedAt: '2026-06-17T00:00:00.000Z'
     });
     expect(calls).toHaveLength(1);
@@ -767,6 +769,178 @@ describe('createPostPeerPublisher', () => {
     ).rejects.toThrow(
       /PostPeer publish to TIKTOK failed: Video URL is not publicly accessible/
     );
+  });
+
+  it('maps explicit YouTube settings into provider intent and records unlisted delivery', async () => {
+    let body: Record<string, unknown> | undefined;
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { YOUTUBE_SHORTS: 'postpeer-youtube' },
+      now: () => '2026-08-11T01:00:00.000Z',
+      fetchImpl: async (_url, init) => {
+        body = JSON.parse(String(init.body));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: 'published',
+            postId: 'postpeer-youtube-1',
+            platforms: [
+              {
+                platform: 'youtube',
+                status: 'published',
+                platformPostUrl: 'https://youtube.test/watch?v=1'
+              }
+            ]
+          })
+        };
+      }
+    });
+
+    const result = await publisher.publish({
+      userId: 'seller-youtube-settings',
+      postId: 'post-youtube-settings',
+      platform: 'YOUTUBE_SHORTS',
+      platformSettings: {
+        YOUTUBE_SHORTS: {
+          title: 'Explicit title',
+          visibility: 'unlisted',
+          madeForKids: false,
+          containsSyntheticMedia: true,
+          communityGuidelinesCertified: true
+        }
+      }
+    });
+
+    expect(body).toMatchObject({
+      platforms: [
+        {
+          platformSpecificData: {
+            title: 'Explicit title',
+            visibility: 'unlisted',
+            madeForKids: false,
+            containsSyntheticMedia: true
+          }
+        }
+      ]
+    });
+    expect(JSON.stringify(body)).not.toContain('communityGuidelinesCertified');
+    expect(result).toMatchObject({
+      deliveryOutcome: 'UNLISTED',
+      providerPostId: 'postpeer-youtube-1'
+    });
+  });
+
+  it('requires an explicit provider draft result for TikTok inbox delivery', async () => {
+    let body: Record<string, unknown> | undefined;
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      fetchImpl: async (_url, init) => {
+        body = JSON.parse(String(init.body));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: 'draft',
+            postId: 'postpeer-tiktok-draft',
+            platforms: [{ platform: 'tiktok', status: 'draft', success: true }]
+          })
+        };
+      }
+    });
+
+    const result = await publisher.publish({
+      userId: 'seller-tiktok-draft',
+      postId: 'post-tiktok-draft',
+      platform: 'TIKTOK',
+      platformSettings: { TIKTOK: { publishMode: 'INBOX_DRAFT' } }
+    });
+
+    expect(body).toMatchObject({
+      platforms: [{ platformSpecificData: { draft: true } }]
+    });
+    expect(result).toMatchObject({
+      deliveryOutcome: 'DRAFT',
+      providerPostId: 'postpeer-tiktok-draft'
+    });
+    expect(result.externalPostId).toBeUndefined();
+  });
+
+  it('revalidates an immutable target snapshot before using its provider account id', async () => {
+    let body: Record<string, unknown> | undefined;
+    const target = {
+      accountId: 'postpeer-youtube-original',
+      displayName: 'Original channel',
+      connectedAt: '2026-08-01T10:00:00.000Z'
+    };
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      resolveCurrentPlatformTarget: async () => ({
+        ...target,
+        displayName: 'Renamed channel'
+      }),
+      fetchImpl: async (_url, init) => {
+        body = JSON.parse(String(init.body));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: 'published',
+            postId: 'postpeer-youtube-targeted',
+            platforms: [
+              {
+                platform: 'youtube',
+                status: 'published',
+                platformPostUrl: 'https://youtube.test/watch?v=targeted'
+              }
+            ]
+          })
+        };
+      }
+    });
+
+    await publisher.publish({
+      userId: 'seller-targeted',
+      postId: 'post-targeted',
+      platform: 'YOUTUBE_SHORTS',
+      platformTargets: { YOUTUBE_SHORTS: target }
+    });
+
+    expect(body).toMatchObject({
+      platforms: [{ accountId: target.accountId }]
+    });
+  });
+
+  it('fails before the provider call when a snapshotted target was reconnected', async () => {
+    const fetchImpl = vi.fn();
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      resolveCurrentPlatformTarget: async () => ({
+        accountId: 'postpeer-tiktok-reconnected',
+        connectedAt: '2026-08-02T10:00:00.000Z'
+      }),
+      fetchImpl
+    });
+
+    await expect(
+      publisher.publish({
+        userId: 'seller-reconnected',
+        postId: 'post-reconnected',
+        platform: 'TIKTOK',
+        platformTargets: {
+          TIKTOK: {
+            accountId: 'postpeer-tiktok-original',
+            connectedAt: '2026-08-01T10:00:00.000Z'
+          }
+        }
+      })
+    ).rejects.toThrow(/target changed/i);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 

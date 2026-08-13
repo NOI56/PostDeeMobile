@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
+import { createOwnerMutationLock } from '../account/ownerMutationLock.js';
 import type { RevenueCatSubscriberClient } from './revenueCatSubscriberClient.js';
 
 const createRevenueCatConfig = (restApiKey = 'rc-secret-key') =>
@@ -17,6 +18,99 @@ const createRevenueCatConfig = (restApiKey = 'rc-secret-key') =>
   });
 
 describe('RevenueCat subscription resync', () => {
+  it('does not ensure or reconcile a user when deletion seals the owner during subscriber lookup', async () => {
+    const ownerMutationLock = createOwnerMutationLock();
+    const userId = 'seller-resync-delete-race';
+    let markLookupStarted!: () => void;
+    let releaseLookup!: () => void;
+    const lookupStarted = new Promise<void>((resolve) => {
+      markLookupStarted = resolve;
+    });
+    const lookupGate = new Promise<void>((resolve) => {
+      releaseLookup = resolve;
+    });
+    const app = createApp({
+      config: createRevenueCatConfig(),
+      ownerMutationLock,
+      revenueCatSubscriberClient: {
+        loadSubscriber: vi.fn(async () => {
+          markLookupStarted();
+          await lookupGate;
+          return {
+            observedAtMs: 1_784_044_899_001,
+            activeEntitlements: [
+              { id: 'pro', productId: 'postdee_pro_monthly' }
+            ]
+          };
+        })
+      }
+    });
+    const resync = request(app)
+      .post('/billing/revenuecat/resync')
+      .set('x-postdee-user-id', userId)
+      .send({})
+      .then((response) => response);
+
+    await lookupStarted;
+    ownerMutationLock.markDeleted(userId);
+    releaseLookup();
+
+    const response = await resync;
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'ACCOUNT_DELETION_IN_PROGRESS'
+    });
+  });
+
+  it('lets an in-flight resync finish before account deletion enters cleanup', async () => {
+    const userId = 'seller-resync-before-delete';
+    let markLookupStarted!: () => void;
+    let releaseLookup!: () => void;
+    const lookupStarted = new Promise<void>((resolve) => {
+      markLookupStarted = resolve;
+    });
+    const lookupGate = new Promise<void>((resolve) => {
+      releaseLookup = resolve;
+    });
+    const app = createApp({
+      config: createRevenueCatConfig(),
+      revenueCatSubscriberClient: {
+        loadSubscriber: vi.fn(async () => {
+          markLookupStarted();
+          await lookupGate;
+          return {
+            observedAtMs: 1_784_044_899_002,
+            activeEntitlements: [
+              { id: 'pro', productId: 'postdee_pro_monthly' }
+            ]
+          };
+        })
+      }
+    });
+    const resync = request(app)
+      .post('/billing/revenuecat/resync')
+      .set('x-postdee-user-id', userId)
+      .send({})
+      .then((response) => response);
+
+    await lookupStarted;
+    let deletionSettled = false;
+    const deletion = request(app)
+      .delete('/account')
+      .set('x-postdee-user-id', userId)
+      .then((response) => {
+        deletionSettled = true;
+        return response;
+      });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(deletionSettled).toBe(false);
+
+    releaseLookup();
+    expect((await resync).status).toBe(200);
+    expect((await deletion).status).toBe(200);
+  });
+
   it('syncs the authenticated user to Pro and ignores body user ids', async () => {
     const loadSubscriber = vi.fn().mockResolvedValue({
       observedAtMs: 1_784_044_800_001,

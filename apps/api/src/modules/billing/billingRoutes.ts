@@ -3,7 +3,6 @@ import type { RequestHandler, Response, Router } from 'express';
 import type { ServerConfig } from '../../config/env.js';
 import { readAuthUser } from '../auth/authTypes.js';
 import type { PostStore } from '../posts/postStore.js';
-import { countCurrentMonthPostUnits } from '../posts/postUsage.js';
 import {
   canSchedulePosts,
   monthlyPostUnitLimits
@@ -254,8 +253,10 @@ export const registerBillingRoutes = (
 
     await userStore.ensure(authUser);
     const plan = await subscriptionStore.getPlan(authUser);
-    const posts = await postStore.list({ userId: authUser.id });
-    const usedPostsThisMonth = countCurrentMonthPostUnits(posts);
+    const usedPostsThisMonth = await postStore.countMonthlyPostUnits({
+      userId: authUser.id,
+      now: new Date().toISOString()
+    });
 
     response.json({
       status: 'ok',

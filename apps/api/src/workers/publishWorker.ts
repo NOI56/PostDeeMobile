@@ -4,10 +4,14 @@ import {
   createNoopPublishNotifier
 } from '../modules/notifications/publishNotifier.js';
 import {
+  type DeliveryOutcome,
   type PlatformPublishStore,
   createInMemoryPlatformPublishStore
 } from '../modules/platformPublishes/platformPublishStore.js';
+import type { PlatformSettings } from '../modules/posts/platformSettings.js';
+import type { PlatformTargets } from '../modules/posts/platformTargets.js';
 import type { BullMqPublishJobData } from '../modules/queue/bullMqPublishQueue.js';
+import { readRequestedDeliveryOutcome } from './platformDeliveryOutcome.js';
 
 export type PlatformPublishInput = {
   userId?: string;
@@ -17,12 +21,16 @@ export type PlatformPublishInput = {
   coverImageS3Key?: string;
   coverFrameTimeMs?: number;
   platform: Platform;
+  platformSettings?: PlatformSettings | null;
+  platformTargets?: PlatformTargets | null;
 };
 
 export type PlatformPublishSuccess = {
   platform: Platform;
   status: 'PUBLISHED';
-  externalPostId: string;
+  externalPostId?: string;
+  providerPostId?: string;
+  deliveryOutcome: DeliveryOutcome;
   publishedAt: string;
 };
 
@@ -77,17 +85,43 @@ export type PublishWorkerResult = {
   };
 };
 
-const readErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Unknown publish error';
-
 const publicPlatformPublishErrorMessage =
   'Publishing to this platform failed. Please try again later.';
 const publicPublishOutcomeUnknownErrorMessage =
   'Publishing result could not be confirmed. Check the platform before trying again.';
 const publicCleanupErrorMessage = 'Video cleanup failed. Please try again later.';
 
-const logWorkerError = (message: string, error: unknown) => {
-  console.error(message, readErrorMessage(error));
+const readSafeWorkerErrorName = (error: unknown) => {
+  if (error instanceof RetryablePublishError) {
+    return 'RetryablePublishError';
+  }
+
+  if (error instanceof PublishOutcomeUnknownError) {
+    return 'PublishOutcomeUnknownError';
+  }
+
+  return error instanceof Error ? 'Error' : 'UnknownError';
+};
+
+const logWorkerError = (
+  input:
+    | {
+        category: 'PLATFORM_PUBLISH';
+        code: 'PLATFORM_PUBLISH_FAILED';
+        platform: Platform;
+        error: unknown;
+      }
+    | {
+        category: 'MEDIA_CLEANUP';
+        code: 'MEDIA_CLEANUP_FAILED';
+        error: unknown;
+      }
+) => {
+  const { error, ...safeFields } = input;
+  console.error('Publish worker operation failed', {
+    ...safeFields,
+    errorName: readSafeWorkerErrorName(error)
+  });
 };
 
 const wait = async (delayMs: number) =>
@@ -110,10 +144,11 @@ export const createMockPlatformPublisher = ({
 }: {
   now?: () => string;
 } = {}): PlatformPublisher => ({
-  publish: async ({ postId, platform }) => ({
+  publish: async ({ postId, platform, platformSettings }) => ({
     platform,
     status: 'PUBLISHED',
     externalPostId: `mock-${platform.toLowerCase()}-${postId}`,
+    deliveryOutcome: readRequestedDeliveryOutcome({ platform, platformSettings }),
     publishedAt: now()
   })
 });
@@ -169,7 +204,13 @@ export const processPublishJob = async ({
             ...(jobData.coverFrameTimeMs !== undefined
               ? { coverFrameTimeMs: jobData.coverFrameTimeMs }
               : {}),
-            platform
+            platform,
+            ...(jobData.platformSettings
+              ? { platformSettings: jobData.platformSettings }
+              : {}),
+            ...(jobData.platformTargets
+              ? { platformTargets: jobData.platformTargets }
+              : {})
           });
         } catch (error) {
           if (error instanceof RetryablePublishError && attempt < attemptLimit) {
@@ -177,7 +218,12 @@ export const processPublishJob = async ({
             continue;
           }
 
-          logWorkerError('Platform publish failed:', error);
+          logWorkerError({
+            category: 'PLATFORM_PUBLISH',
+            code: 'PLATFORM_PUBLISH_FAILED',
+            platform,
+            error
+          });
           return {
             platform,
             status: 'FAILED',
@@ -218,7 +264,11 @@ export const processPublishJob = async ({
           await storage.deleteVideo(key);
           return true;
         } catch (error) {
-          logWorkerError('Media cleanup failed:', error);
+          logWorkerError({
+            category: 'MEDIA_CLEANUP',
+            code: 'MEDIA_CLEANUP_FAILED',
+            error
+          });
           return false;
         }
       })
@@ -334,6 +384,10 @@ export const processPublishJobForPost = async ({
   };
 
   try {
+    if (assertOwnerActive && jobData.userId) {
+      await assertOwnerActive(jobData.userId);
+    }
+
     const result = await processPublishJob({
       jobData,
       publisher,

@@ -9,7 +9,7 @@ import { createInMemoryPlatformPublishStore } from '../platformPublishes/platfor
 import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import { createUserStore } from '../users/userStore.js';
 import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
-import { createPostStore } from './postStore.js';
+import { createPostStore, type QueuedPost } from './postStore.js';
 import { registerPostRoutes } from './postRoutes.js';
 
 describe('post routes', () => {
@@ -86,7 +86,8 @@ describe('post routes', () => {
       .expect(200)
       .expect({
         status: 'ok',
-        acceptingPosts: true
+        acceptingPosts: true,
+        platformSettingsVersion: 1
       });
     const disabledResponse = await request(disabledApp)
       .get('/publishing/readiness')
@@ -174,6 +175,204 @@ describe('post routes', () => {
     expect(reschedulePost).not.toHaveBeenCalled();
     expect(await postStore.list({ userId: 'seller-publishing-disabled' })).toEqual([]);
     expect(await publishQueue.list({ userId: 'seller-publishing-disabled' })).toEqual([]);
+  });
+
+  it('redacts internal target and provider ids while exposing delivery outcome', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const platformPublishStore = createInMemoryPlatformPublishStore();
+    const post = await postStore.create({
+      userId: 'seller-redaction',
+      caption: 'Internal target evidence',
+      videoS3Key: ownedUploadKey('seller-redaction', 'redaction.mp4'),
+      platforms: ['TIKTOK'],
+      platformTargets: {
+        TIKTOK: {
+          accountId: 'postpeer-secret-target',
+          connectedAt: '2026-05-01T00:00:00.000Z'
+        }
+      }
+    });
+    await platformPublishStore.recordResults({
+      postId: post.id,
+      results: [
+        {
+          platform: 'TIKTOK',
+          status: 'PUBLISHED',
+          externalPostId: 'https://tiktok.test/video/1',
+          providerPostId: 'postpeer-provider-only',
+          deliveryOutcome: 'PRIVATE',
+          publishedAt: '2026-06-01T01:00:00.000Z'
+        }
+      ]
+    });
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: 'seller-redaction',
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+    app.use(express.json());
+    registerPostRoutes(
+      router,
+      postStore,
+      createInMemoryPublishQueue(),
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      platformPublishStore,
+      { now: futureNow }
+    );
+    app.use(router);
+
+    const response = await request(app).get('/posts').expect(200);
+    expect(response.body.posts[0]).not.toHaveProperty('platformTargets');
+    expect(response.body.posts[0].platformResults[0]).not.toHaveProperty(
+      'providerPostId'
+    );
+    expect(response.body.posts[0].platformResults[0]).toMatchObject({
+      externalPostId: 'https://tiktok.test/video/1',
+      deliveryOutcome: 'PRIVATE'
+    });
+  });
+
+  it('replays the original target snapshot without rerouting to a reconnected account', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const publishQueue = createInMemoryPublishQueue();
+    const originalTarget = {
+      accountId: 'postpeer-youtube-original',
+      externalAccountId: 'channel-original',
+      connectedAt: '2026-05-01T10:00:00.000Z'
+    };
+    let currentTarget = originalTarget;
+    const resolvePlatformTarget = vi.fn(async () => currentTarget);
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: 'seller-target-replay',
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+    app.use(express.json());
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
+      { resolvePlatformTarget }
+    );
+    app.use(router);
+    const body = {
+      clientRequestId: 'stable-target-replay',
+      caption: 'Keep the original account',
+      videoS3Key: ownedUploadKey('seller-target-replay', 'stable.mp4'),
+      platforms: ['YOUTUBE_SHORTS'],
+      platformSettings: {
+        YOUTUBE_SHORTS: {
+          title: 'Keep the original account',
+          visibility: 'private',
+          madeForKids: false,
+          containsSyntheticMedia: false,
+          communityGuidelinesCertified: true
+        }
+      }
+    };
+
+    const first = await request(app).post('/posts').send(body).expect(201);
+    const targetReadsAfterCreate = resolvePlatformTarget.mock.calls.length;
+    currentTarget = {
+      accountId: 'postpeer-youtube-reconnected',
+      externalAccountId: 'channel-new',
+      connectedAt: '2026-05-11T10:00:00.000Z'
+    };
+    const replay = await request(app).post('/posts').send(body).expect(200);
+
+    expect(replay.body.post.id).toBe(first.body.post.id);
+    expect(replay.body.idempotentReplay).toBe(true);
+    expect(JSON.stringify(replay.body)).not.toContain(originalTarget.accountId);
+    expect(JSON.stringify(replay.body)).not.toContain(currentTarget.accountId);
+    expect(resolvePlatformTarget).toHaveBeenCalledTimes(targetReadsAfterCreate);
+    expect(
+      (await postStore.list({ userId: 'seller-target-replay' }))[0].platformTargets
+    ).toEqual({ YOUTUBE_SHORTS: originalTarget });
+  });
+
+  it('fails before the durable write when the selected provider target changes during validation', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const publishQueue = createInMemoryPublishQueue();
+    const userId = 'seller-target-race';
+    const resolvePlatformTarget = vi
+      .fn()
+      .mockResolvedValueOnce({
+        accountId: 'postpeer-tiktok-original',
+        connectedAt: '2026-05-01T00:00:00.000Z'
+      })
+      .mockResolvedValueOnce({
+        accountId: 'postpeer-tiktok-reconnected',
+        connectedAt: '2026-05-02T00:00:00.000Z'
+      });
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: userId,
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+    app.use(express.json());
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
+      { now: futureNow, resolvePlatformTarget }
+    );
+    app.use(router);
+
+    await request(app)
+      .post('/posts')
+      .send({
+        clientRequestId: 'target-changed',
+        caption: 'Do not reroute',
+        videoS3Key: ownedUploadKey(userId, 'target-race.mp4'),
+        platforms: ['TIKTOK']
+      })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body.code).toBe('PLATFORM_TARGET_UNAVAILABLE');
+      });
+    expect(resolvePlatformTarget).toHaveBeenCalledTimes(2);
+    expect(await postStore.list({ userId })).toEqual([]);
+    expect(await publishQueue.list({ userId })).toEqual([]);
   });
 
   it('does not upsert a Prisma user before the app-level disabled publishing gate', async () => {
@@ -412,6 +611,32 @@ describe('post routes', () => {
     expect(response.body.publishJob.platforms).toEqual(['TIKTOK', 'YOUTUBE_SHORTS']);
   });
 
+  it('rejects duplicate platforms for an idempotent request without persistence', async () => {
+    const app = createApp();
+    const userId = 'seller-idempotent-duplicates';
+
+    await request(app)
+      .post('/posts')
+      .set('x-postdee-user-id', userId)
+      .set('x-postdee-phone-verified', 'true')
+      .send({
+        clientRequestId: 'duplicate-platforms',
+        caption: 'Must reject ambiguous intent',
+        videoS3Key: ownedUploadKey(userId, 'duplicate.mp4'),
+        platforms: ['TIKTOK', 'TIKTOK']
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body.code).toBe('INVALID_PLATFORMS');
+      });
+
+    await request(app)
+      .get('/posts')
+      .set('x-postdee-user-id', userId)
+      .expect(200)
+      .expect({ status: 'ok', posts: [] });
+  });
+
   it('atomically enforces monthly post-unit quota for concurrent requests', async () => {
     const app = createApp();
     const userId = 'seller-concurrent-quota';
@@ -434,6 +659,61 @@ describe('post routes', () => {
       .set('x-postdee-user-id', userId)
       .expect(200);
     expect(listResponse.body.posts).toHaveLength(1);
+  });
+
+  it('serializes concurrent requests with the same client request id', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const inMemoryQueue = createInMemoryPublishQueue();
+    const publishQueue = {
+      ...inMemoryQueue,
+      enqueue: vi.fn(inMemoryQueue.enqueue),
+      ensureEnqueued: vi.fn(inMemoryQueue.ensureEnqueued)
+    };
+    const userId = 'seller-concurrent-idempotent';
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: userId,
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+    app.use(express.json());
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
+      { now: futureNow }
+    );
+    app.use(router);
+    const body = {
+      clientRequestId: 'same-concurrent-request',
+      caption: 'Exactly one post',
+      videoS3Key: ownedUploadKey(userId, 'same.mp4'),
+      platforms: ['TIKTOK']
+    };
+
+    const responses = await Promise.all([
+      request(app).post('/posts').send(body),
+      request(app).post('/posts').send(body)
+    ]);
+
+    expect(responses.map(({ status }) => status).sort()).toEqual([200, 201]);
+    expect(responses[0].body.post.id).toBe(responses[1].body.post.id);
+    expect(await postStore.list({ userId })).toHaveLength(1);
+    expect(await inMemoryQueue.list({ userId })).toHaveLength(1);
+    expect(publishQueue.enqueue).toHaveBeenCalledOnce();
   });
 
   it('stores and queues cover metadata only after both uploads are ready', async () => {
@@ -747,6 +1027,149 @@ describe('post routes', () => {
       message: 'Publish queue is temporarily unavailable. Please try again.'
     });
     expect(await postStore.list({ userId: 'seller-queue-down' })).toEqual([]);
+  });
+
+  it('keeps an idempotent post and repairs its missing queue job on retry', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const inMemoryQueue = createInMemoryPublishQueue();
+    const enqueue = vi
+      .fn(inMemoryQueue.enqueue)
+      .mockRejectedValueOnce(new Error('redis down'));
+    const publishQueue = { ...inMemoryQueue, enqueue };
+    const userId = 'seller-queue-repair';
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: userId,
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+    app.use(express.json());
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
+      { now: futureNow }
+    );
+    app.use(router);
+    const body = {
+      clientRequestId: 'repair-on-retry',
+      caption: 'Durable create before queue repair',
+      videoS3Key: ownedUploadKey(userId, 'repair.mp4'),
+      platforms: ['TIKTOK']
+    };
+
+    await request(app).post('/posts').send(body).expect(503);
+    expect(await postStore.list({ userId })).toHaveLength(1);
+
+    const replay = await request(app).post('/posts').send(body).expect(200);
+    expect(replay.body.idempotentReplay).toBe(true);
+    expect(await postStore.list({ userId })).toHaveLength(1);
+    expect(await inMemoryQueue.list({ userId })).toHaveLength(1);
+
+    const [committedPost] = await postStore.list({ userId });
+    await postStore.updateStatus({ postId: committedPost.id, status: 'FAILED' });
+    await request(app)
+      .post('/posts')
+      .send(body)
+      .expect(409)
+      .expect(({ body: responseBody }) => {
+        expect(responseBody.code).toBe('IDEMPOTENT_POST_FAILED');
+        expect(responseBody.postId).toBe(committedPost.id);
+      });
+  });
+
+  it('never rolls back a shared committed row when another instance repairs its queue job', async () => {
+    const postStore = createPostStore();
+    const inMemoryPublishQueue = createInMemoryPublishQueue();
+    let rejectFirstEnqueue!: (error: Error) => void;
+    let markFirstEnqueueStarted!: () => void;
+    const firstEnqueueStarted = new Promise<void>((resolve) => {
+      markFirstEnqueueStarted = resolve;
+    });
+    let enqueueCalls = 0;
+    const remove = vi.fn(inMemoryPublishQueue.remove);
+    const publishQueue = {
+      ...inMemoryPublishQueue,
+      remove,
+      enqueue: vi.fn((post: QueuedPost) => {
+        enqueueCalls += 1;
+        if (enqueueCalls === 1) {
+          markFirstEnqueueStarted();
+          return new Promise<Awaited<ReturnType<typeof inMemoryPublishQueue.enqueue>>>(
+            (_resolve, reject) => {
+              rejectFirstEnqueue = reject;
+            }
+          );
+        }
+        return inMemoryPublishQueue.enqueue(post);
+      })
+    };
+    const userId = 'seller-cross-instance';
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: userId,
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+    const buildInstance = () => {
+      const app = express();
+      const router = express.Router();
+      app.use(express.json());
+      registerPostRoutes(
+        router,
+        postStore,
+        publishQueue,
+        authMiddleware,
+        createUserStore(),
+        createSubscriptionStore(),
+        createInMemoryPlatformPublishStore()
+      );
+      app.use(router);
+      return app;
+    };
+    const body = {
+      clientRequestId: 'draft-cross-instance',
+      caption: 'One durable post',
+      videoS3Key: ownedUploadKey(userId, 'cross-instance.mp4'),
+      platforms: ['TIKTOK']
+    };
+
+    const firstResponse = request(buildInstance())
+      .post('/posts')
+      .send(body)
+      .then((response) => response);
+    await firstEnqueueStarted;
+    const repairedResponse = await request(buildInstance())
+      .post('/posts')
+      .send(body)
+      .expect(200);
+    rejectFirstEnqueue(new Error('first instance lost Redis'));
+
+    expect((await firstResponse).status).toBe(503);
+    expect(repairedResponse.body.idempotentReplay).toBe(true);
+    expect(await postStore.list({ userId })).toHaveLength(1);
+    expect(await publishQueue.list({ userId })).toHaveLength(1);
+    expect(remove).not.toHaveBeenCalled();
   });
 
   it('keeps the original schedule when publish queue reschedule fails', async () => {
@@ -1384,6 +1807,247 @@ describe('post routes', () => {
       runAt: '2026-06-12T15:30:00.000Z',
       status: 'SCHEDULED'
     });
+  });
+
+  it('persists publish-now before a ready queue worker can claim the post', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const inMemoryPublishQueue = createInMemoryPublishQueue();
+    const originalRunAt = '2026-06-03T10:00:00.000Z';
+    const post = await postStore.create({
+      userId: 'seller-publish-now-order',
+      caption: 'Persist before ready queue',
+      videoS3Key: ownedUploadKey('seller-publish-now-order', 'ordering.mp4'),
+      platforms: ['TIKTOK'],
+      scheduledAt: originalRunAt
+    });
+    await inMemoryPublishQueue.enqueue(post);
+    const publishQueue = {
+      ...inMemoryPublishQueue,
+      reschedule: vi.fn(async (readyPost: QueuedPost) => {
+        expect((await postStore.list({ userId: post.userId }))[0].scheduledAt).toBeUndefined();
+        expect(
+          await postStore.claimForPublish({
+            postId: post.id,
+            expectedRunAt: '2026-06-01T00:00:00.000Z'
+          })
+        ).toBe(true);
+        return inMemoryPublishQueue.reschedule(readyPost);
+      })
+    };
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: post.userId,
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
+      { now: futureNow }
+    );
+    app.use(router);
+
+    await request(app)
+      .post(`/posts/${post.id}/publish-now`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.publishJob).toMatchObject({ postId: post.id, status: 'READY' });
+      });
+    const [storedAfterClaim] = await postStore.list({ userId: post.userId });
+    expect(storedAfterClaim).toMatchObject({ status: 'PUBLISHING' });
+    expect(storedAfterClaim.scheduledAt).toBeUndefined();
+  });
+
+  it('does not roll a publish-now compensation back over a worker claim', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const originalRunAt = '2026-06-03T10:00:00.000Z';
+    const post = await postStore.create({
+      userId: 'seller-publish-now-claimed',
+      caption: 'Worker claims during queue transition',
+      videoS3Key: ownedUploadKey('seller-publish-now-claimed', 'claimed.mp4'),
+      platforms: ['TIKTOK'],
+      scheduledAt: originalRunAt
+    });
+    const publishQueue = {
+      ...createInMemoryPublishQueue(),
+      reschedule: vi.fn(async () => {
+        expect(
+          await postStore.claimForPublish({
+            postId: post.id,
+            expectedRunAt: '2026-06-01T00:00:00.000Z'
+          })
+        ).toBe(true);
+        throw new Error('queue acknowledgement lost after worker claim');
+      })
+    };
+    const authMiddleware = (
+      _request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      response.locals.authUser = {
+        id: post.userId,
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
+      { now: futureNow }
+    );
+    app.use(router);
+
+    await request(app).post(`/posts/${post.id}/publish-now`).expect(503);
+    const [storedPost] = await postStore.list({ userId: post.userId });
+    expect(storedPost).toMatchObject({ status: 'PUBLISHING' });
+    expect(storedPost.scheduledAt).toBeUndefined();
+  });
+
+  it('does not let another user publish an owned scheduled post now', async () => {
+    const app = createApp();
+    const ownerHeaders = {
+      'x-postdee-user-id': 'publish-now-owner',
+      'x-postdee-phone-verified': 'true'
+    };
+    const created = await request(app)
+      .post('/posts')
+      .set(ownerHeaders)
+      .send({
+        clientRequestId: 'publish-now-owner-request',
+        caption: 'Owner schedule',
+        videoS3Key: ownedUploadKey('publish-now-owner', 'owner.mp4'),
+        platforms: ['TIKTOK'],
+        subscriptionPlan: 'PRO',
+        scheduledAt: '2026-06-02T12:00:00.000Z'
+      })
+      .expect(201);
+
+    await request(app)
+      .post(`/posts/${created.body.post.id}/publish-now`)
+      .set('x-postdee-user-id', 'publish-now-other-user')
+      .expect(404);
+    const ownerPosts = await request(app).get('/posts').set(ownerHeaders).expect(200);
+    expect(ownerPosts.body.posts[0].scheduledAt).toBe('2026-06-02T12:00:00.000Z');
+  });
+
+  it('serializes reschedule and publish-now queue transitions for one post', async () => {
+    const app = express();
+    const router = express.Router();
+    const postStore = createPostStore();
+    const originalRunAt = '2026-06-02T10:00:00.000Z';
+    const replacementRunAt = '2026-06-03T10:00:00.000Z';
+    const post = await postStore.create({
+      userId: 'seller-reschedule-publish-now',
+      caption: 'Serialize publish now',
+      videoS3Key: ownedUploadKey(
+        'seller-reschedule-publish-now',
+        'serialize-publish-now.mp4'
+      ),
+      platforms: ['YOUTUBE_SHORTS'],
+      scheduledAt: originalRunAt
+    });
+    const inMemoryPublishQueue = createInMemoryPublishQueue();
+    await inMemoryPublishQueue.enqueue(post);
+    let releaseFirstQueue!: () => void;
+    const firstQueueGate = new Promise<void>((resolve) => {
+      releaseFirstQueue = resolve;
+    });
+    let markFirstQueueStarted!: () => void;
+    const firstQueueStarted = new Promise<void>((resolve) => {
+      markFirstQueueStarted = resolve;
+    });
+    let rescheduleCalls = 0;
+    const publishQueue = {
+      ...inMemoryPublishQueue,
+      reschedule: vi.fn(async (queuedPost: QueuedPost) => {
+        rescheduleCalls += 1;
+        if (rescheduleCalls === 1) {
+          markFirstQueueStarted();
+          await firstQueueGate;
+        }
+        return inMemoryPublishQueue.reschedule(queuedPost);
+      })
+    };
+    let markPublishNowAuthenticated!: () => void;
+    const publishNowAuthenticated = new Promise<void>((resolve) => {
+      markPublishNowAuthenticated = resolve;
+    });
+    const authMiddleware = (
+      request: express.Request,
+      response: express.Response,
+      next: express.NextFunction
+    ) => {
+      if (request.header('x-request-label') === 'publish-now') {
+        markPublishNowAuthenticated();
+      }
+      response.locals.authUser = {
+        id: post.userId,
+        provider: 'mock',
+        phoneVerified: true,
+        subscriptionPlan: 'PRO'
+      };
+      next();
+    };
+    app.use(express.json());
+    registerPostRoutes(
+      router,
+      postStore,
+      publishQueue,
+      authMiddleware,
+      createUserStore(),
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
+      { now: futureNow }
+    );
+    app.use(router);
+
+    const rescheduleResponse = request(app)
+      .patch(`/posts/${post.id}`)
+      .send({ scheduledAt: replacementRunAt })
+      .then((response) => response);
+    await firstQueueStarted;
+    const publishNowResponse = request(app)
+      .post(`/posts/${post.id}/publish-now`)
+      .set('x-request-label', 'publish-now')
+      .send({})
+      .then((response) => response);
+    await publishNowAuthenticated;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(publishQueue.reschedule).toHaveBeenCalledOnce();
+
+    releaseFirstQueue();
+    expect((await rescheduleResponse).status).toBe(200);
+    expect((await publishNowResponse).status).toBe(200);
+    expect(publishQueue.reschedule).toHaveBeenCalledTimes(2);
+    const [storedPost] = await postStore.list({ userId: post.userId });
+    expect(storedPost.scheduledAt).toBeUndefined();
+    expect(await inMemoryPublishQueue.list({ userId: post.userId })).toEqual([
+      expect.objectContaining({ postId: post.id, status: 'READY' })
+    ]);
   });
 
   it('cancels a queued post so it no longer appears', async () => {

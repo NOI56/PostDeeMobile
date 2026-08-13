@@ -52,10 +52,8 @@ type SocialConnectionDelegate = {
         platform: SocialConnectionPlatform;
       };
     };
-    select: {
-      postPeerAccountId: true;
-    };
-  }) => Promise<{ postPeerAccountId: string } | null>;
+    select: { postPeerAccountId: true } | SocialConnectionSelect;
+  }) => Promise<PrismaSocialConnection | { postPeerAccountId: string } | null>;
   upsert: (args: {
     where: {
       userId_platform: {
@@ -214,6 +212,18 @@ export const createPrismaSocialConnectionRepository = ({
     });
 
     return record?.postPeerAccountId;
+  },
+  getConnection: async ({ userId, platform }) => {
+    const record = await prisma.socialConnection.findUnique({
+      where: {
+        userId_platform: {
+          userId,
+          platform
+        }
+      },
+      select: socialConnectionSelect
+    });
+    return record && 'platform' in record ? mapConnection(record) : undefined;
   },
   upsert: async (input) => {
     const data = writeData(input);

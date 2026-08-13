@@ -2,6 +2,7 @@ import type {
   CreatePostInput,
   CreatePostWithinMonthlyLimitInput,
   CreatePostWithinMonthlyLimitResult,
+  FindIdempotentPostInput,
   Platform,
   PostStatus,
   PostStore,
@@ -9,7 +10,14 @@ import type {
   ClaimPostForPublishInput,
   UpdatePostStatusInput
 } from './postStore.js';
-import { countCurrentMonthPostUnits } from './postUsage.js';
+import { countCurrentMonthPostUnits, readUtcMonthBounds } from './postUsage.js';
+import {
+  PostIdempotencyKeyReusedError,
+  buildIdempotentPostId,
+  isMatchingIdempotentIntent
+} from './postStore.js';
+import { normalizePersistedPlatformSettings } from './platformSettings.js';
+import { normalizePersistedPlatformTargets } from './platformTargets.js';
 
 type PrismaPostStatus =
   | 'DRAFT'
@@ -27,6 +35,8 @@ type PrismaPost = {
   coverImageS3Key?: string | null;
   coverFrameTimeMs?: number | null;
   selectedPlatforms: Platform[];
+  platformSettings?: unknown | null;
+  platformTargets?: unknown | null;
   scheduledAt: Date | null;
   status: PrismaPostStatus;
   publishedAt: Date | null;
@@ -42,18 +52,23 @@ type PostDelegate = {
       userId?: string;
       status?: PrismaPostStatus;
       scheduledAt?: { not: null };
+      createdAt?: { gte: Date; lt: Date };
       OR?: Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>;
     };
-    orderBy: { createdAt: 'desc' } | { scheduledAt: 'asc' };
+    orderBy?: { createdAt: 'desc' } | { scheduledAt: 'asc' };
+    select?: { createdAt: true; selectedPlatforms: true };
   }) => Promise<PrismaPost[]>;
   create: (args: {
     data: {
+      id?: string;
       userId: string;
       caption: string;
       videoS3Key: string;
       coverImageS3Key?: string;
       coverFrameTimeMs?: number;
       selectedPlatforms: Platform[];
+      platformSettings?: unknown;
+      platformTargets?: unknown;
       scheduledAt?: Date;
       status: 'QUEUED';
     };
@@ -68,13 +83,14 @@ type PostDelegate = {
       userId?: string;
       status: PrismaPostStatus;
       OR?: Array<{ scheduledAt: null } | { scheduledAt: Date }>;
+      scheduledAt?: Date | null | { not: null };
     };
-    data: { scheduledAt?: Date; status?: PrismaPostStatus };
+    data: { scheduledAt?: Date | null; status?: PrismaPostStatus };
   }) => Promise<{ count: number }>;
   deleteMany: (args: {
     where: { id: string; userId: string; status: PrismaPostStatus };
   }) => Promise<{ count: number }>;
-  findFirst: (args: { where: { id: string } }) => Promise<PrismaPost | null>;
+  findFirst: (args: { where: { id: string; userId?: string } }) => Promise<PrismaPost | null>;
 };
 
 export type PrismaPostClient = {
@@ -88,27 +104,48 @@ export type PrismaPostClient = {
 const toPostStatus = (status: PrismaPostStatus): PostStatus =>
   status === 'DRAFT' ? 'QUEUED' : status;
 
-const mapPost = (post: PrismaPost): QueuedPost => ({
-  id: post.id,
-  userId: post.userId,
-  caption: post.caption,
-  videoS3Key: post.videoS3Key,
-  ...(post.coverImageS3Key
-    ? { coverImageS3Key: post.coverImageS3Key }
-    : {}),
-  ...(post.coverFrameTimeMs !== null && post.coverFrameTimeMs !== undefined
-    ? { coverFrameTimeMs: post.coverFrameTimeMs }
-    : {}),
-  platforms: [...post.selectedPlatforms],
-  scheduledAt: post.scheduledAt?.toISOString(),
-  status: toPostStatus(post.status),
-  publishedAt: post.publishedAt?.toISOString(),
-  createdAt: post.createdAt.toISOString()
-});
+const mapPost = (post: PrismaPost): QueuedPost => {
+  const platformTargets = normalizePersistedPlatformTargets(
+    post.platformTargets,
+    post.selectedPlatforms
+  );
 
-const createPost = async (postDelegate: PostDelegate, input: CreatePostInput) => {
+  return {
+    id: post.id,
+    userId: post.userId,
+    caption: post.caption,
+    videoS3Key: post.videoS3Key,
+    ...(post.coverImageS3Key
+      ? { coverImageS3Key: post.coverImageS3Key }
+      : {}),
+    ...(post.coverFrameTimeMs !== null && post.coverFrameTimeMs !== undefined
+      ? { coverFrameTimeMs: post.coverFrameTimeMs }
+      : {}),
+    platforms: [...post.selectedPlatforms],
+    ...(post.platformSettings != null
+      ? {
+          platformSettings: normalizePersistedPlatformSettings(
+            post.platformSettings,
+            post.selectedPlatforms
+          )
+        }
+      : {}),
+    ...(platformTargets ? { platformTargets } : {}),
+    scheduledAt: post.scheduledAt?.toISOString(),
+    status: toPostStatus(post.status),
+    publishedAt: post.publishedAt?.toISOString(),
+    createdAt: post.createdAt.toISOString()
+  };
+};
+
+const createPost = async (
+  postDelegate: PostDelegate,
+  input: CreatePostInput,
+  id?: string
+) => {
   const post = await postDelegate.create({
     data: {
+      ...(id ? { id } : {}),
       userId: input.userId,
       caption: input.caption,
       videoS3Key: input.videoS3Key,
@@ -119,6 +156,22 @@ const createPost = async (postDelegate: PostDelegate, input: CreatePostInput) =>
         ? { coverFrameTimeMs: input.coverFrameTimeMs }
         : {}),
       selectedPlatforms: [...input.platforms],
+      ...(input.platformSettings
+        ? {
+            platformSettings: normalizePersistedPlatformSettings(
+              input.platformSettings,
+              input.platforms
+            )
+          }
+        : {}),
+      ...(input.platformTargets
+        ? {
+            platformTargets: normalizePersistedPlatformTargets(
+              input.platformTargets,
+              input.platforms
+            )
+          }
+        : {}),
       scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
       status: 'QUEUED' as const
     }
@@ -127,8 +180,32 @@ const createPost = async (postDelegate: PostDelegate, input: CreatePostInput) =>
   return mapPost(post);
 };
 
-const isRetryableTransactionConflict = (error: unknown) =>
-  typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034';
+const isRetryableTransactionConflict = (
+  error: unknown,
+  hasIdempotencyKey: boolean
+) =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  (error.code === 'P2034' || (hasIdempotencyKey && error.code === 'P2002'));
+
+const countMonthlyUnits = async (
+  postDelegate: PostDelegate,
+  { userId, now }: { userId: string; now: string }
+) => {
+  const { start, end } = readUtcMonthBounds(new Date(now));
+  const posts = await postDelegate.findMany({
+    where: { userId, createdAt: { gte: start, lt: end } },
+    select: { createdAt: true, selectedPlatforms: true }
+  });
+  return countCurrentMonthPostUnits(
+    posts.map((post) => ({
+      createdAt: post.createdAt.toISOString(),
+      platforms: post.selectedPlatforms
+    })),
+    new Date(now)
+  );
+};
 
 const createWithinMonthlyLimit = async (
   prisma: PrismaPostClient,
@@ -144,17 +221,28 @@ const createWithinMonthlyLimit = async (
     try {
       return await prisma.$transaction(
         async (transaction) => {
-          const posts = await transaction.post.findMany({
-            where: { userId: input.userId },
-            orderBy: { createdAt: 'desc' }
-          });
-          const usedPostUnits = countCurrentMonthPostUnits(
-            posts.map((post) => ({
-              createdAt: post.createdAt.toISOString(),
-              platforms: post.selectedPlatforms
-            })),
-            new Date(input.now)
-          );
+          if (input.clientRequestId) {
+            const idempotencyKey = {
+              userId: input.userId,
+              clientRequestId: input.clientRequestId
+            };
+            const persisted = await transaction.post.findFirst({
+              where: {
+                id: buildIdempotentPostId(idempotencyKey),
+                userId: input.userId
+              }
+            });
+
+            if (persisted) {
+              const post = mapPost(persisted);
+              if (!isMatchingIdempotentIntent(post, input)) {
+                throw new PostIdempotencyKeyReusedError();
+              }
+              return { ok: true as const, post, created: false };
+            }
+          }
+
+          const usedPostUnits = await countMonthlyUnits(transaction.post, input);
 
           if (usedPostUnits + input.platforms.length > input.monthlyPostUnitLimit) {
             return { ok: false as const };
@@ -162,13 +250,26 @@ const createWithinMonthlyLimit = async (
 
           return {
             ok: true as const,
-            post: await createPost(transaction.post, input)
+            post: await createPost(
+              transaction.post,
+              input,
+              input.clientRequestId
+                ? buildIdempotentPostId({
+                    userId: input.userId,
+                    clientRequestId: input.clientRequestId
+                  })
+                : undefined
+            ),
+            created: true
           };
         },
         { isolationLevel: 'Serializable' }
       );
     } catch (error) {
-      if (!isRetryableTransactionConflict(error) || attempt === maxAttempts) {
+      if (
+        !isRetryableTransactionConflict(error, Boolean(input.clientRequestId)) ||
+        attempt === maxAttempts
+      ) {
         throw error;
       }
     }
@@ -188,6 +289,7 @@ export const createPrismaPostRepository = ({
         status: { in: ['QUEUED', 'PUBLISHING'] }
       }
     }),
+  countMonthlyPostUnits: async (input) => countMonthlyUnits(prisma.post, input),
   list: async (filter) => {
     const scheduledOnly = filter?.scheduledOnly ?? false;
     const posts = await prisma.post.findMany({
@@ -207,6 +309,15 @@ export const createPrismaPostRepository = ({
     return posts.map(mapPost);
   },
   create: async (input: CreatePostInput) => createPost(prisma.post, input),
+  findIdempotent: async (input: FindIdempotentPostInput) => {
+    const persisted = await prisma.post.findFirst({
+      where: {
+        id: buildIdempotentPostId(input),
+        userId: input.userId
+      }
+    });
+    return persisted ? mapPost(persisted) : undefined;
+  },
   createWithinMonthlyLimit: async (input) => createWithinMonthlyLimit(prisma, input),
   listDue: async ({ now }: { now: string }) => {
     const posts = await prisma.post.findMany({
@@ -240,9 +351,19 @@ export const createPrismaPostRepository = ({
       }
     });
   },
-  reschedule: async ({ postId, userId, scheduledAt }) => {
+  reschedule: async ({ postId, userId, expectedScheduledAt, scheduledAt }) => {
     const result = await prisma.post.updateMany({
-      where: { id: postId, userId, status: 'QUEUED' },
+      where: {
+        id: postId,
+        userId,
+        status: 'QUEUED',
+        ...(expectedScheduledAt !== undefined
+          ? {
+              scheduledAt:
+                expectedScheduledAt === null ? null : new Date(expectedScheduledAt)
+            }
+          : {})
+      },
       data: { scheduledAt: new Date(scheduledAt) }
     });
 
@@ -251,6 +372,26 @@ export const createPrismaPostRepository = ({
     }
 
     const post = await prisma.post.findFirst({ where: { id: postId } });
+    return post ? mapPost(post) : undefined;
+  },
+  publishNow: async ({ postId, userId, expectedScheduledAt }) => {
+    const result = await prisma.post.updateMany({
+      where: {
+        id: postId,
+        userId,
+        status: 'QUEUED',
+        scheduledAt: expectedScheduledAt
+          ? new Date(expectedScheduledAt)
+          : { not: null }
+      },
+      data: { scheduledAt: null }
+    });
+
+    if (result.count === 0) {
+      return undefined;
+    }
+
+    const post = await prisma.post.findFirst({ where: { id: postId, userId } });
     return post ? mapPost(post) : undefined;
   },
   remove: async ({ postId, userId }) => {

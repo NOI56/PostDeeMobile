@@ -113,6 +113,120 @@ describe('account routes', () => {
     expect(assertOwnerActive).toHaveBeenCalledWith('seller-deleting');
   });
 
+  it('keeps an aborted mutation inside the owner barrier until its durable handler completes', async () => {
+    const userId = 'seller-aborted-mutation-delete-race';
+    let markUploadCheckStarted!: () => void;
+    let releaseUploadCheck!: () => void;
+    const uploadCheckStarted = new Promise<void>((resolve) => {
+      markUploadCheckStarted = resolve;
+    });
+    const uploadCheckGate = new Promise<void>((resolve) => {
+      releaseUploadCheck = resolve;
+    });
+    const prepareOwnerDeletion = vi.fn(async () => undefined);
+    const managedUploadService = {
+      assertOwnerActive: vi.fn(async () => undefined),
+      assertReadyForUse: vi.fn(async () => {
+        markUploadCheckStarted();
+        await uploadCheckGate;
+      }),
+      prepareOwnerDeletion,
+      finishOwnerDeletion: vi.fn(async () => undefined)
+    } as unknown as ManagedUploadService;
+    const app = createApp({ managedUploadService });
+    const mutationRequest = request(app)
+      .post('/posts')
+      .set('x-postdee-user-id', userId)
+      .send({
+        clientRequestId: 'aborted-mutation-delete-race',
+        caption: 'Finish durable boundary after client abort',
+        videoS3Key: ownedUploadKey(userId, 'aborted-mutation.mp4'),
+        platforms: ['TIKTOK'],
+        subscriptionPlan: 'PRO'
+      });
+    const mutationOutcome = mutationRequest.then(
+      () => 'completed' as const,
+      () => 'aborted' as const
+    );
+
+    await uploadCheckStarted;
+    mutationRequest.abort();
+    let deletionSettled = false;
+    const deletionResponse = request(app)
+      .delete('/account')
+      .set('x-postdee-user-id', userId)
+      .then((response) => {
+        deletionSettled = true;
+        return response;
+      });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(deletionSettled).toBe(false);
+    expect(prepareOwnerDeletion).not.toHaveBeenCalled();
+
+    releaseUploadCheck();
+    expect(await mutationOutcome).toBe('aborted');
+    expect((await deletionResponse).status).toBe(200);
+    expect(prepareOwnerDeletion).toHaveBeenCalledOnce();
+  });
+
+  it('lets an in-flight durable post finish before account deletion cleans it', async () => {
+    const userId = 'seller-durable-post-delete-race';
+    let markUploadCheckStarted!: () => void;
+    let releaseUploadCheck!: () => void;
+    const uploadCheckStarted = new Promise<void>((resolve) => {
+      markUploadCheckStarted = resolve;
+    });
+    const uploadCheckGate = new Promise<void>((resolve) => {
+      releaseUploadCheck = resolve;
+    });
+    const prepareOwnerDeletion = vi.fn(async () => undefined);
+    const managedUploadService = {
+      assertOwnerActive: vi.fn(async () => undefined),
+      assertReadyForUse: vi.fn(async () => {
+        markUploadCheckStarted();
+        await uploadCheckGate;
+      }),
+      prepareOwnerDeletion,
+      finishOwnerDeletion: vi.fn(async () => undefined)
+    } as unknown as ManagedUploadService;
+    const app = createApp({ managedUploadService });
+    const postResponse = request(app)
+      .post('/posts')
+      .set('x-postdee-user-id', userId)
+      .send({
+        clientRequestId: 'durable-post-delete-race',
+        caption: 'Finish before deletion cleanup',
+        videoS3Key: ownedUploadKey(userId, 'durable.mp4'),
+        platforms: ['TIKTOK'],
+        subscriptionPlan: 'PRO'
+      })
+      .then((response) => response);
+
+    await uploadCheckStarted;
+    let deletionSettled = false;
+    const deletionResponse = request(app)
+      .delete('/account')
+      .set('x-postdee-user-id', userId)
+      .then((response) => {
+        deletionSettled = true;
+        return response;
+      });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(deletionSettled).toBe(false);
+    expect(prepareOwnerDeletion).not.toHaveBeenCalled();
+
+    releaseUploadCheck();
+    expect((await postResponse).status).toBe(201);
+    expect((await deletionResponse).status).toBe(200);
+    expect(prepareOwnerDeletion).toHaveBeenCalledOnce();
+    await request(app)
+      .get('/posts')
+      .set('x-postdee-user-id', userId)
+      .expect(200)
+      .expect({ status: 'ok', posts: [] });
+  });
+
   it('permanently deletes all data for the authenticated user', async () => {
     const app = createApp();
 

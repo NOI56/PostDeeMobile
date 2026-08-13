@@ -69,6 +69,30 @@ describe('processPublishJobForPost', () => {
     expect(publisher.publish).not.toHaveBeenCalled();
   });
 
+  it('fails a claimed post closed when account deletion starts between the precheck and provider call', async () => {
+    const { store, statuses } = makeFakePostStore();
+    const publisher = { publish: vi.fn(async ({ platform }) => publishedResult(platform)) };
+    const assertOwnerActive = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('account deletion in progress'));
+
+    await expect(
+      processPublishJobForPost({
+        jobData,
+        postStore: store,
+        publisher,
+        storage: { deleteVideo: async () => undefined },
+        platformPublishStore: { recordResults: async () => [] },
+        assertOwnerActive
+      })
+    ).rejects.toThrow('account deletion in progress');
+
+    expect(assertOwnerActive).toHaveBeenCalledTimes(2);
+    expect(statuses).toEqual(['PUBLISHING', 'FAILED']);
+    expect(publisher.publish).not.toHaveBeenCalled();
+  });
+
   it('advances the post to PUBLISHED when every platform succeeds', async () => {
     const { store, statuses } = makeFakePostStore();
 
@@ -285,6 +309,39 @@ describe('processPublishJob', () => {
     expect(publisher.publish).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
     expect(result.status).toBe('FAILED');
+  });
+
+  it('logs only safe metadata when a provider error contains identifiers or secrets', async () => {
+    const sentinel =
+      'provider secret=postpeer-live-secret externalPostId=provider-post-sensitive-123';
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      await processPublishJob({
+        jobData: {
+          ...baseJobData,
+          platforms: ['TIKTOK']
+        },
+        publisher: {
+          publish: async () => {
+            throw new Error(sentinel);
+          }
+        },
+        platformPublishStore: { recordResults: vi.fn(async () => []) }
+      });
+
+      expect(log).toHaveBeenCalledWith('Publish worker operation failed', {
+        category: 'PLATFORM_PUBLISH',
+        code: 'PLATFORM_PUBLISH_FAILED',
+        errorName: 'Error',
+        platform: 'TIKTOK'
+      });
+      expect(JSON.stringify(log.mock.calls)).not.toContain(sentinel);
+      expect(JSON.stringify(log.mock.calls)).not.toContain('postpeer-live-secret');
+      expect(JSON.stringify(log.mock.calls)).not.toContain('provider-post-sensitive-123');
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('surfaces an unconfirmed provider outcome without retrying the publish call', async () => {

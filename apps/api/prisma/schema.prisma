@@ -32,6 +32,13 @@ enum PublishStatus {
   FAILED
 }
 
+enum DeliveryOutcome {
+  LIVE
+  PRIVATE
+  UNLISTED
+  DRAFT
+}
+
 enum SubscriptionPlan {
   BASIC
   STARTER
@@ -92,6 +99,8 @@ model Post {
   publishedAt       DateTime?
   status            PostStatus        @default(DRAFT)
   selectedPlatforms Platform[]
+  platformSettings  Json?
+  platformTargets   Json?
   user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   platformPublishes PlatformPublish[]
   createdAt         DateTime          @default(now())
@@ -107,6 +116,8 @@ model PlatformPublish {
   platform       Platform
   status         PublishStatus @default(PENDING)
   externalPostId String?
+  providerPostId String?
+  deliveryOutcome DeliveryOutcome?
   views          Int           @default(0)
   likes          Int           @default(0)
   errorMessage   String?

@@ -1,4 +1,15 @@
 import type { Platform } from '../modules/posts/postStore.js';
+import type { PlatformSettings } from '../modules/posts/platformSettings.js';
+import {
+  isSamePlatformTarget,
+  normalizePersistedPlatformTargets,
+  type PlatformTargets,
+  type ResolveCurrentPlatformTarget
+} from '../modules/posts/platformTargets.js';
+import {
+  readPlatformSettingsForPublish,
+  readRequestedDeliveryOutcome
+} from './platformDeliveryOutcome.js';
 import {
   PublishOutcomeUnknownError,
   type PlatformPublisher
@@ -46,7 +57,7 @@ type PostPeerResolvedPayload = Omit<PostPeerPublishResponse, 'post'>;
 
 type PostPeerPublishEvaluation =
   | { outcome: 'publishing'; postId?: string }
-  | { outcome: 'published'; externalPostId: string }
+  | { outcome: 'published'; externalPostId?: string; providerPostId?: string }
   | { outcome: 'failed'; message: string };
 
 export class PostPeerPublishOutcomeUnknownError extends PublishOutcomeUnknownError {
@@ -59,6 +70,7 @@ export class PostPeerPublishOutcomeUnknownError extends PublishOutcomeUnknownErr
 const finalPostStatuses = new Set(['published', 'partial']);
 const publishingPostStatuses = new Set(['pending', 'publishing']);
 const failedPostStatuses = new Set(['failed']);
+const draftPostStatus = 'draft';
 // Video uploads can take well beyond the create endpoint's own wait window.
 // Poll for up to roughly two minutes before declaring the outcome unknown.
 const defaultMaxPollAttempts = 60;
@@ -112,14 +124,44 @@ const postPeerAccountIdEnv: Record<Platform, string> = {
 const readPostPeerAccountId = async ({
   accountIds,
   resolveAccountId,
+  resolveCurrentPlatformTarget,
   userId,
-  platform
+  platform,
+  platformTargets
 }: {
   accountIds: PostPeerAccountIds;
   resolveAccountId?: ResolveAccountId;
+  resolveCurrentPlatformTarget?: ResolveCurrentPlatformTarget;
   userId?: string;
   platform: Platform;
+  platformTargets?: PlatformTargets | null;
 }) => {
+  if (platformTargets != null) {
+    const normalizedUserId = userId?.trim();
+    if (!normalizedUserId) {
+      throw new Error(`User id is required to revalidate the publish target for ${platform}`);
+    }
+    if (!resolveCurrentPlatformTarget) {
+      throw new Error(`Publish target revalidation is required for ${platform}`);
+    }
+    const normalizedTargets = normalizePersistedPlatformTargets(
+      { [platform]: platformTargets[platform] },
+      [platform]
+    );
+    const snapshottedTarget = normalizedTargets?.[platform];
+    if (!snapshottedTarget) {
+      throw new Error(`Persisted publish target is invalid for ${platform}`);
+    }
+    const currentTarget = await resolveCurrentPlatformTarget({
+      userId: normalizedUserId,
+      platform
+    });
+    if (!currentTarget || !isSamePlatformTarget(snapshottedTarget, currentTarget)) {
+      throw new Error(`Connected publish target changed before publishing ${platform}`);
+    }
+    return snapshottedTarget.accountId;
+  }
+
   if (resolveAccountId) {
     const normalizedUserId = userId?.trim();
 
@@ -171,13 +213,20 @@ const readFailureMessage = (
 
 const evaluatePostPeerPayload = (
   rawPayload: PostPeerPublishResponse,
-  platform: Platform
+  platform: Platform,
+  requestedDeliveryOutcome: ReturnType<typeof readRequestedDeliveryOutcome>,
+  knownProviderPostId?: string
 ): PostPeerPublishEvaluation => {
   const payload = unwrapPostPeerPayload(rawPayload);
   const platformResult = readPlatformResult(payload, platform);
   const postStatus = readNormalizedStatus(payload.status);
   const platformStatus = readNormalizedStatus(platformResult?.status);
-  const postId = readNonEmptyString(payload.postId) ?? readNonEmptyString(payload.id);
+  const platformPostId = readNonEmptyString(platformResult?.platformPostId);
+  const postId =
+    readNonEmptyString(payload.postId) ??
+    readNonEmptyString(payload.id) ??
+    knownProviderPostId ??
+    platformPostId;
 
   if (
     payload.success === false ||
@@ -200,10 +249,47 @@ const evaluatePostPeerPayload = (
 
   const externalPostId =
     readNonEmptyString(platformResult?.platformPostUrl) ??
-    readNonEmptyString(platformResult?.platformPostId) ??
+    platformPostId ??
     readNonEmptyString(payload.externalPostId);
 
-  if (postStatus && finalPostStatuses.has(postStatus)) {
+  const hasExplicitDraftStatus =
+    postStatus === draftPostStatus || platformStatus === draftPostStatus;
+  const hasExplicitPublishedStatus =
+    Boolean(postStatus && finalPostStatuses.has(postStatus)) ||
+    Boolean(platformStatus && finalPostStatuses.has(platformStatus));
+  const hasExplicitPublishedSuccessStatus =
+    postStatus === 'published' || platformStatus === 'published';
+
+  if (requestedDeliveryOutcome === 'DRAFT') {
+    const facebookPageDraftConfirmedAsPublished =
+      platform === 'FACEBOOK_REELS' && hasExplicitPublishedSuccessStatus;
+    if (hasExplicitDraftStatus || facebookPageDraftConfirmedAsPublished) {
+      if (!postId) {
+        return {
+          outcome: 'failed',
+          message: 'PostPeer did not return a provider post id for the draft'
+        };
+      }
+      return {
+        outcome: 'published',
+        providerPostId: postId,
+        ...(externalPostId ? { externalPostId } : {})
+      };
+    }
+    return {
+      outcome: 'failed',
+      message: 'PostPeer did not return an explicit final draft status'
+    };
+  }
+
+  if (hasExplicitDraftStatus) {
+    return {
+      outcome: 'failed',
+      message: 'PostPeer returned a draft for a non-draft publish request'
+    };
+  }
+
+  if (hasExplicitPublishedStatus) {
     if (!externalPostId) {
       return {
         outcome: 'failed',
@@ -211,14 +297,22 @@ const evaluatePostPeerPayload = (
       };
     }
 
-    return { outcome: 'published', externalPostId };
+    return {
+      outcome: 'published',
+      externalPostId,
+      ...(postId ? { providerPostId: postId } : {})
+    };
   }
 
   // Keep compatibility with providers that return an explicit external id but
   // omit `status`. Unlike the old fallback, this is a real provider value and
   // never fabricates an id from the PostDee post id.
   if (!postStatus && externalPostId) {
-    return { outcome: 'published', externalPostId };
+    return {
+      outcome: 'published',
+      externalPostId,
+      ...(postId ? { providerPostId: postId } : {})
+    };
   }
 
   return {
@@ -239,13 +333,15 @@ const buildPlatformTarget = ({
   accountId,
   caption,
   coverUrl,
-  coverFrameTimeMs
+  coverFrameTimeMs,
+  platformSettings
 }: {
   platform: Platform;
   accountId: string;
   caption?: string;
   coverUrl?: string;
   coverFrameTimeMs?: number;
+  platformSettings: PlatformSettings;
 }) => {
   const target: {
     platform: string;
@@ -257,32 +353,55 @@ const buildPlatformTarget = ({
   };
 
   if (platform === 'YOUTUBE_SHORTS') {
-    // Controlled-first safety default. Public rollout needs an explicit
-    // user-selected visibility passed through the publish input.
+    const youtubeSettings = platformSettings.YOUTUBE_SHORTS;
+    if (!youtubeSettings) {
+      throw new Error('YouTube publish settings are required');
+    }
     target.platformSpecificData = {
-      title: deriveYoutubeTitle(caption),
-      visibility: 'private'
+      title: 'title' in youtubeSettings ? youtubeSettings.title : deriveYoutubeTitle(caption),
+      visibility: youtubeSettings.visibility,
+      ...('title' in youtubeSettings
+        ? {
+            madeForKids: youtubeSettings.madeForKids,
+            containsSyntheticMedia: youtubeSettings.containsSyntheticMedia
+          }
+        : {})
     };
   } else if (platform === 'TIKTOK') {
+    const tiktokSettings = platformSettings.TIKTOK;
+    if (!tiktokSettings) {
+      throw new Error('TikTok publish settings are required');
+    }
     target.platformSpecificData = {
-      // Controlled-first safety default: TikTok requires unaudited clients to
-      // use SELF_ONLY. Public rollout needs explicit creator privacy controls.
-      // `draft: false` keeps this a direct post whose final status can be polled
-      // while still limiting the first controlled release to the account owner.
-      privacyLevel: 'SELF_ONLY',
-      draft: false,
+      ...(tiktokSettings.publishMode === 'DIRECT_POST'
+        ? { privacyLevel: tiktokSettings.privacyLevel, draft: false }
+        : { draft: true }),
       ...(coverFrameTimeMs !== undefined
         ? { videoCoverTimestampMs: coverFrameTimeMs }
         : {})
     };
   } else if (platform === 'INSTAGRAM_REELS') {
-    target.platformSpecificData = coverUrl
-      ? { coverUrl }
-      : coverFrameTimeMs !== undefined
-        ? { thumbOffset: coverFrameTimeMs }
-        : undefined;
-  } else if (platform === 'FACEBOOK_REELS' && coverUrl) {
-    target.platformSpecificData = { videoThumbnailUrl: coverUrl };
+    const instagramSettings = platformSettings.INSTAGRAM_REELS;
+    if (!instagramSettings) {
+      throw new Error('Instagram publish settings are required');
+    }
+    target.platformSpecificData = {
+      shareToFeed: instagramSettings.shareToFeed,
+      ...(coverUrl
+        ? { coverUrl }
+        : coverFrameTimeMs !== undefined
+          ? { thumbOffset: coverFrameTimeMs }
+          : {})
+    };
+  } else if (platform === 'FACEBOOK_REELS') {
+    const facebookSettings = platformSettings.FACEBOOK_REELS;
+    if (!facebookSettings) {
+      throw new Error('Facebook publish settings are required');
+    }
+    target.platformSpecificData = {
+      published: facebookSettings.publishMode === 'PUBLISH',
+      ...(coverUrl ? { videoThumbnailUrl: coverUrl } : {})
+    };
   }
 
   return target;
@@ -302,6 +421,7 @@ export const createPostPeerPublisher = ({
   baseUrl,
   accountIds = {},
   resolveAccountId,
+  resolveCurrentPlatformTarget,
   resolveVideoUrl,
   now = () => new Date().toISOString(),
   maxPollAttempts = defaultMaxPollAttempts,
@@ -313,6 +433,7 @@ export const createPostPeerPublisher = ({
   baseUrl: string;
   accountIds?: PostPeerAccountIds;
   resolveAccountId?: ResolveAccountId;
+  resolveCurrentPlatformTarget?: ResolveCurrentPlatformTarget;
   resolveVideoUrl?: ResolveVideoUrl;
   now?: () => string;
   maxPollAttempts?: number;
@@ -326,13 +447,25 @@ export const createPostPeerPublisher = ({
     videoS3Key,
     coverImageS3Key,
     coverFrameTimeMs,
-    platform
+    platform,
+    platformSettings,
+    platformTargets
   }) => {
+    const normalizedPlatformSettings = readPlatformSettingsForPublish({
+      platform,
+      platformSettings
+    });
+    const requestedDeliveryOutcome = readRequestedDeliveryOutcome({
+      platform,
+      platformSettings
+    });
     const accountId = await readPostPeerAccountId({
       accountIds,
       resolveAccountId,
+      resolveCurrentPlatformTarget,
       userId,
-      platform
+      platform,
+      platformTargets
     });
     const videoUrl = videoS3Key
       ? resolveVideoUrl
@@ -368,7 +501,8 @@ export const createPostPeerPublisher = ({
               accountId,
               caption,
               coverUrl,
-              coverFrameTimeMs
+              coverFrameTimeMs,
+              platformSettings: normalizedPlatformSettings
             })
           ],
           ...(videoUrl
@@ -408,7 +542,11 @@ export const createPostPeerPublisher = ({
         `PostPeer publish to ${platform} outcome is unknown because the create response was invalid`
       );
     }
-    let evaluation = evaluatePostPeerPayload(payload, platform);
+    let evaluation = evaluatePostPeerPayload(
+      payload,
+      platform,
+      requestedDeliveryOutcome
+    );
 
     if (evaluation.outcome === 'failed') {
       throw new Error(
@@ -420,7 +558,13 @@ export const createPostPeerPublisher = ({
       return {
         platform,
         status: 'PUBLISHED',
-        externalPostId: evaluation.externalPostId,
+        ...(evaluation.externalPostId
+          ? { externalPostId: evaluation.externalPostId }
+          : {}),
+        ...(evaluation.providerPostId
+          ? { providerPostId: evaluation.providerPostId }
+          : {}),
+        deliveryOutcome: requestedDeliveryOutcome,
         publishedAt: now()
       };
     }
@@ -457,7 +601,12 @@ export const createPostPeerPublisher = ({
         }
 
         const statusPayload = (await statusResponse.json()) as PostPeerPublishResponse;
-        evaluation = evaluatePostPeerPayload(statusPayload, platform);
+        evaluation = evaluatePostPeerPayload(
+          statusPayload,
+          platform,
+          requestedDeliveryOutcome,
+          providerPostId
+        );
       } catch {
         // GET status checks are read-only, so bounded retries are safe.
         continue;
@@ -471,7 +620,13 @@ export const createPostPeerPublisher = ({
         return {
           platform,
           status: 'PUBLISHED',
-          externalPostId: evaluation.externalPostId,
+          ...(evaluation.externalPostId
+            ? { externalPostId: evaluation.externalPostId }
+            : {}),
+          ...(evaluation.providerPostId
+            ? { providerPostId: evaluation.providerPostId }
+            : {}),
+          deliveryOutcome: requestedDeliveryOutcome,
           publishedAt: now()
         };
       }

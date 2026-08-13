@@ -19,6 +19,8 @@ describe('createPrismaPlatformPublishRepository', () => {
           platform: 'TIKTOK',
           status: 'PUBLISHED',
           externalPostId: 'tiktok-post-1',
+          providerPostId: 'postpeer-post-1',
+          deliveryOutcome: 'PRIVATE',
           publishedAt: '2026-06-02T10:00:00.000Z'
         },
         {
@@ -40,6 +42,8 @@ describe('createPrismaPlatformPublishRepository', () => {
       update: {
         status: 'PUBLISHED',
         externalPostId: 'tiktok-post-1',
+        providerPostId: 'postpeer-post-1',
+        deliveryOutcome: 'PRIVATE',
         errorMessage: null,
         publishedAt: new Date('2026-06-02T10:00:00.000Z')
       },
@@ -48,6 +52,8 @@ describe('createPrismaPlatformPublishRepository', () => {
         platform: 'TIKTOK',
         status: 'PUBLISHED',
         externalPostId: 'tiktok-post-1',
+        providerPostId: 'postpeer-post-1',
+        deliveryOutcome: 'PRIVATE',
         errorMessage: null,
         publishedAt: new Date('2026-06-02T10:00:00.000Z'),
         views: 0,
@@ -64,6 +70,8 @@ describe('createPrismaPlatformPublishRepository', () => {
       update: {
         status: 'FAILED',
         externalPostId: null,
+        providerPostId: null,
+        deliveryOutcome: null,
         errorMessage: 'YouTube API unavailable',
         publishedAt: null
       },
@@ -72,6 +80,8 @@ describe('createPrismaPlatformPublishRepository', () => {
         platform: 'YOUTUBE_SHORTS',
         status: 'FAILED',
         externalPostId: null,
+        providerPostId: null,
+        deliveryOutcome: null,
         errorMessage: 'YouTube API unavailable',
         publishedAt: null,
         views: 0,
@@ -90,6 +100,8 @@ describe('createPrismaPlatformPublishRepository', () => {
             platform: 'FACEBOOK_REELS',
             status: 'PUBLISHED',
             externalPostId: 'facebook-video-2',
+            providerPostId: 'postpeer-post-2',
+            deliveryOutcome: 'LIVE',
             errorMessage: null,
             publishedAt: new Date('2026-06-02T10:00:00.000Z'),
             views: 4,
@@ -100,6 +112,8 @@ describe('createPrismaPlatformPublishRepository', () => {
             platform: 'TIKTOK',
             status: 'PUBLISHING',
             externalPostId: null,
+            providerPostId: null,
+            deliveryOutcome: null,
             errorMessage: null,
             publishedAt: null,
             views: 0,
@@ -116,6 +130,8 @@ describe('createPrismaPlatformPublishRepository', () => {
         platform: 'FACEBOOK_REELS',
         status: 'PUBLISHED',
         externalPostId: 'facebook-video-2',
+        providerPostId: 'postpeer-post-2',
+        deliveryOutcome: 'LIVE',
         publishedAt: '2026-06-02T10:00:00.000Z',
         views: 4,
         likes: 2

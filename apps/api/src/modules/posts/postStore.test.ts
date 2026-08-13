@@ -1,8 +1,38 @@
 import { describe, expect, it } from 'vitest';
 
-import { createPostStore } from './postStore.js';
+import {
+  PostIdempotencyKeyReusedError,
+  createPostStore
+} from './postStore.js';
 
 describe('createPostStore', () => {
+  it('counts monthly platform units through the dedicated bounded usage API', async () => {
+    const store = createPostStore();
+    await store.createWithinMonthlyLimit({
+      userId: 'seller-monthly-usage',
+      caption: 'June units',
+      videoS3Key: 'uploads/seller-monthly-usage/june.mp4',
+      platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
+      monthlyPostUnitLimit: 10,
+      now: '2026-06-30T23:59:59.000Z'
+    });
+    await store.createWithinMonthlyLimit({
+      userId: 'seller-monthly-usage',
+      caption: 'July units',
+      videoS3Key: 'uploads/seller-monthly-usage/july.mp4',
+      platforms: ['INSTAGRAM_REELS'],
+      monthlyPostUnitLimit: 10,
+      now: '2026-07-01T00:00:00.000Z'
+    });
+
+    await expect(
+      store.countMonthlyPostUnits({
+        userId: 'seller-monthly-usage',
+        now: '2026-06-15T10:00:00.000Z'
+      })
+    ).resolves.toBe(2);
+  });
+
   it('checks monthly units and creates atomically for concurrent requests', async () => {
     const store = createPostStore();
     const createPost = (suffix: string) =>
@@ -20,6 +50,52 @@ describe('createPostStore', () => {
     expect(results.filter((result) => result.ok)).toHaveLength(1);
     expect(results.filter((result) => !result.ok)).toHaveLength(1);
     await expect(store.list({ userId: 'seller-concurrent' })).resolves.toHaveLength(1);
+  });
+
+  it('replays the same client request inside the atomic quota operation without charging twice', async () => {
+    const store = createPostStore();
+    const input = {
+      userId: 'seller-idempotent',
+      clientRequestId: 'draft-123',
+      caption: 'โพสต์ครั้งเดียว',
+      videoS3Key: 'uploads/seller-idempotent/video.mp4',
+      platforms: ['TIKTOK', 'YOUTUBE_SHORTS'] as const,
+      monthlyPostUnitLimit: 2,
+      now: '2026-06-15T10:00:00.000Z'
+    };
+
+    const first = await store.createWithinMonthlyLimit(input);
+    const replay = await store.createWithinMonthlyLimit({
+      ...input,
+      videoS3Key: 'uploads/seller-idempotent/retry-upload.mp4',
+      monthlyPostUnitLimit: 0
+    });
+
+    expect(first).toMatchObject({ ok: true, created: true });
+    expect(replay).toMatchObject({
+      ok: true,
+      created: false,
+      post: { id: first.ok ? first.post.id : '' }
+    });
+    await expect(store.list({ userId: input.userId })).resolves.toHaveLength(1);
+  });
+
+  it('rejects reusing a client request id for a different publishing intent', async () => {
+    const store = createPostStore();
+    const input = {
+      userId: 'seller-intent-conflict',
+      clientRequestId: 'draft-conflict',
+      caption: 'Original caption',
+      videoS3Key: 'uploads/seller-intent-conflict/video.mp4',
+      platforms: ['TIKTOK'] as const,
+      monthlyPostUnitLimit: 3,
+      now: '2026-06-15T10:00:00.000Z'
+    };
+
+    await store.createWithinMonthlyLimit(input);
+    await expect(
+      store.createWithinMonthlyLimit({ ...input, caption: 'Changed caption' })
+    ).rejects.toBeInstanceOf(PostIdempotencyKeyReusedError);
   });
 
   it('reports one aggregate queued-or-publishing backlog total', async () => {
@@ -113,6 +189,7 @@ describe('createPostStore', () => {
     await store.reschedule({
       postId: post.id,
       userId: 'seller-1',
+      expectedScheduledAt: oldRunAt,
       scheduledAt: newRunAt
     });
 
@@ -131,5 +208,43 @@ describe('createPostStore', () => {
         expectedRunAt: newRunAt
       })
     ).toBe(true);
+  });
+
+  it('uses compare-and-set schedule transitions for compensation and publish-now', async () => {
+    const store = createPostStore();
+    const originalRunAt = '2026-06-02T10:00:00.000Z';
+    const replacementRunAt = '2026-06-03T10:00:00.000Z';
+    const post = await store.create({
+      userId: 'seller-transition',
+      caption: 'Race-safe transition',
+      videoS3Key: 'uploads/seller-transition/video.mp4',
+      platforms: ['TIKTOK'],
+      scheduledAt: originalRunAt
+    });
+
+    await expect(
+      store.reschedule({
+        postId: post.id,
+        userId: post.userId,
+        expectedScheduledAt: originalRunAt,
+        scheduledAt: replacementRunAt
+      })
+    ).resolves.toMatchObject({ scheduledAt: replacementRunAt });
+    await expect(
+      store.reschedule({
+        postId: post.id,
+        userId: post.userId,
+        expectedScheduledAt: originalRunAt,
+        scheduledAt: '2026-06-04T10:00:00.000Z'
+      })
+    ).resolves.toBeUndefined();
+
+    const readyPost = await store.publishNow({
+      postId: post.id,
+      userId: post.userId,
+      expectedScheduledAt: replacementRunAt
+    });
+    expect(readyPost).toMatchObject({ id: post.id });
+    expect(readyPost?.scheduledAt).toBeUndefined();
   });
 });

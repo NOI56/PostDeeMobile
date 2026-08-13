@@ -1,6 +1,10 @@
 import type { Request, Response, Router } from 'express';
 
 import type { ServerConfig } from '../../config/env.js';
+import {
+  createOwnerMutationLock,
+  type OwnerMutationCoordinator
+} from '../account/ownerMutationLock.js';
 import type { PaidSubscriptionPlan, SubscriptionStatus } from '../subscriptions/subscriptionStore.js';
 import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import type { UserStore } from '../users/userStore.js';
@@ -151,12 +155,14 @@ export const registerRevenueCatWebhookRoutes = ({
   router,
   config,
   userStore,
-  subscriptionStore
+  subscriptionStore,
+  ownerMutationLock = createOwnerMutationLock()
 }: {
   router: Router;
   config: RevenueCatWebhookConfig;
   userStore: UserStore;
   subscriptionStore: SubscriptionStore;
+  ownerMutationLock?: OwnerMutationCoordinator;
 }) => {
   if (config.billingProvider !== 'revenuecat') {
     return;
@@ -204,18 +210,26 @@ export const registerRevenueCatWebhookRoutes = ({
       return;
     }
 
+    if (!isActionable) {
+      response.status(202).json({
+        status: 'ok',
+        ignored: true,
+        code: 'REVENUECAT_EVENT_NOT_ACTIONABLE',
+        message: 'RevenueCat event does not change PostDee entitlements'
+      });
+      return;
+    }
+
     const authUser = {
       id: event.appUserId,
       provider: 'firebase' as const
     };
     const billingSubscriptionId = revenueCatBillingSubscriptionId(event.appUserId);
+    const releaseOwner = await (ownerMutationLock.acquireMutation?.(event.appUserId) ??
+      ownerMutationLock.acquire(event.appUserId));
 
-    if (
-      activeEventTypes.has(event.type) &&
-      event.eventId &&
-      event.eventTimestampMs !== undefined
-    ) {
-      if (!(await userStore.exists(event.appUserId))) {
+    try {
+      if (!ownerMutationLock.isActive(event.appUserId)) {
         response.status(202).json({
           status: 'ok',
           ignored: true,
@@ -225,50 +239,61 @@ export const registerRevenueCatWebhookRoutes = ({
         return;
       }
 
-      const currentPeriodEnd = readExpiration(event.expirationAtMs);
-      const eventResult = await subscriptionStore.applyRevenueCatEvent({
-        authUser,
-        billingSubscriptionId,
-        plan,
-        status: 'ACTIVE',
-        eventId: event.eventId,
-        eventTimestampMs: event.eventTimestampMs,
-        ...(currentPeriodEnd !== undefined ? { currentPeriodEnd } : {})
-      });
+      if (
+        activeEventTypes.has(event.type) &&
+        event.eventId &&
+        event.eventTimestampMs !== undefined
+      ) {
+        if (!(await userStore.exists(event.appUserId))) {
+          response.status(202).json({
+            status: 'ok',
+            ignored: true,
+            code: 'REVENUECAT_USER_NOT_FOUND',
+            message: 'RevenueCat event belongs to a PostDee user that no longer exists'
+          });
+          return;
+        }
 
-      response.json({
-        status: 'ok',
-        ignored: !eventResult.applied,
-        eventType: event.type,
-        subscription: eventResult.subscription
-      });
-      return;
+        const currentPeriodEnd = readExpiration(event.expirationAtMs);
+        const eventResult = await subscriptionStore.applyRevenueCatEvent({
+          authUser,
+          billingSubscriptionId,
+          plan,
+          status: 'ACTIVE',
+          eventId: event.eventId,
+          eventTimestampMs: event.eventTimestampMs,
+          ...(currentPeriodEnd !== undefined ? { currentPeriodEnd } : {})
+        });
+
+        response.json({
+          status: 'ok',
+          ignored: !eventResult.applied,
+          eventType: event.type,
+          subscription: eventResult.subscription
+        });
+        return;
+      }
+
+      if (inactiveStatus && event.eventId && event.eventTimestampMs !== undefined) {
+        const eventResult = await subscriptionStore.applyRevenueCatEvent({
+          authUser,
+          billingSubscriptionId,
+          plan,
+          status: inactiveStatus,
+          eventId: event.eventId,
+          eventTimestampMs: event.eventTimestampMs
+        });
+
+        response.json({
+          status: 'ok',
+          ignored: !eventResult.applied || eventResult.subscription === null,
+          eventType: event.type,
+          subscription: eventResult.subscription
+        });
+        return;
+      }
+    } finally {
+      releaseOwner();
     }
-
-    if (inactiveStatus && event.eventId && event.eventTimestampMs !== undefined) {
-      const eventResult = await subscriptionStore.applyRevenueCatEvent({
-        authUser,
-        billingSubscriptionId,
-        plan,
-        status: inactiveStatus,
-        eventId: event.eventId,
-        eventTimestampMs: event.eventTimestampMs
-      });
-
-      response.json({
-        status: 'ok',
-        ignored: !eventResult.applied || eventResult.subscription === null,
-        eventType: event.type,
-        subscription: eventResult.subscription
-      });
-      return;
-    }
-
-    response.status(202).json({
-      status: 'ok',
-      ignored: true,
-      code: 'REVENUECAT_EVENT_NOT_ACTIONABLE',
-      message: 'RevenueCat event does not change PostDee entitlements'
-    });
   });
 };

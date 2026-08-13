@@ -45,7 +45,7 @@ describe('render.yaml production config', () => {
     expectEnvSecret(source, 'GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN');
     expectEnvSecret(source, 'FIREBASE_SERVICE_ACCOUNT_JSON');
     expectEnvSecret(source, 'REVENUECAT_REST_API_V1_KEY');
-    expectEnvValue(source, 'FIREBASE_AUTH_DELETE_ENABLED', '"true"');
+    expectEnvValue(source, 'FIREBASE_AUTH_DELETE_ENABLED', '"false"');
     expect(source).not.toContain('POSTPEER_TIKTOK_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_YOUTUBE_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_INSTAGRAM_ACCOUNT_ID');

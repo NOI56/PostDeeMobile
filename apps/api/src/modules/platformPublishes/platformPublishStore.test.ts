@@ -14,6 +14,8 @@ describe('createInMemoryPlatformPublishStore', () => {
             platform: 'TIKTOK',
             status: 'PUBLISHED',
             externalPostId: 'tiktok-post-1',
+            providerPostId: 'postpeer-post-1',
+            deliveryOutcome: 'PRIVATE',
             publishedAt: '2026-06-02T10:00:00.000Z'
           },
           {
@@ -29,6 +31,8 @@ describe('createInMemoryPlatformPublishStore', () => {
         platform: 'TIKTOK',
         status: 'PUBLISHED',
         externalPostId: 'tiktok-post-1',
+        providerPostId: 'postpeer-post-1',
+        deliveryOutcome: 'PRIVATE',
         publishedAt: '2026-06-02T10:00:00.000Z',
         views: 0,
         likes: 0

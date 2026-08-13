@@ -10,6 +10,10 @@ import {
   registerAccountRoutes
 } from './modules/account/accountRoutes.js';
 import {
+  createOwnerMutationLock,
+  type OwnerMutationCoordinator
+} from './modules/account/ownerMutationLock.js';
+import {
   type AccountIdentityDeleter,
   createFirebaseIdentityDeleterFromConfig
 } from './modules/account/firebaseIdentityDeleter.js';
@@ -58,6 +62,7 @@ import {
   postCoverUploadPolicy,
   registerPostRoutes
 } from './modules/posts/postRoutes.js';
+import { buildPlatformTarget } from './modules/posts/platformTargets.js';
 import type { PrismaPostClient } from './modules/posts/prismaPostRepository.js';
 import {
   createInMemoryPlatformPublishStore,
@@ -176,6 +181,7 @@ type AppOptions = {
   platformPublishStore?: PlatformPublishStore;
   uploadSessionStore?: UploadSessionStore;
   managedUploadService?: ManagedUploadService;
+  ownerMutationLock?: OwnerMutationCoordinator;
   now?: () => Date;
 };
 
@@ -184,12 +190,14 @@ const readFileNameFromStorageKey = (videoS3Key: string) =>
 
 export const createAccountAwareAuthMiddleware = ({
   authMiddleware,
-  managedUploadService
+  managedUploadService,
+  ownerMutationLock
 }: {
   authMiddleware: RequestHandler;
   managedUploadService?: ManagedUploadService;
+  ownerMutationLock?: OwnerMutationCoordinator;
 }): RequestHandler => {
-  if (!managedUploadService) {
+  if (!managedUploadService && !ownerMutationLock) {
     return authMiddleware;
   }
 
@@ -200,7 +208,13 @@ export const createAccountAwareAuthMiddleware = ({
         return;
       }
 
-      if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
+      const mutatingReadRoute =
+        (request.method === 'GET' || request.method === 'HEAD') &&
+        (request.path === '/social-connections' || request.path === '/billing/subscription');
+      if (
+        !mutatingReadRoute &&
+        (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS')
+      ) {
         next();
         return;
       }
@@ -213,8 +227,43 @@ export const createAccountAwareAuthMiddleware = ({
       }
 
       void (async () => {
-        await managedUploadService.assertOwnerActive(authUser.id);
-        next();
+        const releaseOwner = ownerMutationLock
+          ? await ownerMutationLock.acquireMutation(authUser.id)
+          : () => undefined;
+        let released = false;
+        const releaseOnce = () => {
+          if (!released) {
+            released = true;
+            releaseOwner();
+          }
+        };
+
+        try {
+          if (ownerMutationLock && !ownerMutationLock.isActive(authUser.id)) {
+            throw new ManagedUploadServiceError(
+              409,
+              'ACCOUNT_DELETION_IN_PROGRESS',
+              'Account deletion is in progress. New mutations are disabled.'
+            );
+          }
+          await managedUploadService?.assertOwnerActive(authUser.id);
+          const originalEnd = response.end;
+          response.end = function (this: typeof response, ...args: unknown[]) {
+            try {
+              return originalEnd.apply(this, args as never);
+            } finally {
+              // `close` may fire as soon as the client disconnects while an
+              // async route is still writing durable state. `end` is the
+              // handler completion boundary even when the socket is gone.
+              releaseOnce();
+            }
+          } as typeof response.end;
+          response.once('finish', releaseOnce);
+          next();
+        } catch (error) {
+          releaseOnce();
+          throw error;
+        }
       })().catch((error: unknown) => {
         if (error instanceof ManagedUploadServiceError) {
           response.status(error.statusCode).json({
@@ -332,6 +381,7 @@ export const createApp = (options: AppOptions = {}) => {
   });
 
   const router = express.Router();
+  const ownerMutationLock = options.ownerMutationLock ?? createOwnerMutationLock();
   const authRateLimit = createRateLimitMiddleware({
     bucket: 'auth',
     windowMs: 10 * 60 * 1000,
@@ -423,6 +473,13 @@ export const createApp = (options: AppOptions = {}) => {
           prisma: prismaClient as unknown as PrismaPlatformPublishClient
         })
       : createInMemoryPlatformPublishStore());
+  const socialConnectionStore =
+    options.socialConnectionStore ??
+    createSocialConnectionStore({
+      prisma: prismaClient
+        ? (prismaClient as unknown as PrismaSocialConnectionClient)
+        : undefined
+    });
   const captionGenerator =
     options.captionGenerator ?? createCaptionGeneratorFromConfig({ config });
   const realClipCaptionUsageStore =
@@ -461,9 +518,20 @@ export const createApp = (options: AppOptions = {}) => {
       'UPLOAD_PROTOCOL_MODE requires multipart-capable object storage'
     );
   }
+  const assertOwnerActive = async (ownerId: string) => {
+    if (!ownerMutationLock.isActive(ownerId)) {
+      throw new ManagedUploadServiceError(
+        409,
+        'ACCOUNT_DELETION_IN_PROGRESS',
+        'Account deletion is in progress. New mutations are disabled.'
+      );
+    }
+    await managedUploadService?.assertOwnerActive(ownerId);
+  };
   const accountAwareAuthMiddleware = createAccountAwareAuthMiddleware({
     authMiddleware,
-    managedUploadService
+    managedUploadService,
+    ownerMutationLock
   });
   const transcriptionProvider =
     options.transcriptionProvider ??
@@ -546,6 +614,17 @@ export const createApp = (options: AppOptions = {}) => {
       allowSubscriptionPlanOverride:
         config.nodeEnv !== 'production' && config.authProvider === 'mock',
       socialPublishingEnabled: config.socialPublisher !== 'disabled',
+      assertOwnerActive,
+      resolvePlatformTarget:
+        config.socialPublisher === 'postpeer'
+          ? async ({ userId, platform }) => {
+              const connection = await socialConnectionStore.getConnection({
+                userId,
+                platform
+              });
+              return connection ? buildPlatformTarget(connection) : undefined;
+            }
+          : undefined,
       assertUploadReady: managedUploadService
         ? (ownerId, videoS3Key) =>
             managedUploadService.assertReadyForUse(ownerId, videoS3Key, {
@@ -593,26 +672,22 @@ export const createApp = (options: AppOptions = {}) => {
         apiKey: config.revenueCatRestApiV1Key
       }),
     userStore,
-    subscriptionStore
+    subscriptionStore,
+    assertOwnerActive,
+    ownerMutationLock
   });
   registerRevenueCatWebhookRoutes({
     router,
     config,
     userStore,
-    subscriptionStore
+    subscriptionStore,
+    ownerMutationLock
   });
   const deviceTokenStore = createDeviceTokenStore({
     prisma: prismaClient
       ? (prismaClient as unknown as PrismaDeviceTokenClient)
       : undefined
   });
-  const socialConnectionStore =
-    options.socialConnectionStore ??
-    createSocialConnectionStore({
-      prisma: prismaClient
-        ? (prismaClient as unknown as PrismaSocialConnectionClient)
-        : undefined
-    });
   const postPeerConnectClient =
     options.postPeerConnectClient ??
     createPostPeerConnectClient({
@@ -653,6 +728,7 @@ export const createApp = (options: AppOptions = {}) => {
     platformPublishStore,
     videoStorage,
     managedUploadService,
+    ownerMutationLock,
     accountIdentityDeleter:
       options.accountIdentityDeleter ??
       createFirebaseIdentityDeleterFromConfig({
@@ -685,7 +761,7 @@ export const createApp = (options: AppOptions = {}) => {
         deviceTokenStore,
         pushSender: createPushSenderFromConfig({ config })
       }),
-      assertOwnerActive: managedUploadService?.assertOwnerActive,
+      assertOwnerActive,
       requireEmptyBacklogOnStart:
         config.socialPublisher === 'postpeer' &&
         config.socialPublishRequireEmptyBacklog

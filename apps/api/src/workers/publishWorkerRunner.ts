@@ -29,7 +29,11 @@ import {
 } from '../modules/uploads/prismaUploadSessionRepository.js';
 import { createPlatformPublisherFromConfig } from './platformPublisherFactory.js';
 import { processPublishJobForPost } from './publishWorker.js';
-import { enforceRetriedPublishRecoveryPolicy } from './publishWorkerRunnerPolicy.js';
+import {
+  buildPublishWorkerCompletedLog,
+  buildPublishWorkerFailedLog,
+  enforceRetriedPublishRecoveryPolicy
+} from './publishWorkerRunnerPolicy.js';
 
 const config = readServerConfig();
 const storage = createVideoStorageFromConfig({ config });
@@ -98,11 +102,21 @@ const worker = new Worker<BullMqPublishJobData>(
 );
 
 worker.on('completed', (job, result) => {
-  console.log(`Publish worker completed job ${job.id}:`, result);
+  console.log(
+    'Publish worker completed:',
+    buildPublishWorkerCompletedLog({ result })
+  );
 });
 
 worker.on('failed', (job, error) => {
-  console.error(`Publish worker failed job ${job?.id ?? 'unknown'}:`, error);
+  console.error(
+    'Publish worker failed:',
+    buildPublishWorkerFailedLog({
+      postId: job?.data.postId,
+      platforms: job?.data.platforms.map((platform) => ({ platform })),
+      error
+    })
+  );
 });
 
 console.log(`PostDee publish worker is listening on ${publishQueueName}`);

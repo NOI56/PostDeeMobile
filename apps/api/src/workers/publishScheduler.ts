@@ -90,6 +90,10 @@ export const createPublishScheduler = ({
               ? { coverFrameTimeMs: post.coverFrameTimeMs }
               : {}),
             platforms: post.platforms,
+            ...(post.platformSettings
+              ? { platformSettings: post.platformSettings }
+              : {}),
+            ...(post.platformTargets ? { platformTargets: post.platformTargets } : {}),
             runAt: post.scheduledAt ?? now(),
             status: post.scheduledAt ? 'SCHEDULED' : 'READY'
           },
@@ -125,6 +129,7 @@ export const createPublishScheduler = ({
           return;
         }
 
+        await postStore.updateStatus({ postId: post.id, status: 'QUEUED' });
         await sleep(retryBackoffMs * 2 ** (attempt - 1));
       }
     }

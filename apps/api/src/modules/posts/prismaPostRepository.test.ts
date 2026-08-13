@@ -3,6 +3,33 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPrismaPostRepository } from './prismaPostRepository.js';
 
 describe('createPrismaPostRepository', () => {
+  it('counts monthly units with UTC bounds and a minimal Prisma projection', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        createdAt: new Date('2026-06-15T10:00:00.000Z'),
+        selectedPlatforms: ['TIKTOK', 'YOUTUBE_SHORTS']
+      }
+    ]);
+    const repository = createPrismaPostRepository({ prisma: { post: { findMany } } });
+
+    await expect(
+      repository.countMonthlyPostUnits({
+        userId: 'seller-usage-query',
+        now: '2026-06-30T23:59:59.000Z'
+      })
+    ).resolves.toBe(2);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'seller-usage-query',
+        createdAt: {
+          gte: new Date('2026-06-01T00:00:00.000Z'),
+          lt: new Date('2026-07-01T00:00:00.000Z')
+        }
+      },
+      select: { createdAt: true, selectedPlatforms: true }
+    });
+  });
+
   it('counts the global queued and publishing backlog in one atomic aggregate statement', async () => {
     const count = vi.fn().mockResolvedValue(5);
     const repository = createPrismaPostRepository({
@@ -223,6 +250,7 @@ describe('createPrismaPostRepository', () => {
       createdAt
     };
     const transactionPost = {
+      findFirst: vi.fn().mockResolvedValue(null),
       findMany: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockResolvedValue(createdPost)
     };
@@ -237,6 +265,7 @@ describe('createPrismaPostRepository', () => {
     await expect(
       repository.createWithinMonthlyLimit({
         userId: 'seller-atomic',
+        clientRequestId: 'atomic-request',
         caption: 'Atomic post',
         videoS3Key: 'uploads/seller-atomic/atomic.mp4',
         platforms: ['TIKTOK'],
@@ -245,15 +274,127 @@ describe('createPrismaPostRepository', () => {
       })
     ).resolves.toEqual({
       ok: true,
+      created: true,
       post: expect.objectContaining({ id: 'post-atomic', platforms: ['TIKTOK'] })
     });
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'Serializable'
     });
+    expect(transactionPost.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'seller-atomic',
+        createdAt: {
+          gte: new Date('2026-06-01T00:00:00.000Z'),
+          lt: new Date('2026-07-01T00:00:00.000Z')
+        }
+      },
+      select: { createdAt: true, selectedPlatforms: true }
+    });
+  });
+
+  it('returns an idempotent replay before quota counting in the same serializable transaction', async () => {
+    const persisted = {
+      id: 'post_idem_existing',
+      userId: 'seller-replay',
+      caption: 'Original intent',
+      videoS3Key: 'uploads/seller-replay/original.mp4',
+      selectedPlatforms: ['TIKTOK'] as const,
+      scheduledAt: null,
+      status: 'QUEUED' as const,
+      publishedAt: null,
+      createdAt: new Date('2026-06-15T09:00:00.000Z')
+    };
+    const transactionPost = {
+      findFirst: vi.fn().mockResolvedValue(persisted),
+      findMany: vi.fn(),
+      create: vi.fn()
+    };
+    const prisma = {
+      post: transactionPost,
+      $transaction: vi.fn(async (operation: (client: unknown) => Promise<unknown>) =>
+        operation({ post: transactionPost })
+      )
+    };
+    const repository = createPrismaPostRepository({ prisma });
+
+    await expect(
+      repository.createWithinMonthlyLimit({
+        userId: persisted.userId,
+        clientRequestId: 'same-request',
+        caption: persisted.caption,
+        videoS3Key: 'uploads/seller-replay/retry-upload.mp4',
+        platforms: ['TIKTOK'],
+        monthlyPostUnitLimit: 0,
+        now: '2026-06-15T10:00:00.000Z'
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      created: false,
+      post: {
+        id: persisted.id,
+        userId: persisted.userId,
+        caption: persisted.caption,
+        platforms: ['TIKTOK'],
+        createdAt: persisted.createdAt.toISOString()
+      }
+    });
+    expect(transactionPost.findMany).not.toHaveBeenCalled();
+    expect(transactionPost.create).not.toHaveBeenCalled();
+  });
+
+  it('retries a duplicate-key race and then returns the committed idempotent post', async () => {
+    const persisted = {
+      id: 'post_idem_race_winner',
+      userId: 'seller-idempotent-race',
+      caption: 'One durable post',
+      videoS3Key: 'uploads/seller-idempotent-race/original.mp4',
+      selectedPlatforms: ['TIKTOK'] as const,
+      scheduledAt: null,
+      status: 'QUEUED' as const,
+      publishedAt: null,
+      createdAt: new Date('2026-06-15T09:00:00.000Z')
+    };
+    const firstPost = {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate'), { code: 'P2002' }))
+    };
+    const secondPost = {
+      findFirst: vi.fn().mockResolvedValue(persisted),
+      findMany: vi.fn(),
+      create: vi.fn()
+    };
+    const prisma = {
+      post: firstPost,
+      $transaction: vi
+        .fn()
+        .mockImplementationOnce((operation: (client: unknown) => Promise<unknown>) =>
+          operation({ post: firstPost })
+        )
+        .mockImplementationOnce((operation: (client: unknown) => Promise<unknown>) =>
+          operation({ post: secondPost })
+        )
+    };
+    const repository = createPrismaPostRepository({ prisma });
+
+    await expect(
+      repository.createWithinMonthlyLimit({
+        userId: persisted.userId,
+        clientRequestId: 'same-race',
+        caption: persisted.caption,
+        videoS3Key: 'uploads/seller-idempotent-race/retry.mp4',
+        platforms: ['TIKTOK'],
+        monthlyPostUnitLimit: 3,
+        now: '2026-06-15T10:00:00.000Z'
+      })
+    ).resolves.toMatchObject({ ok: true, created: false });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(secondPost.findMany).not.toHaveBeenCalled();
   });
 
   it('retries a Prisma write conflict before rechecking quota', async () => {
     const transactionPost = {
+      findFirst: vi.fn().mockResolvedValue(null),
       findMany: vi.fn().mockResolvedValue([
         {
           id: 'existing',
@@ -284,6 +425,7 @@ describe('createPrismaPostRepository', () => {
     await expect(
       repository.createWithinMonthlyLimit({
         userId: 'seller-race',
+        clientRequestId: 'race-request',
         caption: 'Lost race',
         videoS3Key: 'uploads/lost.mp4',
         platforms: ['INSTAGRAM_REELS', 'FACEBOOK_REELS'],

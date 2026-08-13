@@ -107,11 +107,11 @@ services:
         value: mock
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
-      # The Firebase service account is installed in Render and deletion has
-      # passed a dedicated production smoke test. Keep this enabled so Blueprint
-      # syncs do not silently disable the in-app account-deletion flow.
+      # The current owner barrier is process-local. Keep destructive Firebase
+      # account deletion disabled until a distributed/persistent barrier and a
+      # dedicated production concurrency smoke test are complete.
       - key: FIREBASE_AUTH_DELETE_ENABLED
-        value: "true"
+        value: "false"
       - key: BILLING_PROVIDER
         value: revenuecat
       - key: REVENUECAT_WEBHOOK_AUTH_TOKEN

@@ -1,9 +1,14 @@
-import { randomUUID } from 'node:crypto';
-
 import { Queue, type JobType } from 'bullmq';
 
+import type { PlatformSettings } from '../posts/platformSettings.js';
+import type { PlatformTargets } from '../posts/platformTargets.js';
 import type { Platform, QueuedPost } from '../posts/postStore.js';
-import type { PublishJob, PublishQueue } from './publishQueue.js';
+import {
+  buildPublishJobId,
+  readPublishRunAt,
+  type PublishJob,
+  type PublishQueue
+} from './publishQueue.js';
 
 export const publishQueueName = 'publish-posts';
 const jobName = 'publish-post';
@@ -17,6 +22,9 @@ export type BullMqPublishJobData = {
   coverImageS3Key?: string;
   coverFrameTimeMs?: number;
   platforms: Platform[];
+  platformSettings?: PlatformSettings | null;
+  // Internal target evidence; never map this onto public PublishJob responses.
+  platformTargets?: PlatformTargets | null;
   runAt: string;
   status: PublishJob['status'];
 };
@@ -42,17 +50,40 @@ export type BullMqQueueClient = {
     data: BullMqPublishJobData,
     options: BullMqAddOptions
   ) => Promise<{ id?: string | number; timestamp?: number }>;
-  getJobs: (
-    statuses: JobType[]
-  ) => Promise<
-    Array<{
-      id?: string | number;
-      timestamp?: number;
-      data: BullMqPublishJobData;
-      remove?: () => Promise<void>;
-    }>
-  >;
+  getJobs: (statuses: JobType[]) => Promise<BullMqJobSnapshot[]>;
 };
+
+type BullMqJobSnapshot = {
+  id?: string | number;
+  timestamp?: number;
+  data: BullMqPublishJobData;
+  getState?: () => Promise<string>;
+  remove?: () => Promise<void>;
+};
+
+const healthyBullMqStates = new Set([
+  'active',
+  'delayed',
+  'prioritized',
+  'waiting',
+  'waiting-children'
+]);
+
+const mapBullMqJob = (job: BullMqJobSnapshot, now: () => number): PublishJob => ({
+  id: String(job.id),
+  queueName: publishQueueName,
+  userId: job.data.userId,
+  postId: job.data.postId,
+  ...(job.data.coverImageS3Key ? { coverImageS3Key: job.data.coverImageS3Key } : {}),
+  ...(job.data.coverFrameTimeMs !== undefined
+    ? { coverFrameTimeMs: job.data.coverFrameTimeMs }
+    : {}),
+  platforms: [...job.data.platforms],
+  ...(job.data.platformSettings ? { platformSettings: job.data.platformSettings } : {}),
+  runAt: job.data.runAt,
+  status: job.data.status,
+  createdAt: new Date(job.timestamp ?? now()).toISOString()
+});
 
 export const parseRedisConnection = (redisUrl: string) => {
   const parsed = new URL(redisUrl);
@@ -81,10 +112,10 @@ export const createBullMqPublishQueueFromClient = ({
   now?: () => number;
 }): PublishQueue => ({
   enqueue: async (post: QueuedPost) => {
-    const runAt = post.scheduledAt ?? new Date(now()).toISOString();
+    const runAt = readPublishRunAt(post);
     const status: PublishJob['status'] = post.scheduledAt ? 'SCHEDULED' : 'READY';
     const delay = Math.max(0, Date.parse(runAt) - now());
-    const jobId = randomUUID();
+    const jobId = buildPublishJobId(post);
     const data = {
       userId: post.userId,
       postId: post.id,
@@ -97,6 +128,8 @@ export const createBullMqPublishQueueFromClient = ({
         ? { coverFrameTimeMs: post.coverFrameTimeMs }
         : {}),
       platforms: [...post.platforms],
+      ...(post.platformSettings ? { platformSettings: post.platformSettings } : {}),
+      ...(post.platformTargets ? { platformTargets: post.platformTargets } : {}),
       runAt,
       status
     };
@@ -124,32 +157,42 @@ export const createBullMqPublishQueueFromClient = ({
         ? { coverFrameTimeMs: post.coverFrameTimeMs }
         : {}),
       platforms: [...post.platforms],
+      ...(post.platformSettings ? { platformSettings: post.platformSettings } : {}),
       runAt,
       status,
       createdAt: new Date(addedJob.timestamp ?? now()).toISOString()
     };
+  },
+  ensureEnqueued: async (post) => {
+    const expectedJobId = buildPublishJobId(post);
+    const jobs = await queue.getJobs(listableJobStatuses);
+    const expectedJob = jobs.find((job) => String(job.id) === expectedJobId);
+
+    if (expectedJob) {
+      const state = await expectedJob.getState?.();
+      if (state && healthyBullMqStates.has(state)) {
+        return mapBullMqJob(expectedJob, now);
+      }
+    }
+
+    const staleJobs = jobs.filter((job) => job.data.postId === post.id);
+    await Promise.all(
+      staleJobs.map(async (job) => {
+        if (!job.remove) {
+          throw new Error('Publish queue cannot remove an unhealthy job');
+        }
+        await job.remove();
+      })
+    );
+
+    return createBullMqPublishQueueFromClient({ queue, now }).enqueue(post);
   },
   list: async (filter) => {
     const jobs = await queue.getJobs(listableJobStatuses);
 
     return jobs
       .filter((job) => (filter?.userId ? job.data.userId === filter.userId : true))
-      .map((job) => ({
-        id: String(job.id),
-        queueName: publishQueueName,
-        userId: job.data.userId,
-        postId: job.data.postId,
-        ...(job.data.coverImageS3Key
-          ? { coverImageS3Key: job.data.coverImageS3Key }
-          : {}),
-        ...(job.data.coverFrameTimeMs !== undefined
-          ? { coverFrameTimeMs: job.data.coverFrameTimeMs }
-          : {}),
-        platforms: [...job.data.platforms],
-        runAt: job.data.runAt,
-        status: job.data.status,
-        createdAt: new Date(job.timestamp ?? now()).toISOString()
-      }));
+      .map((job) => mapBullMqJob(job, now));
   },
   reschedule: async (post) => {
     const replacementJob = await createBullMqPublishQueueFromClient({ queue, now }).enqueue(post);

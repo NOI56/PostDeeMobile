@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createBullMqPublishQueueFromClient } from './bullMqPublishQueue.js';
+import { buildPublishJobId } from './publishQueue.js';
 
 describe('createBullMqPublishQueueFromClient', () => {
   it('adds immediate posts to BullMQ with no delay', async () => {
@@ -101,6 +102,50 @@ describe('createBullMqPublishQueueFromClient', () => {
       'completed',
       'failed'
     ]);
+  });
+
+  it('repairs a failed deterministic job and leaves a healthy retry alone', async () => {
+    const post = {
+      id: 'post-idempotent-repair',
+      userId: 'seller-repair',
+      caption: 'Repair queue',
+      videoS3Key: 'uploads/repair.mp4',
+      platforms: ['TIKTOK'] as const,
+      status: 'QUEUED' as const,
+      createdAt: '2026-06-01T00:00:00.000Z'
+    };
+    const jobId = buildPublishJobId(post);
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const job = {
+      id: jobId,
+      timestamp: Date.parse(post.createdAt),
+      data: {
+        userId: post.userId,
+        postId: post.id,
+        caption: post.caption,
+        videoS3Key: post.videoS3Key,
+        platforms: [...post.platforms],
+        runAt: post.createdAt,
+        status: 'READY' as const
+      },
+      getState: vi.fn().mockResolvedValueOnce('failed').mockResolvedValue('waiting'),
+      remove
+    };
+    const queueClient = {
+      add: vi.fn().mockResolvedValue({ id: jobId, timestamp: Date.parse(post.createdAt) }),
+      getJobs: vi.fn().mockResolvedValue([job])
+    };
+    const queue = createBullMqPublishQueueFromClient({ queue: queueClient });
+
+    await queue.ensureEnqueued(post);
+    expect(remove).toHaveBeenCalledOnce();
+    expect(queueClient.add).toHaveBeenCalledOnce();
+
+    queueClient.add.mockClear();
+    remove.mockClear();
+    await queue.ensureEnqueued(post);
+    expect(remove).not.toHaveBeenCalled();
+    expect(queueClient.add).not.toHaveBeenCalled();
   });
 
   it('removes BullMQ jobs for a canceled post', async () => {

@@ -1,11 +1,15 @@
 import type { PlatformPublishResult } from '../../workers/publishWorker.js';
 import type { Platform } from '../posts/postStore.js';
 
+export type DeliveryOutcome = 'LIVE' | 'PRIVATE' | 'UNLISTED' | 'DRAFT';
+
 export type RecordedPlatformPublish = {
   postId: string;
   platform: Platform;
   status: 'PENDING' | 'PUBLISHING' | 'PUBLISHED' | 'FAILED';
   externalPostId?: string;
+  providerPostId?: string;
+  deliveryOutcome?: DeliveryOutcome;
   errorMessage?: string;
   publishedAt?: string;
   views: number;
@@ -38,7 +42,9 @@ const mapResult = (
       postId,
       platform: result.platform,
       status: result.status,
-      externalPostId: result.externalPostId,
+      ...(result.externalPostId ? { externalPostId: result.externalPostId } : {}),
+      ...(result.providerPostId ? { providerPostId: result.providerPostId } : {}),
+      deliveryOutcome: result.deliveryOutcome,
       publishedAt: result.publishedAt,
       views: 0,
       likes: 0

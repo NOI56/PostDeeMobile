@@ -22,6 +22,31 @@ Before modifying code or creating files every time, follow these steps:
 10. If verification commands cannot be run, state clearly what has not been confirmed yet.
 11. When changing product plans, package rules, API contracts, or architecture direction, also check and sync the related docs: `ROADMAP.md`, `README.md`, `API.md`, `ARCHITECTURE.md`, and any relevant files in `docs/superpowers/plans`.
 
+## Mandatory Baseline and No-Regression Policy
+
+These rules apply automatically to every bug fix, feature, refactor, and release task. The user does not need to repeat them.
+
+Before changing code:
+
+1. Identify the canonical integration branch, normally `main`, and verify the current branch, worktree, merge base, and ahead/behind state. If remote freshness cannot be verified, say so explicitly.
+2. Do not implement on a stale branch when it would omit systems already present on `main`. Create a clean branch/worktree from the latest verified `main` and port only the intended changes. Never merge or copy an entire stale branch over newer code.
+3. Preserve all uncommitted work. If the current worktree is dirty, do not reset, overwrite, or silently include unrelated changes.
+4. Inspect the affected user flows, tests, feature flags, environment configuration, API contracts, database dependencies, and related documentation. Record which existing capabilities must remain working.
+
+While changing code:
+
+5. Add or update regression tests first, then make the smallest related patch. Do not replace a complete file with a version from an older branch.
+6. Resolve merge conflicts by understanding and preserving the behavior from both sides. Never choose one side wholesale merely to make the conflict disappear.
+7. For schema, API, configuration, entitlement, or external-service changes, keep backward compatibility and document the required migration/deployment order.
+
+Before declaring the task complete:
+
+8. Run targeted tests and the relevant full test, build, lint, type-check, and schema validation suites. A targeted test alone is not sufficient for a cross-cutting change.
+9. Compare the final diff with the verified baseline. Check for unexpected deleted files, large unrelated rewrites, missing imports/routes/assets, changed feature flags, and lost capability wiring.
+10. Build and smoke-test the exact branch and environment intended for delivery. Verify the app package, API base URL, Firebase project, feature flags, account/entitlement state, and database migration state so an environment mismatch is not mistaken for a missing feature.
+11. Treat any unexplained regression, unexpected deletion, or unverified critical flow as incomplete work. Stop and report it instead of handing off or deploying.
+12. Summarize the baseline used, capabilities preserved, tests run, environment tested, migrations required, residual risks, and whether anything was not verified. Do not merge, push, or deploy without the user's authorization.
+
 ## Language and Explanations
 
 - Explain simply for the user to understand, as the user might not have a coding background.

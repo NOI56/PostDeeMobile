@@ -45,7 +45,7 @@ class PostDeeLocalizations {
             uploadSaveDraftAction: 'บันทึกฉบับร่าง',
             uploadDraftSavedMessage: 'บันทึกฉบับร่างไว้ในเครื่องแล้ว',
             captionTab: 'ปฏิทิน',
-            analyticsTab: 'วิเคราะห์',
+            aiEditingTab: 'AI ตัดต่อ',
             profileTab: 'โปรไฟล์',
             notificationsAction: 'แจ้งเตือน',
             userAccountAction: 'บัญชีผู้ใช้',
@@ -93,7 +93,7 @@ class PostDeeLocalizations {
             uploadSaveDraftAction: 'Save draft',
             uploadDraftSavedMessage: 'Draft saved on this device',
             captionTab: 'Calendar',
-            analyticsTab: 'Analytics',
+            aiEditingTab: 'AI Edit',
             profileTab: 'Profile',
             notificationsAction: 'Notifications',
             userAccountAction: 'User account',
@@ -141,7 +141,7 @@ class PostDeeLocalizations {
             uploadSaveDraftAction: 'Lưu bản nháp',
             uploadDraftSavedMessage: 'Đã lưu bản nháp',
             captionTab: 'Lịch',
-            analyticsTab: 'Phân tích',
+            aiEditingTab: 'Biên tập AI',
             profileTab: 'Hồ sơ',
             notificationsAction: 'Thông báo',
             userAccountAction: 'Tài khoản',
@@ -189,7 +189,7 @@ class PostDeeLocalizations {
             uploadSaveDraftAction: '保存草稿',
             uploadDraftSavedMessage: '草稿已保存',
             captionTab: '日历',
-            analyticsTab: '数据分析',
+            aiEditingTab: 'AI 剪辑',
             profileTab: '我的',
             notificationsAction: '通知',
             userAccountAction: '用户账户',
@@ -237,7 +237,7 @@ class PostDeeLocalizations {
             uploadSaveDraftAction: 'Simpan draf',
             uploadDraftSavedMessage: 'Draf disimpan',
             captionTab: 'Kalender',
-            analyticsTab: 'Analitik',
+            aiEditingTab: 'Edit AI',
             profileTab: 'Profil',
             notificationsAction: 'Notifikasi',
             userAccountAction: 'Akun',
@@ -285,7 +285,7 @@ class PostDeeLocalizations {
             uploadSaveDraftAction: 'Simpan draf',
             uploadDraftSavedMessage: 'Draf disimpan',
             captionTab: 'Kalendar',
-            analyticsTab: 'Analitik',
+            aiEditingTab: 'Edit AI',
             profileTab: 'Profil',
             notificationsAction: 'Notifikasi',
             userAccountAction: 'Akaun',
@@ -333,7 +333,7 @@ class PostDeeLocalizations {
             uploadSaveDraftAction: 'I-save ang draft',
             uploadDraftSavedMessage: 'Na-save ang draft',
             captionTab: 'Kalendaryo',
-            analyticsTab: 'Pagsusuri',
+            aiEditingTab: 'AI Edit',
             profileTab: 'Profile',
             notificationsAction: 'Mga Notification',
             userAccountAction: 'Account',
@@ -381,7 +381,7 @@ class PostDeeLocalizations {
             uploadSaveDraftAction: '下書きを保存',
             uploadDraftSavedMessage: '下書きを保存しました',
             captionTab: 'カレンダー',
-            analyticsTab: '分析',
+            aiEditingTab: 'AI編集',
             profileTab: 'プロフィール',
             notificationsAction: '通知',
             userAccountAction: 'アカウント',
@@ -430,7 +430,7 @@ class PostDeeLocalizations {
   String get uploadSaveDraftAction => _values.uploadSaveDraftAction;
   String get uploadDraftSavedMessage => _values.uploadDraftSavedMessage;
   String get captionTab => _values.captionTab;
-  String get analyticsTab => _values.analyticsTab;
+  String get aiEditingTab => _values.aiEditingTab;
   String get profileTab => _values.profileTab;
   String get notificationsAction => _values.notificationsAction;
   String get userAccountAction => _values.userAccountAction;
@@ -477,7 +477,7 @@ class _PostDeeLocalizedValues {
     required this.uploadSaveDraftAction,
     required this.uploadDraftSavedMessage,
     required this.captionTab,
-    required this.analyticsTab,
+    required this.aiEditingTab,
     required this.profileTab,
     required this.notificationsAction,
     required this.userAccountAction,
@@ -522,7 +522,7 @@ class _PostDeeLocalizedValues {
   final String uploadSaveDraftAction;
   final String uploadDraftSavedMessage;
   final String captionTab;
-  final String analyticsTab;
+  final String aiEditingTab;
   final String profileTab;
   final String notificationsAction;
   final String userAccountAction;

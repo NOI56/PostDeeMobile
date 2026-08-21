@@ -32,8 +32,9 @@ Current status:
 
 - Mobile UI refresh has a first-pass shared dark theme, glass cards, Thai
   bottom navigation labels, auth bar copy, and Home dashboard direction.
-  Upload, Calendar, Analytics, Profile, and package/paywall surfaces have the
-  approved design structure; final device-specific visual polish remains.
+  Upload, Calendar, AI Editing, Analytics, Profile, and package/paywall surfaces
+  have the approved design structure; final device-specific visual polish
+  remains.
 - Gemini backend smoke test passed.
 - Legacy signed upload and managed R2 multipart both passed disposable-account
   production API smoke tests. The managed test covered session creation,
@@ -254,8 +255,11 @@ Reference direction:
 - Light/dark PostDee palettes with green accents, clear cards, thin borders, and
   small status indicators.
 - Thai-first copy for visible user flows.
-- Bottom navigation has five tabs; AI editing opens as a child flow rather than
-  a sixth persistent tab.
+- Bottom navigation has five entry points: Home, Calendar, Create post,
+  AI Editing, and Profile. AI Editing replaces Analytics in the fourth slot and
+  keeps its focused child-flow layout; Analytics remains reachable from publish
+  results and individual post details so the existing reporting system is not
+  removed.
 - Keep AI captioning available from Upload after a clip is selected.
 - Keep Templates available as a secondary entry point instead of a main
   bottom-nav tab.

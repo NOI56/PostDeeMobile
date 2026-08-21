@@ -62,7 +62,7 @@ void main() {
       'Home',
       'Calendar',
       'Create post',
-      'Analytics',
+      'AI Edit',
       'Profile'
     ]) {
       expect(_referenceNavButton(label), findsOneWidget);
@@ -557,7 +557,7 @@ void main() {
     expect(_referenceNavButton('หน้าแรก'), findsOneWidget);
     expect(_referenceNavButton('สร้างโพสต์'), findsOneWidget);
     expect(_referenceNavButton('ปฏิทิน'), findsOneWidget);
-    expect(_referenceNavButton('วิเคราะห์'), findsOneWidget);
+    expect(_referenceNavButton('AI ตัดต่อ'), findsOneWidget);
     expect(_referenceNavButton('โปรไฟล์'), findsOneWidget);
     expect(find.text('เทมเพลต'), findsNothing);
 
@@ -576,9 +576,16 @@ void main() {
     expect(find.text('ปฏิทินโพสต์'), findsOneWidget);
     expect(find.text('รีวิวคลิปด้วย AI'), findsNothing);
 
-    await _tapReferenceNavButton(tester, 'วิเคราะห์');
+    await _tapReferenceNavButton(tester, 'AI ตัดต่อ');
 
-    expect(find.text('วิเคราะห์'), findsWidgets);
+    expect(find.text('ตัดต่อด้วย AI'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-editing-back')), findsOneWidget);
+    expect(_referenceNavButton('AI ตัดต่อ'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('ai-editing-back')));
+    await tester.pumpAndSettle();
+
+    expect(_referenceNavButton('AI ตัดต่อ'), findsOneWidget);
 
     await _tapReferenceNavButton(tester, 'โปรไฟล์');
 

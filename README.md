@@ -995,7 +995,9 @@ Current mobile pieces:
   mock/provider code have been removed from the active app path.
 - Saved templates wired to `GET /templates` and `POST /templates`
 - Unified analytics wired to `GET /analytics/summary?range=...`, including real
-  range selection and a publish-date daily chart without simulated numbers
+  range selection and a publish-date daily chart without simulated numbers.
+  The main bottom-navigation slot now opens AI Editing; analytics remains
+  available from publish results and individual post details.
 - Home API connection check wired to `GET /health`, a local Gemini caption smoke check, plan status refresh wired to `GET /billing/subscription`, Basic Phone OTP UI for unlocking the 3-post free quota, and one automatic analytics refresh after Pro is unlocked
 - Upload AI captions keep the customer flow simple: select a clip, optionally add guidance, then let AI infer language and market from the clip.
 - Starter and Pro CTAs on Home can use the legacy Flutter `in_app_purchase`

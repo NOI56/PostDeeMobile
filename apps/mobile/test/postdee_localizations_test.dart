@@ -10,7 +10,7 @@ void main() {
       expect(localizations.homeTab, 'หน้าแรก');
       expect(localizations.uploadTab, 'อัปโหลด');
       expect(localizations.captionTab, 'ปฏิทิน');
-      expect(localizations.analyticsTab, 'วิเคราะห์');
+      expect(localizations.aiEditingTab, 'AI ตัดต่อ');
       expect(localizations.profileTab, 'โปรไฟล์');
       expect(localizations.notificationsAction, 'แจ้งเตือน');
       expect(localizations.userAccountAction, 'บัญชีผู้ใช้');
@@ -57,7 +57,7 @@ void main() {
       expect(localizations.homeTab, 'Home');
       expect(localizations.uploadTab, 'Upload');
       expect(localizations.captionTab, 'Calendar');
-      expect(localizations.analyticsTab, 'Analytics');
+      expect(localizations.aiEditingTab, 'AI Edit');
       expect(localizations.profileTab, 'Profile');
       expect(localizations.notificationsAction, 'Notifications');
       expect(localizations.userAccountAction, 'User account');

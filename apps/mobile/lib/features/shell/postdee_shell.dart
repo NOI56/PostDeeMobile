@@ -429,7 +429,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
                 onHome: () => _selectTab(0),
                 onCalendar: () => _selectTab(3),
                 onCreate: () => _selectTab(2),
-                onAnalytics: () => _selectTab(4),
+                onAiEditing: () => _selectTab(1),
                 onProfile: () => _selectTab(5),
                 l10n: l10n,
               ),
@@ -444,7 +444,7 @@ class _PostDeeBottomNav extends StatelessWidget {
     required this.onHome,
     required this.onCalendar,
     required this.onCreate,
-    required this.onAnalytics,
+    required this.onAiEditing,
     required this.onProfile,
     required this.l10n,
   });
@@ -453,7 +453,7 @@ class _PostDeeBottomNav extends StatelessWidget {
   final VoidCallback onHome;
   final VoidCallback onCalendar;
   final VoidCallback onCreate;
-  final VoidCallback onAnalytics;
+  final VoidCallback onAiEditing;
   final VoidCallback onProfile;
   final PostDeeLocalizations l10n;
 
@@ -524,10 +524,10 @@ class _PostDeeBottomNav extends StatelessWidget {
                         onPressed: onCreate,
                       ),
                       _ReferenceNavButton(
-                        label: l10n.analyticsTab,
-                        icon: Icons.bar_chart_rounded,
-                        selected: currentIndex == 4,
-                        onPressed: onAnalytics,
+                        label: l10n.aiEditingTab,
+                        icon: Icons.auto_awesome_rounded,
+                        selected: currentIndex == 1,
+                        onPressed: onAiEditing,
                       ),
                       _ReferenceNavButton(
                         label: l10n.profileTab,

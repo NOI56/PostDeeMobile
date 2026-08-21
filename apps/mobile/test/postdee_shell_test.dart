@@ -267,7 +267,7 @@ void main() {
       'Home',
       'Calendar',
       'Create post',
-      'Analytics',
+      'AI Edit',
       'Profile'
     ]) {
       expect(

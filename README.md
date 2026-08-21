@@ -731,6 +731,15 @@ Current mobile pieces:
   and `PARTIAL_PUBLISHED` means only some destinations succeeded. An
   unrecognized status is not shown as success and the local draft is retained;
   an idempotent replay is labelled as the existing item.
+- Social account authorization opens the PostPeer URL in a browser-owned
+  surface, never a Flutter WebView. Android uses a dedicated native Custom Tab
+  bridge that fails back to the external browser without a WebView; iOS uses
+  the external system browser because `url_launcher` does not report dismissal
+  of its in-app browser view.
+  Returning to PostDee triggers one explicit
+  `POST /social-connections/refresh`, and the manual refresh button remains
+  available. PostPeer supports an optional `redirectUri`, but the current API
+  does not request one until a verified Mobile return/deep-link flow is wired.
 - Calendar tab that refreshes when opened, polls queued/publishing posts while
   visible, uses the real publish time, and opens completed results read-only;
   plus AI caption entry points from Upload after a clip is selected

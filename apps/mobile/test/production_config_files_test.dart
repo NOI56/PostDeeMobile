@@ -4,6 +4,35 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Android social OAuth uses a native Custom Tab with no WebView fallback',
+      () async {
+    final manifest = File('android/app/src/main/AndroidManifest.xml');
+    final mainActivity = File(
+      'android/app/src/main/kotlin/com/postdee/postdee_mobile/MainActivity.kt',
+    );
+    final appGradle = File('android/app/build.gradle.kts');
+
+    expect(manifest.existsSync(), isTrue);
+    expect(mainActivity.existsSync(), isTrue);
+    expect(appGradle.existsSync(), isTrue);
+    expect(
+      await manifest.readAsString(),
+      contains('android.support.customtabs.action.CustomTabsService'),
+    );
+    final activitySource = await mainActivity.readAsString();
+    expect(activitySource, contains('MethodChannel'));
+    expect(activitySource, contains('CustomTabsIntent'));
+    expect(activitySource, contains('CustomTabsClient.getPackageName'));
+    expect(activitySource, contains('setPackage'));
+    expect(activitySource, contains('rawUrl.contains("\\\\")'));
+    expect(activitySource, contains('encodedAuthority?.contains("@")'));
+    expect(activitySource, isNot(contains('WebViewActivity')));
+    expect(
+      await appGradle.readAsString(),
+      contains('androidx.browser:browser:1.9.0'),
+    );
+  });
+
   test('production dart defines point to Render and block local mock auth',
       () async {
     final file = File('production.local.example.json');

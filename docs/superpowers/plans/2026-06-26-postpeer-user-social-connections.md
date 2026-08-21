@@ -6,6 +6,13 @@
 > not describe current completion status; use `API.md`, `ARCHITECTURE.md`, and
 > the current route code as the source of truth.
 
+> **Current Mobile authorization addendum (2026-08-22):** Mobile never uses a
+> Flutter WebView for PostPeer authorization. Android uses a dedicated native
+> Custom Tab bridge with external-only fallback; iOS uses the external system
+> browser so returning to PostDee reliably triggers one explicit refresh.
+> PostPeer documents an optional `redirectUri`, but the current adapter does not
+> request it until a verified Mobile deep-link return flow is implemented.
+
 > **Current-state addendum (2026-07-15):** The active runtime ensures a fresh
 > `User` before saving a PostPeer profile and sends a required stable
 > pseudonymous profile name. Publish `202 pending/publishing` responses are

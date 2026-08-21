@@ -6,6 +6,13 @@
 > proposed below. Use `API.md`, `ARCHITECTURE.md`, and the current route code as
 > the source of truth.
 
+> **Current Mobile authorization addendum (2026-08-22):** The active client
+> never uses a Flutter WebView for PostPeer authorization. Android uses a
+> dedicated native Custom Tab bridge with external-only fallback; iOS uses the
+> external system browser. Returning to PostDee causes one explicit connection
+> refresh. PostPeer's optional `redirectUri` remains unwired until a verified
+> Mobile deep-link return flow is implemented.
+
 ## Goal
 
 Let each PostDee user connect their own TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels accounts through PostPeer from inside the mobile app. Publishing must use the connected account owned by the post's authenticated user, not a shared environment-level account id.

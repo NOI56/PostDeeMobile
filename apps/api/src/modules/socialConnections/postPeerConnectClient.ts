@@ -35,6 +35,63 @@ const socialPlatformBySlug: Record<string, SocialConnectionPlatform> = {
   facebook: 'FACEBOOK_REELS'
 };
 
+const connectHostnameRootsByPlatform: Record<
+  SocialConnectionPlatform,
+  readonly string[]
+> = {
+  TIKTOK: ['tiktok.com'],
+  YOUTUBE_SHORTS: ['accounts.google.com'],
+  INSTAGRAM_REELS: ['instagram.com', 'facebook.com'],
+  FACEBOOK_REELS: ['facebook.com']
+};
+
+const isHostnameWithinRoot = (hostname: string, root: string): boolean =>
+  hostname === root || hostname.endsWith(`.${root}`);
+
+const isTrustedConnectUrl = (
+  connectUrl: string,
+  platform: SocialConnectionPlatform
+): boolean => {
+  if (!/^https:\/\//i.test(connectUrl) || connectUrl.includes('\\')) {
+    return false;
+  }
+
+  const authority = connectUrl
+    .slice(connectUrl.indexOf('//') + 2)
+    .split(/[/?#]/, 1)[0];
+
+  // URL normalisation drops an empty user-info marker (`https://@host`).
+  // Inspect the original authority as well so every user-info form fails closed.
+  if (!authority || authority.includes('@')) {
+    return false;
+  }
+
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(connectUrl);
+  } catch {
+    return false;
+  }
+
+  if (
+    parsedUrl.protocol !== 'https:' ||
+    !parsedUrl.hostname ||
+    parsedUrl.username ||
+    parsedUrl.password
+  ) {
+    return false;
+  }
+
+  const hostname = parsedUrl.hostname.toLowerCase();
+  const trustedHostnameRoots = [
+    'postpeer.dev',
+    ...connectHostnameRootsByPlatform[platform]
+  ];
+
+  return trustedHostnameRoots.some((root) => isHostnameWithinRoot(hostname, root));
+};
+
 export class PostPeerConnectUnavailableError extends Error {
   constructor() {
     super('PostPeer account linking is not configured yet');
@@ -59,8 +116,9 @@ export type PostPeerIntegration = {
  * - `POST /v1/profiles` creates a profile that groups a user's accounts.
  * - `GET /v1/connect/{slug}?profileId=` returns the OAuth URL to open.
  * - `GET /v1/connect/integrations?profileId=` lists connected accounts so the
- *   backend can resolve each platform's account id after OAuth (PostPeer does
- *   not call back, so the backend polls this instead).
+ *   backend can resolve each platform's account id after OAuth. The current
+ *   Mobile flow reconciles explicitly and does not yet send PostPeer's optional
+ *   redirectUri.
  * - `DELETE /v1/connect/integrations/{id}` removes an external connection.
  */
 export type PostPeerConnectClient = {
@@ -391,7 +449,7 @@ export const createPostPeerConnectClient = ({
       );
       const connectUrl = readString(payload.url) ?? readString(payload.connectUrl);
 
-      if (!connectUrl) {
+      if (!connectUrl || !isTrustedConnectUrl(connectUrl, platform)) {
         throw new PostPeerConnectProviderError();
       }
 

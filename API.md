@@ -652,7 +652,11 @@ Lists the authenticated user's saved PostPeer connections.
 ### `POST /social-connections/:platform/connect`
 
 Creates/loads the user's PostPeer profile and returns `{ connectUrl }` for the
-requested supported platform.
+requested supported platform. The provider adapter validates the returned URL
+as absolute HTTPS against the requested platform's trusted OAuth domains, and
+Mobile repeats that check before opening it. Android uses a dedicated native
+Custom Tab bridge that returns failure to Dart instead of substituting a
+WebView; iOS and unsupported Android devices use the external system browser.
 
 For a new Firebase identity, the API ensures the local `User` row before saving
 the foreign-keyed PostPeer profile. Profile creation sends PostPeer a required,
@@ -670,9 +674,13 @@ authoritative.
 
 ### `POST /social-connections/refresh`
 
-Polls the user's PostPeer profile integrations after the browser OAuth flow,
-then upserts connected platforms and removes stale local connections. PostPeer
-does not call a signed-state callback in the current implementation.
+Reconciles the user's PostPeer profile integrations after the browser OAuth
+flow, then upserts connected platforms and removes stale local connections.
+Mobile calls this once when returning to PostDee; the manual refresh remains
+available. This is an explicit reconciliation request, not an OAuth completion
+callback, and it must not be polled aggressively. PostPeer documents an
+optional `redirectUri`, but the current adapter does not send it until a
+verified Mobile deep-link return flow exists.
 
 ### `DELETE /social-connections/:platform`
 

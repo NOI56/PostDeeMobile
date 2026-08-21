@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/network/postdee_api_client.dart';
@@ -9,6 +11,107 @@ import 'social_platform.dart';
 import 'social_platform_logo.dart';
 
 typedef ConnectUrlLauncher = Future<bool> Function(Uri uri);
+typedef SocialConnectBrowserLauncher = Future<bool> Function(
+  Uri uri, {
+  required LaunchMode mode,
+  required BrowserConfiguration browserConfiguration,
+});
+typedef SocialConnectCustomTabLauncher = Future<bool> Function(Uri uri);
+
+const MethodChannel _secureCustomTabsChannel = MethodChannel(
+  'com.postdee.postdee_mobile/secure_custom_tabs',
+);
+
+Future<bool> _launchNativeAndroidCustomTab(Uri uri) async =>
+    await _secureCustomTabsChannel.invokeMethod<bool>(
+      'launch',
+      {'url': uri.toString()},
+    ) ??
+    false;
+
+/// Opens social authorization without ever giving provider credentials to an
+/// embedded WebView. Android uses a native Custom Tab channel that fails closed;
+/// all other cases use the external system browser.
+Future<bool> launchSocialConnectUrl(
+  Uri uri, {
+  SocialConnectBrowserLauncher? launch,
+  SocialConnectCustomTabLauncher? launchCustomTab,
+  bool? preferAndroidCustomTab,
+}) async {
+  final shouldPreferAndroidCustomTab = preferAndroidCustomTab ??
+      (!kIsWeb && defaultTargetPlatform == TargetPlatform.android);
+  if (shouldPreferAndroidCustomTab) {
+    try {
+      final opened = await (launchCustomTab ?? _launchNativeAndroidCustomTab)(
+        uri,
+      );
+      if (opened) {
+        return true;
+      }
+    } on Object {
+      // A missing Custom Tab provider or platform-channel failure must fall
+      // through to the external browser, never url_launcher's WebView path.
+    }
+  }
+  const mode = LaunchMode.externalApplication;
+  const browserConfiguration = BrowserConfiguration(showTitle: true);
+
+  if (launch != null) {
+    return launch(
+      uri,
+      mode: mode,
+      browserConfiguration: browserConfiguration,
+    );
+  }
+
+  return launchUrl(
+    uri,
+    mode: mode,
+    browserConfiguration: browserConfiguration,
+  );
+}
+
+const Map<SocialPlatform, List<String>> _trustedSocialConnectDomains = {
+  SocialPlatform.tiktok: ['tiktok.com'],
+  SocialPlatform.youtubeShorts: ['accounts.google.com'],
+  SocialPlatform.instagramReels: ['instagram.com', 'facebook.com'],
+  SocialPlatform.facebookReels: ['facebook.com'],
+};
+
+bool _matchesDomain(String host, String domain) =>
+    host == domain || host.endsWith('.$domain');
+
+/// Defense in depth for the URL returned by the PostDee API. PostPeer normally
+/// returns the provider's OAuth URL directly, so accepting arbitrary HTTPS
+/// hosts here would make a bad upstream response look like a legitimate login.
+bool isTrustedSocialConnectUrl(String rawUrl, SocialPlatform platform) {
+  // Browsers treat a backslash like a path separator while URI parsers do not
+  // always agree. Reject it before parsing so the allowlist sees the same host
+  // that the browser will open.
+  if (rawUrl.contains('\\')) return false;
+
+  final uri = Uri.tryParse(rawUrl);
+  if (uri == null) return false;
+
+  final hasUserInfo = RegExp(
+    r'^https://[^/?#]*@',
+    caseSensitive: false,
+  ).hasMatch(rawUrl);
+  if (!uri.isAbsolute ||
+      uri.scheme.toLowerCase() != 'https' ||
+      !uri.hasAuthority ||
+      uri.host.isEmpty ||
+      hasUserInfo) {
+    return false;
+  }
+
+  final host = uri.host.toLowerCase();
+  final trustedDomains = [
+    ...?_trustedSocialConnectDomains[platform],
+    'postpeer.dev',
+  ];
+  return trustedDomains.any((domain) => _matchesDomain(host, domain));
+}
 
 /// Platforms PostPeer can connect a user account for. Shopee/Lazada are listed
 /// in the app but not yet supported by the connect API, so they stay disabled.
@@ -77,8 +180,8 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     with WidgetsBindingObserver {
   late final PostDeeApiClient _apiClient =
       widget.apiClient ?? PostDeeApiClient();
-  late final ConnectUrlLauncher _launch = widget.launchConnectUrl ??
-      ((uri) => launchUrl(uri, mode: LaunchMode.externalApplication));
+  late final ConnectUrlLauncher _launch =
+      widget.launchConnectUrl ?? launchSocialConnectUrl;
 
   Map<String, SocialConnectionResult> _statuses = {};
   bool _loading = true;
@@ -143,6 +246,8 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       .where((platform) => _statusFor(platform)?.connected ?? false)
       .length;
 
+  bool get _actionsLocked => _loading || _busyPlatform != null;
+
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -150,20 +255,27 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
   }
 
   Future<void> _connect(SocialPlatform platform) async {
+    if (_actionsLocked) return;
     setState(() => _busyPlatform = platform.apiValue);
     try {
       final link =
           await _apiClient.createSocialConnectionLink(platform.apiValue);
+      if (!mounted) return;
+      if (!isTrustedSocialConnectUrl(link.connectUrl, platform)) {
+        _showMessage('ลิงก์เชื่อมบัญชีไม่ปลอดภัย กรุณาลองใหม่อีกครั้ง');
+        return;
+      }
       _waitingForOAuthReturn = true;
-      final launched = await _launch(link.connectUrl);
+      final launched = await _launch(link.connectUri);
       if (!launched) {
         _waitingForOAuthReturn = false;
         throw StateError('Could not open the PostPeer connect URL.');
       }
-      // PostPeer OAuth happens in an external browser. The lifecycle observer
-      // refreshes saved integrations when the user returns to PostDee.
+      // PostPeer OAuth uses a browser-owned in-app surface when available and
+      // an external browser fallback otherwise. The lifecycle observer makes
+      // one explicit refresh after the user closes it and returns to PostDee.
       _showMessage(
-        'เปิดหน้าเชื่อมบัญชีแล้ว — เมื่อเสร็จให้กลับเข้าแอป ระบบจะตรวจให้อัตโนมัติ',
+        'เปิดหน้าล็อกอินด้วยเบราว์เซอร์ของระบบแล้ว — เมื่อเชื่อมเสร็จให้ปิดหน้าต่างหรือกลับเข้า PostDee ระบบจะตรวจให้อัตโนมัติ',
       );
     } on ApiException catch (error) {
       _waitingForOAuthReturn = false;
@@ -200,9 +312,11 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
   }
 
   Future<void> _disconnect(SocialPlatform platform) async {
+    if (_actionsLocked) return;
     setState(() => _busyPlatform = platform.apiValue);
     try {
       await _apiClient.disconnectSocialConnection(platform.apiValue);
+      if (!mounted) return;
       await _loadConnections();
     } catch (_) {
       _showMessage('ยกเลิกการเชื่อมไม่สำเร็จ ลองใหม่อีกครั้ง');
@@ -238,7 +352,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     if (_statusFor(platform)?.connected ?? false) {
       return OutlinedButton(
         key: ValueKey('profile-platform-disconnect-${platform.apiValue}'),
-        onPressed: () => _disconnect(platform),
+        onPressed: _actionsLocked ? null : () => _disconnect(platform),
         style: _actionStyle,
         child: const Text('ยกเลิก'),
       );
@@ -246,7 +360,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
 
     return FilledButton(
       key: ValueKey('profile-platform-connect-${platform.apiValue}'),
-      onPressed: () => _connect(platform),
+      onPressed: _actionsLocked ? null : () => _connect(platform),
       style: FilledButton.styleFrom(
         backgroundColor: AppTheme.accent,
         foregroundColor: Colors.white,
@@ -417,7 +531,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
               const SizedBox(width: 4),
               IconButton(
                 key: const ValueKey('profile-platforms-refresh'),
-                onPressed: _refresh,
+                onPressed: _actionsLocked ? null : _refresh,
                 icon: const Icon(Icons.refresh, size: 20),
                 visualDensity: VisualDensity.compact,
                 tooltip: 'รีเฟรชสถานะการเชื่อม',
@@ -432,6 +546,53 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
             fontSize: 12.5,
             height: 1.4,
             color: AppTheme.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 13),
+        Container(
+          key: const ValueKey('profile-social-oauth-security-note'),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.accent.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AppTheme.accent.withValues(alpha: 0.24),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.verified_user_outlined,
+                size: 20,
+                color: AppTheme.accent,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'เข้าสู่ระบบอย่างปลอดภัย',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'เปิดด้วยเบราว์เซอร์ที่ระบบเชื่อถือ PostDee ไม่ได้รับรหัสผ่านของคุณ เมื่อเสร็จให้ปิดหน้าต่างหรือกลับเข้าแอป',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.4,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 13),

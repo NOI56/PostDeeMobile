@@ -9,12 +9,181 @@ import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
 import 'package:postdee_mobile/features/platforms/connections_screen.dart';
+import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/profile/profile_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+  });
+
+  test('social OAuth uses the native Android Custom Tab without url_launcher',
+      () async {
+    final connectUri = Uri.parse('https://www.tiktok.com/v2/auth/authorize');
+    var nativeCustomTabOpened = false;
+    var externalLauncherCalled = false;
+
+    final launched = await launchSocialConnectUrl(
+      connectUri,
+      preferAndroidCustomTab: true,
+      launchCustomTab: (uri) async {
+        expect(uri, connectUri);
+        nativeCustomTabOpened = true;
+        return true;
+      },
+      launch: (
+        _, {
+        required mode,
+        required browserConfiguration,
+      }) async {
+        externalLauncherCalled = true;
+        return true;
+      },
+    );
+
+    expect(launched, isTrue);
+    expect(nativeCustomTabOpened, isTrue);
+    expect(externalLauncherCalled, isFalse);
+  });
+
+  test('social OAuth falls back to an external browser, never a WebView',
+      () async {
+    LaunchMode? launchedMode;
+
+    final launched = await launchSocialConnectUrl(
+      Uri.parse('https://accounts.google.com/o/oauth2/auth'),
+      preferAndroidCustomTab: true,
+      launchCustomTab: (_) async => false,
+      launch: (
+        _, {
+        required mode,
+        required browserConfiguration,
+      }) async {
+        launchedMode = mode;
+        return true;
+      },
+    );
+
+    expect(launched, isTrue);
+    expect(launchedMode, LaunchMode.externalApplication);
+    expect(launchedMode, isNot(LaunchMode.inAppWebView));
+  });
+
+  test(
+      'social OAuth uses the external browser on platforms without a reliable dismiss callback',
+      () async {
+    var nativeCustomTabCalled = false;
+    LaunchMode? launchedMode;
+
+    await launchSocialConnectUrl(
+      Uri.parse('https://accounts.google.com/o/oauth2/auth'),
+      preferAndroidCustomTab: false,
+      launchCustomTab: (_) async {
+        nativeCustomTabCalled = true;
+        return true;
+      },
+      launch: (
+        _, {
+        required mode,
+        required browserConfiguration,
+      }) async {
+        launchedMode = mode;
+        return true;
+      },
+    );
+
+    expect(nativeCustomTabCalled, isFalse);
+    expect(launchedMode, LaunchMode.externalApplication);
+  });
+
+  test('social OAuth falls back externally when the native Custom Tab fails',
+      () async {
+    LaunchMode? launchedMode;
+
+    await launchSocialConnectUrl(
+      Uri.parse('https://www.tiktok.com/v2/auth/authorize'),
+      preferAndroidCustomTab: true,
+      launchCustomTab: (_) async => throw StateError('Custom Tab unavailable'),
+      launch: (
+        _, {
+        required mode,
+        required browserConfiguration,
+      }) async {
+        launchedMode = mode;
+        return true;
+      },
+    );
+
+    expect(launchedMode, LaunchMode.externalApplication);
+  });
+
+  test('social OAuth accepts only trusted hosts for the requested platform',
+      () {
+    expect(
+      isTrustedSocialConnectUrl(
+        'https://www.tiktok.com/v2/auth/authorize',
+        SocialPlatform.tiktok,
+      ),
+      isTrue,
+    );
+    expect(
+      isTrustedSocialConnectUrl(
+        'https://accounts.google.com/o/oauth2/auth',
+        SocialPlatform.youtubeShorts,
+      ),
+      isTrue,
+    );
+    expect(
+      isTrustedSocialConnectUrl(
+        'https://www.facebook.com/dialog/oauth',
+        SocialPlatform.instagramReels,
+      ),
+      isTrue,
+    );
+    expect(
+      isTrustedSocialConnectUrl(
+        'https://www.tiktok.com.evil.example/auth',
+        SocialPlatform.tiktok,
+      ),
+      isFalse,
+    );
+    expect(
+      isTrustedSocialConnectUrl(
+        r'https://evil.example\.tiktok.com/auth',
+        SocialPlatform.tiktok,
+      ),
+      isFalse,
+    );
+    expect(
+      isTrustedSocialConnectUrl(
+        r'https://www.tiktok.com\oauth',
+        SocialPlatform.tiktok,
+      ),
+      isFalse,
+    );
+    expect(
+      isTrustedSocialConnectUrl(
+        'https://user@www.tiktok.com/auth',
+        SocialPlatform.tiktok,
+      ),
+      isFalse,
+    );
+    expect(
+      isTrustedSocialConnectUrl(
+        'https://@www.tiktok.com/auth',
+        SocialPlatform.tiktok,
+      ),
+      isFalse,
+    );
+    expect(
+      isTrustedSocialConnectUrl(
+        '/relative/connect',
+        SocialPlatform.tiktok,
+      ),
+      isFalse,
+    );
   });
 
   testWidgets('shows only currently available package benefits',
@@ -598,7 +767,7 @@ void main() {
         SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
       ],
       connectLink: SocialConnectLinkResult(
-        connectUrl: Uri.parse('https://postpeer.test/connect/tiktok'),
+        connectUrl: 'https://www.tiktok.com/v2/auth/authorize',
         expiresAt: DateTime.utc(2026, 6, 26, 9, 10),
       ),
     );
@@ -625,7 +794,220 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(apiClient.connectCalls, ['TIKTOK']);
-    expect(launched, Uri.parse('https://postpeer.test/connect/tiktok'));
+    expect(
+      launched,
+      Uri.parse('https://www.tiktok.com/v2/auth/authorize'),
+    );
+    expect(
+      find.textContaining('PostDee ไม่ได้รับรหัสผ่านของคุณ'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('does not open OAuth after the connections screen is closed',
+      (tester) async {
+    final connectLink = Completer<SocialConnectLinkResult>();
+    final apiClient = _FakeSocialApiClient(
+      connections: const [
+        SocialConnectionResult(platform: 'TIKTOK', connected: false),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+      connectLinkLoader: (_) => connectLink.future,
+    );
+    var launchCalled = false;
+
+    await tester.pumpWidget(
+      _hostProfile(
+        apiClient: apiClient,
+        launchConnectUrl: (_) async {
+          launchCalled = true;
+          return true;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openConnectionsScreen(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('profile-platform-connect-TIKTOK')),
+    );
+    await tester.pump();
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    connectLink.complete(
+      const SocialConnectLinkResult(
+        connectUrl: 'https://www.tiktok.com/v2/auth/authorize',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(apiClient.connectCalls, ['TIKTOK']);
+    expect(launchCalled, isFalse);
+  });
+
+  testWidgets('allows only one social account operation at a time',
+      (tester) async {
+    final connectLink = Completer<SocialConnectLinkResult>();
+    final apiClient = _FakeSocialApiClient(
+      connections: const [
+        SocialConnectionResult(platform: 'TIKTOK', connected: false),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+      connectLinkLoader: (_) => connectLink.future,
+    );
+
+    await tester.pumpWidget(
+      _hostProfile(
+        apiClient: apiClient,
+        launchConnectUrl: (_) async => true,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openConnectionsScreen(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('profile-platform-connect-TIKTOK')),
+    );
+    await tester.pump();
+
+    final youtubeConnect =
+        find.byKey(const ValueKey('profile-platform-connect-YOUTUBE_SHORTS'));
+    expect(tester.widget<FilledButton>(youtubeConnect).onPressed, isNull);
+    expect(apiClient.connectCalls, ['TIKTOK']);
+
+    connectLink.complete(
+      const SocialConnectLinkResult(
+        connectUrl: 'https://www.tiktok.com/v2/auth/authorize',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<FilledButton>(youtubeConnect).onPressed, isNotNull);
+  });
+
+  testWidgets('disables account actions while connection status is loading',
+      (tester) async {
+    final pendingConnections = Completer<List<SocialConnectionResult>>();
+    var connectionLoadCalls = 0;
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      connectionsLoader: () {
+        connectionLoadCalls += 1;
+        if (connectionLoadCalls == 1) {
+          return Future.value(const [
+            SocialConnectionResult(platform: 'TIKTOK', connected: false),
+            SocialConnectionResult(
+                platform: 'YOUTUBE_SHORTS', connected: false),
+            SocialConnectionResult(
+                platform: 'INSTAGRAM_REELS', connected: false),
+            SocialConnectionResult(
+                platform: 'FACEBOOK_REELS', connected: false),
+          ]);
+        }
+        return pendingConnections.future;
+      },
+    );
+
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เชื่อมต่อช่องทาง'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final tiktokConnect =
+        find.byKey(const ValueKey('profile-platform-connect-TIKTOK'));
+    expect(tester.widget<FilledButton>(tiktokConnect).onPressed, isNull);
+
+    pendingConnections.complete(const [
+      SocialConnectionResult(platform: 'TIKTOK', connected: false),
+      SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+      SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+      SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<FilledButton>(tiktokConnect).onPressed, isNotNull);
+  });
+
+  testWidgets('rejects an insecure social connect URL before launching it',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [
+        SocialConnectionResult(platform: 'TIKTOK', connected: false),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+      connectLink: SocialConnectLinkResult(
+        connectUrl: 'http://www.tiktok.com/v2/auth/authorize',
+      ),
+    );
+    var launchCalled = false;
+
+    await tester.pumpWidget(
+      _hostProfile(
+        apiClient: apiClient,
+        launchConnectUrl: (_) async {
+          launchCalled = true;
+          return true;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openConnectionsScreen(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('profile-platform-connect-TIKTOK')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(launchCalled, isFalse);
+    expect(
+      find.text('ลิงก์เชื่อมบัญชีไม่ปลอดภัย กรุณาลองใหม่อีกครั้ง'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('does not refresh after the secure browser fails to open',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [
+        SocialConnectionResult(platform: 'TIKTOK', connected: false),
+        SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+        SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+        SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      ],
+      connectLink: SocialConnectLinkResult(
+        connectUrl: 'https://www.tiktok.com/v2/auth/authorize',
+      ),
+    );
+
+    await tester.pumpWidget(
+      _hostProfile(
+        apiClient: apiClient,
+        launchConnectUrl: (_) async => false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openConnectionsScreen(tester);
+
+    await tester.tap(
+      find.byKey(const ValueKey('profile-platform-connect-TIKTOK')),
+    );
+    await tester.pumpAndSettle();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(apiClient.refreshCalls, 0);
+    expect(find.text('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง'), findsOneWidget);
   });
 
   testWidgets('refreshes connections after returning from PostPeer OAuth',
@@ -648,7 +1030,7 @@ void main() {
         SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
       ],
       connectLink: SocialConnectLinkResult(
-        connectUrl: Uri.parse('https://postpeer.test/connect/tiktok'),
+        connectUrl: 'https://www.tiktok.com/v2/auth/authorize',
         expiresAt: DateTime.utc(2026, 6, 26, 9, 10),
       ),
     );
@@ -677,6 +1059,14 @@ void main() {
       find.byKey(const ValueKey('profile-platform-disconnect-TIKTOK')),
       findsOneWidget,
     );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(apiClient.refreshCalls, 1);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
   });
 
   testWidgets('refreshing pulls connected status from PostPeer',
@@ -913,6 +1303,7 @@ class _FakeSocialApiClient extends PostDeeApiClient {
   _FakeSocialApiClient({
     required this.connections,
     this.connectLink,
+    this.connectLinkLoader,
     this.refreshedConnections,
     this.connectionsLoader,
     this.subscription,
@@ -921,6 +1312,8 @@ class _FakeSocialApiClient extends PostDeeApiClient {
 
   List<SocialConnectionResult> connections;
   final SocialConnectLinkResult? connectLink;
+  final Future<SocialConnectLinkResult> Function(String platform)?
+      connectLinkLoader;
   final List<SocialConnectionResult>? refreshedConnections;
   final Future<List<SocialConnectionResult>> Function()? connectionsLoader;
   SubscriptionStatusResult? subscription;
@@ -972,6 +1365,10 @@ class _FakeSocialApiClient extends PostDeeApiClient {
   Future<SocialConnectLinkResult> createSocialConnectionLink(
       String platform) async {
     connectCalls.add(platform);
+    final loader = connectLinkLoader;
+    if (loader != null) {
+      return loader(platform);
+    }
     final link = connectLink;
     if (link == null) {
       throw const ApiException(

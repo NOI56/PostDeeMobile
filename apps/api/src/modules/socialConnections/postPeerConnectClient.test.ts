@@ -581,6 +581,138 @@ describe('createPostPeerConnectClient', () => {
     );
   });
 
+  it.each([
+    ['YOUTUBE_SHORTS', 'https://accounts.google.com/o/oauth2/v2/auth'],
+    ['INSTAGRAM_REELS', 'https://www.instagram.com/oauth/authorize'],
+    ['INSTAGRAM_REELS', 'https://www.facebook.com/dialog/oauth'],
+    ['FACEBOOK_REELS', 'https://m.facebook.com/dialog/oauth'],
+    ['FACEBOOK_REELS', 'https://connect.postpeer.dev/oauth/start']
+  ] as const)('accepts a trusted %s connect URL', async (platform, connectUrl) => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ url: connectUrl })
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(
+      client.createConnectUrl({ platform, profileId: 'profile-1' })
+    ).resolves.toEqual({ connectUrl });
+  });
+
+  it('rejects a connect URL whose hostname only ends with a trusted-looking name', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ url: 'https://www.tiktok.com.evil.example/auth' })
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(
+      client.createConnectUrl({ platform: 'TIKTOK', profileId: 'profile-1' })
+    ).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+  });
+
+  it('rejects a non-HTTPS connect URL', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ url: 'http://www.tiktok.com/auth' })
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(
+      client.createConnectUrl({ platform: 'TIKTOK', profileId: 'profile-1' })
+    ).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+  });
+
+  it('rejects a connect URL containing a backslash before URL parsing', async () => {
+    const connectUrl = String.raw`https://www.tiktok.com\oauth`;
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ url: connectUrl })
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(
+      client.createConnectUrl({ platform: 'TIKTOK', profileId: 'profile-1' })
+    ).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+  });
+
+  it.each([
+    'https://attacker@www.tiktok.com/auth',
+    'https://@www.tiktok.com/auth'
+  ])('rejects a connect URL containing user information: %s', async (connectUrl) => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ url: connectUrl })
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(
+      client.createConnectUrl({ platform: 'TIKTOK', profileId: 'profile-1' })
+    ).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+  });
+
+  it.each(['//www.tiktok.com/auth', '/auth'])(
+    'rejects a non-absolute connect URL: %s',
+    async (connectUrl) => {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ url: connectUrl })
+      });
+      const client = createPostPeerConnectClient({
+        apiKey: 'pp-key',
+        baseUrl: 'https://api.postpeer.test',
+        fetchImpl
+      });
+
+      await expect(
+        client.createConnectUrl({ platform: 'TIKTOK', profileId: 'profile-1' })
+      ).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+    }
+  );
+
+  it('rejects a connect URL for a different social platform', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ url: 'https://www.facebook.com/oauth' })
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(
+      client.createConnectUrl({ platform: 'TIKTOK', profileId: 'profile-1' })
+    ).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+  });
+
   it('lists every integration id while mapping supported social platforms', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

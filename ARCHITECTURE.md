@@ -104,6 +104,13 @@ Current mobile pieces:
 - Firebase/Google auth gateway with an isolated Android Debug Staging config;
   Google login/token/Staging API smoke passes on Emulator. Firebase Phone Auth,
   iOS, Production, and physical-device tests remain.
+- PostPeer social authorization uses a browser-owned surface and never a
+  Flutter WebView. Android uses a dedicated native Custom Tab bridge whose only
+  fallback is the external browser; iOS currently uses the external system
+  browser so returning to the app reliably produces the lifecycle signal used
+  for one explicit connection refresh. Manual refresh remains the fallback.
+  PostPeer's optional `redirectUri` is not sent until a verified Mobile
+  deep-link return flow is implemented.
 - RevenueCat webhook scaffold for Starter and Pro entitlements, plus a legacy Store Subscription scaffold.
 
 Important mobile services:
@@ -1156,7 +1163,10 @@ cd apps/mobile
   cleanup boundary. Production account deletion and multi-instance/separate-worker
   publishing remain blocked on the full mutation-drain design described above.
 - Direct social OAuth/token storage is not implemented because the MVP
-  production path uses PostPeer first.
+  production path uses PostPeer first. The native Android Custom Tab bridge is
+  presentation-only and does not fall back to an embedded WebView:
+  PostPeer/provider infrastructure remains the owner of the OAuth flow and
+  Mobile neither sees passwords nor stores provider tokens.
 - Per-platform disconnect is provider-first and user-scoped: PostPeer must
   confirm the saved integration is gone before the local connection row is
   removed. Missing integrations are idempotent; provider failures keep local

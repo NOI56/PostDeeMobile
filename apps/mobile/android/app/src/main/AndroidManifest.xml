@@ -45,6 +45,12 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Lets PostDee's native OAuth bridge select a Custom Tab provider.
+             The bridge returns failure when unavailable so Dart can use the
+             external browser; it never substitutes an embedded WebView. -->
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

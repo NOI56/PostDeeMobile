@@ -2182,12 +2182,16 @@ class SocialConnectLinkResult {
     this.expiresAt,
   });
 
-  final Uri connectUrl;
+  /// Keep the provider URL exactly as returned by the API so security checks
+  /// can detect syntax (such as an empty `userinfo@`) that [Uri] normalizes.
+  final String connectUrl;
   final DateTime? expiresAt;
+
+  Uri get connectUri => Uri.parse(connectUrl);
 
   factory SocialConnectLinkResult.fromJson(Map<String, Object?> json) =>
       SocialConnectLinkResult(
-        connectUrl: Uri.parse(json['connectUrl'] as String),
+        connectUrl: json['connectUrl'] as String,
         expiresAt: json['expiresAt'] is String
             ? DateTime.tryParse(json['expiresAt'] as String)
             : null,

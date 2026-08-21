@@ -256,13 +256,18 @@ Android Staging รองรับเฉพาะ Debug ในตอนนี้
 
 ```powershell
 cd apps/mobile
-Copy-Item staging.local.example.json staging.local.json
-..\..\.tools\flutter\bin\flutter.bat run --debug --dart-define-from-file=staging.local.json
+powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command run
+powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command build-apk
 ```
 
-ห้ามใช้ `staging.local.json` กับ `--profile` หรือ `--release` เพราะสอง build type นี้
-ยังใช้ Firebase Production หากเปลี่ยนเครื่อง/CI ต้องเพิ่ม Debug SHA-1/SHA-256 ของ
-keystore ใหม่นั้นใน Firebase Staging ก่อน Google Sign-In จะทำงาน
+helper จะตรวจ API, Firebase Auth, local mock auth และ Google server client id
+ก่อนเรียก Flutter โดยเลือก `staging.local.json` ถ้ามี หรือใช้
+`staging.local.example.json` ที่ไม่มี secret เป็นค่าเริ่มต้น ห้ามใช้คำสั่ง
+`flutter build apk` ตรง ๆ สำหรับ APK Staging ที่จะติดตั้ง เพราะหากลืมส่ง Dart
+defines แอปจะปิด Firebase Auth ตามค่าเริ่มต้นที่ปลอดภัย ห้ามใช้ Staging กับ
+`--profile` หรือ `--release` เพราะสอง build type นี้ยังใช้ Firebase Production
+หากเปลี่ยนเครื่อง/CI ต้องเพิ่ม Debug SHA-1/SHA-256 ของ keystore ใหม่นั้นใน
+Firebase Staging ก่อน Google Sign-In จะทำงาน
 
 `/health` ตรวจเพียงว่า process ของ API ตอบได้ ไม่ได้ตรวจ R2, Firebase, Gemini/ElevenLabs
 หรือ RevenueCat จึงต้องผ่าน smoke test ด้านล่างก่อนเรียก Staging ว่าใช้งานฟังก์ชันจริงได้

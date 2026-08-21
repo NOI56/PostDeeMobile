@@ -99,6 +99,63 @@ void main() {
       ),
     );
   });
+  test('staging helper always builds Debug with validated staging defines',
+      () async {
+    final helper = File('tool/postdee-staging.ps1');
+
+    expect(helper.existsSync(), isTrue);
+
+    final contents = await helper.readAsString();
+
+    expect(
+      contents,
+      contains("[ValidateSet('run', 'build-apk', 'test')]"),
+    );
+    expect(contents, contains("'staging.local.json'"));
+    expect(contents, contains("'staging.local.example.json'"));
+    expect(
+      contents,
+      contains(
+        'API_BASE_URL must point to https://postdee-api-staging.onrender.com for staging runs.',
+      ),
+    );
+    expect(
+      contents,
+      contains('ENABLE_FIREBASE_AUTH must be true for staging runs.'),
+    );
+    expect(
+      contents,
+      contains('ALLOW_LOCAL_MOCK_AUTH must be false for staging runs.'),
+    );
+    expect(
+      contents,
+      contains('GOOGLE_SERVER_CLIENT_ID is required for staging runs.'),
+    );
+    expect(
+      contents,
+      contains(
+        RegExp(
+          r"'build-apk'\s*\{\s*'build'\s*'apk'\s*'--debug'\s*\}",
+        ),
+      ),
+    );
+    expect(
+      contents,
+      contains(r'"--dart-define-from-file=$stagingDefines"'),
+    );
+    expect(
+      contents,
+      contains(
+        'Build mode and Dart define overrides are not allowed by the staging helper.',
+      ),
+    );
+
+    final readme = await File('README.md').readAsString();
+    expect(
+      readme,
+      contains(r'.\tool\postdee-staging.ps1 -Command build-apk'),
+    );
+  });
   test('Android production build applies Google services plugin', () async {
     final settingsGradle = File('android/settings.gradle.kts');
     final appGradle = File('android/app/build.gradle.kts');

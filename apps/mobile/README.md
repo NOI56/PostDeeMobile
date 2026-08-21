@@ -45,17 +45,22 @@ See `../../FIREBASE_SETUP.md` for the full Firebase Auth and Google Sign-In chec
 ### Android Debug Staging
 
 `android/app/src/debug/google-services.json` is the dedicated Firebase Staging
-config. Copy the checked-in non-secret example to the ignored local file, then
-run Debug only:
+config. Use the staging helper for every Debug build installed on a device:
 
 ```powershell
-Copy-Item staging.local.example.json staging.local.json
-..\..\.tools\flutter\bin\flutter.bat run --debug --dart-define-from-file=staging.local.json
+powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command run
+powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command build-apk
 ```
 
-Do not pass `staging.local.json` to `--profile` or `--release`; those build types
-still use Firebase Production. A different machine/CI debug keystore also needs
-its SHA-1 and SHA-256 registered in Firebase Staging.
+The helper validates the Staging API, Firebase flag, mock-auth flag, and Google
+server client id before invoking Flutter. It uses an ignored
+`staging.local.json` when present and otherwise falls back to the checked-in,
+non-secret `staging.local.example.json`. Do not use a raw `flutter build apk`
+for an installed Staging build: omitting the Dart define file safely disables
+Firebase Auth. The helper rejects `--profile`, `--release`, and Dart-define
+overrides because those could mix Staging and Production configuration. A
+different machine/CI debug keystore also needs its SHA-1 and SHA-256 registered
+in Firebase Staging.
 
 ## Production / Sandbox Run
 

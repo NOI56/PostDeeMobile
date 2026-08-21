@@ -237,7 +237,7 @@ void main() {
   for (final width in const [360.0, 393.0]) {
     for (final textScale in const [1.45, 2.0]) {
       testWidgets(
-          'keeps home metrics compact at ${width}dp and ${textScale}x text',
+          'keeps home metrics and profile link compact at ${width}dp and ${textScale}x text',
           (tester) async {
         await tester.binding.setSurfaceSize(Size(width, 852));
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -281,6 +281,17 @@ void main() {
         expect((viewsRect.top - likesRect.top).abs(), lessThan(1));
         expect(viewsRect.height, lessThanOrEqualTo(96));
         expect(likesRect.height, lessThanOrEqualTo(96));
+
+        final linkShortcut =
+            find.byKey(const ValueKey('home-link-in-bio-shortcut'));
+        await tester.ensureVisible(linkShortcut);
+        await tester.pumpAndSettle();
+
+        final linkShortcutRect = tester.getRect(linkShortcut);
+        expect(linkShortcutRect.left, greaterThanOrEqualTo(0));
+        expect(linkShortcutRect.right, lessThanOrEqualTo(width));
+        expect(linkShortcutRect.height, greaterThanOrEqualTo(44));
+        expect(linkShortcutRect.height, lessThanOrEqualTo(144));
         expect(tester.takeException(), isNull);
       });
     }
@@ -687,7 +698,13 @@ void main() {
     );
     expect(find.text('ยอดวิวเดือนนี้'), findsOneWidget);
     expect(find.text('ไลก์เดือนนี้'), findsOneWidget);
-    expect(find.text('สร้างโพสต์ใหม่'), findsOneWidget);
+    expect(find.text('สร้างโพสต์ใหม่'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('home-link-in-bio-shortcut')),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
+    expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
     expect(find.text('โพสต์ล่าสุด'), findsOneWidget);
     expect(find.text('ยังไม่มีโพสต์'), findsOneWidget);
     expect(
@@ -696,8 +713,20 @@ void main() {
     );
     expect(find.widgetWithText(FilledButton, 'สร้างโพสต์'), findsNothing);
 
-    await _expectHomeTextAfterScrolling(tester, 'เครื่องมือเติบโต');
-    expect(find.text('ช่วยให้ขายดี'), findsOneWidget);
+    final metricBottom = tester
+        .getBottomRight(find.byKey(const ValueKey('home-likes-metric-card')))
+        .dy;
+    final linkShortcutRect = tester.getRect(
+      find.byKey(const ValueKey('home-link-in-bio-shortcut')),
+    );
+    final latestPostsTop = tester.getTopLeft(find.text('โพสต์ล่าสุด')).dy;
+    expect(linkShortcutRect.top, greaterThan(metricBottom));
+    expect(linkShortcutRect.bottom, lessThan(latestPostsTop));
+
+    await _expectHomeTextsNeverAppearAfterScrolling(
+      tester,
+      ['เครื่องมือเติบโต', 'ช่วยให้ขายดี', 'แจ้งเตือนคลิปไวรัล'],
+    );
   });
   testWidgets('loads and displays total views on the home dashboard',
       (tester) async {
@@ -1041,23 +1070,21 @@ void main() {
     expect(maxInFlight, 1);
   });
 
-  testWidgets('shows phase 2 growth tool previews on the home dashboard',
+  testWidgets('shows profile link shortcut without retired home growth cards',
       (tester) async {
     await tester.pumpWidget(
       _homeTestApp(const HomeScreen()),
     );
 
-    await _expectHomeTextAfterScrolling(tester, 'เครื่องมือเติบโต');
-    // Home shows two growth tools per the design handoff; "team" moved into
-    // the growth detail screen.
-    final toolTitles = [
-      'ลิงก์หน้าโปรไฟล์',
-      'แจ้งเตือนคลิปไวรัล',
-    ];
-
-    for (final title in toolTitles) {
-      await _expectHomeTextAfterScrolling(tester, title);
-    }
+    expect(
+      find.byKey(const ValueKey('home-link-in-bio-shortcut')),
+      findsOneWidget,
+    );
+    expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
+    await _expectHomeTextsNeverAppearAfterScrolling(
+      tester,
+      ['เครื่องมือเติบโต', 'ช่วยให้ขายดี', 'แจ้งเตือนคลิปไวรัล'],
+    );
     expect(find.text('ทีมและผู้ช่วย'), findsNothing);
   });
 
@@ -1079,7 +1106,7 @@ void main() {
     );
   });
 
-  testWidgets('opens Link in Bio builder from the home growth card',
+  testWidgets('opens Link in Bio builder from the home shortcut',
       (tester) async {
     await tester.pumpWidget(
       _homeTestApp(const HomeScreen()),
@@ -1099,35 +1126,15 @@ void main() {
     expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
   });
 
-  testWidgets('opens growth tool detail settings from home cards',
+  testWidgets('does not show the prototype viral alert on home',
       (tester) async {
     await tester.pumpWidget(
       _homeTestApp(const HomeScreen()),
     );
 
-    final toolTitles = [
-      'แจ้งเตือนคลิปไวรัล',
-    ];
-
-    for (final title in toolTitles) {
-      await _tapHomeTextAfterScrolling(tester, title);
-
-      expect(find.text('รายละเอียดและตั้งค่า'), findsOneWidget);
-      expect(find.text('ตั้งค่า: $title'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('growth-tool-real-status-note')),
-        findsOneWidget,
-      );
-      expect(find.text('เร็ว ๆ นี้'), findsWidgets);
-      expect(find.text('แบบร่างในเครื่อง'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('growth-tool-enabled-switch')),
-        findsNothing,
-      );
-      expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
-
-      await tester.tap(find.byTooltip('ปิด'));
-      await tester.pumpAndSettle();
-    }
+    await _expectHomeTextsNeverAppearAfterScrolling(
+      tester,
+      ['แจ้งเตือนคลิปไวรัล', 'เตือนเมื่อยอดวิวโตเร็วกว่าปกติ', 'เร็ว ๆ นี้'],
+    );
   });
 }

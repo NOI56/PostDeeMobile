@@ -259,6 +259,9 @@ Reference direction:
   Calendar, and Profile. AI Editing occupies the second slot, Calendar occupies
   the fourth slot, and Analytics remains reachable from publish results and
   individual post details so the existing reporting system is not removed.
+- Home keeps one direct Link in Bio shortcut below the analytics cards. Create
+  post stays in the bottom navigation, while the future viral-alert preview
+  stays off Home until its real end-to-end flow is ready.
 - Keep AI captioning available from Upload after a clip is selected.
 - Keep Templates available as a secondary entry point instead of a main
   bottom-nav tab.

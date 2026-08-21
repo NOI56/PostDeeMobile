@@ -149,7 +149,6 @@ class _PostDeeShellState extends State<PostDeeShell> {
           isActive: _selectedIndex == 0,
           loadSubscription: widget.loadSubscription,
           loadRecentPosts: widget.loadRecentPosts,
-          onCreatePost: () => _selectTab(2),
           onViewAllPosts: () => _selectTab(3),
           onOpenNotifications: _openNotifications,
           onOpenProfile: () => _selectTab(5),

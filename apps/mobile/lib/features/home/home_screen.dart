@@ -11,7 +11,6 @@ import '../link_in_bio/link_in_bio_screen.dart';
 import '../notifications/push_notification.dart';
 import '../platforms/social_platform.dart';
 import '../posts/post_detail_screen.dart';
-import '../shared/growth_tool_detail_sheet.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_skeleton.dart';
 
@@ -26,7 +25,6 @@ class HomeScreen extends StatefulWidget {
     this.loadAnalytics,
     this.loadSubscription,
     this.loadRecentPosts,
-    this.onCreatePost,
     this.onViewAllPosts,
     this.onOpenNotifications,
     this.onOpenProfile,
@@ -41,7 +39,6 @@ class HomeScreen extends StatefulWidget {
   final HomeAnalyticsLoader? loadAnalytics;
   final HomeSubscriptionLoader? loadSubscription;
   final HomeRecentPostsLoader? loadRecentPosts;
-  final VoidCallback? onCreatePost;
   final VoidCallback? onViewAllPosts;
   final VoidCallback? onOpenNotifications;
   final VoidCallback? onOpenProfile;
@@ -327,7 +324,9 @@ class _HomeScreenState extends State<HomeScreen> {
               : (_isLoadingAnalytics ? null : _loadAnalytics),
         ),
         const SizedBox(height: 14),
-        _CreatePostCard(onCreatePost: widget.onCreatePost),
+        // AppTheme colors are imperative, so this subtree must rebuild when
+        // the user switches between light and dark mode.
+        _LinkInBioShortcutCard(),
         const SizedBox(height: 14),
         Row(
           children: [
@@ -363,11 +362,6 @@ class _HomeScreenState extends State<HomeScreen> {
           onRetry: _loadRecentPosts,
           onOpenPost: _openPostDetail,
         ),
-        const SizedBox(height: 18),
-        // Not const: a kept-alive const subtree is skipped on rebuild and
-        // keeps stale colors when the theme flips (AppTheme reads are
-        // imperative, not inherited).
-        _GrowthToolsPreview(),
         const SizedBox(height: AppTheme.spaceSm),
       ],
     );
@@ -511,35 +505,114 @@ class _RoundHeaderButton extends StatelessWidget {
   }
 }
 
-class _CreatePostCard extends StatelessWidget {
-  const _CreatePostCard({required this.onCreatePost});
+class _LinkInBioShortcutCard extends StatelessWidget {
+  const _LinkInBioShortcutCard();
 
-  final VoidCallback? onCreatePost;
+  void _open(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => const LinkInBioScreen(),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final isThai = Localizations.localeOf(context).languageCode == 'th';
+    const accent = Color(0xFF0EA5B7);
+    final tint = accent.withValues(alpha: 0.14);
+    final statusBadge = DecoratedBox(
+      decoration: BoxDecoration(
+        color: tint,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+        child: Text(
+          isThai ? 'หน้าร้าน' : 'Storefront',
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: accent,
+          ),
+        ),
+      ),
+    );
 
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: FilledButton.icon(
-        onPressed: onCreatePost,
-        icon: const Icon(Icons.add_circle_rounded, size: 25),
-        label: Text(isThai ? 'สร้างโพสต์ใหม่' : 'Create a new post'),
-        style: FilledButton.styleFrom(
-          backgroundColor: AppTheme.accent,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: AppTheme.accent,
-          disabledForegroundColor: Colors.white,
-          elevation: 0,
-          shadowColor: AppTheme.accent.withValues(alpha: 0.5),
+    return Semantics(
+      excludeSemantics: true,
+      button: true,
+      label: isThai ? 'ลิงก์หน้าโปรไฟล์' : 'Profile link',
+      hint: isThai
+          ? 'เปิดหน้าสร้างลิงก์หน้าโปรไฟล์'
+          : 'Open the profile link builder',
+      child: MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.3,
+        child: Material(
+          key: const ValueKey('home-link-in-bio-shortcut'),
+          color: AppTheme.glass,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(17),
+            side: BorderSide(color: AppTheme.border),
           ),
-          textStyle: const TextStyle(
-            fontSize: 16.5,
-            fontWeight: FontWeight.w800,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => _open(context),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: tint,
+                    ),
+                    child:
+                        const Icon(Icons.link_rounded, color: accent, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isThai ? 'ลิงก์หน้าโปรไฟล์' : 'Profile link',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          isThai
+                              ? 'รวมลิงก์ร้านและแคมเปญ'
+                              : 'Store and campaign links',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppTheme.spaceSm),
+                  statusBadge,
+                  const SizedBox(width: AppTheme.spaceXs),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppTheme.textMuted,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1347,267 +1420,6 @@ class _DashedRRectBorderPainter extends CustomPainter {
         oldDelegate.dash != dash ||
         oldDelegate.gap != gap ||
         oldDelegate.strokeWidth != strokeWidth;
-  }
-}
-
-class _GrowthToolsPreview extends StatelessWidget {
-  const _GrowthToolsPreview();
-
-  // Two tools on Home, per the prototype; "team" lives in the growth detail
-  // screen instead.
-  static const _items = [
-    _GrowthToolItem(
-      id: 'bio_link',
-      title: 'ลิงก์หน้าโปรไฟล์',
-      description: 'รวมลิงก์ร้าน อัปเดตจากโพสต์ที่ตั้งเวลา',
-      status: 'หน้าร้าน',
-      icon: Icons.link,
-      color: Color(0xFF0EA5B7),
-      settings: [
-        GrowthToolSettingOption(
-          id: 'store_url',
-          label: 'ชื่อร้านและ URL เช่น postdee.link/store-name',
-        ),
-        GrowthToolSettingOption(
-          id: 'affiliate_links',
-          label: 'ลิงก์สินค้า แคมเปญ และแอฟฟิลิเอต',
-        ),
-        GrowthToolSettingOption(
-          id: 'auto_update_links',
-          label: 'เลือกโพสต์ที่ให้อัปเดตลิงก์อัตโนมัติ',
-        ),
-      ],
-    ),
-    _GrowthToolItem(
-      id: 'viral_alert',
-      title: 'แจ้งเตือนคลิปไวรัล',
-      description: 'เตือนเมื่อยอดวิวโตเร็วกว่าปกติ',
-      status: 'เร็ว ๆ นี้',
-      icon: Icons.notifications_active,
-      color: Color(0xFFF59E0B),
-      prototypeOnly: true,
-      settings: [
-        GrowthToolSettingOption(
-          id: 'view_threshold',
-          label: 'ตั้งเกณฑ์ยอดวิวโตเร็วผิดปกติ',
-        ),
-        GrowthToolSettingOption(
-          id: 'app_notification',
-          label: 'เลือกช่องทางแจ้งเตือนในแอป',
-        ),
-        GrowthToolSettingOption(
-          id: 'rising_clips',
-          label: 'ดูรายการคลิปที่กำลังพุ่ง',
-        ),
-      ],
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'เครื่องมือเติบโต',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppTheme.mint,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                child: Text(
-                  'ช่วยให้ขายดี',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.accentCyanInk,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.border),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF122018).withValues(alpha: 0.04),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              for (var index = 0; index < _items.length; index += 1) ...[
-                if (index > 0) Divider(height: 1, color: AppTheme.borderSoft),
-                _GrowthToolRow(item: _items[index]),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _GrowthToolItem {
-  const _GrowthToolItem({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.status,
-    required this.icon,
-    required this.color,
-    required this.settings,
-    this.prototypeOnly = false,
-  });
-
-  final String id;
-  final String title;
-  final String description;
-  final String status;
-  final IconData icon;
-  final Color color;
-  final List<GrowthToolSettingOption> settings;
-  final bool prototypeOnly;
-}
-
-class _GrowthToolRow extends StatelessWidget {
-  const _GrowthToolRow({required this.item});
-
-  final _GrowthToolItem item;
-
-  void _open(BuildContext context) {
-    if (item.id == 'bio_link') {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => const LinkInBioScreen(),
-        ),
-      );
-      return;
-    }
-
-    showGrowthToolDetailSheet(
-      context,
-      GrowthToolDetail(
-        id: item.id,
-        title: item.title,
-        description: item.description,
-        status: item.status,
-        icon: item.icon,
-        color: item.color,
-        settings: item.settings,
-        prototypeOnly: item.prototypeOnly,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final tint = item.color.withValues(alpha: 0.14);
-    final usesLargeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
-    final statusBadge = DecoratedBox(
-      decoration: BoxDecoration(
-        color: tint,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-        child: Text(
-          item.status,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: item.color,
-          ),
-        ),
-      ),
-    );
-
-    return Semantics(
-      button: true,
-      label: item.title,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _open(context),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(11),
-                  color: tint,
-                ),
-                child: Icon(item.icon, color: item.color, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.title,
-                      maxLines: usesLargeText ? 2 : 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      item.description,
-                      maxLines: usesLargeText ? 2 : 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.textMuted,
-                      ),
-                    ),
-                    if (usesLargeText) ...[
-                      const SizedBox(height: 5),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: statusBadge,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (!usesLargeText) ...[
-                const SizedBox(width: AppTheme.spaceSm),
-                statusBadge,
-              ],
-              const SizedBox(width: AppTheme.spaceXs),
-              Icon(Icons.chevron_right, color: AppTheme.textMuted, size: 20),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

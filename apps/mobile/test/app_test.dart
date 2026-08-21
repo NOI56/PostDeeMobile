@@ -114,7 +114,8 @@ void main() {
     expect(find.text('AI editing'), findsOneWidget);
     expect(find.text('Views this month'), findsOneWidget);
     expect(find.text('Likes this month'), findsOneWidget);
-    expect(find.text('Create a new post'), findsOneWidget);
+    expect(find.text('Create a new post'), findsNothing);
+    expect(find.text('Profile link'), findsOneWidget);
     expect(find.text('Latest post status'), findsOneWidget);
     expect(find.text('View all'), findsNothing);
     expect(find.text('Pro package'), findsNothing);
@@ -413,6 +414,12 @@ void main() {
 
     expect(themeController.themeMode, ThemeMode.light);
     expect(AppTheme.isLightMode, isTrue);
+    final homeLinkShortcut = find.byKey(
+      const ValueKey('home-link-in-bio-shortcut'),
+      skipOffstage: false,
+    );
+    expect(homeLinkShortcut, findsOneWidget);
+    final lightLinkCardColor = tester.widget<Material>(homeLinkShortcut).color;
 
     await _tapReferenceNavButton(tester, 'Profile');
 
@@ -443,6 +450,9 @@ void main() {
     expect(AppTheme.isLightMode, isFalse);
     expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
         ThemeMode.dark);
+    final darkLinkCardColor = tester.widget<Material>(homeLinkShortcut).color;
+    expect(darkLinkCardColor, AppTheme.glass);
+    expect(darkLinkCardColor, isNot(lightLinkCardColor));
 
     final lightModeButton = find.text('สว่าง');
     await tester.tap(lightModeButton);
@@ -452,6 +462,7 @@ void main() {
     expect(AppTheme.isLightMode, isTrue);
     expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
         ThemeMode.light);
+    expect(tester.widget<Material>(homeLinkShortcut).color, lightLinkCardColor);
   });
 
   testWidgets('switches from English to Thai from the profile language picker',

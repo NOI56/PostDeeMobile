@@ -145,6 +145,9 @@ class _PreparedRecipeRenderResult {
 const _maxAiEditSourceDurationSeconds = 600;
 const _maxAiShortenedDurationSeconds = 180;
 const _originalDurationSliderStop = 181.0;
+const _minimumSubtitleFontSize = 14.0;
+const _maximumSubtitleFontSize = 42.0;
+const _defaultSubtitleFontSize = 22.0;
 
 String _subtitleHexColor(Color color) {
   final argb = color.toARGB32().toRadixString(16).padLeft(8, '0');
@@ -325,7 +328,7 @@ class _AiPreset {
     required this.name,
     required this.capabilities,
     required this.speechReductionSelectionMode,
-    required this.subtitleStyle,
+    required this.subtitleFontSize,
     required this.subtitleColor,
     required this.subtitleOutlineColor,
     required this.subtitleWords,
@@ -348,7 +351,7 @@ class _AiPreset {
   final String name;
   final Map<String, bool> capabilities;
   final _SpeechReductionSelectionMode speechReductionSelectionMode;
-  final String subtitleStyle;
+  final double subtitleFontSize;
   final Color subtitleColor;
   final Color subtitleOutlineColor;
   final String subtitleWords;
@@ -374,7 +377,7 @@ class _AiSetupSnapshot {
     required this.customDurationSeconds,
     required this.capabilities,
     required this.speechReductionSelectionMode,
-    required this.subtitleStyle,
+    required this.subtitleFontSize,
     required this.subtitleColor,
     required this.subtitleOutlineColor,
     required this.subtitleWords,
@@ -405,7 +408,7 @@ class _AiSetupSnapshot {
   final int customDurationSeconds;
   final Map<String, bool> capabilities;
   final _SpeechReductionSelectionMode speechReductionSelectionMode;
-  final String subtitleStyle;
+  final double subtitleFontSize;
   final Color subtitleColor;
   final Color subtitleOutlineColor;
   final String subtitleWords;
@@ -578,7 +581,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     'watermark': false,
   };
 
-  String _subtitleStyle = 'large';
+  double _subtitleFontSize = _defaultSubtitleFontSize;
   Color _subtitleColor = Colors.white;
   Color _subtitleOutlineColor = Colors.black;
   String _subtitleWords = 'few';
@@ -1572,6 +1575,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   Future<SubtitleProject?> _openSubtitleStudio({
     required File sourceFile,
     required SubtitleProject initialProject,
+    Size? previewDisplaySizeHint,
   }) async {
     final store = await _getSubtitleDraftStore();
     if (!mounted) return null;
@@ -1585,6 +1589,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           sourceFile: sourceFile,
           initialProject: initialProject,
           draftStore: store,
+          previewDisplaySizeHint: previewDisplaySizeHint,
         ),
       ),
     );
@@ -2300,11 +2305,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       'full' => 36,
       _ => 18,
     };
-    final subtitleFontSize = switch (_subtitleStyle) {
-      'small' => 17.0,
-      'medium' => 19.0,
-      _ => 22.0,
-    };
     final filterIndex = switch (_toneFilter) {
       'vivid' => 1,
       'warm' => 4,
@@ -2325,7 +2325,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           : null,
       speed: 1,
       filterIndex: colorOn ? filterIndex : 0,
-      subtitleFontSize: subtitleOn ? subtitleFontSize : null,
+      subtitleFontSize: subtitleOn ? _subtitleFontSize : null,
       subtitleAtBottom:
           subtitleOn ? _effectiveSubtitlePosition == 'bottom' : null,
       brightness: colorOn ? 0.12 * _toneStrength : 0,
@@ -2363,7 +2363,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   int get _subtitleWordsPerLine => subtitleWordLimitForStyle(
-        subtitleStyle: _subtitleStyle,
+        subtitleStyle: 'custom',
         subtitleWords: _subtitleWords,
       );
 
@@ -2413,7 +2413,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       customDurationSeconds: _customDurationSeconds,
       capabilities: Map<String, bool>.from(_capabilities),
       speechReductionSelectionMode: _speechReductionSelectionMode,
-      subtitleStyle: _subtitleStyle,
+      subtitleFontSize: _subtitleFontSize,
       subtitleColor: _subtitleColor,
       subtitleOutlineColor: _subtitleOutlineColor,
       subtitleWords: _subtitleWords,
@@ -2449,7 +2449,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       ..addAll(snapshot.capabilities);
     _disableRetiredSetupCapabilities();
     _speechReductionSelectionMode = snapshot.speechReductionSelectionMode;
-    _subtitleStyle = snapshot.subtitleStyle;
+    _subtitleFontSize = snapshot.subtitleFontSize;
     _subtitleColor = snapshot.subtitleColor;
     _subtitleOutlineColor = snapshot.subtitleOutlineColor;
     _subtitleWords = snapshot.subtitleWords;
@@ -2805,6 +2805,12 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final edited = await _openSubtitleStudio(
       sourceFile: File(picked.path),
       initialProject: project,
+      previewDisplaySizeHint: picked.width != null &&
+              picked.height != null &&
+              picked.width! > 0 &&
+              picked.height! > 0
+          ? Size(picked.width!.toDouble(), picked.height!.toDouble())
+          : null,
     );
     if (!mounted || edited == null) return;
     validateSubtitleProject(edited);
@@ -3078,7 +3084,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           name: 'ชุดที่ ${_presets.length + 1}',
           capabilities: Map<String, bool>.from(_capabilities),
           speechReductionSelectionMode: _speechReductionSelectionMode,
-          subtitleStyle: _subtitleStyle,
+          subtitleFontSize: _subtitleFontSize,
           subtitleColor: _subtitleColor,
           subtitleOutlineColor: _subtitleOutlineColor,
           subtitleWords: _subtitleWords,
@@ -3119,7 +3125,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ..addAll(preset.capabilities);
       _disableRetiredSetupCapabilities();
       _speechReductionSelectionMode = preset.speechReductionSelectionMode;
-      _subtitleStyle = preset.subtitleStyle;
+      _subtitleFontSize = preset.subtitleFontSize;
       _subtitleColor = preset.subtitleColor;
       _subtitleOutlineColor = preset.subtitleOutlineColor;
       _subtitleWords = preset.subtitleWords;
@@ -4715,16 +4721,17 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Expanded(
-                          child: Text(
-                            'ต้นฉบับ $sourceLabel',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.textSecondary,
-                            ),
+                        Text(
+                          'ต้นฉบับ $sourceLabel',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textSecondary,
                           ),
                         ),
                         Container(
@@ -4783,20 +4790,25 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                       ),
                     ),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'สั้นสุด ${_formatDurationSeconds(minimum)}',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            color: AppTheme.textMuted,
+                        Expanded(
+                          child: Text(
+                            'สั้นสุด ${_formatDurationSeconds(minimum)}',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: AppTheme.textMuted,
+                            ),
                           ),
                         ),
-                        Text(
-                          'ไม่ย่อ $sourceLabel',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            color: AppTheme.textMuted,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'ไม่ย่อ $sourceLabel',
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: AppTheme.textMuted,
+                            ),
                           ),
                         ),
                       ],
@@ -5216,15 +5228,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
       'full' => 'ลดแรง 50% ส่งฟรี วันนี้',
       _ => 'ลดแรง 50% วันนี้',
     };
-    final previewFontSize = switch (_subtitleStyle) {
-      'small' => 17.0,
-      'medium' => 19.0,
-      _ => 22.0,
-    };
     final previewStyle = SubtitleStyle(
       fontId: SubtitleStyle.defaults.fontId,
       fontWeight: SubtitleStyle.defaults.fontWeight,
-      fontSize: previewFontSize,
+      fontSize: _subtitleFontSize,
       textColor: _subtitleHexColor(_subtitleColor),
       activeWordColor: SubtitleStyle.defaults.activeWordColor,
       outlineColor: _subtitleHexColor(_subtitleOutlineColor),
@@ -5299,30 +5306,66 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        _advancedLabel('ขนาดตัวอักษร'),
-        Wrap(
-          spacing: 7,
-          runSpacing: 7,
+        Row(
           children: [
-            _choiceChip(
-              key: const ValueKey('ai-subtitle-size-large'),
-              label: 'ใหญ่',
-              selected: _subtitleStyle == 'large',
-              onTap: () => setState(() => _subtitleStyle = 'large'),
-            ),
-            _choiceChip(
-              key: const ValueKey('ai-subtitle-size-medium'),
-              label: 'กลาง',
-              selected: _subtitleStyle == 'medium',
-              onTap: () => setState(() => _subtitleStyle = 'medium'),
-            ),
-            _choiceChip(
-              key: const ValueKey('ai-subtitle-size-small'),
-              label: 'เล็ก',
-              selected: _subtitleStyle == 'small',
-              onTap: () => setState(() => _subtitleStyle = 'small'),
+            Expanded(child: _advancedLabel('ขนาดตัวอักษร')),
+            Text(
+              'ขนาด ${_subtitleFontSize.round()}',
+              style: TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ],
+        ),
+        Semantics(
+          label: 'ขนาดตัวอักษรซับ',
+          value: 'ขนาด ${_subtitleFontSize.round()}',
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 5,
+              activeTrackColor: AppTheme.accent,
+              inactiveTrackColor: AppTheme.borderSoft,
+              thumbColor: AppTheme.accent,
+              overlayColor: AppTheme.accent.withValues(alpha: 0.14),
+            ),
+            child: Slider(
+              key: const ValueKey('ai-subtitle-font-size-slider'),
+              min: _minimumSubtitleFontSize,
+              max: _maximumSubtitleFontSize,
+              divisions:
+                  (_maximumSubtitleFontSize - _minimumSubtitleFontSize).round(),
+              value: _subtitleFontSize,
+              label: '${_subtitleFontSize.round()}',
+              semanticFormatterCallback: (value) => 'ขนาด ${value.round()}',
+              onChanged: (value) {
+                setState(() => _subtitleFontSize = value.roundToDouble());
+              },
+            ),
+          ),
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '${_minimumSubtitleFontSize.round()}',
+              style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
+            ),
+            Text(
+              '${_maximumSubtitleFontSize.round()}',
+              style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        Text(
+          'ข้อความยาวอาจถูกย่ออัตโนมัติเพื่อไม่ให้ล้นจอ',
+          style: TextStyle(
+            fontSize: 10.5,
+            height: 1.4,
+            color: AppTheme.textMuted,
+          ),
         ),
         const SizedBox(height: 13),
         _subtitleColorChoices(
@@ -6667,83 +6710,102 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     return Positioned.fill(
       child: ColoredBox(
         color: AppTheme.pitchBlack,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 76,
-                  height: 76,
-                  child: CircularProgressIndicator(
-                    key: renderProgress == null
-                        ? const ValueKey('ai-processing-spinner')
-                        : const ValueKey('ai-render-progress'),
-                    value: renderProgress,
-                    strokeWidth: 5,
-                    color: AppTheme.accent,
-                    backgroundColor: AppTheme.mint,
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const verticalPadding = 24.0;
+              final minContentHeight =
+                  constraints.maxHeight > 48 ? constraints.maxHeight - 48 : 0.0;
+
+              return SingleChildScrollView(
+                key: const ValueKey('ai-processing-scroll-view'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: verticalPadding,
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: minContentHeight),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 76,
+                        height: 76,
+                        child: CircularProgressIndicator(
+                          key: renderProgress == null
+                              ? const ValueKey('ai-processing-spinner')
+                              : const ValueKey('ai-render-progress'),
+                          value: renderProgress,
+                          strokeWidth: 5,
+                          color: AppTheme.accent,
+                          backgroundColor: AppTheme.mint,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        renderProgress != null && renderProgress >= 0.99
+                            ? 'กำลังตรวจไฟล์วิดีโอ...'
+                            : _processingTitle,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      if (renderProgress != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '${(renderProgress * 100).round()}%',
+                          key: const ValueKey('ai-render-progress-percent'),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.accentCyanInk,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        selectedTasks,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.5,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'เสร็จแล้วจะกลับมาหน้าตรวจผลงานให้เลือกอีกครั้ง',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.5,
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                      if (_activeRenderCancellation != null) ...[
+                        const SizedBox(height: 18),
+                        TextButton.icon(
+                          key: const ValueKey('ai-render-cancel'),
+                          onPressed: _renderCancelRequested
+                              ? null
+                              : _cancelActiveRender,
+                          icon: const Icon(Icons.close_rounded),
+                          label: Text(
+                            _renderCancelRequested
+                                ? 'กำลังยกเลิก...'
+                                : 'ยกเลิก',
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                const SizedBox(height: 24),
-                Text(
-                  renderProgress != null && renderProgress >= 0.99
-                      ? 'กำลังตรวจไฟล์วิดีโอ...'
-                      : _processingTitle,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                if (renderProgress != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '${(renderProgress * 100).round()}%',
-                    key: const ValueKey('ai-render-progress-percent'),
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.accentCyanInk,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Text(
-                  selectedTasks,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.5,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  'เสร็จแล้วจะกลับมาหน้าตรวจผลงานให้เลือกอีกครั้ง',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.5,
-                    color: AppTheme.textMuted,
-                  ),
-                ),
-                if (_activeRenderCancellation != null) ...[
-                  const SizedBox(height: 18),
-                  TextButton.icon(
-                    key: const ValueKey('ai-render-cancel'),
-                    onPressed:
-                        _renderCancelRequested ? null : _cancelActiveRender,
-                    icon: const Icon(Icons.close_rounded),
-                    label: Text(
-                      _renderCancelRequested ? 'กำลังยกเลิก...' : 'ยกเลิก',
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
@@ -6762,12 +6824,14 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
           children: [
             Icon(icon, size: 19, color: AppTheme.accentCyanInk),
             const SizedBox(width: 7),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.textPrimary,
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.textPrimary,
+                ),
               ),
             ),
           ],
@@ -7164,6 +7228,7 @@ class _ReviewVideoPreviewState extends State<_ReviewVideoPreview> {
   Timer? _liveSeekTimer;
   double? _pendingNormalizedPosition;
   bool _playbackCommandInProgress = false;
+  bool _fullscreenOpen = false;
   Future<void> _disposalBarrier = Future<void>.value();
   final List<VideoPlayerController> _controllersQueuedForDisposal = [];
   int _initializationVersion = 0;
@@ -7449,6 +7514,37 @@ class _ReviewVideoPreviewState extends State<_ReviewVideoPreview> {
     }
   }
 
+  Future<void> _openFullscreen() async {
+    final controller = _controller;
+    if (!_ready ||
+        controller == null ||
+        widget.isUpdating ||
+        _dragPosition != null ||
+        _activeSeekFuture != null ||
+        _playbackCommandInProgress ||
+        _fullscreenOpen) {
+      return;
+    }
+
+    setState(() => _fullscreenOpen = true);
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: 'ai-review-fullscreen'),
+          builder: (context) => _ReviewVideoFullscreen(
+            controller: controller,
+            sourceLabel: widget.sourceLabel,
+            onTogglePlayback: _togglePlayback,
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _fullscreenOpen = false);
+      }
+    }
+  }
+
   bool get _appIsResumed {
     final lifecycleState = WidgetsBinding.instance.lifecycleState;
     return lifecycleState == null ||
@@ -7652,6 +7748,12 @@ class _ReviewVideoPreviewState extends State<_ReviewVideoPreview> {
         value != null &&
         value.isInitialized;
     final isPlaying = isReady && value.isPlaying;
+    final canOpenFullscreen = isReady &&
+        !widget.isUpdating &&
+        _dragPosition == null &&
+        _activeSeekFuture == null &&
+        !_playbackCommandInProgress &&
+        !_fullscreenOpen;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -7683,7 +7785,9 @@ class _ReviewVideoPreviewState extends State<_ReviewVideoPreview> {
                       child: AspectRatio(
                         aspectRatio:
                             value.aspectRatio > 0 ? value.aspectRatio : 9 / 16,
-                        child: VideoPlayer(controller),
+                        child: _fullscreenOpen
+                            ? const ColoredBox(color: Color(0xFF050806))
+                            : VideoPlayer(controller),
                       ),
                     )
                   else if (isError)
@@ -7775,14 +7879,33 @@ class _ReviewVideoPreviewState extends State<_ReviewVideoPreview> {
                     ),
                   if (isReady && value.isBuffering)
                     const Positioned(
-                      top: 12,
-                      right: 12,
+                      top: 68,
+                      right: 18,
                       child: SizedBox(
                         width: 22,
                         height: 22,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
                           color: AppTheme.accent,
+                        ),
+                      ),
+                    ),
+                  if (isReady && !widget.isUpdating)
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: Material(
+                        color: Colors.black.withValues(alpha: 0.68),
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          key: const ValueKey(
+                            'ai-review-video-fullscreen',
+                          ),
+                          onPressed: canOpenFullscreen ? _openFullscreen : null,
+                          tooltip: 'ดูแบบเต็มหน้าจอ',
+                          color: Colors.white,
+                          disabledColor: Colors.white38,
+                          icon: const Icon(Icons.fullscreen_rounded),
                         ),
                       ),
                     ),
@@ -7839,6 +7962,195 @@ class _ReviewVideoPreviewState extends State<_ReviewVideoPreview> {
             onSeekEnd: _handleSeekEnd,
           ),
       ],
+    );
+  }
+}
+
+class _ReviewVideoFullscreen extends StatelessWidget {
+  const _ReviewVideoFullscreen({
+    required this.controller,
+    required this.sourceLabel,
+    required this.onTogglePlayback,
+  });
+
+  final VideoPlayerController controller;
+  final String sourceLabel;
+  final Future<void> Function() onTogglePlayback;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: const ValueKey('ai-review-fullscreen-view'),
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: ValueListenableBuilder<VideoPlayerValue>(
+          valueListenable: controller,
+          builder: (context, value, _) {
+            final isPlaying = value.isPlaying;
+            final aspectRatio =
+                value.aspectRatio > 0 ? value.aspectRatio : 9 / 16;
+
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                Semantics(
+                  button: true,
+                  label: isPlaying ? 'หยุดวิดีโอ' : 'เล่นวิดีโอ',
+                  child: GestureDetector(
+                    key: const ValueKey('ai-review-fullscreen-video'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onTogglePlayback,
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: aspectRatio,
+                        child: VideoPlayer(controller),
+                      ),
+                    ),
+                  ),
+                ),
+                IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: isPlaying ? 0 : 1,
+                    duration: const Duration(milliseconds: 180),
+                    child: Center(
+                      child: Container(
+                        width: 68,
+                        height: 68,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.62),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          size: 42,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  right: 8,
+                  child: Row(
+                    children: [
+                      Material(
+                        color: Colors.black.withValues(alpha: 0.68),
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          key: const ValueKey(
+                            'ai-review-fullscreen-close',
+                          ),
+                          onPressed: () => Navigator.of(context).pop(),
+                          tooltip: 'กลับไปหน้าตรวจทาน',
+                          color: Colors.white,
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.68),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 9,
+                              ),
+                              child: Text(
+                                'พรีวิวเต็มหน้าจอ · $sourceLabel',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.68),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.16),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 4, 14, 4),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            key: const ValueKey(
+                              'ai-review-fullscreen-playback',
+                            ),
+                            onPressed: onTogglePlayback,
+                            tooltip: isPlaying ? 'หยุดวิดีโอ' : 'เล่นวิดีโอ',
+                            color: Colors.white,
+                            icon: Icon(
+                              isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              '${formatReviewVideoClock(value.position)} / '
+                              '${formatReviewVideoClock(value.duration)}',
+                              key: const ValueKey(
+                                'ai-review-fullscreen-time',
+                              ),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.fit_screen_rounded,
+                            color: Colors.white70,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (value.isBuffering)
+                  const Positioned(
+                    right: 22,
+                    bottom: 82,
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: AppTheme.accent,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }

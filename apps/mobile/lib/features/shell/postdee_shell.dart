@@ -723,47 +723,50 @@ class _LoginGate extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        key: const ValueKey('login-brand-mark-box'),
-                        width: 64,
-                        height: 64,
-                        child: Transform.scale(
-                          scale: 1.55,
-                          child: Image.asset(
-                            'assets/images/brand/postdee_mark.png',
-                            key: const ValueKey('login-brand-mark'),
-                            fit: BoxFit.contain,
-                            filterQuality: FilterQuality.high,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          key: const ValueKey('login-brand-mark-box'),
+                          width: 64,
+                          height: 64,
+                          child: Transform.scale(
+                            scale: 1.55,
+                            child: Image.asset(
+                              'assets/images/brand/postdee_mark.png',
+                              key: const ValueKey('login-brand-mark'),
+                              fit: BoxFit.contain,
+                              filterQuality: FilterQuality.high,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(
-                        key: ValueKey('login-brand-gap'),
-                        width: 4,
-                      ),
-                      Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: 'Post',
-                              style: TextStyle(color: AppTheme.textPrimary),
-                            ),
-                            TextSpan(
-                              text: 'Dee',
-                              style: TextStyle(color: AppTheme.accentCyanInk),
-                            ),
-                          ],
+                        const SizedBox(
+                          key: ValueKey('login-brand-gap'),
+                          width: 4,
                         ),
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.64,
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: 'Post',
+                                style: TextStyle(color: AppTheme.textPrimary),
+                              ),
+                              TextSpan(
+                                text: 'Dee',
+                                style: TextStyle(color: AppTheme.accentCyanInk),
+                              ),
+                            ],
+                          ),
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.64,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 26),
                   Text(
@@ -844,8 +847,8 @@ class _LoginGate extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 18),
-                          SizedBox(
-                            height: 54,
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 54),
                             child: FilledButton(
                               onPressed: controller.isSigningIn
                                   ? null
@@ -863,34 +866,30 @@ class _LoginGate extends StatelessWidget {
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: Center(
-                                        child: Text(
-                                          'G',
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w800,
-                                            color: AppTheme.accentCyanInk,
-                                          ),
-                                        ),
+                                  SizedBox(
+                                    width: 32,
+                                    height: 32,
+                                    child: Image.asset(
+                                      'assets/images/brand/google_sign_in_light_square.png',
+                                      key: const ValueKey(
+                                        'google-sign-in-logo',
                                       ),
+                                      fit: BoxFit.contain,
+                                      filterQuality: FilterQuality.high,
+                                      excludeFromSemantics: true,
                                     ),
                                   ),
                                   const SizedBox(width: 10),
-                                  Text(
-                                    controller.isSigningIn
-                                        ? l10n.signingInButton
-                                        : googleLabel,
-                                    style: const TextStyle(
-                                      fontSize: 15.5,
-                                      fontWeight: FontWeight.w700,
+                                  Flexible(
+                                    child: Text(
+                                      controller.isSigningIn
+                                          ? l10n.signingInButton
+                                          : googleLabel,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 15.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -898,9 +897,9 @@ class _LoginGate extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 11),
-                          SizedBox(
-                            height: 54,
-                            child: OutlinedButton.icon(
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 54),
+                            child: OutlinedButton(
                               key: const ValueKey('login-email-sign-in'),
                               onPressed: controller.isSigningIn
                                   ? null
@@ -911,24 +910,33 @@ class _LoginGate extends StatelessWidget {
                                           controller: controller,
                                         ),
                                       ),
-                              icon: Icon(
-                                Icons.mail_outline,
-                                size: 21,
-                                color: AppTheme.textPrimary,
-                              ),
-                              label: Text(
-                                emailLabel,
-                                style: const TextStyle(
-                                  fontSize: 15.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
                               style: OutlinedButton.styleFrom(
                                 side: BorderSide(color: AppTheme.border),
                                 foregroundColor: AppTheme.textPrimary,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(15),
                                 ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.mail_outline,
+                                    size: 21,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      emailLabel,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 15.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),

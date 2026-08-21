@@ -146,6 +146,349 @@ void main() {
     expect(addPostCalls, 0);
   });
 
+  testWidgets('shows busy feedback while a reschedule is being saved',
+      (tester) async {
+    final now = DateTime(2026, 8, 11, 12);
+    final pendingReschedule = Completer<ScheduledPostResult>();
+    final post = ScheduledPostResult(
+      id: 'busy-reschedule',
+      caption: 'โพสต์ที่กำลังเลื่อนเวลา',
+      videoS3Key: 'uploads/busy-reschedule.mp4',
+      platforms: const ['TIKTOK'],
+      scheduledAt: now.add(const Duration(days: 2, hours: 7)),
+      status: 'QUEUED',
+      createdAt: now,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: CalendarScreen(
+            now: () => now,
+            loadScheduledPosts: () async => [post],
+            reschedulePost: (_, __) => pendingReschedule.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text(post.caption));
+    await tester.tap(find.text(post.caption));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เลื่อนเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('calendar-post-action-progress')),
+      findsOneWidget,
+    );
+    expect(find.text('กำลังเลื่อนเวลา...'), findsOneWidget);
+
+    pendingReschedule.complete(post);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('calendar-post-action-progress')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('shows busy feedback while a cancellation is being saved',
+      (tester) async {
+    final now = DateTime(2026, 8, 11, 12);
+    final pendingCancel = Completer<void>();
+    final post = ScheduledPostResult(
+      id: 'busy-cancel',
+      caption: 'โพสต์ที่กำลังยกเลิก',
+      videoS3Key: 'uploads/busy-cancel.mp4',
+      platforms: const ['TIKTOK'],
+      scheduledAt: now.add(const Duration(days: 2)),
+      status: 'QUEUED',
+      createdAt: now,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: CalendarScreen(
+            now: () => now,
+            loadScheduledPosts: () async => [post],
+            cancelPost: (_) => pendingCancel.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text(post.caption));
+    await tester.tap(find.text(post.caption));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ยกเลิกโพสต์').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ยกเลิกโพสต์').last);
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('calendar-post-action-progress')),
+      findsOneWidget,
+    );
+    expect(find.text('กำลังยกเลิก...'), findsOneWidget);
+
+    pendingCancel.complete();
+    await tester.pumpAndSettle();
+    expect(find.text(post.caption), findsNothing);
+  });
+
+  testWidgets('queues a fresh load after rescheduling during a stale refresh',
+      (tester) async {
+    final now = DateTime(2026, 8, 11, 12);
+    final staleRefresh = Completer<List<ScheduledPostResult>>();
+    var loadCalls = 0;
+    late ScheduledPostResult updatedPost;
+    final originalPost = ScheduledPostResult(
+      id: 'reschedule-during-refresh',
+      caption: 'โพสต์ก่อนเลื่อนเวลา',
+      videoS3Key: 'uploads/reschedule-during-refresh.mp4',
+      platforms: const ['TIKTOK'],
+      scheduledAt: now.add(const Duration(days: 2, hours: 7)),
+      status: 'QUEUED',
+      createdAt: now,
+    );
+
+    Future<List<ScheduledPostResult>> loadPosts() {
+      loadCalls += 1;
+      return switch (loadCalls) {
+        1 => Future.value([originalPost]),
+        2 => staleRefresh.future,
+        _ => Future.value([updatedPost]),
+      };
+    }
+
+    Widget app(int refreshToken) => MaterialApp(
+          theme: AppTheme.dark,
+          home: Scaffold(
+            body: CalendarScreen(
+              refreshToken: refreshToken,
+              now: () => now,
+              loadScheduledPosts: loadPosts,
+              reschedulePost: (postId, next) async {
+                updatedPost = ScheduledPostResult(
+                  id: postId,
+                  caption: 'โพสต์หลังเลื่อนเวลา',
+                  videoS3Key: originalPost.videoS3Key,
+                  platforms: originalPost.platforms,
+                  scheduledAt: next,
+                  status: 'QUEUED',
+                  createdAt: originalPost.createdAt,
+                );
+                return updatedPost;
+              },
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(app(0));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(app(1));
+    await tester.pump();
+
+    await tester.ensureVisible(find.text(originalPost.caption));
+    await tester.tap(find.text(originalPost.caption));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เลื่อนเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pump();
+
+    staleRefresh.complete([originalPost]);
+    await tester.pumpAndSettle();
+
+    expect(loadCalls, 3);
+    expect(find.text('โพสต์หลังเลื่อนเวลา'), findsOneWidget);
+    expect(find.text(originalPost.caption), findsNothing);
+  });
+
+  testWidgets('keeps the local reschedule when the queued reload fails',
+      (tester) async {
+    final now = DateTime(2026, 8, 11, 12);
+    final staleRefresh = Completer<List<ScheduledPostResult>>();
+    var loadCalls = 0;
+    final originalPost = ScheduledPostResult(
+      id: 'reschedule-reload-failure',
+      caption: 'โพสต์ก่อนเลื่อนและรีโหลดล้มเหลว',
+      videoS3Key: 'uploads/reschedule-reload-failure.mp4',
+      platforms: const ['TIKTOK'],
+      scheduledAt: now.add(const Duration(days: 2, hours: 7)),
+      status: 'QUEUED',
+      createdAt: now,
+    );
+
+    Future<List<ScheduledPostResult>> loadPosts() {
+      loadCalls += 1;
+      return switch (loadCalls) {
+        1 => Future.value([originalPost]),
+        2 => staleRefresh.future,
+        _ => Future.error(StateError('queued reload failed')),
+      };
+    }
+
+    Widget app(int refreshToken) => MaterialApp(
+          theme: AppTheme.dark,
+          home: Scaffold(
+            body: CalendarScreen(
+              refreshToken: refreshToken,
+              now: () => now,
+              loadScheduledPosts: loadPosts,
+              reschedulePost: (postId, next) async => ScheduledPostResult(
+                id: postId,
+                caption: 'โพสต์หลังเลื่อนจากผลตอบกลับ',
+                videoS3Key: originalPost.videoS3Key,
+                platforms: originalPost.platforms,
+                scheduledAt: next,
+                status: 'QUEUED',
+                createdAt: originalPost.createdAt,
+              ),
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(app(0));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(app(1));
+    await tester.pump();
+
+    await tester.ensureVisible(find.text(originalPost.caption));
+    await tester.tap(find.text(originalPost.caption));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เลื่อนเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pump();
+
+    staleRefresh.complete([originalPost]);
+    await tester.pumpAndSettle();
+
+    expect(loadCalls, 3);
+    expect(find.text('โพสต์หลังเลื่อนจากผลตอบกลับ'), findsOneWidget);
+    expect(find.text(originalPost.caption), findsNothing);
+  });
+
+  testWidgets('a stale refresh cannot restore a canceled post', (tester) async {
+    final now = DateTime(2026, 8, 11, 12);
+    final staleRefresh = Completer<List<ScheduledPostResult>>();
+    var loadCalls = 0;
+    final post = ScheduledPostResult(
+      id: 'cancel-during-refresh',
+      caption: 'โพสต์ที่ยกเลิกระหว่างรีเฟรช',
+      videoS3Key: 'uploads/cancel-during-refresh.mp4',
+      platforms: const ['TIKTOK'],
+      scheduledAt: now.add(const Duration(days: 2)),
+      status: 'QUEUED',
+      createdAt: now,
+    );
+
+    Future<List<ScheduledPostResult>> loadPosts() {
+      loadCalls += 1;
+      return loadCalls == 1 ? Future.value([post]) : staleRefresh.future;
+    }
+
+    Widget app(int refreshToken) => MaterialApp(
+          theme: AppTheme.dark,
+          home: Scaffold(
+            body: CalendarScreen(
+              refreshToken: refreshToken,
+              now: () => now,
+              loadScheduledPosts: loadPosts,
+              cancelPost: (_) async {},
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(app(0));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(app(1));
+    await tester.pump();
+
+    await tester.ensureVisible(find.text(post.caption));
+    await tester.tap(find.text(post.caption));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ยกเลิกโพสต์').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ยกเลิกโพสต์').last);
+    await tester.pumpAndSettle();
+    expect(find.text(post.caption), findsNothing);
+
+    staleRefresh.complete([post]);
+    await tester.pumpAndSettle();
+
+    expect(loadCalls, 2);
+    expect(find.text(post.caption), findsNothing);
+  });
+
+  for (final width in const [360.0, 393.0]) {
+    for (final textScale in const [1.45, 2.0]) {
+      testWidgets('calendar controls fit ${width}dp with ${textScale}x text',
+          (tester) async {
+        tester.view.physicalSize = Size(width, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.dark,
+            home: MediaQuery(
+              data: MediaQueryData.fromView(tester.view).copyWith(
+                textScaler: TextScaler.linear(textScale),
+              ),
+              child: Scaffold(
+                body: CalendarScreen(
+                  now: () => DateTime(2026, 2, 14),
+                  loadScheduledPosts: () async => const [],
+                  onAddPost: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        final monthButton = find.ancestor(
+          of: find.byIcon(Icons.chevron_left),
+          matching: find.byType(InkWell),
+        );
+        final filter = find.ancestor(
+          of: find.text('ทั้งหมด'),
+          matching: find.byType(InkWell),
+        );
+        final addButton = find.ancestor(
+          of: find.byIcon(Icons.add_rounded),
+          matching: find.byType(InkWell),
+        );
+        final selectedDay = find.ancestor(
+          of: find.text('14'),
+          matching: find.byType(InkWell),
+        );
+        expect(tester.getSize(monthButton).height, greaterThanOrEqualTo(48));
+        expect(tester.getSize(filter).height, greaterThanOrEqualTo(48));
+        expect(tester.getSize(addButton).height, greaterThanOrEqualTo(48));
+        expect(tester.getSize(selectedDay).width, greaterThanOrEqualTo(48));
+        expect(tester.getSize(selectedDay).height, greaterThanOrEqualTo(48));
+      });
+    }
+  }
+
   testWidgets('explains when rescheduling is blocked by publishing config',
       (tester) async {
     final scheduledAt = DateTime.now().add(const Duration(days: 2));

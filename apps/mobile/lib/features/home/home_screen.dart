@@ -65,9 +65,11 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingPosts = true;
   bool _postsLoadInProgress = false;
   bool _postsReloadPending = false;
+  String? _postsErrorMessage;
   String? _analyticsErrorMessage;
   String? _subscriptionErrorMessage;
   var _subscriptionLoadGeneration = 0;
+  var _analyticsLoadGeneration = 0;
 
   @override
   void initState() {
@@ -96,7 +98,10 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     _postsLoadInProgress = true;
-    setState(() => _isLoadingPosts = true);
+    setState(() {
+      _isLoadingPosts = true;
+      _postsErrorMessage = null;
+    });
 
     try {
       final loader = widget.loadRecentPosts ?? _apiClient.listRecentPosts;
@@ -106,14 +111,20 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      setState(() => _recentPosts = posts);
+      setState(() {
+        _recentPosts = posts;
+        _postsErrorMessage = null;
+      });
     } catch (_) {
-      // Non-fatal: the latest-post card falls back to the empty state.
       if (!mounted) {
         return;
       }
 
-      setState(() => _recentPosts = const []);
+      final isThai = Localizations.localeOf(context).languageCode == 'th';
+      setState(() {
+        _postsErrorMessage =
+            isThai ? 'โหลดโพสต์ล่าสุดไม่สำเร็จ' : 'Could not load latest posts';
+      });
     } finally {
       _postsLoadInProgress = false;
       if (mounted) {
@@ -183,6 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openPaywall() async {
+    final hadAnalyticsAccess = _subscription?.canUseAnalytics ?? false;
     final loader =
         widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
 
@@ -194,10 +206,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (mounted) {
       await _loadSubscription();
+      if (mounted &&
+          !hadAnalyticsAccess &&
+          (_subscription?.canUseAnalytics ?? false)) {
+        await _loadAnalytics();
+      }
     }
   }
 
   Future<void> _loadAnalytics() async {
+    final loadGeneration = ++_analyticsLoadGeneration;
     setState(() {
       _isLoadingAnalytics = true;
       _analyticsErrorMessage = null;
@@ -207,7 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final loader = widget.loadAnalytics ?? _apiClient.loadAnalyticsSummary;
       final analytics = await loader();
 
-      if (!mounted) {
+      if (!mounted || loadGeneration != _analyticsLoadGeneration) {
         return;
       }
 
@@ -215,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _analytics = analytics;
       });
     } on ApiException catch (error) {
-      if (!mounted) {
+      if (!mounted || loadGeneration != _analyticsLoadGeneration) {
         return;
       }
 
@@ -223,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _analyticsErrorMessage = analyticsErrorMessage(error);
       });
     } on SocketException {
-      if (!mounted) {
+      if (!mounted || loadGeneration != _analyticsLoadGeneration) {
         return;
       }
 
@@ -232,7 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _analyticsErrorMessage = l10n.homeApiConnectionError;
       });
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || loadGeneration != _analyticsLoadGeneration) {
         return;
       }
 
@@ -241,7 +259,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _analyticsErrorMessage = l10n.homeAnalyticsLoadError;
       });
     } finally {
-      if (mounted) {
+      if (mounted && loadGeneration == _analyticsLoadGeneration) {
         setState(() {
           _isLoadingAnalytics = false;
         });
@@ -266,8 +284,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final l10n = PostDeeLocalizations.of(context);
     final isThai = l10n.locale.languageCode == 'th';
-    final totalViews = _analytics?.totalViews ?? 0;
-    final totalLikes = _analytics?.totalLikes ?? 0;
+    final isAnalyticsLocked = !_isLoadingSubscription &&
+        _subscription != null &&
+        !_subscription!.canUseAnalytics;
+    final analyticsMessage = isAnalyticsLocked
+        ? (isThai ? 'เฉพาะแพ็กเกจ Pro' : 'Pro plan only')
+        : _analyticsErrorMessage;
     final name = widget.userName?.trim();
     final avatarInitial = (name != null && name.isNotEmpty)
         ? name.characters.first.toUpperCase()
@@ -294,25 +316,15 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 14),
         _AiEditingShortcutCard(onOpenAi: widget.onOpenAi),
         const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: _TotalPostsCard(
-                totalViews: totalViews,
-                totalLikes: totalLikes,
-                isLoading: _isLoadingAnalytics,
-                errorMessage: _analyticsErrorMessage,
-                onRefresh: _isLoadingAnalytics ? null : _loadAnalytics,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _LikesMetricCard(
-                totalLikes: totalLikes,
-                isLoading: _isLoadingAnalytics,
-              ),
-            ),
-          ],
+        _AnalyticsMetricSection(
+          totalViews: isAnalyticsLocked ? null : _analytics?.totalViews,
+          totalLikes: isAnalyticsLocked ? null : _analytics?.totalLikes,
+          isLoading: !isAnalyticsLocked && _isLoadingAnalytics,
+          errorMessage: analyticsMessage,
+          isLocked: isAnalyticsLocked,
+          onAction: isAnalyticsLocked
+              ? _openPaywall
+              : (_isLoadingAnalytics ? null : _loadAnalytics),
         ),
         const SizedBox(height: 14),
         _CreatePostCard(onCreatePost: widget.onCreatePost),
@@ -347,7 +359,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _LatestPostList(
           posts: _recentPosts,
           isLoading: _isLoadingPosts,
-          onCreatePost: widget.onCreatePost,
+          errorMessage: _postsErrorMessage,
+          onRetry: _loadRecentPosts,
           onOpenPost: _openPostDetail,
         ),
         const SizedBox(height: 18),
@@ -680,6 +693,10 @@ class _PlanSummaryCard extends StatelessWidget {
       return isThai ? 'กำลังโหลดแพ็กเกจ' : 'Loading package';
     }
 
+    if (current == null && errorMessage != null) {
+      return isThai ? 'ตรวจสอบแพ็กเกจไม่ได้' : 'Could not check package';
+    }
+
     if (current == null) {
       return isThai ? 'แพ็กเกจฟรี' : 'Free package';
     }
@@ -723,9 +740,9 @@ class _PlanSummaryCard extends StatelessWidget {
   double _planProgressRatio() {
     final includedUnits = _planIncludedUnits();
     final remainingPosts = subscription?.remainingPostsThisMonth ?? 1;
-    final usedPosts = (includedUnits - remainingPosts).clamp(0, includedUnits);
+    final remainingUnits = remainingPosts.clamp(0, includedUnits);
 
-    return usedPosts / includedUnits;
+    return remainingUnits / includedUnits;
   }
 
   @override
@@ -734,6 +751,11 @@ class _PlanSummaryCard extends StatelessWidget {
     final title = _planTitle(l10n);
     final subtitle = _planSubtitle(l10n);
     final progressRatio = _planProgressRatio();
+    final isPro = subscription?.plan.toUpperCase() == 'PRO';
+    final hasUnknownPlan = subscription == null && errorMessage != null;
+    final showQuota = !isLoading && errorMessage == null;
+    final showUpgrade =
+        !isLoading && errorMessage == null && subscription != null && !isPro;
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -747,6 +769,7 @@ class _PlanSummaryCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               DecoratedBox(
                 decoration: BoxDecoration(
@@ -768,79 +791,86 @@ class _PlanSummaryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            title,
-                            key: const ValueKey('home-plan-title'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
-                                ?.copyWith(fontWeight: FontWeight.w900),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            subtitle,
-                            key: const ValueKey('home-plan-subtitle'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(color: AppTheme.textSecondary),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      title,
+                      key: const ValueKey('home-plan-title'),
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelLarge
+                          ?.copyWith(fontWeight: FontWeight.w900),
                     ),
-                    const SizedBox(height: 7),
-                    SizedBox(
-                      height: 6,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: AppTheme.accent.withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: FractionallySizedBox(
-                            key: const ValueKey('home-plan-progress-fill'),
-                            widthFactor: progressRatio,
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      key: const ValueKey('home-plan-subtitle'),
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(color: AppTheme.textSecondary),
+                    ),
+                    if (showQuota) ...[
+                      const SizedBox(height: 8),
+                      Semantics(
+                        value: subtitle,
+                        child: ExcludeSemantics(
+                          child: SizedBox(
+                            height: 6,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
-                                color: AppTheme.accentCyanInk,
+                                color: AppTheme.accent.withValues(alpha: 0.18),
                                 borderRadius: BorderRadius.circular(999),
                               ),
-                              child: const SizedBox(height: 6),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: FractionallySizedBox(
+                                  key: const ValueKey(
+                                    'home-plan-progress-fill',
+                                  ),
+                                  widthFactor: progressRatio,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.accentCyanInk,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: const SizedBox(height: 6),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
+                    if (showUpgrade && !hasUnknownPlan) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              l10n.locale.languageCode == 'th'
+                                  ? 'อัปเกรด'
+                                  : 'Upgrade',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelMedium
+                                  ?.copyWith(
+                                    color: AppTheme.accentCyanInk,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            color: AppTheme.accentCyanInk,
+                            size: 15,
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    l10n.locale.languageCode == 'th' ? 'อัปเกรด' : 'Upgrade',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: AppTheme.accentCyanInk,
-                          fontWeight: FontWeight.w900,
-                        ),
-                  ),
-                  Icon(
-                    Icons.arrow_forward_rounded,
-                    color: AppTheme.accentCyanInk,
-                    size: 15,
-                  ),
-                ],
               ),
             ],
           ),
@@ -850,20 +880,80 @@ class _PlanSummaryCard extends StatelessWidget {
   }
 }
 
-class _TotalPostsCard extends StatelessWidget {
-  const _TotalPostsCard({
+class _AnalyticsMetricSection extends StatelessWidget {
+  const _AnalyticsMetricSection({
     required this.totalViews,
     required this.totalLikes,
     required this.isLoading,
     required this.errorMessage,
-    required this.onRefresh,
+    required this.isLocked,
+    required this.onAction,
   });
 
-  final int totalViews;
-  final int totalLikes;
+  final int? totalViews;
+  final int? totalLikes;
   final bool isLoading;
   final String? errorMessage;
-  final VoidCallback? onRefresh;
+  final bool isLocked;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    final viewsCard = _TotalPostsCard(
+      totalViews: totalViews,
+      isLoading: isLoading,
+      errorMessage: errorMessage,
+      isLocked: isLocked,
+      onAction: onAction,
+    );
+    final likesCard = _LikesMetricCard(
+      totalLikes: totalLikes,
+      isLoading: isLoading,
+      errorMessage: errorMessage,
+      isLocked: isLocked,
+      onAction: onAction,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (textScale > 1.25 || constraints.maxWidth < 340) {
+          return Column(
+            children: [
+              viewsCard,
+              const SizedBox(height: 12),
+              likesCard,
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: viewsCard),
+            const SizedBox(width: 12),
+            Expanded(child: likesCard),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TotalPostsCard extends StatelessWidget {
+  const _TotalPostsCard({
+    required this.totalViews,
+    required this.isLoading,
+    required this.errorMessage,
+    required this.isLocked,
+    required this.onAction,
+  });
+
+  final int? totalViews;
+  final bool isLoading;
+  final String? errorMessage;
+  final bool isLocked;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -871,10 +961,11 @@ class _TotalPostsCard extends StatelessWidget {
 
     return _ReferenceMetricCard(
       label: isThai ? 'ยอดวิวเดือนนี้' : 'Views this month',
-      value: isLoading ? '...' : '$totalViews',
+      value: isLoading ? '...' : (totalViews == null ? '—' : '$totalViews'),
       icon: Icons.visibility_outlined,
       errorMessage: errorMessage,
-      onRefresh: onRefresh,
+      isLocked: isLocked,
+      onAction: onAction,
     );
   }
 }
@@ -883,10 +974,16 @@ class _LikesMetricCard extends StatelessWidget {
   const _LikesMetricCard({
     required this.totalLikes,
     required this.isLoading,
+    required this.errorMessage,
+    required this.isLocked,
+    required this.onAction,
   });
 
-  final int totalLikes;
+  final int? totalLikes;
   final bool isLoading;
+  final String? errorMessage;
+  final bool isLocked;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -894,8 +991,11 @@ class _LikesMetricCard extends StatelessWidget {
 
     return _ReferenceMetricCard(
       label: isThai ? 'ไลก์เดือนนี้' : 'Likes this month',
-      value: isLoading ? '...' : '$totalLikes',
+      value: isLoading ? '...' : (totalLikes == null ? '—' : '$totalLikes'),
       icon: Icons.favorite_border_rounded,
+      errorMessage: errorMessage,
+      isLocked: isLocked,
+      onAction: onAction,
     );
   }
 }
@@ -905,19 +1005,22 @@ class _ReferenceMetricCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.icon,
+    required this.isLocked,
     this.errorMessage,
-    this.onRefresh,
+    this.onAction,
   });
 
   final String label;
   final String value;
   final IconData icon;
+  final bool isLocked;
   final String? errorMessage;
-  final VoidCallback? onRefresh;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final isThai = Localizations.localeOf(context).languageCode == 'th';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -942,37 +1045,60 @@ class _ReferenceMetricCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: textTheme.labelMedium?.copyWith(
                       color: AppTheme.textSecondary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-                if (onRefresh == null)
+                if (errorMessage == null || onAction == null)
                   Icon(icon, color: AppTheme.textMuted, size: 18)
                 else
-                  GestureDetector(
-                    onTap: onRefresh,
-                    child: Icon(icon, color: AppTheme.textMuted, size: 18),
+                  IconButton(
+                    tooltip: isLocked
+                        ? (isThai ? 'ดู Pro' : 'View Pro')
+                        : (isThai ? 'ลองใหม่' : 'Try again'),
+                    onPressed: onAction,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 44,
+                      height: 44,
+                    ),
+                    padding: const EdgeInsets.all(10),
+                    icon: Icon(
+                      isLocked
+                          ? Icons.lock_outline_rounded
+                          : Icons.refresh_rounded,
+                      color: AppTheme.textMuted,
+                      size: 22,
+                    ),
                   ),
               ],
             ),
             const SizedBox(height: 6),
-            Text(
-              value,
-              style: textTheme.headlineSmall?.copyWith(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.w900,
+            Semantics(
+              label: value,
+              child: ExcludeSemantics(
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FittedBox(
+                    alignment: Alignment.centerLeft,
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      style: textTheme.headlineSmall?.copyWith(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
             if (errorMessage != null) ...[
               const SizedBox(height: 2),
               Text(
                 errorMessage!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
                 style: textTheme.labelSmall?.copyWith(
                   color: Theme.of(context).colorScheme.error,
                 ),
@@ -989,13 +1115,15 @@ class _LatestPostList extends StatelessWidget {
   const _LatestPostList({
     required this.posts,
     required this.isLoading,
-    required this.onCreatePost,
+    required this.errorMessage,
+    required this.onRetry,
     required this.onOpenPost,
   });
 
   final List<PostSummaryResult> posts;
   final bool isLoading;
-  final VoidCallback? onCreatePost;
+  final String? errorMessage;
+  final VoidCallback onRetry;
   final ValueChanged<PostSummaryResult> onOpenPost;
 
   @override
@@ -1010,8 +1138,15 @@ class _LatestPostList extends StatelessWidget {
       );
     }
 
+    if (errorMessage != null && posts.isEmpty) {
+      return _LatestPostsErrorState(
+        message: errorMessage!,
+        onRetry: onRetry,
+      );
+    }
+
     if (posts.isEmpty) {
-      return _LatestPostsEmptyState(onCreatePost: onCreatePost);
+      return const _LatestPostsEmptyState();
     }
 
     return Column(
@@ -1028,10 +1163,63 @@ class _LatestPostList extends StatelessWidget {
   }
 }
 
-class _LatestPostsEmptyState extends StatelessWidget {
-  const _LatestPostsEmptyState({required this.onCreatePost});
+class _LatestPostsErrorState extends StatelessWidget {
+  const _LatestPostsErrorState({
+    required this.message,
+    required this.onRetry,
+  });
 
-  final VoidCallback? onCreatePost;
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final isThai = Localizations.localeOf(context).languageCode == 'th';
+    final colors = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      key: const ValueKey('home-latest-posts-error'),
+      decoration: BoxDecoration(
+        color: colors.errorContainer,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        child: Column(
+          children: [
+            Icon(
+              Icons.cloud_off_rounded,
+              color: colors.onErrorContainer,
+              size: 28,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.onErrorContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text(isThai ? 'ลองใหม่' : 'Try again'),
+              style: TextButton.styleFrom(
+                foregroundColor: colors.onErrorContainer,
+                minimumSize: const Size(48, 48),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LatestPostsEmptyState extends StatelessWidget {
+  const _LatestPostsEmptyState();
 
   @override
   Widget build(BuildContext context) {
@@ -1084,29 +1272,6 @@ class _LatestPostsEmptyState extends StatelessWidget {
                   fontSize: 12.5,
                   height: 1.5,
                   color: AppTheme.textMuted,
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                height: 38,
-                child: FilledButton.icon(
-                  onPressed: onCreatePost,
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('สร้างโพสต์'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.accent,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: AppTheme.accent,
-                    disabledForegroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 17),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(11),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
                 ),
               ),
             ],
@@ -1348,6 +1513,24 @@ class _GrowthToolRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tint = item.color.withValues(alpha: 0.14);
+    final usesLargeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    final statusBadge = DecoratedBox(
+      decoration: BoxDecoration(
+        color: tint,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+        child: Text(
+          item.status,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: item.color,
+          ),
+        ),
+      ),
+    );
 
     return Semantics(
       button: true,
@@ -1375,7 +1558,7 @@ class _GrowthToolRow extends StatelessWidget {
                   children: [
                     Text(
                       item.title,
-                      maxLines: 1,
+                      maxLines: usesLargeText ? 2 : 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 13.5,
@@ -1386,35 +1569,27 @@ class _GrowthToolRow extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       item.description,
-                      maxLines: 1,
+                      maxLines: usesLargeText ? 2 : 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 11,
                         color: AppTheme.textMuted,
                       ),
                     ),
+                    if (usesLargeText) ...[
+                      const SizedBox(height: 5),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: statusBadge,
+                      ),
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(width: AppTheme.spaceSm),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: tint,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                  child: Text(
-                    item.status,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: item.color,
-                    ),
-                  ),
-                ),
-              ),
+              if (!usesLargeText) ...[
+                const SizedBox(width: AppTheme.spaceSm),
+                statusBadge,
+              ],
               const SizedBox(width: AppTheme.spaceXs),
               Icon(Icons.chevron_right, color: AppTheme.textMuted, size: 20),
             ],

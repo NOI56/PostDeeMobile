@@ -546,10 +546,12 @@ class _SummaryRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 20, color: AppTheme.accentCyanInk),
           const SizedBox(width: 11),
           Expanded(
+            flex: 2,
             child: Text(
               label,
               style: TextStyle(
@@ -558,12 +560,17 @@ class _SummaryRow extends StatelessWidget {
               ),
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: valueColor,
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: valueColor,
+              ),
             ),
           ),
         ],

@@ -8,7 +8,47 @@ import '../shared/post_delivery_outcome.dart';
 
 enum PublishFlowAction { finish, analytics }
 
-typedef PublishOperation = Future<QueuedPostResult?> Function();
+enum PublishFlowStage {
+  preparing,
+  checkingAvailability,
+  checkingPlan,
+  applyingWatermark,
+  uploadingVideo,
+  retryingUpload,
+  uploadingCover,
+  creatingPost,
+  finalizing,
+}
+
+@immutable
+class PublishFlowProgress {
+  const PublishFlowProgress({
+    required this.stage,
+    required this.fraction,
+  }) : assert(fraction >= 0 && fraction <= 1);
+
+  final PublishFlowStage stage;
+
+  /// Progress through known publishing stages, not bytes transferred.
+  final double fraction;
+
+  String get title => switch (stage) {
+        PublishFlowStage.preparing => 'กำลังเตรียมข้อมูล',
+        PublishFlowStage.checkingAvailability => 'กำลังตรวจสอบระบบโพสต์',
+        PublishFlowStage.checkingPlan => 'กำลังตรวจสอบแพ็กเกจ',
+        PublishFlowStage.applyingWatermark => 'กำลังใส่ลายน้ำ',
+        PublishFlowStage.uploadingVideo => 'กำลังอัปโหลดวิดีโอ',
+        PublishFlowStage.retryingUpload => 'กำลังเชื่อมต่ออัปโหลดใหม่',
+        PublishFlowStage.uploadingCover => 'กำลังอัปโหลดหน้าปก',
+        PublishFlowStage.creatingPost => 'กำลังสร้างคิวโพสต์',
+        PublishFlowStage.finalizing => 'กำลังยืนยันรายการ',
+      };
+}
+
+typedef PublishProgressReporter = void Function(PublishFlowProgress progress);
+typedef PublishOperation = Future<QueuedPostResult?> Function(
+  PublishProgressReporter reportProgress,
+);
 
 class PublishFlowScreen extends StatefulWidget {
   const PublishFlowScreen({
@@ -27,31 +67,88 @@ class PublishFlowScreen extends StatefulWidget {
 }
 
 class _PublishFlowScreenState extends State<PublishFlowScreen> {
+  static const _initialProgress = PublishFlowProgress(
+    stage: PublishFlowStage.preparing,
+    fraction: 0.05,
+  );
+
   QueuedPostResult? _post;
+  PublishFlowProgress _progress = _initialProgress;
+  Object? _publishError;
+  bool _isPublishing = false;
+  int _publishAttempt = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _publish());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _publish();
+    });
   }
 
   Future<void> _publish() async {
-    final post = await widget.publish();
+    if (!mounted || _isPublishing) return;
 
-    if (!mounted) return;
+    final attempt = ++_publishAttempt;
+    setState(() {
+      _isPublishing = true;
+      _publishError = null;
+      _progress = _initialProgress;
+    });
 
-    if (post == null) {
-      Navigator.of(context).pop();
-      return;
+    try {
+      final post = await widget.publish((progress) {
+        if (!mounted || attempt != _publishAttempt) return;
+        setState(() => _progress = progress);
+      });
+
+      if (!mounted || attempt != _publishAttempt) return;
+
+      if (post == null) {
+        Navigator.of(context).pop();
+        return;
+      }
+
+      setState(() {
+        _isPublishing = false;
+        _post = post;
+      });
+    } catch (error) {
+      if (!mounted || attempt != _publishAttempt) return;
+      setState(() {
+        _isPublishing = false;
+        _publishError = error;
+      });
     }
+  }
 
-    setState(() => _post = post);
+  String get _publishErrorMessage {
+    final error = _publishError;
+    if (error is ApiException && error.message.trim().isNotEmpty) {
+      return error.message;
+    }
+    return 'เกิดข้อผิดพลาดระหว่างส่งโพสต์ กรุณาตรวจการเชื่อมต่อแล้วลองใหม่';
+  }
+
+  void _handleBlockedPop(bool didPop, Object? _) {
+    if (didPop || !_isPublishing) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text(
+            'ยังยกเลิกไม่ได้ระหว่างส่งข้อมูล กรุณารอจนจบขั้นตอน',
+          ),
+        ),
+      );
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _post != null,
+      canPop: !_isPublishing,
+      onPopInvokedWithResult: _handleBlockedPop,
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: DecoratedBox(
@@ -66,10 +163,18 @@ class _PublishFlowScreenState extends State<PublishFlowScreen> {
                       isScheduled: widget.isScheduled,
                       post: _post!,
                     )
-                  : _PublishingView(
-                      key: const ValueKey('publish-flow-posting'),
-                      platformCount: widget.platforms.length,
-                    ),
+                  : _publishError != null
+                      ? _PublishErrorView(
+                          key: const ValueKey('publish-flow-error'),
+                          message: _publishErrorMessage,
+                          onRetry: _publish,
+                          onBack: () => Navigator.of(context).pop(),
+                        )
+                      : _PublishingView(
+                          key: const ValueKey('publish-flow-posting'),
+                          platformCount: widget.platforms.length,
+                          progress: _progress,
+                        ),
             ),
           ),
         ),
@@ -79,14 +184,20 @@ class _PublishFlowScreenState extends State<PublishFlowScreen> {
 }
 
 class _PublishingView extends StatelessWidget {
-  const _PublishingView({super.key, required this.platformCount});
+  const _PublishingView({
+    super.key,
+    required this.platformCount,
+    required this.progress,
+  });
 
   final int platformCount;
+  final PublishFlowProgress progress;
 
   @override
   Widget build(BuildContext context) {
+    final percent = (progress.fraction * 100).round();
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(40),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -95,6 +206,7 @@ class _PublishingView extends StatelessWidget {
               width: 74,
               height: 74,
               child: CircularProgressIndicator(
+                value: progress.fraction,
                 strokeWidth: 5,
                 backgroundColor: AppTheme.mint,
                 color: AppTheme.accentCyanInk,
@@ -103,7 +215,8 @@ class _PublishingView extends StatelessWidget {
             ),
             const SizedBox(height: 22),
             Text(
-              'กำลังส่งเข้าคิว...',
+              progress.title,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -112,8 +225,132 @@ class _PublishingView extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'กำลังเตรียมส่งสำหรับ $platformCount ช่องทาง',
+              'กำลังดำเนินการสำหรับ $platformCount ช่องทาง',
+              textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+            ),
+            const SizedBox(height: 22),
+            Semantics(
+              label: 'ความคืบหน้าตามขั้นตอน',
+              value: '$percent%',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  key: const ValueKey('publish-flow-progress'),
+                  value: progress.fraction,
+                  minHeight: 10,
+                  backgroundColor: AppTheme.mint,
+                  color: AppTheme.accentCyanInk,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '$percent% · ความคืบหน้าตามขั้นตอน',
+              key: const ValueKey('publish-flow-progress-label'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'เปอร์เซ็นต์นี้แสดงขั้นตอนงาน ไม่ใช่จำนวนไบต์ที่อัปโหลด',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.4,
+                color: AppTheme.textMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PublishErrorView extends StatelessWidget {
+  const _PublishErrorView({
+    super.key,
+    required this.message,
+    required this.onRetry,
+    required this.onBack,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 88,
+              height: 88,
+              decoration: const BoxDecoration(
+                color: Color(0x1FEF4444),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.cloud_off_rounded,
+                size: 48,
+                color: Color(0xFFDC2626),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'ส่งโพสต์ไม่สำเร็จ',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13.5,
+                height: 1.5,
+                color: AppTheme.textMuted,
+              ),
+            ),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
+                key: const ValueKey('publish-flow-retry'),
+                onPressed: onRetry,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.accent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                ),
+                child: const Text('ลองใหม่'),
+              ),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: TextButton(
+                key: const ValueKey('publish-flow-back-after-error'),
+                onPressed: onBack,
+                child: const Text('กลับไปตรวจสอบ'),
+              ),
             ),
           ],
         ),
@@ -247,37 +484,48 @@ class _PublishDoneView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final platform in platforms)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: AppTheme.glass,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SocialPlatformLogo(platform: platform, size: 18),
-                        const SizedBox(width: 6),
-                        Text(
-                          _platformLabel(platform),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary,
-                          ),
+            LayoutBuilder(
+              builder: (context, constraints) => Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final platform in platforms)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: constraints.maxWidth,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 7,
                         ),
-                      ],
+                        decoration: BoxDecoration(
+                          color: AppTheme.glass,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: AppTheme.border),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SocialPlatformLogo(platform: platform, size: 18),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                _platformLabel(platform),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 30),
             SizedBox(

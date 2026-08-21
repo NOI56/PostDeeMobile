@@ -18,12 +18,33 @@ typedef SubtitleVideoPreviewBuilder = Widget Function(
 
 enum _SubtitleStyleSection { typeface, colors, effects }
 
+enum _SubtitleSaveFailureAction { retry, discard }
+
 bool shouldStopSubtitleCueReplay({
   required int? replayEndMs,
   required bool isPlaying,
   required int sourcePositionMs,
 }) =>
     replayEndMs != null && isPlaying && sourcePositionMs >= replayEndMs;
+
+Size subtitleStudioPreviewDisplaySize({
+  required Size? verifiedDisplaySizeHint,
+  required Size? playerDisplaySize,
+}) =>
+    _validSubtitleStudioPreviewSize(verifiedDisplaySizeHint) ??
+    _validSubtitleStudioPreviewSize(playerDisplaySize) ??
+    const Size(9, 16);
+
+Size? _validSubtitleStudioPreviewSize(Size? size) {
+  if (size == null ||
+      !size.width.isFinite ||
+      !size.height.isFinite ||
+      size.width <= 0 ||
+      size.height <= 0) {
+    return null;
+  }
+  return size;
+}
 
 class SubtitleStudioScreen extends StatefulWidget {
   const SubtitleStudioScreen({
@@ -55,6 +76,10 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
   int _nextId = 1;
   String? _lastSelectedCueId;
   _SubtitleStyleSection _styleSection = _SubtitleStyleSection.typeface;
+  bool _navigationPending = false;
+
+  bool get _canLeaveStudio =>
+      _controller.isInitialized && !_controller.isSaving && !_navigationPending;
 
   @override
   void initState() {
@@ -175,21 +200,83 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
   }
 
   Future<void> _finish() async {
+    if (!_canLeaveStudio) return;
+    setState(() => _navigationPending = true);
     try {
       final project = await _controller.finish();
       if (mounted) Navigator.of(context).pop(project);
     } on SubtitleProjectValidationException catch (error) {
       _showMessage(error.message);
+    } on SubtitleDraftSaveException catch (error) {
+      _showMessage(error.message);
+    } finally {
+      if (mounted) setState(() => _navigationPending = false);
     }
   }
 
   Future<void> _close() async {
-    final valid = await _controller.flushPendingText();
-    if (!valid) {
-      _showMessage('กรุณาใส่ข้อความซับก่อนออกจากหน้านี้');
-      return;
+    if (!_canLeaveStudio) return;
+    setState(() => _navigationPending = true);
+    try {
+      while (mounted) {
+        final valid = await _controller.flushPendingText();
+        if (valid) {
+          if (mounted) Navigator.of(context).pop();
+          return;
+        }
+
+        final message = _controller.validationMessage ??
+            'กรุณาใส่ข้อความซับก่อนออกจากหน้านี้';
+        if (!message.contains('บันทึกฉบับร่างไม่สำเร็จ')) {
+          _showMessage(message);
+          return;
+        }
+
+        final action = await _showSaveFailureDialog();
+        if (!mounted) return;
+        if (action == _SubtitleSaveFailureAction.retry) continue;
+        if (action == _SubtitleSaveFailureAction.discard) {
+          Navigator.of(context).pop();
+        }
+        return;
+      }
+    } finally {
+      if (mounted) setState(() => _navigationPending = false);
     }
-    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<_SubtitleSaveFailureAction?> _showSaveFailureDialog() {
+    return showDialog<_SubtitleSaveFailureAction>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('บันทึกฉบับร่างไม่ได้'),
+        content: const Text(
+          'งานแก้ไขยังอยู่บนหน้าจอนี้ คุณสามารถลองบันทึกอีกครั้ง '
+          'หรือออกโดยไม่บันทึกได้',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('อยู่แก้ต่อ'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(
+              _SubtitleSaveFailureAction.retry,
+            ),
+            child: const Text('ลองบันทึกอีกครั้ง'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(
+              _SubtitleSaveFailureAction.discard,
+            ),
+            child: const Text(
+              'ออกโดยไม่บันทึก',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showMessage(String message) {
@@ -200,10 +287,15 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final usesCompactHeader =
+        mediaQuery.size.height < 520 || mediaQuery.textScaler.scale(1) > 1.3;
+    final usesCompactBody = mediaQuery.size.height < 520;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) unawaited(_close());
+        if (!didPop && _canLeaveStudio) unawaited(_close());
       },
       child: DefaultTabController(
         length: 2,
@@ -214,21 +306,29 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
             backgroundColor: AppTheme.pitchBlack,
             foregroundColor: Colors.white,
             leading: IconButton(
-              onPressed: _close,
+              onPressed: _canLeaveStudio ? _close : null,
               icon: const Icon(Icons.arrow_back_rounded),
               tooltip: 'บันทึกฉบับร่างแล้วกลับ',
             ),
-            title: const Column(
+            title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'แต่งซับ',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
-                Text(
-                  'แก้แล้วเห็นตัวอย่างทันที',
-                  style: TextStyle(fontSize: 10, color: Color(0xFF9DB0A6)),
-                ),
+                if (!usesCompactHeader)
+                  const Text(
+                    'แก้แล้วเห็นตัวอย่างทันที',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Color(0xFF9DB0A6),
+                    ),
+                  ),
               ],
             ),
             actions: [
@@ -248,51 +348,60 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
           ),
           body: !_controller.isInitialized
               ? const Center(child: CircularProgressIndicator())
-              : Column(
-                  children: [
-                    _buildPreview(),
-                    if (_controller.validationMessage != null)
-                      Container(
-                        width: double.infinity,
-                        color: const Color(0xFF422006),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 7,
+              : LayoutBuilder(
+                  key: const ValueKey('subtitle-studio-responsive-body'),
+                  builder: (context, constraints) {
+                    var compactPreviewHeight = constraints.maxHeight * 0.36;
+                    if (compactPreviewHeight < 96) {
+                      compactPreviewHeight = 96;
+                    } else if (compactPreviewHeight > 160) {
+                      compactPreviewHeight = 160;
+                    }
+
+                    return Column(
+                      children: [
+                        if (usesCompactBody)
+                          SizedBox(
+                            height: compactPreviewHeight,
+                            child: _buildPreview(
+                              compactHeight: compactPreviewHeight,
+                            ),
+                          )
+                        else
+                          _buildPreview(),
+                        if (_controller.validationMessage != null)
+                          _buildValidationBanner(
+                            _controller.validationMessage!,
+                            compact: usesCompactBody,
+                          ),
+                        const TabBar(
+                          indicatorColor: AppTheme.accent,
+                          labelColor: AppTheme.accent,
+                          unselectedLabelColor: Color(0xFF91A399),
+                          tabs: [
+                            Tab(
+                              key: ValueKey('subtitle-text-tab'),
+                              icon: Icon(Icons.subtitles_outlined, size: 19),
+                              text: 'ข้อความและเวลา',
+                            ),
+                            Tab(
+                              key: ValueKey('subtitle-style-tab'),
+                              icon: Icon(Icons.palette_outlined, size: 19),
+                              text: 'รูปแบบซับ',
+                            ),
+                          ],
                         ),
-                        child: Text(
-                          _controller.validationMessage!,
-                          style: const TextStyle(
-                            color: Color(0xFFFBBF24),
-                            fontSize: 11,
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              _buildTextEditor(),
+                              _buildStyleEditor(),
+                            ],
                           ),
                         ),
-                      ),
-                    const TabBar(
-                      indicatorColor: AppTheme.accent,
-                      labelColor: AppTheme.accent,
-                      unselectedLabelColor: Color(0xFF91A399),
-                      tabs: [
-                        Tab(
-                          key: ValueKey('subtitle-text-tab'),
-                          icon: Icon(Icons.subtitles_outlined, size: 19),
-                          text: 'ข้อความและเวลา',
-                        ),
-                        Tab(
-                          key: ValueKey('subtitle-style-tab'),
-                          icon: Icon(Icons.palette_outlined, size: 19),
-                          text: 'รูปแบบซับ',
-                        ),
                       ],
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          _buildTextEditor(),
-                          _buildStyleEditor(),
-                        ],
-                      ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
           bottomNavigationBar: SafeArea(
             top: false,
@@ -300,7 +409,7 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
               child: ElevatedButton.icon(
                 key: const ValueKey('subtitle-finish'),
-                onPressed: _finish,
+                onPressed: _canLeaveStudio ? _finish : null,
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 52),
                   backgroundColor: AppTheme.accent,
@@ -311,7 +420,7 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
                 ),
                 icon: const Icon(Icons.auto_awesome_rounded),
                 label: Text(
-                  _controller.isSaving
+                  _controller.isSaving || _navigationPending
                       ? 'กำลังบันทึก...'
                       : 'สร้างวิดีโอพร้อมซับ',
                   style: const TextStyle(fontWeight: FontWeight.w800),
@@ -324,7 +433,7 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
     );
   }
 
-  Widget _buildPreview() {
+  Widget _buildPreview({double? compactHeight}) {
     final video = _videoController;
     final isPlaying = video?.value.isPlaying ?? false;
     final previewCue = _controller.previewCueAt(
@@ -334,16 +443,15 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
     final previewText =
         previewCue == null ? '' : _controller.displayTextFor(previewCue);
     final encodedSize = video?.value.size;
-    final displaySize = _validSubtitleStudioPreviewSize(
-          _videoReady && video != null
-              ? displayOrientedFrameSize(
-                  encodedSize ?? Size.zero,
-                  video.value.rotationCorrection,
-                )
-              : null,
-        ) ??
-        _validSubtitleStudioPreviewSize(widget.previewDisplaySizeHint) ??
-        const Size(9, 16);
+    final displaySize = subtitleStudioPreviewDisplaySize(
+      verifiedDisplaySizeHint: widget.previewDisplaySizeHint,
+      playerDisplaySize: _videoReady && video != null
+          ? displayOrientedFrameSize(
+              encodedSize ?? Size.zero,
+              video.value.rotationCorrection,
+            )
+          : null,
+    );
     final previewAspectRatio = displaySize.width / displaySize.height;
 
     return Container(
@@ -354,7 +462,13 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
           Expanded(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 248),
+                constraints: BoxConstraints(
+                  maxHeight: compactHeight == null
+                      ? 248
+                      : compactHeight > 16
+                          ? compactHeight - 16
+                          : compactHeight,
+                ),
                 child: AspectRatio(
                   key: const ValueKey('subtitle-studio-preview-aspect'),
                   aspectRatio: previewAspectRatio,
@@ -406,58 +520,57 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
           const SizedBox(width: 10),
           SizedBox(
             width: 118,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton.filled(
-                  key: const ValueKey('subtitle-playback'),
-                  onPressed: video == null ? null : _togglePlayback,
-                  icon: Icon(
-                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            child: SingleChildScrollView(
+              key: compactHeight == null
+                  ? null
+                  : const ValueKey('subtitle-preview-controls-scroll'),
+              physics: compactHeight == null
+                  ? const NeverScrollableScrollPhysics()
+                  : const ClampingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton.filled(
+                    key: const ValueKey('subtitle-playback'),
+                    onPressed: video == null ? null : _togglePlayback,
+                    icon: Icon(
+                      isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${_formatTime(_sourcePositionMs)} / '
-                  '${_formatTime(_controller.project.sourceDurationMs)}',
-                  style: const TextStyle(
-                    color: Color(0xFFB8C6BF),
-                    fontSize: 10,
+                  const SizedBox(height: 5),
+                  Text(
+                    '${_formatTime(_sourcePositionMs)} / '
+                    '${_formatTime(_controller.project.sourceDurationMs)}',
+                    style: const TextStyle(
+                      color: Color(0xFFB8C6BF),
+                      fontSize: 10,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 7),
-                OutlinedButton.icon(
-                  onPressed: _replaySelectedCue,
-                  icon: const Icon(Icons.replay_rounded, size: 16),
-                  label:
-                      const Text('ฟังประโยค', style: TextStyle(fontSize: 10)),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${_controller.project.cues.length} ประโยค',
-                  style: const TextStyle(
-                    color: AppTheme.accent,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                  const SizedBox(height: 7),
+                  OutlinedButton.icon(
+                    onPressed: _replaySelectedCue,
+                    icon: const Icon(Icons.replay_rounded, size: 16),
+                    label:
+                        const Text('ฟังประโยค', style: TextStyle(fontSize: 10)),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    '${_controller.project.cues.length} ประโยค',
+                    style: const TextStyle(
+                      color: AppTheme.accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
-  }
-
-  Size? _validSubtitleStudioPreviewSize(Size? size) {
-    if (size == null ||
-        !size.width.isFinite ||
-        !size.height.isFinite ||
-        size.width <= 0 ||
-        size.height <= 0) {
-      return null;
-    }
-    return size;
   }
 
   Widget _buildTextEditor() {
@@ -554,8 +667,19 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
                     : _controller.adjustSelectedTiming(endDeltaMs: -100),
                 icon: const Icon(Icons.remove, size: 16),
               ),
-              const Text('0.1 วิ',
-                  style: TextStyle(color: Color(0xFF91A399), fontSize: 9)),
+              const Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '0.1 วิ',
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: Color(0xFF91A399),
+                      fontSize: 9,
+                    ),
+                  ),
+                ),
+              ),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 onPressed: () => isStart
@@ -567,6 +691,27 @@ class _SubtitleStudioScreenState extends State<SubtitleStudioScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildValidationBanner(String message, {required bool compact}) {
+    final banner = Container(
+      key: const ValueKey('subtitle-validation-banner'),
+      width: double.infinity,
+      color: const Color(0xFF422006),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      child: Text(
+        message,
+        style: const TextStyle(
+          color: Color(0xFFFBBF24),
+          fontSize: 11,
+        ),
+      ),
+    );
+    if (!compact) return banner;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 96),
+      child: SingleChildScrollView(child: banner),
     );
   }
 

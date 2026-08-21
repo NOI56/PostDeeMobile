@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_draft_store.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_project.dart';
@@ -124,6 +126,53 @@ void main() {
     expect(controller.validationMessage, isNotNull);
   });
 
+  test('reports a failed draft save and refuses to finish', () async {
+    final controller = SubtitleStudioController(
+      initialProject: _project(),
+      draftStore: _SaveFailingDraftStore(),
+      now: () => DateTime.utc(2026, 7, 22, 12),
+      idGenerator: () => 'new-cue',
+    );
+    await controller.initialize();
+
+    expect(await controller.flushPendingText(), isFalse);
+    expect(controller.validationMessage, contains('บันทึกฉบับร่างไม่สำเร็จ'));
+    await expectLater(
+      controller.finish(),
+      throwsA(isA<SubtitleDraftSaveException>()),
+    );
+  });
+
+  test('serializes saves and persists the latest subtitle revision', () async {
+    final store = _ControlledSaveDraftStore();
+    final controller = SubtitleStudioController(
+      initialProject: _project(),
+      draftStore: store,
+      now: () => DateTime.utc(2026, 7, 22, 12),
+      idGenerator: () => 'new-cue',
+    );
+    await controller.initialize();
+
+    final firstSave = controller.saveNow();
+    await store.firstSaveStarted.future;
+    expect(store.projects.single.cues.first.text, 'สวัสดีค่ะ');
+
+    controller.stageSelectedCueText('ฉบับล่าสุด');
+    final latestSave = controller.flushPendingText();
+    await Future<void>.delayed(Duration.zero);
+    expect(store.projects, hasLength(1));
+
+    store.completeSave(0);
+    await store.secondSaveStarted.future.timeout(const Duration(seconds: 1));
+    expect(store.projects, hasLength(2));
+    expect(store.projects.last.cues.first.text, 'ฉบับล่าสุด');
+
+    store.completeSave(1);
+    expect(await firstSave, isTrue);
+    expect(await latestSave, isTrue);
+    expect(controller.isSaving, isFalse);
+  });
+
   test('starts on the first cue that remains in the AI-selected result',
       () async {
     final initial = _project().copyWith(
@@ -222,6 +271,48 @@ class _MemoryDraftStore implements SubtitleDraftStore {
 
   @override
   Future<void> saveDraft(SubtitleProject project) async => saved = project;
+}
+
+class _SaveFailingDraftStore implements SubtitleDraftStore {
+  @override
+  Future<void> deleteDraft(String projectId) async {}
+
+  @override
+  Future<SubtitleProject?> loadDraft(String projectId) async => null;
+
+  @override
+  Future<void> saveDraft(SubtitleProject project) async {
+    throw StateError('draft storage unavailable');
+  }
+}
+
+class _ControlledSaveDraftStore implements SubtitleDraftStore {
+  final projects = <SubtitleProject>[];
+  final _saveCompleters = <Completer<void>>[];
+  final firstSaveStarted = Completer<void>();
+  final secondSaveStarted = Completer<void>();
+
+  @override
+  Future<void> deleteDraft(String projectId) async {}
+
+  @override
+  Future<SubtitleProject?> loadDraft(String projectId) async => null;
+
+  @override
+  Future<void> saveDraft(SubtitleProject project) {
+    projects.add(project);
+    final completer = Completer<void>();
+    _saveCompleters.add(completer);
+    if (projects.length == 1 && !firstSaveStarted.isCompleted) {
+      firstSaveStarted.complete();
+    }
+    if (projects.length == 2 && !secondSaveStarted.isCompleted) {
+      secondSaveStarted.complete();
+    }
+    return completer.future;
+  }
+
+  void completeSave(int index) => _saveCompleters[index].complete();
 }
 
 SubtitleProject _project() => SubtitleProject(

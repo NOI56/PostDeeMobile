@@ -6,6 +6,7 @@ import 'package:postdee_mobile/core/localization/language_controller.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
+
 Finder _referenceNav() =>
     find.byKey(const ValueKey('postdee-reference-bottom-nav'));
 
@@ -21,6 +22,7 @@ Future<void> _tapReferenceNavButton(
   await tester.tap(_referenceNavButton(label));
   await tester.pumpAndSettle();
 }
+
 void main() {
   testWidgets('configures supported app locales', (tester) async {
     final sessionStore = PostDeeAuthSessionStore.instance;
@@ -56,7 +58,13 @@ void main() {
     expect(find.bySemanticsLabel('Notifications'), findsOneWidget);
     expect(find.byType(BottomNavigationBar), findsNothing);
     expect(_referenceNav(), findsOneWidget);
-    for (final label in ['Home', 'Calendar', 'Create post', 'Analytics', 'Profile']) {
+    for (final label in [
+      'Home',
+      'Calendar',
+      'Create post',
+      'Analytics',
+      'Profile'
+    ]) {
       expect(_referenceNavButton(label), findsOneWidget);
     }
   });
@@ -101,7 +109,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Home'), findsWidgets);
-    expect(find.text('Free package'), findsOneWidget);
+    expect(find.text('Could not check package'), findsOneWidget);
+    expect(find.text('Free package'), findsNothing);
     expect(find.text('AI editing'), findsOneWidget);
     expect(find.text('Views this month'), findsOneWidget);
     expect(find.text('Likes this month'), findsOneWidget);
@@ -117,6 +126,10 @@ void main() {
     expect(find.text('Queued'), findsNothing);
     expect(
       find.byKey(const ValueKey('home-latest-posts-empty')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('home-latest-posts-error')),
       findsOneWidget,
     );
 
@@ -348,10 +361,12 @@ void main() {
     // The capsule is translucent (card color at 70%) with a soft border, per
     // the design handoff, and blurs the content scrolling behind it.
     final capsule = tester.widget<Container>(
-      find.descendant(
-        of: _referenceNav(),
-        matching: find.byType(Container),
-      ).first,
+      find
+          .descendant(
+            of: _referenceNav(),
+            matching: find.byType(Container),
+          )
+          .first,
     );
     final decoration = capsule.decoration! as BoxDecoration;
     final border = decoration.border! as Border;
@@ -412,7 +427,8 @@ void main() {
     // button above it so the tap doesn't land on the nav.
     final viewportBottom =
         tester.view.physicalSize.height / tester.view.devicePixelRatio;
-    final overlap = tester.getRect(darkModeButton).bottom - (viewportBottom - 96);
+    final overlap =
+        tester.getRect(darkModeButton).bottom - (viewportBottom - 96);
     if (overlap > 0) {
       await tester.drag(
         find.byType(Scrollable).first,
@@ -464,7 +480,24 @@ void main() {
 
     expect(find.text('Language'), findsOneWidget);
 
-    await tester.tap(find.text('ไทย'));
+    final thaiButton = find.text('ไทย');
+    await tester.scrollUntilVisible(
+      thaiButton,
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    final viewportBottom =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    final overlap = tester.getRect(thaiButton).bottom - (viewportBottom - 96);
+    if (overlap > 0) {
+      await tester.drag(
+        find.byType(Scrollable).first,
+        Offset(0, -(overlap + 10)),
+      );
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(thaiButton);
     await tester.pumpAndSettle();
 
     expect(languageController.locale, const Locale('th'));
@@ -481,9 +514,18 @@ void main() {
     await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
 
     expect(find.text('เข้าสู่ระบบด้วย Google'), findsOneWidget);
+    final googleLogo = tester.widget<Image>(
+      find.byKey(const ValueKey('google-sign-in-logo')),
+    );
+    expect(
+      (googleLogo.image as AssetImage).assetName,
+      'assets/images/brand/google_sign_in_light_square.png',
+    );
+    expect(find.text('G'), findsNothing);
     expect(find.text('ลงครั้งเดียว ขายได้ทุกที่'), findsOneWidget);
     expect(
-      find.text('โพสต์วิดีโอเดียวไป TikTok, Shorts,\nReels และ Facebook พร้อมกัน'),
+      find.text(
+          'โพสต์วิดีโอเดียวไป TikTok, Shorts,\nReels และ Facebook พร้อมกัน'),
       findsOneWidget,
     );
     expect(find.text('เข้าสู่ระบบด้วย Google'), findsOneWidget);
@@ -544,7 +586,8 @@ void main() {
     expect(find.text('PostDee Seller'), findsOneWidget);
     expect(find.text('seller@example.com'), findsOneWidget);
     expect(find.text('โหมดทดสอบ'), findsNothing);
-    expect(find.text('0/4 เชื่อมต่อ'), findsOneWidget);
+    expect(find.text('0/4 เชื่อมต่อ'), findsNothing);
+    expect(find.text('โหลดข้อมูลช่องทางไม่สำเร็จ'), findsWidgets);
     expect(find.text('พร้อมลอง UI'), findsNothing);
     final templatesAction = find.text('เทมเพลตแคปชั่น');
     await tester.scrollUntilVisible(

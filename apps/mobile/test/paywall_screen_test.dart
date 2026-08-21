@@ -110,7 +110,7 @@ void main() {
     expect(find.text('สมัคร Pro'), findsNothing);
   });
 
-  testWidgets('ignores an initial Basic response that finishes after purchase',
+  testWidgets('disables purchases until the current plan is loaded',
       (tester) async {
     tester.view.physicalSize = const Size(390, 1200);
     tester.view.devicePixelRatio = 1;
@@ -136,16 +136,168 @@ void main() {
     await tester.pump();
 
     await tester.ensureVisible(find.text('สมัคร Pro'));
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'สมัคร Pro'),
+          )
+          .onPressed,
+      isNull,
+    );
     await tester.tap(find.text('สมัคร Pro'));
-    await tester.pumpAndSettle();
-    expect(find.text('สมัคร Pro สำเร็จ'), findsOneWidget);
+    await tester.pump();
+    expect(find.text('กำลังดำเนินการสั่งซื้อ...'), findsNothing);
+    expect(find.text('กำลังตรวจสอบแพ็กเกจปัจจุบัน...'), findsOneWidget);
 
     initialSubscription.complete(_subscription(plan: 'BASIC'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('ตกลง'));
+
+    expect(find.text('แพ็กเกจปัจจุบัน'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'สมัคร Pro'),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('allows purchase after a plan error and still offers retry',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var loadCalls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PaywallScreen(
+          loadSubscription: () async {
+            loadCalls += 1;
+            if (loadCalls == 1) throw Exception('subscription unavailable');
+            return _subscription(plan: 'BASIC');
+          },
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('สมัคร Pro'), findsNothing);
+    expect(
+      find.text(
+        'โหลดแพ็กเกจปัจจุบันไม่สำเร็จ แต่ยังสมัครหรือกู้คืนการซื้อได้',
+      ),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(find.text('สมัคร Pro'));
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'สมัคร Pro'),
+          )
+          .onPressed,
+      isNotNull,
+    );
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('paywall-retry-subscription')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('paywall-retry-subscription')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(loadCalls, 2);
+    expect(find.textContaining('โหลดแพ็กเกจปัจจุบันไม่สำเร็จ'), findsNothing);
+    await tester.ensureVisible(find.text('สมัคร Pro'));
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'สมัคร Pro'),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets(
+      'keeps loading error and retry states usable at 393dp with 200 percent text',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final initialSubscription = Completer<SubscriptionStatusResult>();
+    var loadCalls = 0;
+    addTearDown(() {
+      if (!initialSubscription.isCompleted) {
+        initialSubscription.complete(_subscription(plan: 'BASIC'));
+      }
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(2),
+          ),
+          child: child!,
+        ),
+        home: PaywallScreen(
+          loadSubscription: () {
+            loadCalls += 1;
+            return loadCalls == 1
+                ? initialSubscription.future
+                : Future.value(_subscription(plan: 'BASIC'));
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('กำลังตรวจสอบแพ็กเกจปัจจุบัน...'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    initialSubscription.completeError(Exception('subscription unavailable'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('โหลดแพ็กเกจปัจจุบันไม่สำเร็จ'),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.text('สมัคร Pro'),
+      300,
+      scrollable: find.byType(Scrollable),
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'สมัคร Pro'),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('paywall-retry-subscription')),
+      -300,
+      scrollable: find.byType(Scrollable),
+    );
+    final retryButton = find.byKey(
+      const ValueKey('paywall-retry-subscription'),
+    );
+    await tester.ensureVisible(retryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(retryButton);
+    await tester.pumpAndSettle();
+
+    expect(loadCalls, 2);
+    expect(find.text('แพ็กเกจปัจจุบัน'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('blocks back navigation while a purchase is pending',

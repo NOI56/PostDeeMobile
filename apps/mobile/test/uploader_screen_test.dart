@@ -2417,4 +2417,76 @@ void main() {
     expect(postRequest, isNotNull);
     expect(postRequest!.videoS3Key, 'uploads/edited.mp4');
   });
+
+  for (final width in const [360.0, 393.0]) {
+    for (final textScale in const [1.45, 2.0]) {
+      testWidgets(
+          'keeps uploader content above the footer at ${width}dp and ${textScale}x text',
+          (tester) async {
+        tester.view.physicalSize = Size(width, 852);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final video =
+            _createPickedVideoFixture('sticky-footer-$width-$textScale.mp4');
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(textScale),
+              ),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: UploaderScreen(
+                draftStore: TestPublishDraftStore(),
+                loadSocialConnections: () async => const [],
+                initialVideoPath: video.path,
+                initialVideoName: video.name,
+                initialVideoSizeBytes: video.sizeBytes,
+                initialVideoWidth: video.width,
+                initialVideoHeight: video.height,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(const ValueKey('uploader-save-draft-button')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            'บันทึกร่างในเครื่องแล้ว · ยังไม่อัปโหลด ไม่โพสต์ และไม่ใช้โควตา',
+          ),
+          findsOneWidget,
+        );
+
+        final scroll = find.byKey(const ValueKey('uploader-scroll'));
+        final scrollable = find.descendant(
+          of: scroll,
+          matching: find.byType(Scrollable),
+        );
+        final scrollPosition =
+            tester.state<ScrollableState>(scrollable).position;
+        // Large-text children can finish their lazy layout after the first
+        // jump and extend the scroll range, so settle at the final extent.
+        for (var attempt = 0; attempt < 3; attempt += 1) {
+          scrollPosition.jumpTo(scrollPosition.maxScrollExtent);
+          await tester.pumpAndSettle();
+        }
+
+        final finalItem = tester.getRect(
+          find.byKey(const ValueKey('uploader-ep-tool-section')),
+        );
+        final footer = tester.getRect(
+          find.byKey(const ValueKey('uploader-sticky-action-bar')),
+        );
+        expect(finalItem.bottom, lessThanOrEqualTo(footer.top));
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 }

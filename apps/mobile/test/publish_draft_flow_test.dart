@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -555,6 +556,62 @@ void main() {
   });
 
   testWidgets(
+    'retries a transient network failure with the same submission request id',
+    (tester) async {
+      final video = _videoFixture();
+      final store = _MemoryPublishDraftStore([_readyDraft(video)]);
+      final requests = <CreatePostRequest>[];
+
+      await tester.pumpWidget(
+        _app(
+          video: video,
+          draftStore: store,
+          loadSubscription: () async => _proSubscription,
+          checkReadiness: () async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'upload-retryable',
+            videoS3Key: 'uploads/retryable.mp4',
+            storageProvider: 'mock',
+          ),
+          uploadVideo: (_, __) async {},
+          createPost: (request) async {
+            requests.add(request);
+            if (requests.length == 1) {
+              throw const SocketException('response lost after commit');
+            }
+            return QueuedPostResult(
+              id: 'post-after-retry',
+              videoS3Key: request.videoS3Key,
+              platforms: request.platforms,
+              status: 'QUEUED',
+            );
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _openDraft(tester, 'draft-ready');
+      await _submitDraft(tester);
+
+      expect(
+        find.byKey(const ValueKey('publish-flow-error')),
+        findsOneWidget,
+      );
+      expect(find.text('เชื่อมต่อ PostDee API ไม่ได้'), findsOneWidget);
+      expect(find.byKey(const ValueKey('publish-flow-retry')), findsOneWidget);
+      expect(requests, hasLength(1));
+      expect(await store.loadDraft('draft-ready'), isNotNull);
+
+      await tester.tap(find.byKey(const ValueKey('publish-flow-retry')));
+      await tester.pumpAndSettle();
+
+      expect(requests, hasLength(2));
+      expect(requests[1].clientRequestId, requests[0].clientRequestId);
+      expect(find.byKey(const ValueKey('publish-flow-done')), findsOneWidget);
+      expect(store.drafts, isEmpty);
+    },
+  );
+
+  testWidgets(
     'requires an explicit confirmation before starting a new publish attempt',
     (tester) async {
       final video = _videoFixture();
@@ -675,6 +732,79 @@ void main() {
 
     expect(store.deletedIds, ['draft-ready']);
     expect(await store.loadDraft('draft-ready'), isNull);
+    expect(find.byKey(const ValueKey('publish-flow-done')), findsOneWidget);
+  });
+
+  testWidgets('reports real publishing milestones to the progress screen',
+      (tester) async {
+    final video = _videoFixture();
+    final store = _MemoryPublishDraftStore([_readyDraft(video)]);
+    final readiness = Completer<void>();
+    final subscription = Completer<SubscriptionStatusResult>();
+    final uploadCreated = Completer<UploadResult>();
+    final videoUploaded = Completer<void>();
+    final postCreated = Completer<QueuedPostResult>();
+
+    await tester.pumpWidget(
+      _app(
+        video: video,
+        draftStore: store,
+        loadSubscription: () => subscription.future,
+        checkReadiness: () => readiness.future,
+        createUpload: (_) => uploadCreated.future,
+        uploadVideo: (_, __) => videoUploaded.future,
+        createPost: (_) => postCreated.future,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openDraft(tester, 'draft-ready');
+    await _completeYouTubeSettings(tester);
+
+    final postButton = find.byKey(
+      const ValueKey('uploader-sticky-post-button'),
+    );
+    await tester.ensureVisible(postButton);
+    await tester.tap(postButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('กำลังตรวจสอบระบบโพสต์'), findsOneWidget);
+    expect(find.text('18% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
+
+    readiness.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('กำลังตรวจสอบแพ็กเกจ'), findsOneWidget);
+    expect(find.text('28% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
+
+    subscription.complete(_proSubscription);
+    await tester.pumpAndSettle();
+    expect(find.text('กำลังอัปโหลดวิดีโอ'), findsOneWidget);
+    expect(find.text('50% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
+
+    uploadCreated.complete(
+      const UploadResult(
+        id: 'upload-progress',
+        videoS3Key: 'uploads/progress.mp4',
+        storageProvider: 'mock',
+      ),
+    );
+    await tester.pumpAndSettle();
+    videoUploaded.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('กำลังสร้างคิวโพสต์'), findsOneWidget);
+    expect(find.text('90% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
+
+    postCreated.complete(
+      const QueuedPostResult(
+        id: 'post-progress',
+        videoS3Key: 'uploads/progress.mp4',
+        platforms: ['YOUTUBE_SHORTS'],
+        status: 'QUEUED',
+      ),
+    );
+    await tester.pumpAndSettle();
+
     expect(find.byKey(const ValueKey('publish-flow-done')), findsOneWidget);
   });
 

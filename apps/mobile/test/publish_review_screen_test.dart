@@ -209,4 +209,46 @@ void main() {
     );
     expect(confirm.onPressed, isNull);
   });
+
+  testWidgets('summary remains readable on a narrow phone with large text',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData.fromView(tester.view).copyWith(
+            textScaler: const TextScaler.linear(2),
+          ),
+          child: PublishReviewScreen(
+            videoName: 'seller-clip-with-a-very-long-name.mp4',
+            caption: 'แคปชั่นขายสินค้าที่ยาวเพื่อทดสอบหน้าจอขนาดเล็ก',
+            platforms: const [SocialPlatform.tiktok],
+            connectionDisplayNames: const {
+              SocialPlatform.tiktok: '@postdee-long-seller-account',
+            },
+            scheduledAt: DateTime(2026, 8, 15, 18, 30),
+            watermarkEnabled: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.fling(
+      find.byType(ListView),
+      const Offset(0, -1400),
+      1200,
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('กำหนดเวลา'), findsOneWidget);
+    expect(find.text('ลายน้ำร้าน'), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('publish-review-confirm')), findsOneWidget);
+  });
 }

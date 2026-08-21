@@ -91,6 +91,7 @@ Widget _testApp({
   required AiSubtitleFrameControllerFactory controllerFactory,
   AiSubtitleFramePreviewSession? session,
   String? sourceFingerprint,
+  Size? displaySizeHint,
   Duration seekThrottle = const Duration(milliseconds: 110),
   AiSubtitleFrameOverlayBuilder? overlayBuilder,
 }) {
@@ -104,6 +105,7 @@ Widget _testApp({
             sourceFingerprint: sourceFingerprint,
             controllerFactory: controllerFactory,
             session: session,
+            displaySizeHint: displaySizeHint,
             seekThrottle: seekThrottle,
             overlayBuilder: overlayBuilder,
           ),
@@ -192,6 +194,37 @@ void main() {
         findsOneWidget);
     expect(_slider(tester).value, 10000);
 
+    final contentSize = tester.getSize(
+      find.byKey(const ValueKey('ai-subtitle-frame-content')),
+    );
+    expect(contentSize.width / contentSize.height, closeTo(9 / 16, 0.001));
+  });
+
+  testWidgets(
+      'keeps the verified display size when the player reports applied rotation',
+      (tester) async {
+    final controller = _FakeFrameController(
+      id: 'device-rotated',
+      fakeDuration: const Duration(seconds: 20),
+      fakeEncodedSize: const Size(1080, 1920),
+      fakeRotationCorrectionDegrees: 90,
+    );
+    Size? overlayDisplaySize;
+
+    await tester.pumpWidget(
+      _testApp(
+        source: File('device-rotated.mp4'),
+        displaySizeHint: const Size(1080, 1920),
+        controllerFactory: (_) => controller,
+        overlayBuilder: (context, displaySize, position) {
+          overlayDisplaySize = displaySize;
+          return const SizedBox();
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(overlayDisplaySize, const Size(1080, 1920));
     final contentSize = tester.getSize(
       find.byKey(const ValueKey('ai-subtitle-frame-content')),
     );

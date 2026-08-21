@@ -61,6 +61,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
       widget.service ?? StoreSubscriptionService();
   final _apiClient = PostDeeApiClient();
   SubscriptionStatusResult? _subscription;
+  var _isSubscriptionLoading = true;
+  Object? _subscriptionLoadError;
   var _subscriptionLoadGeneration = 0;
 
   @override
@@ -72,6 +74,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Future<void> _loadSubscription() async {
     final loadGeneration = ++_subscriptionLoadGeneration;
 
+    setState(() {
+      _isSubscriptionLoading = true;
+      _subscriptionLoadError = null;
+    });
+
     try {
       final loader =
           widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
@@ -81,16 +88,30 @@ class _PaywallScreenState extends State<PaywallScreen> {
         return;
       }
 
-      setState(() => _subscription = subscription);
-    } catch (_) {
-      // Non-fatal: without the current plan we simply highlight none. The
-      // paywall stays usable so the user can still subscribe.
+      setState(() {
+        _subscription = subscription;
+        _isSubscriptionLoading = false;
+        _subscriptionLoadError = null;
+      });
+    } catch (error) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
+        return;
+      }
+
+      setState(() {
+        _isSubscriptionLoading = false;
+        _subscriptionLoadError = error;
+      });
     }
   }
 
   void _applyVerifiedSubscription(SubscriptionStatusResult subscription) {
     _subscriptionLoadGeneration += 1;
-    setState(() => _subscription = subscription);
+    setState(() {
+      _subscription = subscription;
+      _isSubscriptionLoading = false;
+      _subscriptionLoadError = null;
+    });
   }
 
   // Maps a backend plan code (e.g. PRO, FREE) to a paywall card id.
@@ -302,10 +323,29 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              if (_isSubscriptionLoading)
+                const _PaywallSubscriptionStatus(
+                  key: ValueKey('paywall-subscription-loading'),
+                  message: 'กำลังตรวจสอบแพ็กเกจปัจจุบัน...',
+                  isLoading: true,
+                )
+              else if (_subscriptionLoadError != null)
+                _PaywallSubscriptionStatus(
+                  key: const ValueKey('paywall-subscription-error'),
+                  message:
+                      'โหลดแพ็กเกจปัจจุบันไม่สำเร็จ แต่ยังสมัครหรือกู้คืนการซื้อได้',
+                  onRetry: _loadSubscription,
+                ),
+              if (_isSubscriptionLoading || _subscriptionLoadError != null)
+                const SizedBox(height: 13),
               for (var index = 0; index < _plans.length; index += 1) ...[
                 _PlanCard(
                   plan: _plans[index],
-                  onSubscribe: () => _subscribe(_plans[index]),
+                  onSubscribe: !_isSubscriptionLoading &&
+                          (_subscription != null ||
+                              _subscriptionLoadError != null)
+                      ? () => _subscribe(_plans[index])
+                      : null,
                 ),
                 if (index < _plans.length - 1) const SizedBox(height: 13),
               ],
@@ -349,11 +389,71 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 }
 
+class _PaywallSubscriptionStatus extends StatelessWidget {
+  const _PaywallSubscriptionStatus({
+    super.key,
+    required this.message,
+    this.isLoading = false,
+    this.onRetry,
+  });
+
+  final String message;
+  final bool isLoading;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          if (isLoading)
+            const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 20,
+              color: AppTheme.textSecondary,
+            ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              key: const ValueKey('paywall-retry-subscription'),
+              onPressed: onRetry,
+              child: const Text('ลองใหม่'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _PlanCard extends StatelessWidget {
   const _PlanCard({required this.plan, required this.onSubscribe});
 
   final _PlanOption plan;
-  final VoidCallback onSubscribe;
+  final VoidCallback? onSubscribe;
 
   @override
   Widget build(BuildContext context) {

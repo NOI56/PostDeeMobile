@@ -343,8 +343,8 @@ class _AiSubtitleFramePreviewState extends State<AiSubtitleFramePreview> {
       _controller = controller;
       _duration = duration;
       _position = initialPosition;
-      _displaySize = _validDisplaySize(orientedSize) ??
-          _validDisplaySize(widget.displaySizeHint) ??
+      _displaySize = _validDisplaySize(widget.displaySizeHint) ??
+          _validDisplaySize(orientedSize) ??
           const Size(9, 16);
       _ready = true;
       _failed = false;
@@ -494,8 +494,8 @@ class _AiSubtitleFramePreviewState extends State<AiSubtitleFramePreview> {
   }
 
   Size get _effectiveDisplaySize =>
-      _validDisplaySize(_displaySize) ??
       _validDisplaySize(widget.displaySizeHint) ??
+      _validDisplaySize(_displaySize) ??
       const Size(9, 16);
 
   @override

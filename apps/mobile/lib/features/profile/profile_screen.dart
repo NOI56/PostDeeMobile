@@ -53,9 +53,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final PostDeeApiClient _apiClient =
       widget.apiClient ?? PostDeeApiClient();
 
-  int _connectedCount = 0;
+  int? _connectedCount;
+  var _isConnectedCountLoading = true;
+  Object? _connectedCountLoadError;
   SubscriptionStatusResult? _subscription;
+  var _isSubscriptionLoading = true;
+  Object? _subscriptionLoadError;
   ProfileDraft? _profileDraft;
+  var _connectedCountLoadGeneration = 0;
   var _subscriptionLoadGeneration = 0;
 
   @override
@@ -86,18 +91,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadConnectedCount() async {
+    final loadGeneration = ++_connectedCountLoadGeneration;
+    setState(() {
+      _isConnectedCountLoading = true;
+      _connectedCountLoadError = null;
+    });
+
     try {
       final results = await _apiClient.listSocialConnections();
-      if (!mounted) return;
+      if (!mounted || loadGeneration != _connectedCountLoadGeneration) return;
       final statuses = {for (final result in results) result.platform: result};
-      _updateConnectedCount(
-        connectablePlatforms
+      setState(() {
+        _connectedCount = connectablePlatforms
             .where(
                 (platform) => statuses[platform.apiValue]?.connected ?? false)
-            .length,
-      );
-    } catch (_) {
-      // Keep the pill at 0 connected if the status call fails.
+            .length;
+        _isConnectedCountLoading = false;
+        _connectedCountLoadError = null;
+      });
+    } catch (error) {
+      if (!mounted || loadGeneration != _connectedCountLoadGeneration) return;
+      setState(() {
+        _isConnectedCountLoading = false;
+        _connectedCountLoadError = error;
+      });
     }
   }
 
@@ -128,14 +145,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadSubscription() async {
     final loadGeneration = ++_subscriptionLoadGeneration;
 
+    setState(() {
+      _isSubscriptionLoading = true;
+      _subscriptionLoadError = null;
+    });
+
     try {
       final subscription = await _apiClient.loadCurrentSubscription();
       if (!mounted || loadGeneration != _subscriptionLoadGeneration) return;
-      setState(() => _subscription = subscription);
-    } on SocketException {
-      // Offline: keep the default free-tier display.
-    } catch (_) {
-      // Keep the default free-tier display if the plan call fails.
+      setState(() {
+        _subscription = subscription;
+        _isSubscriptionLoading = false;
+        _subscriptionLoadError = null;
+      });
+    } on SocketException catch (error) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) return;
+      setState(() {
+        _isSubscriptionLoading = false;
+        _subscriptionLoadError = error;
+      });
+    } catch (error) {
+      if (!mounted || loadGeneration != _subscriptionLoadGeneration) return;
+      setState(() {
+        _isSubscriptionLoading = false;
+        _subscriptionLoadError = error;
+      });
     }
   }
 
@@ -154,8 +188,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _updateConnectedCount(int count) {
-    if (!mounted || count == _connectedCount) return;
-    setState(() => _connectedCount = count);
+    if (!mounted) return;
+    _connectedCountLoadGeneration += 1;
+    if (count == _connectedCount &&
+        !_isConnectedCountLoading &&
+        _connectedCountLoadError == null) {
+      return;
+    }
+    setState(() {
+      _connectedCount = count;
+      _isConnectedCountLoading = false;
+      _connectedCountLoadError = null;
+    });
   }
 
   void _openConnections() {
@@ -214,12 +258,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  String get _currentTierId {
+  String? get _currentTierId {
     final plan = _subscription?.plan.toUpperCase();
     return switch (plan) {
       'PRO' => 'pro',
       'STARTER' => 'starter',
-      _ => 'free',
+      'BASIC' || 'FREE' => 'free',
+      _ => null,
     };
   }
 
@@ -237,6 +282,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ? 'เชื่อมอีเมลก่อนใช้งานจริง'
         : accountEmail;
     final phoneVerified = _subscription?.phoneVerified ?? false;
+    final connectedLabel = _isConnectedCountLoading
+        ? 'กำลังโหลดช่องทาง...'
+        : _connectedCountLoadError != null
+            ? 'โหลดข้อมูลช่องทางไม่สำเร็จ'
+            : '${_connectedCount!}/${connectablePlatforms.length} เชื่อมต่อ';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, AppTheme.navOverlap),
@@ -297,37 +347,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
           email: accountDetail,
           hasEmail: accountEmail != null && accountEmail.isNotEmpty,
           emailVerified: session.emailVerified,
-          connectedLabel:
-              '$_connectedCount/${connectablePlatforms.length} เชื่อมต่อ',
+          connectedLabel: connectedLabel,
           onOpenConnections: _openConnections,
           onEdit: _openEditProfile,
         ),
+        if (_connectedCountLoadError != null) ...[
+          const SizedBox(height: 10),
+          _ProfileDataStatusCard(
+            key: const ValueKey('profile-connections-error'),
+            message: 'โหลดข้อมูลช่องทางไม่สำเร็จ',
+            retryKey: const ValueKey('profile-retry-connections'),
+            onRetry: _loadConnectedCount,
+          ),
+        ],
         const SizedBox(height: 13),
         _ProfileMenuCard(
           rows: [
             _ProfileMenuRow(
               icon: Icons.hub_outlined,
               label: 'เชื่อมต่อช่องทาง',
-              trailing: _StatusPill(
-                label: '$_connectedCount/${connectablePlatforms.length}',
-                background: AppTheme.glassDeep,
-                foreground: AppTheme.textSecondary,
-              ),
+              trailing: _isConnectedCountLoading
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : _StatusPill(
+                      label: _connectedCountLoadError != null
+                          ? 'โหลดไม่สำเร็จ'
+                          : '$_connectedCount/${connectablePlatforms.length}',
+                      background: AppTheme.glassDeep,
+                      foreground: AppTheme.textSecondary,
+                    ),
               onTap: _openConnections,
             ),
             _ProfileMenuRow(
               icon: Icons.smartphone,
               label: 'ยืนยันเบอร์โทร',
-              trailing: _subscription == null
-                  ? null
-                  : _StatusPill(
-                      label: phoneVerified ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน',
-                      background:
-                          phoneVerified ? AppTheme.mint : AppTheme.glassDeep,
-                      foreground: phoneVerified
-                          ? AppTheme.accentCyanInk
-                          : AppTheme.textSecondary,
-                    ),
+              trailing: _isSubscriptionLoading && _subscription == null
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : _subscriptionLoadError != null && _subscription == null
+                      ? _StatusPill(
+                          label: 'โหลดไม่สำเร็จ',
+                          background: AppTheme.glassDeep,
+                          foreground: AppTheme.textSecondary,
+                        )
+                      : _subscription == null
+                          ? null
+                          : _StatusPill(
+                              label:
+                                  phoneVerified ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน',
+                              background: phoneVerified
+                                  ? AppTheme.mint
+                                  : AppTheme.glassDeep,
+                              foreground: phoneVerified
+                                  ? AppTheme.accentCyanInk
+                                  : AppTheme.textSecondary,
+                            ),
               onTap: () => _openPhoneVerification(context),
             ),
             _ProfileMenuRow(
@@ -366,18 +444,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
-            Text(
-              '1 ช่องทาง = 1 หน่วย',
-              style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            Flexible(
+              child: Text(
+                '1 ช่องทาง = 1 หน่วย',
+                textAlign: TextAlign.end,
+                style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 10),
+        if (_isSubscriptionLoading && _subscription == null)
+          const _ProfileDataStatusCard(
+            key: ValueKey('profile-subscription-loading'),
+            message: 'กำลังโหลดข้อมูลแพ็กเกจ...',
+            isLoading: true,
+          )
+        else if (_subscriptionLoadError != null)
+          _ProfileDataStatusCard(
+            key: const ValueKey('profile-subscription-error'),
+            message: 'โหลดข้อมูลแพ็กเกจไม่สำเร็จ',
+            retryKey: const ValueKey('profile-retry-subscription'),
+            onRetry: _loadSubscription,
+          ),
+        if ((_isSubscriptionLoading && _subscription == null) ||
+            _subscriptionLoadError != null)
+          const SizedBox(height: 10),
         for (final tier in _tiers) ...[
           _TierCard(
             key: ValueKey('profile-plan-${tier.id}'),
             tier: tier,
-            isCurrent: tier.id == _currentTierId,
+            isCurrent: _subscription != null && tier.id == _currentTierId,
             onTap: _openPaywall,
           ),
           const SizedBox(height: 10),
@@ -425,6 +522,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
           isDeleting: widget.isDeletingAccount,
         ),
       ],
+    );
+  }
+}
+
+class _ProfileDataStatusCard extends StatelessWidget {
+  const _ProfileDataStatusCard({
+    super.key,
+    required this.message,
+    this.isLoading = false,
+    this.retryKey,
+    this.onRetry,
+  });
+
+  final String message;
+  final bool isLoading;
+  final Key? retryKey;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          if (isLoading)
+            const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 20,
+              color: AppTheme.textSecondary,
+            ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              key: retryKey,
+              onPressed: onRetry,
+              child: const Text('ลองใหม่'),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -605,31 +764,44 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 13, color: foreground),
-              const SizedBox(width: 3),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-                color: foreground,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width * 0.55;
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 13, color: foreground),
+                    const SizedBox(width: 3),
+                  ],
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: foreground,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -832,45 +1004,57 @@ class _TierCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    tier.name,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  if (tier.badge != null) ...[
-                    const SizedBox(width: 8),
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: AppTheme.accent,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 9, vertical: 2),
-                        child: Text(
-                          tier.badge!,
-                          style: const TextStyle(
-                            fontSize: 10,
+                  Expanded(
+                    flex: 2,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          tier.name,
+                          style: TextStyle(
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: AppTheme.textPrimary,
                           ),
                         ),
-                      ),
+                        if (tier.badge != null)
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: AppTheme.accent,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 9, vertical: 2),
+                              child: Text(
+                                tier.badge!,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                  ],
-                  const Spacer(),
-                  Text(
-                    tier.price,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: tier.id == 'free'
-                          ? AppTheme.textSecondary
-                          : AppTheme.accentCyanInk,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      tier.price,
+                      textAlign: TextAlign.end,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: tier.id == 'free'
+                            ? AppTheme.textSecondary
+                            : AppTheme.accentCyanInk,
+                      ),
                     ),
                   ),
                 ],
@@ -1362,35 +1546,35 @@ class _ChoiceButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 44,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          backgroundColor: isSelected ? AppTheme.mint : AppTheme.glass,
-          side: isSelected
-              ? const BorderSide(color: AppTheme.accent, width: 1.5)
-              : BorderSide(color: AppTheme.border),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: EdgeInsets.zero,
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 44),
+        backgroundColor: isSelected ? AppTheme.mint : AppTheme.glass,
+        side: isSelected
+            ? const BorderSide(color: AppTheme.accent, width: 1.5)
+            : BorderSide(color: AppTheme.border),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 17,
-                color: isSelected
-                    ? AppTheme.accentCyanInk
-                    : AppTheme.textSecondary,
-              ),
-              const SizedBox(width: 6),
-            ],
-            Text(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (icon != null) ...[
+            Icon(
+              icon,
+              size: 17,
+              color:
+                  isSelected ? AppTheme.accentCyanInk : AppTheme.textSecondary,
+            ),
+            const SizedBox(width: 6),
+          ],
+          Flexible(
+            child: Text(
               label,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
@@ -1399,8 +1583,8 @@ class _ChoiceButton extends StatelessWidget {
                     : AppTheme.textSecondary,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

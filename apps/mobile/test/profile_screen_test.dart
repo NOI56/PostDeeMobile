@@ -8,6 +8,7 @@ import 'package:postdee_mobile/core/localization/language_controller.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
+import 'package:postdee_mobile/features/platforms/connections_screen.dart';
 import 'package:postdee_mobile/features/profile/profile_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,6 +35,7 @@ void main() {
             themeController: PostDeeThemeController(),
             onOpenTemplates: () {},
             onDeleteAccount: () {},
+            apiClient: _FakeSocialApiClient(connections: const []),
           ),
         ),
       ),
@@ -77,6 +79,199 @@ void main() {
     expect(cachedText('299 ฿/ด.'), findsOneWidget);
     expect(cachedText('รายงานวิเคราะห์เชิงลึก'), findsNothing);
     expect(cachedText('โควต้าตัดต่อ AI'), findsNothing);
+  });
+
+  testWidgets('does not present zero connections or Basic as loaded data',
+      (tester) async {
+    final connections = Completer<List<SocialConnectionResult>>();
+    final subscription = Completer<SubscriptionStatusResult>();
+    addTearDown(() {
+      if (!connections.isCompleted) connections.complete(const []);
+      if (!subscription.isCompleted) {
+        subscription.complete(_basicSubscription());
+      }
+    });
+
+    await tester.pumpWidget(
+      _hostProfile(
+        apiClient: _FakeSocialApiClient(
+          connections: const [],
+          connectionsLoader: () => connections.future,
+          subscriptionLoader: () => subscription.future,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('กำลังโหลดช่องทาง...'), findsWidgets);
+    expect(
+        find.textContaining('0/${connectablePlatforms.length}'), findsNothing);
+
+    await tester.scrollUntilVisible(
+      find.byKey(
+        const ValueKey('profile-subscription-loading'),
+        skipOffstage: false,
+      ),
+      300,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+
+    expect(
+      find.text('กำลังโหลดข้อมูลแพ็กเกจ...', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.text('แพ็กเกจปัจจุบัน'), findsNothing);
+  });
+
+  testWidgets('shows profile data failures and retries them', (tester) async {
+    var connectionCalls = 0;
+    var subscriptionCalls = 0;
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      connectionsLoader: () async {
+        connectionCalls += 1;
+        if (connectionCalls == 1) throw Exception('connections unavailable');
+        return const [
+          SocialConnectionResult(platform: 'TIKTOK', connected: true),
+        ];
+      },
+      subscriptionLoader: () async {
+        subscriptionCalls += 1;
+        if (subscriptionCalls == 1) throw Exception('subscription unavailable');
+        return _basicSubscription();
+      },
+    );
+
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+
+    expect(find.text('โหลดข้อมูลช่องทางไม่สำเร็จ'), findsWidgets);
+    expect(
+        find.textContaining('0/${connectablePlatforms.length}'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('profile-retry-connections')).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('1/${connectablePlatforms.length} เชื่อมต่อ'),
+        findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.byKey(
+        const ValueKey('profile-retry-subscription'),
+        skipOffstage: false,
+      ),
+      300,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    expect(
+      find.text('โหลดข้อมูลแพ็กเกจไม่สำเร็จ', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.text('แพ็กเกจปัจจุบัน'), findsNothing);
+
+    tester
+        .widget<TextButton>(
+          find.byKey(
+            const ValueKey('profile-retry-subscription'),
+            skipOffstage: false,
+          ),
+        )
+        .onPressed!();
+    await tester.pumpAndSettle();
+    expect(
+      find.text('แพ็กเกจปัจจุบัน', skipOffstage: false),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'keeps loading error and retry states usable at 393dp with 200 percent text',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final initialConnections = Completer<List<SocialConnectionResult>>();
+    final initialSubscription = Completer<SubscriptionStatusResult>();
+    var connectionCalls = 0;
+    var subscriptionCalls = 0;
+    addTearDown(() {
+      if (!initialConnections.isCompleted) {
+        initialConnections.complete(const []);
+      }
+      if (!initialSubscription.isCompleted) {
+        initialSubscription.complete(_basicSubscription());
+      }
+    });
+
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      connectionsLoader: () {
+        connectionCalls += 1;
+        return connectionCalls == 1
+            ? initialConnections.future
+            : Future.value(const [
+                SocialConnectionResult(platform: 'TIKTOK', connected: true),
+              ]);
+      },
+      subscriptionLoader: () {
+        subscriptionCalls += 1;
+        return subscriptionCalls == 1
+            ? initialSubscription.future
+            : Future.value(_basicSubscription());
+      },
+    );
+
+    await tester.pumpWidget(
+      _hostProfile(
+        apiClient: apiClient,
+        textScaler: const TextScaler.linear(2),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('กำลังโหลดช่องทาง...'), findsWidgets);
+    expect(tester.takeException(), isNull);
+
+    initialConnections.completeError(Exception('connections unavailable'));
+    initialSubscription.completeError(Exception('subscription unavailable'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('โหลดข้อมูลช่องทางไม่สำเร็จ'), findsWidgets);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(
+      find.byKey(const ValueKey('profile-retry-connections')).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('1/${connectablePlatforms.length} เชื่อมต่อ'),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    final subscriptionRetry = find.byKey(
+      const ValueKey('profile-retry-subscription'),
+      skipOffstage: false,
+    );
+    await tester.scrollUntilVisible(
+      subscriptionRetry,
+      300,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.pump();
+    tester.widget<TextButton>(subscriptionRetry).onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(subscriptionCalls, 2);
+    expect(
+      find.text('แพ็กเกจปัจจุบัน', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('security copy matches email and Google Firebase sign-in',
@@ -227,7 +422,7 @@ void main() {
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 30,
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('profile-plan-starter')));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('กลับ'));
@@ -338,6 +533,55 @@ void main() {
     await tester.pumpAndSettle();
 
     // Back on the profile tab, the summary pill reflects the new count.
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
+  });
+
+  testWidgets('a stale profile load cannot overwrite a newer connected count',
+      (tester) async {
+    final initialLoad = Completer<List<SocialConnectionResult>>();
+    var connectionLoadCalls = 0;
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      connectionsLoader: () {
+        connectionLoadCalls += 1;
+        if (connectionLoadCalls == 1) return initialLoad.future;
+        return Future.value(const [
+          SocialConnectionResult(
+            platform: 'TIKTOK',
+            connected: true,
+            displayName: '@seller_one',
+          ),
+          SocialConnectionResult(
+            platform: 'YOUTUBE_SHORTS',
+            connected: false,
+          ),
+          SocialConnectionResult(
+            platform: 'INSTAGRAM_REELS',
+            connected: false,
+          ),
+          SocialConnectionResult(
+            platform: 'FACEBOOK_REELS',
+            connected: false,
+          ),
+        ]);
+      },
+    );
+
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pump();
+    await _openConnectionsScreen(tester);
+    expect(connectionLoadCalls, 2);
+
+    initialLoad.complete(const [
+      SocialConnectionResult(platform: 'TIKTOK', connected: false),
+      SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: false),
+      SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
+      SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+    ]);
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
 
@@ -648,7 +892,7 @@ Widget _hostProfile({
         themeController: PostDeeThemeController(),
         onOpenTemplates: () {},
         onDeleteAccount: () {},
-        apiClient: apiClient,
+        apiClient: apiClient ?? _FakeSocialApiClient(connections: const []),
         launchConnectUrl: launchConnectUrl,
         onManageSubscription: onManageSubscription,
       ),
@@ -656,11 +900,21 @@ Widget _hostProfile({
   );
 }
 
+SubscriptionStatusResult _basicSubscription() => const SubscriptionStatusResult(
+      userId: 'basic-user',
+      plan: 'BASIC',
+      status: 'INACTIVE',
+      canSchedule: false,
+      canUseAiCaptions: false,
+      canUseAnalytics: false,
+    );
+
 class _FakeSocialApiClient extends PostDeeApiClient {
   _FakeSocialApiClient({
     required this.connections,
     this.connectLink,
     this.refreshedConnections,
+    this.connectionsLoader,
     this.subscription,
     this.subscriptionLoader,
   });
@@ -668,6 +922,7 @@ class _FakeSocialApiClient extends PostDeeApiClient {
   List<SocialConnectionResult> connections;
   final SocialConnectLinkResult? connectLink;
   final List<SocialConnectionResult>? refreshedConnections;
+  final Future<List<SocialConnectionResult>> Function()? connectionsLoader;
   SubscriptionStatusResult? subscription;
   final Future<SubscriptionStatusResult> Function()? subscriptionLoader;
   final List<String> connectCalls = [];
@@ -701,8 +956,10 @@ class _FakeSocialApiClient extends PostDeeApiClient {
       );
 
   @override
-  Future<List<SocialConnectionResult>> listSocialConnections() async =>
-      connections;
+  Future<List<SocialConnectionResult>> listSocialConnections() async {
+    final loader = connectionsLoader;
+    return loader == null ? connections : loader();
+  }
 
   @override
   Future<List<SocialConnectionResult>> refreshSocialConnections() async {

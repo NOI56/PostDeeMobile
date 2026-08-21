@@ -17,6 +17,7 @@ typedef ScheduledPostRescheduler = Future<ScheduledPostResult> Function(
   String postId,
   DateTime scheduledAt,
 );
+typedef ScheduledPostCanceller = Future<void> Function(String postId);
 typedef CalendarTimeConverter = DateTime Function(DateTime value);
 
 class CalendarScreen extends StatefulWidget {
@@ -26,6 +27,7 @@ class CalendarScreen extends StatefulWidget {
     this.isActive = true,
     this.loadScheduledPosts,
     this.reschedulePost,
+    this.cancelPost,
     this.onAddPost,
     this.onOpenPostDetail,
     this.toLocalTime,
@@ -36,6 +38,7 @@ class CalendarScreen extends StatefulWidget {
   final bool isActive;
   final ScheduledPostsLoader? loadScheduledPosts;
   final ScheduledPostRescheduler? reschedulePost;
+  final ScheduledPostCanceller? cancelPost;
   final CalendarTimeConverter? toLocalTime;
   final DateTime Function()? now;
 
@@ -56,6 +59,9 @@ class _CalendarScreenState extends State<CalendarScreen>
   final _apiClient = PostDeeApiClient();
   bool _isLoading = true;
   bool _loadInProgress = false;
+  bool _reloadRequested = false;
+  Future<void>? _activeLoad;
+  int _postMutationGeneration = 0;
   bool _appIsResumed = true;
   String? _errorMessage;
   List<ScheduledPostResult> _posts = const [];
@@ -63,6 +69,8 @@ class _CalendarScreenState extends State<CalendarScreen>
   late DateTime _visibleMonth;
   DateTime? _selectedDay;
   String _platformFilter = 'all';
+  String? _pendingActionPostId;
+  String? _pendingActionLabel;
 
   @override
   void initState() {
@@ -116,8 +124,26 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   Future<void> _loadPosts({bool silent = false}) async {
-    if (_loadInProgress) return;
+    if (_loadInProgress) {
+      _reloadRequested = true;
+      final activeLoad = _activeLoad;
+      if (activeLoad != null) await activeLoad;
+      return;
+    }
     _loadInProgress = true;
+
+    late final Future<void> load;
+    load = _performLoadPosts(silent: silent);
+    _activeLoad = load;
+    try {
+      await load;
+    } finally {
+      if (identical(_activeLoad, load)) _activeLoad = null;
+    }
+  }
+
+  Future<void> _performLoadPosts({required bool silent}) async {
+    var currentLoadIsSilent = silent;
 
     if (!silent) {
       setState(() {
@@ -127,42 +153,49 @@ class _CalendarScreenState extends State<CalendarScreen>
     }
 
     try {
-      final loader = widget.loadScheduledPosts ?? _apiClient.listScheduledPosts;
-      final posts = await loader();
+      do {
+        _reloadRequested = false;
+        final mutationGeneration = _postMutationGeneration;
+        try {
+          final loader =
+              widget.loadScheduledPosts ?? _apiClient.listScheduledPosts;
+          final posts = await loader();
 
-      if (!mounted) {
-        return;
-      }
+          if (!mounted) return;
+          if (mutationGeneration != _postMutationGeneration) continue;
 
-      final sorted = [...posts]..sort((left, right) =>
-          _calendarTimeFor(left).compareTo(_calendarTimeFor(right)));
+          final sorted = [...posts]..sort((left, right) =>
+              _calendarTimeFor(left).compareTo(_calendarTimeFor(right)));
 
-      setState(() {
-        _posts = sorted;
-        _errorMessage = null;
-        // Until the user picks a day, follow the first scheduled post so the
-        // day list below the grid is never pointlessly empty.
-        if (_selectedDay == null && sorted.isNotEmpty) {
-          final first = _calendarTimeFor(sorted.first);
-          _selectedDay = DateTime(first.year, first.month, first.day);
-          _visibleMonth = DateTime(first.year, first.month);
+          setState(() {
+            _posts = sorted;
+            _errorMessage = null;
+            // Until the user picks a day, follow the first scheduled post so
+            // the day list below the grid is never pointlessly empty.
+            if (_selectedDay == null && sorted.isNotEmpty) {
+              final first = _calendarTimeFor(sorted.first);
+              _selectedDay = DateTime(first.year, first.month, first.day);
+              _visibleMonth = DateTime(first.year, first.month);
+            }
+          });
+        } on ApiException catch (error) {
+          if (!mounted) return;
+          if (!currentLoadIsSilent || _posts.isEmpty) {
+            setState(() => _errorMessage = error.message);
+          }
+        } on SocketException {
+          if (!mounted) return;
+          if (!currentLoadIsSilent || _posts.isEmpty) {
+            setState(() => _errorMessage = 'เชื่อมต่อ PostDee API ไม่ได้');
+          }
+        } catch (_) {
+          if (!mounted) return;
+          if (!currentLoadIsSilent || _posts.isEmpty) {
+            setState(() => _errorMessage = 'โหลดปฏิทินโพสต์ไม่สำเร็จ');
+          }
         }
-      });
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      if (!silent || _posts.isEmpty) {
-        setState(() => _errorMessage = error.message);
-      }
-    } on SocketException {
-      if (!mounted) return;
-      if (!silent || _posts.isEmpty) {
-        setState(() => _errorMessage = 'เชื่อมต่อ PostDee API ไม่ได้');
-      }
-    } catch (_) {
-      if (!mounted) return;
-      if (!silent || _posts.isEmpty) {
-        setState(() => _errorMessage = 'โหลดปฏิทินโพสต์ไม่สำเร็จ');
-      }
+        currentLoadIsSilent = _posts.isNotEmpty;
+      } while (_reloadRequested && mounted);
     } finally {
       _loadInProgress = false;
       if (mounted) {
@@ -242,6 +275,8 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   VoidCallback? _postTapHandler(ScheduledPostResult post) {
+    if (_pendingActionPostId != null) return null;
+
     if (_canEditQueue(post)) {
       return () => _showPostActions(post);
     }
@@ -301,7 +336,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   Future<void> _reschedule(ScheduledPostResult post) async {
-    if (!_canEditQueue(post)) return;
+    if (!_canEditQueue(post) || _pendingActionPostId != null) return;
 
     final current = _toLocalTime(post.scheduledAt);
     final currentNow = _now();
@@ -352,9 +387,34 @@ class _CalendarScreenState extends State<CalendarScreen>
       return;
     }
 
+    setState(() {
+      _pendingActionPostId = post.id;
+      _pendingActionLabel = 'กำลังเลื่อนเวลา...';
+    });
+
     try {
       final reschedulePost = widget.reschedulePost ?? _apiClient.reschedulePost;
-      await reschedulePost(post.id, next);
+      final updatedPost = await reschedulePost(post.id, next);
+      _postMutationGeneration += 1;
+      if (mounted) {
+        final updatedTime = _calendarTimeFor(updatedPost);
+        setState(() {
+          _posts = [
+            for (final currentPost in _posts)
+              if (currentPost.id == updatedPost.id)
+                updatedPost
+              else
+                currentPost,
+          ]..sort((left, right) =>
+              _calendarTimeFor(left).compareTo(_calendarTimeFor(right)));
+          _selectedDay = DateTime(
+            updatedTime.year,
+            updatedTime.month,
+            updatedTime.day,
+          );
+          _visibleMonth = DateTime(updatedTime.year, updatedTime.month);
+        });
+      }
     } on ApiException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -375,6 +435,13 @@ class _CalendarScreenState extends State<CalendarScreen>
         );
       }
       return;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _pendingActionPostId = null;
+          _pendingActionLabel = null;
+        });
+      }
     }
 
     if (!mounted) return;
@@ -389,7 +456,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   Future<void> _cancel(ScheduledPostResult post) async {
-    if (!_canEditQueue(post)) return;
+    if (!_canEditQueue(post) || _pendingActionPostId != null) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -413,8 +480,15 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     if (confirmed != true || !mounted) return;
 
+    setState(() {
+      _pendingActionPostId = post.id;
+      _pendingActionLabel = 'กำลังยกเลิก...';
+    });
+
     try {
-      await _apiClient.cancelPost(post.id);
+      final cancelPost = widget.cancelPost ?? _apiClient.cancelPost;
+      await cancelPost(post.id);
+      _postMutationGeneration += 1;
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -422,6 +496,13 @@ class _CalendarScreenState extends State<CalendarScreen>
         );
       }
       return;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _pendingActionPostId = null;
+          _pendingActionLabel = null;
+        });
+      }
     }
 
     if (!mounted) return;
@@ -433,13 +514,20 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   @override
   Widget build(BuildContext context) {
+    final horizontalPadding =
+        MediaQuery.sizeOf(context).width <= 360 ? 8.0 : 16.0;
     return RefreshIndicator(
       onRefresh: _loadPosts,
       color: AppTheme.accent,
       child: SingleChildScrollView(
         key: const ValueKey('calendar-screen'),
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, AppTheme.navOverlap),
+        padding: EdgeInsets.fromLTRB(
+          horizontalPadding,
+          8,
+          horizontalPadding,
+          AppTheme.navOverlap,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -477,8 +565,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                         borderRadius: BorderRadius.circular(12),
                         onTap: widget.onAddPost,
                         child: Container(
-                          width: 40,
-                          height: 40,
+                          width: 48,
+                          height: 48,
                           decoration: BoxDecoration(
                             color: AppTheme.accent,
                             borderRadius: BorderRadius.circular(12),
@@ -518,13 +606,18 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   Widget _buildMonthCard() {
     final dotColors = _dayDotColors;
+    final usesLargeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    final usesNarrowCalendar = MediaQuery.sizeOf(context).width <= 360;
     final daysInMonth =
         DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day;
     final leadingBlanks =
         DateTime(_visibleMonth.year, _visibleMonth.month, 1).weekday - 1;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(
+        horizontal: usesNarrowCalendar ? 0 : 8,
+        vertical: 16,
+      ),
       decoration: BoxDecoration(
         color: AppTheme.glass,
         borderRadius: BorderRadius.circular(20),
@@ -540,19 +633,21 @@ class _CalendarScreenState extends State<CalendarScreen>
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _MonthNavButton(
                 icon: Icons.chevron_left,
                 label: 'เดือนก่อนหน้า',
                 onTap: () => _changeMonth(-1),
               ),
-              Text(
-                '${_thaiMonthsFull[_visibleMonth.month - 1]} ${_visibleMonth.year}',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textPrimary,
+              Expanded(
+                child: Text(
+                  '${_thaiMonthsFull[_visibleMonth.month - 1]} ${_visibleMonth.year}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
                 ),
               ),
               _MonthNavButton(
@@ -582,8 +677,9 @@ class _CalendarScreenState extends State<CalendarScreen>
           const SizedBox(height: 6),
           GridView.count(
             crossAxisCount: 7,
-            mainAxisSpacing: 3,
-            crossAxisSpacing: 3,
+            childAspectRatio: usesLargeText ? 0.9 : 1,
+            mainAxisSpacing: 2,
+            crossAxisSpacing: 1,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             children: [
@@ -614,17 +710,24 @@ class _CalendarScreenState extends State<CalendarScreen>
           borderRadius: BorderRadius.circular(11),
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              '${date.day}',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? Colors.white : AppTheme.textPrimary,
+            Expanded(
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '${date.day}',
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected ? Colors.white : AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 3),
             Container(
               width: 5,
               height: 5,
@@ -637,6 +740,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                         : dotColor,
               ),
             ),
+            const SizedBox(height: 4),
           ],
         ),
       ),
@@ -688,13 +792,13 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   Widget _buildPlatformFilter() {
     return SizedBox(
-      height: 37,
+      height: 52,
       child: Stack(
         children: [
           ListView(
             key: const ValueKey('calendar-platform-filters'),
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(right: 38),
+            padding: const EdgeInsets.only(right: 42),
             children: [
               _FilterChip(
                 label: 'ทั้งหมด',
@@ -718,7 +822,7 @@ class _CalendarScreenState extends State<CalendarScreen>
             bottom: 0,
             child: IgnorePointer(
               child: Container(
-                width: 32,
+                width: 36,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: AppTheme.glass.withValues(alpha: 0.92),
@@ -786,6 +890,8 @@ class _CalendarScreenState extends State<CalendarScreen>
             post: post,
             displayAt: _calendarTimeFor(post),
             onTap: _postTapHandler(post),
+            busyLabel:
+                _pendingActionPostId == post.id ? _pendingActionLabel : null,
           ),
           const SizedBox(height: 9),
         ],
@@ -814,8 +920,8 @@ class _MonthNavButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           onTap: onTap,
           child: Container(
-            width: 32,
-            height: 32,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               color: AppTheme.glass,
               borderRadius: BorderRadius.circular(10),
@@ -846,7 +952,9 @@ class _FilterChip extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 9),
+        constraints: const BoxConstraints(minHeight: 52),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? AppTheme.accent : AppTheme.glass,
           borderRadius: BorderRadius.circular(999),
@@ -870,11 +978,13 @@ class _DayPostRow extends StatelessWidget {
     required this.post,
     required this.displayAt,
     required this.onTap,
+    required this.busyLabel,
   });
 
   final ScheduledPostResult post;
   final DateTime displayAt;
   final VoidCallback? onTap;
+  final String? busyLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -933,16 +1043,29 @@ class _DayPostRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${_statusLabel(post)} · ${_formatTime(displayAt)}',
+                      busyLabel ??
+                          '${_statusLabel(post)} · ${_formatTime(displayAt)}',
                       style: TextStyle(
                         fontSize: 11.5,
-                        color: AppTheme.textMuted,
+                        fontWeight: busyLabel == null
+                            ? FontWeight.normal
+                            : FontWeight.w700,
+                        color: busyLabel == null
+                            ? AppTheme.textMuted
+                            : AppTheme.accentCyanInk,
                       ),
                     ),
                   ],
                 ),
               ),
-              if (onTap != null)
+              if (busyLabel != null)
+                const SizedBox(
+                  key: ValueKey('calendar-post-action-progress'),
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                )
+              else if (onTap != null)
                 Icon(Icons.chevron_right, size: 20, color: AppTheme.textMuted),
             ],
           ),

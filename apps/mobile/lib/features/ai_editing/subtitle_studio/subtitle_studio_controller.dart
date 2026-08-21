@@ -7,7 +7,19 @@ import 'subtitle_draft_store.dart';
 import 'subtitle_project.dart';
 import 'subtitle_project_editor.dart';
 
+class SubtitleDraftSaveException implements Exception {
+  const SubtitleDraftSaveException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class SubtitleStudioController extends ChangeNotifier {
+  static const _draftSaveFailureMessage =
+      'บันทึกฉบับร่างไม่สำเร็จ แต่ยังแก้ต่อได้';
+
   SubtitleStudioController({
     required SubtitleProject initialProject,
     required SubtitleDraftStore draftStore,
@@ -43,6 +55,8 @@ class SubtitleStudioController extends ChangeNotifier {
   String? _pendingText;
   String? _validationMessage;
   bool _saving = false;
+  bool _saveRequested = false;
+  Future<bool>? _saveCycle;
 
   SubtitleProject get project => _editor.project;
   bool get isInitialized => _initialized;
@@ -115,8 +129,8 @@ class SubtitleStudioController extends ChangeNotifier {
 
   Future<bool> flushPendingText() async {
     final committed = _commitPendingText();
-    if (committed) await saveNow();
-    return committed;
+    if (!committed) return false;
+    return saveNow();
   }
 
   bool adjustSelectedTiming({int startDeltaMs = 0, int endDeltaMs = 0}) {
@@ -239,14 +253,40 @@ class SubtitleStudioController extends ChangeNotifier {
     return selectedCue;
   }
 
-  Future<void> saveNow() async {
+  Future<bool> saveNow() {
     _autosaveTimer?.cancel();
+    _saveRequested = true;
+    final activeSave = _saveCycle;
+    if (activeSave != null) return activeSave;
+
+    late final Future<bool> cycle;
+    cycle = _runSaveCycle().whenComplete(() {
+      if (identical(_saveCycle, cycle)) _saveCycle = null;
+    });
+    _saveCycle = cycle;
+    return cycle;
+  }
+
+  Future<bool> _runSaveCycle() async {
     _saving = true;
     notifyListeners();
+    var latestSaveSucceeded = true;
     try {
-      await _draftStore.saveDraft(project);
-    } catch (_) {
-      _validationMessage = 'บันทึกฉบับร่างไม่สำเร็จ แต่ยังแก้ต่อได้';
+      do {
+        _saveRequested = false;
+        final snapshot = project;
+        try {
+          await _draftStore.saveDraft(snapshot);
+          latestSaveSucceeded = true;
+          if (_validationMessage == _draftSaveFailureMessage) {
+            _validationMessage = null;
+          }
+        } catch (_) {
+          latestSaveSucceeded = false;
+          _validationMessage = _draftSaveFailureMessage;
+        }
+      } while (_saveRequested);
+      return latestSaveSucceeded;
     } finally {
       _saving = false;
       notifyListeners();
@@ -257,7 +297,12 @@ class SubtitleStudioController extends ChangeNotifier {
     if (!_commitPendingText()) {
       throw const SubtitleProjectValidationException('ข้อความซับต้องไม่ว่าง');
     }
-    await saveNow();
+    final saved = await saveNow();
+    if (!saved) {
+      throw SubtitleDraftSaveException(
+        _validationMessage ?? 'บันทึกฉบับร่างไม่สำเร็จ',
+      );
+    }
     validateSubtitleProject(project);
     return project;
   }

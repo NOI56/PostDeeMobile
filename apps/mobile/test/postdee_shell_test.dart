@@ -67,6 +67,68 @@ class _ShellDraftStore implements PublishDraftStore {
 }
 
 void main() {
+  for (final width in const [360.0, 393.0]) {
+    for (final textScale in const [1.45, 2.0]) {
+      testWidgets(
+          'login actions fit ${width}dp with ${textScale}x accessibility text',
+          (tester) async {
+        SharedPreferences.setMockInitialValues({
+          'postdee_onboarding_seen': true,
+        });
+        tester.view.physicalSize = Size(width, 852);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final sessionStore = PostDeeAuthSessionStore.instance;
+        final languageController = PostDeeLanguageController(
+          initialLocale: const Locale('th'),
+        );
+        sessionStore.clear();
+        addTearDown(sessionStore.clear);
+        addTearDown(languageController.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.dark,
+            locale: const Locale('th'),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(textScale),
+              ),
+              child: child!,
+            ),
+            localizationsDelegates: const [
+              PostDeeLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: PostDeeLocalizations.supportedLocales,
+            home: PostDeeShell(languageController: languageController),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('เข้าสู่ระบบด้วย Google'), findsOneWidget);
+        final googleButton = find.ancestor(
+          of: find.byKey(const ValueKey('google-sign-in-logo')),
+          matching: find.byType(FilledButton),
+        );
+        expect(tester.getSize(googleButton).height, greaterThanOrEqualTo(54));
+        expect(tester.takeException(), isNull);
+
+        final scrollable = find.byType(SingleChildScrollView);
+        for (var attempt = 0; attempt < 8; attempt += 1) {
+          await tester.drag(scrollable, const Offset(0, -260));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+        }
+        expect(find.text('เข้าสู่ระบบด้วยอีเมล'), findsOneWidget);
+      });
+    }
+  }
+
   testWidgets('requests notification permission only after tapping the bell',
       (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
@@ -566,6 +628,7 @@ void main() {
       400,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.pumpAndSettle();
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
     tester
@@ -632,6 +695,7 @@ void main() {
       400,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.pumpAndSettle();
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
     tester
@@ -696,6 +760,7 @@ void main() {
       400,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.pumpAndSettle();
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
     tester

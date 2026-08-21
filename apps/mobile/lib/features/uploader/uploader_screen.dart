@@ -57,6 +57,14 @@ class _PublishOwnerChangedException implements Exception {
   const _PublishOwnerChangedException();
 }
 
+bool _isRetryablePublishApiError(ApiException error) {
+  final statusCode = error.statusCode;
+  return statusCode == null ||
+      statusCode == HttpStatus.requestTimeout ||
+      statusCode == HttpStatus.tooManyRequests ||
+      (statusCode >= 500 && statusCode < 600);
+}
+
 class UploaderScreen extends StatefulWidget {
   const UploaderScreen({
     super.key,
@@ -1821,7 +1829,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
     }
   }
 
-  Future<QueuedPostResult?> _createPost() async {
+  Future<QueuedPostResult?> _createPost([
+    PublishProgressReporter? reportProgress,
+  ]) async {
     if (_isPreparingSubmission ||
         _isSubmitting ||
         _isGeneratingCaption ||
@@ -1831,14 +1841,23 @@ class _UploaderScreenState extends State<UploaderScreen> {
     _isPreparingSubmission = true;
     if (mounted) setState(() {});
     try {
-      return await _createPostWhileLocked();
+      return await _createPostWhileLocked(reportProgress);
     } finally {
       _isPreparingSubmission = false;
       if (mounted) setState(() {});
     }
   }
 
-  Future<QueuedPostResult?> _createPostWhileLocked() async {
+  Future<QueuedPostResult?> _createPostWhileLocked(
+    PublishProgressReporter? reportProgress,
+  ) async {
+    void report(PublishFlowStage stage, double fraction) {
+      reportProgress?.call(
+        PublishFlowProgress(stage: stage, fraction: fraction),
+      );
+    }
+
+    report(PublishFlowStage.preparing, 0.08);
     _pendingStatusSheet = null;
     _pickVideoAfterStatus = false;
     _pendingInlineError = null;
@@ -2007,10 +2026,12 @@ class _UploaderScreenState extends State<UploaderScreen> {
     try {
       final checkPublishingReadiness = widget.checkPublishingReadiness ??
           _apiClient.checkPublishingReadiness;
+      report(PublishFlowStage.checkingAvailability, 0.18);
       ensureSubmissionStillOwned();
       await checkPublishingReadiness();
       ensureSubmissionStillOwned();
 
+      report(PublishFlowStage.checkingPlan, 0.28);
       final subscription = await _loadSubscription();
       ensureSubmissionStillOwned();
 
@@ -2059,6 +2080,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         setState(() {
           _successMessage = 'กำลังใส่ลายน้ำวิดีโอ...';
         });
+        report(PublishFlowStage.applyingWatermark, 0.38);
 
         final watermarkedVideo = await _applyAutoWatermark(
           inputFile: localVideoFile,
@@ -2089,6 +2111,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         ensureSubmissionStillOwned();
       }
 
+      report(PublishFlowStage.uploadingVideo, 0.5);
       final upload = await createAndUploadFileWithRetry(
         request: CreateUploadRequest(
           fileName: uploadFileName,
@@ -2101,6 +2124,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         createUpload: createUpload,
         uploadFile: uploadVideoFile,
         onRetry: () {
+          report(PublishFlowStage.retryingUpload, 0.55);
           if (mounted) {
             setState(() {
               _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
@@ -2110,6 +2134,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       );
       ensureSubmissionStillOwned();
       didUploadVideo = true;
+      report(PublishFlowStage.uploadingVideo, 0.72);
       final uploadedWatermarkedVideo = generatedWatermarkedVideo;
       if (uploadedWatermarkedVideo != null) {
         try {
@@ -2140,6 +2165,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
             _successMessage = 'กำลังอัปโหลดหน้าปก...';
           });
         }
+        report(PublishFlowStage.uploadingCover, 0.8);
         final coverLease = cover.retainTemporaryFiles();
         try {
           final coverUpload = await createAndUploadFileWithRetry(
@@ -2160,6 +2186,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         }
       }
       final createPost = widget.createPost ?? _apiClient.createPost;
+      report(PublishFlowStage.creatingPost, 0.9);
       ensureSubmissionStillOwned();
       final post = await createPost(
         CreatePostRequest(
@@ -2190,6 +2217,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         );
         return null;
       }
+      report(PublishFlowStage.finalizing, 0.96);
       _blockedSubmissionDraftIds.remove(submittedDraftId);
 
       var draftCleanupWarning = '';
@@ -2309,16 +2337,22 @@ class _UploaderScreenState extends State<UploaderScreen> {
       });
       if (isPublishingUnavailable(error)) {
         _setPublishingUnavailableStatus(videoWasUploaded: didUploadVideo);
-      } else if (error.code == 'IDEMPOTENT_POST_FAILED' ||
-          error.code == 'IDEMPOTENCY_KEY_REUSED') {
+      } else if (error.code == idempotentPostFailedCode ||
+          error.code == idempotencyKeyReusedCode) {
         setState(() => _blockedSubmissionDraftIds.add(submittedDraftId));
         _setUploadStatus(
-          error.code == 'IDEMPOTENT_POST_FAILED'
+          error.code == idempotentPostFailedCode
               ? 'รายการโพสต์เดิมจบด้วยสถานะล้มเหลว ร่างยังอยู่ในเครื่อง กรุณาตรวจปลายทางก่อนเริ่มรายการโพสต์ใหม่'
               : 'ข้อมูลในร่างเปลี่ยนจากคำขอเดิม ร่างยังอยู่ในเครื่อง กรุณาตรวจปลายทางก่อนเริ่มรายการโพสต์ใหม่',
         );
       } else {
         _setUploadStatus(error.message);
+        if (_isRetryablePublishApiError(error)) {
+          // The draft was persisted before every remote side effect. Retrying
+          // therefore reuses its submission request ID and cannot create a
+          // second post or quota charge if the first response was lost.
+          rethrow;
+        }
       }
       return null;
     } on SocketException {
@@ -2331,8 +2365,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = null;
         _successMessage = null;
       });
-      _setUploadStatus('เชื่อมต่อ PostDee API ไม่ได้');
-      return null;
+      const message = 'เชื่อมต่อ PostDee API ไม่ได้';
+      _setUploadStatus(message);
+      throw const ApiException(message, code: 'NETWORK_UNAVAILABLE');
     } catch (error) {
       unawaited(_analytics.logPublishFailed(reason: 'unknown'));
       if (!mounted) {
@@ -2480,14 +2515,19 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _isSubmitting ||
         _isPreparingReview ||
         _isPreparingSubmission;
-    return Stack(
+    return Column(
       children: [
-        Positioned.fill(
+        Expanded(
           child: IgnorePointer(
             ignoring: isFormBusy,
             child: ListView(
               key: const ValueKey('uploader-scroll'),
-              padding: const EdgeInsets.fromLTRB(16, AppTheme.spaceMd, 16, 116),
+              padding: const EdgeInsets.fromLTRB(
+                16,
+                AppTheme.spaceMd,
+                16,
+                AppTheme.spaceLg,
+              ),
               children: [
                 const _UploadPageHeader(),
                 const SizedBox(height: AppTheme.spaceSm),
@@ -2638,11 +2678,13 @@ class _UploaderScreenState extends State<UploaderScreen> {
                       ),
                 ),
               ),
-              OutlinedButton(
-                onPressed: _isLoadingTemplates ? null : _loadTemplates,
-                child: Text(_isLoadingTemplates
-                    ? 'กำลังโหลดเทมเพลต...'
-                    : 'โหลดเทมเพลต'),
+              Flexible(
+                child: OutlinedButton(
+                  onPressed: _isLoadingTemplates ? null : _loadTemplates,
+                  child: Text(_isLoadingTemplates
+                      ? 'กำลังโหลดเทมเพลต...'
+                      : 'โหลดเทมเพลต'),
+                ),
               ),
             ],
           ),
@@ -2698,105 +2740,100 @@ class _UploaderScreenState extends State<UploaderScreen> {
   // Solid card footer with a hairline top border, per the prototype's
   // publish bar (no dark gradient).
   Widget _buildStickyActionBar(BuildContext context) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: DecoratedBox(
-        key: const ValueKey('uploader-sticky-action-bar'),
-        decoration: BoxDecoration(
-          color: AppTheme.glass,
-          border: Border(
-            top: BorderSide(color: AppTheme.borderSoft),
-          ),
+    return DecoratedBox(
+      key: const ValueKey('uploader-sticky-action-bar'),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        border: Border(
+          top: BorderSide(color: AppTheme.borderSoft),
         ),
-        child: Padding(
-          // extendBody lets the floating capsule nav overlap the body, so
-          // lift the sticky actions above it via the ambient bottom inset.
-          padding: EdgeInsets.fromLTRB(
-            16,
-            12,
-            16,
-            10 + MediaQuery.paddingOf(context).bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_errorMessage != null) ...[
-                PostDeeNotice(
-                  message: _errorMessage!,
-                  color: Theme.of(context).colorScheme.error,
-                  icon: Icons.error_outline,
-                ),
-                const SizedBox(height: AppTheme.spaceSm),
-              ],
-              if (_successMessage != null) ...[
-                PostDeeNotice(
-                  message: _successMessage!,
-                  color: AppTheme.successInk,
-                  icon: Icons.check_circle_outline,
-                ),
-                const SizedBox(height: AppTheme.spaceSm),
-              ],
-              if (_requiresNewSubmissionAttempt) ...[
-                OutlinedButton.icon(
-                  key: const ValueKey('uploader-start-new-publish-attempt'),
-                  onPressed: _isSavingDraft || _isSubmitting
-                      ? null
-                      : _startNewSubmissionAttempt,
-                  icon: const Icon(Icons.add_circle_outline_rounded),
-                  label: const Text('เริ่มรายการโพสต์ใหม่'),
-                ),
-                const SizedBox(height: AppTheme.spaceSm),
-              ],
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      key: const ValueKey('uploader-save-draft-button'),
-                      onPressed: _isSavingDraft ||
-                              _isSubmitting ||
-                              _isGeneratingCaption ||
-                              _isPreparingReview ||
-                              _isPreparingSubmission ||
-                              !_draftStoreAvailable
-                          ? null
-                          : _saveDraft,
-                      icon: const Icon(Icons.save_outlined),
-                      label: Text(
-                        _isSavingDraft ? 'กำลังบันทึก...' : 'บันทึกร่าง',
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(52),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 2,
-                    child: _GradientActionButton(
-                      key: const ValueKey('uploader-sticky-post-button'),
-                      label: _isSubmitting || _isPreparingSubmission
-                          ? 'กำลังส่ง...'
-                          : _isPreparingReview
-                              ? 'กำลังเตรียม...'
-                              : 'โพสต์',
-                      icon: Icons.send_rounded,
-                      onPressed: _isSubmitting ||
-                              _isSavingDraft ||
-                              _isGeneratingCaption ||
-                              _isPreparingReview ||
-                              _isPreparingSubmission ||
-                              _requiresNewSubmissionAttempt
-                          ? null
-                          : _reviewThenPost,
-                    ),
-                  ),
-                ],
+      ),
+      child: Padding(
+        // extendBody lets the floating capsule nav overlap the body, so
+        // lift the sticky actions above it via the ambient bottom inset.
+        padding: EdgeInsets.fromLTRB(
+          16,
+          12,
+          16,
+          10 + MediaQuery.paddingOf(context).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_errorMessage != null) ...[
+              PostDeeNotice(
+                message: _errorMessage!,
+                color: Theme.of(context).colorScheme.error,
+                icon: Icons.error_outline,
               ),
+              const SizedBox(height: AppTheme.spaceSm),
             ],
-          ),
+            if (_successMessage != null) ...[
+              PostDeeNotice(
+                message: _successMessage!,
+                color: AppTheme.successInk,
+                icon: Icons.check_circle_outline,
+              ),
+              const SizedBox(height: AppTheme.spaceSm),
+            ],
+            if (_requiresNewSubmissionAttempt) ...[
+              OutlinedButton.icon(
+                key: const ValueKey('uploader-start-new-publish-attempt'),
+                onPressed: _isSavingDraft || _isSubmitting
+                    ? null
+                    : _startNewSubmissionAttempt,
+                icon: const Icon(Icons.add_circle_outline_rounded),
+                label: const Text('เริ่มรายการโพสต์ใหม่'),
+              ),
+              const SizedBox(height: AppTheme.spaceSm),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('uploader-save-draft-button'),
+                    onPressed: _isSavingDraft ||
+                            _isSubmitting ||
+                            _isGeneratingCaption ||
+                            _isPreparingReview ||
+                            _isPreparingSubmission ||
+                            !_draftStoreAvailable
+                        ? null
+                        : _saveDraft,
+                    icon: const Icon(Icons.save_outlined),
+                    label: Text(
+                      _isSavingDraft ? 'กำลังบันทึก...' : 'บันทึกร่าง',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: _GradientActionButton(
+                    key: const ValueKey('uploader-sticky-post-button'),
+                    label: _isSubmitting || _isPreparingSubmission
+                        ? 'กำลังส่ง...'
+                        : _isPreparingReview
+                            ? 'กำลังเตรียม...'
+                            : 'โพสต์',
+                    icon: Icons.send_rounded,
+                    onPressed: _isSubmitting ||
+                            _isSavingDraft ||
+                            _isGeneratingCaption ||
+                            _isPreparingReview ||
+                            _isPreparingSubmission ||
+                            _requiresNewSubmissionAttempt
+                        ? null
+                        : _reviewThenPost,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -4446,11 +4483,13 @@ class _SchedulePanel extends StatelessWidget {
               ),
             ),
             const SizedBox(width: AppTheme.spaceSm),
-            Text(
-              'ตั้งเวลาโพสต์',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+            Expanded(
+              child: Text(
+                'ตั้งเวลาโพสต์',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
             ),
           ],
         ),

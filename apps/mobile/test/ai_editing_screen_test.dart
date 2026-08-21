@@ -15,6 +15,7 @@ import 'package:postdee_mobile/features/ai_editing/ai_subtitle_frame_preview.dar
 import 'package:postdee_mobile/features/ai_editing/beat_music_picker.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_draft_store.dart';
+import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_preview_overlay.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_studio/subtitle_project.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
@@ -4097,6 +4098,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('กำลังเปิดผล AI...'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('ai-review-video-fullscreen')),
+      findsNothing,
+    );
 
     initializeGate.complete();
     await tester.pumpAndSettle();
@@ -4107,6 +4112,10 @@ void main() {
     );
     expect(find.text('เปิดผล AI ไม่ได้'), findsOneWidget);
     expect(controllers.first.disposed, isTrue);
+    expect(
+      find.byKey(const ValueKey('ai-review-video-fullscreen')),
+      findsNothing,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey('ai-review-video-retry')),
@@ -4118,7 +4127,109 @@ void main() {
       find.byKey(const ValueKey('ai-review-seek-slider')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('ai-review-video-fullscreen')),
+      findsOneWidget,
+    );
     expect(find.text('00:00 / 00:20'), findsOneWidget);
+  });
+
+  testWidgets(
+      'opens the AI review full screen without resetting playback state',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final pickedVideo = _createPickedVideoFixture('fullscreen-original.mp4');
+    final renderedVideo = _createRenderedVideoFixture('fullscreen-result.mp4');
+    late final _FakeReviewVideoController controller;
+    var controllerCreations = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'u-fullscreen-preview',
+            videoS3Key: 'uploads/fullscreen-original.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (_) async => renderedVideo,
+          reviewVideoControllerFactory: (_) {
+            controllerCreations += 1;
+            return controller = _FakeReviewVideoController(
+              fakeDuration: const Duration(seconds: 20),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    await controller.seekTo(const Duration(seconds: 7));
+    await tester.tap(find.byKey(const ValueKey('ai-review-video-preview')));
+    await tester.pump();
+
+    expect(controller.value.position, const Duration(seconds: 7));
+    expect(controller.value.isPlaying, isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey('ai-review-video-fullscreen')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('ai-review-fullscreen-view')),
+      findsOneWidget,
+    );
+    expect(find.text('พรีวิวเต็มหน้าจอ · ผล AI'), findsOneWidget);
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey('ai-review-fullscreen-view')),
+      ),
+      const Size(390, 844),
+    );
+    expect(controllerCreations, 1);
+    expect(controller.disposed, isFalse);
+    expect(controller.value.position, const Duration(seconds: 7));
+    expect(controller.value.isPlaying, isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey('ai-review-fullscreen-video')),
+    );
+    await tester.pump();
+
+    expect(controller.value.isPlaying, isFalse);
+    expect(controller.calls.last, 'pause');
+
+    await tester.tap(
+      find.byKey(const ValueKey('ai-review-fullscreen-close')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('ai-review-fullscreen-view')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('ai-review-video-preview')),
+      findsOneWidget,
+    );
+    expect(controllerCreations, 1);
+    expect(controller.disposed, isFalse);
+    expect(controller.value.position, const Duration(seconds: 7));
+    expect(controller.value.isPlaying, isFalse);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('compares original and AI durations and still posts the AI file',
@@ -4658,6 +4769,72 @@ void main() {
           .onPressed,
       isNotNull,
     );
+  });
+
+  testWidgets(
+      'processing overlay remains usable on a short screen with large text',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 520);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final pickedVideo = _createPickedVideoFixture('large-text-progress.mp4');
+    final renderResult = Completer<BurnedSubtitleResult>();
+
+    await tester.pumpWidget(
+      _testApp(
+        MediaQuery(
+          data: MediaQueryData.fromView(tester.view).copyWith(
+            textScaler: const TextScaler.linear(2),
+          ),
+          child: AiEditingScreen(
+            extractAudio: _extractAudioFixture,
+            cleanupAiEditAudio: (_) async {},
+            pickVideo: () async => pickedVideo,
+            createUpload: (_) async => const UploadResult(
+              id: 'u-large-text-progress',
+              videoS3Key: 'uploads/large-text-progress.m4a',
+              storageProvider: 's3',
+            ),
+            uploadVideoFile: (_, __) async {},
+            prepareEdit: (_) async => _createPrepareFixture(),
+            burnVideo: (request) async {
+              request.onProgress?.call(0.42);
+              await request.cancellationToken?.attach(() async {
+                if (!renderResult.isCompleted) {
+                  renderResult.completeError(
+                    const SubtitleBurnException('render cancelled'),
+                  );
+                }
+              });
+              return renderResult.future;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const ValueKey('ai-processing-scroll-view')),
+      findsOneWidget,
+    );
+    expect(find.text('42%'), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const ValueKey('ai-processing-scroll-view')),
+      const Offset(0, -240),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-render-cancel')));
+    await tester.pumpAndSettle();
   });
 
   testWidgets(
@@ -7692,6 +7869,36 @@ void main() {
     );
     expect(frameController.seeks, [const Duration(seconds: 75)]);
 
+    final fontSizeSlider = find.byKey(
+      const ValueKey('ai-subtitle-font-size-slider'),
+      skipOffstage: false,
+    );
+    final initialFontSizeSlider = tester.widget<Slider>(fontSizeSlider);
+    expect(initialFontSizeSlider.min, 14);
+    expect(initialFontSizeSlider.max, 42);
+    expect(initialFontSizeSlider.divisions, 28);
+    expect(initialFontSizeSlider.value, 22);
+    expect(
+      find.byKey(
+        const ValueKey('ai-subtitle-size-small'),
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
+
+    initialFontSizeSlider.onChanged!(31);
+    await tester.pumpAndSettle();
+    expect(find.text('ขนาด 31', skipOffstage: false), findsOneWidget);
+    expect(
+      tester
+          .widget<SubtitlePreviewOverlay>(
+            find.byType(SubtitlePreviewOverlay, skipOffstage: false),
+          )
+          .style
+          .fontSize,
+      31,
+    );
+
     final shortText = find.byKey(
       const ValueKey('ai-subtitle-length-short'),
       skipOffstage: false,
@@ -7718,10 +7925,6 @@ void main() {
     dragTarget.onPanEnd!(DragEndDetails());
     await tester.pump();
 
-    final smallSize = find.byKey(
-      const ValueKey('ai-subtitle-size-small'),
-      skipOffstage: false,
-    );
     final mintTextColor = find.byKey(
       ValueKey(
         'ai-subtitle-text-color-${const Color(0xFF00E5A8).toARGB32()}',
@@ -7734,7 +7937,6 @@ void main() {
       ),
       skipOffstage: false,
     );
-    tester.widget<Semantics>(smallSize).properties.onTap!.call();
     tester.widget<Semantics>(mintTextColor).properties.onTap!.call();
     tester.widget<Semantics>(whiteOutlineColor).properties.onTap!.call();
     await tester.pumpAndSettle();
@@ -7756,9 +7958,9 @@ void main() {
     expect(prepareRequest?.capabilities['color'], isFalse);
     expect(
       burnRequest?.subtitleFontSize,
-      allOf(greaterThanOrEqualTo(6), lessThanOrEqualTo(17)),
+      allOf(greaterThanOrEqualTo(6), lessThanOrEqualTo(31)),
       reason:
-          'the selected small size is an upper bound; a long Thai cue may shrink '
+          'the selected custom size is an upper bound; a long Thai cue may shrink '
           'further to stay on one line without being split mid-word',
     );
     expect(burnRequest?.subtitleTextColor, '#00E5A8');
@@ -7779,6 +7981,64 @@ void main() {
           .toList(),
       isEmpty,
     );
+  });
+
+  testWidgets('passes a custom subtitle size to export for a short cue',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('subtitle-custom-size.mp4');
+    BurnSubtitleRequest? burnRequest;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: null,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          subtitleFrameControllerFactory: (_) => _FakeSubtitleFrameController(
+            fakeDuration: const Duration(seconds: 150),
+          ),
+          createUpload: (_) async => const UploadResult(
+            id: 'u-subtitle-custom-size',
+            videoS3Key: 'uploads/subtitle-custom-size.mp4',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(
+            subtitleSegments: const [
+              ClipTranscriptSegment(
+                text: 'ดีมาก',
+                start: 0,
+                end: 1,
+              ),
+            ],
+          ),
+          burnVideo: (request) async {
+            burnRequest = request;
+            return _createRenderedVideoFixture(
+              'subtitle-custom-size-result.mp4',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await _openAdvancedPanel(tester, 'subtitle');
+    final slider = tester.widget<Slider>(
+      find.byKey(
+        const ValueKey('ai-subtitle-font-size-slider'),
+        skipOffstage: false,
+      ),
+    );
+    slider.onChanged!(31);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(burnRequest?.subtitleFontSize, 31);
   });
 
   testWidgets('sends only the selected silence preset', (tester) async {

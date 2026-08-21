@@ -435,6 +435,43 @@ void main() {
     expect(find.text(post.caption), findsNothing);
   });
 
+  testWidgets(
+      'month grid stays compact and ignores the POCO bottom system inset',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Future<double> pumpCalendar({required double bottomInset}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark,
+          home: MediaQuery(
+            data: MediaQueryData.fromView(tester.view).copyWith(
+              padding: EdgeInsets.only(bottom: bottomInset),
+              textScaler: const TextScaler.linear(1.45),
+            ),
+            child: Scaffold(
+              body: CalendarScreen(
+                now: () => DateTime(2026, 2, 14),
+                loadScheduledPosts: () async => const [],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester.getSize(find.byType(GridView)).height;
+    }
+
+    final heightWithoutInset = await pumpCalendar(bottomInset: 0);
+    final heightWithPocoInset = await pumpCalendar(bottomInset: 47);
+
+    expect(heightWithPocoInset, heightWithoutInset);
+    expect(heightWithPocoInset, lessThanOrEqualTo(251));
+  });
+
   for (final width in const [360.0, 393.0]) {
     for (final textScale in const [1.45, 2.0]) {
       testWidgets('calendar controls fit ${width}dp with ${textScale}x text',

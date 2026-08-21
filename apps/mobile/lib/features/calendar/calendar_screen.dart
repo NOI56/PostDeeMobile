@@ -606,7 +606,6 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   Widget _buildMonthCard() {
     final dotColors = _dayDotColors;
-    final usesLargeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
     final usesNarrowCalendar = MediaQuery.sizeOf(context).width <= 360;
     final daysInMonth =
         DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day;
@@ -677,9 +676,10 @@ class _CalendarScreenState extends State<CalendarScreen>
           const SizedBox(height: 6),
           GridView.count(
             crossAxisCount: 7,
-            childAspectRatio: usesLargeText ? 0.9 : 1,
+            childAspectRatio: 1,
             mainAxisSpacing: 2,
             crossAxisSpacing: 1,
+            padding: EdgeInsets.zero,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             children: [

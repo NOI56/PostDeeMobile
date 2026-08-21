@@ -899,7 +899,6 @@ class _AnalyticsMetricSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
     final viewsCard = _TotalPostsCard(
       totalViews: totalViews,
       isLoading: isLoading,
@@ -917,11 +916,11 @@ class _AnalyticsMetricSection extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (textScale > 1.25 || constraints.maxWidth < 340) {
+        if (constraints.maxWidth < 300) {
           return Column(
             children: [
               viewsCard,
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               likesCard,
             ],
           );
@@ -931,7 +930,7 @@ class _AnalyticsMetricSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: viewsCard),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(child: likesCard),
           ],
         );
@@ -960,6 +959,7 @@ class _TotalPostsCard extends StatelessWidget {
     final isThai = Localizations.localeOf(context).languageCode == 'th';
 
     return _ReferenceMetricCard(
+      key: const ValueKey('home-views-metric-card'),
       label: isThai ? 'ยอดวิวเดือนนี้' : 'Views this month',
       value: isLoading ? '...' : (totalViews == null ? '—' : '$totalViews'),
       icon: Icons.visibility_outlined,
@@ -990,6 +990,7 @@ class _LikesMetricCard extends StatelessWidget {
     final isThai = Localizations.localeOf(context).languageCode == 'th';
 
     return _ReferenceMetricCard(
+      key: const ValueKey('home-likes-metric-card'),
       label: isThai ? 'ไลก์เดือนนี้' : 'Likes this month',
       value: isLoading ? '...' : (totalLikes == null ? '—' : '$totalLikes'),
       icon: Icons.favorite_border_rounded,
@@ -1002,6 +1003,7 @@ class _LikesMetricCard extends StatelessWidget {
 
 class _ReferenceMetricCard extends StatelessWidget {
   const _ReferenceMetricCard({
+    super.key,
     required this.label,
     required this.value,
     required this.icon,
@@ -1021,92 +1023,101 @@ class _ReferenceMetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final isThai = Localizations.localeOf(context).languageCode == 'th';
+    final hasAction = errorMessage != null && onAction != null;
+    final actionLabel = isLocked
+        ? (isThai ? 'ดู Pro' : 'View Pro')
+        : (isThai ? 'ลองใหม่' : 'Try again');
+    final actionIcon =
+        isLocked ? Icons.lock_outline_rounded : Icons.refresh_rounded;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppTheme.glass,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          ),
-        ],
+    final card = Material(
+      color: AppTheme.glass,
+      elevation: 1,
+      shadowColor: Colors.black.withValues(alpha: 0.05),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppTheme.border),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    style: textTheme.labelMedium?.copyWith(
-                      color: AppTheme.textSecondary,
-                      fontWeight: FontWeight.w600,
+      child: InkWell(
+        onTap: hasAction ? onAction : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 9),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 16,
+                      child: FittedBox(
+                        alignment: Alignment.centerLeft,
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          style: textTheme.labelMedium?.copyWith(
+                            color: AppTheme.textSecondary,
+                            fontWeight: FontWeight.w600,
+                            height: 1,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                if (errorMessage == null || onAction == null)
-                  Icon(icon, color: AppTheme.textMuted, size: 18)
-                else
-                  IconButton(
-                    tooltip: isLocked
-                        ? (isThai ? 'ดู Pro' : 'View Pro')
-                        : (isThai ? 'ลองใหม่' : 'Try again'),
-                    onPressed: onAction,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 44,
-                      height: 44,
-                    ),
-                    padding: const EdgeInsets.all(10),
-                    icon: Icon(
-                      isLocked
-                          ? Icons.lock_outline_rounded
-                          : Icons.refresh_rounded,
-                      color: AppTheme.textMuted,
-                      size: 22,
-                    ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    hasAction ? actionIcon : icon,
+                    color: AppTheme.textMuted,
+                    size: 16,
                   ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Semantics(
-              label: value,
-              child: ExcludeSemantics(
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FittedBox(
-                    alignment: Alignment.centerLeft,
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      value,
-                      maxLines: 1,
-                      style: textTheme.headlineSmall?.copyWith(
-                        color: AppTheme.textPrimary,
-                        fontWeight: FontWeight.w900,
+                ],
+              ),
+              const SizedBox(height: 3),
+              Semantics(
+                label: value,
+                child: ExcludeSemantics(
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 24,
+                    child: FittedBox(
+                      alignment: Alignment.centerLeft,
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        value,
+                        maxLines: 1,
+                        style: textTheme.titleLarge?.copyWith(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            if (errorMessage != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                errorMessage!,
-                style: textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.error,
+              if (errorMessage != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  errorMessage!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                    height: 1,
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
+    );
+
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.2,
+      child: hasAction ? Tooltip(message: actionLabel, child: card) : card,
     );
   }
 }

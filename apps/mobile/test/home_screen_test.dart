@@ -234,6 +234,58 @@ void main() {
     expect(find.text('0'), findsNothing);
   });
 
+  for (final width in const [360.0, 393.0]) {
+    for (final textScale in const [1.45, 2.0]) {
+      testWidgets(
+          'keeps home metrics compact at ${width}dp and ${textScale}x text',
+          (tester) async {
+        await tester.binding.setSurfaceSize(Size(width, 852));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          _homeTestApp(
+            HomeScreen(
+              key: ValueKey('metrics-$width-$textScale'),
+              loadAnalytics: () async => const AnalyticsSummaryResult(
+                totalViews: 0,
+                totalLikes: 0,
+                platforms: [],
+              ),
+              loadSubscription: () async => const SubscriptionStatusResult(
+                userId: 'seller-compact-metrics',
+                plan: 'BASIC',
+                status: 'ACTIVE',
+                canSchedule: false,
+                canUseAiCaptions: false,
+                canUseAnalytics: false,
+              ),
+              loadRecentPosts: () async => const [],
+            ),
+            textScale: textScale,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _expectHomeTextAfterScrolling(tester, 'ยอดวิวเดือนนี้');
+        await tester.ensureVisible(find.text('ยอดวิวเดือนนี้'));
+        await tester.pumpAndSettle();
+
+        final viewsCard = find.byKey(const ValueKey('home-views-metric-card'));
+        final likesCard = find.byKey(const ValueKey('home-likes-metric-card'));
+        expect(viewsCard, findsOneWidget);
+        expect(likesCard, findsOneWidget);
+
+        final viewsRect = tester.getRect(viewsCard);
+        final likesRect = tester.getRect(likesCard);
+        expect(viewsRect.right, lessThan(likesRect.left));
+        expect((viewsRect.top - likesRect.top).abs(), lessThan(1));
+        expect(viewsRect.height, lessThanOrEqualTo(96));
+        expect(likesRect.height, lessThanOrEqualTo(96));
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets('loads real subscription status on the home plan card',
       (tester) async {
     await tester.pumpWidget(

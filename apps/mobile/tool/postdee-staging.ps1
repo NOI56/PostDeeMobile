@@ -13,6 +13,103 @@ $localDefines = Join-Path $mobileRoot 'staging.local.json'
 $exampleDefines = Join-Path $mobileRoot 'staging.local.example.json'
 $googleServices = Join-Path $mobileRoot 'android\app\src\debug\google-services.json'
 
+function Resolve-RevenueCatTestStoreDefines {
+  $localCandidate = Join-Path $mobileRoot 'revenuecat.local.json'
+  if (Test-Path -LiteralPath $localCandidate) {
+    return (Resolve-Path -LiteralPath $localCandidate).Path
+  }
+
+  $searchRoot = Split-Path -Parent $mobileRoot
+  while (-not [string]::IsNullOrWhiteSpace($searchRoot)) {
+    # A Git worktree intentionally does not copy ignored local credentials.
+    # Reuse the ignored Test Store overlay from the ancestor workspace when it
+    # exists, without copying the public SDK key into the worktree or Git.
+    $candidate = Join-Path $searchRoot 'apps\mobile\revenuecat.local.json'
+    $gitMarker = Join-Path $searchRoot '.git'
+    if ((Test-Path -LiteralPath $gitMarker) -and
+        (Test-Path -LiteralPath $candidate)) {
+      return (Resolve-Path -LiteralPath $candidate).Path
+    }
+
+    $parent = Split-Path -Parent $searchRoot
+    if ($parent -eq $searchRoot) {
+      break
+    }
+    $searchRoot = $parent
+  }
+
+  return $null
+}
+
+function Assert-NoServerSecrets {
+  param(
+    [Parameter(Mandatory = $true)]
+    [psobject]$Config,
+
+    [Parameter(Mandatory = $true)]
+    [string]$SourceLabel
+  )
+
+  foreach ($blockedKey in @(
+      'POSTDEE_MOCK_USER_ID',
+      'POSTDEE_MOCK_SUBSCRIPTION_PLAN',
+      'GEMINI_API_KEY',
+      'GROQ_API_KEY',
+      'ELEVENLABS_API_KEY',
+      'REVENUECAT_WEBHOOK_AUTH_TOKEN',
+      'REVENUECAT_REST_API_V1_KEY',
+      'GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_JSON',
+      'GOOGLE_PLAY_ACCESS_TOKEN',
+      'GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN'
+    )) {
+    if ($Config.PSObject.Properties.Name -contains $blockedKey) {
+      throw "$blockedKey must not be passed to the mobile app from $SourceLabel."
+    }
+  }
+}
+
+function Assert-RevenueCatTestStoreDefines {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  $config = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+  Assert-NoServerSecrets -Config $config -SourceLabel 'revenuecat.local.json'
+
+  $allowedKeys = @(
+    'ENABLE_REVENUECAT_BILLING',
+    'REVENUECAT_API_KEY',
+    'REVENUECAT_ANDROID_API_KEY'
+  )
+  foreach ($keyName in $config.PSObject.Properties.Name) {
+    if ($allowedKeys -cnotcontains $keyName) {
+      throw "$keyName is not allowed in revenuecat.local.json. Keep Staging, Firebase, product ids, and server settings in their dedicated configuration."
+    }
+  }
+
+  if ($config.ENABLE_REVENUECAT_BILLING -ne $true) {
+    throw 'ENABLE_REVENUECAT_BILLING must be true in revenuecat.local.json.'
+  }
+
+  $genericKey = ([string]$config.REVENUECAT_API_KEY).Trim()
+  $androidKey = ([string]$config.REVENUECAT_ANDROID_API_KEY).Trim()
+  $providedKeys = @($genericKey, $androidKey) | Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_)
+  }
+
+  if ($providedKeys.Count -eq 0) {
+    throw 'REVENUECAT_API_KEY or REVENUECAT_ANDROID_API_KEY is required in revenuecat.local.json.'
+  }
+
+  foreach ($sdkKey in $providedKeys) {
+    if ($sdkKey.Length -le 5 -or
+        -not $sdkKey.StartsWith('test_', [System.StringComparison]::Ordinal)) {
+      throw 'Only a RevenueCat Test Store public SDK key beginning with test_ is allowed in Staging device builds.'
+    }
+  }
+}
+
 $stagingDefines = if (Test-Path $localDefines) {
   $localDefines
 } elseif (Test-Path $exampleDefines) {
@@ -34,18 +131,20 @@ foreach ($argument in $FlutterArgs) {
   }
 }
 
-$defines = Get-Content -Raw $stagingDefines | ConvertFrom-Json
+$defines = Get-Content -Raw -LiteralPath $stagingDefines | ConvertFrom-Json
+Assert-NoServerSecrets -Config $defines -SourceLabel 'Staging configuration'
 
-foreach ($blockedKey in @(
-    'POSTDEE_MOCK_USER_ID',
-    'POSTDEE_MOCK_SUBSCRIPTION_PLAN',
-    'GEMINI_API_KEY',
-    'GROQ_API_KEY',
-    'ELEVENLABS_API_KEY',
-    'REVENUECAT_WEBHOOK_AUTH_TOKEN'
+if ($defines.ENABLE_REVENUECAT_BILLING -ne $false) {
+  throw 'ENABLE_REVENUECAT_BILLING must remain false in the base Staging configuration. Enable it only in revenuecat.local.json.'
+}
+
+foreach ($sdkKeyName in @(
+    'REVENUECAT_API_KEY',
+    'REVENUECAT_ANDROID_API_KEY',
+    'REVENUECAT_IOS_API_KEY'
   )) {
-  if ($defines.PSObject.Properties.Name -contains $blockedKey) {
-    throw "$blockedKey must not be passed to the mobile app."
+  if ($defines.PSObject.Properties.Name -contains $sdkKeyName) {
+    throw 'RevenueCat SDK keys must be kept in the ignored revenuecat.local.json Test Store overlay.'
   }
 }
 
@@ -85,6 +184,17 @@ if ($webClients.Count -ne 1 -or [string]$webClients[0].client_id -ne $serverClie
   throw 'GOOGLE_SERVER_CLIENT_ID must match the Web OAuth client in the Firebase Staging config.'
 }
 
+$revenueCatDefines = $null
+if ($Command -in @('run', 'build-apk')) {
+  $revenueCatDefines = Resolve-RevenueCatTestStoreDefines
+  if ([string]::IsNullOrWhiteSpace($revenueCatDefines)) {
+    throw 'RevenueCat Test Store config is required for Staging device builds. Add an ignored apps/mobile/revenuecat.local.json with ENABLE_REVENUECAT_BILLING=true and a public test_ SDK key.'
+  }
+
+  Assert-RevenueCatTestStoreDefines -Path $revenueCatDefines
+  Write-Host "Using validated RevenueCat Test Store config from $revenueCatDefines (SDK key hidden)."
+}
+
 function Resolve-FlutterBat {
   $searchRoot = $mobileRoot
 
@@ -122,7 +232,12 @@ $flutterCommand = @(
 
 Push-Location $mobileRoot
 try {
-  & $flutter @flutterCommand "--dart-define-from-file=$stagingDefines" @FlutterArgs
+  $dartDefineArgs = @("--dart-define-from-file=$stagingDefines")
+  if (-not [string]::IsNullOrWhiteSpace($revenueCatDefines)) {
+    $dartDefineArgs += "--dart-define-from-file=$revenueCatDefines"
+  }
+
+  & $flutter @flutterCommand @dartDefineArgs @FlutterArgs
   $flutterExitCode = $LASTEXITCODE
 } finally {
   Pop-Location

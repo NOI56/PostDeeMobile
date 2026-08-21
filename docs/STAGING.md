@@ -260,14 +260,24 @@ powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command
 powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command build-apk
 ```
 
-helper จะตรวจ API, Firebase Auth, local mock auth และ Google server client id
-ก่อนเรียก Flutter โดยเลือก `staging.local.json` ถ้ามี หรือใช้
-`staging.local.example.json` ที่ไม่มี secret เป็นค่าเริ่มต้น ห้ามใช้คำสั่ง
-`flutter build apk` ตรง ๆ สำหรับ APK Staging ที่จะติดตั้ง เพราะหากลืมส่ง Dart
-defines แอปจะปิด Firebase Auth ตามค่าเริ่มต้นที่ปลอดภัย ห้ามใช้ Staging กับ
-`--profile` หรือ `--release` เพราะสอง build type นี้ยังใช้ Firebase Production
-หากเปลี่ยนเครื่อง/CI ต้องเพิ่ม Debug SHA-1/SHA-256 ของ keystore ใหม่นั้นใน
-Firebase Staging ก่อน Google Sign-In จะทำงาน
+helper จะตรวจ API, Firebase Auth, local mock auth, Google server client id และ
+RevenueCat Test Store ก่อนเรียก Flutter โดยเลือก `staging.local.json` ถ้ามี หรือ
+ใช้ `staging.local.example.json` ที่ไม่มี secret เป็นค่าเริ่มต้น สำหรับ `run` และ
+`build-apk` ต้องมีไฟล์ ignored `revenuecat.local.json` ซึ่งกำหนด
+`ENABLE_REVENUECAT_BILLING=true` และ public SDK key ที่ขึ้นต้น `test_` ผ่าน
+`REVENUECAT_API_KEY` หรือ `REVENUECAT_ANDROID_API_KEY` เท่านั้น ถ้ารันจาก Git
+worktree helper จะค้นใน worktree ก่อน แล้วค้น `apps/mobile/revenuecat.local.json`
+จาก ancestor workspace โดยไม่คัดลอกหรือแสดง key หากไม่พบหรือเป็น Production key
+คำสั่งจะหยุดทันที แทนการ fallback ไป direct Google Play ที่ใช้ไม่ได้กับ package
+`.staging` แบบ sideload; คำสั่ง `test` ไม่บังคับไฟล์นี้
+
+ห้ามใส่ webhook token, RevenueCat subscriber REST key, Google service account
+หรือ backend secret อื่นใน mobile config และห้ามใช้คำสั่ง `flutter build apk`
+ตรง ๆ สำหรับ APK Staging ที่จะติดตั้ง เพราะหากลืมส่ง Dart defines แอปจะปิด
+Firebase Auth/RevenueCat ตามค่าเริ่มต้นที่ปลอดภัย ห้ามใช้ Staging กับ `--profile`
+หรือ `--release` เพราะสอง build type นี้ยังใช้ Firebase Production หากเปลี่ยน
+เครื่อง/CI ต้องเพิ่ม Debug SHA-1/SHA-256 ของ keystore ใหม่นั้นใน Firebase Staging
+ก่อน Google Sign-In จะทำงาน
 
 `/health` ตรวจเพียงว่า process ของ API ตอบได้ ไม่ได้ตรวจ R2, Firebase, Gemini/ElevenLabs
 หรือ RevenueCat จึงต้องผ่าน smoke test ด้านล่างก่อนเรียก Staging ว่าใช้งานฟังก์ชันจริงได้

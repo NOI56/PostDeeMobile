@@ -52,15 +52,25 @@ powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command
 powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command build-apk
 ```
 
-The helper validates the Staging API, Firebase flag, mock-auth flag, and Google
-server client id before invoking Flutter. It uses an ignored
-`staging.local.json` when present and otherwise falls back to the checked-in,
-non-secret `staging.local.example.json`. Do not use a raw `flutter build apk`
-for an installed Staging build: omitting the Dart define file safely disables
-Firebase Auth. The helper rejects `--profile`, `--release`, and Dart-define
-overrides because those could mix Staging and Production configuration. A
-different machine/CI debug keystore also needs its SHA-1 and SHA-256 registered
-in Firebase Staging.
+The helper validates the Staging API, Firebase flag, mock-auth flag, Google
+server client id, and RevenueCat Test Store overlay before invoking Flutter. It
+uses an ignored `staging.local.json` when present and otherwise falls back to
+the checked-in, non-secret `staging.local.example.json`. Device `run` and
+`build-apk` commands additionally require an ignored `revenuecat.local.json`
+with `ENABLE_REVENUECAT_BILLING=true` and a public Test Store SDK key beginning
+with `test_`. In a Git worktree the helper first checks that worktree, then
+searches ancestor workspaces for `apps/mobile/revenuecat.local.json`; it never
+copies or prints the key. Missing or invalid billing configuration stops the
+device build instead of silently selecting the unusable direct Google Play
+path for the `.staging` package. The `test` command does not require the local
+overlay.
+
+Do not use a raw `flutter build apk` for an installed Staging build: omitting
+the Dart define files safely disables Firebase Auth and RevenueCat. The helper
+rejects `--profile`, `--release`, Dart-define overrides, non-Test-Store SDK
+keys, and server secrets because those could mix Staging and Production
+configuration. A different machine/CI debug keystore also needs its SHA-1 and
+SHA-256 registered in Firebase Staging.
 
 ## Production / Sandbox Run
 
@@ -84,8 +94,8 @@ The production helper rejects empty RevenueCat keys, Test Store keys beginning
 with `test_`, and example placeholders beginning with `replace_with_`. The
 `build-apk` and `build-appbundle` commands specifically require a valid
 `REVENUECAT_ANDROID_API_KEY`; a generic `REVENUECAT_API_KEY` does not count for
-an Android release build. Use the direct Flutter command in the local testing
-section below when testing with the RevenueCat Test Store.
+an Android release build. Use the Staging helper in the local testing section
+below when testing with the RevenueCat Test Store.
 
 Build a release Android APK with the same production flags:
 
@@ -119,17 +129,22 @@ The Home Starter/Pro CTAs can run in two modes:
   `POST /billing/revenuecat/webhooks` to update the backend entitlement.
 
 For local RevenueCat Test Store testing, use the ignored
-`revenuecat.local.json` file that contains the dashboard SDK key. This file is
-only for the direct staging command below; the production helper never reads it:
+`revenuecat.local.json` file that contains only
+`ENABLE_REVENUECAT_BILLING=true` and either `REVENUECAT_API_KEY` or
+`REVENUECAT_ANDROID_API_KEY` with the dashboard's public `test_` SDK key. Never
+put the webhook token, subscriber REST key, Google service account, or another
+backend secret in this file. The production helper never reads it:
 
 ```powershell
-..\..\.tools\flutter\bin\flutter.bat run --debug --dart-define-from-file=staging.local.json --dart-define-from-file=revenuecat.local.json
+powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command run
+powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command build-apk
 ```
 
 Use `STORE_STARTER_MONTHLY_PRODUCT_ID=postdee_starter_monthly` and
 `STORE_PRO_MONTHLY_PRODUCT_ID=postdee_pro_monthly` as the default product ids.
-The ignored local RevenueCat file contains a Test Store key, so do not submit an
-App Store or Google Play release with that file. RevenueCat's Play app,
+The helper passes the base Staging defines first and the validated Test Store
+overlay second, so billing is enabled without moving the key into Git. Do not
+submit an App Store or Google Play release with that file. RevenueCat's Play app,
 products, entitlements, default offering, and production Android public SDK key
 are prepared. Release work still needs the Play Console app/subscriptions,
 service credentials, Internal Testing purchase/restore on a physical Android

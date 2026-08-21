@@ -156,6 +156,77 @@ void main() {
       contains(r'.\tool\postdee-staging.ps1 -Command build-apk'),
     );
   });
+  test(
+      'staging device builds require a validated RevenueCat Test Store overlay',
+      () async {
+    final helper = File('tool/postdee-staging.ps1');
+    final stagingExample = File('staging.local.example.json');
+    final mobileReadme = File('README.md');
+    final stagingGuide = File('../../docs/STAGING.md');
+
+    expect(helper.existsSync(), isTrue);
+    expect(stagingExample.existsSync(), isTrue);
+    expect(mobileReadme.existsSync(), isTrue);
+    expect(stagingGuide.existsSync(), isTrue);
+
+    final contents = await helper.readAsString();
+    final stagingDefines =
+        jsonDecode(await stagingExample.readAsString()) as Map<String, Object?>;
+    final readmeContents = await mobileReadme.readAsString();
+    final stagingGuideContents = await stagingGuide.readAsString();
+
+    expect(stagingDefines['ENABLE_REVENUECAT_BILLING'], isFalse);
+    expect(stagingDefines.containsKey('REVENUECAT_API_KEY'), isFalse);
+    expect(stagingDefines.containsKey('REVENUECAT_ANDROID_API_KEY'), isFalse);
+    expect(contents, contains('Resolve-RevenueCatTestStoreDefines'));
+    expect(contents, contains("'revenuecat.local.json'"));
+    expect(
+      contents,
+      contains(r"Join-Path $searchRoot 'apps\mobile\revenuecat.local.json'"),
+    );
+    expect(
+      contents,
+      contains(r"Join-Path $searchRoot '.git'"),
+    );
+    expect(
+      contents,
+      contains(r"$Command -in @('run', 'build-apk')"),
+    );
+    expect(
+      contents,
+      contains(
+        'RevenueCat Test Store config is required for Staging device builds.',
+      ),
+    );
+    expect(
+      contents,
+      contains(
+          'ENABLE_REVENUECAT_BILLING must be true in revenuecat.local.json.'),
+    );
+    expect(contents, contains('REVENUECAT_API_KEY'));
+    expect(contents, contains('REVENUECAT_ANDROID_API_KEY'));
+    expect(contents, contains(r'$allowedKeys -cnotcontains $keyName'));
+    expect(contents, contains("StartsWith('test_'"));
+    expect(contents, contains('REVENUECAT_WEBHOOK_AUTH_TOKEN'));
+    expect(contents, contains('REVENUECAT_REST_API_V1_KEY'));
+    expect(
+      contents,
+      contains(r'"--dart-define-from-file=$revenueCatDefines"'),
+    );
+    expect(contents, contains(r'& $flutter @flutterCommand @dartDefineArgs'));
+    expect(
+      contents,
+      contains(
+        'ENABLE_REVENUECAT_BILLING must remain false in the base Staging configuration.',
+      ),
+    );
+    expect(readmeContents, contains('searches ancestor workspaces'));
+    expect(readmeContents, contains('public Test Store SDK key beginning'));
+    expect(
+      stagingGuideContents,
+      contains('แทนการ fallback ไป direct Google Play ที่ใช้ไม่ได้'),
+    );
+  });
   test('Android production build applies Google services plugin', () async {
     final settingsGradle = File('android/settings.gradle.kts');
     final appGradle = File('android/app/build.gradle.kts');

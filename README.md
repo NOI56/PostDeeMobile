@@ -1012,7 +1012,14 @@ flutter run --dart-define=API_BASE_URL=http://localhost:4000 --dart-define=POSTD
 
 Use `STORE_STARTER_MONTHLY_PRODUCT_ID=postdee_starter_monthly` and `STORE_PRO_MONTHLY_PRODUCT_ID=postdee_pro_monthly` when testing non-default store subscription product ids.
 Use `POSTDEE_MOCK_SUBSCRIPTION_PLAN=STARTER` or `PRO` when testing scheduled posts against the mock backend.
-For local RevenueCat Test Store billing, run from `apps/mobile` with `--dart-define-from-file=revenuecat.local.json`. That ignored file contains the RevenueCat Test Store SDK key and must not be used for App Store or Google Play release builds.
+For local RevenueCat Test Store billing, keep the public `test_` SDK key in the
+ignored `apps/mobile/revenuecat.local.json`, then run
+`powershell.exe -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command run`
+from `apps/mobile`. The helper validates and supplies both the Staging base
+defines and Test Store overlay, including when invoked from a Git worktree. It
+fails closed when the overlay is missing or contains a non-Test-Store key or a
+server secret. Never use that overlay for App Store or Google Play release
+builds.
 For internal beat-sync UI QA only, add `--dart-define=ENABLE_EXPERIMENTAL_BEAT_SYNC=true`. Keep this define absent or `false` in production builds until the renderer is implemented and verified.
 For internal hook UI QA only, add `--dart-define=ENABLE_EXPERIMENTAL_AI_HOOK=true`. Keep it absent or `false` in production; this flag does not add highlight analysis or timeline rendering.
 

@@ -60,9 +60,9 @@ void main() {
     expect(_referenceNav(), findsOneWidget);
     for (final label in [
       'Home',
-      'Calendar',
-      'Create post',
       'AI Edit',
+      'Create post',
+      'Calendar',
       'Profile'
     ]) {
       expect(_referenceNavButton(label), findsOneWidget);

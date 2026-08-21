@@ -255,11 +255,10 @@ Reference direction:
 - Light/dark PostDee palettes with green accents, clear cards, thin borders, and
   small status indicators.
 - Thai-first copy for visible user flows.
-- Bottom navigation has five entry points: Home, Calendar, Create post,
-  AI Editing, and Profile. AI Editing replaces Analytics in the fourth slot and
-  keeps its focused child-flow layout; Analytics remains reachable from publish
-  results and individual post details so the existing reporting system is not
-  removed.
+- Bottom navigation has five entry points: Home, AI Editing, Create post,
+  Calendar, and Profile. AI Editing occupies the second slot, Calendar occupies
+  the fourth slot, and Analytics remains reachable from publish results and
+  individual post details so the existing reporting system is not removed.
 - Keep AI captioning available from Upload after a clip is selected.
 - Keep Templates available as a secondary entry point instead of a main
   bottom-nav tab.

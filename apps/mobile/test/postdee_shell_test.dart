@@ -265,9 +265,9 @@ void main() {
     expect(referenceNav, findsOneWidget);
     for (final label in [
       'Home',
-      'Calendar',
-      'Create post',
       'AI Edit',
+      'Create post',
+      'Calendar',
       'Profile'
     ]) {
       expect(
@@ -278,6 +278,16 @@ void main() {
         findsOneWidget,
       );
     }
+
+    final homeX = tester.getCenter(_referenceNavButton('Home')).dx;
+    final aiEditingX = tester.getCenter(_referenceNavButton('AI Edit')).dx;
+    final createX = tester.getCenter(_referenceNavButton('Create post')).dx;
+    final calendarX = tester.getCenter(_referenceNavButton('Calendar')).dx;
+    final profileX = tester.getCenter(_referenceNavButton('Profile')).dx;
+    expect(homeX, lessThan(aiEditingX));
+    expect(aiEditingX, lessThan(createX));
+    expect(createX, lessThan(calendarX));
+    expect(calendarX, lessThan(profileX));
 
     final createButton = _referenceNavButton('Create post');
     expect(
@@ -880,9 +890,9 @@ void main() {
         final navRect = tester.getRect(_referenceNav());
         for (final label in const [
           'หน้าแรก',
-          'ปฏิทิน',
-          'สร้างโพสต์',
           'AI ตัดต่อ',
+          'สร้างโพสต์',
+          'ปฏิทิน',
           'โปรไฟล์',
         ]) {
           final visibleLabel = find.descendant(

@@ -184,7 +184,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
           onOpenPostDetail: _openCalendarPostDetail,
         ),
         const AnalyticsScreen(showTitle: true),
-        // Profile is the 4th nav tab per the design handoff (no pushed route).
+        // Profile is the 5th nav tab per the design handoff (no pushed route).
         ProfileScreen(
           languageController: widget.languageController,
           themeController:
@@ -515,10 +515,10 @@ class _PostDeeBottomNav extends StatelessWidget {
                       ),
                       Expanded(
                         child: _ReferenceNavButton(
-                          label: l10n.captionTab,
-                          icon: Icons.calendar_month_rounded,
-                          selected: currentIndex == 3,
-                          onPressed: onCalendar,
+                          label: l10n.aiEditingTab,
+                          icon: Icons.auto_awesome_rounded,
+                          selected: currentIndex == 1,
+                          onPressed: onAiEditing,
                         ),
                       ),
                       Expanded(
@@ -530,10 +530,10 @@ class _PostDeeBottomNav extends StatelessWidget {
                       ),
                       Expanded(
                         child: _ReferenceNavButton(
-                          label: l10n.aiEditingTab,
-                          icon: Icons.auto_awesome_rounded,
-                          selected: currentIndex == 1,
-                          onPressed: onAiEditing,
+                          label: l10n.captionTab,
+                          icon: Icons.calendar_month_rounded,
+                          selected: currentIndex == 3,
+                          onPressed: onCalendar,
                         ),
                       ),
                       Expanded(

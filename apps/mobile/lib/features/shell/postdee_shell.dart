@@ -457,6 +457,8 @@ class _PostDeeBottomNav extends StatelessWidget {
   final VoidCallback onProfile;
   final PostDeeLocalizations l10n;
 
+  static const _height = 76.0;
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -486,7 +488,7 @@ class _PostDeeBottomNav extends StatelessWidget {
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                   child: Container(
-                    height: 58,
+                    height: _height,
                     decoration: BoxDecoration(
                       color: AppTheme.glass.withValues(alpha: 0.70),
                       borderRadius: BorderRadius.circular(999),
@@ -498,42 +500,49 @@ class _PostDeeBottomNav extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                height: 58,
+                height: _height,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _ReferenceNavButton(
-                        label: l10n.homeTab,
-                        icon: Icons.home_rounded,
-                        selected: currentIndex == 0,
-                        onPressed: onHome,
+                      Expanded(
+                        child: _ReferenceNavButton(
+                          label: l10n.homeTab,
+                          icon: Icons.home_rounded,
+                          selected: currentIndex == 0,
+                          onPressed: onHome,
+                        ),
                       ),
-                      _ReferenceNavButton(
-                        label: l10n.captionTab,
-                        icon: Icons.calendar_month_rounded,
-                        selected: currentIndex == 3,
-                        onPressed: onCalendar,
+                      Expanded(
+                        child: _ReferenceNavButton(
+                          label: l10n.captionTab,
+                          icon: Icons.calendar_month_rounded,
+                          selected: currentIndex == 3,
+                          onPressed: onCalendar,
+                        ),
                       ),
-                      _ReferenceCreateNavButton(
-                        label: l10n.locale.languageCode == 'th'
-                            ? 'สร้างโพสต์'
-                            : 'Create post',
-                        selected: currentIndex == 2,
-                        onPressed: onCreate,
+                      Expanded(
+                        child: _ReferenceCreateNavButton(
+                          label: l10n.createPostTab,
+                          selected: currentIndex == 2,
+                          onPressed: onCreate,
+                        ),
                       ),
-                      _ReferenceNavButton(
-                        label: l10n.aiEditingTab,
-                        icon: Icons.auto_awesome_rounded,
-                        selected: currentIndex == 1,
-                        onPressed: onAiEditing,
+                      Expanded(
+                        child: _ReferenceNavButton(
+                          label: l10n.aiEditingTab,
+                          icon: Icons.auto_awesome_rounded,
+                          selected: currentIndex == 1,
+                          onPressed: onAiEditing,
+                        ),
                       ),
-                      _ReferenceNavButton(
-                        label: l10n.profileTab,
-                        icon: Icons.person_rounded,
-                        selected: currentIndex == 5,
-                        onPressed: onProfile,
+                      Expanded(
+                        child: _ReferenceNavButton(
+                          label: l10n.profileTab,
+                          icon: Icons.person_rounded,
+                          selected: currentIndex == 5,
+                          onPressed: onProfile,
+                        ),
                       ),
                     ],
                   ),
@@ -562,8 +571,6 @@ class _ReferenceNavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Selected tab sits in a mint capsule with the green-ink icon; others show
-    // just a faint icon (no labels), per the design handoff.
     final color = selected ? AppTheme.accentCyanInk : AppTheme.textMuted;
 
     return Semantics(
@@ -571,19 +578,41 @@ class _ReferenceNavButton extends StatelessWidget {
       button: true,
       selected: selected,
       child: ExcludeSemantics(
-        child: IconButton(
-          tooltip: label,
-          onPressed: onPressed,
-          icon: AnimatedScale(
-            scale: selected ? 1.05 : 1,
-            duration: const Duration(milliseconds: 200),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          style: IconButton.styleFrom(
-            backgroundColor: selected ? AppTheme.mint : null,
-            fixedSize: const Size(56, 44),
-            shape: const StadiumBorder(),
-            padding: EdgeInsets.zero,
+        child: Tooltip(
+          message: label,
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(18),
+              child: SizedBox(
+                height: _PostDeeBottomNav._height,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(2, 6, 2, 5),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      AnimatedContainer(
+                        width: 42,
+                        height: 34,
+                        duration: const Duration(milliseconds: 200),
+                        decoration: BoxDecoration(
+                          color: selected ? AppTheme.mint : Colors.transparent,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: AnimatedScale(
+                          scale: selected ? 1.05 : 1,
+                          duration: const Duration(milliseconds: 200),
+                          child: Icon(icon, color: color, size: 22),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      _ReferenceNavLabel(label: label, selected: selected),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -604,82 +633,145 @@ class _ReferenceCreateNavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Transform.translate(
-      offset: const Offset(0, -10),
-      child: Semantics(
-        label: label,
-        button: true,
-        selected: selected,
-        child: ExcludeSemantics(
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onPressed,
-            child: SizedBox(
-              width: 56,
-              height: 56,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // Soft green halo bleeding slightly past the button.
-                  Positioned(
-                    left: -6,
-                    top: -6,
-                    right: -6,
-                    bottom: -6,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: AppTheme.accent.withValues(alpha: 0.18),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          stops: [0.0, 0.45, 1.0],
-                          colors: [
-                            Color(0xFF19C98E),
-                            Color(0xFF0E9F6E),
-                            Color(0xFF086A49),
-                          ],
-                        ),
-                        boxShadow: [
-                          // Card-colored ring separating the button from the
-                          // capsule behind it (box-shadow 0 0 0 5px var(--card)).
-                          BoxShadow(color: AppTheme.glass, spreadRadius: 5),
-                          BoxShadow(
-                            color: AppTheme.accent.withValues(alpha: 0.65),
-                            blurRadius: 26,
-                            spreadRadius: -8,
-                            offset: const Offset(0, 14),
+    return Semantics(
+      label: label,
+      button: true,
+      selected: selected,
+      child: ExcludeSemantics(
+        child: Tooltip(
+          message: label,
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(18),
+              child: SizedBox(
+                height: _PostDeeBottomNav._height,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      top: -8,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Positioned(
+                                left: -5,
+                                top: -5,
+                                right: -5,
+                                bottom: -5,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color:
+                                        AppTheme.accent.withValues(alpha: 0.18),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                              Positioned.fill(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      stops: [0.0, 0.45, 1.0],
+                                      colors: [
+                                        Color(0xFF19C98E),
+                                        Color(0xFF0E9F6E),
+                                        Color(0xFF086A49),
+                                      ],
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppTheme.glass,
+                                        spreadRadius: 4,
+                                      ),
+                                      BoxShadow(
+                                        color: AppTheme.accent
+                                            .withValues(alpha: 0.65),
+                                        blurRadius: 24,
+                                        spreadRadius: -8,
+                                        offset: const Offset(0, 12),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.add_rounded,
+                                    color: Colors.white,
+                                    size: 25,
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                top: 5,
+                                left: 10,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.35),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: const SizedBox(width: 20, height: 9),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.add_rounded,
-                        color: Colors.white,
-                        size: 27,
+                        ),
                       ),
                     ),
-                  ),
-                  // Glossy highlight near the top edge.
-                  Positioned(
-                    top: 6,
-                    left: 11,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(999),
+                    Positioned(
+                      left: 2,
+                      right: 2,
+                      bottom: 5,
+                      child: _ReferenceNavLabel(
+                        label: label,
+                        selected: selected,
                       ),
-                      child: const SizedBox(width: 24, height: 11),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReferenceNavLabel extends StatelessWidget {
+  const _ReferenceNavLabel({
+    required this.label,
+    required this.selected,
+  });
+
+  final String label;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: SizedBox(
+        width: double.infinity,
+        height: 15,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(
+              color: selected ? AppTheme.accentCyan : AppTheme.textMuted,
+              fontSize: 10,
+              height: 1,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
             ),
           ),
         ),

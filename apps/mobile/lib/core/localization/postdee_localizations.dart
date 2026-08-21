@@ -41,6 +41,7 @@ class PostDeeLocalizations {
           _PostDeeLocalizedValues(
             homeTab: 'หน้าแรก',
             uploadTab: 'อัปโหลด',
+            createPostTab: 'สร้างโพสต์',
             editTab: 'ตัดต่อ',
             uploadSaveDraftAction: 'บันทึกฉบับร่าง',
             uploadDraftSavedMessage: 'บันทึกฉบับร่างไว้ในเครื่องแล้ว',
@@ -89,6 +90,7 @@ class PostDeeLocalizations {
           _PostDeeLocalizedValues(
             homeTab: 'Home',
             uploadTab: 'Upload',
+            createPostTab: 'Create post',
             editTab: 'Edit',
             uploadSaveDraftAction: 'Save draft',
             uploadDraftSavedMessage: 'Draft saved on this device',
@@ -137,6 +139,7 @@ class PostDeeLocalizations {
           _PostDeeLocalizedValues(
             homeTab: 'Trang chủ',
             uploadTab: 'Tải lên',
+            createPostTab: 'Tạo bài',
             editTab: 'Chỉnh sửa',
             uploadSaveDraftAction: 'Lưu bản nháp',
             uploadDraftSavedMessage: 'Đã lưu bản nháp',
@@ -185,6 +188,7 @@ class PostDeeLocalizations {
           _PostDeeLocalizedValues(
             homeTab: '首页',
             uploadTab: '上传',
+            createPostTab: '创建',
             editTab: '编辑',
             uploadSaveDraftAction: '保存草稿',
             uploadDraftSavedMessage: '草稿已保存',
@@ -233,6 +237,7 @@ class PostDeeLocalizations {
           _PostDeeLocalizedValues(
             homeTab: 'Beranda',
             uploadTab: 'Unggah',
+            createPostTab: 'Buat',
             editTab: 'Edit',
             uploadSaveDraftAction: 'Simpan draf',
             uploadDraftSavedMessage: 'Draf disimpan',
@@ -281,6 +286,7 @@ class PostDeeLocalizations {
           _PostDeeLocalizedValues(
             homeTab: 'Laman Utama',
             uploadTab: 'Muat naik',
+            createPostTab: 'Cipta',
             editTab: 'Edit',
             uploadSaveDraftAction: 'Simpan draf',
             uploadDraftSavedMessage: 'Draf disimpan',
@@ -329,6 +335,7 @@ class PostDeeLocalizations {
           _PostDeeLocalizedValues(
             homeTab: 'Home',
             uploadTab: 'I-upload',
+            createPostTab: 'Gumawa',
             editTab: 'I-edit',
             uploadSaveDraftAction: 'I-save ang draft',
             uploadDraftSavedMessage: 'Na-save ang draft',
@@ -377,6 +384,7 @@ class PostDeeLocalizations {
           _PostDeeLocalizedValues(
             homeTab: 'ホーム',
             uploadTab: 'アップロード',
+            createPostTab: '作成',
             editTab: '編集',
             uploadSaveDraftAction: '下書きを保存',
             uploadDraftSavedMessage: '下書きを保存しました',
@@ -426,6 +434,7 @@ class PostDeeLocalizations {
 
   String get homeTab => _values.homeTab;
   String get uploadTab => _values.uploadTab;
+  String get createPostTab => _values.createPostTab;
   String get editTab => _values.editTab;
   String get uploadSaveDraftAction => _values.uploadSaveDraftAction;
   String get uploadDraftSavedMessage => _values.uploadDraftSavedMessage;
@@ -473,6 +482,7 @@ class _PostDeeLocalizedValues {
   const _PostDeeLocalizedValues({
     required this.homeTab,
     required this.uploadTab,
+    required this.createPostTab,
     required this.editTab,
     required this.uploadSaveDraftAction,
     required this.uploadDraftSavedMessage,
@@ -518,6 +528,7 @@ class _PostDeeLocalizedValues {
 
   final String homeTab;
   final String uploadTab;
+  final String createPostTab;
   final String editTab;
   final String uploadSaveDraftAction;
   final String uploadDraftSavedMessage;

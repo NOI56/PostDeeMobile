@@ -41,7 +41,7 @@ class AppTheme {
 
   // The capsule nav floats over tab content (extendBody), so tab screens must
   // reserve this much bottom space for their scroll views to clear it.
-  static const navOverlap = 96.0;
+  static const navOverlap = 116.0;
   static const tabScreenPadding =
       EdgeInsets.fromLTRB(spaceLg, spaceMd, spaceLg, navOverlap);
 

@@ -194,7 +194,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AppBar), findsNothing);
-    expect(tester.getSize(_referenceNav()).height, lessThanOrEqualTo(58));
+    expect(tester.getSize(_referenceNav()).height, lessThanOrEqualTo(76));
   });
   testWidgets(
       'keeps upload schedule controls above bottom nav on a phone viewport',
@@ -427,8 +427,8 @@ void main() {
     // button above it so the tap doesn't land on the nav.
     final viewportBottom =
         tester.view.physicalSize.height / tester.view.devicePixelRatio;
-    final overlap =
-        tester.getRect(darkModeButton).bottom - (viewportBottom - 96);
+    final overlap = tester.getRect(darkModeButton).bottom -
+        (viewportBottom - AppTheme.navOverlap);
     if (overlap > 0) {
       await tester.drag(
         find.byType(Scrollable).first,
@@ -489,7 +489,8 @@ void main() {
     await tester.pumpAndSettle();
     final viewportBottom =
         tester.view.physicalSize.height / tester.view.devicePixelRatio;
-    final overlap = tester.getRect(thaiButton).bottom - (viewportBottom - 96);
+    final overlap = tester.getRect(thaiButton).bottom -
+        (viewportBottom - AppTheme.navOverlap);
     if (overlap > 0) {
       await tester.drag(
         find.byType(Scrollable).first,
@@ -549,7 +550,7 @@ void main() {
     await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
     await tester.pumpAndSettle();
 
-    expect(find.text('หน้าแรก'), findsOneWidget);
+    expect(find.text('หน้าแรก'), findsNWidgets(2));
     expect(find.bySemanticsLabel('แจ้งเตือน'), findsOneWidget);
     expect(find.byType(BottomNavigationBar), findsNothing);
     expect(find.text('Google'), findsNothing);

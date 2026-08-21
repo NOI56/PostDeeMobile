@@ -21,7 +21,7 @@ void main() {
     await tester.pumpWidget(const PostDeeApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('หน้าแรก'), findsOneWidget);
+    expect(find.text('หน้าแรก'), findsNWidgets(2));
     expect(
       find.byKey(const ValueKey('postdee-reference-bottom-nav')),
       findsOneWidget,

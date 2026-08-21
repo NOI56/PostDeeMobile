@@ -827,6 +827,79 @@ void main() {
     expect(profileSize.height, greaterThanOrEqualTo(44));
   });
 
+  for (final width in const [360.0, 393.0]) {
+    for (final textScale in const [1.45, 2.0]) {
+      testWidgets(
+          'shows Thai bottom nav labels at ${width}dp with ${textScale}x text',
+          (tester) async {
+        SharedPreferences.setMockInitialValues({
+          'postdee_onboarding_seen': true,
+        });
+        tester.view.physicalSize = Size(width, 852);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final sessionStore = PostDeeAuthSessionStore.instance;
+        final languageController = PostDeeLanguageController(
+          initialLocale: const Locale('th'),
+        );
+        sessionStore.signIn(
+          const AuthSession(
+            userId: 'firebase-user-shell',
+            idToken: 'firebase-id-token',
+            email: 'seller@example.com',
+            displayName: 'PostDee Seller',
+          ),
+        );
+        addTearDown(sessionStore.clear);
+        addTearDown(languageController.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.dark,
+            locale: const Locale('th'),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(textScale),
+              ),
+              child: child!,
+            ),
+            localizationsDelegates: const [
+              PostDeeLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: PostDeeLocalizations.supportedLocales,
+            home: PostDeeShell(languageController: languageController),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final navRect = tester.getRect(_referenceNav());
+        for (final label in const [
+          'หน้าแรก',
+          'ปฏิทิน',
+          'สร้างโพสต์',
+          'AI ตัดต่อ',
+          'โปรไฟล์',
+        ]) {
+          final visibleLabel = find.descendant(
+            of: _referenceNav(),
+            matching: find.text(label),
+          );
+          expect(visibleLabel, findsOneWidget);
+          final labelRect = tester.getRect(visibleLabel);
+          expect(labelRect.left, greaterThanOrEqualTo(navRect.left));
+          expect(labelRect.right, lessThanOrEqualTo(navRect.right));
+          expect(labelRect.bottom, lessThanOrEqualTo(navRect.bottom));
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets('opens and refreshes calendar after a scheduled post succeeds',
       (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});

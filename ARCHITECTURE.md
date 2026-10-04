@@ -87,6 +87,9 @@ Current mobile pieces:
   platform's bottom sheet. Review shows the connected account/channel/page and
   requested outcome for every selected destination; missing identity, incomplete
   settings, or an unknown outcome disables confirmation.
+- Failed connection-status reads remain unknown, with connection actions
+  disabled until a successful refresh; they do not fabricate zero connected
+  accounts or a confirmed disconnect.
 - Calendar tab refreshes only while visible, polls queued/publishing posts every
   30 seconds, displays terminal posts by their actual publish time, and opens
   completed results read-only.
@@ -505,6 +508,19 @@ Rules:
 - Provider retries are explicit-safe-only. Unknown network/polling outcomes are
   terminal and tell the user to inspect the destination before trying again.
 
+The mobile HTTP client applies an end-to-end 20-second deadline to ordinary
+JSON requests, including token refresh, connection, and body consumption.
+Transcription, prepare, planning, and caption-generation POSTs use 120 seconds;
+legacy upload PUTs and each multipart part PUT use 180 seconds. Constructor
+overrides support deterministic tests. On `API_REQUEST_TIMEOUT` (client-local
+`ApiException` status `408`), a pending request is aborted or an active response
+subscription is canceled; late completions cannot start the next HTTP stage.
+The client does not close a shared HTTP client to cancel unrelated requests.
+The server may already have accepted a timed-out mutation. Draft/request IDs,
+explicit publish retry, signed-URL expiry retry, and multipart completion
+reconciliation retain their existing rules; remote-object orphan cleanup is
+still a separate release gate. Local FFmpeg rendering has its own deadlines.
+
 ## RevenueCat Subscription Flow
 
 PostDee uses RevenueCat as the main mobile paid subscription provider.
@@ -562,6 +578,18 @@ resync share the same per-user serializable cursor, so a stale snapshot cannot
 undo a newer lifecycle event. Equal millisecond timestamps are non-newer. When
 RevenueCat omits `request_date_ms`, the API falls back to local receipt time;
 server clock skew remains an operational risk and clocks must stay synchronized.
+
+Mobile distinguishes store purchase completion from PostDee confirmation. If
+verification or the subscription read fails after a purchase, it retains a
+pending-confirmation state and offers receipt/read retry without another
+purchase; paid benefits require backend confirmation. A failed initial
+current-plan lookup disables new purchases while preserving retry and Restore.
+`StoreSubscriptionSessionCache` retains this service in memory under the stable
+signed-in UID, so reopening the paywall preserves pending confirmation. Token
+rotation under the same UID keeps it; sign-out/account changes invalidate the
+service, clear pending state, and reject old in-flight verification results.
+The cache does not persist receipts. After app restart, recovery uses Restore.
+Package entitlements and API/database contracts are unchanged.
 
 Production status and remaining work:
 

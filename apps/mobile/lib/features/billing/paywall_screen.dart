@@ -40,6 +40,7 @@ class PaywallScreen extends StatefulWidget {
     this.onSubscribed,
     this.service,
     this.loadSubscription,
+    this.sessionCache,
   });
 
   /// Called with the chosen plan id after a verified purchase.
@@ -51,19 +52,21 @@ class PaywallScreen extends StatefulWidget {
   /// Loads the current subscription so the right plan is marked as active.
   /// Injectable for tests; defaults to the real backend.
   final PaywallSubscriptionLoader? loadSubscription;
+  final StoreSubscriptionSessionCache? sessionCache;
 
   @override
   State<PaywallScreen> createState() => _PaywallScreenState();
 }
 
 class _PaywallScreenState extends State<PaywallScreen> {
-  late final StoreSubscriptionService _service =
-      widget.service ?? StoreSubscriptionService();
+  late final StoreSubscriptionService _service = widget.service ??
+      (widget.sessionCache ?? StoreSubscriptionSessionCache.instance).service;
   final _apiClient = PostDeeApiClient();
   SubscriptionStatusResult? _subscription;
   var _isSubscriptionLoading = true;
   Object? _subscriptionLoadError;
   var _subscriptionLoadGeneration = 0;
+  var _isBillingInProgress = false;
 
   @override
   void initState() {
@@ -170,10 +173,16 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Future<void> _subscribe(_PlanOption plan) async {
-    if (plan.id == 'basic') {
+    if (plan.id == 'basic' ||
+        _isBillingInProgress ||
+        _isSubscriptionLoading ||
+        _subscriptionLoadError != null ||
+        _subscription == null ||
+        _service.hasPendingConfirmation) {
       return;
     }
 
+    setState(() => _isBillingInProgress = true);
     final messenger = ScaffoldMessenger.of(context);
 
     showDialog<void>(
@@ -208,6 +217,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _applyVerifiedSubscription(result.subscription);
       widget.onSubscribed?.call(plan.id);
       _showSuccess(plan);
+    } on StoreSubscriptionConfirmationPendingException {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      setState(() {});
     } on StoreSubscriptionException catch (error) {
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
@@ -218,10 +231,62 @@ class _PaywallScreenState extends State<PaywallScreen> {
       messenger.showSnackBar(
         const SnackBar(content: Text('สมัครไม่สำเร็จ ลองใหม่อีกครั้ง')),
       );
+    } finally {
+      if (mounted) setState(() => _isBillingInProgress = false);
+    }
+  }
+
+  Future<void> _recheckPurchase() async {
+    if (_isBillingInProgress || !_service.hasPendingConfirmation) return;
+    setState(() => _isBillingInProgress = true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: AppTheme.charcoal,
+          content: const Row(
+            children: [
+              CircularProgressIndicator(color: AppTheme.accent),
+              SizedBox(width: AppTheme.spaceLg),
+              Expanded(child: Text('กำลังตรวจสอบการซื้อ...')),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final result = await _service.retryPendingConfirmation();
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      _applyVerifiedSubscription(result.subscription);
+      widget.onSubscribed?.call(result.subscription.plan.toLowerCase());
+      _showRestoreSuccess(
+        result.subscription.plan,
+        title: 'ยืนยันการซื้อสำเร็จ',
+      );
+    } on StoreSubscriptionConfirmationPendingException catch (error) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } on StoreSubscriptionException catch (error) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } finally {
+      if (mounted) setState(() => _isBillingInProgress = false);
     }
   }
 
   Future<void> _restorePurchase() async {
+    if (_isBillingInProgress) return;
+    setState(() => _isBillingInProgress = true);
     final messenger = ScaffoldMessenger.of(context);
 
     showDialog<void>(
@@ -261,6 +326,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
       messenger.showSnackBar(
         const SnackBar(content: Text('กู้คืนการซื้อไม่สำเร็จ ลองใหม่อีกครั้ง')),
       );
+    } finally {
+      if (mounted) setState(() => _isBillingInProgress = false);
     }
   }
 
@@ -281,12 +348,13 @@ class _PaywallScreenState extends State<PaywallScreen> {
     );
   }
 
-  void _showRestoreSuccess(String plan) {
+  void _showRestoreSuccess(String plan,
+      {String title = 'กู้คืนการซื้อสำเร็จ'}) {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.charcoal,
-        title: const Text('กู้คืนการซื้อสำเร็จ'),
+        title: Text(title),
         content: Text('คืนสิทธิ์แพ็กเกจ ${plan.toUpperCase()} เรียบร้อยแล้ว'),
         actions: [
           TextButton(
@@ -333,17 +401,30 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 _PaywallSubscriptionStatus(
                   key: const ValueKey('paywall-subscription-error'),
                   message:
-                      'โหลดแพ็กเกจปัจจุบันไม่สำเร็จ แต่ยังสมัครหรือกู้คืนการซื้อได้',
+                      'โหลดแพ็กเกจปัจจุบันไม่สำเร็จ กรุณาลองใหม่ก่อนสมัคร หรือกู้คืนการซื้อเดิม',
                   onRetry: _loadSubscription,
                 ),
               if (_isSubscriptionLoading || _subscriptionLoadError != null)
                 const SizedBox(height: 13),
+              if (_service.hasPendingConfirmation) ...[
+                _PaywallSubscriptionStatus(
+                  key: const ValueKey('paywall-purchase-awaiting-confirmation'),
+                  message: const StoreSubscriptionConfirmationPendingException()
+                      .message,
+                  onRetry: _isBillingInProgress ? null : _recheckPurchase,
+                  retryKey: const ValueKey('paywall-retry-purchase'),
+                  retryLabel: 'ตรวจสอบการซื้ออีกครั้ง',
+                ),
+                const SizedBox(height: 13),
+              ],
               for (var index = 0; index < _plans.length; index += 1) ...[
                 _PlanCard(
                   plan: _plans[index],
                   onSubscribe: !_isSubscriptionLoading &&
-                          (_subscription != null ||
-                              _subscriptionLoadError != null)
+                          !_isBillingInProgress &&
+                          !_service.hasPendingConfirmation &&
+                          _subscriptionLoadError == null &&
+                          _subscription != null
                       ? () => _subscribe(_plans[index])
                       : null,
                 ),
@@ -354,7 +435,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 SizedBox(
                   height: 48,
                   child: OutlinedButton.icon(
-                    onPressed: _restorePurchase,
+                    onPressed: _isBillingInProgress ? null : _restorePurchase,
                     icon: const Icon(Icons.restore, size: 19),
                     label: const Text('กู้คืนการซื้อ'),
                     style: OutlinedButton.styleFrom(
@@ -395,11 +476,15 @@ class _PaywallSubscriptionStatus extends StatelessWidget {
     required this.message,
     this.isLoading = false,
     this.onRetry,
+    this.retryKey = const ValueKey('paywall-retry-subscription'),
+    this.retryLabel = 'ลองใหม่',
   });
 
   final String message;
   final bool isLoading;
   final VoidCallback? onRetry;
+  final Key retryKey;
+  final String retryLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -410,39 +495,42 @@ class _PaywallSubscriptionStatus extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (isLoading)
-            const SizedBox.square(
-              dimension: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            Icon(
-              Icons.cloud_off_outlined,
-              size: 20,
-              color: AppTheme.textSecondary,
-            ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                fontSize: 12.5,
-                height: 1.35,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textSecondary,
+          Row(
+            children: [
+              if (isLoading)
+                const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(
+                  Icons.cloud_off_outlined,
+                  size: 20,
+                  color: AppTheme.textSecondary,
+                ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-          if (onRetry != null) ...[
-            const SizedBox(width: 8),
+          if (onRetry != null)
             TextButton(
-              key: const ValueKey('paywall-retry-subscription'),
+              key: retryKey,
               onPressed: onRetry,
-              child: const Text('ลองใหม่'),
+              child: Text(retryLabel),
             ),
-          ],
         ],
       ),
     );

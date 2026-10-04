@@ -1675,7 +1675,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return;
     }
 
-    if (_draftUnavailablePlatforms.isNotEmpty) {
+    if (_connectionsErrorMessage == null &&
+        _draftUnavailablePlatforms.isNotEmpty) {
       setState(() {
         _errorMessage = 'เชื่อมช่องทางที่เก็บไว้ในร่างให้ครบก่อนโพสต์: '
             '${_draftUnavailablePlatforms.map((platform) => platform.label).join(', ')}';
@@ -3392,9 +3393,17 @@ class _PlatformSelectorSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasConnectedPlatforms = connectedPlatforms.isNotEmpty;
-    final visiblePlatforms = SocialPlatform.values
-        .where(connectedPlatforms.contains)
-        .toList(growable: false);
+    final hasConnectionError = connectionsErrorMessage != null;
+    final visiblePlatforms = isLoadingConnections || hasConnectionError
+        ? <SocialPlatform>[]
+        : SocialPlatform.values
+            .where(connectedPlatforms.contains)
+            .toList(growable: false);
+    final unavailableDraftMessage = isLoadingConnections
+        ? 'กำลังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้: '
+        : hasConnectionError
+            ? 'ยังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้ไม่ได้: '
+            : 'ฉบับร่างเลือกไว้แต่ยังไม่ได้เชื่อม: ';
     final statusColor = hasConnectedPlatforms
         ? AppTheme.accentCyanInk
         : const Color(0xFFB5740B);
@@ -3429,9 +3438,11 @@ class _PlatformSelectorSection extends StatelessWidget {
           button: true,
           label: isLoadingConnections
               ? 'กำลังตรวจสอบช่องทาง'
-              : connectedPlatforms.isEmpty
-                  ? 'ยังไม่ได้เชื่อมต่อช่องทาง'
-                  : 'เชื่อมต่อแล้ว ${connectedPlatforms.length} ช่องทาง',
+              : hasConnectionError
+                  ? 'ตรวจสอบช่องทางไม่ได้ ลองใหม่'
+                  : connectedPlatforms.isEmpty
+                      ? 'ยังไม่ได้เชื่อมต่อช่องทาง'
+                      : 'เชื่อมต่อแล้ว ${connectedPlatforms.length} ช่องทาง',
           child: GestureDetector(
             onTap: connectionsErrorMessage != null
                 ? onRetryConnections
@@ -3450,9 +3461,11 @@ class _PlatformSelectorSection extends StatelessWidget {
                   Icon(
                     isLoadingConnections
                         ? Icons.sync_rounded
-                        : connectedPlatforms.isEmpty
-                            ? Icons.link_off_rounded
-                            : Icons.check_circle_outline_rounded,
+                        : hasConnectionError
+                            ? Icons.cloud_off_rounded
+                            : connectedPlatforms.isEmpty
+                                ? Icons.link_off_rounded
+                                : Icons.check_circle_outline_rounded,
                     color: statusColor,
                     size: 22,
                   ),
@@ -3480,9 +3493,13 @@ class _PlatformSelectorSection extends StatelessWidget {
                         ),
                         const SizedBox(height: 1),
                         Text(
-                          connectedPlatforms.isEmpty
-                              ? 'เชื่อมต่อบัญชีโซเชียลก่อนเริ่มโพสต์'
-                              : 'เลือกเฉพาะช่องทางที่ต้องการโพสต์รอบนี้',
+                          isLoadingConnections
+                              ? 'กรุณารอผลการตรวจสอบสถานะช่องทาง'
+                              : hasConnectionError
+                                  ? 'ยังยืนยันสถานะบัญชีไม่ได้ กรุณาลองใหม่ก่อนโพสต์'
+                                  : connectedPlatforms.isEmpty
+                                      ? 'เชื่อมต่อบัญชีโซเชียลก่อนเริ่มโพสต์'
+                                      : 'เลือกเฉพาะช่องทางที่ต้องการโพสต์รอบนี้',
                           style: TextStyle(
                             fontSize: 11,
                             color: hasConnectedPlatforms
@@ -3505,11 +3522,24 @@ class _PlatformSelectorSection extends StatelessWidget {
             ),
           ),
         ),
+        if (hasConnectionError) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: const ValueKey('uploader-retry-connections'),
+              onPressed: isLoadingConnections ? null : onRetryConnections,
+              icon: const Icon(Icons.refresh),
+              label: const Text('ลองใหม่'),
+            ),
+          ),
+        ],
         if (unavailableDraftPlatforms.isNotEmpty) ...[
           const SizedBox(height: 8),
           PostDeeNotice(
-            message: 'ฉบับร่างเลือกไว้แต่ยังไม่ได้เชื่อม: '
-                '${unavailableDraftPlatforms.map((platform) => platform.label).join(', ')}',
+            message: unavailableDraftMessage +
+                unavailableDraftPlatforms
+                    .map((platform) => platform.label)
+                    .join(', '),
             color: const Color(0xFFB5740B),
             icon: Icons.link_off_rounded,
           ),

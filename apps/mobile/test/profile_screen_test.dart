@@ -757,6 +757,50 @@ void main() {
     expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
   });
 
+  testWidgets(
+      'returning after failed connection refresh hides the old profile count',
+      (tester) async {
+    var calls = 0;
+    var unavailable = false;
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      connectionsLoader: () async {
+        calls += 1;
+        if (unavailable) {
+          throw const ApiException('Request failed', statusCode: 503);
+        }
+        return const [
+          SocialConnectionResult(platform: 'TIKTOK', connected: true),
+        ];
+      },
+      refreshLoader: () async {
+        unavailable = true;
+        throw const ApiException('Request failed', statusCode: 503);
+      },
+    );
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+    expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
+    await _openConnectionsScreen(tester);
+    await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    expect(calls, 3);
+    expect(find.text('1/4 เชื่อมต่อ'), findsNothing);
+    expect(find.text('0/4 เชื่อมต่อ'), findsNothing);
+    expect(find.byKey(const ValueKey('profile-connections-error')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-retry-connections')),
+        findsOneWidget);
+
+    unavailable = false;
+    await tester.tap(find.byKey(const ValueKey('profile-retry-connections')));
+    await tester.pumpAndSettle();
+    expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
+  });
+
   testWidgets('connecting a platform opens its PostPeer connect URL',
       (tester) async {
     final apiClient = _FakeSocialApiClient(
@@ -919,9 +963,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    final tiktokConnect =
-        find.byKey(const ValueKey('profile-platform-connect-TIKTOK'));
-    expect(tester.widget<FilledButton>(tiktokConnect).onPressed, isNull);
+    final tiktokUnknown =
+        find.byKey(const ValueKey('profile-platform-status-unknown-TIKTOK'));
+    expect(tester.widget<OutlinedButton>(tiktokUnknown).onPressed, isNull);
+    expect(find.byKey(const ValueKey('profile-platform-connect-TIKTOK')),
+        findsNothing);
 
     pendingConnections.complete(const [
       SocialConnectionResult(platform: 'TIKTOK', connected: false),
@@ -931,7 +977,14 @@ void main() {
     ]);
     await tester.pumpAndSettle();
 
-    expect(tester.widget<FilledButton>(tiktokConnect).onPressed, isNotNull);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('profile-platform-connect-TIKTOK')),
+          )
+          .onPressed,
+      isNotNull,
+    );
   });
 
   testWidgets('rejects an insecure social connect URL before launching it',
@@ -1306,6 +1359,7 @@ class _FakeSocialApiClient extends PostDeeApiClient {
     this.connectLinkLoader,
     this.refreshedConnections,
     this.connectionsLoader,
+    this.refreshLoader,
     this.subscription,
     this.subscriptionLoader,
   });
@@ -1316,6 +1370,7 @@ class _FakeSocialApiClient extends PostDeeApiClient {
       connectLinkLoader;
   final List<SocialConnectionResult>? refreshedConnections;
   final Future<List<SocialConnectionResult>> Function()? connectionsLoader;
+  final Future<List<SocialConnectionResult>> Function()? refreshLoader;
   SubscriptionStatusResult? subscription;
   final Future<SubscriptionStatusResult> Function()? subscriptionLoader;
   final List<String> connectCalls = [];
@@ -1357,6 +1412,7 @@ class _FakeSocialApiClient extends PostDeeApiClient {
   @override
   Future<List<SocialConnectionResult>> refreshSocialConnections() async {
     refreshCalls++;
+    if (refreshLoader != null) return refreshLoader!();
     connections = refreshedConnections ?? connections;
     return connections;
   }

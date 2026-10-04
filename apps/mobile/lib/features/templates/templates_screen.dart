@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
+import '../../core/network/api_error_message.dart';
 import '../../core/theme/app_theme.dart';
 import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
@@ -66,7 +67,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       }
 
       setState(() {
-        _errorMessage = error.message;
+        _errorMessage = apiErrorMessage(error,
+            fallbackMessage: 'โหลดเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       });
     } catch (error) {
       if (!mounted) {
@@ -74,7 +76,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       }
 
       setState(() {
-        _errorMessage = 'Unexpected error: $error';
+        _errorMessage = apiErrorMessage(error,
+            fallbackMessage: 'โหลดเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       });
     } finally {
       if (mounted) {
@@ -120,7 +123,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       }
 
       setState(() {
-        _errorMessage = error.message;
+        _errorMessage = apiErrorMessage(error,
+            fallbackMessage: 'บันทึกเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       });
     } catch (error) {
       if (!mounted) {
@@ -128,7 +132,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       }
 
       setState(() {
-        _errorMessage = 'Unexpected error: $error';
+        _errorMessage = apiErrorMessage(error,
+            fallbackMessage: 'บันทึกเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       });
     } finally {
       if (mounted) {

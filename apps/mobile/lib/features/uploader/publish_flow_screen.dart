@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
+import '../../core/network/api_error_message.dart';
 import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
@@ -123,11 +124,9 @@ class _PublishFlowScreenState extends State<PublishFlowScreen> {
   }
 
   String get _publishErrorMessage {
-    final error = _publishError;
-    if (error is ApiException && error.message.trim().isNotEmpty) {
-      return error.message;
-    }
-    return 'เกิดข้อผิดพลาดระหว่างส่งโพสต์ กรุณาตรวจการเชื่อมต่อแล้วลองใหม่';
+    return apiErrorMessage(_publishError!,
+        fallbackMessage:
+            'เกิดข้อผิดพลาดระหว่างส่งโพสต์ กรุณาตรวจการเชื่อมต่อแล้วลองใหม่');
   }
 
   void _handleBlockedPop(bool didPop, Object? _) {

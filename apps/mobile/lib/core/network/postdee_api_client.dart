@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,6 +11,7 @@ const scheduledPostNotFoundCode = 'SCHEDULED_POST_NOT_FOUND';
 const publishQueueUnavailableCode = 'PUBLISH_QUEUE_UNAVAILABLE';
 const idempotentPostFailedCode = 'IDEMPOTENT_POST_FAILED';
 const idempotencyKeyReusedCode = 'IDEMPOTENCY_KEY_REUSED';
+const apiRequestTimeoutCode = 'API_REQUEST_TIMEOUT';
 
 class ApiException implements Exception {
   const ApiException(this.message, {this.statusCode, this.code, this.postId});
@@ -24,6 +26,74 @@ class ApiException implements Exception {
 }
 
 typedef AuthTokenProvider = Future<String?> Function();
+
+// Owns only this request, so timing out never closes a shared HTTP client.
+class _ApiRequestScope {
+  Object? _cancellationError;
+  HttpClientRequest? _request;
+  StreamSubscription<String>? _bodySubscription;
+  Completer<String>? _bodyResult;
+
+  void checkActive() {
+    final error = _cancellationError;
+    if (error != null) throw error;
+  }
+
+  Future<HttpClientRequest> open(Future<HttpClientRequest> pending) async {
+    final request = await pending;
+    // A late connection may be aborted before close() has an error listener.
+    unawaited(
+        request.done.then<void>((_) {}, onError: (Object _, StackTrace __) {}));
+    _request = request;
+    final error = _cancellationError;
+    if (error != null) request.abort(error);
+    checkActive();
+    return request;
+  }
+
+  Future<String> readBody(HttpClientResponse response) async {
+    final error = _cancellationError;
+    if (error != null) {
+      // abort() has no effect after response headers have been received.
+      try {
+        await response.listen((_) {}).cancel();
+      } catch (_) {
+        // Preserve the original deadline error if transport cleanup also fails.
+      }
+      throw error;
+    }
+    final result = Completer<String>();
+    final buffer = StringBuffer();
+    _bodyResult = result;
+    _bodySubscription = response.transform(utf8.decoder).listen(
+      buffer.write,
+      onError: (Object error, StackTrace stack) {
+        if (!result.isCompleted) result.completeError(error, stack);
+      },
+      onDone: () {
+        if (!result.isCompleted) result.complete(buffer.toString());
+      },
+      cancelOnError: true,
+    );
+    try {
+      return await result.future;
+    } finally {
+      _bodyResult = null;
+      _bodySubscription = null;
+    }
+  }
+
+  void cancel(Object error) {
+    _cancellationError ??= error;
+    _request?.abort(error);
+    final subscription = _bodySubscription;
+    if (subscription != null) {
+      unawaited(subscription.cancel().catchError((Object _) {}));
+    }
+    final result = _bodyResult;
+    if (result != null && !result.isCompleted) result.completeError(error);
+  }
+}
 
 class ClipTranscriptSegment {
   const ClipTranscriptSegment({
@@ -2205,7 +2275,13 @@ class PostDeeApiClient {
     AuthTokenProvider? authTokenProvider,
     PostDeeApiAuthHeaders? authHeaders,
     Future<void> Function(Duration)? multipartCompletionPollDelay,
-  })  : _customHttpClient = httpClient,
+    this.requestTimeout = const Duration(seconds: 20),
+    this.aiRequestTimeout = const Duration(seconds: 120),
+    this.uploadRequestTimeout = const Duration(seconds: 180),
+  })  : assert(requestTimeout > Duration.zero),
+        assert(aiRequestTimeout > Duration.zero),
+        assert(uploadRequestTimeout > Duration.zero),
+        _customHttpClient = httpClient,
         _baseUri = Uri.parse(baseUrl),
         _authHeaders = authHeaders ??
             PostDeeApiAuthHeaders(
@@ -2215,13 +2291,17 @@ class PostDeeApiClient {
             ((duration) => Future<void>.delayed(duration));
 
   final HttpClient? _customHttpClient;
+  final Duration requestTimeout;
+  final Duration aiRequestTimeout;
+  final Duration uploadRequestTimeout;
   HttpClient? _lazyHttpClient;
   HttpClient get _httpClient =>
-      _customHttpClient ?? (_lazyHttpClient ??= _createHttpClientSafe());
+      _customHttpClient ??
+      (_lazyHttpClient ??= _createHttpClientSafe(requestTimeout));
 
-  static HttpClient _createHttpClientSafe() {
+  static HttpClient _createHttpClientSafe(Duration connectionTimeout) {
     try {
-      return HttpClient();
+      return HttpClient()..connectionTimeout = connectionTimeout;
     } catch (_) {
       throw const ApiException(
           'Network requests are not supported on this platform without a custom client.');
@@ -2231,6 +2311,27 @@ class PostDeeApiClient {
   final Uri _baseUri;
   final PostDeeApiAuthHeaders _authHeaders;
   final Future<void> Function(Duration) _multipartCompletionPollDelay;
+
+  Future<T> _withRequestDeadline<T>(
+    Duration timeout,
+    Future<T> Function(_ApiRequestScope) operation,
+  ) async {
+    final scope = _ApiRequestScope();
+    try {
+      return await operation(scope).timeout(timeout, onTimeout: () {
+        const error = ApiException(
+          'ระบบตอบกลับช้าเกินไป กรุณาลองใหม่อีกครั้ง',
+          statusCode: HttpStatus.requestTimeout,
+          code: apiRequestTimeoutCode,
+        );
+        scope.cancel(error);
+        throw error;
+      });
+    } catch (error) {
+      scope.cancel(error);
+      rethrow;
+    }
+  }
 
   Future<ApiHealthResult> checkHealth() async {
     final response = await _getJson('/health');
@@ -2748,44 +2849,47 @@ class PostDeeApiClient {
       );
     }
 
-    final request = await _httpClient.openUrl(
-      part.uploadMethod.toUpperCase(),
-      Uri.parse(part.uploadUrl),
-    );
-    for (final header in part.uploadHeaders.entries) {
-      request.headers.set(header.key, header.value);
-    }
+    return _withRequestDeadline(uploadRequestTimeout, (scope) async {
+      final request = await scope.open(_httpClient.openUrl(
+        part.uploadMethod.toUpperCase(),
+        Uri.parse(part.uploadUrl),
+      ));
+      for (final header in part.uploadHeaders.entries) {
+        request.headers.set(header.key, header.value);
+      }
 
-    request
-      ..contentLength = end - start
-      ..bufferOutput = false;
-    await request.addStream(videoFile.openRead(start, end));
+      request
+        ..contentLength = end - start
+        ..bufferOutput = false;
+      await request.addStream(videoFile.openRead(start, end));
+      scope.checkActive();
 
-    final response = await request.close();
-    final etag = response.headers.value(HttpHeaders.etagHeader)?.trim();
-    final responseBody = await response.transform(utf8.decoder).join();
+      final response = await request.close();
+      final etag = response.headers.value(HttpHeaders.etagHeader)?.trim();
+      final responseBody = await scope.readBody(response);
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final isExpired = _isExpiredUploadResponse(
-        response.statusCode,
-        responseBody,
-      );
-      throw ApiException(
-        isExpired
-            ? 'Upload part URL has expired'
-            : (responseBody.isEmpty
-                ? 'Multipart part upload failed'
-                : responseBody),
-        statusCode: response.statusCode,
-        code: isExpired ? _uploadUrlExpiredCode : null,
-      );
-    }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final isExpired = _isExpiredUploadResponse(
+          response.statusCode,
+          responseBody,
+        );
+        throw ApiException(
+          isExpired
+              ? 'Upload part URL has expired'
+              : (responseBody.isEmpty
+                  ? 'Multipart part upload failed'
+                  : responseBody),
+          statusCode: response.statusCode,
+          code: isExpired ? _uploadUrlExpiredCode : null,
+        );
+      }
 
-    if (etag == null || etag.isEmpty) {
-      throw const ApiException('Multipart part response is missing ETag');
-    }
+      if (etag == null || etag.isEmpty) {
+        throw const ApiException('Multipart part response is missing ETag');
+      }
 
-    return etag;
+      return etag;
+    });
   }
 
   Future<void> _completeMultipartUpload(
@@ -2964,82 +3068,87 @@ class PostDeeApiClient {
       );
     }
 
-    final request = await _httpClient.putUrl(Uri.parse(upload.uploadUrl!));
+    await _withRequestDeadline(uploadRequestTimeout, (scope) async {
+      final request =
+          await scope.open(_httpClient.putUrl(Uri.parse(upload.uploadUrl!)));
 
-    for (final header in upload.uploadHeaders.entries) {
-      request.headers.set(header.key, header.value);
-    }
+      for (final header in upload.uploadHeaders.entries) {
+        request.headers.set(header.key, header.value);
+      }
 
-    request.contentLength = await videoFile.length();
-    await request.addStream(videoFile.openRead());
+      request.contentLength = await videoFile.length();
+      scope.checkActive();
+      await request.addStream(videoFile.openRead());
+      scope.checkActive();
 
-    final response = await request.close();
+      final response = await request.close();
+      final responseBody = await scope.readBody(response);
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final responseBody = await response.transform(utf8.decoder).join();
-      final isExpired = _isExpiredUploadResponse(
-        response.statusCode,
-        responseBody,
-      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final isExpired = _isExpiredUploadResponse(
+          response.statusCode,
+          responseBody,
+        );
 
-      throw ApiException(
-        isExpired
-            ? 'ลิงก์อัปโหลดหมดอายุ กรุณาลองอีกครั้ง'
-            : (responseBody.isEmpty ? 'Video upload failed' : responseBody),
-        statusCode: response.statusCode,
-        code: isExpired ? _uploadUrlExpiredCode : null,
-      );
-    }
+        throw ApiException(
+          isExpired
+              ? 'ลิงก์อัปโหลดหมดอายุ กรุณาลองอีกครั้ง'
+              : (responseBody.isEmpty ? 'Video upload failed' : responseBody),
+          statusCode: response.statusCode,
+          code: isExpired ? _uploadUrlExpiredCode : null,
+        );
+      }
+    });
   }
 
   Future<Map<String, Object?>> _postJson(
-      String path, Map<String, Object?> body) async {
-    final request = await _httpClient.postUrl(_baseUri.resolve(path));
-    request.headers.contentType = ContentType.json;
-    await _setDefaultHeaders(request);
+          String path, Map<String, Object?> body) =>
+      _requestJson('POST', path, body: body);
 
-    request.write(jsonEncode(body));
-
-    return _readJsonResponse(request);
-  }
-
-  Future<Map<String, Object?>> _getJson(String path) async {
-    final request = await _httpClient.getUrl(_baseUri.resolve(path));
-    await _setDefaultHeaders(request);
-
-    return _readJsonResponse(request);
-  }
+  Future<Map<String, Object?>> _getJson(String path) =>
+      _requestJson('GET', path);
 
   Future<Map<String, Object?>> _patchJson(
-      String path, Map<String, Object?> body) async {
-    final request = await _httpClient.patchUrl(_baseUri.resolve(path));
-    request.headers.contentType = ContentType.json;
-    await _setDefaultHeaders(request);
+          String path, Map<String, Object?> body) =>
+      _requestJson('PATCH', path, body: body);
 
-    request.write(jsonEncode(body));
+  Future<Map<String, Object?>> _deleteJson(String path) =>
+      _requestJson('DELETE', path);
 
-    return _readJsonResponse(request);
-  }
+  Future<Map<String, Object?>> _requestJson(
+    String method,
+    String path, {
+    Map<String, Object?>? body,
+  }) {
+    final isAiOperation = method == 'POST' &&
+        const {
+          '/ai-edits/transcribe',
+          '/ai-edits/prepare',
+          '/ai-edits/plan',
+          '/captions/generate',
+          '/captions/generate-from-clip',
+        }.contains(path);
+    return _withRequestDeadline(
+        isAiOperation ? aiRequestTimeout : requestTimeout, (scope) async {
+      final headers = await _authHeaders.load();
+      scope.checkActive();
+      final request =
+          await scope.open(_httpClient.openUrl(method, _baseUri.resolve(path)));
+      if (body != null) request.headers.contentType = ContentType.json;
 
-  Future<Map<String, Object?>> _deleteJson(String path) async {
-    final request = await _httpClient.deleteUrl(_baseUri.resolve(path));
-    await _setDefaultHeaders(request);
-
-    return _readJsonResponse(request);
-  }
-
-  Future<void> _setDefaultHeaders(HttpClientRequest request) async {
-    final headers = await _authHeaders.load();
-
-    for (final header in headers.entries) {
-      request.headers.set(header.key, header.value);
-    }
+      for (final header in headers.entries) {
+        request.headers.set(header.key, header.value);
+      }
+      if (body != null) request.write(jsonEncode(body));
+      scope.checkActive();
+      return _readJsonResponse(request, scope);
+    });
   }
 
   Future<Map<String, Object?>> _readJsonResponse(
-      HttpClientRequest request) async {
+      HttpClientRequest request, _ApiRequestScope scope) async {
     final response = await request.close();
-    final responseBody = await response.transform(utf8.decoder).join();
+    final responseBody = await scope.readBody(response);
     Object? decoded;
 
     try {

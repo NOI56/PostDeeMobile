@@ -49,6 +49,11 @@ starting the API. PostDee uses `firebase-admin` for Auth and FCM only; the
 optional Firestore and Google Cloud Storage clients are not shipped in the
 running service. Video storage continues to use Cloudflare R2.
 
+The lockfile now resolves Firebase Admin's compatible `@fastify/busboy` dependency
+to `3.2.1`, which patches the multipart parser advisories
+`GHSA-xjh9-v7x6-24jw` and `GHSA-x8mw-p69m-v3mx`. CI continues to reject high
+severity findings in the production dependency audit.
+
 ## AI Editing Runtime Source of Truth
 
 - Both `render.yaml` and `render.staging.yaml` set
@@ -468,6 +473,15 @@ can still leave replacement video/cover objects unused even though the post row
 is deduplicated. Production needs remote-key reuse or explicit superseded-object
 cleanup plus a verified R2 lifecycle rule.
 
+Mobile bounds each ordinary JSON request to 20 seconds from authentication
+refresh through connection and response-body completion. AI transcription,
+prepare, planning, and caption-generation POST requests allow 120 seconds;
+legacy file PUTs and each multipart part PUT allow 180 seconds. A local
+`API_REQUEST_TIMEOUT` (`ApiException` status `408`) aborts a pending HTTP request
+or cancels its response-body subscription. It does not prove that server work
+was canceled: Mobile retains the draft and original `clientRequestId`, and does
+not automatically retry `POST /posts`. These durations are injectable in tests.
+
 #### `POST /posts/:id/publish-now`
 
 Moves an authenticated user's still-queued scheduled post into the ready queue
@@ -554,6 +568,16 @@ Pro response sets `plan` to `PRO`, `status` to `ACTIVE`, `monthlyPostLimit` to
 `250`, enables scheduling, analytics, and the higher AI caption tier.
 Compatibility AI review flags may still appear for older clients, but they
 remain `false` and should not be shown in package copy.
+
+If the current-plan lookup fails, Mobile disables new purchases until a
+successful reload; retry and Restore remain available. A completed store
+purchase whose PostDee confirmation fails is shown as awaiting confirmation,
+not as a failed purchase. Receipt verification or subscription reads can be
+retried without buying again, and paid benefits require backend confirmation.
+The pending receipt/read state stays in memory for the same stable signed-in
+UID when the paywall is reopened. Sign-out or account changes clear it and
+reject stale results. An app restart requires Restore; receipts are not
+persisted locally by this cache.
 
 #### `POST /billing/revenuecat/webhooks`
 
@@ -731,6 +755,9 @@ Current mobile pieces:
   and `PARTIAL_PUBLISHED` means only some destinations succeeded. An
   unrecognized status is not shown as success and the local draft is retained;
   an idempotent replay is labelled as the existing item.
+- A failed connection-status lookup is shown as unknown, never as
+  zero connected accounts or a confirmed disconnect; connection actions stay
+  disabled until status is successfully refreshed.
 - Social account authorization opens the PostPeer URL in a browser-owned
   surface, never a Flutter WebView. Android uses a dedicated native Custom Tab
   bridge that fails back to the external browser without a WebView; iOS uses

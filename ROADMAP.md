@@ -129,6 +129,18 @@ Current status:
   Legacy clients may omit the key but get no deduplication guarantee. This
   protects post/quota state, not remote uploads; completed R2 keys are not stored
   in the draft, so lost-response retries can leave unused replacement objects.
+- Mobile outage recovery bounds ordinary JSON requests to 20 seconds, AI
+  transcription/prepare/plan/caption POSTs to 120 seconds, and legacy or
+  per-part upload PUTs to 180 seconds. Client-local `API_REQUEST_TIMEOUT`/`408`
+  cancels the pending request/body but does not prove server cancellation;
+  explicit publish retry retains the original draft/request ID. Completed
+  store purchases await backend confirmation and can retry confirmation
+  without buying again; initial current-plan failures disable new purchases
+  while retry/Restore remain available. Pending confirmation survives paywall
+  reopening in a stable-UID memory cache, cleared on sign-out/account change;
+  app restart recovery uses Restore. Failed connection-status reads remain
+  unknown and block connection actions. Package rules, server/schema contracts,
+  and existing provider/device acceptance gates are unchanged.
 - Route/account-deletion locks are currently process-local and the worker does
   not hold one across the provider call. The coordinator covers authenticated
   route mutations and RevenueCat webhook application within one API process,
@@ -184,6 +196,12 @@ unused optional Firestore and Google Cloud Storage clients after the build and
 Prisma migration. CI still installs platform-native optional build tools, while
 the production dependency audit excludes optional modules that are not shipped
 in the running service.
+
+On 2026-10-04, the lockfile's compatible `@fastify/busboy` dependency was patched
+from `3.2.0` to `3.2.1` to resolve the high severity CI audit blocker. The Render
+Dashboard still reports the workspace suspended for non-payment, and Staging
+returns HTTP `503` with `x-render-routing: suspend`; live deployment and current
+provider tests remain blocked until the workspace is restored.
 
 ### AI auto-editing update (2026-08-08)
 

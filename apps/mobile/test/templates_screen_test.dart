@@ -6,6 +6,24 @@ import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/templates/templates_screen.dart';
 
 void main() {
+  testWidgets(
+      'does not expose a technical network error when loading templates',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: TemplatesScreen(
+      loadTemplates: () async =>
+          throw StateError('private-host technical failure'),
+    ))));
+    await tester.ensureVisible(find.text('โหลดเทมเพลต'));
+    await tester.tap(find.text('โหลดเทมเพลต'));
+    await tester.pumpAndSettle();
+    expect(
+        find.text('โหลดเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'), findsOneWidget);
+    expect(find.textContaining('private-host'), findsNothing);
+    expect(find.textContaining('Unexpected error'), findsNothing);
+  });
+
   testWidgets('loads and creates saved templates in the refreshed Thai UI',
       (tester) async {
     final loadCompleter = Completer<List<TextTemplateResult>>();

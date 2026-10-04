@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
+import '../../core/network/api_error_message.dart';
 import '../../core/theme/app_theme.dart';
 import '../platforms/connections_screen.dart' show connectablePlatforms;
 import '../platforms/social_platform.dart';
@@ -181,7 +182,9 @@ class _CalendarScreenState extends State<CalendarScreen>
         } on ApiException catch (error) {
           if (!mounted) return;
           if (!currentLoadIsSilent || _posts.isEmpty) {
-            setState(() => _errorMessage = error.message);
+            setState(() => _errorMessage = apiErrorMessage(error,
+                fallbackMessage:
+                    'โหลดปฏิทินโพสต์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'));
           }
         } on SocketException {
           if (!mounted) return;

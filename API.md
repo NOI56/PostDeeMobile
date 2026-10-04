@@ -22,6 +22,20 @@ Backend path:
 apps/api
 ```
 
+## Mobile Request Deadlines
+
+The Flutter client bounds ordinary JSON requests to 20 seconds end to end,
+including authentication refresh, connection, and response-body completion.
+`POST /ai-edits/transcribe`, `/ai-edits/prepare`, `/ai-edits/plan`, and caption
+generation POSTs allow 120 seconds. Legacy upload PUTs and each multipart PUT
+allow 180 seconds. Timeout aborts a pending request or cancels the body
+subscription and raises client-local `API_REQUEST_TIMEOUT` with `ApiException`
+status `408`; this is not a new server response or a guarantee that an accepted
+mutation was canceled. `POST /posts` is not automatically retried, and the draft
+retains its original `clientRequestId` for explicit recovery. Multipart
+completion status reconciliation and signed-URL expiry retry remain unchanged.
+No server/schema migration or package change is required.
+
 ## Current Status
 
 The backend currently supports:
@@ -648,6 +662,10 @@ Registers the authenticated user's FCM token. Body:
 ### `GET /social-connections`
 
 Lists the authenticated user's saved PostPeer connections.
+
+Mobile treats a failed lookup as unknown status, not an empty connected-account
+list or proof of disconnect, and disables connection actions until refresh
+succeeds.
 
 ### `POST /social-connections/:platform/connect`
 
@@ -1738,6 +1756,16 @@ empty JSON body and always uses the authenticated PostDee/Firebase uid as
 RevenueCat `app_user_id`; any user id
 in the request body is ignored. The mobile flow calls RevenueCat
 `restorePurchases` first, then calls this endpoint.
+
+Mobile does not report a completed store purchase as failed solely because
+PostDee confirmation is unavailable. It shows pending confirmation and retries
+receipt verification or subscription reads without a new purchase; backend
+confirmation remains required to grant paid benefits. Failure to load the
+initial current plan disables new purchases but leaves retry and Restore
+available. These client states do not change this endpoint's response contract.
+Pending confirmation survives paywall reopening only in a memory cache scoped
+to the stable signed-in UID. Sign-out/account changes clear it and reject old
+results; app restart requires Restore rather than a locally persisted receipt.
 
 The backend requests the subscriber from RevenueCat API v1 using the server-only
 `REVENUECAT_REST_API_V1_KEY`. It maps active Starter/Pro entitlements or products,

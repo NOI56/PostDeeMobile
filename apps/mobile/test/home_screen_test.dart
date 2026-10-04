@@ -97,6 +97,21 @@ Widget _homeTestApp(
 }
 
 void main() {
+  testWidgets('shows Thai service-unavailable copy for a gateway failure',
+      (tester) async {
+    await tester.pumpWidget(_homeTestApp(HomeScreen(
+      loadSubscription: () async =>
+          throw const ApiException('Request failed', statusCode: 503),
+      loadRecentPosts: () async => const [],
+      loadAnalytics: () async => const AnalyticsSummaryResult(
+          totalViews: 0, totalLikes: 0, platforms: []),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ระบบ PostDee ไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่ภายหลัง'),
+        findsOneWidget);
+    expect(find.text('Request failed'), findsNothing);
+  });
+
   testWidgets('does not call the user Free when subscription loading fails',
       (tester) async {
     await tester.pumpWidget(

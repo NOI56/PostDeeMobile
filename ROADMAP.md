@@ -197,6 +197,12 @@ Prisma migration. CI still installs platform-native optional build tools, while
 the production dependency audit excludes optional modules that are not shipped
 in the running service.
 
+On 2026-10-04, the lockfile's compatible `@fastify/busboy` dependency was patched
+from `3.2.0` to `3.2.1` to resolve the high severity CI audit blocker. The Render
+Dashboard still reports the workspace suspended for non-payment, and Staging
+returns HTTP `503` with `x-render-routing: suspend`; live deployment and current
+provider tests remain blocked until the workspace is restored.
+
 ### AI auto-editing update (2026-08-08)
 
 The table's earlier audio-only deployment note is superseded. ElevenLabs M4A

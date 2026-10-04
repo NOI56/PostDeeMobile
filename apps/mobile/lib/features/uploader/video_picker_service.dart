@@ -193,7 +193,7 @@ class FfmpegVideoMetadataReader {
           continue;
         }
 
-        return resolveVideoDimensionsForDisplay(
+        return await resolveVideoDimensionsForDisplay(
           videoPath: videoPath,
           width: width,
           height: height,

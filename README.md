@@ -49,6 +49,11 @@ starting the API. PostDee uses `firebase-admin` for Auth and FCM only; the
 optional Firestore and Google Cloud Storage clients are not shipped in the
 running service. Video storage continues to use Cloudflare R2.
 
+The lockfile now resolves Firebase Admin's compatible `@fastify/busboy` dependency
+to `3.2.1`, which patches the multipart parser advisories
+`GHSA-xjh9-v7x6-24jw` and `GHSA-x8mw-p69m-v3mx`. CI continues to reject high
+severity findings in the production dependency audit.
+
 ## AI Editing Runtime Source of Truth
 
 - Both `render.yaml` and `render.staging.yaml` set

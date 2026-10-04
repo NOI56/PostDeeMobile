@@ -1,5 +1,13 @@
 # PostDee Staging
 
+ตรวจสถานะล่าสุด 4 ตุลาคม 2026: Render Dashboard แสดง **Workspace suspended**
+เพราะค้างชำระ และไม่แสดงปุ่ม Manual Deploy ของ `postdee-api-staging` ขณะนี้
+`/health` ตอบ HTTP `503` พร้อม `x-render-routing: suspend` บริการยังติดตาม
+`main` แต่ commit ที่ deploy สำเร็จล่าสุดใน Dashboard คือ `208b4e5` การ push/merge
+โค้ดใหม่จึงไม่ใช่หลักฐานว่าบริการกลับมาใช้งานได้ ต้องคืนสถานะ workspace แล้ว
+deploy และตรวจ candidate SHA, `/health`, migration และ provider gates เดิมอีกครั้ง
+ก่อนทดสอบบริการจริง รอบนี้ไม่มีการจ่ายเงินหรือเปลี่ยนแผน Render
+
 ทบทวนเอกสาร ณ 10 สิงหาคม 2026: **Blueprint ใน repository ติดตาม `main` แต่การ
 deploy สำเร็จหรือ `/health` ผ่านไม่ได้ยืนยันว่า R2, Gemini/ElevenLabs, Firebase,
 RevenueCat หรือ PostPeer ผ่าน E2E ใน release candidate เดียวกัน** ผลที่ระบุว่า

@@ -7,6 +7,21 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
 
 void main() {
+  testWidgets('shows Thai gateway failure and keeps retry available',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: CalendarScreen(
+      loadScheduledPosts: () async =>
+          throw const ApiException('Request failed', statusCode: 503),
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.text('ระบบ PostDee ไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่ภายหลัง'),
+        findsOneWidget);
+    expect(find.text('Request failed'), findsNothing);
+    expect(find.text('ลองใหม่'), findsOneWidget);
+  });
+
   testWidgets('loads scheduled posts into the calendar', (tester) async {
     final scheduledPosts = Completer<List<ScheduledPostResult>>();
 

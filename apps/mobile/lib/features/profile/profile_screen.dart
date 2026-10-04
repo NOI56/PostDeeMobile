@@ -202,8 +202,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  void _openConnections() {
-    Navigator.of(context).push(
+  Future<void> _openConnections() async {
+    await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (context) => ConnectionsScreen(
           apiClient: widget.apiClient,
@@ -212,6 +212,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+    if (mounted) await _loadConnectedCount();
   }
 
   Future<void> _openEditProfile() async {

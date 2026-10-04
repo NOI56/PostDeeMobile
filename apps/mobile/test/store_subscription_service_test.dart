@@ -1,8 +1,260 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
 
 void main() {
+  test('session cache retains pending purchases only for the signed-in owner',
+      () async {
+    final sessionStore = PostDeeAuthSessionStore(
+        initialSession:
+            AuthSession.authenticated(userId: 'owner-a', idToken: 'token-a'));
+    final gateway = FakeStoreBillingGateway();
+    var verifyCalls = 0;
+    final cache = StoreSubscriptionSessionCache(
+      sessionStore: sessionStore,
+      createService: () => StoreSubscriptionService(
+        gateway: gateway,
+        useRevenueCat: false,
+        verifyPurchase: (_) async {
+          verifyCalls += 1;
+          throw const ApiException('Unavailable', statusCode: 503);
+        },
+      ),
+    );
+    addTearDown(cache.dispose);
+    final original = cache.service;
+    await expectLater(original.startProSubscription(),
+        throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+
+    sessionStore.signIn(
+        AuthSession.authenticated(userId: 'owner-a', idToken: 'rotated-token'));
+    expect(cache.service, same(original));
+    expect(cache.service.hasPendingConfirmation, isTrue);
+    sessionStore.signIn(
+        AuthSession.authenticated(userId: 'owner-b', idToken: 'token-b'));
+    expect(cache.service, isNot(same(original)));
+    expect(cache.service.hasPendingConfirmation, isFalse);
+    expect(original.hasPendingConfirmation, isFalse);
+    await expectLater(original.retryPendingConfirmation(),
+        throwsA(isA<StoreSubscriptionException>()));
+    expect(verifyCalls, 1);
+    expect(gateway.purchaseCalls, 1);
+
+    sessionStore.clear();
+    expect(cache.service, isNot(same(cache.service)));
+    sessionStore.signIn(AuthSession.authenticated(
+        userId: 'owner-a', idToken: 'new-session-token'));
+    expect(cache.service, isNot(same(original)));
+    expect(cache.service.hasPendingConfirmation, isFalse);
+  });
+
+  test('legacy completed purchase can recheck the same receipt without buying',
+      () async {
+    final gateway = FakeStoreBillingGateway();
+    final verifiedRequests = <VerifyStorePurchaseRequest>[];
+    final service = StoreSubscriptionService(
+      gateway: gateway,
+      useRevenueCat: false,
+      verifyPurchase: (request) async {
+        verifiedRequests.add(request);
+        if (verifiedRequests.length == 1) {
+          throw const ApiException('Service Suspended', statusCode: 503);
+        }
+        return _verifiedSubscription(request);
+      },
+    );
+
+    await expectLater(service.startProSubscription(),
+        throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+    expect(service.hasPendingConfirmation, isTrue);
+    await expectLater(service.startStarterSubscription(),
+        throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+    final result = await service.retryPendingConfirmation();
+
+    expect(result.subscription.isPro, isTrue);
+    expect(service.hasPendingConfirmation, isFalse);
+    expect(gateway.purchaseCalls, 1);
+    expect(verifiedRequests, hasLength(2));
+    expect(verifiedRequests.first.toJson(), verifiedRequests.last.toJson());
+  });
+
+  test('account switch rejects an old in-flight verification result', () async {
+    final sessionStore = PostDeeAuthSessionStore(
+        initialSession:
+            AuthSession.authenticated(userId: 'owner-a', idToken: 'token-a'));
+    final verification = Completer<StoreSubscriptionVerificationResult>();
+    var verifyCalls = 0;
+    final cache = StoreSubscriptionSessionCache(
+      sessionStore: sessionStore,
+      createService: () => StoreSubscriptionService(
+        gateway: FakeStoreBillingGateway(),
+        useRevenueCat: false,
+        verifyPurchase: (_) {
+          verifyCalls += 1;
+          return verification.future;
+        },
+      ),
+    );
+    addTearDown(cache.dispose);
+    final oldService = cache.service;
+    final purchase = oldService.startProSubscription();
+    final expectation = expectLater(
+        purchase,
+        throwsA(isA<StoreSubscriptionException>().having(
+            (error) => error.message,
+            'message',
+            'บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่')));
+    await Future<void>.delayed(Duration.zero);
+    sessionStore.signIn(
+        AuthSession.authenticated(userId: 'owner-b', idToken: 'token-b'));
+    verification.complete(_verifiedSubscription(
+        const VerifyStorePurchaseRequest.android(
+            productId: 'postdee_pro_monthly',
+            purchaseToken: 'old-owner-token')));
+    await expectation;
+    expect(verifyCalls, 1);
+    expect(oldService.hasPendingConfirmation, isFalse);
+    expect(cache.service.hasPendingConfirmation, isFalse);
+  });
+
+  test('a timed out receipt retry shares the unfinished verification',
+      () async {
+    final verification = Completer<StoreSubscriptionVerificationResult>();
+    final gateway = FakeStoreBillingGateway();
+    var verifyCalls = 0;
+    final service = StoreSubscriptionService(
+      gateway: gateway,
+      useRevenueCat: false,
+      subscriptionConfirmationTimeout: const Duration(milliseconds: 50),
+      verifyPurchase: (_) {
+        verifyCalls += 1;
+        return verification.future;
+      },
+    );
+
+    await expectLater(service.startProSubscription(),
+        throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+    expect(service.hasPendingConfirmation, isTrue);
+    final retry = service.retryPendingConfirmation();
+    verification.complete(_verifiedSubscription(
+      const VerifyStorePurchaseRequest.android(
+        productId: 'postdee_pro_monthly',
+        purchaseToken: 'android-purchase-token',
+      ),
+    ));
+
+    expect((await retry).subscription.isPro, isTrue);
+    expect(verifyCalls, 1);
+    expect(gateway.purchaseCalls, 1);
+    expect(service.hasPendingConfirmation, isFalse);
+  });
+
+  test('RevenueCat confirmation deadline stops polling and late updates',
+      () async {
+    final backend = Completer<SubscriptionStatusResult>();
+    var loadCalls = 0;
+    final gateway = FakeRevenueCatBillingGateway();
+    final service = StoreSubscriptionService(
+      revenueCatGateway: gateway,
+      useRevenueCat: true,
+      subscriptionConfirmationTimeout: const Duration(milliseconds: 50),
+      loadSubscription: () {
+        loadCalls += 1;
+        return loadCalls == 1
+            ? backend.future
+            : Future.value(_subscription(plan: 'PRO'));
+      },
+      revenueCatEntitlementWait: (_) async {},
+    );
+
+    await expectLater(service.startProSubscription(),
+        throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+    backend.complete(_subscription(plan: 'PRO'));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(loadCalls, 1);
+    expect(service.hasPendingConfirmation, isTrue);
+
+    expect(
+        (await service.retryPendingConfirmation()).subscription.isPro, isTrue);
+    expect(loadCalls, 2);
+    expect(gateway.purchaseCalls, 1);
+    expect(service.hasPendingConfirmation, isFalse);
+  });
+
+  test('RevenueCat cancellation never records a completed purchase', () async {
+    final gateway = FakeRevenueCatBillingGateway(
+      purchaseError: const StoreSubscriptionException('Purchase canceled'),
+    );
+    final service = StoreSubscriptionService(
+      revenueCatGateway: gateway,
+      useRevenueCat: true,
+      loadSubscription: () async => throw StateError('must not check backend'),
+    );
+
+    await expectLater(
+        service.startProSubscription(),
+        throwsA(isA<StoreSubscriptionException>()
+            .having((error) => error.message, 'message', 'Purchase canceled')));
+    expect(service.hasPendingConfirmation, isFalse);
+    expect(gateway.purchaseCalls, 1);
+  });
+
+  test('restoring the purchased plan clears pending confirmation safely',
+      () async {
+    var backendAvailable = false;
+    final gateway = FakeRevenueCatBillingGateway();
+    final service = StoreSubscriptionService(
+      revenueCatGateway: gateway,
+      useRevenueCat: true,
+      revenueCatEntitlementPollAttempts: 1,
+      resyncRevenueCatSubscription: () async => 'PRO',
+      loadSubscription: () async {
+        if (!backendAvailable) {
+          throw const ApiException('Unavailable', statusCode: 503);
+        }
+        return _subscription(plan: 'PRO');
+      },
+    );
+
+    await expectLater(service.startProSubscription(),
+        throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+    backendAvailable = true;
+    final result = await service.restoreSubscription();
+
+    expect(result.subscription.isPro, isTrue);
+    expect(service.hasPendingConfirmation, isFalse);
+    expect(gateway.purchaseCalls, 1);
+    expect(gateway.restoreCalls, 1);
+  });
+
+  test(
+      'completed RevenueCat purchase stays pending when backend is unavailable',
+      () async {
+    final gateway = FakeRevenueCatBillingGateway();
+    final service = StoreSubscriptionService(
+      revenueCatGateway: gateway,
+      useRevenueCat: true,
+      loadSubscription: () async =>
+          throw const ApiException('Service Suspended', statusCode: 503),
+      revenueCatEntitlementPollAttempts: 1,
+    );
+
+    for (var attempt = 0; attempt < 2; attempt += 1) {
+      await expectLater(
+        service.startProSubscription(),
+        throwsA(isA<StoreSubscriptionException>().having(
+          (error) => error.message,
+          'message',
+          'ร้านค้าดำเนินการซื้อแล้ว แต่ PostDee ยังยืนยันแพ็กเกจไม่ได้ กรุณาตรวจสอบการซื้ออีกครั้งโดยไม่ต้องซื้อซ้ำ',
+        )),
+      );
+    }
+    expect(gateway.purchaseCalls, 1);
+  });
+
   test('startProSubscription verifies Android purchase token with backend',
       () async {
     VerifyStorePurchaseRequest? verifiedRequest;
@@ -145,10 +397,14 @@ void main() {
     await expectLater(
       service.startProSubscription(),
       throwsA(
-        isA<ApiException>().having(
-          (error) => error.statusCode,
-          'statusCode',
-          401,
+        isA<StoreSubscriptionConfirmationPendingException>().having(
+          (error) => error.cause,
+          'cause',
+          isA<ApiException>().having(
+            (error) => error.statusCode,
+            'statusCode',
+            401,
+          ),
         ),
       ),
     );
@@ -407,7 +663,7 @@ SubscriptionStatusResult _subscription({
     );
 
 class FakeStoreBillingGateway implements StoreBillingGateway {
-  const FakeStoreBillingGateway({
+  FakeStoreBillingGateway({
     this.available = true,
     this.purchasePayload,
     this.restorePayload,
@@ -417,6 +673,7 @@ class FakeStoreBillingGateway implements StoreBillingGateway {
 
   final StorePurchasePayload? purchasePayload;
   final StorePurchasePayload? restorePayload;
+  var purchaseCalls = 0;
 
   @override
   Future<bool> isAvailable() async => available;
@@ -435,12 +692,14 @@ class FakeStoreBillingGateway implements StoreBillingGateway {
           .toList();
 
   @override
-  Future<StorePurchasePayload> buySubscription(String productId) async =>
-      purchasePayload ??
-      StorePurchasePayload.android(
-        productId: productId,
-        purchaseToken: 'android-purchase-token',
-      );
+  Future<StorePurchasePayload> buySubscription(String productId) async {
+    purchaseCalls += 1;
+    return purchasePayload ??
+        StorePurchasePayload.android(
+          productId: productId,
+          purchaseToken: 'android-purchase-token',
+        );
+  }
 
   @override
   Future<StorePurchasePayload> restoreSubscription(String productId) async =>
@@ -452,10 +711,12 @@ class FakeStoreBillingGateway implements StoreBillingGateway {
 }
 
 class FakeRevenueCatBillingGateway implements RevenueCatBillingGateway {
-  FakeRevenueCatBillingGateway({this.available = true});
+  FakeRevenueCatBillingGateway({this.available = true, this.purchaseError});
 
   final bool available;
+  final StoreSubscriptionException? purchaseError;
   String? purchasedProductId;
+  var purchaseCalls = 0;
   var restoreCalls = 0;
 
   @override
@@ -476,6 +737,8 @@ class FakeRevenueCatBillingGateway implements RevenueCatBillingGateway {
 
   @override
   Future<void> buySubscription(String productId) async {
+    purchaseCalls += 1;
+    if (purchaseError != null) throw purchaseError!;
     purchasedProductId = productId;
   }
 

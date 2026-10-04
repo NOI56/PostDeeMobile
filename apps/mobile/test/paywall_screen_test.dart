@@ -2,11 +2,159 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/billing/paywall_screen.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
 
 void main() {
+  testWidgets(
+      'default paywall service retains pending purchase across reopening',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sessionStore = PostDeeAuthSessionStore(
+        initialSession: AuthSession.authenticated(
+            userId: 'paywall-user', idToken: 'token'));
+    final gateway = _FakeStoreBillingGateway();
+    var backendAvailable = false;
+    final cache = StoreSubscriptionSessionCache(
+      sessionStore: sessionStore,
+      createService: () => StoreSubscriptionService(
+        gateway: gateway,
+        useRevenueCat: false,
+        verifyPurchase: (request) async {
+          if (!backendAvailable) {
+            throw const ApiException('Unavailable', statusCode: 503);
+          }
+          return _verifiedSubscription(request, plan: 'PRO');
+        },
+      ),
+    );
+    addTearDown(cache.dispose);
+    await expectLater(cache.service.startProSubscription(),
+        throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+
+    Future<void> openPaywall() async {
+      await tester.pumpWidget(MaterialApp(
+          home: PaywallScreen(
+        sessionCache: cache,
+        loadSubscription: () async => _subscription(plan: 'BASIC'),
+      )));
+      await tester.pumpAndSettle();
+    }
+
+    await openPaywall();
+    expect(find.byKey(const ValueKey('paywall-purchase-awaiting-confirmation')),
+        findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await openPaywall();
+    expect(find.byKey(const ValueKey('paywall-purchase-awaiting-confirmation')),
+        findsOneWidget);
+    backendAvailable = true;
+    await tester.tap(find.byKey(const ValueKey('paywall-retry-purchase')));
+    await tester.pumpAndSettle();
+    expect(find.text('ยืนยันการซื้อสำเร็จ'), findsOneWidget);
+    expect(gateway.purchaseCalls, 1);
+  });
+
+  for (final textScale in [1.0, 2.0]) {
+    testWidgets(
+        'pending purchase safely rechecks without buying at ${textScale}x text',
+        (tester) async {
+      tester.view.physicalSize = const Size(393, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final gateway = _FakeStoreBillingGateway();
+      var backendAvailable = false;
+      var verifiedCallbacks = 0;
+      var verifyCalls = 0;
+      final service = StoreSubscriptionService(
+        gateway: gateway,
+        useRevenueCat: false,
+        verifyPurchase: (request) async {
+          verifyCalls += 1;
+          if (!backendAvailable) {
+            throw const ApiException('Service Suspended', statusCode: 503);
+          }
+          return _verifiedSubscription(request, plan: 'PRO');
+        },
+      );
+      await tester.pumpWidget(MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: child!,
+        ),
+        home: PaywallScreen(
+          service: service,
+          loadSubscription: () async => _subscription(plan: 'BASIC'),
+          onSubscribed: (_) => verifiedCallbacks += 1,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('สมัคร Pro'), 400,
+          scrollable: find.byType(Scrollable));
+      await tester.ensureVisible(find.text('สมัคร Pro'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('สมัคร Pro'));
+      await tester.pumpAndSettle();
+
+      tester.state<ScrollableState>(find.byType(Scrollable)).position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(find.text('สมัครไม่สำเร็จ ลองใหม่อีกครั้ง'), findsNothing);
+      expect(
+          find.byKey(const ValueKey('paywall-purchase-awaiting-confirmation')),
+          findsOneWidget);
+      expect(verifiedCallbacks, 0);
+      await tester.scrollUntilVisible(find.text('สมัคร Starter'), 400,
+          scrollable: find.byType(Scrollable));
+      expect(
+          tester
+              .widget<FilledButton>(
+                  find.widgetWithText(FilledButton, 'สมัคร Starter'))
+              .onPressed,
+          isNull);
+      await tester.scrollUntilVisible(find.text('สมัคร Pro'), 400,
+          scrollable: find.byType(Scrollable));
+      expect(
+          tester
+              .widget<FilledButton>(
+                  find.widgetWithText(FilledButton, 'สมัคร Pro'))
+              .onPressed,
+          isNull);
+
+      final retry = find.byKey(const ValueKey('paywall-retry-purchase'));
+      await tester.scrollUntilVisible(retry, -400,
+          scrollable: find.byType(Scrollable));
+      await tester.ensureVisible(retry);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.tap(retry);
+      await tester.pumpAndSettle();
+      expect(service.hasPendingConfirmation, isTrue);
+      expect(verifiedCallbacks, 0);
+      expect(gateway.purchaseCalls, 1);
+      backendAvailable = true;
+      await tester.tap(retry);
+      await tester.pumpAndSettle();
+
+      expect(find.text('ยืนยันการซื้อสำเร็จ'), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('paywall-purchase-awaiting-confirmation')),
+          findsNothing);
+      expect(verifiedCallbacks, 1);
+      expect(verifyCalls, 3);
+      expect(gateway.purchaseCalls, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('shows only paid benefits that are available now',
       (tester) async {
     tester.view.physicalSize = const Size(390, 1200);
@@ -46,7 +194,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final service = StoreSubscriptionService(
-      gateway: const _FakeStoreBillingGateway(),
+      gateway: _FakeStoreBillingGateway(),
       useRevenueCat: false,
       verifyPurchase: (request) async =>
           _verifiedSubscription(request, plan: 'PRO'),
@@ -119,7 +267,7 @@ void main() {
 
     final initialSubscription = Completer<SubscriptionStatusResult>();
     final service = StoreSubscriptionService(
-      gateway: const _FakeStoreBillingGateway(),
+      gateway: _FakeStoreBillingGateway(),
       useRevenueCat: false,
       verifyPurchase: (request) async =>
           _verifiedSubscription(request, plan: 'PRO'),
@@ -163,7 +311,7 @@ void main() {
     );
   });
 
-  testWidgets('allows purchase after a plan error and still offers retry',
+  testWidgets('blocks purchase after a plan error and still offers retry',
       (tester) async {
     tester.view.physicalSize = const Size(390, 1200);
     tester.view.devicePixelRatio = 1;
@@ -171,9 +319,16 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     var loadCalls = 0;
+    final service = StoreSubscriptionService(
+      revenueCatGateway: _FakeRevenueCatBillingGateway(),
+      useRevenueCat: true,
+      loadSubscription: () async => _subscription(plan: 'PRO'),
+      resyncRevenueCatSubscription: () async => 'PRO',
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: PaywallScreen(
+          service: service,
           loadSubscription: () async {
             loadCalls += 1;
             if (loadCalls == 1) throw Exception('subscription unavailable');
@@ -186,7 +341,7 @@ void main() {
 
     expect(
       find.text(
-        'โหลดแพ็กเกจปัจจุบันไม่สำเร็จ แต่ยังสมัครหรือกู้คืนการซื้อได้',
+        'โหลดแพ็กเกจปัจจุบันไม่สำเร็จ กรุณาลองใหม่ก่อนสมัคร หรือกู้คืนการซื้อเดิม',
       ),
       findsOneWidget,
     );
@@ -197,9 +352,22 @@ void main() {
             find.widgetWithText(FilledButton, 'สมัคร Pro'),
           )
           .onPressed,
+      isNull,
+    );
+    await tester.scrollUntilVisible(find.text('กู้คืนการซื้อ'), 300,
+        scrollable: find.byType(Scrollable));
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'กู้คืนการซื้อ'),
+          )
+          .onPressed,
       isNotNull,
     );
 
+    await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('paywall-retry-subscription')), -300,
+        scrollable: find.byType(Scrollable));
     await tester.ensureVisible(
       find.byKey(const ValueKey('paywall-retry-subscription')),
     );
@@ -278,7 +446,7 @@ void main() {
             find.widgetWithText(FilledButton, 'สมัคร Pro'),
           )
           .onPressed,
-      isNotNull,
+      isNull,
     );
     expect(tester.takeException(), isNull);
 
@@ -309,7 +477,7 @@ void main() {
 
     final purchase = Completer<StoreSubscriptionVerificationResult>();
     final service = StoreSubscriptionService(
-      gateway: const _FakeStoreBillingGateway(),
+      gateway: _FakeStoreBillingGateway(),
       useRevenueCat: false,
       verifyPurchase: (_) => purchase.future,
     );
@@ -374,7 +542,7 @@ SubscriptionStatusResult _subscription({required String plan}) =>
     );
 
 class _FakeStoreBillingGateway implements StoreBillingGateway {
-  const _FakeStoreBillingGateway();
+  var purchaseCalls = 0;
 
   @override
   Future<bool> isAvailable() async => true;
@@ -384,11 +552,13 @@ class _FakeStoreBillingGateway implements StoreBillingGateway {
       const [];
 
   @override
-  Future<StorePurchasePayload> buySubscription(String productId) async =>
-      StorePurchasePayload.android(
-        productId: productId,
-        purchaseToken: 'paywall-purchase-token',
-      );
+  Future<StorePurchasePayload> buySubscription(String productId) async {
+    purchaseCalls += 1;
+    return StorePurchasePayload.android(
+      productId: productId,
+      purchaseToken: 'paywall-purchase-token',
+    );
+  }
 
   @override
   Future<StorePurchasePayload> restoreSubscription(String productId) async =>

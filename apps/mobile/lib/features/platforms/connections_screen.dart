@@ -185,6 +185,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
 
   Map<String, SocialConnectionResult> _statuses = {};
   bool _loading = true;
+  String? _statusError;
   String? _busyPlatform;
   bool _waitingForOAuthReturn = false;
   bool _leftAppForOAuth = false;
@@ -224,6 +225,10 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
   }
 
   Future<void> _loadConnections() async {
+    setState(() {
+      _loading = true;
+      _statusError = null;
+    });
     try {
       final results = await _apiClient.listSocialConnections();
       if (!mounted) return;
@@ -233,20 +238,30 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       });
       widget.onConnectionsChanged?.call(_connectedCount);
     } catch (_) {
-      // Keep platforms shown as disconnected if the status call fails.
       if (!mounted) return;
-      setState(() => _loading = false);
+      _setStatusUnavailable();
     }
   }
 
   SocialConnectionResult? _statusFor(SocialPlatform platform) =>
-      _statuses[platform.apiValue];
+      _statusKnown ? _statuses[platform.apiValue] : null;
+
+  bool get _statusKnown => !_loading && _statusError == null;
+
+  void _setStatusUnavailable() {
+    setState(() {
+      _statuses = {};
+      _loading = false;
+      _statusError =
+          'โหลดสถานะช่องทางไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
+    });
+  }
 
   int get _connectedCount => connectablePlatforms
       .where((platform) => _statusFor(platform)?.connected ?? false)
       .length;
 
-  bool get _actionsLocked => _loading || _busyPlatform != null;
+  bool get _actionsLocked => !_statusKnown || _busyPlatform != null;
 
   void _showMessage(String message) {
     if (!mounted) return;
@@ -291,7 +306,11 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
   }
 
   Future<void> _refresh() async {
-    setState(() => _loading = true);
+    if (_loading || _busyPlatform != null) return;
+    setState(() {
+      _loading = true;
+      _statusError = null;
+    });
     try {
       final results = await _apiClient.refreshSocialConnections();
       if (!mounted) return;
@@ -300,14 +319,9 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         _loading = false;
       });
       widget.onConnectionsChanged?.call(_connectedCount);
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      _showMessage(error.message);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
-      _showMessage('รีเฟรชสถานะไม่สำเร็จ ลองใหม่อีกครั้ง');
+      _setStatusUnavailable();
     }
   }
 
@@ -346,6 +360,15 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         width: 18,
         height: 18,
         child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    if (!_statusKnown) {
+      return OutlinedButton(
+        key: ValueKey('profile-platform-status-unknown-${platform.apiValue}'),
+        onPressed: null,
+        style: _actionStyle,
+        child: const Text('รอสถานะ'),
       );
     }
 
@@ -480,7 +503,11 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'เชื่อมต่อแล้ว $_connectedCount/${connectablePlatforms.length} ช่องทาง',
+                      _loading
+                          ? 'กำลังตรวจสอบช่องทาง...'
+                          : _statusError != null
+                              ? 'ตรวจสอบช่องทางไม่ได้'
+                              : 'เชื่อมต่อแล้ว $_connectedCount/${connectablePlatforms.length} ช่องทาง',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -489,7 +516,8 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'เชื่อมครั้งเดียว โพสต์คลิปเดียวไปได้ทุกช่องทาง',
+                      _statusError ??
+                          'เชื่อมครั้งเดียว โพสต์คลิปเดียวไปได้ทุกช่องทาง',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.white.withValues(alpha: 0.85),
@@ -501,6 +529,18 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
             ],
           ),
         ),
+        if (_statusError != null) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: const ValueKey('profile-platforms-retry'),
+              onPressed: _loadConnections,
+              icon: const Icon(Icons.refresh),
+              label: const Text('ลองใหม่'),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         Row(
           children: [
             Expanded(
@@ -520,14 +560,15 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             else ...[
-              Text(
-                '$_connectedCount/${connectablePlatforms.length}',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textSecondary,
+              if (_statusKnown)
+                Text(
+                  '$_connectedCount/${connectablePlatforms.length}',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
-              ),
               const SizedBox(width: 4),
               IconButton(
                 key: const ValueKey('profile-platforms-refresh'),

@@ -100,6 +100,15 @@ migration แบบ API-first และทดสอบ release candidate บน�
   อาจโพสต์ซ้ำ และยืนยันก่อนระบบสร้าง draft/request ID ใหม่ โดยยังเก็บร่างเดิมไว้ตรวจ
 - enqueue แรกที่ล้มเหลวตอบ `503` แต่เก็บ durable post row เพื่อให้ same-key replay
   ซ่อมคิว จึงไม่เพิ่ม post/quota ซ้ำ
+- Mobile จำกัด JSON request ทั่วไป 20 วินาทีตั้งแต่ auth refresh/connect จนอ่าน
+  body จบ; transcription/prepare/plan/caption POST ใช้ 120 วินาที และ legacy PUT
+  หรือ multipart PUT แต่ละ part ใช้ 180 วินาที (inject เวลาสั้นสำหรับเทสต์ได้)
+- `API_REQUEST_TIMEOUT` เป็น client-local `ApiException` status `408`: abort
+  request ที่ยังรอ response หรือ cancel body subscription แต่ไม่ยืนยันว่า API
+  ยกเลิกงานที่รับไปแล้ว ห้าม auto retry `POST /posts`; เก็บร่าง/request ID เดิม
+  สำหรับ explicit retry และคง signed-URL expiry retry/completion reconciliation
+- หากอ่าน connection status ไม่สำเร็จต้องแสดงว่ายังตรวจไม่ได้ ไม่สรุปว่าเชื่อมต่อ
+  0 บัญชีหรือหลุดการเชื่อมต่อ และปิด connection actions จน refresh สำเร็จ
 - Mobile แสดง `QUEUED`, `PUBLISHING`, `PUBLISHED`, `PARTIAL_PUBLISHED` ตามจริง
   และระบุ replay ว่าเป็นรายการเดิม; status ที่ไม่รู้จักห้ามแสดง success และต้องเก็บร่าง
 - ขอบเขตนี้ยังไม่ deduplicate remote upload: manifest ยังไม่เก็บ video/cover key ที่

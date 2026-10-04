@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/monitoring/postdee_analytics.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
+import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -201,6 +202,115 @@ void main() {
   });
 
   final uploaderScroll = find.byType(Scrollable).first;
+
+  testWidgets('failed channel status offers retry without claiming no accounts',
+      (tester) async {
+    var loads = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: UploaderScreen(
+          draftStore: TestPublishDraftStore(),
+          loadSocialConnections: () async {
+            loads += 1;
+            if (loads == 1) {
+              throw const ApiException('Request failed', statusCode: 503);
+            }
+            return _loadConnectedSocialConnections();
+          },
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('2 · เลือกช่องทาง'), 300,
+        scrollable: uploaderScroll);
+    await tester.pumpAndSettle();
+
+    expect(find.text('เชื่อมต่อบัญชีโซเชียลก่อนเริ่มโพสต์'), findsNothing);
+    expect(find.text('ยังไม่ได้เชื่อมต่อช่องทาง'), findsNothing);
+    expect(find.bySemanticsLabel('ยังไม่ได้เชื่อมต่อช่องทาง'), findsNothing);
+    final retry = find.byKey(const ValueKey('uploader-retry-connections'));
+    expect(retry, findsOneWidget);
+    await tester.ensureVisible(retry);
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+
+    expect(loads, 2);
+    expect(find.text('เชื่อมต่อแล้ว 2 ช่องทาง'), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('uploader-platform-TIKTOK')), findsOneWidget);
+  });
+
+  testWidgets(
+      'unknown draft channels keep selections and block posting until retry',
+      (tester) async {
+    final video = _createPickedVideoFixture('saved.mp4');
+    final store = TestPublishDraftStore();
+    store.drafts['draft-unknown'] = PublishDraft(
+      version: publishDraftManifestVersion,
+      id: 'draft-unknown',
+      ownerUserId: store.ownerUserId,
+      submissionRequestId: 'submit_${List.filled(64, '0').join()}',
+      createdAt: DateTime.utc(2026, 8, 22),
+      updatedAt: DateTime.utc(2026, 8, 22),
+      videoPath: video.path,
+      videoName: video.name,
+      videoSizeBytes: video.sizeBytes,
+      videoWidth: 1080,
+      videoHeight: 1920,
+      caption: 'แคปชันที่เก็บไว้',
+      aiGuidance: '',
+      watermarkEnabled: true,
+      platformApiValues: const {'TIKTOK'},
+    );
+    var loads = 0;
+    var readinessCalls = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: UploaderScreen(
+          draftStore: store,
+          loadSocialConnections: () async {
+            loads += 1;
+            if (loads == 1) {
+              throw const ApiException('Request failed', statusCode: 503);
+            }
+            return _loadConnectedSocialConnections();
+          },
+          checkPublishingReadiness: () async => readinessCalls += 1,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('uploader-open-drafts')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('publish-draft-draft-unknown')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('2 · เลือกช่องทาง'), 300,
+        scrollable: uploaderScroll);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('ฉบับร่างเลือกไว้แต่ยังไม่ได้เชื่อม:'),
+        findsNothing);
+    expect(find.textContaining('ยังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้ไม่ได้:'),
+        findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('ตรวจสอบช่องทางไม่ได้'), findsOneWidget);
+    expect(readinessCalls, 0);
+    await tester.tap(find.text('ไว้ก่อน'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('uploader-save-draft-button')));
+    await tester.pumpAndSettle();
+    expect(store.savedRequests.single.platformApiValues, {'TIKTOK'});
+    final retry = find.byKey(const ValueKey('uploader-retry-connections'));
+    await tester.ensureVisible(retry);
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกแล้ว 1 ช่องทาง'), findsOneWidget);
+    expect(find.textContaining('ยังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้ไม่ได้:'),
+        findsNothing);
+    expect(readinessCalls, 0);
+  });
 
   testWidgets('shows and selects only platforms connected by the real status',
       (tester) async {
@@ -554,9 +664,9 @@ void main() {
 
   testWidgets('shows the refreshed upload workflow sections', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
-          body: UploaderScreen(),
+          body: UploaderScreen(loadSocialConnections: () async => const []),
         ),
       ),
     );

@@ -14,16 +14,56 @@ Profile link replaces AI editing/Subtitle Studio in the active app. The editing
 verification notes later in this document are historical compatibility gates,
 not requirements for shipping this replacement. AI captions remain active.
 
-- Run the additive LinkInBioProfile migration and regenerate Prisma on the API
-  release; production must use `POST_STORE=prisma` for durable public pages.
-- Verify a signed-in account can publish/update and copy/open its confirmed
-  `/p/<slug>` URL on the deployed API domain, from another browser without login.
+- Staging migration applied: `20261005180000_add_link_in_bio_profile`; Render
+  logs confirm all 13 migrations completed. Production still requires the
+  additive migration/generated Prisma client and `POST_STORE=prisma` for durable
+  public pages before deploying this feature there.
+- Signed-in Firebase Android Staging publishing, republishing, updating an
+  already-published snapshot, and confirmed-URL copy passed. Republish → rename
+  to `PostDee Demo Updated` → update → authenticated owner GET retained the same
+  confirmed URL/copy/open controls with no pending-change or unknown-state
+  warning. Anonymous HTTP `200` with `no-store`/CSP passed in the first publish
+  run; opening/rendering the confirmed `/p/<slug>` URL in a live browser remains
+  a separate unverified acceptance check.
 - Check duplicate slugs, invalid destinations, offline/timeout recovery, and
   separation between local draft changes and the last public snapshot.
-- Verify unpublish and account deletion make the public URL unavailable, and
-  switching accounts never reveals the previous owner's draft/page controls.
+- Verify unpublish, reload, and account deletion make the public URL unavailable,
+  and switching accounts never reveals the previous owner's draft/page controls.
+  App unpublish passed through confirmation and the DELETE response: unpublished
+  status replaced the URL/copy/open controls while retaining the inputs and one
+  canonical link. Authenticated owner GET after unpublish passed, then a
+  force-stop/start without clearing data retained the signed-in account,
+  unpublished API state, store/slug, and canonical link after opening the Home
+  card. After the later published-snapshot update, unpublish confirmation and
+  authenticated owner GET passed again with copy/open controls removed. The
+  final private sample is `PostDee Demo Updated`, the original slug, and one
+  canonical link, left unpublished. Live public `404` has not been requested
+  because the domain block remains in place; automated tests do not replace
+  these live gates. Keep Firebase
+  account deletion disabled until its durable owner barrier and existing release
+  gates are complete.
 - No third-party statistics API or new `postdee.link` domain is required. This
-  checklist does not assert that the new API/migration has been deployed.
+  feature's API/migration is deployed on Staging; Production remains suspended
+  and has not been deployed in this run.
+
+Staging evidence recorded 5 October 2026, **18:26 Asia/Bangkok**: PR
+[#13](https://github.com/NOI56/PostDeeMobile/pull/13), `main`
+`97a7b89b0984f7e41b0422a9c542d6cc9f91e0c9` (same API/mobile tree as feature
+`43773ba`), Render service `srv-d9bb72ojs32c739osa5g`, deploy
+`dep-db1ohp142hec73dksqqg` Live. Firebase publishing succeeded for `PostDee Demo`,
+slug `postdee-demo-20261005`; `https://EXAMPLE.com` normalized to
+`https://example.com/` and URL copy displayed the native confirmation toast.
+Flutter 1,048 tests/API 1,106 tests, analyze/build/schema/helper checks, PR/main CI,
+and unsigned iOS build passed. The unsigned build is not iPhone device evidence.
+Local public-page browser QA passed at mobile and desktop sizes. Live browser
+access was rejected by saved user-permission blocks even after permission in
+this session; no alternate browser or HTTP workaround was used. Live visual
+rendering/open-link/public-`404` checks remain unverified. The final sample
+`PostDee Demo Updated` was left **unpublished** in the private builder after
+republish/update/unpublish and owner reload; the earlier anonymous `200` is dated
+publication evidence, not a claim that its public page is still live. No service
+plan, payment, or configuration was changed. See `docs/STAGING.md` for the
+remaining live gates.
 
 ## Staging Gate
 
@@ -55,7 +95,8 @@ user-owned PostPeer connections.
 
 | Area | Status | Switch |
 | --- | --- | --- |
-| Database (Postgres/Prisma) | ⚙️ configured in Blueprints; current Live check required | `*_STORE=prisma` + Render-managed `DATABASE_URL` |
+| Database (Postgres/Prisma) | Staging 13 migrations confirmed 5 October 2026; Production Live check required | `*_STORE=prisma` + Render-managed `DATABASE_URL` |
+| Link in Bio | Staging app publish/republish/update/copy/unpublish/owner reload/restart and earlier anonymous HTTP `200` passed; updated sample left unpublished; live browser/open-link/public `404` gates pending; not Production accepted | `POST_STORE=prisma` + LinkInBioProfile migration/generated client |
 | Scheduling worker | ⚙️ configured in-process; current Live check required | one instance with `PUBLISH_QUEUE=memory` |
 | Caption from keywords (Gemini) | ⚙️ repo-ready, Live secret/function check required | Render declares `CAPTION_PROVIDER=gemini` and `GEMINI_API_KEY` as a hidden value; confirm the key in each environment and run the current release candidate |
 | Social publishing (PostPeer) | earlier controlled YouTube Private E2E passed; Phase 2 release blocked | Apply the settings/outcome migration and API first, verify readiness version 1, inspect legacy backlog, then test TikTok inbox draft, YouTube compliance/visibility, Instagram, Facebook Page publish/draft, target revalidation, scheduling/recovery, and Production. TikTok direct remains off |

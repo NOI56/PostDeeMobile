@@ -1,11 +1,60 @@
 # PostDee Staging
 
-ตรวจสถานะ 5 ตุลาคม 2026: `postdee-api-staging` และฐานข้อมูล Staging กลับเป็น
-Active ใน Render Dashboard และ `/health` ตอบ HTTP `200` แล้ว ส่วน Production
-ยังตอบ `503` พร้อม `x-render-routing: suspend-by-user` การตรวจนี้ยืนยันเฉพาะ
-สถานะบริการ; ยังไม่ยืนยันว่า LinkInBioProfile migration/API รุ่นใหม่ถูก deploy
-หรือการเผยแพร่หน้าโปรไฟล์ผ่าน E2E ต้องตรวจ candidate SHA และ migration ก่อน
-ทดสอบ publish → เปิดเว็บโดยไม่ล็อกอิน → unpublish บนโดเมน Staging จริง
+ตรวจสถานะ 5 ตุลาคม 2026: API และฐานข้อมูล Staging กลับเป็น Active แล้ว และ
+Link in Bio รุ่นใหม่ขึ้น Staging เวลา **18:26 น. Asia/Bangkok** ส่วน Production
+ยัง suspended รอบนี้ไม่มีการ deploy Production จ่ายเงิน เปลี่ยนแผน หรือแก้
+configuration ของบริการ
+
+## ผลตรวจ Link in Bio บน Staging — 5 ตุลาคม 2026
+
+- PR [#13](https://github.com/NOI56/PostDeeMobile/pull/13) merge เข้า `main` เป็น
+  `97a7b89b0984f7e41b0422a9c542d6cc9f91e0c9`; feature commit `43773ba`
+  มี API/mobile tree ตรงกับ merge commit ที่ส่งขึ้น Staging
+- Render service `srv-d9bb72ojs32c739osa5g`, deploy
+  `dep-db1ohp142hec73dksqqg` แสดง Live เวลา 18:26 น. Log ยืนยันว่า migration
+  `20261005180000_add_link_in_bio_profile` ถูกนำไปใช้ และ migrations ทั้ง 13 รายการ
+  เสร็จครบแล้ว ไม่ใช่เพียงการ validate schema หรือ generate client ในเครื่อง
+- [x] แอป Android Staging ที่ล็อกอิน Firebase เผยแพร่ชื่อ `PostDee Demo`, slug
+  `postdee-demo-20261005` สำเร็จบน API จริง
+- [x] หน้า `/p/postdee-demo-20261005` ตอบ HTTP `200` โดยไม่ต้องล็อกอิน พร้อม
+  `Cache-Control: no-store` และ CSP `script-src 'none'` การตรวจ HTTP นี้ยืนยัน
+  response ของหน้าที่เผยแพร่ ไม่ใช่หลักฐานการแสดงผลในเบราว์เซอร์จริง
+- [x] URL `https://EXAMPLE.com` ถูกคืนในรูป canonical
+  `https://example.com/` และปุ่มคัดลอก URL ที่ยืนยันแล้วแสดง native toast สำเร็จ
+- [x] Flutter 1,048 tests, API 1,106 tests, analyze/build, Prisma schema/helper
+  checks ผ่าน; GitHub CI ของ PR และ `main` รวม unsigned iOS build ผ่าน
+  ผล iOS นี้ยืนยันการ build เท่านั้น ยังไม่ใช่การติดตั้งหรือทดสอบบน iPhone จริง
+- [x] หน้าเว็บทดสอบในเครื่องผ่าน browser QA ทั้งขนาดมือถือและ desktop ก่อนทดสอบ
+  Staging โดยไม่ถือว่าผล local เป็นการตรวจหน้าเว็บบนโดเมน Live
+- [ ] การแสดงผลหน้าเว็บ Staging จริงในเบราว์เซอร์และการเปิดลิงก์จากแอปยังไม่ยืนยัน
+  การเข้าถึงโดเมน Live ผ่าน browser ถูก saved user-permission block แม้ผู้ใช้
+  อนุญาตรอบนี้แล้ว จึงไม่ได้ใช้ browser อื่นหรือ HTTP เป็นทางเลี่ยงการบล็อก
+- [x] ยกเลิกเผยแพร่จากแอปผ่านหน้าที่ยืนยันและ DELETE response สำเร็จ สถานะเปลี่ยน
+  เป็นยังไม่ได้เผยแพร่ และนำ URL/ปุ่มคัดลอก/ปุ่มเปิดเว็บออก โดยชื่อหน้าและลิงก์
+  canonical เดิมหนึ่งรายการยังอยู่ให้แก้ไขหรือเผยแพร่ใหม่
+- [x] หลัง unpublish กดตรวจสถานะเว็บไซต์ผ่าน authenticated owner GET ได้สถานะ
+  ยังไม่ได้เผยแพร่และไม่มีปุ่มคัดลอก/เปิดเว็บ จากนั้น force-stop/start โดยไม่ล้าง
+  ข้อมูล แอปกลับ Home ด้วยบัญชีเดิม เปิดผ่านการ์ด Home และ reload API ได้สถานะ
+  ไม่เผยแพร่ตรงเดิม ชื่อ `PostDee Demo`, slug และลิงก์ `https://example.com/`
+  หนึ่งรายการยังอยู่ครบในรอบ restart นี้
+- [x] เผยแพร่ตัวอย่างเดิมซ้ำ เปลี่ยนชื่อเป็น `PostDee Demo Updated` แล้วกดอัปเดต
+  หน้าเว็บไซต์และ authenticated owner GET สำเร็จ snapshot ที่เผยแพร่อัปเดตแล้ว
+  ยังคง URL เดิมพร้อมปุ่มคัดลอก/เปิดเว็บที่ยืนยันจาก API และไม่มีคำเตือนว่ามี
+  การแก้ไขที่ยังไม่ได้เผยแพร่หรือสถานะไม่ทราบผล การตรวจนี้ไม่รวมกดเปิดโดเมนจริง
+- [x] หลังอัปเดต ยกเลิกเผยแพร่ผ่าน confirmation อีกครั้งและ owner GET คืนสถานะ
+  ไม่เผยแพร่ โดยไม่มีปุ่มคัดลอก/เปิดเว็บ ตัวอย่างปัจจุบันชื่อ
+  `PostDee Demo Updated`, slug เดิมและลิงก์ canonical หนึ่งรายการ ถูกทิ้งไว้
+  **ไม่เผยแพร่** ในหน้าแก้ไขส่วนตัว
+- [ ] หน้า Live `404` หลังยกเลิกเผยแพร่ยังไม่ได้เรียกเพราะเคารพ domain block
+  ข้างต้น ห้ามนับว่า full publish → live browser → unpublish/anonymous `404`
+  E2E ผ่านแล้ว และห้ามอ้างว่าตัวอย่างข้างต้นยังเป็นหน้าสาธารณะที่เปิดอยู่
+- [ ] การลบบัญชีจริงแล้วหน้าเว็บหายยังไม่ผ่าน และยังคงปิด Firebase account
+  deletion จน durable owner barrier และ release gates ที่ระบุด้านล่างครบ
+
+ผลนี้ยืนยันการเผยแพร่/อัปเดต/ยกเลิกเผยแพร่และโหลดสถานะ Link in Bio ผ่านแอป/API
+รวมการอ่านหน้าแบบ anonymous ในรอบเผยแพร่แรกบน Staging แต่ยังไม่ยืนยัน browser
+E2E บนโดเมนจริง หรือ provider E2E ของ Gemini, RevenueCat, R2 หรือ PostPeer ใน
+release candidate นี้ และไม่อนุญาตให้เปิด Production ก่อนผ่าน gates ที่เหลือ
 
 Dashboard ระบุ Web Service Staging เป็นแผน `Starter` ที่ตั้งไว้อยู่แล้ว
 รอบเปลี่ยนเมนูและเพิ่มเว็บหน้าโปรไฟล์นี้ไม่ได้ซื้อหรือเปลี่ยนแผนบริการ
@@ -94,6 +143,10 @@ Render Dashboard และ Blueprint ต้องตาม `main` เหมื�
 - `GEMINI_API_KEY` และ `ELEVENLABS_API_KEY`: ควรใช้ key จำกัดโควตาสำหรับ Staging
 
 ## สถานะ AI transcription ที่ถือเป็นข้อมูลจริง
+
+หน้า AI ตัดต่อและ Subtitle Studio ถูกถอดจากเมนูใช้งานปัจจุบันแล้ว โดยใช้
+Link in Bio แทนและยังเก็บ AI แคปชัน รายการ AI edit ต่อไปนี้เป็นบันทึกของ
+backend/compatibility เดิม ไม่ใช่ความสามารถที่โฆษณาในแอปรุ่นนี้
 
 - `render.yaml` และ `render.staging.yaml` ใน `main` ตั้ง
   `TRANSCRIPTION_PROVIDER=elevenlabs` และ `EDIT_PLAN_PROVIDER=gemini`

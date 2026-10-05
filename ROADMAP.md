@@ -21,10 +21,15 @@ Build roadmap for PostDee.
 - Remove editing-minute benefits, quota cards, and top-up promotion from the
   active product. Legacy editing code/API contracts remain for compatibility and
   shared media helpers; historical editing milestones below are not active TODOs.
-- The original profile-page migration/API are deployed to Staging. The next
-  release gate is migration `20261005193000_customize_link_in_bio_profile` plus
-  generated client/API/fonts, then image upload, appearance publication,
-  public image access and unpublishing on the real staging domain/account.
+- Staging now includes customization migration
+  `20261005193000_customize_link_in_bio_profile`, the generated client/API and
+  bundled fonts at `9195211f16519fd58c9cc01d6949dd8486190d01`. Real gallery logo
+  upload and authenticated image reload after an app restart passed. Public
+  appearance/image access and unpublishing remain unverified for customization.
+  The user deferred live browser and R2 lifecycle checks because saved browser
+  permissions block the Staging and Cloudflare domains. The
+  direct read returned `403 AccessDenied`. This is Staging evidence, not
+  Production acceptance.
   No new social statistics API, custom domain, click tracking, or scheduled-link
   auto-update is required by this first profile-page version.
 
@@ -595,7 +600,9 @@ To ensure the app passes store review guidelines, the following must be implemen
    `503` after restoring `disabled`. Treat `FACEBOOK_REELS` as Facebook Page
    Video, verify uncertain outcomes before retrying, and defer individual social
    API app reviews.
-7. Deploy the profile-page migration/API, verify publish/update/copy/open and
-   unpublish on the staging domain, and confirm pages disappear on account deletion.
+7. Finish the remaining live customization checks for published appearance,
+   public images, browser copy/open and unpublishing on the deployed Staging
+   version. Verify R2 lifecycle settings and confirm pages disappear on account
+   deletion before claiming full release acceptance.
 8. Retain legacy editing safety tests and shared media helpers without exposing
    editing, subtitles, music, or editing-minute top-ups as active product features.

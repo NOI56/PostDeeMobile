@@ -38,14 +38,19 @@ Migration `20261005193000_customize_link_in_bio_profile` adds nullable appearanc
 JSON and owner-scoped image metadata. Old profiles use the original cream/green
 defaults; old clients can still publish links without overwriting customization.
 Deploy the generated Prisma client, migration, API and bundled font assets
-before distributing the new mobile build. Real-bucket and deployed-domain QA
-remain release gates until this version is deployed and checked.
+before distributing the new mobile build. Staging now runs this migration/API
+at `9195211f16519fd58c9cc01d6949dd8486190d01`; real logo upload and authenticated
+image reload after restarting the app passed. Public page/image and unpublishing
+checks remain unverified for this customization release. The user deferred live
+browser and R2 lifecycle checks after access was blocked. See the dated verification in
+`docs/superpowers/plans/2026-10-05-profile-page-customization.md`.
 
 Production persistence uses `POST_STORE=prisma` and the additive LinkInBioProfile
 migration. In-memory mode is local scaffolding and loses pages when restarted.
 Deploy the API and run its migrations before shipping the mobile build. This
-change has not itself deployed a public service or registered a new domain;
-hosting/database availability and their existing costs still apply.
+change is deployed on the existing Staging service; Production remains unchanged
+and no new domain was registered. Hosting/database availability and their
+existing costs still apply.
 
 ## Project Structure
 

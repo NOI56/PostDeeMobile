@@ -51,18 +51,24 @@ class FirebaseGoogleAuthGateway implements GoogleAuthGateway {
   const FirebaseGoogleAuthGateway({
     required GoogleIdentityClient googleClient,
     required FirebaseAuthClient firebaseAuthClient,
+    this.googleSignInTimeout = const Duration(minutes: 2),
+    this.firebaseSignInTimeout = const Duration(seconds: 30),
   })  : _googleClient = googleClient,
         _firebaseAuthClient = firebaseAuthClient;
 
   final GoogleIdentityClient _googleClient;
   final FirebaseAuthClient _firebaseAuthClient;
+  final Duration googleSignInTimeout;
+  final Duration firebaseSignInTimeout;
 
   @override
   Future<AuthSession> signIn() async {
     final GoogleAccountSnapshot googleAccount;
 
     try {
-      googleAccount = await _googleClient.signIn();
+      // Cover initialization and the native account picker together. A result
+      // arriving after this deadline must not start a Firebase sign-in.
+      googleAccount = await _googleClient.signIn().timeout(googleSignInTimeout);
     } on GoogleSignInException catch (error) {
       throw AuthUnavailableException(_describeGoogleSignInFailure(error));
     }
@@ -74,8 +80,11 @@ class FirebaseGoogleAuthGateway implements GoogleAuthGateway {
           'Google Sign-In did not return an ID token');
     }
 
-    final firebaseUser =
-        await _firebaseAuthClient.signInWithGoogleIdToken(googleIdToken);
+    // The client includes both the credential exchange and fetching an ID
+    // token. The SDK request itself cannot be cancelled by Future.timeout.
+    final firebaseUser = await _firebaseAuthClient
+        .signInWithGoogleIdToken(googleIdToken)
+        .timeout(firebaseSignInTimeout);
 
     return AuthSession.authenticated(
       userId: firebaseUser.userId,

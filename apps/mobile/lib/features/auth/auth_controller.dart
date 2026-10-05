@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../core/auth/auth_session.dart';
@@ -93,12 +95,18 @@ class PostDeeAuthController extends ChangeNotifier {
     AppleAuthGateway appleAuthGateway = const UnavailableAppleAuthGateway(),
     PostDeeAuthSessionStore? sessionStore,
     PostDeeAnalytics? analytics,
+    Duration signInTimeout = const Duration(seconds: 30),
+    Duration interactiveSignInTimeout = const Duration(seconds: 150),
     this.setupMessage,
-  })  : _googleAuthGateway = googleAuthGateway,
+  })  : assert(signInTimeout > Duration.zero),
+        assert(interactiveSignInTimeout > Duration.zero),
+        _googleAuthGateway = googleAuthGateway,
         _emailAuthGateway = emailAuthGateway,
         _appleAuthGateway = appleAuthGateway,
         _sessionStore = sessionStore ?? PostDeeAuthSessionStore.instance,
-        _analytics = analytics ?? PostDeeAnalytics.instance {
+        _analytics = analytics ?? PostDeeAnalytics.instance,
+        _signInTimeout = signInTimeout,
+        _interactiveSignInTimeout = interactiveSignInTimeout {
     _sessionStore.addListener(_handleSessionChanged);
   }
 
@@ -107,9 +115,14 @@ class PostDeeAuthController extends ChangeNotifier {
   final AppleAuthGateway _appleAuthGateway;
   final PostDeeAuthSessionStore _sessionStore;
   final PostDeeAnalytics _analytics;
+  final Duration _signInTimeout;
+  final Duration _interactiveSignInTimeout;
   final String? setupMessage;
 
   bool _isSigningIn = false;
+  bool _isDisposed = false;
+  int _signInAttempt = 0;
+  Future<void>? _signOutFuture;
   String? _errorMessage;
 
   AuthSession get session => _sessionStore.session;
@@ -140,34 +153,68 @@ class PostDeeAuthController extends ChangeNotifier {
     String provider,
     Future<AuthSession> Function() signIn,
   ) async {
+    if (_isDisposed || _isSigningIn || _signOutFuture != null) {
+      return;
+    }
+
+    final attempt = ++_signInAttempt;
     _isSigningIn = true;
     _errorMessage = null;
     notifyListeners();
 
-    await _analytics.logSignInStarted(provider);
+    // Optional telemetry must not delay authentication or keep buttons locked.
+    unawaited(_analytics.logSignInStarted(provider));
 
     try {
-      _sessionStore.signIn(await signIn());
-      await _analytics.logSignInSucceeded(provider);
+      final timeout =
+          provider == 'email' ? _signInTimeout : _interactiveSignInTimeout;
+      final signedInSession = await signIn().timeout(timeout);
+      if (!_isCurrentSignIn(attempt)) return;
+
+      _sessionStore.signIn(signedInSession);
+      unawaited(_analytics.logSignInSucceeded(provider));
+    } on TimeoutException {
+      if (!_isCurrentSignIn(attempt)) return;
+      _errorMessage = provider == 'google'
+          ? 'Google ตอบกลับช้าเกินไป กรุณาลองใหม่ หรือเข้าสู่ระบบด้วยอีเมล'
+          : 'เข้าสู่ระบบใช้เวลานานเกินไป กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
+      unawaited(_analytics.logSignInFailed(
+        provider: provider,
+        reason: 'network',
+      ));
     } on AuthUnavailableException catch (error) {
+      if (!_isCurrentSignIn(attempt)) return;
       _errorMessage = error.message;
-      await _analytics.logSignInFailed(
+      unawaited(_analytics.logSignInFailed(
         provider: provider,
         reason: 'unavailable',
-      );
-    } catch (error) {
-      _errorMessage = 'Sign in failed: $error';
-      await _analytics.logSignInFailed(
+      ));
+    } catch (_) {
+      if (!_isCurrentSignIn(attempt)) return;
+      _errorMessage = 'เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
+      unawaited(_analytics.logSignInFailed(
         provider: provider,
         reason: 'unknown',
-      );
+      ));
     } finally {
-      _isSigningIn = false;
-      notifyListeners();
+      if (_isCurrentSignIn(attempt)) {
+        _isSigningIn = false;
+        notifyListeners();
+      }
     }
   }
 
-  Future<void> signOut() async {
+  bool _isCurrentSignIn(int attempt) =>
+      !_isDisposed && attempt == _signInAttempt;
+
+  Future<void> signOut() {
+    return _signOutFuture ??= _performSignOut().whenComplete(() {
+      _signOutFuture = null;
+    });
+  }
+
+  Future<void> _performSignOut() async {
+    ++_signInAttempt;
     try {
       await _googleAuthGateway.signOut();
     } finally {
@@ -175,19 +222,22 @@ class PostDeeAuthController extends ChangeNotifier {
         await _appleAuthGateway.signOut();
       } finally {
         _sessionStore.signOut();
-        await _analytics.logSignOut();
+        unawaited(_analytics.logSignOut());
+        _isSigningIn = false;
         _errorMessage = null;
-        notifyListeners();
+        if (!_isDisposed) notifyListeners();
       }
     }
   }
 
   void _handleSessionChanged() {
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
+    ++_signInAttempt;
     _sessionStore.removeListener(_handleSessionChanged);
     super.dispose();
   }

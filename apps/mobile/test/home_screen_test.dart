@@ -8,6 +8,8 @@ import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/home/home_screen.dart';
 
+import 'link_in_bio_test_navigation.dart';
+
 Finder _homeScrollable() => find.byType(Scrollable).first;
 
 Future<void> _scrollHomeDown(WidgetTester tester) async {
@@ -1133,13 +1135,21 @@ void main() {
     expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
     expect(find.byKey(const ValueKey('link-in-bio-back')), findsOneWidget);
     expect(find.textContaining('postdee.link/'), findsNothing);
+    expect(
+        find.byKey(const ValueKey('link-in-bio-store-name')), findsOneWidget);
+    expect(find.byKey(const ValueKey('link-in-bio-next')), findsOneWidget);
+    expect(find.byKey(const ValueKey('link-in-bio-add')), findsNothing);
+    expect(find.byKey(const ValueKey('link-in-bio-publish')), findsNothing);
 
-    await tester.drag(find.byType(Scrollable).last, const Offset(0, -520));
+    await tapBioControl(tester, 'link-in-bio-more');
+    expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
 
+    await showBioStep(tester, 'review');
+
     expect(find.text('อัปเดตจากโพสต์ที่ตั้งเวลา'), findsNothing);
-    expect(find.text('ดูตัวอย่างหน้า'), findsOneWidget);
-    expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
+    expect(find.text('ดูตัวอย่างเต็มหน้า'), findsOneWidget);
     expect(find.byKey(const ValueKey('link-in-bio-publish')), findsOneWidget);
   });
 

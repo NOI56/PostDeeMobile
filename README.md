@@ -34,6 +34,16 @@ are also available. Draft customization stays private until Publish/Update.
 The preview and public page share the same appearance contract and palettes.
 Product cards/prices are not part of this release.
 
+The simplified mobile editor guides first setup through Store information,
+Links, Theme, and Review/Publish. Accounts with an existing server profile open
+a compact overview; the published preview uses the confirmed server snapshot,
+while Edit reopens the private draft. Extra link options and appearance settings
+are collapsed until requested. Draft saving, status refresh, and unpublishing
+remain in the page's More menu. Drafts are still saved explicitly and never
+publish automatically. This UI revision requires no API/schema migration;
+verification is recorded in
+`docs/superpowers/plans/2026-10-05-profile-link-simpler-ui.md`.
+
 Migration `20261005193000_customize_link_in_bio_profile` adds nullable appearance
 JSON and owner-scoped image metadata. Old profiles use the original cream/green
 defaults; old clients can still publish links without overwriting customization.

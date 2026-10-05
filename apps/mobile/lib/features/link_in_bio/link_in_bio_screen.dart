@@ -10,7 +10,6 @@ import '../../core/models/link_in_bio_appearance.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
-import '../shared/postdee_card.dart';
 import 'link_in_bio_appearance_editor.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_image_picker.dart';
@@ -75,6 +74,11 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   late final String? _ownerUserId;
   late final TextEditingController _storeNameController;
   late final TextEditingController _slugController;
+  late final TextEditingController _descriptionController;
+  final _urlSettings = ExpansibleController();
+  final _infoForm = GlobalKey<FormState>();
+  int _step = 0;
+  bool _editorOpen = false;
   Set<String> _enabledLinkIds = {};
   List<LinkInBioCustomLink> _customLinks = [];
   LinkInBioAppearance _appearance = const LinkInBioAppearance();
@@ -90,11 +94,14 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   bool _publicationUncertain = false;
   int _editVersion = 0;
   String? _errorMessage;
+  String? _noticeMessage;
+  Timer? _noticeTimer;
 
   bool get _ownerStillCurrent =>
       mounted &&
       PostDeeAuthSessionStore.instance.session.stableUserId == _ownerUserId;
   bool get _canEdit => !_isBusy;
+  bool get _isEditing => _editorOpen || _profile == null;
   List<LinkInBioCustomLink> get _activeLinks =>
       _customLinks.where((link) => _enabledLinkIds.contains(link.id)).toList();
   LinkInBioDraft get _draft => LinkInBioDraft(
@@ -125,6 +132,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     _storeNameController =
         TextEditingController(text: LinkInBioDraft.defaults().storeName);
     _slugController = TextEditingController();
+    _descriptionController = TextEditingController();
     if (widget.isActive) _loadProfile();
   }
 
@@ -138,10 +146,13 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   void dispose() {
     _storeNameController.dispose();
     _slugController.dispose();
+    _descriptionController.dispose();
+    _urlSettings.dispose();
     _scrollController.dispose();
     _images.clear();
     _imageRevision.dispose();
     _loadingImages.clear();
+    _noticeTimer?.cancel();
     super.dispose();
   }
 
@@ -151,6 +162,17 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     _customLinks = List.of(draft.customLinks);
     _enabledLinkIds = {...draft.enabledLinkIds};
     _appearance = draft.appearance;
+    _descriptionController.text = _appearance.description;
+    if (_editVersion == 0 && isValidLinkInBioSlug(draft.slug)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_ownerStillCurrent &&
+            _isEditing &&
+            _step == 0 &&
+            isValidLinkInBioSlug(_slugController.text.trim())) {
+          _urlSettings.collapse();
+        }
+      });
+    }
     unawaited(_loadDraftImages());
   }
 
@@ -158,7 +180,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     final keys = {
       _appearance.logoKey,
       _appearance.coverKey,
-      _appearance.background.imageKey
+      _appearance.background.imageKey,
+      _profile?.appearance.logoKey,
+      _profile?.appearance.coverKey,
+      _profile?.appearance.background.imageKey,
     }.whereType<String>().toSet();
     for (final key in keys) {
       if (_images.containsKey(key) || !_loadingImages.add(key)) continue;
@@ -206,6 +231,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
         useSafeArea: true,
         backgroundColor: Colors.transparent,
         builder: (context) => LinkInBioAppearanceEditor(
+            showThemePicker: false,
             appearance: _appearance,
             storeName: _storeNameController.text,
             slug: _slugController.text,
@@ -216,6 +242,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     if (!_ownerStillCurrent || value == null) return;
     setState(() {
       _appearance = value;
+      _descriptionController.text = value.description;
       _editVersion++;
     });
   }
@@ -234,6 +261,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       _errorMessage = null;
     });
     final editVersion = _editVersion;
+    final publicationWasUncertain = _publicationUncertain;
     try {
       if (!_hasLoadedDraft) {
         final draft = await _draftStore.loadDraft();
@@ -251,6 +279,9 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
         _profile = profile;
         _hasConfirmedProfile = true;
         _publicationUncertain = false;
+        if (publicationWasUncertain && profile?.isPublished == true) {
+          _editorOpen = false;
+        }
         if (!_hasLocalDraft &&
             _editVersion == 0 &&
             _editVersion == editVersion &&
@@ -286,13 +317,18 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   void _edited() => setState(() {
+        _editorOpen = true;
         _editVersion++;
         _errorMessage = null;
       });
 
   void _message(String text) {
     if (!_ownerStillCurrent) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    _noticeTimer?.cancel();
+    setState(() => _noticeMessage = text);
+    _noticeTimer = Timer(const Duration(seconds: 4), () {
+      if (_ownerStillCurrent) setState(() => _noticeMessage = null);
+    });
   }
 
   void _showStatus() {
@@ -324,6 +360,9 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   String? _publishValidation() {
     final draft = _draft;
+    if (_descriptionController.text.length > 280) {
+      return 'คำแนะนำร้านยาวเกิน 280 ตัวอักษร';
+    }
     if (draft.storeName.isEmpty || draft.storeName.length > 80) {
       return 'กรอกชื่อร้าน 1–80 ตัวอักษร';
     }
@@ -396,6 +435,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
         _storeNameController.text = profile.storeName;
         _slugController.text = profile.slug;
         _appearance = profile.appearance;
+        _descriptionController.text = profile.appearance.description;
+        _editorOpen = false;
         final publishedLinks = {
           for (final link in profile.links) link.id: link
         };
@@ -623,232 +664,604 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     });
   }
 
+  void _setStep(int value) {
+    if (!_canEdit || _isLoading) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _editorOpen = true;
+      _step = value;
+    });
+    _showStatus();
+  }
+
+  void _next() {
+    String? error;
+    if (_step == 0) {
+      if (!_infoForm.currentState!.validate()) return;
+      if (_storeNameController.text.trim().isEmpty ||
+          _storeNameController.text.trim().length > 80) {
+        error = 'กรอกชื่อร้าน 1–80 ตัวอักษร';
+      } else if (!isValidLinkInBioSlug(_slugController.text.trim())) {
+        _urlSettings.expand();
+        error =
+            'ชื่อ URL ต้องเป็น a-z, 0-9 หรือขีดกลางภายในชื่อ ความยาว 3–40 ตัวอักษร';
+      }
+    } else if (_step == 1 && _activeLinks.isEmpty) {
+      error = 'เพิ่มและเปิดใช้งานอย่างน้อย 1 ลิงก์ก่อนเผยแพร่';
+    } else if (_step == 2 &&
+        _appearance.background.mode == 'image' &&
+        _appearance.background.imageKey == null) {
+      error = 'เพิ่มภาพพื้นหลัง หรือเปลี่ยนพื้นหลังเป็นสีเดียวก่อนเผยแพร่';
+    }
+    if (error != null) {
+      setState(() => _errorMessage = error);
+      _showStatus();
+      return;
+    }
+    setState(() => _errorMessage = null);
+    _setStep(_step + 1);
+  }
+
+  Future<void> _chooseLogo() async {
+    try {
+      final key = await _uploadDraftImage('logo');
+      if (!_ownerStillCurrent || key == null) return;
+      setState(() {
+        _appearance = _appearance.copyWith(logoKey: key);
+        _editVersion++;
+      });
+    } catch (_) {
+      if (_ownerStillCurrent) {
+        setState(() => _errorMessage =
+            'อัปโหลดโลโก้ไม่สำเร็จ กรุณาลองใหม่ รูปเดิมยังอยู่');
+      }
+    }
+  }
+
+  Widget _heading(String title) => Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Text(title,
+          style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary)));
+
+  Widget _steps() {
+    const ids = ['info', 'links', 'theme', 'review'];
+    const labels = ['ข้อมูลร้าน', 'ลิงก์', 'ธีม', 'ตรวจและเผยแพร่'];
+    return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (var index = 0; index < labels.length; index++)
+            Expanded(
+                child: TextButton(
+                    key: ValueKey('link-in-bio-step-${ids[index]}'),
+                    onPressed:
+                        _canEdit && !_isLoading ? () => _setStep(index) : null,
+                    style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 6, horizontal: 2)),
+                    child: Column(children: [
+                      Container(
+                          width: 30,
+                          height: 30,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _step == index
+                                  ? AppTheme.accentCyanInk
+                                  : Colors.transparent,
+                              border: Border.all(
+                                  color: _step == index
+                                      ? AppTheme.accentCyanInk
+                                      : AppTheme.border)),
+                          child: Text('${index + 1}',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  color: _step == index
+                                      ? Colors.white
+                                      : AppTheme.textSecondary))),
+                      const SizedBox(height: 6),
+                      Text(labels[index],
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: _step == index
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                              color: _step == index
+                                  ? AppTheme.accentCyanInk
+                                  : AppTheme.textSecondary)),
+                    ]))),
+        ]));
+  }
+
+  Widget _info() => Form(
+      key: _infoForm,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _heading('เริ่มจากข้อมูลร้าน'),
+        TextField(
+            key: const ValueKey('link-in-bio-store-name'),
+            controller: _storeNameController,
+            enabled: _canEdit,
+            onChanged: (_) => _edited(),
+            maxLength: 80,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(
+                labelText: 'ชื่อร้าน', hintText: 'เช่น ร้านมินาขายดี')),
+        const SizedBox(height: 12),
+        TextFormField(
+            key: const ValueKey('link-in-bio-description'),
+            controller: _descriptionController,
+            enabled: _canEdit,
+            maxLength: 280,
+            minLines: 2,
+            maxLines: 4,
+            decoration: const InputDecoration(
+                labelText: 'คำแนะนำร้าน', hintText: 'ร้านของคุณขายอะไร'),
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            validator: (value) => (value ?? '').length > 280
+                ? 'คำแนะนำร้านยาวเกิน 280 ตัวอักษร'
+                : null,
+            onChanged: (value) {
+              if (value.length <= 280) {
+                setState(() {
+                  _appearance = _appearance.copyWith(description: value);
+                  _editVersion++;
+                  _editorOpen = true;
+                });
+              }
+            }),
+        const SizedBox(height: 16),
+        Row(children: [
+          if (_images[_appearance.logoKey] != null) ...[
+            SizedBox.square(
+                dimension: 56,
+                key: const ValueKey('link-in-bio-info-logo'),
+                child: ClipOval(
+                    child: Image.memory(_images[_appearance.logoKey]!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, error, stack) =>
+                            const Icon(Icons.image_not_supported_outlined)))),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+              child: OutlinedButton.icon(
+                  key: const ValueKey('link-in-bio-image-logo'),
+                  onPressed: _canEdit && !_isLoading ? _chooseLogo : null,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: Text(_appearance.logoKey == null
+                      ? 'เพิ่มโลโก้'
+                      : 'เปลี่ยนโลโก้'))),
+          if (_appearance.logoKey != null)
+            IconButton(
+                tooltip: 'ลบโลโก้',
+                onPressed: _canEdit
+                    ? () => setState(() {
+                          _appearance = _appearance.copyWith(logoKey: null);
+                          _editVersion++;
+                        })
+                    : null,
+                icon: const Icon(Icons.delete_outline)),
+        ]),
+        const SizedBox(height: 16),
+        ExpansionTile(
+            key: const ValueKey('link-in-bio-url-disclosure'),
+            controller: _urlSettings,
+            initiallyExpanded:
+                !isValidLinkInBioSlug(_slugController.text.trim()),
+            maintainState: true,
+            tilePadding: EdgeInsets.zero,
+            title: const Text('ที่อยู่เว็บไซต์ (URL)',
+                key: ValueKey('link-in-bio-url-settings'),
+                style: TextStyle(fontSize: 15)),
+            subtitle: _slugController.text.trim().isEmpty
+                ? null
+                : Text(_slugController.text.trim(),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+            children: [
+              TextField(
+                  key: const ValueKey('link-in-bio-slug'),
+                  controller: _slugController,
+                  enabled: _canEdit,
+                  onChanged: (_) => _edited(),
+                  maxLength: 40,
+                  autocorrect: false,
+                  textCapitalization: TextCapitalization.none,
+                  decoration: const InputDecoration(
+                      labelText: 'ชื่อ URL',
+                      hintText: 'mina-shop',
+                      helperText: 'a-z, 0-9 และขีดกลาง ความยาว 3–40 ตัวอักษร'))
+            ]),
+      ]));
+
+  Widget _linkMenu(int index, LinkInBioCustomLink link) =>
+      PopupMenuButton<String>(
+          key: ValueKey('link-in-bio-link-menu-${link.id}'),
+          tooltip: 'ตัวเลือกลิงก์',
+          enabled: _canEdit,
+          onSelected: (value) {
+            switch (value) {
+              case 'feature':
+                _featureLink(link.id);
+              case 'up':
+                _moveLink(index, index - 1);
+              case 'down':
+                _moveLink(index, index + 1);
+              case 'delete':
+                _deleteCustomLink(link.id);
+            }
+          },
+          itemBuilder: (_) => [
+                PopupMenuItem(
+                    key: ValueKey('link-in-bio-feature-${link.id}'),
+                    value: 'feature',
+                    enabled: _enabledLinkIds.contains(link.id),
+                    child: Text(_appearance.featuredLinkId == link.id
+                        ? 'ยกเลิกโปรโมชันเด่น'
+                        : 'เลือกเป็นโปรโมชันเด่น')),
+                PopupMenuItem(
+                    key: ValueKey('link-in-bio-move-up-${link.id}'),
+                    value: 'up',
+                    enabled: index > 0,
+                    child: const Text('เลื่อนขึ้น')),
+                PopupMenuItem(
+                    key: ValueKey('link-in-bio-move-down-${link.id}'),
+                    value: 'down',
+                    enabled: index < _customLinks.length - 1,
+                    child: const Text('เลื่อนลง')),
+                PopupMenuItem(
+                    key: ValueKey('link-in-bio-delete-${link.id}'),
+                    value: 'delete',
+                    child: const Tooltip(
+                        message: 'ลบลิงก์', child: Text('ลบลิงก์'))),
+              ]);
+
+  Widget _links() =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _heading('เพิ่มช่องทางของร้าน'),
+        Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(
+                'ลิงก์สินค้าและช่องทางติดต่อ (${_customLinks.length}/20)',
+                style: TextStyle(color: AppTheme.textSecondary))),
+        if (_customLinks.isEmpty)
+          const Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: Text(
+                  'เพิ่มลิงก์จริง เช่น ร้าน Shopee, Lazada หรือ LINE ของคุณ')),
+        for (final (index, link) in _customLinks.indexed)
+          Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _BioLinkTile(
+                  id: link.id,
+                  icon: bioLinkIcon(link),
+                  title: link.title,
+                  subtitle: link.category.isEmpty
+                      ? link.url
+                      : '${link.category} • ${link.url}',
+                  color: AppTheme.accentCyanInk,
+                  enabled: _enabledLinkIds.contains(link.id),
+                  featured: _appearance.featuredLinkId == link.id,
+                  onChanged: _setLinkEnabled,
+                  canEdit: _canEdit,
+                  onEdit: () => _showEditLinkSheet(link),
+                  menu: _linkMenu(index, link))),
+        KeyedSubtree(
+            key: const ValueKey('link-in-bio-add'),
+            child: _AddLinkButton(onTap: _canEdit ? _showAddLinkSheet : null)),
+      ]);
+
+  Widget _themeStep() =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _heading('เลือกธีมที่ชอบ'),
+        SizedBox(
+            height: (MediaQuery.sizeOf(context).height * .17)
+                .clamp(120.0, 150.0)
+                .toDouble(),
+            child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: SingleChildScrollView(child: _draftPreview()))),
+        const SizedBox(height: 16),
+        BioThemePicker(
+            appearance: _appearance,
+            enabled: _canEdit && !_isLoading,
+            onChanged: (value) => setState(() {
+                  _appearance = value;
+                  _editVersion++;
+                })),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+            key: const ValueKey('link-in-bio-decorate'),
+            onPressed: _canEdit && !_isLoading ? _decorate : null,
+            icon: const Icon(Icons.tune),
+            label: const Text('ตกแต่งเพิ่มเติม')),
+      ]);
+
+  Widget _overviewPreview() {
+    final profile = _profile;
+    if (profile == null || !profile.isPublished) return _draftPreview();
+    return LinkInBioPreview(
+        storeName: profile.storeName,
+        slug: profile.slug,
+        links: profile.links
+            .map((link) => LinkInBioCustomLink(
+                id: link.id,
+                title: link.title,
+                url: link.url,
+                category: link.category,
+                icon: link.icon,
+                font: link.font,
+                textColor: link.textColor,
+                buttonColor: link.buttonColor))
+            .toList(),
+        appearance: profile.appearance,
+        images: _images);
+  }
+
+  Widget _previewStep({required bool overview}) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _heading(overview ? 'ตัวอย่างหน้าเว็บ' : 'ตรวจและเผยแพร่'),
+        SizedBox(
+            height:
+                (MediaQuery.sizeOf(context).height * .4).clamp(220.0, 380.0),
+            child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: SingleChildScrollView(
+                    child: overview ? _overviewPreview() : _draftPreview()))),
+        const SizedBox(height: 16),
+        if (!overview) ...[
+          const Text('ตรวจแบบร่างก่อนเผยแพร่ เมื่อพร้อมกดเผยแพร่ให้ลูกค้าเห็น'),
+          TextButton(
+              key: const ValueKey('link-in-bio-preview'),
+              onPressed: _preview,
+              child: const Text('ดูตัวอย่างเต็มหน้า')),
+        ],
+        if (overview &&
+            !_publicationUncertain &&
+            (_profile?.isPublished ?? false) &&
+            _profile!.publicUrl != null)
+          SelectableText(_profile!.publicUrl.toString(),
+              key: const ValueKey('link-in-bio-public-url'),
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+      ]);
+
+  Widget _more() => PopupMenuButton<String>(
+      key: const ValueKey('link-in-bio-more'),
+      tooltip: 'ตัวเลือกเพิ่มเติม',
+      onSelected: (value) {
+        switch (value) {
+          case 'save':
+            _saveDraft();
+          case 'refresh':
+            _loadProfile();
+          case 'unpublish':
+            _unpublish();
+        }
+      },
+      itemBuilder: (_) => [
+            PopupMenuItem(
+                key: const ValueKey('link-in-bio-save-draft'),
+                value: 'save',
+                enabled: _canEdit,
+                child: const Text('บันทึกแบบร่าง')),
+            PopupMenuItem(
+                key: const ValueKey('link-in-bio-refresh'),
+                value: 'refresh',
+                enabled: !_isLoading && !_isBusy,
+                child: const Text('ตรวจสถานะเว็บไซต์')),
+            if (_profile?.isPublished == true && !_publicationUncertain)
+              PopupMenuItem(
+                  key: const ValueKey('link-in-bio-unpublish'),
+                  value: 'unpublish',
+                  enabled: _canEdit && !_isLoading,
+                  child: const Text('หยุดเผยแพร่')),
+          ]);
+
+  Widget _footer() {
+    final ready = _canEdit && !_isLoading;
+    final published = !_publicationUncertain &&
+        (_profile?.isPublished ?? false) &&
+        _profile!.publicUrl != null;
+    return Padding(
+        padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            widget.embeddedInTab && MediaQuery.viewInsetsOf(context).bottom == 0
+                ? AppTheme.navOverlap
+                : 16),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!_isEditing) ...[
+                SizedBox(
+                    height: 52,
+                    child: FilledButton(
+                        key: const ValueKey('link-in-bio-edit-page'),
+                        onPressed: ready ? () => _setStep(0) : null,
+                        child: const Text('แก้ไขหน้าเว็บ'))),
+                if (published) ...[
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(
+                        child: OutlinedButton.icon(
+                            key: const ValueKey('link-in-bio-copy'),
+                            onPressed: _canEdit ? _copyPublicUrl : null,
+                            icon: const Icon(Icons.copy, size: 18),
+                            label: const Text('คัดลอกลิงก์'))),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: OutlinedButton.icon(
+                            key: const ValueKey('link-in-bio-open'),
+                            onPressed: _canEdit ? _openPublicUrl : null,
+                            icon: const Icon(Icons.open_in_new, size: 18),
+                            label: const Text('เปิดเว็บไซต์'))),
+                  ]),
+                ],
+              ] else
+                Row(children: [
+                  if (_step > 0) ...[
+                    Expanded(
+                        child: SizedBox(
+                            height: 52,
+                            child: OutlinedButton(
+                                key: const ValueKey('link-in-bio-previous'),
+                                onPressed:
+                                    ready ? () => _setStep(_step - 1) : null,
+                                child: const Text('ย้อนกลับ')))),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(
+                      flex: 2,
+                      child: SizedBox(
+                          height: 52,
+                          child: _step == 3
+                              ? FilledButton.icon(
+                                  key: const ValueKey('link-in-bio-publish'),
+                                  onPressed: ready && !_publicationUncertain
+                                      ? _publish
+                                      : null,
+                                  icon: const Icon(Icons.public, size: 18),
+                                  label: Text(_isBusy
+                                      ? 'กำลังดำเนินการ...'
+                                      : (_profile?.isPublished ?? false)
+                                          ? 'อัปเดตหน้าเว็บไซต์'
+                                          : 'เผยแพร่หน้าเว็บไซต์'))
+                              : FilledButton(
+                                  key: const ValueKey('link-in-bio-next'),
+                                  onPressed: ready ? _next : null,
+                                  child: const Text('ถัดไป')))),
+                ]),
+            ]));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final publishedUrl =
-        !_publicationUncertain && (_profile?.isPublished ?? false)
-            ? _profile!.publicUrl
-            : null;
     final status = _publicationUncertain
         ? 'ยังไม่ทราบผล กรุณาตรวจสถานะ'
-        : (_profile?.isPublished ?? false)
-            ? 'เผยแพร่แล้ว'
-            : _isLoading
-                ? 'กำลังตรวจสถานะ...'
+        : _isLoading
+            ? 'กำลังตรวจสถานะ...'
+            : (_profile?.isPublished ?? false)
+                ? 'เผยแพร่แล้ว'
                 : _hasConfirmedProfile
                     ? 'ยังไม่ได้เผยแพร่'
                     : 'ยังตรวจสถานะเว็บไซต์ไม่ได้';
     final body = DecoratedBox(
-      decoration: AppTheme.screenBackground,
-      child: SafeArea(
-          top: !widget.embeddedInTab,
-          bottom: false,
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            padding: widget.embeddedInTab
-                ? AppTheme.tabScreenPadding
-                : AppTheme.screenPadding,
+        decoration: AppTheme.screenBackground,
+        child: SafeArea(
+            top: !widget.embeddedInTab,
+            bottom: !widget.embeddedInTab,
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(children: [
-                    IconButton(
-                        key: const ValueKey('link-in-bio-back'),
-                        tooltip: 'กลับ',
-                        onPressed: widget.onBack ??
-                            () => Navigator.of(context).maybePop(),
-                        icon: const Icon(Icons.arrow_back)),
-                    Expanded(
-                        child: Text('ลิงก์หน้าโปรไฟล์',
-                            style: TextStyle(
-                                fontSize: 19,
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.textPrimary))),
-                  ]),
-                  const SizedBox(height: AppTheme.spaceMd),
-                  PostDeeCard(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Text(status,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w800)),
-                        const SizedBox(height: 6),
-                        const Text(
-                            'รวมลิงก์ร้าน สินค้า และช่องทางติดต่อไว้ในหน้าเดียว เมื่อกดเผยแพร่ ทุกคนที่มีลิงก์เปิดหน้านี้ได้'),
-                        if (publishedUrl != null) ...[
-                          const SizedBox(height: 10),
-                          SelectableText(publishedUrl.toString(),
-                              key: const ValueKey('link-in-bio-public-url')),
-                          const SizedBox(height: 8),
-                          Wrap(spacing: 8, children: [
-                            OutlinedButton.icon(
-                                key: const ValueKey('link-in-bio-copy'),
-                                onPressed: _isBusy ? null : _copyPublicUrl,
-                                icon: const Icon(Icons.copy, size: 18),
-                                label: const Text('คัดลอกลิงก์')),
-                            OutlinedButton.icon(
-                                key: const ValueKey('link-in-bio-open'),
-                                onPressed: _isBusy ? null : _openPublicUrl,
-                                icon: const Icon(Icons.open_in_new, size: 18),
-                                label: const Text('เปิดเว็บไซต์')),
-                          ]),
-                        ],
-                        if (_hasUnpublishedChanges)
-                          const Padding(
-                              padding: EdgeInsets.only(top: 8),
-                              child: Text(
-                                  'มีการแก้ไขที่ยังไม่ได้เผยแพร่ เว็บไซต์ยังใช้ข้อมูลที่เผยแพร่ครั้งล่าสุด')),
-                        if (_profile?.isPublished == true &&
-                            _slugController.text.trim() != _profile!.slug)
-                          const Padding(
-                              padding: EdgeInsets.only(top: 8),
-                              child: Text(
-                                  'เมื่อเผยแพร่ชื่อ URL ใหม่ ลิงก์เดิมจะเปิดไม่ได้ ต้องส่งลิงก์ใหม่ให้ลูกค้า')),
-                        if (_errorMessage != null)
-                          Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(_errorMessage!,
-                                  style: TextStyle(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .error))),
-                        TextButton.icon(
-                            key: const ValueKey('link-in-bio-refresh'),
-                            onPressed:
-                                _isLoading || _isBusy ? null : _loadProfile,
-                            icon: const Icon(Icons.refresh),
-                            label: Text(_isLoading
-                                ? 'กำลังโหลด...'
-                                : 'ตรวจสถานะเว็บไซต์')),
+                  Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                      child: Row(children: [
+                        IconButton(
+                            key: ValueKey(_editorOpen && _profile != null
+                                ? 'link-in-bio-close-editor'
+                                : 'link-in-bio-back'),
+                            tooltip: 'กลับ',
+                            onPressed: !_canEdit
+                                ? null
+                                : () {
+                                    FocusManager.instance.primaryFocus
+                                        ?.unfocus();
+                                    if (_editorOpen && _profile != null) {
+                                      setState(() => _editorOpen = false);
+                                      _showStatus();
+                                    } else if (_isEditing && _step > 0) {
+                                      _setStep(_step - 1);
+                                    } else {
+                                      (widget.onBack ??
+                                          () => Navigator.of(context)
+                                              .maybePop())();
+                                    }
+                                  },
+                            icon: const Icon(Icons.arrow_back)),
+                        Expanded(
+                            child: Text('ลิงก์หน้าโปรไฟล์',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textPrimary))),
+                        _more(),
                       ])),
-                  const SizedBox(height: AppTheme.spaceLg),
-                  _draftPreview(),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                      key: const ValueKey('link-in-bio-decorate'),
-                      onPressed: _canEdit && !_isLoading ? _decorate : null,
-                      icon: const Icon(Icons.palette_outlined),
-                      label: const Text('ตกแต่งหน้าโปรไฟล์')),
-                  const SizedBox(height: AppTheme.spaceLg),
-                  PostDeeCard(
-                      child: Column(children: [
-                    TextField(
-                        key: const ValueKey('link-in-bio-store-name'),
-                        controller: _storeNameController,
-                        enabled: _canEdit,
-                        onChanged: (_) => _edited(),
-                        maxLength: 80,
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                            labelText: 'ชื่อร้าน',
-                            hintText: 'เช่น ร้านมินาขายดี')),
-                    const SizedBox(height: 8),
-                    TextField(
-                        key: const ValueKey('link-in-bio-slug'),
-                        controller: _slugController,
-                        enabled: _canEdit,
-                        onChanged: (_) => _edited(),
-                        maxLength: 40,
-                        autocorrect: false,
-                        textCapitalization: TextCapitalization.none,
-                        decoration: const InputDecoration(
-                            labelText: 'ชื่อ URL',
-                            hintText: 'mina-shop',
-                            helperText:
-                                'a-z, 0-9 และขีดกลาง ความยาว 3–40 ตัวอักษร')),
-                  ])),
-                  const SizedBox(height: AppTheme.spaceLg),
-                  Text(
-                      'ลิงก์สินค้าและช่องทางติดต่อ (${_customLinks.length}/20)',
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: AppTheme.spaceMd),
-                  if (_customLinks.isEmpty)
-                    const Text(
-                        'เพิ่มลิงก์จริง เช่น ร้าน Shopee, Lazada หรือ LINE ของคุณ'),
-                  for (final (index, link) in _customLinks.indexed) ...[
-                    _BioLinkTile(
-                        id: link.id,
-                        icon: bioLinkIcon(link),
-                        title: link.title,
-                        subtitle: link.category.isEmpty
-                            ? link.url
-                            : '${link.category} • ${link.url}',
-                        color: AppTheme.accentCyanInk,
-                        enabled: _enabledLinkIds.contains(link.id),
-                        onChanged: _setLinkEnabled,
-                        canEdit: _canEdit,
-                        onEdit: () => _showEditLinkSheet(link),
-                        onDelete: () => _deleteCustomLink(link.id)),
-                    Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                      IconButton(
-                          key: ValueKey('link-in-bio-feature-${link.id}'),
-                          tooltip: _appearance.featuredLinkId == link.id
-                              ? 'ยกเลิกโปรโมชันเด่น'
-                              : 'เลือกเป็นโปรโมชันเด่น',
-                          onPressed:
-                              _canEdit && _enabledLinkIds.contains(link.id)
-                                  ? () => _featureLink(link.id)
-                                  : null,
-                          icon: Icon(_appearance.featuredLinkId == link.id
-                              ? Icons.star
-                              : Icons.star_border)),
-                      IconButton(
-                          key: ValueKey('link-in-bio-move-up-${link.id}'),
-                          tooltip: 'เลื่อนขึ้น',
-                          onPressed: _canEdit && index > 0
-                              ? () => _moveLink(index, index - 1)
-                              : null,
-                          icon: const Icon(Icons.arrow_upward, size: 20)),
-                      IconButton(
-                          key: ValueKey('link-in-bio-move-down-${link.id}'),
-                          tooltip: 'เลื่อนลง',
-                          onPressed: _canEdit && index < _customLinks.length - 1
-                              ? () => _moveLink(index, index + 1)
-                              : null,
-                          icon: const Icon(Icons.arrow_downward, size: 20)),
-                    ]),
-                    const SizedBox(height: AppTheme.spaceMd),
-                  ],
-                  KeyedSubtree(
-                      key: const ValueKey('link-in-bio-add'),
-                      child: _AddLinkButton(onTap: _showAddLinkSheet)),
-                  const SizedBox(height: AppTheme.spaceLg),
-                  Wrap(spacing: 8, runSpacing: 8, children: [
-                    OutlinedButton(
-                        key: const ValueKey('link-in-bio-preview'),
-                        onPressed: _preview,
-                        child: const Text('ดูตัวอย่างหน้า')),
-                    OutlinedButton.icon(
-                        key: const ValueKey('link-in-bio-save-draft'),
-                        onPressed: _canEdit ? _saveDraft : null,
-                        icon: const Icon(Icons.save_outlined, size: 18),
-                        label: const Text('บันทึกแบบร่าง')),
-                  ]),
-                  const SizedBox(height: AppTheme.spaceMd),
-                  const Text(
-                      'การบันทึกแบบร่างไม่เปลี่ยนเว็บไซต์ กดเผยแพร่เมื่อพร้อมให้ลูกค้าเห็น'),
-                  const SizedBox(height: AppTheme.spaceMd),
-                  FilledButton.icon(
-                      key: const ValueKey('link-in-bio-publish'),
-                      onPressed:
-                          !_isBusy && !_isLoading && !_publicationUncertain
-                              ? _publish
-                              : null,
-                      icon: const Icon(Icons.public),
-                      label: Text(_isBusy
-                          ? 'กำลังดำเนินการ...'
-                          : (_profile?.isPublished ?? false)
-                              ? 'อัปเดตหน้าเว็บไซต์'
-                              : 'เผยแพร่หน้าเว็บไซต์')),
-                  if (_profile?.isPublished == true && !_publicationUncertain)
-                    TextButton(
-                        key: const ValueKey('link-in-bio-unpublish'),
-                        onPressed: _canEdit && !_isLoading ? _unpublish : null,
-                        child: const Text('หยุดเผยแพร่')),
-                ]),
-          )),
-    );
+                  Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 4),
+                      child: Text(status,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 13, color: AppTheme.textSecondary))),
+                  if (_noticeMessage != null)
+                    Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                        child: Semantics(
+                            liveRegion: true,
+                            child: Text(_noticeMessage!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: AppTheme.accentCyanInk)))),
+                  Expanded(
+                      child: SingleChildScrollView(
+                          key: const ValueKey('link-in-bio-content'),
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (_isEditing) _steps(),
+                                if (_errorMessage != null)
+                                  Padding(
+                                      padding:
+                                          const EdgeInsets.only(bottom: 16),
+                                      child: Text(_errorMessage!,
+                                          style: TextStyle(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .error))),
+                                if (_publicationUncertain ||
+                                    (!_hasConfirmedProfile && !_isLoading))
+                                  Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: TextButton.icon(
+                                          key: const ValueKey(
+                                              'link-in-bio-retry'),
+                                          onPressed: !_isLoading && !_isBusy
+                                              ? _loadProfile
+                                              : null,
+                                          icon: const Icon(Icons.refresh),
+                                          label:
+                                              const Text('ตรวจสถานะอีกครั้ง'))),
+                                if (_hasUnpublishedChanges)
+                                  const Padding(
+                                      padding: EdgeInsets.only(bottom: 12),
+                                      child: Text(
+                                          'มีการแก้ไขที่ยังไม่ได้เผยแพร่ เว็บไซต์ยังใช้ข้อมูลที่เผยแพร่ครั้งล่าสุด')),
+                                if (_profile?.isPublished == true &&
+                                    _slugController.text.trim() !=
+                                        _profile!.slug)
+                                  const Padding(
+                                      padding: EdgeInsets.only(bottom: 12),
+                                      child: Text(
+                                          'เมื่อเผยแพร่ชื่อ URL ใหม่ ลิงก์เดิมจะเปิดไม่ได้ ต้องส่งลิงก์ใหม่ให้ลูกค้า')),
+                                if (!_isEditing)
+                                  _previewStep(overview: true)
+                                else
+                                  switch (_step) {
+                                    0 => _info(),
+                                    1 => _links(),
+                                    2 => _themeStep(),
+                                    _ => _previewStep(overview: false),
+                                  },
+                              ]))),
+                  _footer(),
+                ])));
     return widget.embeddedInTab
         ? Material(color: Colors.transparent, child: body)
         : Scaffold(backgroundColor: Colors.transparent, body: body);
@@ -856,19 +1269,18 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 }
 
 class _BioLinkTile extends StatelessWidget {
-  const _BioLinkTile({
-    required this.id,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.enabled,
-    required this.onChanged,
-    this.onEdit,
-    this.onDelete,
-    this.canEdit = true,
-  });
-
+  const _BioLinkTile(
+      {required this.id,
+      required this.icon,
+      required this.title,
+      required this.subtitle,
+      required this.color,
+      required this.enabled,
+      required this.onChanged,
+      required this.menu,
+      this.onEdit,
+      this.canEdit = true,
+      this.featured = false});
   final String id;
   final IconData icon;
   final String title;
@@ -876,175 +1288,66 @@ class _BioLinkTile extends StatelessWidget {
   final Color color;
   final bool enabled;
   final void Function(String id, bool value) onChanged;
+  final Widget menu;
   final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
   final bool canEdit;
+  final bool featured;
 
   @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: title,
-      toggled: enabled,
-      child: InkWell(
-        key: ValueKey('link-in-bio-toggle-$id'),
-        borderRadius: BorderRadius.circular(15),
-        onTap: canEdit ? () => onChanged(id, !enabled) : null,
-        child: Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: AppTheme.border),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF122018).withValues(alpha: 0.04),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(11),
-                  color: color.withValues(alpha: 0.14),
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppTheme.spaceSm),
-              if (onEdit != null) ...[
-                _LinkActionButton(
-                  key: ValueKey('link-in-bio-edit-$id'),
-                  tooltip: 'แก้ไขลิงก์',
-                  icon: Icons.edit_outlined,
-                  color: AppTheme.textSecondary,
-                  onPressed: onEdit!,
-                ),
-                const SizedBox(width: AppTheme.spaceXs),
-              ],
-              if (onDelete != null) ...[
-                _LinkActionButton(
-                  tooltip: 'ลบลิงก์',
-                  icon: Icons.delete_outline,
-                  color: const Color(0xFFEF4444),
-                  onPressed: onDelete!,
-                ),
-                const SizedBox(width: AppTheme.spaceXs),
-              ],
-              ExcludeSemantics(child: _BioSwitch(isOn: enabled)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 46x27 pill switch with a 21px white knob, per the design handoff.
-class _BioSwitch extends StatelessWidget {
-  const _BioSwitch({required this.isOn});
-
-  final bool isOn;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      width: 46,
-      height: 27,
-      padding: const EdgeInsets.all(3),
+  Widget build(BuildContext context) => Container(
       decoration: BoxDecoration(
-        color: isOn ? AppTheme.accent : AppTheme.track,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: AnimatedAlign(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        alignment: isOn ? Alignment.centerRight : Alignment.centerLeft,
-        child: const DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Color(0x33122018),
-                blurRadius: 2,
-                offset: Offset(0, 1),
-              ),
-            ],
-          ),
-          child: SizedBox.square(dimension: 21),
-        ),
-      ),
-    );
-  }
-}
-
-class _LinkActionButton extends StatelessWidget {
-  const _LinkActionButton({
-    super.key,
-    required this.tooltip,
-    required this.icon,
-    required this.color,
-    required this.onPressed,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 32,
-      height: 32,
-      child: IconButton(
-        tooltip: tooltip,
-        padding: EdgeInsets.zero,
-        visualDensity: VisualDensity.compact,
-        onPressed: onPressed,
-        icon: Icon(icon, size: 18, color: color),
-      ),
-    );
-  }
+          color: AppTheme.glass,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppTheme.border)),
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      child: Row(children: [
+        Icon(icon, color: color, size: 24),
+        const SizedBox(width: 12),
+        Expanded(
+            child: Tooltip(
+                message: 'แก้ไขลิงก์',
+                child: InkWell(
+                    key: ValueKey('link-in-bio-edit-$id'),
+                    onTap: canEdit ? onEdit : null,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                Expanded(
+                                    child: Text(title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.textPrimary))),
+                                if (featured)
+                                  Icon(Icons.star,
+                                      size: 16, color: AppTheme.accentCyanInk),
+                              ]),
+                              const SizedBox(height: 4),
+                              Text(subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.textSecondary)),
+                            ]))))),
+        Switch.adaptive(
+            key: ValueKey('link-in-bio-toggle-$id'),
+            value: enabled,
+            onChanged: canEdit ? (value) => onChanged(id, value) : null),
+        menu,
+      ]));
 }
 
 class _AddLinkButton extends StatelessWidget {
   const _AddLinkButton({required this.onTap});
 
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1156,6 +1459,8 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
   String? _textColor;
   String? _buttonColor;
   String? _errorMessage;
+  final _linkAdvanced = ExpansibleController();
+  bool _advancedOpen = false;
 
   @override
   void initState() {
@@ -1175,11 +1480,15 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
     _titleController.dispose();
     _urlController.dispose();
     _categoryController.dispose();
+    _linkAdvanced.dispose();
     super.dispose();
   }
 
   void _submit() {
-    if (!_form.currentState!.validate()) return;
+    if (!_form.currentState!.validate()) {
+      _linkAdvanced.expand();
+      return;
+    }
     final title = _titleController.text.trim();
     final url = _urlController.text.trim();
     final error = linkInBioLinkError(title, url);
@@ -1203,134 +1512,167 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return SafeArea(
-        child: SizedBox(
-            height: MediaQuery.sizeOf(context).height * .86,
-            child: Material(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(22)),
-              child: Padding(
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottomInset),
-                  child: Column(children: [
-                    Row(children: [
-                      const Icon(Icons.add_link_outlined),
-                      const SizedBox(width: 10),
-                      Expanded(
-                          child: Text(
-                              widget.initialLink == null
-                                  ? 'เพิ่มลิงก์ใหม่'
-                                  : 'แก้ไขลิงก์',
-                              style: const TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.w700))),
-                      IconButton(
-                          tooltip: 'ปิด',
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close)),
-                    ]),
-                    Expanded(
-                        child: Form(
-                            key: _form,
-                            child: SingleChildScrollView(
-                                child: Column(children: [
-                              TextField(
-                                  key: const ValueKey('link-in-bio-link-title'),
-                                  controller: _titleController,
-                                  maxLength: 80,
-                                  textInputAction: TextInputAction.next,
-                                  decoration: const InputDecoration(
-                                      labelText: 'ชื่อปุ่ม',
-                                      hintText: 'เช่น คูปอง Shopee')),
-                              TextField(
-                                  key: const ValueKey('link-in-bio-link-url'),
-                                  controller: _urlController,
-                                  maxLength: 2048,
-                                  keyboardType: TextInputType.url,
-                                  decoration: const InputDecoration(
-                                      labelText: 'URL ปลายทาง',
-                                      hintText: 'https://...')),
-                              TextFormField(
-                                  key: const ValueKey(
-                                      'link-in-bio-link-category'),
-                                  controller: _categoryController,
-                                  maxLength: 60,
-                                  validator: (value) =>
-                                      (value ?? '').trim().length > 60
-                                          ? 'หมวดหมู่ยาวเกิน 60 ตัวอักษร'
-                                          : null,
-                                  decoration: const InputDecoration(
-                                      labelText: 'หมวดหมู่',
-                                      hintText: 'เช่น ช้อปสินค้า หรือ ติดต่อ')),
-                              const SizedBox(height: 10),
-                              DropdownButtonFormField<String>(
-                                  key: const ValueKey('link-in-bio-link-icon'),
-                                  initialValue: _icon,
-                                  isExpanded: true,
-                                  decoration:
-                                      const InputDecoration(labelText: 'ไอคอน'),
-                                  items: [
-                                    for (final entry in const {
-                                      'auto': 'เลือกจากลิงก์อัตโนมัติ',
-                                      'link': 'ลิงก์',
-                                      'shopee': 'Shopee',
-                                      'lazada': 'Lazada',
-                                      'line': 'LINE',
-                                      'tiktok': 'TikTok',
-                                      'youtube': 'YouTube',
-                                      'instagram': 'Instagram',
-                                      'facebook': 'Facebook'
-                                    }.entries)
-                                      DropdownMenuItem(
-                                          value: entry.key,
-                                          child: Text(entry.value))
-                                  ],
-                                  onChanged: (value) =>
-                                      setState(() => _icon = value!)),
-                              const SizedBox(height: 16),
-                              const Text(
-                                  'ปรับปุ่มนี้แยกจากธีมได้ หรือเว้นว่างเพื่อใช้ค่าของธีม'),
-                              const SizedBox(height: 10),
-                              BioFontField(
-                                  key: const ValueKey('link-in-bio-link-font'),
-                                  label: 'ฟอนต์ปุ่มนี้',
-                                  value: _font,
-                                  allowDefault: true,
-                                  onChanged: (value) =>
-                                      setState(() => _font = value)),
-                              const SizedBox(height: 10),
-                              BioColorField(
-                                  key: const ValueKey(
-                                      'link-in-bio-link-text-color'),
-                                  label: 'สีข้อความปุ่มนี้',
-                                  value: _textColor,
-                                  allowEmpty: true,
-                                  onChanged: (value) =>
-                                      setState(() => _textColor = value)),
-                              const SizedBox(height: 10),
-                              BioColorField(
-                                  key: const ValueKey(
-                                      'link-in-bio-link-button-color'),
-                                  label: 'สีพื้นปุ่มนี้',
-                                  value: _buttonColor,
-                                  allowEmpty: true,
-                                  onChanged: (value) =>
-                                      setState(() => _buttonColor = value)),
-                            ])))),
-                    if (_errorMessage != null)
-                      Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(_errorMessage!,
-                              style: TextStyle(
-                                  color: Theme.of(context).colorScheme.error))),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                            key: const ValueKey('link-in-bio-link-save'),
-                            onPressed: _submit,
-                            icon: const Icon(Icons.check),
-                            label: const Text('บันทึกลิงก์'))),
-                  ])),
-            )));
+    return Padding(
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: SafeArea(
+            child: SizedBox(
+                key: const ValueKey('link-in-bio-link-sheet'),
+                height: (MediaQuery.sizeOf(context).height - bottomInset)
+                    .clamp(
+                        0.0,
+                        _advancedOpen
+                            ? MediaQuery.sizeOf(context).height * .86
+                            : 430.0)
+                    .toDouble(),
+                child: Material(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(22)),
+                  child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      child: Column(children: [
+                        Row(children: [
+                          const Icon(Icons.add_link_outlined),
+                          const SizedBox(width: 10),
+                          Expanded(
+                              child: Text(
+                                  widget.initialLink == null
+                                      ? 'เพิ่มลิงก์ใหม่'
+                                      : 'แก้ไขลิงก์',
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700))),
+                          IconButton(
+                              tooltip: 'ปิด',
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.close)),
+                        ]),
+                        Expanded(
+                            child: Form(
+                                key: _form,
+                                child: SingleChildScrollView(
+                                    child: Column(children: [
+                                  TextField(
+                                      key: const ValueKey(
+                                          'link-in-bio-link-title'),
+                                      controller: _titleController,
+                                      maxLength: 80,
+                                      textInputAction: TextInputAction.next,
+                                      decoration: const InputDecoration(
+                                          labelText: 'ชื่อปุ่ม',
+                                          hintText: 'เช่น คูปอง Shopee')),
+                                  TextField(
+                                      key: const ValueKey(
+                                          'link-in-bio-link-url'),
+                                      controller: _urlController,
+                                      maxLength: 2048,
+                                      keyboardType: TextInputType.url,
+                                      decoration: const InputDecoration(
+                                          labelText: 'URL ปลายทาง',
+                                          hintText: 'https://...')),
+                                  ExpansionTile(
+                                    key: const ValueKey(
+                                        'link-in-bio-link-advanced-disclosure'),
+                                    controller: _linkAdvanced,
+                                    maintainState: true,
+                                    onExpansionChanged: (value) =>
+                                        setState(() => _advancedOpen = value),
+                                    tilePadding: EdgeInsets.zero,
+                                    title: const Text('ตัวเลือกเพิ่มเติม',
+                                        key: ValueKey(
+                                            'link-in-bio-link-advanced')),
+                                    children: [
+                                      TextFormField(
+                                          key: const ValueKey(
+                                              'link-in-bio-link-category'),
+                                          controller: _categoryController,
+                                          maxLength: 60,
+                                          validator: (value) => (value ?? '')
+                                                      .trim()
+                                                      .length >
+                                                  60
+                                              ? 'หมวดหมู่ยาวเกิน 60 ตัวอักษร'
+                                              : null,
+                                          decoration: const InputDecoration(
+                                              labelText: 'หมวดหมู่',
+                                              hintText:
+                                                  'เช่น ช้อปสินค้า หรือ ติดต่อ')),
+                                      const SizedBox(height: 10),
+                                      DropdownButtonFormField<String>(
+                                          key: const ValueKey(
+                                              'link-in-bio-link-icon'),
+                                          initialValue: _icon,
+                                          isExpanded: true,
+                                          decoration: const InputDecoration(
+                                              labelText: 'ไอคอน'),
+                                          items: [
+                                            for (final entry in const {
+                                              'auto': 'เลือกจากลิงก์อัตโนมัติ',
+                                              'link': 'ลิงก์',
+                                              'shopee': 'Shopee',
+                                              'lazada': 'Lazada',
+                                              'line': 'LINE',
+                                              'tiktok': 'TikTok',
+                                              'youtube': 'YouTube',
+                                              'instagram': 'Instagram',
+                                              'facebook': 'Facebook'
+                                            }.entries)
+                                              DropdownMenuItem(
+                                                  value: entry.key,
+                                                  child: Text(entry.value))
+                                          ],
+                                          onChanged: (value) =>
+                                              setState(() => _icon = value!)),
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                          'ปรับปุ่มนี้แยกจากธีมได้ หรือเว้นว่างเพื่อใช้ค่าของธีม'),
+                                      const SizedBox(height: 10),
+                                      BioFontField(
+                                          key: const ValueKey(
+                                              'link-in-bio-link-font'),
+                                          label: 'ฟอนต์ปุ่มนี้',
+                                          value: _font,
+                                          allowDefault: true,
+                                          onChanged: (value) =>
+                                              setState(() => _font = value)),
+                                      const SizedBox(height: 10),
+                                      BioColorField(
+                                          key: const ValueKey(
+                                              'link-in-bio-link-text-color'),
+                                          label: 'สีข้อความปุ่มนี้',
+                                          value: _textColor,
+                                          allowEmpty: true,
+                                          onChanged: (value) => setState(
+                                              () => _textColor = value)),
+                                      const SizedBox(height: 10),
+                                      BioColorField(
+                                          key: const ValueKey(
+                                              'link-in-bio-link-button-color'),
+                                          label: 'สีพื้นปุ่มนี้',
+                                          value: _buttonColor,
+                                          allowEmpty: true,
+                                          onChanged: (value) => setState(
+                                              () => _buttonColor = value)),
+                                    ],
+                                  ),
+                                ])))),
+                        if (_errorMessage != null)
+                          Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(_errorMessage!,
+                                  style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .error))),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                                key: const ValueKey('link-in-bio-link-save'),
+                                onPressed: _submit,
+                                icon: const Icon(Icons.check),
+                                label: const Text('บันทึกลิงก์'))),
+                      ])),
+                ))));
   }
 }

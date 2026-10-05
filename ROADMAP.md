@@ -18,6 +18,10 @@ Build roadmap for PostDee.
 - Separate local draft saving from publishing. Show a shareable URL only after
   the API confirms publication. Support updating and unpublishing; changing a
   published slug invalidates the old URL.
+- Simplify profile-link setup into four tasks: store information, links, theme,
+  and review/publish. Existing profiles open a preview with Edit and confirmed
+  URL actions. Keep all advanced customization behind optional groups; keep
+  explicit draft saving and the existing API, package limits, and media rules.
 - Remove editing-minute benefits, quota cards, and top-up promotion from the
   active product. Legacy editing code/API contracts remain for compatibility and
   shared media helpers; historical editing milestones below are not active TODOs.

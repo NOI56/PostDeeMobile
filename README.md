@@ -7,6 +7,30 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Profile Link Replaces AI Editing (2026-10-05)
+
+The active mobile navigation is Home, Profile link, Create post, Calendar, and
+Profile. Home has one profile-link shortcut above the analytics cards. AI video
+editing and Subtitle Studio no longer have a product entry point, and the
+paywall/profile no longer advertise editing minutes or top-ups. AI captions in
+the upload flow remain available. The editing implementation and shared media
+helpers below are retained as compatibility code, not an active product offer.
+
+Each authenticated account can publish one profile page with up to 20 enabled
+custom links on every package. The page is hosted by the existing PostDee API at
+`/p/<slug>`; the app resolves the URL against its configured API domain. No
+`postdee.link` domain or third-party statistics subscription is assumed. Public
+pages show only the store name and the links the owner explicitly publishes.
+Draft edits remain private until Publish/Update is pressed. Publishing, copying
+the confirmed URL, opening the page, and unpublishing are supported. Scheduled
+post auto-updates and click analytics are not included.
+
+Production persistence uses `POST_STORE=prisma` and the additive LinkInBioProfile
+migration. In-memory mode is local scaffolding and loses pages when restarted.
+Deploy the API and run its migrations before shipping the mobile build. This
+change has not itself deployed a public service or registered a new domain;
+hosting/database availability and their existing costs still apply.
+
 ## Project Structure
 
 ```text
@@ -54,7 +78,11 @@ to `3.2.1`, which patches the multipart parser advisories
 `GHSA-xjh9-v7x6-24jw` and `GHSA-x8mw-p69m-v3mx`. CI continues to reject high
 severity findings in the production dependency audit.
 
-## AI Editing Runtime Source of Truth
+## Legacy AI Editing Runtime Reference
+
+The following runtime notes describe retained compatibility code. Since
+2026-10-05 this flow is absent from the current mobile navigation and package
+marketing; it is not a release requirement for the replacement profile page.
 
 - Both `render.yaml` and `render.staging.yaml` set
   `TRANSCRIPTION_PROVIDER=elevenlabs`, `EDIT_PLAN_PROVIDER=gemini`, and
@@ -1032,7 +1060,7 @@ Current mobile pieces:
 - Saved templates wired to `GET /templates` and `POST /templates`
 - Unified analytics wired to `GET /analytics/summary?range=...`, including real
   range selection and a publish-date daily chart without simulated numbers.
-  The main bottom-navigation slot now opens AI Editing; analytics remains
+  The second bottom-navigation slot now opens Profile link; analytics remains
   available from publish results and individual post details.
 - Home API connection check wired to `GET /health`, a local Gemini caption smoke check, plan status refresh wired to `GET /billing/subscription`, Basic Phone OTP UI for unlocking the 3-post free quota, and one automatic analytics refresh after Pro is unlocked
 - Upload AI captions keep the customer flow simple: select a clip, optionally add guidance, then let AI infer language and market from the clip.
@@ -1238,7 +1266,10 @@ Seed helpers:
 
 ## Roadmap
 
-See `ROADMAP.md` for the build roadmap. It includes the current Phase 1 core app work, planned pricing with Basic, Starter 199, and Pro 299, AI caption from the real clip, Pro ElevenLabs + Gemini auto editing, and Phase 2 growth features such as Link in Bio, EP tools, watermarking, hashtag radar, AI comment center, viral alerts, and Team and Editor Access.
+See `ROADMAP.md` for the build roadmap. The current product keeps real-clip AI
+captions and replaces AI video editing with a publishable profile link. Prices
+remain Basic free, Starter 199, and Pro 299. EP tools, hashtag radar, AI comment
+center, viral alerts, and team access retain their separate future release gates.
 
 ## Current Limits
 

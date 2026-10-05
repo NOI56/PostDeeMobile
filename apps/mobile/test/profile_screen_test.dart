@@ -465,7 +465,8 @@ void main() {
     expect(find.textContaining('ผู้ช่วย/ทีมงาน'), findsNothing);
   });
 
-  testWidgets('shows AI editing quota only for the Pro plan', (tester) async {
+  testWidgets('does not load or market retired AI editing for Pro',
+      (tester) async {
     final apiClient = _FakeSocialApiClient(
       connections: const [],
       subscription: const SubscriptionStatusResult(
@@ -481,16 +482,18 @@ void main() {
     await tester.pumpWidget(_hostProfile(apiClient: apiClient));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('โควต้าตัดต่อ AI'),
+      find.text('ความปลอดภัย'),
       400,
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 30,
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('โควต้าตัดต่อ AI'), findsOneWidget);
-    expect(find.text('175'), findsOneWidget);
-    expect(find.text('/ 200 นาที'), findsOneWidget);
+    expect(find.text('โควต้าตัดต่อ AI'), findsNothing);
+    expect(find.text('/ 200 นาที'), findsNothing);
+    expect(find.text('AI ตัดต่อ 200 นาที/เดือน', skipOffstage: false),
+        findsNothing);
+    expect(apiClient.aiEditQuotaCalls, 0);
   });
 
   testWidgets('refreshes the profile plan after returning from the paywall',
@@ -1200,8 +1203,7 @@ void main() {
     expect(find.text('พร้อมลอง UI'), findsNothing);
   });
 
-  testWidgets('does not add fake AI editing minutes from top-up',
-      (tester) async {
+  testWidgets('does not offer retired AI editing top-up', (tester) async {
     await tester.pumpWidget(
       _hostProfile(
         apiClient: _FakeSocialApiClient(
@@ -1222,15 +1224,14 @@ void main() {
         find.widgetWithText(OutlinedButton, 'เติม 120 นาที · 49 บาท');
 
     await tester.scrollUntilVisible(
-      topUpButton,
+      find.text('ความปลอดภัย'),
       500,
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 30,
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(topUpButton);
-    await tester.pump();
+    expect(topUpButton, findsNothing);
 
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('320'), findsNothing);
@@ -1248,6 +1249,8 @@ void main() {
       ),
     );
 
+    await tester.pumpAndSettle();
+
     final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
     await tester.scrollUntilVisible(
       deleteButton,
@@ -1255,6 +1258,8 @@ void main() {
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 30,
     );
+    await tester.ensureVisible(deleteButton);
+    await tester.pumpAndSettle();
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
 
@@ -1377,6 +1382,7 @@ class _FakeSocialApiClient extends PostDeeApiClient {
   final List<String> disconnectCalls = [];
   int refreshCalls = 0;
   int subscriptionLoadCalls = 0;
+  int aiEditQuotaCalls = 0;
 
   @override
   Future<SubscriptionStatusResult> loadCurrentSubscription() async {
@@ -1397,11 +1403,14 @@ class _FakeSocialApiClient extends PostDeeApiClient {
   }
 
   @override
-  Future<AiEditQuota> fetchAiEditQuota() async => const AiEditQuota(
-        limitMinutes: 200,
-        usedMinutes: 25,
-        remainingMinutes: 175,
-      );
+  Future<AiEditQuota> fetchAiEditQuota() async {
+    aiEditQuotaCalls += 1;
+    return const AiEditQuota(
+      limitMinutes: 200,
+      usedMinutes: 25,
+      remainingMinutes: 175,
+    );
+  }
 
   @override
   Future<List<SocialConnectionResult>> listSocialConnections() async {

@@ -1,5 +1,9 @@
 # AI Edit Whole-Video Proxy Plan
 
+> Product update (2026-10-05): Profile link replaces the active AI editing entry.
+> The notes below are a historical/compatibility record, not the current mobile
+> product or its deployment checklist. AI captioning remains active.
+
 **Status:** Implemented locally on `main`; real Gemini/R2 device E2E is still a release gate.
 
 > Current runtime update (2026-07-30): transcript and visual planning use

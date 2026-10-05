@@ -1,5 +1,9 @@
 # AI Edit Subtitle Review Flow Implementation Plan
 
+> Product update (2026-10-05): Profile link replaces AI editing and Subtitle
+> Studio in the current mobile navigation. Preserve these historical tests and
+> compatibility internals; do not restore the old entry from this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **Document status (implemented):** this flow is integrated into `main`.

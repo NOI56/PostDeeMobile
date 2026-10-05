@@ -8,6 +8,23 @@ ingestion, Sentry, beat/hook rendering, and AI minute top-ups still need code.
 Default values keep everything in mock/local mode so the app runs without any
 third-party accounts.
 
+## Profile Page Replacement Gate (2026-10-05)
+
+Profile link replaces AI editing/Subtitle Studio in the active app. The editing
+verification notes later in this document are historical compatibility gates,
+not requirements for shipping this replacement. AI captions remain active.
+
+- Run the additive LinkInBioProfile migration and regenerate Prisma on the API
+  release; production must use `POST_STORE=prisma` for durable public pages.
+- Verify a signed-in account can publish/update and copy/open its confirmed
+  `/p/<slug>` URL on the deployed API domain, from another browser without login.
+- Check duplicate slugs, invalid destinations, offline/timeout recovery, and
+  separation between local draft changes and the last public snapshot.
+- Verify unpublish and account deletion make the public URL unavailable, and
+  switching accounts never reveals the previous owner's draft/page controls.
+- No third-party statistics API or new `postdee.link` domain is required. This
+  checklist does not assert that the new API/migration has been deployed.
+
 ## Staging Gate
 
 The repository defines an isolated Staging Blueprint/database and records a

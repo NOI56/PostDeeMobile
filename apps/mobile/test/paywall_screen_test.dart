@@ -179,7 +179,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ลายน้ำอัตโนมัติ'), findsOneWidget);
-    expect(find.text('AI ตัดต่อ 200 นาที/เดือน'), findsOneWidget);
+    expect(find.text('AI ตัดต่อ 200 นาที/เดือน'), findsNothing);
     expect(find.textContaining('ตัดคลิปเป็น EP'), findsNothing);
     expect(find.textContaining('เรดาร์แฮชแท็ก'), findsNothing);
     expect(find.textContaining('แจ้งเตือนไวรัล'), findsNothing);

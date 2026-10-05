@@ -47,13 +47,15 @@ class PostDeeLocalizations {
             uploadDraftSavedMessage: 'บันทึกฉบับร่างไว้ในเครื่องแล้ว',
             captionTab: 'ปฏิทิน',
             aiEditingTab: 'AI ตัดต่อ',
+            linkInBioTab: 'ลิงก์โปรไฟล์',
             profileTab: 'โปรไฟล์',
             notificationsAction: 'แจ้งเตือน',
             userAccountAction: 'บัญชีผู้ใช้',
             templatesTitle: 'เทมเพลต',
             loginTitle: 'เข้าสู่ระบบ PostDee',
             loginSubtitle: 'เชื่อมอีเมลก่อนเข้าใช้งาน',
-            loginRequirementMessage: 'ต้องมีอีเมลที่เชื่อมไว้ก่อน จึงจะโพสต์และจัดการคอนเทนต์ได้',
+            loginRequirementMessage:
+                'ต้องมีอีเมลที่เชื่อมไว้ก่อน จึงจะโพสต์และจัดการคอนเทนต์ได้',
             loginButton: 'เข้าสู่ระบบด้วย Google',
             appleLoginButton: 'เข้าสู่ระบบด้วย Apple',
             signingInButton: 'กำลังเข้าสู่ระบบ...',
@@ -96,18 +98,22 @@ class PostDeeLocalizations {
             uploadDraftSavedMessage: 'Draft saved on this device',
             captionTab: 'Calendar',
             aiEditingTab: 'AI Edit',
+            linkInBioTab: 'Profile link',
             profileTab: 'Profile',
             notificationsAction: 'Notifications',
             userAccountAction: 'User account',
             templatesTitle: 'Templates',
             loginTitle: 'Sign in to PostDee',
             loginSubtitle: 'Connect your email before using the app',
-            loginRequirementMessage: 'Connect an email first so you can post and manage content.',
+            loginRequirementMessage:
+                'Connect an email first so you can post and manage content.',
             loginButton: 'Sign in with Google',
             appleLoginButton: 'Sign in with Apple',
             signingInButton: 'Signing in...',
-            loginDefaultHelper: 'Connect your Google email to start using PostDee',
-            loginMockHelper: 'Local mock auth uses a sample email to enter the app',
+            loginDefaultHelper:
+                'Connect your Google email to start using PostDee',
+            loginMockHelper:
+                'Local mock auth uses a sample email to enter the app',
             homeGreeting: 'Hello',
             homeOverviewSubtitle: "Today's posting overview",
             homeViewPackage: 'View package',
@@ -145,13 +151,15 @@ class PostDeeLocalizations {
             uploadDraftSavedMessage: 'Đã lưu bản nháp',
             captionTab: 'Lịch',
             aiEditingTab: 'Biên tập AI',
+            linkInBioTab: 'Liên kết hồ sơ',
             profileTab: 'Hồ sơ',
             notificationsAction: 'Thông báo',
             userAccountAction: 'Tài khoản',
             templatesTitle: 'Mẫu',
             loginTitle: 'Đăng nhập vào PostDee',
             loginSubtitle: 'Kết nối email trước khi sử dụng',
-            loginRequirementMessage: 'Kết nối email trước để đăng và quản lý nội dung.',
+            loginRequirementMessage:
+                'Kết nối email trước để đăng và quản lý nội dung.',
             loginButton: 'Đăng nhập bằng Google',
             appleLoginButton: 'Đăng nhập bằng Apple',
             signingInButton: 'Đang đăng nhập...',
@@ -194,6 +202,7 @@ class PostDeeLocalizations {
             uploadDraftSavedMessage: '草稿已保存',
             captionTab: '日历',
             aiEditingTab: 'AI 剪辑',
+            linkInBioTab: '主页链接',
             profileTab: '我的',
             notificationsAction: '通知',
             userAccountAction: '用户账户',
@@ -243,6 +252,7 @@ class PostDeeLocalizations {
             uploadDraftSavedMessage: 'Draf disimpan',
             captionTab: 'Kalender',
             aiEditingTab: 'Edit AI',
+            linkInBioTab: 'Tautan profil',
             profileTab: 'Profil',
             notificationsAction: 'Notifikasi',
             userAccountAction: 'Akun',
@@ -292,13 +302,15 @@ class PostDeeLocalizations {
             uploadDraftSavedMessage: 'Draf disimpan',
             captionTab: 'Kalendar',
             aiEditingTab: 'Edit AI',
+            linkInBioTab: 'Pautan profil',
             profileTab: 'Profil',
             notificationsAction: 'Notifikasi',
             userAccountAction: 'Akaun',
             templatesTitle: 'Templat',
             loginTitle: 'Log masuk ke PostDee',
             loginSubtitle: 'Sambungkan e-mel sebelum menggunakan',
-            loginRequirementMessage: 'Sambung e-mel dahulu untuk memuat naik kandungan.',
+            loginRequirementMessage:
+                'Sambung e-mel dahulu untuk memuat naik kandungan.',
             loginButton: 'Log masuk dengan Google',
             appleLoginButton: 'Log masuk dengan Apple',
             signingInButton: 'Sedang log masuk...',
@@ -341,6 +353,7 @@ class PostDeeLocalizations {
             uploadDraftSavedMessage: 'Na-save ang draft',
             captionTab: 'Kalendaryo',
             aiEditingTab: 'AI Edit',
+            linkInBioTab: 'Profile link',
             profileTab: 'Profile',
             notificationsAction: 'Mga Notification',
             userAccountAction: 'Account',
@@ -390,6 +403,7 @@ class PostDeeLocalizations {
             uploadDraftSavedMessage: '下書きを保存しました',
             captionTab: 'カレンダー',
             aiEditingTab: 'AI編集',
+            linkInBioTab: 'プロフィールリンク',
             profileTab: 'プロフィール',
             notificationsAction: '通知',
             userAccountAction: 'アカウント',
@@ -440,6 +454,7 @@ class PostDeeLocalizations {
   String get uploadDraftSavedMessage => _values.uploadDraftSavedMessage;
   String get captionTab => _values.captionTab;
   String get aiEditingTab => _values.aiEditingTab;
+  String get linkInBioTab => _values.linkInBioTab;
   String get profileTab => _values.profileTab;
   String get notificationsAction => _values.notificationsAction;
   String get userAccountAction => _values.userAccountAction;
@@ -488,6 +503,7 @@ class _PostDeeLocalizedValues {
     required this.uploadDraftSavedMessage,
     required this.captionTab,
     required this.aiEditingTab,
+    required this.linkInBioTab,
     required this.profileTab,
     required this.notificationsAction,
     required this.userAccountAction,
@@ -534,6 +550,7 @@ class _PostDeeLocalizedValues {
   final String uploadDraftSavedMessage;
   final String captionTab;
   final String aiEditingTab;
+  final String linkInBioTab;
   final String profileTab;
   final String notificationsAction;
   final String userAccountAction;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:postdee_mobile/core/auth/firebase_bootstrap.dart';
@@ -47,7 +49,165 @@ class FakeFirebaseAuthClient implements FirebaseAuthClient {
   }
 }
 
+class PendingGoogleIdentityClient implements GoogleIdentityClient {
+  final requests = <Completer<GoogleAccountSnapshot>>[];
+
+  @override
+  Future<GoogleAccountSnapshot> signIn() {
+    final request = Completer<GoogleAccountSnapshot>();
+    requests.add(request);
+    return request.future;
+  }
+
+  @override
+  Future<void> signOut() async {}
+}
+
+class PendingFirebaseAuthClient implements FirebaseAuthClient {
+  final requests = <Completer<FirebaseUserSnapshot>>[];
+  final googleIdTokens = <String>[];
+
+  @override
+  Future<FirebaseUserSnapshot> signInWithGoogleIdToken(String googleIdToken) {
+    final request = Completer<FirebaseUserSnapshot>();
+    requests.add(request);
+    googleIdTokens.add(googleIdToken);
+    return request.future;
+  }
+
+  @override
+  Future<void> signOut() async {}
+}
+
 void main() {
+  testWidgets('times out when Google identity never responds', (tester) async {
+    const timeout = Duration(seconds: 2);
+    final googleClient = PendingGoogleIdentityClient();
+    final firebaseClient = PendingFirebaseAuthClient();
+    final gateway = FirebaseGoogleAuthGateway(
+      googleClient: googleClient,
+      firebaseAuthClient: firebaseClient,
+      googleSignInTimeout: timeout,
+    );
+
+    final assertion = expectLater(
+      gateway.signIn(),
+      throwsA(isA<TimeoutException>()),
+    );
+    await tester.pump(timeout);
+    await assertion;
+
+    expect(googleClient.requests, hasLength(1));
+    expect(firebaseClient.requests, isEmpty);
+  });
+
+  testWidgets('ignores a late Google result and allows a fresh sign-in',
+      (tester) async {
+    const timeout = Duration(seconds: 2);
+    final googleClient = PendingGoogleIdentityClient();
+    final firebaseClient = FakeFirebaseAuthClient(
+      const FirebaseUserSnapshot(
+        userId: 'retry-user',
+        idToken: 'retry-firebase-token',
+      ),
+    );
+    final gateway = FirebaseGoogleAuthGateway(
+      googleClient: googleClient,
+      firebaseAuthClient: firebaseClient,
+      googleSignInTimeout: timeout,
+    );
+
+    final assertion = expectLater(
+      gateway.signIn(),
+      throwsA(isA<TimeoutException>()),
+    );
+    await tester.pump(timeout);
+    await assertion;
+
+    final retry = gateway.signIn();
+    expect(googleClient.requests, hasLength(2));
+    googleClient.requests.first.complete(
+      const GoogleAccountSnapshot(idToken: 'expired-google-token'),
+    );
+    await tester.pump();
+    expect(firebaseClient.signedInWithGoogleIdToken, isNull);
+
+    googleClient.requests.last.complete(
+      const GoogleAccountSnapshot(idToken: 'retry-google-token'),
+    );
+    await tester.pump();
+    final session = await retry;
+
+    expect(firebaseClient.signedInWithGoogleIdToken, 'retry-google-token');
+    expect(session.userId, 'retry-user');
+  });
+
+  testWidgets('times out when Firebase credential or ID token never responds',
+      (tester) async {
+    const timeout = Duration(seconds: 1);
+    final firebaseClient = PendingFirebaseAuthClient();
+    final gateway = FirebaseGoogleAuthGateway(
+      googleClient: FakeGoogleIdentityClient(
+        const GoogleAccountSnapshot(idToken: 'google-id-token'),
+      ),
+      firebaseAuthClient: firebaseClient,
+      firebaseSignInTimeout: timeout,
+    );
+
+    final assertion = expectLater(
+      gateway.signIn(),
+      throwsA(isA<TimeoutException>()),
+    );
+    await tester.pump();
+    await tester.pump(timeout);
+    await assertion;
+
+    expect(firebaseClient.googleIdTokens, ['google-id-token']);
+  });
+
+  testWidgets('a late Firebase result cannot replace a retry result',
+      (tester) async {
+    const timeout = Duration(seconds: 1);
+    final firebaseClient = PendingFirebaseAuthClient();
+    final gateway = FirebaseGoogleAuthGateway(
+      googleClient: FakeGoogleIdentityClient(
+        const GoogleAccountSnapshot(idToken: 'google-id-token'),
+      ),
+      firebaseAuthClient: firebaseClient,
+      firebaseSignInTimeout: timeout,
+    );
+
+    final assertion = expectLater(
+      gateway.signIn(),
+      throwsA(isA<TimeoutException>()),
+    );
+    await tester.pump();
+    await tester.pump(timeout);
+    await assertion;
+
+    final retry = gateway.signIn();
+    await tester.pump();
+    expect(firebaseClient.requests, hasLength(2));
+    firebaseClient.requests.first.complete(
+      const FirebaseUserSnapshot(
+        userId: 'expired-user',
+        idToken: 'expired-firebase-token',
+      ),
+    );
+    await tester.pump();
+    firebaseClient.requests.last.complete(
+      const FirebaseUserSnapshot(
+        userId: 'retry-user',
+        idToken: 'retry-firebase-token',
+      ),
+    );
+    await tester.pump();
+
+    final session = await retry;
+    expect(session.userId, 'retry-user');
+    expect(session.idToken, 'retry-firebase-token');
+  });
+
   test(
       'FirebaseGoogleAuthGateway signs in with Google and returns a Firebase session',
       () async {

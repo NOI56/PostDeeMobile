@@ -1758,6 +1758,118 @@ class CreateTemplateRequest {
       };
 }
 
+class LinkInBioLinkResult {
+  const LinkInBioLinkResult(
+      {required this.id, required this.title, required this.url});
+  final String id;
+  final String title;
+  final String url;
+  Map<String, Object?> toJson() => {'id': id, 'title': title, 'url': url};
+
+  factory LinkInBioLinkResult.fromJson(Map<String, Object?> json) {
+    final id = json['id'];
+    final title = json['title'];
+    final url = json['url'];
+    if (id is! String ||
+        id.trim().isEmpty ||
+        id.length > 80 ||
+        title is! String ||
+        title.trim().isEmpty ||
+        title.length > 80 ||
+        url is! String ||
+        url.length > 2048 ||
+        RegExp(r'\s').hasMatch(url)) {
+      throw const ApiException('Link in Bio response contains invalid links');
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null ||
+        !uri.isAbsolute ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty ||
+        !const {'http', 'https'}.contains(uri.scheme) ||
+        uri.userInfo.isNotEmpty) {
+      throw const ApiException('Link in Bio response contains an unsafe URL');
+    }
+    return LinkInBioLinkResult(id: id, title: title, url: url);
+  }
+}
+
+class LinkInBioProfileResult {
+  const LinkInBioProfileResult({
+    required this.storeName,
+    required this.slug,
+    required this.links,
+    required this.isPublished,
+    required this.updatedAt,
+    this.publishedAt,
+    this.publicPath,
+    this.publicUrl,
+  });
+  final String storeName;
+  final String slug;
+  final List<LinkInBioLinkResult> links;
+  final bool isPublished;
+  final DateTime? publishedAt;
+  final DateTime updatedAt;
+  final String? publicPath;
+  final Uri? publicUrl;
+
+  factory LinkInBioProfileResult.fromJson(Map<String, Object?> json,
+      {required Uri apiBaseUri}) {
+    final name = json['storeName'];
+    final slug = json['slug'];
+    final rawLinks = json['links'];
+    final published = json['isPublished'];
+    final updatedAt = json['updatedAt'] is String
+        ? DateTime.tryParse(json['updatedAt'] as String)
+        : null;
+    final publishedAt = json['publishedAt'] is String
+        ? DateTime.tryParse(json['publishedAt'] as String)
+        : null;
+    final path = json['publicPath'];
+    if (name is! String ||
+        name.trim().isEmpty ||
+        name.length > 80 ||
+        slug is! String ||
+        slug.length < 3 ||
+        slug.length > 40 ||
+        !RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$').hasMatch(slug) ||
+        rawLinks is! List ||
+        rawLinks.isEmpty ||
+        rawLinks.length > 20 ||
+        published is! bool ||
+        updatedAt == null ||
+        (published && (publishedAt == null || path != '/p/$slug')) ||
+        (!published && path != null) ||
+        !const {'http', 'https'}.contains(apiBaseUri.scheme) ||
+        apiBaseUri.host.isEmpty ||
+        apiBaseUri.userInfo.isNotEmpty) {
+      throw const ApiException('Link in Bio response is incomplete or unsafe');
+    }
+    final links = rawLinks.map((item) {
+      if (item is! Map<String, Object?>) {
+        throw const ApiException('Link in Bio response contains invalid links');
+      }
+      return LinkInBioLinkResult.fromJson(item);
+    }).toList(growable: false);
+    if (links.map((link) => link.id).toSet().length != links.length) {
+      throw const ApiException('Link in Bio response contains duplicate links');
+    }
+    return LinkInBioProfileResult(
+      storeName: name,
+      slug: slug,
+      links: links,
+      isPublished: published,
+      updatedAt: updatedAt,
+      publishedAt: publishedAt,
+      publicPath: path as String?,
+      publicUrl: published
+          ? Uri.parse(apiBaseUri.origin).resolve(path as String)
+          : null,
+    );
+  }
+}
+
 class TextTemplateResult {
   const TextTemplateResult({
     required this.id,
@@ -2311,6 +2423,51 @@ class PostDeeApiClient {
   final Uri _baseUri;
   final PostDeeApiAuthHeaders _authHeaders;
   final Future<void> Function(Duration) _multipartCompletionPollDelay;
+
+  Future<LinkInBioProfileResult?> loadLinkInBioProfile() async {
+    final response = await _getJson('/link-in-bio');
+    if (response['status'] != 'ok' || !response.containsKey('profile')) {
+      throw const ApiException('Link in Bio response is missing profile data');
+    }
+    if (response['profile'] == null) return null;
+    return _readLinkInBioProfile(response);
+  }
+
+  Future<LinkInBioProfileResult> publishLinkInBioProfile({
+    required String storeName,
+    required String slug,
+    required List<LinkInBioLinkResult> links,
+  }) async {
+    final response = await _postJson('/link-in-bio/publish', {
+      'storeName': storeName,
+      'slug': slug,
+      'links': links.map((link) => link.toJson()).toList(growable: false),
+    });
+    final profile = _readLinkInBioProfile(response);
+    if (!profile.isPublished) {
+      throw const ApiException(
+          'Link in Bio response did not confirm publication');
+    }
+    return profile;
+  }
+
+  Future<LinkInBioProfileResult> unpublishLinkInBioProfile() async {
+    final profile =
+        _readLinkInBioProfile(await _deleteJson('/link-in-bio/publish'));
+    if (profile.isPublished) {
+      throw const ApiException(
+          'Link in Bio response did not confirm unpublishing');
+    }
+    return profile;
+  }
+
+  LinkInBioProfileResult _readLinkInBioProfile(Map<String, Object?> response) {
+    final profile = response['profile'];
+    if (response['status'] != 'ok' || profile is! Map<String, Object?>) {
+      throw const ApiException('Link in Bio response is missing profile data');
+    }
+    return LinkInBioProfileResult.fromJson(profile, apiBaseUri: _baseUri);
+  }
 
   Future<T> _withRequestDeadline<T>(
     Duration timeout,

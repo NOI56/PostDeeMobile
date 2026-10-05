@@ -5,7 +5,7 @@ PostDee backend API reference.
 This document describes the current Express + TypeScript API in `apps/api`.
 Implemented adapters remain mock-safe for local development, while production
 readiness for social publishing, live analytics, Cloudflare R2, real-clip AI
-captioning, Pro ElevenLabs + Gemini auto editing, Firebase, Apple App Store, and
+captioning, Firebase, Apple App Store, and
 Google Play still depends on the provider/device release gates listed below.
 
 ## Base URL
@@ -22,6 +22,52 @@ Backend path:
 apps/api
 ```
 
+## Profile Links (2026-10-05)
+
+Profile links replace AI video editing in the active mobile product. AI editing
+routes documented later remain compatibility contracts, not package benefits.
+One profile page per authenticated account is available on every package.
+Production persistence follows `POST_STORE=prisma` and requires the new
+LinkInBioProfile migration; memory mode is development-only scaffolding.
+
+| Route | Authentication | Behavior |
+| --- | --- | --- |
+| `GET /link-in-bio` | Required | Return only the current account's profile, or `profile: null` |
+| `POST /link-in-bio/publish` | Required | Atomically create/update and publish the current account's page |
+| `DELETE /link-in-bio/publish` | Required | Hide the page while retaining its saved links and reserved slug |
+| `GET /p/:slug` | Public | Serve responsive HTML only for a published page; missing/hidden pages return 404 |
+
+Publish body:
+
+```json
+{
+  "storeName": "ร้านตัวอย่าง",
+  "slug": "example-shop",
+  "links": [{ "id": "shop", "title": "เลือกซื้อสินค้า", "url": "https://example.com/shop" }]
+}
+```
+
+`storeName` and each link title are trimmed, 1–80 characters. The slug is
+trimmed/lowercased ASCII, 3–40 characters, using letters/numbers and internal
+hyphens. Publish accepts 1–20 links, each with a unique nonempty id up to 80
+characters. URLs are absolute HTTP(S), up to 2048 characters, without embedded
+credentials; javascript/data/file links are rejected. The server does not fetch
+linked sites. Only enabled custom links are sent by the app.
+
+Success uses `{ "status": "ok", "profile": ... }`. Profile contains
+`storeName`, `slug`, `links`, `isPublished`, nullable `publishedAt`, `updatedAt`,
+and `publicPath` (`/p/<slug>` only when published, otherwise null). It does not
+include the owner's email or tokens. The client resolves `publicPath` against
+its configured API origin. A changed slug makes the old URL unavailable.
+
+Slug conflicts return HTTP 409 with `LINK_IN_BIO_SLUG_TAKEN`. Invalid payloads
+return 400. An unavailable durable repository returns 503 with
+`LINK_IN_BIO_UNAVAILABLE`; it never silently falls back to in-memory publication.
+Owner/public responses disable caching. Unpublishing or deleting an account
+makes its public page unavailable. Mobile request timeouts do not prove a
+publication was canceled: the app preserves the local draft and reloads server
+state before subsequent publication actions.
+
 ## Mobile Request Deadlines
 
 The Flutter client bounds ordinary JSON requests to 20 seconds end to end,
@@ -34,7 +80,8 @@ status `408`; this is not a new server response or a guarantee that an accepted
 mutation was canceled. `POST /posts` is not automatically retried, and the draft
 retains its original `clientRequestId` for explicit recovery. Multipart
 completion status reconciliation and signed-URL expiry retry remain unchanged.
-No server/schema migration or package change is required.
+The existing request-deadline behavior itself needs no server/schema migration
+or package change. Profile-page publication separately requires its migration.
 
 ## Current Status
 
@@ -128,7 +175,7 @@ whose complete provider/device flow has passed its release gate.
 | Cloud scheduling | No | Yes | Yes |
 | Calendar for scheduled posts | No | Yes | Yes |
 | AI caption from real clip | No | Audio-only, 50 generations/month implemented; production provider/device verification remains | Audio + selected frames, 120 generations/month implemented; production provider/device verification remains |
-| AI auto editing with ElevenLabs + Gemini | No | No | 200 minutes/month implemented; physical-device and provider acceptance remains |
+| Public profile link page | One page, up to 20 links | One page, up to 20 links | One page, up to 20 links |
 | AI audio review as a separate feature | No | No | No |
 | Unified Analytics | No | No | Yes |
 | Hashtag radar and AI comment center | No | No | Yes |
@@ -142,9 +189,12 @@ Important rules:
   units.
 - Starter users can post immediately, schedule posts, use the calendar, and use
   real-clip AI captioning from audio after a selected clip.
-- Pro users currently unlock implemented analytics, visual-frame AI captioning,
-  and the ElevenLabs + Gemini auto-editing flow subject to their listed release
-  gates. Hashtag radar, AI comment center, and team/editor access remain planned
+- All packages can save, publish, update, and unpublish one profile link page.
+  AI video editing is retired from the active product; its internal legacy APIs
+  do not grant an advertised package benefit.
+- Pro users currently unlock implemented analytics and visual-frame AI
+  captioning subject to their listed release gates. Hashtag radar, AI comment
+  center, and team/editor access remain planned
   package benefits and must not appear as active paywall promises yet.
 - Prompt-only caption generation may still exist in the API while the app
   transitions, but it should not be the main paid package promise.

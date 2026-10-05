@@ -18,6 +18,10 @@ import {
   createFirebaseIdentityDeleterFromConfig
 } from './modules/account/firebaseIdentityDeleter.js';
 import { registerAnalyticsRoutes } from './modules/analytics/analyticsRoutes.js';
+import { registerLinkInBioRoutes } from './modules/linkInBio/linkInBioRoutes.js';
+import { createLinkInBioStoreFromConfig } from './modules/linkInBio/linkInBioStoreFactory.js';
+import type { LinkInBioStore } from './modules/linkInBio/linkInBioStore.js';
+import type { PrismaLinkInBioClient } from './modules/linkInBio/prismaLinkInBioRepository.js';
 import { createAnalyticsStoreFromConfig } from './modules/analytics/analyticsStoreFactory.js';
 import type { AnalyticsStore } from './modules/analytics/analyticsStore.js';
 import type { PrismaAnalyticsClient } from './modules/analytics/prismaAnalyticsRepository.js';
@@ -151,7 +155,7 @@ type AppPrismaClient = PrismaTemplateClient &
   PrismaAiEditUsageClient &
   PrismaDeviceTokenClient &
   PrismaSocialConnectionClient &
-  PrismaUploadSessionClient;
+  PrismaUploadSessionClient & Partial<PrismaLinkInBioClient>;
 
 type AppOptions = {
   config?: ServerConfig;
@@ -162,6 +166,7 @@ type AppOptions = {
   accountDeletionFirebaseVerifier?: FirebaseTokenVerifier;
   firebaseCertsFetch?: FirebaseCertificatesFetch;
   analyticsStore?: AnalyticsStore;
+  linkInBioStore?: LinkInBioStore;
   captionGenerator?: CaptionGenerator;
   realClipCaptionUsageStore?: RealClipCaptionUsageStore;
   realClipCaptionProvider?: RealClipCaptionProvider;
@@ -549,6 +554,11 @@ export const createApp = (options: AppOptions = {}) => {
       config,
       prisma: prismaClient as unknown as PrismaAnalyticsClient | undefined
     });
+  const linkInBioStore = options.linkInBioStore ?? createLinkInBioStoreFromConfig({
+    config,
+    prisma: prismaClient as unknown as Partial<PrismaLinkInBioClient> | undefined,
+    now: options.now
+  });
   router.use('/auth', authRateLimit);
   router.use('/uploads', uploadRateLimit);
   router.use('/captions', aiRateLimit);
@@ -644,6 +654,7 @@ export const createApp = (options: AppOptions = {}) => {
   );
   registerPublishQueueRoutes(router, accountAwareAuthMiddleware, publishQueue);
   registerTemplateRoutes(router, accountAwareAuthMiddleware, templateStore, userStore);
+  registerLinkInBioRoutes(router, accountAwareAuthMiddleware, linkInBioStore, userStore);
   registerAnalyticsRoutes(
     router,
     accountAwareAuthMiddleware,
@@ -721,6 +732,7 @@ export const createApp = (options: AppOptions = {}) => {
     realClipCaptionUsageStore,
     aiEditUsageStore,
     deviceTokenStore,
+    linkInBioStore,
     socialConnectionStore,
     postPeerConnectClient,
     userStore,

@@ -42,12 +42,9 @@ class LinkInBioDraft {
   factory LinkInBioDraft.defaults() {
     return const LinkInBioDraft(
       storeName: 'ร้านของคุณ',
-      slug: 'ร้านของคุณ',
-      autoUpdateFromScheduledPosts: true,
-      enabledLinkIds: {
-        'recommended_product',
-        'daily_campaign',
-      },
+      slug: '',
+      autoUpdateFromScheduledPosts: false,
+      enabledLinkIds: {},
       customLinks: [],
     );
   }
@@ -68,6 +65,7 @@ abstract class LinkInBioDraftStore {
 class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
   const SharedPreferencesLinkInBioDraftStore({
     SharedPreferences? preferences,
+    this.ownerUserId,
   }) : _preferences = preferences;
 
   static const storeNameKey = 'postdee_link_in_bio.store_name';
@@ -77,59 +75,66 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
   static const customLinksKey = 'postdee_link_in_bio.custom_links';
 
   final SharedPreferences? _preferences;
+  final String? ownerUserId;
+
+  String? get _ownedKey {
+    final owner = ownerUserId?.trim();
+    return owner == null || owner.isEmpty
+        ? null
+        : 'postdee_link_in_bio.user.${Uri.encodeComponent(owner)}';
+  }
 
   Future<SharedPreferences> get _activePreferences async =>
       _preferences ?? SharedPreferences.getInstance();
 
   @override
   Future<LinkInBioDraft?> loadDraft() async {
+    final key = _ownedKey;
+    if (key == null) return null;
     final preferences = await _activePreferences;
-    final hasSavedDraft = preferences.containsKey(storeNameKey) ||
-        preferences.containsKey(slugKey) ||
-        preferences.containsKey(autoUpdateKey) ||
-        preferences.containsKey(enabledLinksKey) ||
-        preferences.containsKey(customLinksKey);
-
-    if (!hasSavedDraft) {
+    final raw = preferences.getString(key);
+    if (raw == null) return null;
+    try {
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      return LinkInBioDraft(
+        storeName: json['storeName'] as String,
+        slug: json['slug'] as String,
+        autoUpdateFromScheduledPosts: false,
+        enabledLinkIds: (json['enabledLinkIds'] as List).cast<String>().toSet(),
+        customLinks:
+            _decodeCustomLinks((json['customLinks'] as List).cast<String>()),
+      );
+    } catch (_) {
       return null;
     }
-
-    final defaults = LinkInBioDraft.defaults();
-
-    return LinkInBioDraft(
-      storeName: preferences.getString(storeNameKey) ?? defaults.storeName,
-      slug: preferences.getString(slugKey) ?? defaults.slug,
-      autoUpdateFromScheduledPosts:
-          preferences.getBool(autoUpdateKey) ??
-              defaults.autoUpdateFromScheduledPosts,
-      enabledLinkIds:
-          (preferences.getStringList(enabledLinksKey) ??
-                  defaults.enabledLinkIds.toList())
-              .toSet(),
-      customLinks: _decodeCustomLinks(
-        preferences.getStringList(customLinksKey) ?? const [],
-      ),
-    );
   }
 
   @override
   Future<void> saveDraft(LinkInBioDraft draft) async {
     final preferences = await _activePreferences;
+    final key = _ownedKey;
+    if (key == null) throw StateError('Link in Bio draft requires an owner');
     final enabledLinkIds = draft.enabledLinkIds.toList()..sort();
+    final saved = await preferences.setString(
+        key,
+        jsonEncode({
+          'storeName': draft.storeName,
+          'slug': draft.slug,
+          'enabledLinkIds': enabledLinkIds,
+          'customLinks': draft.customLinks
+              .map((link) => jsonEncode(link.toJson()))
+              .toList(),
+        }));
+    if (!saved) throw StateError('Link in Bio draft could not be saved');
+  }
 
-    await preferences.setString(storeNameKey, draft.storeName);
-    await preferences.setString(slugKey, draft.slug);
-    await preferences.setBool(
-      autoUpdateKey,
-      draft.autoUpdateFromScheduledPosts,
-    );
-    await preferences.setStringList(enabledLinksKey, enabledLinkIds);
-    await preferences.setStringList(
-      customLinksKey,
-      draft.customLinks
-          .map((link) => jsonEncode(link.toJson()))
-          .toList(growable: false),
-    );
+  Future<void> clearDraft() async {
+    final key = _ownedKey;
+    if (key == null) return;
+    final preferences = await _activePreferences;
+    if (!await preferences.remove(key)) {
+      throw StateError('Link in Bio draft could not be removed');
+    }
   }
 
   List<LinkInBioCustomLink> _decodeCustomLinks(List<String> rawLinks) {
@@ -149,3 +154,6 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
     return links;
   }
 }
+
+Future<void> clearLinkInBioDraftForUser(String ownerUserId) =>
+    SharedPreferencesLinkInBioDraftStore(ownerUserId: ownerUserId).clearDraft();

@@ -12,6 +12,7 @@ void main() {
       expect(localizations.createPostTab, 'สร้างโพสต์');
       expect(localizations.captionTab, 'ปฏิทิน');
       expect(localizations.aiEditingTab, 'AI ตัดต่อ');
+      expect(localizations.linkInBioTab, 'ลิงก์โปรไฟล์');
       expect(localizations.profileTab, 'โปรไฟล์');
       expect(localizations.notificationsAction, 'แจ้งเตือน');
       expect(localizations.userAccountAction, 'บัญชีผู้ใช้');
@@ -60,6 +61,7 @@ void main() {
       expect(localizations.createPostTab, 'Create post');
       expect(localizations.captionTab, 'Calendar');
       expect(localizations.aiEditingTab, 'AI Edit');
+      expect(localizations.linkInBioTab, 'Profile link');
       expect(localizations.profileTab, 'Profile');
       expect(localizations.notificationsAction, 'Notifications');
       expect(localizations.userAccountAction, 'User account');
@@ -109,6 +111,12 @@ void main() {
       final localizations = PostDeeLocalizations.lookup(const Locale('fr'));
 
       expect(localizations.homeTab, 'Home');
+    });
+
+    test('provides a profile link label in every supported locale', () {
+      for (final locale in PostDeeLocalizations.supportedLocales) {
+        expect(PostDeeLocalizations.lookup(locale).linkInBioTab, isNotEmpty);
+      }
     });
   });
 }

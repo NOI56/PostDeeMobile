@@ -29,7 +29,7 @@ class HomeScreen extends StatefulWidget {
     this.onViewAllPosts,
     this.onOpenNotifications,
     this.onOpenProfile,
-    this.onOpenAi,
+    this.onOpenLinkInBio,
     this.userName,
   });
 
@@ -43,7 +43,7 @@ class HomeScreen extends StatefulWidget {
   final VoidCallback? onViewAllPosts;
   final VoidCallback? onOpenNotifications;
   final VoidCallback? onOpenProfile;
-  final VoidCallback? onOpenAi;
+  final VoidCallback? onOpenLinkInBio;
 
   /// Real signed-in display name, appended to the greeting. When null/empty the
   /// greeting shows without a name (no hardcoded demo name).
@@ -313,7 +313,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: _openPaywall,
         ),
         const SizedBox(height: 14),
-        _AiEditingShortcutCard(onOpenAi: widget.onOpenAi),
+        _LinkInBioShortcutCard(onOpen: widget.onOpenLinkInBio),
         const SizedBox(height: 14),
         _AnalyticsMetricSection(
           totalViews: isAnalyticsLocked ? null : _analytics?.totalViews,
@@ -325,10 +325,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ? _openPaywall
               : (_isLoadingAnalytics ? null : _loadAnalytics),
         ),
-        const SizedBox(height: 14),
-        // AppTheme colors are imperative, so this subtree must rebuild when
-        // the user switches between light and dark mode.
-        _LinkInBioShortcutCard(),
         const SizedBox(height: 14),
         Row(
           children: [
@@ -508,9 +504,15 @@ class _RoundHeaderButton extends StatelessWidget {
 }
 
 class _LinkInBioShortcutCard extends StatelessWidget {
-  const _LinkInBioShortcutCard();
+  const _LinkInBioShortcutCard({this.onOpen});
+
+  final VoidCallback? onOpen;
 
   void _open(BuildContext context) {
+    if (onOpen != null) {
+      onOpen!();
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => const LinkInBioScreen(),
@@ -614,131 +616,6 @@ class _LinkInBioShortcutCard extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AiEditingShortcutCard extends StatelessWidget {
-  const _AiEditingShortcutCard({required this.onOpenAi});
-
-  final VoidCallback? onOpenAi;
-
-  @override
-  Widget build(BuildContext context) {
-    final isThai = Localizations.localeOf(context).languageCode == 'th';
-
-    return Semantics(
-      button: true,
-      label: isThai ? 'ตัดต่อด้วย AI' : 'AI editing',
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onOpenAi,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF0E9F6E), Color(0xFF0A7A55)],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF0B7A55).withValues(alpha: 0.32),
-                blurRadius: 34,
-                offset: const Offset(0, 18),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: Stack(
-              children: [
-                Positioned(
-                  top: -44,
-                  right: -26,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.10),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const SizedBox(width: 150, height: 150),
-                  ),
-                ),
-                Positioned(
-                  right: 48,
-                  bottom: -54,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.07),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const SizedBox(width: 96, height: 96),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Row(
-                    children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.20),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const SizedBox(
-                          width: 54,
-                          height: 54,
-                          child: Icon(
-                            Icons.auto_awesome_rounded,
-                            color: Colors.white,
-                            size: 29,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isThai ? 'ตัดต่อด้วย AI' : 'AI editing',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              isThai
-                                  ? 'ให้ AI ตัดคลิปให้กระชับ ใส่ซับ เป็นสไตล์ไวรัลอัตโนมัติ'
-                                  : 'Let AI tighten clips, add captions, and prepare viral-ready edits.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: Colors.white.withValues(alpha: 0.85),
-                                    height: 1.45,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(
-                        Icons.arrow_forward_rounded,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ),
           ),
         ),

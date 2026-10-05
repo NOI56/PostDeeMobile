@@ -2,6 +2,25 @@
 
 Build roadmap for PostDee.
 
+## Current Product Decision (2026-10-05)
+
+- Replace the AI video editing/Subtitle Studio entry with Profile link in the
+  second navigation slot and the primary Home shortcut. Keep uploader AI
+  captions, publishing, calendar, templates, and existing analytics.
+- Provide one public profile page per authenticated account on every package,
+  with 1–20 explicitly enabled custom links. Host `/p/<slug>` on the existing
+  API domain; persist with Prisma and include profile cleanup in account deletion.
+- Separate local draft saving from publishing. Show a shareable URL only after
+  the API confirms publication. Support updating and unpublishing; changing a
+  published slug invalidates the old URL.
+- Remove editing-minute benefits, quota cards, and top-up promotion from the
+  active product. Legacy editing code/API contracts remain for compatibility and
+  shared media helpers; historical editing milestones below are not active TODOs.
+- Remaining release gate: deploy the LinkInBioProfile migration and API, then
+  verify publication/opening/unpublishing on the real staging domain and account.
+  No new social statistics API, custom domain, click tracking, or scheduled-link
+  auto-update is required by this first profile-page version.
+
 ## Phase 1: Core App
 
 Goal: make the first usable PostDee MVP work end to end.
@@ -273,18 +292,17 @@ Reference direction:
 - Light/dark PostDee palettes with green accents, clear cards, thin borders, and
   small status indicators.
 - Thai-first copy for visible user flows.
-- Bottom navigation has five entry points: Home, AI Editing, Create post,
-  Calendar, and Profile. AI Editing occupies the second slot, Calendar occupies
+- Bottom navigation has five entry points: Home, Profile link, Create post,
+  Calendar, and Profile. Profile link occupies the second slot, Calendar occupies
   the fourth slot, and Analytics remains reachable from publish results and
   individual post details so the existing reporting system is not removed.
-- Home keeps one direct Link in Bio shortcut below the analytics cards. Create
+- Home keeps one direct Link in Bio shortcut above the analytics cards. Create
   post stays in the bottom navigation, while the future viral-alert preview
   stays off Home until its real end-to-end flow is ready.
 - Keep AI captioning available from Upload after a clip is selected.
 - Keep Templates available as a secondary entry point instead of a main
   bottom-nav tab.
-- Keep AI advanced settings in an accordion with at most one expanded
-  capability and no default expansion, so the mobile flow stays scannable.
+- Legacy AI editing settings are no longer exposed from the active navigation.
 
 Planned order:
 
@@ -406,9 +424,9 @@ removed so this package plan does not compete with a separate review feature.
 
 | Tier | Price | Main Value | Intended Limits |
 | --- | ---: | --- | --- |
-| Basic | Free | Test posting only | Phone verification required, then 3 real-time test posts per month |
-| Starter | 199 THB/month | Practical daily posting plus AI caption from the real clip audio | 120 post units/month, scheduling, calendar, templates, auto watermark, EP clip splitting UI, Link in Bio basic page, and 50 real-clip AI caption generations/month |
-| Pro | 299 THB/month | Growth tools, analytics, team workflows, and stronger AI from audio plus selected visual frames | 250 post units/month, scheduling, calendar, templates, auto watermark, EP clip splitting, full analytics, hashtag radar, AI comment center, viral alert, Link in Bio advanced page, Team & Editor Access, 120 real-clip AI caption generations/month, and 200 AI auto editing minutes/month |
+| Basic | Free | Try posting and publish a profile page | Phone verification required for 3 real-time test posts per month; one profile page with up to 20 links |
+| Starter | 199 THB/month | Practical daily posting plus AI caption from the real clip audio | 120 post units/month, scheduling, calendar, templates, auto watermark, EP clip splitting UI, one profile page with up to 20 links, and 50 real-clip AI caption generations/month |
+| Pro | 299 THB/month | Growth tools, analytics, team workflows, and stronger AI from audio plus selected visual frames | 250 post units/month, scheduling, calendar, templates, auto watermark, EP clip splitting, full analytics, hashtag radar, AI comment center, viral alert, one profile page with up to 20 links, Team & Editor Access, and 120 real-clip AI caption generations/month |
 
 Package rules:
 
@@ -430,8 +448,7 @@ Package rules:
   can exist only as an optional extra after the user selects a clip.
 - Do not include a separate "AI audio clip review" feature in Starter or Pro
   package marketing for now.
-- AI auto editing top-up: 49 THB for 120 extra editing minutes. This applies
-  to AI editing minutes, not post units.
+- AI auto editing minutes and top-ups are retired from current package marketing.
 - Secret AI keys must stay on the backend only. Team editors must never see the
   owner's social account passwords or tokens.
 
@@ -439,16 +456,16 @@ Package rules:
 
 Items 1-7 below are future growth features that should start after the core
 posting and scheduling flow is usable with real provider APIs. Item 8 records
-production hardening for the AI editing system that already exists on `main`;
-it is not a future feature waiting to be built from zero.
+historical hardening for the retained AI editing implementation. The 2026-10-05
+product decision above supersedes its active product/release priority.
 
 Recommended order:
 
 1. Link in Bio Generator
-   - Create merchant pages such as `postdee.link/store-name`.
+   - Publish merchant pages at the configured PostDee API domain `/p/store-name`.
    - Store affiliate links, product links, and campaign links.
-   - Let scheduled posts update the bio page link list.
-   - This is the first Phase 2 feature because it creates low-risk lock-in.
+   - Explicit publish/update/unpublish controls are included; scheduled-post
+     auto-update and click/campaign insights remain future work.
 
 2. EP Link Assistant
    - Help users split long videos into EP.1, EP.2, and later parts.
@@ -571,9 +588,7 @@ To ensure the app passes store review guidelines, the following must be implemen
    `503` after restoring `disabled`. Treat `FACEBOOK_REELS` as Facebook Page
    Video, verify uncertain outcomes before retrying, and defer individual social
    API app reviews.
-7. Continue AI editing job/session persistence, ElevenLabs transcription/Gemini planning hardening, top-up,
-   retry/recovery, and real-device testing of pace detections, review counts, export, posting, and manual editing.
-8. Add music upload/ownership storage, license a cross-platform PostDee catalog,
-   then implement and test beat analysis, audio mixing, and voice ducking before
-   marking beat sync as applied or enabling it in production. Keep
-   `ENABLE_EXPERIMENTAL_BEAT_SYNC` false for production until then.
+7. Deploy the profile-page migration/API, verify publish/update/copy/open and
+   unpublish on the staging domain, and confirm pages disappear on account deletion.
+8. Retain legacy editing safety tests and shared media helpers without exposing
+   editing, subtitles, music, or editing-minute top-ups as active product features.

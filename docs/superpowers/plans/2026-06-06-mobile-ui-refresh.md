@@ -1,5 +1,9 @@
 # Mobile UI Refresh Implementation Plan
 
+> Navigation update (2026-10-05): the second tab is Profile link. Home has one
+> profile-link shortcut above analytics. AI editing and Subtitle Studio no
+> longer have an active entry; uploader AI captions and other tabs remain.
+
 > **Document status:** historical execution record. The current app uses the
 > light theme by default and later approved screen designs supersede the
 > ultra-dark direction described below. Unchecked boxes are not current product

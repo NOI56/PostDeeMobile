@@ -152,3 +152,21 @@ This is useful for development only. Production must use Firebase ID tokens.
   provider enabled and the iOS "Sign in with Apple" capability to work on device.
 - The Home screen can send and confirm Firebase Phone OTP codes after the user signs in with Google.
 - The backend unlocks the Basic 3-post free quota only when the authenticated user has a verified phone number.
+
+## Sign-In Recovery
+
+- Google initialization and the account picker may take up to 120 seconds. After
+  Google returns a token, Firebase credential exchange and ID-token retrieval
+  have a separate 30-second deadline. The controller also bounds the whole
+  interactive sign-in to 150 seconds; email sign-in is bounded to 30 seconds.
+- If sign-in times out, the app shows a Thai error and enables the login buttons
+  again, so the user can retry Google or use email. Analytics events do not block
+  sign-in, sign-out, or recovery. Duplicate login/logout requests are guarded.
+- A Google result arriving after its deadline does not start Firebase sign-in.
+  The controller ignores results from expired attempts, after sign-out, and after
+  disposal. Firebase credential refresh rejects a live UID that differs from
+  the app session instead of sending a token for another account.
+- These deadlines stop the app waiting; they cannot cancel an in-flight native
+  Google/Firebase SDK operation. If Google Play Services itself stops responding
+  on an emulator, reopen PostDee and retry with the Google account already on the
+  device. Do not clear emulator or Google Play Services data as a login fix.

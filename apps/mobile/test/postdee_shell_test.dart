@@ -9,6 +9,7 @@ import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
+import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
@@ -265,7 +266,7 @@ void main() {
     expect(referenceNav, findsOneWidget);
     for (final label in [
       'Home',
-      'AI Edit',
+      'Profile link',
       'Create post',
       'Calendar',
       'Profile'
@@ -280,12 +281,13 @@ void main() {
     }
 
     final homeX = tester.getCenter(_referenceNavButton('Home')).dx;
-    final aiEditingX = tester.getCenter(_referenceNavButton('AI Edit')).dx;
+    final profileLinkX =
+        tester.getCenter(_referenceNavButton('Profile link')).dx;
     final createX = tester.getCenter(_referenceNavButton('Create post')).dx;
     final calendarX = tester.getCenter(_referenceNavButton('Calendar')).dx;
     final profileX = tester.getCenter(_referenceNavButton('Profile')).dx;
-    expect(homeX, lessThan(aiEditingX));
-    expect(aiEditingX, lessThan(createX));
+    expect(homeX, lessThan(profileLinkX));
+    expect(profileLinkX, lessThan(createX));
     expect(createX, lessThan(calendarX));
     expect(calendarX, lessThan(profileX));
 
@@ -302,7 +304,7 @@ void main() {
   });
 
   testWidgets(
-      'opens AI editing as a child screen and restores home nav on back',
+      'opens profile links from home and nav while keeping navigation visible',
       (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
 
@@ -339,13 +341,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_referenceNav(), findsOneWidget);
-    final aiShortcut = find.text('AI editing').first;
-    await tester.ensureVisible(aiShortcut);
-    await tester.tap(aiShortcut);
+    final linkShortcut =
+        find.byKey(const ValueKey('home-link-in-bio-shortcut'));
+    await tester.ensureVisible(linkShortcut);
+    await tester.tap(linkShortcut);
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('ai-editing-back')), findsOneWidget);
-    expect(_referenceNav(), findsNothing);
+    expect(find.byKey(const ValueKey('link-in-bio-back')), findsOneWidget);
+    expect(_referenceNav(), findsOneWidget);
     expect(
       find.byKey(const ValueKey('ai-advanced-toggle')),
       findsNothing,
@@ -355,11 +358,19 @@ void main() {
       findsNothing,
     );
 
-    await tester.tap(find.byKey(const ValueKey('ai-editing-back')));
+    await tester.tap(find.byKey(const ValueKey('link-in-bio-back')));
     await tester.pumpAndSettle();
 
     expect(_referenceNav(), findsOneWidget);
     expect(find.byKey(const ValueKey('ai-editing-back')), findsNothing);
+    expect(linkShortcut, findsOneWidget);
+    await tester.tap(_referenceNavButton('Profile link'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('link-in-bio-back')), findsOneWidget);
+    await tester.tap(_referenceNavButton('Create post'));
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsOneWidget);
+    expect(find.byKey(const ValueKey('link-in-bio-back')), findsNothing);
   });
 
   testWidgets('opens profile from the reference bottom navigation',
@@ -411,6 +422,14 @@ void main() {
   testWidgets('deletes the account then returns to the login gate',
       (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+    const ownerDrafts = SharedPreferencesLinkInBioDraftStore(
+      ownerUserId: 'firebase-user-shell',
+    );
+    const otherDrafts = SharedPreferencesLinkInBioDraftStore(
+      ownerUserId: 'another-user',
+    );
+    await ownerDrafts.saveDraft(LinkInBioDraft.defaults());
+    await otherDrafts.saveDraft(LinkInBioDraft.defaults());
 
     final sessionStore = PostDeeAuthSessionStore.instance;
     final languageController = PostDeeLanguageController(
@@ -484,6 +503,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(deleteCalls, 1);
+    expect(await ownerDrafts.loadDraft(), isNull);
+    expect(await otherDrafts.loadDraft(), isNotNull);
     expect(deletionCalls, [
       'capture-local-drafts',
       'ready',
@@ -890,7 +911,7 @@ void main() {
         final navRect = tester.getRect(_referenceNav());
         for (final label in const [
           'หน้าแรก',
-          'AI ตัดต่อ',
+          'ลิงก์โปรไฟล์',
           'สร้างโพสต์',
           'ปฏิทิน',
           'โปรไฟล์',

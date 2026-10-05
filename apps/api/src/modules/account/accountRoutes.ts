@@ -5,6 +5,7 @@ import type { AnalyticsStore } from '../analytics/analyticsStore.js';
 import type { AiEditUsageStore } from '../aiEdits/aiEditUsageStore.js';
 import type { RealClipCaptionUsageStore } from '../captions/captionUsageStore.js';
 import type { DeviceTokenStore } from '../devices/deviceTokenStore.js';
+import type { LinkInBioStore } from '../linkInBio/linkInBioStore.js';
 import type { PostStore } from '../posts/postStore.js';
 import type { PublishQueue } from '../queue/publishQueue.js';
 import type { PlatformPublishStore } from '../platformPublishes/platformPublishStore.js';
@@ -40,6 +41,7 @@ export type AccountRouteDependencies = {
   realClipCaptionUsageStore: RealClipCaptionUsageStore;
   aiEditUsageStore: AiEditUsageStore;
   deviceTokenStore: DeviceTokenStore;
+  linkInBioStore?: LinkInBioStore;
   socialConnectionStore?: SocialConnectionStore;
   postPeerConnectClient?: PostPeerConnectClient;
   userStore: UserStore;
@@ -76,6 +78,7 @@ export const registerAccountRoutes = (
     realClipCaptionUsageStore,
     aiEditUsageStore,
     deviceTokenStore,
+    linkInBioStore,
     socialConnectionStore,
     postPeerConnectClient,
     userStore,
@@ -297,8 +300,8 @@ export const registerAccountRoutes = (
       await platformPublishStore.deleteAllForPosts(posts.map((post) => post.id));
     }
 
-    // Memory-backed stores remove their own user-scoped data. Prisma-backed
-    // stores leave these undefined and are cleared by the User cascade below.
+    // Stores with explicit cleanup remove their user-scoped data. The User
+    // cascade below also clears all Prisma child rows, including Link in Bio.
     const deleters = [
       postStore.deleteAllForUser,
       templateStore.deleteAllForUser,
@@ -307,6 +310,7 @@ export const registerAccountRoutes = (
       realClipCaptionUsageStore.deleteAllForUser,
       aiEditUsageStore.deleteAllForUser,
       deviceTokenStore.deleteAllForUser,
+      linkInBioStore?.deleteAllForUser,
       socialConnectionStore?.deleteAllForUser,
       userStore.deleteAllForUser
     ];

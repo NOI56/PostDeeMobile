@@ -14,7 +14,6 @@ import '../billing/paywall_screen.dart';
 import '../legal/legal_document_screen.dart';
 import '../link_in_bio/link_in_bio_screen.dart';
 import '../platforms/connections_screen.dart';
-import '../shared/postdee_card.dart';
 import '../shared/postdee_undo_toast.dart';
 import 'edit_profile_screen.dart';
 import 'profile_draft_store.dart';
@@ -479,11 +478,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: _openPaywall,
           ),
           const SizedBox(height: 10),
-        ],
-        if (_subscription?.isPro ?? false) ...[
-          const SizedBox(height: 3),
-          _AiEditingQuotaCard(apiClient: _apiClient),
-          const SizedBox(height: 13),
         ],
         _ProfileMenuCard(
           rows: [
@@ -961,7 +955,6 @@ const _tiers = [
       _TierFeature('ทุกอย่างใน Starter'),
       _TierFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
       _TierFeature('AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน'),
-      _TierFeature('AI ตัดต่อ 200 นาที/เดือน'),
     ],
   ),
 ];
@@ -1584,120 +1577,6 @@ class _ChoiceButton extends StatelessWidget {
                     : AppTheme.textSecondary,
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AiEditingQuotaCard extends StatefulWidget {
-  const _AiEditingQuotaCard({required this.apiClient});
-
-  final PostDeeApiClient apiClient;
-
-  @override
-  State<_AiEditingQuotaCard> createState() => _AiEditingQuotaCardState();
-}
-
-class _AiEditingQuotaCardState extends State<_AiEditingQuotaCard> {
-  int _limitMinutes = 200;
-  int _usedMinutes = 0;
-  final int _extraMinutes = 0;
-
-  int get _remaining =>
-      (_limitMinutes - _usedMinutes).clamp(0, _limitMinutes) + _extraMinutes;
-  int get _total => _limitMinutes + _extraMinutes;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadQuota();
-  }
-
-  Future<void> _loadQuota() async {
-    try {
-      final quota = await widget.apiClient.fetchAiEditQuota();
-      if (!mounted) return;
-      setState(() {
-        _limitMinutes = quota.limitMinutes;
-        _usedMinutes = quota.usedMinutes;
-      });
-    } catch (_) {
-      // Keep the default quota display if the API is unavailable.
-    }
-  }
-
-  Future<void> _topUp() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('ยังไม่ได้เปิดระบบซื้อนาทีตัดต่อจริงผ่าน RevenueCat'),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final progress = _total == 0 ? 0.0 : _remaining / _total;
-
-    return PostDeeCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.auto_fix_high,
-                  color: AppTheme.accentCyanInk, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'โควต้าตัดต่อ AI',
-                  style: textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-              const PostDeeSoftPill(label: 'Pro', color: AppTheme.accent),
-            ],
-          ),
-          const SizedBox(height: AppTheme.spaceMd),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '$_remaining',
-                style: textTheme.headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(width: AppTheme.spaceXs),
-              Text(
-                '/ $_total นาที',
-                style: textTheme.bodySmall
-                    ?.copyWith(color: AppTheme.textSecondary),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppTheme.spaceSm),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              minHeight: 8,
-              backgroundColor: AppTheme.glassDeep,
-              valueColor: const AlwaysStoppedAnimation(AppTheme.accent),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'รีเซ็ตทุกเดือน · ใช้กับการถอดเสียงและเรนเดอร์ซับ',
-            style: textTheme.labelSmall?.copyWith(color: AppTheme.textMuted),
-          ),
-          const SizedBox(height: AppTheme.spaceMd),
-          OutlinedButton.icon(
-            onPressed: _topUp,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('เติม 120 นาที · 49 บาท'),
           ),
         ],
       ),

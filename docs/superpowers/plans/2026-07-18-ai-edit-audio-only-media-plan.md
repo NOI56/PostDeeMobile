@@ -1,5 +1,9 @@
 # AI Edit Audio-Only Media Implementation Plan
 
+> Product update (2026-10-05): the active AI editing entry is replaced by Profile
+> link. This media implementation remains a historical compatibility reference;
+> shared caption/media helpers must be preserved when retiring editing code.
+
 > **Document role:** this is a historical implementation milestone, not the
 > current deployment checklist. Use `README.md`, `ROADMAP.md`, `API.md`,
 > `ARCHITECTURE.md`, `docs/GO_LIVE.md`, and the active Render blueprint for

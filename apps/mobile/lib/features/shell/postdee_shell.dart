@@ -11,7 +11,6 @@ import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_controller.dart';
-import '../ai_editing/ai_editing_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../auth/auth_controller.dart';
 import '../auth/firebase_apple_auth_gateway.dart';
@@ -21,6 +20,8 @@ import '../auth/firebase_google_auth_gateway.dart';
 import '../auth/firebase_id_token_refresher.dart';
 import '../calendar/calendar_screen.dart';
 import '../home/home_screen.dart';
+import '../link_in_bio/link_in_bio_draft_store.dart';
+import '../link_in_bio/link_in_bio_screen.dart';
 import '../notifications/firebase_push_messaging_gateway.dart';
 import '../notifications/notifications_screen.dart';
 import '../notifications/push_messaging_gateway.dart';
@@ -152,15 +153,14 @@ class _PostDeeShellState extends State<PostDeeShell> {
           onViewAllPosts: () => _selectTab(3),
           onOpenNotifications: _openNotifications,
           onOpenProfile: () => _selectTab(5),
-          onOpenAi: () => _selectTab(1),
+          onOpenLinkInBio: () => _selectTab(1),
           userName: _authController.session.displayName,
         ),
-        AiEditingScreen(
-          initialTargetDurationSeconds: null,
+        LinkInBioScreen(
+          key: ValueKey(_authController.session.stableUserId),
           onBack: () => _selectTab(0),
-          pickVideo: widget.pickVideo,
-          createUpload: widget.createUpload,
-          uploadVideoFile: widget.uploadVideoFile,
+          embeddedInTab: true,
+          isActive: _selectedIndex == 1,
         ),
         UploaderScreen(
           draftStore: widget.uploaderDraftStore,
@@ -285,6 +285,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     final apiClient = PostDeeApiClient();
+    final linkInBioOwnerId = _authController.session.stableUserId;
     final deleteAccount = widget.deleteAccount ?? apiClient.deleteAccount;
     final checkAccountDeletionReady = widget.checkAccountDeletionReady ??
         (widget.deleteAccount == null
@@ -314,6 +315,14 @@ class _PostDeeShellState extends State<PostDeeShell> {
         // The server account is already deleted. Continue signing out, but
         // tell the user how to remove any local files the OS would not delete.
         localDraftCleanupFailed = true;
+      }
+
+      if (linkInBioOwnerId != null) {
+        try {
+          await clearLinkInBioDraftForUser(linkInBioOwnerId);
+        } catch (_) {
+          localDraftCleanupFailed = true;
+        }
       }
 
       if (!mounted) {
@@ -421,17 +430,15 @@ class _PostDeeShellState extends State<PostDeeShell> {
             children: _buildScreens(),
           ),
         ),
-        bottomNavigationBar: _selectedIndex == 1
-            ? null
-            : _PostDeeBottomNav(
-                currentIndex: _selectedIndex,
-                onHome: () => _selectTab(0),
-                onCalendar: () => _selectTab(3),
-                onCreate: () => _selectTab(2),
-                onAiEditing: () => _selectTab(1),
-                onProfile: () => _selectTab(5),
-                l10n: l10n,
-              ),
+        bottomNavigationBar: _PostDeeBottomNav(
+          currentIndex: _selectedIndex,
+          onHome: () => _selectTab(0),
+          onCalendar: () => _selectTab(3),
+          onCreate: () => _selectTab(2),
+          onLinkInBio: () => _selectTab(1),
+          onProfile: () => _selectTab(5),
+          l10n: l10n,
+        ),
       ),
     );
   }
@@ -443,7 +450,7 @@ class _PostDeeBottomNav extends StatelessWidget {
     required this.onHome,
     required this.onCalendar,
     required this.onCreate,
-    required this.onAiEditing,
+    required this.onLinkInBio,
     required this.onProfile,
     required this.l10n,
   });
@@ -452,7 +459,7 @@ class _PostDeeBottomNav extends StatelessWidget {
   final VoidCallback onHome;
   final VoidCallback onCalendar;
   final VoidCallback onCreate;
-  final VoidCallback onAiEditing;
+  final VoidCallback onLinkInBio;
   final VoidCallback onProfile;
   final PostDeeLocalizations l10n;
 
@@ -514,10 +521,10 @@ class _PostDeeBottomNav extends StatelessWidget {
                       ),
                       Expanded(
                         child: _ReferenceNavButton(
-                          label: l10n.aiEditingTab,
-                          icon: Icons.auto_awesome_rounded,
+                          label: l10n.linkInBioTab,
+                          icon: Icons.link_rounded,
                           selected: currentIndex == 1,
-                          onPressed: onAiEditing,
+                          onPressed: onLinkInBio,
                         ),
                       ),
                       Expanded(

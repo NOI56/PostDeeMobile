@@ -1,5 +1,11 @@
 # AI Editing Correctness and Fair Quota Implementation Plan
 
+> Superseded product direction (2026-10-05): Profile link replaces the active
+> AI editing/Subtitle Studio entry and editing-minute marketing. This document
+> preserves historical implementation and safety checks for compatibility code;
+> its unchecked editing release gates are not current product TODOs. AI captions
+> remain active. See README.md and ROADMAP.md for the profile-page release gate.
+
 > **For agentic workers:** Execute this plan task-by-task and use the checkbox (`- [ ]`) items for tracking. Parallel subagents are recommended for independent tests/reviews. Superpowers skills may be used when installed, but are not a prerequisite.
 
 **Goal:** ทำให้ระบบตัดต่อด้วย AI ทำเฉพาะสิ่งที่ผู้ใช้เลือก, ไม่ตัดคำพูดจากหลักฐานที่ไม่ชัด, ไม่เริ่ม/จบกลางประโยคเมื่อมีเวลา transcript ที่เชื่อถือได้, และไม่หักนาทีเมื่อระบบ repeat-only สร้างผลลัพธ์ไม่ได้หรือเมื่อปรับสีอย่างเดียวบนเครื่อง

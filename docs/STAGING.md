@@ -1,6 +1,18 @@
 # PostDee Staging
 
-ตรวจสถานะล่าสุด 4 ตุลาคม 2026: Render Dashboard แสดง **Workspace suspended**
+ตรวจสถานะ 5 ตุลาคม 2026: `postdee-api-staging` และฐานข้อมูล Staging กลับเป็น
+Active ใน Render Dashboard และ `/health` ตอบ HTTP `200` แล้ว ส่วน Production
+ยังตอบ `503` พร้อม `x-render-routing: suspend-by-user` การตรวจนี้ยืนยันเฉพาะ
+สถานะบริการ; ยังไม่ยืนยันว่า LinkInBioProfile migration/API รุ่นใหม่ถูก deploy
+หรือการเผยแพร่หน้าโปรไฟล์ผ่าน E2E ต้องตรวจ candidate SHA และ migration ก่อน
+ทดสอบ publish → เปิดเว็บโดยไม่ล็อกอิน → unpublish บนโดเมน Staging จริง
+
+Dashboard ระบุ Web Service Staging เป็นแผน `Starter` ที่ตั้งไว้อยู่แล้ว
+รอบเปลี่ยนเมนูและเพิ่มเว็บหน้าโปรไฟล์นี้ไม่ได้ซื้อหรือเปลี่ยนแผนบริการ
+รายละเอียด `free` ด้านล่างเป็นค่าของ Blueprint/template เดิม ไม่ใช่การยืนยัน
+ว่าแผนที่เปิดใช้อยู่ใน Dashboard ไม่มีค่าใช้จ่าย
+
+บันทึกสถานะ 4 ตุลาคม 2026: Render Dashboard แสดง **Workspace suspended**
 เพราะค้างชำระ และไม่แสดงปุ่ม Manual Deploy ของ `postdee-api-staging` ขณะนี้
 `/health` ตอบ HTTP `503` พร้อม `x-render-routing: suspend` บริการยังติดตาม
 `main` แต่ commit ที่ deploy สำเร็จล่าสุดใน Dashboard คือ `208b4e5` การ push/merge

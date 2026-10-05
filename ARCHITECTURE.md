@@ -2,6 +2,35 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Profile Page Boundary (2026-10-05)
+
+Profile link replaces the AI editing navigation entry. AI caption generation
+remains in Upload; editing modules are retained compatibility code and do not
+have an active mobile entry point or editing-minute offer.
+
+The existing Express service owns both authenticated profile management and
+the public HTML page at `/p/:slug`. A LinkInBioProfile row belongs to one User,
+has a globally unique slug, and cascades away when the account is deleted.
+The repository follows `POST_STORE`: Prisma for durable deployments, memory
+for local scaffolding only. Publish atomically saves a snapshot of enabled
+custom links. Local unsaved draft changes never change that public snapshot.
+Local drafts are scoped to the signed-in user, and tab state resets when the
+account changes. The old unscoped draft is retained locally rather than
+silently assigned to another signed-in account.
+
+The client constructs a public URL from the configured API origin and the
+validated `/p/:slug` path returned by the server. It never trusts request Host
+headers or a placeholder domain. Public pages expose store names/link titles
+and destinations, not account identifiers, email, tokens, or disabled links.
+All user copy is HTML-escaped, destinations must be absolute HTTP(S) without
+credentials, and outgoing links use noopener/noreferrer. The server does not
+fetch destination URLs. A restrictive Content Security Policy and no-store
+responses keep page execution and stale publication state bounded.
+
+This first version has no external analytics provider, click counters, custom
+domain, or scheduled-link mutation. Deployment must migrate the API database
+before enabling publication on the shipped mobile build.
+
 ## Product Goal
 
 PostDee helps Thai e-commerce sellers, affiliate marketers, and creators upload one vertical 9:16 video and publish or schedule it across multiple short-form platforms from one app. The product should remain Thai-first for the initial launch while keeping the architecture global-ready for other countries, languages, currencies, timezones, phone formats, billing markets, and compliance requirements.
@@ -40,7 +69,7 @@ flowchart LR
   API --> Storage["Cloudflare R2 Video Storage"]
   API --> Queue["Upstash Redis / BullMQ"]
   API --> Captions["Real-Clip Caption Provider"]
-  API --> Editing["ElevenLabs + Gemini AI Auto Editing"]
+  Browser["Public Profile Page Visitor"] -->|"GET /p/:slug"| API
   Queue --> Worker["Publish Worker"]
   Worker --> Social["PostPeer API (Unified)"]
   Worker --> Storage

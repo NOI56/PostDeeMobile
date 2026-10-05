@@ -1,32 +1,38 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
+import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Widget _linkInBioTestApp(Widget child) {
-  return MaterialApp(
-    theme: AppTheme.dark,
-    home: child,
-  );
+Widget _app() => MaterialApp(
+    theme: AppTheme.dark, home: LinkInBioScreen(loadProfile: () async => null));
+Future<void> _show(WidgetTester tester, Finder finder,
+    {double delta = 250}) async {
+  if (finder.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(finder, delta,
+        scrollable: find.byType(Scrollable).first);
+  }
+  await tester.ensureVisible(finder);
 }
 
-Future<void> _scrollToLinkSection(WidgetTester tester) async {
-  await tester.drag(find.byType(ListView), const Offset(0, -640));
+Future<void> _tap(WidgetTester tester, String key) async {
+  final finder = find.byKey(ValueKey(key));
+  await _show(tester, finder);
+  await tester.tap(finder);
   await tester.pumpAndSettle();
 }
 
-Future<void> _addCustomLink(
-  WidgetTester tester, {
-  required String title,
-  required String url,
-}) async {
-  await _scrollToLinkSection(tester);
-  await tester.tap(find.text('เพิ่มลิงก์'));
-  await tester.pumpAndSettle();
-
-  await tester.enterText(find.byType(TextField).at(2), title);
-  await tester.enterText(find.byType(TextField).at(3), url);
+Future<void> _add(WidgetTester tester,
+    {String title = 'คูปอง Shopee',
+    String url = 'https://shopee.co.th/shop'}) async {
+  await _tap(tester, 'link-in-bio-add');
+  await tester.enterText(
+      find.byKey(const ValueKey('link-in-bio-link-title')), title);
+  await tester.enterText(
+      find.byKey(const ValueKey('link-in-bio-link-url')), url);
   await tester.tap(find.text('บันทึกลิงก์'));
   await tester.pumpAndSettle();
 }
@@ -34,147 +40,116 @@ Future<void> _addCustomLink(
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    PostDeeAuthSessionStore.instance
+        .signIn(const AuthSession(userId: 'seller-a', idToken: 'token'));
   });
+  tearDown(PostDeeAuthSessionStore.instance.clear);
+  const store = SharedPreferencesLinkInBioDraftStore(ownerUserId: 'seller-a');
 
-  testWidgets('clearly labels Link in Bio as a local unpublished prototype',
+  testWidgets('saves and reloads a local draft without claiming it is public',
       (tester) async {
-    await tester.pumpWidget(
-      _linkInBioTestApp(const LinkInBioScreen()),
-    );
-
-    expect(find.text('ต้นแบบ'), findsOneWidget);
-    expect(find.text('แบบร่างในเครื่อง ยังไม่เผยแพร่เป็นเว็บไซต์'),
-        findsOneWidget);
-    expect(find.text('URL ตัวอย่าง (ยังไม่เผยแพร่)'), findsOneWidget);
-    expect(find.textContaining('ตัวอย่าง: postdee.link/'), findsOneWidget);
-    expect(find.text('199 / 299'), findsNothing);
-
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('link-in-bio-auto-update-card')),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
-
-    final autoUpdateCard =
-        find.byKey(const ValueKey('link-in-bio-auto-update-card'));
-    expect(find.descendant(of: autoUpdateCard, matching: find.byType(InkWell)),
-        findsNothing);
+    await tester.enterText(
+        find.byKey(const ValueKey('link-in-bio-store-name')), 'ร้านมินา');
+    await tester.enterText(
+        find.byKey(const ValueKey('link-in-bio-slug')), 'mina-shop');
+    await _tap(tester, 'link-in-bio-save-draft');
+    expect((await store.loadDraft())!.slug, 'mina-shop');
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
     expect(
-      find.descendant(
-        of: autoUpdateCard,
-        matching: find.text('เร็ว ๆ นี้'),
-      ),
-      findsOneWidget,
-    );
+        tester
+            .widget<TextField>(
+                find.byKey(const ValueKey('link-in-bio-store-name')))
+            .controller!
+            .text,
+        'ร้านมินา');
+    expect(find.byKey(const ValueKey('link-in-bio-public-url')), findsNothing);
   });
 
-  testWidgets('saves a Link in Bio draft and reloads it locally',
+  testWidgets('adds a real link, previews it and reloads it from owner draft',
       (tester) async {
-    await tester.pumpWidget(
-      _linkInBioTestApp(const LinkInBioScreen()),
-    );
-
-    await tester.enterText(find.byType(TextField).at(0), 'ร้านมินาขายดี');
-    await tester.enterText(find.byType(TextField).at(1), 'mina-shop');
-    await _scrollToLinkSection(tester);
-
-    await tester.tap(find.text('บันทึกแบบร่าง'));
+    await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
-
-    expect(find.textContaining('บันทึกแบบร่างในเครื่องแล้ว'), findsOneWidget);
-
+    await _add(tester);
+    await _tap(tester, 'link-in-bio-save-draft');
+    expect((await store.loadDraft())!.customLinks.single.url,
+        'https://shopee.co.th/shop');
+    await _tap(tester, 'link-in-bio-preview');
+    expect(find.text('ตัวอย่างก่อนเผยแพร่'), findsOneWidget);
+    await tester.tap(find.text('ปิดตัวอย่าง'));
+    await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
-    await tester.pumpWidget(
-      _linkInBioTestApp(const LinkInBioScreen()),
-    );
+    await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
-
-    expect(find.text('ร้านมินาขายดี'), findsWidgets);
-    expect(find.text('ตัวอย่าง: postdee.link/mina-shop'), findsOneWidget);
+    await _show(tester, find.byTooltip('แก้ไขลิงก์'));
+    expect(find.text('https://shopee.co.th/shop'), findsOneWidget);
   });
 
-  testWidgets('adds a custom Link in Bio button and saves it with the draft',
+  testWidgets(
+      'editing a custom link preserves its identity and saved replacement',
       (tester) async {
-    await tester.pumpWidget(
-      _linkInBioTestApp(const LinkInBioScreen()),
-    );
-
-    await _addCustomLink(
-      tester,
-      title: 'คูปอง Shopee',
-      url: 'https://shopee.co.th/postdee-demo',
-    );
-
-    expect(find.text('คูปอง Shopee'), findsOneWidget);
-    expect(find.text('https://shopee.co.th/postdee-demo'), findsOneWidget);
-
-    await tester.drag(find.byType(ListView), const Offset(0, -420));
+    await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
-
-    await tester.tap(find.text('บันทึกแบบร่าง'));
-    await tester.pumpAndSettle();
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpAndSettle();
-    await tester.pumpWidget(
-      _linkInBioTestApp(const LinkInBioScreen()),
-    );
-    await tester.pumpAndSettle();
-
-    await _scrollToLinkSection(tester);
-
-    expect(find.text('คูปอง Shopee'), findsOneWidget);
-    expect(find.text('https://shopee.co.th/postdee-demo'), findsOneWidget);
-  });
-
-  testWidgets('edits a custom Link in Bio button before saving the draft',
-      (tester) async {
-    await tester.pumpWidget(
-      _linkInBioTestApp(const LinkInBioScreen()),
-    );
-
-    await _addCustomLink(
-      tester,
-      title: 'คูปอง Shopee',
-      url: 'https://shopee.co.th/postdee-demo',
-    );
-
+    await _add(tester);
+    await _tap(tester, 'link-in-bio-save-draft');
+    final id = (await store.loadDraft())!.customLinks.single.id;
+    await _show(tester, find.byTooltip('แก้ไขลิงก์'), delta: -200);
     await tester.tap(find.byTooltip('แก้ไขลิงก์'));
     await tester.pumpAndSettle();
-
-    expect(find.text('แก้ไขลิงก์'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextField).at(2), 'คูปอง Lazada');
     await tester.enterText(
-      find.byType(TextField).at(3),
-      'https://lazada.co.th/postdee-demo',
-    );
+        find.byKey(const ValueKey('link-in-bio-link-title')), 'คูปอง Lazada');
+    await tester.enterText(find.byKey(const ValueKey('link-in-bio-link-url')),
+        'https://lazada.co.th/shop');
     await tester.tap(find.text('บันทึกลิงก์'));
     await tester.pumpAndSettle();
-
-    expect(find.text('คูปอง Shopee'), findsNothing);
-    expect(find.text('คูปอง Lazada'), findsOneWidget);
-    expect(find.text('https://lazada.co.th/postdee-demo'), findsOneWidget);
+    await _tap(tester, 'link-in-bio-save-draft');
+    final link = (await store.loadDraft())!.customLinks.single;
+    expect(link.id, id);
+    expect(link.title, 'คูปอง Lazada');
+    expect(link.url, 'https://lazada.co.th/shop');
   });
 
-  testWidgets('deletes a custom Link in Bio button from the draft',
+  testWidgets('deletes only the selected custom link from the saved draft',
       (tester) async {
-    await tester.pumpWidget(
-      _linkInBioTestApp(const LinkInBioScreen()),
-    );
-
-    await _addCustomLink(
-      tester,
-      title: 'คูปอง Shopee',
-      url: 'https://shopee.co.th/postdee-demo',
-    );
-
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
+    await _add(tester);
+    await _show(tester, find.byTooltip('ลบลิงก์'));
     await tester.tap(find.byTooltip('ลบลิงก์'));
     await tester.pumpAndSettle();
+    await _tap(tester, 'link-in-bio-save-draft');
+    expect((await store.loadDraft())!.customLinks, isEmpty);
+  });
 
-    expect(find.text('คูปอง Shopee'), findsNothing);
-    expect(find.text('https://shopee.co.th/postdee-demo'), findsNothing);
+  for (final url in [
+    'javascript:alert(1)',
+    'example.com',
+    'https://user:pass@example.com',
+    'https://example.com/a b'
+  ]) {
+    testWidgets('rejects unsafe link $url before adding', (tester) async {
+      await tester.pumpWidget(_app());
+      await tester.pumpAndSettle();
+      await _add(tester, url: url);
+      expect(find.textContaining('https:// หรือ http://'), findsOneWidget);
+      expect(find.text('บันทึกลิงก์'), findsOneWidget);
+    });
+  }
+
+  testWidgets('initial offline load does not invent unpublished status',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.dark,
+        home: LinkInBioScreen(
+            loadProfile: () async => throw const SocketException('offline'))));
+    await tester.pumpAndSettle();
+    expect(find.text('ยังไม่ได้เผยแพร่'), findsNothing);
+    expect(find.text('ยังตรวจสถานะเว็บไซต์ไม่ได้'), findsOneWidget);
+    expect(find.textContaining('ตรวจสอบอินเทอร์เน็ต'), findsOneWidget);
   });
 }

@@ -60,7 +60,7 @@ void main() {
     expect(_referenceNav(), findsOneWidget);
     for (final label in [
       'Home',
-      'AI Edit',
+      'Profile link',
       'Create post',
       'Calendar',
       'Profile'
@@ -111,11 +111,11 @@ void main() {
     expect(find.text('Home'), findsWidgets);
     expect(find.text('Could not check package'), findsOneWidget);
     expect(find.text('Free package'), findsNothing);
-    expect(find.text('AI editing'), findsOneWidget);
+    expect(find.text('AI editing'), findsNothing);
     expect(find.text('Views this month'), findsOneWidget);
     expect(find.text('Likes this month'), findsOneWidget);
     expect(find.text('Create a new post'), findsNothing);
-    expect(find.text('Profile link'), findsOneWidget);
+    expect(find.text('Profile link'), findsNWidgets(2));
     expect(find.text('Latest post status'), findsOneWidget);
     expect(find.text('View all'), findsNothing);
     expect(find.text('Pro package'), findsNothing);
@@ -569,7 +569,7 @@ void main() {
     expect(_referenceNavButton('หน้าแรก'), findsOneWidget);
     expect(_referenceNavButton('สร้างโพสต์'), findsOneWidget);
     expect(_referenceNavButton('ปฏิทิน'), findsOneWidget);
-    expect(_referenceNavButton('AI ตัดต่อ'), findsOneWidget);
+    expect(_referenceNavButton('ลิงก์โปรไฟล์'), findsOneWidget);
     expect(_referenceNavButton('โปรไฟล์'), findsOneWidget);
     expect(find.text('เทมเพลต'), findsNothing);
 
@@ -588,16 +588,17 @@ void main() {
     expect(find.text('ปฏิทินโพสต์'), findsOneWidget);
     expect(find.text('รีวิวคลิปด้วย AI'), findsNothing);
 
-    await _tapReferenceNavButton(tester, 'AI ตัดต่อ');
+    await _tapReferenceNavButton(tester, 'ลิงก์โปรไฟล์');
 
-    expect(find.text('ตัดต่อด้วย AI'), findsOneWidget);
-    expect(find.byKey(const ValueKey('ai-editing-back')), findsOneWidget);
-    expect(_referenceNavButton('AI ตัดต่อ'), findsNothing);
+    expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
+    expect(find.text('ตัดต่อด้วย AI'), findsNothing);
+    expect(find.byKey(const ValueKey('link-in-bio-back')), findsOneWidget);
+    expect(_referenceNavButton('ลิงก์โปรไฟล์'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('ai-editing-back')));
+    await tester.tap(find.byKey(const ValueKey('link-in-bio-back')));
     await tester.pumpAndSettle();
 
-    expect(_referenceNavButton('AI ตัดต่อ'), findsOneWidget);
+    expect(_referenceNavButton('ลิงก์โปรไฟล์'), findsOneWidget);
 
     await _tapReferenceNavButton(tester, 'โปรไฟล์');
 

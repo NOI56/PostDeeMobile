@@ -2,6 +2,11 @@
 
 > Status: planning source of truth for package positioning. Do not treat this as fully implemented behavior until the matching backend and mobile gates are updated.
 
+> Product update (2026-10-05): a hosted profile link replaces AI video editing.
+> Every package gets one page with up to 20 custom links. AI caption quotas and
+> existing prices stay the same; editing-minute quotas and top-ups are retired
+> from the active mobile offer. Public deployment/migration is a release gate.
+
 ## Package Goals
 
 Keep the packages easy for Thai sellers to understand:
@@ -33,7 +38,7 @@ Starter should feel useful enough for a small shop to pay without needing analyt
   - Do not sell a separate prompt-only caption generator as the main package feature.
 - Auto watermark.
 - EP clip splitting UI and future simple EP workflow.
-- Link in Bio basic page.
+- One hosted profile page with up to 20 custom links (also available on Basic).
 - No Pro analytics dashboard.
 - No hashtag radar.
 - No AI comment center.
@@ -68,9 +73,8 @@ Pro should be the plan for serious sellers, creators, and shops that want to gro
 - Viral alert notification.
 - Future video insight can be considered later only if it does not reintroduce
   the removed standalone AI Clip Review product.
-- AI auto editing with ElevenLabs Scribe v2 transcription and Gemini planning:
-  200 minutes per month, per the AI auto editing plan.
-- Link in Bio advanced page, including future click or campaign insights.
+- One hosted profile page with up to 20 custom links. Click or campaign
+  insights remain future work and are not sold as an active benefit.
 - Team and editor access.
   - The shop owner can invite an admin/editor to help prepare uploads, captions, and scheduled posts.
   - Editors must not see the owner's TikTok, YouTube, Instagram, or Facebook passwords/tokens.
@@ -80,9 +84,7 @@ Pro should be the plan for serious sellers, creators, and shops that want to gro
 
 ## Top-up
 
-- AI auto editing top-up: 49 THB for 120 extra minutes.
-- Applies to AI auto editing minutes, not regular posting units.
-- Can be offered to Pro first.
+- AI editing-minute top-ups are no longer offered in the current mobile product.
 
 ## Paused / Removed From Package Marketing
 

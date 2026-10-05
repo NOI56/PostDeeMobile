@@ -1,5 +1,9 @@
 # AI Auto Editing With Groq Whisper Implementation Plan
 
+> Product update (2026-10-05): the current mobile product replaces AI editing
+> with a hosted profile link. This plan is retained history/compatibility code,
+> not a direction to expose editing or sell minutes. AI captions remain active.
+
 > **Document role:** this dated implementation plan records how the feature
 > evolved; it is not the source of truth for the currently deployed provider or
 > release status. Use `README.md`, `ROADMAP.md`, `API.md`,

@@ -644,7 +644,8 @@ void main() {
 
     expect(find.text('หน้าแรก'), findsOneWidget);
     expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
-    expect(find.text('ตัดต่อด้วย AI'), findsOneWidget);
+    expect(find.text('ตัดต่อด้วย AI'), findsNothing);
+    expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
     expect(find.text('ยอดวิวเดือนนี้'), findsOneWidget);
     expect(find.text('ไลก์เดือนนี้'), findsOneWidget);
     expect(find.text('128'), findsNothing);
@@ -706,10 +707,10 @@ void main() {
     );
     expect(planProgress.widthFactor, moreOrLessEquals(1 / 3));
     expect(find.text('อัปเกรด'), findsOneWidget);
-    expect(find.text('ตัดต่อด้วย AI'), findsOneWidget);
+    expect(find.text('ตัดต่อด้วย AI'), findsNothing);
     expect(
       find.text('ให้ AI ตัดคลิปให้กระชับ ใส่ซับ เป็นสไตล์ไวรัลอัตโนมัติ'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('ยอดวิวเดือนนี้'), findsOneWidget);
     expect(find.text('ไลก์เดือนนี้'), findsOneWidget);
@@ -728,14 +729,14 @@ void main() {
     );
     expect(find.widgetWithText(FilledButton, 'สร้างโพสต์'), findsNothing);
 
-    final metricBottom = tester
-        .getBottomRight(find.byKey(const ValueKey('home-likes-metric-card')))
+    final metricTop = tester
+        .getTopLeft(find.byKey(const ValueKey('home-likes-metric-card')))
         .dy;
     final linkShortcutRect = tester.getRect(
       find.byKey(const ValueKey('home-link-in-bio-shortcut')),
     );
     final latestPostsTop = tester.getTopLeft(find.text('โพสต์ล่าสุด')).dy;
-    expect(linkShortcutRect.top, greaterThan(metricBottom));
+    expect(linkShortcutRect.bottom, lessThan(metricTop));
     expect(linkShortcutRect.bottom, lessThan(latestPostsTop));
 
     await _expectHomeTextsNeverAppearAfterScrolling(
@@ -1129,16 +1130,17 @@ void main() {
 
     await _tapHomeTextAfterScrolling(tester, 'ลิงก์หน้าโปรไฟล์');
 
-    expect(find.text('สร้างหน้า Link in Bio'), findsOneWidget);
-    expect(find.text('ตัวอย่าง: postdee.link/ร้านของคุณ'), findsOneWidget);
-    expect(find.text('ลิงก์สินค้าและแคมเปญ'), findsOneWidget);
+    expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
+    expect(find.byKey(const ValueKey('link-in-bio-back')), findsOneWidget);
+    expect(find.textContaining('postdee.link/'), findsNothing);
 
     await tester.drag(find.byType(Scrollable).last, const Offset(0, -520));
     await tester.pumpAndSettle();
 
-    expect(find.text('อัปเดตจากโพสต์ที่ตั้งเวลา'), findsOneWidget);
+    expect(find.text('อัปเดตจากโพสต์ที่ตั้งเวลา'), findsNothing);
     expect(find.text('ดูตัวอย่างหน้า'), findsOneWidget);
     expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
+    expect(find.byKey(const ValueKey('link-in-bio-publish')), findsOneWidget);
   });
 
   testWidgets('does not show the prototype viral alert on home',

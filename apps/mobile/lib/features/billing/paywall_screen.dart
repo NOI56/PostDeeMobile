@@ -166,7 +166,6 @@ class _PaywallScreenState extends State<PaywallScreen> {
           _PlanFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
           _PlanFeature('ทุกอย่างใน Starter + วิเคราะห์เต็มรูปแบบ'),
           _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน'),
-          _PlanFeature('AI ตัดต่อ 200 นาที/เดือน'),
         ],
       ),
     ];

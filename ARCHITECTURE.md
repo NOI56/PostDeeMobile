@@ -31,6 +31,40 @@ This first version has no external analytics provider, click counters, custom
 domain, or scheduled-link mutation. Deployment must migrate the API database
 before enabling publication on the shipped mobile build.
 
+Profile customization is an additive, versioned appearance snapshot on
+LinkInBioProfile (`appearance JSONB`, nullable for legacy rows). The server
+normalizes presets and accepts only known fonts/icons/button shapes and exact
+six-digit hex colors; it never accepts CSS or HTML. Legacy clients omit
+appearance and retain the current saved settings. All packages have identical
+customization rights, with one page and 20 links unchanged.
+
+The mobile draft keeps the same appearance contract, plus disabled links, in
+owner-scoped preferences. Choosing/resetting a theme changes style defaults;
+content/images are retained. Uploaded draft images do not mutate the published
+snapshot. Fonts are bundled locally in Flutter and served by the existing API
+under a filename whitelist, with license notices in `apps/api/assets/profile-fonts`.
+Public CSS uses nonce styles, self-only fonts/images, and no scripts.
+
+LinkInBioImage stores user/slot/key/size metadata with a cascading User relation.
+The mobile picker decodes/resizes images to PNG; the API checks its PNG structure,
+dimensions (maximum 1280 per side) and bytes (maximum 512 KiB). The API puts bytes
+into the existing private R2/S3 bucket using bounded signed requests. Mock mode
+keeps bytes only in memory and is not production storage. Only registered images
+owned by the publisher can enter an appearance snapshot. Authenticated previews
+use `/link-in-bio/image`; public `/p/:slug/images/:slot` proxies the current
+published reference without exposing storage keys, signed URLs or owner IDs.
+Unpublishing/renaming/account deletion invalidates those public image routes.
+
+Image mutations are serialized per owner inside the current single API instance,
+in addition to the account-deletion barrier. Metadata is capped at 20 images per
+owner, and upload routes share the existing upload rate limit. Cleanup runs on
+upload/publication, removing images older than 24 hours that are neither saved
+profile references nor the newest draft per slot. Inactive accounts are not
+background-swept; account deletion removes all media and metadata. Cleanup errors
+after confirmed publication do not turn that publication into a failure. Before
+horizontal scaling, replace the process-local image lock with a durable owner
+lock/transaction and add scheduled orphan reconciliation.
+
 ## Product Goal
 
 PostDee helps Thai e-commerce sellers, affiliate marketers, and creators upload one vertical 9:16 video and publish or schedule it across multiple short-form platforms from one app. The product should remain Thai-first for the initial launch while keeping the architecture global-ready for other countries, languages, currencies, timezones, phone formats, billing markets, and compliance requirements.

@@ -1,9 +1,17 @@
-export type LinkInBioLink = { id: string; title: string; url: string };
+import { normalizeStoredLinkInBioAppearance, type LinkInBioAppearance, type LinkInBioFont, type LinkInBioIcon } from './linkInBioAppearance.js';
+
+export type { LinkInBioAppearance } from './linkInBioAppearance.js';
+export type LinkInBioLink = {
+  id: string; title: string; url: string;
+  category?: string; icon?: LinkInBioIcon; font?: LinkInBioFont;
+  textColor?: string; buttonColor?: string;
+};
 
 export type LinkInBioProfile = {
   storeName: string;
   slug: string;
   links: LinkInBioLink[];
+  appearance?: LinkInBioAppearance;
   isPublished: boolean;
   publishedAt: string | null;
   updatedAt: string;
@@ -15,6 +23,7 @@ export type PublishLinkInBioInput = {
   storeName: string;
   slug: string;
   links: LinkInBioLink[];
+  appearance?: LinkInBioAppearance;
 };
 
 export type LinkInBioStore = {
@@ -40,7 +49,10 @@ export const slugTakenError = () => new LinkInBioError(
 );
 
 const copyProfile = (profile: LinkInBioProfile | undefined): LinkInBioProfile | null =>
-  profile ? { ...profile, links: profile.links.map((link) => ({ ...link })) } : null;
+  profile ? {
+    ...profile, links: profile.links.map((link) => ({ ...link })),
+    appearance: normalizeStoredLinkInBioAppearance(profile.appearance, profile.links)
+  } : null;
 
 export const createInMemoryLinkInBioStore = ({ now = () => new Date() } = {}): LinkInBioStore => {
   const profiles = new Map<string, LinkInBioProfile>();
@@ -53,7 +65,7 @@ export const createInMemoryLinkInBioStore = ({ now = () => new Date() } = {}): L
       const profile = ownerId ? profiles.get(ownerId) : undefined;
       return profile?.isPublished ? copyProfile(profile) : null;
     },
-    publish: async ({ userId, storeName, slug, links }) => {
+    publish: async ({ userId, storeName, slug, links, appearance }) => {
       // No await between the uniqueness check and write: concurrent requests
       // cannot claim the same slug in this process. Prisma uses a unique index.
       const existingOwner = ownersBySlug.get(slug);
@@ -67,6 +79,7 @@ export const createInMemoryLinkInBioStore = ({ now = () => new Date() } = {}): L
       const timestamp = now().toISOString();
       const profile: LinkInBioProfile = {
         storeName, slug, links: links.map((link) => ({ ...link })),
+        appearance: normalizeStoredLinkInBioAppearance(appearance ?? previous?.appearance, links),
         isPublished: true, publishedAt: timestamp, updatedAt: timestamp,
         publicPath: `/p/${slug}`
       };

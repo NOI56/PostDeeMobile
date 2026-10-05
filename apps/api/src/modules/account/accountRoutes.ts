@@ -6,6 +6,7 @@ import type { AiEditUsageStore } from '../aiEdits/aiEditUsageStore.js';
 import type { RealClipCaptionUsageStore } from '../captions/captionUsageStore.js';
 import type { DeviceTokenStore } from '../devices/deviceTokenStore.js';
 import type { LinkInBioStore } from '../linkInBio/linkInBioStore.js';
+import type { LinkInBioImageStore } from '../linkInBio/linkInBioImageStore.js';
 import type { PostStore } from '../posts/postStore.js';
 import type { PublishQueue } from '../queue/publishQueue.js';
 import type { PlatformPublishStore } from '../platformPublishes/platformPublishStore.js';
@@ -42,6 +43,7 @@ export type AccountRouteDependencies = {
   aiEditUsageStore: AiEditUsageStore;
   deviceTokenStore: DeviceTokenStore;
   linkInBioStore?: LinkInBioStore;
+  linkInBioImageStore?: LinkInBioImageStore;
   socialConnectionStore?: SocialConnectionStore;
   postPeerConnectClient?: PostPeerConnectClient;
   userStore: UserStore;
@@ -79,6 +81,7 @@ export const registerAccountRoutes = (
     aiEditUsageStore,
     deviceTokenStore,
     linkInBioStore,
+    linkInBioImageStore,
     socialConnectionStore,
     postPeerConnectClient,
     userStore,
@@ -311,6 +314,7 @@ export const registerAccountRoutes = (
       aiEditUsageStore.deleteAllForUser,
       deviceTokenStore.deleteAllForUser,
       linkInBioStore?.deleteAllForUser,
+      linkInBioImageStore?.deleteAllForUser,
       socialConnectionStore?.deleteAllForUser,
       userStore.deleteAllForUser
     ];

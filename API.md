@@ -36,6 +36,10 @@ LinkInBioProfile migration; memory mode is development-only scaffolding.
 | `POST /link-in-bio/publish` | Required | Atomically create/update and publish the current account's page |
 | `DELETE /link-in-bio/publish` | Required | Hide the page while retaining its saved links and reserved slug |
 | `GET /p/:slug` | Public | Serve responsive HTML only for a published page; missing/hidden pages return 404 |
+| `POST /link-in-bio/images` | Required | Validate/store a draft PNG and return its owned storage key |
+| `GET /link-in-bio/image?key=...` | Required | Preview an image belonging to the current account |
+| `GET /p/:slug/images/:slot` | Public | Serve only the current published logo, cover, or background image |
+| `GET /profile-fonts/:file` | Public | Serve a whitelisted bundled font |
 
 Publish body:
 
@@ -67,6 +71,79 @@ Owner/public responses disable caching. Unpublishing or deleting an account
 makes its public page unavailable. Mobile request timeouts do not prove a
 publication was canceled: the app preserves the local draft and reloads server
 state before subsequent publication actions.
+
+### Customization (all packages)
+
+Each link optionally adds `category` (0–60 characters), `icon`
+(`auto|link|shopee|lazada|line|tiktok|youtube|instagram|facebook`), `font`,
+`textColor` and `buttonColor`. The array remains the display order; only enabled
+links are published. Optional per-link styles override the corresponding page
+style. Fonts are `anuphan|prompt|system`; colors are exact `#RRGGBB` values.
+
+Publish optionally includes an `appearance` object; profile responses return
+its normalized version. Omission by legacy clients retains previous settings.
+Null/absent appearance on old rows maps to the original theme. A partial
+appearance request starts from the specified preset; the current mobile client
+sends the complete object:
+
+```json
+{
+  "version": 1,
+  "themeId": "minimal",
+  "description": "สินค้าพร้อมส่ง ติดต่อได้ทุกวัน",
+  "logoKey": null,
+  "coverKey": null,
+  "background": {
+    "mode": "solid", "color": "#fff8ef", "gradientColor": "#f4e3c7",
+    "imageKey": null, "overlay": 30
+  },
+  "surfaceColor": "#ffffff",
+  "buttonColor": "#305d36",
+  "buttonRadius": "rounded",
+  "nameStyle": { "color": "#253529", "font": "anuphan" },
+  "descriptionStyle": { "color": "#687065", "font": "anuphan" },
+  "categoryStyle": { "color": "#537844", "font": "anuphan" },
+  "buttonStyle": { "color": "#ffffff", "font": "anuphan" },
+  "brandStyle": { "color": "#687065", "font": "anuphan" },
+  "featuredLinkId": null,
+  "featuredLabel": "โปรวันนี้"
+}
+```
+
+Themes: `minimal|shop|pastel|dark`; backgrounds: `solid|gradient|image`; overlay:
+integer 0–80 percent black; button shape: `rounded|pill|square`. Description is
+0–280 characters, featured label 0–40. A non-null featured ID must name an enabled
+link in the publish request. Images are registered owned keys, never URLs.
+Unknown/other-owner/missing image references fail with HTTP 400 before publication.
+Malformed appearance returns 400 `LINK_IN_BIO_INVALID_INPUT`.
+
+### Profile images
+
+`POST /link-in-bio/images` accepts `{ "slot": "logo", "imageBase64": "..." }`,
+where slot is `logo|cover|background`. The mobile gallery picker normalizes PNG
+bytes before this request. Strict base64, PNG chunk structure, maximum 512 KiB
+and 1280 pixels on either side are validated. SVG and arbitrary URLs are rejected.
+Success is HTTP 201 `{ "status": "ok", "image": { "key": "uploads/<owner>/<uuid>/profile-logo.png" } }`.
+The key can be used in any image slot owned by that account. Uploading it alone
+does not publish it. Owner previews return `image/png`, and another owner gets 404.
+Public image routes exist only while that slug is published and that slot has a
+saved key. Page/image/owner responses are no-store; images have nosniff.
+
+Image bytes use private R2/S3 storage in durable deployments. The API never
+returns bucket URLs. Missing image repositories fail closed with 503
+`LINK_IN_BIO_IMAGES_UNAVAILABLE`. Invalid bytes/keys return 400
+`LINK_IN_BIO_IMAGE_INVALID`; unknown owner images return 404
+`LINK_IN_BIO_IMAGE_NOT_FOUND`; reaching 20 stored images returns 429
+`LINK_IN_BIO_IMAGE_LIMIT`. Existing upload rate limits also apply. On subsequent
+upload/publication, unused images older than 24 hours are pruned, retaining
+saved profile references and the newest image per slot. Inactive accounts are
+not periodically swept. Account deletion clears all images and metadata.
+
+Apply migration `20261005193000_customize_link_in_bio_profile`, regenerate Prisma,
+deploy API plus bundled font assets, and only then distribute the new mobile build.
+Fonts/images are served from the page origin under the existing nonce CSP.
+There is no arbitrary CSS, script, custom font upload, product-card pricing,
+or new paid provider in this contract.
 
 ## Mobile Request Deadlines
 

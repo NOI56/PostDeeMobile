@@ -74,12 +74,14 @@ const _nonCanonicalDraft = LinkInBioDraft(
 Widget _app(LinkInBioScreen screen) =>
     MaterialApp(theme: AppTheme.light, home: screen);
 Future<void> _tap(WidgetTester tester, String key) async {
+  await tester.pumpAndSettle();
   final finder = find.byKey(ValueKey(key));
   if (finder.evaluate().isEmpty) {
     await tester.scrollUntilVisible(finder, 250,
         scrollable: find.byType(Scrollable).first);
   }
   await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
   await tester.tap(finder);
   await tester.pumpAndSettle();
 }
@@ -100,7 +102,10 @@ void main() {
     await tester.pumpWidget(_app(LinkInBioScreen(
         loadProfile: () async => null,
         publishProfile: (
-                {required storeName, required slug, required links}) async =>
+                {required storeName,
+                required slug,
+                required links,
+                appearance}) async =>
             _normalizedProfile())));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-publish');
@@ -126,7 +131,10 @@ void main() {
         draftStore: store,
         loadProfile: () async => null,
         publishProfile: (
-                {required storeName, required slug, required links}) async =>
+                {required storeName,
+                required slug,
+                required links,
+                appearance}) async =>
             _normalizedProfile())));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-publish');
@@ -223,7 +231,10 @@ void main() {
     await tester.pumpWidget(_app(LinkInBioScreen(
         loadProfile: () async => null,
         publishProfile: (
-            {required storeName, required slug, required links}) async {
+            {required storeName,
+            required slug,
+            required links,
+            appearance}) async {
           expect(storeName, 'ร้านมินา');
           expect(slug, 'mina-shop');
           expect(links.map((link) => link.id), ['shop']);
@@ -270,7 +281,10 @@ void main() {
     await tester.pumpWidget(_app(LinkInBioScreen(
         loadProfile: () async => ++loads == 1 ? null : _profile(),
         publishProfile: (
-                {required storeName, required slug, required links}) async =>
+                {required storeName,
+                required slug,
+                required links,
+                appearance}) async =>
             throw TimeoutException('slow'))));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-publish');
@@ -287,7 +301,10 @@ void main() {
     await tester.pumpWidget(_app(LinkInBioScreen(
         loadProfile: () async => null,
         publishProfile: (
-                {required storeName, required slug, required links}) async =>
+                {required storeName,
+                required slug,
+                required links,
+                appearance}) async =>
             throw const ApiException('taken',
                 statusCode: 409, code: 'LINK_IN_BIO_SLUG_TAKEN'))));
     await tester.pumpAndSettle();

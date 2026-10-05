@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../auth/auth_session.dart';
 import '../config/app_config.dart';
+import '../models/link_in_bio_appearance.dart';
 
 const socialPublishingUnavailableCode = 'SOCIAL_PUBLISHING_UNAVAILABLE';
 const platformSettingsUnsupportedCode = 'PLATFORM_SETTINGS_UNSUPPORTED';
@@ -33,6 +35,8 @@ class _ApiRequestScope {
   HttpClientRequest? _request;
   StreamSubscription<String>? _bodySubscription;
   Completer<String>? _bodyResult;
+  StreamSubscription<List<int>>? _binaryBodySubscription;
+  Completer<Uint8List>? _binaryBodyResult;
 
   void checkActive() {
     final error = _cancellationError;
@@ -83,6 +87,42 @@ class _ApiRequestScope {
     }
   }
 
+  Future<Uint8List> readBytes(HttpClientResponse response,
+      {required int maxBytes}) async {
+    final error = _cancellationError;
+    if (error != null) {
+      try {
+        await response.listen((_) {}).cancel();
+      } catch (_) {
+        // Preserve the deadline error when transport cleanup fails.
+      }
+      throw error;
+    }
+    final result = Completer<Uint8List>();
+    final buffer = BytesBuilder(copy: false);
+    var length = 0;
+    _binaryBodyResult = result;
+    _binaryBodySubscription = response.listen((chunk) {
+      if (result.isCompleted) return;
+      length += chunk.length;
+      if (length > maxBytes) {
+        cancel(const ApiException('Profile image exceeds the allowed size'));
+        return;
+      }
+      buffer.add(chunk);
+    }, onError: (Object error, StackTrace stack) {
+      if (!result.isCompleted) result.completeError(error, stack);
+    }, onDone: () {
+      if (!result.isCompleted) result.complete(buffer.takeBytes());
+    }, cancelOnError: true);
+    try {
+      return await result.future;
+    } finally {
+      _binaryBodyResult = null;
+      _binaryBodySubscription = null;
+    }
+  }
+
   void cancel(Object error) {
     _cancellationError ??= error;
     _request?.abort(error);
@@ -92,6 +132,14 @@ class _ApiRequestScope {
     }
     final result = _bodyResult;
     if (result != null && !result.isCompleted) result.completeError(error);
+    final binarySubscription = _binaryBodySubscription;
+    if (binarySubscription != null) {
+      unawaited(binarySubscription.cancel().catchError((Object _) {}));
+    }
+    final binaryResult = _binaryBodyResult;
+    if (binaryResult != null && !binaryResult.isCompleted) {
+      binaryResult.completeError(error);
+    }
   }
 }
 
@@ -1760,11 +1808,44 @@ class CreateTemplateRequest {
 
 class LinkInBioLinkResult {
   const LinkInBioLinkResult(
-      {required this.id, required this.title, required this.url});
+      {required this.id,
+      required this.title,
+      required this.url,
+      this.category = '',
+      this.icon = 'auto',
+      this.font,
+      this.textColor,
+      this.buttonColor});
   final String id;
   final String title;
   final String url;
-  Map<String, Object?> toJson() => {'id': id, 'title': title, 'url': url};
+  final String category;
+  final String icon;
+  final String? font;
+  final String? textColor;
+  final String? buttonColor;
+  Map<String, Object?> toJson() {
+    try {
+      validateLinkInBioLinkOptions(
+          category: category,
+          icon: icon,
+          font: font,
+          textColor: textColor,
+          buttonColor: buttonColor);
+    } on FormatException {
+      throw const ApiException('Link in Bio contains invalid link styles');
+    }
+    return {
+      'id': id,
+      'title': title,
+      'url': url,
+      if (category.trim().isNotEmpty) 'category': category,
+      if (icon != 'auto') 'icon': icon,
+      if (font != null) 'font': font,
+      if (textColor != null) 'textColor': textColor,
+      if (buttonColor != null) 'buttonColor': buttonColor
+    };
+  }
 
   factory LinkInBioLinkResult.fromJson(Map<String, Object?> json) {
     final id = json['id'];
@@ -1790,7 +1871,29 @@ class LinkInBioLinkResult {
         uri.userInfo.isNotEmpty) {
       throw const ApiException('Link in Bio response contains an unsafe URL');
     }
-    return LinkInBioLinkResult(id: id, title: title, url: url);
+    for (final key in const [
+      'category',
+      'icon',
+      'font',
+      'textColor',
+      'buttonColor'
+    ]) {
+      if (json.containsKey(key) && json[key] is! String) {
+        throw const ApiException(
+            'Link in Bio response contains invalid link styles');
+      }
+    }
+    final link = LinkInBioLinkResult(
+        id: id,
+        title: title,
+        url: url,
+        category: json['category'] as String? ?? '',
+        icon: json['icon'] as String? ?? 'auto',
+        font: json['font'] as String?,
+        textColor: json['textColor'] as String?,
+        buttonColor: json['buttonColor'] as String?);
+    link.toJson();
+    return link;
   }
 }
 
@@ -1804,6 +1907,7 @@ class LinkInBioProfileResult {
     this.publishedAt,
     this.publicPath,
     this.publicUrl,
+    this.appearance = const LinkInBioAppearance(),
   });
   final String storeName;
   final String slug;
@@ -1813,6 +1917,7 @@ class LinkInBioProfileResult {
   final DateTime updatedAt;
   final String? publicPath;
   final Uri? publicUrl;
+  final LinkInBioAppearance appearance;
 
   factory LinkInBioProfileResult.fromJson(Map<String, Object?> json,
       {required Uri apiBaseUri}) {
@@ -1855,6 +1960,25 @@ class LinkInBioProfileResult {
     if (links.map((link) => link.id).toSet().length != links.length) {
       throw const ApiException('Link in Bio response contains duplicate links');
     }
+    var appearance = const LinkInBioAppearance();
+    if (json.containsKey('appearance')) {
+      final rawAppearance = json['appearance'];
+      if (rawAppearance is! Map<String, Object?>) {
+        throw const ApiException(
+            'Link in Bio response contains invalid appearance');
+      }
+      try {
+        appearance = LinkInBioAppearance.fromJson(rawAppearance);
+      } on FormatException {
+        throw const ApiException(
+            'Link in Bio response contains invalid appearance');
+      }
+    }
+    if (appearance.featuredLinkId != null &&
+        !links.any((link) => link.id == appearance.featuredLinkId)) {
+      throw const ApiException(
+          'Link in Bio response references an unknown featured link');
+    }
     return LinkInBioProfileResult(
       storeName: name,
       slug: slug,
@@ -1866,6 +1990,7 @@ class LinkInBioProfileResult {
       publicUrl: published
           ? Uri.parse(apiBaseUri.origin).resolve(path as String)
           : null,
+      appearance: appearance,
     );
   }
 }
@@ -2437,11 +2562,24 @@ class PostDeeApiClient {
     required String storeName,
     required String slug,
     required List<LinkInBioLinkResult> links,
+    LinkInBioAppearance? appearance,
   }) async {
+    Map<String, Object?>? appearanceJson;
+    try {
+      appearanceJson = appearance?.toJson();
+    } on FormatException {
+      throw const ApiException('Link in Bio contains invalid appearance');
+    }
+    if (appearance?.featuredLinkId != null &&
+        !links.any((link) => link.id == appearance!.featuredLinkId)) {
+      throw const ApiException(
+          'Link in Bio references an unknown featured link');
+    }
     final response = await _postJson('/link-in-bio/publish', {
       'storeName': storeName,
       'slug': slug,
       'links': links.map((link) => link.toJson()).toList(growable: false),
+      if (appearanceJson != null) 'appearance': appearanceJson,
     });
     final profile = _readLinkInBioProfile(response);
     if (!profile.isPublished) {
@@ -2467,6 +2605,85 @@ class PostDeeApiClient {
       throw const ApiException('Link in Bio response is missing profile data');
     }
     return LinkInBioProfileResult.fromJson(profile, apiBaseUri: _baseUri);
+  }
+
+  Future<String> uploadLinkInBioImage(
+      {required String slot, required Uint8List bytes}) async {
+    if (!const {'logo', 'cover', 'background'}.contains(slot) ||
+        !_isProfilePng(bytes)) {
+      throw const ApiException(
+          'Profile images must be PNG files up to 512 KiB and 1280 pixels');
+    }
+    final response = await _postJson('/link-in-bio/images',
+        {'slot': slot, 'imageBase64': base64Encode(bytes)});
+    final image = response['image'];
+    final key = image is Map<String, Object?> ? image['key'] : null;
+    if (response['status'] != 'ok' ||
+        key is! String ||
+        !isSafeLinkInBioImageKey(key)) {
+      throw const ApiException(
+          'Profile image upload did not return a valid storage key');
+    }
+    return key;
+  }
+
+  Future<Uint8List> loadLinkInBioImage(String key) {
+    if (!isSafeLinkInBioImageKey(key)) {
+      return Future<Uint8List>.error(
+          const ApiException('Invalid profile image storage key'));
+    }
+    return _withRequestDeadline(requestTimeout, (scope) async {
+      final headers = await _authHeaders.load();
+      scope.checkActive();
+      final uri = _baseUri
+          .resolve('/link-in-bio/image')
+          .replace(queryParameters: {'key': key});
+      final request = await scope.open(_httpClient.openUrl('GET', uri));
+      for (final header in headers.entries) {
+        request.headers.set(header.key, header.value);
+      }
+      request.headers.set(HttpHeaders.acceptHeader, 'image/png');
+      scope.checkActive();
+      final response = await request.close();
+      final bytes = await scope.readBytes(response, maxBytes: 512 * 1024);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        Object? error;
+        try {
+          error = jsonDecode(utf8.decode(bytes));
+        } on FormatException {
+          error = null;
+        }
+        final json =
+            error is Map<String, Object?> ? error : <String, Object?>{};
+        throw ApiException(
+            json['message'] is String
+                ? json['message'] as String
+                : 'Profile image request failed',
+            statusCode: response.statusCode,
+            code: json['code'] is String ? json['code'] as String : null);
+      }
+      if (response.headers.contentType?.mimeType != 'image/png' ||
+          !_isProfilePng(bytes)) {
+        throw const ApiException('Profile image response is not a valid PNG');
+      }
+      return bytes;
+    });
+  }
+
+  static bool _isProfilePng(Uint8List bytes) {
+    const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+    if (bytes.length < 33 || bytes.length > 512 * 1024) return false;
+    for (var index = 0; index < signature.length; index++) {
+      if (bytes[index] != signature[index]) return false;
+    }
+    final data = ByteData.sublistView(bytes);
+    if (data.getUint32(8) != 13 ||
+        String.fromCharCodes(bytes.sublist(12, 16)) != 'IHDR') {
+      return false;
+    }
+    final width = data.getUint32(16);
+    final height = data.getUint32(20);
+    return width > 0 && width <= 1280 && height > 0 && height <= 1280;
   }
 
   Future<T> _withRequestDeadline<T>(

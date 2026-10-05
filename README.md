@@ -20,10 +20,26 @@ Each authenticated account can publish one profile page with up to 20 enabled
 custom links on every package. The page is hosted by the existing PostDee API at
 `/p/<slug>`; the app resolves the URL against its configured API domain. No
 `postdee.link` domain or third-party statistics subscription is assumed. Public
-pages show only the store name and the links the owner explicitly publishes.
+pages show the store information, images, and links the owner explicitly publishes.
 Draft edits remain private until Publish/Update is pressed. Publishing, copying
 the confirmed URL, opening the page, and unpublishing are supported. Scheduled
 post auto-updates and click analytics are not included.
+
+All packages have the same profile customization: four starting themes
+(`minimal`, `shop`, `pastel`, `dark`), separate text colors/fonts for names,
+descriptions, categories, buttons and branding, per-link overrides, button
+shapes, categories/order, and one featured promotion. Logo, cover, and image
+backgrounds use the existing private media bucket; solid/gradient backgrounds
+are also available. Draft customization stays private until Publish/Update.
+The preview and public page share the same appearance contract and palettes.
+Product cards/prices are not part of this release.
+
+Migration `20261005193000_customize_link_in_bio_profile` adds nullable appearance
+JSON and owner-scoped image metadata. Old profiles use the original cream/green
+defaults; old clients can still publish links without overwriting customization.
+Deploy the generated Prisma client, migration, API and bundled font assets
+before distributing the new mobile build. Real-bucket and deployed-domain QA
+remain release gates until this version is deployed and checked.
 
 Production persistence uses `POST_STORE=prisma` and the additive LinkInBioProfile
 migration. In-memory mode is local scaffolding and loses pages when restarted.

@@ -5,6 +5,7 @@ import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
 import { createInMemoryLinkInBioStore } from './linkInBioStore.js';
 import { createLinkInBioStoreFromConfig } from './linkInBioStoreFactory.js';
+import { createDefaultLinkInBioAppearance } from './linkInBioAppearance.js';
 
 const page = {
   storeName: 'ร้านของดี',
@@ -34,6 +35,7 @@ describe('link in bio routes', () => {
       .set('Host', 'attacker.invalid').expect(200);
     expect(result.body.profile).toEqual({
       ...page,
+      appearance: createDefaultLinkInBioAppearance(),
       isPublished: true,
       publishedAt: '2026-10-05T10:00:00.000Z',
       updatedAt: '2026-10-05T10:00:00.000Z',

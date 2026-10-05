@@ -2,30 +2,65 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/models/link_in_bio_appearance.dart';
+
 class LinkInBioCustomLink {
   const LinkInBioCustomLink({
     required this.id,
     required this.title,
     required this.url,
+    this.category = '',
+    this.icon = 'auto',
+    this.font,
+    this.textColor,
+    this.buttonColor,
   });
 
   factory LinkInBioCustomLink.fromJson(Map<String, Object?> json) {
-    return LinkInBioCustomLink(
+    final link = LinkInBioCustomLink(
       id: json['id'] as String,
       title: json['title'] as String,
       url: json['url'] as String,
+      category: json['category'] as String? ?? '',
+      icon: json['icon'] as String? ?? 'auto',
+      font: json['font'] as String?,
+      textColor: json['textColor'] as String?,
+      buttonColor: json['buttonColor'] as String?,
     );
+    validateLinkInBioLinkOptions(
+        category: link.category,
+        icon: link.icon,
+        font: link.font,
+        textColor: link.textColor,
+        buttonColor: link.buttonColor);
+    return link;
   }
 
   final String id;
   final String title;
   final String url;
+  final String category;
+  final String icon;
+  final String? font;
+  final String? textColor;
+  final String? buttonColor;
 
   Map<String, Object?> toJson() {
+    validateLinkInBioLinkOptions(
+        category: category,
+        icon: icon,
+        font: font,
+        textColor: textColor,
+        buttonColor: buttonColor);
     return {
       'id': id,
       'title': title,
       'url': url,
+      if (category.trim().isNotEmpty) 'category': category,
+      if (icon != 'auto') 'icon': icon,
+      if (font != null) 'font': font,
+      if (textColor != null) 'textColor': textColor,
+      if (buttonColor != null) 'buttonColor': buttonColor,
     };
   }
 }
@@ -37,6 +72,7 @@ class LinkInBioDraft {
     required this.autoUpdateFromScheduledPosts,
     required this.enabledLinkIds,
     required this.customLinks,
+    this.appearance = const LinkInBioAppearance(),
   });
 
   factory LinkInBioDraft.defaults() {
@@ -54,6 +90,7 @@ class LinkInBioDraft {
   final bool autoUpdateFromScheduledPosts;
   final Set<String> enabledLinkIds;
   final List<LinkInBioCustomLink> customLinks;
+  final LinkInBioAppearance appearance;
 }
 
 abstract class LinkInBioDraftStore {
@@ -103,6 +140,10 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
         enabledLinkIds: (json['enabledLinkIds'] as List).cast<String>().toSet(),
         customLinks:
             _decodeCustomLinks((json['customLinks'] as List).cast<String>()),
+        appearance: json.containsKey('appearance')
+            ? LinkInBioAppearance.fromJson(
+                json['appearance'] as Map<String, Object?>)
+            : const LinkInBioAppearance(),
       );
     } catch (_) {
       return null;
@@ -124,6 +165,7 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
           'customLinks': draft.customLinks
               .map((link) => jsonEncode(link.toJson()))
               .toList(),
+          'appearance': draft.appearance.toJson(),
         }));
     if (!saved) throw StateError('Link in Bio draft could not be saved');
   }

@@ -4,6 +4,14 @@ import type { RequestHandler, Response, Router } from 'express';
 import { readAuthUser } from '../auth/authTypes.js';
 import type { UserStore } from '../users/userStore.js';
 import { LinkInBioError, type LinkInBioLink, type LinkInBioProfile, type LinkInBioStore } from './linkInBioStore.js';
+import { linkInBioFonts, linkInBioIcons, normalizeStoredLinkInBioAppearance, readLinkInBioAppearance, readLinkInBioColor, type LinkInBioAppearance, type LinkInBioFont, type LinkInBioIcon } from './linkInBioAppearance.js';
+import { renderLinkInBioPage } from './linkInBioRenderer.js';
+
+export type LinkInBioRouteOptions = {
+  validateImages?: (userId: string, appearance: LinkInBioAppearance) => Promise<void>;
+  onPublished?: (userId: string, profile: LinkInBioProfile) => Promise<void>;
+  withImageMutation?: (userId: string, operation: () => Promise<LinkInBioProfile>) => Promise<LinkInBioProfile>;
+};
 
 const slugPattern = /^(?=.{3,40}$)[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const readText = (value: unknown, maximum: number) => {
@@ -40,28 +48,33 @@ const readPublishInput = (body: unknown) => {
     const url = readUrl(item.url);
     if (!id || !title || !url || ids.has(id)) return undefined;
     ids.add(id);
-    links.push({ id, title, url });
+    const link: LinkInBioLink = { id, title, url };
+    const custom = item as Record<string, unknown>;
+    if (custom.category !== undefined) {
+      if (typeof custom.category !== 'string' || custom.category.length > 60) return undefined;
+      if (custom.category.trim()) link.category = custom.category.trim();
+    }
+    if (custom.icon !== undefined) {
+      if (!linkInBioIcons.includes(custom.icon as LinkInBioIcon)) return undefined;
+      link.icon = custom.icon as LinkInBioIcon;
+    }
+    if (custom.font !== undefined) {
+      if (!linkInBioFonts.includes(custom.font as LinkInBioFont)) return undefined;
+      link.font = custom.font as LinkInBioFont;
+    }
+    for (const field of ['textColor', 'buttonColor'] as const) {
+      if (custom[field] !== undefined) {
+        const color = readLinkInBioColor(custom[field]);
+        if (!color) return undefined;
+        link[field] = color;
+      }
+    }
+    links.push(link);
   }
-  return { storeName, slug, links };
+  const appearance = input.appearance === undefined ? undefined : readLinkInBioAppearance(input.appearance, links);
+  if (input.appearance !== undefined && !appearance) return undefined;
+  return { storeName, slug, links, appearance };
 };
-
-const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-})[character]!);
-
-const renderPage = (profile: LinkInBioProfile, nonce: string) => `<!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>${escapeHtml(profile.storeName)} | PostDee</title>
-<style nonce="${nonce}">
-*{box-sizing:border-box}body{margin:0;background:#fff8ef;color:#253529;font-family:system-ui,-apple-system,sans-serif;line-height:1.6}
-main{width:min(100% - 32px,520px);margin:48px auto;padding:32px 24px;border:1px solid #eadfcb;border-radius:24px;background:#fff}
-.brand{color:#537844;font-size:14px;font-weight:700;letter-spacing:1px}h1{font-size:28px;line-height:1.4;overflow-wrap:anywhere;margin:16px 0 8px}
-p{color:#687065;margin:0 0 28px}ul{list-style:none;padding:0;margin:0;display:grid;gap:12px}a{display:block;border-radius:14px;background:#305d36;color:#fff;padding:16px 20px;text-decoration:none;font-weight:600;overflow-wrap:anywhere}
-a:hover{background:#254d2b}a:focus-visible{outline:3px solid #d5a22f;outline-offset:4px}footer{text-align:center;font-size:12px;color:#687065;margin-top:28px}
-@media(max-width:400px){main{margin:24px auto;padding:24px 18px}h1{font-size:24px}}
-</style></head><body><main><div class="brand">PostDee</div><h1>${escapeHtml(profile.storeName)}</h1>
-<p>เลือกช่องทางที่ต้องการได้เลย</p><ul>${profile.links.map((link) => `<li><a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.title)}</a></li>`).join('')}</ul>
-<footer>สร้างหน้าเว็บร้านค้าด้วย PostDee</footer></main></body></html>`;
 
 const respondError = (response: Response, error: unknown) => {
   const known = error instanceof LinkInBioError;
@@ -73,7 +86,8 @@ const respondError = (response: Response, error: unknown) => {
 };
 
 export const registerLinkInBioRoutes = (
-  router: Router, authMiddleware: RequestHandler, store: LinkInBioStore, userStore?: UserStore
+  router: Router, authMiddleware: RequestHandler, store: LinkInBioStore, userStore?: UserStore,
+  options: LinkInBioRouteOptions = {}
 ) => {
   router.use('/link-in-bio', (_request, response, next) => {
     response.set('Cache-Control', 'no-store');
@@ -98,7 +112,24 @@ export const registerLinkInBioRoutes = (
     response.set('Cache-Control', 'no-store');
     try {
       await userStore?.ensure(user);
-      response.json({ status: 'ok', profile: await store.publish({ ...input, userId: user.id }) });
+      const commit = async () => {
+        const appearance = input.appearance ?? normalizeStoredLinkInBioAppearance((await store.getForUser(user.id))?.appearance, input.links);
+        if (appearance.logoKey || appearance.coverKey || appearance.background.imageKey) {
+          if (!options.validateImages) throw new LinkInBioError(400, 'LINK_IN_BIO_IMAGE_INVALID', 'ระบบรูปหน้าโปรไฟล์ยังไม่พร้อม กรุณานำรูปออกก่อนเผยแพร่');
+        }
+        await options.validateImages?.(user.id, appearance);
+        // Omitted appearance remains omitted at the atomic store update, so an
+        // older client cannot overwrite a concurrent appearance customization.
+        return store.publish({ ...input, userId: user.id });
+      };
+      // The same image-owner guard protects pruning and this validate/write
+      // boundary. Cleanup below runs after release to avoid a nested lock.
+      const profile = options.withImageMutation
+        ? await options.withImageMutation(user.id, commit)
+        : await commit();
+      // A cleanup failure after the commit cannot change publication success.
+      try { await options.onPublished?.(user.id, profile); } catch { /* The page is already committed. */ }
+      response.json({ status: 'ok', profile });
     } catch (error) { respondError(response, error); }
   });
   router.delete('/link-in-bio/publish', authMiddleware, async (_request, response) => {
@@ -117,8 +148,8 @@ export const registerLinkInBioRoutes = (
       const profile = await store.getPublishedBySlug(slug);
       if (!profile) { response.status(404).type('text').send('ไม่พบหน้าเว็บร้านค้า'); return; }
       const nonce = randomBytes(18).toString('base64');
-      response.set('Content-Security-Policy', `default-src 'none'; script-src 'none'; style-src 'nonce-${nonce}'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`);
-      response.type('html').send(renderPage(profile, nonce));
+      response.set('Content-Security-Policy', `default-src 'none'; script-src 'none'; style-src 'nonce-${nonce}'; img-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`);
+      response.type('html').send(renderLinkInBioPage(profile, nonce));
     } catch (error) { respondError(response, error); }
   });
 };

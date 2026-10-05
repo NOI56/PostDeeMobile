@@ -80,6 +80,7 @@ model User {
   socialConnections  SocialConnection[]
   postPeerProfile    PostPeerProfile?
   linkInBioProfile   LinkInBioProfile?
+  linkInBioImages    LinkInBioImage[]
   billingCustomerId  String?       @unique
   lastRevenueCatEventTimestampMs BigInt?
   lastRevenueCatEventId String?
@@ -95,11 +96,24 @@ model LinkInBioProfile {
   storeName   String
   slug        String   @unique
   links       Json
+  appearance  Json?
   isPublished Boolean  @default(false)
   publishedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LinkInBioImage {
+  id         String   @id
+  userId     String
+  slot       String
+  storageKey String   @unique
+  sizeBytes  Int
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model Post {

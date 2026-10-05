@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/models/link_in_bio_appearance.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 
 Map<String, Object?> _profile({bool published = true, String? path}) => {
@@ -38,12 +39,123 @@ Future<void> _withServer(
 }
 
 void main() {
+  test('older profile responses receive legacy appearance defaults', () {
+    final profile = LinkInBioProfileResult.fromJson(_profile(),
+        apiBaseUri: Uri.parse('https://api.example.com'));
+    expect(profile.appearance.toJson(), const LinkInBioAppearance().toJson());
+  });
+
+  test(
+      'profile appearance and per-link options round trip without changing legacy link JSON',
+      () {
+    final appearance =
+        LinkInBioAppearance.forTheme('shop').copyWith(featuredLinkId: 'shop');
+    final json = _profile()..['appearance'] = appearance.toJson();
+    json['links'] = [
+      {
+        'id': 'shop',
+        'title': 'ร้านค้า',
+        'url': 'https://example.com/shop',
+        'category': 'สินค้า',
+        'icon': 'shopee',
+        'font': 'prompt',
+        'textColor': '#ffffff',
+        'buttonColor': '#e85d24'
+      }
+    ];
+    final profile = LinkInBioProfileResult.fromJson(json,
+        apiBaseUri: Uri.parse('https://api.example.com'));
+    expect(profile.appearance.toJson(), appearance.toJson());
+    expect(profile.links.single.toJson(), (json['links'] as List).single);
+    expect(
+        const LinkInBioLinkResult(
+                id: 'a', title: 'เดิม', url: 'https://example.com')
+            .toJson(),
+        {'id': 'a', 'title': 'เดิม', 'url': 'https://example.com'});
+  });
+
+  for (final badAppearance in <Object?>[
+    null,
+    {},
+    {'version': 2},
+    {
+      ...const LinkInBioAppearance().toJson(),
+      'buttonColor': 'red;display:none'
+    },
+    {...const LinkInBioAppearance().toJson(), 'featuredLinkId': 'missing'},
+  ]) {
+    test(
+        'rejects provided malformed or inconsistent profile appearance $badAppearance',
+        () {
+      expect(
+          () => LinkInBioProfileResult.fromJson(
+              _profile()..['appearance'] = badAppearance,
+              apiBaseUri: Uri.parse('https://api.example.com')),
+          throwsA(isA<ApiException>()));
+    });
+  }
+
+  for (final badOptions in <Map<String, Object?>>[
+    {'icon': 'script'},
+    {'font': 'url(evil)'},
+    {'textColor': 'red'},
+    {'buttonColor': '#fff'},
+    {'category': 'x' * 61},
+    {'category': 123},
+  ]) {
+    test('rejects malformed link options $badOptions', () {
+      expect(
+          () => LinkInBioLinkResult.fromJson({
+                'id': 'a',
+                'title': 'ร้าน',
+                'url': 'https://example.com',
+                ...badOptions
+              }),
+          throwsA(isA<ApiException>()));
+    });
+  }
+
+  test(
+      'publish sends optional appearance and rejects invalid styling before a request',
+      () async {
+    final appearance = LinkInBioAppearance.forTheme('pastel');
+    await _withServer((client) async {
+      final result = await client.publishLinkInBioProfile(
+          storeName: 'ร้านมินา',
+          slug: 'mina-shop',
+          links: const [
+            LinkInBioLinkResult(
+                id: 'shop', title: 'ร้านค้า', url: 'https://example.com/shop')
+          ],
+          appearance: appearance);
+      expect(result.appearance.themeId, 'pastel');
+    }, (request) async {
+      final body = jsonDecode(await utf8.decoder.bind(request).join()) as Map;
+      expect(body['appearance'], appearance.toJson());
+      return {
+        'status': 'ok',
+        'profile': _profile()..['appearance'] = appearance.toJson()
+      };
+    });
+    final client = PostDeeApiClient(baseUrl: 'http://127.0.0.1:1');
+    await expectLater(
+        client.publishLinkInBioProfile(
+            storeName: 'ร้าน',
+            slug: 'our-shop',
+            links: const [
+              LinkInBioLinkResult(
+                  id: 'shop', title: 'ร้าน', url: 'https://example.com')
+            ],
+            appearance: const LinkInBioAppearance(buttonColor: 'unsafe')),
+        throwsA(isA<ApiException>()));
+  });
   test('rejects a double-hyphen slug even when its public path matches', () {
     final json = _profile()
       ..['slug'] = 'my--shop'
       ..['publicPath'] = '/p/my--shop';
     expect(
-      () => LinkInBioProfileResult.fromJson(json, apiBaseUri: Uri.parse('https://api.example.com')),
+      () => LinkInBioProfileResult.fromJson(json,
+          apiBaseUri: Uri.parse('https://api.example.com')),
       throwsA(isA<ApiException>()),
     );
   });

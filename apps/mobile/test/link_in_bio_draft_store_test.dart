@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/models/link_in_bio_appearance.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -50,5 +53,80 @@ void main() {
     expect(await store.loadDraft(), isNull);
     await expectLater(
         store.saveDraft(LinkInBioDraft.defaults()), throwsStateError);
+  });
+
+  test('appearance and link options survive an owner-scoped save and reload',
+      () async {
+    const store = SharedPreferencesLinkInBioDraftStore(ownerUserId: 'seller');
+    final appearance = LinkInBioAppearance.forTheme('dark')
+        .copyWith(description: 'ร้านออนไลน์ของเรา');
+    await store.saveDraft(LinkInBioDraft(
+      storeName: 'ร้านเรา',
+      slug: 'our-shop',
+      autoUpdateFromScheduledPosts: false,
+      enabledLinkIds: const {'shop'},
+      appearance: appearance,
+      customLinks: const [
+        LinkInBioCustomLink(
+            id: 'shop',
+            title: 'สินค้า',
+            url: 'https://example.com',
+            category: 'ของใช้',
+            icon: 'shopee',
+            font: 'prompt',
+            textColor: '#ffffff',
+            buttonColor: '#e85d24')
+      ],
+    ));
+    final loaded = (await store.loadDraft())!;
+    expect(loaded.appearance.toJson(), appearance.toJson());
+    expect(loaded.customLinks.single.toJson(), {
+      'id': 'shop',
+      'title': 'สินค้า',
+      'url': 'https://example.com',
+      'category': 'ของใช้',
+      'icon': 'shopee',
+      'font': 'prompt',
+      'textColor': '#ffffff',
+      'buttonColor': '#e85d24',
+    });
+  });
+
+  test('older owned drafts without appearance still load with legacy defaults',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'postdee_link_in_bio.user.seller': jsonEncode({
+        'storeName': 'ร้านเดิม',
+        'slug': 'old-shop',
+        'enabledLinkIds': ['shop'],
+        'customLinks': [
+          jsonEncode(
+              {'id': 'shop', 'title': 'ร้าน', 'url': 'https://example.com'})
+        ],
+      }),
+    });
+    final draft =
+        await const SharedPreferencesLinkInBioDraftStore(ownerUserId: 'seller')
+            .loadDraft();
+    expect(draft!.appearance.toJson(), const LinkInBioAppearance().toJson());
+    expect(draft.customLinks.single.toJson(),
+        {'id': 'shop', 'title': 'ร้าน', 'url': 'https://example.com'});
+  });
+
+  test('a malformed appearance never becomes a silently reset saved design',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'postdee_link_in_bio.user.seller': jsonEncode({
+        'storeName': 'ร้านเดิม',
+        'slug': 'old-shop',
+        'enabledLinkIds': [],
+        'customLinks': [],
+        'appearance': {'version': 999},
+      }),
+    });
+    expect(
+        await const SharedPreferencesLinkInBioDraftStore(ownerUserId: 'seller')
+            .loadDraft(),
+        isNull);
   });
 }

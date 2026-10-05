@@ -16,6 +16,7 @@ Future<void> _show(WidgetTester tester, Finder finder,
         scrollable: find.byType(Scrollable).first);
   }
   await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _tap(WidgetTester tester, String key) async {

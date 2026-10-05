@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createLinkInBioStoreFromConfig } from './linkInBioStoreFactory.js';
 import { createPrismaLinkInBioRepository, type PrismaLinkInBioClient } from './prismaLinkInBioRepository.js';
+import { createDefaultLinkInBioAppearance } from './linkInBioAppearance.js';
 
 const input = {
   userId: 'owner', storeName: 'ร้านของดี', slug: 'my-shop',
@@ -13,7 +14,7 @@ const fixture = () => {
   const linkInBioProfile = {
     findUnique: vi.fn<PrismaLinkInBioClient['linkInBioProfile']['findUnique']>(async () => row),
     findFirst: vi.fn(async () => row),
-    upsert: vi.fn(async () => row),
+    upsert: vi.fn<PrismaLinkInBioClient['linkInBioProfile']['upsert']>(async () => row),
     updateMany: vi.fn(async () => ({ count: 1 })),
     deleteMany: vi.fn(async () => ({ count: 1 }))
   };
@@ -26,12 +27,13 @@ describe('Prisma link in bio repository', () => {
     const { store, linkInBioProfile } = fixture();
     expect(await store.publish(input)).toEqual({
       storeName: input.storeName, slug: input.slug, links: input.links,
+      appearance: createDefaultLinkInBioAppearance(),
       isPublished: true, publishedAt: at.toISOString(), updatedAt: at.toISOString(),
       publicPath: '/p/my-shop'
     });
     expect(linkInBioProfile.upsert).toHaveBeenCalledWith({
       where: { userId: 'owner' },
-      create: { ...input, isPublished: true, publishedAt: at, updatedAt: at },
+      create: { ...input, appearance: createDefaultLinkInBioAppearance(), isPublished: true, publishedAt: at, updatedAt: at },
       update: {
         storeName: input.storeName, slug: input.slug, links: input.links,
         isPublished: true, publishedAt: at, updatedAt: at
@@ -46,6 +48,23 @@ describe('Prisma link in bio repository', () => {
     await store.getPublishedBySlug('my-shop');
     expect(linkInBioProfile.findUnique).toHaveBeenCalledWith({ where: { userId: 'owner' } });
     expect(linkInBioProfile.findFirst).toHaveBeenCalledWith({ where: { slug: 'my-shop', isPublished: true } });
+  });
+
+  it('stores explicit appearance and leaves existing appearance untouched when a legacy publish omits it', async () => {
+    const { store, linkInBioProfile } = fixture();
+    const appearance = createDefaultLinkInBioAppearance('shop');
+    await store.publish({ ...input, appearance });
+    expect(linkInBioProfile.upsert).toHaveBeenLastCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ appearance }), update: expect.objectContaining({ appearance })
+    }));
+    await store.publish(input);
+    expect(linkInBioProfile.upsert.mock.calls[1]![0].update).not.toHaveProperty('appearance');
+  });
+
+  it('normalizes a nullable appearance on a migrated legacy row', async () => {
+    const { store, linkInBioProfile } = fixture();
+    linkInBioProfile.findUnique.mockResolvedValueOnce({ ...row, appearance: null });
+    expect((await store.getForUser('owner'))!.appearance).toEqual(createDefaultLinkInBioAppearance());
   });
 
   it('maps a database unique collision to the slug-taken error', async () => {

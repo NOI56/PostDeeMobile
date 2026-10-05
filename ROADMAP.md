@@ -10,14 +10,21 @@ Build roadmap for PostDee.
 - Provide one public profile page per authenticated account on every package,
   with 1–20 explicitly enabled custom links. Host `/p/<slug>` on the existing
   API domain; persist with Prisma and include profile cleanup in account deletion.
+- Offer equal customization on every package: four editable theme presets,
+  colors and fonts per section and optional per-link overrides, logo/cover,
+  solid/gradient/image backgrounds, categories and link order, and one featured
+  promotion. Preview before publishing; keep product cards/prices for later.
+  Use existing private media storage, not a new paid customization provider.
 - Separate local draft saving from publishing. Show a shareable URL only after
   the API confirms publication. Support updating and unpublishing; changing a
   published slug invalidates the old URL.
 - Remove editing-minute benefits, quota cards, and top-up promotion from the
   active product. Legacy editing code/API contracts remain for compatibility and
   shared media helpers; historical editing milestones below are not active TODOs.
-- Remaining release gate: deploy the LinkInBioProfile migration and API, then
-  verify publication/opening/unpublishing on the real staging domain and account.
+- The original profile-page migration/API are deployed to Staging. The next
+  release gate is migration `20261005193000_customize_link_in_bio_profile` plus
+  generated client/API/fonts, then image upload, appearance publication,
+  public image access and unpublishing on the real staging domain/account.
   No new social statistics API, custom domain, click tracking, or scheduled-link
   auto-update is required by this first profile-page version.
 

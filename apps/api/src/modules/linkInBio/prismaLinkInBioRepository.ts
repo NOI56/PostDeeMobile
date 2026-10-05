@@ -2,11 +2,13 @@ import {
   type LinkInBioLink, type LinkInBioProfile, type LinkInBioStore,
   type PublishLinkInBioInput, slugTakenError
 } from './linkInBioStore.js';
+import { createDefaultLinkInBioAppearance, normalizeStoredLinkInBioAppearance } from './linkInBioAppearance.js';
 
 type PrismaLinkInBioProfile = {
   storeName: string;
   slug: string;
   links: unknown;
+  appearance?: unknown;
   isPublished: boolean;
   publishedAt: Date | null;
   updatedAt: Date;
@@ -36,6 +38,7 @@ const mapProfile = (profile: PrismaLinkInBioProfile | null): LinkInBioProfile | 
   storeName: profile.storeName,
   slug: profile.slug,
   links: (profile.links as LinkInBioLink[]).map((link) => ({ ...link })),
+  appearance: normalizeStoredLinkInBioAppearance(profile.appearance, profile.links as LinkInBioLink[]),
   isPublished: profile.isPublished,
   publishedAt: profile.publishedAt?.toISOString() ?? null,
   updatedAt: profile.updatedAt.toISOString(),
@@ -54,7 +57,9 @@ export const createPrismaLinkInBioRepository = ({
     const data = { ...input, isPublished: true, publishedAt: timestamp, updatedAt: timestamp };
     try {
       return mapProfile(await prisma.linkInBioProfile.upsert({
-        where: { userId }, create: { userId, ...data }, update: data
+        where: { userId },
+        create: { userId, ...data, appearance: input.appearance ?? createDefaultLinkInBioAppearance() },
+        update: data
       }))!;
     } catch (error) {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {

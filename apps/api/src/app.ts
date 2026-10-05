@@ -22,6 +22,9 @@ import { registerLinkInBioRoutes } from './modules/linkInBio/linkInBioRoutes.js'
 import { createLinkInBioStoreFromConfig } from './modules/linkInBio/linkInBioStoreFactory.js';
 import type { LinkInBioStore } from './modules/linkInBio/linkInBioStore.js';
 import type { PrismaLinkInBioClient } from './modules/linkInBio/prismaLinkInBioRepository.js';
+import { createLinkInBioImageStoreFromConfig, type LinkInBioImageStore, type PrismaLinkInBioImageClient } from './modules/linkInBio/linkInBioImageStore.js';
+import { createLinkInBioImageService } from './modules/linkInBio/linkInBioImageService.js';
+import { registerLinkInBioImageRoutes } from './modules/linkInBio/linkInBioImageRoutes.js';
 import { createAnalyticsStoreFromConfig } from './modules/analytics/analyticsStoreFactory.js';
 import type { AnalyticsStore } from './modules/analytics/analyticsStore.js';
 import type { PrismaAnalyticsClient } from './modules/analytics/prismaAnalyticsRepository.js';
@@ -155,7 +158,7 @@ type AppPrismaClient = PrismaTemplateClient &
   PrismaAiEditUsageClient &
   PrismaDeviceTokenClient &
   PrismaSocialConnectionClient &
-  PrismaUploadSessionClient & Partial<PrismaLinkInBioClient>;
+  PrismaUploadSessionClient & Partial<PrismaLinkInBioClient & PrismaLinkInBioImageClient>;
 
 type AppOptions = {
   config?: ServerConfig;
@@ -167,6 +170,7 @@ type AppOptions = {
   firebaseCertsFetch?: FirebaseCertificatesFetch;
   analyticsStore?: AnalyticsStore;
   linkInBioStore?: LinkInBioStore;
+  linkInBioImageStore?: LinkInBioImageStore;
   captionGenerator?: CaptionGenerator;
   realClipCaptionUsageStore?: RealClipCaptionUsageStore;
   realClipCaptionProvider?: RealClipCaptionProvider;
@@ -559,6 +563,13 @@ export const createApp = (options: AppOptions = {}) => {
     prisma: prismaClient as unknown as Partial<PrismaLinkInBioClient> | undefined,
     now: options.now
   });
+  const linkInBioImageStore = options.linkInBioImageStore ?? createLinkInBioImageStoreFromConfig({
+    postStore: config.postStore,
+    prisma: prismaClient as unknown as Partial<PrismaLinkInBioImageClient> | undefined
+  });
+  const linkInBioImages = createLinkInBioImageService({
+    store: linkInBioImageStore, storage: videoStorage, profiles: linkInBioStore, now: options.now
+  });
   router.use('/auth', authRateLimit);
   router.use('/uploads', uploadRateLimit);
   router.use('/captions', aiRateLimit);
@@ -654,7 +665,12 @@ export const createApp = (options: AppOptions = {}) => {
   );
   registerPublishQueueRoutes(router, accountAwareAuthMiddleware, publishQueue);
   registerTemplateRoutes(router, accountAwareAuthMiddleware, templateStore, userStore);
-  registerLinkInBioRoutes(router, accountAwareAuthMiddleware, linkInBioStore, userStore);
+  registerLinkInBioRoutes(router, accountAwareAuthMiddleware, linkInBioStore, userStore, {
+    withImageMutation: linkInBioImages.withOwnerLock,
+    validateImages: linkInBioImages.validateImages,
+    onPublished: async (userId) => linkInBioImages.prune(userId)
+  });
+  registerLinkInBioImageRoutes(router, accountAwareAuthMiddleware, linkInBioImages, linkInBioStore, userStore, uploadRateLimit);
   registerAnalyticsRoutes(
     router,
     accountAwareAuthMiddleware,
@@ -733,6 +749,7 @@ export const createApp = (options: AppOptions = {}) => {
     aiEditUsageStore,
     deviceTokenStore,
     linkInBioStore,
+    linkInBioImageStore,
     socialConnectionStore,
     postPeerConnectClient,
     userStore,

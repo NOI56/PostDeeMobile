@@ -113,6 +113,39 @@ void main() {
         {'id': 'shop', 'title': 'ร้าน', 'url': 'https://example.com'});
   });
 
+  test('new manual contact icons survive an owner-scoped draft round trip',
+      () async {
+    const store = SharedPreferencesLinkInBioDraftStore(ownerUserId: 'seller');
+    const other = SharedPreferencesLinkInBioDraftStore(ownerUserId: 'other');
+    const contacts = {
+      'messenger': 'https://m.me/shop',
+      'whatsapp': 'https://wa.me/66812345678',
+      'google_maps': 'https://maps.app.goo.gl/shop',
+      'website': 'https://example.com/shop',
+      'email': 'mailto:shop@example.com',
+      'phone': 'tel:+66812345678',
+    };
+    final links = contacts.entries
+        .map((entry) => LinkInBioCustomLink(
+            id: entry.key,
+            title: 'ติดต่อร้าน',
+            url: entry.value,
+            category: 'ติดต่อ',
+            icon: entry.key))
+        .toList();
+    await store.saveDraft(LinkInBioDraft(
+        storeName: 'ร้านของเรา',
+        slug: 'our-shop',
+        autoUpdateFromScheduledPosts: false,
+        enabledLinkIds: contacts.keys.toSet(),
+        customLinks: links));
+    final loaded = (await store.loadDraft())!;
+    expect(loaded.enabledLinkIds, contacts.keys.toSet());
+    expect(loaded.customLinks.map((link) => link.toJson()).toList(),
+        links.map((link) => link.toJson()).toList());
+    expect(await other.loadDraft(), isNull);
+  });
+
   test('a malformed appearance never becomes a silently reset saved design',
       () async {
     SharedPreferences.setMockInitialValues({

@@ -69,16 +69,18 @@ Android emulator checks, with evidence and limits in the same plan. The earlier
 verification above records the manager before this follow-up.
 
 The 2026-10-06 platform-logo follow-up uses the same bundled full-color marks
-for YouTube, Shopee, Lazada, LINE, TikTok, Instagram and Facebook in mobile link
+for YouTube, Shopee, Lazada, LINE, TikTok, Instagram, Facebook, Messenger,
+WhatsApp and Google Maps in mobile link
 cards, the mobile preview and public pages. Marks occupy a transparent 40 x 40 slot.
 Trusted source bounds fit the visible artwork's longest side to 40 and center it,
 preserving its original aspect ratio and colors; this avoids shrinking marks
-with large transparent canvases. All seven platforms have explicit bounds.
-Unrecognized links keep the generic
-link icon. Manual icon selection, URL/title rules and draft/publication behavior
-remain unchanged. The API serves only these seven PNGs at
+with large transparent canvases. All ten platforms have explicit bounds.
+Website, email and telephone destinations use decorative vector icons;
+manual generic-link and brand overrides remain available. Unknown HTTP(S)
+destinations use the website icon. Draft/publication behavior remains unchanged.
+The API serves only these ten PNGs at
 `/profile-platforms/:file` from the page origin under the existing self-only CSP.
-The background correction uses the official transparent YouTube PNG and removes
+The earlier background correction uses the official transparent YouTube PNG and removes
 the added white frame fill; original white elements inside marks stay intact.
 Public YouTube images use `/profile-platforms/youtube.png?v=2` to bypass the
 previous image cache. Other six files are unchanged.
@@ -89,6 +91,26 @@ Deploy the API with `apps/api/assets/profile-platforms` to update existing
 published pages without republishing; this follow-up needs no database migration.
 Verification and delivery status are recorded separately in
 `docs/superpowers/plans/2026-10-06-profile-platform-logos.md`.
+
+The contact expansion recognizes Messenger, WhatsApp and trusted Google Maps
+domains/paths locally, without fetching linked pages or calling an AI/provider.
+Empty titles are suggested as `Messenger`, `WhatsApp`, `Google Maps`,
+`ส่งอีเมล` or `โทรหาร้าน`; custom titles and the hostname fallback remain intact.
+The mobile destination field also accepts a plain email address or a phone
+number (optional `+`, 7–15 digits), then normalizes it to `mailto:` or `tel:`
+before saving/publishing; users do not have to enter those prefixes themselves.
+Alongside existing credential-free HTTP(S), links may use a single plain ASCII
+`mailto:` address without query, fragment, percent encoding or multiple recipients,
+or `tel:` with an optional leading `+` and 7–15 digits. Other URI schemes and
+malformed contact destinations remain rejected. These are outbound contact
+links, not chat, maps, email or telephony integrations. The app lets the visitor's
+installed software handle the selected destination.
+Deploy the updated API/assets before distributing the new mobile build: older
+APIs reject the added icon values and `mailto:`/`tel:` destinations. Existing
+HTTP(S) links and icon values remain valid. This expansion changes the profile
+URL/icon contract but adds no schema, database migration, dependency, package
+benefit, environment flag or paid-provider call. Its verification/release status
+is tracked in the same platform-logo plan; earlier test totals above are historical.
 
 Migration `20261005193000_customize_link_in_bio_profile` adds nullable appearance
 JSON and owner-scoped image metadata. Old profiles use the original cream/green

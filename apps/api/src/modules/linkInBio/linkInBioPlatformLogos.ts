@@ -1,11 +1,12 @@
 import type { LinkInBioIcon } from './linkInBioAppearance.js';
 
-export type LinkInBioBrandIcon = Exclude<LinkInBioIcon, 'auto' | 'link'>;
+export type LinkInBioBrandIcon = Exclude<LinkInBioIcon, 'auto' | 'link' | 'website' | 'email' | 'phone'>;
 
 // Keep artwork paths fixed and bundled; destination URLs never become image URLs.
 export const linkInBioPlatformLogoFiles: Record<LinkInBioBrandIcon, string> = {
   shopee: 'shopee.png', lazada: 'lazada.png', line: 'line.png', tiktok: 'tiktok.png',
-  youtube: 'youtube.png', instagram: 'instagram.png', facebook: 'facebook.png'
+  youtube: 'youtube.png', instagram: 'instagram.png', facebook: 'facebook.png',
+  messenger: 'messenger.png', whatsapp: 'whatsapp.png', google_maps: 'google_maps.png'
 };
 
 // Audited original canvas and nontransparent bounds. Keep source pixels unchanged.
@@ -19,7 +20,10 @@ export const linkInBioPlatformLogoMetrics: Record<LinkInBioBrandIcon, {
   line: { sourceWidth: 1001, sourceHeight: 1000, left: 0, top: 0, width: 1001, height: 1000 },
   tiktok: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 },
   instagram: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 },
-  facebook: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 }
+  facebook: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 },
+  messenger: { sourceWidth: 128, sourceHeight: 128, left: 5, top: 7, width: 117, height: 116 },
+  whatsapp: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 },
+  google_maps: { sourceWidth: 192, sourceHeight: 192, left: 27, top: 8, width: 138, height: 176 }
 };
 
 export const getLinkInBioPlatformLogoGeometry = (icon: LinkInBioBrandIcon, size = 40) => {

@@ -1492,7 +1492,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
       return;
     }
     final title = _titleController.text.trim();
-    final url = _urlController.text.trim();
+    final url = normalizeBioLinkInput(_urlController.text);
     final error = linkInBioLinkError(title, url);
     if (error != null) {
       setState(() => _errorMessage = error);
@@ -1574,8 +1574,11 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                       maxLength: 2048,
                                       keyboardType: TextInputType.url,
                                       decoration: const InputDecoration(
-                                          labelText: 'URL ปลายทาง',
-                                          hintText: 'https://...')),
+                                          labelText: 'ลิงก์หรือช่องทางติดต่อ',
+                                          hintText: 'https://...',
+                                          helperText:
+                                              'วางลิงก์เว็บไซต์ อีเมล หรือเบอร์โทร',
+                                          helperMaxLines: 2)),
                                   ExpansionTile(
                                     key: const ValueKey(
                                         'link-in-bio-link-advanced-disclosure'),
@@ -1621,7 +1624,13 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                               'tiktok': 'TikTok',
                                               'youtube': 'YouTube',
                                               'instagram': 'Instagram',
-                                              'facebook': 'Facebook'
+                                              'facebook': 'Facebook',
+                                              'messenger': 'Messenger',
+                                              'whatsapp': 'WhatsApp',
+                                              'google_maps': 'Google Maps',
+                                              'website': 'เว็บไซต์',
+                                              'email': 'อีเมล',
+                                              'phone': 'โทรศัพท์'
                                             }.entries)
                                               DropdownMenuItem(
                                                   value: entry.key,

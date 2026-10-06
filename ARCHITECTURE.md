@@ -37,9 +37,14 @@ silently assigned to another signed-in account.
 The client constructs a public URL from the configured API origin and the
 validated `/p/:slug` path returned by the server. It never trusts request Host
 headers or a placeholder domain. Public pages expose store names/link titles
-and destinations, not account identifiers, email, tokens, or disabled links.
-All user copy is HTML-escaped, destinations must be absolute HTTP(S) without
-credentials, and outgoing links use noopener/noreferrer. The server does not
+and destinations explicitly published by the owner, not account identifiers,
+authentication email/tokens, or disabled links. Owner-chosen email/telephone
+contact destinations are public. All user copy is HTML-escaped. Destinations
+must be absolute HTTP(S) without credentials, a single plain ASCII `mailto:`
+address without query/fragment/percent encoding or multiple recipients, or
+`tel:` with an optional leading `+` and 7–15 digits. HTTP(S) outgoing links use
+noopener/noreferrer; contact schemes invoke the visitor's handler without a
+new tab. Other schemes and malformed contacts are rejected. The server does not
 fetch destination URLs. A restrictive Content Security Policy and no-store
 responses keep page execution and stale publication state bounded.
 
@@ -62,17 +67,19 @@ under a filename whitelist, with license notices in `apps/api/assets/profile-fon
 Public CSS uses nonce styles, self-only fonts/images, and no scripts.
 
 The 2026-10-06 platform-mark refinement uses byte-identical bundled PNGs for
-YouTube, Shopee, Lazada, LINE, TikTok, Instagram and Facebook in the mobile
+YouTube, Shopee, Lazada, LINE, TikTok, Instagram, Facebook, Messenger, WhatsApp
+and Google Maps in the mobile
 manager/preview and public renderer. Known marks use transparent 40 x 40 slots
-with explicit trusted source bounds for all seven assets. One uniform scale
+with explicit trusted source bounds for all ten assets. One uniform scale
 fits the visible bounds' longest side to 40, then centers them; aspect ratio and
 original colors remain intact, with no hover filter on the artwork. The image
 element may extend beyond its slot to omit transparent source margins; no
 visible colored or white content is clipped. Full-canvas app icons retain
 contain fitting, and all seven original PNG bytes remain unchanged.
 Existing domain recognition and explicit icon overrides select marks; unknown
-links keep the generic fallback. Flutter's shared `BioPlatformLogo` widget
-loads local assets, and public `GET /profile-platforms/:file` serves only seven
+HTTP(S) links use the website vector; mailto/tel use email/phone vectors, while
+manual generic-link overrides remain. Flutter's shared `BioPlatformLogo` widget
+loads local assets, and public `GET /profile-platforms/:file` serves only ten
 allowlisted files from `apps/api/assets/profile-platforms`, independent of
 private profile-image storage. It returns PNG/nosniff with a one-day public
 cache; no vendor URL is fetched and `img-src 'self'` remains unchanged.
@@ -84,9 +91,24 @@ The subsequent normalization changes only display geometry; asset URLs, cache
 policy, authentication and storage boundaries remain unchanged.
 Titles retain the accessible link names, with decorative images excluded from
 semantics. API/assets deployment changes marks on already-published snapshots
-without republishing; there is no schema or publish-contract migration.
+without republishing; there is no database schema migration.
 Provenance, verification and delivery status are recorded in the asset README
 and `docs/superpowers/plans/2026-10-06-profile-platform-logos.md`.
+
+The contact expansion extends the icon allowlist and safe destination schemes;
+its API/assets must be deployed before the new Mobile build, because an older
+API rejects the new values. Existing HTTP(S) destinations, icon values, profile
+storage and appearance snapshots remain compatible. Strict domain/path rules
+recognize Messenger/WhatsApp/Google Maps; Google domains require known map paths,
+and lookalike domains remain website icons. Mobile title suggestions are local,
+preserve custom titles and never fetch metadata or call AI. The mobile destination
+field normalizes a raw single email address or a raw phone number (optional `+`,
+7–15 digits) to an explicit contact scheme before local save and API publication.
+The API accepts only the explicit schemes. Three added brand
+assets are derived from official-source artwork and share the same visible-bound
+geometry used by the original seven. Website/email/phone are code-native vector
+icons, not PNG assets. This adds no provider call, SDK/dependency, environment
+flag, database schema/migration, paid service or account-connection permission.
 
 The mobile profile UI opens an internal link manager for new, unpublished and
 published profiles. Shop identity and separate information/appearance/preview

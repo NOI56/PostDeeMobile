@@ -30,13 +30,14 @@ Build roadmap for PostDee.
   debug build pass, with native Android emulator flow/visual checks complete.
   Evidence and remaining limits are in
   `docs/superpowers/plans/2026-10-06-link-manager-ui.md`.
-- Use original full-color YouTube, Shopee, Lazada, LINE, TikTok, Instagram and
-  Facebook marks in mobile link cards, previews and public pages. Share identical
+- Use original full-color YouTube, Shopee, Lazada, LINE, TikTok, Instagram,
+  Facebook, Messenger, WhatsApp and Google Maps marks in mobile link cards,
+  previews and public pages. Share identical
   bundled PNGs in transparent 40 x 40 slots. Use explicit source bounds for all
-  seven to center visible artwork and fit its longest side to 40 with aspect
-  ratio preserved; retain generic
-  unknown-link icons and manual icon selection. Public `/profile-platforms/:file`
-  serves only the seven known files from the page origin. The background
+  ten to center visible artwork and fit its longest side to 40 with aspect
+  ratio preserved; provide vector website/email/telephone icons and retain
+  manual generic-link and brand overrides. Public `/profile-platforms/:file`
+  serves only the ten known files from the page origin. The earlier background
   correction replaces YouTube's opaque canvas with its official transparent PNG,
   removes added white fills and versions its public URL with `?v=2`; the other
   six files retain their original artwork. The size-normalization follow-up
@@ -45,6 +46,19 @@ Build roadmap for PostDee.
   migration, provider call or package rule; existing published pages use the
   marks after API/assets deployment. Verification and delivery status are in
   `docs/superpowers/plans/2026-10-06-profile-platform-logos.md`.
+- Recognize the three added contact brands from trusted URL domains/paths;
+  suggest names for empty Messenger, WhatsApp, Google Maps, email and telephone
+  links while preserving custom titles and the hostname fallback. Accept a
+  single ASCII `mailto:` address without query/fragment/percent encoding or
+  multiple recipients, and `tel:` with optional `+` followed by 7–15 digits.
+  Let the mobile field accept a plain email or phone number and normalize the
+  contact scheme before saving/publishing; the API accepts explicit schemes.
+  Keep credential-free HTTP(S) and reject other schemes/malformed contacts.
+  Deploy API/assets before Mobile because older APIs reject new icon values
+  and contact schemes. These are outbound links, with no new paid API,
+  integration, dependency, schema or migration; existing seven asset files,
+  draft/publication behavior, 20-link limit and package rights remain unchanged.
+  Verification and release details are appended to the platform-logo plan.
 - Remove editing-minute benefits, quota cards, and top-up promotion from the
   active product. Legacy editing code/API contracts remain for compatibility and
   shared media helpers; historical editing milestones below are not active TODOs.

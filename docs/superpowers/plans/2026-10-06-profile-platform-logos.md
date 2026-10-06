@@ -417,3 +417,189 @@ Release evidence in the same visualization folder:
 `platform-logo-balanced-github-ci.json`,
 `platform-logo-balanced-staging-deploy-snapshot.txt` and
 `platform-logo-balanced-staging-deploy-live.png`.
+
+## Follow-up: add contact brands and destination icons
+
+The user approved adding the recommended Messenger, WhatsApp and Google Maps
+marks, plus website, email and telephone icons, and then requested continuing
+this logo work after an interrupted turn. The resulting set is ten brand PNGs,
+three decorative contact/website vectors, plus the retained manual generic link
+icon and automatic selection. This is an outbound-link enhancement, not an
+integration with those services or a new paid API.
+
+Fresh baseline is `8e97b37` on the canonical
+`D:\PostDeeMobile\.worktrees\recover-main-systems` worktree and
+`codex/pinterest-mobile-ui`. Freshly verified `origin/main` remains `bcd7153`,
+with zero commits behind and seven ahead. Preserve existing untracked
+`artifacts/`, the unrelated dirty root checkout, existing user drafts, published
+profiles, account state and the previous seven marks and release records.
+
+### Assets and display geometry
+
+Add three official-source PNGs in both API and mobile asset folders, with
+byte-identical copies. Their original trademark colors, proportions and white
+details remain intact. Serve only fixed allowlisted filenames from the page
+origin; retain the existing one-day PNG cache, nosniff response, same-origin CSP,
+YouTube `?v=2` URL and the original seven file bytes. No runtime favicon fetching,
+vendor hotlinking, new dependency, tinted brand mark or added white badge.
+
+| Added mark | Official source/preparation | Source canvas | Visible bounds `(x, y, width, height)` |
+| --- | --- | --- | --- |
+| Messenger | `www.messenger.com` HTML's official ICO favicon; highest 128px RGBA frame decoded losslessly to PNG | 128×128 | `(5, 7, 117, 116)` |
+| WhatsApp | `www.whatsapp.com` HTML's official SVG favicon; render at 240px using existing bundled Sharp, preserving paths/colors | 240×240 | `(0, 0, 240, 240)` |
+| Google Maps | `about.google/intl/ALL/products/` official Maps WebP; decode losslessly to PNG | 192×192 | `(27, 8, 138, 176)` |
+
+Full source links and matching API/mobile SHA-256 values are documented in
+`apps/api/assets/profile-platforms/README.md`. The independent asset audit is
+`profile-contact-asset-audit.json` in the existing visualization evidence folder.
+Its bound arrays use `(left, top, right, bottom)`; the table above converts them
+to width/height. Reuse the earlier uniform-scale geometry to center visible
+content in a transparent 40×40 slot and fit its longest side to 40. Website,
+email and telephone use decorative code-native vectors beside accessible link
+titles, not added brand PNGs.
+
+### Destination and title contract
+
+- Preserve absolute credential-free HTTP(S). Extend safe destinations to one
+  ASCII `mailto:` address without query, fragment, percent encoding or multiple
+  recipients, and `tel:` with optional leading `+` followed by 7–15 digits.
+  Reject malformed addresses/numbers, extensions, dial-control characters,
+  empty contacts and other URI schemes before mutating the published profile.
+- The mobile input accepts a plain single email address or raw phone number
+  with those digit rules, then normalizes it to `mailto:`/`tel:` before local
+  save and API publication. Users need not type a contact scheme. Do not infer
+  an HTTP scheme for website strings or normalize formatted phone numbers.
+- Recognize Messenger from `m.me`/`messenger.com` and their subdomains, plus
+  Facebook `/messages` paths. Recognize WhatsApp from `wa.me`/`whatsapp.com`
+  and their subdomains. Match Google Maps using exact `google.com`,
+  `www.google.com`, `google.co.th`, `www.google.co.th` hosts with the `/maps`
+  path family, or `maps.google.com`, `maps.google.co.th`, `maps.app.goo.gl`,
+  or `goo.gl` with the `/maps` path family. Lookalike hosts, arbitrary Google
+  subdomains and non-map paths must not select a brand mark.
+- Automatic fallback for unrecognized HTTP(S) is website; safe `mailto:` and
+  `tel:` choose email and telephone icons. Retain explicit manual `link` and
+  brand overrides. Extend the icon enum with `messenger`, `whatsapp`,
+  `google_maps`, `website`, `email` and `phone`.
+- Empty-title suggestions add `Messenger`, `WhatsApp`, `Google Maps`,
+  `ส่งอีเมล` and `โทรหาร้าน`. Generated titles follow destination changes until
+  a custom title is entered; retain custom/saved titles and hostname fallback.
+  Rules run locally without metadata fetching or AI calls.
+- Public HTTP(S) destinations keep noopener/noreferrer. Email and telephone
+  links invoke the visitor's configured handler without opening another tab.
+  A public contact address/number is explicitly chosen by the owner; account
+  authentication email, account IDs, tokens and disabled links remain private.
+
+Deploy the updated API/assets before distributing the new Mobile build: older
+APIs reject new icon values and contact schemes. Existing icon values, HTTP(S)
+links, appearance snapshots and owner-scoped storage remain compatible. No
+schema, database migration, environment/feature flag, package rule, dependency,
+paid-provider call or connection permission is added. Preserve the 20-link
+limit, draft/review/publish/unpublish actions and previously published pages.
+
+### Contact expansion changed files
+
+The feature changes only the following 28 files; existing untracked `artifacts/`
+and unrelated root-checkout work are excluded:
+
+| Directory | Files |
+| --- | --- |
+| Repository root | `README.md`, `ROADMAP.md`, `API.md`, `ARCHITECTURE.md` |
+| `docs/superpowers/plans` | `2026-10-06-profile-platform-logos.md` |
+| `apps/api/assets/profile-platforms` | `README.md`, `messenger.png`, `whatsapp.png`, `google_maps.png` |
+| `apps/mobile/assets/images/platforms` | `messenger.png`, `whatsapp.png`, `google_maps.png` |
+| `apps/api/src/modules/linkInBio` | `linkInBioAppearance.ts`, `linkInBioDestinations.ts`, `linkInBioPlatformLogos.ts`, `linkInBioRenderer.ts`, `linkInBioRoutes.ts`, `linkInBioPlatformLogos.test.ts`, `linkInBioContacts.test.ts` |
+| `apps/mobile/lib/core/models` | `link_in_bio_appearance.dart` |
+| `apps/mobile/lib/features/link_in_bio` | `link_in_bio_link_defaults.dart`, `link_in_bio_platform_logo.dart`, `link_in_bio_screen.dart`, `link_in_bio_validation.dart` |
+| `apps/mobile/test` | `link_in_bio_auto_title_test.dart`, `link_in_bio_draft_store_test.dart`, `link_in_bio_platform_logo_test.dart`, `link_in_bio_contacts_test.dart` |
+
+### Contact expansion verification and delivery
+
+Tests were written before implementation. At the verified baseline, the new API
+contact tests recorded 19 failures and 15 passes; the new mobile contact tests
+recorded eight failures and one pass. These failures establish missing
+contact-brand recognition and URI/icon support before implementation.
+
+Verification recorded for this contact expansion so far:
+
+- API targeted suites pass 217/217 across seven files; the complete API suite
+  passes 1,280/1,280 across 98 files. Build, Prisma validation, Prisma helper
+  type-check and modified-source/test type-check pass. No database migration
+  or schema change is required. Production dependency audit exits successfully
+  at the high-severity threshold; four existing moderate findings remain and
+  no dependency change was made.
+- The complete Flutter suite passes 1,185/1,185, including the exact-host
+  `goo.gl` domain-parity regression. Flutter analyze reports no issues, and the
+  exact Staging debug APK builds successfully. The build uses the existing
+  `https://postdee-api-staging.onrender.com` API origin with Firebase authentication
+  enabled, local mock authentication and RevenueCat billing disabled, and
+  experimental beat-sync/AI-hook flags disabled.
+- Six compiled local-browser checks pass for 700px desktop and 393px mobile
+  widths. The full fixture covers ten bundled brand PNGs plus three decorative
+  vectors; the new-brand fixture and safety/manual-override fixture are checked
+  at both widths. PNG alpha bounds establish a centered longest visible side
+  of 40 with original proportions, and API/mobile copies match byte-for-byte.
+  There is no added white badge, tint, horizontal overflow, page error,
+  relevant console error or HTTP failure. Screenshots cover all 13 destinations
+  and the three added brands at both widths.
+- An actual Messenger-logo click opens the expected isolated popup with an
+  entirely local intercepted response and null opener. Email/telephone link
+  hit targets use trial-click checks only; no external application, email or
+  telephone call is launched. This does not verify a visitor's installed
+  handlers or those services' account availability.
+
+The browser fixture runs actual compiled product routes and a local memory
+repository. It does not proxy or inspect the remote Staging page. Browser plugin
+tools are unavailable, so these checks use the existing bundled Playwright
+Chromium runtime without adding a dependency.
+
+The exact APK was installed with data preserved on `emulator-5554`, Android
+API 34, package `com.postdee.postdee_mobile.staging`. Firebase project remains
+`project-798caf7e-85b8-45e3-af7` with real Firebase authentication enabled and the
+preceding billing/mock/experimental flags unchanged. Built and installed-base
+APK SHA-256 both equal:
+
+`34B94F5511A6322D827E1779C485B83EB3C5DB4032D3B46FD9CBD78C711C1ED6`.
+
+Native smoke checks entered three HTTPS contact-brand destinations, a raw
+email address and a raw phone number in the actual link sheet. Automatic
+titles were `Messenger`, `WhatsApp`, `Google Maps`, `ส่งอีเมล` and `โทรหาร้าน`.
+Five temporary links existed only in memory; the preview displayed the existing
+Shopee mark plus the three new marks and the email/phone vectors. No cloud
+publish, draft save, external call or email action was performed. A force-stop
+discarded those temporary links. Restarting restored the existing published
+`noikub` manager with two draft entries, YouTube disabled and Shopee enabled.
+The original account, visibility state and draft content were preserved.
+
+SharedPreferences SHA-256 was identical before installation, after installation
+and after the unsaved smoke test:
+
+`3A3C91D727B12AD8A14B0CE7CBB6425264083E38B586BC69827F7705A6546235`.
+
+The restarted app's current logcat contains no matching Flutter exception,
+asset-load failure, fatal error or layout overflow. Full-platform visual
+coverage comes from pixel/widget and local-browser fixtures; the native check
+adds the three contact brands and two vectors without changing customer data.
+
+Evidence in the existing visualization folder uses the `profile-contact-*`
+prefix:
+
+| Evidence | Result |
+| --- | --- |
+| `profile-contact-api-red.log`, `profile-contact-mobile-red.log` | New behavior fails before implementation. |
+| `profile-contact-api-targeted.log`, `profile-contact-api-full.log` | 217 targeted and 1,280 complete API tests pass. |
+| `profile-contact-api-build.log`, `profile-contact-api-prisma.log`, `profile-contact-api-helper-types.log`, `profile-contact-api-modified-types.log` | Build, schema validation and type checks pass. |
+| `profile-contact-api-audit.log` | High-threshold production audit passes; four existing moderate findings remain. |
+| `profile-contact-mobile-full.log`, `profile-contact-mobile-analyze.log` | 1,185 complete Flutter tests pass; analysis reports no issues. |
+| `profile-contact-mobile-build.log` | Exact Staging debug APK builds successfully. |
+| `profile-contact-native-before.json`, `profile-contact-native-installed.json`, `profile-contact-native-after.json` | Built/installed APK match and original preferences remain unchanged. |
+| `profile-contact-native-new.png`, `profile-contact-native-manager.png`, `profile-contact-native-logcat.log` | New-brand/vector native preview, restored original manager and clean runtime scan. |
+| `profile-contact-browser-result.json` | Six local compiled-browser checks pass, with no console/page/HTTP issue. |
+| `profile-contact-web-all-desktop.png`, `profile-contact-web-all-mobile.png`, `profile-contact-web-new-desktop.png`, `profile-contact-web-new-mobile.png` | Full 13-destination and new-brand desktop/mobile visual evidence. |
+| `profile-contact-asset-audit.json` | Independent source alpha bounds, dimensions and asset byte parity. |
+
+Push, CI and Staging deployment for this contact expansion remain pending; do
+not infer them from earlier seven-logo releases. Saved browser permissions still
+block live public Staging page/asset access. The allowed Render Dashboard can
+verify deployment status; no alternate access path may be used to bypass the
+public-page block. Physical devices, iOS, API 36 and Production remain outside
+the current checks.

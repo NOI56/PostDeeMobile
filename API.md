@@ -40,7 +40,7 @@ LinkInBioProfile migration; memory mode is development-only scaffolding.
 | `GET /link-in-bio/image?key=...` | Required | Preview an image belonging to the current account |
 | `GET /p/:slug/images/:slot` | Public | Serve only the current published logo, cover, or background image |
 | `GET /profile-fonts/:file` | Public | Serve a whitelisted bundled font |
-| `GET /profile-platforms/:file` | Public | Serve one of seven allowlisted bundled platform PNGs |
+| `GET /profile-platforms/:file` | Public | Serve one of ten allowlisted bundled platform PNGs |
 
 Publish body:
 
@@ -55,9 +55,24 @@ Publish body:
 `storeName` and each link title are trimmed, 1–80 characters. The slug is
 trimmed/lowercased ASCII, 3–40 characters, using letters/numbers and internal
 hyphens. Publish accepts 1–20 links, each with a unique nonempty id up to 80
-characters. URLs are absolute HTTP(S), up to 2048 characters, without embedded
-credentials; javascript/data/file links are rejected. The server does not fetch
-linked sites. Only enabled custom links are sent by the app.
+characters. Destinations are up to 2048 characters: absolute HTTP(S) without
+embedded credentials, a safe plain `mailto:` address, or a safe `tel:` number.
+`mailto:` accepts one ASCII email address, without query, fragment, percent
+encoding or multiple recipients; malformed address/domain syntax is rejected.
+The address is at most 254 characters. Its local part is 1–64 letters, digits,
+periods, underscores, pluses or hyphens, without leading/trailing/consecutive
+periods; domain labels are 1–63 letters/digits with internal hyphens, and a
+2–63-letter final suffix is required.
+`tel:` accepts only an optional leading `+` and 7–15 digits; spaces, separators,
+extensions, percent encoding and dial-control characters are rejected. Empty
+contacts and other schemes, including javascript/data/file/sms, are rejected
+before changing the published snapshot. The server does not fetch linked sites.
+The mobile destination field normalizes a plain email address or a phone number
+to `mailto:` or `tel:` before saving/publishing; the API itself accepts the
+explicit schemes, not raw email/telephone strings. Only enabled custom links
+are sent by the app. HTTP(S) opens with
+noopener/noreferrer; email/phone links invoke the visitor's installed handler
+without opening a new browser tab.
 
 Success uses `{ "status": "ok", "profile": ... }`. Profile contains
 `storeName`, `slug`, `links`, `isPublished`, nullable `publishedAt`, `updatedAt`,
@@ -76,7 +91,7 @@ state before subsequent publication actions.
 ### Customization (all packages)
 
 Each link optionally adds `category` (0–60 characters), `icon`
-(`auto|link|shopee|lazada|line|tiktok|youtube|instagram|facebook`), `font`,
+(`auto|link|website|email|phone|shopee|lazada|line|tiktok|youtube|instagram|facebook|messenger|whatsapp|google_maps`), `font`,
 `textColor` and `buttonColor`. The array remains the display order; only enabled
 links are published. Optional per-link styles override the corresponding page
 style. Fonts are `anuphan|prompt|system`; colors are exact `#RRGGBB` values.
@@ -150,35 +165,57 @@ or new paid provider in this contract.
 
 `GET /profile-platforms/:file` requires no authentication and accepts only
 `youtube.png`, `shopee.png`, `lazada.png`, `line.png`, `tiktok.png`,
-`instagram.png` and `facebook.png`. Successful responses use `image/png`,
+`instagram.png`, `facebook.png`, `messenger.png`, `whatsapp.png` and
+`google_maps.png`. Successful responses use `image/png`,
 `X-Content-Type-Options: nosniff` and `Cache-Control: public, max-age=86400`;
 unknown filenames return 404. These files are fixed bundled assets, independent
 of owner-uploaded profile images and their private storage provider. The route
 does not fetch destination URLs or third-party favicons.
 
-The renderer selects a known mark using the existing explicit `icon` value or
-recognized destination-domain rules; unknown links and explicit `icon: "link"`
-retain the generic icon. Brand images are decorative beside the existing link
+The renderer selects a known mark using an explicit `icon` value or
+recognized destination-domain rules. Automatic HTTP(S) destinations outside
+those rules use the website vector icon; `mailto:` and `tel:` use email and phone
+vectors. Explicit `icon: "link"` retains the generic icon, and manual brand
+overrides remain available. Brand images are decorative beside the existing link
 title and use a transparent 40 x 40 slot without recoloring. Explicit trusted
-source bounds for all seven marks fit the visible artwork's longest side to 40
+source bounds for all ten marks fit the visible artwork's longest side to 40
 and center it while preserving its original aspect ratio. Larger image elements
 may extend beyond the slot to omit transparent canvas margins; visible artwork
 is never clipped. Full-canvas app icons retain contain sizing.
-The page's `img-src 'self'` CSP remains unchanged. Publish requests/responses,
-appearance fields, owner scope and URL validation are unchanged.
+The page's `img-src 'self'` CSP remains unchanged. Existing appearance fields,
+owner scope and publication semantics are retained; the contact expansion adds
+the icon values and safe destination schemes documented above.
 
-The background correction uses the original transparent official YouTube PNG.
+Automatic contact-brand detection uses strict host/path matching, not substring
+matching: Messenger accepts `m.me`, `messenger.com` and their subdomains, plus
+Facebook's `/messages` path family; WhatsApp accepts `wa.me`, `whatsapp.com` and
+their subdomains. Google Maps accepts the `/maps` path family on exact hosts
+`google.com`, `www.google.com`, `google.co.th` and `www.google.co.th`, plus
+`maps.google.com`, `maps.google.co.th`, `maps.app.goo.gl`, and the `/maps` path
+family on `goo.gl`. Arbitrary Google subdomains, non-map Google paths and
+lookalike hosts do not select brand
+artwork. These are local destination rules; no third-party metadata is fetched.
+The mobile empty-title suggestions add `Messenger`, `WhatsApp`, `Google Maps`,
+`ส่งอีเมล` and `โทรหาร้าน`, retaining custom titles and hostname fallback.
+
+The earlier seven-mark background correction uses the original transparent official YouTube PNG.
 Its renderer URL is `/profile-platforms/youtube.png?v=2`, bypassing the prior
-one-day image cache without changing the seven-filename allowlist. The other six
-files are unchanged. Only the added white frame fill is removed; white artwork
+one-day image cache without changing that release's seven-filename allowlist.
+The other six files were unchanged. Only the added white frame fill is removed; white artwork
 that belongs to a platform mark is retained.
-The size-normalization follow-up changes rendering geometry only, preserving all
-seven PNG bytes, asset URLs, filename allowlist and response/cache headers.
+The earlier size-normalization follow-up changed rendering geometry only,
+preserving all seven PNG bytes, asset URLs, filename allowlist and response/cache
+headers. The contact expansion adds three filenames to make the current
+ten-file allowlist; the original seven assets/URLs and all cache headers remain.
 
 Deploy the updated API with `apps/api/assets/profile-platforms` before expecting
 new marks on the public site. Existing published profiles need no republish;
-this follow-up requires no schema change or migration. Mobile uses byte-identical
-local assets, with provenance and parity recorded in that asset folder's README.
+these follow-ups require no schema change or migration. Deploy the contact
+expansion's API/assets before distributing Mobile: older APIs reject the added
+icon enum values and `mailto:`/`tel:` URLs. Existing HTTP(S) payloads and icon
+values remain accepted. Mobile uses byte-identical local assets, with provenance
+and parity recorded in that asset folder's README. No chat/maps/email/telephone
+provider integration or paid API is added.
 
 ## Mobile Request Deadlines
 

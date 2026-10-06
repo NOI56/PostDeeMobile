@@ -8,6 +8,7 @@ import { LinkInBioError, type LinkInBioLink, type LinkInBioProfile, type LinkInB
 import { linkInBioFonts, linkInBioIcons, normalizeStoredLinkInBioAppearance, readLinkInBioAppearance, readLinkInBioColor, type LinkInBioAppearance, type LinkInBioFont, type LinkInBioIcon } from './linkInBioAppearance.js';
 import { renderLinkInBioPage } from './linkInBioRenderer.js';
 import { linkInBioPlatformLogoFiles } from './linkInBioPlatformLogos.js';
+import { readLinkInBioUrl } from './linkInBioDestinations.js';
 
 export type LinkInBioRouteOptions = {
   validateImages?: (userId: string, appearance: LinkInBioAppearance) => Promise<void>;
@@ -20,19 +21,6 @@ const readText = (value: unknown, maximum: number) => {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 && trimmed.length <= maximum ? trimmed : undefined;
-};
-const readUrl = (value: unknown) => {
-  if (typeof value !== 'string' || /[\u0000-\u001f\u007f]/.test(value)) return undefined;
-  const url = value.trim();
-  if (url.length > 2048 || !/^https?:\/\//i.test(url) || /\s/.test(url)) return undefined;
-  try {
-    const parsed = new URL(url);
-    if (!parsed.hostname || parsed.username || parsed.password || !['https:', 'http:'].includes(parsed.protocol)) return undefined;
-    const normalized = parsed.href;
-    return normalized.length <= 2048 ? normalized : undefined;
-  } catch {
-    return undefined;
-  }
 };
 
 const readPublishInput = (body: unknown) => {
@@ -47,7 +35,7 @@ const readPublishInput = (body: unknown) => {
     if (typeof item !== 'object' || item === null) return undefined;
     const id = readText(item.id, 80);
     const title = readText(item.title, 80);
-    const url = readUrl(item.url);
+    const url = readLinkInBioUrl(item.url);
     if (!id || !title || !url || ids.has(id)) return undefined;
     ids.add(id);
     const link: LinkInBioLink = { id, title, url };

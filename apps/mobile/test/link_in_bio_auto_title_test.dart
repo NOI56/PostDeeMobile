@@ -4,6 +4,7 @@ import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_link_defaults.dart';
+import 'package:postdee_mobile/features/link_in_bio/link_in_bio_preview.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -102,6 +103,134 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await _mount(tester);
     expect(find.text('Shopee'), findsOneWidget);
+  });
+
+  for (final entry in const {
+    'https://m.me/shop': ('Messenger', 'messenger'),
+    'https://wa.me/66812345678': ('WhatsApp', 'whatsapp'),
+    'https://maps.app.goo.gl/shop': ('Google Maps', 'google_maps'),
+    'mailto:shop@example.com': ('ส่งอีเมล', 'email'),
+    'tel:+66812345678': ('โทรหาร้าน', 'phone'),
+  }.entries) {
+    testWidgets('${entry.value.$2} URL-only link survives saving and reopening',
+        (tester) async {
+      await _addSheet(tester);
+      await _enterUrl(tester, entry.key);
+      expect(_titleText(tester), entry.value.$1);
+      await tapBioControl(tester, 'link-in-bio-link-save');
+      expect(
+          find.byKey(const ValueKey('link-in-bio-link-sheet')), findsNothing);
+      await tapBioControl(tester, 'link-in-bio-save');
+      final saved = (await _store.loadDraft())!.customLinks.single;
+      expect(saved.title, entry.value.$1);
+      expect(saved.url, entry.key);
+      expect(bioIconId(saved), entry.value.$2);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _mount(tester);
+      expect(find.text(entry.value.$1), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final entry in const {
+    'shop@example.com': ('ส่งอีเมล', 'mailto:shop@example.com', 'email'),
+    '0812345678': ('โทรหาร้าน', 'tel:0812345678', 'phone'),
+  }.entries) {
+    testWidgets('plain ${entry.value.$3} is named and saved as a contact link',
+        (tester) async {
+      await _addSheet(tester);
+      await _enterUrl(tester, entry.key);
+      expect(_titleText(tester), entry.value.$1);
+      await tapBioControl(tester, 'link-in-bio-link-save');
+      expect(
+          find.byKey(const ValueKey('link-in-bio-link-sheet')), findsNothing);
+      await tapBioControl(tester, 'link-in-bio-save');
+      final saved = (await _store.loadDraft())!.customLinks.single;
+      expect(saved.title, entry.value.$1);
+      expect(saved.url, entry.value.$2);
+      expect(bioIconId(saved), entry.value.$3);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _mount(tester);
+      expect(find.text(entry.value.$1), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('contact URLs preserve a title written by the user',
+      (tester) async {
+    await _addSheet(tester);
+    await tester.enterText(_title, 'ติดต่อร้านของเรา');
+    for (final url in [
+      'https://m.me/shop',
+      'https://wa.me/66812345678',
+      'https://maps.app.goo.gl/shop',
+      'mailto:shop@example.com',
+      'tel:+66812345678',
+      'shop@example.com',
+      '0812345678',
+    ]) {
+      await _enterUrl(tester, url);
+      expect(_titleText(tester), 'ติดต่อร้านของเรา', reason: url);
+    }
+    await tapBioControl(tester, 'link-in-bio-link-save');
+    await tapBioControl(tester, 'link-in-bio-save');
+    final saved = (await _store.loadDraft())!.customLinks.single;
+    expect(saved.title, 'ติดต่อร้านของเรา');
+    expect(saved.url, 'tel:0812345678');
+  });
+
+  testWidgets(
+      'advanced icon choices include all contacts and persist overrides',
+      (tester) async {
+    await _addSheet(tester);
+    await _enterUrl(tester, 'https://example.com/shop');
+    await tapBioControl(tester, 'link-in-bio-link-advanced');
+    final iconField = find.byKey(const ValueKey('link-in-bio-link-icon'));
+    await showBioControl(tester, iconField);
+    final dropdown = find.descendant(
+        of: iconField, matching: find.byType(DropdownButton<String>));
+    final choices = tester.widget<DropdownButton<String>>(dropdown).items!;
+    expect(
+        choices.map((item) => item.value),
+        containsAll([
+          'auto',
+          'link',
+          'youtube',
+          'shopee',
+          'lazada',
+          'line',
+          'tiktok',
+          'instagram',
+          'facebook',
+          'messenger',
+          'whatsapp',
+          'google_maps',
+          'website',
+          'email',
+          'phone',
+        ]));
+    await tester.tap(iconField);
+    await tester.pumpAndSettle();
+    final messenger = find.text('Messenger').last;
+    await tester.ensureVisible(messenger);
+    await tester.tap(messenger);
+    await tester.pumpAndSettle();
+    await tapBioControl(tester, 'link-in-bio-link-save');
+    await tapBioControl(tester, 'link-in-bio-save');
+    final saved = (await _store.loadDraft())!.customLinks.single;
+    expect(saved.url, 'https://example.com/shop');
+    expect(saved.title, 'example.com');
+    expect(saved.icon, 'messenger');
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _mount(tester);
+    expect(
+        find.byWidgetPredicate((widget) =>
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName ==
+                'assets/images/platforms/messenger.png'),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('generated title follows URL changes and clears for invalid URL',

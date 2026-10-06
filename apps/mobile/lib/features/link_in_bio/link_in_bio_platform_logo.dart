@@ -12,6 +12,12 @@ const _platformArtwork = <String, ({Size source, Rect bounds})>{
   'tiktok': (source: Size(240, 240), bounds: Rect.fromLTWH(0, 0, 240, 240)),
   'instagram': (source: Size(240, 240), bounds: Rect.fromLTWH(0, 0, 240, 240)),
   'facebook': (source: Size(240, 240), bounds: Rect.fromLTWH(0, 0, 240, 240)),
+  'messenger': (source: Size(128, 128), bounds: Rect.fromLTWH(5, 7, 117, 116)),
+  'whatsapp': (source: Size(240, 240), bounds: Rect.fromLTWH(0, 0, 240, 240)),
+  'google_maps': (
+    source: Size(192, 192),
+    bounds: Rect.fromLTWH(27, 8, 138, 176)
+  ),
 };
 
 String? bioPlatformLogoAsset(String icon) => switch (icon) {
@@ -21,7 +27,10 @@ String? bioPlatformLogoAsset(String icon) => switch (icon) {
       'line' ||
       'tiktok' ||
       'instagram' ||
-      'facebook' =>
+      'facebook' ||
+      'messenger' ||
+      'whatsapp' ||
+      'google_maps' =>
         'assets/images/platforms/$icon.png',
       _ => null,
     };
@@ -48,8 +57,15 @@ class BioPlatformLogo extends StatelessWidget {
             ? artwork.bounds.width
             : artwork.bounds.height;
     final scale = size / extent;
-    Widget fallback() =>
-        Icon(Icons.link, size: size * .6, color: fallbackColor);
+    Widget fallback() => Icon(
+        switch (icon) {
+          'website' => Icons.language,
+          'email' => Icons.mail_outline,
+          'phone' => Icons.phone_outlined,
+          _ => Icons.link,
+        },
+        size: size * .6,
+        color: fallbackColor);
     return Container(
       width: size,
       height: size,

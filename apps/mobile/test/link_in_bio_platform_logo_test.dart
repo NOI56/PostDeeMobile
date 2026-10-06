@@ -28,6 +28,14 @@ const _links = [
       id: 'instagram', title: 'รูปสินค้า', url: 'https://instagram.com/shop'),
   LinkInBioCustomLink(
       id: 'facebook', title: 'เพจร้าน', url: 'https://fb.me/shop'),
+  LinkInBioCustomLink(
+      id: 'messenger', title: 'แชตกับร้าน', url: 'https://m.me/shop'),
+  LinkInBioCustomLink(
+      id: 'whatsapp', title: 'ติดต่อร้าน', url: 'https://wa.me/66812345678'),
+  LinkInBioCustomLink(
+      id: 'google_maps',
+      title: 'เส้นทางไปร้าน',
+      url: 'https://maps.app.goo.gl/shop'),
 ];
 
 Finder _asset(String id) => find.byWidgetPredicate((widget) =>
@@ -212,8 +220,28 @@ void main() {
     for (final link in _links) {
       expect(_asset(link.id), findsNothing);
     }
+    expect(find.byIcon(Icons.language), findsNWidgets(2));
     expect(find.text('เว็บไซต์'), findsOneWidget);
     expect(find.text('อีกเว็บไซต์'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('preview automatically shows website email and phone symbols',
+      (tester) async {
+    await _preview(tester, const [
+      LinkInBioCustomLink(
+          id: 'website',
+          title: 'เว็บไซต์ร้าน',
+          url: 'https://example.com/shop'),
+      LinkInBioCustomLink(
+          id: 'email', title: 'ส่งอีเมล', url: 'mailto:shop@example.com'),
+      LinkInBioCustomLink(
+          id: 'phone', title: 'โทรหาร้าน', url: 'tel:+66812345678'),
+    ]);
+    expect(find.byIcon(Icons.language), findsOneWidget);
+    expect(find.byIcon(Icons.mail_outline), findsOneWidget);
+    expect(find.byIcon(Icons.phone_outlined), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

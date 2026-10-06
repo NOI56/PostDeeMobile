@@ -1,6 +1,7 @@
-import { linkInBioFonts, normalizeStoredLinkInBioAppearance, readLinkInBioColor, type LinkInBioFont, type LinkInBioIcon, type LinkInBioTextStyle } from './linkInBioAppearance.js';
-import type { LinkInBioLink, LinkInBioProfile } from './linkInBioStore.js';
+import { linkInBioFonts, normalizeStoredLinkInBioAppearance, readLinkInBioColor, type LinkInBioFont, type LinkInBioTextStyle } from './linkInBioAppearance.js';
+import type { LinkInBioProfile } from './linkInBioStore.js';
 import { getLinkInBioPlatformLogoGeometry, linkInBioPlatformLogoFiles, type LinkInBioBrandIcon } from './linkInBioPlatformLogos.js';
+import { readLinkInBioUrl, resolveLinkInBioIcon } from './linkInBioDestinations.js';
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -12,18 +13,12 @@ const platformLogoStyles = (Object.keys(linkInBioPlatformLogoFiles) as LinkInBio
   const geometry = getLinkInBioPlatformLogoGeometry(icon);
   return `.platform-icon[data-icon="${icon}"] img{width:${cssNumber(geometry.width)}px;height:${cssNumber(geometry.height)}px;left:${cssNumber(geometry.left)}px;top:${cssNumber(geometry.top)}px}`;
 }).join('\n');
-const resolveIcon = (link: LinkInBioLink): Exclude<LinkInBioIcon, 'auto'> => {
-  if (link.icon === 'link') return 'link';
-  if (link.icon && link.icon !== 'auto' && Object.hasOwn(linkInBioPlatformLogoFiles, link.icon)) return link.icon;
-  let host: string;
-  try { host = new URL(link.url).hostname.toLowerCase(); } catch { return 'link'; }
-  const domains: [Exclude<LinkInBioIcon, 'auto'>, string[]][] = [
-    ['shopee', ['shopee.co.th', 'shopee.com', 'shope.ee']], ['lazada', ['lazada.co.th', 'lazada.com', 's.lazada.co.th']],
-    ['line', ['line.me', 'lin.ee']], ['tiktok', ['tiktok.com']], ['youtube', ['youtube.com', 'youtu.be']],
-    ['instagram', ['instagram.com']], ['facebook', ['facebook.com', 'fb.com', 'fb.me']]
-  ];
-  return domains.find(([, values]) => values.some((domain) => host === domain || host.endsWith(`.${domain}`)))?.[0] ?? 'link';
-};
+const contactVectors = {
+  website: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a16 16 0 0 1 0 18 16 16 0 0 1 0-18Z"/>',
+  email: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/>',
+  phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.69 2.79a2 2 0 0 1-.45 2.11L8.09 9.89a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.33 1.84.56 2.8.69A2 2 0 0 1 22 16.92Z"/>'
+} as const;
+const contactVector = (icon: keyof typeof contactVectors) => `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">${contactVectors[icon]}</svg>`;
 
 export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) => {
   const appearance = normalizeStoredLinkInBioAppearance(profile.appearance, profile.links);
@@ -48,11 +43,15 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
     const heading = category && category !== currentCategory ? `<li class="category">${escapeHtml(category)}</li>` : '';
     currentCategory = category;
     const featured = link.id === appearance.featuredLinkId;
-    const icon = resolveIcon(link);
+    const icon = resolveLinkInBioIcon(link);
     // The transparent YouTube replacement must not reuse the old one-day image cache.
     const revision = icon === 'youtube' ? '?v=2' : '';
-    const logo = icon === 'link' ? '↗' : `<img src="/profile-platforms/${linkInBioPlatformLogoFiles[icon]}${revision}" width="40" height="40" alt="">`;
-    return `${heading}<li><a class="link-${index}${featured ? ' featured' : ''}" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer"><span class="platform-icon${icon === 'link' ? '' : ' brand-logo'}" data-icon="${icon}" aria-hidden="true">${logo}</span><span class="link-copy">${featured && appearance.featuredLabel ? `<span class="featured-label">${escapeHtml(appearance.featuredLabel)}</span>` : ''}<span>${escapeHtml(link.title)}</span></span><span class="arrow" aria-hidden="true">↗</span></a></li>`;
+    const isBrand = Object.hasOwn(linkInBioPlatformLogoFiles, icon);
+    const logo = isBrand ? `<img src="/profile-platforms/${linkInBioPlatformLogoFiles[icon as LinkInBioBrandIcon]}${revision}" width="40" height="40" alt="">`
+      : icon === 'link' ? '↗' : contactVector(icon as keyof typeof contactVectors);
+    const destination = readLinkInBioUrl(link.url);
+    const target = destination?.startsWith('mailto:') || destination?.startsWith('tel:') ? '' : ' target="_blank" rel="noopener noreferrer"';
+    return `${heading}<li><a class="link-${index}${featured ? ' featured' : ''}" href="${escapeHtml(destination ?? link.url)}"${target}><span class="platform-icon${isBrand ? ' brand-logo' : ''}" data-icon="${icon}" aria-hidden="true">${logo}</span><span class="link-copy">${featured && appearance.featuredLabel ? `<span class="featured-label">${escapeHtml(appearance.featuredLabel)}</span>` : ''}<span>${escapeHtml(link.title)}</span></span><span class="arrow" aria-hidden="true">↗</span></a></li>`;
   }).join('');
   return `<!doctype html>
 <html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

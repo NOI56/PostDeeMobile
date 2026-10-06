@@ -9,6 +9,12 @@ const linkInBioIcons = {
   'youtube',
   'instagram',
   'facebook',
+  'messenger',
+  'whatsapp',
+  'google_maps',
+  'website',
+  'email',
+  'phone',
 };
 const _unset = Object();
 final _hexColor = RegExp(r'^#[0-9a-fA-F]{6}$');

@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import express, { type RequestHandler } from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
@@ -13,7 +14,10 @@ const platforms = [
   ['line', 'https://lin.ee/shop'],
   ['tiktok', 'https://www.tiktok.com/@shop'],
   ['instagram', 'https://www.instagram.com/shop'],
-  ['facebook', 'https://fb.me/shop']
+  ['facebook', 'https://fb.me/shop'],
+  ['messenger', 'https://m.me/shop'],
+  ['whatsapp', 'https://wa.me/66812345678'],
+  ['google_maps', 'https://maps.app.goo.gl/shop']
 ] as const;
 // Independently audited source canvas and nontransparent content bounds.
 const contentMetrics = {
@@ -23,7 +27,10 @@ const contentMetrics = {
   line: { sourceWidth: 1001, sourceHeight: 1000, left: 0, top: 0, width: 1001, height: 1000 },
   tiktok: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 },
   instagram: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 },
-  facebook: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 }
+  facebook: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 },
+  messenger: { sourceWidth: 128, sourceHeight: 128, left: 5, top: 7, width: 117, height: 116 },
+  whatsapp: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 },
+  google_maps: { sourceWidth: 192, sourceHeight: 192, left: 27, top: 8, width: 138, height: 176 }
 } as const;
 const profile = (links: LinkInBioLink[]): LinkInBioProfile => ({
   storeName: 'ร้าน', slug: 'shop', links, isPublished: true,
@@ -88,7 +95,7 @@ describe('public link platform logos', () => {
     expect(brandStyle).not.toMatch(/background(?:-color)?:#fff/);
     expect(genericStyle).toContain('background:rgba(255,255,255,.14)');
     expect(html).toContain('.link-0{color:#ffffff;background:#2c5734;');
-    expect(html).toContain('data-icon="link" aria-hidden="true">↗</span>');
+    expect(html).toContain('data-icon="website" aria-hidden="true"><svg');
   });
 
   it('retains explicit platform selection and generic link selection', () => {
@@ -106,10 +113,15 @@ describe('public link platform logos', () => {
     'https://youtube.com.attacker.invalid/shop',
     'https://notshopee.co.th/shop',
     'https://example.com/?url=https://line.me/shop',
-    'https://example.com/shop',
-    'not a URL'
-  ])('uses the generic fallback without fetching a logo for %s', (url) => {
+    'https://example.com/shop'
+  ])('uses the website fallback without fetching a logo for %s', (url) => {
     const html = renderLinkInBioPage(profile([{ id: 'link', title: 'ร้าน', url }]), 'test-nonce');
+    expect(html).toContain('data-icon="website" aria-hidden="true"><svg');
+    expect(html).not.toContain('<img');
+  });
+
+  it('keeps the generic fallback for invalid destinations', () => {
+    const html = renderLinkInBioPage(profile([{ id: 'link', title: 'ร้าน', url: 'not a URL' }]), 'test-nonce');
     expect(html).toContain('data-icon="link" aria-hidden="true">↗</span>');
     expect(html).not.toContain('<img');
   });
@@ -135,6 +147,15 @@ describe('public link platform logos', () => {
     expect(result.headers['cache-control']).toBe('public, max-age=86400');
     expect(result.headers['x-content-type-options']).toBe('nosniff');
     expect(auth).not.toHaveBeenCalled();
+  });
+
+  it.each(platforms)('keeps %s artwork dimensions and source bytes identical to the mobile asset', async (platform) => {
+    const { app } = fixture();
+    const result = await request(app).get(`/profile-platforms/${platform}.png`).expect(200);
+    const mobile = await readFile(new URL(`../../../../mobile/assets/images/platforms/${platform}.png`, import.meta.url));
+    expect(result.body).toEqual(mobile);
+    expect(result.body.readUInt32BE(16)).toBe(contentMetrics[platform].sourceWidth);
+    expect(result.body.readUInt32BE(20)).toBe(contentMetrics[platform].sourceHeight);
   });
 
   it('keeps the legacy YouTube URL working alongside the revision used to bypass its old one-day cache', async () => {

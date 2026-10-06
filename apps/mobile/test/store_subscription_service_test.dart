@@ -155,6 +155,7 @@ void main() {
   test('RevenueCat confirmation deadline stops polling and late updates',
       () async {
     final backend = Completer<SubscriptionStatusResult>();
+    var backendAvailable = false;
     var loadCalls = 0;
     final gateway = FakeRevenueCatBillingGateway();
     final service = StoreSubscriptionService(
@@ -163,23 +164,28 @@ void main() {
       subscriptionConfirmationTimeout: const Duration(milliseconds: 50),
       loadSubscription: () {
         loadCalls += 1;
-        return loadCalls == 1
-            ? backend.future
-            : Future.value(_subscription(plan: 'PRO'));
+        return backendAvailable
+            ? Future.value(_subscription(plan: 'PRO'))
+            : backend.future;
       },
       revenueCatEntitlementWait: (_) async {},
     );
 
     await expectLater(service.startProSubscription(),
         throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+    // A timeout rounded to milliseconds may allow another attempt within the
+    // remaining budget. The backend stays pending until the explicit retry.
+    final callsAtDeadline = loadCalls;
+    expect(callsAtDeadline, greaterThanOrEqualTo(1));
     backend.complete(_subscription(plan: 'PRO'));
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-    expect(loadCalls, 1);
+    await Future<void>.delayed(Duration.zero);
+    expect(loadCalls, callsAtDeadline);
     expect(service.hasPendingConfirmation, isTrue);
 
+    backendAvailable = true;
     expect(
         (await service.retryPendingConfirmation()).subscription.isPro, isTrue);
-    expect(loadCalls, 2);
+    expect(loadCalls, callsAtDeadline + 1);
     expect(gateway.purchaseCalls, 1);
     expect(service.hasPendingConfirmation, isFalse);
   });

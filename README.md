@@ -34,6 +34,16 @@ are also available. Draft customization stays private until Publish/Update.
 The preview and public page share the same appearance contract and palettes.
 Product cards/prices are not part of this release.
 
+The simplified mobile editor guides first setup through Store information,
+Links, Theme, and Review/Publish. Accounts with an existing server profile open
+a compact overview; the published preview uses the confirmed server snapshot,
+while Edit reopens the private draft. Extra link options and appearance settings
+are collapsed until requested. Draft saving, status refresh, and unpublishing
+remain in the page's More menu. Drafts are still saved explicitly and never
+publish automatically. This UI revision requires no API/schema migration;
+verification is recorded in
+`docs/superpowers/plans/2026-10-05-profile-link-simpler-ui.md`.
+
 Migration `20261005193000_customize_link_in_bio_profile` adds nullable appearance
 JSON and owner-scoped image metadata. Old profiles use the original cream/green
 defaults; old clients can still publish links without overwriting customization.
@@ -98,6 +108,14 @@ The lockfile now resolves Firebase Admin's compatible `@fastify/busboy` dependen
 to `3.2.1`, which patches the multipart parser advisories
 `GHSA-xjh9-v7x6-24jw` and `GHSA-x8mw-p69m-v3mx`. CI continues to reject high
 severity findings in the production dependency audit.
+
+The compatible Express dependency `proxy-addr` is locked to `2.0.8` to patch
+`GHSA-jqcg-44mw-7w3h`. Express's existing single-hop `trust proxy = 1` policy is
+unchanged. A dependency regression covers the advisory's mapped-IPv6 subnet
+case, and a global rate-limit integration test verifies that changing the
+untrusted forwarded prefix cannot change the established client's bucket.
+The pre-merge audit has no high/critical findings; four moderate findings remain
+recorded in `docs/superpowers/plans/2026-10-05-profile-link-simpler-ui.md`.
 
 ## Legacy AI Editing Runtime Reference
 

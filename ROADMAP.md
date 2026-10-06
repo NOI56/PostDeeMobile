@@ -18,6 +18,10 @@ Build roadmap for PostDee.
 - Separate local draft saving from publishing. Show a shareable URL only after
   the API confirms publication. Support updating and unpublishing; changing a
   published slug invalidates the old URL.
+- Simplify profile-link setup into four tasks: store information, links, theme,
+  and review/publish. Existing profiles open a preview with Edit and confirmed
+  URL actions. Keep all advanced customization behind optional groups; keep
+  explicit draft saving and the existing API, package limits, and media rules.
 - Remove editing-minute benefits, quota cards, and top-up promotion from the
   active product. Legacy editing code/API contracts remain for compatibility and
   shared media helpers; historical editing milestones below are not active TODOs.
@@ -233,6 +237,12 @@ from `3.2.0` to `3.2.1` to resolve the high severity CI audit blocker. The Rende
 Dashboard still reports the workspace suspended for non-payment, and Staging
 returns HTTP `503` with `x-render-routing: suspend`; live deployment and current
 provider tests remain blocked until the workspace is restored.
+
+On 2026-10-06, pre-merge CI identified `GHSA-jqcg-44mw-7w3h` in `proxy-addr`.
+The compatible lockfile patch to `2.0.8` and two security/rate-limit regressions
+pass the backend suite. The high/critical production audit gate stays enabled;
+four moderate dependency findings remain for separate follow-up. No API/schema
+or trust-proxy configuration changes are part of this patch.
 
 ### AI auto-editing update (2026-08-08)
 

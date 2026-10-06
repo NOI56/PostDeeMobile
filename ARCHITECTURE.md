@@ -45,6 +45,15 @@ snapshot. Fonts are bundled locally in Flutter and served by the existing API
 under a filename whitelist, with license notices in `apps/api/assets/profile-fonts`.
 Public CSS uses nonce styles, self-only fonts/images, and no scripts.
 
+The mobile profile UI presents four independent editing steps (store, links,
+theme, review) and a compact overview for an existing server profile. The
+overview preview reads the confirmed profile snapshot; editor previews read the
+local draft. Step navigation and opening/collapsing advanced settings do not
+save or publish. Existing explicit save/publish operations, owner checks and
+uncertain-publication guards remain the boundary. Collapsed form fields retain
+their input and still validate; errors reopen the affected controls. This UI
+change adds no server fields, migration, entitlement rule, or provider call.
+
 LinkInBioImage stores user/slot/key/size metadata with a cascading User relation.
 The mobile picker decodes/resizes images to PNG; the API checks its PNG structure,
 dimensions (maximum 1280 per side) and bytes (maximum 512 KiB). The API puts bytes
@@ -131,6 +140,11 @@ audit excludes unused optional packages. Render keeps the same build-time
 packages through Prisma migration and prunes development plus optional packages
 before the API starts. This avoids removing platform-native build tools too
 early while keeping unused Firebase clients out of the running service.
+
+Express retains its single-hop `trust proxy = 1` setting. Its compatible
+`proxy-addr` dependency is locked to `2.0.8` for `GHSA-jqcg-44mw-7w3h`; this
+dependency patch changes no route, authentication policy, custom rate limiter,
+database schema, or environment setting.
 
 ## Mobile App
 

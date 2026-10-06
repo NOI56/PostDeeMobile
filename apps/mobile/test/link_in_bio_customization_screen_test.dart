@@ -12,6 +12,8 @@ import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'link_in_bio_test_navigation.dart';
+
 const _links = [
   LinkInBioCustomLink(
       id: 'shop', title: 'ร้านค้า', url: 'https://example.com/shop'),
@@ -26,21 +28,11 @@ const _draft = LinkInBioDraft(
 const _imageKey =
     'uploads/seller-a/12345678-1234-1234-1234-123456789abc/profile-logo.png';
 final _png = base64Decode(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==');
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==');
 Widget _app(LinkInBioScreen screen) =>
     MaterialApp(theme: AppTheme.light, home: screen);
-Future<void> _tap(WidgetTester tester, String key) async {
-  await tester.pumpAndSettle();
-  final finder = find.byKey(ValueKey(key));
-  if (finder.evaluate().isEmpty) {
-    await tester.scrollUntilVisible(finder, 200,
-        scrollable: find.byType(Scrollable).last);
-  }
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
-  await tester.tap(finder);
-  await tester.pumpAndSettle();
-}
+Future<void> _tap(WidgetTester tester, String key) =>
+    tapBioControl(tester, key);
 
 Future<void> _select(WidgetTester tester, String key, String label) async {
   await _tap(tester, key);
@@ -88,6 +80,7 @@ void main() {
         _app(LinkInBioScreen(loadProfile: () => Future.value(null))));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-decorate');
+    await _tap(tester, 'link-in-bio-disclosure-images');
     final description = find.byKey(const ValueKey('link-in-bio-description'));
     await tester.ensureVisible(description);
     await tester.pumpAndSettle();
@@ -119,6 +112,7 @@ void main() {
         loadImage: (_) => pending.future)));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-decorate');
+    await _tap(tester, 'link-in-bio-disclosure-images');
     expect(find.byType(Image), findsNothing);
     pending.complete(_png);
     await tester.pumpAndSettle();
@@ -134,8 +128,8 @@ void main() {
     await tester
         .pumpWidget(_app(LinkInBioScreen(loadProfile: () => pending.future)));
     await tester.pump();
-    final button = find.byKey(const ValueKey('link-in-bio-decorate'));
-    expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
+    final button = find.byKey(const ValueKey('link-in-bio-step-theme'));
+    expect(tester.widget<TextButton>(button).onPressed, isNull);
     final appearance = LinkInBioAppearance.forTheme('dark')
         .copyWith(description: 'ร้านจากเว็บไซต์');
     pending.complete(LinkInBioProfileResult(
@@ -152,13 +146,14 @@ void main() {
         publicPath: '/p/mina-shop',
         publicUrl: Uri.parse('https://api.example.com/p/mina-shop')));
     await tester.pumpAndSettle();
-    await _tap(tester, 'link-in-bio-decorate');
+    await showBioStep(tester, 'theme');
     expect(
         tester
             .widget<ChoiceChip>(
                 find.byKey(const ValueKey('link-in-bio-theme-dark')))
             .selected,
         isTrue);
+    await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-decoration-done');
     await _tap(tester, 'link-in-bio-save-draft');
     final saved = (await store.loadDraft())!;
@@ -173,6 +168,8 @@ void main() {
         .pumpWidget(_app(LinkInBioScreen(loadProfile: () async => null)));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-decorate');
+    await _tap(tester, 'link-in-bio-disclosure-styles');
+    await _tap(tester, 'link-in-bio-disclosure-style-name');
     await _tap(tester, 'link-in-bio-name-color-picker');
     await _tap(tester, 'link-in-bio-color-swatch-e85d24');
     await _tap(tester, 'link-in-bio-color-confirm');
@@ -191,8 +188,10 @@ void main() {
     await tester
         .pumpWidget(_app(LinkInBioScreen(loadProfile: () async => null)));
     await tester.pumpAndSettle();
-    await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-theme-pastel');
+    await _tap(tester, 'link-in-bio-decorate');
+    await _tap(tester, 'link-in-bio-disclosure-styles');
+    await _tap(tester, 'link-in-bio-disclosure-style-name');
     await _select(tester, 'link-in-bio-name-font', 'Prompt • ตัวอย่างภาษาไทย');
     final color = find.byKey(const ValueKey('link-in-bio-name-color'));
     await tester.ensureVisible(color);
@@ -231,15 +230,11 @@ void main() {
               publicUrl: Uri.parse('https://api.example.com/p/mina-shop'));
         })));
     await tester.pumpAndSettle();
-    await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-theme-dark');
-    await _tap(tester, 'link-in-bio-decoration-done');
     await _tap(tester, 'link-in-bio-publish');
     expect(sent?.themeId, 'dark');
     expect(find.textContaining('มีการแก้ไขที่ยังไม่ได้เผยแพร่'), findsNothing);
-    await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-theme-shop');
-    await _tap(tester, 'link-in-bio-decoration-done');
     expect(
         find.textContaining('มีการแก้ไขที่ยังไม่ได้เผยแพร่'), findsOneWidget);
     expect(sent?.themeId, 'dark');
@@ -264,12 +259,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(reads, 0);
     await _tap(tester, 'link-in-bio-decorate');
+    await _tap(tester, 'link-in-bio-disclosure-images');
     await _tap(tester, 'link-in-bio-image-logo');
     final description = find.byKey(const ValueKey('link-in-bio-description'));
     await tester.ensureVisible(description);
     await tester.enterText(description, 'ร้านน่ารัก ส่งไว');
-    await _tap(tester, 'link-in-bio-theme-shop');
     await _tap(tester, 'link-in-bio-decoration-done');
+    await _tap(tester, 'link-in-bio-theme-shop');
     await _tap(tester, 'link-in-bio-save-draft');
     final saved = (await store.loadDraft())!;
     expect(saved.appearance.logoKey, _imageKey);
@@ -281,6 +277,10 @@ void main() {
 
   testWidgets('image upload errors preserve existing draft media',
       (tester) async {
+    await tester.pumpWidget(
+        const MaterialApp(home: SizedBox(key: ValueKey('warm-image-cache'))));
+    await tester.runAsync(() => precacheImage(MemoryImage(_png),
+        tester.element(find.byKey(const ValueKey('warm-image-cache')))));
     await store.saveDraft(LinkInBioDraft(
         storeName: _draft.storeName,
         slug: _draft.slug,
@@ -295,12 +295,18 @@ void main() {
             throw StateError('offline'),
         loadImage: (_) async => _png)));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
     await _tap(tester, 'link-in-bio-decorate');
+    expect(tester.takeException(), isNull);
+    await _tap(tester, 'link-in-bio-disclosure-images');
+    expect(tester.takeException(), isNull);
     await _tap(tester, 'link-in-bio-image-logo');
+    expect(tester.takeException(), isNull);
     expect(find.textContaining('อัปโหลดรูปไม่สำเร็จ'), findsOneWidget);
     await _tap(tester, 'link-in-bio-decoration-done');
     await _tap(tester, 'link-in-bio-save-draft');
     expect((await store.loadDraft())!.appearance.logoKey, _imageKey);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -310,6 +316,7 @@ void main() {
         .pumpWidget(_app(LinkInBioScreen(loadProfile: () async => null)));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-edit-shop');
+    await _tap(tester, 'link-in-bio-link-advanced');
     final category = find.byKey(const ValueKey('link-in-bio-link-category'));
     await tester.ensureVisible(category);
     await tester.enterText(category, 'ช้อปสินค้า');
@@ -340,6 +347,7 @@ void main() {
         uploadImage: ({required slot, required bytes}) => pending.future)));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-decorate');
+    await _tap(tester, 'link-in-bio-disclosure-images');
     final imageButton = find.byKey(const ValueKey('link-in-bio-image-logo'));
     await tester.scrollUntilVisible(imageButton, 200,
         scrollable: find.byType(Scrollable).last);

@@ -7,24 +7,15 @@ import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'link_in_bio_test_navigation.dart';
+
 Widget _app() => MaterialApp(
     theme: AppTheme.dark, home: LinkInBioScreen(loadProfile: () async => null));
-Future<void> _show(WidgetTester tester, Finder finder,
-    {double delta = 250}) async {
-  if (finder.evaluate().isEmpty) {
-    await tester.scrollUntilVisible(finder, delta,
-        scrollable: find.byType(Scrollable).first);
-  }
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
-}
+Future<void> _show(WidgetTester tester, Finder finder, {double delta = 250}) =>
+    showBioControl(tester, finder, delta: delta);
 
-Future<void> _tap(WidgetTester tester, String key) async {
-  final finder = find.byKey(ValueKey(key));
-  await _show(tester, finder);
-  await tester.tap(finder);
-  await tester.pumpAndSettle();
-}
+Future<void> _tap(WidgetTester tester, String key) =>
+    tapBioControl(tester, key);
 
 Future<void> _add(WidgetTester tester,
     {String title = 'คูปอง Shopee',
@@ -53,6 +44,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(
         find.byKey(const ValueKey('link-in-bio-store-name')), 'ร้านมินา');
+    await showBioUrlSettings(tester);
     await tester.enterText(
         find.byKey(const ValueKey('link-in-bio-slug')), 'mina-shop');
     await _tap(tester, 'link-in-bio-save-draft');
@@ -87,6 +79,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
+    await showBioStep(tester, 'links');
     await _show(tester, find.byTooltip('แก้ไขลิงก์'));
     expect(find.text('https://shopee.co.th/shop'), findsOneWidget);
   });
@@ -99,6 +92,7 @@ void main() {
     await _add(tester);
     await _tap(tester, 'link-in-bio-save-draft');
     final id = (await store.loadDraft())!.customLinks.single.id;
+    await showBioStep(tester, 'links');
     await _show(tester, find.byTooltip('แก้ไขลิงก์'), delta: -200);
     await tester.tap(find.byTooltip('แก้ไขลิงก์'));
     await tester.pumpAndSettle();
@@ -120,7 +114,14 @@ void main() {
     await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
     await _add(tester);
-    await _show(tester, find.byTooltip('ลบลิงก์'));
+    final menu = find.byWidgetPredicate((widget) =>
+        widget.key is ValueKey<String> &&
+        (widget.key! as ValueKey<String>)
+            .value
+            .startsWith('link-in-bio-link-menu-'));
+    await _show(tester, menu);
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('ลบลิงก์'));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-save-draft');

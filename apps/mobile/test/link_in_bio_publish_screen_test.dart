@@ -8,6 +8,8 @@ import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'link_in_bio_test_navigation.dart';
+
 const _link = LinkInBioCustomLink(
     id: 'shop', title: 'ร้านค้า', url: 'https://example.com/shop');
 const _draft = LinkInBioDraft(
@@ -73,18 +75,8 @@ const _nonCanonicalDraft = LinkInBioDraft(
     ]);
 Widget _app(LinkInBioScreen screen) =>
     MaterialApp(theme: AppTheme.light, home: screen);
-Future<void> _tap(WidgetTester tester, String key) async {
-  await tester.pumpAndSettle();
-  final finder = find.byKey(ValueKey(key));
-  if (finder.evaluate().isEmpty) {
-    await tester.scrollUntilVisible(finder, 250,
-        scrollable: find.byType(Scrollable).first);
-  }
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
-  await tester.tap(finder);
-  await tester.pumpAndSettle();
-}
+Future<void> _tap(WidgetTester tester, String key) =>
+    tapBioControl(tester, key);
 
 void main() {
   setUp(() {
@@ -161,15 +153,16 @@ void main() {
         })));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-refresh');
+    await _tap(tester, 'link-in-bio-more');
     final button = find.byKey(const ValueKey('link-in-bio-unpublish'));
-    await tester.scrollUntilVisible(button, 250,
-        scrollable: find.byType(Scrollable).first);
-    expect(tester.widget<TextButton>(button).onPressed, isNull);
+    expect(tester.widget<PopupMenuItem<String>>(button).enabled, isFalse);
     await tester.tap(button);
     await tester.pumpAndSettle();
     expect(deletes, 0);
     expect(find.byKey(const ValueKey('link-in-bio-confirm-unpublish')),
         findsNothing);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
     pending.complete(_profile());
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-unpublish');
@@ -246,6 +239,7 @@ void main() {
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-publish');
     expect(find.text('เผยแพร่แล้ว'), findsOneWidget);
+    await showBioUrlSettings(tester);
     await tester.enterText(
         find.byKey(const ValueKey('link-in-bio-slug')), 'new-shop');
     await _tap(tester, 'link-in-bio-copy');
@@ -270,6 +264,7 @@ void main() {
             .controller!
             .text,
         'ชื่อใหม่ยังไม่เผยแพร่');
+    await _tap(tester, 'link-in-bio-close-editor');
     expect(find.text('https://api.example.com/p/mina-shop'), findsOneWidget);
   });
   testWidgets(
@@ -310,6 +305,7 @@ void main() {
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-publish');
     expect(find.textContaining('ชื่อ URL นี้มีคนใช้แล้ว'), findsOneWidget);
+    await showBioUrlSettings(tester);
     expect(
         tester
             .widget<TextField>(find.byKey(const ValueKey('link-in-bio-slug')))
@@ -336,6 +332,7 @@ void main() {
     await _tap(tester, 'link-in-bio-confirm-unpublish');
     expect(deletes, 1);
     expect(find.byKey(const ValueKey('link-in-bio-public-url')), findsNothing);
+    await showBioStep(tester, 'info');
     expect(
         tester
             .widget<TextField>(

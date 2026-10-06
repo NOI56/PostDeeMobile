@@ -9,8 +9,16 @@ Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
 ## Profile Link Replaces AI Editing (2026-10-05)
 
-The active mobile navigation is Home, Profile link, Create post, Calendar, and
-Profile. Home has one profile-link shortcut above the analytics cards. AI video
+The active mobile navigation is Home, Calendar, Create post, Store link, and
+Account. Store link opens the internal link manager; Account opens the
+existing profile/settings screen. The navigation uses a full-width opaque dock
+painted through the bottom safe area, rounded top corners, outline icons, and a
+raised solid green upload action. Selected items use green icons/text/dots. The
+center action has no visible label but retains its localized tooltip and
+accessible Create post name.
+This navigation-only revision is recorded in
+`docs/superpowers/plans/2026-10-06-flat-bottom-navigation.md`.
+Home has one profile-link shortcut above the analytics cards. AI video
 editing and Subtitle Studio no longer have a product entry point, and the
 paywall/profile no longer advertise editing minutes or top-ups. AI captions in
 the upload flow remain available. The editing implementation and shared media
@@ -34,15 +42,31 @@ are also available. Draft customization stays private until Publish/Update.
 The preview and public page share the same appearance contract and palettes.
 Product cards/prices are not part of this release.
 
-The simplified mobile editor guides first setup through Store information,
-Links, Theme, and Review/Publish. Accounts with an existing server profile open
-a compact overview; the published preview uses the confirmed server snapshot,
-while Edit reopens the private draft. Extra link options and appearance settings
-are collapsed until requested. Draft saving, status refresh, and unpublishing
-remain in the page's More menu. Drafts are still saved explicitly and never
-publish automatically. This UI revision requires no API/schema migration;
-verification is recorded in
-`docs/superpowers/plans/2026-10-05-profile-link-simpler-ui.md`.
+The 2026-10-06 mobile revision opens the internal link manager for both new and
+existing profiles. It shows the shop identity, separate Store information,
+Appearance, and Preview actions, a primary Add link button above the list, and
+cards for editing, visibility and drag ordering. The existing move up/down,
+featured-promotion and delete menu actions remain available. Store information,
+theme customization and review open as separate views; the manager does not
+replace or redesign the public page. Advanced options retain their values.
+The footer exposes Save draft and review, with Publish/Update kept as an explicit
+action in review. Confirmed publication returns to the manager. Copy/open uses
+only the confirmed public URL; status refresh and unpublishing remain available.
+The mobile draft still holds at most 20 links, including disabled links, and
+publishes only enabled links. Drafts never save or publish automatically.
+This revision requires no API/schema/configuration change. All 1,132 Flutter
+tests, analysis, the Staging debug build and native Android emulator checks pass.
+Evidence and remaining device/server limits are recorded in
+`docs/superpowers/plans/2026-10-06-link-manager-ui.md`;
+the earlier wizard's evidence remains in its dated plan.
+
+The URL-title follow-up fills an empty link title from a recognized platform
+name or the destination hostname. Generated titles follow URL changes until
+the user enters a custom title; existing saved titles are preserved. Suggestions
+use local URL rules only, without fetching page metadata or calling AI. The
+follow-up passes 1,144 Flutter tests, analysis, the Staging debug build and native
+Android emulator checks, with evidence and limits in the same plan. The earlier
+verification above records the manager before this follow-up.
 
 Migration `20261005193000_customize_link_in_bio_profile` adds nullable appearance
 JSON and owner-scoped image metadata. Old profiles use the original cream/green
@@ -1099,8 +1123,8 @@ Current mobile pieces:
 - Saved templates wired to `GET /templates` and `POST /templates`
 - Unified analytics wired to `GET /analytics/summary?range=...`, including real
   range selection and a publish-date daily chart without simulated numbers.
-  The second bottom-navigation slot now opens Profile link; analytics remains
-  available from publish results and individual post details.
+  The fourth bottom-navigation slot opens the internal link manager; analytics
+  remains available from publish results and individual post details.
 - Home API connection check wired to `GET /health`, a local Gemini caption smoke check, plan status refresh wired to `GET /billing/subscription`, Basic Phone OTP UI for unlocking the 3-post free quota, and one automatic analytics refresh after Pro is unlocked
 - Upload AI captions keep the customer flow simple: select a clip, optionally add guidance, then let AI infer language and market from the clip.
 - Starter and Pro CTAs on Home can use the legacy Flutter `in_app_purchase`

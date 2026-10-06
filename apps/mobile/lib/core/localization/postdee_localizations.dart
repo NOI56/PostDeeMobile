@@ -49,6 +49,9 @@ class PostDeeLocalizations {
             aiEditingTab: 'AI ตัดต่อ',
             linkInBioTab: 'ลิงก์โปรไฟล์',
             profileTab: 'โปรไฟล์',
+            navigationHome: 'หน้าหลัก',
+            navigationStoreLink: 'ลิงก์ร้าน',
+            navigationAccount: 'บัญชี',
             notificationsAction: 'แจ้งเตือน',
             userAccountAction: 'บัญชีผู้ใช้',
             templatesTitle: 'เทมเพลต',
@@ -100,6 +103,9 @@ class PostDeeLocalizations {
             aiEditingTab: 'AI Edit',
             linkInBioTab: 'Profile link',
             profileTab: 'Profile',
+            navigationHome: 'Home',
+            navigationStoreLink: 'Store link',
+            navigationAccount: 'Account',
             notificationsAction: 'Notifications',
             userAccountAction: 'User account',
             templatesTitle: 'Templates',
@@ -153,6 +159,9 @@ class PostDeeLocalizations {
             aiEditingTab: 'Biên tập AI',
             linkInBioTab: 'Liên kết hồ sơ',
             profileTab: 'Hồ sơ',
+            navigationHome: 'Trang chủ',
+            navigationStoreLink: 'Liên kết cửa hàng',
+            navigationAccount: 'Tài khoản',
             notificationsAction: 'Thông báo',
             userAccountAction: 'Tài khoản',
             templatesTitle: 'Mẫu',
@@ -204,6 +213,9 @@ class PostDeeLocalizations {
             aiEditingTab: 'AI 剪辑',
             linkInBioTab: '主页链接',
             profileTab: '我的',
+            navigationHome: '首页',
+            navigationStoreLink: '店铺链接',
+            navigationAccount: '账户',
             notificationsAction: '通知',
             userAccountAction: '用户账户',
             templatesTitle: '模板',
@@ -254,6 +266,9 @@ class PostDeeLocalizations {
             aiEditingTab: 'Edit AI',
             linkInBioTab: 'Tautan profil',
             profileTab: 'Profil',
+            navigationHome: 'Beranda',
+            navigationStoreLink: 'Tautan toko',
+            navigationAccount: 'Akun',
             notificationsAction: 'Notifikasi',
             userAccountAction: 'Akun',
             templatesTitle: 'Templat',
@@ -304,6 +319,9 @@ class PostDeeLocalizations {
             aiEditingTab: 'Edit AI',
             linkInBioTab: 'Pautan profil',
             profileTab: 'Profil',
+            navigationHome: 'Utama',
+            navigationStoreLink: 'Pautan kedai',
+            navigationAccount: 'Akaun',
             notificationsAction: 'Notifikasi',
             userAccountAction: 'Akaun',
             templatesTitle: 'Templat',
@@ -355,6 +373,9 @@ class PostDeeLocalizations {
             aiEditingTab: 'AI Edit',
             linkInBioTab: 'Profile link',
             profileTab: 'Profile',
+            navigationHome: 'Home',
+            navigationStoreLink: 'Link ng tindahan',
+            navigationAccount: 'Account',
             notificationsAction: 'Mga Notification',
             userAccountAction: 'Account',
             templatesTitle: 'Mga Template',
@@ -405,6 +426,9 @@ class PostDeeLocalizations {
             aiEditingTab: 'AI編集',
             linkInBioTab: 'プロフィールリンク',
             profileTab: 'プロフィール',
+            navigationHome: 'ホーム',
+            navigationStoreLink: 'ショップリンク',
+            navigationAccount: 'アカウント',
             notificationsAction: '通知',
             userAccountAction: 'アカウント',
             templatesTitle: 'テンプレート',
@@ -456,6 +480,9 @@ class PostDeeLocalizations {
   String get aiEditingTab => _values.aiEditingTab;
   String get linkInBioTab => _values.linkInBioTab;
   String get profileTab => _values.profileTab;
+  String get navigationHome => _values.navigationHome;
+  String get navigationStoreLink => _values.navigationStoreLink;
+  String get navigationAccount => _values.navigationAccount;
   String get notificationsAction => _values.notificationsAction;
   String get userAccountAction => _values.userAccountAction;
   String get templatesTitle => _values.templatesTitle;
@@ -505,6 +532,9 @@ class _PostDeeLocalizedValues {
     required this.aiEditingTab,
     required this.linkInBioTab,
     required this.profileTab,
+    required this.navigationHome,
+    required this.navigationStoreLink,
+    required this.navigationAccount,
     required this.notificationsAction,
     required this.userAccountAction,
     required this.templatesTitle,
@@ -552,6 +582,9 @@ class _PostDeeLocalizedValues {
   final String aiEditingTab;
   final String linkInBioTab;
   final String profileTab;
+  final String navigationHome;
+  final String navigationStoreLink;
+  final String navigationAccount;
   final String notificationsAction;
   final String userAccountAction;
   final String templatesTitle;

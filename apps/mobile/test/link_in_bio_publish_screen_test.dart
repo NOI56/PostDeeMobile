@@ -176,7 +176,7 @@ void main() {
     await tester
         .pumpWidget(_app(LinkInBioScreen(loadProfile: () async => null)));
     await tester.pumpAndSettle();
-    expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
+    expect(find.text('ลิงก์ร้าน'), findsOneWidget);
     expect(find.textContaining('postdee.link'), findsNothing);
     expect(find.text('สินค้าแนะนำ'), findsNothing);
     expect(find.text('อัปเดตจากโพสต์ที่ตั้งเวลา'), findsNothing);
@@ -249,22 +249,25 @@ void main() {
   });
   testWidgets('late cloud load preserves a locally edited draft',
       (tester) async {
+    tester.view.physicalSize = const Size(393, 873);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final pending = Completer<LinkInBioProfileResult?>();
     await tester
         .pumpWidget(_app(LinkInBioScreen(loadProfile: () => pending.future)));
     await tester.pump();
-    await tester.enterText(find.byKey(const ValueKey('link-in-bio-store-name')),
-        'ชื่อใหม่ยังไม่เผยแพร่');
+    await _tap(tester, 'link-in-bio-add');
+    await tester.enterText(find.byKey(const ValueKey('link-in-bio-link-title')),
+        'ลิงก์ใหม่ยังไม่เผยแพร่');
+    await tester.enterText(find.byKey(const ValueKey('link-in-bio-link-url')),
+        'https://example.com/local');
+    await _tap(tester, 'link-in-bio-link-save');
     pending.complete(_profile());
     await tester.pumpAndSettle();
-    expect(
-        tester
-            .widget<TextField>(
-                find.byKey(const ValueKey('link-in-bio-store-name')))
-            .controller!
-            .text,
-        'ชื่อใหม่ยังไม่เผยแพร่');
-    await _tap(tester, 'link-in-bio-close-editor');
+    expect(find.text('ลิงก์ใหม่ยังไม่เผยแพร่'), findsOneWidget);
+    expect(find.text('https://example.com/local'), findsOneWidget);
+    expect(find.text('https://example.com/shop'), findsNothing);
     expect(find.text('https://api.example.com/p/mina-shop'), findsOneWidget);
   });
   testWidgets(

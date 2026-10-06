@@ -14,6 +14,7 @@ import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
+import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -225,8 +226,12 @@ void main() {
     expect(find.byKey(const ValueKey('email-sign-in-form')), findsOneWidget);
   });
 
-  testWidgets('uses the reference pill bottom navigation', (tester) async {
+  testWidgets('uses docked bottom navigation in the approved tab order',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+    tester.view.padding = const FakeViewPadding(bottom: 24);
+    addTearDown(tester.view.resetPadding);
 
     final sessionStore = PostDeeAuthSessionStore.instance;
     final languageController = PostDeeLanguageController(
@@ -266,10 +271,10 @@ void main() {
     expect(referenceNav, findsOneWidget);
     for (final label in [
       'Home',
-      'Profile link',
-      'Create post',
       'Calendar',
-      'Profile'
+      'Create post',
+      'Store link',
+      'Account'
     ]) {
       expect(
         find.descendant(
@@ -281,17 +286,37 @@ void main() {
     }
 
     final homeX = tester.getCenter(_referenceNavButton('Home')).dx;
-    final profileLinkX =
-        tester.getCenter(_referenceNavButton('Profile link')).dx;
+    final storeLinkX = tester.getCenter(_referenceNavButton('Store link')).dx;
     final createX = tester.getCenter(_referenceNavButton('Create post')).dx;
     final calendarX = tester.getCenter(_referenceNavButton('Calendar')).dx;
-    final profileX = tester.getCenter(_referenceNavButton('Profile')).dx;
-    expect(homeX, lessThan(profileLinkX));
-    expect(profileLinkX, lessThan(createX));
-    expect(createX, lessThan(calendarX));
-    expect(calendarX, lessThan(profileX));
+    final accountX = tester.getCenter(_referenceNavButton('Account')).dx;
+    expect(homeX, lessThan(calendarX));
+    expect(calendarX, lessThan(createX));
+    expect(createX, lessThan(storeLinkX));
+    expect(storeLinkX, lessThan(accountX));
 
     final createButton = _referenceNavButton('Create post');
+    expect(
+      find.descendant(of: referenceNav, matching: find.text('Create post')),
+      findsNothing,
+      reason: 'The center upload action is icon-only in the approved design.',
+    );
+    expect(
+      tester.widget<Tooltip>(find.descendant(
+        of: createButton,
+        matching: find.byType(Tooltip),
+      )).message,
+      'Create post',
+      reason: 'The unlabeled action keeps its accessible name and tooltip.',
+    );
+    expect(
+      find.descendant(
+        of: createButton,
+        matching: find.byIcon(Icons.ios_share_outlined),
+      ),
+      findsOneWidget,
+      reason: 'Create post starts by uploading a video, so use the upload icon.',
+    );
     expect(
       find.ancestor(
         of: createButton,
@@ -299,8 +324,122 @@ void main() {
       ),
       findsNothing,
       reason:
-          'The raised circular create button must not be clipped by the nav.',
+          'The circular create button must not be clipped by the nav.',
     );
+
+    final navSurface = tester.widget<Material>(
+      find.byKey(const ValueKey('postdee-nav-surface')),
+    );
+    expect(navSurface.color, AppTheme.navSurface);
+    expect(navSurface.color!.a, 1);
+    expect(navSurface.elevation, 0);
+    final surfaceRect = tester.getRect(
+      find.byKey(const ValueKey('postdee-nav-surface')),
+    );
+    final viewportSize =
+        tester.view.physicalSize / tester.view.devicePixelRatio;
+    final bottomSafeArea =
+        tester.view.padding.bottom / tester.view.devicePixelRatio;
+    expect(surfaceRect.left, 0);
+    expect(surfaceRect.right, viewportSize.width);
+    expect(surfaceRect.bottom, viewportSize.height);
+    expect(
+      tester.getBottomLeft(_referenceNavButton('Home')).dy,
+      surfaceRect.bottom - bottomSafeArea,
+      reason: 'The opaque surface fills the bottom safe area as well.',
+    );
+    final outerNav = tester.widget(referenceNav);
+    if (outerNav is DecoratedBox && outerNav.decoration is BoxDecoration) {
+      expect(
+        (outerNav.decoration as BoxDecoration).boxShadow ?? const <BoxShadow>[],
+        isEmpty,
+      );
+    }
+    for (final decoratedBox in tester.widgetList<DecoratedBox>(
+      find.descendant(of: referenceNav, matching: find.byType(DecoratedBox)),
+    )) {
+      if (decoratedBox.decoration case final BoxDecoration decoration) {
+        expect(decoration.boxShadow ?? const <BoxShadow>[], isEmpty);
+      }
+    }
+    expect(
+      find.descendant(of: referenceNav, matching: find.byType(BackdropFilter)),
+      findsNothing,
+      reason: 'The approved bar has an opaque surface instead of blur.',
+    );
+
+    final createSurface = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('postdee-nav-create-surface')),
+    );
+    final createDecoration = createSurface.decoration as BoxDecoration;
+    expect(createDecoration.shape, BoxShape.circle);
+    expect(createDecoration.color, AppTheme.accent);
+    expect(createDecoration.gradient, isNull);
+    expect(createDecoration.boxShadow ?? const <BoxShadow>[], isEmpty);
+    final navRect = tester.getRect(referenceNav);
+    final createRect = tester.getRect(
+      find.byKey(const ValueKey('postdee-nav-create-surface')),
+    );
+    expect(navRect.contains(createRect.topLeft), isTrue);
+    expect(navRect.contains(createRect.bottomRight), isTrue);
+
+    const tabIndices = {
+      'Home': 0,
+      'Calendar': 3,
+      'Create post': 2,
+      'Store link': 1,
+      'Account': 5,
+    };
+    final selectedIndicator =
+        find.byKey(const ValueKey('postdee-nav-selected-indicator'));
+    for (final currentTab in tabIndices.entries) {
+      await tester.tap(_referenceNavButton(currentTab.key));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index,
+          currentTab.value);
+      expect(selectedIndicator, findsOneWidget);
+      for (final label in tabIndices.keys) {
+        final button = _referenceNavButton(label);
+        expect(
+          tester.getSemantics(button),
+          isSemantics(
+            label: label,
+            isButton: true,
+            hasTapAction: true,
+            isSelected: label == currentTab.key,
+            hasSelectedState: true,
+          ),
+        );
+        expect(
+          find.descendant(of: button, matching: selectedIndicator),
+          label == currentTab.key ? findsOneWidget : findsNothing,
+        );
+      }
+    }
+
+    // Publishing can still open Analytics, which is not one of the five nav
+    // destinations. It must not incorrectly mark another destination selected.
+    final uploader = tester.widget<UploaderScreen>(
+      find.byType(UploaderScreen, skipOffstage: false),
+    );
+    expect(uploader.onViewAnalytics, isNotNull);
+    uploader.onViewAnalytics!();
+    await tester.pumpAndSettle();
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 4);
+    expect(_referenceNav(), findsOneWidget);
+    expect(selectedIndicator, findsNothing);
+    for (final label in tabIndices.keys) {
+      expect(
+        tester.getSemantics(_referenceNavButton(label)),
+        isSemantics(isSelected: false),
+      );
+    }
+    await tester.tap(_referenceNavButton('Home'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+    expect(selectedIndicator, findsOneWidget);
+    semantics.dispose();
   });
 
   testWidgets(
@@ -364,7 +503,7 @@ void main() {
     expect(_referenceNav(), findsOneWidget);
     expect(find.byKey(const ValueKey('ai-editing-back')), findsNothing);
     expect(linkShortcut, findsOneWidget);
-    await tester.tap(_referenceNavButton('Profile link'));
+    await tester.tap(_referenceNavButton('Store link'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('link-in-bio-back')), findsOneWidget);
     await tester.tap(_referenceNavButton('Create post'));
@@ -409,14 +548,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(_referenceNavButton('Profile'), findsOneWidget);
-    await tester.tap(_referenceNavButton('Profile'));
+    expect(_referenceNavButton('Account'), findsOneWidget);
+    await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
 
     // Profile is now a tab, so its content shows with the nav still visible.
     expect(find.text('บัญชีและโปรไฟล์'), findsOneWidget);
     expect(find.text('PostDee Seller'), findsOneWidget);
-    expect(_referenceNavButton('Profile'), findsOneWidget);
+    expect(_referenceNavButton('Account'), findsOneWidget);
   });
 
   testWidgets('deletes the account then returns to the login gate',
@@ -482,7 +621,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(_referenceNavButton('Profile'));
+    await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
 
     final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
@@ -581,7 +720,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(_referenceNavButton('Profile'));
+      await tester.tap(_referenceNavButton('Account'));
       await tester.pumpAndSettle();
       final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
       await tester.scrollUntilVisible(
@@ -651,7 +790,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(_referenceNavButton('Profile'));
+    await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
     final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
     await tester.scrollUntilVisible(
@@ -718,7 +857,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(_referenceNavButton('Profile'));
+    await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
     final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
     await tester.scrollUntilVisible(
@@ -783,7 +922,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(_referenceNavButton('Profile'));
+    await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
     final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
     await tester.scrollUntilVisible(
@@ -848,7 +987,7 @@ void main() {
 
     final homeSize = tester.getSize(_referenceNavButton('Home'));
     final createSize = tester.getSize(_referenceNavButton('Create post'));
-    final profileSize = tester.getSize(_referenceNavButton('Profile'));
+    final profileSize = tester.getSize(_referenceNavButton('Account'));
 
     expect(homeSize.width, greaterThanOrEqualTo(44));
     expect(homeSize.height, greaterThanOrEqualTo(44));
@@ -858,7 +997,7 @@ void main() {
     expect(profileSize.height, greaterThanOrEqualTo(44));
   });
 
-  for (final width in const [360.0, 393.0]) {
+  for (final width in const [360.0, 393.0, 411.0]) {
     for (final textScale in const [1.45, 2.0]) {
       testWidgets(
           'shows Thai bottom nav labels at ${width}dp with ${textScale}x text',
@@ -910,21 +1049,33 @@ void main() {
 
         final navRect = tester.getRect(_referenceNav());
         for (final label in const [
-          'หน้าแรก',
-          'ลิงก์โปรไฟล์',
-          'สร้างโพสต์',
+          'หน้าหลัก',
           'ปฏิทิน',
-          'โปรไฟล์',
+          'สร้างโพสต์',
+          'ลิงก์ร้าน',
+          'บัญชี',
         ]) {
+          final button = _referenceNavButton(label);
+          expect(button, findsOneWidget);
+          final buttonRect = tester.getRect(button);
+          expect(buttonRect.width, greaterThanOrEqualTo(44));
+          expect(buttonRect.height, greaterThanOrEqualTo(44));
           final visibleLabel = find.descendant(
             of: _referenceNav(),
             matching: find.text(label),
           );
+          if (label == 'สร้างโพสต์') {
+            expect(visibleLabel, findsNothing);
+            continue;
+          }
           expect(visibleLabel, findsOneWidget);
           final labelRect = tester.getRect(visibleLabel);
           expect(labelRect.left, greaterThanOrEqualTo(navRect.left));
           expect(labelRect.right, lessThanOrEqualTo(navRect.right));
+          expect(labelRect.top, greaterThanOrEqualTo(navRect.top));
           expect(labelRect.bottom, lessThanOrEqualTo(navRect.bottom));
+          expect(labelRect.left, greaterThanOrEqualTo(buttonRect.left));
+          expect(labelRect.right, lessThanOrEqualTo(buttonRect.right));
         }
         expect(tester.takeException(), isNull);
       });

@@ -1,5 +1,10 @@
 # Simplify mobile profile-link UI
 
+The wizard and returning-profile overview described below are superseded by
+`2026-10-06-link-manager-ui.md`. Their implementation and verification evidence
+remain historical; they do not verify the newer direct link-manager interface.
+The explicit draft/publication boundary and customization capabilities remain.
+
 ## Accepted scope
 
 The user said the whole profile-link module shows too many options at once and

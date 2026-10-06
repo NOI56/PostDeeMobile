@@ -129,7 +129,7 @@ void main() {
         .pumpWidget(_app(LinkInBioScreen(loadProfile: () => pending.future)));
     await tester.pump();
     final button = find.byKey(const ValueKey('link-in-bio-step-theme'));
-    expect(tester.widget<TextButton>(button).onPressed, isNull);
+    expect(tester.widget<ButtonStyleButton>(button).onPressed, isNull);
     final appearance = LinkInBioAppearance.forTheme('dark')
         .copyWith(description: 'ร้านจากเว็บไซต์');
     pending.complete(LinkInBioProfileResult(

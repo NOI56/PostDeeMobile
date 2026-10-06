@@ -5,7 +5,8 @@ Build roadmap for PostDee.
 ## Current Product Decision (2026-10-05)
 
 - Replace the AI video editing/Subtitle Studio entry with Profile link in the
-  second navigation slot and the primary Home shortcut. Keep uploader AI
+  bottom navigation and the primary Home shortcut. The 2026-10-06 navigation
+  revision places Calendar second and Store link fourth. Keep uploader AI
   captions, publishing, calendar, templates, and existing analytics.
 - Provide one public profile page per authenticated account on every package,
   with 1–20 explicitly enabled custom links. Host `/p/<slug>` on the existing
@@ -18,10 +19,17 @@ Build roadmap for PostDee.
 - Separate local draft saving from publishing. Show a shareable URL only after
   the API confirms publication. Support updating and unpublishing; changing a
   published slug invalidates the old URL.
-- Simplify profile-link setup into four tasks: store information, links, theme,
-  and review/publish. Existing profiles open a preview with Edit and confirmed
-  URL actions. Keep all advanced customization behind optional groups; keep
-  explicit draft saving and the existing API, package limits, and media rules.
+- Open the internal link manager for every profile state: shop identity,
+  separate Store information/Appearance/Preview actions, Add link above the
+  editable list, visibility switches and drag ordering. Keep move up/down,
+  featured-promotion and delete actions, with separate information, theme and
+  review views. Expose Save draft in the footer and publish explicitly from
+  review; confirmed publication returns to the manager. Preserve the 20-link
+  total draft limit, all customization and the existing API/media boundaries.
+  The public page is unchanged. All 1,132 Flutter tests, analysis and the Staging
+  debug build pass, with native Android emulator flow/visual checks complete.
+  Evidence and remaining limits are in
+  `docs/superpowers/plans/2026-10-06-link-manager-ui.md`.
 - Remove editing-minute benefits, quota cards, and top-up promotion from the
   active product. Legacy editing code/API contracts remain for compatibility and
   shared media helpers; historical editing milestones below are not active TODOs.
@@ -314,10 +322,17 @@ Reference direction:
 - Light/dark PostDee palettes with green accents, clear cards, thin borders, and
   small status indicators.
 - Thai-first copy for visible user flows.
-- Bottom navigation has five entry points: Home, Profile link, Create post,
-  Calendar, and Profile. Profile link occupies the second slot, Calendar occupies
-  the fourth slot, and Analytics remains reachable from publish results and
-  individual post details so the existing reporting system is not removed.
+- Bottom navigation has five entry points: Home, Calendar, Create post,
+  Store link, and Account. Store link opens the internal link manager and Account
+  opens the existing profile/settings screen. The full-width opaque dock extends
+  through the bottom safe area, with rounded top corners, outline icons, a raised
+  solid green upload action, and green selected icons/text/dots. The center
+  action hides its visible label while retaining the tooltip and accessible name.
+  The separate 2026-10-06 link-manager revision uses the selected Pinterest
+  mobile Links-manager reference while retaining this dock and its clearance.
+  The wider app redesign remains separate. Analytics remains reachable
+  from publish results and individual post details so the existing reporting
+  system is not removed.
 - Home keeps one direct Link in Bio shortcut above the analytics cards. Create
   post stays in the bottom navigation, while the future viral-alert preview
   stays off Home until its real end-to-end flow is ready.

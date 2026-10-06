@@ -20,11 +20,25 @@ Future<void> _tapVisibleBioKey(WidgetTester tester, String key) async {
 
 Future<void> showBioStep(WidgetTester tester, String step) async {
   await tester.pumpAndSettle();
-  final edit = find.byKey(const ValueKey('link-in-bio-edit-page'));
-  if (edit.evaluate().isNotEmpty) {
-    await _tapVisibleBioKey(tester, 'link-in-bio-edit-page');
+  final current = switch (step) {
+    'info' => 'link-in-bio-store-name',
+    'theme' => 'link-in-bio-decorate',
+    'review' => 'link-in-bio-publish',
+    _ => 'link-in-bio-add',
+  };
+  if (find.byKey(ValueKey(current)).evaluate().isNotEmpty) return;
+  for (final key in [
+    'link-in-bio-close-editor',
+    'link-in-bio-back-to-links',
+  ]) {
+    if (find.byKey(ValueKey(key)).evaluate().isNotEmpty) {
+      await _tapVisibleBioKey(tester, key);
+      break;
+    }
   }
-  await _tapVisibleBioKey(tester, 'link-in-bio-step-$step');
+  if (step != 'links') {
+    await _tapVisibleBioKey(tester, 'link-in-bio-step-$step');
+  }
 }
 
 Future<void> showBioUrlSettings(WidgetTester tester) async {
@@ -42,10 +56,7 @@ Future<void> tapBioControl(WidgetTester tester, String key) async {
       .contains(key)) {
     await _tapVisibleBioKey(tester, 'link-in-bio-more');
   } else if (key == 'link-in-bio-copy' || key == 'link-in-bio-open') {
-    final close = find.byKey(const ValueKey('link-in-bio-close-editor'));
-    if (close.evaluate().isNotEmpty) {
-      await _tapVisibleBioKey(tester, 'link-in-bio-close-editor');
-    }
+    await showBioStep(tester, 'links');
   } else if (key == 'link-in-bio-publish' || key == 'link-in-bio-preview') {
     await showBioStep(tester, 'review');
   } else if (key == 'link-in-bio-decorate' ||

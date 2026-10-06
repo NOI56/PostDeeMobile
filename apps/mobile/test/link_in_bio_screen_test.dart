@@ -42,6 +42,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
+    await showBioStep(tester, 'info');
     await tester.enterText(
         find.byKey(const ValueKey('link-in-bio-store-name')), 'ร้านมินา');
     await showBioUrlSettings(tester);
@@ -53,6 +54,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
+    await showBioStep(tester, 'info');
     expect(
         tester
             .widget<TextField>(

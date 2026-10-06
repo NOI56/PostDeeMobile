@@ -8,6 +8,22 @@ Profile link replaces the AI editing navigation entry. AI caption generation
 remains in Upload; editing modules are retained compatibility code and do not
 have an active mobile entry point or editing-minute offer.
 
+The 2026-10-06 bottom-navigation revision presents Home, Calendar, Create post,
+Store link, and Account while retaining the existing six-screen IndexedStack
+and its callbacks. Visual button order maps to screen indices 0, 3, 2, 1, 5;
+Analytics remains index 4, accessible from existing secondary flows without a
+selected navigation dot. Navigation labels are localized separately from screen
+headings; the center Create post name remains accessible and in its tooltip,
+while a 15 dp spacer replaces its visible label. The corrected opaque dock is
+full width, paints through the bottom safe area, and has rounded 24 dp top corners
+with no external gutters, shadow or outline border. Its 84 dp control area
+contains the 76 dp layout plus an 8 dp raised-action reserve. Keep `extendBody`
+and the 116 dp content-overlap allowance for existing footer compatibility.
+A shell-local system overlay annotation supplies matching status- and navigation-icon
+brightness; on target SDK 36 the Flutter surface painted behind the system
+inset supplies its background color. This presentation change adds no API,
+schema, package, authentication, or publication behavior.
+
 The existing Express service owns both authenticated profile management and
 the public HTML page at `/p/:slug`. A LinkInBioProfile row belongs to one User,
 has a globally unique slug, and cascades away when the account is deleted.
@@ -45,14 +61,31 @@ snapshot. Fonts are bundled locally in Flutter and served by the existing API
 under a filename whitelist, with license notices in `apps/api/assets/profile-fonts`.
 Public CSS uses nonce styles, self-only fonts/images, and no scripts.
 
-The mobile profile UI presents four independent editing steps (store, links,
-theme, review) and a compact overview for an existing server profile. The
-overview preview reads the confirmed profile snapshot; editor previews read the
-local draft. Step navigation and opening/collapsing advanced settings do not
-save or publish. Existing explicit save/publish operations, owner checks and
-uncertain-publication guards remain the boundary. Collapsed form fields retain
-their input and still validate; errors reopen the affected controls. This UI
-change adds no server fields, migration, entitlement rule, or provider call.
+The mobile profile UI opens an internal link manager for new, unpublished and
+published profiles. Shop identity and separate information/appearance/preview
+actions sit above Add link and editable cards. Information, theme and review
+remain separate views. The visible footer keeps Save draft separate from review
+and its explicit Publish/Update action; a confirmed publish returns to the
+manager. Draft previews read the local draft, while public URL actions use only
+the confirmed server profile. The public renderer and appearance contract are
+unchanged.
+
+Link order remains the local `customLinks` array order, including disabled
+links; enabled state remains a set of stable link IDs. Drag ordering and the
+existing up/down menu change that same array. The mobile draft retains its
+20-link total limit. Publish filters enabled links in order, then merges the
+server-normalized values by ID without dropping disabled links or optional
+styles. Disabling/deleting a featured link clears its featured reference.
+View navigation, editing and opening/collapsing advanced settings do not save
+or publish. Existing owner checks, late-load protection and uncertain-publication
+guards remain; a local save failure after confirmed publication cannot turn
+that server result into an unknown outcome. Collapsed form fields retain input
+and still validate; errors reopen the affected controls. The dock and 116 dp
+content-overlap allowance remain. This UI change adds no server field, migration,
+configuration, entitlement rule or provider call. The full Flutter suite,
+analysis, Staging debug build and native Android emulator checks pass; evidence
+and remaining limits are recorded in
+`docs/superpowers/plans/2026-10-06-link-manager-ui.md`.
 
 LinkInBioImage stores user/slot/key/size metadata with a cascading User relation.
 The mobile picker decodes/resizes images to PNG; the API checks its PNG structure,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/link_in_bio_appearance.dart';
 import 'link_in_bio_draft_store.dart';
+import 'link_in_bio_link_defaults.dart';
 
 Color bioColor(String value) =>
     Color(int.parse('ff${value.substring(1)}', radix: 16));
@@ -24,23 +25,7 @@ TextStyle bioTextStyle(LinkInBioTextStyle value,
 
 String bioIconId(LinkInBioCustomLink link) {
   if (link.icon != 'auto') return link.icon;
-  final host = Uri.tryParse(link.url)?.host.toLowerCase() ?? '';
-  const domains = {
-    'shopee': ['shopee.co.th', 'shopee.com', 'shope.ee'],
-    'lazada': ['lazada.co.th', 'lazada.com'],
-    'line': ['line.me', 'lin.ee'],
-    'tiktok': ['tiktok.com'],
-    'youtube': ['youtube.com', 'youtu.be'],
-    'instagram': ['instagram.com'],
-    'facebook': ['facebook.com', 'fb.com', 'fb.me'],
-  };
-  for (final entry in domains.entries) {
-    if (entry.value
-        .any((domain) => host == domain || host.endsWith('.$domain'))) {
-      return entry.key;
-    }
-  }
-  return 'link';
+  return bioPlatformId(link.url);
 }
 
 IconData bioLinkIcon(LinkInBioCustomLink link) => switch (bioIconId(link)) {
@@ -166,7 +151,8 @@ class LinkInBioPreview extends StatelessWidget {
               if (background.mode == 'image')
                 Positioned.fill(
                     child: ColoredBox(
-                            color: Colors.black.withValues(alpha: background.overlay / 100))),
+                        color: Colors.black
+                            .withValues(alpha: background.overlay / 100))),
               Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 24),

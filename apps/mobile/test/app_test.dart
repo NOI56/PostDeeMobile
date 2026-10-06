@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/app.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
@@ -60,10 +61,10 @@ void main() {
     expect(_referenceNav(), findsOneWidget);
     for (final label in [
       'Home',
-      'Profile link',
-      'Create post',
       'Calendar',
-      'Profile'
+      'Create post',
+      'Store link',
+      'Account'
     ]) {
       expect(_referenceNavButton(label), findsOneWidget);
     }
@@ -115,7 +116,8 @@ void main() {
     expect(find.text('Views this month'), findsOneWidget);
     expect(find.text('Likes this month'), findsOneWidget);
     expect(find.text('Create a new post'), findsNothing);
-    expect(find.text('Profile link'), findsNWidgets(2));
+    expect(find.text('Profile link'), findsOneWidget);
+    expect(find.text('Store link'), findsOneWidget);
     expect(find.text('Latest post status'), findsOneWidget);
     expect(find.text('View all'), findsNothing);
     expect(find.text('Pro package'), findsNothing);
@@ -195,7 +197,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AppBar), findsNothing);
-    expect(tester.getSize(_referenceNav()).height, lessThanOrEqualTo(76));
+    final surfaceRect = tester.getRect(
+      find.byKey(const ValueKey('postdee-nav-surface')),
+    );
+    final viewportSize =
+        tester.view.physicalSize / tester.view.devicePixelRatio;
+    expect(surfaceRect.left, 0);
+    expect(surfaceRect.right, viewportSize.width);
+    expect(surfaceRect.bottom, viewportSize.height);
+    expect(tester.getSize(_referenceNav()).height, lessThanOrEqualTo(92));
   });
   testWidgets(
       'keeps upload schedule controls above bottom nav on a phone viewport',
@@ -345,44 +355,108 @@ void main() {
     expect(tester.getBottomLeft(stickyPostButton).dy, lessThan(bottomNavTop));
   });
 
-  testWidgets('uses the reference bottom nav colors', (tester) async {
-    final sessionStore = PostDeeAuthSessionStore.instance;
-    sessionStore.signIn(
-      const AuthSession(
-        idToken: 'firebase-id-token',
-        email: 'seller@example.com',
-        displayName: 'PostDee Seller',
-      ),
-    );
-    addTearDown(sessionStore.clear);
+  for (final themeMode in const [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('uses green selected nav colors in ${themeMode.name} mode',
+        (tester) async {
+      final initialThemeMode =
+          AppTheme.isLightMode ? ThemeMode.light : ThemeMode.dark;
+      final themeController = PostDeeThemeController(initialMode: themeMode);
+      final sessionStore = PostDeeAuthSessionStore.instance;
+      sessionStore.signIn(
+        const AuthSession(
+          idToken: 'firebase-id-token',
+          email: 'seller@example.com',
+          displayName: 'PostDee Seller',
+        ),
+      );
+      addTearDown(() {
+        sessionStore.clear();
+        themeController.dispose();
+        AppTheme.applyThemeMode(initialThemeMode);
+      });
 
-    await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        PostDeeApp(locale: const Locale('th'), themeController: themeController),
+      );
+      await tester.pumpAndSettle();
 
-    // The capsule is translucent (card color at 70%) with a soft border, per
-    // the design handoff, and blurs the content scrolling behind it.
-    final capsule = tester.widget<Container>(
-      find
-          .descendant(
-            of: _referenceNav(),
-            matching: find.byType(Container),
-          )
-          .first,
-    );
-    final decoration = capsule.decoration! as BoxDecoration;
-    final border = decoration.border! as Border;
+      final systemIcons =
+          themeMode == ThemeMode.light ? Brightness.dark : Brightness.light;
+      expect(SystemChrome.latestStyle?.systemNavigationBarIconBrightness,
+          systemIcons);
+      expect(SystemChrome.latestStyle?.statusBarIconBrightness, systemIcons);
 
-    expect(decoration.color, AppTheme.glass.withValues(alpha: 0.70));
-    expect(border.top.color, AppTheme.border.withValues(alpha: 0.70));
-    expect(
-      find.descendant(
-        of: _referenceNav(),
-        matching: find.byType(BackdropFilter),
-      ),
-      findsOneWidget,
-    );
-    expect(find.byType(BottomNavigationBar), findsNothing);
-  });
+      final surface = tester.widget<Material>(
+        find.byKey(const ValueKey('postdee-nav-surface')),
+      );
+      expect(surface.color, AppTheme.navSurface);
+      expect(surface.color!.a, 1);
+      expect(surface.elevation, 0);
+      expect(
+        find.descendant(
+          of: _referenceNav(),
+          matching: find.byType(BackdropFilter),
+        ),
+        findsNothing,
+      );
+      expect(find.byType(BottomNavigationBar), findsNothing);
+
+      void expectMenuColors(String label, IconData icon,
+          {required bool selected}) {
+        final button = _referenceNavButton(label);
+        final expectedColor =
+            selected ? AppTheme.navActive : AppTheme.textSecondary;
+        expect(
+          tester.widget<Icon>(
+            find.descendant(of: button, matching: find.byIcon(icon)),
+          ).color,
+          expectedColor,
+        );
+        expect(
+          tester.widget<Text>(
+            find.descendant(of: button, matching: find.text(label)),
+          ).style!.color,
+          expectedColor,
+        );
+        final indicator = find.descendant(
+          of: button,
+          matching: find.byKey(const ValueKey('postdee-nav-selected-indicator')),
+        );
+        if (selected) {
+          final decoration =
+              tester.widget<DecoratedBox>(indicator).decoration as BoxDecoration;
+          expect(decoration.color, AppTheme.navActive);
+        } else {
+          expect(indicator, findsNothing);
+        }
+      }
+
+      expectMenuColors('หน้าหลัก', Icons.home_outlined, selected: true);
+      expectMenuColors('ปฏิทิน', Icons.calendar_today_outlined, selected: false);
+      expectMenuColors('ลิงก์ร้าน', Icons.link_outlined, selected: false);
+      expectMenuColors('บัญชี', Icons.person_outline_rounded, selected: false);
+      await _tapReferenceNavButton(tester, 'ปฏิทิน');
+      expectMenuColors('หน้าหลัก', Icons.home_outlined, selected: false);
+      expectMenuColors('ปฏิทิน', Icons.calendar_today_outlined, selected: true);
+      await _tapReferenceNavButton(tester, 'ลิงก์ร้าน');
+      expectMenuColors('ลิงก์ร้าน', Icons.link_outlined, selected: true);
+      expectMenuColors('ปฏิทิน', Icons.calendar_today_outlined, selected: false);
+      await _tapReferenceNavButton(tester, 'บัญชี');
+      expectMenuColors('บัญชี', Icons.person_outline_rounded, selected: true);
+      expectMenuColors('ลิงก์ร้าน', Icons.link_outlined, selected: false);
+      expect(
+        tester.widget<Icon>(find.descendant(
+          of: _referenceNavButton('สร้างโพสต์'),
+          matching: find.byIcon(Icons.ios_share_outlined),
+        )).color,
+        Colors.white,
+      );
+      expect(
+        find.descendant(of: _referenceNav(), matching: find.text('สร้างโพสต์')),
+        findsNothing,
+      );
+    });
+  }
   testWidgets('switches between dark and light mode from profile',
       (tester) async {
     final languageController = PostDeeLanguageController(
@@ -421,7 +495,7 @@ void main() {
     expect(homeLinkShortcut, findsOneWidget);
     final lightLinkCardColor = tester.widget<Material>(homeLinkShortcut).color;
 
-    await _tapReferenceNavButton(tester, 'Profile');
+    await _tapReferenceNavButton(tester, 'Account');
 
     final darkModeButton = find.text('มืด');
     await tester.scrollUntilVisible(
@@ -487,7 +561,7 @@ void main() {
 
     expect(_referenceNavButton('Home'), findsOneWidget);
 
-    await _tapReferenceNavButton(tester, 'Profile');
+    await _tapReferenceNavButton(tester, 'Account');
 
     expect(find.text('Language'), findsOneWidget);
 
@@ -561,16 +635,17 @@ void main() {
     await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
     await tester.pumpAndSettle();
 
-    expect(find.text('หน้าแรก'), findsNWidgets(2));
+    expect(find.text('หน้าแรก'), findsOneWidget);
+    expect(find.text('หน้าหลัก'), findsOneWidget);
     expect(find.bySemanticsLabel('แจ้งเตือน'), findsOneWidget);
     expect(find.byType(BottomNavigationBar), findsNothing);
     expect(find.text('Google'), findsNothing);
     expect(find.text('เข้าสู่ระบบ Google'), findsNothing);
-    expect(_referenceNavButton('หน้าแรก'), findsOneWidget);
+    expect(_referenceNavButton('หน้าหลัก'), findsOneWidget);
     expect(_referenceNavButton('สร้างโพสต์'), findsOneWidget);
     expect(_referenceNavButton('ปฏิทิน'), findsOneWidget);
-    expect(_referenceNavButton('ลิงก์โปรไฟล์'), findsOneWidget);
-    expect(_referenceNavButton('โปรไฟล์'), findsOneWidget);
+    expect(_referenceNavButton('ลิงก์ร้าน'), findsOneWidget);
+    expect(_referenceNavButton('บัญชี'), findsOneWidget);
     expect(find.text('เทมเพลต'), findsNothing);
 
     await _tapReferenceNavButton(tester, 'สร้างโพสต์');
@@ -588,19 +663,19 @@ void main() {
     expect(find.text('ปฏิทินโพสต์'), findsOneWidget);
     expect(find.text('รีวิวคลิปด้วย AI'), findsNothing);
 
-    await _tapReferenceNavButton(tester, 'ลิงก์โปรไฟล์');
+    await _tapReferenceNavButton(tester, 'ลิงก์ร้าน');
 
-    expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
+    expect(find.byKey(const ValueKey('link-in-bio-add')), findsOneWidget);
     expect(find.text('ตัดต่อด้วย AI'), findsNothing);
     expect(find.byKey(const ValueKey('link-in-bio-back')), findsOneWidget);
-    expect(_referenceNavButton('ลิงก์โปรไฟล์'), findsOneWidget);
+    expect(_referenceNavButton('ลิงก์ร้าน'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('link-in-bio-back')));
     await tester.pumpAndSettle();
 
-    expect(_referenceNavButton('ลิงก์โปรไฟล์'), findsOneWidget);
+    expect(_referenceNavButton('ลิงก์ร้าน'), findsOneWidget);
 
-    await _tapReferenceNavButton(tester, 'โปรไฟล์');
+    await _tapReferenceNavButton(tester, 'บัญชี');
 
     expect(find.text('บัญชีและโปรไฟล์'), findsOneWidget);
     expect(find.text('PostDee Seller'), findsOneWidget);

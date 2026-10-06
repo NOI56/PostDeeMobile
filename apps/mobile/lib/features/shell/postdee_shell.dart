@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/auth/firebase_bootstrap.dart';
@@ -419,7 +419,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
       decoration: AppTheme.screenBackground,
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        // The capsule nav is translucent and floats over the content; tab
+        // The docked nav overlays the content; tab
         // screens reserve AppTheme.navOverlap at the bottom to scroll clear.
         extendBody: true,
         body: SafeArea(
@@ -463,99 +463,91 @@ class _PostDeeBottomNav extends StatelessWidget {
   final VoidCallback onProfile;
   final PostDeeLocalizations l10n;
 
-  static const _height = 76.0;
+  // Includes 8 dp above the surface for the raised upload action.
+  static const _height = 84.0;
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-        child: DecoratedBox(
-          key: const ValueKey('postdee-reference-bottom-nav'),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF122018).withValues(alpha: 0.28),
-                blurRadius: 30,
-                spreadRadius: -14,
-                offset: const Offset(0, 12),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        // Screens without an AppBar also inherit status-bar contrast here.
+        statusBarIconBrightness:
+            AppTheme.isLightMode ? Brightness.dark : Brightness.light,
+        statusBarBrightness:
+            AppTheme.isLightMode ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: AppTheme.navSurface,
+        systemNavigationBarDividerColor: AppTheme.navSurface,
+        systemNavigationBarIconBrightness:
+            AppTheme.isLightMode ? Brightness.dark : Brightness.light,
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: DecoratedBox(
+        key: const ValueKey('postdee-reference-bottom-nav'),
+        decoration: const BoxDecoration(),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              top: 8,
+              child: Material(
+                key: const ValueKey('postdee-nav-surface'),
+                color: AppTheme.navSurface,
+                surfaceTintColor: Colors.transparent,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
               ),
-            ],
-          ),
-          // Clip only the translucent capsule background. The raised create
-          // button remains outside this clip so its circular edge stays whole.
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                  child: Container(
-                    height: _height,
-                    decoration: BoxDecoration(
-                      color: AppTheme.glass.withValues(alpha: 0.70),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: AppTheme.border.withValues(alpha: 0.70),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _ReferenceNavButton(
+                        label: l10n.navigationHome,
+                        icon: Icons.home_outlined,
+                        selected: currentIndex == 0,
+                        onPressed: onHome,
                       ),
                     ),
-                  ),
+                    Expanded(
+                      child: _ReferenceNavButton(
+                        label: l10n.captionTab,
+                        icon: Icons.calendar_today_outlined,
+                        selected: currentIndex == 3,
+                        onPressed: onCalendar,
+                      ),
+                    ),
+                    Expanded(
+                      child: _ReferenceCreateNavButton(
+                        label: l10n.createPostTab,
+                        selected: currentIndex == 2,
+                        onPressed: onCreate,
+                      ),
+                    ),
+                    Expanded(
+                      child: _ReferenceNavButton(
+                        label: l10n.navigationStoreLink,
+                        icon: Icons.link_outlined,
+                        selected: currentIndex == 1,
+                        onPressed: onLinkInBio,
+                      ),
+                    ),
+                    Expanded(
+                      child: _ReferenceNavButton(
+                        label: l10n.navigationAccount,
+                        icon: Icons.person_outline_rounded,
+                        selected: currentIndex == 5,
+                        onPressed: onProfile,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              SizedBox(
-                height: _height,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _ReferenceNavButton(
-                          label: l10n.homeTab,
-                          icon: Icons.home_rounded,
-                          selected: currentIndex == 0,
-                          onPressed: onHome,
-                        ),
-                      ),
-                      Expanded(
-                        child: _ReferenceNavButton(
-                          label: l10n.linkInBioTab,
-                          icon: Icons.link_rounded,
-                          selected: currentIndex == 1,
-                          onPressed: onLinkInBio,
-                        ),
-                      ),
-                      Expanded(
-                        child: _ReferenceCreateNavButton(
-                          label: l10n.createPostTab,
-                          selected: currentIndex == 2,
-                          onPressed: onCreate,
-                        ),
-                      ),
-                      Expanded(
-                        child: _ReferenceNavButton(
-                          label: l10n.captionTab,
-                          icon: Icons.calendar_month_rounded,
-                          selected: currentIndex == 3,
-                          onPressed: onCalendar,
-                        ),
-                      ),
-                      Expanded(
-                        child: _ReferenceNavButton(
-                          label: l10n.profileTab,
-                          icon: Icons.person_rounded,
-                          selected: currentIndex == 5,
-                          onPressed: onProfile,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -568,21 +560,24 @@ class _ReferenceNavButton extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onPressed,
+    this.isCreateAction = false,
   });
 
   final String label;
   final IconData icon;
   final bool selected;
   final VoidCallback onPressed;
+  final bool isCreateAction;
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? AppTheme.accentCyanInk : AppTheme.textMuted;
+    final color = selected ? AppTheme.navActive : AppTheme.textSecondary;
 
     return Semantics(
       label: label,
       button: true,
       selected: selected,
+      onTap: onPressed,
       child: ExcludeSemantics(
         child: Tooltip(
           message: label,
@@ -594,26 +589,49 @@ class _ReferenceNavButton extends StatelessWidget {
               child: SizedBox(
                 height: _PostDeeBottomNav._height,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(2, 6, 2, 5),
+                  padding: const EdgeInsets.fromLTRB(2, 4, 2, 4),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      AnimatedContainer(
-                        width: 42,
-                        height: 34,
-                        duration: const Duration(milliseconds: 200),
-                        decoration: BoxDecoration(
-                          color: selected ? AppTheme.mint : Colors.transparent,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: AnimatedScale(
-                          scale: selected ? 1.05 : 1,
-                          duration: const Duration(milliseconds: 200),
-                          child: Icon(icon, color: color, size: 22),
-                        ),
+                      SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: isCreateAction
+                            ? Transform.translate(
+                                offset: const Offset(0, -8),
+                                child: DecoratedBox(
+                                  key: const ValueKey(
+                                      'postdee-nav-create-surface'),
+                                  decoration: const BoxDecoration(
+                                    color: AppTheme.accent,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(icon,
+                                      color: Colors.white, size: 25),
+                                ),
+                              )
+                            : Icon(icon, color: color, size: 22),
                       ),
-                      const SizedBox(height: 4),
-                      _ReferenceNavLabel(label: label, selected: selected),
+                      const SizedBox(height: 1),
+                      if (isCreateAction)
+                        const SizedBox(height: 15)
+                      else
+                        _ReferenceNavLabel(label: label, selected: selected),
+                      const SizedBox(height: 3),
+                      SizedBox(
+                        width: 4,
+                        height: 4,
+                        child: selected
+                            ? DecoratedBox(
+                                key: const ValueKey(
+                                    'postdee-nav-selected-indicator'),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.navActive,
+                                  shape: BoxShape.circle,
+                                ),
+                              )
+                            : null,
+                      ),
                     ],
                   ),
                 ),
@@ -639,114 +657,12 @@ class _ReferenceCreateNavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
+    return _ReferenceNavButton(
       label: label,
-      button: true,
+      icon: Icons.ios_share_outlined,
       selected: selected,
-      child: ExcludeSemantics(
-        child: Tooltip(
-          message: label,
-          child: Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              onTap: onPressed,
-              borderRadius: BorderRadius.circular(18),
-              child: SizedBox(
-                height: _PostDeeBottomNav._height,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned(
-                      top: -8,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Positioned(
-                                left: -5,
-                                top: -5,
-                                right: -5,
-                                bottom: -5,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color:
-                                        AppTheme.accent.withValues(alpha: 0.18),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              ),
-                              Positioned.fill(
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      stops: [0.0, 0.45, 1.0],
-                                      colors: [
-                                        Color(0xFF19C98E),
-                                        Color(0xFF0E9F6E),
-                                        Color(0xFF086A49),
-                                      ],
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppTheme.glass,
-                                        spreadRadius: 4,
-                                      ),
-                                      BoxShadow(
-                                        color: AppTheme.accent
-                                            .withValues(alpha: 0.65),
-                                        blurRadius: 24,
-                                        spreadRadius: -8,
-                                        offset: const Offset(0, 12),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Icon(
-                                    Icons.add_rounded,
-                                    color: Colors.white,
-                                    size: 25,
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                top: 5,
-                                left: 10,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.35),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: const SizedBox(width: 20, height: 9),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 2,
-                      right: 2,
-                      bottom: 5,
-                      child: _ReferenceNavLabel(
-                        label: label,
-                        selected: selected,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      onPressed: onPressed,
+      isCreateAction: true,
     );
   }
 }
@@ -774,10 +690,10 @@ class _ReferenceNavLabel extends StatelessWidget {
             label,
             maxLines: 1,
             style: TextStyle(
-              color: selected ? AppTheme.accentCyan : AppTheme.textMuted,
-              fontSize: 10,
-              height: 1,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+              color: selected ? AppTheme.navActive : AppTheme.textSecondary,
+              fontSize: 11,
+              height: 1.1,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             ),
           ),
         ),

@@ -1124,7 +1124,7 @@ void main() {
     );
   });
 
-  testWidgets('opens Link in Bio builder from the home shortcut',
+  testWidgets('opens Link in Bio manager from the home shortcut',
       (tester) async {
     await tester.pumpWidget(
       _homeTestApp(const HomeScreen()),
@@ -1132,17 +1132,20 @@ void main() {
 
     await _tapHomeTextAfterScrolling(tester, 'ลิงก์หน้าโปรไฟล์');
 
-    expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
+    expect(find.text('ลิงก์ร้าน'), findsOneWidget);
     expect(find.byKey(const ValueKey('link-in-bio-back')), findsOneWidget);
     expect(find.textContaining('postdee.link/'), findsNothing);
-    expect(
-        find.byKey(const ValueKey('link-in-bio-store-name')), findsOneWidget);
-    expect(find.byKey(const ValueKey('link-in-bio-next')), findsOneWidget);
-    expect(find.byKey(const ValueKey('link-in-bio-add')), findsNothing);
+    expect(find.byKey(const ValueKey('link-in-bio-store-name')), findsNothing);
+    expect(find.byKey(const ValueKey('link-in-bio-next')), findsNothing);
+    expect(find.byKey(const ValueKey('link-in-bio-add')), findsOneWidget);
     expect(find.byKey(const ValueKey('link-in-bio-publish')), findsNothing);
 
     await tapBioControl(tester, 'link-in-bio-more');
-    expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('link-in-bio-save-draft')),
+            matching: find.text('บันทึกแบบร่าง')),
+        findsOneWidget);
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
 

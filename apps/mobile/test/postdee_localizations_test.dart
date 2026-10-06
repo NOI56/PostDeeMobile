@@ -111,6 +111,41 @@ void main() {
       final localizations = PostDeeLocalizations.lookup(const Locale('fr'));
 
       expect(localizations.homeTab, 'Home');
+      expect(localizations.navigationHome, 'Home');
+      expect(localizations.navigationStoreLink, 'Store link');
+      expect(localizations.navigationAccount, 'Account');
+    });
+
+    test('provides dedicated navigation labels in every supported locale', () {
+      const expectedLabels = {
+        'th': ['หน้าหลัก', 'ลิงก์ร้าน', 'บัญชี'],
+        'en': ['Home', 'Store link', 'Account'],
+        'vi': ['Trang chủ', 'Liên kết cửa hàng', 'Tài khoản'],
+        'zh': ['首页', '店铺链接', '账户'],
+        'id': ['Beranda', 'Tautan toko', 'Akun'],
+        'ms': ['Utama', 'Pautan kedai', 'Akaun'],
+        'tl': ['Home', 'Link ng tindahan', 'Account'],
+        'ja': ['ホーム', 'ショップリンク', 'アカウント'],
+      };
+
+      expect(
+        expectedLabels.keys.toSet(),
+        PostDeeLocalizations.supportedLocales
+            .map((locale) => locale.languageCode)
+            .toSet(),
+      );
+      for (final locale in PostDeeLocalizations.supportedLocales) {
+        final localizations = PostDeeLocalizations.lookup(locale);
+        expect(
+          [
+            localizations.navigationHome,
+            localizations.navigationStoreLink,
+            localizations.navigationAccount,
+          ],
+          expectedLabels[locale.languageCode],
+          reason: locale.languageCode,
+        );
+      }
     });
 
     test('provides a profile link label in every supported locale', () {

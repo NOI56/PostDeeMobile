@@ -384,8 +384,36 @@ folder:
 | `platform-logo-balanced-browser-result.json`, `platform-logo-balanced-web-all-desktop.png`, `platform-logo-balanced-web-all-mobile.png` | Seven browser QA checks and inspected full-platform rendering. |
 | `platform-logo-balanced-native-manager.png`, `platform-logo-balanced-native-preview.png` | Existing two-link native manager and preview evidence. |
 
-Push, CI and Staging deployment for this size-normalization follow-up remain
-pending. Public Staging browser access is still blocked by saved permissions;
+Push, CI and Staging deployment for this size-normalization follow-up are
+completed as recorded below. Public Staging browser access is still blocked by saved permissions;
 the live public page and assets have not been confirmed, and no alternate access
-path was used. Render Dashboard access is available for release verification.
+path was used. Release status/startup were verified through Render Dashboard.
 Physical devices, iOS, API 36 and Production remain outside these checks.
+
+### Size-normalization release
+
+- Pushed implementation commit
+  `b40bd74ddb08698efd78b60a585a408d8f6f6c01` to
+  `origin/codex/pinterest-mobile-ui`. No merge into `main` was performed.
+- [CI run 37493802956](https://github.com/NOI56/PostDeeMobile/actions/runs/37493802956)
+  completed successfully for both Backend API and Flutter Mobile on that exact
+  head SHA.
+- [Render deploy `dep-db2hs0qd0e5s738bgd50`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db2hs0qd0e5s738bgd50)
+  on service `srv-d9bb72ojs32c739osa5g` shows `Deploy succeeded | Live` for the
+  full implementation SHA above. It started at 23:12:51 and became Live at
+  23:14:44 Asia/Bangkok on 6 October 2026, duration 1m53s. Startup confirms
+  `postdee_staging` has 14 existing migrations and no pending migration, listens
+  on port 10000, and retains the memory scheduler with
+  `mode=disabled; publisher=disabled`.
+- Auto-Deploy remains Off, with `main` still linked. No new migration,
+  dependency, environment value or customer profile data was changed.
+- Public Staging page/asset access remains blocked by saved browser permissions.
+  Render Live and startup evidence confirm deployment; rendering and asset
+  behavior remain verified locally and in the installed app, not through a live
+  public-page browser check. No alternate access path was used to bypass the
+  block.
+
+Release evidence in the same visualization folder:
+`platform-logo-balanced-github-ci.json`,
+`platform-logo-balanced-staging-deploy-snapshot.txt` and
+`platform-logo-balanced-staging-deploy-live.png`.

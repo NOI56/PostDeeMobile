@@ -498,7 +498,7 @@ limit, draft/review/publish/unpublish actions and previously published pages.
 
 ### Contact expansion changed files
 
-The feature changes only the following 28 files; existing untracked `artifacts/`
+The feature and CI test correction change the following 29 files; existing untracked `artifacts/`
 and unrelated root-checkout work are excluded:
 
 | Directory | Files |
@@ -510,7 +510,7 @@ and unrelated root-checkout work are excluded:
 | `apps/api/src/modules/linkInBio` | `linkInBioAppearance.ts`, `linkInBioDestinations.ts`, `linkInBioPlatformLogos.ts`, `linkInBioRenderer.ts`, `linkInBioRoutes.ts`, `linkInBioPlatformLogos.test.ts`, `linkInBioContacts.test.ts` |
 | `apps/mobile/lib/core/models` | `link_in_bio_appearance.dart` |
 | `apps/mobile/lib/features/link_in_bio` | `link_in_bio_link_defaults.dart`, `link_in_bio_platform_logo.dart`, `link_in_bio_screen.dart`, `link_in_bio_validation.dart` |
-| `apps/mobile/test` | `link_in_bio_auto_title_test.dart`, `link_in_bio_draft_store_test.dart`, `link_in_bio_platform_logo_test.dart`, `link_in_bio_contacts_test.dart` |
+| `apps/mobile/test` | `link_in_bio_auto_title_test.dart`, `link_in_bio_draft_store_test.dart`, `link_in_bio_platform_logo_test.dart`, `link_in_bio_contacts_test.dart`, `store_subscription_service_test.dart` |
 
 ### Contact expansion verification and delivery
 
@@ -527,7 +527,7 @@ Verification recorded for this contact expansion so far:
   or schema change is required. Production dependency audit exits successfully
   at the high-severity threshold; four existing moderate findings remain and
   no dependency change was made.
-- The complete Flutter suite passes 1,185/1,185, including the exact-host
+- The local complete Flutter suite passes 1,185/1,185, including the exact-host
   `goo.gl` domain-parity regression. Flutter analyze reports no issues, and the
   exact Staging debug APK builds successfully. The build uses the existing
   `https://postdee-api-staging.onrender.com` API origin with Firebase authentication
@@ -590,16 +590,82 @@ prefix:
 | `profile-contact-api-build.log`, `profile-contact-api-prisma.log`, `profile-contact-api-helper-types.log`, `profile-contact-api-modified-types.log` | Build, schema validation and type checks pass. |
 | `profile-contact-api-audit.log` | High-threshold production audit passes; four existing moderate findings remain. |
 | `profile-contact-mobile-full.log`, `profile-contact-mobile-analyze.log` | 1,185 complete Flutter tests pass; analysis reports no issues. |
+| `profile-contact-billing-targeted.log`, `profile-contact-mobile-final-full.log`, `profile-contact-mobile-final-analyze.log` | After the deterministic billing-fixture correction: 24 billing tests and 1,185 complete Flutter tests pass; analysis reports no issues. |
 | `profile-contact-mobile-build.log` | Exact Staging debug APK builds successfully. |
 | `profile-contact-native-before.json`, `profile-contact-native-installed.json`, `profile-contact-native-after.json` | Built/installed APK match and original preferences remain unchanged. |
-| `profile-contact-native-new.png`, `profile-contact-native-manager.png`, `profile-contact-native-logcat.log` | New-brand/vector native preview, restored original manager and clean runtime scan. |
+| `profile-contact-native-new.png`, `profile-contact-native-manager.png`, `profile-contact-native-logcat.log` | New-brand native preview, restored original manager and clean runtime scan. |
 | `profile-contact-browser-result.json` | Six local compiled-browser checks pass, with no console/page/HTTP issue. |
 | `profile-contact-web-all-desktop.png`, `profile-contact-web-all-mobile.png`, `profile-contact-web-new-desktop.png`, `profile-contact-web-new-mobile.png` | Full 13-destination and new-brand desktop/mobile visual evidence. |
 | `profile-contact-asset-audit.json` | Independent source alpha bounds, dimensions and asset byte parity. |
 
-Push, CI and Staging deployment for this contact expansion remain pending; do
-not infer them from earlier seven-logo releases. Saved browser permissions still
-block live public Staging page/asset access. The allowed Render Dashboard can
-verify deployment status; no alternate access path may be used to bypass the
-public-page block. Physical devices, iOS, API 36 and Production remain outside
-the current checks.
+Saved browser permissions still block live public Staging page/asset access.
+The allowed Render Dashboard verifies deployment status; no alternate access
+path is used to bypass the public-page block. Physical devices, iOS, API 36 and
+Production remain outside the current checks.
+
+### Contact expansion release and CI follow-up
+
+- Implementation commit `a06a53887490f145817b79b6b6a9f881c46b69f7` was pushed
+  to `origin/codex/pinterest-mobile-ui`. No merge into `main` was performed.
+- [Render deploy `dep-db2igi942hec738jjfm0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db2igi942hec738jjfm0)
+  on service `srv-d9bb72ojs32c739osa5g` shows Live for that implementation SHA.
+  The deploy became Live at 23:58:45 Asia/Bangkok on 6 October 2026, duration
+  2m04s. Checkout logs confirm the full implementation SHA. Startup confirms
+  `postdee_staging`, 14 existing migrations with none pending, port 10000,
+  memory scheduler, and `mode=disabled; publisher=disabled`.
+- Service plan/environment, the linked `main` branch and Auto-Deploy Off state
+  remain unchanged. No new database migration or customer publication was made.
+  Render Live/startup evidence confirms deployment, while public-page rendering
+  and asset behavior remain checked locally and in the installed app; the live
+  public page/assets are still blocked by saved browser permissions.
+- [Initial CI run 37499561901](https://github.com/NOI56/PostDeeMobile/actions/runs/37499561901)
+  used source SHA `a06a53887490f145817b79b6b6a9f881c46b69f7`. Backend API
+  passed; Flutter Mobile recorded 1,184 passing tests and one failure in the
+  existing RevenueCat confirmation-deadline test. All new contact/logo tests
+  passed. This initial run is not a successful complete CI result.
+
+The billing test failure depends on a 50ms real-time deadline/Stopwatch and a
+fake backend that manufactures a Pro entitlement on its second call. Varying
+CI timing changes which entitlement that assertion sees. The authorized
+correction is confined to `apps/mobile/test/store_subscription_service_test.dart`
+and makes the deadline fixture deterministic using an explicit fake-backend
+availability flag. The correction adds 12 lines and removes six in that
+existing test file, without increasing the deadline, skipping a test or adding
+dependencies. It does not change production billing/API/mobile source, feature
+flags, dependencies or the installed APK's production behavior.
+
+Local validation after the fixture correction passes all 24 targeted billing
+tests and all 1,185 Flutter tests; final Flutter analyze reports no issues.
+Test-only commit `125682300747fda9e843d29a96704b0bb07fae95`,
+`Stabilize RevenueCat deadline test fixture [skip render]`, was pushed to the
+same feature branch. The diff from implementation `a06a538` to this test-only
+commit contains no change to runtime API sources/assets, mobile library/assets,
+flags, schemas or dependencies. The installed exact APK and Render runtime
+implementation remain the verified `a06a538` version; no rebuild or redeploy
+is required for this test-only correction.
+
+[CI retry 37500675394](https://github.com/NOI56/PostDeeMobile/actions/runs/37500675394)
+completed successfully for source
+`125682300747fda9e843d29a96704b0bb07fae95`. Both Backend API and Flutter Mobile
+show `completed/success`, confirmed by `gh run view` and a successful
+`gh run watch` exit. Flutter Mobile completed at 00:07:12 Asia/Bangkok on
+7 October 2026. This is the final successful CI result, separate from the
+initial billing-fixture failure. The deployed/runtime source remains
+`a06a53887490f145817b79b6b6a9f881c46b69f7`; its production files match the
+successful CI source exactly, so no rebuild or redeploy is needed for the
+test-only correction.
+
+The delivered set includes ten brand marks and three decorative website/email/
+telephone vectors, with local 1,280-test API and 1,185-test Flutter verification,
+successful final CI, Staging API deployment and the exact Staging APK installed.
+Native account/draft data remain preserved as verified above. Public Staging
+page/asset rendering remains unverified because saved browser permissions block
+access; Render deployment proof does not substitute for a live public-page
+browser check. No alternate access path bypassed that block, and Production
+remains unchanged.
+
+Release evidence in the same visualization folder:
+`profile-contact-staging-deploy-snapshot.txt` and
+`profile-contact-staging-live.png`. Final CI evidence:
+`profile-contact-ci-retry-result.json` and
+`profile-contact-ci-retry-watch.log`.

@@ -207,8 +207,8 @@ deployment.
 
 The user's push/deploy-to-Staging authorization covers this correction in the
 same scope. The corrective checks below verify the changed artwork and wrapper
-separately from the earlier release. Push and Staging deployment for the
-correction are still pending. Live Staging browser access remains blocked by
+separately from the earlier release. Corrective push and Staging deployment are
+complete as recorded below. Live Staging browser access remains blocked by
 saved permissions and is not bypassed. Production is outside this follow-up.
 
 ### Corrective verification and exact APK
@@ -263,5 +263,34 @@ the same visualization folder:
 | `platform-logo-transparent-native-manager.png`, `platform-logo-transparent-native-preview.png`, `platform-logo-transparent-native-logcat.log` | Inspected actual manager/preview and current process scan. |
 
 These results establish the correction locally and on the installed emulator.
-They do not claim a completed corrective API deployment, live public-page
-verification, physical-device/iOS/API 36 testing or Production acceptance.
+They do not claim live public-page verification, physical-device/iOS/API 36
+testing or Production acceptance.
+
+### Corrective release
+
+- Fresh remote fetch before commit confirmed `origin/main = bcd7153` unchanged;
+  the feature was 0 commits behind and 3 ahead. Only the 12 corrective files
+  were committed; untracked `artifacts/` and the dirty root checkout were preserved.
+- Pushed `55d2c8eaf29f5261e5651d8cf62304e7cce6eb99` to
+  `origin/codex/pinterest-mobile-ui`. No merge into `main` was performed.
+- [CI run 37490488828](https://github.com/NOI56/PostDeeMobile/actions/runs/37490488828)
+  completed successfully on this exact SHA, both Backend API and Flutter Mobile.
+  It includes the full suites, API build/schema/audit and mobile analysis.
+- [Render deploy `dep-db2hgs0ae00c73acmvpg`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db2hgs0ae00c73acmvpg)
+  shows `Deploy succeeded | Live`, source `55d2c8e`, duration 1m59s. Logs confirm
+  checkout of the full target SHA and service Live at 22:51:03 Asia/Bangkok on
+  6 October 2026. Database `postdee_staging` has 14 existing migrations and no
+  pending migration; startup listens on port 10000 and retains memory scheduling
+  and disabled social publisher settings. There is no schema change.
+- Auto-Deploy remains disabled from the earlier specific-commit deployment;
+  linked branch is still `main`. No plan, secrets/env, Production release or
+  customer profile data was changed.
+- Public Staging browser access remains blocked by saved permissions. No browser,
+  HTTP or other alternate path was used to bypass it; Live status/startup are
+  verified in Render, while page/logo rendering evidence comes from the compiled
+  local renderer and the installed native app.
+
+Corrective release evidence in the same visualization folder:
+`platform-logo-transparent-github-ci.json`,
+`platform-logo-transparent-staging-deploy-snapshot.txt` and
+`platform-logo-transparent-staging-deploy-live.png`.

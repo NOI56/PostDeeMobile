@@ -15,6 +15,7 @@ import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_image_picker.dart';
 import 'link_in_bio_link_defaults.dart';
 import 'link_in_bio_platform_logo.dart';
+import 'link_in_bio_platform_picker.dart';
 import 'link_in_bio_preview.dart';
 import 'link_in_bio_validation.dart';
 
@@ -1607,37 +1608,33 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                               hintText:
                                                   'เช่น ช้อปสินค้า หรือ ติดต่อ')),
                                       const SizedBox(height: 10),
-                                      DropdownButtonFormField<String>(
+                                      InkWell(
                                           key: const ValueKey(
                                               'link-in-bio-link-icon'),
-                                          initialValue: _icon,
-                                          isExpanded: true,
-                                          decoration: const InputDecoration(
-                                              labelText: 'ไอคอน'),
-                                          items: [
-                                            for (final entry in const {
-                                              'auto': 'เลือกจากลิงก์อัตโนมัติ',
-                                              'link': 'ลิงก์',
-                                              'shopee': 'Shopee',
-                                              'lazada': 'Lazada',
-                                              'line': 'LINE',
-                                              'tiktok': 'TikTok',
-                                              'youtube': 'YouTube',
-                                              'instagram': 'Instagram',
-                                              'facebook': 'Facebook',
-                                              'messenger': 'Messenger',
-                                              'whatsapp': 'WhatsApp',
-                                              'google_maps': 'Google Maps',
-                                              'website': 'เว็บไซต์',
-                                              'email': 'อีเมล',
-                                              'phone': 'โทรศัพท์'
-                                            }.entries)
-                                              DropdownMenuItem(
-                                                  value: entry.key,
-                                                  child: Text(entry.value))
-                                          ],
-                                          onChanged: (value) =>
-                                              setState(() => _icon = value!)),
+                                          onTap: () async {
+                                            final value =
+                                                await showBioPlatformPicker(
+                                                    context, _icon);
+                                            if (mounted && value != null) {
+                                              setState(() => _icon = value);
+                                            }
+                                          },
+                                          child: InputDecorator(
+                                              decoration: const InputDecoration(
+                                                  labelText: 'โลโก้',
+                                                  suffixIcon:
+                                                      Icon(Icons.expand_more)),
+                                              child: Row(children: [
+                                                BioPlatformLogo(
+                                                    icon: _icon,
+                                                    fallbackColor:
+                                                        AppTheme.textSecondary),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                    child: Text(
+                                                        bioPlatformLabel(
+                                                            _icon))),
+                                              ]))),
                                       const SizedBox(height: 16),
                                       const Text(
                                           'ปรับปุ่มนี้แยกจากธีมได้ หรือเว้นว่างเพื่อใช้ค่าของธีม'),

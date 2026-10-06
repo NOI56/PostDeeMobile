@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/models/link_in_bio_appearance.dart';
+import 'package:postdee_mobile/core/models/profile_platform_catalog.generated.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_platform_logo.dart';
@@ -68,7 +69,13 @@ void main() {
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
-  for (final link in _links) {
+  for (final link in [
+    ..._links,
+    for (final platform in profilePlatformCatalog)
+      if (!_links.any((link) => link.id == platform.id))
+        LinkInBioCustomLink(
+            id: platform.id, title: platform.name, url: platform.sampleUrl),
+  ]) {
     testWidgets('${link.id} visible artwork fills and centers in the logo slot',
         (tester) async {
       final boundaryKey = GlobalKey();
@@ -77,7 +84,7 @@ void main() {
               child: RepaintBoundary(
                   key: boundaryKey,
                   child: ColoredBox(
-                      color: const Color(0xff2c5734),
+                      color: Colors.transparent,
                       child: BioPlatformLogo(icon: link.id))))));
       await tester.runAsync(() => precacheImage(
           AssetImage(bioPlatformLogoAsset(link.id)!),
@@ -96,10 +103,9 @@ void main() {
       for (var y = 0; y < image.height; y++) {
         for (var x = 0; x < image.width; x++) {
           final index = (y * image.width + x) * 4;
-          final difference = (pixels!.getUint8(index) - 44).abs() +
-              (pixels.getUint8(index + 1) - 87).abs() +
-              (pixels.getUint8(index + 2) - 52).abs();
-          if (difference < 30) continue;
+          // Measure actual rendered alpha, including antialiased edges and
+          // original green/white pixels that can blend into a button color.
+          if (pixels!.getUint8(index + 3) == 0) continue;
           if (x < left) left = x;
           if (x > right) right = x;
           if (y < top) top = y;

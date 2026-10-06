@@ -40,7 +40,7 @@ LinkInBioProfile migration; memory mode is development-only scaffolding.
 | `GET /link-in-bio/image?key=...` | Required | Preview an image belonging to the current account |
 | `GET /p/:slug/images/:slot` | Public | Serve only the current published logo, cover, or background image |
 | `GET /profile-fonts/:file` | Public | Serve a whitelisted bundled font |
-| `GET /profile-platforms/:file` | Public | Serve one of ten allowlisted bundled platform PNGs |
+| `GET /profile-platforms/:file` | Public | Serve one of 100 allowlisted bundled platform PNGs |
 
 Publish body:
 
@@ -91,7 +91,8 @@ state before subsequent publication actions.
 ### Customization (all packages)
 
 Each link optionally adds `category` (0–60 characters), `icon`
-(`auto|link|website|email|phone|shopee|lazada|line|tiktok|youtube|instagram|facebook|messenger|whatsapp|google_maps`), `font`,
+(`auto|link|website|email|phone` or one of the 100 brand IDs in
+`shared/profile-platforms.json`), `font`,
 `textColor` and `buttonColor`. The array remains the display order; only enabled
 links are published. Optional per-link styles override the corresponding page
 style. Fonts are `anuphan|prompt|system`; colors are exact `#RRGGBB` values.
@@ -161,12 +162,17 @@ Fonts/images are served from the page origin under the existing nonce CSP.
 There is no arbitrary CSS, script, custom font upload, product-card pricing,
 or new paid provider in this contract.
 
-### Bundled platform marks (2026-10-06)
+### Bundled platform marks (2026-10-07)
 
-`GET /profile-platforms/:file` requires no authentication and accepts only
-`youtube.png`, `shopee.png`, `lazada.png`, `line.png`, `tiktok.png`,
-`instagram.png`, `facebook.png`, `messenger.png`, `whatsapp.png` and
-`google_maps.png`. Successful responses use `image/png`,
+`GET /profile-platforms/:file` requires no authentication and accepts only the
+100 `<id>.png` filenames in `shared/profile-platforms.json`. This catalogue
+retains the earlier `youtube.png`, `shopee.png`, `lazada.png`, `line.png`,
+`tiktok.png`, `instagram.png`, `facebook.png`, `messenger.png`, `whatsapp.png`
+and `google_maps.png` bytes and adds 90 regional/global destination marks.
+The five values `auto|link|website|email|phone` have no PNG route entries;
+the link `icon` contract therefore has 105 accepted values. Unknown IDs are
+rejected before updating the published snapshot. Successful asset responses
+use `image/png`,
 `X-Content-Type-Options: nosniff` and `Cache-Control: public, max-age=86400`;
 unknown filenames return 404. These files are fixed bundled assets, independent
 of owner-uploaded profile images and their private storage provider. The route
@@ -178,7 +184,7 @@ those rules use the website vector icon; `mailto:` and `tel:` use email and phon
 vectors. Explicit `icon: "link"` retains the generic icon, and manual brand
 overrides remain available. Brand images are decorative beside the existing link
 title and use a transparent 40 x 40 slot without recoloring. Explicit trusted
-source bounds for all ten marks fit the visible artwork's longest side to 40
+source bounds for all 100 marks fit the visible artwork's longest side to 40
 and center it while preserving its original aspect ratio. Larger image elements
 may extend beyond the slot to omit transparent canvas margins; visible artwork
 is never clipped. Full-canvas app icons retain contain sizing.
@@ -195,8 +201,16 @@ their subdomains. Google Maps accepts the `/maps` path family on exact hosts
 family on `goo.gl`. Arbitrary Google subdomains, non-map Google paths and
 lookalike hosts do not select brand
 artwork. These are local destination rules; no third-party metadata is fetched.
-The mobile empty-title suggestions add `Messenger`, `WhatsApp`, `Google Maps`,
-`ส่งอีเมล` and `โทรหาร้าน`, retaining custom titles and hostname fallback.
+The mobile empty-title suggestions use recognized platform names from the
+shared catalogue, plus `ส่งอีเมล` and `โทรหาร้าน`, retaining custom titles and
+hostname fallback. A searchable logo picker finds names, aliases and countries;
+an explicit brand or generic override remains separate from automatic matching.
+Every host rule uses an exact match or a dot-delimited hostname suffix, with the
+existing explicit Messenger/Maps path rules retained. For example `band.us` is
+BAND while `band.com` is excluded; QQ matches `im.qq.com`/`qm.qq.com`, not all
+`qq.com`; Trip.com recognizes `trip.com`, not the distinct `ctrip.com` brand.
+`eleme` displays Taobao Instant Commerce, retaining searchable Ele.me aliases
+after that service's December 2025 rebrand.
 
 The earlier seven-mark background correction uses the original transparent official YouTube PNG.
 Its renderer URL is `/profile-platforms/youtube.png?v=2`, bypassing the prior
@@ -205,17 +219,25 @@ The other six files were unchanged. Only the added white frame fill is removed; 
 that belongs to a platform mark is retained.
 The earlier size-normalization follow-up changed rendering geometry only,
 preserving all seven PNG bytes, asset URLs, filename allowlist and response/cache
-headers. The contact expansion adds three filenames to make the current
-ten-file allowlist; the original seven assets/URLs and all cache headers remain.
+headers. The 2026-10-06 contact expansion added three filenames for its
+ten-file allowlist. The 2026-10-07 expansion adds 90 more for the current
+100-file allowlist; all ten earlier asset bytes and all cache headers remain.
 
 Deploy the updated API with `apps/api/assets/profile-platforms` before expecting
 new marks on the public site. Existing published profiles need no republish;
-these follow-ups require no schema change or migration. Deploy the contact
-expansion's API/assets before distributing Mobile: older APIs reject the added
-icon enum values and `mailto:`/`tel:` URLs. Existing HTTP(S) payloads and icon
+these follow-ups require no schema change or migration. Deploy the global
+expansion's API/assets before distributing Mobile: older APIs reject its new
+icon IDs. The earlier contact expansion also required API-first delivery for
+`mailto:`/`tel:` URLs. Existing HTTP(S) payloads and icon
 values remain accepted. Mobile uses byte-identical local assets, with provenance
 and parity recorded in that asset folder's README. No chat/maps/email/telephone
-provider integration or paid API is added.
+provider integration or paid API is added. The source catalogue generates the
+TypeScript/Dart definitions; `node scripts/generate-profile-platforms.mjs --check`
+validates 100 unique brand IDs, generated output, PNG hashes/byte parity and
+source bounds. It never fetches external assets at runtime. The curated 100
+marks are not a statistical world popularity ranking. Verification and release
+status are recorded in
+`docs/superpowers/plans/2026-10-07-global-profile-platform-logos.md`.
 
 ## Mobile Request Deadlines
 

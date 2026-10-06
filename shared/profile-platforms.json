@@ -1,0 +1,3545 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-07",
+  "selectionNote": "100 curated brand identities including the original 10. Regional relevance for seller/creator profile links, not a ranked global top-100 chart. Generic link/website/email/phone and automatic choice are separate.",
+  "rightsNote": "Brand artwork and trademarks remain with their respective owners. licenseUrl points to owner guidelines or the official identity/source page; it does not assert a separate trademark license or affiliation.",
+  "platforms": [
+    {
+      "id": "youtube",
+      "name": "YouTube",
+      "category": "video",
+      "aliases": [
+        "ยูทูบ"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "youtube.com",
+        "youtu.be"
+      ],
+      "matches": [],
+      "sampleUrl": "https://youtu.be/video",
+      "asset": {
+        "file": "youtube.png",
+        "sha256": "1027b1b0517727adb9697155a270744381c3ce9b047b1c8bd8a9389dc7d07a83",
+        "sourceWidth": 1255,
+        "sourceHeight": 1075,
+        "left": 214,
+        "top": 248,
+        "width": 827,
+        "height": 579,
+        "sourceUrl": "https://www.gstatic.com/marketing-cms/89/d9/cf95c4f345709f4998dc581221b0/youtube-icon.zip",
+        "licenseUrl": "https://brand.youtube/youtube-icon/",
+        "preparation": "Original source pixels and PNG bytes retained from the audited 2026-10-06 release.",
+        "retrievedAt": "2026-10-06"
+      }
+    },
+    {
+      "id": "shopee",
+      "name": "Shopee",
+      "category": "shopping",
+      "aliases": [
+        "ช้อปปี้"
+      ],
+      "regions": [
+        "Southeast Asia",
+        "เอเชียตะวันออกเฉียงใต้",
+        "Brazil",
+        "บราซิล"
+      ],
+      "domains": [
+        "shopee.co.th",
+        "shopee.com",
+        "shope.ee"
+      ],
+      "matches": [],
+      "sampleUrl": "https://shopee.co.th/shop",
+      "asset": {
+        "file": "shopee.png",
+        "sha256": "26b67120cbdf3123fe70f747d42ba6adeedc59cdf9c66085afa0343930ef0897",
+        "sourceWidth": 96,
+        "sourceHeight": 96,
+        "left": 5,
+        "top": 0,
+        "width": 86,
+        "height": 96,
+        "sourceUrl": "https://deo.shopeemobile.com/shopee/shopee-pcmall-live-sg/assets/icon_favicon_1_96.1ce0e05fc18a86e5.png",
+        "licenseUrl": "https://shopee.co.th/",
+        "preparation": "Original source pixels and PNG bytes retained from the audited 2026-10-06 release.",
+        "retrievedAt": "2026-10-06"
+      }
+    },
+    {
+      "id": "lazada",
+      "name": "Lazada",
+      "category": "shopping",
+      "aliases": [
+        "ลาซาด้า"
+      ],
+      "regions": [
+        "Southeast Asia",
+        "เอเชียตะวันออกเฉียงใต้"
+      ],
+      "domains": [
+        "lazada.co.th",
+        "lazada.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://lazada.co.th/shop",
+      "asset": {
+        "file": "lazada.png",
+        "sha256": "9b2af701cb4f10425aeaecf9175cce3e74d7655ffdead15149a9a2ecc81b3cb2",
+        "sourceWidth": 128,
+        "sourceHeight": 128,
+        "left": 0,
+        "top": 0,
+        "width": 128,
+        "height": 128,
+        "sourceUrl": "https://www.lazada.co.th/favicon.ico",
+        "licenseUrl": "https://www.lazada.co.th/",
+        "preparation": "Original source pixels and PNG bytes retained from the audited 2026-10-06 release.",
+        "retrievedAt": "2026-10-06"
+      }
+    },
+    {
+      "id": "line",
+      "name": "LINE",
+      "category": "messaging",
+      "aliases": [
+        "ไลน์"
+      ],
+      "regions": [
+        "Japan",
+        "ญี่ปุ่น",
+        "Thailand",
+        "ไทย",
+        "Taiwan",
+        "ไต้หวัน"
+      ],
+      "domains": [
+        "line.me",
+        "lin.ee"
+      ],
+      "matches": [],
+      "sampleUrl": "https://lin.ee/shop",
+      "asset": {
+        "file": "line.png",
+        "sha256": "5e93437eb5ec0dcdece92d1562fcd435d1d521cca5c013d2d9e15b544a1d8a39",
+        "sourceWidth": 1001,
+        "sourceHeight": 1000,
+        "left": 0,
+        "top": 0,
+        "width": 1001,
+        "height": 1000,
+        "sourceUrl": "https://www.line.me/static/logo/top/LINE_APP_iOS.zip",
+        "licenseUrl": "https://www.line.me/en/logo",
+        "preparation": "Original source pixels and PNG bytes retained from the audited 2026-10-06 release.",
+        "retrievedAt": "2026-10-06"
+      }
+    },
+    {
+      "id": "tiktok",
+      "name": "TikTok",
+      "category": "video",
+      "aliases": [
+        "ติ๊กต็อก"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "tiktok.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://www.tiktok.com/@shop",
+      "asset": {
+        "file": "tiktok.png",
+        "sha256": "d08e3acc4b31bfcca4c67031ebfc6c78e22b27db3e6601f261d905af6a8df568",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://www.tiktok.com/",
+        "licenseUrl": "https://www.tiktok.com/",
+        "preparation": "Existing visually verified mobile asset copied unchanged in the earlier release; original retrieval provenance was not recorded. Source URL here is the official identity page, not a claim of original download.",
+        "retrievedAt": "2026-10-06"
+      }
+    },
+    {
+      "id": "instagram",
+      "name": "Instagram",
+      "category": "social",
+      "aliases": [
+        "อินสตาแกรม",
+        "ไอจี",
+        "IG"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "instagram.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://www.instagram.com/shop",
+      "asset": {
+        "file": "instagram.png",
+        "sha256": "2604bd33f5e75ecd2ca39599d4aef92ed0f5072a5bc39a7cf79635dda74b9fff",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://www.instagram.com/",
+        "licenseUrl": "https://www.instagram.com/",
+        "preparation": "Existing visually verified mobile asset copied unchanged in the earlier release; original retrieval provenance was not recorded. Source URL here is the official identity page, not a claim of original download.",
+        "retrievedAt": "2026-10-06"
+      }
+    },
+    {
+      "id": "facebook",
+      "name": "Facebook",
+      "category": "social",
+      "aliases": [
+        "เฟซบุ๊ก",
+        "FB"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "facebook.com",
+        "fb.com",
+        "fb.me"
+      ],
+      "matches": [],
+      "sampleUrl": "https://www.facebook.com/shop",
+      "asset": {
+        "file": "facebook.png",
+        "sha256": "7ed849718cc5c019fa76ae2ca29ed0119e6ba7bfa92727c768c5ce36388bfee1",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://www.facebook.com/",
+        "licenseUrl": "https://www.facebook.com/",
+        "preparation": "Existing visually verified mobile asset copied unchanged in the earlier release; original retrieval provenance was not recorded. Source URL here is the official identity page, not a claim of original download.",
+        "retrievedAt": "2026-10-06"
+      }
+    },
+    {
+      "id": "messenger",
+      "name": "Messenger",
+      "category": "messaging",
+      "aliases": [
+        "เมสเซนเจอร์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "m.me",
+        "messenger.com"
+      ],
+      "matches": [
+        {
+          "host": "facebook.com",
+          "pathPrefix": "/messages",
+          "subdomains": true
+        }
+      ],
+      "sampleUrl": "https://m.me/shop",
+      "asset": {
+        "file": "messenger.png",
+        "sha256": "3cda2d1ea91b6c87baa3b43b2ed28c9c57e434014d649f4aaa06e8a0c8b7d98e",
+        "sourceWidth": 128,
+        "sourceHeight": 128,
+        "left": 5,
+        "top": 7,
+        "width": 117,
+        "height": 116,
+        "sourceUrl": "https://static.xx.fbcdn.net/rsrc.php/yO/r/qa11ER6rke_.ico",
+        "licenseUrl": "https://www.messenger.com/",
+        "preparation": "Original source pixels and PNG bytes retained from the audited 2026-10-06 release.",
+        "retrievedAt": "2026-10-06"
+      }
+    },
+    {
+      "id": "whatsapp",
+      "name": "WhatsApp",
+      "category": "messaging",
+      "aliases": [
+        "วอตส์แอป",
+        "วอทส์แอป"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "wa.me",
+        "whatsapp.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://wa.me/66812345678",
+      "asset": {
+        "file": "whatsapp.png",
+        "sha256": "1103b5dfe5420b191202c3f31b8e03efaaf954f9e4ab117b089587ed910442dc",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://static.whatsapp.net/rsrc.php/y1/r/FJbTMJqMap7.svg",
+        "licenseUrl": "https://www.whatsapp.com/",
+        "preparation": "Original source pixels and PNG bytes retained from the audited 2026-10-06 release.",
+        "retrievedAt": "2026-10-06"
+      }
+    },
+    {
+      "id": "google_maps",
+      "name": "Google Maps",
+      "category": "travel",
+      "aliases": [
+        "กูเกิลแมป",
+        "แผนที่"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "maps.app.goo.gl",
+        "maps.google.com",
+        "maps.google.co.th"
+      ],
+      "matches": [
+        {
+          "host": "google.com",
+          "pathPrefix": "/maps",
+          "subdomains": false
+        },
+        {
+          "host": "www.google.com",
+          "pathPrefix": "/maps",
+          "subdomains": false
+        },
+        {
+          "host": "google.co.th",
+          "pathPrefix": "/maps",
+          "subdomains": false
+        },
+        {
+          "host": "www.google.co.th",
+          "pathPrefix": "/maps",
+          "subdomains": false
+        },
+        {
+          "host": "goo.gl",
+          "pathPrefix": "/maps",
+          "subdomains": false
+        }
+      ],
+      "sampleUrl": "https://maps.app.goo.gl/shop",
+      "asset": {
+        "file": "google_maps.png",
+        "sha256": "abfef074006dec3c9808eb9cf87ea1145107a263f71377aa17e791032a5c85c4",
+        "sourceWidth": 192,
+        "sourceHeight": 192,
+        "left": 27,
+        "top": 8,
+        "width": 138,
+        "height": 176,
+        "sourceUrl": "https://www.gstatic.com/marketing-cms/assets/images/55/0e/c70d6751460a973c06968f0b64e0/logo-maps-2025-color-2x-web-96dp.webp",
+        "licenseUrl": "https://about.google/intl/ALL/products/",
+        "preparation": "Original source pixels and PNG bytes retained from the audited 2026-10-06 release.",
+        "retrievedAt": "2026-10-06"
+      }
+    },
+    {
+      "id": "wechat",
+      "name": "WeChat",
+      "category": "messaging",
+      "aliases": [
+        "วีแชท",
+        "Weixin",
+        "เว่ยซิน",
+        "微信"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "wechat.com",
+        "weixin.qq.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://wechat.com/postdee-demo",
+      "asset": {
+        "file": "wechat.png",
+        "sha256": "5ce04f80a0ebc30024ba24c9ee4d7f83e4129e50484afe7143661133d0e31107",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/61/70/2e/61702e05-0531-165f-5cd3-012c8b5b3b20/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-0-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/us/app/wechat/id414478124?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.182Z",
+        "sourcePage": "https://apps.apple.com/us/app/wechat/id414478124?uo=4",
+        "storePublisher": "Tencent Technology (Shenzhen) Company Limited",
+        "storeBundle": "com.tencent.xin",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=us&term=WeChat",
+        "storeSupportWebsite": "http://www.wechat.com"
+      }
+    },
+    {
+      "id": "qq",
+      "name": "QQ",
+      "category": "messaging",
+      "aliases": [
+        "คิวคิว",
+        "Tencent QQ",
+        "腾讯QQ"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "im.qq.com",
+        "qm.qq.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://im.qq.com/postdee-demo",
+      "asset": {
+        "file": "qq.png",
+        "sha256": "a56f4f023f24b56f9f88a775dbac988b16580cb819a18950f5aef10820e21469",
+        "sourceWidth": 62,
+        "sourceHeight": 62,
+        "left": 7,
+        "top": 2,
+        "width": 49,
+        "height": 58,
+        "sourceUrl": "https://static-res.qq.com/static-res/imqq/qq-logo.png",
+        "licenseUrl": "https://im.qq.com/index",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.428Z",
+        "sourcePage": "https://im.qq.com/index"
+      }
+    },
+    {
+      "id": "weibo",
+      "name": "Weibo",
+      "category": "social",
+      "aliases": [
+        "เว่ยป๋อ",
+        "Sina Weibo",
+        "微博"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "weibo.com",
+        "weibo.cn"
+      ],
+      "matches": [],
+      "sampleUrl": "https://weibo.com/postdee-demo",
+      "asset": {
+        "file": "weibo.png",
+        "sha256": "e0972b1e742be3518d8a88d185f3716fa0a173ef631267d9d6d898b4eaf54d0e",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/4d/6f/154d6f05-868c-942c-78a7-8f07026fa49c/WeiboAppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/cn/app/%E5%BE%AE%E5%8D%9A/id350962117?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.193Z",
+        "sourcePage": "https://apps.apple.com/cn/app/%E5%BE%AE%E5%8D%9A/id350962117?uo=4",
+        "storePublisher": "SINA Corporation",
+        "storeBundle": "com.sina.weibo",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=cn&term=%E5%BE%AE%E5%8D%9A",
+        "storeSupportWebsite": "http://www.weibo.com"
+      }
+    },
+    {
+      "id": "douyin",
+      "name": "Douyin",
+      "category": "video",
+      "aliases": [
+        "โต่วอิน",
+        "抖音"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "douyin.com",
+        "iesdouyin.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://douyin.com/postdee-demo",
+      "asset": {
+        "file": "douyin.png",
+        "sha256": "ba55e6653decfcc1366b97b30c385939dfd3e21e4d8a6b628bbb3c13b1fc4445",
+        "sourceWidth": 108,
+        "sourceHeight": 108,
+        "left": 0,
+        "top": 0,
+        "width": 108,
+        "height": 108,
+        "sourceUrl": "https://lf3-static.bytednsdoc.com/obj/eden-cn/wzj/ljhwZthlaukjlkulzlp/bytehi-official/douyin.png",
+        "licenseUrl": "https://kefu-lf.bytedance.com/",
+        "preparation": "Official HTML-declared product logo; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.170Z",
+        "sourcePage": "https://kefu-lf.bytedance.com/"
+      }
+    },
+    {
+      "id": "bilibili",
+      "name": "Bilibili",
+      "category": "video",
+      "aliases": [
+        "บิลิบิลิ",
+        "哔哩哔哩",
+        "B站"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "bilibili.com",
+        "b23.tv"
+      ],
+      "matches": [],
+      "sampleUrl": "https://bilibili.com/postdee-demo",
+      "asset": {
+        "file": "bilibili.png",
+        "sha256": "1285ebf68f8cd180d38445259c3b52692fd92ab61cb8aa1696ec57891930bb86",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9f/a3/40/9fa34060-e9fa-feec-41c5-007b09c4ae83/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/cn/app/%E5%93%94%E5%93%A9%E5%93%94%E5%93%A9-%E5%BC%B9%E5%B9%95%E7%95%AA%E5%89%A7%E7%9B%B4%E6%92%AD%E9%AB%98%E6%B8%85%E8%A7%86%E9%A2%91/id736536022?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.196Z",
+        "sourcePage": "https://apps.apple.com/cn/app/%E5%93%94%E5%93%A9%E5%93%94%E5%93%A9-%E5%BC%B9%E5%B9%95%E7%95%AA%E5%89%A7%E7%9B%B4%E6%92%AD%E9%AB%98%E6%B8%85%E8%A7%86%E9%A2%91/id736536022?uo=4",
+        "storePublisher": "Shanghai Bilibili Animation Co.,Ltd",
+        "storeBundle": "tv.danmaku.bilianime",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=cn&term=%E5%93%94%E5%93%A9%E5%93%94%E5%93%A9"
+      }
+    },
+    {
+      "id": "xiaohongshu",
+      "name": "Xiaohongshu",
+      "category": "social",
+      "aliases": [
+        "เสี่ยวหงชู",
+        "REDnote",
+        "Rednote",
+        "小红书"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "xiaohongshu.com",
+        "xhslink.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://xiaohongshu.com/postdee-demo",
+      "asset": {
+        "file": "xiaohongshu.png",
+        "sha256": "167f20682aab2988bfda2847a619cf5fefb7191b44b021a966263e51390d2706",
+        "sourceWidth": 180,
+        "sourceHeight": 180,
+        "left": 0,
+        "top": 0,
+        "width": 180,
+        "height": 180,
+        "sourceUrl": "https://picasso-static.xiaohongshu.com/fe-platform/f43dc4a8baf03678996c62d8db6ebc01a82256ff.png",
+        "licenseUrl": "https://www.xiaohongshu.com/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.197Z",
+        "sourcePage": "https://www.xiaohongshu.com/"
+      }
+    },
+    {
+      "id": "kuaishou",
+      "name": "Kuaishou",
+      "category": "video",
+      "aliases": [
+        "ไควโช่ว",
+        "快手"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "kuaishou.com",
+        "gifshow.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://kuaishou.com/postdee-demo",
+      "asset": {
+        "file": "kuaishou.png",
+        "sha256": "e832af280877bdf583446c0e4bfa25e1891c58b0f6f105a34fe1d9bedf0ff728",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/52/45/88/524588cc-ba64-a9ec-393a-b6718a85ab03/AppIcon-0-0-1x_U007emarketing-0-8-0-sRGB-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/cn/app/%E5%BF%AB%E6%89%8B/id440948110?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.215Z",
+        "sourcePage": "https://apps.apple.com/cn/app/%E5%BF%AB%E6%89%8B/id440948110?uo=4",
+        "storePublisher": "Beijing Kwai Technology Co., Ltd.",
+        "storeBundle": "com.jiangjia.gif",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=cn&term=%E5%BF%AB%E6%89%8B",
+        "storeSupportWebsite": "https://m.ssl.kuaishou.com/app/home/hot?openFrom=AppleStore_wap"
+      }
+    },
+    {
+      "id": "taobao",
+      "name": "Taobao",
+      "category": "shopping",
+      "aliases": [
+        "เถาเป่า",
+        "淘宝"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "taobao.com",
+        "e.tb.cn",
+        "m.tb.cn"
+      ],
+      "matches": [],
+      "sampleUrl": "https://taobao.com/postdee-demo",
+      "asset": {
+        "file": "taobao.png",
+        "sha256": "a2054bef8c90cffafc12621abc7a5e8ca2bb5966d9b9ac816ed2765ee27e0f61",
+        "sourceWidth": 114,
+        "sourceHeight": 114,
+        "left": 0,
+        "top": 0,
+        "width": 114,
+        "height": 114,
+        "sourceUrl": "https://img.alicdn.com/tps/i3/T1OjaVFl4dXXa.JOZB-114-114.png",
+        "licenseUrl": "https://www.taobao.com/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.225Z",
+        "sourcePage": "https://www.taobao.com/"
+      }
+    },
+    {
+      "id": "tmall",
+      "name": "Tmall",
+      "category": "shopping",
+      "aliases": [
+        "ทีมอลล์",
+        "天猫"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "tmall.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://tmall.com/postdee-demo",
+      "asset": {
+        "file": "tmall.png",
+        "sha256": "a00c19d53efe05967a6a1b98c6780954fbf6e570bb3467b744ef6dda5c05c3ae",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/85/37/6a/85376a36-e8bc-ff41-419d-2e887ccac7e8/AppIcon-0-0-1x_U007emarketing-0-8-0-sRGB-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/cn/app/%E5%A4%A9%E7%8C%AB-%E5%A5%BD%E5%93%81%E7%89%8C-%E5%A5%BD%E4%BB%B7%E6%A0%BC-%E4%B8%8A%E5%A4%A9%E7%8C%AB/id518966501?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.222Z",
+        "sourcePage": "https://apps.apple.com/cn/app/%E5%A4%A9%E7%8C%AB-%E5%A5%BD%E5%93%81%E7%89%8C-%E5%A5%BD%E4%BB%B7%E6%A0%BC-%E4%B8%8A%E5%A4%A9%E7%8C%AB/id518966501?uo=4",
+        "storePublisher": "Zhejiang tmall Network Co., Ltd",
+        "storeBundle": "com.taobao.tmall",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=cn&term=%E5%A4%A9%E7%8C%AB"
+      }
+    },
+    {
+      "id": "jd",
+      "name": "JD.com",
+      "category": "shopping",
+      "aliases": [
+        "จิงตง",
+        "Jingdong",
+        "京东"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "jd.com",
+        "3.cn"
+      ],
+      "matches": [],
+      "sampleUrl": "https://jd.com/postdee-demo",
+      "asset": {
+        "file": "jd.png",
+        "sha256": "af85ab51bc100516094a99a4ced6462e2577b777712fd5d3509bb4eae1fe328b",
+        "sourceWidth": 96,
+        "sourceHeight": 96,
+        "left": 0,
+        "top": 0,
+        "width": 96,
+        "height": 96,
+        "sourceUrl": "https://storage.360buyimg.com/retail-mall/mall-common-component/favicon.ico",
+        "licenseUrl": "https://www.jd.com/",
+        "preparation": "Declared official favicon / app icon; original highest-resolution ICO frame losslessly decoded with Pillow",
+        "retrievedAt": "2026-10-06T17:20:53.405Z",
+        "sourcePage": "https://www.jd.com/"
+      }
+    },
+    {
+      "id": "pinduoduo",
+      "name": "Pinduoduo",
+      "category": "shopping",
+      "aliases": [
+        "พินตัวตัว",
+        "拼多多"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "pinduoduo.com",
+        "yangkeduo.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://pinduoduo.com/postdee-demo",
+      "asset": {
+        "file": "pinduoduo.png",
+        "sha256": "54b7b4be6f129c7742cd99dc2ecd309bf7b7d0f2f3a379f14cdb76493185aaa8",
+        "sourceWidth": 48,
+        "sourceHeight": 48,
+        "left": 0,
+        "top": 0,
+        "width": 48,
+        "height": 48,
+        "sourceUrl": "https://www.pinduoduo.com/favicon.png",
+        "licenseUrl": "https://www.pinduoduo.com/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.769Z",
+        "sourcePage": "https://www.pinduoduo.com/"
+      }
+    },
+    {
+      "id": "alipay",
+      "name": "Alipay",
+      "category": "payments",
+      "aliases": [
+        "อาลีเพย์",
+        "支付宝"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "alipay.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://alipay.com/postdee-demo",
+      "asset": {
+        "file": "alipay.png",
+        "sha256": "8461dbcca4b5ab0ebf2e69786bc8c4d54d5754be7fb36b623e9dcc60cbfac63f",
+        "sourceWidth": 2600,
+        "sourceHeight": 1950,
+        "left": 1034,
+        "top": 749,
+        "width": 531,
+        "height": 452,
+        "sourceUrl": "https://mdn.alipayobjects.com/rms/afts/file/A*7EyORZxdNDkAAAAAAAAAAAAAARQnAQ",
+        "licenseUrl": "https://www.alipay.com/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.482Z",
+        "sourcePage": "https://www.alipay.com/"
+      }
+    },
+    {
+      "id": "baidu",
+      "name": "Baidu",
+      "category": "tools",
+      "aliases": [
+        "ไป่ตู้",
+        "百度"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "baidu.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://baidu.com/postdee-demo",
+      "asset": {
+        "file": "baidu.png",
+        "sha256": "e55683e17e4fdcdbd26f37dbb62473775375bf2339d00c24e1e485fce587b2f0",
+        "sourceWidth": 1024,
+        "sourceHeight": 1024,
+        "left": 0,
+        "top": 0,
+        "width": 1024,
+        "height": 1024,
+        "sourceUrl": "https://psstatic.cdn.bcebos.com/video/wiseindex/aa6eef91f8b5b1a33b454c401_1660835115000.png",
+        "licenseUrl": "https://www.baidu.com/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:57.492Z",
+        "sourcePage": "https://www.baidu.com/"
+      }
+    },
+    {
+      "id": "zhihu",
+      "name": "Zhihu",
+      "category": "social",
+      "aliases": [
+        "จือหู",
+        "知乎"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "zhihu.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://zhihu.com/postdee-demo",
+      "asset": {
+        "file": "zhihu.png",
+        "sha256": "24cca351477c960cac666894bf70203f40134dd8f0c1f083fc99cba74c8e9754",
+        "sourceWidth": 152,
+        "sourceHeight": 152,
+        "left": 0,
+        "top": 0,
+        "width": 152,
+        "height": 152,
+        "sourceUrl": "https://static.zhihu.com/heifetz/assets/apple-touch-icon-152.81060cab.png",
+        "licenseUrl": "https://www.zhihu.com/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.518Z",
+        "sourcePage": "https://www.zhihu.com/"
+      }
+    },
+    {
+      "id": "douban",
+      "name": "Douban",
+      "category": "social",
+      "aliases": [
+        "โต้วป้าน",
+        "豆瓣"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "douban.com",
+        "douban.fm"
+      ],
+      "matches": [],
+      "sampleUrl": "https://douban.com/postdee-demo",
+      "asset": {
+        "file": "douban.png",
+        "sha256": "906522e7d548a330c46afe8493bfe1e0de043d1d2a4ce636b412a670d8402af8",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/79/54/c5/7954c588-8484-b8cb-747b-9f94e897ac22/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/cn/app/%E8%B1%86%E7%93%A3/id907002334?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.423Z",
+        "sourcePage": "https://apps.apple.com/cn/app/%E8%B1%86%E7%93%A3/id907002334?uo=4",
+        "storePublisher": "Beijing Douwang Technology Company Limited",
+        "storeBundle": "com.douban.frodo",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=cn&term=%E8%B1%86%E7%93%A3"
+      }
+    },
+    {
+      "id": "youku",
+      "name": "Youku",
+      "category": "video",
+      "aliases": [
+        "โยวคู่",
+        "优酷"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "youku.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://youku.com/postdee-demo",
+      "asset": {
+        "file": "youku.png",
+        "sha256": "b61d259bce4779d8945c0579e93aa9048964e3428740071943c6998768d6e850",
+        "sourceWidth": 195,
+        "sourceHeight": 195,
+        "left": 39,
+        "top": 29,
+        "width": 118,
+        "height": 137,
+        "sourceUrl": "https://img.alicdn.com/imgextra/i2/O1CN01BeAcgL1ywY0G5nSn8_!!6000000006643-2-tps-195-195.png",
+        "licenseUrl": "https://youku.com/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.438Z",
+        "sourcePage": "https://youku.com/"
+      }
+    },
+    {
+      "id": "dingtalk",
+      "name": "DingTalk",
+      "category": "messaging",
+      "aliases": [
+        "ติงทอล์ก",
+        "钉钉"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "dingtalk.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://dingtalk.com/postdee-demo",
+      "asset": {
+        "file": "dingtalk.png",
+        "sha256": "80f27b451547605d99251e4d22454dfb9887a564736a633048be5057da396e62",
+        "sourceWidth": 444,
+        "sourceHeight": 444,
+        "left": 0,
+        "top": 0,
+        "width": 444,
+        "height": 444,
+        "sourceUrl": "https://gw.alicdn.com/imgextra/i3/O1CN014ZbI6ZTEhdC0ttN2_!!6000000003783-2-tps-444-444.png",
+        "licenseUrl": "https://www.dingtalk.com/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.484Z",
+        "sourcePage": "https://www.dingtalk.com/"
+      }
+    },
+    {
+      "id": "netease_music",
+      "name": "NetEase Cloud Music",
+      "category": "music",
+      "aliases": [
+        "เน็ตอีส",
+        "NetEase",
+        "Cloud Music",
+        "网易云音乐"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "music.163.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://music.163.com/postdee-demo",
+      "asset": {
+        "file": "netease_music.png",
+        "sha256": "80b6bb8162880a6c61f0031b081228dfa14363681024571aa5ffbdab684f344d",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/31/fc/91/31fc91b8-c30b-e00f-2add-0aa3f12322b3/appIconNew-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/cn/app/%E7%BD%91%E6%98%93%E4%BA%91%E9%9F%B3%E4%B9%90-%E6%95%B0%E4%BA%BF%E9%9F%B3%E4%B9%90%E7%95%85%E5%90%AC/id590338362?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.468Z",
+        "sourcePage": "https://apps.apple.com/cn/app/%E7%BD%91%E6%98%93%E4%BA%91%E9%9F%B3%E4%B9%90-%E6%95%B0%E4%BA%BF%E9%9F%B3%E4%B9%90%E7%95%85%E5%90%AC/id590338362?uo=4",
+        "storePublisher": "Hangzhou Netease Cloud Music Technology Co., Ltd.",
+        "storeBundle": "com.netease.cloudmusic",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=cn&term=%E7%BD%91%E6%98%93%E4%BA%91%E9%9F%B3%E4%B9%90"
+      }
+    },
+    {
+      "id": "meituan",
+      "name": "Meituan",
+      "category": "shopping",
+      "aliases": [
+        "เหมยถวน",
+        "美团"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "meituan.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://meituan.com/postdee-demo",
+      "asset": {
+        "file": "meituan.png",
+        "sha256": "55268094e305180d81f9cc8c8f07560fb42a4dfdd0fd5791619e5e712177f9f1",
+        "sourceWidth": 48,
+        "sourceHeight": 48,
+        "left": 0,
+        "top": 0,
+        "width": 48,
+        "height": 48,
+        "sourceUrl": "https://s3plus.meituan.net/v1/mss_e2821d7f0cfe4ac1bf9202ecf9590e67/cdn-prod/file:1040877d/favicon-mt.ico",
+        "licenseUrl": "https://www.meituan.com/",
+        "preparation": "Declared official favicon / app icon; original highest-resolution ICO frame losslessly decoded with Pillow",
+        "retrievedAt": "2026-10-06T17:20:53.765Z",
+        "sourcePage": "https://www.meituan.com/"
+      }
+    },
+    {
+      "id": "eleme",
+      "name": "Taobao Instant Commerce",
+      "category": "shopping",
+      "aliases": [
+        "Ele.me",
+        "饿了么",
+        "淘宝闪购",
+        "เอเลมี",
+        "Taobao Instant Commerce"
+      ],
+      "regions": [
+        "China",
+        "จีน",
+        "中国"
+      ],
+      "domains": [
+        "ele.me"
+      ],
+      "matches": [],
+      "sampleUrl": "https://ele.me/postdee-demo",
+      "asset": {
+        "file": "eleme.png",
+        "sha256": "8fbb795bd7436d71aa754ecdf83b82c084b8352554149f490fa7f7e3eb290326",
+        "sourceWidth": 96,
+        "sourceHeight": 96,
+        "left": 0,
+        "top": 0,
+        "width": 96,
+        "height": 96,
+        "sourceUrl": "https://img.alicdn.com/imgextra/i4/O1CN010Mtffn24QO3fOPxlq_!!6000000007385-2-tps-96-96.png",
+        "licenseUrl": "https://www.ele.me/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.496Z",
+        "sourcePage": "https://www.ele.me/"
+      }
+    },
+    {
+      "id": "trip_com",
+      "name": "Trip.com",
+      "category": "travel",
+      "aliases": [
+        "ทริปดอทคอม",
+        "Trip",
+        "Trip.com"
+      ],
+      "regions": [
+        "China/Global",
+        "จีน",
+        "China",
+        "สิงคโปร์",
+        "Singapore",
+        "ทั่วโลก",
+        "Global"
+      ],
+      "domains": [
+        "trip.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://trip.com/postdee-demo",
+      "asset": {
+        "file": "trip_com.png",
+        "sha256": "4d4aeccc9742ee5574ec1decc2d5aeff59e5b9d342a843ed066588ffa5431a40",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/c0/12/30/c012300f-91af-31c9-b287-b8d8143fa77d/AppIcon-0-0-1x_U007epad-0-1-0-0-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/us/app/trip-com-book-flights-hotels/id681752345?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.503Z",
+        "sourcePage": "https://apps.apple.com/us/app/trip-com-book-flights-hotels/id681752345?uo=4",
+        "storePublisher": "Trip.com Travel Singapore Pte. Ltd.",
+        "storeBundle": "com.ctrip.EBooking",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=us&term=Trip.com",
+        "storeSupportWebsite": "https://www.trip.com/pages/appdownload/"
+      }
+    },
+    {
+      "id": "kakao_talk",
+      "name": "KakaoTalk",
+      "category": "messaging",
+      "aliases": [
+        "กาเกาทอล์ก",
+        "คา카오ทอล์ก",
+        "Kakao",
+        "카카오톡"
+      ],
+      "regions": [
+        "Korea",
+        "เกาหลี",
+        "เกาหลีใต้",
+        "South Korea",
+        "한국"
+      ],
+      "domains": [
+        "open.kakao.com",
+        "pf.kakao.com",
+        "talk.kakao.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://open.kakao.com/postdee-demo",
+      "asset": {
+        "file": "kakao_talk.png",
+        "sha256": "e0fa85789cd425c4c81093213b52ca820e54f1fd678ea8a0543f5d3271697a97",
+        "sourceWidth": 216,
+        "sourceHeight": 216,
+        "left": 0,
+        "top": 0,
+        "width": 216,
+        "height": 216,
+        "sourceUrl": "https://t1.kakaocdn.net/kakaocorp/kakaocorp/admin/service/6ffc1d92019900001.png",
+        "licenseUrl": "https://www.kakaocorp.com/page/service/service/KakaoTalk",
+        "preparation": "Official service thumbnailImage, described as KakaoTalk symbol, declared in SSR page; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.776Z",
+        "sourcePage": "https://www.kakaocorp.com/page/service/service/KakaoTalk"
+      }
+    },
+    {
+      "id": "naver",
+      "name": "NAVER",
+      "category": "tools",
+      "aliases": [
+        "เนเวอร์",
+        "네이버"
+      ],
+      "regions": [
+        "Korea",
+        "เกาหลี",
+        "เกาหลีใต้",
+        "South Korea",
+        "한국"
+      ],
+      "domains": [
+        "naver.com",
+        "naver.me"
+      ],
+      "matches": [],
+      "sampleUrl": "https://naver.com/postdee-demo",
+      "asset": {
+        "file": "naver.png",
+        "sha256": "4ea716a673811f3529c864adecbcbd92d5be7732fee5dd5880b5c6ff23f2c3af",
+        "sourceWidth": 96,
+        "sourceHeight": 96,
+        "left": 0,
+        "top": 0,
+        "width": 96,
+        "height": 96,
+        "sourceUrl": "https://s.pstatic.net/static/www/nFavicon96.png",
+        "licenseUrl": "https://www.naver.com/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.601Z",
+        "sourcePage": "https://www.naver.com/"
+      }
+    },
+    {
+      "id": "coupang",
+      "name": "Coupang",
+      "category": "shopping",
+      "aliases": [
+        "คูปัง",
+        "쿠팡"
+      ],
+      "regions": [
+        "Korea",
+        "เกาหลี",
+        "เกาหลีใต้",
+        "South Korea",
+        "한국",
+        "ไต้หวัน",
+        "Taiwan"
+      ],
+      "domains": [
+        "coupang.com",
+        "coupang.link"
+      ],
+      "matches": [],
+      "sampleUrl": "https://coupang.com/postdee-demo",
+      "asset": {
+        "file": "coupang.png",
+        "sha256": "911ac2193cd988f122492bbffa3e2b03e4c6b4d9e161a24a7e0497249d140d7d",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://play-lh.googleusercontent.com/BneDL51Zx2_hR5SfhGJHw2PUDpgrNiedy6TbjP3ZAm4sOjZLnQNfOaiTiyPVhTmKFtjUAFAxlU6YQhNDjCiwm40=w240-h480",
+        "licenseUrl": "https://play.google.com/store/apps/details?id=com.coupang.mobile&hl=en",
+        "preparation": "Exact-publisher Google Play listing, published app icon, publisher and official support domain verified; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.597Z",
+        "sourcePage": "https://play.google.com/store/apps/details?id=com.coupang.mobile&hl=en"
+      }
+    },
+    {
+      "id": "band",
+      "name": "BAND",
+      "category": "social",
+      "aliases": [
+        "แบนด์",
+        "밴드"
+      ],
+      "regions": [
+        "Korea/Global",
+        "เกาหลี",
+        "เกาหลีใต้",
+        "Korea",
+        "South Korea",
+        "한국"
+      ],
+      "domains": [
+        "band.us"
+      ],
+      "matches": [],
+      "sampleUrl": "https://band.us/postdee-demo",
+      "asset": {
+        "file": "band.png",
+        "sha256": "38ac760c135c628b13dc2217f389bfb05a1f13c1b0b04bff08bdc327e78a76ed",
+        "sourceWidth": 96,
+        "sourceHeight": 96,
+        "left": 0,
+        "top": 0,
+        "width": 96,
+        "height": 96,
+        "sourceUrl": "https://ssl.pstatic.net/static/bandweb/band-web/icon/20261002150529/favicon_96x96.png",
+        "licenseUrl": "https://band.us/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.799Z",
+        "sourcePage": "https://band.us/"
+      }
+    },
+    {
+      "id": "rakuten",
+      "name": "Rakuten",
+      "category": "shopping",
+      "aliases": [
+        "ราคุเทน",
+        "楽天"
+      ],
+      "regions": [
+        "Japan",
+        "ญี่ปุ่น",
+        "日本"
+      ],
+      "domains": [
+        "rakuten.co.jp",
+        "rakuten.com",
+        "rakuten.net"
+      ],
+      "matches": [],
+      "sampleUrl": "https://rakuten.co.jp/postdee-demo",
+      "asset": {
+        "file": "rakuten.png",
+        "sha256": "fb8f2868c5b50f84df7cdf67387d61290fb19c05321e0ab187aed99da5690b38",
+        "sourceWidth": 64,
+        "sourceHeight": 64,
+        "left": 11,
+        "top": 7,
+        "width": 48,
+        "height": 51,
+        "sourceUrl": "https://global.rakuten.com/corp/assets/img/site-icons/rakuten-64.png",
+        "licenseUrl": "https://global.rakuten.com/corp/about/brand/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.922Z",
+        "sourcePage": "https://global.rakuten.com/corp/about/brand/"
+      }
+    },
+    {
+      "id": "mercari",
+      "name": "Mercari",
+      "category": "shopping",
+      "aliases": [
+        "เมอร์คาริ",
+        "เมลคาริ",
+        "メルカリ"
+      ],
+      "regions": [
+        "Japan/US",
+        "ญี่ปุ่น",
+        "Japan",
+        "日本",
+        "สหรัฐ",
+        "USA",
+        "US"
+      ],
+      "domains": [
+        "mercari.com",
+        "mercari.jp"
+      ],
+      "matches": [],
+      "sampleUrl": "https://mercari.com/postdee-demo",
+      "asset": {
+        "file": "mercari.png",
+        "sha256": "320ef2eca8068d86fa0c3d3ab37841a973addab56cb1f6bcd99cce625547f45c",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/18/4b/dd/184bdde2-1195-d4d8-289f-828a418ef4e5/AppIcon-0-0-1x_U007epad-0-5-0-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/jp/app/%E3%83%95%E3%83%AA%E3%83%9E%E3%82%A2%E3%83%97%E3%83%AA%E3%81%AF%E3%83%A1%E3%83%AB%E3%82%AB%E3%83%AA-%E3%83%A1%E3%83%AB%E3%83%9A%E3%82%A4%E3%81%AE%E3%82%B9%E3%83%9E%E3%83%9B%E6%B1%BA%E6%B8%88%E3%81%A7%E3%82%82%E3%81%A3%E3%81%A8%E3%81%8A%E5%BE%97/id667861049?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.794Z",
+        "sourcePage": "https://apps.apple.com/jp/app/%E3%83%95%E3%83%AA%E3%83%9E%E3%82%A2%E3%83%97%E3%83%AA%E3%81%AF%E3%83%A1%E3%83%AB%E3%82%AB%E3%83%AA-%E3%83%A1%E3%83%AB%E3%83%9A%E3%82%A4%E3%81%AE%E3%82%B9%E3%83%9E%E3%83%9B%E6%B1%BA%E6%B8%88%E3%81%A7%E3%82%82%E3%81%A3%E3%81%A8%E3%81%8A%E5%BE%97/id667861049?uo=4",
+        "storePublisher": "Mercari, Inc.",
+        "storeBundle": "com.kouzoh.ios.mercari",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=jp&term=%E3%83%A1%E3%83%AB%E3%82%AB%E3%83%AA",
+        "storeSupportWebsite": "https://jp.mercari.com/"
+      }
+    },
+    {
+      "id": "yahoo_japan",
+      "name": "Yahoo! Japan",
+      "category": "tools",
+      "aliases": [
+        "ยาฮูญี่ปุ่น",
+        "Yahoo Japan",
+        "Yahoo! Japan",
+        "ヤフー"
+      ],
+      "regions": [
+        "Japan",
+        "ญี่ปุ่น",
+        "日本"
+      ],
+      "domains": [
+        "yahoo.co.jp"
+      ],
+      "matches": [],
+      "sampleUrl": "https://yahoo.co.jp/postdee-demo",
+      "asset": {
+        "file": "yahoo_japan.png",
+        "sha256": "88edf1bf34c0a55f67bfed2f0c4344ef681e3b59fd4bc4e521b59f1bdf2d01c7",
+        "sourceWidth": 120,
+        "sourceHeight": 120,
+        "left": 0,
+        "top": 0,
+        "width": 120,
+        "height": 120,
+        "sourceUrl": "https://s.yimg.jp/c/icon/s/bsc/2.0/y120.png",
+        "licenseUrl": "https://www.yahoo.co.jp/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.078Z",
+        "sourcePage": "https://www.yahoo.co.jp/"
+      }
+    },
+    {
+      "id": "paypay",
+      "name": "PayPay",
+      "category": "payments",
+      "aliases": [
+        "เพย์เพย์",
+        "ペイペイ"
+      ],
+      "regions": [
+        "Japan",
+        "ญี่ปุ่น",
+        "日本"
+      ],
+      "domains": [
+        "paypay.ne.jp"
+      ],
+      "matches": [],
+      "sampleUrl": "https://paypay.ne.jp/postdee-demo",
+      "asset": {
+        "file": "paypay.png",
+        "sha256": "e485fc2418bdf5934645ce96eebfab03eca662c73448bdb8e401c5ee3a224ddc",
+        "sourceWidth": 180,
+        "sourceHeight": 180,
+        "left": 0,
+        "top": 0,
+        "width": 180,
+        "height": 180,
+        "sourceUrl": "https://paypay.ne.jp/uploads/2022/03/cropped-cropped-paypay-180x180.png",
+        "licenseUrl": "https://paypay.ne.jp/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.143Z",
+        "sourcePage": "https://paypay.ne.jp/"
+      }
+    },
+    {
+      "id": "niconico",
+      "name": "Niconico",
+      "category": "video",
+      "aliases": [
+        "นิโคนิโค",
+        "NicoNico",
+        "ニコニコ"
+      ],
+      "regions": [
+        "Japan",
+        "ญี่ปุ่น",
+        "日本"
+      ],
+      "domains": [
+        "nicovideo.jp",
+        "nico.ms"
+      ],
+      "matches": [],
+      "sampleUrl": "https://nicovideo.jp/postdee-demo",
+      "asset": {
+        "file": "niconico.png",
+        "sha256": "343ead3c5fd5dd0a777a0deb087de2ac8e71fcf2d8e03e7cd859fbb96bcd449d",
+        "sourceWidth": 144,
+        "sourceHeight": 144,
+        "left": 2,
+        "top": 2,
+        "width": 140,
+        "height": 140,
+        "sourceUrl": "https://resource.video.nimg.jp/web/images/favicon_uni/144.png?re",
+        "licenseUrl": "https://www.nicovideo.jp/",
+        "preparation": "Official HTML-declared product logo; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:53.837Z",
+        "sourcePage": "https://www.nicovideo.jp/"
+      }
+    },
+    {
+      "id": "pixiv",
+      "name": "pixiv",
+      "category": "creator",
+      "aliases": [
+        "พิกซิฟ",
+        "พิกซิฟว์",
+        "ピクシブ"
+      ],
+      "regions": [
+        "Japan/Global",
+        "ญี่ปุ่น",
+        "Japan",
+        "日本"
+      ],
+      "domains": [
+        "pixiv.net",
+        "pixiv.me"
+      ],
+      "matches": [],
+      "sampleUrl": "https://pixiv.net/postdee-demo",
+      "asset": {
+        "file": "pixiv.png",
+        "sha256": "c2770d79923393597196655ca5e3e6a816d253973b8cb1b942309c541d4362fa",
+        "sourceWidth": 180,
+        "sourceHeight": 180,
+        "left": 0,
+        "top": 0,
+        "width": 180,
+        "height": 180,
+        "sourceUrl": "https://s.pximg.net/common/images/apple-touch-icon.png?20250206",
+        "licenseUrl": "https://www.pixiv.net/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.116Z",
+        "sourcePage": "https://www.pixiv.net/"
+      }
+    },
+    {
+      "id": "sharechat",
+      "name": "ShareChat",
+      "category": "social",
+      "aliases": [
+        "แชร์แชท",
+        "शेयरचैट"
+      ],
+      "regions": [
+        "India",
+        "อินเดีย",
+        "भारत"
+      ],
+      "domains": [
+        "sharechat.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://sharechat.com/postdee-demo",
+      "asset": {
+        "file": "sharechat.png",
+        "sha256": "079adbc8fd1c288baebfcd71e7a2b76d86cea448f717e9730375bdb3c74df8be",
+        "sourceWidth": 96,
+        "sourceHeight": 96,
+        "left": 0,
+        "top": 0,
+        "width": 96,
+        "height": 96,
+        "sourceUrl": "https://sharechat.com/assets/icons/favicon-96x96.png",
+        "licenseUrl": "https://sharechat.com/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.326Z",
+        "sourcePage": "https://sharechat.com/"
+      }
+    },
+    {
+      "id": "moj",
+      "name": "Moj",
+      "category": "video",
+      "aliases": [
+        "โมจ",
+        "मोज"
+      ],
+      "regions": [
+        "India",
+        "อินเดีย",
+        "भारत"
+      ],
+      "domains": [
+        "mojapp.in"
+      ],
+      "matches": [],
+      "sampleUrl": "https://mojapp.in/postdee-demo",
+      "asset": {
+        "file": "moj.png",
+        "sha256": "f4a3dae90f7a98ee252c26b0c6a7b483e1cfe96cfdef83aec3d97932a767a2ea",
+        "sourceWidth": 96,
+        "sourceHeight": 96,
+        "left": 0,
+        "top": 0,
+        "width": 96,
+        "height": 96,
+        "sourceUrl": "https://mojapp.in/assets/icons/xhdpi.png",
+        "licenseUrl": "https://mojapp.in/",
+        "preparation": "Official HTML-declared product logo; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.040Z",
+        "sourcePage": "https://mojapp.in/"
+      }
+    },
+    {
+      "id": "flipkart",
+      "name": "Flipkart",
+      "category": "shopping",
+      "aliases": [
+        "ฟลิปคาร์ต",
+        "फ्लिपकार्ट"
+      ],
+      "regions": [
+        "India",
+        "อินเดีย",
+        "भारत"
+      ],
+      "domains": [
+        "flipkart.com",
+        "fkrt.it"
+      ],
+      "matches": [],
+      "sampleUrl": "https://flipkart.com/postdee-demo",
+      "asset": {
+        "file": "flipkart.png",
+        "sha256": "4d798ed045fd709bba4975d7b6a92cf7c2b0996b64eaaecdae10b0c141b7dab2",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ff/21/f3/ff21f3d2-6cb6-7c22-6ca7-0922aafb51e8/AppIcon-fk-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/in/app/flipkart-online-shopping-app/id742044692?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.059Z",
+        "sourcePage": "https://apps.apple.com/in/app/flipkart-online-shopping-app/id742044692?uo=4",
+        "storePublisher": "Flipkart Internet Private Limited",
+        "storeBundle": "com.appflipkart.flipkart",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=in&term=Flipkart"
+      }
+    },
+    {
+      "id": "meesho",
+      "name": "Meesho",
+      "category": "shopping",
+      "aliases": [
+        "มีโช",
+        "मीशो"
+      ],
+      "regions": [
+        "India",
+        "อินเดีย",
+        "भारत"
+      ],
+      "domains": [
+        "meesho.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://meesho.com/postdee-demo",
+      "asset": {
+        "file": "meesho.png",
+        "sha256": "31019d58b3ffb12ceb29cf2d9cbf5d2544a5dc71f3ee9acf1e11a7add06be03d",
+        "sourceWidth": 1080,
+        "sourceHeight": 1080,
+        "left": 0,
+        "top": 0,
+        "width": 1080,
+        "height": 1080,
+        "sourceUrl": "https://www.meesho.io/img/meesho-logo.png",
+        "licenseUrl": "https://www.meesho.io/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.341Z",
+        "sourcePage": "https://www.meesho.io/"
+      }
+    },
+    {
+      "id": "zalo",
+      "name": "Zalo",
+      "category": "messaging",
+      "aliases": [
+        "ซาโล",
+        "ซาโล่"
+      ],
+      "regions": [
+        "Vietnam",
+        "เวียดนาม",
+        "Việt Nam"
+      ],
+      "domains": [
+        "zalo.me",
+        "zaloapp.com",
+        "chat.zalo.me"
+      ],
+      "matches": [],
+      "sampleUrl": "https://zalo.me/postdee-demo",
+      "asset": {
+        "file": "zalo.png",
+        "sha256": "4d664c7d795ace403f7ed3977d60fc1ec235629c8a924a8f73140ecb98e8582f",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://zalo-site.zadn.vn/_next/static/media/logo-zalo.5eb1a7b1.webp",
+        "licenseUrl": "https://zalo.me/",
+        "preparation": "Official HTML-declared product logo; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.636Z",
+        "sourcePage": "https://zalo.me/"
+      }
+    },
+    {
+      "id": "tokopedia",
+      "name": "Tokopedia",
+      "category": "shopping",
+      "aliases": [
+        "โทโคพีเดีย",
+        "Tokped"
+      ],
+      "regions": [
+        "Indonesia",
+        "อินโดนีเซีย"
+      ],
+      "domains": [
+        "tokopedia.com",
+        "tokopedia.link"
+      ],
+      "matches": [],
+      "sampleUrl": "https://tokopedia.com/postdee-demo",
+      "asset": {
+        "file": "tokopedia.png",
+        "sha256": "8abe4a403012ee56004d43d62db6db3ed1a950a1b78adb2e4a7b3605892223d1",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://play-lh.googleusercontent.com/SRaYm_m0CexjTJZtViLmQFWDqt5YvFzhElku5ZHbfvbnit4ASZSmKDHC_cMFcCm5lPP8qiN4v1vj54P0ngiTPA=w240-h480",
+        "licenseUrl": "https://play.google.com/store/apps/details?id=com.tokopedia.tkpd&hl=en",
+        "preparation": "Exact-publisher Google Play listing, published app icon, publisher and official support domain verified; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.133Z",
+        "sourcePage": "https://play.google.com/store/apps/details?id=com.tokopedia.tkpd&hl=en"
+      }
+    },
+    {
+      "id": "tiki",
+      "name": "Tiki",
+      "category": "shopping",
+      "aliases": [
+        "ติกิ"
+      ],
+      "regions": [
+        "Vietnam",
+        "เวียดนาม",
+        "Việt Nam"
+      ],
+      "domains": [
+        "tiki.vn"
+      ],
+      "matches": [],
+      "sampleUrl": "https://tiki.vn/postdee-demo",
+      "asset": {
+        "file": "tiki.png",
+        "sha256": "c3c7ecc657ec8e85addb32ad65f1ccfcfe4720ee09776f404010bc6345b7cfa4",
+        "sourceWidth": 48,
+        "sourceHeight": 48,
+        "left": 0,
+        "top": 0,
+        "width": 48,
+        "height": 48,
+        "sourceUrl": "https://salt.tikicdn.com/ts/upload/29/ca/02/e39713d1b90405fd0d39b8fac676bb0d.png",
+        "licenseUrl": "https://tiki.vn/",
+        "preparation": "Declared official favicon / app icon; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.351Z",
+        "sourcePage": "https://tiki.vn/"
+      }
+    },
+    {
+      "id": "traveloka",
+      "name": "Traveloka",
+      "category": "travel",
+      "aliases": [
+        "ทราเวลโลก้า",
+        "ทราเวลโลกา"
+      ],
+      "regions": [
+        "SEA",
+        "อินโดนีเซีย",
+        "Indonesia",
+        "เอเชียตะวันออกเฉียงใต้",
+        "Southeast Asia"
+      ],
+      "domains": [
+        "traveloka.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://traveloka.com/postdee-demo",
+      "asset": {
+        "file": "traveloka.png",
+        "sha256": "8ba7f2a6e4d95d9c94f3331f1c2ce62003b607da24f79f520640ebc7ec921536",
+        "sourceWidth": 48,
+        "sourceHeight": 48,
+        "left": 0,
+        "top": 3,
+        "width": 48,
+        "height": 40,
+        "sourceUrl": "https://www.traveloka.com/favicon.ico",
+        "licenseUrl": "https://www.traveloka.com/",
+        "preparation": "Declared official favicon / app icon; original highest-resolution ICO frame losslessly decoded with Pillow",
+        "retrievedAt": "2026-10-06T17:20:54.322Z",
+        "sourcePage": "https://www.traveloka.com/"
+      }
+    },
+    {
+      "id": "grab",
+      "name": "Grab",
+      "category": "travel",
+      "aliases": [
+        "แกร็บ",
+        "GrabFood"
+      ],
+      "regions": [
+        "SEA",
+        "ไทย",
+        "Thailand",
+        "สิงคโปร์",
+        "Singapore",
+        "เอเชียตะวันออกเฉียงใต้",
+        "Southeast Asia"
+      ],
+      "domains": [
+        "grab.com",
+        "grab.onelink.me",
+        "grb.to"
+      ],
+      "matches": [],
+      "sampleUrl": "https://grab.com/postdee-demo",
+      "asset": {
+        "file": "grab.png",
+        "sha256": "59636a51fad63ada20e6b7dc70c343ff6f9f1cb8916c3a99aacf6f2f0a53e7dc",
+        "sourceWidth": 96,
+        "sourceHeight": 96,
+        "left": 0,
+        "top": 0,
+        "width": 96,
+        "height": 96,
+        "sourceUrl": "https://www.grab.com/favicon.ico",
+        "licenseUrl": "https://www.grab.com/",
+        "preparation": "Declared official favicon / app icon; original highest-resolution ICO frame losslessly decoded with Pillow",
+        "retrievedAt": "2026-10-06T17:20:54.481Z",
+        "sourcePage": "https://www.grab.com/"
+      }
+    },
+    {
+      "id": "gojek",
+      "name": "Gojek",
+      "category": "travel",
+      "aliases": [
+        "โกเจ็ก",
+        "Go-Jek",
+        "GoFood"
+      ],
+      "regions": [
+        "Indonesia",
+        "อินโดนีเซีย",
+        "สิงคโปร์",
+        "Singapore"
+      ],
+      "domains": [
+        "gojek.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://gojek.com/postdee-demo",
+      "asset": {
+        "file": "gojek.png",
+        "sha256": "17c83fee18d4c114fa79f980e23acd6601a9c620ed737897f88578392e74d723",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ee/58/04/ee580416-bb8a-80eb-cf67-987f3a75a064/AppIcon-0-0-1x_U007ephone-0-1-0-85-220.png/512x512bb.jpg",
+        "licenseUrl": "https://apps.apple.com/id/app/gojek/id944875099?uo=4",
+        "preparation": "Exact-publisher Apple App Store app icon; title, seller, bundle and official support website verified against platform; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:22:58.091Z",
+        "sourcePage": "https://apps.apple.com/id/app/gojek/id944875099?uo=4",
+        "storePublisher": "PT. GOTO GOJEK TOKOPEDIA TBK",
+        "storeBundle": "com.go-jek.ios",
+        "storeLookupUrl": "https://itunes.apple.com/search?entity=software&limit=8&country=id&term=Gojek",
+        "storeSupportWebsite": "https://www.gojek.com/sg"
+      }
+    },
+    {
+      "id": "carousell",
+      "name": "Carousell",
+      "category": "shopping",
+      "aliases": [
+        "คารูเซล",
+        "คารูเซลล์"
+      ],
+      "regions": [
+        "SEA",
+        "สิงคโปร์",
+        "Singapore",
+        "เอเชียตะวันออกเฉียงใต้",
+        "Southeast Asia"
+      ],
+      "domains": [
+        "carousell.com",
+        "carousell.sg",
+        "carousell.com.my",
+        "carousell.ph",
+        "carousell.com.hk",
+        "carousell.com.tw"
+      ],
+      "matches": [],
+      "sampleUrl": "https://carousell.com/postdee-demo",
+      "asset": {
+        "file": "carousell.png",
+        "sha256": "e1ae2e20764e2e4769ad5ce6c4b0bc654fb7c5d6331835f617100bba566dfd9c",
+        "sourceWidth": 100,
+        "sourceHeight": 100,
+        "left": 8,
+        "top": 5,
+        "width": 84,
+        "height": 90,
+        "sourceUrl": "https://i0.wp.com/press.carousell.com/wp-content/uploads/2019/08/carousell-logo-new.png?fit=100%2C100&ssl=1",
+        "licenseUrl": "https://press.carousell.com/carousell-group/",
+        "preparation": "Official HTML-declared product logo; source decoded losslessly to RGBA PNG, original pixels and size retained",
+        "retrievedAt": "2026-10-06T17:20:54.664Z",
+        "sourcePage": "https://press.carousell.com/carousell-group/"
+      }
+    },
+    {
+      "id": "daraz",
+      "name": "Daraz",
+      "category": "shopping",
+      "aliases": [
+        "ดาราซ",
+        "ดาราซ์"
+      ],
+      "regions": [
+        "South Asia",
+        "ปากีสถาน",
+        "Pakistan",
+        "บังกลาเทศ",
+        "Bangladesh",
+        "ศรีลังกา",
+        "Sri Lanka",
+        "เนปาล",
+        "Nepal",
+        "เอเชียใต้"
+      ],
+      "domains": [
+        "daraz.pk",
+        "daraz.com.bd",
+        "daraz.lk",
+        "daraz.com.np"
+      ],
+      "matches": [],
+      "sampleUrl": "https://daraz.pk/postdee-demo",
+      "asset": {
+        "file": "daraz.png",
+        "sha256": "6324d82ee765a22cd6d592427f20fe8980150aa16a415ae3a8add77a2b16ab77",
+        "sourceWidth": 64,
+        "sourceHeight": 64,
+        "left": 16,
+        "top": 5,
+        "width": 32,
+        "height": 54,
+        "sourceUrl": "https://laz-img-cdn.alicdn.com/imgextra/i1/O1CN01V8uEDV1jdZ9U2wL90_!!6000000004571-73-tps-64-64.ico",
+        "licenseUrl": "https://www.daraz.pk/",
+        "preparation": "Declared official favicon / app icon; original highest-resolution ICO frame losslessly decoded with Pillow",
+        "retrievedAt": "2026-10-06T17:20:54.629Z",
+        "sourcePage": "https://www.daraz.pk/"
+      }
+    },
+    {
+      "id": "x",
+      "name": "X",
+      "category": "social",
+      "aliases": [
+        "Twitter",
+        "ทวิตเตอร์",
+        "เอ็กซ์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "x.com",
+        "twitter.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://x.com/postdee-demo",
+      "asset": {
+        "file": "x.png",
+        "sha256": "997a2f6c553114f407c7f337aeb40d2f1a6a9afb0639730cd6a372238e3fc380",
+        "sourceWidth": 1024,
+        "sourceHeight": 1024,
+        "left": 0,
+        "top": 0,
+        "width": 1024,
+        "height": 1024,
+        "sourceUrl": "https://x.com/apple-touch-icon.png",
+        "licenseUrl": "https://x.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://x.com/"
+      }
+    },
+    {
+      "id": "threads",
+      "name": "Threads",
+      "category": "social",
+      "aliases": [
+        "เธรดส์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "threads.com",
+        "threads.net"
+      ],
+      "matches": [],
+      "sampleUrl": "https://threads.com/postdee-demo",
+      "asset": {
+        "file": "threads.png",
+        "sha256": "eda4f8698fd598418c4f1ddda6145fdde19305c3cc70f0e77ab016214cfdd7d6",
+        "sourceWidth": 256,
+        "sourceHeight": 256,
+        "left": 0,
+        "top": 0,
+        "width": 256,
+        "height": 256,
+        "sourceUrl": "https://static.cdninstagram.com/rsrc.php/yn/r/fFvbm7ecCaM.webp",
+        "licenseUrl": "https://www.threads.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.threads.com/"
+      }
+    },
+    {
+      "id": "bluesky",
+      "name": "Bluesky",
+      "category": "social",
+      "aliases": [
+        "บลูสกาย"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "bsky.app",
+        "bsky.social"
+      ],
+      "matches": [],
+      "sampleUrl": "https://bsky.app/postdee-demo",
+      "asset": {
+        "file": "bluesky.png",
+        "sha256": "2dcbee462fac35faeed78dc3be93d8c2af5f45cc83722f59d7c141b16dc4496e",
+        "sourceWidth": 1136,
+        "sourceHeight": 1001,
+        "left": 0,
+        "top": 0,
+        "width": 1136,
+        "height": 1001,
+        "sourceUrl": "https://bsky.social/about/brand-assets/butterfly/bluesky_media_kit_logo_transparent_1.png",
+        "licenseUrl": "https://bsky.social/about/support/icons",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://bsky.social/about/support/icons"
+      }
+    },
+    {
+      "id": "mastodon",
+      "name": "Mastodon",
+      "category": "social",
+      "aliases": [
+        "มาสโตดอน"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "Europe",
+        "ยุโรป"
+      ],
+      "domains": [
+        "mastodon.social",
+        "joinmastodon.org"
+      ],
+      "matches": [],
+      "sampleUrl": "https://mastodon.social/postdee-demo",
+      "asset": {
+        "file": "mastodon.png",
+        "sha256": "14493825709cfca643f458c107cb9a43fee67f2b481f0b50c24be7baea3f2332",
+        "sourceWidth": 228,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 226,
+        "height": 240,
+        "sourceUrl": "https://joinmastodon.org/logos/logo-purple.svg",
+        "licenseUrl": "https://joinmastodon.org/branding",
+        "preparation": "Official SVG rendered proportionally to PNG at up to 240px using Sharp; original paths/colors preserved.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://joinmastodon.org/branding"
+      }
+    },
+    {
+      "id": "snapchat",
+      "name": "Snapchat",
+      "category": "social",
+      "aliases": [
+        "สแนปแชต"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "snapchat.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://snapchat.com/postdee-demo",
+      "asset": {
+        "file": "snapchat.png",
+        "sha256": "e0208b16290708b41c4cc429d54de4e2f7f0709b347f48577933a8a5f255c6cb",
+        "sourceWidth": 192,
+        "sourceHeight": 192,
+        "left": 0,
+        "top": 0,
+        "width": 192,
+        "height": 192,
+        "sourceUrl": "https://static.snapchat.com/images/apple-touch-icon/apple-touch-icon-yellow-192.png",
+        "licenseUrl": "https://www.snapchat.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.snapchat.com/"
+      }
+    },
+    {
+      "id": "pinterest",
+      "name": "Pinterest",
+      "category": "social",
+      "aliases": [
+        "พินเทอเรสต์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "pinterest.com",
+        "pin.it"
+      ],
+      "matches": [],
+      "sampleUrl": "https://pinterest.com/postdee-demo",
+      "asset": {
+        "file": "pinterest.png",
+        "sha256": "74a63f0c3f871369577d0b835022be987242205d79505509c856738a638a22b2",
+        "sourceWidth": 144,
+        "sourceHeight": 144,
+        "left": 20,
+        "top": 20,
+        "width": 104,
+        "height": 104,
+        "sourceUrl": "https://s.pinimg.com/webapp/logo_transparent_144x144-3da7a67b.png",
+        "licenseUrl": "https://business.pinterest.com/brand-guidelines/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://business.pinterest.com/brand-guidelines/"
+      }
+    },
+    {
+      "id": "linkedin",
+      "name": "LinkedIn",
+      "category": "social",
+      "aliases": [
+        "ลิงก์อิน"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "linkedin.com",
+        "lnkd.in"
+      ],
+      "matches": [],
+      "sampleUrl": "https://linkedin.com/postdee-demo",
+      "asset": {
+        "file": "linkedin.png",
+        "sha256": "8309afe2ed6ccbb29d15c44be2a7265db9ef7fb514d21e14a7268b39d961fbf9",
+        "sourceWidth": 635,
+        "sourceHeight": 540,
+        "left": 0,
+        "top": 0,
+        "width": 635,
+        "height": 540,
+        "sourceUrl": "https://content.linkedin.com/content/dam/me/business/en-us/amp/xbu/linkedin-revised-brand-guidelines/logos/in-logo.zip",
+        "licenseUrl": "https://brand.linkedin.com/downloads",
+        "preparation": "Official source decoded to RGBA PNG; largest ICO frame where applicable. Original pixels/dimensions retained except sources over1600px proportionally reduced to512px. Original app badge/background retained; no wrapper added.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://brand.linkedin.com/downloads",
+        "sourceArchiveEntry": "in-logo/LI-In-Bug.png"
+      }
+    },
+    {
+      "id": "reddit",
+      "name": "Reddit",
+      "category": "social",
+      "aliases": [
+        "เรดดิต"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "reddit.com",
+        "redd.it"
+      ],
+      "matches": [],
+      "sampleUrl": "https://reddit.com/postdee-demo",
+      "asset": {
+        "file": "reddit.png",
+        "sha256": "4622a447d9fbb2d93290aab0985eee86f7be96edcbf14335b40e3e1957a46e37",
+        "sourceWidth": 48,
+        "sourceHeight": 48,
+        "left": 0,
+        "top": 0,
+        "width": 48,
+        "height": 48,
+        "sourceUrl": "https://redditinc.com/hubfs/Reddit_Favicon_FullColor_48x48.png",
+        "licenseUrl": "https://www.redditinc.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.redditinc.com/"
+      }
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram",
+      "category": "messaging",
+      "aliases": [
+        "เทเลแกรม"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "telegram.org",
+        "t.me"
+      ],
+      "matches": [],
+      "sampleUrl": "https://telegram.org/postdee-demo",
+      "asset": {
+        "file": "telegram.png",
+        "sha256": "ccadadcf6c2f872321d424e30583bc9472aaea0e1885074cac76956d0e881e24",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://telegram.org/img/website_icon.svg?4",
+        "licenseUrl": "https://telegram.org/",
+        "preparation": "Official SVG rendered proportionally to PNG at up to 240px using Sharp; original paths/colors preserved.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://telegram.org/"
+      }
+    },
+    {
+      "id": "signal",
+      "name": "Signal",
+      "category": "messaging",
+      "aliases": [
+        "ซิกแนล"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "signal.org",
+        "signal.me"
+      ],
+      "matches": [],
+      "sampleUrl": "https://signal.org/postdee-demo",
+      "asset": {
+        "file": "signal.png",
+        "sha256": "5d60cca0f5a612d365ff079cde282023e74300a7e4fbc087417fe4ae38bb3260",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://signal.org/assets/images/favicon/favicon.svg",
+        "licenseUrl": "https://signal.org/",
+        "preparation": "Official SVG rendered proportionally to PNG at up to 240px using Sharp; original paths/colors preserved.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://signal.org/"
+      }
+    },
+    {
+      "id": "viber",
+      "name": "Viber",
+      "category": "messaging",
+      "aliases": [
+        "ไวเบอร์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "viber.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://viber.com/postdee-demo",
+      "asset": {
+        "file": "viber.png",
+        "sha256": "cec377b449dc997383faafa2ad5333140f2f4e0eff1cf57432edf418166af6c9",
+        "sourceWidth": 192,
+        "sourceHeight": 192,
+        "left": 6,
+        "top": 0,
+        "width": 180,
+        "height": 192,
+        "sourceUrl": "https://www.viber.com/app/themes/viber/assets/images/favicon-v2/android-icon-192x192.png",
+        "licenseUrl": "https://www.viber.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.viber.com/"
+      }
+    },
+    {
+      "id": "discord",
+      "name": "Discord",
+      "category": "messaging",
+      "aliases": [
+        "ดิสคอร์ด"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "discord.com",
+        "discord.gg"
+      ],
+      "matches": [],
+      "sampleUrl": "https://discord.com/postdee-demo",
+      "asset": {
+        "file": "discord.png",
+        "sha256": "f93aeb60b258e6c74732c91fc98b62c58a718596520da5207782ab0335071334",
+        "sourceWidth": 240,
+        "sourceHeight": 182,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 182,
+        "sourceUrl": "https://cdn.discordapp.com/assets/content/a736b95923ddbc155e828651c92471292e40727655d770a06cec89c48ba0b41f.zip",
+        "licenseUrl": "https://discord.com/branding",
+        "preparation": "Official SVG proportionally rendered to PNG (maximum240px). Original paths, colors and badge retained; no white wrapper added.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://discord.com/branding",
+        "sourceArchiveEntry": "Discord_Symbol_Color/Discord-Symbol-Blurple.svg"
+      }
+    },
+    {
+      "id": "twitch",
+      "name": "Twitch",
+      "category": "video",
+      "aliases": [
+        "ทวิช"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "US",
+        "United States",
+        "สหรัฐอเมริกา"
+      ],
+      "domains": [
+        "twitch.tv"
+      ],
+      "matches": [],
+      "sampleUrl": "https://twitch.tv/postdee-demo",
+      "asset": {
+        "file": "twitch.png",
+        "sha256": "5a1d86993da9a5acafece060d4b656af2c90b608483fca8b1373d79925ee9b2c",
+        "sourceWidth": 206,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 206,
+        "height": 240,
+        "sourceUrl": "https://brand.twitch.com/uploads/Twitch-Brand.zip",
+        "licenseUrl": "https://www.twitch.tv/",
+        "preparation": "Official SVG proportionally rendered to PNG (maximum240px). Original paths, colors and badge retained; no white wrapper added.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.twitch.tv/"
+      }
+    },
+    {
+      "id": "kick",
+      "name": "Kick",
+      "category": "video",
+      "aliases": [
+        "คิก"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "kick.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://kick.com/postdee-demo",
+      "asset": {
+        "file": "kick.png",
+        "sha256": "fabfb74a6ec15ec229631b15a26d7fac0626121bcd7c678ed2c3a3f00997d876",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 9,
+        "top": 0,
+        "width": 215,
+        "height": 240,
+        "sourceUrl": "https://static.kick.com/kick-logo-k.svg",
+        "licenseUrl": "https://kick.com/",
+        "preparation": "Official SVG rendered proportionally to PNG at up to 240px using Sharp; original paths/colors preserved.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://kick.com/"
+      }
+    },
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "category": "music",
+      "aliases": [
+        "สปอติฟาย"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "Sweden",
+        "สวีเดน"
+      ],
+      "domains": [
+        "spotify.com",
+        "spoti.fi"
+      ],
+      "matches": [],
+      "sampleUrl": "https://spotify.com/postdee-demo",
+      "asset": {
+        "file": "spotify.png",
+        "sha256": "2817f0b1f41d72d07d39965658296a99e7b12b74dfaec9167a60dcaf09ee8a3d",
+        "sourceWidth": 240,
+        "sourceHeight": 229,
+        "left": 8,
+        "top": 3,
+        "width": 224,
+        "height": 223,
+        "sourceUrl": "https://developer.spotify.com/images/guidelines/design/2024-spotify-logo-icon.zip",
+        "licenseUrl": "https://www.spotify.com/",
+        "preparation": "Official SVG proportionally rendered to PNG (maximum240px). Original paths, colors and badge retained; no white wrapper added.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.spotify.com/"
+      }
+    },
+    {
+      "id": "apple_music",
+      "name": "Apple Music",
+      "category": "music",
+      "aliases": [
+        "แอปเปิลมิวสิก"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "music.apple.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://music.apple.com/postdee-demo",
+      "asset": {
+        "file": "apple_music.png",
+        "sha256": "2e22b8d475bda5e2c5eb8e05b36b5ad7db0c40cecbc9771ed55c3d23c3931388",
+        "sourceWidth": 180,
+        "sourceHeight": 180,
+        "left": 0,
+        "top": 0,
+        "width": 180,
+        "height": 180,
+        "sourceUrl": "https://music.apple.com/assets/favicon/favicon-180.png",
+        "licenseUrl": "https://music.apple.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://music.apple.com/"
+      }
+    },
+    {
+      "id": "soundcloud",
+      "name": "SoundCloud",
+      "category": "music",
+      "aliases": [
+        "ซาวด์คลาวด์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "soundcloud.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://soundcloud.com/postdee-demo",
+      "asset": {
+        "file": "soundcloud.png",
+        "sha256": "57de192f1a363b88ae7335ddaf99e5a94310c0209c473ee0a817473f1f92f09b",
+        "sourceWidth": 114,
+        "sourceHeight": 114,
+        "left": 0,
+        "top": 0,
+        "width": 114,
+        "height": 114,
+        "sourceUrl": "https://a-v2.sndcdn.com/assets/images/sc-icons/ios-a62dfc8fe7.png",
+        "licenseUrl": "https://soundcloud.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://soundcloud.com/"
+      }
+    },
+    {
+      "id": "bandcamp",
+      "name": "Bandcamp",
+      "category": "music",
+      "aliases": [
+        "แบนด์แคมป์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "bandcamp.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://bandcamp.com/postdee-demo",
+      "asset": {
+        "file": "bandcamp.png",
+        "sha256": "f1b1b53b25f43a52264faef1d0abaf4b02dca79e2d9bb2c0feda11cb32a27393",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 49,
+        "width": 240,
+        "height": 142,
+        "sourceUrl": "https://bandcamp.com/",
+        "licenseUrl": "https://bandcamp.com/",
+        "preparation": "Official SVG proportionally rendered to PNG (maximum240px). Original paths, colors and badge retained; no white wrapper added. Original blue inline SVG mask icon copied from the official homepage, including unchanged #0CACD7 fill.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://bandcamp.com/"
+      }
+    },
+    {
+      "id": "deezer",
+      "name": "Deezer",
+      "category": "music",
+      "aliases": [
+        "ดีเซอร์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "France",
+        "ฝรั่งเศส"
+      ],
+      "domains": [
+        "deezer.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://deezer.com/postdee-demo",
+      "asset": {
+        "file": "deezer.png",
+        "sha256": "7a89ac8fb9b83682770474395c172574ebfb6e24d8024ef30027202f8cd21525",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 34,
+        "top": 34,
+        "width": 172,
+        "height": 172,
+        "sourceUrl": "https://cdn-files.dzcdn.net/cache/images/common/favicon/favicon-240x240.bb3a6a29ad16a77f10cb.png",
+        "licenseUrl": "https://www.deezer.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.deezer.com/"
+      }
+    },
+    {
+      "id": "patreon",
+      "name": "Patreon",
+      "category": "creator",
+      "aliases": [
+        "แพทรีออน"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "patreon.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://patreon.com/postdee-demo",
+      "asset": {
+        "file": "patreon.png",
+        "sha256": "6637c3d0fba4487772594d25504742130ede2a19f0b781c18f6cd813a5afc952",
+        "sourceWidth": 256,
+        "sourceHeight": 256,
+        "left": 0,
+        "top": 0,
+        "width": 256,
+        "height": 256,
+        "sourceUrl": "https://c5.patreon.com/external/favicon/rebrand/favicon.ico?v=af5597c2ef",
+        "licenseUrl": "https://www.patreon.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.patreon.com/"
+      }
+    },
+    {
+      "id": "ko_fi",
+      "name": "Ko-fi",
+      "category": "creator",
+      "aliases": [
+        "KoFi",
+        "โคไฟ"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "ko-fi.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://ko-fi.com/postdee-demo",
+      "asset": {
+        "file": "ko_fi.png",
+        "sha256": "802ed054c94fe5a4749b0a6d724867707b1b9387ff6922bed23284effe22aa91",
+        "sourceWidth": 256,
+        "sourceHeight": 256,
+        "left": 0,
+        "top": 0,
+        "width": 256,
+        "height": 256,
+        "sourceUrl": "https://cdn.prod.website-files.com/5c14e387dab576fe667689cf/670f930b7593bf76f888e447_logo2.png",
+        "licenseUrl": "https://more.ko-fi.com/brand-assets",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://more.ko-fi.com/brand-assets"
+      }
+    },
+    {
+      "id": "buy_me_a_coffee",
+      "name": "Buy Me a Coffee",
+      "category": "creator",
+      "aliases": [
+        "BMAC",
+        "บายมีอะคอฟฟี่"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "buymeacoffee.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://buymeacoffee.com/postdee-demo",
+      "asset": {
+        "file": "buy_me_a_coffee.png",
+        "sha256": "21e8434b337e5404aac78f41d1dce09caaae4912b595df734e2924d5093e8e95",
+        "sourceWidth": 48,
+        "sourceHeight": 48,
+        "left": 0,
+        "top": 0,
+        "width": 48,
+        "height": 48,
+        "sourceUrl": "https://buymeacoffee.com/favicon.ico",
+        "licenseUrl": "https://buymeacoffee.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://buymeacoffee.com/"
+      }
+    },
+    {
+      "id": "substack",
+      "name": "Substack",
+      "category": "creator",
+      "aliases": [
+        "ซับสแต็ก"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "substack.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://substack.com/postdee-demo",
+      "asset": {
+        "file": "substack.png",
+        "sha256": "2df03af74f1b549c0205bfd898c91289bd36c49a2eddef4209262d739440216f",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://substackcdn.com/icons/substack/icon.svg",
+        "licenseUrl": "https://substack.com/",
+        "preparation": "Official SVG rendered proportionally to PNG at up to 240px using Sharp; original paths/colors preserved.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://substack.com/"
+      }
+    },
+    {
+      "id": "medium",
+      "name": "Medium",
+      "category": "creator",
+      "aliases": [
+        "มีเดียม"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "medium.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://medium.com/postdee-demo",
+      "asset": {
+        "file": "medium.png",
+        "sha256": "ec3a04b1f8427f271cc633e9042f948e98bc92bc0b9c590ba9464b682ef3c303",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://drive.google.com/uc?export=download&id=1nImeoWUdYDtQ_tF5XzEbu82duhcHZB-9",
+        "licenseUrl": "https://medium.design/about-mediums-new-ish-logo-458885b2d8ab",
+        "preparation": "Official SVG proportionally rendered to PNG (maximum240px). Original paths, colors and badge retained; no white wrapper added. Official 2024 enclosed icon intentionally contains centered M and cropped e, as specified by owner; no custom cropping applied.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://medium.com/"
+      }
+    },
+    {
+      "id": "wordpress",
+      "name": "WordPress",
+      "category": "creator",
+      "aliases": [
+        "เวิร์ดเพรส"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "wordpress.com",
+        "wordpress.org"
+      ],
+      "matches": [],
+      "sampleUrl": "https://wordpress.com/postdee-demo",
+      "asset": {
+        "file": "wordpress.png",
+        "sha256": "bf21b5d5d5c339dd421dc84acea97ee0a0e0a38e3dc3f244a8aa618d23dea81e",
+        "sourceWidth": 114,
+        "sourceHeight": 114,
+        "left": 0,
+        "top": 0,
+        "width": 114,
+        "height": 114,
+        "sourceUrl": "https://0.gravatar.com/blavatar/653166773dc88127bd3afe0b6dfe5ea7?s=114&d=https%3A%2F%2Fs1.wp.com%2Fi%2Fwebclip.png",
+        "licenseUrl": "https://wordpress.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://wordpress.com/"
+      }
+    },
+    {
+      "id": "tumblr",
+      "name": "Tumblr",
+      "category": "social",
+      "aliases": [
+        "ทัมเบลอร์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "tumblr.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://tumblr.com/postdee-demo",
+      "asset": {
+        "file": "tumblr.png",
+        "sha256": "22b8a05dbedd0ab1bd9f30adcb628c8b72ba7612227367f184d3da041c599d83",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://assets.tumblr.com/pop/manifest/favicon-cfddd25f.svg",
+        "licenseUrl": "https://www.tumblr.com/",
+        "preparation": "Official SVG rendered proportionally to PNG at up to 240px using Sharp; original paths/colors preserved.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.tumblr.com/"
+      }
+    },
+    {
+      "id": "amazon",
+      "name": "Amazon",
+      "category": "shopping",
+      "aliases": [
+        "อะเมซอน"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "US",
+        "United States",
+        "สหรัฐอเมริกา"
+      ],
+      "domains": [
+        "amazon.com",
+        "amzn.to"
+      ],
+      "matches": [],
+      "sampleUrl": "https://amazon.com/postdee-demo",
+      "asset": {
+        "file": "amazon.png",
+        "sha256": "32101508cc6a8420f25f51a4529a50626c1f137bb4644ac0c7213bfb2b093c91",
+        "sourceWidth": 180,
+        "sourceHeight": 180,
+        "left": 0,
+        "top": 0,
+        "width": 180,
+        "height": 180,
+        "sourceUrl": "https://www.aboutamazon.com/_next/static/media/apple-touch-icon.706b1b87.png",
+        "licenseUrl": "https://www.aboutamazon.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.aboutamazon.com/"
+      }
+    },
+    {
+      "id": "aliexpress",
+      "name": "AliExpress",
+      "category": "shopping",
+      "aliases": [
+        "อาลีเอ็กซ์เพรส"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "China",
+        "จีน"
+      ],
+      "domains": [
+        "aliexpress.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://aliexpress.com/postdee-demo",
+      "asset": {
+        "file": "aliexpress.png",
+        "sha256": "c6eba4b1ac9adebd8de5174102b4aa6d5af732dd895209cf0e39c2d36de12efe",
+        "sourceWidth": 400,
+        "sourceHeight": 400,
+        "left": 0,
+        "top": 0,
+        "width": 400,
+        "height": 400,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/37/81/e1/3781e105-ff90-4f60-41f4-7f99ab27519e/Placeholder.mill/400x400bb-75.webp",
+        "licenseUrl": "https://www.aliexpress.com/",
+        "preparation": "Official source decoded to RGBA PNG; largest ICO frame where applicable. Original pixels/dimensions retained except sources over1600px proportionally reduced to512px. Original app badge/background retained; no wrapper added. App icon declared by the verified owner/publisher listing on Apple App Store.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.aliexpress.com/"
+      }
+    },
+    {
+      "id": "ebay",
+      "name": "eBay",
+      "category": "shopping",
+      "aliases": [
+        "อีเบย์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "US",
+        "United States",
+        "สหรัฐอเมริกา"
+      ],
+      "domains": [
+        "ebay.com",
+        "ebay.co.uk"
+      ],
+      "matches": [],
+      "sampleUrl": "https://ebay.com/postdee-demo",
+      "asset": {
+        "file": "ebay.png",
+        "sha256": "8e3e601ba08da026889e617ed2b8d7d4a065aeed694f64f5633d8a588ef8a73f",
+        "sourceWidth": 512,
+        "sourceHeight": 219,
+        "left": 50,
+        "top": 31,
+        "width": 382,
+        "height": 157,
+        "sourceUrl": "https://static.ebayinc.com/static/assets/Uploads/PressRoom/Local/eBay-Logo.png?dl=1",
+        "licenseUrl": "https://www.ebay.com/",
+        "preparation": "Official source decoded to RGBA PNG; largest ICO frame where applicable. Original pixels/dimensions retained except sources over1600px proportionally reduced to512px. Original app badge/background retained; no wrapper added.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.ebay.com/"
+      }
+    },
+    {
+      "id": "etsy",
+      "name": "Etsy",
+      "category": "shopping",
+      "aliases": [
+        "เอ็ตซี"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "US",
+        "United States",
+        "สหรัฐอเมริกา"
+      ],
+      "domains": [
+        "etsy.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://etsy.com/postdee-demo",
+      "asset": {
+        "file": "etsy.png",
+        "sha256": "3958cbe6d3232131c0a8a101d80464edc31007c6f7be52d2091d23d0a359a514",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://extfiles.etsy.com/Press/brand-assets/etsy-logos.zip",
+        "licenseUrl": "https://www.etsy.com/",
+        "preparation": "Official SVG proportionally rendered to PNG (maximum240px). Original paths, colors and badge retained; no white wrapper added.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.etsy.com/",
+        "sourceArchiveEntry": "Logos/Digital/SVG/Etsy_Shorthand_Orange.svg"
+      }
+    },
+    {
+      "id": "walmart",
+      "name": "Walmart",
+      "category": "shopping",
+      "aliases": [
+        "วอลมาร์ต"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "US",
+        "United States",
+        "สหรัฐอเมริกา"
+      ],
+      "domains": [
+        "walmart.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://walmart.com/postdee-demo",
+      "asset": {
+        "file": "walmart.png",
+        "sha256": "fa8bbf40bcf780b264cec69e72dcce9e893bdca15c04d46395d81dae19d4d4bb",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 13,
+        "top": 0,
+        "width": 214,
+        "height": 240,
+        "sourceUrl": "https://i5.walmartimages.com/dfw/63fd9f59-14e2/9d304ce6-96de-4331-b8ec-c5191226d378/v1/spark-icon.svg",
+        "licenseUrl": "https://www.walmart.com/",
+        "preparation": "Official SVG rendered proportionally to PNG at up to 240px using Sharp; original paths/colors preserved.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.walmart.com/"
+      }
+    },
+    {
+      "id": "temu",
+      "name": "Temu",
+      "category": "shopping",
+      "aliases": [
+        "ทีมู",
+        "เทมู"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "China",
+        "จีน"
+      ],
+      "domains": [
+        "temu.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://temu.com/postdee-demo",
+      "asset": {
+        "file": "temu.png",
+        "sha256": "a15e5e27581e24af808d1aa91a5f4a8bfb37f7749e6e4bdff95323091a30f4bb",
+        "sourceWidth": 400,
+        "sourceHeight": 400,
+        "left": 0,
+        "top": 0,
+        "width": 400,
+        "height": 400,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/07/e4/15/07e41599-5783-1b72-9ebf-1c0d7b1f1c51/Placeholder.mill/400x400bb-75.webp",
+        "licenseUrl": "https://www.temu.com/",
+        "preparation": "Official source decoded to RGBA PNG; largest ICO frame where applicable. Original pixels/dimensions retained except sources over1600px proportionally reduced to512px. Original app badge/background retained; no wrapper added. App icon declared by the verified owner/publisher listing on Apple App Store.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.temu.com/"
+      }
+    },
+    {
+      "id": "mercado_libre",
+      "name": "Mercado Libre",
+      "category": "shopping",
+      "aliases": [
+        "Mercado Livre",
+        "เมร์กาโดลิเบร"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "Latin America",
+        "ลาตินอเมริกา",
+        "Brazil",
+        "บราซิล",
+        "Mexico",
+        "เม็กซิโก",
+        "Argentina",
+        "อาร์เจนตินา"
+      ],
+      "domains": [
+        "mercadolibre.com",
+        "mercadolibre.com.ar",
+        "mercadolibre.com.mx",
+        "mercadolivre.com.br"
+      ],
+      "matches": [],
+      "sampleUrl": "https://mercadolibre.com/postdee-demo",
+      "asset": {
+        "file": "mercado_libre.png",
+        "sha256": "c98d6cbcdc622066c624eacf5fe674adc6b5d0b72e2aaae12a0feae20d7228ce",
+        "sourceWidth": 60,
+        "sourceHeight": 60,
+        "left": 0,
+        "top": 0,
+        "width": 60,
+        "height": 60,
+        "sourceUrl": "https://http2.mlstatic.com/ui/navigation/5.6.1/mercadolibre/60x60-precomposed.png",
+        "licenseUrl": "https://www.mercadolibre.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.mercadolibre.com/"
+      }
+    },
+    {
+      "id": "ozon",
+      "name": "Ozon",
+      "category": "shopping",
+      "aliases": [
+        "Озон",
+        "โอโซน"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "Russia",
+        "รัสเซีย"
+      ],
+      "domains": [
+        "ozon.ru"
+      ],
+      "matches": [],
+      "sampleUrl": "https://ozon.ru/postdee-demo",
+      "asset": {
+        "file": "ozon.png",
+        "sha256": "d2a604905c79ea7dd8644980f8d35fd7f99791b41e7ed4a6da9fa011cb49f231",
+        "sourceWidth": 400,
+        "sourceHeight": 400,
+        "left": 0,
+        "top": 0,
+        "width": 400,
+        "height": 400,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/80/65/12/80651275-c487-2ba8-d8f4-b62cc59ea0b7/Placeholder.mill/400x400bb-75.webp",
+        "licenseUrl": "https://www.ozon.ru/",
+        "preparation": "Official source decoded to RGBA PNG; largest ICO frame where applicable. Original pixels/dimensions retained except sources over1600px proportionally reduced to512px. Original app badge/background retained; no wrapper added. App icon declared by the verified owner/publisher listing on Apple App Store.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.ozon.ru/"
+      }
+    },
+    {
+      "id": "wildberries",
+      "name": "Wildberries",
+      "category": "shopping",
+      "aliases": [
+        "Вайлдберриз",
+        "ไวลด์เบอร์รีส์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "Russia",
+        "รัสเซีย"
+      ],
+      "domains": [
+        "wildberries.ru"
+      ],
+      "matches": [],
+      "sampleUrl": "https://wildberries.ru/postdee-demo",
+      "asset": {
+        "file": "wildberries.png",
+        "sha256": "e26bab7a40a4d10966ec05c5e7b10656b9a9ec28713eb0236617e352e066e125",
+        "sourceWidth": 48,
+        "sourceHeight": 48,
+        "left": 0,
+        "top": 0,
+        "width": 48,
+        "height": 48,
+        "sourceUrl": "https://www.wildberries.ru/favicon.ico",
+        "licenseUrl": "https://www.wildberries.ru/",
+        "preparation": "Official source decoded to RGBA PNG; largest ICO frame where applicable. Original pixels/dimensions retained except sources over1600px proportionally reduced to512px. Original app badge/background retained; no wrapper added.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.wildberries.ru/"
+      }
+    },
+    {
+      "id": "vk",
+      "name": "VK",
+      "category": "social",
+      "aliases": [
+        "ВКонтакте",
+        "VKontakte",
+        "วีเค"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "Russia",
+        "รัสเซีย"
+      ],
+      "domains": [
+        "vk.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://vk.com/postdee-demo",
+      "asset": {
+        "file": "vk.png",
+        "sha256": "124e40382eedc7416355e59306878fdc35ff8726ffa3a8a222750c978d4241d5",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://vk.com/images/icons/pwa/apple/default.png?15",
+        "licenseUrl": "https://vk.com/",
+        "preparation": "Official source decoded to RGBA PNG; largest ICO frame where applicable. Original pixels/dimensions retained except sources over1600px proportionally reduced to512px. Original app badge/background retained; no wrapper added.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://vk.com/"
+      }
+    },
+    {
+      "id": "ok",
+      "name": "OK",
+      "category": "social",
+      "aliases": [
+        "Одноклассники",
+        "Odnoklassniki"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "Russia",
+        "รัสเซีย"
+      ],
+      "domains": [
+        "ok.ru"
+      ],
+      "matches": [],
+      "sampleUrl": "https://ok.ru/postdee-demo",
+      "asset": {
+        "file": "ok.png",
+        "sha256": "c36aa47dd110820d79d7146e2bd7a0091da97327224c3aaff0136d78d546dfd5",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://ok.ru/favicon.svg",
+        "licenseUrl": "https://ok.ru/",
+        "preparation": "Official SVG proportionally rendered to PNG (maximum240px). Original paths, colors and badge retained; no white wrapper added.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://ok.ru/"
+      }
+    },
+    {
+      "id": "airbnb",
+      "name": "Airbnb",
+      "category": "travel",
+      "aliases": [
+        "แอร์บีเอ็นบี"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "airbnb.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://airbnb.com/postdee-demo",
+      "asset": {
+        "file": "airbnb.png",
+        "sha256": "7b247cdf3e46ad313c059f292e9c5019d59b636aa3771afbbadf6fd4a131de76",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://a0.muscache.com/im/pictures/AirbnbPlatformAssets/AirbnbPlatformAssets-Favicons/original/d1fcc0b3-865f-485a-b28b-43ca0bf7c891.png?im_w=240",
+        "licenseUrl": "https://www.airbnb.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.airbnb.com/"
+      }
+    },
+    {
+      "id": "booking",
+      "name": "Booking.com",
+      "category": "travel",
+      "aliases": [
+        "บุ๊กกิ้ง"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก",
+        "Europe",
+        "ยุโรป"
+      ],
+      "domains": [
+        "booking.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://booking.com/postdee-demo",
+      "asset": {
+        "file": "booking.png",
+        "sha256": "772ca7fb2cba332772e4056410fc3db5c6218760f1f14c3017f174087afcd6c3",
+        "sourceWidth": 256,
+        "sourceHeight": 256,
+        "left": 3,
+        "top": 3,
+        "width": 253,
+        "height": 253,
+        "sourceUrl": "https://content.presspage.com/favicon/685.ico?1036653592",
+        "licenseUrl": "https://news.booking.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://news.booking.com/"
+      }
+    },
+    {
+      "id": "tripadvisor",
+      "name": "Tripadvisor",
+      "category": "travel",
+      "aliases": [
+        "ทริปแอดไวเซอร์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "tripadvisor.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://tripadvisor.com/postdee-demo",
+      "asset": {
+        "file": "tripadvisor.png",
+        "sha256": "e737e7f12884cfb35611666f65ecdb9c661713492a6368f55cbd03ee7c2b72b9",
+        "sourceWidth": 320,
+        "sourceHeight": 320,
+        "left": 28,
+        "top": 76,
+        "width": 263,
+        "height": 169,
+        "sourceUrl": "https://tripadvisor.mediaroom.com/favicon.png",
+        "licenseUrl": "https://tripadvisor.mediaroom.com/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://tripadvisor.mediaroom.com/"
+      }
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "category": "tools",
+      "aliases": [
+        "กิตฮับ"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "github.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://github.com/postdee-demo",
+      "asset": {
+        "file": "github.png",
+        "sha256": "74f142066c9c660873ff67879e8bb63e7b74071c82fed31f25972a5718d42a32",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 235,
+        "sourceUrl": "https://github.githubassets.com/favicons/favicon.svg",
+        "licenseUrl": "https://github.com/",
+        "preparation": "Official SVG rendered proportionally to PNG at up to 240px using Sharp; original paths/colors preserved.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://github.com/"
+      }
+    },
+    {
+      "id": "linktree",
+      "name": "Linktree",
+      "category": "creator",
+      "aliases": [
+        "ลิงก์ทรี"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "linktr.ee"
+      ],
+      "matches": [],
+      "sampleUrl": "https://linktr.ee/postdee-demo",
+      "asset": {
+        "file": "linktree.png",
+        "sha256": "f2002f8d214540b360cd79d5afa9025cfdd122c2cb8b521499383d72a70228ab",
+        "sourceWidth": 256,
+        "sourceHeight": 256,
+        "left": 0,
+        "top": 0,
+        "width": 256,
+        "height": 256,
+        "sourceUrl": "https://linktr.ee/_marketing/images/creators/link-in-bio-tool-everything-you-are-in-one-simple-link-f22b2ecd.png",
+        "licenseUrl": "https://linktr.ee/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://linktr.ee/"
+      }
+    },
+    {
+      "id": "beacons",
+      "name": "Beacons",
+      "category": "creator",
+      "aliases": [
+        "บีคอนส์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "beacons.ai"
+      ],
+      "matches": [],
+      "sampleUrl": "https://beacons.ai/postdee-demo",
+      "asset": {
+        "file": "beacons.png",
+        "sha256": "3a10ec3a5fe3b4e11650a9af70ff15ed2e42b89fd704a8bcdb7db8f3ab0703e7",
+        "sourceWidth": 48,
+        "sourceHeight": 48,
+        "left": 0,
+        "top": 0,
+        "width": 48,
+        "height": 48,
+        "sourceUrl": "https://beacons.ai/favicon.ico",
+        "licenseUrl": "https://beacons.ai/",
+        "preparation": "Official source decoded to RGBA PNG; largest ICO frame where applicable. Original pixels/dimensions retained except sources over1600px proportionally reduced to512px. Original app badge/background retained; no wrapper added.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://beacons.ai/"
+      }
+    },
+    {
+      "id": "google_drive",
+      "name": "Google Drive",
+      "category": "tools",
+      "aliases": [
+        "กูเกิลไดรฟ์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "drive.google.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://drive.google.com/postdee-demo",
+      "asset": {
+        "file": "google_drive.png",
+        "sha256": "adac17594045404a3f54715bfddda44ce34e1c02aa619a01b13efac2c0e3d8d0",
+        "sourceWidth": 128,
+        "sourceHeight": 128,
+        "left": 8,
+        "top": 9,
+        "width": 112,
+        "height": 103,
+        "sourceUrl": "https://www.gstatic.com/marketing-cms/assets/images/53/ed/91a2405a4aa28e40fc8c4d5d934d/logo-drive-2026-color-2x-web-64dp.webp",
+        "licenseUrl": "https://about.google/intl/ALL/products/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://about.google/intl/ALL/products/"
+      }
+    },
+    {
+      "id": "dropbox",
+      "name": "Dropbox",
+      "category": "tools",
+      "aliases": [
+        "ดรอปบ็อกซ์"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "dropbox.com",
+        "db.tt"
+      ],
+      "matches": [],
+      "sampleUrl": "https://dropbox.com/postdee-demo",
+      "asset": {
+        "file": "dropbox.png",
+        "sha256": "b8757340c45685151b3ab28358cc7c34d408588aebfbfae49c372d93d0a5f3ed",
+        "sourceWidth": 240,
+        "sourceHeight": 240,
+        "left": 0,
+        "top": 0,
+        "width": 240,
+        "height": 240,
+        "sourceUrl": "https://fjord.dropboxstatic.com/warp/conversion/dropbox/warp/icons/Dropbox-logo-nav.svg?id=d587e174-e284-42e8-a18c-85c0d8e57e9e",
+        "licenseUrl": "https://www.dropbox.com/",
+        "preparation": "Official SVG proportionally rendered to PNG (maximum240px). Original paths, colors and badge retained; no white wrapper added. The white rounded badge is present in the original official SVG.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.dropbox.com/"
+      }
+    },
+    {
+      "id": "notion",
+      "name": "Notion",
+      "category": "tools",
+      "aliases": [
+        "โนชัน"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "notion.so",
+        "notion.site",
+        "notion.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://notion.so/postdee-demo",
+      "asset": {
+        "file": "notion.png",
+        "sha256": "4238377b829e2b9f12578f1e8e79cec3beeef20a8232bf5266395618cd736383",
+        "sourceWidth": 512,
+        "sourceHeight": 512,
+        "left": 0,
+        "top": 0,
+        "width": 512,
+        "height": 512,
+        "sourceUrl": "https://www.notion.com/front-static/logo-ios.png",
+        "licenseUrl": "https://www.notion.so/",
+        "preparation": "Original image decoded losslessly to RGBA PNG at original dimensions; largest ICO frame selected where applicable.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.notion.so/"
+      }
+    },
+    {
+      "id": "canva",
+      "name": "Canva",
+      "category": "tools",
+      "aliases": [
+        "แคนวา"
+      ],
+      "regions": [
+        "Global",
+        "ทั่วโลก"
+      ],
+      "domains": [
+        "canva.com"
+      ],
+      "matches": [],
+      "sampleUrl": "https://canva.com/postdee-demo",
+      "asset": {
+        "file": "canva.png",
+        "sha256": "0f7ad42f6c0900b9995241c952b82c083e41bde3a70ab34b99df76695bf458b7",
+        "sourceWidth": 400,
+        "sourceHeight": 400,
+        "left": 0,
+        "top": 0,
+        "width": 400,
+        "height": 400,
+        "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/a5/6f/ee/a56fee72-a320-a831-c63e-6d788cd25b77/Placeholder.mill/400x400bb-75.webp",
+        "licenseUrl": "https://www.canva.com/",
+        "preparation": "Official source decoded to RGBA PNG; largest ICO frame where applicable. Original pixels/dimensions retained except sources over1600px proportionally reduced to512px. Original app badge/background retained; no wrapper added. App icon declared by the verified owner/publisher listing on Apple App Store.",
+        "retrievedAt": "2026-10-07",
+        "sourcePage": "https://www.canva.com/"
+      }
+    }
+  ]
+}

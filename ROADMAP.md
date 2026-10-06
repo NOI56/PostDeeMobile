@@ -59,6 +59,22 @@ Build roadmap for PostDee.
   integration, dependency, schema or migration; existing seven asset files,
   draft/publication behavior, 20-link limit and package rights remain unchanged.
   Verification and release details are appended to the platform-logo plan.
+- Expand the profile-link catalogue to 100 brand logos: retain all ten existing
+  asset bytes and add 90 curated regional/global destinations. This is a
+  selection, not a world popularity ranking. Use one shared catalogue to
+  generate API/Mobile names, recognition rules and artwork metadata, with a
+  generator check for 100 IDs, hashes, matching PNG copies and source bounds.
+  Replace a long logo dropdown with one searchable picker for names, aliases
+  and countries, keeping automatic names only for titles the user left empty.
+  Keep manual overrides, safe contacts, original colors/proportions, 40 x 40
+  visible-bound slots, local/public page parity and the existing 20-link limit.
+  The public route allowlists 100 PNGs; the icon contract has 100 brand IDs plus
+  `auto|link|website|email|phone`. API/assets must ship before Mobile because
+  older APIs reject the new IDs. Add no paid service, API integration,
+  dependency, environment flag, schema, migration or package-rule change.
+  Verification/release status is recorded in
+  `docs/superpowers/plans/2026-10-07-global-profile-platform-logos.md`;
+  dated totals for earlier releases do not cover this expansion.
 - Remove editing-minute benefits, quota cards, and top-up promotion from the
   active product. Legacy editing code/API contracts remain for compatibility and
   shared media helpers; historical editing milestones below are not active TODOs.

@@ -36,6 +36,11 @@ Future<void> _tap(WidgetTester tester, String key) =>
 
 Future<void> _select(WidgetTester tester, String key, String label) async {
   await _tap(tester, key);
+  if (key == 'link-in-bio-link-icon') {
+    await tester.enterText(
+        find.byKey(const ValueKey('bio-platform-search')), label);
+    await tester.pumpAndSettle();
+  }
   await tester.tap(find.text(label).last);
   await tester.pumpAndSettle();
 }

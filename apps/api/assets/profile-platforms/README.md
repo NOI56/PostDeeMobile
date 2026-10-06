@@ -62,3 +62,54 @@ adding a white badge or clipping its original colored/white content.
 Website, email and phone are code-native vector icons; they require no brand
 PNG and are not files served by this route. These assets identify outbound
 destinations, without adding provider/API integration or connection permission.
+
+## Global catalogue expansion — 2026-10-07
+
+The current catalogue contains **100 brand PNGs**, comprising the ten original
+marks above and 90 additions. Generic automatic/link/website/email/telephone
+values are not brand images. All ten original files retain their exact bytes;
+the hashes above describe those originals, not only the first seven.
+
+The complete source record lives in `shared/profile-platforms.json` at the
+repository root: each platform includes its ID, display name, aliases, country
+associations, strict destination rules and asset source/preparation information,
+SHA-256, canvas size and visible alpha bounds. Source and brand/terms references
+document provenance; they do not declare the marks CC0 or grant a partnership.
+Both API and Mobile bundle the same `<id>.png` bytes. Run
+`node scripts/generate-profile-platforms.mjs --check` from the repository root
+to validate the 100 IDs, generated catalogues, PNG hashes, identical copies and
+source bounds. Do not manually edit generated TypeScript/Dart lists.
+
+This is a curated regional/global selection, not the world's 100 largest apps
+in rank order. Regional context uses primary company/service evidence, including
+[Tencent](https://www.tencent.com/products/weixin-wechat/),
+[NAVER](https://www.navercorp.com/service/all),
+[Carousell](https://press.carousell.com/carousell-group/),
+[Mercari](https://about.in.mercari.com/what-we-do/) and
+[Alibaba](https://www.alibabagroup.com/en-US/about-alibaba-businesses-1894256634985709568).
+Alibaba documents Ele.me's December 2025 rebrand; ID `eleme` uses the current
+Taobao Instant Commerce mark, with Ele.me aliases retained for searching.
+Trip.com uses ID `trip_com` and only `trip.com` recognition because `ctrip.com`
+has a distinct mark. BAND uses `band.us`, not the unrelated `band.com`.
+
+New sources are declared official website/service images or exact-publisher
+app-store icons. ICO frames are decoded losslessly; SVGs are rasterized with
+the recorded original geometry and colors; other source formats are converted
+without repainting artwork. Store-supplied icons retain their original colored
+or white backgrounds. For example a product app icon can intentionally contain
+an opaque white field; removing it would alter the published source. No
+additional white badge is placed around these originals by the renderer.
+
+All source artwork shares the normalized transparent 40 x 40 display slots.
+The source bounds fit and center the visible artwork without stretching or
+cropping colored/white content. Respect each brand's terms and attribution
+requirements, preserve proportions and colors, and do not imply endorsement.
+Current source/preparation records for the 90 additions are in the shared
+catalogue rather than a second hand-maintained source table here.
+The fixed local route allowlists all 100 PNGs under the existing same-origin
+CSP/cache/nosniff rules; it fetches no vendor/user URL at request time.
+No paid logo API, provider integration, dependency or database migration is
+required. Deploy API/catalogue/assets before distributing the new Mobile
+build because older APIs reject the new icon IDs. Verification and release
+status are tracked in
+`docs/superpowers/plans/2026-10-07-global-profile-platform-logos.md`.

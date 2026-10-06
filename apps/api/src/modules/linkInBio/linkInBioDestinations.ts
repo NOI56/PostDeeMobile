@@ -1,5 +1,6 @@
 import { linkInBioIcons, type LinkInBioIcon } from './linkInBioAppearance.js';
 import type { LinkInBioLink } from './linkInBioStore.js';
+import { profilePlatformCatalog } from './profilePlatformCatalog.generated.js';
 
 // Contact links intentionally support one recipient and no headers or dial extensions.
 // Keep validation shared by publication and automatic artwork selection.
@@ -44,15 +45,13 @@ export const resolveLinkInBioIcon = (link: LinkInBioLink): Exclude<LinkInBioIcon
   const parsed = new URL(destination);
   const host = parsed.hostname.toLowerCase();
   const path = parsed.pathname;
-  if (matchesHost(host, 'facebook.com') && /^\/messages(?:\/|$)/.test(path)) return 'messenger';
-  const mapHost = ['maps.app.goo.gl', 'maps.google.com', 'maps.google.co.th'].some((domain) => matchesHost(host, domain));
-  const googleMapPath = ['google.com', 'www.google.com', 'google.co.th', 'www.google.co.th'].includes(host) && /^\/maps(?:\/|$)/.test(path);
-  if (mapHost || googleMapPath || (host === 'goo.gl' && /^\/maps(?:\/|$)/.test(path))) return 'google_maps';
-  const domains: [Exclude<LinkInBioIcon, 'auto'>, string[]][] = [
-    ['messenger', ['m.me', 'messenger.com']], ['whatsapp', ['wa.me', 'whatsapp.com']],
-    ['shopee', ['shopee.co.th', 'shopee.com', 'shope.ee']], ['lazada', ['lazada.co.th', 'lazada.com', 's.lazada.co.th']],
-    ['line', ['line.me', 'lin.ee']], ['tiktok', ['tiktok.com']], ['youtube', ['youtube.com', 'youtu.be']],
-    ['instagram', ['instagram.com']], ['facebook', ['facebook.com', 'fb.com', 'fb.me']]
-  ];
-  return domains.find(([, values]) => values.some((domain) => matchesHost(host, domain)))?.[0] ?? 'website';
+  // Specific paths are checked before broad platform domains. A path prefix
+  // must end at a segment boundary, so /maps cannot accidentally brand /mapshop.
+  for (const platform of profilePlatformCatalog) {
+    for (const match of platform.matches) {
+      const hostMatches = match.subdomains ? matchesHost(host, match.host) : host === match.host;
+      if (hostMatches && (path === match.pathPrefix || path.startsWith(`${match.pathPrefix}/`))) return platform.id;
+    }
+  }
+  return profilePlatformCatalog.find((platform) => platform.domains.some((domain) => matchesHost(host, domain)))?.id ?? 'website';
 };

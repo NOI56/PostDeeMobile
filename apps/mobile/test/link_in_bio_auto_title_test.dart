@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
+import 'package:postdee_mobile/core/models/link_in_bio_appearance.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_link_defaults.dart';
@@ -106,6 +107,9 @@ void main() {
   });
 
   for (final entry in const {
+    'https://zalo.me/shop': ('Zalo', 'zalo'),
+    'https://mercari.com/shop': ('Mercari', 'mercari'),
+    'https://www.temu.com/shop': ('Temu', 'temu'),
     'https://m.me/shop': ('Messenger', 'messenger'),
     'https://wa.me/66812345678': ('WhatsApp', 'whatsapp'),
     'https://maps.app.goo.gl/shop': ('Google Maps', 'google_maps'),
@@ -187,11 +191,8 @@ void main() {
     await tapBioControl(tester, 'link-in-bio-link-advanced');
     final iconField = find.byKey(const ValueKey('link-in-bio-link-icon'));
     await showBioControl(tester, iconField);
-    final dropdown = find.descendant(
-        of: iconField, matching: find.byType(DropdownButton<String>));
-    final choices = tester.widget<DropdownButton<String>>(dropdown).items!;
     expect(
-        choices.map((item) => item.value),
+        linkInBioIcons,
         containsAll([
           'auto',
           'link',
@@ -211,9 +212,11 @@ void main() {
         ]));
     await tester.tap(iconField);
     await tester.pumpAndSettle();
-    final messenger = find.text('Messenger').last;
-    await tester.ensureVisible(messenger);
-    await tester.tap(messenger);
+    await tester.enterText(
+        find.byKey(const ValueKey('bio-platform-search')), 'Messenger');
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('bio-platform-option-messenger')));
     await tester.pumpAndSettle();
     await tapBioControl(tester, 'link-in-bio-link-save');
     await tapBioControl(tester, 'link-in-bio-save');

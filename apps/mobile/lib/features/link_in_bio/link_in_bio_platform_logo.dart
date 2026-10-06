@@ -1,39 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../core/models/profile_platform_catalog.generated.dart';
 
-// Pixel bounds of the original bundled artwork, excluding transparent margins.
-const _platformArtwork = <String, ({Size source, Rect bounds})>{
-  'youtube': (
-    source: Size(1255, 1075),
-    bounds: Rect.fromLTWH(214, 248, 827, 579)
-  ),
-  'shopee': (source: Size(96, 96), bounds: Rect.fromLTWH(5, 0, 86, 96)),
-  'lazada': (source: Size(128, 128), bounds: Rect.fromLTWH(0, 0, 128, 128)),
-  'line': (source: Size(1001, 1000), bounds: Rect.fromLTWH(0, 0, 1001, 1000)),
-  'tiktok': (source: Size(240, 240), bounds: Rect.fromLTWH(0, 0, 240, 240)),
-  'instagram': (source: Size(240, 240), bounds: Rect.fromLTWH(0, 0, 240, 240)),
-  'facebook': (source: Size(240, 240), bounds: Rect.fromLTWH(0, 0, 240, 240)),
-  'messenger': (source: Size(128, 128), bounds: Rect.fromLTWH(5, 7, 117, 116)),
-  'whatsapp': (source: Size(240, 240), bounds: Rect.fromLTWH(0, 0, 240, 240)),
-  'google_maps': (
-    source: Size(192, 192),
-    bounds: Rect.fromLTWH(27, 8, 138, 176)
-  ),
-};
-
-String? bioPlatformLogoAsset(String icon) => switch (icon) {
-      'youtube' ||
-      'shopee' ||
-      'lazada' ||
-      'line' ||
-      'tiktok' ||
-      'instagram' ||
-      'facebook' ||
-      'messenger' ||
-      'whatsapp' ||
-      'google_maps' =>
-        'assets/images/platforms/$icon.png',
-      _ => null,
-    };
+String? bioPlatformLogoAsset(String icon) {
+  final artwork = profilePlatformsById[icon]?.asset;
+  return artwork == null ? null : 'assets/images/platforms/${artwork.file}';
+}
 
 class BioPlatformLogo extends StatelessWidget {
   const BioPlatformLogo({
@@ -50,12 +21,12 @@ class BioPlatformLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final asset = bioPlatformLogoAsset(icon);
-    final artwork = _platformArtwork[icon];
+    final artwork = profilePlatformsById[icon]?.asset;
     final extent = artwork == null
         ? size
-        : artwork.bounds.width > artwork.bounds.height
-            ? artwork.bounds.width
-            : artwork.bounds.height;
+        : artwork.width > artwork.height
+            ? artwork.width
+            : artwork.height;
     final scale = size / extent;
     Widget fallback() => Icon(
         switch (icon) {
@@ -84,12 +55,12 @@ class BioPlatformLogo extends StatelessWidget {
                 clipBehavior: Clip.none,
                 children: [
                   Positioned(
-                    left: (size - artwork!.bounds.width * scale) / 2 -
-                        artwork.bounds.left * scale,
-                    top: (size - artwork.bounds.height * scale) / 2 -
-                        artwork.bounds.top * scale,
-                    width: artwork.source.width * scale,
-                    height: artwork.source.height * scale,
+                    left: (size - artwork!.width * scale) / 2 -
+                        artwork.left * scale,
+                    top: (size - artwork.height * scale) / 2 -
+                        artwork.top * scale,
+                    width: artwork.sourceWidth * scale,
+                    height: artwork.sourceHeight * scale,
                     child: Image.asset(
                       asset,
                       fit: BoxFit.contain,

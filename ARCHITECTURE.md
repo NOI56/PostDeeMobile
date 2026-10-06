@@ -110,6 +110,33 @@ geometry used by the original seven. Website/email/phone are code-native vector
 icons, not PNG assets. This adds no provider call, SDK/dependency, environment
 flag, database schema/migration, paid service or account-connection permission.
 
+The 2026-10-07 global expansion supersedes the earlier ten-file catalogue with
+100 brand assets: the original ten PNG bytes and 90 new destination marks.
+`shared/profile-platforms.json` is the common source for IDs, names, aliases,
+countries, strict domain rules, source provenance, SHA-256 values and visible
+bounds. `scripts/generate-profile-platforms.mjs` generates TypeScript and Dart
+catalogues; its `--check` mode validates the 100 unique IDs, generated output,
+PNG hashes/byte parity across API/Mobile and audited bounds. Runtime code reads
+the generated local catalogue; it does not fetch website metadata or vendor
+logos. The API icon allowlist contains 100 brand IDs and the five existing
+`auto|link|website|email|phone` values. The public asset route admits only the
+100 corresponding PNG filenames, independent of private owner-image storage.
+
+One mobile picker searches platform names, aliases and country associations
+without exposing 100 choices in a long dropdown. Automatic destination matching
+can suggest the platform name for an empty title; custom titles and manual icon
+overrides remain intact. Matching uses exact/dot-suffix hostname boundaries,
+with the existing Messenger and Maps path rules preserved. The curated services
+are not a statistical popularity ranking and do not add social connections,
+publishing, analytics, payments, messages or paid-provider integration.
+Original source backgrounds, white artwork, colors and proportions remain
+intact in the shared 40 x 40 normalized slots; no extra white badge is added.
+Safe HTTP(S)/mail/tel validation, publication ownership, appearance settings,
+all package rights and the 20-link limit remain unchanged. No migration,
+dependency or environment flag is added. Ship API/assets before the new mobile
+build because older APIs reject the new icon IDs. Verification/release status
+is tracked in `docs/superpowers/plans/2026-10-07-global-profile-platform-logos.md`.
+
 The mobile profile UI opens an internal link manager for new, unpublished and
 published profiles. Shop identity and separate information/appearance/preview
 actions sit above Add link and editable cards. Information, theme and review

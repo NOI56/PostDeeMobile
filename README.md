@@ -112,6 +112,30 @@ URL/icon contract but adds no schema, database migration, dependency, package
 benefit, environment flag or paid-provider call. Its verification/release status
 is tracked in the same platform-logo plan; earlier test totals above are historical.
 
+The 2026-10-07 global-logo expansion provides **100 brand logos in total**:
+the ten existing marks plus 90 additional destinations associated with China,
+Korea, Japan, India, Southeast Asia, Europe, the Americas and global services.
+This is a curated selection, not a ranking of the world's 100 largest apps.
+Website, email, telephone, generic link and automatic-selection values do not
+count as brand logos. In Mobile, one searchable picker finds logos by brand
+name, alias and country; recognized URLs suggest a platform name only when the
+user has not supplied a custom button title. Existing manual overrides, contact
+validation, draft/publication behavior and the 20-link limit are preserved.
+
+`shared/profile-platforms.json` is the common catalogue for domains, display
+names, search aliases, sources, PNG hashes and audited visible bounds. Its
+generator produces the TypeScript/Dart catalogues; the generator's `--check`
+mode checks generated output and the 100 API/Mobile asset copies for parity.
+Both surfaces retain transparent 40 x 40 display slots, original proportions
+and colors. No extra white badge is added; any original app-icon background
+and visible white artwork remain intact. Public `/profile-platforms/:file`
+accepts exactly the 100 bundled PNG filenames. No runtime vendor-logo fetching,
+paid API, provider integration, dependency, feature flag, schema or migration is
+added. Deploy API/assets before distributing Mobile because older APIs reject
+the new icon IDs. Current verification and release status are tracked in
+`docs/superpowers/plans/2026-10-07-global-profile-platform-logos.md`;
+earlier release results above do not verify this expansion.
+
 Migration `20261005193000_customize_link_in_bio_profile` adds nullable appearance
 JSON and owner-scoped image metadata. Old profiles use the original cream/green
 defaults; old clients can still publish links without overwriting customization.

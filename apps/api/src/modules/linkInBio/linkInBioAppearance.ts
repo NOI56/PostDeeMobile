@@ -1,5 +1,7 @@
+import { profilePlatformIds, type ProfilePlatformId } from './profilePlatformCatalog.generated.js';
+
 export type LinkInBioFont = 'anuphan' | 'prompt' | 'system';
-export type LinkInBioIcon = 'auto' | 'link' | 'website' | 'email' | 'phone' | 'shopee' | 'lazada' | 'line' | 'tiktok' | 'youtube' | 'instagram' | 'facebook' | 'messenger' | 'whatsapp' | 'google_maps';
+export type LinkInBioIcon = 'auto' | 'link' | 'website' | 'email' | 'phone' | ProfilePlatformId;
 export type LinkInBioTheme = 'minimal' | 'shop' | 'pastel' | 'dark';
 export type LinkInBioTextStyle = { color: string; font: LinkInBioFont };
 export type LinkInBioAppearance = {
@@ -22,7 +24,7 @@ export type LinkInBioAppearance = {
 };
 
 export const linkInBioFonts: readonly LinkInBioFont[] = ['anuphan', 'prompt', 'system'];
-export const linkInBioIcons: readonly LinkInBioIcon[] = ['auto', 'link', 'website', 'email', 'phone', 'shopee', 'lazada', 'line', 'tiktok', 'youtube', 'instagram', 'facebook', 'messenger', 'whatsapp', 'google_maps'];
+export const linkInBioIcons: readonly LinkInBioIcon[] = ['auto', 'link', 'website', 'email', 'phone', ...profilePlatformIds];
 const themes: readonly LinkInBioTheme[] = ['minimal', 'shop', 'pastel', 'dark'];
 const palettes = {
   minimal: ['#fff8ef', '#f4e3c7', '#ffffff', '#305d36', '#253529', '#687065', '#537844', '#ffffff', '#687065'],

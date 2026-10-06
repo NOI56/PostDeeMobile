@@ -1,17 +1,10 @@
+import 'profile_platform_catalog.generated.dart';
+
 const linkInBioFonts = {'anuphan', 'prompt', 'system'};
 const linkInBioIcons = {
   'auto',
   'link',
-  'shopee',
-  'lazada',
-  'line',
-  'tiktok',
-  'youtube',
-  'instagram',
-  'facebook',
-  'messenger',
-  'whatsapp',
-  'google_maps',
+  ...profilePlatformIds,
   'website',
   'email',
   'phone',

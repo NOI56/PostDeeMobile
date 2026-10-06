@@ -126,7 +126,9 @@ historical evidence and do not verify the new 100-logo expansion.
 Local integration checks passed on the implementation below. The 43 Asia assets
 and search metadata were reviewed separately during source preparation; the
 runtime checks cover all 100 brands, including the 47 other additions and ten
-preserved originals. Remote delivery and CI remain separate pending checks.
+preserved originals. Remote CI and authorized Staging delivery also passed on
+the exact implementation SHA recorded below; public Staging browser rendering
+remains unverified under the saved browser restriction.
 
 | Check | Status / evidence |
 | --- | --- |
@@ -139,8 +141,8 @@ preserved originals. Remote delivery and CI remain separate pending checks.
 | Exact Staging APK build, package/environment checks | Passed: Staging debug APK built and installed with matching SHA-256; exact package, Firebase debug project and environment recorded below |
 | Native Android emulator picker/autotitle/preview smoke and data preservation | Passed: Zalo URL suggests title, searchable picker and preview show real new mark alongside existing Shopee; existing authenticated account and preference hash unchanged |
 | Baseline diff/no unexpected deletion or lost wiring | Parent review passed for related changes; refreshed main comparison remains 0 behind / 10 ahead before delivery |
-| Remote CI on delivered source SHA | Pending |
-| Push and Staging API release | Pending |
+| Remote CI on delivered source SHA | Passed: [run 37505664712](https://github.com/NOI56/PostDeeMobile/actions/runs/37505664712), both Backend API and Flutter Mobile successful on `34e68d63169f5ab54f454a4d95c1d874a8a5569a` |
+| Push and Staging API release | Passed: feature commit pushed to `codex/pinterest-mobile-ui`; exact-commit Render deploy `dep-db2j7vl9fdbs739kcog0` succeeded / Live at 00:48:28 GMT+7 on 2026-10-07 |
 
 Evidence is saved outside the checkout under
 `C:/Users/stopp/.codex/visualizations/2026/10/04/01a105f6-2943-7ae3-9df1-447070022cb2`:
@@ -153,6 +155,8 @@ Evidence is saved outside the checkout under
   `global-logo-web-global-safety-*` and `global-logo-web-keyboard-focus.png`.
 - Native: `global-logo-native-{before,installed,after}.json`,
   `global-logo-native-picker-search.png` and `global-logo-native-preview.png`.
+- Remote release: `global-logo-ci-result.json`,
+  `global-logo-staging-deploy-snapshot.txt` and `global-logo-staging-live.png`.
 
 Browser QA used existing bundled Playwright 1.62.1/Chromium 1223 because the
 Browser plugin was unavailable. A local-only memory fixture on port 4797
@@ -180,6 +184,37 @@ the unsaved smoke draft remained
 The existing authenticated account and connected-account count stayed intact;
 the test did not publish or persist a remote customer profile.
 
+## Authorized Staging delivery
+
+- Feature commit: `34e68d63169f5ab54f454a4d95c1d874a8a5569a`,
+  `Add 100 global profile logos and searchable picker`, pushed to the existing
+  `codex/pinterest-mobile-ui` branch. No merge into `main` was performed.
+- GitHub workflow-dispatch [run 37505664712](https://github.com/NOI56/PostDeeMobile/actions/runs/37505664712)
+  completed successfully on that exact `headSha`, with both Backend API and
+  Flutter Mobile jobs successful. API tests/build/schema/audit and Mobile
+  analysis/tests passed remotely.
+- Existing Render service `srv-d9bb72ojs32c739osa5g` was updated through
+  **Deploy a specific commit** with that exact feature SHA, using the existing
+  session authorization. Linked branch, Auto-Deploy, plan and environment
+  settings were not changed.
+- [Render deployment `dep-db2j7vl9fdbs739kcog0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db2j7vl9fdbs739kcog0)
+  started at 00:46:38 and became **Deploy succeeded / Live** at 00:48:28 GMT+7
+  on 2026-10-07, duration 1m50s. Source UI and build logs identify the feature
+  SHA; the configured-branch label in the checkout log does not imply a merge.
+- Startup logs identify PostgreSQL `postdee_staging`, 14 existing migrations
+  and **No pending migrations to apply**. The API starts on port 10000 with
+  social publishing mode/publisher disabled and the existing in-process memory
+  publish scheduler. No new migration or external provider integration is
+  introduced by this release.
+- Runtime dependency pruning reports the four existing moderate advisories,
+  with no high-severity production advisory. Dependencies were not changed.
+- The new Staging APK is installed on the existing Android emulator with the
+  original account/preferences intact, as recorded above. Native smoke changes
+  were discarded without saving or publishing the test link.
+- A documentation-only follow-up records these actual release results. The
+  deployed runtime intentionally remains the CI-verified feature SHA; later
+  documentation changes require no runtime rebuild.
+
 ## Delivery order and remaining limits
 
 No database migration is required by this expansion. Deploy the API/generated
@@ -201,6 +236,7 @@ Record deployment state separately from live-browser rendering. Physical iOS
 and Android acceptance and app-specific login/region restrictions are not
 proven by an Android emulator or by seeing a logo.
 
-No push, merge or deploy has been performed by this documentation subtask.
-The parent task must record actual authorized delivery and validation evidence
-before declaring this expansion complete.
+Feature push, remote CI and Staging deployment are complete as recorded above.
+Production and `main` were not updated. Live public-page visual acceptance and
+physical-device acceptance remain separate from the verified local rendering,
+Android emulator smoke and Render deployment evidence.

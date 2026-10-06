@@ -159,9 +159,15 @@ does not fetch destination URLs or third-party favicons.
 The renderer selects a known mark using the existing explicit `icon` value or
 recognized destination-domain rules; unknown links and explicit `icon: "link"`
 retain the generic icon. Brand images are decorative beside the existing link
-title and use a white 40 x 40 badge with `object-fit: contain` and no recoloring.
+title and use a transparent 40 x 40 frame with `object-fit: contain` and no recoloring.
 The page's `img-src 'self'` CSP remains unchanged. Publish requests/responses,
 appearance fields, owner scope and URL validation are unchanged.
+
+The background correction uses the original transparent official YouTube PNG.
+Its renderer URL is `/profile-platforms/youtube.png?v=2`, bypassing the prior
+one-day image cache without changing the seven-filename allowlist. The other six
+files are unchanged. Only the added white frame fill is removed; white artwork
+that belongs to a platform mark is retained.
 
 Deploy the updated API with `apps/api/assets/profile-platforms` before expecting
 new marks on the public site. Existing published profiles need no republish;

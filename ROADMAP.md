@@ -32,9 +32,12 @@ Build roadmap for PostDee.
   `docs/superpowers/plans/2026-10-06-link-manager-ui.md`.
 - Use original full-color YouTube, Shopee, Lazada, LINE, TikTok, Instagram and
   Facebook marks in mobile link cards, previews and public pages. Share identical
-  bundled PNGs in white 40 x 40 badges with aspect ratio preserved; retain generic
+  bundled PNGs in transparent 40 x 40 frames with aspect ratio preserved; retain generic
   unknown-link icons and manual icon selection. Public `/profile-platforms/:file`
-  serves only the seven known files from the page origin. This follow-up adds no
+  serves only the seven known files from the page origin. The background
+  correction replaces YouTube's opaque canvas with its official transparent PNG,
+  removes added white fills and versions its public URL with `?v=2`; the other
+  six files retain their original artwork. This follow-up adds no
   migration, provider call or package rule; existing published pages use the
   marks after API/assets deployment. Verification and delivery status are in
   `docs/superpowers/plans/2026-10-06-profile-platform-logos.md`.

@@ -33,9 +33,24 @@ describe('public link platform logos', () => {
   it.each(platforms)('renders the bundled %s brand logo from a recognized URL', (platform, url) => {
     const html = renderLinkInBioPage(profile([{ id: 'link', title: 'ไปที่ร้าน', url }]), 'test-nonce');
     expect(html).toContain(`data-icon="${platform}"`);
-    expect(html).toContain(`<img src="/profile-platforms/${platform}.png" width="40" height="40" alt="">`);
+    const logoPath = `/profile-platforms/${platform}.png${platform === 'youtube' ? '?v=2' : ''}`;
+    expect(html).toContain(`<img src="${logoPath}" width="40" height="40" alt="">`);
     expect(html).toContain(`href="${url}"`);
     expect(html).toContain('<span>ไปที่ร้าน</span>');
+  });
+
+  it('leaves brand artwork transparent over custom buttons while retaining the generic-link background', () => {
+    const html = renderLinkInBioPage(profile([
+      { id: 'brand', title: 'YouTube', url: 'https://youtu.be/clip', buttonColor: '#2c5734' },
+      { id: 'generic', title: 'เว็บอื่น', url: 'https://example.com/shop', buttonColor: '#2c5734' }
+    ]), 'test-nonce');
+    const brandStyle = html.match(/\.platform-icon\.brand-logo\{([^}]*)\}/)?.[1];
+    const genericStyle = html.match(/\.platform-icon\{([^}]*)\}/)?.[1];
+    expect(brandStyle).toContain('background:transparent');
+    expect(brandStyle).not.toMatch(/background(?:-color)?:#fff/);
+    expect(genericStyle).toContain('background:rgba(255,255,255,.14)');
+    expect(html).toContain('.link-0{color:#ffffff;background:#2c5734;');
+    expect(html).toContain('data-icon="link" aria-hidden="true">↗</span>');
   });
 
   it('retains explicit platform selection and generic link selection', () => {
@@ -84,6 +99,17 @@ describe('public link platform logos', () => {
     expect(auth).not.toHaveBeenCalled();
   });
 
+  it('keeps the legacy YouTube URL working alongside the revision used to bypass its old one-day cache', async () => {
+    const { app } = fixture();
+    const legacy = await request(app).get('/profile-platforms/youtube.png').expect(200);
+    const revision = await request(app).get('/profile-platforms/youtube.png?v=2').expect(200);
+    expect(revision.body).toEqual(legacy.body);
+    expect(revision.headers['cache-control']).toBe('public, max-age=86400');
+    const html = renderLinkInBioPage(profile([{ id: 'link', title: 'YouTube', url: 'https://youtu.be/clip' }]), 'test-nonce');
+    expect(html).toContain('src="/profile-platforms/youtube.png?v=2"');
+    expect(html).not.toContain('src="/profile-platforms/youtube.png"');
+  });
+
   it.each(['unknown.png', 'youtube.svg', 'YOUTUBE.png', 'LICENSES.md', '..%2Fprofile-fonts%2Fprompt-regular.ttf'])('refuses unlisted asset paths: %s', async (file) => {
     const { app } = fixture();
     await request(app).get(`/profile-platforms/${file}`).expect(404);
@@ -93,7 +119,7 @@ describe('public link platform logos', () => {
     const { app, store } = fixture();
     await store.publish({ userId: 'owner', storeName: 'ร้าน', slug: 'shop', links: [{ id: 'link', title: 'YouTube', url: 'https://youtu.be/clip' }] });
     const result = await request(app).get('/p/shop').expect(200);
-    expect(result.text).toContain('src="/profile-platforms/youtube.png"');
+    expect(result.text).toContain('src="/profile-platforms/youtube.png?v=2"');
     expect(result.headers['content-security-policy']).toContain("img-src 'self';");
     expect(result.headers['content-security-policy']).toContain("script-src 'none';");
     expect(result.headers['content-security-policy']).not.toContain('data:');

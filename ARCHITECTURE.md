@@ -63,7 +63,7 @@ Public CSS uses nonce styles, self-only fonts/images, and no scripts.
 
 The 2026-10-06 platform-mark refinement uses byte-identical bundled PNGs for
 YouTube, Shopee, Lazada, LINE, TikTok, Instagram and Facebook in the mobile
-manager/preview and public renderer. Known marks use white 40 x 40 badges,
+manager/preview and public renderer. Known marks use transparent 40 x 40 frames,
 contain sizing and original colors, with no hover filter on their artwork.
 Existing domain recognition and explicit icon overrides select marks; unknown
 links keep the generic fallback. Flutter's shared `BioPlatformLogo` widget
@@ -71,6 +71,10 @@ loads local assets, and public `GET /profile-platforms/:file` serves only seven
 allowlisted files from `apps/api/assets/profile-platforms`, independent of
 private profile-image storage. It returns PNG/nosniff with a one-day public
 cache; no vendor URL is fetched and `img-src 'self'` remains unchanged.
+The background correction replaces only YouTube's white-canvas asset with the
+original official transparent PNG and removes the added white frame fill.
+Public YouTube images append `?v=2` to bypass cached artwork; the allowlist,
+remaining six PNGs and original white artwork within marks remain unchanged.
 Titles retain the accessible link names, with decorative images excluded from
 semantics. API/assets deployment changes marks on already-published snapshots
 without republishing; there is no schema or publish-contract migration.

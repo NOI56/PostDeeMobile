@@ -12,15 +12,21 @@ Retrieved and visually checked on 2026-10-06:
 
 | Asset | Original source | Preparation |
 | --- | --- | --- |
+| `youtube.png` | [YouTube icon guidelines](https://brand.youtube/youtube-icon/), [official icon archive](https://www.gstatic.com/marketing-cms/89/d9/cf95c4f345709f4998dc581221b0/youtube-icon.zip), file `YouTube_Icon/Digital/01 Red/yt_icon_red_digital.png` | Original 1255×1075px transparent PNG bytes, unchanged. The white play triangle is part of the original mark. |
 | `shopee.png` | [Shopee Thailand](https://shopee.co.th/) links to the [official 96px favicon](https://deo.shopeemobile.com/shopee/shopee-pcmall-live-sg/assets/icon_favicon_1_96.1ce0e05fc18a86e5.png) | Original 96×96px PNG bytes, unchanged. |
 | `line.png` | [LINE logo guidelines](https://www.line.me/en/logo), [official iOS app icon PNG archive](https://www.line.me/static/logo/top/LINE_APP_iOS.zip), file `LINE_APP_iOS.png` | Original 1001×1000px PNG bytes, unchanged. |
 | `lazada.png` | [Lazada Thailand](https://www.lazada.co.th/), [official favicon](https://www.lazada.co.th/favicon.ico) | Original 128×128px ICO frame decoded losslessly to PNG. Same pixels and dimensions. |
-| `youtube.png`, `instagram.png`, `facebook.png`, `tiktok.png` | Existing, visually verified mobile assets | Copied unchanged. Original retrieval provenance is not recorded by this task. |
+| `instagram.png`, `facebook.png`, `tiktok.png` | Existing, visually verified mobile assets | Copied unchanged. Original retrieval provenance is not recorded by this task. |
 
 Brand and trademark rights remain with their respective owners. Retain the
 original aspect ratio and colors. The LINE guidelines specify a minimum height
 of 40px for mobile use and 20px for PC use; its mark must not be recolored or
 decorated.
+
+The transparent YouTube source replaces the former opaque white-square mobile
+asset. Shopee already has a transparent background (including the letter-shaped
+cutout); it does not require background removal. Display these originals without
+an added white badge. White elements that belong to a brand mark remain intact.
 
 ## Byte parity
 
@@ -28,7 +34,7 @@ SHA-256 values for both the API copy and the mobile file:
 
 | File | SHA-256 |
 | --- | --- |
-| `youtube.png` | `999C4D52F380D1C1DE8E29C32269A465D933121D3F3675BC660D5A34AEAB2A6C` |
+| `youtube.png` | `1027B1B0517727ADB9697155A270744381C3CE9B047B1C8BD8A9389DC7D07A83` |
 | `instagram.png` | `2604BD33F5E75ECD2CA39599D4AEF92ED0F5072A5BC39A7CF79635DDA74B9FFF` |
 | `facebook.png` | `7ED849718CC5C019FA76AE2CA29ED0119E6BA7BFA92727C768C5CE36388BFEE1` |
 | `tiktok.png` | `D08E3ACC4B31BFCCA4C67031EBFC6C78E22B27DB3E6601F261D905AF6A8DF568` |

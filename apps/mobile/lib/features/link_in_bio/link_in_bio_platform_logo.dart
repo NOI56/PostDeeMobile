@@ -34,8 +34,9 @@ class BioPlatformLogo extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color:
-            asset == null ? Colors.white.withValues(alpha: .14) : Colors.white,
+        color: asset == null
+            ? Colors.white.withValues(alpha: .14)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
       ),
       child: asset == null

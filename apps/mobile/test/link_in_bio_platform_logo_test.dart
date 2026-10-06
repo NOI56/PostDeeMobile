@@ -7,6 +7,7 @@ import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/models/link_in_bio_appearance.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
+import 'package:postdee_mobile/features/link_in_bio/link_in_bio_platform_logo.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_preview.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -57,6 +58,38 @@ void main() {
         .signIn(const AuthSession(userId: 'seller-a', idToken: 'token'));
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
+
+  testWidgets('brand logos have no white badge on colored buttons',
+      (tester) async {
+    await _preview(tester, _links);
+    final badges = tester.widgetList<Container>(find.descendant(
+        of: find.byType(BioPlatformLogo), matching: find.byType(Container)));
+    expect(badges, hasLength(_links.length));
+    for (final badge in badges) {
+      expect((badge.decoration! as BoxDecoration).color, Colors.transparent);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  test('YouTube artwork has transparent corners instead of a white canvas',
+      () async {
+    final data = await rootBundle.load(bioPlatformLogoAsset('youtube')!);
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    final rgba =
+        await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final corners = [
+      0,
+      frame.image.width - 1,
+      (frame.image.height - 1) * frame.image.width,
+      frame.image.width * frame.image.height - 1,
+    ];
+    for (final pixel in corners) {
+      expect(rgba!.getUint8(pixel * 4 + 3), 0);
+    }
+    frame.image.dispose();
+    codec.dispose();
+  });
 
   testWidgets(
       'preview uses platform logos instead of letter and emoji placeholders',

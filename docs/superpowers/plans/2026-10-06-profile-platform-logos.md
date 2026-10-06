@@ -1,5 +1,9 @@
 # Profile platform logos
 
+The initial implementation, verification and deployment sections below record
+the first release with white badge surfaces. The background correction at the
+end records the subsequent change separately; earlier evidence is preserved.
+
 ## Scope and verified baseline
 
 The user confirmed replacing platform symbols with correct logos on both the
@@ -170,3 +174,94 @@ Evidence in the same visualization folder: `platform-logo-github-ci.json`,
 `platform-logo-staging-deploy-snapshot.txt` and
 `platform-logo-staging-deploy-live.png`. The final image shows Live status,
 target source SHA and successful startup logs.
+
+## Follow-up: remove added white logo backgrounds
+
+After the first Staging release, the user reported unwanted white logo
+backgrounds. Baseline for this corrective follow-up is `552c156` on the same
+canonical worktree and feature branch. The cause has two parts: the UI added
+a white fill behind every known mark, and the original YouTube asset itself had
+an opaque white canvas. Shopee's original PNG already has transparency, so its
+visible white background came from the wrapper rather than altered artwork.
+
+The correction changes known-mark wrappers to transparent on the public page,
+mobile manager and preview while retaining 40 x 40 sizing, contain fitting and
+original colors. Generic fallback styling is retained. Replace only the two
+API/mobile `youtube.png` copies with original transparent official source bytes:
+[YouTube icon guidelines](https://brand.youtube/youtube-icon/),
+[official icon archive](https://www.gstatic.com/marketing-cms/89/d9/cf95c4f345709f4998dc581221b0/youtube-icon.zip),
+member `YouTube_Icon/Digital/01 Red/yt_icon_red_digital.png`, 1255 x 1075 pixels.
+SHA-256 for both copies is
+`1027B1B0517727ADB9697155A270744381C3CE9B047B1C8BD8A9389DC7D07A83`.
+The white play triangle is part of the original YouTube mark and stays intact;
+the other six PNGs, including transparent Shopee, are unchanged. All seven
+API/mobile copies remain byte-identical. Exact provenance is recorded in
+`apps/api/assets/profile-platforms/README.md`.
+
+Use `/profile-platforms/youtube.png?v=2` in the renderer to bypass the previously
+cached opaque asset. The route still accepts only the same seven filenames and
+retains its one-day PNG cache, nosniff headers and self-only page CSP. No schema,
+package, architecture, dependency, environment, owner scope or publish-contract
+change is required; published profiles need no republishing after API/assets
+deployment.
+
+The user's push/deploy-to-Staging authorization covers this correction in the
+same scope. The corrective checks below verify the changed artwork and wrapper
+separately from the earlier release. Push and Staging deployment for the
+correction are still pending. Live Staging browser access remains blocked by
+saved permissions and is not bypassed. Production is outside this follow-up.
+
+### Corrective verification and exact APK
+
+API targeted suites pass 126/126; the complete API suite passes 1,189/1,189
+across 97 files. API build, Prisma validation, helper type-check and strict
+logo-suite type-check pass. Flutter targeted checks pass 21/21; the final full
+suite passes 1,152/1,152, and analyze reports no issues.
+
+The first targeted/full Flutter runs caught stale bundled YouTube bytes even
+though the source PNG was replaced correctly. The official archive preserved
+its original 2017 modification timestamp, so incremental Flutter asset bundling
+reused the previous cached image. Refreshing only the source file's modification
+time leaves its original bytes intact and invalidates that cache. The targeted
+and full suites were rerun successfully, and the bundled PNG SHA-256 now matches
+the transparent source hash recorded above. No unrelated implementation was
+changed to resolve the failed checks.
+
+The exact Staging debug APK builds successfully and was installed with
+`adb install -r`. API origin, Firebase project, package and feature flags match
+the earlier verified delivery environment. Local and installed APK SHA-256:
+
+`C035675D5F95C38C90DD169512EA090D3704477DA28ACE7F830CB6641E109BB8`.
+
+Native manager-to-`ดูตัวอย่าง` navigation succeeds on the same API 34 emulator.
+The actual two-link YouTube/Shopee manager and preview were visually inspected
+with transparent wrappers and original colors. No draft saving, publication or
+unpublication was performed. SharedPreferences before and after these checks
+retain SHA-256
+`17ce723edcece60378f0769ef76d7e895aa55945bdf21ae52fcf7d727bd62cc9`.
+The current process log contains zero relevant Flutter/runtime/asset errors.
+Native coverage remains these two actual links; full seven-platform coverage
+is provided by widgets and the local browser rather than a native fixture.
+
+Local compiled browser checks pass at desktop 700 x 650 and mobile 393 x 852.
+Five checks cover the two-link and seven-platform fixtures, generic/spoofed-domain
+fallbacks and manual overrides, source parity for all seven assets, transparent
+wrappers, original colors and contain fitting. Clicking the YouTube image opens
+the expected destination in a locally fulfilled popup with a null opener;
+3px keyboard focus outline, hover colors, accessible titles and self-only CSP
+remain correct. No overflow, console errors or HTTP issues were found.
+
+Logs and inspected screenshots use the `platform-logo-transparent-*` prefix in
+the same visualization folder:
+
+| Evidence | Result |
+| --- | --- |
+| `platform-logo-transparent-api-full.log`, `platform-logo-transparent-api-build.log`, `platform-logo-transparent-api-prisma.log` | Final full API suite, build and schema validation pass. |
+| `platform-logo-transparent-mobile-targeted-final.log`, `platform-logo-transparent-mobile-full-final.log`, `platform-logo-transparent-mobile-analyze.log` | Final targeted/full Flutter suites and analysis pass after cache invalidation. |
+| `platform-logo-transparent-mobile-build.log` | Exact Staging APK build passes. |
+| `platform-logo-transparent-browser-result.json`, `platform-logo-transparent-web-desktop.png`, `platform-logo-transparent-web-mobile.png`, `platform-logo-transparent-web-all-mobile.png`, `platform-logo-transparent-web-focus.png` | Compiled local browser checks and inspected transparent-logo rendering. |
+| `platform-logo-transparent-native-manager.png`, `platform-logo-transparent-native-preview.png`, `platform-logo-transparent-native-logcat.log` | Inspected actual manager/preview and current process scan. |
+
+These results establish the correction locally and on the installed emulator.
+They do not claim a completed corrective API deployment, live public-page
+verification, physical-device/iOS/API 36 testing or Production acceptance.

@@ -32,6 +32,31 @@ describe('API rate limiting', () => {
     await request(app).get('/health').expect(200);
   });
 
+  it('uses the rightmost client after one trusted proxy despite changing forwarded prefixes', async () => {
+    const app = createApp({
+      config: readServerConfig({ RATE_LIMIT_MAX_REQUESTS: '2' })
+    });
+
+    await request(app)
+      .get('/templates')
+      .set('x-forwarded-for', '198.51.100.10, 203.0.113.42')
+      .expect(200);
+    await request(app)
+      .get('/templates')
+      .set('x-forwarded-for', '198.51.100.11, 203.0.113.42')
+      .expect(200);
+    const limitedResponse = await request(app)
+      .get('/templates')
+      .set('x-forwarded-for', '198.51.100.12, 203.0.113.42')
+      .expect(429);
+
+    expect(limitedResponse.body.code).toBe('RATE_LIMITED');
+    await request(app)
+      .get('/templates')
+      .set('x-forwarded-for', '198.51.100.12, 203.0.113.43')
+      .expect(200);
+  });
+
   it('keeps normal traffic under the default limit unaffected', async () => {
     const app = createApp();
 

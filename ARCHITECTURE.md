@@ -141,6 +141,11 @@ packages through Prisma migration and prunes development plus optional packages
 before the API starts. This avoids removing platform-native build tools too
 early while keeping unused Firebase clients out of the running service.
 
+Express retains its single-hop `trust proxy = 1` setting. Its compatible
+`proxy-addr` dependency is locked to `2.0.8` for `GHSA-jqcg-44mw-7w3h`; this
+dependency patch changes no route, authentication policy, custom rate limiter,
+database schema, or environment setting.
+
 ## Mobile App
 
 Path:

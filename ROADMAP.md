@@ -238,6 +238,12 @@ Dashboard still reports the workspace suspended for non-payment, and Staging
 returns HTTP `503` with `x-render-routing: suspend`; live deployment and current
 provider tests remain blocked until the workspace is restored.
 
+On 2026-10-06, pre-merge CI identified `GHSA-jqcg-44mw-7w3h` in `proxy-addr`.
+The compatible lockfile patch to `2.0.8` and two security/rate-limit regressions
+pass the backend suite. The high/critical production audit gate stays enabled;
+four moderate dependency findings remain for separate follow-up. No API/schema
+or trust-proxy configuration changes are part of this patch.
+
 ### AI auto-editing update (2026-08-08)
 
 The table's earlier audio-only deployment note is superseded. ElevenLabs M4A

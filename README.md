@@ -109,6 +109,14 @@ to `3.2.1`, which patches the multipart parser advisories
 `GHSA-xjh9-v7x6-24jw` and `GHSA-x8mw-p69m-v3mx`. CI continues to reject high
 severity findings in the production dependency audit.
 
+The compatible Express dependency `proxy-addr` is locked to `2.0.8` to patch
+`GHSA-jqcg-44mw-7w3h`. Express's existing single-hop `trust proxy = 1` policy is
+unchanged. A dependency regression covers the advisory's mapped-IPv6 subnet
+case, and a global rate-limit integration test verifies that changing the
+untrusted forwarded prefix cannot change the established client's bucket.
+The pre-merge audit has no high/critical findings; four moderate findings remain
+recorded in `docs/superpowers/plans/2026-10-05-profile-link-simpler-ui.md`.
+
 ## Legacy AI Editing Runtime Reference
 
 The following runtime notes describe retained compatibility code. Since

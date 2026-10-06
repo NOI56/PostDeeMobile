@@ -130,7 +130,43 @@ E/flutter or Unable to load asset matches. Evidence in the visualization folder:
 Native coverage is the actual two-link profile on API 34; all seven marks are
 covered by widgets and local browser QA, not by a seven-link native fixture.
 Native full-screen preview, dark mode, physical devices, iOS and target API 36
-were not exercised in this follow-up. Live Staging public browser checking,
-API deployment and Production acceptance remain unverified. Deployment requires
-the user's authorization; the web rendering fix and assets are ready locally.
+were not exercised in this follow-up. Live Staging public browser checking
+and Production acceptance remain unverified. Staging delivery is recorded below.
 No migration is required. Earlier live R2 lifecycle checks remain deferred.
+
+## Authorized push and Staging deployment
+
+On 6 October 2026 the user authorized push and deploy to Staging. A fresh fetch
+still confirmed `origin/main = bcd7153` and feature baseline `cc07128`; only the
+26 logo/source/test/doc files were committed. Existing untracked `artifacts/`
+and the unrelated dirty root checkout were excluded.
+
+- Pushed implementation commit `fec5763a8bc5b143448e9af864ec08a9174acbf0`
+  to `origin/codex/pinterest-mobile-ui`. No merge into `main` was performed.
+- Manually dispatched [CI run 37456579263](https://github.com/NOI56/PostDeeMobile/actions/runs/37456579263)
+  on that exact SHA, because feature-branch pushes do not automatically run the
+  workflow. Both Flutter Mobile and Backend API completed successfully. API
+  CI reports 1,187 passing tests across 97 files and includes build, Prisma
+  validation and production dependency audit; mobile analysis and tests pass.
+- Render service `srv-d9bb72ojs32c739osa5g` deployed the specific commit through
+  its Dashboard. [Deploy `dep-db2do6ei0phs73eagveg`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db2do6ei0phs73eagveg)
+  displays `Deploy succeeded | Live`, source `fec5763`, duration 1m49s. Logs
+  show checkout of the full target SHA, build success and service Live at
+  18:33:27 Asia/Bangkok. Database startup reports 14 existing migrations and
+  `No pending migrations to apply`; API listens on port 10000, starts its
+  memory scheduler and retains `mode=disabled; publisher=disabled`.
+- Render's Dashboard-specific-commit action disables Auto-Deploy. The Settings
+  banner confirms this state. The linked branch remains `main`; integrate this
+  release there before reenabling Auto-Deploy to avoid replacing it with older
+  linked-branch code. No service plan, secret/env values or Production deployment
+  was changed.
+- Browser access to `postdee-api-staging.onrender.com` was rejected by the saved
+  user permission policy. No alternate browser/HTTP route was used to work
+  around it. Render Live/startup evidence is verified, but the public page and
+  seven public PNGs were not checked live; the earlier local rendered/compiled
+  asset checks remain the evidence for those behaviors.
+
+Evidence in the same visualization folder: `platform-logo-github-ci.json`,
+`platform-logo-staging-deploy-snapshot.txt` and
+`platform-logo-staging-deploy-live.png`. The final image shows Live status,
+target source SHA and successful startup logs.

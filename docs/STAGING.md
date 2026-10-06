@@ -1,5 +1,33 @@
 # PostDee Staging
 
+## ส่งมอบโลโก้แพลตฟอร์ม — 6 ตุลาคม 2026
+
+- ผู้ใช้อนุญาต push และ deploy ชุดโลโก้ขึ้น Staging แล้ว ส่ง feature commit
+  `fec5763a8bc5b143448e9af864ec08a9174acbf0` บน
+  `codex/pinterest-mobile-ui`; `main` ยังคงเป็น `bcd7153` ไม่มีการ merge ในรอบนี้
+- [GitHub CI run 37456579263](https://github.com/NOI56/PostDeeMobile/actions/runs/37456579263)
+  ตรวจ SHA ข้างต้นและผ่านทั้ง Flutter Mobile กับ Backend API รวม analyze,
+  tests, production build, Prisma validate และ production dependency audit
+- [Render deploy dep-db2do6ei0phs73eagveg](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db2do6ei0phs73eagveg)
+  ของ `postdee-api-staging` แสดง **Deploy succeeded | Live** โดย Source เป็น
+  `fec5763` Log ยืนยัน checkout SHA เต็ม, build สำเร็จ และ service Live เวลา
+  **18:33:27 น. Asia/Bangkok** ใช้เวลา 1m49s
+- Start log ระบุฐาน `postdee_staging`, migrations 14 รายการ และ
+  `No pending migrations to apply.` ไม่มี schema/migration ใหม่ในงานโลโก้
+  ระบบฟัง port 10000, scheduler เริ่ม และ social publisher ยังเป็น `disabled`
+- การเลือก specific commit ผ่าน Dashboard ปิด Auto-Deploy ของ Staging
+  ตามขั้นตอน Render; Settings แสดง disabled หลัง deploy ต้องรวมรุ่นนี้เข้า
+  branch ที่บริการติดตามก่อนเปิด Auto-Deploy อีกครั้งเพื่อไม่ให้รุ่นเก่ามาแทน
+  ไม่ได้เปลี่ยนแผนบริการ, env secrets หรือ deploy Production
+- เบราว์เซอร์ปฏิเสธการเข้าถึง `postdee-api-staging.onrender.com` เพราะ saved
+  permission block จึงไม่ได้ตรวจหน้า Live หรือ PNG ผ่านช่องทางอื่นเพื่อเลี่ยง
+  การบล็อก ผล Live ข้างต้นยืนยันจาก Render ไม่ใช่ผล browser E2E/HTTP ของหน้าเว็บ
+  All-seven artwork/asset parity/layout checks ผ่านในเครื่องตามแผนโลโก้
+- หลักฐานภาพ `platform-logo-staging-deploy-live.png`, DOM snapshot และ
+  `platform-logo-github-ci.json` อยู่ในโฟลเดอร์ visualization ของงาน
+  รายละเอียด local/native verification และข้อจำกัดอยู่ใน
+  `docs/superpowers/plans/2026-10-06-profile-platform-logos.md`
+
 ตรวจสถานะ 5 ตุลาคม 2026: API และฐานข้อมูล Staging กลับเป็น Active แล้ว และ
 Link in Bio รุ่นใหม่ขึ้น Staging เวลา **18:26 น. Asia/Bangkok** ส่วน Production
 ยัง suspended รอบนี้ไม่มีการ deploy Production จ่ายเงิน เปลี่ยนแผน หรือแก้

@@ -1,12 +1,17 @@
 import { linkInBioFonts, normalizeStoredLinkInBioAppearance, readLinkInBioColor, type LinkInBioFont, type LinkInBioIcon, type LinkInBioTextStyle } from './linkInBioAppearance.js';
 import type { LinkInBioLink, LinkInBioProfile } from './linkInBioStore.js';
-import { linkInBioPlatformLogoFiles } from './linkInBioPlatformLogos.js';
+import { getLinkInBioPlatformLogoGeometry, linkInBioPlatformLogoFiles, type LinkInBioBrandIcon } from './linkInBioPlatformLogos.js';
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 })[character]!);
 const fontFamily = (font: LinkInBioFont) => font === 'system' ? 'system-ui,-apple-system,sans-serif' : `"${font === 'prompt' ? 'Prompt' : 'Anuphan'}",system-ui,sans-serif`;
 const textStyle = (style: LinkInBioTextStyle) => `color:${style.color};font-family:${fontFamily(style.font)}`;
+const cssNumber = (value: number) => Number(value.toFixed(6));
+const platformLogoStyles = (Object.keys(linkInBioPlatformLogoFiles) as LinkInBioBrandIcon[]).map((icon) => {
+  const geometry = getLinkInBioPlatformLogoGeometry(icon);
+  return `.platform-icon[data-icon="${icon}"] img{width:${cssNumber(geometry.width)}px;height:${cssNumber(geometry.height)}px;left:${cssNumber(geometry.left)}px;top:${cssNumber(geometry.top)}px}`;
+}).join('\n');
 const resolveIcon = (link: LinkInBioLink): Exclude<LinkInBioIcon, 'auto'> => {
   if (link.icon === 'link') return 'link';
   if (link.icon && link.icon !== 'auto' && Object.hasOwn(linkInBioPlatformLogoFiles, link.icon)) return link.icon;
@@ -62,7 +67,8 @@ main{width:min(100% - 32px,520px);margin:48px auto;padding:32px 24px;border:1px 
 .brand{${textStyle(appearance.brandStyle)};font-size:13px;font-weight:600;letter-spacing:1px}.cover{display:block;width:calc(100% + 48px);margin:-32px -24px 24px;max-height:220px;object-fit:cover}.logo{display:block;width:88px;height:88px;object-fit:cover;border-radius:24px;margin:0 0 18px}
 h1{${textStyle(appearance.nameStyle)};font-size:28px;font-weight:600;line-height:1.4;overflow-wrap:anywhere;margin:16px 0 8px}.description{${textStyle(appearance.descriptionStyle)};white-space:pre-line;overflow-wrap:anywhere;margin:0 0 28px}
 ul{list-style:none;padding:0;margin:0;display:grid;gap:12px}.category{${textStyle(appearance.categoryStyle)};font-size:14px;font-weight:600;overflow-wrap:anywhere;margin:12px 0 0}a{display:flex;align-items:center;gap:12px;border-radius:${radius};padding:16px 20px;text-decoration:none;font-weight:600;overflow-wrap:anywhere;min-width:0}
-a:hover .link-copy{text-decoration:underline}a:focus-visible{outline:3px solid #d5a22f;outline-offset:4px}.platform-icon{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.14);font-family:system-ui,sans-serif;font-size:18px}.platform-icon.brand-logo{background:transparent}.platform-icon img{display:block;width:40px;height:40px;object-fit:contain}.link-copy{display:flex;flex-direction:column;min-width:0;flex:1}.arrow{flex-shrink:0}.featured{box-shadow:inset 0 0 0 2px currentColor}.featured-label{font-size:11px;opacity:.86;font-weight:400}footer{${textStyle(appearance.brandStyle)};text-align:center;font-size:12px;margin-top:28px}
+a:hover .link-copy{text-decoration:underline}a:focus-visible{outline:3px solid #d5a22f;outline-offset:4px}.platform-icon{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.14);font-family:system-ui,sans-serif;font-size:18px}.platform-icon.brand-logo{background:transparent;position:relative;overflow:hidden;border-radius:0}.platform-icon img{position:absolute;display:block;max-width:none;object-fit:contain;pointer-events:none}.link-copy{display:flex;flex-direction:column;min-width:0;flex:1}.arrow{flex-shrink:0}.featured{box-shadow:inset 0 0 0 2px currentColor}.featured-label{font-size:11px;opacity:.86;font-weight:400}footer{${textStyle(appearance.brandStyle)};text-align:center;font-size:12px;margin-top:28px}
+${platformLogoStyles}
 ${linkStyles}
 @media(max-width:400px){main{margin:24px auto;padding:24px 18px}h1{font-size:24px}.cover{width:calc(100% + 36px);margin:-24px -18px 24px}a{padding:14px 16px}}
 </style></head><body><main>${appearance.coverKey ? `<img class="cover" src="${imagePath('cover')}" alt="ภาพปกของ ${escapeHtml(profile.storeName)}">` : ''}<div class="brand">PostDee</div>${appearance.logoKey ? `<img class="logo" src="${imagePath('logo')}" alt="โลโก้ ${escapeHtml(profile.storeName)}">` : ''}<h1>${escapeHtml(profile.storeName)}</h1>

@@ -70,8 +70,11 @@ verification above records the manager before this follow-up.
 
 The 2026-10-06 platform-logo follow-up uses the same bundled full-color marks
 for YouTube, Shopee, Lazada, LINE, TikTok, Instagram and Facebook in mobile link
-cards, the mobile preview and public pages. Marks occupy a transparent 40 x 40 frame
-with their original aspect ratio and colors; unrecognized links keep the generic
+cards, the mobile preview and public pages. Marks occupy a transparent 40 x 40 slot.
+Trusted source bounds fit the visible artwork's longest side to 40 and center it,
+preserving its original aspect ratio and colors; this avoids shrinking marks
+with large transparent canvases. All seven platforms have explicit bounds.
+Unrecognized links keep the generic
 link icon. Manual icon selection, URL/title rules and draft/publication behavior
 remain unchanged. The API serves only these seven PNGs at
 `/profile-platforms/:file` from the page origin under the existing self-only CSP.
@@ -79,6 +82,9 @@ The background correction uses the official transparent YouTube PNG and removes
 the added white frame fill; original white elements inside marks stay intact.
 Public YouTube images use `/profile-platforms/youtube.png?v=2` to bypass the
 previous image cache. Other six files are unchanged.
+The size-normalization follow-up changes display geometry only: all seven PNGs
+retain their exact bytes, original white/colored artwork and public asset URLs.
+Only transparent margins may fall outside the slot; visible content is retained.
 Deploy the API with `apps/api/assets/profile-platforms` to update existing
 published pages without republishing; this follow-up needs no database migration.
 Verification and delivery status are recorded separately in

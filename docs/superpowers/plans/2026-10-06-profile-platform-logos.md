@@ -294,3 +294,98 @@ Corrective release evidence in the same visualization folder:
 `platform-logo-transparent-github-ci.json`,
 `platform-logo-transparent-staging-deploy-snapshot.txt` and
 `platform-logo-transparent-staging-deploy-live.png`.
+
+## Follow-up: balance the visible size of all seven marks
+
+The user requested balanced logo sizes for every known platform on the public
+page and in the mobile app. Equal 40 x 40 image widgets fit each entire source
+canvas, including transparent margins. That makes YouTube's visible mark about
+26px wide while several app-icon canvases occupy the full 40px slot. The earlier
+transparent-background correction and its release evidence above remain intact.
+
+Fresh baseline for this follow-up is `965c7ef` on the same canonical worktree and
+`codex/pinterest-mobile-ui`; freshly verified `origin/main` remains `bcd7153`,
+with zero commits behind and five ahead. Existing untracked `artifacts/` and the
+unrelated dirty root checkout are preserved. This is display geometry, with no
+product/package/API payload, schema, migration, environment or dependency change.
+
+Keep a transparent 40 x 40 slot for every known mark. Use explicit, trusted source
+bounds to fit the visible artwork's longest side to 40 and center it with one
+uniform scale. Do not stretch axes independently, tint artwork, add a white
+badge, alter PNG bytes or crop visible colored/white content. A larger source
+image element can extend outside its slot only through transparent canvas
+margins. Full-canvas app icons retain their original appearance. Generic-link
+fallback styling and the accessible link title remain unchanged.
+
+| Mark | Source canvas | Visible source bounds `(x, y, width, height)` | Visible extent in the 40-slot |
+| --- | --- | --- | --- |
+| YouTube | 1255 x 1075 | `(214, 248, 827, 579)` | 40 x 28.00484 |
+| Shopee | 96 x 96 | `(5, 0, 86, 96)` | 35.83333 x 40 |
+| Lazada | 128 x 128 | Full canvas | 40 x 40 |
+| LINE | 1001 x 1000 | Full canvas | Approximately 40 x 40, preserving the source aspect ratio |
+| TikTok | 240 x 240 | Full canvas | 40 x 40 |
+| Instagram | 240 x 240 | Full canvas | 40 x 40 |
+| Facebook | 240 x 240 | Full canvas | 40 x 40 |
+
+YouTube's source image renders at approximately 60.7013 x 51.9952, with offset
+`left: -10.350665`, `top: -5.99758`, so its actual mark fills the width without
+discarding any artwork. Shopee remains a centered 40-square source image, because
+its longest visible side already fills the height. LINE remains in the 40px
+display slot without deliberately reducing its size or modifying its artwork;
+its official mobile minimum-size guidance remains in the asset README. The
+filled backgrounds inside Lazada/LINE/TikTok/Instagram/Facebook are original
+artwork and are retained. All seven API/mobile assets and their SHA-256 values
+are unchanged.
+
+Use equivalent bounds/centering rules in the public renderer and the shared
+Flutter logo widget so manager cards and previews match. The filename allowlist,
+same-origin CSP, one-day image cache, existing YouTube `?v=2` URL and all other
+public asset URLs remain unchanged. Published profiles need no republishing
+after the API rendering update.
+
+### Size-normalization verification
+
+Regression tests were added before the geometry change. The old YouTube display
+failed the visible-size expectation at 26.5 rather than 40. Pixel checks now
+cover all seven marks: the longest visible dimension is 40, the artwork is
+centered, its original aspect ratio is preserved and no visible content is
+cropped. All seven original PNG files and their API/mobile parity remain intact.
+
+- API targeted suites pass 133/133; the complete suite passes 1,196/1,196 across
+  97 files. Build, Prisma validation, helper type-check and logo-test type-check
+  pass.
+- Mobile targeted suites pass 28/28; the complete suite passes 1,159/1,159.
+  Flutter analyze reports no issues, and the exact Staging debug APK builds
+  successfully with the existing verified environment/package configuration.
+- Seven compiled local-browser QA checks pass at both desktop and mobile sizes.
+  Rendering of all seven marks was visually inspected. These checks establish
+  the updated visible-size geometry locally, separately from the prior releases.
+
+The exact APK was installed on the same simulator with `adb install -r`,
+retaining app data and the account. Installed APK SHA-256:
+
+`71D445BA5692FC09CC0608A4178E6A863EE7BEB68051CF7F51335BD84B4303F6`.
+
+Native manager and preview checks use the existing two-link YouTube/Shopee
+profile; no seven-link fixture was added to customer data. SharedPreferences
+before and after retain SHA-256
+`17ce723edcece60378f0769ef76d7e895aa55945bdf21ae52fcf7d727bd62cc9`.
+Coverage of every known mark comes from pixel/widget and local-browser checks,
+while the native check confirms the actual two-link account flow.
+
+Evidence uses the `platform-logo-balanced-*` prefix in the same visualization
+folder:
+
+| Evidence | Result |
+| --- | --- |
+| `platform-logo-balanced-api-red.log`, `platform-logo-balanced-mobile-red.log` | Before-fix regression evidence. |
+| `platform-logo-balanced-api-full.log`, `platform-logo-balanced-api-build.log`, `platform-logo-balanced-api-prisma.log` | Complete API suite, build and schema validation pass. |
+| `platform-logo-balanced-mobile-targeted.log`, `platform-logo-balanced-mobile-full.log`, `platform-logo-balanced-mobile-analyze.log`, `platform-logo-balanced-mobile-build.log` | Targeted/full Flutter suites, analysis and exact Staging build pass. |
+| `platform-logo-balanced-browser-result.json`, `platform-logo-balanced-web-all-desktop.png`, `platform-logo-balanced-web-all-mobile.png` | Seven browser QA checks and inspected full-platform rendering. |
+| `platform-logo-balanced-native-manager.png`, `platform-logo-balanced-native-preview.png` | Existing two-link native manager and preview evidence. |
+
+Push, CI and Staging deployment for this size-normalization follow-up remain
+pending. Public Staging browser access is still blocked by saved permissions;
+the live public page and assets have not been confirmed, and no alternate access
+path was used. Render Dashboard access is available for release verification.
+Physical devices, iOS, API 36 and Production remain outside these checks.

@@ -159,7 +159,11 @@ does not fetch destination URLs or third-party favicons.
 The renderer selects a known mark using the existing explicit `icon` value or
 recognized destination-domain rules; unknown links and explicit `icon: "link"`
 retain the generic icon. Brand images are decorative beside the existing link
-title and use a transparent 40 x 40 frame with `object-fit: contain` and no recoloring.
+title and use a transparent 40 x 40 slot without recoloring. Explicit trusted
+source bounds for all seven marks fit the visible artwork's longest side to 40
+and center it while preserving its original aspect ratio. Larger image elements
+may extend beyond the slot to omit transparent canvas margins; visible artwork
+is never clipped. Full-canvas app icons retain contain sizing.
 The page's `img-src 'self'` CSP remains unchanged. Publish requests/responses,
 appearance fields, owner scope and URL validation are unchanged.
 
@@ -168,6 +172,8 @@ Its renderer URL is `/profile-platforms/youtube.png?v=2`, bypassing the prior
 one-day image cache without changing the seven-filename allowlist. The other six
 files are unchanged. Only the added white frame fill is removed; white artwork
 that belongs to a platform mark is retained.
+The size-normalization follow-up changes rendering geometry only, preserving all
+seven PNG bytes, asset URLs, filename allowlist and response/cache headers.
 
 Deploy the updated API with `apps/api/assets/profile-platforms` before expecting
 new marks on the public site. Existing published profiles need no republish;

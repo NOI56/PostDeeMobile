@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
@@ -59,6 +60,57 @@ void main() {
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
+  for (final link in _links) {
+    testWidgets('${link.id} visible artwork fills and centers in the logo slot',
+        (tester) async {
+      final boundaryKey = GlobalKey();
+      await tester.pumpWidget(MaterialApp(
+          home: Center(
+              child: RepaintBoundary(
+                  key: boundaryKey,
+                  child: ColoredBox(
+                      color: const Color(0xff2c5734),
+                      child: BioPlatformLogo(icon: link.id))))));
+      await tester.runAsync(() => precacheImage(
+          AssetImage(bioPlatformLogoAsset(link.id)!),
+          boundaryKey.currentContext!));
+      await tester.pumpAndSettle();
+      final boundary = boundaryKey.currentContext!.findRenderObject()!
+          as RenderRepaintBoundary;
+      final image =
+          (await tester.runAsync(() => boundary.toImage(pixelRatio: 4)))!;
+      final pixels = await tester
+          .runAsync(() => image.toByteData(format: ui.ImageByteFormat.rawRgba));
+      var left = image.width;
+      var top = image.height;
+      var right = -1;
+      var bottom = -1;
+      for (var y = 0; y < image.height; y++) {
+        for (var x = 0; x < image.width; x++) {
+          final index = (y * image.width + x) * 4;
+          final difference = (pixels!.getUint8(index) - 44).abs() +
+              (pixels.getUint8(index + 1) - 87).abs() +
+              (pixels.getUint8(index + 2) - 52).abs();
+          if (difference < 30) continue;
+          if (x < left) left = x;
+          if (x > right) right = x;
+          if (y < top) top = y;
+          if (y > bottom) bottom = y;
+        }
+      }
+      final visibleWidth = (right - left + 1) / 4;
+      final visibleHeight = (bottom - top + 1) / 4;
+      expect(visibleWidth > visibleHeight ? visibleWidth : visibleHeight,
+          closeTo(40, 1),
+          reason: link.id);
+      expect((left + right + 1) / 8, closeTo(20, .5), reason: link.id);
+      expect((top + bottom + 1) / 8, closeTo(20, .5), reason: link.id);
+      expect(tester.getSize(find.byType(BioPlatformLogo)), const Size(40, 40));
+      expect(tester.takeException(), isNull);
+      image.dispose();
+    });
+  }
+
   testWidgets('brand logos have no white badge on colored buttons',
       (tester) async {
     await _preview(tester, _links);
@@ -100,7 +152,10 @@ void main() {
       final image = tester.widget<Image>(_asset(link.id));
       expect(image.fit, BoxFit.contain);
       expect(image.color, isNull, reason: 'Brand colors must not be tinted');
-      expect(tester.getSize(_asset(link.id)), const Size(40, 40));
+      expect(
+          tester.getSize(find.ancestor(
+              of: _asset(link.id), matching: find.byType(BioPlatformLogo))),
+          const Size(40, 40));
     }
     expect(find.text('S'), findsNothing);
     expect(find.text('L'), findsNothing);

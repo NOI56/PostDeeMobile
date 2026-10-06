@@ -15,6 +15,16 @@ const platforms = [
   ['instagram', 'https://www.instagram.com/shop'],
   ['facebook', 'https://fb.me/shop']
 ] as const;
+// Independently audited source canvas and nontransparent content bounds.
+const contentMetrics = {
+  youtube: { sourceWidth: 1255, sourceHeight: 1075, left: 214, top: 248, width: 827, height: 579 },
+  shopee: { sourceWidth: 96, sourceHeight: 96, left: 5, top: 0, width: 86, height: 96 },
+  lazada: { sourceWidth: 128, sourceHeight: 128, left: 0, top: 0, width: 128, height: 128 },
+  line: { sourceWidth: 1001, sourceHeight: 1000, left: 0, top: 0, width: 1001, height: 1000 },
+  tiktok: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 },
+  instagram: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 },
+  facebook: { sourceWidth: 240, sourceHeight: 240, left: 0, top: 0, width: 240, height: 240 }
+} as const;
 const profile = (links: LinkInBioLink[]): LinkInBioProfile => ({
   storeName: 'ร้าน', slug: 'shop', links, isPublished: true,
   publishedAt: '2026-10-06T10:00:00.000Z', updatedAt: '2026-10-06T10:00:00.000Z', publicPath: '/p/shop'
@@ -37,6 +47,34 @@ describe('public link platform logos', () => {
     expect(html).toContain(`<img src="${logoPath}" width="40" height="40" alt="">`);
     expect(html).toContain(`href="${url}"`);
     expect(html).toContain('<span>ไปที่ร้าน</span>');
+  });
+
+  it.each(platforms)('renders %s artwork with a centered 40px visible extent without stretching or clipping', (platform, url) => {
+    const html = renderLinkInBioPage(profile([{ id: 'link', title: platform, url }]), 'test-nonce');
+    const style = html.match(new RegExp(`\\.platform-icon\\[data-icon="${platform}"\\] img\\{([^}]*)\\}`))?.[1];
+    expect(style).toBeDefined();
+    const declarations = Object.fromEntries(style!.split(';').filter(Boolean).map((part) => part.split(':')));
+    const width = Number.parseFloat(declarations.width);
+    const height = Number.parseFloat(declarations.height);
+    const left = Number.parseFloat(declarations.left);
+    const top = Number.parseFloat(declarations.top);
+    const source = contentMetrics[platform];
+    const scale = width / source.sourceWidth;
+    const visibleWidth = source.width * scale;
+    const visibleHeight = source.height * scale;
+    const visibleLeft = left + source.left * scale;
+    const visibleTop = top + source.top * scale;
+    expect(width / height).toBeCloseTo(source.sourceWidth / source.sourceHeight, 5);
+    expect(Math.max(visibleWidth, visibleHeight)).toBeCloseTo(40, 5);
+    expect(visibleLeft + visibleWidth / 2).toBeCloseTo(20, 5);
+    expect(visibleTop + visibleHeight / 2).toBeCloseTo(20, 5);
+    expect(visibleLeft).toBeGreaterThanOrEqual(-0.00001);
+    expect(visibleTop).toBeGreaterThanOrEqual(-0.00001);
+    expect(visibleLeft + visibleWidth).toBeLessThanOrEqual(40.00001);
+    expect(visibleTop + visibleHeight).toBeLessThanOrEqual(40.00001);
+    expect(html).toContain('.platform-icon.brand-logo{background:transparent;position:relative;overflow:hidden;border-radius:0}');
+    expect(html).toContain('.platform-icon img{position:absolute;');
+    expect(html).toContain('object-fit:contain');
   });
 
   it('leaves brand artwork transparent over custom buttons while retaining the generic-link background', () => {

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import type { RequestHandler, Response, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
@@ -6,6 +7,7 @@ import type { UserStore } from '../users/userStore.js';
 import { LinkInBioError, type LinkInBioLink, type LinkInBioProfile, type LinkInBioStore } from './linkInBioStore.js';
 import { linkInBioFonts, linkInBioIcons, normalizeStoredLinkInBioAppearance, readLinkInBioAppearance, readLinkInBioColor, type LinkInBioAppearance, type LinkInBioFont, type LinkInBioIcon } from './linkInBioAppearance.js';
 import { renderLinkInBioPage } from './linkInBioRenderer.js';
+import { linkInBioPlatformLogoFiles } from './linkInBioPlatformLogos.js';
 
 export type LinkInBioRouteOptions = {
   validateImages?: (userId: string, appearance: LinkInBioAppearance) => Promise<void>;
@@ -89,6 +91,12 @@ export const registerLinkInBioRoutes = (
   router: Router, authMiddleware: RequestHandler, store: LinkInBioStore, userStore?: UserStore,
   options: LinkInBioRouteOptions = {}
 ) => {
+  router.get('/profile-platforms/:file', (request, response) => {
+    const file = request.params.file;
+    if (typeof file !== 'string' || !Object.values(linkInBioPlatformLogoFiles).includes(file)) { response.status(404).end(); return; }
+    response.set('Cache-Control', 'public, max-age=86400').set('X-Content-Type-Options', 'nosniff').type('image/png')
+      .sendFile(fileURLToPath(new URL(`../../../assets/profile-platforms/${file}`, import.meta.url)), { dotfiles: 'allow' });
+  });
   router.use('/link-in-bio', (_request, response, next) => {
     response.set('Cache-Control', 'no-store');
     next();

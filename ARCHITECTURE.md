@@ -61,14 +61,31 @@ snapshot. Fonts are bundled locally in Flutter and served by the existing API
 under a filename whitelist, with license notices in `apps/api/assets/profile-fonts`.
 Public CSS uses nonce styles, self-only fonts/images, and no scripts.
 
+The 2026-10-06 platform-mark refinement uses byte-identical bundled PNGs for
+YouTube, Shopee, Lazada, LINE, TikTok, Instagram and Facebook in the mobile
+manager/preview and public renderer. Known marks use white 40 x 40 badges,
+contain sizing and original colors, with no hover filter on their artwork.
+Existing domain recognition and explicit icon overrides select marks; unknown
+links keep the generic fallback. Flutter's shared `BioPlatformLogo` widget
+loads local assets, and public `GET /profile-platforms/:file` serves only seven
+allowlisted files from `apps/api/assets/profile-platforms`, independent of
+private profile-image storage. It returns PNG/nosniff with a one-day public
+cache; no vendor URL is fetched and `img-src 'self'` remains unchanged.
+Titles retain the accessible link names, with decorative images excluded from
+semantics. API/assets deployment changes marks on already-published snapshots
+without republishing; there is no schema or publish-contract migration.
+Provenance, verification and delivery status are recorded in the asset README
+and `docs/superpowers/plans/2026-10-06-profile-platform-logos.md`.
+
 The mobile profile UI opens an internal link manager for new, unpublished and
 published profiles. Shop identity and separate information/appearance/preview
 actions sit above Add link and editable cards. Information, theme and review
 remain separate views. The visible footer keeps Save draft separate from review
 and its explicit Publish/Update action; a confirmed publish returns to the
 manager. Draft previews read the local draft, while public URL actions use only
-the confirmed server profile. The public renderer and appearance contract are
-unchanged.
+the confirmed server profile. That manager revision leaves the public layout
+and appearance contract unchanged; the platform-mark refinement only replaces
+its generic brand symbols.
 
 Link order remains the local `customLinks` array order, including disabled
 links; enabled state remains a set of stable link IDs. Drag ordering and the

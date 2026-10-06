@@ -113,10 +113,12 @@ void main() {
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-disclosure-images');
-    expect(find.byType(Image), findsNothing);
+    final storeImages = find.byWidgetPredicate(
+        (widget) => widget is Image && widget.image is MemoryImage);
+    expect(storeImages, findsNothing);
     pending.complete(_png);
     await tester.pumpAndSettle();
-    expect(find.byType(Image), findsNWidgets(2));
+    expect(storeImages, findsNWidgets(2));
     expect(tester.takeException(), isNull);
   });
 

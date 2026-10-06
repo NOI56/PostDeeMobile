@@ -41,7 +41,13 @@ void main() {
         lessThan(tester.getTopLeft(find.text('สินค้าพิเศษ')).dy));
     expect(find.text('สินค้า'), findsNWidgets(2));
     expect(find.text('โปรพิเศษ'), findsOneWidget);
-    expect(find.text('S'), findsOneWidget);
+    expect(
+        find.byWidgetPredicate((widget) =>
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName ==
+                'assets/images/platforms/shopee.png'),
+        findsOneWidget);
   });
 
   testWidgets('system typography does not inherit the app bundled Anuphan font',

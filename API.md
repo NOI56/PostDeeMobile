@@ -40,6 +40,7 @@ LinkInBioProfile migration; memory mode is development-only scaffolding.
 | `GET /link-in-bio/image?key=...` | Required | Preview an image belonging to the current account |
 | `GET /p/:slug/images/:slot` | Public | Serve only the current published logo, cover, or background image |
 | `GET /profile-fonts/:file` | Public | Serve a whitelisted bundled font |
+| `GET /profile-platforms/:file` | Public | Serve one of seven allowlisted bundled platform PNGs |
 
 Publish body:
 
@@ -144,6 +145,28 @@ deploy API plus bundled font assets, and only then distribute the new mobile bui
 Fonts/images are served from the page origin under the existing nonce CSP.
 There is no arbitrary CSS, script, custom font upload, product-card pricing,
 or new paid provider in this contract.
+
+### Bundled platform marks (2026-10-06)
+
+`GET /profile-platforms/:file` requires no authentication and accepts only
+`youtube.png`, `shopee.png`, `lazada.png`, `line.png`, `tiktok.png`,
+`instagram.png` and `facebook.png`. Successful responses use `image/png`,
+`X-Content-Type-Options: nosniff` and `Cache-Control: public, max-age=86400`;
+unknown filenames return 404. These files are fixed bundled assets, independent
+of owner-uploaded profile images and their private storage provider. The route
+does not fetch destination URLs or third-party favicons.
+
+The renderer selects a known mark using the existing explicit `icon` value or
+recognized destination-domain rules; unknown links and explicit `icon: "link"`
+retain the generic icon. Brand images are decorative beside the existing link
+title and use a white 40 x 40 badge with `object-fit: contain` and no recoloring.
+The page's `img-src 'self'` CSP remains unchanged. Publish requests/responses,
+appearance fields, owner scope and URL validation are unchanged.
+
+Deploy the updated API with `apps/api/assets/profile-platforms` before expecting
+new marks on the public site. Existing published profiles need no republish;
+this follow-up requires no schema change or migration. Mobile uses byte-identical
+local assets, with provenance and parity recorded in that asset folder's README.
 
 ## Mobile Request Deadlines
 

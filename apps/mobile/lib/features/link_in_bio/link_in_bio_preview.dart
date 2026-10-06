@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/link_in_bio_appearance.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_link_defaults.dart';
+import 'link_in_bio_platform_logo.dart';
 
 Color bioColor(String value) =>
     Color(int.parse('ff${value.substring(1)}', radix: 16));
@@ -27,26 +28,6 @@ String bioIconId(LinkInBioCustomLink link) {
   if (link.icon != 'auto') return link.icon;
   return bioPlatformId(link.url);
 }
-
-IconData bioLinkIcon(LinkInBioCustomLink link) => switch (bioIconId(link)) {
-      'shopee' || 'lazada' => Icons.shopping_bag_outlined,
-      'line' => Icons.chat_bubble_outline,
-      'tiktok' => Icons.music_note,
-      'youtube' => Icons.smart_display_outlined,
-      'instagram' => Icons.camera_alt_outlined,
-      'facebook' => Icons.facebook,
-      _ => Icons.link,
-    };
-String bioIconMark(LinkInBioCustomLink link) => switch (bioIconId(link)) {
-      'shopee' => 'S',
-      'lazada' => 'L',
-      'line' => 'LINE',
-      'tiktok' => '♪',
-      'youtube' => '▶',
-      'instagram' => '◎',
-      'facebook' => 'f',
-      _ => '↗',
-    };
 
 class LinkInBioPreview extends StatelessWidget {
   const LinkInBioPreview(
@@ -101,17 +82,8 @@ class LinkInBioPreview extends StatelessWidget {
                   ? Border.all(color: bioColor(style.color), width: 2)
                   : null),
           child: Row(children: [
-            Container(
-                width: 36,
-                height: 36,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: .14),
-                    borderRadius: BorderRadius.circular(10)),
-                child: Text(bioIconMark(link),
-                    style: bioTextStyle(
-                        LinkInBioTextStyle(font: 'system', color: style.color),
-                        size: bioIconId(link) == 'line' ? 10 : 18))),
+            BioPlatformLogo(
+                icon: bioIconId(link), fallbackColor: bioColor(style.color)),
             const SizedBox(width: 12),
             Expanded(
                 child: Column(

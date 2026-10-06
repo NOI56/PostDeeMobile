@@ -68,6 +68,18 @@ follow-up passes 1,144 Flutter tests, analysis, the Staging debug build and nati
 Android emulator checks, with evidence and limits in the same plan. The earlier
 verification above records the manager before this follow-up.
 
+The 2026-10-06 platform-logo follow-up uses the same bundled full-color marks
+for YouTube, Shopee, Lazada, LINE, TikTok, Instagram and Facebook in mobile link
+cards, the mobile preview and public pages. Marks occupy a white 40 x 40 badge
+with their original aspect ratio and colors; unrecognized links keep the generic
+link icon. Manual icon selection, URL/title rules and draft/publication behavior
+remain unchanged. The API serves only these seven PNGs at
+`/profile-platforms/:file` from the page origin under the existing self-only CSP.
+Deploy the API with `apps/api/assets/profile-platforms` to update existing
+published pages without republishing; this follow-up needs no database migration.
+Verification and delivery status are recorded separately in
+`docs/superpowers/plans/2026-10-06-profile-platform-logos.md`.
+
 Migration `20261005193000_customize_link_in_bio_profile` adds nullable appearance
 JSON and owner-scoped image metadata. Old profiles use the original cream/green
 defaults; old clients can still publish links without overwriting customization.

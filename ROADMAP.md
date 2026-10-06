@@ -30,6 +30,14 @@ Build roadmap for PostDee.
   debug build pass, with native Android emulator flow/visual checks complete.
   Evidence and remaining limits are in
   `docs/superpowers/plans/2026-10-06-link-manager-ui.md`.
+- Use original full-color YouTube, Shopee, Lazada, LINE, TikTok, Instagram and
+  Facebook marks in mobile link cards, previews and public pages. Share identical
+  bundled PNGs in white 40 x 40 badges with aspect ratio preserved; retain generic
+  unknown-link icons and manual icon selection. Public `/profile-platforms/:file`
+  serves only the seven known files from the page origin. This follow-up adds no
+  migration, provider call or package rule; existing published pages use the
+  marks after API/assets deployment. Verification and delivery status are in
+  `docs/superpowers/plans/2026-10-06-profile-platform-logos.md`.
 - Remove editing-minute benefits, quota cards, and top-up promotion from the
   active product. Legacy editing code/API contracts remain for compatibility and
   shared media helpers; historical editing milestones below are not active TODOs.

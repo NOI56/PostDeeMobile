@@ -14,6 +14,7 @@ import 'link_in_bio_appearance_editor.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_image_picker.dart';
 import 'link_in_bio_link_defaults.dart';
+import 'link_in_bio_platform_logo.dart';
 import 'link_in_bio_preview.dart';
 import 'link_in_bio_validation.dart';
 
@@ -1009,12 +1010,13 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
             padding: const EdgeInsets.only(bottom: 12),
             child: _BioLinkTile(
                 id: link.id,
-                icon: bioLinkIcon(link),
+                icon: BioPlatformLogo(
+                    icon: bioIconId(link),
+                    fallbackColor: AppTheme.accentCyanInk),
                 title: link.title,
                 subtitle: link.category.isEmpty
                     ? link.url
                     : '${link.category} • ${link.url}',
-                color: AppTheme.accentCyanInk,
                 enabled: _enabledLinkIds.contains(link.id),
                 featured: _appearance.featuredLinkId == link.id,
                 onChanged: _setLinkEnabled,
@@ -1324,7 +1326,6 @@ class _BioLinkTile extends StatelessWidget {
       required this.icon,
       required this.title,
       required this.subtitle,
-      required this.color,
       required this.enabled,
       required this.onChanged,
       required this.menu,
@@ -1333,10 +1334,9 @@ class _BioLinkTile extends StatelessWidget {
       this.canEdit = true,
       this.featured = false});
   final String id;
-  final IconData icon;
+  final Widget icon;
   final String title;
   final String subtitle;
-  final Color color;
   final bool enabled;
   final void Function(String id, bool value) onChanged;
   final Widget menu;
@@ -1368,7 +1368,7 @@ class _BioLinkTile extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(children: [
-                                    Icon(icon, color: color, size: 20),
+                                    icon,
                                     const SizedBox(width: 8),
                                     Expanded(
                                         child: Text(title,

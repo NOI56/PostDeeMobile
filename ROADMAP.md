@@ -64,17 +64,24 @@ Build roadmap for PostDee.
   The hundred brand marks remain untouched. Local implementation/QA is complete:
   1,555 API tests, 1,499 Flutter tests, analysis, builds/schema checks, hundred-page
   320px browser matrix and twenty native structures pass. The exact Staging debug
-  APK above describes local acceptance before integration. Integrated `9c7fa74`
+  APK above describes local acceptance before integration. Initial integrated `9c7fa74`
   preserves the latest grouped Account UI and four-step composer; exact-source
   CI `37623591224` passes 1,555 API / 1,556 Flutter tests. Staging API deployment
-  `dep-db342ek9v7es73astung` is Live with successful read-only runtime fixtures.
+  `dep-db342ek9v7es73astung` became Live with successful read-only runtime fixtures.
   The matching Android APK was built by passing opt-in Actions run `37627939566`
   from exact `9c7fa74`, locally re-signed and installed on emulator-5556. Its
   installed bytes match; account/draft/Flutter preferences are unchanged after
   native QA of all fifteen base previews, Account and the four-step composer.
   A follow-up corrects cropped uploaded logos with centered `contain` in every
   new composition, retaining frames and cover/background cropping; its own
-  exact-source CI/deploy/APK are pending. CI avoids a Windows Flutter-tool startup hang.
+  corrected source `ae65b9d5eacddf6f9cf000bdb4efb44b4e82b3e0` passes CI
+  `37633935019` (104 API files / 1,556 tests, Flutter analyze / 1,559 tests and
+  APK build). It is Live on `dep-db35c71srm7s73e5sf1g` with compiled fixtures
+  confirming 100 contain-fit logos, retained IDs, cover cropping and eight PNGs.
+  The matching verified/re-signed APK is installed in place on emulator-5556;
+  stored account/draft/preferences match immediately after installation. The
+  `9c7fa74` APK receipt is historical. CI avoids the Windows Flutter-tool startup
+  hang; public browser/owned-image, iOS and physical-device checks remain unverified.
   The prior `fc087c4` receipt verifies the initial release only. See the current
   delivery receipt in the same plan for evidence and visual adaptations.
 - Separate local draft saving from publishing. Show a shareable URL only after

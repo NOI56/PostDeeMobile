@@ -1,6 +1,39 @@
 # PostDee Staging
 
-## ส่งมอบเทมเพลตโครงหน้าใหม่ — 7 ตุลาคม 2026
+## ส่งมอบเทมเพลตโครงหน้าใหม่และแก้กรอบโลโก้ — 7 ตุลาคม 2026
+
+- รุ่นปัจจุบัน `ae65b9d5eacddf6f9cf000bdb4efb44b4e82b3e0` บน
+  `codex/profile-compositions-integrated-staging` รวมบัญชีจาก `main` `ebc9c47`,
+  หน้าสร้างโพสต์ 4 ขั้น และเทมเพลตโครงใหม่ 5 หมวด × 20 แบบ ใช้ `contain`
+  จัดโลโก้ร้านตรงกลางให้เห็นรูปครบ โดยเก็บกรอบ/สีและการครอปภาพปกตามเดิม
+- [CI 37633935019](https://github.com/NOI56/PostDeeMobile/actions/runs/37633935019)
+  ผ่าน API 104 ไฟล์ / 1,556 tests, Flutter analyze / 1,559 tests,
+  build/schema/audit และสร้าง APK Staging ด้วย Flutter 3.47.6 / Dart 3.13.5
+- [Render dep-db35c71srm7s73e5sf1g](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db35c71srm7s73e5sf1g)
+  เริ่ม 21:24:28 และ Live 21:26:27 Asia/Bangkok ใช้เวลา 1m59s;
+  source/instance `mrmmb` ตรง SHA เต็ม มี 14 migrations ไม่มี pending,
+  port 10000, publisher disabled และ memory scheduler ตามเดิม
+- Runtime แบบอ่านอย่างเดียวผ่าน stable IDs 100, โลโก้ contain/จัดกลาง 100,
+  ภาพปกยัง cover 100 และ PNG 8 ไฟล์ ใช้ข้อมูลจำลองในหน่วยความจำ ไม่แก้ฐานข้อมูล
+  หรือหน้าเว็บลูกค้า การตรวจเว็บในเครื่องผ่านกรอบ Gallery/Portrait กับรูปกว้าง/สูง
+  ที่ 320/393px ทั้ง 8 กรณี ไม่มีล้นหน้าและเห็นขอบรูปครบ
+- APK source/config/hash ตรง receipt; config ตัวอย่างที่ tracked ตรงค่าทดสอบ
+  ในเครื่องทั้ง 9 ข้อ เซ็นสำเนาด้วย key เดิมแล้วติดตั้ง `install -r` บน emulator-5556
+  สำเร็จ Installed SHA256 ตรง `efaccc5c683a7e41cbbe01373859c68c301e0bf3b75fb641d476bee1cb26d228`;
+  package `com.postdee.postdee_mobile.staging`, version `0.1.0-staging` / code 1,
+  min/target SDK 24/36 บัญชี/ร่าง/preferences ตรงกับก่อนติดตั้ง
+- Native A3/D3 แสดงโลโก้เต็มรูปตรงกลางกรอบเดิมและยกเลิกตัวอย่างได้ ลิงก์เดิม
+  2 รายการยังอยู่ ไม่มีปุ่ม pause หรือ visual overflow ที่สังเกต หลัง smoke ร่างและ
+  Flutter preferences ตรงเดิม บัญชีเดิมยืนยันจาก token-owner identity ที่ตรง
+  namespace ของร่าง; Firebase session/token payload เปลี่ยนและยังเป็น opaque
+  จึงไม่อ้างว่าทุก preference file ตรงทุก byte หลังเปิดแอป ไม่พบ crash/Flutter/
+  RenderFlex markers ใน process ที่ตรวจ เปิด picker หมวดหรูหราไว้ให้ผู้ใช้แล้ว
+- ไม่มี migration/secret/แพ็กบริการใหม่ ไม่ merge `main` หรือ deploy Production
+  และไม่กด Apply/Save/Update/Publish หรือแก้ข้อมูลหน้าเว็บลูกค้าระหว่าง QA; public browser/รูป R2,
+  iOS และเครื่องจริงยังไม่ยืนยัน รายละเอียดและหลักฐานอยู่ใน
+  `docs/superpowers/plans/2026-10-07-profile-template-categories.md`
+
+## ประวัติส่งมอบโครงหน้าใหม่ — รุ่นทดลอง `9c7fa74`
 
 - Source `9c7fa74cc6910063fc88a66568860ac64609f02f` บน
   `codex/profile-compositions-integrated-staging` รวมหน้าบัญชีจาก `main` ล่าสุด
@@ -26,8 +59,8 @@
 - ผลตรวจรุ่น `9c7fa74` เป็น provisional: พบกรอบแกลเลอรีตัดขอบโลโก้ร้าน
   ชุดแก้ใช้ `contain` ตรงกลางกรอบทั้งเว็บและมือถือสำหรับโลโก้ที่อัปโหลดใน
   100 เทมเพลต โดยเก็บกรอบ/สี/ตัวอักษรย่อและการครอปภาพปก/พื้นหลังไว้ตามเดิม
-  Local API 1,556 tests/build ผ่าน แต่ต้องรอ exact-source CI และส่ง API/APK
-  รุ่นแก้ที่ตรงกันก่อนสรุปส่งมอบ งานนี้ไม่แก้ข้อมูลหน้าเว็บของลูกค้า
+  Local API 1,556 tests/build ผ่าน จากนั้นรุ่นแก้ `ae65b9d` ผ่าน CI และส่ง
+  API/APK ที่ตรงกันตาม receipt ปัจจุบันด้านบน งานนี้ไม่แก้ข้อมูลหน้าเว็บลูกค้า
 - ไม่ merge `main` หรือ deploy Production; ข้อจำกัดตรวจเว็บสาธารณะ/รูป R2 ผ่าน
   browser ยังเหมือนเดิมตามสิทธิ์ที่บล็อกและคำข้ามตรวจเว็บก่อนหน้า รายละเอียดอยู่
   `docs/superpowers/plans/2026-10-07-profile-template-categories.md`

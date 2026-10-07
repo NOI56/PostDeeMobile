@@ -103,11 +103,11 @@ remain unchanged. Pre-integration local checks passed: 1,555 API tests, 1,499
 Flutter tests, analysis, API build/schema checks and the pre-integration Staging
 debug APK build; that APK is not the combined release artifact.
 Browser/IAB checks cover all hundred pages at 320px and native captures cover
-all twenty structures. The integrated source `9c7fa74` preserves the latest
+all twenty structures. Initial integrated source `9c7fa74` preserves the latest
 Account UI from `main` (`ebc9c47`) and the live four-step composer (`550f73a`).
 Exact-source CI run `37623591224` passes 1,555 API and 1,556 Flutter tests plus
 analysis/build/schema/audit checks. Render deployment `dep-db342ek9v7es73astung`
-is Live; read-only runtime fixtures verify 100 stable IDs, five groups of twenty
+became Live; read-only runtime fixtures verify 100 stable IDs, five groups of twenty
 compositions, eight PNGs and seven legacy themes. No migration is added.
 Windows Flutter-tool startup prevented a new local build; opt-in manual CI
 `37627939566` built the exact `9c7fa74` APK with Flutter 3.47.6 / Dart 3.13.5
@@ -120,8 +120,16 @@ accepted base previews, confirms five groups of twenty, and opens Account and
 the four-step composer without changing the saved account/draft. It exposed
 logo clipping in a tall gallery frame: a follow-up uses centered `contain` for
 uploaded shop logos across all new compositions, retaining frame geometry and
-cover/background-photo cropping. This correction still awaits its own CI,
-Staging deployment and matching APK; the receipt above verifies `9c7fa74` only.
+cover/background-photo cropping. Correction source
+`ae65b9d5eacddf6f9cf000bdb4efb44b4e82b3e0` passes exact-source CI
+`37633935019` (104 API files / 1,556 tests; Flutter analyze / 1,559 tests;
+Staging APK build). It is Live on `dep-db35c71srm7s73e5sf1g`; read-only compiled
+fixtures confirm 100 centered contain-fit logos, retained IDs, cover cropping
+and eight PNGs. Its separately verified/re-signed APK is installed in place on
+emulator-5556 with the stored account/draft/preferences unchanged immediately
+after installation. The initial `9c7fa74` APK receipt above is historical.
+Public Staging browser/owned-image, iOS and physical-device checks remain
+unverified. Signing keys and private configuration remain local.
 Current delivery evidence and visual adaptations are recorded in the same plan.
 
 The 2026-10-06 mobile revision opens the internal link manager for both new and

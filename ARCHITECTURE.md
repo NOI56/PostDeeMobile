@@ -130,10 +130,10 @@ builds/schema checks, all hundred public pages at 320px and twenty native
 compositions. Owner filled-button radius, image-backed surface panels and
 custom-colored paper/glass surfaces retain public/native parity. The exact
 Staging debug APK above belongs to local acceptance before integration. The
-integrated source `9c7fa74` includes the newest Account UI (`main` `ebc9c47`) and
+initial integrated source `9c7fa74` includes the newest Account UI (`main` `ebc9c47`) and
 the previously Live four-step composer (`550f73a`), with blob/delta audits
 confirming all three systems are preserved. CI `37623591224` passes 1,555 API
-and 1,556 Flutter tests; Render `dep-db342ek9v7es73astung` is Live with fourteen
+and 1,556 Flutter tests; Render `dep-db342ek9v7es73astung` became Live with fourteen
 existing migrations and none pending. Compiled-module fixtures verify catalog,
 assets, legacy behavior and route headers without database/provider requests.
 The matching Android APK was built by opt-in Actions run `37627939566` from
@@ -146,8 +146,15 @@ Provisional native navigation QA is complete with account/draft/Flutter
 preferences retained. It exposes shop-logo cropping in non-square frames.
 The follow-up applies centered `contain` to uploaded logos in the hundred
 composition previews and public pages only; cover/background-photo cropping,
-initials and frame/color rules are preserved. This correction awaits its own
-exact-source CI, API release and APK; the receipt above verifies `9c7fa74` only.
+initials and frame/color rules are preserved. Corrected source
+`ae65b9d5eacddf6f9cf000bdb4efb44b4e82b3e0` passes exact-source CI
+`37633935019` (104 API files / 1,556 tests, Flutter analyze / 1,559 tests and
+Staging APK build) and is Live on `dep-db35c71srm7s73e5sf1g`. Compiled fixtures
+confirm 100 centered contain-fit logos, cover cropping, stable IDs and eight
+PNGs. The matching verified/re-signed APK is installed in place on emulator-5556
+with stored account/draft/preferences unchanged immediately after installation.
+The `9c7fa74` receipt above is historical. Public Staging browser/owned-image,
+iOS and physical-device checks remain unverified.
 Signing keys/private JSON stay local. The default CI path keeps
 its existing checks and does not build APKs. The historical `fc087c4` receipt
 applies to the prior release only; current evidence is in the plan linked above.

@@ -41,7 +41,7 @@ LinkInBioProfile migration; memory mode is development-only scaffolding.
 | `GET /p/:slug/images/:slot` | Public | Serve only the current published logo, cover, or background image |
 | `GET /profile-fonts/:file` | Public | Serve a whitelisted bundled font |
 | `GET /profile-platforms/:file` | Public | Serve one of 100 allowlisted bundled platform PNGs |
-| `GET /profile-decorations/:file` | Public | Serve one of eight allowlisted bundled decorative PNGs; included in Staging runtime `9c7fa74` |
+| `GET /profile-decorations/:file` | Public | Serve one of eight allowlisted bundled decorative PNGs |
 
 Publish body:
 
@@ -185,7 +185,7 @@ of twenty, with no pause markup. This read-only check did not publish a test
 page or change customer data. Startup reported fourteen migrations and no
 pending migrations; public Staging browser/image checks remain unverified.
 
-### Composition revision — 2026-10-07 (initial integrated delivery; logo correction pending)
+### Composition revision — 2026-10-07 (corrected Staging delivery)
 
 The user accepted all fifteen A1–E3 short-page directions and their expansion
 to one hundred choices. The authored catalog now assigns each category twenty
@@ -220,8 +220,8 @@ browser matrix. Asset tests verify PNG headers, byte parity and filename/path
 rejections. Pre-integration native tests/analysis and the local Staging APK
 build also passed; that APK is not the combined release artifact. The prior
 `fc087c4` CI/deploy receipt does not verify these new compositions or asset
-responses. Integrated source `9c7fa74` passed exact-source CI `37623591224`
-(1,555 API / 1,556 Flutter tests) and is Live on Staging deployment
+responses. Initial integrated source `9c7fa74` passed exact-source CI `37623591224`
+(1,555 API / 1,556 Flutter tests) and became Live on Staging deployment
 `dep-db342ek9v7es73astung`. Read-only fixtures against compiled modules in that
 instance verify all 100 templates, retained IDs, five groups of twenty distinct
 compositions, eight bundled PNGs, seven legacy themes, omitted-appearance
@@ -235,7 +235,16 @@ base previews but exposes cropped shop logos in tall frames. The follow-up
 composition CSS fits uploaded `img.logo` with centered `contain` across all
 100 templates; cover/background-photo cropping, initials, legacy themes and
 frame geometry remain unchanged. Local API regression/full suite (1,556 tests)
-and build pass; its own exact-source CI/deploy/APK verification are pending.
+and build pass. Corrected source `ae65b9d5eacddf6f9cf000bdb4efb44b4e82b3e0`
+passes exact-source CI `37633935019` (104 API files / 1,556 tests, Flutter
+analyze / 1,559 tests and Staging APK build) and is Live on
+`dep-db35c71srm7s73e5sf1g`. Read-only compiled fixtures in the running instance
+confirm all 100 owned-logo contain rules, preserved cover cropping, retained
+IDs and eight PNGs; they do not make public HTTP or user-profile requests.
+The matching verified/re-signed APK is installed in place on emulator-5556
+with account/draft/preferences unchanged immediately after installation.
+The preceding `9c7fa74` APK receipt is historical; public browser/owned-image,
+iOS and physical-device checks remain unverified.
 Evidence is in
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 

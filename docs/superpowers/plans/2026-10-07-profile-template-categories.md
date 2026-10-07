@@ -2,13 +2,13 @@
 
 ## Current composition revision — 2026-10-07
 
-**Status: provisional integrated source `9c7fa74` is pushed, CI-approved, Live
-and installed; native QA found logo cropping, with its correction awaiting
-exact-source CI/deploy/APK.** The receipt immediately below verifies
-this revision. The older CI/Render/emulator receipt later in this document
-belongs to `fc087c4119cd46503c569879e61cddf99e402fb2` only.
+**Status: corrected source `ae65b9d` is pushed, exact-source CI-approved, Live
+on Staging and installed in place on emulator-5556.** The logo-containment
+receipt below verifies this delivery. The initial `9c7fa74` receipt is
+historical/provisional; the older CI/Render/emulator receipt later in this
+document belongs to `fc087c4119cd46503c569879e61cddf99e402fb2` only.
 
-### Provisional integrated delivery receipt — `9c7fa74`
+### Historical provisional integrated delivery receipt — `9c7fa74`
 
 - Initial composition snapshot: `a659bf571800ec278944aff51406b84fab397072`,
   containing only the forty-two reviewed composition files. The three unrelated
@@ -28,7 +28,7 @@ belongs to `fc087c4119cd46503c569879e61cddf99e402fb2` only.
   passes Backend API (104 files / 1,555 tests, generator/catalog, build, Prisma,
   dependency audit) and Flutter Mobile (analyze, 1,556 tests).
 - [Render deployment dep-db342ek9v7es73astung](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db342ek9v7es73astung)
-  is **Deploy succeeded | Live**. Source and running instance `bsf55` report the
+  became **Deploy succeeded | Live**. Source and running instance `bsf55` reported the
   exact full `9c7fa74` SHA. Dispatch was 19:55:22 and Live log 19:57:18
   Asia/Bangkok, duration 1m56s. Staging database has fourteen migrations with
   none pending; listener is 10000, social publisher remains disabled and the
@@ -99,7 +99,7 @@ the build retains the existing checks and uploads only the debug APK/receipt
 for three days. Keep the signing key local; runner debug signatures cannot
 replace the existing emulator package until the APK is re-signed locally.
 
-### Logo containment correction — delivery pending
+### Logo containment correction — corrected Staging delivery
 
 Native QA with the owner's actual square logo exposed an overly narrow crop
 in the gallery's 48×104 frame. Shared photo helpers used cover-fit for both
@@ -114,10 +114,88 @@ existing cover default; only uploaded-logo calls use contain. Three new widget
 regressions cover valid wide/tall PNGs across all hundred choices, full-source
 fit/aspect/centering, preserved gallery/portrait dimensions, and cover/background
 cropping across twenty compositions. Local Flutter execution remains unavailable;
-the remote CI must verify these tests/analyze/build. Local public visual checks
-are being prepared; do not treat the provisional `9c7fa74` APK as this corrected source.
-The follow-up needs exact-source CI, API Live, then a newly verified/re-signed
-APK and another data-preserving emulator update.
+the exact-source remote CI verifies these tests/analyze/build. The provisional
+`9c7fa74` APK above is historical, not this corrected source.
+
+- Corrected source/workflow SHA is
+  `ae65b9d5eacddf6f9cf000bdb4efb44b4e82b3e0` on the same integrated branch.
+  It adds only four directly related source/regression files and six documents
+  over `14b668d`; catalog, IDs, configuration, assets, dependencies, schema,
+  Account and the four-step composer are preserved.
+  A final `ls-remote` still identifies `main` as
+  `ebc9c47a2eb5d1a48f4124927a8dce0aec1ac572` and the feature branch as the full
+  corrected SHA before the receipt-only commit.
+- [Exact-source CI 37633935019](https://github.com/NOI56/PostDeeMobile/actions/runs/37633935019)
+  succeeds: API 104 files / 1,556 tests, generator/catalog/build/Prisma/audit,
+  Flutter analyze / 1,559 tests, and Staging debug APK build/upload. The actual
+  builder records Flutter 3.47.6 / Dart 3.13.5 and `lib/main.dart` with the
+  tracked Staging example configuration. Its SHA256 remains
+  `a898efcfa170e429fdbc4bf9b0e486a0a1679eae81633129dd05600686d25505`;
+  all nine values match the local private configuration. No private JSON/key
+  is sent to GitHub; local Windows Flutter startup is not claimed as a pass.
+- Root IAB checks use compiled synthetic pages only: Gallery/Portrait frames,
+  wide 240×80 / tall 80×240 logos, and 320/393px viewports, eight cases total.
+  Computed fit is contain, position 50%/50%, all image edges remain visible,
+  gallery 48×104 / portrait 78×130 geometry is unchanged, covers still use
+  cover-fit and no horizontal overflow occurs. This is localhost verification,
+  not a request to the restricted public Staging site or owner image storage.
+- [Render deploy dep-db35c71srm7s73e5sf1g](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db35c71srm7s73e5sf1g)
+  uses the specific full corrected SHA: **Deploy succeeded | Live**.
+  Dispatch 21:24:28, Live 21:26:27 Asia/Bangkok, duration 1m59s; instance
+  `mrmmb` starts with fourteen existing migrations / none pending, port 10000,
+  disabled social publisher and the existing memory scheduler. No service plan,
+  Auto-Deploy setting, environment, credential or migration is changed.
+- A read-only running-instance command confirms `RENDER_GIT_COMMIT` equals the
+  full corrected SHA, stable hundred-ID hash
+  `937c28fa35a33d431739e92176c31fe365d485134b3986d33fded2f9b5e9ea2f`,
+  centered contain-fit owned logos 100/100, cover-fit covers 100/100 and eight
+  PNG signatures. `ok: true`, `fixtureOnly: true`; no database, provider or
+  customer-profile write/publication is used. The temporary Shell is closed.
+- Downloaded artifact `postdee-staging-debug-37633935019` contains only the
+  receipt and raw APK, 285,748,010 bytes with verified SHA256
+  `f56f9cb94d4a284e6693ab9b9de047dd73e10ddf4d464cf8f2c41efa694bc24c`.
+  A separate aligned/local-key-signed copy is 285,823,770 bytes with SHA256
+  `efaccc5c683a7e41cbbe01373859c68c301e0bf3b75fb641d476bee1cb26d228`.
+  The signing-certificate fingerprint remains
+  `014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`;
+  it is a certificate fingerprint, not the APK file hash.
+- After API Live/runtime success and a fresh private backup segregated by
+  `github-37633935019`, `adb install -r` succeeds on emulator-5556 / PostDee_Pixel
+  / Android API 34. Installed bytes match the newly signed APK. Actual manifest
+  is `com.postdee.postdee_mobile.staging`, `0.1.0-staging` / code 1, min/target
+  SDK 24/36; API/Firebase/flags/catalog/artwork/fonts match source. All preference
+  file fingerprints, the stored-session record, Flutter preferences
+  and the owned draft match the fresh baseline immediately after installation.
+- Minimal corrected native smoke opens/cancels A3 portrait and D3 gallery using
+  the owner's actual PD image: both show the whole logo centered in the original
+  frames, two existing links, no pause control and no observed visual overflow.
+  Root independently reviews both captures. No Apply/Save/Update/Publish is
+  invoked; the original pink appearance (`templateId: null`) remains current.
+  The app stays foreground on the Luxury template picker for the user.
+- After smoke, Flutter preferences and the owned draft remain byte/hash-equal.
+  Signed-in account presence and immutable Firebase token-owner identity
+  fingerprints are retained and match the unchanged owned-draft namespace.
+  Firebase stored user-session/token payloads change during runtime and remain
+  opaque; their contents and post-runtime byte identity are not verified.
+  Two Google measurement session/timing fields also change. This is explicitly
+  distinct from the all-preference-file identity immediately after installation.
+  Current-process FATAL, unhandled exception, FlutterError and RenderFlex overflow
+  marker counts are zero; that log scope is not a guarantee against all problems.
+- Evidence is in the original checkout's `artifacts/profile-composition-release`:
+  `ci-logo-fit-final.log`, `ci-logo-fit-result.json`, `logo-fit-render-live.txt/png`,
+  `logo-fit-runtime.json/txt/png`, `owned-logo-browser-result.json`,
+  `owned-logo-browser-measurements.json`, `owned-logo-browser-matrix.png`,
+  `ae65-github-apk-verified.json`, `ae65-final-apk-verified.json` and
+  `ae65-final-signature-verification.txt`, `ae65-before/installed/after.json`,
+  `native-smoke-ae65-run37633935019.json`, `native-ae65-portrait-a3-logo-fixed.png`,
+  `native-ae65-gallery-d3-logo-fixed.png` and `native-ae65-final-picker.png`.
+  Historical `9c7fa74` evidence and
+  private backups are retained; none is committed or deleted for cleanup.
+- Public Staging browser/owned-image/R2 reload, iOS and physical-device rendering
+  remain unverified under the existing saved browser restriction/earlier skip.
+  No merge into main, Production deployment, customer-page Apply/Save/Update/
+  Publish, account logout or entitlement change is performed. Receipt-only
+  documentation updates do not change the CI/deployed/installed runtime source.
 
 After seeing the first hundred choices, the user said the templates within a
 category looked too similar. Clarification confirmed that all choices must
@@ -301,7 +379,7 @@ on missing/unknown/repeated compositions, then passed after implementation.
 | API catalog contract | 11 tests passed, including appearance/custom-style round trips |
 | Flutter catalog contract | 5 tests passed, including legacy themes and appearance round trips |
 | Default palette contrast | Generator verifies at least 4.5:1 on intended default text backgrounds |
-| Full API suite | 104 files / 1,555 tests passed on final source; `npm.cmd run test -- --maxWorkers=2 --testTimeout=20000` |
+| Full API suite | 104 files / 1,555 tests passed on final pre-integration source; `npm.cmd run test -- --maxWorkers=2 --testTimeout=20000` |
 | API renderer/routes and build | 179 focused tests passed; final `npm.cmd run build` passed |
 | API schema/helpers | `prisma:validate` passed with local validation URL; Prisma seed/config NodeNext type-check passed; no schema change or migration |
 | Full Flutter suite/analyze | 1,499 tests passed; `flutter analyze` reports no issues |
@@ -310,9 +388,9 @@ on missing/unknown/repeated compositions, then passed after implementation.
 | Native visual capture | 1 capture test passed; all twenty actual Flutter compositions at 393dp, ratio 2, bundled fonts; no device/account preferences accessed |
 | Public responsive/visual matrix | All 100 final pages at 320×800: four links, no horizontal overflow or missing images, minimum link target ≥44px. All twenty families with twenty long Thai links: no overflow or arrow/text collisions. All twenty families honor global/per-link colors and pill corners; desktop collage checked at 1280×900 |
 | Eight raster assets | 14 asset-route tests passed within full suite; exact API/Mobile PNG byte parity, PNG/nosniff/cache headers, unknown/traversal 404; assets included in APK |
-| Exact-commit remote CI | Subsequent integrated `9c7fa74` CI passes; see current delivery receipt above |
-| Staging deploy/runtime/public-image checks | Integrated API is Live and compiled fixtures pass; public browser/owned-image checks remain unverified |
-| Data-preserving emulator update | Provisional `9c7fa74` APK installed with account/draft/Flutter preferences retained; native navigation passed but found logo cropping. Corrected APK is pending. This earlier local APK is not installed |
+| Exact-commit remote CI | Corrected integrated `ae65b9d` CI 37633935019 passes (API 1,556 / Flutter 1,559); see corrected delivery receipt above |
+| Staging deploy/runtime/public-image checks | Corrected API is Live and compiled fixtures pass; public browser/owned-image checks remain unverified |
+| Data-preserving emulator update | Corrected `ae65b9d` APK installed; A3/D3 visual/cancel smoke passes, account identity and draft/Flutter preferences retained. All preference files match only immediately after install; session payloads change at runtime. Earlier local/provisional APKs are historical |
 
 Pre-integration local evidence is in `artifacts/profile-composition-qa`: API/mobile suite,
 analysis and APK build logs; native capture receipt; responsive/custom-style

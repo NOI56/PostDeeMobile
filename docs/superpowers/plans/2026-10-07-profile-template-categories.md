@@ -1,6 +1,327 @@
 # Profile template categories — 2026-10-07
 
-## Confirmed scope
+## Current local composition revision — 2026-10-07
+
+**Status: local implementation and QA complete; uncommitted, not deployed.** The CI,
+Render and emulator receipt later in this document belongs to the earlier
+`fc087c4119cd46503c569879e61cddf99e402fb2` release. It must not be used as
+verification of this revision.
+
+After seeing the first hundred choices, the user said the templates within a
+category looked too similar. Clarification confirmed that all choices must
+remain short link pages, not multi-section store websites. On 2026-10-07 the
+user explicitly accepted **all fifteen A1–E3 sample directions** and requested
+new structures across the full hundred choices.
+
+### Current baseline and preservation
+
+- Canonical checkout remains `.worktrees/recover-main-systems`, branch
+  `codex/pinterest-mobile-ui`; local-revision starting HEAD is
+  `630e20a097b3929f7749b6684d927b62d6ba5532`.
+- Observed `origin/main`/merge base remains
+  `bcd7153f196cd381a786b333b9b61a67dbe95ca3`, zero behind / sixteen ahead at
+  revision start. Existing unrelated artifacts and account/draft data remain.
+- Retain every one of the hundred previously published template IDs, appearance
+  version 1 and all seven legacy theme IDs. The `templateId` fallback,
+  mismatch validation and explicit publication contracts do not change.
+- Retain existing store name, description, categories, links/order/visibility,
+  safe contacts, logo/cover/background ownership, featured link, custom
+  colors/fonts/radius and per-link overrides. Reuse these fields in every short
+  composition; do not add product inventory, prices, multi-section copy,
+  analytics, free-position dragging or a paid design provider.
+- The hundred platform-brand assets and their normalized 40px geometry are
+  unchanged. The new decorative artwork is a separate asset set.
+- No database schema/migration, credentials, package rights, external provider,
+  feature flags or dependencies are added.
+
+### Accepted fifteen bases
+
+These are layout directions adapted into short link pages. They are not static
+screenshots replacing the owner's content or externally hosted runtime images.
+
+| Sample | Category / composition | Accepted direction | Retained template ID |
+| --- | --- | --- | --- |
+| A1 | Minimal / `editorial` | Open white typography, numbered line-separated links | `minimal-white-editorial` |
+| A2 | Minimal / `bicolor` | Lavender-gray upper area, white link area and four outlined tiles | `minimal-mono-pair` |
+| A3 | Minimal / `portrait` | Portrait-led off-white page with dark-green lead link | `minimal-clean-cover` |
+| B1 | Cute / `scallop` | Pink scalloped stationery with fine outlined/hairline links | `cute-cherry-cream` |
+| B2 | Cute / `collage` | Scrapbook layers, tilted photo/card and tape details | `cute-sticker-layers` |
+| B3 | Cute / `window` | Lilac browser-window panel over mint gingham | `cute-candy-box` |
+| C1 | Nature / `botanical` | Cream page with a leafy frame and fine link rows | `nature-olive-garden` |
+| C2 | Nature / `glass` | Forest photograph, direct white identity copy and translucent links | `nature-greenhouse` |
+| C3 | Nature / `torn` | Meadow photograph and torn-paper content | `nature-paper-fibers` |
+| D1 | Luxury / `seal` | Black/gold crest and fine outlined links | `luxury-gold-seal` |
+| D2 | Luxury / `tag` | Ivory hanging tag with black filled buttons | `luxury-silver-signature` |
+| D3 | Luxury / `gallery` | Open white/black gallery and two-column link tiles | `luxury-black-gallery` |
+| E1 | Creative / `poster` | Yellow/black poster type and strong shadowed links | `creative-yellow-pop` |
+| E2 | Creative / `window-grid` | Purple window frame/titlebar, cream header and lime modular link area | `creative-play-blocks` |
+| E3 | Creative / `ticket` | Coral retro ticket over blue, cream rounded buttons and dark copy | `creative-retro-cover` |
+
+The first three items of each category resolve these bases in A/B/C/D/E order.
+The remaining seventeen use different compositions with category-specific
+palettes and details. An ID such as `luxury-black-gallery` remains stable even
+though its accepted new appearance is the white **แกลเลอรีขาวดำ** direction.
+
+Review corrections retain outlined/hairline links for bicolor and scallop.
+Poster/collage defaults use the category wash with its readable name color so
+approved pastel link cycles can display instead of falling back to one dark
+fill; E1's lead fill is `#ff6a48` with `#242522` text on its yellow page.
+C2 uses `#182a16` background/gradient/surface, white page copy and footer,
+`#edf3e9` links with `#203522` text, Anuphan and background motion off.
+Its white heading sits directly on the forest with a small light monogram;
+there is no separate white header/footer card. Custom owner colors/media
+remain authoritative, and actual image contrast remains part of visual QA.
+A2/A3 and B2 default to square buttons. B2 retains a fine paper border and
+hard pastel shadow; owner-selected round/pill corners remain supported.
+B3 retains a mint outside background, white
+window surface, lilac titlebar wash and pink lead button; the following default
+link cycle uses cream/lilac/mint. Owner backgrounds take precedence over the
+built-in gingham treatment.
+E2 retains a cream outside/header, purple frame/titlebar and lime body with
+dark copy and lilac lead tile. E3 uses blue outside, a coral ticket sheet,
+cream rounded buttons and dark copy. These are default changes to the two
+creative bases only; owner colors and per-link overrides remain authoritative.
+
+Pinterest references were visually inspected during research; pin titles alone
+are not evidence of layout. Reference IDs supplied by that inspection:
+
+| Category | Pinterest references |
+| --- | --- |
+| Minimal | [Two-tone stationery reference](https://www.pinterest.com/pin/442056519670825729/) |
+| Cute / pastel | [Cute page reference](https://www.pinterest.com/pin/505036545733369337/) |
+| Nature / warm | [Nature reference 1](https://www.pinterest.com/pin/4594797619946422656/), [Nature reference 2](https://www.pinterest.com/pin/4608519518301550976/), [Nature reference 3](https://www.pinterest.com/pin/677299231479887912/) |
+| Luxury / premium | [Black embossed stationery](https://www.pinterest.com/pin/167196204905531483/), [Luxury reference](https://www.pinterest.com/pin/351984527143288543/) |
+| Creative / colorful | [Graphic reference](https://www.pinterest.com/pin/414471971968806036/) |
+
+Accepted local boards (three labeled samples in each file) are under
+`C:/Users/stopp/.codex/generated_images/01a1153f-2c52-7c43-9fb7-ba3a4366835d/`:
+
+| Samples | Accepted board file |
+| --- | --- |
+| A1–A3 / Minimal | `exec-3bcb72f0-0468-47f7-8032-c76cfa7c59ae.png` |
+| B1–B3 / Cute, final board | `exec-4acdec89-4ec3-4e25-b19c-2860435b8f20.png` |
+| C1–C3 / Nature | `exec-0c006afd-7676-426a-9a9d-161ae8beb041.png` |
+| D1–D3 / Luxury | `exec-7652c4aa-2513-42d6-97fa-8b8a0ed27029.png` |
+| E1–E3 / Creative | `exec-dd60877d-5f4d-45f0-9fa4-2792ca99fc25.png` |
+
+Current native/public comparison screenshots are recorded under
+`artifacts/profile-composition-qa`. The six earlier generated category concepts
+below document the initial release, not these fifteen bases.
+
+### Twenty composition families
+
+`layout.composition` is required in the authored catalog and generated TS/Dart
+layout definitions. It is trusted internal metadata, never CSS or a new field
+accepted from a publish request. Each category contains all twenty allowlisted
+compositions exactly once. The earlier five-header/four-button model remains
+historical release design; it is no longer the uniqueness criterion.
+
+| Composition | Distinct short-page structure |
+| --- | --- |
+| `editorial` | Open typography and numbered ruled link rows |
+| `bicolor` | Two-tone page areas and outlined two-column link tiles |
+| `portrait` | Prominent portrait/cover and a lead link followed by smaller rows |
+| `scallop` | Scalloped stationery sheet with delicate link separators |
+| `collage` | Layered/tilted paper or portrait pieces and mixed link rhythm |
+| `window` | Browser-window frame, title rail and list links |
+| `botanical` | Leaf-framed open page with centered identity and fine rows |
+| `glass` | Photograph-backed translucent floating panel |
+| `torn` | Landscape/cover leading into a torn-paper sheet |
+| `seal` | Crest/badge identity over a framed link list |
+| `tag` | Hanging clipped-corner tag and solid link buttons |
+| `gallery` | Open image-led gallery and two-column link tiles |
+| `poster` | Large poster identity and bold shadowed link rows |
+| `window-grid` | Graphic window border and a modular link grid |
+| `ticket` | Ticket cutouts/perforations around compact link content |
+| `rail` | Side rail/timeline markers alongside link rows |
+| `ribbon` | Ribbon/band header and staggered link bands |
+| `notebook` | Ruled notebook sheet, margin rail and list rows |
+| `arch` | Arched portrait/cover opening and rounded sheet |
+| `staircase` | Alternating stepped offsets through the link list |
+
+The existing header/link/button/decoration/avatar fields remain as secondary
+metadata. Metadata and default button/text colors are aligned: outline families
+use readable surface text, soft families use readable wash colors, and filled
+families use contrast-checked text. User-authored colors and fonts remain
+authoritative. Persisted appearances from the previous hundred-template release
+must be included in QA, especially when an old filled button becomes a
+transparent row or the gallery default changes from dark to white.
+
+### Shared rendering and built-in artwork
+
+- `shared/profile-templates.json` generates both clients. Public HTML and
+  Flutter render the same twenty composition families with real escaped/native
+  copy, links, platform marks and owner media. Actual geometry needs visual QA;
+  a matching enum alone does not establish visual parity.
+- Chooser thumbnails reuse the actual native composition renderer with
+  deterministic sample links, disabled tickers and scaled page geometry.
+  Shared decoded-image caching avoids separate downloads or parallel animation.
+  Selected previews reuse the owner's draft; category/filter/cancel do not
+  mutate it. Applying a preset remains distinct from saving/publishing.
+- Eight built-in ImageGen raster decorations are bundled under
+  `apps/api/assets/profile-decorations` and
+  `apps/mobile/assets/images/profile_decorations`. They supply photograph,
+  paper/tape, leaf, crest and cord details; they do not flatten real copy,
+  platform artwork or links into a screenshot.
+  Filenames: `botanical-frame.png`, `forest.png`, `meadow.png`, `paper.png`,
+  `letter-frame.png`, `collage-tape.png`, `gold-seal.png`, `tag-cord.png`.
+- A new public read-only `GET /profile-decorations/:file` uses a fixed eight-PNG
+  filename allowlist. Successful responses are `image/png`,
+  `Cache-Control: public, max-age=86400` and
+  `X-Content-Type-Options: nosniff`; unknown filenames return 404. No arbitrary
+  path/URL fetching, uploaded-image ownership access, Pinterest runtime call,
+  external image source or script/CSP expansion is permitted.
+- Ship the API renderer and bundled decorative assets before the matching
+  Mobile build. No database migration or new credential/provider is required.
+  This revision has not been represented as pushed, CI-approved or deployed.
+
+### Current-revision verification and remaining delivery
+
+Tests were added before catalog changes. Initial new-composition tests failed
+on missing/unknown/repeated compositions, then passed after implementation.
+
+| Check | Current-revision status |
+| --- | --- |
+| Generator validation | 22 tests passed; missing/unknown/duplicate compositions rejected, twenty per category and hundred published IDs retained; hairline/pastel-cycle/C2/B3/A2/A3/B2/E2/E3 defaults covered |
+| Generated TS/Dart parity | `node scripts/generate-profile-templates.mjs --check` passed |
+| API catalog contract | 11 tests passed, including appearance/custom-style round trips |
+| Flutter catalog contract | 5 tests passed, including legacy themes and appearance round trips |
+| Default palette contrast | Generator verifies at least 4.5:1 on intended default text backgrounds |
+| Full API suite | 104 files / 1,555 tests passed on final source; `npm.cmd run test -- --maxWorkers=2 --testTimeout=20000` |
+| API renderer/routes and build | 179 focused tests passed; final `npm.cmd run build` passed |
+| API schema/helpers | `prisma:validate` passed with local validation URL; Prisma seed/config NodeNext type-check passed; no schema change or migration |
+| Full Flutter suite/analyze | 1,499 tests passed; `flutter analyze` reports no issues |
+| Exact Staging APK | Main entry/debug build with `--dart-define-from-file=D:/PostDeeMobile/apps/mobile/staging.local.json` passed; package, flags, fonts and all eight decoration assets verified |
+| Native picker/preview and persisted-appearance regression | Full suite includes apply/cancel/draft isolation, real thumbnails, heading reveal, old appearance/custom styles, long Thai names/20 links and missing owner images; four custom-panel-paper regressions passed |
+| Native visual capture | 1 capture test passed; all twenty actual Flutter compositions at 393dp, ratio 2, bundled fonts; no device/account preferences accessed |
+| Public responsive/visual matrix | All 100 final pages at 320×800: four links, no horizontal overflow or missing images, minimum link target ≥44px. All twenty families with twenty long Thai links: no overflow or arrow/text collisions. All twenty families honor global/per-link colors and pill corners; desktop collage checked at 1280×900 |
+| Eight raster assets | 14 asset-route tests passed within full suite; exact API/Mobile PNG byte parity, PNG/nosniff/cache headers, unknown/traversal 404; assets included in APK |
+| Exact-commit remote CI | Not run for this revision |
+| Staging deploy/runtime/public-image checks | Not performed for this revision |
+| Data-preserving emulator update | Not performed for this revision |
+
+Final local evidence is in `artifacts/profile-composition-qa`: API/mobile suite,
+analysis and APK build logs; native capture receipt; responsive/custom-style
+JSON; comparison PNGs; and `staging-apk-receipt.json`. The final APK SHA-256 is
+`a12249ef091afc6576b5e2aa2b352d1864f194a458aa9649163c4bc874ecbaab`,
+package `com.postdee.postdee_mobile.staging`, version `0.1.0-staging` (code 1),
+min/target SDK 24/36. It targets `https://postdee-api-staging.onrender.com`,
+Firebase project `project-798caf7e-85b8-45e3-af7`, Firebase auth on/local mock
+auth off, RevenueCat off, experimental beat/AI hook off. This is a local APK
+build receipt, not a claim that Staging has this source or that the APK is
+installed. An initial `--flavor staging` attempt failed because this project
+uses a debug build-type suffix rather than product flavors; the correct exact
+build command above passed. No build configuration was changed to mask it.
+
+An earlier default-worker API run hit the generator child-process test's 5s
+deadline under CPU load. The direct generator check passed; the final full
+suite limits workers to two and gives tests 20s. No assertion or product/API
+request deadline was relaxed. The earlier API suite receipts of 1,544/1,547/
+1,553 and Flutter 1,495 predate the last regressions; final counts are above.
+The appearance editor image test now scopes its finder to the owner's actual
+`MemoryImage` and verifies byte identity, because built-in template art makes a
+global `find.byType(Image)` assertion unrelated to that behavior.
+
+Reduced-motion and visitor-pause-removal regressions pass in the full suites.
+The public renderer remains script-free, and a fresh actual 393px page had no
+warn/error logs. No remote runtime SHA was obtained for this local revision.
+Final diff/parity audit confirms retained IDs, twenty strategies per category,
+no deleted tracked files, no dependency-version/environment/entitlement/schema changes
+and no unrelated profile/auth screen content rewrite. Local verification
+precedes any authorized delivery. Preserve the receipt below as historical
+evidence rather than substituting this revision's hashes/counts into it.
+
+### Current-revision visual QA and comparison ledger
+
+Accepted concept PNGs in the table above and actual rendered PNGs were read with
+`view_image` in the same QA pass. Public pages were inspected using the Codex
+Browser/IAB plugin, not a terminal-controlled browser. The fixture server uses
+the real compiled renderer, catalog and allowlisted asset routes with in-memory
+sample content only; it does not access account preferences, publish a profile,
+change a database or call a provider. Public screenshots use 393×760 native-size
+page frames; the narrow checks use 320×800. Desktop collage was checked at
+1280×900, retaining the centered 520px page maximum.
+
+Native captures use the actual Flutter `RenderRepaintBoundary` at 393 logical
+pixels, pixel ratio 2, bundled Anuphan/Prompt and SDK MaterialIcons fonts. These
+are native renders of the twenty compositions, not drawings of proposed UI or
+emulator screenshots. Animation is disabled for stable comparison captures.
+Public fixture effects including stickers are off; native static captures
+retain the preset's sticker art while disabling animation. Actual owner effect
+settings remain supported.
+
+| Inspected comparison | Result and corrections | Actual evidence |
+| --- | --- | --- |
+| A1–A3 hierarchy and geometry | Open large editorial heading, divider before description, numbered rows; lavender double identity frame and outlined 2×2 tiles; portrait left, real copy right and dark-green lead link. Corrected initial boxes and avatar shapes. | `flutter-native/native-A.png`, `web-minimal.png` |
+| B1–B3 stationery and window anatomy | Scalloped pink/ivory sheet with bow; tilted paper/tape collage and wide/pair/wide link rhythm; mint gingham outside, lilac three-dot rail and white window. Corrected opaque frames, flat backgrounds, pastel cycles and B2 corner/shadow defaults; final window dots are filled pink/yellow/mint and logo corners follow the catalog in both renderers. | `flutter-native/native-B.png`, `web-cute.png` |
+| C1–C3 artwork and content separation | Leaf border around editable content; forest behind direct white copy and transparent links; meadow leading into torn-paper content. Corrected C2 white identity/footer cards and compressed C3 spacing. | `flutter-native/native-C.png`, `web-nature.png` |
+| D1–D3 identity and link density | Gold seal on black invitation, cord/clipped ivory tag with black buttons, open white/black gallery with 2×2 outlined tiles. Corrected unwanted monogram boxes and circle clipping. | `flutter-native/native-D.png`, `web-luxury.png` |
+| E1–E3 colors and button anatomy | Yellow poster/shadow links; purple frame/cream header/lime modular body; coral perforated ticket on blue with numbered cream rows. Corrected window framing, contrasting tile cycle and ticket palette. | `flutter-native/native-E.png`, `web-creative.png` |
+| Additional five structural families | Rail has a small left identity, divider and numbered hairline rows; ribbon identity band/staggered links; notebook ruled sheet with right logo; arch contains media only, copy below; staircase has right logo and stepped links. Corrected public/native header placements, arch enclosure and default rail boxes/dots. | `flutter-native/native-F.png`, `web-minimal-20.png` |
+| Brand marks, typography and live content | Reuse the existing normalized 40px platform slots, real Thai fonts, editable text and real safe destinations. Chooser thumbnails scale the real native renderer. No rasterized store copy or fake clickable controls. | Native PNGs, public 393px/320px pages, picker/composition tests |
+| Owner customization and readable surfaces | Filled hairline rows and torn rows honor owner corner radius; old white-text snapshots keep readable fill. Owner background images retain the surface panel. Custom glass surfaces stay opaque; native paper does not cover custom surface colors. Defaults still retain stock art and hairline geometry. | Focused API/native regressions and public custom-style checks |
+
+Above-the-fold copy check: the fixture identity is `noikub`, description is
+`เลือกช่องทางที่ต้องการได้เลย`, and the four sample links are YouTube, Shopee,
+TikTok and LINE. The renderer keeps those fields and destinations; it does not
+add a store section, product claims, pricing or dashboard copy. Actual owners'
+names, descriptions, categories and labels remain editable fields. Numbering,
+title rails, paper and decorative frames are presentation only.
+
+Intentional adaptations and limits: these fifteen concepts were accepted as
+**bases for short link pages**, not flattened screenshot replacements. Keep
+the supported Thai Anuphan/Prompt/system font families instead of adding the
+luxury mockups' serif font to the API contract. Native preview footer remains
+`PostDee`; public footer remains `สร้างหน้าเว็บร้านค้าด้วย PostDee`. Existing
+authentic platform PNGs retain their artwork (including the TikTok asset's
+black tile). Native preview card corners/scrolling and browser page chrome are
+different containers. Long copy and twenty links extend the short page by
+scrolling; they do not create new sections. Minor paper-edge details and the
+window footer position are adaptations of the bases. These differences are
+recorded, not described as pixel-identical output. Twenty structure families
+are reused with category styling; there are one hundred choices, not one
+hundred wholly unrelated structure engines.
+
+Final evidence retained for review includes the five `web-*-20.png` category
+boards, `web-100-default-320.json`,
+`web-20-compositions-long-320.json`, `web-20-compositions-custom.json`,
+`flutter-native/capture_manifest.json`, the six native boards, final suite/build
+logs and `staging-apk-receipt.json`. Temporary fixture processes/tabs are closed
+after verification. No current-revision remote CI, Staging runtime, public
+owned-image integration or data-preserving device update is represented as
+verified by these local results.
+
+The accepted fifteen bases and latest browser output were directly inspected
+for hierarchy, color, frame geometry, artwork, button anatomy, typography and
+editable copy. Material mismatches discovered in that review and the owner
+style audit were corrected; none remains unresolved within the accepted
+short-page-base scope. The core category → twenty choices → draft preview →
+cancel/apply → explicit save/publish boundaries are verified by the native/API
+test suites; live account publication and owned R2 image checks remain delivery
+checks. The implementation is faithfully verified against those fifteen bases
+with the explicit adaptations above; it is not claimed to be pixel-identical.
+
+### Current-revision changed files
+
+- Catalog: `shared/profile-templates.json`,
+  `scripts/generate-profile-templates.mjs` and its tests; generated TS/Dart
+  catalog files and their catalog tests.
+- Public rendering: `linkInBioRenderer.ts`, `linkInBioTemplateStyles.ts`, new
+  `linkInBioCompositionStyles.ts`, `linkInBioRoutes.ts`, rendering tests and new
+  `linkInBioDecorationAssets.test.ts`; eight API decoration PNGs.
+- Mobile rendering: `link_in_bio_template_preview.dart`, new
+  `link_in_bio_composition_art.dart`, `link_in_bio_theme_picker.dart`,
+  `link_in_bio_preview.dart`, new `link_in_bio_composition_test.dart`, picker and
+  appearance-editor regression tests; eight Mobile decoration PNGs and one
+  asset-folder entry in `pubspec.yaml`.
+- Documentation: this plan, `README.md`, `ROADMAP.md`, `API.md` and
+  `ARCHITECTURE.md`. No profile/auth/home screen behavior, dependency version,
+  environment flag, billing entitlement or schema file is changed.
+- Final default `git diff` reports no content change in `profile_screen.dart`,
+  `profile_screen_test.dart` or `app_test.dart`; their working-tree CRLF status
+  is preserved without overwriting them.
+
+## Initial category release — confirmed scope
 
 The user explicitly chose five categories, twenty templates per category, and
 differences in both layout and visual style. Categories: เรียบง่าย (minimal),
@@ -24,7 +345,7 @@ reduced-motion support. Clarification answers were received before implementatio
   public rendering. No product inventory, prices, video widgets, new provider,
   package rules, flags, dependencies, or database migration.
 
-## Design and implementation contract
+## Initial category release — design and implementation contract
 
 - One authored `shared/profile-templates.json` catalog generates TypeScript and
   Dart definitions. IDs and layout fields are fixed allowlists, never CSS input.
@@ -45,7 +366,7 @@ reduced-motion support. Clarification answers were received before implementatio
 - Removing pause controls does not remove owner effects controls. Public CSS
   and Flutter MediaQuery/TickerMode continue to disable motion when requested.
 
-## Concept direction
+## Initial category release — concept direction
 
 ImageGen produced six preview-only concepts in the calling task's generated
 image directory (not runtime assets):
@@ -73,7 +394,7 @@ near-black/muted gold; yellow/black pop. Typography stays Anuphan/Prompt/system,
 with 26–28px headings, 15–16px body, 12px footer and readable controls. Links
 retain 40px icon slots and safe northeast vectors. No pause pill appears.
 
-## Validation and release order
+## Initial category release — validation and release order
 
 Tests first: catalog count/uniqueness/parity, all 100 appearance round trips,
 invalid-ID/mismatched-theme rejection, atomic legacy retention, safe rendering,
@@ -94,7 +415,7 @@ templates and avoid an API rollback after use. Do not publish or change the
 customer's private draft for verification. Public Staging browser access is
 still blocked by the saved browser permission; local QA is allowed.
 
-## Completed local verification
+## Initial category release — completed local verification
 
 Evidence directory (outside the checkout):
 `C:/Users/stopp/.codex/visualizations/2026/10/07/01a1153f-2c52-7c43-9fb7-ba3a4366835d`.
@@ -130,7 +451,7 @@ exact-commit CI and Staging delivery are recorded below. Live customer
 publication/public-browser image reload, iOS, and physical-device checks remain
 unverified. The earlier release's remote CI does not verify this new work.
 
-## Visual fidelity and corrections
+## Initial category release — visual fidelity and corrections
 
 These checks compare category direction and implemented shared primitives,
 not pixel-perfect fidelity to unapproved generated concepts.
@@ -164,7 +485,7 @@ show no ordering/content loss or overflow. Generated slogans, fake status bars,
 invented leaf logos and rasterized brands were excluded. All 100 original
 platform assets, fonts, config, dependencies and schema remain unchanged.
 
-## Exact environment and handoff
+## Initial category release — exact environment and handoff
 
 - Final main-entry APK package: `com.postdee.postdee_mobile.staging`, version
   `0.1.0-staging`, target/compile SDK 36. SHA-256:

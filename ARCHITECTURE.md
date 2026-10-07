@@ -102,6 +102,37 @@ the matching Android APK. A read-only running-service check normalized/rendered
 all 100 templates; account data and existing drafts were preserved. See
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
+The subsequent 2026-10-07 Pinterest-inspired revision is **locally verified**.
+The user keeps all fifteen A1–E3 short-page samples and expands them to one
+hundred choices. `shared/profile-templates.json` now supplies twenty distinct
+allowlisted `layout.composition` values per category; the former five-header/
+four-button combinations describe the released initial implementation, not
+the new structural-variety criterion. Stable hundred IDs, appearance version 1,
+seven legacy theme renderers, owner content/images and custom styles remain.
+The API/public renderer and Flutter composition renderer read the same generated
+catalog. Chooser thumbnails reuse the real native composition with deterministic
+sample content, disabled tickers and shared decoded-image caching; the selected
+preview uses the owner's draft. Apply/cancel and publication boundaries remain.
+
+Eight built-in ImageGen raster decorations are bundled in
+`apps/api/assets/profile-decorations` and
+`apps/mobile/assets/images/profile_decorations`. The new read-only public
+`/profile-decorations/:file` uses a fixed PNG filename allowlist, `image/png`,
+`Cache-Control: public, max-age=86400` and nosniff. It introduces no remote fetch,
+Pinterest call, arbitrary filename/storage access, script or CSP expansion.
+Raster art supplies paper, leaf and photograph details; real text, links,
+platform marks and layout geometry remain code/native elements. These assets
+are distinct from the unchanged hundred brand marks and privately owned images.
+No database migration, credentials, provider or dependencies are added; pages
+stay short link pages. The new renderer/assets must precede the matching Mobile
+delivery. Local checks pass: 1,555 API and 1,499 Flutter tests, analysis,
+builds/schema checks, all hundred public pages at 320px and twenty native
+compositions. Owner filled-button radius, image-backed surface panels and
+custom-colored paper/glass surfaces retain public/native parity. The exact
+Staging debug APK is built; current remote CI/deploy/device update is pending.
+The historical `fc087c4` CI/Staging receipt above applies to the prior release
+only. Current evidence and visual adaptations are in the plan linked above.
+
 The 2026-10-06 platform-mark refinement uses byte-identical bundled PNGs for
 YouTube, Shopee, Lazada, LINE, TikTok, Instagram, Facebook, Messenger, WhatsApp
 and Google Maps in the mobile

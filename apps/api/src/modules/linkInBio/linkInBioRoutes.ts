@@ -79,6 +79,13 @@ export const registerLinkInBioRoutes = (
   router: Router, authMiddleware: RequestHandler, store: LinkInBioStore, userStore?: UserStore,
   options: LinkInBioRouteOptions = {}
 ) => {
+  const decorationFiles = ['botanical-frame.png', 'forest.png', 'meadow.png', 'paper.png', 'letter-frame.png', 'collage-tape.png', 'gold-seal.png', 'tag-cord.png'];
+  router.get('/profile-decorations/:file', (request, response) => {
+    const file = request.params.file;
+    if (typeof file !== 'string' || !decorationFiles.includes(file)) { response.status(404).end(); return; }
+    response.set('Cache-Control', 'public, max-age=86400').set('X-Content-Type-Options', 'nosniff').type('image/png')
+      .sendFile(fileURLToPath(new URL(`../../../assets/profile-decorations/${file}`, import.meta.url)), { dotfiles: 'allow' });
+  });
   router.get('/profile-platforms/:file', (request, response) => {
     const file = request.params.file;
     if (typeof file !== 'string' || !Object.values(linkInBioPlatformLogoFiles).includes(file)) { response.status(404).end(); return; }

@@ -7,6 +7,7 @@ import '../../core/models/link_in_bio_appearance.dart';
 import '../../core/models/profile_template_catalog.generated.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_preview.dart';
+import 'link_in_bio_template_preview.dart';
 
 const _categoryChipNames = {
   'minimal': 'เรียบง่าย',
@@ -253,111 +254,58 @@ class _BioThemePickerState extends State<BioThemePicker> {
   }
 }
 
-// A lightweight schematic of the actual header, link columns and treatment.
-// It avoids fetching artwork or playing 20 animations in the picker at once.
+// The chooser shows the actual native composition with deterministic sample
+// content. Tickers are disabled; decoded artwork is shared by Flutter's cache.
 class BioTemplateSample extends StatelessWidget {
   const BioTemplateSample({super.key, required this.template});
   final ProfileTemplate template;
   @override
-  Widget build(BuildContext context) => CustomPaint(
-      painter: _TemplateSamplePainter(template),
-      child: const SizedBox(height: 136, width: double.infinity));
-}
-
-class _TemplateSamplePainter extends CustomPainter {
-  _TemplateSamplePainter(this.template);
-  final ProfileTemplate template;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final palette = template.palette;
-    final layout = template.layout;
-    final paint = Paint();
-    void rect(Rect rect, String color,
-        {double radius = 3, bool outline = false}) {
-      paint
-        ..color = bioColor(color)
-        ..style = outline ? PaintingStyle.stroke : PaintingStyle.fill
-        ..strokeWidth = 1;
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(rect, Radius.circular(radius)), paint);
-    }
-
-    rect(Offset.zero & size, palette.background, radius: 7);
-    if (layout.decoration == 'frame') {
-      rect(Rect.fromLTWH(5, 5, size.width - 10, size.height - 10),
-          palette.category,
-          radius: 5, outline: true);
-    }
-    if (layout.decoration == 'stripe') {
-      for (var x = 0.0; x < size.width; x += 12) {
-        paint
-          ..color = bioColor(palette.category).withValues(alpha: .13)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 4;
-        canvas.drawLine(Offset(x, 0), Offset(x + 12, 12), paint);
-      }
-    }
-    if (layout.decoration == 'dots') {
-      paint
-        ..color = bioColor(palette.category).withValues(alpha: .2)
-        ..style = PaintingStyle.fill;
-      for (var x = 8.0; x < size.width; x += 16) {
-        canvas.drawCircle(Offset(x, 6), 1.5, paint);
-      }
-    }
-    double y = 18;
-    if (layout.header == 'cover') {
-      rect(Rect.fromLTWH(8, 8, size.width - 16, 30), palette.gradient);
-      y = 34;
-    }
-    final left = layout.header == 'left' || layout.header == 'split';
-    final avatar = Rect.fromLTWH(left ? 12 : size.width / 2 - 10, y, 20, 20);
-    rect(avatar, palette.category,
-        radius: layout.avatar == 'circle'
-            ? 20
-            : layout.avatar == 'rounded'
-                ? 5
-                : 1);
-    if (layout.header == 'badge') {
-      rect(avatar.inflate(3), palette.category, radius: 24, outline: true);
-    }
-    final textX = layout.header == 'split'
-        ? 38.0
-        : left
-            ? 12.0
-            : size.width / 2 - 21;
-    final textY = layout.header == 'split' ? y + 5 : y + 27;
-    rect(Rect.fromLTWH(textX, textY, 42, 3), palette.name, radius: 1);
-    rect(Rect.fromLTWH(textX, textY + 7, 35, 2), palette.description,
-        radius: 1);
-    var linkY = layout.header == 'split' ? y + 32 : textY + 20;
-    if (layout.decoration == 'line') {
-      rect(Rect.fromLTWH(12, linkY - 6, size.width - 24, 1), palette.category);
-    }
-    final grid = layout.links == 'grid';
-    final width = grid ? (size.width - 29) / 2 : size.width - 24;
-    for (var index = 0; index < (grid ? 4 : 3); index++) {
-      final x = grid ? 12 + (index % 2) * (width + 5) : 12.0;
-      final row = grid ? index ~/ 2 : index;
-      final height = grid ? 20.0 : 11.0;
-      final box = Rect.fromLTWH(x, linkY + row * (height + 5), width, height);
-      if (layout.button == 'raised') {
-        rect(box.translate(2, 2), palette.name, radius: 3);
-      }
-      rect(box, palette.button,
-          radius: template.buttonRadius == 'pill'
-              ? 20
-              : template.buttonRadius == 'square'
-                  ? 1
-                  : 3,
-          outline: layout.button == 'outline');
-      rect(Rect.fromLTWH(box.left + 6, box.top + height / 2 - 1, width - 15, 2),
-          palette.buttonText,
-          radius: 1);
-    }
+  Widget build(BuildContext context) {
+    final page = TickerMode(
+        enabled: false,
+        child: MediaQuery(
+            data: const MediaQueryData(
+                size: Size(320, 900), disableAnimations: true),
+            child: BioTemplatePreview(
+                template: template,
+                storeName: 'noikub',
+                links: const [
+                  LinkInBioCustomLink(
+                      id: 'sample-youtube',
+                      title: 'YouTube',
+                      url: 'https://youtube.com'),
+                  LinkInBioCustomLink(
+                      id: 'sample-shopee',
+                      title: 'Shopee',
+                      url: 'https://shopee.co.th'),
+                  LinkInBioCustomLink(
+                      id: 'sample-tiktok',
+                      title: 'TikTok',
+                      url: 'https://tiktok.com'),
+                  LinkInBioCustomLink(
+                      id: 'sample-line', title: 'LINE', url: 'https://line.me'),
+                ],
+                appearance: LinkInBioAppearance.forTemplate(template.id),
+                images: const {},
+                staticPreview: true)));
+    return ExcludeSemantics(
+        child: IgnorePointer(
+            child: RepaintBoundary(
+                child: LayoutBuilder(
+                    builder: (_, constraints) => SizedBox(
+                        height: constraints.maxWidth * 2,
+                        width: double.infinity,
+                        child: ClipRect(
+                            child: OverflowBox(
+                                alignment: Alignment.topLeft,
+                                minWidth: 320,
+                                maxWidth: 320,
+                                minHeight: 0,
+                                maxHeight: double.infinity,
+                                child: Transform.scale(
+                                    scale: constraints.maxWidth / 320,
+                                    alignment: Alignment.topLeft,
+                                    child: SizedBox(
+                                        width: 320, child: page)))))))));
   }
-
-  @override
-  bool shouldRepaint(covariant _TemplateSamplePainter oldDelegate) =>
-      oldDelegate.template.id != template.id;
 }

@@ -80,6 +80,32 @@ APK was installed with existing account/draft data preserved. Delivery evidence
 and verification limits:
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
+The subsequent Pinterest-inspired composition revision is **implemented and
+verified locally, not a Staging delivery**. On 2026-10-07 the user accepted all fifteen
+short-page directions A1–E3 and asked to expand them into one hundred choices.
+Each category now has twenty different `layout.composition` values, replacing
+the earlier five-header/four-button variation model. All hundred published
+template IDs, appearance version 1, seven legacy themes, editable content and
+custom styling remain supported. The chooser uses scaled instances of the real
+native page renderer instead of schematic thumbnails; the selected preview
+uses the owner's draft before explicit apply/publication.
+
+This local revision bundles eight ImageGen raster decorations in
+`apps/api/assets/profile-decorations` and
+`apps/mobile/assets/images/profile_decorations`. The read-only allowlisted
+`GET /profile-decorations/:file` serves local PNGs with one-day public caching
+and nosniff; Pinterest is visual inspiration, never a runtime image source or
+API dependency. Public HTML and Mobile share the generated catalog and matching
+composition strategies. Pages remain short lists of existing links, with no
+product or multi-section website builder. No database migration, credentials,
+new provider or dependency is introduced, and the hundred brand-logo assets
+remain unchanged. Current local checks pass: 1,555 API tests, 1,499 Flutter
+tests, analysis, API build/schema checks and the exact Staging debug APK build.
+Browser/IAB checks cover all hundred pages at 320px and native captures cover
+all twenty structures. Delivery remains pending; the `fc087c4` CI/deploy
+receipt above verifies only the previous release. Current evidence and visual
+adaptations are recorded in the same plan's current-revision section.
+
 The 2026-10-06 mobile revision opens the internal link manager for both new and
 existing profiles. It shows the shop identity, separate Store information,
 Appearance, and Preview actions, a primary Add link button above the list, and

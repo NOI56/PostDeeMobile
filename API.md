@@ -41,6 +41,7 @@ LinkInBioProfile migration; memory mode is development-only scaffolding.
 | `GET /p/:slug/images/:slot` | Public | Serve only the current published logo, cover, or background image |
 | `GET /profile-fonts/:file` | Public | Serve a whitelisted bundled font |
 | `GET /profile-platforms/:file` | Public | Serve one of 100 allowlisted bundled platform PNGs |
+| `GET /profile-decorations/:file` | Public | Local composition revision: serve one of eight allowlisted bundled decorative PNGs; Staging delivery pending |
 
 Publish body:
 
@@ -183,6 +184,43 @@ running Staging service normalized/rendered all 100 templates in five groups
 of twenty, with no pause markup. This read-only check did not publish a test
 page or change customer data. Startup reported fourteen migrations and no
 pending migrations; public Staging browser/image checks remain unverified.
+
+### Local composition revision — 2026-10-07 (delivery pending)
+
+The user accepted all fifteen A1–E3 short-page directions and their expansion
+to one hundred choices. The authored catalog now assigns each category twenty
+distinct allowlisted `layout.composition` values instead of the previous
+five-header/four-link-treatment combinations. Composition is internal catalog
+metadata, not a new publish-request field, CSS input or schema column. Existing
+published template IDs are retained. The `appearance.version: 1`,
+`templateId`, legacy-theme fallback and mismatch-rejection contracts above
+remain unchanged. Public HTML, generated Mobile definitions, chooser thumbnails
+and draft previews resolve the same catalog.
+
+The new read-only public `GET /profile-decorations/:file` is limited to the
+eight bundled PNG filenames in `apps/api/assets/profile-decorations`. Allowed
+filenames are `botanical-frame.png`, `forest.png`, `meadow.png`, `paper.png`,
+`letter-frame.png`, `collage-tape.png`, `gold-seal.png` and `tag-cord.png`.
+Successful responses use `Content-Type: image/png`,
+`Cache-Control: public, max-age=86400` and
+`X-Content-Type-Options: nosniff`; unknown filenames return 404. It serves no
+arbitrary path, remote URL, user upload or Pinterest image. Matching decoration
+bytes are bundled in `apps/mobile/assets/images/profile_decorations`; text,
+platform marks, links and page structure remain real HTML/native elements.
+The existing self-only image CSP and private ownership checks for uploaded
+profile images remain separate from these public built-in decorations.
+
+There is no new database migration, credential, external provider or dependency,
+and the hundred existing brand-logo files are unchanged. These are short link
+pages using the existing content fields, not multi-section store websites.
+Ship the revised API renderer and its bundled assets before the matching Mobile
+build. Local QA passes: 1,555 API tests (104 files), 179 focused renderer/routes
+tests, API build and schema/helper checks, plus the actual hundred-page 320px
+browser matrix. Asset tests verify PNG headers, byte parity and filename/path
+rejections. Native tests/analysis and the exact Staging APK also pass. The prior
+`fc087c4` CI/deploy receipt does not verify these new compositions or asset
+responses; current remote CI and Staging delivery remain pending. Evidence is in
+`docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
 ### Profile images
 

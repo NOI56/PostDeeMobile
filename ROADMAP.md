@@ -50,6 +50,23 @@ Build roadmap for PostDee.
   completed on 2026-10-07 at runtime commit `fc087c4`, after exact-commit CI
   passed 1,469 API and 1,422 Flutter tests. See
   `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
+- Current local composition revision, accepted on 2026-10-07: keep all fifteen
+  A1–E3 sample directions and expand to twenty distinct short-page compositions
+  in each of the five categories. Replace the earlier five-header/four-button
+  model; retain all hundred template IDs, appearance version 1, seven legacy
+  themes, content/images, custom colors/fonts, safe contacts and explicit
+  publishing. Reuse the actual native composition renderer for chooser
+  thumbnails and owner-draft previews; public HTML resolves the same catalog.
+  Bundle eight ImageGen raster decorations locally in API/Mobile and expose
+  only a read-only PNG filename allowlist at `/profile-decorations/:file`,
+  with one-day caching and nosniff. No runtime Pinterest calls, multi-section
+  store website, database migration, credentials, provider or dependencies.
+  The hundred brand marks remain untouched. Local implementation/QA is complete:
+  1,555 API tests, 1,499 Flutter tests, analysis, builds/schema checks, hundred-page
+  320px browser matrix and twenty native structures pass. The exact Staging debug
+  APK is built but not installed; current CI/Staging delivery remains pending.
+  The prior `fc087c4` release receipt does not validate this revision. See the
+  current-revision section in the same plan for evidence and visual adaptations.
 - Separate local draft saving from publishing. Show a shareable URL only after
   the API confirms publication. Support updating and unpublishing; changing a
   published slug invalidates the old URL.

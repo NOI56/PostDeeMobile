@@ -289,6 +289,7 @@ export const linkInBioCompositionStyles = (appearance: LinkInBioAppearance) => {
     [' .profile-header h1', 'font-size:32px;grid-column:auto;margin:16px 0 12px;line-height:1.3'],
     [' .description', 'grid-column:auto;font-size:15px;margin:0;line-height:1.7'],
     [' .logo', `width:88px;height:88px;margin:0 auto 22px;grid-column:auto;grid-row:auto;border:0;outline:0;border-radius:50%;background:${wash};color:${ink};box-shadow:none`],
+    [' img.logo', 'object-fit:contain;object-position:center'],
     [' .logo.avatar-initial', 'display:grid;place-items:center;line-height:1'],
     [' .cover', 'height:160px;margin:-32px -20px 28px'],
     [' ul', 'grid-template-columns:minmax(0,1fr);gap:12px;padding:0'],

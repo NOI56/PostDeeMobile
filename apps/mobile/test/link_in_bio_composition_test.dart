@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -50,6 +51,11 @@ final _links = List.generate(
         buttonColor: index == 2 ? '#305d36' : null,
         textColor: index == 2 ? '#ffffff' : null,
         font: index == 2 ? 'prompt' : null));
+
+final _wideLogo = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAgAAAACCAYAAABllJ3tAAAAF0lEQVR4nGO4Y6P7HxnLud1BwQyEFAAAmookGcN/A0AAAAAASUVORK5CYII=');
+final _tallLogo = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAAICAYAAADTLS5CAAAAFElEQVR4nGO4Y6P7X87tzn8GyhgABfckGXD401AAAAAASUVORK5CYII=');
 
 void main() {
   for (final composition in ['collage', 'torn', 'tag', 'notebook']) {
@@ -209,6 +215,102 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  for (final wide in [true, false]) {
+    testWidgets(
+        '${wide ? 'wide' : 'tall'} owner logo stays centered and uncropped in all 100 templates',
+        (tester) async {
+      tester.view.physicalSize = const Size(393, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final bytes = wide ? _wideLogo : _tallLogo;
+      final sourceSize = wide ? const Size(8, 2) : const Size(2, 8);
+      for (final template in profileTemplates) {
+        await tester.pumpWidget(MaterialApp(
+            home: Scaffold(
+                body: SingleChildScrollView(
+                    child: BioTemplatePreview(
+                        template: template,
+                        storeName: 'ร้าน',
+                        links: const [],
+                        appearance: LinkInBioAppearance.forTemplate(template.id)
+                            .copyWith(logoKey: 'owner-logo'),
+                        images: {'owner-logo': bytes},
+                        staticPreview: true)))));
+        await tester.pumpAndSettle();
+        final avatar =
+            find.byKey(const ValueKey('link-in-bio-composition-avatar'));
+        final imageFinder =
+            find.descendant(of: avatar, matching: find.byType(Image));
+        expect(imageFinder, findsOneWidget, reason: template.id);
+        final image = tester.widget<Image>(imageFinder);
+        expect(identical((image.image as MemoryImage).bytes, bytes), isTrue,
+            reason: template.id);
+        expect(image.alignment, Alignment.center, reason: template.id);
+        final fitted = applyBoxFit(
+            image.fit!, sourceSize, tester.getSize(imageFinder));
+        expect(fitted.source, sourceSize, reason: template.id);
+        expect(fitted.destination.aspectRatio,
+            closeTo(sourceSize.aspectRatio, .000001),
+            reason: template.id);
+        if (template.layout.composition == 'gallery') {
+          expect(tester.getSize(avatar), const Size(48, 104),
+              reason: template.id);
+        } else if (template.layout.composition == 'portrait') {
+          expect(tester.getSize(avatar), const Size(78, 130),
+              reason: template.id);
+        }
+        expect(tester.takeException(), isNull, reason: template.id);
+      }
+    });
+  }
+  testWidgets('owner cover and background photos still fill their frames',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final coverBytes = _tallLogo;
+    final backgroundBytes = Uint8List.fromList(_tallLogo);
+    Finder photo(Uint8List bytes) => find.byWidgetPredicate((widget) =>
+        widget is Image &&
+        widget.image is MemoryImage &&
+        identical((widget.image as MemoryImage).bytes, bytes));
+    for (final composition in _compositions) {
+      final template = profileTemplates
+          .firstWhere((template) => template.layout.composition == composition);
+      final appearance = LinkInBioAppearance.forTemplate(template.id);
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: SingleChildScrollView(
+                  child: BioTemplatePreview(
+                      template: template,
+                      storeName: 'ร้าน',
+                      links: const [],
+                      appearance: appearance.copyWith(
+                          logoKey: 'owner-logo',
+                          coverKey: 'owner-cover',
+                          background: appearance.background.copyWith(
+                              mode: 'image', imageKey: 'owner-background')),
+                      images: {
+                        'owner-logo': _wideLogo,
+                        'owner-cover': coverBytes,
+                        'owner-background': backgroundBytes
+                      },
+                      staticPreview: true)))));
+      await tester.pumpAndSettle();
+      for (final bytes in [coverBytes, backgroundBytes]) {
+        final imageFinder = photo(bytes);
+        expect(imageFinder, findsOneWidget, reason: composition);
+        final image = tester.widget<Image>(imageFinder);
+        expect(image.fit, BoxFit.cover, reason: composition);
+        final fitted = applyBoxFit(
+            image.fit!, const Size(2, 8), tester.getSize(imageFinder));
+        expect(fitted.source.height, lessThan(8), reason: composition);
+      }
+      expect(tester.takeException(), isNull, reason: composition);
+    }
+  });
   testWidgets(
       'collage paper cards have their own border and hard shadow while preserving owner radius',
       (tester) async {

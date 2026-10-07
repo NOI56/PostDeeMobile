@@ -51,6 +51,21 @@ describe('categorized profile template rendering', () => {
     expect(html).not.toMatch(/pause-motion|motion-control|หยุดการเคลื่อนไหว|<script\b|style="/i);
   });
 
+  it('shows the complete uploaded logo centered in every template while cover and background photos retain cropping', () => {
+    for (const template of profileTemplates) {
+      const profile = createProfile(template.id);
+      profile.appearance!.background = { ...profile.appearance!.background, mode: 'image', imageKey: 'profiles/owner/background.png' };
+      const html = renderLinkInBioPage(profile, 'nonce');
+      expect(html.includes(`data-composition="${template.layout.composition}"] img.logo{object-fit:contain;object-position:center}`)).toBe(true);
+      expect(html).toContain('<img class="logo" src="/p/template-shop/images/logo"');
+      expect(html).toContain('<img class="cover" src="/p/template-shop/images/cover"');
+      expect(html).toMatch(/\.cover\{[^}]*object-fit:cover/);
+      expect(html).toContain('background-size:cover;background-position:center;');
+      expect(html).toContain('/p/template-shop/images/background');
+      expect(html).not.toContain('profiles/owner/');
+    }
+  });
+
   it.each(['centered', 'left', 'split', 'cover', 'badge'])('renders %s with an initial fallback without inserting a generic cover into its composition', (header) => {
     const template = profileTemplates.find((entry) => entry.layout.header === header)!;
     const profile = createProfile(template.id);
@@ -303,11 +318,17 @@ describe('categorized profile template rendering', () => {
   it.each(['minimal', 'shop', 'pastel', 'dark', 'pink', 'garden', 'cards'] as const)('retains the legacy %s page without introducing new template markup or artwork', (theme) => {
     const profile = createProfile(profileTemplates[0]!.id);
     profile.appearance = createDefaultLinkInBioAppearance(theme);
+    profile.appearance.logoKey = 'profiles/owner/logo.png';
+    profile.appearance.coverKey = 'profiles/owner/cover.png';
     const html = renderLinkInBioPage(profile, 'nonce');
     expect(html).toContain(`data-theme="${theme}"`);
     expect(html).not.toMatch(/data-composition=|data-position=|class="profile-copy"|class="link-number"|\/profile-decorations\//);
     expect(html).toContain('href="mailto:shop@example.com"');
     expect(html).toContain('width:40px;height:40px');
+    expect(html).toContain('<img class="logo" src="/p/template-shop/images/logo"');
+    expect(html).toMatch(/\.logo\{[^}]*object-fit:cover/);
+    expect(html).toMatch(/\.cover\{[^}]*object-fit:cover/);
+    expect(html).not.toContain('img.logo{object-fit:contain;');
   });
 
   it.each(['editorial', 'bicolor', 'portrait', 'scallop', 'collage', 'window', 'botanical', 'glass', 'torn', 'seal', 'tag', 'gallery', 'poster', 'window-grid', 'ticket', 'rail', 'ribbon', 'notebook', 'arch', 'staircase'])('gives %s a distinct page composition while retaining all twenty real links', (composition) => {

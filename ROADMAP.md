@@ -68,8 +68,13 @@ Build roadmap for PostDee.
   preserves the latest grouped Account UI and four-step composer; exact-source
   CI `37623591224` passes 1,555 API / 1,556 Flutter tests. Staging API deployment
   `dep-db342ek9v7es73astung` is Live with successful read-only runtime fixtures.
-  The matching Android update is in progress using an opt-in Actions debug build
-  and the existing local signing key because Windows Flutter-tool startup hangs.
+  The matching Android APK was built by passing opt-in Actions run `37627939566`
+  from exact `9c7fa74`, locally re-signed and installed on emulator-5556. Its
+  installed bytes match; account/draft/Flutter preferences are unchanged after
+  native QA of all fifteen base previews, Account and the four-step composer.
+  A follow-up corrects cropped uploaded logos with centered `contain` in every
+  new composition, retaining frames and cover/background cropping; its own
+  exact-source CI/deploy/APK are pending. CI avoids a Windows Flutter-tool startup hang.
   The prior `fc087c4` receipt verifies the initial release only. See the current
   delivery receipt in the same plan for evidence and visual adaptations.
 - Separate local draft saving from publishing. Show a shareable URL only after

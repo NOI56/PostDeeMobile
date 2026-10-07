@@ -185,7 +185,7 @@ of twenty, with no pause markup. This read-only check did not publish a test
 page or change customer data. Startup reported fourteen migrations and no
 pending migrations; public Staging browser/image checks remain unverified.
 
-### Composition revision — 2026-10-07 (Staging API delivered)
+### Composition revision — 2026-10-07 (initial integrated delivery; logo correction pending)
 
 The user accepted all fifteen A1–E3 short-page directions and their expansion
 to one hundred choices. The authored catalog now assigns each category twenty
@@ -217,7 +217,8 @@ Ship the revised API renderer and its bundled assets before the matching Mobile
 build. Local QA passes: 1,555 API tests (104 files), 179 focused renderer/routes
 tests, API build and schema/helper checks, plus the actual hundred-page 320px
 browser matrix. Asset tests verify PNG headers, byte parity and filename/path
-rejections. Native tests/analysis and the exact Staging APK also pass. The prior
+rejections. Pre-integration native tests/analysis and the local Staging APK
+build also passed; that APK is not the combined release artifact. The prior
 `fc087c4` CI/deploy receipt does not verify these new compositions or asset
 responses. Integrated source `9c7fa74` passed exact-source CI `37623591224`
 (1,555 API / 1,556 Flutter tests) and is Live on Staging deployment
@@ -226,7 +227,16 @@ instance verify all 100 templates, retained IDs, five groups of twenty distinct
 compositions, eight bundled PNGs, seven legacy themes, omitted-appearance
 preservation and safe route headers. Header checks use synthetic responses;
 public browser/proxy and owned-image checks remain unverified under the existing
-browser restriction. No live user profile is modified by these fixtures. Evidence is in
+browser restriction. No live user profile is modified by these fixtures.
+Manual APK CI `37627939566` also passed and built the same `9c7fa74` Mobile
+source. After local re-signing, its verified APK is installed on emulator-5556
+with account/draft/Flutter preferences unchanged. Native QA passes all fifteen
+base previews but exposes cropped shop logos in tall frames. The follow-up
+composition CSS fits uploaded `img.logo` with centered `contain` across all
+100 templates; cover/background-photo cropping, initials, legacy themes and
+frame geometry remain unchanged. Local API regression/full suite (1,556 tests)
+and build pass; its own exact-source CI/deploy/APK verification are pending.
+Evidence is in
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
 ### Profile images

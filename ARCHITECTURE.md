@@ -136,10 +136,19 @@ confirming all three systems are preserved. CI `37623591224` passes 1,555 API
 and 1,556 Flutter tests; Render `dep-db342ek9v7es73astung` is Live with fourteen
 existing migrations and none pending. Compiled-module fixtures verify catalog,
 assets, legacy behavior and route headers without database/provider requests.
-The matching Android update is in progress via an opt-in Actions APK build:
-the tracked example matches all nine local Staging configuration values, and
-the downloaded APK must be re-signed with the existing local debug key before
-installation. Signing keys/private JSON stay local. The default CI path keeps
+The matching Android APK was built by opt-in Actions run `37627939566` from
+exact `9c7fa74`, using Flutter 3.47.6 / Dart 3.13.5 after all checks passed.
+The tracked example matches all nine local Staging configuration values. The
+downloaded APK was re-signed with the existing local debug key and installed
+in-place on emulator-5556; installed bytes match the signed artifact and
+account/draft/preferences were verified unchanged immediately after installation.
+Provisional native navigation QA is complete with account/draft/Flutter
+preferences retained. It exposes shop-logo cropping in non-square frames.
+The follow-up applies centered `contain` to uploaded logos in the hundred
+composition previews and public pages only; cover/background-photo cropping,
+initials and frame/color rules are preserved. This correction awaits its own
+exact-source CI, API release and APK; the receipt above verifies `9c7fa74` only.
+Signing keys/private JSON stay local. The default CI path keeps
 its existing checks and does not build APKs. The historical `fc087c4` receipt
 applies to the prior release only; current evidence is in the plan linked above.
 

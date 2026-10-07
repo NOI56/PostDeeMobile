@@ -44,12 +44,15 @@ class BioTemplatePreview extends StatelessWidget {
                   const {'gallery', 'glass'}.contains(_composition))
           ? bioColor(appearance.buttonColor)
           : bioColor(appearance.background.gradientColor);
-  Widget _photo(String key, double height, {Widget? fallback}) => Image.memory(
-      images[key]!,
-      height: height,
-      width: double.infinity,
-      fit: BoxFit.cover,
-      errorBuilder: (_, error, stack) => fallback ?? SizedBox(height: height));
+  Widget _photo(String key, double height,
+          {Widget? fallback, BoxFit fit = BoxFit.cover}) =>
+      Image.memory(
+          images[key]!,
+          height: height,
+          width: double.infinity,
+          fit: fit,
+          errorBuilder: (_, error, stack) =>
+              fallback ?? SizedBox(height: height));
 
   Widget _initial(double size) {
     final selected = bioColor(_composition == 'portrait'
@@ -123,7 +126,7 @@ class BioTemplatePreview extends StatelessWidget {
                       })),
         child: images[appearance.logoKey] != null
             ? _photo(appearance.logoKey!, height ?? size,
-                fallback: _initial(size))
+                fallback: _initial(size), fit: BoxFit.contain)
             : _initial(size));
     if (_composition != 'bicolor') return avatar;
     return Container(

@@ -14,14 +14,32 @@
   และ memory scheduler ตาม configuration เดิม ไม่เพิ่ม migration/secret/แพ็กบริการ
 - Runtime fixtures แบบอ่านอย่างเดียวผ่าน 100 IDs, 5 หมวด × 20 โครง,
   PNG 8 ไฟล์, ธีมเดิม 7 แบบ และ headers ของ route จำลอง โดยไม่แก้ profile ลูกค้า
-- APK รุ่นรวมกำลังสร้างผ่าน manual CI แบบเลือกเปิดได้ เนื่องจาก Flutter-tool
-  บน Windows ค้างตอนเริ่มทำงาน (ไม่อ้างว่า local analyze ผ่าน) ใช้ config ตัวอย่าง
-  ที่ tracked และเทียบแล้วตรงค่าทดสอบในเครื่องทั้ง 9 ข้อ ไม่ส่ง private JSON/key
-  ไป GitHub ต้องเซ็น APK ที่ดาวน์โหลดด้วย debug key เดิมในเครื่องก่อน install-r
-  ลายเซ็นเดิมตรวจตรงกันแล้ว จะบันทึก hash/ผลรักษาบัญชีและร่างหลังติดตั้งจริง
+- [APK CI 37627939566](https://github.com/NOI56/PostDeeMobile/actions/runs/37627939566)
+  ผ่านทั้งสอง jobs และสร้าง APK จาก source `9c7fa74` สำเร็จ ใช้ Flutter 3.47.6 /
+  Dart 3.13.5 และ config ตัวอย่างที่ tracked ซึ่งตรงค่าทดสอบในเครื่องทั้ง 9 ข้อ
+  ไม่ส่ง private JSON/key ไป GitHub; Flutter-tool บน Windows ค้างตอนเริ่มทำงาน
+  จึงใช้ CI สร้างแทน (ไม่อ้างว่า local analyze ผ่าน) เซ็น APK ที่ดาวน์โหลดด้วย
+  debug key เดิมในเครื่องแล้ว ลายเซ็นตรงกับแอปเดิม ติดตั้งแบบ `install -r` บน
+  emulator-5556 สำเร็จ APK ที่ติดตั้งตรงไฟล์ที่ตรวจ บัญชี/ร่าง/preferences ทุกไฟล์
+  ตรงกับก่อนติดตั้ง แอปเปิด Home และแพ็กเกจ Free เดิมได้ ตรวจ native 15 ตัวอย่าง
+  บัญชี และสร้างโพสต์แล้ว ข้อมูลบัญชี/ร่าง/Flutter preferences เดิมไม่เปลี่ยน
+- ผลตรวจรุ่น `9c7fa74` เป็น provisional: พบกรอบแกลเลอรีตัดขอบโลโก้ร้าน
+  ชุดแก้ใช้ `contain` ตรงกลางกรอบทั้งเว็บและมือถือสำหรับโลโก้ที่อัปโหลดใน
+  100 เทมเพลต โดยเก็บกรอบ/สี/ตัวอักษรย่อและการครอปภาพปก/พื้นหลังไว้ตามเดิม
+  Local API 1,556 tests/build ผ่าน แต่ต้องรอ exact-source CI และส่ง API/APK
+  รุ่นแก้ที่ตรงกันก่อนสรุปส่งมอบ งานนี้ไม่แก้ข้อมูลหน้าเว็บของลูกค้า
 - ไม่ merge `main` หรือ deploy Production; ข้อจำกัดตรวจเว็บสาธารณะ/รูป R2 ผ่าน
   browser ยังเหมือนเดิมตามสิทธิ์ที่บล็อกและคำข้ามตรวจเว็บก่อนหน้า รายละเอียดอยู่
   `docs/superpowers/plans/2026-10-07-profile-template-categories.md`
+
+### สร้าง APK Staging ผ่าน GitHub Actions แบบเลือกเปิด
+
+Workflow `ci.yml` มี input `build_staging_apk` ค่าเริ่มต้น `false` และ
+`apk_source_ref` สำหรับระบุ source มือถือที่ต้องการตรวจและสร้างโดยตรง การเปิด
+build ยังรัน checks เดิมก่อน แล้วเก็บ artifact `postdee-staging-debug-<runId>`
+เฉพาะ APK/receipt อายุ 3 วัน ต้องเทียบ source/config/hash จาก receipt และเซ็น
+สำเนา APK ด้วย debug key เดิมในเครื่องก่อนอัปเดต emulator แบบ `install -r`
+ห้ามอัปโหลด signing key หรือ private configuration เพื่อทำขั้นตอนนี้
 
 ## ส่งมอบหน้าสร้างโพสต์ 4 ขั้น — 7 ตุลาคม 2026
 

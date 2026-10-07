@@ -28,8 +28,8 @@ const _links = [
 void main() {
   testWidgets('raised tiles match the public border shadow and arrow position',
       (tester) async {
-    final template =
-        profileTemplates.firstWhere((item) => item.layout.button == 'raised');
+    final template = profileTemplates
+        .firstWhere((item) => item.layout.composition == 'window-grid');
     final appearance = LinkInBioAppearance.forTemplate(template.id);
     await tester.pumpWidget(MaterialApp(
         home: MediaQuery(
@@ -78,7 +78,7 @@ void main() {
                   find.byKey(const ValueKey('link-in-bio-template-store-name')))
               .style
               ?.fontSize,
-          width <= 400 ? 26 : 28);
+          width <= 320 ? 48 : 56);
       expect(tester.widget<Text>(find.text(_links.first.title)).style?.fontSize,
           16);
     });
@@ -116,7 +116,16 @@ void main() {
         final title = tester.getRect(
             find.byKey(const ValueKey('link-in-bio-template-store-name')));
         expect(title.top, greaterThanOrEqualTo(viewport.top));
-        expect(title.bottom, lessThanOrEqualTo(viewport.bottom));
+        // Large editorial headings can be taller than this small scrollable
+        // canvas. Reveal their first complete line rather than shrinking the
+        // real page's typography to fit the editor.
+        final text = tester.widget<Text>(
+            find.byKey(const ValueKey('link-in-bio-template-store-name')));
+        final firstLine =
+            (text.style?.fontSize ?? 16) * (text.style?.height ?? 1);
+        expect(
+            title.top + (title.height < firstLine ? title.height : firstLine),
+            lessThanOrEqualTo(viewport.bottom));
         expect(find.byType(Scrollbar), findsOneWidget);
         expect(tester.takeException(), isNull);
       });

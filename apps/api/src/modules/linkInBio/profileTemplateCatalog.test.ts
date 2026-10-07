@@ -11,8 +11,22 @@ describe('shared profile template catalog and appearance contract', () => {
     for (const category of profileTemplateCategories) {
       const templates = profileTemplates.filter((template) => template.category === category.id);
       expect(templates).toHaveLength(20);
-      expect(new Set(templates.map((template) => `${template.layout.header}/${template.layout.links}/${template.layout.button}`)).size).toBe(20);
+      expect(new Set(templates.map((template) => template.layout.composition)).size).toBe(20);
       expect(new Set(templates.map((template) => template.name)).size).toBe(20);
+    }
+  });
+
+  it('places the three agreed reference compositions first in each category', () => {
+    const representatives = {
+      minimal: ['editorial', 'bicolor', 'portrait'],
+      cute: ['scallop', 'collage', 'window'],
+      nature: ['botanical', 'glass', 'torn'],
+      luxury: ['seal', 'tag', 'gallery'],
+      creative: ['poster', 'window-grid', 'ticket'],
+    };
+    for (const category of profileTemplateCategories) {
+      expect(profileTemplates.filter((template) => template.category === category.id).slice(0, 3)
+        .map((template) => template.layout.composition)).toEqual(representatives[category.id]);
     }
   });
 

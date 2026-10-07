@@ -1,5 +1,6 @@
 import type { LinkInBioAppearance } from './linkInBioAppearance.js';
 import { getProfileTemplate } from './profileTemplateCatalog.generated.js';
+import { linkInBioCompositionStyles } from './linkInBioCompositionStyles.js';
 
 // Layout strings come from the generated catalog, never from request CSS.
 // Custom colors and fonts still come from the validated appearance snapshot.
@@ -55,5 +56,6 @@ ${root}[data-decoration="stripe"] main::before,${root}[data-decoration="stripe"]
 ${root}[data-decoration="stripe"] main::before{top:12px;right:-12px;transform:rotate(35deg)}
 ${root}[data-decoration="stripe"] main::after{bottom:12px;left:-12px;transform:rotate(35deg)}
 @media(max-width:400px){${root} main{padding:32px 20px 24px;margin:16px auto}${root} .cover{margin:-32px -20px 24px}${root} .profile-header h1{font-size:26px}${root} a{padding:12px 14px}}
+${linkInBioCompositionStyles(appearance)}
 `;
 };

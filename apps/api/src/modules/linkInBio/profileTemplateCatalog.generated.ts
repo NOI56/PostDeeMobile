@@ -2,7 +2,9 @@
 // Do not edit; maintain the authored source catalog and regenerate both clients.
 
 export type ProfileTemplateCategoryId = 'minimal' | 'cute' | 'nature' | 'luxury' | 'creative';
+export type ProfileTemplateComposition = 'editorial' | 'bicolor' | 'portrait' | 'scallop' | 'collage' | 'window' | 'botanical' | 'glass' | 'torn' | 'seal' | 'tag' | 'gallery' | 'poster' | 'window-grid' | 'ticket' | 'rail' | 'ribbon' | 'notebook' | 'arch' | 'staircase';
 export type ProfileTemplateLayout = {
+  composition: ProfileTemplateComposition;
   header: 'centered' | 'left' | 'split' | 'cover' | 'badge';
   links: 'list' | 'grid';
   button: 'solid' | 'outline' | 'soft' | 'raised';
@@ -44,10 +46,11 @@ export const profileTemplateCategories: readonly { id: ProfileTemplateCategoryId
 export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   {
     "id": "minimal-white-editorial",
-    "name": "บทบรรณาธิการ",
+    "name": "ตัวอักษรและเส้นบาง",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
+      "composition": "editorial",
       "header": "left",
       "links": "list",
       "button": "outline",
@@ -58,7 +61,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "background": "#ffffff",
       "gradient": "#f1f3f2",
       "surface": "#ffffff",
-      "button": "#d4dad7",
+      "button": "#17201f",
       "name": "#17201f",
       "description": "#65716e",
       "category": "#17201f",
@@ -75,16 +78,83 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "minimal-white-paper",
-    "name": "กระดาษขาว",
+    "id": "minimal-mono-pair",
+    "name": "แถบลาเวนเดอร์",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
-      "header": "centered",
+      "composition": "bicolor",
+      "header": "split",
+      "links": "list",
+      "button": "outline",
+      "decoration": "stripe",
+      "avatar": "square"
+    },
+    "palette": {
+      "background": "#e6e2e8",
+      "gradient": "#ddd8e1",
+      "surface": "#ffffff",
+      "button": "#43404d",
+      "name": "#242429",
+      "description": "#58535f",
+      "category": "#43404d",
+      "buttonText": "#242429",
+      "brand": "#58535f"
+    },
+    "font": "anuphan",
+    "buttonRadius": "square",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    }
+  },
+  {
+    "id": "minimal-clean-cover",
+    "name": "ภาพเด่นเรียบง่าย",
+    "category": "minimal",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "portrait",
+      "header": "cover",
       "links": "list",
       "button": "solid",
       "decoration": "none",
-      "avatar": "circle"
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#f6f4ee",
+      "gradient": "#e7e6df",
+      "surface": "#fffefa",
+      "button": "#285142",
+      "name": "#203329",
+      "description": "#566158",
+      "category": "#285142",
+      "buttonText": "#ffffff",
+      "brand": "#566158"
+    },
+    "font": "anuphan",
+    "buttonRadius": "square",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    }
+  },
+  {
+    "id": "minimal-white-paper",
+    "name": "สมุดกระดาษขาว",
+    "category": "minimal",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "notebook",
+      "header": "left",
+      "links": "list",
+      "button": "outline",
+      "decoration": "line",
+      "avatar": "square"
     },
     "palette": {
       "background": "#ffffff",
@@ -94,7 +164,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "name": "#17201f",
       "description": "#626d69",
       "category": "#243d35",
-      "buttonText": "#ffffff",
+      "buttonText": "#17201f",
       "brand": "#626d69"
     },
     "font": "anuphan",
@@ -108,15 +178,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-fine-lines",
-    "name": "เส้นบาง",
+    "name": "รางเส้นบาง",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
-      "header": "centered",
+      "composition": "rail",
+      "header": "left",
       "links": "list",
       "button": "outline",
       "decoration": "line",
-      "avatar": "rounded"
+      "avatar": "circle"
     },
     "palette": {
       "background": "#fafafa",
@@ -140,15 +211,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-pebble-tiles",
-    "name": "ก้อนหิน",
+    "name": "ช่องกริดก้อนหิน",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
+      "composition": "window-grid",
       "header": "centered",
       "links": "grid",
       "button": "soft",
-      "decoration": "dots",
-      "avatar": "square"
+      "decoration": "frame",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#f5f5f0",
@@ -172,15 +244,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-light-cards",
-    "name": "การ์ดเบา",
+    "name": "แกลเลอรีโปร่ง",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
-      "header": "centered",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "frame",
-      "avatar": "circle"
+      "composition": "gallery",
+      "header": "cover",
+      "links": "list",
+      "button": "outline",
+      "decoration": "none",
+      "avatar": "square"
     },
     "palette": {
       "background": "#ffffff",
@@ -190,7 +263,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "name": "#20313b",
       "description": "#5e6e76",
       "category": "#355466",
-      "buttonText": "#ffffff",
+      "buttonText": "#20313b",
       "brand": "#5e6e76"
     },
     "font": "anuphan",
@@ -204,25 +277,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-daily-studio",
-    "name": "สตูดิโอประจำวัน",
+    "name": "โปสเตอร์ประจำวัน",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
+      "composition": "poster",
       "header": "left",
       "links": "list",
       "button": "solid",
       "decoration": "stripe",
-      "avatar": "rounded"
+      "avatar": "square"
     },
     "palette": {
       "background": "#fcfcfa",
       "gradient": "#eaece6",
       "surface": "#ffffff",
-      "button": "#3e5142",
+      "button": "#eaece6",
       "name": "#1c2820",
       "description": "#5e6b62",
       "category": "#3e5142",
-      "buttonText": "#ffffff",
+      "buttonText": "#1c2820",
       "brand": "#5e6b62"
     },
     "font": "anuphan",
@@ -236,15 +310,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-pocket-board",
-    "name": "บอร์ดพกพา",
+    "name": "หน้าต่างพกพา",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
+      "composition": "window",
       "header": "left",
-      "links": "grid",
+      "links": "list",
       "button": "soft",
-      "decoration": "line",
-      "avatar": "circle"
+      "decoration": "frame",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#f4f7f6",
@@ -268,11 +343,12 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-layered-note",
-    "name": "โน้ตซ้อน",
+    "name": "โน้ตคอลลาจ",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
-      "header": "left",
+      "composition": "collage",
+      "header": "split",
       "links": "grid",
       "button": "raised",
       "decoration": "dots",
@@ -282,11 +358,11 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "background": "#faf8f5",
       "gradient": "#eee5d9",
       "surface": "#ffffff",
-      "button": "#66513f",
+      "button": "#eee5d9",
       "name": "#352a24",
       "description": "#726257",
       "category": "#66513f",
-      "buttonText": "#ffffff",
+      "buttonText": "#352a24",
       "brand": "#726257"
     },
     "font": "anuphan",
@@ -299,48 +375,17 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "minimal-mono-pair",
-    "name": "ขาวดำคู่กัน",
+    "id": "minimal-side-lines",
+    "name": "ริบบิ้นเส้นข้าง",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
-      "header": "split",
+      "composition": "ribbon",
+      "header": "centered",
       "links": "list",
       "button": "solid",
-      "decoration": "frame",
-      "avatar": "square"
-    },
-    "palette": {
-      "background": "#f5f5f5",
-      "gradient": "#e6e6e6",
-      "surface": "#ffffff",
-      "button": "#242424",
-      "name": "#171717",
-      "description": "#656565",
-      "category": "#242424",
-      "buttonText": "#ffffff",
-      "brand": "#656565"
-    },
-    "font": "anuphan",
-    "buttonRadius": "rounded",
-    "effects": {
-      "background": false,
-      "entrance": true,
-      "featured": false,
-      "stickers": "none"
-    }
-  },
-  {
-    "id": "minimal-side-lines",
-    "name": "เส้นข้าง",
-    "category": "minimal",
-    "themeId": "minimal",
-    "layout": {
-      "header": "split",
-      "links": "list",
-      "button": "outline",
       "decoration": "stripe",
-      "avatar": "circle"
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#fafbfc",
@@ -350,7 +395,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "name": "#252c3a",
       "description": "#606b7f",
       "category": "#3e4b65",
-      "buttonText": "#252c3a",
+      "buttonText": "#ffffff",
       "brand": "#606b7f"
     },
     "font": "anuphan",
@@ -364,25 +409,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-easy-grid",
-    "name": "ตารางสบายตา",
+    "name": "ขั้นบันไดเรียบ",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
-      "header": "split",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "none",
+      "composition": "staircase",
+      "header": "left",
+      "links": "list",
+      "button": "raised",
+      "decoration": "dots",
       "avatar": "rounded"
     },
     "palette": {
       "background": "#f3f5f4",
       "gradient": "#dfe5e2",
       "surface": "#ffffff",
-      "button": "#dfe5e2",
+      "button": "#435a4d",
       "name": "#283a30",
       "description": "#59675e",
       "category": "#435a4d",
-      "buttonText": "#283a30",
+      "buttonText": "#ffffff",
       "brand": "#59675e"
     },
     "font": "anuphan",
@@ -396,12 +442,13 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-quiet-blocks",
-    "name": "บล็อกเรียบ",
+    "name": "ตั๋วกระดาษเรียบ",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
+      "composition": "ticket",
       "header": "split",
-      "links": "grid",
+      "links": "list",
       "button": "raised",
       "decoration": "line",
       "avatar": "square"
@@ -427,54 +474,23 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "minimal-clean-cover",
-    "name": "ภาพปกสะอาด",
-    "category": "minimal",
-    "themeId": "minimal",
-    "layout": {
-      "header": "cover",
-      "links": "list",
-      "button": "solid",
-      "decoration": "dots",
-      "avatar": "circle"
-    },
-    "palette": {
-      "background": "#ffffff",
-      "gradient": "#edf2f4",
-      "surface": "#ffffff",
-      "button": "#3c5967",
-      "name": "#1f323b",
-      "description": "#5d7078",
-      "category": "#3c5967",
-      "buttonText": "#ffffff",
-      "brand": "#5d7078"
-    },
-    "font": "anuphan",
-    "buttonRadius": "rounded",
-    "effects": {
-      "background": false,
-      "entrance": true,
-      "featured": false,
-      "stickers": "none"
-    }
-  },
-  {
     "id": "minimal-picture-frame",
-    "name": "กรอบภาพ",
+    "name": "ซุ้มกรอบภาพ",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
+      "composition": "arch",
       "header": "cover",
       "links": "list",
-      "button": "outline",
+      "button": "soft",
       "decoration": "frame",
-      "avatar": "rounded"
+      "avatar": "circle"
     },
     "palette": {
       "background": "#fbfaf8",
       "gradient": "#ece7df",
       "surface": "#ffffff",
-      "button": "#665440",
+      "button": "#ece7df",
       "name": "#322a21",
       "description": "#726555",
       "category": "#665440",
@@ -492,15 +508,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-open-shelf",
-    "name": "ชั้นวางโปร่ง",
+    "name": "ชั้นกระจกโปร่ง",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
+      "composition": "glass",
       "header": "cover",
-      "links": "grid",
+      "links": "list",
       "button": "soft",
-      "decoration": "stripe",
-      "avatar": "square"
+      "decoration": "none",
+      "avatar": "circle"
     },
     "palette": {
       "background": "#f2f5f3",
@@ -524,25 +541,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-stacked-paper",
-    "name": "กระดาษซ้อน",
+    "name": "กระดาษฉีกซ้อน",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
-      "header": "cover",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "none",
-      "avatar": "circle"
+      "composition": "torn",
+      "header": "left",
+      "links": "list",
+      "button": "soft",
+      "decoration": "stripe",
+      "avatar": "square"
     },
     "palette": {
       "background": "#f8f8f8",
       "gradient": "#e9eceb",
       "surface": "#ffffff",
-      "button": "#3c5049",
+      "button": "#e9eceb",
       "name": "#273c33",
       "description": "#606d68",
       "category": "#3c5049",
-      "buttonText": "#ffffff",
+      "buttonText": "#273c33",
       "brand": "#606d68"
     },
     "font": "anuphan",
@@ -556,15 +574,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-studio-seal",
-    "name": "ตราประจำร้าน",
+    "name": "ตราสตูดิโอ",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
+      "composition": "seal",
       "header": "badge",
       "links": "list",
-      "button": "solid",
-      "decoration": "line",
-      "avatar": "rounded"
+      "button": "outline",
+      "decoration": "frame",
+      "avatar": "circle"
     },
     "palette": {
       "background": "#fbfbfb",
@@ -574,7 +593,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "name": "#202c28",
       "description": "#636d69",
       "category": "#394744",
-      "buttonText": "#ffffff",
+      "buttonText": "#202c28",
       "brand": "#636d69"
     },
     "font": "anuphan",
@@ -588,15 +607,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-simple-ring",
-    "name": "วงแหวนเรียบ",
+    "name": "กิ่งไม้เส้นบาง",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
-      "header": "badge",
+      "composition": "botanical",
+      "header": "centered",
       "links": "list",
       "button": "outline",
-      "decoration": "dots",
-      "avatar": "square"
+      "decoration": "line",
+      "avatar": "circle"
     },
     "palette": {
       "background": "#f5f7f6",
@@ -620,13 +640,14 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-little-spaces",
-    "name": "ช่องเล็ก",
+    "name": "ขอบหยักเรียบ",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
-      "header": "badge",
-      "links": "grid",
-      "button": "soft",
+      "composition": "scallop",
+      "header": "centered",
+      "links": "list",
+      "button": "outline",
       "decoration": "frame",
       "avatar": "circle"
     },
@@ -634,7 +655,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "background": "#f7f8fa",
       "gradient": "#e5e9f0",
       "surface": "#ffffff",
-      "button": "#e5e9f0",
+      "button": "#425470",
       "name": "#26334a",
       "description": "#5c6779",
       "category": "#425470",
@@ -652,14 +673,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "minimal-signature-cards",
-    "name": "การ์ดลายเซ็น",
+    "name": "ป้ายลายเซ็น",
     "category": "minimal",
     "themeId": "minimal",
     "layout": {
+      "composition": "tag",
       "header": "badge",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "stripe",
+      "links": "list",
+      "button": "solid",
+      "decoration": "line",
       "avatar": "rounded"
     },
     "palette": {
@@ -684,13 +706,14 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-cherry-cream",
-    "name": "เชอร์รี่ครีม",
+    "name": "กรอบหยักเชอร์รี่",
     "category": "cute",
     "themeId": "pink",
     "layout": {
+      "composition": "scallop",
       "header": "centered",
       "links": "list",
-      "button": "solid",
+      "button": "outline",
       "decoration": "frame",
       "avatar": "circle"
     },
@@ -698,11 +721,11 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "background": "#fff1f6",
       "gradient": "#f9dce9",
       "surface": "#fff9fc",
-      "button": "#ad426a",
+      "button": "#a94067",
       "name": "#61364b",
       "description": "#7a5b6a",
       "category": "#a94067",
-      "buttonText": "#ffffff",
+      "buttonText": "#61364b",
       "brand": "#7a5b6a"
     },
     "font": "anuphan",
@@ -715,15 +738,82 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "cute-paper-hearts",
-    "name": "หัวใจบนกระดาษ",
+    "id": "cute-sticker-layers",
+    "name": "สมุดสติกเกอร์",
     "category": "cute",
     "themeId": "pink",
     "layout": {
-      "header": "centered",
+      "composition": "collage",
+      "header": "split",
+      "links": "grid",
+      "button": "raised",
+      "decoration": "dots",
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#fdf0f3",
+      "gradient": "#f3d3df",
+      "surface": "#fff8fa",
+      "button": "#f3d3df",
+      "name": "#673c4b",
+      "description": "#785561",
+      "category": "#9a445e",
+      "buttonText": "#673c4b",
+      "brand": "#785561"
+    },
+    "font": "anuphan",
+    "buttonRadius": "square",
+    "effects": {
+      "background": true,
+      "entrance": true,
+      "featured": false,
+      "stickers": "hearts"
+    }
+  },
+  {
+    "id": "cute-candy-box",
+    "name": "หน้าต่างลูกกวาด",
+    "category": "cute",
+    "themeId": "pink",
+    "layout": {
+      "composition": "window",
+      "header": "left",
+      "links": "list",
+      "button": "soft",
+      "decoration": "frame",
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#e8f4ec",
+      "gradient": "#e5dbf7",
+      "surface": "#ffffff",
+      "button": "#f8d4e1",
+      "name": "#422d50",
+      "description": "#66506f",
+      "category": "#704e87",
+      "buttonText": "#422d50",
+      "brand": "#66506f"
+    },
+    "font": "anuphan",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": true,
+      "entrance": true,
+      "featured": false,
+      "stickers": "hearts"
+    }
+  },
+  {
+    "id": "cute-paper-hearts",
+    "name": "จดหมายหัวใจ",
+    "category": "cute",
+    "themeId": "pink",
+    "layout": {
+      "composition": "editorial",
+      "header": "left",
       "links": "list",
       "button": "outline",
-      "decoration": "stripe",
+      "decoration": "line",
       "avatar": "circle"
     },
     "palette": {
@@ -747,54 +837,23 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "cute-candy-box",
-    "name": "กล่องขนม",
-    "category": "cute",
-    "themeId": "pink",
-    "layout": {
-      "header": "centered",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "none",
-      "avatar": "circle"
-    },
-    "palette": {
-      "background": "#faf2ff",
-      "gradient": "#eadcf6",
-      "surface": "#fffaff",
-      "button": "#eadcf6",
-      "name": "#4d345b",
-      "description": "#6f5c78",
-      "category": "#80519a",
-      "buttonText": "#4d345b",
-      "brand": "#6f5c78"
-    },
-    "font": "anuphan",
-    "buttonRadius": "rounded",
-    "effects": {
-      "background": true,
-      "entrance": true,
-      "featured": false,
-      "stickers": "hearts"
-    }
-  },
-  {
     "id": "cute-marshmallow-cards",
-    "name": "การ์ดมาร์ชเมลโลว์",
+    "name": "บันไดมาร์ชเมลโลว์",
     "category": "cute",
     "themeId": "pink",
     "layout": {
-      "header": "centered",
-      "links": "grid",
+      "composition": "staircase",
+      "header": "left",
+      "links": "list",
       "button": "raised",
-      "decoration": "line",
-      "avatar": "circle"
+      "decoration": "dots",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#fff5ed",
       "gradient": "#f8ddc9",
       "surface": "#fffaf4",
-      "button": "#a45a3d",
+      "button": "#945137",
       "name": "#633b2b",
       "description": "#7b5c4d",
       "category": "#945137",
@@ -816,21 +875,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     "category": "cute",
     "themeId": "pink",
     "layout": {
+      "composition": "notebook",
       "header": "left",
       "links": "list",
-      "button": "solid",
-      "decoration": "dots",
-      "avatar": "circle"
+      "button": "outline",
+      "decoration": "line",
+      "avatar": "square"
     },
     "palette": {
       "background": "#fceef4",
       "gradient": "#f3d4e3",
       "surface": "#fff8fb",
-      "button": "#a74370",
+      "button": "#9a3e68",
       "name": "#633449",
       "description": "#7a5365",
       "category": "#9a3e68",
-      "buttonText": "#ffffff",
+      "buttonText": "#633449",
       "brand": "#7a5365"
     },
     "font": "anuphan",
@@ -848,21 +908,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     "category": "cute",
     "themeId": "pink",
     "layout": {
-      "header": "left",
+      "composition": "ribbon",
+      "header": "centered",
       "links": "list",
-      "button": "outline",
-      "decoration": "frame",
-      "avatar": "circle"
+      "button": "solid",
+      "decoration": "stripe",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#fff5fb",
       "gradient": "#f4deee",
       "surface": "#ffffff",
-      "button": "#95517d",
+      "button": "#914f7a",
       "name": "#563447",
       "description": "#7c5c70",
       "category": "#914f7a",
-      "buttonText": "#563447",
+      "buttonText": "#ffffff",
       "brand": "#7c5c70"
     },
     "font": "anuphan",
@@ -876,15 +937,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-pastel-picnic",
-    "name": "ปิกนิกพาสเทล",
+    "name": "ช่องปิกนิกพาสเทล",
     "category": "cute",
     "themeId": "pink",
     "layout": {
-      "header": "left",
+      "composition": "window-grid",
+      "header": "centered",
       "links": "grid",
       "button": "soft",
-      "decoration": "stripe",
-      "avatar": "circle"
+      "decoration": "frame",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#f1f7ff",
@@ -907,58 +969,27 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "cute-sticker-layers",
-    "name": "สติกเกอร์ซ้อน",
-    "category": "cute",
-    "themeId": "pink",
-    "layout": {
-      "header": "left",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "none",
-      "avatar": "circle"
-    },
-    "palette": {
-      "background": "#fdf0f3",
-      "gradient": "#f3d3df",
-      "surface": "#fff8fa",
-      "button": "#ab4c68",
-      "name": "#673c4b",
-      "description": "#785561",
-      "category": "#9a445e",
-      "buttonText": "#ffffff",
-      "brand": "#785561"
-    },
-    "font": "anuphan",
-    "buttonRadius": "rounded",
-    "effects": {
-      "background": true,
-      "entrance": true,
-      "featured": false,
-      "stickers": "hearts"
-    }
-  },
-  {
     "id": "cute-tiny-friends",
-    "name": "เพื่อนตัวจิ๋ว",
+    "name": "เพื่อนคู่สี",
     "category": "cute",
     "themeId": "pink",
     "layout": {
+      "composition": "bicolor",
       "header": "split",
       "links": "list",
-      "button": "solid",
-      "decoration": "line",
-      "avatar": "circle"
+      "button": "outline",
+      "decoration": "stripe",
+      "avatar": "square"
     },
     "palette": {
       "background": "#f4efff",
       "gradient": "#e4d8f7",
       "surface": "#fcfaff",
-      "button": "#79579d",
+      "button": "#735395",
       "name": "#4b365d",
       "description": "#6b5978",
       "category": "#735395",
-      "buttonText": "#ffffff",
+      "buttonText": "#4b365d",
       "brand": "#6b5978"
     },
     "font": "anuphan",
@@ -972,21 +1003,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-love-letter",
-    "name": "จดหมายรัก",
+    "name": "จดหมายฉีกขอบ",
     "category": "cute",
     "themeId": "pink",
     "layout": {
-      "header": "split",
+      "composition": "torn",
+      "header": "left",
       "links": "list",
-      "button": "outline",
-      "decoration": "dots",
-      "avatar": "circle"
+      "button": "soft",
+      "decoration": "stripe",
+      "avatar": "square"
     },
     "palette": {
       "background": "#fff1f1",
       "gradient": "#f8dcdc",
       "surface": "#fffbfb",
-      "button": "#a14e58",
+      "button": "#f8dcdc",
       "name": "#633a40",
       "description": "#7f5c61",
       "category": "#9d4c56",
@@ -1004,25 +1036,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-bow-box",
-    "name": "กล่องโบว์",
+    "name": "ป้ายกล่องโบว์",
     "category": "cute",
     "themeId": "pink",
     "layout": {
-      "header": "split",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "frame",
-      "avatar": "circle"
+      "composition": "tag",
+      "header": "badge",
+      "links": "list",
+      "button": "solid",
+      "decoration": "line",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#fff6e9",
       "gradient": "#f3e0b8",
       "surface": "#fffcf5",
-      "button": "#f3e0b8",
+      "button": "#825e2f",
       "name": "#5c432b",
       "description": "#736249",
       "category": "#825e2f",
-      "buttonText": "#5c432b",
+      "buttonText": "#ffffff",
       "brand": "#736249"
     },
     "font": "anuphan",
@@ -1036,21 +1069,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-soft-bakery",
-    "name": "ขนมอบนุ่ม",
+    "name": "ตั๋วเบเกอรี",
     "category": "cute",
     "themeId": "pink",
     "layout": {
+      "composition": "ticket",
       "header": "split",
-      "links": "grid",
+      "links": "list",
       "button": "raised",
-      "decoration": "stripe",
-      "avatar": "circle"
+      "decoration": "line",
+      "avatar": "square"
     },
     "palette": {
       "background": "#f8f0ed",
       "gradient": "#ecd9ce",
       "surface": "#fffaf6",
-      "button": "#9c674e",
+      "button": "#815540",
       "name": "#644637",
       "description": "#755c4c",
       "category": "#815540",
@@ -1068,13 +1102,14 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-cotton-clouds",
-    "name": "เมฆฝ้าย",
+    "name": "กระจกเมฆฝ้าย",
     "category": "cute",
     "themeId": "pink",
     "layout": {
+      "composition": "glass",
       "header": "cover",
       "links": "list",
-      "button": "solid",
+      "button": "soft",
       "decoration": "none",
       "avatar": "circle"
     },
@@ -1082,11 +1117,11 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "background": "#f2f6ff",
       "gradient": "#dbe4fa",
       "surface": "#fcfdff",
-      "button": "#6173a5",
+      "button": "#dbe4fa",
       "name": "#3a4768",
       "description": "#5c667e",
       "category": "#556590",
-      "buttonText": "#ffffff",
+      "buttonText": "#3a4768",
       "brand": "#5c667e"
     },
     "font": "anuphan",
@@ -1100,25 +1135,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-sweet-postcard",
-    "name": "โปสต์การ์ดหวาน",
+    "name": "ภาพโปสต์การ์ดหวาน",
     "category": "cute",
     "themeId": "pink",
     "layout": {
+      "composition": "portrait",
       "header": "cover",
       "links": "list",
-      "button": "outline",
-      "decoration": "line",
-      "avatar": "circle"
+      "button": "solid",
+      "decoration": "none",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#fff0f8",
       "gradient": "#f4d7e9",
       "surface": "#fffbfd",
-      "button": "#a34d7d",
+      "button": "#974774",
       "name": "#673c55",
       "description": "#735969",
       "category": "#974774",
-      "buttonText": "#673c55",
+      "buttonText": "#ffffff",
       "brand": "#735969"
     },
     "font": "anuphan",
@@ -1132,21 +1168,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-doll-cabinet",
-    "name": "ตู้ตุ๊กตา",
+    "name": "แกลเลอรีตุ๊กตา",
     "category": "cute",
     "themeId": "pink",
     "layout": {
+      "composition": "gallery",
       "header": "cover",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "dots",
-      "avatar": "circle"
+      "links": "list",
+      "button": "outline",
+      "decoration": "none",
+      "avatar": "square"
     },
     "palette": {
       "background": "#f7eeff",
       "gradient": "#e9d8f8",
       "surface": "#fdfaff",
-      "button": "#e9d8f8",
+      "button": "#7d4e8f",
       "name": "#53325e",
       "description": "#73587b",
       "category": "#7d4e8f",
@@ -1164,25 +1201,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-candy-pop",
-    "name": "แคนดี้ป๊อป",
+    "name": "โปสเตอร์แคนดี้",
     "category": "cute",
     "themeId": "pink",
     "layout": {
-      "header": "cover",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "frame",
-      "avatar": "circle"
+      "composition": "poster",
+      "header": "left",
+      "links": "list",
+      "button": "solid",
+      "decoration": "stripe",
+      "avatar": "square"
     },
     "palette": {
       "background": "#fff4ee",
       "gradient": "#f8decd",
       "surface": "#fffaf5",
-      "button": "#a25942",
+      "button": "#f8decd",
       "name": "#603a2b",
       "description": "#7e5e4d",
       "category": "#96523d",
-      "buttonText": "#ffffff",
+      "buttonText": "#603a2b",
       "brand": "#7e5e4d"
     },
     "font": "anuphan",
@@ -1200,21 +1238,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     "category": "cute",
     "themeId": "pink",
     "layout": {
+      "composition": "seal",
       "header": "badge",
       "links": "list",
-      "button": "solid",
-      "decoration": "stripe",
+      "button": "outline",
+      "decoration": "frame",
       "avatar": "circle"
     },
     "palette": {
       "background": "#fff3f6",
       "gradient": "#f5dfe5",
       "surface": "#fffafd",
-      "button": "#a44a67",
+      "button": "#a04864",
       "name": "#63384b",
       "description": "#7e5c6c",
       "category": "#a04864",
-      "buttonText": "#ffffff",
+      "buttonText": "#63384b",
       "brand": "#7e5c6c"
     },
     "font": "anuphan",
@@ -1228,21 +1267,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-flower-petals",
-    "name": "กลีบดอกไม้",
+    "name": "สวนกลีบดอกไม้",
     "category": "cute",
     "themeId": "pink",
     "layout": {
-      "header": "badge",
+      "composition": "botanical",
+      "header": "centered",
       "links": "list",
       "button": "outline",
-      "decoration": "none",
+      "decoration": "line",
       "avatar": "circle"
     },
     "palette": {
       "background": "#fcf2ff",
       "gradient": "#ecdff5",
       "surface": "#fffbff",
-      "button": "#935e9b",
+      "button": "#815288",
       "name": "#633a68",
       "description": "#775c7a",
       "category": "#815288",
@@ -1260,14 +1300,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-sugar-gems",
-    "name": "เพชรน้ำตาล",
+    "name": "ซุ้มเพชรน้ำตาล",
     "category": "cute",
     "themeId": "pink",
     "layout": {
-      "header": "badge",
-      "links": "grid",
+      "composition": "arch",
+      "header": "cover",
+      "links": "list",
       "button": "soft",
-      "decoration": "line",
+      "decoration": "frame",
       "avatar": "circle"
     },
     "palette": {
@@ -1292,25 +1333,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "cute-gift-cards",
-    "name": "การ์ดของขวัญ",
+    "name": "รางการ์ดของขวัญ",
     "category": "cute",
     "themeId": "pink",
     "layout": {
-      "header": "badge",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "dots",
+      "composition": "rail",
+      "header": "left",
+      "links": "list",
+      "button": "outline",
+      "decoration": "line",
       "avatar": "circle"
     },
     "palette": {
       "background": "#fff5f0",
       "gradient": "#f4ded2",
       "surface": "#fffaf8",
-      "button": "#a4604c",
+      "button": "#905443",
       "name": "#673e31",
       "description": "#785f53",
       "category": "#905443",
-      "buttonText": "#ffffff",
+      "buttonText": "#673e31",
       "brand": "#785f53"
     },
     "font": "anuphan",
@@ -1328,17 +1370,18 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     "category": "nature",
     "themeId": "garden",
     "layout": {
+      "composition": "botanical",
       "header": "centered",
       "links": "list",
       "button": "outline",
       "decoration": "line",
-      "avatar": "rounded"
+      "avatar": "circle"
     },
     "palette": {
       "background": "#fffaf0",
       "gradient": "#ece7d5",
       "surface": "#fffef8",
-      "button": "#718852",
+      "button": "#596d45",
       "name": "#35472c",
       "description": "#626b56",
       "category": "#596d45",
@@ -1355,22 +1398,89 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "nature-morning-garden",
-    "name": "สวนเช้า",
+    "id": "nature-greenhouse",
+    "name": "เรือนกระจก",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "centered",
+      "composition": "glass",
+      "header": "cover",
+      "links": "list",
+      "button": "soft",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#182a16",
+      "gradient": "#182a16",
+      "surface": "#182a16",
+      "button": "#edf3e9",
+      "name": "#ffffff",
+      "description": "#ffffff",
+      "category": "#ffffff",
+      "buttonText": "#203522",
+      "brand": "#ffffff"
+    },
+    "font": "anuphan",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "flowers"
+    }
+  },
+  {
+    "id": "nature-paper-fibers",
+    "name": "กระดาษเส้นใย",
+    "category": "nature",
+    "themeId": "garden",
+    "layout": {
+      "composition": "torn",
+      "header": "left",
+      "links": "list",
+      "button": "soft",
+      "decoration": "stripe",
+      "avatar": "square"
+    },
+    "palette": {
+      "background": "#f9f5ea",
+      "gradient": "#e9e2cf",
+      "surface": "#fffdf6",
+      "button": "#e9e2cf",
+      "name": "#473f2d",
+      "description": "#6a6453",
+      "category": "#6f6343",
+      "buttonText": "#473f2d",
+      "brand": "#6a6453"
+    },
+    "font": "anuphan",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "flowers"
+    }
+  },
+  {
+    "id": "nature-morning-garden",
+    "name": "ภาพสวนเช้า",
+    "category": "nature",
+    "themeId": "garden",
+    "layout": {
+      "composition": "portrait",
+      "header": "cover",
       "links": "list",
       "button": "solid",
-      "decoration": "line",
-      "avatar": "circle"
+      "decoration": "none",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#fffaf0",
       "gradient": "#eee8d8",
       "surface": "#fffef9",
-      "button": "#5b7448",
+      "button": "#566e44",
       "name": "#34452c",
       "description": "#616a57",
       "category": "#566e44",
@@ -1388,25 +1498,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-clay-pots",
-    "name": "กระถางดิน",
+    "name": "ป้ายกระถางดิน",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "centered",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "frame",
-      "avatar": "square"
+      "composition": "tag",
+      "header": "badge",
+      "links": "list",
+      "button": "solid",
+      "decoration": "line",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#f7efe4",
       "gradient": "#e4d2ba",
       "surface": "#fffaf1",
-      "button": "#e4d2ba",
+      "button": "#7f5235",
       "name": "#543b29",
       "description": "#675847",
       "category": "#7f5235",
-      "buttonText": "#543b29",
+      "buttonText": "#ffffff",
       "brand": "#675847"
     },
     "font": "anuphan",
@@ -1420,25 +1531,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-leaf-cards",
-    "name": "การ์ดใบไม้",
+    "name": "แกลเลอรีใบไม้",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "centered",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "stripe",
-      "avatar": "circle"
+      "composition": "gallery",
+      "header": "cover",
+      "links": "list",
+      "button": "outline",
+      "decoration": "none",
+      "avatar": "square"
     },
     "palette": {
       "background": "#f2f5e9",
       "gradient": "#dfe7cb",
       "surface": "#fcfff6",
-      "button": "#5b7142",
+      "button": "#566b3f",
       "name": "#344a2b",
       "description": "#5c684f",
       "category": "#566b3f",
-      "buttonText": "#ffffff",
+      "buttonText": "#344a2b",
       "brand": "#5c684f"
     },
     "font": "anuphan",
@@ -1452,25 +1564,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-craft-studio",
-    "name": "งานคราฟต์",
+    "name": "บทบันทึกงานคราฟต์",
     "category": "nature",
     "themeId": "garden",
     "layout": {
+      "composition": "editorial",
       "header": "left",
       "links": "list",
-      "button": "solid",
-      "decoration": "none",
-      "avatar": "rounded"
+      "button": "outline",
+      "decoration": "line",
+      "avatar": "circle"
     },
     "palette": {
       "background": "#f7efe2",
       "gradient": "#e6d8bf",
       "surface": "#fffaf2",
-      "button": "#87633e",
+      "button": "#7a5938",
       "name": "#4f3f2c",
       "description": "#665b4a",
       "category": "#7a5938",
-      "buttonText": "#ffffff",
+      "buttonText": "#4f3f2c",
       "brand": "#665b4a"
     },
     "font": "anuphan",
@@ -1483,54 +1596,23 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "nature-paper-fibers",
-    "name": "เส้นใยกระดาษ",
+    "id": "nature-wooden-desk",
+    "name": "คู่สีโต๊ะไม้",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "left",
+      "composition": "bicolor",
+      "header": "split",
       "links": "list",
       "button": "outline",
-      "decoration": "line",
+      "decoration": "stripe",
       "avatar": "square"
-    },
-    "palette": {
-      "background": "#f9f5ea",
-      "gradient": "#e9e2cf",
-      "surface": "#fffdf6",
-      "button": "#756847",
-      "name": "#473f2d",
-      "description": "#6a6453",
-      "category": "#6f6343",
-      "buttonText": "#473f2d",
-      "brand": "#6a6453"
-    },
-    "font": "anuphan",
-    "buttonRadius": "rounded",
-    "effects": {
-      "background": false,
-      "entrance": true,
-      "featured": false,
-      "stickers": "flowers"
-    }
-  },
-  {
-    "id": "nature-wooden-desk",
-    "name": "โต๊ะไม้",
-    "category": "nature",
-    "themeId": "garden",
-    "layout": {
-      "header": "left",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "dots",
-      "avatar": "circle"
     },
     "palette": {
       "background": "#f3eee5",
       "gradient": "#dfd1bd",
       "surface": "#fffbf4",
-      "button": "#dfd1bd",
+      "button": "#6f5534",
       "name": "#443725",
       "description": "#635848",
       "category": "#6f5534",
@@ -1548,25 +1630,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-pressed-notebook",
-    "name": "สมุดแห้ง",
+    "name": "สมุดใบไม้แห้ง",
     "category": "nature",
     "themeId": "garden",
     "layout": {
+      "composition": "notebook",
       "header": "left",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "frame",
-      "avatar": "rounded"
+      "links": "list",
+      "button": "outline",
+      "decoration": "line",
+      "avatar": "square"
     },
     "palette": {
       "background": "#f0f3e7",
       "gradient": "#d9e1c7",
       "surface": "#fcfff7",
-      "button": "#5f7548",
+      "button": "#53663f",
       "name": "#3d4d31",
       "description": "#5b6250",
       "category": "#53663f",
-      "buttonText": "#ffffff",
+      "buttonText": "#3d4d31",
       "brand": "#5b6250"
     },
     "font": "anuphan",
@@ -1580,25 +1663,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-leaf-pair",
-    "name": "ใบไม้ข้างชื่อ",
+    "name": "คอลลาจใบไม้",
     "category": "nature",
     "themeId": "garden",
     "layout": {
+      "composition": "collage",
       "header": "split",
-      "links": "list",
-      "button": "solid",
-      "decoration": "stripe",
-      "avatar": "square"
+      "links": "grid",
+      "button": "raised",
+      "decoration": "dots",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#f5f9ed",
       "gradient": "#e1eccb",
       "surface": "#fcfff8",
-      "button": "#567a41",
+      "button": "#e1eccb",
       "name": "#35542c",
       "description": "#5b6a56",
       "category": "#50713c",
-      "buttonText": "#ffffff",
+      "buttonText": "#35542c",
       "brand": "#5b6a56"
     },
     "font": "anuphan",
@@ -1612,21 +1696,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-grass-lines",
-    "name": "ก้านหญ้า",
+    "name": "รางก้านหญ้า",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "split",
+      "composition": "rail",
+      "header": "left",
       "links": "list",
       "button": "outline",
-      "decoration": "none",
+      "decoration": "line",
       "avatar": "circle"
     },
     "palette": {
       "background": "#faf8ed",
       "gradient": "#e9e5ce",
       "surface": "#fffef7",
-      "button": "#7a7540",
+      "button": "#6b6638",
       "name": "#4b482b",
       "description": "#67654d",
       "category": "#6b6638",
@@ -1644,21 +1729,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-garden-basket",
-    "name": "ตะกร้าสวน",
+    "name": "ขอบหยักตะกร้าสวน",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "split",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "line",
-      "avatar": "rounded"
+      "composition": "scallop",
+      "header": "centered",
+      "links": "list",
+      "button": "outline",
+      "decoration": "frame",
+      "avatar": "circle"
     },
     "palette": {
       "background": "#f2f5ed",
       "gradient": "#dfe8d5",
       "surface": "#fcfff9",
-      "button": "#dfe8d5",
+      "button": "#576d4b",
       "name": "#384d30",
       "description": "#5b6a56",
       "category": "#576d4b",
@@ -1676,21 +1762,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-wood-layers",
-    "name": "แผ่นไม้ซ้อน",
+    "name": "ขั้นไม้ซ้อน",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "split",
-      "links": "grid",
+      "composition": "staircase",
+      "header": "left",
+      "links": "list",
       "button": "raised",
       "decoration": "dots",
-      "avatar": "square"
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#f8efe5",
       "gradient": "#e9d7c1",
       "surface": "#fffaf3",
-      "button": "#926644",
+      "button": "#7c573a",
       "name": "#5c422d",
       "description": "#6b5b47",
       "category": "#7c573a",
@@ -1708,13 +1795,14 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-garden-veranda",
-    "name": "ระเบียงสวน",
+    "name": "ซุ้มระเบียงสวน",
     "category": "nature",
     "themeId": "garden",
     "layout": {
+      "composition": "arch",
       "header": "cover",
       "links": "list",
-      "button": "solid",
+      "button": "soft",
       "decoration": "frame",
       "avatar": "circle"
     },
@@ -1722,11 +1810,11 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "background": "#f7fbef",
       "gradient": "#e3eed0",
       "surface": "#fdfff7",
-      "button": "#56783f",
+      "button": "#e3eed0",
       "name": "#38562e",
       "description": "#606d54",
       "category": "#52723c",
-      "buttonText": "#ffffff",
+      "buttonText": "#38562e",
       "brand": "#606d54"
     },
     "font": "anuphan",
@@ -1740,21 +1828,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-linen-frame",
-    "name": "กรอบลินิน",
+    "name": "หน้าต่างลินิน",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "cover",
+      "composition": "window",
+      "header": "left",
       "links": "list",
-      "button": "outline",
-      "decoration": "stripe",
+      "button": "soft",
+      "decoration": "frame",
       "avatar": "rounded"
     },
     "palette": {
       "background": "#faf6ec",
       "gradient": "#eae1ce",
       "surface": "#fffdf8",
-      "button": "#7c7051",
+      "button": "#eae1ce",
       "name": "#4f4836",
       "description": "#6b6454",
       "category": "#6d6247",
@@ -1772,15 +1861,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-flower-shelf",
-    "name": "ชั้นดอกไม้",
+    "name": "ช่องชั้นดอกไม้",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "cover",
+      "composition": "window-grid",
+      "header": "centered",
       "links": "grid",
       "button": "soft",
-      "decoration": "none",
-      "avatar": "square"
+      "decoration": "frame",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#fcf8ed",
@@ -1804,25 +1894,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-forest-postcard",
-    "name": "โปสต์การ์ดป่า",
+    "name": "โปสเตอร์ป่า",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "cover",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "line",
-      "avatar": "circle"
+      "composition": "poster",
+      "header": "left",
+      "links": "list",
+      "button": "solid",
+      "decoration": "stripe",
+      "avatar": "square"
     },
     "palette": {
       "background": "#eef5ed",
       "gradient": "#d1e2cc",
       "surface": "#fafff8",
-      "button": "#4d7048",
+      "button": "#d1e2cc",
       "name": "#2f492b",
       "description": "#536450",
       "category": "#496a44",
-      "buttonText": "#ffffff",
+      "buttonText": "#2f492b",
       "brand": "#536450"
     },
     "font": "anuphan",
@@ -1840,21 +1931,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     "category": "nature",
     "themeId": "garden",
     "layout": {
+      "composition": "seal",
       "header": "badge",
       "links": "list",
-      "button": "solid",
-      "decoration": "dots",
-      "avatar": "rounded"
+      "button": "outline",
+      "decoration": "frame",
+      "avatar": "circle"
     },
     "palette": {
       "background": "#f3f7e9",
       "gradient": "#dfebca",
       "surface": "#fcfff7",
-      "button": "#657d40",
+      "button": "#586d38",
       "name": "#3c4d29",
       "description": "#5d6a51",
       "category": "#586d38",
-      "buttonText": "#ffffff",
+      "buttonText": "#3c4d29",
       "brand": "#5d6a51"
     },
     "font": "anuphan",
@@ -1868,25 +1960,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "nature-little-wreath",
-    "name": "พวงดอกเล็ก",
+    "name": "ริบบิ้นพวงดอกไม้",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "badge",
+      "composition": "ribbon",
+      "header": "centered",
       "links": "list",
-      "button": "outline",
-      "decoration": "frame",
-      "avatar": "square"
+      "button": "solid",
+      "decoration": "stripe",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#fbf6eb",
       "gradient": "#eee1c7",
       "surface": "#fffdf7",
-      "button": "#816d42",
+      "button": "#74623b",
       "name": "#55472c",
       "description": "#6b614d",
       "category": "#74623b",
-      "buttonText": "#55472c",
+      "buttonText": "#ffffff",
       "brand": "#6b614d"
     },
     "font": "anuphan",
@@ -1899,54 +1992,23 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "nature-greenhouse",
-    "name": "เรือนกระจก",
-    "category": "nature",
-    "themeId": "garden",
-    "layout": {
-      "header": "badge",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "stripe",
-      "avatar": "circle"
-    },
-    "palette": {
-      "background": "#edf6f1",
-      "gradient": "#cfe5d9",
-      "surface": "#f8fffb",
-      "button": "#cfe5d9",
-      "name": "#2c5042",
-      "description": "#51685c",
-      "category": "#426a57",
-      "buttonText": "#2c5042",
-      "brand": "#51685c"
-    },
-    "font": "anuphan",
-    "buttonRadius": "rounded",
-    "effects": {
-      "background": false,
-      "entrance": true,
-      "featured": false,
-      "stickers": "flowers"
-    }
-  },
-  {
     "id": "nature-herbal-tea",
-    "name": "การ์ดชาสมุนไพร",
+    "name": "ตั๋วชาสมุนไพร",
     "category": "nature",
     "themeId": "garden",
     "layout": {
-      "header": "badge",
-      "links": "grid",
+      "composition": "ticket",
+      "header": "split",
+      "links": "list",
       "button": "raised",
-      "decoration": "none",
-      "avatar": "rounded"
+      "decoration": "line",
+      "avatar": "square"
     },
     "palette": {
       "background": "#f5f3e6",
       "gradient": "#e2dfc3",
       "surface": "#fffdf5",
-      "button": "#75763f",
+      "button": "#636436",
       "name": "#484927",
       "description": "#5e614a",
       "category": "#636436",
@@ -1964,10 +2026,11 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-gold-seal",
-    "name": "ตราทอง",
+    "name": "ตราประทับทอง",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
+      "composition": "seal",
       "header": "badge",
       "links": "list",
       "button": "outline",
@@ -1995,15 +2058,82 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "luxury-emerald-room",
-    "name": "ห้องมรกต",
+    "id": "luxury-silver-signature",
+    "name": "ป้ายลายเซ็นเงิน",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "centered",
+      "composition": "tag",
+      "header": "badge",
       "links": "list",
       "button": "solid",
-      "decoration": "frame",
+      "decoration": "line",
+      "avatar": "square"
+    },
+    "palette": {
+      "background": "#faf5ea",
+      "gradient": "#ece4d4",
+      "surface": "#fffdf7",
+      "button": "#2d2c26",
+      "name": "#292822",
+      "description": "#615b50",
+      "category": "#2d2c26",
+      "buttonText": "#ffffff",
+      "brand": "#615b50"
+    },
+    "font": "prompt",
+    "buttonRadius": "square",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    }
+  },
+  {
+    "id": "luxury-black-gallery",
+    "name": "แกลเลอรีขาวดำ",
+    "category": "luxury",
+    "themeId": "dark",
+    "layout": {
+      "composition": "gallery",
+      "header": "cover",
+      "links": "list",
+      "button": "outline",
+      "decoration": "none",
+      "avatar": "square"
+    },
+    "palette": {
+      "background": "#ffffff",
+      "gradient": "#f1f0ed",
+      "surface": "#ffffff",
+      "button": "#343434",
+      "name": "#171717",
+      "description": "#575757",
+      "category": "#343434",
+      "buttonText": "#171717",
+      "brand": "#575757"
+    },
+    "font": "prompt",
+    "buttonRadius": "square",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    }
+  },
+  {
+    "id": "luxury-emerald-room",
+    "name": "ภาพห้องมรกต",
+    "category": "luxury",
+    "themeId": "dark",
+    "layout": {
+      "composition": "portrait",
+      "header": "cover",
+      "links": "list",
+      "button": "solid",
+      "decoration": "none",
       "avatar": "square"
     },
     "palette": {
@@ -2014,7 +2144,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "name": "#eef5e7",
       "description": "#b4c4b5",
       "category": "#aecd98",
-      "buttonText": "#18201b",
+      "buttonText": "#000000",
       "brand": "#b4c4b5"
     },
     "font": "prompt",
@@ -2028,14 +2158,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-gold-lines",
-    "name": "เส้นทอง",
+    "name": "บทบรรณาธิการทอง",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "centered",
+      "composition": "editorial",
+      "header": "left",
       "links": "list",
       "button": "outline",
-      "decoration": "stripe",
+      "decoration": "line",
       "avatar": "square"
     },
     "palette": {
@@ -2060,14 +2191,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-gem-box",
-    "name": "กล่องอัญมณี",
+    "name": "ช่องกล่องอัญมณี",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
+      "composition": "window-grid",
       "header": "centered",
       "links": "grid",
       "button": "soft",
-      "decoration": "none",
+      "decoration": "frame",
       "avatar": "square"
     },
     "palette": {
@@ -2092,14 +2224,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-velvet-cards",
-    "name": "การ์ดกำมะหยี่",
+    "name": "ขั้นกำมะหยี่",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "centered",
-      "links": "grid",
+      "composition": "staircase",
+      "header": "left",
+      "links": "list",
       "button": "raised",
-      "decoration": "line",
+      "decoration": "dots",
       "avatar": "square"
     },
     "palette": {
@@ -2110,7 +2243,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "name": "#fcf0f8",
       "description": "#bda4b8",
       "category": "#d1a4c1",
-      "buttonText": "#18201b",
+      "buttonText": "#000000",
       "brand": "#bda4b8"
     },
     "font": "prompt",
@@ -2124,25 +2257,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-black-studio",
-    "name": "แบล็กสตูดิโอ",
+    "name": "โปสเตอร์แบล็กสตูดิโอ",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
+      "composition": "poster",
       "header": "left",
       "links": "list",
       "button": "solid",
-      "decoration": "dots",
+      "decoration": "stripe",
       "avatar": "square"
     },
     "palette": {
       "background": "#141519",
       "gradient": "#2b2e35",
       "surface": "#1e2026",
-      "button": "#c5bdab",
+      "button": "#2b2e35",
       "name": "#f4f1e9",
       "description": "#aca99f",
       "category": "#c5bdab",
-      "buttonText": "#18201b",
+      "buttonText": "#f4f1e9",
       "brand": "#aca99f"
     },
     "font": "prompt",
@@ -2155,46 +2289,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "luxury-silver-signature",
-    "name": "ลายเซ็นเงิน",
+    "id": "luxury-wine-grid",
+    "name": "คู่สีไวน์",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "left",
+      "composition": "bicolor",
+      "header": "split",
       "links": "list",
       "button": "outline",
-      "decoration": "frame",
-      "avatar": "square"
-    },
-    "palette": {
-      "background": "#161b21",
-      "gradient": "#2b3440",
-      "surface": "#202832",
-      "button": "#bcc9d5",
-      "name": "#edf2f7",
-      "description": "#a1b0be",
-      "category": "#bcc9d5",
-      "buttonText": "#edf2f7",
-      "brand": "#a1b0be"
-    },
-    "font": "prompt",
-    "buttonRadius": "square",
-    "effects": {
-      "background": false,
-      "entrance": true,
-      "featured": false,
-      "stickers": "none"
-    }
-  },
-  {
-    "id": "luxury-wine-grid",
-    "name": "ตารางไวน์",
-    "category": "luxury",
-    "themeId": "dark",
-    "layout": {
-      "header": "left",
-      "links": "grid",
-      "button": "soft",
       "decoration": "stripe",
       "avatar": "square"
     },
@@ -2202,7 +2305,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "background": "#261319",
       "gradient": "#48212c",
       "surface": "#341b23",
-      "button": "#48212c",
+      "button": "#d3a0ab",
       "name": "#fcf0f1",
       "description": "#c0a0a7",
       "category": "#d3a0ab",
@@ -2220,25 +2323,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-ink-cards",
-    "name": "การ์ดน้ำหมึก",
+    "name": "คอลลาจน้ำหมึก",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "left",
+      "composition": "collage",
+      "header": "split",
       "links": "grid",
       "button": "raised",
-      "decoration": "none",
+      "decoration": "dots",
       "avatar": "square"
     },
     "palette": {
       "background": "#111a27",
       "gradient": "#253249",
       "surface": "#1b2738",
-      "button": "#b1bed4",
+      "button": "#253249",
       "name": "#edf2fa",
       "description": "#9daec5",
       "category": "#b1bed4",
-      "buttonText": "#18201b",
+      "buttonText": "#edf2fa",
       "brand": "#9daec5"
     },
     "font": "prompt",
@@ -2252,13 +2356,14 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-paired-monogram",
-    "name": "โมโนแกรมคู่",
+    "name": "รางโมโนแกรม",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "split",
+      "composition": "rail",
+      "header": "left",
       "links": "list",
-      "button": "solid",
+      "button": "outline",
       "decoration": "line",
       "avatar": "square"
     },
@@ -2270,7 +2375,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "name": "#f2f1e7",
       "description": "#acaf9f",
       "category": "#c1bc9f",
-      "buttonText": "#18201b",
+      "buttonText": "#f2f1e7",
       "brand": "#acaf9f"
     },
     "font": "prompt",
@@ -2284,14 +2389,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-champagne-lines",
-    "name": "เส้นแชมเปญ",
+    "name": "ริบบิ้นแชมเปญ",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "split",
+      "composition": "ribbon",
+      "header": "centered",
       "links": "list",
-      "button": "outline",
-      "decoration": "dots",
+      "button": "solid",
+      "decoration": "stripe",
       "avatar": "square"
     },
     "palette": {
@@ -2302,7 +2408,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "name": "#fcf5e7",
       "description": "#bdb19b",
       "category": "#cfb584",
-      "buttonText": "#fcf5e7",
+      "buttonText": "#000000",
       "brand": "#bdb19b"
     },
     "font": "prompt",
@@ -2316,13 +2422,14 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-pearl-box",
-    "name": "กล่องไข่มุก",
+    "name": "ขอบหยักไข่มุก",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "split",
-      "links": "grid",
-      "button": "soft",
+      "composition": "scallop",
+      "header": "centered",
+      "links": "list",
+      "button": "outline",
       "decoration": "frame",
       "avatar": "square"
     },
@@ -2330,7 +2437,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "background": "#f6f1e8",
       "gradient": "#e7dcc9",
       "surface": "#fffdf8",
-      "button": "#e7dcc9",
+      "button": "#725d40",
       "name": "#403628",
       "description": "#6d604e",
       "category": "#725d40",
@@ -2348,13 +2455,14 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-marble-shelf",
-    "name": "ชั้นหินอ่อน",
+    "name": "กระดาษฉีกลายหินอ่อน",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "split",
-      "links": "grid",
-      "button": "raised",
+      "composition": "torn",
+      "header": "left",
+      "links": "list",
+      "button": "soft",
       "decoration": "stripe",
       "avatar": "square"
     },
@@ -2362,11 +2470,11 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "background": "#eae7e2",
       "gradient": "#d5cec2",
       "surface": "#f8f6f2",
-      "button": "#625c50",
+      "button": "#d5cec2",
       "name": "#312e28",
       "description": "#5d584f",
       "category": "#5d574c",
-      "buttonText": "#ffffff",
+      "buttonText": "#312e28",
       "brand": "#5d584f"
     },
     "font": "prompt",
@@ -2379,54 +2487,23 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "luxury-black-gallery",
-    "name": "แกลเลอรีดำ",
-    "category": "luxury",
-    "themeId": "dark",
-    "layout": {
-      "header": "cover",
-      "links": "list",
-      "button": "solid",
-      "decoration": "none",
-      "avatar": "square"
-    },
-    "palette": {
-      "background": "#111214",
-      "gradient": "#26282d",
-      "surface": "#1b1d21",
-      "button": "#bcae93",
-      "name": "#f6f1e8",
-      "description": "#aaa293",
-      "category": "#bcae93",
-      "buttonText": "#18201b",
-      "brand": "#aaa293"
-    },
-    "font": "prompt",
-    "buttonRadius": "square",
-    "effects": {
-      "background": false,
-      "entrance": true,
-      "featured": false,
-      "stickers": "none"
-    }
-  },
-  {
     "id": "luxury-brass-frame",
-    "name": "กรอบทองเหลือง",
+    "name": "ซุ้มทองเหลือง",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
+      "composition": "arch",
       "header": "cover",
       "links": "list",
-      "button": "outline",
-      "decoration": "line",
+      "button": "soft",
+      "decoration": "frame",
       "avatar": "square"
     },
     "palette": {
       "background": "#1b1915",
       "gradient": "#393124",
       "surface": "#27221b",
-      "button": "#c6a36e",
+      "button": "#393124",
       "name": "#faf1e2",
       "description": "#b8ab94",
       "category": "#c6a36e",
@@ -2444,14 +2521,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-jewel-cabinet",
-    "name": "ตู้เครื่องประดับ",
+    "name": "หน้าต่างเครื่องประดับ",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "cover",
-      "links": "grid",
+      "composition": "window",
+      "header": "left",
+      "links": "list",
       "button": "soft",
-      "decoration": "dots",
+      "decoration": "frame",
       "avatar": "square"
     },
     "palette": {
@@ -2476,25 +2554,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-premium-album",
-    "name": "อัลบั้มพรีเมียม",
+    "name": "กระจกอัลบั้มพรีเมียม",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
+      "composition": "glass",
       "header": "cover",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "frame",
+      "links": "list",
+      "button": "soft",
+      "decoration": "none",
       "avatar": "square"
     },
     "palette": {
       "background": "#1d1825",
       "gradient": "#383045",
       "surface": "#292233",
-      "button": "#bdb0d1",
+      "button": "#383045",
       "name": "#f5effb",
       "description": "#aaa0b8",
       "category": "#bdb0d1",
-      "buttonText": "#18201b",
+      "buttonText": "#f5effb",
       "brand": "#aaa0b8"
     },
     "font": "prompt",
@@ -2508,14 +2587,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-premium-seal",
-    "name": "ตราร้านพรีเมียม",
+    "name": "สมุดพรีเมียม",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "badge",
+      "composition": "notebook",
+      "header": "left",
       "links": "list",
-      "button": "solid",
-      "decoration": "stripe",
+      "button": "outline",
+      "decoration": "line",
       "avatar": "square"
     },
     "palette": {
@@ -2526,7 +2606,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "name": "#f2f6e9",
       "description": "#a6b3a0",
       "category": "#b6c5a4",
-      "buttonText": "#18201b",
+      "buttonText": "#f2f6e9",
       "brand": "#a6b3a0"
     },
     "font": "prompt",
@@ -2540,13 +2620,14 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-onyx-seal",
-    "name": "ตรานิล",
+    "name": "สวนราตรีนิล",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "badge",
-      "links": "grid",
-      "button": "soft",
+      "composition": "botanical",
+      "header": "centered",
+      "links": "list",
+      "button": "outline",
       "decoration": "line",
       "avatar": "square"
     },
@@ -2554,7 +2635,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "background": "#15171c",
       "gradient": "#292e37",
       "surface": "#20252d",
-      "button": "#292e37",
+      "button": "#b9c6da",
       "name": "#f0f4fb",
       "description": "#a0adbf",
       "category": "#b9c6da",
@@ -2572,14 +2653,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "luxury-platinum-cards",
-    "name": "การ์ดแพลทินัม",
+    "name": "ตั๋วแพลทินัม",
     "category": "luxury",
     "themeId": "dark",
     "layout": {
-      "header": "badge",
-      "links": "grid",
+      "composition": "ticket",
+      "header": "split",
+      "links": "list",
       "button": "raised",
-      "decoration": "dots",
+      "decoration": "line",
       "avatar": "square"
     },
     "palette": {
@@ -2590,7 +2672,7 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "name": "#f4f5f7",
       "description": "#b0b4bc",
       "category": "#c3c8d1",
-      "buttonText": "#18201b",
+      "buttonText": "#000000",
       "brand": "#b0b4bc"
     },
     "font": "prompt",
@@ -2604,24 +2686,25 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-yellow-pop",
-    "name": "เหลืองป๊อป",
+    "name": "โปสเตอร์เหลืองป๊อป",
     "category": "creative",
     "themeId": "shop",
     "layout": {
+      "composition": "poster",
       "header": "left",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "line",
-      "avatar": "rounded"
+      "links": "list",
+      "button": "solid",
+      "decoration": "stripe",
+      "avatar": "square"
     },
     "palette": {
       "background": "#fff09d",
       "gradient": "#ffe15d",
       "surface": "#fff7c8",
-      "button": "#f0ce37",
+      "button": "#ff6a48",
       "name": "#242522",
       "description": "#6e643f",
-      "category": "#72621a",
+      "category": "#242522",
       "buttonText": "#242522",
       "brand": "#6e643f"
     },
@@ -2635,26 +2718,93 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "creative-pop-sunday",
-    "name": "ป๊อปซันเดย์",
+    "id": "creative-play-blocks",
+    "name": "หน้าต่างบล็อกสี",
     "category": "creative",
     "themeId": "shop",
     "layout": {
+      "composition": "window-grid",
       "header": "centered",
+      "links": "grid",
+      "button": "soft",
+      "decoration": "frame",
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#fff9e6",
+      "gradient": "#b18df4",
+      "surface": "#d9f9b9",
+      "button": "#d2bfff",
+      "name": "#1d1b21",
+      "description": "#1d1b21",
+      "category": "#1d1b21",
+      "buttonText": "#1d1b21",
+      "brand": "#1d1b21"
+    },
+    "font": "prompt",
+    "buttonRadius": "square",
+    "effects": {
+      "background": true,
+      "entrance": true,
+      "featured": false,
+      "stickers": "sparkles"
+    }
+  },
+  {
+    "id": "creative-retro-cover",
+    "name": "ตั๋วเรโทร",
+    "category": "creative",
+    "themeId": "shop",
+    "layout": {
+      "composition": "ticket",
+      "header": "split",
       "links": "list",
-      "button": "solid",
+      "button": "raised",
+      "decoration": "line",
+      "avatar": "square"
+    },
+    "palette": {
+      "background": "#8fd3f4",
+      "gradient": "#8fd3f4",
+      "surface": "#ff7458",
+      "button": "#fff9e6",
+      "name": "#171717",
+      "description": "#171717",
+      "category": "#171717",
+      "buttonText": "#171717",
+      "brand": "#171717"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": true,
+      "entrance": true,
+      "featured": false,
+      "stickers": "sparkles"
+    }
+  },
+  {
+    "id": "creative-pop-sunday",
+    "name": "คู่สีป๊อปซันเดย์",
+    "category": "creative",
+    "themeId": "shop",
+    "layout": {
+      "composition": "bicolor",
+      "header": "split",
+      "links": "list",
+      "button": "outline",
       "decoration": "stripe",
-      "avatar": "circle"
+      "avatar": "square"
     },
     "palette": {
       "background": "#fff4c4",
       "gradient": "#ffe484",
       "surface": "#fffbe5",
-      "button": "#c13b1b",
+      "button": "#b7381a",
       "name": "#2d2218",
       "description": "#795c38",
       "category": "#b7381a",
-      "buttonText": "#ffffff",
+      "buttonText": "#2d2218",
       "brand": "#795c38"
     },
     "font": "prompt",
@@ -2668,15 +2818,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-vivid-lines",
-    "name": "เส้นสีจัด",
+    "name": "ตัวอักษรสีจัด",
     "category": "creative",
     "themeId": "shop",
     "layout": {
-      "header": "centered",
+      "composition": "editorial",
+      "header": "left",
       "links": "list",
       "button": "outline",
-      "decoration": "none",
-      "avatar": "rounded"
+      "decoration": "line",
+      "avatar": "circle"
     },
     "palette": {
       "background": "#f2efff",
@@ -2699,54 +2850,23 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "creative-play-blocks",
-    "name": "บล็อกขี้เล่น",
-    "category": "creative",
-    "themeId": "shop",
-    "layout": {
-      "header": "centered",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "line",
-      "avatar": "square"
-    },
-    "palette": {
-      "background": "#edfff8",
-      "gradient": "#c9f4e0",
-      "surface": "#f7fffc",
-      "button": "#c9f4e0",
-      "name": "#173c33",
-      "description": "#4b6f64",
-      "category": "#206b59",
-      "buttonText": "#173c33",
-      "brand": "#4b6f64"
-    },
-    "font": "prompt",
-    "buttonRadius": "square",
-    "effects": {
-      "background": true,
-      "entrance": true,
-      "featured": false,
-      "stickers": "sparkles"
-    }
-  },
-  {
     "id": "creative-stacked-posters",
-    "name": "โปสเตอร์ซ้อน",
+    "name": "ขั้นโปสเตอร์ซ้อน",
     "category": "creative",
     "themeId": "shop",
     "layout": {
-      "header": "centered",
-      "links": "grid",
+      "composition": "staircase",
+      "header": "left",
+      "links": "list",
       "button": "raised",
       "decoration": "dots",
-      "avatar": "circle"
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#fff0ee",
       "gradient": "#ffc9bd",
       "surface": "#fff8f6",
-      "button": "#b94637",
+      "button": "#9d3c2f",
       "name": "#48291f",
       "description": "#7a5446",
       "category": "#9d3c2f",
@@ -2764,21 +2884,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-yellow-studio",
-    "name": "สตูดิโอเหลือง",
+    "name": "รางสตูดิโอเหลือง",
     "category": "creative",
     "themeId": "shop",
     "layout": {
+      "composition": "rail",
       "header": "left",
       "links": "list",
-      "button": "solid",
-      "decoration": "frame",
-      "avatar": "rounded"
+      "button": "outline",
+      "decoration": "line",
+      "avatar": "circle"
     },
     "palette": {
       "background": "#fff1a1",
       "gradient": "#ffdc4e",
       "surface": "#fff8d6",
-      "button": "#e9c62d",
+      "button": "#6f5e15",
       "name": "#242522",
       "description": "#686244",
       "category": "#6f5e15",
@@ -2796,21 +2917,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-marker-notes",
-    "name": "โน้ตปากกา",
+    "name": "สมุดปากกามาร์กเกอร์",
     "category": "creative",
     "themeId": "shop",
     "layout": {
+      "composition": "notebook",
       "header": "left",
       "links": "list",
       "button": "outline",
-      "decoration": "stripe",
+      "decoration": "line",
       "avatar": "square"
     },
     "palette": {
       "background": "#f3f4ff",
       "gradient": "#d6ddff",
       "surface": "#fafbff",
-      "button": "#4860aa",
+      "button": "#465ea6",
       "name": "#283358",
       "description": "#57627c",
       "category": "#465ea6",
@@ -2828,15 +2950,16 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-collage-grid",
-    "name": "ตารางคอลลาจ",
+    "name": "คอลลาจสีสนุก",
     "category": "creative",
     "themeId": "shop",
     "layout": {
-      "header": "left",
+      "composition": "collage",
+      "header": "split",
       "links": "grid",
-      "button": "soft",
-      "decoration": "none",
-      "avatar": "circle"
+      "button": "raised",
+      "decoration": "dots",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#fff4ee",
@@ -2860,21 +2983,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-blue-pair",
-    "name": "คู่สีฟ้า",
+    "name": "ภาพเด่นสีฟ้า",
     "category": "creative",
     "themeId": "shop",
     "layout": {
-      "header": "split",
+      "composition": "portrait",
+      "header": "cover",
       "links": "list",
       "button": "solid",
-      "decoration": "dots",
-      "avatar": "square"
+      "decoration": "none",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#e9f7ff",
       "gradient": "#bce3ff",
       "surface": "#f4fbff",
-      "button": "#2869ac",
+      "button": "#2664a3",
       "name": "#193c65",
       "description": "#4d637a",
       "category": "#2664a3",
@@ -2892,21 +3016,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-ink-frame",
-    "name": "กรอบหมึก",
+    "name": "กระดาษฉีกกรอบหมึก",
     "category": "creative",
     "themeId": "shop",
     "layout": {
-      "header": "split",
+      "composition": "torn",
+      "header": "left",
       "links": "list",
-      "button": "outline",
-      "decoration": "frame",
-      "avatar": "circle"
+      "button": "soft",
+      "decoration": "stripe",
+      "avatar": "square"
     },
     "palette": {
       "background": "#fff3ec",
       "gradient": "#f5c7a2",
       "surface": "#fffbf7",
-      "button": "#914b28",
+      "button": "#f5c7a2",
       "name": "#4c2d1a",
       "description": "#6a5341",
       "category": "#8a4726",
@@ -2924,14 +3049,15 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-comic-panels",
-    "name": "ช่องคอมิก",
+    "name": "หน้าต่างคอมิก",
     "category": "creative",
     "themeId": "shop",
     "layout": {
-      "header": "split",
-      "links": "grid",
+      "composition": "window",
+      "header": "left",
+      "links": "list",
       "button": "soft",
-      "decoration": "stripe",
+      "decoration": "frame",
       "avatar": "rounded"
     },
     "palette": {
@@ -2956,25 +3082,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-neon-blocks",
-    "name": "บล็อกนีออน",
+    "name": "กระจกนีออน",
     "category": "creative",
     "themeId": "shop",
     "layout": {
-      "header": "split",
-      "links": "grid",
-      "button": "raised",
+      "composition": "glass",
+      "header": "cover",
+      "links": "list",
+      "button": "soft",
       "decoration": "none",
-      "avatar": "square"
+      "avatar": "circle"
     },
     "palette": {
       "background": "#e8fbf2",
       "gradient": "#a9edcc",
       "surface": "#f4fff9",
-      "button": "#225c42",
+      "button": "#a9edcc",
       "name": "#1d3a2b",
       "description": "#4a6557",
       "category": "#225c42",
-      "buttonText": "#ffffff",
+      "buttonText": "#1d3a2b",
       "brand": "#4a6557"
     },
     "font": "prompt",
@@ -2987,54 +3114,23 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     }
   },
   {
-    "id": "creative-retro-cover",
-    "name": "หน้าปกเรโทร",
-    "category": "creative",
-    "themeId": "shop",
-    "layout": {
-      "header": "cover",
-      "links": "list",
-      "button": "solid",
-      "decoration": "line",
-      "avatar": "circle"
-    },
-    "palette": {
-      "background": "#fff0c8",
-      "gradient": "#edcb6e",
-      "surface": "#fffae8",
-      "button": "#a3592b",
-      "name": "#493016",
-      "description": "#6a5236",
-      "category": "#824722",
-      "buttonText": "#ffffff",
-      "brand": "#6a5236"
-    },
-    "font": "prompt",
-    "buttonRadius": "square",
-    "effects": {
-      "background": true,
-      "entrance": true,
-      "featured": false,
-      "stickers": "sparkles"
-    }
-  },
-  {
     "id": "creative-fun-frame",
-    "name": "เฟรมสีสนุก",
+    "name": "ซุ้มสีสนุก",
     "category": "creative",
     "themeId": "shop",
     "layout": {
+      "composition": "arch",
       "header": "cover",
       "links": "list",
-      "button": "outline",
-      "decoration": "dots",
-      "avatar": "rounded"
+      "button": "soft",
+      "decoration": "frame",
+      "avatar": "circle"
     },
     "palette": {
       "background": "#ffeaf0",
       "gradient": "#f7b8d0",
       "surface": "#fff5f8",
-      "button": "#aa356e",
+      "button": "#f7b8d0",
       "name": "#57223d",
       "description": "#71465c",
       "category": "#912d5e",
@@ -3052,21 +3148,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-color-cabinet",
-    "name": "ตู้สีสด",
+    "name": "แกลเลอรีสีสด",
     "category": "creative",
     "themeId": "shop",
     "layout": {
+      "composition": "gallery",
       "header": "cover",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "frame",
+      "links": "list",
+      "button": "outline",
+      "decoration": "none",
       "avatar": "square"
     },
     "palette": {
       "background": "#e8f5ff",
       "gradient": "#b6d7f4",
       "surface": "#f6fbff",
-      "button": "#b6d7f4",
+      "button": "#385e83",
       "name": "#254360",
       "description": "#4a5c6d",
       "category": "#385e83",
@@ -3084,25 +3181,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-modern-layers",
-    "name": "ปกซ้อนยุคใหม่",
+    "name": "ขอบหยักยุคใหม่",
     "category": "creative",
     "themeId": "shop",
     "layout": {
-      "header": "cover",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "stripe",
+      "composition": "scallop",
+      "header": "centered",
+      "links": "list",
+      "button": "outline",
+      "decoration": "frame",
       "avatar": "circle"
     },
     "palette": {
       "background": "#f2f1e9",
       "gradient": "#d7d49a",
       "surface": "#fffef6",
-      "button": "#6f7128",
+      "button": "#5c5d21",
       "name": "#393b19",
       "description": "#595a3b",
       "category": "#5c5d21",
-      "buttonText": "#ffffff",
+      "buttonText": "#393b19",
       "brand": "#595a3b"
     },
     "font": "prompt",
@@ -3120,21 +3218,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
     "category": "creative",
     "themeId": "shop",
     "layout": {
+      "composition": "seal",
       "header": "badge",
       "links": "list",
-      "button": "solid",
-      "decoration": "none",
-      "avatar": "rounded"
+      "button": "outline",
+      "decoration": "frame",
+      "avatar": "circle"
     },
     "palette": {
       "background": "#fff0e5",
       "gradient": "#f6b890",
       "surface": "#fff8f1",
-      "button": "#b54c1f",
+      "button": "#883917",
       "name": "#5c301b",
       "description": "#654b39",
       "category": "#883917",
-      "buttonText": "#ffffff",
+      "buttonText": "#5c301b",
       "brand": "#654b39"
     },
     "font": "prompt",
@@ -3148,21 +3247,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-pop-ring",
-    "name": "วงแหวนป๊อป",
+    "name": "สวนวงแหวนป๊อป",
     "category": "creative",
     "themeId": "shop",
     "layout": {
-      "header": "badge",
+      "composition": "botanical",
+      "header": "centered",
       "links": "list",
       "button": "outline",
       "decoration": "line",
-      "avatar": "square"
+      "avatar": "circle"
     },
     "palette": {
       "background": "#edf5ff",
       "gradient": "#b5d3fa",
       "surface": "#f7fbff",
-      "button": "#356bb3",
+      "button": "#2c5894",
       "name": "#233e68",
       "description": "#475a70",
       "category": "#2c5894",
@@ -3180,25 +3280,26 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-color-patches",
-    "name": "แพตช์หลากสี",
+    "name": "ริบบิ้นแพตช์สี",
     "category": "creative",
     "themeId": "shop",
     "layout": {
-      "header": "badge",
-      "links": "grid",
-      "button": "soft",
-      "decoration": "dots",
-      "avatar": "circle"
+      "composition": "ribbon",
+      "header": "centered",
+      "links": "list",
+      "button": "solid",
+      "decoration": "stripe",
+      "avatar": "rounded"
     },
     "palette": {
       "background": "#f5edff",
       "gradient": "#d5bafb",
       "surface": "#fcf8ff",
-      "button": "#d5bafb",
+      "button": "#6b3c96",
       "name": "#47285e",
       "description": "#60476f",
       "category": "#6b3c96",
-      "buttonText": "#47285e",
+      "buttonText": "#ffffff",
       "brand": "#60476f"
     },
     "font": "prompt",
@@ -3212,21 +3313,22 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
   },
   {
     "id": "creative-contrast-cards",
-    "name": "การ์ดสีตัด",
+    "name": "ป้ายสีตัด",
     "category": "creative",
     "themeId": "shop",
     "layout": {
+      "composition": "tag",
       "header": "badge",
-      "links": "grid",
-      "button": "raised",
-      "decoration": "frame",
+      "links": "list",
+      "button": "solid",
+      "decoration": "line",
       "avatar": "rounded"
     },
     "palette": {
       "background": "#fff5d8",
       "gradient": "#ead169",
       "surface": "#fffcf0",
-      "button": "#88612b",
+      "button": "#745225",
       "name": "#423017",
       "description": "#67563c",
       "category": "#745225",

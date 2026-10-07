@@ -274,12 +274,18 @@ void main() {
         appearance: const LinkInBioAppearance(logoKey: _imageKey),
         images: images,
         imageRevision: revision);
-    expect(find.byType(Image), findsNothing);
+    final draftImages = find.descendant(
+        of: find.byKey(const ValueKey('link-in-bio-decoration-preview')),
+        matching: find.byWidgetPredicate(
+            (widget) => widget is Image && widget.image is MemoryImage));
+    expect(draftImages, findsNothing);
     images[_imageKey] = base64Decode(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==');
     revision.value++;
     await tester.pumpAndSettle();
-    expect(find.byType(Image), findsOneWidget);
+    expect(draftImages, findsOneWidget);
+    expect((tester.widget<Image>(draftImages).image as MemoryImage).bytes,
+        same(images[_imageKey]));
   });
 
   testWidgets('apply stays reachable above the keyboard on a narrow screen',

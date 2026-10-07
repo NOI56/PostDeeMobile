@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../core/models/link_in_bio_appearance.dart';
 import '../../core/models/profile_template_catalog.generated.dart';
@@ -38,19 +39,7 @@ class _BioPreviewViewportState extends State<BioPreviewViewport> {
   double get _start {
     final template = getProfileTemplate(widget.appearance.templateId);
     if (template != null) {
-      final header = template.layout.header;
-      final titleOffset = switch (header) {
-        'centered' => 142.0,
-        'left' => 118.0,
-        'split' => 36.0,
-        'cover' => 230.0,
-        'badge' => 163.0,
-        _ => 36.0,
-      };
-      return titleOffset -
-          12 +
-          (template.layout.decoration == 'frame' ? 13 : 0) +
-          (widget.appearance.coverKey != null && header != 'cover' ? 160 : 0);
+      return 0;
     }
     if (!const {'pink', 'garden', 'cards'}
         .contains(widget.appearance.themeId)) {
@@ -62,17 +51,47 @@ class _BioPreviewViewportState extends State<BioPreviewViewport> {
 
   late final _controller = ScrollController(initialScrollOffset: _start);
   @override
+  void initState() {
+    super.initState();
+    _revealName();
+  }
+
+  void _revealName() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_controller.hasClients) return;
+      if (getProfileTemplate(widget.appearance.templateId) == null) {
+        _controller
+            .jumpTo(_start.clamp(0, _controller.position.maxScrollExtent));
+        return;
+      }
+      Element? name;
+      void visit(Element element) {
+        if (element.widget.key ==
+            const ValueKey('link-in-bio-template-store-name')) {
+          name = element;
+        } else {
+          element.visitChildElements(visit);
+        }
+      }
+
+      (context as Element).visitChildElements(visit);
+      final render = name?.findRenderObject();
+      if (render == null) return;
+      final offset =
+          RenderAbstractViewport.of(render).getOffsetToReveal(render, 0).offset;
+      _controller
+          .jumpTo((offset - 8).clamp(0, _controller.position.maxScrollExtent));
+    });
+  }
+
+  @override
   void didUpdateWidget(covariant BioPreviewViewport oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.appearance.themeId != widget.appearance.themeId ||
         oldWidget.appearance.templateId != widget.appearance.templateId ||
+        oldWidget.appearance.logoKey != widget.appearance.logoKey ||
         oldWidget.appearance.coverKey != widget.appearance.coverKey) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _controller.hasClients) {
-          _controller
-              .jumpTo(_start.clamp(0, _controller.position.maxScrollExtent));
-        }
-      });
+      _revealName();
     }
   }
 

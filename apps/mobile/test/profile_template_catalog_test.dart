@@ -17,13 +17,28 @@ void main() {
           .where((template) => template.category == category)
           .toList();
       expect(templates, hasLength(20));
-      expect(
-          templates
-              .map((template) =>
-                  '${template.layout.header}/${template.layout.links}/${template.layout.button}')
-              .toSet(),
+      expect(templates.map((template) => template.layout.composition).toSet(),
           hasLength(20));
       expect(templates.map((template) => template.name).toSet(), hasLength(20));
+    }
+  });
+
+  test('the three agreed reference compositions appear first in each category',
+      () {
+    const representatives = {
+      'minimal': ['editorial', 'bicolor', 'portrait'],
+      'cute': ['scallop', 'collage', 'window'],
+      'nature': ['botanical', 'glass', 'torn'],
+      'luxury': ['seal', 'tag', 'gallery'],
+      'creative': ['poster', 'window-grid', 'ticket'],
+    };
+    for (final category in profileTemplateCategories.keys) {
+      expect(
+          profileTemplates
+              .where((template) => template.category == category)
+              .take(3)
+              .map((template) => template.layout.composition),
+          representatives[category]);
     }
   });
 
@@ -38,6 +53,7 @@ void main() {
           as Map<String, dynamic>;
       expect(template.name, raw['name']);
       expect(template.category, raw['category']);
+      expect(template.layout.composition, raw['layout']['composition']);
       expect(template.layout.header, raw['layout']['header']);
       expect(template.layout.links, raw['layout']['links']);
       expect(template.layout.button, raw['layout']['button']);

@@ -5,6 +5,7 @@ import { readLinkInBioUrl, resolveLinkInBioIcon } from './linkInBioDestinations.
 import { isDecoratedLinkInBioTheme, linkInBioThemeStyles, renderLinkInBioDecorations } from './linkInBioThemeStyles.js';
 import { getProfileTemplate } from './profileTemplateCatalog.generated.js';
 import { linkInBioTemplateStyles } from './linkInBioTemplateStyles.js';
+import { hasCustomProfileTemplateBackground, isDefaultPortraitSecondaryLink, profileTemplateLinkFill } from './linkInBioCompositionStyles.js';
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -38,18 +39,34 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
     const color = appearance.background.color;
     background = `background-color:${color};background-image:linear-gradient(rgba(0,0,0,${appearance.background.overlay / 100}),rgba(0,0,0,${appearance.background.overlay / 100})),url("${imagePath('background')}");background-size:cover;background-position:center;background-attachment:fixed`;
   }
+  let styleCategory: string | undefined;
+  let stylePosition = 0;
+  const railOutlineLinks = new Set<number>();
+  const filledHairlineLinks = new Set<number>();
+  const hairline = template && ['editorial', 'scallop', 'botanical', 'seal', 'rail', 'notebook'].includes(template.layout.composition);
   const linkStyles = profile.links.map((link, index) => {
-    const color = readLinkInBioColor(link.textColor) ?? appearance.buttonStyle.color;
+    const category = link.category?.trim() ?? '';
+    if (category && category !== styleCategory) stylePosition = 0;
+    const rhythm = stylePosition++ % 4;
+    styleCategory = category;
     const customButtonColor = readLinkInBioColor(link.buttonColor);
+    const customTextColor = readLinkInBioColor(link.textColor);
+    const secondaryPortrait = isDefaultPortraitSecondaryLink(appearance, customButtonColor, Boolean(customTextColor), index);
+    const color = customTextColor ?? (secondaryPortrait ? appearance.nameStyle.color : appearance.buttonStyle.color);
     const buttonColor = customButtonColor ?? appearance.buttonColor;
-    const fill = template?.layout.button === 'outline' && !customButtonColor ? 'transparent' : buttonColor;
+    const fill = profileTemplateLinkFill(appearance, color, customButtonColor, Boolean(customTextColor), rhythm, index);
+    if (template?.layout.composition === 'rail' && fill === 'transparent') railOutlineLinks.add(index);
+    if (hairline && fill !== 'transparent') filledHairlineLinks.add(index);
     const font = linkInBioFonts.includes(link.font as LinkInBioFont) ? link.font! : appearance.buttonStyle.font;
     return `.link-${index}{color:${color};background:${fill};font-family:${fontFamily(font)}${template ? `;--pd-link-button:${buttonColor};--pd-link-text:${color}` : ''}}`;
   }).join('\n');
   let currentCategory: string | undefined;
+  let categoryPosition = 0;
   const links = profile.links.map((link, index) => {
     const category = link.category?.trim() ?? '';
     const heading = category && category !== currentCategory ? `<li class="category">${escapeHtml(category)}</li>` : '';
+    if (heading) categoryPosition = 0;
+    const rhythm = categoryPosition++ % 4;
     currentCategory = category;
     const featured = link.id === appearance.featuredLinkId;
     const icon = resolveLinkInBioIcon(link);
@@ -61,11 +78,16 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
     const destination = readLinkInBioUrl(link.url);
     const target = destination?.startsWith('mailto:') || destination?.startsWith('tel:') ? '' : ' target="_blank" rel="noopener noreferrer"';
     const animateFeatured = effects.featured && (featured || (!appearance.featuredLinkId && index === 0));
-    return `${heading}<li class="link-item${effects.entrance ? ' entrance' : ''}"><a class="link-${index}${featured ? ' featured' : ''}${animateFeatured ? ' motion-featured' : ''}${template && readLinkInBioColor(link.buttonColor) ? ' custom-button' : ''}" href="${escapeHtml(destination ?? link.url)}"${target}><span class="platform-icon${isBrand ? ' brand-logo' : ''}" data-icon="${icon}" aria-hidden="true">${logo}</span><span class="link-copy">${featured && appearance.featuredLabel ? `<span class="featured-label">${escapeHtml(appearance.featuredLabel)}</span>` : ''}<span>${escapeHtml(link.title)}</span>${!template && appearance.themeId === 'cards' ? '<span class="link-cta">เปิดลิงก์</span>' : ''}</span><span class="arrow" aria-hidden="true">${decorated ? outboundArrow : '↗'}</span></a></li>`;
+    return `${heading}<li class="link-item${effects.entrance ? ' entrance' : ''}"${template ? ` data-position="${index + 1}" data-rhythm="${rhythm}"` : ''}><a class="link-${index}${featured ? ' featured' : ''}${animateFeatured ? ' motion-featured' : ''}${template && readLinkInBioColor(link.buttonColor) ? ' custom-button' : ''}${railOutlineLinks.has(index) ? ' rail-outline' : ''}${filledHairlineLinks.has(index) ? ' filled-button' : ''}" href="${escapeHtml(destination ?? link.url)}"${target}>${template ? `<span class="link-number" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>` : ''}<span class="platform-icon${isBrand ? ' brand-logo' : ''}" data-icon="${icon}" aria-hidden="true">${logo}</span><span class="link-copy">${featured && appearance.featuredLabel ? `<span class="featured-label">${escapeHtml(appearance.featuredLabel)}</span>` : ''}<span>${escapeHtml(link.title)}</span>${!template && appearance.themeId === 'cards' ? '<span class="link-cta">เปิดลิงก์</span>' : ''}</span><span class="arrow" aria-hidden="true">${decorated ? outboundArrow : '↗'}</span></a></li>`;
   }).join('');
-  const templateAttributes = template ? ` data-template="${template.id}"${(['header', 'links', 'button', 'decoration', 'avatar'] as const).map((field) => ` data-${field}="${template.layout[field]}"`).join('')}` : '';
+  const customBackground = hasCustomProfileTemplateBackground(appearance);
+  const templateAttributes = template ? ` data-template="${template.id}" data-custom-background="${customBackground}"${(['header', 'links', 'button', 'decoration', 'avatar', 'composition'] as const).map((field) => ` data-${field}="${template.layout[field]}"`).join('')}` : '';
   const cover = appearance.coverKey ? `<img class="cover" src="${imagePath('cover')}" alt="ภาพปกของ ${escapeHtml(profile.storeName)}">`
-    : template?.layout.header === 'cover' ? '<div class="cover cover-fallback" aria-hidden="true"></div>' : '';
+    : template?.layout.composition === 'torn' ? '<div class="cover cover-fallback" aria-hidden="true"></div>' : '';
+  const avatar = appearance.logoKey ? `<img class="logo" src="${imagePath('logo')}" alt="โลโก้ ${escapeHtml(profile.storeName)}">`
+    : decorated ? `<div class="logo avatar-initial" aria-hidden="true">${escapeHtml(Array.from(profile.storeName.trim())[0] ?? 'ร')}</div>` : '';
+  const arch = template?.layout.composition === 'arch';
+  const profileAvatar = arch ? `<div class="arch-hero">${cover}${avatar}</div>` : avatar;
   return `<!doctype html>
 <html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer"><title>${escapeHtml(profile.storeName)} | PostDee</title>
@@ -86,7 +108,7 @@ ${linkStyles}
 ${linkInBioThemeStyles(appearance)}
 ${linkInBioTemplateStyles(appearance)}
 .background-motion{${background}}
-</style></head><body data-theme="${appearance.themeId}"${templateAttributes}>${effects.background ? '<div class="background-motion"></div>' : ''}${renderLinkInBioDecorations(effects.stickers)}<main>${cover}<header class="profile-header">${template ? '' : '<div class="brand">PostDee</div>'}${appearance.logoKey ? `<img class="logo" src="${imagePath('logo')}" alt="โลโก้ ${escapeHtml(profile.storeName)}">` : decorated ? `<div class="logo avatar-initial" aria-hidden="true">${escapeHtml(Array.from(profile.storeName.trim())[0] ?? 'ร')}</div>` : ''}<h1>${escapeHtml(profile.storeName)}</h1>
-<p class="description">${escapeHtml(appearance.description || 'เลือกช่องทางที่ต้องการได้เลย')}</p></header><ul>${links}</ul>
+</style></head><body data-theme="${appearance.themeId}"${templateAttributes}>${effects.background ? '<div class="background-motion"></div>' : ''}${renderLinkInBioDecorations(effects.stickers)}<main>${arch ? '' : cover}<header class="profile-header">${template ? '' : '<div class="brand">PostDee</div>'}${profileAvatar}${template ? '<div class="profile-copy">' : ''}<h1>${escapeHtml(profile.storeName)}</h1>
+<p class="description">${escapeHtml(appearance.description || 'เลือกช่องทางที่ต้องการได้เลย')}</p>${template ? '</div>' : ''}</header><ul>${links}</ul>
 <footer>สร้างหน้าเว็บร้านค้าด้วย PostDee</footer></main></body></html>`;
 };

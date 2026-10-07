@@ -21,6 +21,26 @@ const fixture = (options?: LinkInBioRouteOptions) => {
 };
 
 describe('link in bio customization routes', () => {
+  it.each(['pink', 'garden', 'cards'])('persists %s effects and serves a safe CSS-only page', async (themeId) => {
+    const { app } = fixture();
+    const appearance = { themeId, effects: { background: false, entrance: true, featured: true, stickers: 'flowers' } };
+    await request(app).post('/link-in-bio/publish').send({ ...page, appearance }).expect(200);
+    const saved = await request(app).get('/link-in-bio').expect(200);
+    expect(saved.body.profile.appearance).toMatchObject(appearance);
+    // An older client omitting appearance must keep the new snapshot.
+    const legacy = await request(app).post('/link-in-bio/publish').send(page).expect(200);
+    expect(legacy.body.profile.appearance).toMatchObject(appearance);
+    const rendered = await request(app).get('/p/shop').expect(200);
+    expect(rendered.text).toContain(`data-theme="${themeId}"`);
+    expect(rendered.text).toContain('data-stickers="flowers"');
+    expect(rendered.text).not.toContain('<script');
+    expect(rendered.headers['content-security-policy']).toContain("script-src 'none'");
+    expect(rendered.headers['content-security-policy']).toContain("style-src 'nonce-");
+    expect(rendered.headers['cache-control']).toBe('no-store');
+    await request(app).post('/link-in-bio/publish').send({ ...page, appearance: { ...appearance, effects: { stickers: 'url(evil)' } } }).expect(400);
+    expect((await request(app).get('/link-in-bio').expect(200)).body.profile.appearance).toMatchObject(appearance);
+  });
+
   it('returns normalized defaults to old clients and retains styling on their later publish', async () => {
     const { app } = fixture();
     const initial = await request(app).post('/link-in-bio/publish').send(page).expect(200);

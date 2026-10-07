@@ -11,11 +11,22 @@ Build roadmap for PostDee.
 - Provide one public profile page per authenticated account on every package,
   with 1–20 explicitly enabled custom links. Host `/p/<slug>` on the existing
   API domain; persist with Prisma and include profile cleanup in account deletion.
-- Offer equal customization on every package: four editable theme presets,
+- Offer equal customization on every package: seven editable theme presets,
   colors and fonts per section and optional per-link overrides, logo/cover,
   solid/gradient/image backgrounds, categories and link order, and one featured
   promotion. Preview before publishing; keep product cards/prices for later.
   Use existing private media storage, not a new paid customization provider.
+- The selected 2026-10-07 themes add pink pastel, cottage garden and lavender
+  storefront link cards alongside the four original presets. Offer optional
+  background/entrance/featured motion and heart/flower/sparkle decorations in
+  a collapsed group, with visitor/preview pause and reduced-motion support.
+  Preserve colors/fonts, owned images, 100 normalized logos, safe contacts,
+  local drafts, explicit publication, rights and the 20-link limit. Cards use
+  existing links; product prices, free-position dragging and animated uploads
+  remain outside this scope. API theme/effects support must precede Mobile;
+  no provider, dependency, flag or migration is added. Local validation and
+  pending release are recorded in
+  `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
 - Separate local draft saving from publishing. Show a shareable URL only after
   the API confirms publication. Support updating and unpublishing; changing a
   published slug invalidates the old URL.

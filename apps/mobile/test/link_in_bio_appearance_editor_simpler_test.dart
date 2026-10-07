@@ -43,12 +43,14 @@ Future<void> _openEditor(WidgetTester tester,
     ValueNotifier<int>? imageRevision,
     Future<String?> Function(String)? uploadImage,
     ValueChanged<LinkInBioAppearance?>? onResult,
+    bool reducedMotion = false,
     double keyboardInset = 0}) async {
   await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
       builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(viewInsets: EdgeInsets.only(bottom: keyboardInset)),
+          data: MediaQuery.of(context).copyWith(
+              viewInsets: EdgeInsets.only(bottom: keyboardInset),
+              disableAnimations: reducedMotion),
           child: child!),
       home: Scaffold(
           body: Builder(
@@ -92,10 +94,36 @@ Future<void> _openGroup(WidgetTester tester, String group,
 
 void main() {
   testWidgets(
+      'selected new theme and effects survive apply with existing content',
+      (tester) async {
+    LinkInBioAppearance? result;
+    await _openEditor(tester,
+        appearance: _customAppearance,
+        reducedMotion: true,
+        onResult: (value) => result = value);
+    await _tap(tester, 'link-in-bio-theme-cards');
+    await _tap(tester, 'link-in-bio-decoration-effects');
+    await _tap(tester, 'link-in-bio-effect-background');
+    await _tap(tester, 'link-in-bio-effect-featured');
+    // Find the established sticky apply control rather than saving to a server.
+    await tester.tap(find.text('ใช้แบบนี้กับแบบร่าง'));
+    await tester.pumpAndSettle();
+    expect(result?.themeId, 'cards');
+    expect(result?.effects.background, isFalse);
+    expect(result?.effects.featured, isTrue);
+    expect(result?.effects.stickers, 'sparkles');
+    expect(result?.description, _customAppearance.description);
+    expect(result?.logoKey, _imageKey);
+    expect(result?.coverKey, _coverKey);
+    expect(result?.featuredLabel, _customAppearance.featuredLabel);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
       'starts with a bounded preview and themes while details are closed',
       (tester) async {
     await _openEditor(tester);
-    expect(find.byType(ChoiceChip), findsNWidgets(4));
+    expect(find.byType(ChoiceChip), findsNWidgets(7));
     expect(find.text('ตกแต่งเพิ่มเติม'), findsOneWidget);
     expect(find.byKey(const ValueKey('link-in-bio-background-color')),
         findsNothing);

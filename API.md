@@ -123,16 +123,32 @@ sends the complete object:
   "buttonStyle": { "color": "#ffffff", "font": "anuphan" },
   "brandStyle": { "color": "#687065", "font": "anuphan" },
   "featuredLinkId": null,
-  "featuredLabel": "โปรวันนี้"
+  "featuredLabel": "โปรวันนี้",
+  "effects": {
+    "background": false, "entrance": false, "featured": false,
+    "stickers": "none"
+  }
 }
 ```
 
-Themes: `minimal|shop|pastel|dark`; backgrounds: `solid|gradient|image`; overlay:
+Themes: `minimal|shop|pastel|dark|pink|garden|cards`; backgrounds: `solid|gradient|image`; overlay:
 integer 0–80 percent black; button shape: `rounded|pill|square`. Description is
 0–280 characters, featured label 0–40. A non-null featured ID must name an enabled
 link in the publish request. Images are registered owned keys, never URLs.
 Unknown/other-owner/missing image references fail with HTTP 400 before publication.
 Malformed appearance returns 400 `LINK_IN_BIO_INVALID_INPUT`.
+
+Optional version-1 `effects` accepts only boolean `background`, `entrance`, and
+`featured`, and `stickers: none|hearts|flowers|sparkles`. Invalid types/null
+objects/unsupported values fail before publication. Partial appearance requests
+start from the selected preset. Earlier presets default all effects off; pink
+and cards enable background/entrance with hearts/sparkles, garden enables
+entrance/flowers. Featured movement defaults off. Normalized responses include
+all four fields. Omission of the entire appearance retains the saved snapshot,
+including effects, for legacy-client publication. Public motion uses CSS under
+the nonce CSP, with a pause checkbox/label and `prefers-reduced-motion`; no script
+or third-party media fetch is introduced. Deploy API before Mobile. No schema
+migration is needed; old mobile clients must update to understand new theme IDs.
 
 ### Profile images
 

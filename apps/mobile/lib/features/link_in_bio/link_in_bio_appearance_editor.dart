@@ -45,12 +45,7 @@ class BioThemePicker extends StatelessWidget {
         final width = (size.maxWidth - 10) / 2;
         final colors = Theme.of(context).colorScheme;
         return Wrap(spacing: 10, runSpacing: 10, children: [
-          for (final theme in const {
-            'minimal': 'เรียบง่าย',
-            'shop': 'ร้านค้า',
-            'pastel': 'พาสเทล',
-            'dark': 'เข้ม'
-          }.entries)
+          for (final theme in linkInBioThemeNames.entries)
             SizedBox(
                 width: width,
                 child: ChoiceChip(
@@ -96,13 +91,25 @@ class _BioThemeSample extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-      height: 40,
+      height: 84,
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
       decoration: BoxDecoration(
           color: bioColor(appearance.background.color),
           borderRadius: BorderRadius.circular(7)),
       child: Column(children: [
+        if (const {'pink', 'garden', 'cards'}.contains(appearance.themeId)) ...[
+          Container(
+              width: 14,
+              height: 14,
+              decoration: BoxDecoration(
+                  color: bioColor(appearance.background.gradientColor),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: bioColor(appearance.nameStyle.color)
+                          .withValues(alpha: .3)))),
+          const SizedBox(height: 5),
+        ],
         Container(
             height: 4,
             width: 35,
@@ -110,13 +117,16 @@ class _BioThemeSample extends StatelessWidget {
                 color: bioColor(appearance.nameStyle.color),
                 borderRadius: BorderRadius.circular(2))),
         const SizedBox(height: 5),
-        Container(
-            height: 10,
-            width: double.infinity,
-            decoration: BoxDecoration(
-                color: bioColor(appearance.buttonColor),
-                borderRadius: BorderRadius.circular(
-                    appearance.buttonRadius == 'square' ? 1 : 5))),
+        for (var index = 0; index < 3; index++)
+          Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Container(
+                  height: appearance.themeId == 'cards' ? 9 : 7,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                      color: bioColor(appearance.buttonColor),
+                      borderRadius: BorderRadius.circular(
+                          appearance.buttonRadius == 'square' ? 1 : 5)))),
       ]));
 }
 
@@ -281,7 +291,8 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
       'style-description',
       'style-category',
       'style-button',
-      'style-brand'
+      'style-brand',
+      'effects'
     ])
       id: ExpansibleController(),
   };
@@ -315,12 +326,11 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
         ? preview()
         : ValueListenableBuilder<int>(
             valueListenable: revision, builder: (_, value, child) => preview());
-    return SizedBox(
+    return BioPreviewViewport(
         key: const ValueKey('link-in-bio-decoration-preview'),
         height: widget.showThemePicker ? 200 : 120,
-        child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SingleChildScrollView(child: content)));
+        appearance: _value,
+        child: content);
   }
 
   Future<void> _upload(String slot) async {
@@ -403,6 +413,52 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                   onPressed: _uploading ? null : remove,
                   child: Text('ลบ$label'))
           ]));
+
+  Widget _effects() => _section(
+      'effects',
+      'ลูกเล่น',
+      [
+        SwitchListTile.adaptive(
+            key: const ValueKey('link-in-bio-effect-background'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('พื้นหลังเคลื่อนไหว'),
+            value: _value.effects.background,
+            onChanged: (value) => _change(_value.copyWith(
+                effects: _value.effects.copyWith(background: value)))),
+        SwitchListTile.adaptive(
+            key: const ValueKey('link-in-bio-effect-entrance'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('ลิงก์ค่อย ๆ ปรากฏ'),
+            value: _value.effects.entrance,
+            onChanged: (value) => _change(_value.copyWith(
+                effects: _value.effects.copyWith(entrance: value)))),
+        SwitchListTile.adaptive(
+            key: const ValueKey('link-in-bio-effect-featured'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('ปุ่มเด่นขยับเบา ๆ'),
+            value: _value.effects.featured,
+            onChanged: (value) => _change(_value.copyWith(
+                effects: _value.effects.copyWith(featured: value)))),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+            key: ValueKey(
+                'link-in-bio-effect-stickers-${_value.effects.stickers}'),
+            initialValue: _value.effects.stickers,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'สติกเกอร์ลอย'),
+            items: const [
+              DropdownMenuItem(value: 'none', child: Text('ไม่มี')),
+              DropdownMenuItem(value: 'hearts', child: Text('หัวใจ')),
+              DropdownMenuItem(value: 'flowers', child: Text('ดอกไม้')),
+              DropdownMenuItem(value: 'sparkles', child: Text('ประกาย')),
+            ],
+            onChanged: (value) => _change(_value.copyWith(
+                effects: _value.effects.copyWith(stickers: value!)))),
+        const SizedBox(height: 12),
+        const Text('ดูการเคลื่อนไหวในตัวอย่างด้านบน และเปิด–ปิดแต่ละลูกเล่นได้',
+            style: TextStyle(fontSize: 12)),
+      ],
+      icon: Icons.auto_awesome_outlined);
 
   List<Widget> _advancedGroups() => [
         _section(
@@ -634,10 +690,13 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                                             'เปลี่ยนธีมจะตั้งสีและฟอนต์ใหม่ ข้อความ รูป และลิงก์เดิมยังอยู่',
                                             style: TextStyle(fontSize: 12)),
                                         const SizedBox(height: 8),
+                                        _effects(),
                                         _section('advanced', 'ตกแต่งเพิ่มเติม',
                                             _advancedGroups()),
-                                      ] else
+                                      ] else ...[
+                                        _effects(),
                                         ..._advancedGroups(),
+                                      ],
                                     ])))),
                     if (_uploading)
                       const Padding(

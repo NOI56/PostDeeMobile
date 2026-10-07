@@ -66,6 +66,20 @@ snapshot. Fonts are bundled locally in Flutter and served by the existing API
 under a filename whitelist, with license notices in `apps/api/assets/profile-fonts`.
 Public CSS uses nonce styles, self-only fonts/images, and no scripts.
 
+The 2026-10-07 theme expansion extends appearance version 1 with
+`pink|garden|cards` and optional validated `effects` (background/entrance/featured
+booleans plus `none|hearts|flowers|sparkles` stickers). Existing theme defaults
+stay still; new presets enable gentle entrance/decorations. The renderer uses
+CSS keyframes and fixed decorative vectors, a checkbox pause control and
+reduced-motion rules without adding script permissions. Flutter uses disposable
+animation controllers obeying TickerMode/MediaQuery and a preview-only pause
+state; toggling pause never edits the draft. The 100 original logo assets and
+40px visible geometry remain shared. Cards render existing link fields with
+`เปิดลิงก์`, not product objects. No schema/entitlement/provider change is required;
+ship API before Mobile and update old mobile versions before they read new IDs.
+Local verification and pending delivery are recorded in
+`docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
+
 The 2026-10-06 platform-mark refinement uses byte-identical bundled PNGs for
 YouTube, Shopee, Lazada, LINE, TikTok, Instagram, Facebook, Messenger, WhatsApp
 and Google Maps in the mobile

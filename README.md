@@ -33,14 +33,27 @@ Draft edits remain private until Publish/Update is pressed. Publishing, copying
 the confirmed URL, opening the page, and unpublishing are supported. Scheduled
 post auto-updates and click analytics are not included.
 
-All packages have the same profile customization: four starting themes
-(`minimal`, `shop`, `pastel`, `dark`), separate text colors/fonts for names,
+All packages have the same profile customization: seven starting themes
+(`minimal`, `shop`, `pastel`, `dark`, `pink`, `garden`, `cards`), separate text colors/fonts for names,
 descriptions, categories, buttons and branding, per-link overrides, button
 shapes, categories/order, and one featured promotion. Logo, cover, and image
 backgrounds use the existing private media bucket; solid/gradient backgrounds
 are also available. Draft customization stays private until Publish/Update.
 The preview and public page share the same appearance contract and palettes.
 Product cards/prices are not part of this release.
+
+The 2026-10-07 decoration expansion adds pink pastel, cottage garden and lavender
+storefront link cards. A collapsed `ลูกเล่น` group controls background movement,
+link entrance, a featured-button lift and heart/flower/sparkle decorations.
+Visitors and the mobile preview can pause movement; reduced-motion settings
+disable animations. The four earlier presets remain still by default. Cards
+contain existing outbound links, not product inventory or prices. Free-position
+dragging and animated media uploads are not included. No paid provider, dependency,
+flag or schema change is required. Deploy the API theme/optional-effects contract
+before distributing the new mobile build; older mobile builds need updating to
+read the new theme IDs. This feature is locally verified and has not been
+pushed/deployed; evidence is in
+`docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
 
 The 2026-10-06 mobile revision opens the internal link manager for both new and
 existing profiles. It shows the shop identity, separate Store information,

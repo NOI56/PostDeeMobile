@@ -2,7 +2,8 @@ import { profilePlatformIds, type ProfilePlatformId } from './profilePlatformCat
 
 export type LinkInBioFont = 'anuphan' | 'prompt' | 'system';
 export type LinkInBioIcon = 'auto' | 'link' | 'website' | 'email' | 'phone' | ProfilePlatformId;
-export type LinkInBioTheme = 'minimal' | 'shop' | 'pastel' | 'dark';
+export type LinkInBioTheme = 'minimal' | 'shop' | 'pastel' | 'dark' | 'pink' | 'garden' | 'cards';
+export type LinkInBioEffects = { background: boolean; entrance: boolean; featured: boolean; stickers: 'none' | 'hearts' | 'flowers' | 'sparkles' };
 export type LinkInBioTextStyle = { color: string; font: LinkInBioFont };
 export type LinkInBioAppearance = {
   version: 1;
@@ -21,30 +22,37 @@ export type LinkInBioAppearance = {
   brandStyle: LinkInBioTextStyle;
   featuredLinkId: string | null;
   featuredLabel: string;
+  effects: LinkInBioEffects;
 };
 
 export const linkInBioFonts: readonly LinkInBioFont[] = ['anuphan', 'prompt', 'system'];
 export const linkInBioIcons: readonly LinkInBioIcon[] = ['auto', 'link', 'website', 'email', 'phone', ...profilePlatformIds];
-const themes: readonly LinkInBioTheme[] = ['minimal', 'shop', 'pastel', 'dark'];
+const themes: readonly LinkInBioTheme[] = ['minimal', 'shop', 'pastel', 'dark', 'pink', 'garden', 'cards'];
 const palettes = {
   minimal: ['#fff8ef', '#f4e3c7', '#ffffff', '#305d36', '#253529', '#687065', '#537844', '#ffffff', '#687065'],
   shop: ['#fff5e8', '#ffe0b2', '#ffffff', '#e85d24', '#3a2418', '#765a49', '#c44918', '#ffffff', '#765a49'],
   pastel: ['#f8f0fc', '#e6f1ff', '#ffffff', '#8b5fbf', '#473258', '#766185', '#8b5fbf', '#ffffff', '#766185'],
-  dark: ['#111827', '#263449', '#1f2937', '#34d399', '#f9fafb', '#cbd5e1', '#a7f3d0', '#102a22', '#cbd5e1']
+  dark: ['#111827', '#263449', '#1f2937', '#34d399', '#f9fafb', '#cbd5e1', '#a7f3d0', '#102a22', '#cbd5e1'],
+  pink: ['#fff1f6', '#fde6ee', '#fff9fc', '#b94f78', '#67364d', '#8d6576', '#67364d', '#ffffff', '#8d6576'],
+  garden: ['#fffaf0', '#f5f0dc', '#fffef8', '#718852', '#35472c', '#68765d', '#35472c', '#ffffff', '#68765d'],
+  cards: ['#eee8f7', '#e4d8f5', '#f7f3fc', '#ffffff', '#40364e', '#796b87', '#40364e', '#40364e', '#796b87']
 } as const;
 
 export const createDefaultLinkInBioAppearance = (themeId: LinkInBioTheme = 'minimal'): LinkInBioAppearance => {
   const [color, gradientColor, surfaceColor, buttonColor, name, description, category, button, brand] = palettes[themeId];
+  const modern = ['pink', 'garden', 'cards'].includes(themeId);
   return {
     version: 1, themeId, description: '', logoKey: null, coverKey: null,
-    background: { mode: 'solid', color, gradientColor, imageKey: null, overlay: 30 },
-    surfaceColor, buttonColor, buttonRadius: themeId === 'pastel' ? 'pill' : 'rounded',
+    background: { mode: modern && themeId !== 'garden' ? 'gradient' : 'solid', color, gradientColor, imageKey: null, overlay: 30 },
+    surfaceColor, buttonColor, buttonRadius: themeId === 'pastel' || themeId === 'pink' ? 'pill' : 'rounded',
     nameStyle: { color: name, font: themeId === 'shop' || themeId === 'dark' ? 'prompt' : 'anuphan' },
     descriptionStyle: { color: description, font: 'anuphan' },
     categoryStyle: { color: category, font: 'anuphan' },
     buttonStyle: { color: button, font: 'anuphan' },
     brandStyle: { color: brand, font: 'anuphan' },
-    featuredLinkId: null, featuredLabel: 'โปรวันนี้'
+    featuredLinkId: null, featuredLabel: 'โปรวันนี้',
+    effects: { background: modern && themeId !== 'garden', entrance: modern, featured: false,
+      stickers: themeId === 'pink' ? 'hearts' : themeId === 'garden' ? 'flowers' : themeId === 'cards' ? 'sparkles' : 'none' }
   };
 };
 
@@ -67,6 +75,19 @@ export const readLinkInBioAppearance = (value: unknown, links: readonly { id: st
   const themeId = value.themeId ?? 'minimal';
   if (!themes.includes(themeId as LinkInBioTheme)) return undefined;
   const result = createDefaultLinkInBioAppearance(themeId as LinkInBioTheme);
+  if (value.effects !== undefined) {
+    if (!isRecord(value.effects)) return undefined;
+    for (const field of ['background', 'entrance', 'featured'] as const) {
+      if (value.effects[field] !== undefined) {
+        if (typeof value.effects[field] !== 'boolean') return undefined;
+        result.effects[field] = value.effects[field];
+      }
+    }
+    if (value.effects.stickers !== undefined) {
+      if (!['none', 'hearts', 'flowers', 'sparkles'].includes(value.effects.stickers as string)) return undefined;
+      result.effects.stickers = value.effects.stickers as LinkInBioEffects['stickers'];
+    }
+  }
   for (const field of ['description', 'featuredLabel'] as const) {
     if (value[field] !== undefined) {
       if (typeof value[field] !== 'string' || value[field].length > (field === 'description' ? 280 : 40)) return undefined;

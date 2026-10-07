@@ -165,6 +165,66 @@ class LinkInBioBackground {
       );
 }
 
+const linkInBioThemeNames = {
+  'minimal': 'เรียบง่าย',
+  'shop': 'ร้านค้า',
+  'pastel': 'พาสเทล',
+  'dark': 'เข้ม',
+  'pink': 'ชมพูพาสเทล',
+  'garden': 'สวนดอกไม้',
+  'cards': 'ร้านค้าแบบการ์ด',
+};
+
+class LinkInBioEffects {
+  const LinkInBioEffects(
+      {this.background = false,
+      this.entrance = false,
+      this.featured = false,
+      this.stickers = 'none'});
+  final bool background;
+  final bool entrance;
+  final bool featured;
+  final String stickers;
+  bool get enabled => background || entrance || featured || stickers != 'none';
+  factory LinkInBioEffects.fromJson(Map<String, Object?> json) {
+    for (final field in ['background', 'entrance', 'featured']) {
+      if (json.containsKey(field) && json[field] is! bool) {
+        throw const FormatException('Invalid profile motion');
+      }
+    }
+    final stickers = json.containsKey('stickers') ? json['stickers'] : 'none';
+    if (!const {'none', 'hearts', 'flowers', 'sparkles'}.contains(stickers)) {
+      throw const FormatException('Invalid profile stickers');
+    }
+    return LinkInBioEffects(
+        background: json['background'] as bool? ?? false,
+        entrance: json['entrance'] as bool? ?? false,
+        featured: json['featured'] as bool? ?? false,
+        stickers: stickers as String);
+  }
+  Map<String, Object?> toJson() {
+    final json = <String, Object?>{
+      'background': background,
+      'entrance': entrance,
+      'featured': featured,
+      'stickers': stickers
+    };
+    LinkInBioEffects.fromJson(json);
+    return json;
+  }
+
+  LinkInBioEffects copyWith(
+          {bool? background,
+          bool? entrance,
+          bool? featured,
+          String? stickers}) =>
+      LinkInBioEffects(
+          background: background ?? this.background,
+          entrance: entrance ?? this.entrance,
+          featured: featured ?? this.featured,
+          stickers: stickers ?? this.stickers);
+}
+
 class LinkInBioAppearance {
   const LinkInBioAppearance({
     this.version = 1,
@@ -183,6 +243,7 @@ class LinkInBioAppearance {
     this.brandStyle = const LinkInBioTextStyle(color: '#687065'),
     this.featuredLinkId,
     this.featuredLabel = 'โปรวันนี้',
+    this.effects = const LinkInBioEffects(),
   });
   const LinkInBioAppearance.defaults() : this();
 
@@ -202,6 +263,7 @@ class LinkInBioAppearance {
   final LinkInBioTextStyle brandStyle;
   final String? featuredLinkId;
   final String featuredLabel;
+  final LinkInBioEffects effects;
 
   factory LinkInBioAppearance.forTheme(String themeId) => switch (themeId) {
         'minimal' => const LinkInBioAppearance(),
@@ -235,6 +297,43 @@ class LinkInBioAppearance {
             categoryStyle: LinkInBioTextStyle(color: '#a7f3d0'),
             buttonStyle: LinkInBioTextStyle(color: '#102a22'),
             brandStyle: LinkInBioTextStyle(color: '#cbd5e1')),
+        'pink' => const LinkInBioAppearance(
+            themeId: 'pink',
+            background: LinkInBioBackground(
+                mode: 'gradient', color: '#fff1f6', gradientColor: '#fde6ee'),
+            surfaceColor: '#fff9fc',
+            buttonColor: '#b94f78',
+            buttonRadius: 'pill',
+            nameStyle: LinkInBioTextStyle(color: '#67364d'),
+            descriptionStyle: LinkInBioTextStyle(color: '#8d6576'),
+            categoryStyle: LinkInBioTextStyle(color: '#67364d'),
+            brandStyle: LinkInBioTextStyle(color: '#8d6576'),
+            effects: LinkInBioEffects(
+                background: true, entrance: true, stickers: 'hearts')),
+        'garden' => const LinkInBioAppearance(
+            themeId: 'garden',
+            background:
+                LinkInBioBackground(color: '#fffaf0', gradientColor: '#f5f0dc'),
+            surfaceColor: '#fffef8',
+            buttonColor: '#718852',
+            nameStyle: LinkInBioTextStyle(color: '#35472c'),
+            descriptionStyle: LinkInBioTextStyle(color: '#68765d'),
+            categoryStyle: LinkInBioTextStyle(color: '#35472c'),
+            brandStyle: LinkInBioTextStyle(color: '#68765d'),
+            effects: LinkInBioEffects(entrance: true, stickers: 'flowers')),
+        'cards' => const LinkInBioAppearance(
+            themeId: 'cards',
+            background: LinkInBioBackground(
+                mode: 'gradient', color: '#eee8f7', gradientColor: '#e4d8f5'),
+            surfaceColor: '#f7f3fc',
+            buttonColor: '#ffffff',
+            nameStyle: LinkInBioTextStyle(color: '#40364e'),
+            descriptionStyle: LinkInBioTextStyle(color: '#796b87'),
+            categoryStyle: LinkInBioTextStyle(color: '#40364e'),
+            buttonStyle: LinkInBioTextStyle(color: '#40364e'),
+            brandStyle: LinkInBioTextStyle(color: '#796b87'),
+            effects: LinkInBioEffects(
+                background: true, entrance: true, stickers: 'sparkles')),
         _ => throw const FormatException('Invalid profile theme'),
       };
   factory LinkInBioAppearance.fromTheme(String themeId) =>
@@ -248,7 +347,7 @@ class LinkInBioAppearance {
     if (version != 1 ||
         version is! int ||
         theme is! String ||
-        !const {'minimal', 'shop', 'pastel', 'dark'}.contains(theme) ||
+        !linkInBioThemeNames.containsKey(theme) ||
         radius is! String ||
         !const {'rounded', 'pill', 'square'}.contains(radius) ||
         (featured != null &&
@@ -278,7 +377,10 @@ class LinkInBioAppearance {
         brandStyle:
             LinkInBioTextStyle.fromJson(_readObject(json['brandStyle'])),
         featuredLinkId: featured as String?,
-        featuredLabel: _readText(json['featuredLabel'], 40));
+        featuredLabel: _readText(json['featuredLabel'], 40),
+        effects: json.containsKey('effects')
+            ? LinkInBioEffects.fromJson(_readObject(json['effects']))
+            : const LinkInBioEffects());
   }
 
   Map<String, Object?> toJson() {
@@ -298,7 +400,8 @@ class LinkInBioAppearance {
       'buttonStyle': buttonStyle.toJson(),
       'brandStyle': brandStyle.toJson(),
       'featuredLinkId': featuredLinkId,
-      'featuredLabel': featuredLabel
+      'featuredLabel': featuredLabel,
+      'effects': effects.toJson(),
     };
     // Const constructors keep old call sites compatible; validate when encoding
     // a network request or saving a draft so invalid style values never persist.
@@ -322,7 +425,8 @@ class LinkInBioAppearance {
           LinkInBioTextStyle? buttonStyle,
           LinkInBioTextStyle? brandStyle,
           Object? featuredLinkId = _unset,
-          String? featuredLabel}) =>
+          String? featuredLabel,
+          LinkInBioEffects? effects}) =>
       LinkInBioAppearance(
         version: version ?? this.version,
         themeId: themeId ?? this.themeId,
@@ -343,5 +447,6 @@ class LinkInBioAppearance {
             ? this.featuredLinkId
             : featuredLinkId as String?,
         featuredLabel: featuredLabel ?? this.featuredLabel,
+        effects: effects ?? this.effects,
       );
 }

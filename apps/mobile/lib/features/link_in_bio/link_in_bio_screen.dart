@@ -1041,13 +1041,12 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   Widget _themeStep() =>
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _heading('เลือกธีมที่ชอบ'),
-        SizedBox(
+        BioPreviewViewport(
             height: (MediaQuery.sizeOf(context).height * .17)
                 .clamp(120.0, 150.0)
                 .toDouble(),
-            child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: SingleChildScrollView(child: _draftPreview()))),
+            appearance: _appearance,
+            child: _draftPreview()),
         const SizedBox(height: 16),
         BioThemePicker(
             appearance: _appearance,

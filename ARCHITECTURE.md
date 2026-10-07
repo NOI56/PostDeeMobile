@@ -91,7 +91,11 @@ surfaces; owner effects and OS reduced motion remain. No database migration or
 provider is introduced. API/catalog must ship before the mobile chooser: the
 earlier API silently discards `templateId`. Older clients sending a complete
 appearance without that field can clear a new selection; update them before
-editing new-template profiles and avoid rolling back the API after use. See
+editing new-template profiles and avoid rolling back the API after use. This
+order was followed for the 2026-10-07 Staging delivery of
+`fc087c4119cd46503c569879e61cddf99e402fb2`: exact-commit CI, API Live, then
+the matching Android APK. A read-only running-service check normalized/rendered
+all 100 templates; account data and existing drafts were preserved. See
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
 The 2026-10-06 platform-mark refinement uses byte-identical bundled PNGs for

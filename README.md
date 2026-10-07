@@ -55,7 +55,7 @@ read the new theme IDs. The feature was pushed and deployed to Staging at
 passed on that exact commit. Deployment and remaining verification limits are in
 `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
 
-The next profile customization revision adds 100 layout/style templates in five
+The profile customization revision adds 100 layout/style templates in five
 categories (minimal, cute/pastel, nature/warm, luxury/premium, creative/colorful),
 twenty per category. A category picker opens a real draft preview before
 applying; legacy themes remain available. The visitor/preview pause buttons are
@@ -64,7 +64,12 @@ The shared catalog and nullable version-1 `templateId` require API delivery
 before Mobile, without a schema migration. The earlier API silently drops the
 new template selection; older clients sending a complete appearance without
 `templateId` can clear it. Update clients before editing new-template profiles.
-Implementation and verification:
+This revision was pushed at `fc087c4119cd46503c569879e61cddf99e402fb2` and
+deployed to Staging on 2026-10-07 at 16:18:19 GMT+7. Exact-commit CI passed
+1,469 API tests and 1,422 Flutter tests; the running service also validated and
+rendered all 100 templates in a read-only check. The matching Android Staging
+APK was installed with existing account/draft data preserved. Delivery evidence
+and verification limits:
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
 The 2026-10-06 mobile revision opens the internal link manager for both new and

@@ -176,6 +176,14 @@ previous deployed code rejected `pink|garden|cards` with the generic 400 input
 message. Existing failed-request messages in an open app clear on a new attempt;
 deployment does not automatically publish a user's private draft.
 
+The subsequent 100-template revision became Live at 16:18:19 GMT+7 on
+2026-10-07: deploy `dep-db30rph42hec7386vvrg`, source
+`fc087c4119cd46503c569879e61cddf99e402fb2`. Exact-commit CI passed and the
+running Staging service normalized/rendered all 100 templates in five groups
+of twenty, with no pause markup. This read-only check did not publish a test
+page or change customer data. Startup reported fourteen migrations and no
+pending migrations; public Staging browser/image checks remain unverified.
+
 ### Profile images
 
 `POST /link-in-bio/images` accepts `{ "slot": "logo", "imageBase64": "..." }`,

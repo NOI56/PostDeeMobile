@@ -27,13 +27,15 @@ Build roadmap for PostDee.
   no provider, dependency, flag or migration is added. Local/remote validation
   and the completed 2026-10-07 Staging release are recorded in
   `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
-- Expand customization to five categories with twenty layout/style templates
+- Provide five customization categories with twenty layout/style templates
   each: minimal, cute/pastel, nature/warm, luxury/premium, creative/colorful.
   Keep the seven legacy choices, private draft content/images, per-link
   overrides and explicit publishing. Use category → preview → apply; remove
   visitor and preview pause buttons while retaining owner effects toggles and
   OS reduced motion. Shared catalog and nullable `templateId` are additive,
-  with no migration or paid service; deliver API before Mobile. See
+  with no migration or paid service; deliver API before Mobile. Staging delivery
+  completed on 2026-10-07 at runtime commit `fc087c4`, after exact-commit CI
+  passed 1,469 API and 1,422 Flutter tests. See
   `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 - Separate local draft saving from publishing. Show a shareable URL only after
   the API confirms publication. Support updating and unpublishing; changing a

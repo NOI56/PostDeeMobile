@@ -125,9 +125,10 @@ draft was used. Browser external requests were blocked by the local test harness
 
 The broader TypeScript check including every test has 129 existing diagnostics;
 none concern the affected link-in-bio modules or added tests. The production
-API build passed. Remote CI, live Staging publication/image reload, iOS, and
-physical-device checks have not run for this revision. The earlier release's
-remote CI does not verify this new work.
+API build passed. At local acceptance, remote CI had not yet run; the authorized
+exact-commit CI and Staging delivery are recorded below. Live customer
+publication/public-browser image reload, iOS, and physical-device checks remain
+unverified. The earlier release's remote CI does not verify this new work.
 
 ## Visual fidelity and corrections
 
@@ -178,12 +179,80 @@ platform assets, fonts, config, dependencies and schema remain unchanged.
   Studio sample data and no Firebase/network/preferences/save calls. It was
   removed by restoring the original installed APK. APK/preferences hashes both
   matched their recorded baseline before reopening the original app.
-- The final new main-entry APK is built but not installed on the old API.
-  Ship API and pass exact-commit CI first, then update the emulator/app with
-  data-preserving installation. No new migration is needed; the existing
-  deployment's migration state was not re-queried in this local task.
+- At local acceptance, the final main-entry APK was built but not installed on
+  the old API. The subsequent release followed exact-commit CI, API Live, then
+  data-preserving installation. No new migration is needed. During deployment,
+  the service reported fourteen existing migrations and none pending.
 - At local acceptance, no commit, push, merge, PR or deployment had occurred for
   this scope. The subsequent authorized delivery is recorded below. The
   existing untracked `artifacts/` remains excluded and untouched. Changes are
   limited to the catalog, appearance contract, public/native rendering/picker,
   their regressions, generator CI check and these related documents.
+
+## Authorized Staging delivery — 2026-10-07
+
+- The user explicitly authorized push, Staging deployment and emulator update
+  by replying “ต่อเลย” to the release question. No additional confirmation was
+  required. A fresh fetch kept origin/main at `bcd7153f196cd381a786b333b9b61a67dbe95ca3`;
+  before commit this checkout was zero behind / fourteen ahead of main and
+  matched its remote feature branch.
+- Feature commit `fc087c4119cd46503c569879e61cddf99e402fb2`, **Add 100 profile
+  templates and simplify motion controls**, includes only the 32 related
+  files and was pushed to `codex/pinterest-mobile-ui`. No merge into main or
+  Production deployment was performed; existing untracked artifacts were excluded.
+- [CI run 37599020895](https://github.com/NOI56/PostDeeMobile/actions/runs/37599020895)
+  succeeded on that exact SHA: API 103 files / 1,469 tests, generator 12 tests,
+  generated-catalog parity, API build, Prisma schema and production audit;
+  Flutter analysis and 1,422 tests. Evidence: `profile-template-release-ci-summary.json`,
+  `profile-template-release-ci-run.json`, `profile-template-release-ci.log`.
+- [Render deploy dep-db30rph42hec7386vvrg](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db30rph42hec7386vvrg)
+  used **Deploy a specific commit** on the existing `postdee-api-staging`
+  service `srv-d9bb72ojs32c739osa5g`. Source and checkout logs identify the
+  feature SHA. The configured main-branch label does not indicate a merge.
+  Service plan, Auto-Deploy, environment and health-check settings were unchanged.
+- Started at 16:16:22 GMT+7; **Deploy succeeded | Live** at 16:18:19, duration
+  1m56s. Startup confirms PostgreSQL `postdee_staging`, fourteen migrations and
+  **No pending migrations to apply**, port 10000, existing disabled social
+  publisher and in-process memory scheduler. Pruning reports the same four
+  moderate production advisories; this scope changes no dependencies.
+- A read-only command in the running instance `dm5pl` imported the actual
+  compiled catalog, validator and renderer. It confirmed
+  `RENDER_GIT_COMMIT=fc087c4119cd46503c569879e61cddf99e402fb2`, five categories
+  of twenty, all 100 appearance round trips and HTML renders, and no pause
+  markup. Only an in-memory sample was rendered; no database/storage/user
+  write or HTTP publication occurred. Evidence: `profile-template-release-runtime-check.txt`
+  and `.png`. This does not bypass the saved public-site browser restriction.
+- Render evidence: `profile-template-release-staging-deploy.txt` and
+  `profile-template-release-staging-live.png`. The temporary Shell tab was
+  closed; the deployment result remains open as the delivery evidence.
+- After API Live, `adb install -r` installed the final **main-entry** APK on
+  emulator-5554. Installed bytes match
+  `1686590fc2f3d9373d64304e205b5fca629e7e9db8191246d8be26939515c4d1`.
+  A fresh baseline immediately before installation and the final smoke agree:
+  preferences SHA-256 `d531f37d6410fb954b4a8cc28c111d32f02786ff21cee1801c0399536dec5769`,
+  account snapshot unchanged, owned draft unchanged. The existing pink draft
+  still has two enabled links, the signed-in account remains present and Home
+  shows its existing Free entitlement (0/3). API/Firebase/feature flags match
+  the exact environment recorded above.
+- Native smoke opened the real store manager, all five category headings
+  (twenty templates each), and the Yellow Pop grid modal with the owner's name,
+  logo, YouTube/Shopee marks and footer. No pause control appears. Cancelling
+  the preview retains the pink appearance. No apply, save, publish, billing or
+  account change was invoked. The final app remains open on the Creative chooser.
+  Android UIAutomator returned a null root once; no stale accessibility tree
+  was used. Subsequent SDK actions were based on fresh emulator screenshots.
+- Native evidence: `profile-template-release-installed.json`,
+  `profile-template-release-after.json`, `profile-template-release-smoke.json`,
+  `profile-template-release-real-category-{cute,nature,luxury,creative}.png`,
+  `profile-template-release-real-picker.png`,
+  `profile-template-release-real-grid-preview.png`, and
+  `profile-template-release-final-picker.png`. Final audit confirms
+  `apkMatches`, `preferencesUnchanged`, `accountUnchanged`, `draftsUnchanged`
+  and `noSaveOrPublish` all true.
+- Shared pages now use the updated renderer, including pause-button removal.
+  Applying a new template to a customer's published page remains an explicit
+  owner Update action. No live customer publication was performed for QA, and
+  no public Staging browser/image, iOS or physical-device rendering is claimed.
+- README, ROADMAP, API and ARCHITECTURE record this exact release. The delivery
+  receipt changes only these documents and this plan; it does not change the
+  runtime source tested by CI, deployed by Render or built into the installed APK.

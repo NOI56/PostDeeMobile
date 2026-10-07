@@ -8,6 +8,19 @@ Build roadmap for PostDee.
   bottom navigation and the primary Home shortcut. The 2026-10-06 navigation
   revision places Calendar second and Store link fourth. Keep uploader AI
   captions, publishing, calendar, templates, and existing analytics.
+- The 2026-10-07 create-post revision combines the selected Pinterest 1 + 2
+  direction into a full-screen four-step composer: clip, caption, connected
+  destinations, and review/time/send. Use a small poster with a full-screen
+  local player, manually requested AI, secondary template/tool controls,
+  explicit local Save draft and a changed-form exit prompt. Keep one final
+  confirmation, editable inline review, real target-account/settings gates,
+  per-user draft ownership and the existing submission request ID on retries.
+  Closing returns to the previous shell tab; Calendar opens the same composer.
+  Use a current-step counter, destination-specific Next labels and check marks
+  for ready previous steps so first-time users can follow the bottom actions.
+  This adds no API/schema/provider/pricing/entitlement change or migration.
+  Verification is tracked in the dated addendum to
+  `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md`.
 - Provide one public profile page per authenticated account on every package,
   with 1–20 explicitly enabled custom links. Host `/p/<slug>` on the existing
   API domain; persist with Prisma and include profile cleanup in account deletion.
@@ -408,6 +421,10 @@ Reference direction:
   post stays in the bottom navigation, while the future viral-alert preview
   stays off Home until its real end-to-end flow is ready.
 - Keep AI captioning available from Upload after a clip is selected.
+- Create post opens above the shell as a full-screen four-step flow; the dock
+  stays on shell tabs and is hidden while composing. The final step contains
+  scheduling and the shared review summary rather than another review page.
+  AI starts only from the user's button, and local draft saving remains explicit.
 - Keep Templates available as a secondary entry point instead of a main
   bottom-nav tab.
 - Legacy AI editing settings are no longer exposed from the active navigation.
@@ -419,13 +436,15 @@ Planned order:
    widgets.
 2. Finish Home dashboard: greeting, plan card, latest-post status rows, quick
    actions, and platform performance summary.
-3. Redesign Upload: vertical video preview, functional cover editor (video
+3. Redesign Upload: full-screen clip → caption → destinations → review/send
+   steps, small local poster and full-screen player, manual AI, explicit draft
+   save/changed-form exit, and a functional cover editor (video
    frame, Thai text, font/style/position, rendered 1080x1920 image, secure
    upload, preview, and platform-aware delivery), platform toggles,
    schedule/date/time controls capped at 30 days in advance, draft state, and a
-   single clear Post CTA. The
-   cover editor implementation now exists; real connected-account publishing
-   still requires staging verification.
+   single clear final Post CTA. The four-step implementation now exists;
+   final regression/build/native QA and real connected-account publishing
+   verification remain separate release gates.
 4. Refine Calendar and Upload AI Caption: the calendar now refreshes when
    visible, polls live post states, and opens completed results read-only;
    real connected-account verification and real-clip AI captioning after video

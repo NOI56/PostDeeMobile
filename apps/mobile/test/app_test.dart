@@ -8,6 +8,8 @@ import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
 
+import 'support/uploader_wizard_test_navigation.dart';
+
 Finder _referenceNav() =>
     find.byKey(const ValueKey('postdee-reference-bottom-nav'));
 
@@ -208,7 +210,7 @@ void main() {
     expect(tester.getSize(_referenceNav()).height, lessThanOrEqualTo(92));
   });
   testWidgets(
-      'keeps upload schedule controls above bottom nav on a phone viewport',
+      'keeps wizard schedule controls above its footer on a phone viewport',
       (tester) async {
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 2.75;
@@ -232,7 +234,13 @@ void main() {
 
     await _tapReferenceNavButton(tester, 'สร้างโพสต์');
 
-    final bottomNavTop = tester.getTopLeft(_referenceNav()).dy;
+    expect(_referenceNav(), findsNothing);
+    await goToUploaderStep(tester, 3);
+    final footerTop = tester
+        .getTopLeft(
+          find.byKey(const ValueKey('uploader-sticky-action-bar')),
+        )
+        .dy;
     final schedulePanel = find.byKey(
       const ValueKey('uploader-schedule-panel'),
     );
@@ -257,9 +265,10 @@ void main() {
     expect(postNowButton, findsOneWidget);
     expect(scheduleButton, findsOneWidget);
     expect(scheduleAtField, findsNothing);
-    expect(tester.getBottomLeft(schedulePanel).dy, lessThan(bottomNavTop));
-    expect(tester.getBottomLeft(postNowButton).dy, lessThan(bottomNavTop));
-    expect(tester.getBottomLeft(scheduleButton).dy, lessThan(bottomNavTop));
+    expect(
+        tester.getBottomLeft(schedulePanel).dy, lessThanOrEqualTo(footerTop));
+    expect(tester.getBottomLeft(postNowButton).dy, lessThan(footerTop));
+    expect(tester.getBottomLeft(scheduleButton).dy, lessThan(footerTop));
 
     await tester.tap(scheduleButton);
     await tester.pumpAndSettle();
@@ -308,11 +317,19 @@ void main() {
     );
 
     expect(videoPreview, findsOneWidget);
-    expect(tester.getSize(videoPreview).height, lessThanOrEqualTo(244));
+    final viewportWidth =
+        tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    final footerTop = tester
+        .getTopLeft(
+          find.byKey(const ValueKey('uploader-sticky-action-bar')),
+        )
+        .dy;
+    expect(_referenceNav(), findsNothing);
+    expect(tester.getSize(videoPreview).width, lessThan(viewportWidth / 2));
+    expect(tester.getBottomLeft(videoPreview).dy, lessThan(footerTop));
   });
 
-  testWidgets(
-      'keeps upload post button sticky above bottom nav on a phone viewport',
+  testWidgets('keeps wizard actions sticky inside the phone viewport',
       (tester) async {
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 2.75;
@@ -336,7 +353,9 @@ void main() {
 
     await _tapReferenceNavButton(tester, 'สร้างโพสต์');
 
-    final bottomNavTop = tester.getTopLeft(_referenceNav()).dy;
+    expect(_referenceNav(), findsNothing);
+    final viewportBottom =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
     final stickyPostButton = find.byKey(
       const ValueKey('uploader-sticky-post-button'),
     );
@@ -352,7 +371,9 @@ void main() {
       lessThan(tester.getTopLeft(stickyPostButton).dy),
     );
     expect(tester.getTopLeft(stickyPostButton).dy, greaterThan(0));
-    expect(tester.getBottomLeft(stickyPostButton).dy, lessThan(bottomNavTop));
+    expect(tester.getBottomLeft(stickyPostButton).dy, lessThan(viewportBottom));
+    final nextAction = find.byKey(const ValueKey('uploader-wizard-next'));
+    expect(tester.widget<FilledButton>(nextAction).onPressed, isNotNull);
   });
 
   for (final themeMode in const [ThemeMode.light, ThemeMode.dark]) {
@@ -654,12 +675,18 @@ void main() {
     await _tapReferenceNavButton(tester, 'สร้างโพสต์');
 
     expect(find.text('สร้างโพสต์ใหม่'), findsOneWidget);
-    expect(find.text('1 · เลือกวิดีโอ'), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-step-video')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('uploader-step-progress')), findsOneWidget);
+    expect(_referenceNav(), findsNothing);
     expect(
       find.byKey(const ValueKey('uploader-save-draft-button')),
       findsOneWidget,
     );
 
+    await tester.tap(find.byKey(const ValueKey('uploader-close')));
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsOneWidget);
     await _tapReferenceNavButton(tester, 'ปฏิทิน');
 
     expect(find.text('ประวัติ'), findsNothing);

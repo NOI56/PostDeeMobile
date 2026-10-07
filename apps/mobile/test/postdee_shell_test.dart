@@ -9,6 +9,7 @@ import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
+import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
@@ -25,6 +26,38 @@ Finder _referenceNavButton(String label) => find.descendant(
       of: _referenceNav(),
       matching: find.bySemanticsLabel(label),
     );
+
+Widget _shellApp(PostDeeShell shell) => MaterialApp(
+      theme: AppTheme.dark,
+      locale: const Locale('en'),
+      localizationsDelegates: const [
+        PostDeeLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: PostDeeLocalizations.supportedLocales,
+      home: shell,
+    );
+
+PostDeeLanguageController _signInShell() {
+  SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+  final sessionStore = PostDeeAuthSessionStore.instance;
+  final languageController = PostDeeLanguageController(
+    initialLocale: const Locale('en'),
+  );
+  sessionStore.signIn(
+    const AuthSession(
+      userId: 'firebase-user-shell',
+      idToken: 'firebase-id-token',
+      email: 'seller@example.com',
+      displayName: 'PostDee Seller',
+    ),
+  );
+  addTearDown(sessionStore.clear);
+  addTearDown(languageController.dispose);
+  return languageController;
+}
 
 class _ShellDraftStore implements PublishDraftStore {
   final Map<String, PublishDraft> drafts = {};
@@ -69,6 +102,164 @@ class _ShellDraftStore implements PublishDraftStore {
 }
 
 void main() {
+  testWidgets('opens one full screen composer without a hidden uploader',
+      (tester) async {
+    final languageController = _signInShell();
+    var connectionLoads = 0;
+    await tester.pumpWidget(
+      _shellApp(
+        PostDeeShell(
+          languageController: languageController,
+          uploaderDraftStore: _ShellDraftStore(),
+          loadSocialConnections: () async {
+            connectionLoads += 1;
+            return const [];
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
+    expect(connectionLoads, 0);
+
+    final createAction = tester
+        .widget<Semantics>(
+          _referenceNavButton('Create post'),
+        )
+        .properties
+        .onTap!;
+    createAction();
+    createAction();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(UploaderScreen, skipOffstage: false), findsOneWidget);
+    expect(_referenceNav(), findsNothing);
+    expect(connectionLoads, 1);
+    expect(
+      ModalRoute.of(tester.element(find.byType(UploaderScreen)))?.settings.name,
+      '/create-post',
+    );
+    expect(find.byKey(const ValueKey('uploader-close')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('uploader-close')));
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsOneWidget);
+    expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+  });
+
+  testWidgets('calendar starts the composer and returns to the same calendar',
+      (tester) async {
+    final languageController = _signInShell();
+    await tester.pumpWidget(
+      _shellApp(
+        PostDeeShell(
+          languageController: languageController,
+          uploaderDraftStore: _ShellDraftStore(),
+          loadScheduledPosts: () async => const [],
+          loadSocialConnections: () async => const [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pumpAndSettle();
+    final calendarState = tester.state(find.byType(CalendarScreen));
+    final calendar = tester.widget<CalendarScreen>(find.byType(CalendarScreen));
+    calendar.onAddPost!();
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsNothing);
+    expect(find.byType(UploaderScreen), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('uploader-close')));
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsOneWidget);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
+    expect(tester.state(find.byType(CalendarScreen)), same(calendarState));
+  });
+
+  testWidgets('composer callbacks close only their own active route',
+      (tester) async {
+    final languageController = _signInShell();
+    await tester.pumpWidget(
+      _shellApp(
+        PostDeeShell(
+          languageController: languageController,
+          uploaderDraftStore: _ShellDraftStore(),
+          loadSocialConnections: () async => const [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(_referenceNavButton('Create post'));
+    await tester.pumpAndSettle();
+    final oldUploader = tester.widget<UploaderScreen>(
+      find.byType(UploaderScreen),
+    );
+    oldUploader.onPublishFinished!();
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsOneWidget);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+
+    await tester.tap(_referenceNavButton('Create post'));
+    await tester.pumpAndSettle();
+    oldUploader.onViewAnalytics!();
+    await tester.pumpAndSettle();
+    expect(find.byType(UploaderScreen), findsOneWidget);
+    expect(_referenceNav(), findsNothing);
+    final activeUploader = tester.widget<UploaderScreen>(
+      find.byType(UploaderScreen),
+    );
+    activeUploader.onViewAnalytics!();
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsOneWidget);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 4);
+    expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('changing the signed-in owner closes the active composer',
+      (tester) async {
+    final languageController = _signInShell();
+    await tester.pumpWidget(
+      _shellApp(
+        PostDeeShell(
+          languageController: languageController,
+          uploaderDraftStore: _ShellDraftStore(),
+          loadSocialConnections: () async => const [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(_referenceNavButton('Create post'));
+    await tester.pumpAndSettle();
+    final oldUploader = tester.widget<UploaderScreen>(
+      find.byType(UploaderScreen),
+    );
+    Navigator.of(tester.element(find.byType(UploaderScreen))).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('Composer child route')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Composer child route'), findsOneWidget);
+    PostDeeAuthSessionStore.instance.signIn(
+      const AuthSession(
+        userId: 'different-shell-user',
+        idToken: 'different-id-token',
+        email: 'other@example.com',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
+    expect(find.text('Composer child route'), findsNothing);
+    expect(_referenceNav(), findsOneWidget);
+    oldUploader.onViewAnalytics!();
+    await tester.pumpAndSettle();
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+    expect(_referenceNav(), findsOneWidget);
+  });
+
   for (final width in const [360.0, 393.0]) {
     for (final textScale in const [1.45, 2.0]) {
       testWidgets(
@@ -302,10 +493,12 @@ void main() {
       reason: 'The center upload action is icon-only in the approved design.',
     );
     expect(
-      tester.widget<Tooltip>(find.descendant(
-        of: createButton,
-        matching: find.byType(Tooltip),
-      )).message,
+      tester
+          .widget<Tooltip>(find.descendant(
+            of: createButton,
+            matching: find.byType(Tooltip),
+          ))
+          .message,
       'Create post',
       reason: 'The unlabeled action keeps its accessible name and tooltip.',
     );
@@ -315,7 +508,8 @@ void main() {
         matching: find.byIcon(Icons.ios_share_outlined),
       ),
       findsOneWidget,
-      reason: 'Create post starts by uploading a video, so use the upload icon.',
+      reason:
+          'Create post starts by uploading a video, so use the upload icon.',
     );
     expect(
       find.ancestor(
@@ -323,8 +517,7 @@ void main() {
         matching: find.byType(ClipRRect),
       ),
       findsNothing,
-      reason:
-          'The circular create button must not be clipped by the nav.',
+      reason: 'The circular create button must not be clipped by the nav.',
     );
 
     final navSurface = tester.widget<Material>(
@@ -386,7 +579,6 @@ void main() {
     const tabIndices = {
       'Home': 0,
       'Calendar': 3,
-      'Create post': 2,
       'Store link': 1,
       'Account': 5,
     };
@@ -399,7 +591,7 @@ void main() {
       expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index,
           currentTab.value);
       expect(selectedIndicator, findsOneWidget);
-      for (final label in tabIndices.keys) {
+      for (final label in [...tabIndices.keys, 'Create post']) {
         final button = _referenceNavButton(label);
         expect(
           tester.getSemantics(button),
@@ -420,8 +612,11 @@ void main() {
 
     // Publishing can still open Analytics, which is not one of the five nav
     // destinations. It must not incorrectly mark another destination selected.
+    await tester.tap(_referenceNavButton('Create post'));
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsNothing);
     final uploader = tester.widget<UploaderScreen>(
-      find.byType(UploaderScreen, skipOffstage: false),
+      find.byType(UploaderScreen),
     );
     expect(uploader.onViewAnalytics, isNotNull);
     uploader.onViewAnalytics!();
@@ -429,7 +624,7 @@ void main() {
     expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 4);
     expect(_referenceNav(), findsOneWidget);
     expect(selectedIndicator, findsNothing);
-    for (final label in tabIndices.keys) {
+    for (final label in [...tabIndices.keys, 'Create post']) {
       expect(
         tester.getSemantics(_referenceNavButton(label)),
         isSemantics(isSelected: false),
@@ -508,8 +703,12 @@ void main() {
     expect(find.byKey(const ValueKey('link-in-bio-back')), findsOneWidget);
     await tester.tap(_referenceNavButton('Create post'));
     await tester.pumpAndSettle();
-    expect(_referenceNav(), findsOneWidget);
+    expect(_referenceNav(), findsNothing);
     expect(find.byKey(const ValueKey('link-in-bio-back')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('uploader-close')));
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsOneWidget);
+    expect(find.byKey(const ValueKey('link-in-bio-back')), findsOneWidget);
   });
 
   testWidgets('opens profile from the reference bottom navigation',
@@ -1196,6 +1395,14 @@ void main() {
     await tester.tap(pickVideoButton);
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const ValueKey('uploader-wizard-next')));
+    await tester.pumpAndSettle();
+    final captionField = find.byKey(const ValueKey('uploader-caption-field'));
+    await tester.enterText(captionField, 'Scheduled shell clip');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('uploader-wizard-next')));
+    await tester.pumpAndSettle();
+
     final selectAll =
         find.byKey(const ValueKey('uploader-select-all-platforms'));
     await tester.scrollUntilVisible(
@@ -1205,6 +1412,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(selectAll);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('uploader-wizard-next')));
     await tester.pumpAndSettle();
 
     final scheduleButton =
@@ -1218,19 +1427,6 @@ void main() {
     await tester.tap(scheduleButton);
     await tester.pumpAndSettle();
 
-    final captionField = find.byKey(const ValueKey('uploader-caption-field'));
-    await tester.scrollUntilVisible(
-      captionField,
-      500,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.enterText(captionField, 'Scheduled shell clip');
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
-    await tester.pumpAndSettle();
-    // Confirm on the publish-review screen (design screen #7).
     await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
     await tester.pumpAndSettle();
 

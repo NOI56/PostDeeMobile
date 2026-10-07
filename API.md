@@ -658,6 +658,24 @@ has a replay window until strict `multipart` mode is enabled for all clients.
 
 ## Posts
 
+### Mobile creation presentation (2026-10-07)
+
+The full-screen Mobile composer has four UI steps: clip, caption, connected
+destinations, and inline review/time/send with one explicit confirmation.
+Local poster/full-screen playback, navigation between steps and editing the
+summary do not create uploads/posts or use post quota. AI caption generation
+still requires an explicit user action and uses the existing caption endpoint
+and paid-plan gates. Local draft Save and the changed-form exit prompt remain
+separate from posting.
+
+This presentation revision changes no endpoint, request/response field, supported
+platform, provider mapping, package price/rule, schema or environment flag, and
+requires no database migration. Mobile still validates the actual target
+account and complete `platformSettings`, persists the owned submission before
+publishing side effects, and retries with the same `clientRequestId`. Existing
+readiness, upload, post, scheduling and truthful delivery-result contracts below
+remain authoritative.
+
 Mobile publish drafts are local files, not API resources. The app copies the
 draft video, optional cover, and manifest to app-owned Application Support
 storage under a stable authenticated user ID (the Firebase UID with real

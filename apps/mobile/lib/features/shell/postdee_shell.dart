@@ -98,6 +98,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
   int _selectedIndex = 0;
   int _calendarRefreshToken = 0;
   bool _isDeletingAccount = false;
+  MaterialPageRoute<void>? _composerRoute;
+  String? _composerOwnerUserId;
 
   // null = still loading; the main shell shows meanwhile so the flow never
   // blocks startup. true only on a genuine first run.
@@ -121,6 +123,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
         firebaseBootstrapResult: widget.firebaseBootstrapResult,
       ),
     );
+    _authController.addListener(_handleComposerOwnerChanged);
     _accountAccessRevoker = widget.accountAccessRevoker ??
         createAccountAccessRevokerFromConfig(
           firebaseBootstrapResult: widget.firebaseBootstrapResult,
@@ -162,19 +165,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
           embeddedInTab: true,
           isActive: _selectedIndex == 1,
         ),
-        UploaderScreen(
-          draftStore: widget.uploaderDraftStore,
-          loadSubscription: widget.loadSubscription,
-          pickVideo: widget.pickVideo,
-          createUpload: widget.createUpload,
-          uploadVideoFile: widget.uploadVideoFile,
-          createPost: widget.createPost,
-          checkPublishingReadiness: widget.checkPublishingReadiness,
-          loadSocialConnections: widget.loadSocialConnections,
-          onScheduledPostCreated: _handleScheduledPostCreated,
-          onPublishFinished: () => _selectTab(0),
-          onViewAnalytics: () => _selectTab(4),
-        ),
+        const SizedBox.shrink(),
         CalendarScreen(
           refreshToken: _calendarRefreshToken,
           isActive: _selectedIndex == 3,
@@ -198,6 +189,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
   @override
   void dispose() {
     unawaited(_pushMessagingGateway.dispose());
+    _authController.removeListener(_handleComposerOwnerChanged);
     _authController.dispose();
     super.dispose();
   }
@@ -240,7 +232,85 @@ class _PostDeeShellState extends State<PostDeeShell> {
   }
 
   void _selectTab(int index) {
+    if (index == 2) {
+      unawaited(_openPostComposer());
+      return;
+    }
     setState(() => _selectedIndex = index);
+  }
+
+  Future<void> _openPostComposer() async {
+    if (_composerRoute != null || !_authController.session.isSignedIn) return;
+
+    late final MaterialPageRoute<void> route;
+    route = MaterialPageRoute<void>(
+      settings: const RouteSettings(name: '/create-post'),
+      builder: (context) => DecoratedBox(
+        decoration: AppTheme.screenBackground,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: SafeArea(
+            child: UploaderScreen(
+              fullScreen: true,
+              draftStore: widget.uploaderDraftStore,
+              loadSubscription: widget.loadSubscription,
+              pickVideo: widget.pickVideo,
+              createUpload: widget.createUpload,
+              uploadVideoFile: widget.uploadVideoFile,
+              createPost: widget.createPost,
+              checkPublishingReadiness: widget.checkPublishingReadiness,
+              loadSocialConnections: widget.loadSocialConnections,
+              onScheduledPostCreated: (post) {
+                if (_composerBelongsToCurrentOwner(route)) {
+                  _handleScheduledPostCreated(post);
+                }
+              },
+              onPublishFinished: () => _finishPostComposer(route, 0),
+              onViewAnalytics: () => _finishPostComposer(route, 4),
+            ),
+          ),
+        ),
+      ),
+    );
+    _composerRoute = route;
+    _composerOwnerUserId = _authController.session.stableUserId;
+    try {
+      await Navigator.of(context).push<void>(route);
+    } finally {
+      if (identical(_composerRoute, route)) {
+        _composerRoute = null;
+        _composerOwnerUserId = null;
+      }
+    }
+  }
+
+  void _finishPostComposer(MaterialPageRoute<void> route, int targetIndex) {
+    if (!route.isCurrent || !_composerBelongsToCurrentOwner(route)) {
+      return;
+    }
+    route.navigator?.pop();
+    _selectTab(targetIndex);
+  }
+
+  bool _composerBelongsToCurrentOwner(MaterialPageRoute<void> route) =>
+      mounted &&
+      identical(_composerRoute, route) &&
+      route.isActive &&
+      _authController.session.isSignedIn &&
+      _authController.session.stableUserId == _composerOwnerUserId;
+
+  void _handleComposerOwnerChanged() {
+    final route = _composerRoute;
+    if (route == null ||
+        (_authController.session.isSignedIn &&
+            _authController.session.stableUserId == _composerOwnerUserId)) {
+      return;
+    }
+    final navigator = route.navigator;
+    if (navigator == null || !route.isActive) return;
+    navigator.popUntil(
+        (candidate) => identical(candidate, route) || candidate.isFirst);
+    if (route.isCurrent) navigator.pop();
   }
 
   void _handleScheduledPostCreated(QueuedPostResult _) {
@@ -606,8 +676,8 @@ class _ReferenceNavButton extends StatelessWidget {
                                     color: AppTheme.accent,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: Icon(icon,
-                                      color: Colors.white, size: 25),
+                                  child:
+                                      Icon(icon, color: Colors.white, size: 25),
                                 ),
                               )
                             : Icon(icon, color: color, size: 22),

@@ -28,9 +28,9 @@ not a direction to restore the old dark UI or removed editing entry points.
 
 **Status:** the initial four-step implementation and approved navigation-clarity
 follow-up are verified. The latest Staging APK is installed on the Android
-emulator with the existing account preserved. The user has authorized push and
-Staging deployment; the delivery record below tracks the exact candidate and
-remote verification separately from the earlier local checks.
+emulator with the existing account preserved. Candidate `550f73a` was pushed,
+passed both CI jobs, and deployed Live on Staging. The delivery record below
+separates the exact candidate and remote verification from earlier local checks.
 
 **Baseline:** isolated `codex/post-create-wizard` worktree at
 `fc087c4119cd46503c569879e61cddf99e402fb2`, from the verified current integration
@@ -205,6 +205,48 @@ Navigation-clarity follow-up verification on 2026-10-07:
   update an installed mobile app. The earlier native checks above used the
   same composer runtime and Staging base configuration; new delivery build
   and remote results are recorded separately when verified.
+
+## Verified Staging Delivery (2026-10-07)
+
+- Pushed candidate `550f73aba0dc90ebd3e0039181b89733d0e104f3` on
+  `codex/post-create-wizard-staging`. No merge to `main` or Production deployment.
+  The original worktree and concurrent Account edits were left intact.
+- [CI run 37612609890](https://github.com/NOI56/PostDeeMobile/actions/runs/37612609890)
+  completed successfully with that exact `headSha`: Flutter analysis and all
+  1475 mobile tests passed; Backend API passed 1469 tests in 103 files, build,
+  shared catalog/generator checks, Prisma validation and dependency audit.
+  This clean CI suite supersedes the earlier Windows-only fixture-lock result.
+  Local delivery analysis reported no issues and targeted app/shell/navigation
+  checks passed 51/51 (`composer-delivery-analyze.log` and
+  `composer-delivery-targeted-test.log`).
+- [Render deploy dep-db32ki2jnfac738gcicg](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db32ki2jnfac738gcicg)
+  was manually triggered for the candidate. Source and checkout log matched
+  the full SHA; build passed and the service became **Deploy succeeded | Live**
+  at 18:19:22 Asia/Bangkok, taking 1m54s. Start logs confirmed 14 migrations,
+  `No pending migrations to apply.`, publisher `disabled`, listener on 10000
+  and the existing in-process scheduler. No new schema migration, plan change,
+  secret update, provider activation or real social post occurred.
+- Render became Live after waiting for its internal `/health` check. This is
+  platform health evidence, not a separately observed public HTTP status or
+  browser/provider E2E. The earlier saved permission block and user decision
+  to skip public-site browser checks were respected. Auto-Deploy remains off.
+- Fresh debug APK built from the exact clean candidate with the existing base
+  Staging defines (`composer-delivery-staging-build.log`), without changing
+  billing/feature flags. Package, API and Firebase project match the earlier
+  native environment. APK SHA-256 is
+  `0424f85f7f104cb514ca38f4ac375bb536d503481d1881820babfdf224c7be01`.
+  Its three runtime assets were opened and hashed: kernel 66,816,568 bytes,
+  VM snapshot 13,646 bytes and isolate snapshot 11,093,091 bytes; none is empty.
+- Read-only parity checks confirmed all four composer runtime files match the
+  earlier native-tested source after line-ending normalization, and all other
+  tracked mobile runtime/assets/dependencies/auth/configuration remain at the
+  verified baseline. The fresh APK was not reinstalled onto the shared emulator
+  during active use. Earlier matching-runtime native smoke evidence remains
+  above; this fresh binary has build/package/asset verification only. No iOS
+  hardware, live paid AI or live provider publishing check was added.
+- CI JSON/logs, APK metadata and `composer-staging-deploy-live.jpg` plus its
+  visible UI state are saved in the task visualization proof folder. Follow-up
+  documentation commits do not change the deployed app/API runtime candidate.
 
 ## File Structure
 

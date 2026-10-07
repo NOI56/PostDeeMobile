@@ -16,6 +16,9 @@ painted through the bottom safe area, rounded top corners, outline icons, and a
 raised solid green upload action. Selected items use green icons/text/dots. The
 center action has no visible label but retains its localized tooltip and
 accessible Create post name.
+Create post is a full-screen action rather than a retained tab: the composer
+hides the dock and returns to the previous tab when closed. Its current
+four-step flow is described under Mobile below.
 This navigation-only revision is recorded in
 `docs/superpowers/plans/2026-10-06-flat-bottom-navigation.md`.
 Home has one profile-link shortcut above the analytics cards. AI video
@@ -914,17 +917,32 @@ Current mobile pieces:
 - Light and dark Flutter themes (light is the current default)
 - Generated Android and iOS platform folders with app display name `PostDee`
 - Home dashboard with manual refresh for total views and likes from `GET /analytics/summary`, plus automatic analytics refresh after the plan becomes Pro
-- Universal uploader screen with 9:16 validation, real video selection, saved
-  caption templates, scheduling that must be in the future and is capped at 30
-  days, explicit connected-platform selection with no automatic destinations,
-  and a
-  functional cover editor. A seller can scrub to a source-video frame, add Thai
+- Full-screen create-post flow with four steps: choose clip, write caption,
+  choose connected destinations, then review/send now or schedule. Step headers
+  show the current step out of four, and the primary Next action names its
+  destination. Previous steps show a check only when their input is ready;
+  progress buttons remain optional shortcuts. It uses a
+  small local poster that opens a full-screen local video player on tap, a large
+  caption field, manually requested AI help, and collapsed caption templates
+  and additional tools. Back/edit actions retain the current form. Save draft
+  stays explicit; closing a changed form offers continue editing, discard, or
+  save and exit. The fourth step combines scheduling and the shared review
+  summary with one publish confirmation, without a second review route.
+  9:16 validation, the future/30-day schedule limit, explicit account selection,
+  package/phone gates and required per-platform settings are preserved. A
+  functional cover editor lets a seller scrub to a source-video frame, add Thai
   text, choose Prompt or Anuphan, adjust weight, size, colors, and position, then
   review the cover before posting. Mobile renders a 1080x1920 JPEG; Instagram
   and Facebook receive the image, TikTok receives the frame time, and YouTube
   Shorts leaves final cover selection to the YouTube mobile app. The compact
   tool area still exposes only `ตัดคลิปเป็น EP`; the removed manual editor,
   automatic-watermark, and advanced-mode cards must not return.
+  The shell does not create a hidden uploader or load its connections before
+  the composer is opened. Calendar uses the same full-screen entry; closing it
+  keeps the previous calendar state. This mobile-only revision adds no API,
+  schema, provider, pricing, entitlement or environment change, and needs no
+  database migration. Final whole-suite/build/device verification is tracked
+  in `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md`.
 - Publish drafts are copied into per-stable-UID Application Support storage with
   their video, optional cover, caption/settings, selected destinations, and
   optional schedule. Saving locally does not call publishing readiness, upload,

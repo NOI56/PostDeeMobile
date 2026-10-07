@@ -9,8 +9,12 @@ remains in Upload; editing modules are retained compatibility code and do not
 have an active mobile entry point or editing-minute offer.
 
 The 2026-10-06 bottom-navigation revision presents Home, Calendar, Create post,
-Store link, and Account while retaining the existing six-screen IndexedStack
-and its callbacks. Visual button order maps to screen indices 0, 3, 2, 1, 5;
+Store link, and Account while retaining the existing shell indices and
+callbacks. Visual button order maps to indices 0, 3, 2, 1, 5; Create post (2)
+now opens `/create-post` above the shell instead of selecting a retained
+uploader. IndexedStack slot 2 is empty, so no hidden uploader initializes its
+draft/connection loads. The full-screen composer hides the dock; closing it
+retains the previous tab, and Calendar Add uses the same entry point.
 Analytics remains index 4, accessible from existing secondary flows without a
 selected navigation dot. Navigation labels are localized separately from screen
 headings; the center Create post name remains accessible and in its tooltip,
@@ -300,7 +304,12 @@ Current mobile pieces:
 
 - Light and dark Flutter themes; light is the current default.
 - Home dashboard with total views, total likes, subscription status, Basic Phone OTP verification, and Starter/Pro CTAs.
-- Universal uploader screen with 9:16 metadata validation, explicit platform
+- Full-screen four-step uploader (clip, caption, destinations, review/send)
+  with local poster/full-screen playback, manual AI caption requests,
+  explicit draft saving and changed-form exit choices. The final step embeds
+  `PublishReviewSummary` beside scheduling, with one confirm action and edit
+  callbacks returning to the original form steps. Controllers/form state remain
+  owned by one uploader instance. It retains 9:16 metadata validation, explicit platform
   selection, and progressive settings: a selected row shows one outcome summary;
   detailed TikTok/YouTube/Instagram/Facebook controls open only in that
   platform's bottom sheet. Review shows the connected account/channel/page and
@@ -580,6 +589,38 @@ revocation is implemented for those platforms.
 
 ## Upload And Scheduling Flow
 
+The 2026-10-07 composer revision changes Mobile presentation only. A local
+poster/player uses the selected device file; preview and step navigation do not
+publish or consume post quota. AI generation starts only when explicitly
+requested and keeps the existing paid-plan/provider contract; late results must
+not overwrite a changed clip, account, guidance or caption. Caption templates,
+cover editing and EP tools remain secondary controls rather than simultaneous
+main-form panels.
+
+Step headers identify the current step out of four. The primary Next button
+names the destination; progress buttons remain optional navigation shortcuts.
+Previous-step check marks depend on current input readiness, including the
+existing account/settings readiness gate for destinations. These cues keep the
+existing validation and publishing behavior.
+
+Local Save draft is explicit. The full-screen close action offers continue,
+discard or save-and-exit when the form differs from its saved snapshot. The
+existing owner-scoped draft store and automatic submission persistence remain:
+save the complete request ID/form before publishing side effects, reuse that
+ID on retry, and preserve uncertain/failed drafts. The shell tracks composer
+route identity and owner, prevents duplicate opens, and closes that route and
+its children on an account change. Finish/Analytics callbacks close only their
+own current composer after the publishing route has returned.
+
+The inline summary reuses the standalone review's account-identity,
+`canSubmit` and known-outcome checks. Its optional schedule row is hidden when
+the fourth-step schedule panel already displays the same choice. TikTok inbox
+draft, YouTube visibility/compliance, Instagram feed choice and Facebook Page
+Video publish/page-draft semantics remain unchanged. Server contracts,
+package/phone/quota rules, storage/queue adapters, flags and schema are unchanged;
+this revision requires no database migration. Final QA is tracked in
+`docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md`.
+
 ```mermaid
 sequenceDiagram
   participant U as User
@@ -595,6 +636,7 @@ sequenceDiagram
     U->>M: Scrub to a frame and style Thai cover text
     M-->>M: Render a 1080x1920 JPEG
   end
+  U->>M: Write caption; optionally request AI help
   opt User saves a local draft
     M-->>M: Copy video, optional cover, and manifest to Application Support / stable UID
     M-->>U: Saved locally; no publish API, R2, provider, queue, or quota mutation
@@ -602,7 +644,9 @@ sequenceDiagram
   U->>M: Explicitly select destinations
   M-->>U: Reveal one settings summary; open only the selected platform sheet
   M-->>U: Review exact requested outcome for every selected platform
+  U->>M: Choose post now or a future schedule in the inline review step
   U->>M: Confirm publish
+  M-->>M: Persist owned submission and stable request ID before publish side effects
   M->>A: GET /publishing/readiness
   break SOCIAL_PUBLISHER is disabled
     A-->>M: 503 SOCIAL_PUBLISHING_UNAVAILABLE

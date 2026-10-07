@@ -11,6 +11,7 @@ import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/test_publish_draft_store.dart';
+import 'support/uploader_wizard_test_navigation.dart';
 
 PickedVideoFile _pickedVideo() {
   final directory = Directory.systemTemp.createTempSync('postdee-cover-flow-');
@@ -37,7 +38,20 @@ Future<void> _pickVideo(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _openCoverEditor(WidgetTester tester) async {
+  final editCover = find.byKey(const ValueKey('uploader-cover-edit-button'));
+  await tester.scrollUntilVisible(
+    editCover,
+    300,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.ensureVisible(editCover);
+  await tester.tap(editCover);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _enterCaption(WidgetTester tester) async {
+  await goToUploaderStep(tester, 1);
   final caption = find.byKey(const ValueKey('uploader-caption-field'));
   await tester.scrollUntilVisible(
     caption,
@@ -49,6 +63,7 @@ Future<void> _enterCaption(WidgetTester tester) async {
 }
 
 Future<void> _selectAllPlatforms(WidgetTester tester) async {
+  await goToUploaderStep(tester, 2);
   final scrollable = find.byType(Scrollable).first;
   final selectAll = find.byKey(const ValueKey('uploader-select-all-platforms'));
   await tester.scrollUntilVisible(
@@ -60,6 +75,7 @@ Future<void> _selectAllPlatforms(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.drag(scrollable, const Offset(0, 3000));
   await tester.pumpAndSettle();
+  await goToUploaderStep(tester, 0);
 }
 
 void main() {
@@ -103,8 +119,7 @@ void main() {
 
     await _pickVideo(tester);
     await _selectAllPlatforms(tester);
-    await tester.tap(find.byKey(const ValueKey('uploader-cover-edit-button')));
-    await tester.pumpAndSettle();
+    await _openCoverEditor(tester);
 
     expect(editorRequest?.videoFile.path, pickedVideo.path);
     expect(editorRequest?.platforms.single.apiValue, 'INSTAGRAM_REELS');
@@ -193,11 +208,9 @@ void main() {
 
     await _pickVideo(tester);
     await _selectAllPlatforms(tester);
-    await tester.tap(find.byKey(const ValueKey('uploader-cover-edit-button')));
-    await tester.pumpAndSettle();
+    await _openCoverEditor(tester);
     await _enterCaption(tester);
-    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
-    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 3);
     expect(
       find.byKey(const ValueKey('publish-review-cover-image')),
       findsOneWidget,

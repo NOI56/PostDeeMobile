@@ -9,6 +9,8 @@ import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/uploader_wizard_test_navigation.dart';
+
 class _MemoryPublishDraftStore implements PublishDraftStore {
   _MemoryPublishDraftStore([
     Iterable<PublishDraft> initial = const [],
@@ -186,6 +188,7 @@ Future<void> _openDraft(
 }
 
 Future<void> _completeYouTubeSettings(WidgetTester tester) async {
+  await goToUploaderStep(tester, 2);
   final settings = find.byKey(
     const ValueKey('uploader-platform-settings-YOUTUBE_SHORTS'),
   );
@@ -231,10 +234,7 @@ Future<void> _completeYouTubeSettings(WidgetTester tester) async {
 
 Future<void> _submitDraft(WidgetTester tester) async {
   await _completeYouTubeSettings(tester);
-  final postButton = find.byKey(const ValueKey('uploader-sticky-post-button'));
-  await tester.ensureVisible(postButton);
-  await tester.tap(postButton);
-  await tester.pumpAndSettle();
+  await goToUploaderStep(tester, 3);
   final confirm = find.byKey(const ValueKey('publish-review-confirm'));
   expect(confirm, findsOneWidget);
   expect(
@@ -251,6 +251,7 @@ Future<void> _submitDraft(WidgetTester tester) async {
 }
 
 Future<void> _prepareFreshSubmission(WidgetTester tester) async {
+  await goToUploaderStep(tester, 2);
   final scrollable = find.byType(Scrollable).first;
   await tester.drag(scrollable, const Offset(0, 3000));
   await tester.pumpAndSettle();
@@ -268,6 +269,7 @@ Future<void> _prepareFreshSubmission(WidgetTester tester) async {
   await tester.tap(selectAll);
   await tester.pumpAndSettle();
 
+  await goToUploaderStep(tester, 1);
   await tester.drag(scrollable, const Offset(0, 3000));
   await tester.pumpAndSettle();
   final caption = find.byKey(const ValueKey('uploader-caption-field'));
@@ -424,6 +426,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final captionFinder = find.byKey(const ValueKey('uploader-caption-field'));
+    await goToUploaderStep(tester, 1);
     await tester.scrollUntilVisible(
       captionFinder,
       300,
@@ -510,6 +513,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('publish-draft-draft-past')));
     await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 3);
     expect(find.textContaining('เวลาเดิมผ่านไปแล้ว'), findsOneWidget);
 
     final postButton =
@@ -660,12 +664,9 @@ void main() {
       final startNewAttempt = find.byKey(
         const ValueKey('uploader-start-new-publish-attempt'),
       );
-      final postAction = find.descendant(
-        of: find.byKey(const ValueKey('uploader-sticky-post-button')),
-        matching: find.byType(TextButton),
-      );
+      final postAction = find.byKey(const ValueKey('publish-review-confirm'));
       expect(startNewAttempt, findsOneWidget);
-      expect(tester.widget<TextButton>(postAction).onPressed, isNull);
+      expect(tester.widget<FilledButton>(postAction).onPressed, isNull);
       expect(createUploadCalls, 1);
       expect(createPostCalls, 1);
       await tester.tap(postAction, warnIfMissed: false);
@@ -695,7 +696,7 @@ void main() {
       expect(newDraft.submissionRequestId,
           isNot(originalDraft.submissionRequestId));
       expect(startNewAttempt, findsNothing);
-      expect(tester.widget<TextButton>(postAction).onPressed, isNotNull);
+      expect(tester.widget<FilledButton>(postAction).onPressed, isNotNull);
       expect(find.textContaining('สร้างร่างสำหรับรายการโพสต์ใหม่แล้ว'),
           findsOneWidget);
     },
@@ -760,13 +761,13 @@ void main() {
     await _openDraft(tester, 'draft-ready');
     await _completeYouTubeSettings(tester);
 
+    await goToUploaderStep(tester, 3);
+
     final postButton = find.byKey(
       const ValueKey('uploader-sticky-post-button'),
     );
     await tester.ensureVisible(postButton);
     await tester.tap(postButton);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
     await tester.pumpAndSettle();
 
     expect(find.text('กำลังตรวจสอบระบบโพสต์'), findsOneWidget);

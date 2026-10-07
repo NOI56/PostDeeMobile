@@ -10,6 +10,8 @@ import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:postdee_mobile/features/uploader/watermark_video_processor.dart';
 
+import 'support/uploader_wizard_test_navigation.dart';
+
 Future<List<SocialConnectionResult>> _loadConnectedSocialConnections() async =>
     const [
       SocialConnectionResult(
@@ -39,6 +41,7 @@ Future<void> _pumpUntilFound(
 }
 
 Future<void> _completeYouTubeSettings(WidgetTester tester) async {
+  await goToUploaderStep(tester, 2);
   final youtube = find.byKey(
     const ValueKey('uploader-platform-YOUTUBE_SHORTS'),
   );
@@ -257,6 +260,7 @@ void main() {
     );
     await _pumpUntilFound(tester, find.text('seller-demo.mp4'));
     await _completeYouTubeSettings(tester);
+    await goToUploaderStep(tester, 1);
     final captionField = find.byKey(const ValueKey('uploader-caption-field'));
     await tester.scrollUntilVisible(
       captionField,
@@ -264,14 +268,10 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     await tester.enterText(captionField, 'Watermark upload error');
+    await goToUploaderStep(tester, 3);
     await tester.tap(
-      find.descendant(
-        of: find.byKey(const ValueKey('uploader-sticky-post-button')),
-        matching: find.byType(TextButton),
-      ),
+      find.byKey(const ValueKey('publish-review-confirm')),
     );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
     await tester.pump();
     await tester.runAsync(() => _waitUntilDeleted(watermarkWorkingDirectory));
 
@@ -396,6 +396,8 @@ void main() {
 
     await _completeYouTubeSettings(tester);
 
+    await goToUploaderStep(tester, 1);
+
     final captionField = find.byKey(const ValueKey('uploader-caption-field'));
     await tester.scrollUntilVisible(
       captionField,
@@ -406,15 +408,11 @@ void main() {
     await tester.enterText(captionField, 'Watermarked seller caption');
     await tester.pumpAndSettle();
 
-    final postButton = find.descendant(
-      of: find.byKey(const ValueKey('uploader-sticky-post-button')),
-      matching: find.byType(TextButton),
-    );
-    expect(tester.widget<TextButton>(postButton).onPressed, isNotNull);
+    await goToUploaderStep(tester, 3);
+
+    final postButton = find.byKey(const ValueKey('publish-review-confirm'));
+    expect(tester.widget<FilledButton>(postButton).onPressed, isNotNull);
     await tester.tap(postButton);
-    // Confirm on the publish-review screen (design screen #7).
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(

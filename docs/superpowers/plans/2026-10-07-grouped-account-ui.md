@@ -109,3 +109,33 @@ main Staging APK, whose installed hash again matched the final saved file.
 The main APK reached its Google/email sign-in screen with default Impeller
 rendering. This verifies launch and the unauthenticated entry screen, not a
 successful real sign-in or authenticated live Account data.
+
+## Visible-emulator follow-up and publication
+
+The user subsequently reported that the visible emulator still showed the old
+Account screen. Its installed app came from the separate post-create-wizard
+checkout, which did not yet contain this Account patch. The Account-only source
+and regression tests from `d7a38e7` were ported into that checkout, preserving
+its existing uncommitted composer changes. The resulting Profile source hashes
+identically to this branch's source. No account data was cleared or signed out.
+
+That combined checkout passed 1,479 Flutter tests, analyze with no issues and
+the Staging debug APK build. Its APK, `postdee-account-and-wizard-staging.apk`,
+has SHA-256
+`0d8faabd4cfdd44aa6a8e7a75b65e2b54322bc310122c686fad5f1771b120175`.
+It was installed with `adb install -r` on the user's visible `emulator-5556`;
+the installed file hash matched. The actual signed-in Account screen displayed
+the new groups and retained the existing connection count and server-reported
+package. Native smoke confirmed that the newer Create-post composer opens and
+closes back to Account. No real posting, purchase, OTP or deletion was attempted.
+Authenticated screenshots remain local and are not included in Git.
+
+The user then requested push/deploy. This is a mobile UI change requiring no
+API deployment or migration. Publish the isolated `codex/grouped-account-ui`
+branch, which was freshly verified as zero behind `origin/main`; retain the
+separate composer's uncommitted work. This publication contains the Account
+patch and its documentation, based on the existing `630e20a` feature baseline.
+The combined 1,479-test checkout is not itself being published in this step;
+the isolated branch's earlier verification remains 1,426 passing tests, analyze
+and Staging build. No merge into `main`, backend deployment or store release is
+part of this publication.

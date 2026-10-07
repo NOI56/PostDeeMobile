@@ -18,6 +18,11 @@ center action has no visible label but retains its localized tooltip and
 accessible Create post name.
 This navigation-only revision is recorded in
 `docs/superpowers/plans/2026-10-06-flat-bottom-navigation.md`.
+The Account tab uses a compact profile and four labeled menu groups. Only the
+current package is shown; all packages open in the existing paywall. Language
+and display mode open selection sheets, and logout sits at the bottom.
+See `docs/superpowers/plans/2026-10-07-grouped-account-ui.md` for the mobile-only
+scope and verification.
 Home has one profile-link shortcut above the analytics cards. AI video
 editing and Subtitle Studio no longer have a product entry point, and the
 paywall/profile no longer advertise editing minutes or top-ups. AI captions in

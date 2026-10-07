@@ -399,6 +399,11 @@ Reference direction:
   The wider app redesign remains separate. Analytics remains reachable
   from publish results and individual post details so the existing reporting
   system is not removed.
+- Account uses four labeled groups: My account, Channels/tools, My package, and
+  Settings/help. The current plan occupies one compact card; the existing
+  paywall retains package comparison. Language/theme choices open on demand,
+  with logout and confirmed account deletion kept separate at the bottom.
+  See `docs/superpowers/plans/2026-10-07-grouped-account-ui.md`.
 - Home keeps one direct Link in Bio shortcut above the analytics cards. Create
   post stays in the bottom navigation, while the future viral-alert preview
   stays off Home until its real end-to-end flow is ready.

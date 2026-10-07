@@ -186,8 +186,9 @@ void main() {
     );
   });
 
-  testWidgets('shows only currently available package benefits',
-      (tester) async {
+  testWidgets('groups account menus and shows only the current package', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('th'),
@@ -210,10 +211,11 @@ void main() {
       ),
     );
 
-    // Three tier cards with the real prices from the design handoff. The list
-    // is lazy, so scroll to each card, then read nearby texts with
-    // skipOffstage: false (cards can sit partially outside the viewport).
     Finder cachedText(String text) => find.text(text, skipOffstage: false);
+
+    await tester.pumpAndSettle();
+    expect(cachedText('บัญชีของฉัน'), findsOneWidget);
+    expect(cachedText('ช่องทางและเครื่องมือ'), findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('profile-plan-free'), skipOffstage: false),
@@ -222,32 +224,140 @@ void main() {
       maxScrolls: 30,
     );
     await tester.pumpAndSettle();
-    expect(cachedText('แพ็กเกจ PostDee'), findsOneWidget);
-    expect(cachedText('0 บาท'), findsOneWidget);
-    // Free is the current tier by default.
+    expect(cachedText('แพ็กเกจของฉัน'), findsOneWidget);
+    expect(cachedText('ฟรี'), findsOneWidget);
     expect(cachedText('แพ็กเกจปัจจุบัน'), findsOneWidget);
-
-    await tester.scrollUntilVisible(
+    expect(cachedText('ดูแพ็กเกจทั้งหมด'), findsOneWidget);
+    expect(
       find.byKey(const ValueKey('profile-plan-starter'), skipOffstage: false),
-      300,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 30,
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-    expect(cachedText('199 ฿/ด.'), findsOneWidget);
-    expect(cachedText('แนะนำ'), findsOneWidget);
-    expect(cachedText('อัปเกรด'), findsWidgets);
-
-    await tester.scrollUntilVisible(
+    expect(
       find.byKey(const ValueKey('profile-plan-pro'), skipOffstage: false),
-      300,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 30,
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-    expect(cachedText('299 ฿/ด.'), findsOneWidget);
+    expect(cachedText('199 ฿/ด.'), findsNothing);
+    expect(cachedText('299 ฿/ด.'), findsNothing);
     expect(cachedText('รายงานวิเคราะห์เชิงลึก'), findsNothing);
     expect(cachedText('โควต้าตัดต่อ AI'), findsNothing);
+  });
+
+  testWidgets('opens language choices only when requested', (tester) async {
+    final language = PostDeeLanguageController();
+    await tester.pumpWidget(_hostProfile(languageController: language));
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('profile-language-row'));
+    await tester.scrollUntilVisible(
+      row,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    expect(find.text('English'), findsNothing);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+    expect(language.locale, const Locale('en'));
+    expect(find.byKey(const ValueKey('profile-setting-sheet')), findsNothing);
+    expect(
+      find.descendant(of: row, matching: find.text('English')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('opens theme choices and saves the selected mode', (
+    tester,
+  ) async {
+    final theme = PostDeeThemeController(
+      preferenceStore: const SharedPreferencesThemePreferenceStore(),
+    );
+    await tester.pumpWidget(_hostProfile(themeController: theme));
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('profile-theme-row'));
+    await tester.scrollUntilVisible(
+      row,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('มืด'));
+    await tester.pumpAndSettle();
+    expect(theme.themeMode, ThemeMode.dark);
+    expect(
+      find.descendant(of: row, matching: find.text('มืด')),
+      findsOneWidget,
+    );
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getString(SharedPreferencesThemePreferenceStore.themeModeKey),
+      'dark',
+    );
+    await theme.setLightMode(true);
+  });
+
+  testWidgets('keeps grouped menus usable on a narrow screen with large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var signOutCalls = 0;
+    await tester.pumpWidget(
+      _hostProfile(
+        textScaler: const TextScaler.linear(2),
+        onSignOut: () => signOutCalls += 1,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    final row = find.byKey(const ValueKey('profile-theme-row'));
+    await tester.scrollUntilVisible(
+      row,
+      250,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(find.text('สว่าง'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('ปิด'));
+    await tester.pumpAndSettle();
+    final signOut = find.text('ออกจากระบบ');
+    await tester.scrollUntilVisible(
+      signOut,
+      250,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 30,
+    );
+    await tester.ensureVisible(signOut);
+    await tester.pumpAndSettle();
+    await tester.tap(signOut);
+    expect(signOutCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('aligns menu arrows at the right edge even with a setting value',
+      (tester) async {
+    await tester.pumpWidget(_hostProfile());
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('profile-language-row'));
+    await tester.scrollUntilVisible(row, 250,
+        scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    final arrow = find.descendant(
+        of: row, matching: find.byIcon(Icons.chevron_right));
+    expect(tester.getRect(row).right - tester.getRect(arrow).right,
+        closeTo(15, 1));
   });
 
   testWidgets('does not present zero connections or Basic as loaded data',
@@ -319,8 +429,16 @@ void main() {
     expect(
         find.textContaining('0/${connectablePlatforms.length}'), findsNothing);
 
-    await tester.tap(
-      find.byKey(const ValueKey('profile-retry-connections')).first,
+    final connectionRetry =
+        find.byKey(const ValueKey('profile-retry-connections')).first;
+    await tester.ensureVisible(connectionRetry);
+    await tester.pumpAndSettle();
+    await tester.tap(connectionRetry);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('profile-connections-row')),
+      -250,
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
     expect(find.text('1/${connectablePlatforms.length} เชื่อมต่อ'),
@@ -357,91 +475,99 @@ void main() {
   });
 
   testWidgets(
-      'keeps loading error and retry states usable at 393dp with 200 percent text',
-      (tester) async {
-    tester.view.physicalSize = const Size(393, 852);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+    'keeps loading error and retry states usable at 393dp with 200 percent text',
+    (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final initialConnections = Completer<List<SocialConnectionResult>>();
-    final initialSubscription = Completer<SubscriptionStatusResult>();
-    var connectionCalls = 0;
-    var subscriptionCalls = 0;
-    addTearDown(() {
-      if (!initialConnections.isCompleted) {
-        initialConnections.complete(const []);
-      }
-      if (!initialSubscription.isCompleted) {
-        initialSubscription.complete(_basicSubscription());
-      }
-    });
+      final initialConnections = Completer<List<SocialConnectionResult>>();
+      final initialSubscription = Completer<SubscriptionStatusResult>();
+      var connectionCalls = 0;
+      var subscriptionCalls = 0;
+      addTearDown(() {
+        if (!initialConnections.isCompleted) {
+          initialConnections.complete(const []);
+        }
+        if (!initialSubscription.isCompleted) {
+          initialSubscription.complete(_basicSubscription());
+        }
+      });
 
-    final apiClient = _FakeSocialApiClient(
-      connections: const [],
-      connectionsLoader: () {
-        connectionCalls += 1;
-        return connectionCalls == 1
-            ? initialConnections.future
-            : Future.value(const [
-                SocialConnectionResult(platform: 'TIKTOK', connected: true),
-              ]);
-      },
-      subscriptionLoader: () {
-        subscriptionCalls += 1;
-        return subscriptionCalls == 1
-            ? initialSubscription.future
-            : Future.value(_basicSubscription());
-      },
-    );
+      final apiClient = _FakeSocialApiClient(
+        connections: const [],
+        connectionsLoader: () {
+          connectionCalls += 1;
+          return connectionCalls == 1
+              ? initialConnections.future
+              : Future.value(const [
+                  SocialConnectionResult(platform: 'TIKTOK', connected: true),
+                ]);
+        },
+        subscriptionLoader: () {
+          subscriptionCalls += 1;
+          return subscriptionCalls == 1
+              ? initialSubscription.future
+              : Future.value(_basicSubscription());
+        },
+      );
 
-    await tester.pumpWidget(
-      _hostProfile(
-        apiClient: apiClient,
-        textScaler: const TextScaler.linear(2),
-      ),
-    );
-    await tester.pump();
+      await tester.pumpWidget(
+        _hostProfile(
+          apiClient: apiClient,
+          textScaler: const TextScaler.linear(2),
+        ),
+      );
+      await tester.pump();
 
-    expect(find.text('กำลังโหลดช่องทาง...'), findsWidgets);
-    expect(tester.takeException(), isNull);
+      expect(find.text('กำลังโหลดช่องทาง...'), findsWidgets);
+      expect(tester.takeException(), isNull);
 
-    initialConnections.completeError(Exception('connections unavailable'));
-    initialSubscription.completeError(Exception('subscription unavailable'));
-    await tester.pumpAndSettle();
+      initialConnections.completeError(Exception('connections unavailable'));
+      initialSubscription.completeError(Exception('subscription unavailable'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('โหลดข้อมูลช่องทางไม่สำเร็จ'), findsWidgets);
-    expect(tester.takeException(), isNull);
+      expect(find.text('โหลดข้อมูลช่องทางไม่สำเร็จ'), findsWidgets);
+      expect(tester.takeException(), isNull);
 
-    await tester.tap(
-      find.byKey(const ValueKey('profile-retry-connections')).first,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('1/${connectablePlatforms.length} เชื่อมต่อ'),
-        findsOneWidget);
-    expect(tester.takeException(), isNull);
+      final connectionRetry =
+          find.byKey(const ValueKey('profile-retry-connections')).first;
+      await tester.ensureVisible(connectionRetry);
+      await tester.pumpAndSettle();
+      await tester.tap(connectionRetry);
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('profile-connections-row')),
+        -250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('1/${connectablePlatforms.length} เชื่อมต่อ'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
 
-    final subscriptionRetry = find.byKey(
-      const ValueKey('profile-retry-subscription'),
-      skipOffstage: false,
-    );
-    await tester.scrollUntilVisible(
-      subscriptionRetry,
-      300,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 30,
-    );
-    await tester.pump();
-    tester.widget<TextButton>(subscriptionRetry).onPressed!();
-    await tester.pumpAndSettle();
+      final subscriptionRetry = find.byKey(
+        const ValueKey('profile-retry-subscription'),
+        skipOffstage: false,
+      );
+      await tester.scrollUntilVisible(
+        subscriptionRetry,
+        300,
+        scrollable: find.byType(Scrollable).first,
+        maxScrolls: 30,
+      );
+      await tester.pump();
+      tester.widget<TextButton>(subscriptionRetry).onPressed!();
+      await tester.pumpAndSettle();
 
-    expect(subscriptionCalls, 2);
-    expect(
-      find.text('แพ็กเกจปัจจุบัน', skipOffstage: false),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-  });
+      expect(subscriptionCalls, 2);
+      expect(find.text('แพ็กเกจปัจจุบัน', skipOffstage: false), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('security copy matches email and Google Firebase sign-in',
       (tester) async {
@@ -513,16 +639,14 @@ void main() {
     await tester.pumpWidget(_hostProfile(apiClient: apiClient));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('profile-plan-starter'), skipOffstage: false),
+      find.byKey(const ValueKey('profile-view-plans'), skipOffstage: false),
       300,
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 30,
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const ValueKey('profile-plan-starter')),
-    );
+    await tester.tap(find.byKey(const ValueKey('profile-view-plans')));
     await tester.pumpAndSettle();
     expect(find.text('เลือกแพ็กเกจ'), findsOneWidget);
 
@@ -589,13 +713,13 @@ void main() {
     await tester.pumpWidget(_hostProfile(apiClient: apiClient));
     await tester.pump();
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('profile-plan-starter'), skipOffstage: false),
+      find.byKey(const ValueKey('profile-view-plans'), skipOffstage: false),
       300,
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 30,
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('profile-plan-starter')));
+    await tester.tap(find.byKey(const ValueKey('profile-view-plans')));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('กลับ'));
     await tester.pumpAndSettle();
@@ -648,8 +772,9 @@ void main() {
     expect(find.byIcon(Icons.check_circle), findsWidgets);
   });
 
-  testWidgets('shows the live connected count in the account summary pill',
-      (tester) async {
+  testWidgets('shows the live connected count once in the connection menu', (
+    tester,
+  ) async {
     final apiClient = _FakeSocialApiClient(
       connections: const [
         SocialConnectionResult(
@@ -667,7 +792,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey('profile-connected-summary-pill')),
+      find.byKey(const ValueKey('profile-connections-row')),
       findsOneWidget,
     );
     expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
@@ -761,42 +886,46 @@ void main() {
   });
 
   testWidgets(
-      'returning after failed connection refresh hides the old profile count',
-      (tester) async {
-    var calls = 0;
-    var unavailable = false;
-    final apiClient = _FakeSocialApiClient(
-      connections: const [],
-      connectionsLoader: () async {
-        calls += 1;
-        if (unavailable) {
+    'returning after failed connection refresh hides the old profile count',
+    (tester) async {
+      var calls = 0;
+      var unavailable = false;
+      final apiClient = _FakeSocialApiClient(
+        connections: const [],
+        connectionsLoader: () async {
+          calls += 1;
+          if (unavailable) {
+            throw const ApiException('Request failed', statusCode: 503);
+          }
+          return const [
+            SocialConnectionResult(platform: 'TIKTOK', connected: true),
+          ];
+        },
+        refreshLoader: () async {
+          unavailable = true;
           throw const ApiException('Request failed', statusCode: 503);
-        }
-        return const [
-          SocialConnectionResult(platform: 'TIKTOK', connected: true),
-        ];
-      },
-      refreshLoader: () async {
-        unavailable = true;
-        throw const ApiException('Request failed', statusCode: 503);
-      },
-    );
-    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
-    await tester.pumpAndSettle();
-    expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
-    await _openConnectionsScreen(tester);
-    await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(BackButton));
-    await tester.pumpAndSettle();
+        },
+      );
+      await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+      await tester.pumpAndSettle();
+      expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
+      await _openConnectionsScreen(tester);
+      await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
 
-    expect(calls, 3);
-    expect(find.text('1/4 เชื่อมต่อ'), findsNothing);
-    expect(find.text('0/4 เชื่อมต่อ'), findsNothing);
-    expect(find.byKey(const ValueKey('profile-connections-error')),
-        findsOneWidget);
-    expect(find.byKey(const ValueKey('profile-retry-connections')),
-        findsOneWidget);
+      expect(calls, 3);
+      expect(find.text('1/4 เชื่อมต่อ'), findsNothing);
+      expect(find.text('0/4 เชื่อมต่อ'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('profile-connections-error')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('profile-retry-connections')),
+        findsOneWidget,
+      );
 
     unavailable = false;
     await tester.tap(find.byKey(const ValueKey('profile-retry-connections')));
@@ -1238,46 +1367,52 @@ void main() {
   });
 
   testWidgets(
-      'warns that deleting PostDee does not cancel a store subscription',
-      (tester) async {
-    var manageSubscriptionCalls = 0;
-    await tester.pumpWidget(
-      _hostProfile(
-        onManageSubscription: () async {
-          manageSubscriptionCalls += 1;
-        },
-      ),
-    );
+    'warns that deleting PostDee does not cancel a store subscription',
+    (tester) async {
+      var manageSubscriptionCalls = 0;
+      await tester.pumpWidget(
+        _hostProfile(
+          onManageSubscription: () async {
+            manageSubscriptionCalls += 1;
+          },
+        ),
+      );
 
-    await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
-    await tester.scrollUntilVisible(
-      deleteButton,
-      500,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 30,
-    );
-    await tester.ensureVisible(deleteButton);
-    await tester.pumpAndSettle();
-    await tester.tap(deleteButton);
-    await tester.pumpAndSettle();
+      final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+      await tester.scrollUntilVisible(
+        deleteButton,
+        500,
+        scrollable: find.byType(Scrollable).first,
+        maxScrolls: 30,
+      );
+      await tester.ensureVisible(deleteButton);
+      await tester.pumpAndSettle();
+      await tester.tap(deleteButton);
+      await tester.pumpAndSettle();
 
-    expect(find.text('ก่อนลบบัญชี'), findsOneWidget);
-    expect(
-      find.textContaining('ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('ฉบับร่างและไฟล์ในเครื่องนี้'),
-      findsOneWidget,
-    );
-    expect(find.text('ลบบัญชีถาวร'), findsOneWidget);
+      expect(find.text('ก่อนลบบัญชี'), findsOneWidget);
+      expect(
+        find.textContaining('ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('ฉบับร่างและไฟล์ในเครื่องนี้'),
+        findsOneWidget,
+      );
+      expect(find.text('ลบบัญชีถาวร'), findsOneWidget);
 
-    await tester.tap(find.text('จัดการสมาชิก'));
-    await tester.pump();
-    expect(manageSubscriptionCalls, 1);
-  });
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('delete-account-confirm-sheet')),
+          matching: find.text('จัดการสมาชิก'),
+        ),
+      );
+      await tester.pump();
+      expect(manageSubscriptionCalls, 1);
+    },
+  );
 
   testWidgets('keeps delete actions usable with large accessibility text',
       (tester) async {
@@ -1319,6 +1454,9 @@ Widget _hostProfile({
   PostDeeApiClient? apiClient,
   Future<bool> Function(Uri uri)? launchConnectUrl,
   Future<void> Function()? onManageSubscription,
+  PostDeeLanguageController? languageController,
+  PostDeeThemeController? themeController,
+  VoidCallback? onSignOut,
   TextScaler textScaler = TextScaler.noScaling,
 }) {
   return MaterialApp(
@@ -1336,10 +1474,11 @@ Widget _hostProfile({
     supportedLocales: PostDeeLocalizations.supportedLocales,
     home: Scaffold(
       body: ProfileScreen(
-        languageController: PostDeeLanguageController(),
-        themeController: PostDeeThemeController(),
+        languageController: languageController ?? PostDeeLanguageController(),
+        themeController: themeController ?? PostDeeThemeController(),
         onOpenTemplates: () {},
         onDeleteAccount: () {},
+        onSignOut: onSignOut,
         apiClient: apiClient ?? _FakeSocialApiClient(connections: const []),
         launchConnectUrl: launchConnectUrl,
         onManageSubscription: onManageSubscription,

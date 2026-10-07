@@ -497,9 +497,9 @@ void main() {
 
     await _tapReferenceNavButton(tester, 'Account');
 
-    final darkModeButton = find.text('มืด');
+    final themeRow = find.byKey(const ValueKey('profile-theme-row'));
     await tester.scrollUntilVisible(
-      darkModeButton,
+      themeRow,
       100,
       scrollable: find.byType(Scrollable).first,
     );
@@ -508,7 +508,7 @@ void main() {
     // button above it so the tap doesn't land on the nav.
     final viewportBottom =
         tester.view.physicalSize.height / tester.view.devicePixelRatio;
-    final overlap = tester.getRect(darkModeButton).bottom -
+    final overlap = tester.getRect(themeRow).bottom -
         (viewportBottom - AppTheme.navOverlap);
     if (overlap > 0) {
       await tester.drag(
@@ -517,7 +517,9 @@ void main() {
       );
       await tester.pumpAndSettle();
     }
-    await tester.tap(darkModeButton);
+    await tester.tap(themeRow);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('มืด'));
     await tester.pumpAndSettle();
 
     expect(themeController.themeMode, ThemeMode.dark);
@@ -528,8 +530,9 @@ void main() {
     expect(darkLinkCardColor, AppTheme.glass);
     expect(darkLinkCardColor, isNot(lightLinkCardColor));
 
-    final lightModeButton = find.text('สว่าง');
-    await tester.tap(lightModeButton);
+    await tester.tap(themeRow);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('สว่าง'));
     await tester.pumpAndSettle();
 
     expect(themeController.themeMode, ThemeMode.light);
@@ -563,18 +566,16 @@ void main() {
 
     await _tapReferenceNavButton(tester, 'Account');
 
-    expect(find.text('Language'), findsOneWidget);
-
-    final thaiButton = find.text('ไทย');
+    final languageRow = find.byKey(const ValueKey('profile-language-row'));
     await tester.scrollUntilVisible(
-      thaiButton,
+      languageRow,
       100,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
     final viewportBottom =
         tester.view.physicalSize.height / tester.view.devicePixelRatio;
-    final overlap = tester.getRect(thaiButton).bottom -
+    final overlap = tester.getRect(languageRow).bottom -
         (viewportBottom - AppTheme.navOverlap);
     if (overlap > 0) {
       await tester.drag(
@@ -583,7 +584,9 @@ void main() {
       );
       await tester.pumpAndSettle();
     }
-    await tester.tap(thaiButton);
+    await tester.tap(languageRow);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ไทย'));
     await tester.pumpAndSettle();
 
     expect(languageController.locale, const Locale('th'));
@@ -677,7 +680,7 @@ void main() {
 
     await _tapReferenceNavButton(tester, 'บัญชี');
 
-    expect(find.text('บัญชีและโปรไฟล์'), findsOneWidget);
+    expect(find.text('บัญชีของฉัน'), findsOneWidget);
     expect(find.text('PostDee Seller'), findsOneWidget);
     expect(find.text('seller@example.com'), findsOneWidget);
     expect(find.text('โหมดทดสอบ'), findsNothing);

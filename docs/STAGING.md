@@ -1,5 +1,34 @@
 # PostDee Staging
 
+## ส่งมอบหน้าสร้างโพสต์ 4 ขั้น — 7 ตุลาคม 2026
+
+- ส่ง candidate `550f73aba0dc90ebd3e0039181b89733d0e104f3` บน branch
+  `codex/post-create-wizard-staging` ตามคำอนุญาต push/deploy ของผู้ใช้
+  ใช้ baseline `630e20a` ซึ่งรวมระบบโลโก้และเทมเพลต 100 แบบไว้ครบ แยกงาน
+  Account ที่กำลังแก้อยู่ออก; `main` ยังเป็น `bcd7153` ไม่มี merge หรือ deploy Production
+- [CI run 37612609890](https://github.com/NOI56/PostDeeMobile/actions/runs/37612609890)
+  ยืนยัน head SHA ตรง candidate และผ่านทั้ง Flutter Mobile (1475 tests/analyze)
+  และ Backend API (1469 tests/build/Prisma/catalog checks/dependency audit)
+- [Render deploy dep-db32ki2jnfac738gcicg](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db32ki2jnfac738gcicg)
+  เป็น specific-commit deploy ของ `postdee-api-staging`; Source และ checkout log
+  ตรง SHA เต็ม แสดง **Deploy succeeded | Live** เวลา 18:19:22 Asia/Bangkok
+  ใช้เวลา 1m54s Start log ยืนยัน 14 migrations และไม่มี pending migration,
+  publisher `disabled`, listener port 10000 และ scheduler ตาม configuration เดิม
+- API tree ตรงรุ่น Live ก่อนหน้า `fc087c4` ไม่มี backend/schema/migration ใหม่
+  ไม่เปลี่ยนแผนบริการ secrets หรือ provider gates และ Auto-Deploy ยังคงปิด
+  การ Live หลัง internal health check ของ Render ไม่ใช่หลักฐาน HTTP/browser
+  E2E ของโดเมนสาธารณะ; รอบนี้เคารพสิทธิ์ที่บล็อกไว้และคำข้ามตรวจเว็บก่อนหน้า
+- UI มือถือส่งผ่าน APK ไม่ได้อัปเดตจาก Render โดยอัตโนมัติ สร้าง APK Staging
+  จาก clean candidate ผ่านแล้ว SHA-256:
+  `0424f85f7f104cb514ca38f4ac375bb536d503481d1881820babfdf224c7be01`
+  ตรวจ package/API/Firebase และ runtime assets ที่ไม่ว่างครบทั้งสามไฟล์
+  ใช้ base Staging configuration เดิม (Firebase เปิด, mock auth/billing ปิด)
+  ไม่ติดตั้งซ้ำขณะเครื่องจำลองกำลังใช้งานร่วมกัน โดย composer runtime ตรงรุ่น
+  ที่ผ่าน native smoke ก่อนหน้าครบทั้ง 4 ไฟล์หลัง normalize line endings
+- หลักฐาน CI, APK และภาพ `composer-staging-deploy-live.jpg` อยู่ใน task
+  visualization folder; รายละเอียดขอบเขตและข้อจำกัดการทดสอบอยู่ใน
+  `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md`
+
 ## ส่งมอบโลโก้แพลตฟอร์ม — 6 ตุลาคม 2026
 
 - ผู้ใช้อนุญาต push และ deploy ชุดโลโก้ขึ้น Staging แล้ว ส่ง feature commit

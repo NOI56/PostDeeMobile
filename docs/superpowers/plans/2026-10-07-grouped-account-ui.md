@@ -139,3 +139,63 @@ The combined 1,479-test checkout is not itself being published in this step;
 the isolated branch's earlier verification remains 1,426 passing tests, analyze
 and Staging build. No merge into `main`, backend deployment or store release is
 part of this publication.
+
+## Authorized main integration
+
+The user subsequently explicitly requested integration into `main`. Fresh fetch
+and a final remote read verified `origin/main` at
+`bcd7153f196cd381a786b333b9b61a67dbe95ca3`. The published Account branch at
+`5da06e3` is a descendant, zero behind and eighteen commits ahead. Local `main`
+was fast-forwarded to it without conflict or source rewriting. This retains the
+previous completed navigation, link manager, auto-title, 100-logo and
+100-template work on which this Account delivery is based. The replaced link
+wizard test belongs to the earlier approved manager conversion and has manager
+regression coverage. Existing uncommitted work in the separate composer checkout
+remains outside this integration.
+
+Fresh verification on the exact integrated mobile/API sources:
+
+- Full Flutter suite: 1,426 passing tests (86 seconds).
+- Flutter analyze: no issues (15.4 seconds); Staging debug APK build succeeds
+  (22.6 seconds). The first build invocation incorrectly selected a nonexistent
+  `staging` flavor; the corrected command uses the existing debug application-ID
+  suffix and Staging Dart defines, without changing Android configuration.
+- Full API suite: 103 files / 1,469 passing tests. Prisma generation, API build,
+  schema validation and Prisma helper type-check all pass.
+- Both shared catalogue `--check` commands pass: 100 logos with API/mobile image
+  parity, five template categories and 100 templates. Generator tests: 12 pass.
+- Production dependency audit passes the existing high-severity gate. It reports
+  four moderate advisories in existing dependencies; package manifests/lockfiles
+  are unchanged from the remote main baseline. These are not updated in this UI
+  integration.
+- Diff checks pass. No schema, auth/config, package/entitlement or deployment
+  configuration changes were introduced by the Account patch. No migration or
+  new API deployment is needed for this step.
+
+The frozen integrated APK is
+`D:/PostDeeMobile/artifacts/account-main-staging-20261007.apk`, SHA-256
+`1852a03953b25f7a859092b12b5ba957df012be2814419b2c735cd1e6d326d92`.
+All three Dart kernel/snapshot assets are present. Its package is
+`com.postdee.postdee_mobile.staging`, version `0.1.0-staging`, with the same
+Staging API, Firebase project and flags recorded above. Install and installed
+hash verification passed on the separate headless `emulator-5558`; the user's
+visible emulator was not changed in this integration step.
+
+Native launch displayed the actual Google/email entry screen. Selecting email
+opened its form and Back returned to the entry screen. Screenshots are
+`account-main-entry.png` and `account-main-email.png` in the local directory
+recorded above. No account credentials were entered or sent. The first QA cold
+boot produced an app bind-timeout ANR alongside Play Store and Google Services
+ANRs during system package activity. After restarting the app, the cold activity
+launch completed (37.8 seconds), both entry/form navigation checks were
+responsive and no new ANR was observed. This records a QA cold-start limitation;
+it does not establish universal cold-start performance. The initial raw emulator
+launch also required a named local AVD registration before it could boot.
+Neither issue required application code changes.
+
+Authenticated Account behavior remains verified by the earlier visible-emulator
+combined build, whose Profile source is identical. This main APK smoke does not
+claim a new real Google sign-in, purchase, post, OTP or deletion test. Publication
+updates `main` only; no manual backend deployment or app-store release is part
+of this action. The final documentation commit uses `[skip render]` consistently
+with existing documentation-only delivery records.

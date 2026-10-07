@@ -1,5 +1,28 @@
 # PostDee Staging
 
+## ส่งมอบเทมเพลตโครงหน้าใหม่ — 7 ตุลาคม 2026
+
+- Source `9c7fa74cc6910063fc88a66568860ac64609f02f` บน
+  `codex/profile-compositions-integrated-staging` รวมหน้าบัญชีจาก `main` ล่าสุด
+  `ebc9c47` หน้าสร้างโพสต์ 4 ขั้นจาก Live `550f73a` และเทมเพลต 100 แบบโครงใหม่
+  ผ่านการตรวจ Git blob/delta ว่าแต่ละระบบและเอกสารยังอยู่ครบ
+- [CI 37623591224](https://github.com/NOI56/PostDeeMobile/actions/runs/37623591224)
+  ผ่าน API 1,555 และ Flutter 1,556 tests พร้อม analyze/build/schema/audit
+- [Render dep-db342ek9v7es73astung](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db342ek9v7es73astung)
+  Live เวลา 19:57:18 Asia/Bangkok; Source และ instance `bsf55` ตรง SHA เต็ม
+  มี 14 migrations ไม่มี pending, port 10000, social publisher disabled
+  และ memory scheduler ตาม configuration เดิม ไม่เพิ่ม migration/secret/แพ็กบริการ
+- Runtime fixtures แบบอ่านอย่างเดียวผ่าน 100 IDs, 5 หมวด × 20 โครง,
+  PNG 8 ไฟล์, ธีมเดิม 7 แบบ และ headers ของ route จำลอง โดยไม่แก้ profile ลูกค้า
+- APK รุ่นรวมกำลังสร้างผ่าน manual CI แบบเลือกเปิดได้ เนื่องจาก Flutter-tool
+  บน Windows ค้างตอนเริ่มทำงาน (ไม่อ้างว่า local analyze ผ่าน) ใช้ config ตัวอย่าง
+  ที่ tracked และเทียบแล้วตรงค่าทดสอบในเครื่องทั้ง 9 ข้อ ไม่ส่ง private JSON/key
+  ไป GitHub ต้องเซ็น APK ที่ดาวน์โหลดด้วย debug key เดิมในเครื่องก่อน install-r
+  ลายเซ็นเดิมตรวจตรงกันแล้ว จะบันทึก hash/ผลรักษาบัญชีและร่างหลังติดตั้งจริง
+- ไม่ merge `main` หรือ deploy Production; ข้อจำกัดตรวจเว็บสาธารณะ/รูป R2 ผ่าน
+  browser ยังเหมือนเดิมตามสิทธิ์ที่บล็อกและคำข้ามตรวจเว็บก่อนหน้า รายละเอียดอยู่
+  `docs/superpowers/plans/2026-10-07-profile-template-categories.md`
+
 ## ส่งมอบหน้าสร้างโพสต์ 4 ขั้น — 7 ตุลาคม 2026
 
 - ส่ง candidate `550f73aba0dc90ebd3e0039181b89733d0e104f3` บน branch

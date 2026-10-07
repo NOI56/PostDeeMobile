@@ -1,11 +1,57 @@
 # Profile template categories — 2026-10-07
 
-## Current local composition revision — 2026-10-07
+## Current composition revision — 2026-10-07
 
-**Status: local implementation and QA complete; uncommitted, not deployed.** The CI,
-Render and emulator receipt later in this document belongs to the earlier
-`fc087c4119cd46503c569879e61cddf99e402fb2` release. It must not be used as
-verification of this revision.
+**Status: integrated source pushed, exact-source CI passed, Staging API Live;
+matching Android update in progress.** The receipt immediately below verifies
+this revision. The older CI/Render/emulator receipt later in this document
+belongs to `fc087c4119cd46503c569879e61cddf99e402fb2` only.
+
+### Current integrated delivery receipt
+
+- Initial composition snapshot: `a659bf571800ec278944aff51406b84fab397072`,
+  containing only the forty-two reviewed composition files. The three unrelated
+  CRLF-only files and untracked artifacts were excluded.
+- Release preparation found Live Staging `550f73a` ahead of the earlier source,
+  and `main` subsequently advanced to `ebc9c47a2eb5d1a48f4124927a8dce0aec1ac572`.
+  A clean checkout from that latest verified `main` ports the live four-step
+  composer, its receipt (`1859978`) and the composition snapshot. The final
+  source is `9c7fa74cc6910063fc88a66568860ac64609f02f` on
+  `codex/profile-compositions-integrated-staging`, checkout
+  `D:/PostDeeMobile/.worktrees/profile-compositions-integrated-staging`.
+- Blob/delta audit preserves Account, composer and composition code/tests;
+  merged documents retain all three contracts. No source/config/schema/provider
+  or entitlement change is introduced by the integration. Latest verified
+  `main` is an ancestor; no merge to `main` or Production release is performed.
+- [Exact-source CI 37623591224](https://github.com/NOI56/PostDeeMobile/actions/runs/37623591224)
+  passes Backend API (104 files / 1,555 tests, generator/catalog, build, Prisma,
+  dependency audit) and Flutter Mobile (analyze, 1,556 tests).
+- [Render deployment dep-db342ek9v7es73astung](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db342ek9v7es73astung)
+  is **Deploy succeeded | Live**. Source and running instance `bsf55` report the
+  exact full `9c7fa74` SHA. Dispatch was 19:55:22 and Live log 19:57:18
+  Asia/Bangkok, duration 1m56s. Staging database has fourteen migrations with
+  none pending; listener is 10000, social publisher remains disabled and the
+  existing memory scheduler starts. Service plan/secrets/Auto-Deploy stay as-is.
+- Read-only compiled-module fixtures succeed: 100 retained IDs (sorted-ID
+  SHA256 `937c28fa35a33d431739e92176c31fe365d485134b3986d33fded2f9b5e9ea2f`),
+  five categories of twenty distinct compositions, eight PNG signatures, seven
+  legacy themes, appearance-version/unknown-ID validation, all 100 renderers,
+  omitted-appearance retention and synthetic public-route headers. They use
+  memory fixtures only; no live owner profile/database/provider is touched.
+- Release evidence is in the original checkout's
+  `artifacts/profile-composition-release`: `ci-final.log`, `render-live.png`,
+  `runtime-smoke.json/png` and privacy-safe device preparation. Private backups
+  and keys remain outside Git. Public Staging/browser/owned-image checks remain
+  unverified under the earlier saved browser restriction.
+- The pre-integration local APK hash `a12249…eaab` below is historical and is
+  **not** installed for this release. Windows Flutter-tool snapshot and source
+  startup hang; a local analyze crash is not reported as a pass. An opt-in
+  manual CI APK build is being prepared using the tracked example config;
+  local comparison verifies all nine values match the private build config.
+  Downloaded runner-debug APKs require local re-signing before in-place update.
+  Installed APK and the existing local debug keystore certificate both have
+  SHA256 `014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+  No private JSON/signing key is uploaded or new credentials created.
 
 After seeing the first hundred choices, the user said the templates within a
 category looked too similar. Clarification confirmed that all choices must
@@ -13,7 +59,7 @@ remain short link pages, not multi-section store websites. On 2026-10-07 the
 user explicitly accepted **all fifteen A1–E3 sample directions** and requested
 new structures across the full hundred choices.
 
-### Current baseline and preservation
+### Initial local baseline and preservation (historical)
 
 - Canonical checkout remains `.worktrees/recover-main-systems`, branch
   `codex/pinterest-mobile-ui`; local-revision starting HEAD is
@@ -196,9 +242,9 @@ on missing/unknown/repeated compositions, then passed after implementation.
 | Native visual capture | 1 capture test passed; all twenty actual Flutter compositions at 393dp, ratio 2, bundled fonts; no device/account preferences accessed |
 | Public responsive/visual matrix | All 100 final pages at 320×800: four links, no horizontal overflow or missing images, minimum link target ≥44px. All twenty families with twenty long Thai links: no overflow or arrow/text collisions. All twenty families honor global/per-link colors and pill corners; desktop collage checked at 1280×900 |
 | Eight raster assets | 14 asset-route tests passed within full suite; exact API/Mobile PNG byte parity, PNG/nosniff/cache headers, unknown/traversal 404; assets included in APK |
-| Exact-commit remote CI | Not run for this revision |
-| Staging deploy/runtime/public-image checks | Not performed for this revision |
-| Data-preserving emulator update | Not performed for this revision |
+| Exact-commit remote CI | Subsequent integrated `9c7fa74` CI passes; see current delivery receipt above |
+| Staging deploy/runtime/public-image checks | Integrated API is Live and compiled fixtures pass; public browser/owned-image checks remain unverified |
+| Data-preserving emulator update | Matching integrated APK update is in progress; this earlier local APK is not installed |
 
 Final local evidence is in `artifacts/profile-composition-qa`: API/mobile suite,
 analysis and APK build logs; native capture receipt; responsive/custom-style
@@ -224,7 +270,8 @@ global `find.byType(Image)` assertion unrelated to that behavior.
 
 Reduced-motion and visitor-pause-removal regressions pass in the full suites.
 The public renderer remains script-free, and a fresh actual 393px page had no
-warn/error logs. No remote runtime SHA was obtained for this local revision.
+warn/error logs. The local acceptance phase had no remote runtime SHA; the
+subsequent integrated runtime SHA is recorded in the current receipt above.
 Final diff/parity audit confirms retained IDs, twenty strategies per category,
 no deleted tracked files, no dependency-version/environment/entitlement/schema changes
 and no unrelated profile/auth screen content rewrite. Local verification

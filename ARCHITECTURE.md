@@ -102,7 +102,7 @@ the matching Android APK. A read-only running-service check normalized/rendered
 all 100 templates; account data and existing drafts were preserved. See
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
-The subsequent 2026-10-07 Pinterest-inspired revision is **locally verified**.
+The subsequent 2026-10-07 Pinterest-inspired revision is **Live on the Staging API**.
 The user keeps all fifteen A1–E3 short-page samples and expands them to one
 hundred choices. `shared/profile-templates.json` now supplies twenty distinct
 allowlisted `layout.composition` values per category; the former five-header/
@@ -129,9 +129,19 @@ delivery. Local checks pass: 1,555 API and 1,499 Flutter tests, analysis,
 builds/schema checks, all hundred public pages at 320px and twenty native
 compositions. Owner filled-button radius, image-backed surface panels and
 custom-colored paper/glass surfaces retain public/native parity. The exact
-Staging debug APK is built; current remote CI/deploy/device update is pending.
-The historical `fc087c4` CI/Staging receipt above applies to the prior release
-only. Current evidence and visual adaptations are in the plan linked above.
+Staging debug APK above belongs to local acceptance before integration. The
+integrated source `9c7fa74` includes the newest Account UI (`main` `ebc9c47`) and
+the previously Live four-step composer (`550f73a`), with blob/delta audits
+confirming all three systems are preserved. CI `37623591224` passes 1,555 API
+and 1,556 Flutter tests; Render `dep-db342ek9v7es73astung` is Live with fourteen
+existing migrations and none pending. Compiled-module fixtures verify catalog,
+assets, legacy behavior and route headers without database/provider requests.
+The matching Android update is in progress via an opt-in Actions APK build:
+the tracked example matches all nine local Staging configuration values, and
+the downloaded APK must be re-signed with the existing local debug key before
+installation. Signing keys/private JSON stay local. The default CI path keeps
+its existing checks and does not build APKs. The historical `fc087c4` receipt
+applies to the prior release only; current evidence is in the plan linked above.
 
 The 2026-10-06 platform-mark refinement uses byte-identical bundled PNGs for
 YouTube, Shopee, Lazada, LINE, TikTok, Instagram, Facebook, Messenger, WhatsApp

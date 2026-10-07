@@ -5,6 +5,15 @@ on:
   push:
     branches: ["master", "main"]
   workflow_dispatch:
+    inputs:
+      build_staging_apk:
+        description: Build and upload a Staging debug APK after Mobile checks
+        type: boolean
+        default: false
+      apk_source_ref:
+        description: Optional source ref for Mobile checks and the Staging APK
+        type: string
+        default: ""
 
 jobs:
   api:
@@ -59,6 +68,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.apk_source_ref || github.sha }}
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -80,3 +91,54 @@ jobs:
 
       - name: Run tests
         run: flutter test
+
+      - name: Build Staging debug APK
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_staging_apk }}
+        run: |
+          flutter build apk --debug --target lib/main.dart --dart-define-from-file=staging.local.example.json
+          mkdir -p build/staging-apk
+          cp build/app/outputs/flutter-apk/app-debug.apk build/staging-apk/app-debug.apk
+          flutter --version --machine > build/staging-apk/flutter-version.json
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          artifact_dir = Path('build/staging-apk')
+          apk = artifact_dir / 'app-debug.apk'
+          version = json.loads((artifact_dir / 'flutter-version.json').read_text())
+          digest = hashlib.sha256()
+          with apk.open('rb') as stream:
+              for block in iter(lambda: stream.read(1024 * 1024), b''):
+                  digest.update(block)
+          receipt = {
+              'sourceSha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'workflowSha': os.environ['GITHUB_SHA'],
+              'runId': os.environ['GITHUB_RUN_ID'],
+              'flutterVersion': version['frameworkVersion'],
+              'dartSdkVersion': version['dartSdkVersion'],
+              'entrypoint': 'lib/main.dart',
+              'buildCommand': 'flutter build apk --debug --target lib/main.dart --dart-define-from-file=staging.local.example.json',
+              'dartDefineFile': 'staging.local.example.json',
+              'dartDefineFileSha256': hashlib.sha256(Path('staging.local.example.json').read_bytes()).hexdigest(),
+              'apkFile': apk.name,
+              'apkBytes': apk.stat().st_size,
+              'sha256': digest.hexdigest(),
+              'signing': 'Runner debug key; re-sign locally with the existing Staging debug key before updating the emulator',
+          }
+          (artifact_dir / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          print(json.dumps(receipt, indent=2))
+          PY
+
+      - name: Upload Staging debug APK
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_staging_apk }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: postdee-staging-debug-${{ github.run_id }}
+          path: |
+            apps/mobile/build/staging-apk/app-debug.apk
+            apps/mobile/build/staging-apk/receipt.json
+          if-no-files-found: error
+          retention-days: 3

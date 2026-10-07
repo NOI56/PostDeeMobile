@@ -50,7 +50,7 @@ Build roadmap for PostDee.
   completed on 2026-10-07 at runtime commit `fc087c4`, after exact-commit CI
   passed 1,469 API and 1,422 Flutter tests. See
   `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
-- Current local composition revision, accepted on 2026-10-07: keep all fifteen
+- Current composition revision, accepted on 2026-10-07: keep all fifteen
   A1–E3 sample directions and expand to twenty distinct short-page compositions
   in each of the five categories. Replace the earlier five-header/four-button
   model; retain all hundred template IDs, appearance version 1, seven legacy
@@ -64,9 +64,14 @@ Build roadmap for PostDee.
   The hundred brand marks remain untouched. Local implementation/QA is complete:
   1,555 API tests, 1,499 Flutter tests, analysis, builds/schema checks, hundred-page
   320px browser matrix and twenty native structures pass. The exact Staging debug
-  APK is built but not installed; current CI/Staging delivery remains pending.
-  The prior `fc087c4` release receipt does not validate this revision. See the
-  current-revision section in the same plan for evidence and visual adaptations.
+  APK above describes local acceptance before integration. Integrated `9c7fa74`
+  preserves the latest grouped Account UI and four-step composer; exact-source
+  CI `37623591224` passes 1,555 API / 1,556 Flutter tests. Staging API deployment
+  `dep-db342ek9v7es73astung` is Live with successful read-only runtime fixtures.
+  The matching Android update is in progress using an opt-in Actions debug build
+  and the existing local signing key because Windows Flutter-tool startup hangs.
+  The prior `fc087c4` receipt verifies the initial release only. See the current
+  delivery receipt in the same plan for evidence and visual adaptations.
 - Separate local draft saving from publishing. Show a shareable URL only after
   the API confirms publication. Support updating and unpublishing; changing a
   published slug invalidates the old URL.

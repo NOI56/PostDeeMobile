@@ -80,8 +80,8 @@ APK was installed with existing account/draft data preserved. Delivery evidence
 and verification limits:
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
-The subsequent Pinterest-inspired composition revision is **implemented and
-verified locally, not a Staging delivery**. On 2026-10-07 the user accepted all fifteen
+The subsequent Pinterest-inspired composition revision is **delivered to the
+Staging API; the matching Android update is in progress**. On 2026-10-07 the user accepted all fifteen
 short-page directions A1–E3 and asked to expand them into one hundred choices.
 Each category now has twenty different `layout.composition` values, replacing
 the earlier five-header/four-button variation model. All hundred published
@@ -102,9 +102,17 @@ new provider or dependency is introduced, and the hundred brand-logo assets
 remain unchanged. Current local checks pass: 1,555 API tests, 1,499 Flutter
 tests, analysis, API build/schema checks and the exact Staging debug APK build.
 Browser/IAB checks cover all hundred pages at 320px and native captures cover
-all twenty structures. Delivery remains pending; the `fc087c4` CI/deploy
-receipt above verifies only the previous release. Current evidence and visual
-adaptations are recorded in the same plan's current-revision section.
+all twenty structures. The integrated source `9c7fa74` preserves the latest
+Account UI from `main` (`ebc9c47`) and the live four-step composer (`550f73a`).
+Exact-source CI run `37623591224` passes 1,555 API and 1,556 Flutter tests plus
+analysis/build/schema/audit checks. Render deployment `dep-db342ek9v7es73astung`
+is Live; read-only runtime fixtures verify 100 stable IDs, five groups of twenty
+compositions, eight PNGs and seven legacy themes. No migration is added.
+Windows Flutter-tool startup prevents a new local build; an opt-in manual CI
+APK build uses the tracked Staging example, whose nine values match the local
+build configuration. The runner-signed APK must be re-signed locally with the
+existing debug key before an in-place update; the private key stays local.
+Current delivery evidence and visual adaptations are recorded in the same plan.
 
 The 2026-10-06 mobile revision opens the internal link manager for both new and
 existing profiles. It shows the shop identity, separate Store information,

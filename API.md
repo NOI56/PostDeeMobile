@@ -41,7 +41,7 @@ LinkInBioProfile migration; memory mode is development-only scaffolding.
 | `GET /p/:slug/images/:slot` | Public | Serve only the current published logo, cover, or background image |
 | `GET /profile-fonts/:file` | Public | Serve a whitelisted bundled font |
 | `GET /profile-platforms/:file` | Public | Serve one of 100 allowlisted bundled platform PNGs |
-| `GET /profile-decorations/:file` | Public | Local composition revision: serve one of eight allowlisted bundled decorative PNGs; Staging delivery pending |
+| `GET /profile-decorations/:file` | Public | Serve one of eight allowlisted bundled decorative PNGs; included in Staging runtime `9c7fa74` |
 
 Publish body:
 
@@ -185,7 +185,7 @@ of twenty, with no pause markup. This read-only check did not publish a test
 page or change customer data. Startup reported fourteen migrations and no
 pending migrations; public Staging browser/image checks remain unverified.
 
-### Local composition revision — 2026-10-07 (delivery pending)
+### Composition revision — 2026-10-07 (Staging API delivered)
 
 The user accepted all fifteen A1–E3 short-page directions and their expansion
 to one hundred choices. The authored catalog now assigns each category twenty
@@ -219,7 +219,14 @@ tests, API build and schema/helper checks, plus the actual hundred-page 320px
 browser matrix. Asset tests verify PNG headers, byte parity and filename/path
 rejections. Native tests/analysis and the exact Staging APK also pass. The prior
 `fc087c4` CI/deploy receipt does not verify these new compositions or asset
-responses; current remote CI and Staging delivery remain pending. Evidence is in
+responses. Integrated source `9c7fa74` passed exact-source CI `37623591224`
+(1,555 API / 1,556 Flutter tests) and is Live on Staging deployment
+`dep-db342ek9v7es73astung`. Read-only fixtures against compiled modules in that
+instance verify all 100 templates, retained IDs, five groups of twenty distinct
+compositions, eight bundled PNGs, seven legacy themes, omitted-appearance
+preservation and safe route headers. Header checks use synthetic responses;
+public browser/proxy and owned-image checks remain unverified under the existing
+browser restriction. No live user profile is modified by these fixtures. Evidence is in
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
 ### Profile images

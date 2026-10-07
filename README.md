@@ -51,8 +51,9 @@ contain existing outbound links, not product inventory or prices. Free-position
 dragging and animated media uploads are not included. No paid provider, dependency,
 flag or schema change is required. Deploy the API theme/optional-effects contract
 before distributing the new mobile build; older mobile builds need updating to
-read the new theme IDs. This feature is locally verified and has not been
-pushed/deployed; evidence is in
+read the new theme IDs. The feature was pushed and deployed to Staging at
+`8d96ea66d8086c66bf800920871ac5d71c65b209` on 2026-10-07; API and Mobile CI
+passed on that exact commit. Deployment and remaining verification limits are in
 `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
 
 The 2026-10-06 mobile revision opens the internal link manager for both new and

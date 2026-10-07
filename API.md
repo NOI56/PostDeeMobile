@@ -150,6 +150,13 @@ the nonce CSP, with a pause checkbox/label and `prefers-reduced-motion`; no scri
 or third-party media fetch is introduced. Deploy API before Mobile. No schema
 migration is needed; old mobile clients must update to understand new theme IDs.
 
+Staging deploy `dep-db302kqd0e5s73elbv9g` became Live on 2026-10-07 at
+15:24:38 GMT+7 using `8d96ea66d8086c66bf800920871ac5d71c65b209`, with no pending
+database migrations. This resolves the prior theme-contract mismatch: the
+previous deployed code rejected `pink|garden|cards` with the generic 400 input
+message. Existing failed-request messages in an open app clear on a new attempt;
+deployment does not automatically publish a user's private draft.
+
 ### Profile images
 
 `POST /link-in-bio/images` accepts `{ "slot": "logo", "imageBase64": "..." }`,

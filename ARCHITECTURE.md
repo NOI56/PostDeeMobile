@@ -77,7 +77,8 @@ state; toggling pause never edits the draft. The 100 original logo assets and
 40px visible geometry remain shared. Cards render existing link fields with
 `เปิดลิงก์`, not product objects. No schema/entitlement/provider change is required;
 ship API before Mobile and update old mobile versions before they read new IDs.
-Local verification and pending delivery are recorded in
+Local verification, successful exact-commit CI and completed Staging delivery
+on 2026-10-07 are recorded in
 `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
 
 The 2026-10-06 platform-mark refinement uses byte-identical bundled PNGs for

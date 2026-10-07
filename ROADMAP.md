@@ -24,8 +24,8 @@ Build roadmap for PostDee.
   local drafts, explicit publication, rights and the 20-link limit. Cards use
   existing links; product prices, free-position dragging and animated uploads
   remain outside this scope. API theme/effects support must precede Mobile;
-  no provider, dependency, flag or migration is added. Local validation and
-  pending release are recorded in
+  no provider, dependency, flag or migration is added. Local/remote validation
+  and the completed 2026-10-07 Staging release are recorded in
   `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
 - Separate local draft saving from publishing. Show a shareable URL only after
   the API confirms publication. Support updating and unpublishing; changing a

@@ -104,10 +104,10 @@ reduced motion, and static native image backgrounds when motion was enabled.
 Both old/new native image previews now move and freeze correctly when paused.
 README, ROADMAP, API and ARCHITECTURE describe the additive contract and order.
 
-This new theme feature has not been pushed or deployed. Any release must use
-specific session authorization, the exact tested SHA and API-before-Mobile
-order. The previously blocked public Staging browser is not bypassed by local
-rendering checks; record live rendering separately if it becomes available.
+The user explicitly authorized push and Staging deployment after the app's pink
+theme update was rejected by the old API. The completed exact-commit release is
+recorded below. The previously blocked public Staging browser is not bypassed
+by local rendering checks; record live rendering separately if it becomes available.
 
 ### Final Android evidence
 
@@ -147,3 +147,46 @@ the command ran. No cleanup took place; the temporary baseline, scripts and
 superseded screenshots remain outside the repository. The baseline contains a
 node_modules junction and must not be recursively removed through that junction.
 Pre-existing checkout artifacts and user work were not removed.
+
+### Authorized Staging delivery — 2026-10-07
+
+- Fresh fetch before release: origin/main remains
+  `bcd7153f196cd381a786b333b9b61a67dbe95ca3`; the checkout was 0 behind / 12
+  ahead and matched its remote feature branch. Stage only the 19 theme files;
+  preserve the unrelated root checkout and pre-existing untracked artifacts.
+- The user's saved draft had `themeId: pink`, a valid slug and non-empty store
+  name. An in-memory comparison of the exact prior deployed source
+  `34e68d63169f5ab54f454a4d95c1d874a8a5569a` confirmed that pastel still passes,
+  while pink/garden/cards are rejected. The new built validator accepts all four.
+  The route returns the generic input message before the profile commit.
+- Feature commit `8d96ea66d8086c66bf800920871ac5d71c65b209`, **Add profile themes
+  and optional motion**, was pushed to `codex/pinterest-mobile-ui`. No merge
+  into main was performed.
+- [CI run 37592982039](https://github.com/NOI56/PostDeeMobile/actions/runs/37592982039)
+  passed on that exact head SHA: Backend API (1,344 tests, build, Prisma schema
+  and production audit) and Flutter Mobile (analysis, 1,300 tests).
+- [Render deploy dep-db302kqd0e5s73elbv9g](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db302kqd0e5s73elbv9g)
+  used **Deploy a specific commit** on the existing postdee-api-staging service
+  `srv-d9bb72ojs32c739osa5g`. Source and checkout logs identify the feature SHA;
+  the configured-branch label in the log does not imply a merge. Existing
+  branch, Auto-Deploy, plan, environment and health-check settings were unchanged.
+  The CLI was unauthenticated, so the existing authenticated Dashboard was used.
+- Started at 15:22:43 GMT+7; **Deploy succeeded / service Live** at 15:24:38,
+  duration 1m55s. Startup confirms PostgreSQL postdee_staging, 14 migrations,
+  **No pending migrations to apply**, port 10000, disabled social publisher and
+  the existing in-process memory scheduler. Production dependency pruning still
+  reports four moderate advisories; no dependency change is included here.
+- The installed Stage APK still has SHA-256
+  `cba85615a3e161942a0812172f079f98f9670ab58c06638d87c015406b4cafe2`.
+  No reinstall, preference clear, account change or customer draft publication
+  was performed during this release. A native screenshot after deployment shows
+  the preserved pink draft and the error from the previous failed attempt;
+  the app needs a new Update action to replace that stored error message.
+- Evidence in the retained root: `profile-themes-remote-ci.json`,
+  `profile-themes-remote-ci.log`, `profile-themes-staging-deploy.txt`,
+  `profile-themes-staging-live.png` and
+  `profile-themes-native-staging-after-deploy.png`.
+- Public Staging browser rendering, a successful customer-profile update after
+  deployment, and iOS are not yet verified. The release does not auto-publish
+  drafts. The follow-up documentation commit records delivery evidence; deployed
+  runtime intentionally remains the CI-verified feature SHA.

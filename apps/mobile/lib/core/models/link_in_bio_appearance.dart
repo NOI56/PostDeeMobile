@@ -1,4 +1,5 @@
 import 'profile_platform_catalog.generated.dart';
+import 'profile_template_catalog.generated.dart';
 
 const linkInBioFonts = {'anuphan', 'prompt', 'system'};
 const linkInBioIcons = {
@@ -229,6 +230,7 @@ class LinkInBioAppearance {
   const LinkInBioAppearance({
     this.version = 1,
     this.themeId = 'minimal',
+    this.templateId,
     this.description = '',
     this.logoKey,
     this.coverKey,
@@ -249,6 +251,7 @@ class LinkInBioAppearance {
 
   final int version;
   final String themeId;
+  final String? templateId;
   final String description;
   final String? logoKey;
   final String? coverKey;
@@ -339,9 +342,45 @@ class LinkInBioAppearance {
   factory LinkInBioAppearance.fromTheme(String themeId) =>
       LinkInBioAppearance.forTheme(themeId);
 
+  factory LinkInBioAppearance.forTemplate(String templateId) {
+    final template = getProfileTemplate(templateId);
+    if (template == null) {
+      throw const FormatException('Invalid profile template');
+    }
+    final palette = template.palette;
+    return LinkInBioAppearance.forTheme(template.themeId).copyWith(
+      templateId: template.id,
+      background: LinkInBioBackground(
+        mode: template.effects['background'] == true ? 'gradient' : 'solid',
+        color: palette.background,
+        gradientColor: palette.gradient,
+      ),
+      surfaceColor: palette.surface,
+      buttonColor: palette.button,
+      buttonRadius: template.buttonRadius,
+      nameStyle: LinkInBioTextStyle(color: palette.name, font: template.font),
+      descriptionStyle:
+          LinkInBioTextStyle(color: palette.description, font: template.font),
+      categoryStyle:
+          LinkInBioTextStyle(color: palette.category, font: template.font),
+      buttonStyle:
+          LinkInBioTextStyle(color: palette.buttonText, font: template.font),
+      brandStyle: LinkInBioTextStyle(color: palette.brand, font: template.font),
+      effects: LinkInBioEffects.fromJson(template.effects),
+    );
+  }
+
   factory LinkInBioAppearance.fromJson(Map<String, Object?> json) {
     final version = json['version'];
     final theme = json['themeId'];
+    final templateId = json['templateId'];
+    if (templateId != null && templateId is! String) {
+      throw const FormatException('Invalid profile template');
+    }
+    final template = getProfileTemplate(templateId as String?);
+    if (templateId != null && (template == null || template.themeId != theme)) {
+      throw const FormatException('Invalid profile template');
+    }
     final radius = json['buttonRadius'];
     final featured = json['featuredLinkId'];
     if (version != 1 ||
@@ -359,6 +398,7 @@ class LinkInBioAppearance {
     return LinkInBioAppearance(
         version: version,
         themeId: theme,
+        templateId: templateId,
         description: _readText(json['description'], 280),
         logoKey: _readImageKey(json['logoKey']),
         coverKey: _readImageKey(json['coverKey']),
@@ -387,6 +427,7 @@ class LinkInBioAppearance {
     final json = <String, Object?>{
       'version': version,
       'themeId': themeId,
+      'templateId': templateId,
       'description': description,
       'logoKey': logoKey,
       'coverKey': coverKey,
@@ -412,6 +453,7 @@ class LinkInBioAppearance {
   LinkInBioAppearance copyWith(
           {int? version,
           String? themeId,
+          Object? templateId = _unset,
           String? description,
           Object? logoKey = _unset,
           Object? coverKey = _unset,
@@ -430,6 +472,9 @@ class LinkInBioAppearance {
       LinkInBioAppearance(
         version: version ?? this.version,
         themeId: themeId ?? this.themeId,
+        templateId: identical(templateId, _unset)
+            ? this.templateId
+            : templateId as String?,
         description: description ?? this.description,
         logoKey: identical(logoKey, _unset) ? this.logoKey : logoKey as String?,
         coverKey:

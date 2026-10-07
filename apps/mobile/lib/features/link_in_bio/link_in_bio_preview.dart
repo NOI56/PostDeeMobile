@@ -4,12 +4,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/models/link_in_bio_appearance.dart';
+import '../../core/models/profile_template_catalog.generated.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_link_defaults.dart';
 import 'link_in_bio_platform_logo.dart';
 import 'link_in_bio_decorated_preview.dart';
 import 'link_in_bio_motion.dart';
 import 'link_in_bio_preview_styles.dart';
+import 'link_in_bio_template_preview.dart';
 export 'link_in_bio_preview_styles.dart';
 
 String bioIconId(LinkInBioCustomLink link) {
@@ -34,6 +36,22 @@ class BioPreviewViewport extends StatefulWidget {
 
 class _BioPreviewViewportState extends State<BioPreviewViewport> {
   double get _start {
+    final template = getProfileTemplate(widget.appearance.templateId);
+    if (template != null) {
+      final header = template.layout.header;
+      final titleOffset = switch (header) {
+        'centered' => 142.0,
+        'left' => 118.0,
+        'split' => 36.0,
+        'cover' => 230.0,
+        'badge' => 163.0,
+        _ => 36.0,
+      };
+      return titleOffset -
+          12 +
+          (template.layout.decoration == 'frame' ? 13 : 0) +
+          (widget.appearance.coverKey != null && header != 'cover' ? 160 : 0);
+    }
     if (!const {'pink', 'garden', 'cards'}
         .contains(widget.appearance.themeId)) {
       return 0;
@@ -47,6 +65,7 @@ class _BioPreviewViewportState extends State<BioPreviewViewport> {
   void didUpdateWidget(covariant BioPreviewViewport oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.appearance.themeId != widget.appearance.themeId ||
+        oldWidget.appearance.templateId != widget.appearance.templateId ||
         oldWidget.appearance.coverKey != widget.appearance.coverKey) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _controller.hasClients) {
@@ -108,6 +127,15 @@ class LinkInBioPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final template = getProfileTemplate(appearance.templateId);
+    if (template != null) {
+      return BioTemplatePreview(
+          template: template,
+          storeName: storeName,
+          links: links,
+          appearance: appearance,
+          images: images);
+    }
     if (const {'pink', 'garden', 'cards'}.contains(appearance.themeId)) {
       return BioDecoratedPreview(
           storeName: storeName,
@@ -117,12 +145,11 @@ class LinkInBioPreview extends StatelessWidget {
     }
     return BioMotionSurface(
         effects: appearance.effects,
-        builder: (phase, entrance, paused, togglePause, reduced) =>
-            _legacyPreview(phase, entrance, paused, togglePause, reduced));
+        builder: (phase, entrance, reduced) =>
+            _legacyPreview(phase, entrance, reduced));
   }
 
-  Widget _legacyPreview(double phase, double entrance, bool paused,
-      VoidCallback togglePause, bool reduced) {
+  Widget _legacyPreview(double phase, double entrance, bool reduced) {
     final background = appearance.background;
     final drift = appearance.effects.background && !reduced
         ? math.sin(phase * math.pi * 2) * .15
@@ -306,26 +333,6 @@ class LinkInBioPreview extends StatelessWidget {
                                                     style: bioTextStyle(
                                                         appearance.brandStyle,
                                                         size: 12))),
-                                            if (appearance.effects.enabled &&
-                                                !reduced)
-                                              Center(
-                                                  child: TextButton.icon(
-                                                      key: const ValueKey(
-                                                          'link-in-bio-preview-pause'),
-                                                      onPressed: togglePause,
-                                                      icon: Icon(
-                                                          paused
-                                                              ? Icons.play_arrow
-                                                              : Icons.pause,
-                                                          size: 14),
-                                                      label: Text(
-                                                          paused
-                                                              ? 'เล่นการเคลื่อนไหว'
-                                                              : 'หยุดการเคลื่อนไหว',
-                                                          style: bioTextStyle(
-                                                              appearance
-                                                                  .brandStyle,
-                                                              size: 12)))),
                                           ])),
                                 ])),
                       ))),

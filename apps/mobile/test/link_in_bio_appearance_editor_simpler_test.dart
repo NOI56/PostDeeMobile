@@ -78,6 +78,12 @@ Future<void> _openEditor(WidgetTester tester,
 
 Future<void> _tap(WidgetTester tester, String key) async {
   final finder = find.byKey(ValueKey(key));
+  if (key.startsWith('link-in-bio-theme-') && finder.evaluate().isEmpty) {
+    final legacy = find.byKey(const ValueKey('link-in-bio-legacy-themes'));
+    await tester.ensureVisible(legacy);
+    await tester.tap(legacy);
+    await tester.pumpAndSettle();
+  }
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
@@ -123,7 +129,9 @@ void main() {
       'starts with a bounded preview and themes while details are closed',
       (tester) async {
     await _openEditor(tester);
-    expect(find.byType(ChoiceChip), findsNWidgets(7));
+    expect(find.byType(ChoiceChip), findsNWidgets(5));
+    expect(find.byKey(const ValueKey('link-in-bio-template-grid')),
+        findsOneWidget);
     expect(find.text('ตกแต่งเพิ่มเติม'), findsOneWidget);
     expect(find.byKey(const ValueKey('link-in-bio-background-color')),
         findsNothing);

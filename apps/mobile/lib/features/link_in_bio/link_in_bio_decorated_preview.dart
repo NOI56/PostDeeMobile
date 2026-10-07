@@ -36,7 +36,7 @@ class BioDecoratedPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) => BioMotionSurface(
       effects: appearance.effects,
-      builder: (phase, entrance, paused, togglePause, reduced) {
+      builder: (phase, entrance, reduced) {
         final cards = appearance.themeId == 'cards';
         final garden = appearance.themeId == 'garden';
         final name = storeName.trim().isEmpty ? 'ร้านของคุณ' : storeName.trim();
@@ -264,24 +264,6 @@ class BioDecoratedPreview extends StatelessWidget {
                                             style: bioTextStyle(
                                                 appearance.brandStyle,
                                                 size: 12)),
-                                        if (appearance.effects.enabled && !reduced)
-                                          Center(
-                                              child: OutlinedButton.icon(
-                                                  key: const ValueKey(
-                                                      'link-in-bio-preview-pause'),
-                                                  onPressed: togglePause,
-                                                  style: OutlinedButton.styleFrom(
-                                                      foregroundColor: bioColor(
-                                                          appearance.brandStyle
-                                                              .color)),
-                                                  icon: Icon(paused ? Icons.play_arrow : Icons.pause,
-                                                      size: 14),
-                                                  label: Text(
-                                                      paused
-                                                          ? 'เล่นการเคลื่อนไหว'
-                                                          : 'หยุดการเคลื่อนไหว',
-                                                      style:
-                                                          bioTextStyle(appearance.brandStyle, size: 12)))),
                                       ]))))),
                   if (appearance.effects.stickers != 'none')
                     Positioned.fill(

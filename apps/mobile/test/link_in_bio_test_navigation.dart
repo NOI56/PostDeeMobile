@@ -62,6 +62,10 @@ Future<void> tapBioControl(WidgetTester tester, String key) async {
   } else if (key == 'link-in-bio-decorate' ||
       key.startsWith('link-in-bio-theme-')) {
     await showBioStep(tester, 'theme');
+    if (key.startsWith('link-in-bio-theme-') &&
+        find.byKey(ValueKey(key)).evaluate().isEmpty) {
+      await _tapVisibleBioKey(tester, 'link-in-bio-legacy-themes');
+    }
   } else if (key == 'link-in-bio-add' ||
       key.startsWith('link-in-bio-edit-') ||
       key.startsWith('link-in-bio-toggle-')) {

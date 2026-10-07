@@ -37,6 +37,12 @@ LinkInBioProfileResult _profile() => LinkInBioProfileResult(
 
 Future<void> _tap(WidgetTester tester, String key) async {
   final finder = find.byKey(ValueKey(key));
+  if (key.startsWith('link-in-bio-theme-') && finder.evaluate().isEmpty) {
+    final legacy = find.byKey(const ValueKey('link-in-bio-legacy-themes'));
+    await showBioControl(tester, legacy);
+    await tester.tap(legacy);
+    await tester.pumpAndSettle();
+  }
   await showBioControl(tester, finder);
   await tester.tap(finder);
   await tester.pumpAndSettle();

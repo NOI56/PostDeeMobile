@@ -2,8 +2,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/models/link_in_bio_appearance.dart';
 
-typedef BioMotionBuilder = Widget Function(double phase, double entrance,
-    bool paused, VoidCallback togglePause, bool reducedMotion);
+typedef BioMotionBuilder = Widget Function(
+    double phase, double entrance, bool reducedMotion);
 
 class BioMotionSurface extends StatefulWidget {
   const BioMotionSurface(
@@ -21,7 +21,6 @@ class _BioMotionSurfaceState extends State<BioMotionSurface>
   late final _entrance = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 500), value: 1);
   late final _animation = Listenable.merge([_ambient, _entrance]);
-  bool _paused = false;
   bool _reduced = false;
   @override
   void didChangeDependencies() {
@@ -33,15 +32,13 @@ class _BioMotionSurfaceState extends State<BioMotionSurface>
   void didUpdateWidget(covariant BioMotionSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.effects != widget.effects) {
-      _paused = false;
       _configure();
     }
   }
 
   void _configure() {
     _reduced = MediaQuery.disableAnimationsOf(context);
-    final active =
-        !_reduced && !_paused && TickerMode.valuesOf(context).enabled;
+    final active = !_reduced && TickerMode.valuesOf(context).enabled;
     if (active &&
         (widget.effects.background ||
             widget.effects.featured ||
@@ -58,10 +55,6 @@ class _BioMotionSurfaceState extends State<BioMotionSurface>
     }
   }
 
-  void _togglePause() => setState(() {
-        _paused = !_paused;
-        _configure();
-      });
   @override
   void dispose() {
     _ambient.dispose();
@@ -72,8 +65,8 @@ class _BioMotionSurfaceState extends State<BioMotionSurface>
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
       animation: _animation,
-      builder: (_, child) => widget.builder(_reduced ? 0 : _ambient.value,
-          _entrance.value, _paused, _togglePause, _reduced));
+      builder: (_, child) => widget.builder(
+          _reduced ? 0 : _ambient.value, _entrance.value, _reduced));
 }
 
 class BioDecorations extends StatelessWidget {

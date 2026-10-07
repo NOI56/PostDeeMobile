@@ -8,14 +8,16 @@ import 'package:postdee_mobile/features/link_in_bio/link_in_bio_preview.dart';
 
 void main() {
   for (final theme in ['minimal', 'pink']) {
-    testWidgets('$theme image background moves and freezes when paused',
+    testWidgets('$theme image background moves and respects reduced motion',
         (tester) async {
       const key =
           'uploads/owner/12345678-1234-1234-1234-123456789abc/profile-background.png';
       final appearance = LinkInBioAppearance.forTheme(theme).copyWith(
           background: const LinkInBioBackground(mode: 'image', imageKey: key),
           effects: const LinkInBioEffects(background: true));
-      await tester.pumpWidget(MaterialApp(
+      Widget preview(bool reduced) => MaterialApp(
+          builder: (_, child) => MediaQuery(
+              data: MediaQueryData(disableAnimations: reduced), child: child!),
           home: Scaffold(
               body: SingleChildScrollView(
                   child: LinkInBioPreview(
@@ -26,7 +28,8 @@ void main() {
                       images: {
                         key: base64Decode(
                             'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==')
-                      })))));
+                      }))));
+      await tester.pumpWidget(preview(false));
       final picture =
           find.byWidgetPredicate((w) => w is Image && w.image is MemoryImage);
       final transform =
@@ -37,9 +40,10 @@ void main() {
       final first = matrix();
       await tester.pump(const Duration(milliseconds: 600));
       expect(matrix(), isNot(first));
-      final pause = find.byKey(const ValueKey('link-in-bio-preview-pause'));
-      await tester.ensureVisible(pause);
-      await tester.tap(pause);
+      expect(find.byKey(const ValueKey('link-in-bio-preview-pause')),
+          findsNothing);
+      expect(find.text('หยุดการเคลื่อนไหว'), findsNothing);
+      await tester.pumpWidget(preview(true));
       await tester.pumpAndSettle();
       final stopped = matrix();
       await tester.pump(const Duration(seconds: 1));
@@ -124,7 +128,7 @@ void main() {
   }
 
   for (final theme in ['minimal', 'pink', 'garden', 'cards']) {
-    testWidgets('$theme motion can pause and resume without changing the draft',
+    testWidgets('$theme has no pause control and preserves reduced motion',
         (tester) async {
       final appearance = LinkInBioAppearance.forTheme(theme).copyWith(
           effects: const LinkInBioEffects(
@@ -133,7 +137,9 @@ void main() {
               featured: true,
               stickers: 'hearts'));
       final before = appearance.toJson();
-      await tester.pumpWidget(MaterialApp(
+      Widget preview(bool reduced) => MaterialApp(
+          builder: (_, child) => MediaQuery(
+              data: MediaQueryData(disableAnimations: reduced), child: child!),
           home: Scaffold(
               body: SingleChildScrollView(
                   child: LinkInBioPreview(
@@ -141,19 +147,20 @@ void main() {
                       slug: 'shop',
                       appearance: appearance,
                       links: const [
-            LinkInBioCustomLink(
-                id: 'a', title: 'ร้าน', url: 'https://example.com')
-          ])))));
+                LinkInBioCustomLink(
+                    id: 'a', title: 'ร้าน', url: 'https://example.com')
+              ]))));
+      await tester.pumpWidget(preview(false));
       await tester.pump(const Duration(seconds: 1));
-      final pause = find.byKey(const ValueKey('link-in-bio-preview-pause'));
-      await tester.ensureVisible(pause);
-      await tester.tap(pause);
+      expect(find.byKey(const ValueKey('link-in-bio-preview-pause')),
+          findsNothing);
+      expect(find.text('หยุดการเคลื่อนไหว'), findsNothing);
+      expect(tester.binding.hasScheduledFrame, isTrue);
+      await tester.pumpWidget(preview(true));
       await tester.pumpAndSettle();
-      expect(find.text('เล่นการเคลื่อนไหว'), findsOneWidget);
       expect(tester.binding.hasScheduledFrame, isFalse);
-      await tester.tap(pause);
+      await tester.pumpWidget(preview(false));
       await tester.pump(const Duration(milliseconds: 600));
-      expect(find.text('หยุดการเคลื่อนไหว'), findsOneWidget);
       expect(tester.binding.hasScheduledFrame, isTrue);
       expect(appearance.toJson(), before);
       await tester.pumpWidget(const SizedBox());

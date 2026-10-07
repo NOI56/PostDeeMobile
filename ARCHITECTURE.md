@@ -55,8 +55,8 @@ before enabling publication on the shipped mobile build.
 Profile customization is an additive, versioned appearance snapshot on
 LinkInBioProfile (`appearance JSONB`, nullable for legacy rows). The server
 normalizes presets and accepts only known fonts/icons/button shapes and exact
-six-digit hex colors; it never accepts CSS or HTML. Legacy clients omit
-appearance and retain the current saved settings. All packages have identical
+six-digit hex colors; it never accepts CSS or HTML. Clients that omit the entire
+appearance object retain the current saved settings. All packages have identical
 customization rights, with one page and 20 links unchanged.
 
 The mobile draft keeps the same appearance contract, plus disabled links, in
@@ -70,16 +70,29 @@ The 2026-10-07 theme expansion extends appearance version 1 with
 `pink|garden|cards` and optional validated `effects` (background/entrance/featured
 booleans plus `none|hearts|flowers|sparkles` stickers). Existing theme defaults
 stay still; new presets enable gentle entrance/decorations. The renderer uses
-CSS keyframes and fixed decorative vectors, a checkbox pause control and
-reduced-motion rules without adding script permissions. Flutter uses disposable
-animation controllers obeying TickerMode/MediaQuery and a preview-only pause
-state; toggling pause never edits the draft. The 100 original logo assets and
+CSS keyframes and fixed decorative vectors with reduced-motion rules without
+adding script permissions. Flutter uses disposable animation controllers
+obeying TickerMode/MediaQuery. The 100 original logo assets and
 40px visible geometry remain shared. Cards render existing link fields with
 `เปิดลิงก์`, not product objects. No schema/entitlement/provider change is required;
 ship API before Mobile and update old mobile versions before they read new IDs.
 Local verification, successful exact-commit CI and completed Staging delivery
 on 2026-10-07 are recorded in
 `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
+
+The template-category revision adds nullable `appearance.templateId` to version
+1. A single authored catalog generates allowlisted TypeScript/Dart definitions:
+five categories × twenty header/link-treatment combinations, palettes and
+decorative variants. Legacy null/omitted IDs retain the seven existing theme
+renderers; known IDs select equivalent CSS/Flutter layout primitives. Preset
+selection preserves content/images and per-link overrides, and preview/apply
+is local until explicit publishing. Pause controls are removed on both
+surfaces; owner effects and OS reduced motion remain. No database migration or
+provider is introduced. API/catalog must ship before the mobile chooser: the
+earlier API silently discards `templateId`. Older clients sending a complete
+appearance without that field can clear a new selection; update them before
+editing new-template profiles and avoid rolling back the API after use. See
+`docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
 The 2026-10-06 platform-mark refinement uses byte-identical bundled PNGs for
 YouTube, Shopee, Lazada, LINE, TikTok, Instagram, Facebook, Messenger, WhatsApp

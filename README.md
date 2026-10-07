@@ -45,8 +45,7 @@ Product cards/prices are not part of this release.
 The 2026-10-07 decoration expansion adds pink pastel, cottage garden and lavender
 storefront link cards. A collapsed `ลูกเล่น` group controls background movement,
 link entrance, a featured-button lift and heart/flower/sparkle decorations.
-Visitors and the mobile preview can pause movement; reduced-motion settings
-disable animations. The four earlier presets remain still by default. Cards
+Reduced-motion settings disable animations. The four earlier presets remain still by default. Cards
 contain existing outbound links, not product inventory or prices. Free-position
 dragging and animated media uploads are not included. No paid provider, dependency,
 flag or schema change is required. Deploy the API theme/optional-effects contract
@@ -55,6 +54,18 @@ read the new theme IDs. The feature was pushed and deployed to Staging at
 `8d96ea66d8086c66bf800920871ac5d71c65b209` on 2026-10-07; API and Mobile CI
 passed on that exact commit. Deployment and remaining verification limits are in
 `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
+
+The next profile customization revision adds 100 layout/style templates in five
+categories (minimal, cute/pastel, nature/warm, luxury/premium, creative/colorful),
+twenty per category. A category picker opens a real draft preview before
+applying; legacy themes remain available. The visitor/preview pause buttons are
+removed as requested; owner effects controls and OS reduced motion remain.
+The shared catalog and nullable version-1 `templateId` require API delivery
+before Mobile, without a schema migration. The earlier API silently drops the
+new template selection; older clients sending a complete appearance without
+`templateId` can clear it. Update clients before editing new-template profiles.
+Implementation and verification:
+`docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
 The 2026-10-06 mobile revision opens the internal link manager for both new and
 existing profiles. It shows the shop identity, separate Store information,
@@ -152,7 +163,9 @@ earlier release results above do not verify this expansion.
 
 Migration `20261005193000_customize_link_in_bio_profile` adds nullable appearance
 JSON and owner-scoped image metadata. Old profiles use the original cream/green
-defaults; old clients can still publish links without overwriting customization.
+defaults; clients omitting the entire appearance object can publish links
+without overwriting customization. Old clients sending a complete appearance
+do not preserve fields they do not understand.
 Deploy the generated Prisma client, migration, API and bundled font assets
 before distributing the new mobile build. Staging now runs this migration/API
 at `9195211f16519fd58c9cc01d6949dd8486190d01`; real logo upload and authenticated

@@ -19,7 +19,7 @@ Build roadmap for PostDee.
 - The selected 2026-10-07 themes add pink pastel, cottage garden and lavender
   storefront link cards alongside the four original presets. Offer optional
   background/entrance/featured motion and heart/flower/sparkle decorations in
-  a collapsed group, with visitor/preview pause and reduced-motion support.
+  a collapsed group, with reduced-motion support.
   Preserve colors/fonts, owned images, 100 normalized logos, safe contacts,
   local drafts, explicit publication, rights and the 20-link limit. Cards use
   existing links; product prices, free-position dragging and animated uploads
@@ -27,6 +27,14 @@ Build roadmap for PostDee.
   no provider, dependency, flag or migration is added. Local/remote validation
   and the completed 2026-10-07 Staging release are recorded in
   `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
+- Expand customization to five categories with twenty layout/style templates
+  each: minimal, cute/pastel, nature/warm, luxury/premium, creative/colorful.
+  Keep the seven legacy choices, private draft content/images, per-link
+  overrides and explicit publishing. Use category → preview → apply; remove
+  visitor and preview pause buttons while retaining owner effects toggles and
+  OS reduced motion. Shared catalog and nullable `templateId` are additive,
+  with no migration or paid service; deliver API before Mobile. See
+  `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 - Separate local draft saving from publishing. Show a shareable URL only after
   the API confirms publication. Support updating and unpublishing; changing a
   published slug invalidates the old URL.

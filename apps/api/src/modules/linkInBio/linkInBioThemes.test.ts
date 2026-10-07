@@ -21,9 +21,10 @@ describe('profile themes and optional motion', () => {
     const html = renderLinkInBioPage(profile, 'safe-nonce');
     expect(html).toContain(`data-theme="${themeId}"`);
     expect(html).toContain('prefers-reduced-motion');
-    expect(html).toContain('หยุดการเคลื่อนไหว');
+    expect(html).not.toContain('หยุดการเคลื่อนไหว');
+    expect(html).not.toContain('pause-motion');
     expect(html).toContain('aria-hidden="true"');
-    expect(html).toContain('animation-play-state:paused');
+    expect(html).toContain('animation:none!important');
     expect(html).not.toMatch(/<script\b/i);
     expect(html).toContain('href="https://shopee.co.th/shop" target="_blank" rel="noopener noreferrer"');
     expect(html).toContain('/profile-platforms/shopee.png');
@@ -37,6 +38,18 @@ describe('profile themes and optional motion', () => {
       isPublished: true, publishedAt: null, updatedAt: '', publicPath: '/p/legacy' }, 'nonce');
     expect(html).not.toContain('id="pause-motion"');
     expect(html).not.toContain('class="decorations');
+  });
+
+  it.each(['minimal', 'shop', 'pastel', 'dark', 'pink', 'garden', 'cards'])('removes the public pause control from %s while retaining selected effects and reduced motion', (themeId) => {
+    const appearance = readLinkInBioAppearance({ themeId, effects }, links)!;
+    const html = renderLinkInBioPage({ storeName: 'ร้าน', slug: 'motion', links, appearance,
+      isPublished: true, publishedAt: null, updatedAt: '', publicPath: '/p/motion' }, 'nonce');
+    expect(html).not.toMatch(/pause-motion|motion-control|when-paused|หยุดการเคลื่อนไหว|เล่นการเคลื่อนไหว/);
+    expect(html).toContain('class="background-motion"');
+    expect(html).toContain('data-stickers="flowers"');
+    expect(html).toContain('motion-featured');
+    expect(html).toContain('@media(prefers-reduced-motion:reduce)');
+    expect(html).toContain('animation:none!important');
   });
 
   it.each([

@@ -1050,6 +1050,13 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
         const SizedBox(height: 16),
         BioThemePicker(
             appearance: _appearance,
+            storeName: _storeNameController.text,
+            slug: _slugController.text,
+            links: _customLinks
+                .where((link) => _enabledLinkIds.contains(link.id))
+                .toList(),
+            images: _images,
+            imageRevision: _imageRevision,
             enabled: _canEdit && !_isLoading,
             onChanged: (value) => setState(() {
                   _appearance = value;

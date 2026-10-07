@@ -7,6 +7,8 @@ import '../../core/models/link_in_bio_appearance.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_color_picker.dart';
 import 'link_in_bio_preview.dart';
+import 'link_in_bio_theme_picker.dart';
+export 'link_in_bio_theme_picker.dart';
 
 const bioFontOptions = {
   'anuphan': 'Anuphan • ตัวอย่างภาษาไทย',
@@ -15,120 +17,6 @@ const bioFontOptions = {
 };
 bool validBioColor(String value) =>
     RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(value);
-
-LinkInBioAppearance bioApplyTheme(
-    LinkInBioAppearance appearance, String themeId) {
-  final preset = LinkInBioAppearance.forTheme(themeId);
-  return preset.copyWith(
-      description: appearance.description,
-      logoKey: appearance.logoKey,
-      coverKey: appearance.coverKey,
-      background:
-          preset.background.copyWith(imageKey: appearance.background.imageKey),
-      featuredLinkId: appearance.featuredLinkId,
-      featuredLabel: appearance.featuredLabel);
-}
-
-class BioThemePicker extends StatelessWidget {
-  const BioThemePicker(
-      {super.key,
-      required this.appearance,
-      required this.onChanged,
-      this.enabled = true});
-
-  final LinkInBioAppearance appearance;
-  final ValueChanged<LinkInBioAppearance> onChanged;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(builder: (context, size) {
-        final width = (size.maxWidth - 10) / 2;
-        final colors = Theme.of(context).colorScheme;
-        return Wrap(spacing: 10, runSpacing: 10, children: [
-          for (final theme in linkInBioThemeNames.entries)
-            SizedBox(
-                width: width,
-                child: ChoiceChip(
-                    key: ValueKey('link-in-bio-theme-${theme.key}'),
-                    selected: appearance.themeId == theme.key,
-                    showCheckmark: false,
-                    padding: const EdgeInsets.all(8),
-                    labelPadding: EdgeInsets.zero,
-                    selectedColor: colors.primary.withValues(alpha: .06),
-                    backgroundColor: colors.surface,
-                    side: BorderSide(
-                        color: appearance.themeId == theme.key
-                            ? colors.primary
-                            : colors.outlineVariant,
-                        width: appearance.themeId == theme.key ? 1.5 : 1),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    label: SizedBox(
-                        width: width - 20,
-                        child:
-                            Column(mainAxisSize: MainAxisSize.min, children: [
-                          _BioThemeSample(
-                              appearance:
-                                  LinkInBioAppearance.forTheme(theme.key)),
-                          const SizedBox(height: 8),
-                          Row(children: [
-                            Expanded(child: Text(theme.value)),
-                            if (appearance.themeId == theme.key)
-                              Icon(Icons.check_circle,
-                                  size: 18, color: colors.primary),
-                          ]),
-                        ])),
-                    onSelected: enabled
-                        ? (_) => onChanged(bioApplyTheme(appearance, theme.key))
-                        : null)),
-        ]);
-      });
-}
-
-class _BioThemeSample extends StatelessWidget {
-  const _BioThemeSample({required this.appearance});
-  final LinkInBioAppearance appearance;
-
-  @override
-  Widget build(BuildContext context) => Container(
-      height: 84,
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
-      decoration: BoxDecoration(
-          color: bioColor(appearance.background.color),
-          borderRadius: BorderRadius.circular(7)),
-      child: Column(children: [
-        if (const {'pink', 'garden', 'cards'}.contains(appearance.themeId)) ...[
-          Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                  color: bioColor(appearance.background.gradientColor),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                      color: bioColor(appearance.nameStyle.color)
-                          .withValues(alpha: .3)))),
-          const SizedBox(height: 5),
-        ],
-        Container(
-            height: 4,
-            width: 35,
-            decoration: BoxDecoration(
-                color: bioColor(appearance.nameStyle.color),
-                borderRadius: BorderRadius.circular(2))),
-        const SizedBox(height: 5),
-        for (var index = 0; index < 3; index++)
-          Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Container(
-                  height: appearance.themeId == 'cards' ? 9 : 7,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                      color: bioColor(appearance.buttonColor),
-                      borderRadius: BorderRadius.circular(
-                          appearance.buttonRadius == 'square' ? 1 : 5)))),
-      ]));
-}
 
 class BioColorField extends StatefulWidget {
   const BioColorField(
@@ -683,6 +571,11 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                                         const SizedBox(height: 10),
                                         BioThemePicker(
                                             appearance: _value,
+                                            storeName: widget.storeName,
+                                            slug: widget.slug,
+                                            links: widget.links,
+                                            images: widget.images,
+                                            imageRevision: widget.imageRevision,
                                             enabled: !_uploading,
                                             onChanged: _change),
                                         const SizedBox(height: 8),

@@ -1,4 +1,5 @@
 import { profilePlatformIds, type ProfilePlatformId } from './profilePlatformCatalog.generated.js';
+import { getProfileTemplate } from './profileTemplateCatalog.generated.js';
 
 export type LinkInBioFont = 'anuphan' | 'prompt' | 'system';
 export type LinkInBioIcon = 'auto' | 'link' | 'website' | 'email' | 'phone' | ProfilePlatformId;
@@ -8,6 +9,7 @@ export type LinkInBioTextStyle = { color: string; font: LinkInBioFont };
 export type LinkInBioAppearance = {
   version: 1;
   themeId: LinkInBioTheme;
+  templateId?: string | null;
   description: string;
   logoKey: string | null;
   coverKey: string | null;
@@ -42,7 +44,7 @@ export const createDefaultLinkInBioAppearance = (themeId: LinkInBioTheme = 'mini
   const [color, gradientColor, surfaceColor, buttonColor, name, description, category, button, brand] = palettes[themeId];
   const modern = ['pink', 'garden', 'cards'].includes(themeId);
   return {
-    version: 1, themeId, description: '', logoKey: null, coverKey: null,
+    version: 1, themeId, templateId: null, description: '', logoKey: null, coverKey: null,
     background: { mode: modern && themeId !== 'garden' ? 'gradient' : 'solid', color, gradientColor, imageKey: null, overlay: 30 },
     surfaceColor, buttonColor, buttonRadius: themeId === 'pastel' || themeId === 'pink' ? 'pill' : 'rounded',
     nameStyle: { color: name, font: themeId === 'shop' || themeId === 'dark' ? 'prompt' : 'anuphan' },
@@ -58,6 +60,25 @@ export const createDefaultLinkInBioAppearance = (themeId: LinkInBioTheme = 'mini
 
 export const defaultLinkInBioAppearance = createDefaultLinkInBioAppearance;
 
+export const createDefaultLinkInBioTemplateAppearance = (templateId: string): LinkInBioAppearance => {
+  const template = getProfileTemplate(templateId);
+  if (!template) throw new Error('Invalid profile template');
+  const result = createDefaultLinkInBioAppearance(template.themeId);
+  const palette = template.palette;
+  result.templateId = template.id;
+  result.background = { ...result.background, mode: template.effects.background ? 'gradient' : 'solid', color: palette.background, gradientColor: palette.gradient };
+  result.surfaceColor = palette.surface;
+  result.buttonColor = palette.button;
+  result.buttonRadius = template.buttonRadius;
+  result.nameStyle = { color: palette.name, font: template.font };
+  result.descriptionStyle = { color: palette.description, font: template.font };
+  result.categoryStyle = { color: palette.category, font: template.font };
+  result.buttonStyle = { color: palette.buttonText, font: template.font };
+  result.brandStyle = { color: palette.brand, font: template.font };
+  result.effects = { ...template.effects };
+  return result;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 export const readLinkInBioColor = (value: unknown) => typeof value === 'string' && /^#[a-f\d]{6}$/i.test(value) ? value.toLowerCase() : undefined;
 const readImageKey = (value: unknown): string | null | undefined => {
@@ -72,9 +93,14 @@ const readImageKey = (value: unknown): string | null | undefined => {
 export const readLinkInBioAppearance = (value: unknown, links: readonly { id: string }[]): LinkInBioAppearance | undefined => {
   if (!isRecord(value)) return undefined;
   if (value.version !== undefined && value.version !== 1) return undefined;
-  const themeId = value.themeId ?? 'minimal';
+  const templateId = value.templateId ?? null;
+  if (templateId !== null && typeof templateId !== 'string') return undefined;
+  const template = getProfileTemplate(templateId);
+  if (templateId !== null && !template) return undefined;
+  const themeId = value.themeId ?? template?.themeId ?? 'minimal';
   if (!themes.includes(themeId as LinkInBioTheme)) return undefined;
-  const result = createDefaultLinkInBioAppearance(themeId as LinkInBioTheme);
+  if (template && (template.themeId !== themeId || (value.themeId !== undefined && value.themeId !== template.themeId))) return undefined;
+  const result = template ? createDefaultLinkInBioTemplateAppearance(template.id) : createDefaultLinkInBioAppearance(themeId as LinkInBioTheme);
   if (value.effects !== undefined) {
     if (!isRecord(value.effects)) return undefined;
     for (const field of ['background', 'entrance', 'featured'] as const) {

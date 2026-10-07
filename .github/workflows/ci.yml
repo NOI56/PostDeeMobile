@@ -32,6 +32,12 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
+      - name: Check shared profile template catalog
+        run: node ../../scripts/generate-profile-templates.mjs --check
+
+      - name: Test profile template generator
+        run: node --test ../../scripts/generate-profile-templates.test.mjs
+
       - name: Run tests
         run: npm run test
 

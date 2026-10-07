@@ -98,7 +98,7 @@ links are published. Optional per-link styles override the corresponding page
 style. Fonts are `anuphan|prompt|system`; colors are exact `#RRGGBB` values.
 
 Publish optionally includes an `appearance` object; profile responses return
-its normalized version. Omission by legacy clients retains previous settings.
+its normalized version. Omission of the entire appearance object retains previous settings.
 Null/absent appearance on old rows maps to the original theme. A partial
 appearance request starts from the specified preset; the current mobile client
 sends the complete object:
@@ -146,9 +146,28 @@ and cards enable background/entrance with hearts/sparkles, garden enables
 entrance/flowers. Featured movement defaults off. Normalized responses include
 all four fields. Omission of the entire appearance retains the saved snapshot,
 including effects, for legacy-client publication. Public motion uses CSS under
-the nonce CSP, with a pause checkbox/label and `prefers-reduced-motion`; no script
+the nonce CSP with `prefers-reduced-motion`; no script
 or third-party media fetch is introduced. Deploy API before Mobile. No schema
 migration is needed; old mobile clients must update to understand new theme IDs.
+
+The template-category revision adds optional nullable `appearance.templateId`
+to version 1. Within a supplied appearance object, omitted/null `templateId`
+selects the legacy theme; a non-null ID must exist in
+the shared 100-template catalog (five categories, twenty each). Omitted
+`themeId` defaults to that template's legacy base; an explicitly mismatched
+theme/unknown ID fails with HTTP 400 before writing. Layout fields are trusted
+catalog values, not client-supplied CSS. All existing appearance overrides and
+owned images remain supported. Omitting the entire appearance atomically
+retains the saved template and customization. Public/native pause controls are
+removed; owner effects controls and OS reduced motion remain. No migration is
+required. Deploy this API/catalog revision before distributing the new Mobile
+build. The earlier seven-theme API can accept the legacy base theme but silently
+discard `templateId`, losing the selected layout. An older mobile client that
+reads a new template and sends a complete appearance without `templateId` can
+also clear that selection on the new API. Only omission of the entire appearance
+preserves it; update clients before editing new-template profiles and avoid an
+API rollback after they are used. See
+`docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
 Staging deploy `dep-db302kqd0e5s73elbv9g` became Live on 2026-10-07 at
 15:24:38 GMT+7 using `8d96ea66d8086c66bf800920871ac5d71c65b209`, with no pending

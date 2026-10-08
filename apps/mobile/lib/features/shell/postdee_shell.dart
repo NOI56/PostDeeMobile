@@ -536,6 +536,14 @@ class _PostDeeBottomNav extends StatelessWidget {
   // Includes 8 dp above the surface for the raised upload action.
   static const _height = 84.0;
 
+  int? get _selectedSlot => switch (currentIndex) {
+        0 => 0,
+        3 => 1,
+        1 => 3,
+        5 => 4,
+        _ => null,
+      };
+
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -572,53 +580,174 @@ class _PostDeeBottomNav extends StatelessWidget {
               top: false,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _ReferenceNavButton(
-                        label: l10n.navigationHome,
-                        icon: Icons.home_outlined,
-                        selected: currentIndex == 0,
-                        onPressed: onHome,
+                child: SizedBox(
+                  height: _height,
+                  child: Stack(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _ReferenceNavButton(
+                              label: l10n.navigationHome,
+                              icon: Icons.home_outlined,
+                              selected: currentIndex == 0,
+                              onPressed: onHome,
+                            ),
+                          ),
+                          Expanded(
+                            child: _ReferenceNavButton(
+                              label: l10n.captionTab,
+                              icon: Icons.calendar_today_outlined,
+                              selected: currentIndex == 3,
+                              onPressed: onCalendar,
+                            ),
+                          ),
+                          Expanded(
+                            child: _ReferenceCreateNavButton(
+                              label: l10n.createPostTab,
+                              selected: currentIndex == 2,
+                              onPressed: onCreate,
+                            ),
+                          ),
+                          Expanded(
+                            child: _ReferenceNavButton(
+                              label: l10n.navigationStoreLink,
+                              icon: Icons.link_outlined,
+                              selected: currentIndex == 1,
+                              onPressed: onLinkInBio,
+                            ),
+                          ),
+                          Expanded(
+                            child: _ReferenceNavButton(
+                              label: l10n.navigationAccount,
+                              icon: Icons.person_outline_rounded,
+                              selected: currentIndex == 5,
+                              onPressed: onProfile,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    Expanded(
-                      child: _ReferenceNavButton(
-                        label: l10n.captionTab,
-                        icon: Icons.calendar_today_outlined,
-                        selected: currentIndex == 3,
-                        onPressed: onCalendar,
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: ExcludeSemantics(
+                            child: _RunningNavDot(
+                              selectedSlot: _selectedSlot,
+                              reduceMotion:
+                                  MediaQuery.disableAnimationsOf(context),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: _ReferenceCreateNavButton(
-                        label: l10n.createPostTab,
-                        selected: currentIndex == 2,
-                        onPressed: onCreate,
-                      ),
-                    ),
-                    Expanded(
-                      child: _ReferenceNavButton(
-                        label: l10n.navigationStoreLink,
-                        icon: Icons.link_outlined,
-                        selected: currentIndex == 1,
-                        onPressed: onLinkInBio,
-                      ),
-                    ),
-                    Expanded(
-                      child: _ReferenceNavButton(
-                        label: l10n.navigationAccount,
-                        icon: Icons.person_outline_rounded,
-                        selected: currentIndex == 5,
-                        onPressed: onProfile,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RunningNavDot extends StatefulWidget {
+  const _RunningNavDot({
+    required this.selectedSlot,
+    required this.reduceMotion,
+  });
+
+  final int? selectedSlot;
+  final bool reduceMotion;
+
+  @override
+  State<_RunningNavDot> createState() => _RunningNavDotState();
+}
+
+class _RunningNavDotState extends State<_RunningNavDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _motion = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+    value: 1,
+  );
+  late double _fromSlot = (widget.selectedSlot ?? 0).toDouble();
+  late double _toSlot = _fromSlot;
+  double _fromWidth = 4;
+
+  double get _position =>
+      _fromSlot +
+      (_toSlot - _fromSlot) * Curves.easeInOutCubic.transform(_motion.value);
+
+  double get _width {
+    final progress = _motion.value;
+    return progress < .5
+        ? _fromWidth +
+            (22 - _fromWidth) * Curves.easeOut.transform(progress * 2)
+        : 22 - 18 * Curves.easeIn.transform((progress - .5) * 2);
+  }
+
+  @override
+  void didUpdateWidget(_RunningNavDot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedSlot == widget.selectedSlot &&
+        oldWidget.reduceMotion == widget.reduceMotion) {
+      return;
+    }
+    final target = widget.selectedSlot;
+    final animate = !widget.reduceMotion &&
+        target != null &&
+        oldWidget.selectedSlot != null &&
+        oldWidget.selectedSlot != target;
+    if (animate) {
+      // A second tap starts from the current position and width, not the
+      // previous destination, so rapid navigation never jumps backwards.
+      _fromSlot = _position;
+      _fromWidth = _width;
+      _toSlot = target.toDouble();
+      _motion.forward(from: 0);
+    } else {
+      _motion.stop();
+      _fromSlot = _toSlot = (target ?? _toSlot).toDouble();
+      _fromWidth = 4;
+      _motion.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _motion.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.selectedSlot == null) return const SizedBox.shrink();
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
+    return LayoutBuilder(
+      builder: (context, constraints) => AnimatedBuilder(
+        animation: _motion,
+        builder: (context, _) {
+          final slot = isRtl ? 4 - _position : _position;
+          final center = constraints.maxWidth * (slot + .5) / 5;
+          return Stack(
+            children: [
+              Positioned(
+                left: center - _width / 2,
+                // Align with the reserved 4 dp space beneath every label.
+                bottom: 8.5,
+                width: _width,
+                height: 4,
+                child: DecoratedBox(
+                  key: const ValueKey('postdee-nav-selected-indicator'),
+                  decoration: BoxDecoration(
+                    color: AppTheme.navActive,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -631,6 +760,8 @@ class _ReferenceNavButton extends StatelessWidget {
     required this.selected,
     required this.onPressed,
     this.isCreateAction = false,
+    this.createScale = 1,
+    this.onHighlightChanged,
   });
 
   final String label;
@@ -638,6 +769,8 @@ class _ReferenceNavButton extends StatelessWidget {
   final bool selected;
   final VoidCallback onPressed;
   final bool isCreateAction;
+  final double createScale;
+  final ValueChanged<bool>? onHighlightChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -655,6 +788,7 @@ class _ReferenceNavButton extends StatelessWidget {
             type: MaterialType.transparency,
             child: InkWell(
               onTap: onPressed,
+              onHighlightChanged: onHighlightChanged,
               borderRadius: BorderRadius.circular(18),
               child: SizedBox(
                 height: _PostDeeBottomNav._height,
@@ -669,15 +803,18 @@ class _ReferenceNavButton extends StatelessWidget {
                         child: isCreateAction
                             ? Transform.translate(
                                 offset: const Offset(0, -8),
-                                child: DecoratedBox(
-                                  key: const ValueKey(
-                                      'postdee-nav-create-surface'),
-                                  decoration: const BoxDecoration(
-                                    color: AppTheme.accent,
-                                    shape: BoxShape.circle,
+                                child: Transform.scale(
+                                  scale: createScale,
+                                  child: DecoratedBox(
+                                    key: const ValueKey(
+                                        'postdee-nav-create-surface'),
+                                    decoration: const BoxDecoration(
+                                      color: AppTheme.accent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(icon,
+                                        color: Colors.white, size: 25),
                                   ),
-                                  child:
-                                      Icon(icon, color: Colors.white, size: 25),
                                 ),
                               )
                             : Icon(icon, color: color, size: 22),
@@ -688,20 +825,7 @@ class _ReferenceNavButton extends StatelessWidget {
                       else
                         _ReferenceNavLabel(label: label, selected: selected),
                       const SizedBox(height: 3),
-                      SizedBox(
-                        width: 4,
-                        height: 4,
-                        child: selected
-                            ? DecoratedBox(
-                                key: const ValueKey(
-                                    'postdee-nav-selected-indicator'),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.navActive,
-                                  shape: BoxShape.circle,
-                                ),
-                              )
-                            : null,
-                      ),
+                      const SizedBox(width: 4, height: 4),
                     ],
                   ),
                 ),
@@ -714,7 +838,7 @@ class _ReferenceNavButton extends StatelessWidget {
   }
 }
 
-class _ReferenceCreateNavButton extends StatelessWidget {
+class _ReferenceCreateNavButton extends StatefulWidget {
   const _ReferenceCreateNavButton({
     required this.label,
     required this.selected,
@@ -726,13 +850,62 @@ class _ReferenceCreateNavButton extends StatelessWidget {
   final VoidCallback onPressed;
 
   @override
+  State<_ReferenceCreateNavButton> createState() =>
+      _ReferenceCreateNavButtonState();
+}
+
+class _ReferenceCreateNavButtonState extends State<_ReferenceCreateNavButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _press =
+      AnimationController.unbounded(vsync: this, value: 1);
+  bool _reduceMotion = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    if (_reduceMotion) {
+      _press.stop();
+      _press.value = 1;
+    }
+  }
+
+  void _highlightChanged(bool highlighted) {
+    if (_reduceMotion) return;
+    _press.animateTo(
+      highlighted ? .9 : 1,
+      duration: Duration(milliseconds: highlighted ? 80 : 180),
+      curve: highlighted ? Curves.easeOut : Curves.easeOutBack,
+    );
+  }
+
+  void _onPressed() {
+    if (!_reduceMotion) {
+      _press.value = .9;
+      _highlightChanged(false);
+    }
+    widget.onPressed();
+  }
+
+  @override
+  void dispose() {
+    _press.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return _ReferenceNavButton(
-      label: label,
-      icon: Icons.ios_share_outlined,
-      selected: selected,
-      onPressed: onPressed,
-      isCreateAction: true,
+    return AnimatedBuilder(
+      animation: _press,
+      builder: (context, _) => _ReferenceNavButton(
+        label: widget.label,
+        icon: Icons.ios_share_outlined,
+        selected: widget.selected,
+        onPressed: _onPressed,
+        isCreateAction: true,
+        createScale: _press.value,
+        onHighlightChanged: _highlightChanged,
+      ),
     );
   }
 }

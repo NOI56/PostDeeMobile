@@ -27,9 +27,26 @@ Finder _referenceNavButton(String label) => find.descendant(
       matching: find.bySemanticsLabel(label),
     );
 
-Widget _shellApp(PostDeeShell shell) => MaterialApp(
+Widget _shellApp(
+  PostDeeShell shell, {
+  bool disableAnimations = false,
+  TextDirection? textDirection,
+  double? textScale,
+}) =>
+    MaterialApp(
       theme: AppTheme.dark,
       locale: const Locale('en'),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          disableAnimations: disableAnimations,
+          textScaler: textScale == null
+              ? MediaQuery.of(context).textScaler
+              : TextScaler.linear(textScale),
+        ),
+        child: textDirection == null
+            ? child!
+            : Directionality(textDirection: textDirection, child: child!),
+      ),
       localizationsDelegates: const [
         PostDeeLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
@@ -603,11 +620,21 @@ void main() {
             hasSelectedState: true,
           ),
         );
-        expect(
-          find.descendant(of: button, matching: selectedIndicator),
-          label == currentTab.key ? findsOneWidget : findsNothing,
-        );
       }
+      expect(tester.getSize(selectedIndicator), const Size(4, 4));
+      expect(
+        tester.getCenter(selectedIndicator).dx,
+        closeTo(tester.getCenter(_referenceNavButton(currentTab.key)).dx, 0.1),
+        reason: 'The shared running dot settles beneath the selected tab.',
+      );
+      expect(
+        find.descendant(
+          of: _referenceNavButton('Create post'),
+          matching: selectedIndicator,
+        ),
+        findsNothing,
+        reason: 'The center composer action has no selection dot.',
+      );
     }
 
     // Publishing can still open Analytics, which is not one of the five nav
@@ -636,6 +663,260 @@ void main() {
     expect(selectedIndicator, findsOneWidget);
     semantics.dispose();
   });
+
+  testWidgets(
+      'running dot slides and stretches before settling on the selected tab',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _shellApp(PostDeeShell(languageController: _signInShell())),
+    );
+    await tester.pumpAndSettle();
+    final indicator =
+        find.byKey(const ValueKey('postdee-nav-selected-indicator'));
+    final homeX = tester.getCenter(_referenceNavButton('Home')).dx;
+    final calendarX = tester.getCenter(_referenceNavButton('Calendar')).dx;
+    expect(tester.getSize(indicator), const Size(4, 4));
+    expect(tester.getCenter(indicator).dx, closeTo(homeX, 0.1));
+
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    final movingRect = tester.getRect(indicator);
+    expect(movingRect.center.dx, greaterThan(homeX));
+    expect(movingRect.center.dx, lessThan(calendarX));
+    expect(movingRect.width, greaterThan(4));
+    expect(movingRect.height, 4);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
+    expect(
+      tester.getSemantics(_referenceNavButton('Calendar')),
+      isSemantics(isSelected: true),
+      reason: 'The page and accessibility state update before motion finishes.',
+    );
+
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.getSize(indicator), const Size(4, 4));
+    expect(tester.getCenter(indicator).dx, closeTo(calendarX, 0.1));
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets(
+      'running dot retargets rapid taps without jumping or selecting an old tab',
+      (tester) async {
+    await tester.pumpWidget(
+      _shellApp(PostDeeShell(languageController: _signInShell())),
+    );
+    await tester.pumpAndSettle();
+    final indicator =
+        find.byKey(const ValueKey('postdee-nav-selected-indicator'));
+    await tester.tap(_referenceNavButton('Account'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    final interruptedX = tester.getCenter(indicator).dx;
+
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pump();
+    expect(tester.getCenter(indicator).dx, closeTo(interruptedX, 0.1));
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tap(_referenceNavButton('Home'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+    expect(tester.getSize(indicator), const Size(4, 4));
+    expect(
+      tester.getCenter(indicator).dx,
+      closeTo(tester.getCenter(_referenceNavButton('Home')).dx, 0.1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'running dot stays absent in the composer and Analytics then returns',
+      (tester) async {
+    await tester.pumpWidget(
+      _shellApp(PostDeeShell(
+        languageController: _signInShell(),
+        uploaderDraftStore: _ShellDraftStore(),
+        loadSocialConnections: () async => const [],
+      )),
+    );
+    await tester.pumpAndSettle();
+    final indicator =
+        find.byKey(const ValueKey('postdee-nav-selected-indicator'));
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    await tester.tap(_referenceNavButton('Create post'));
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsNothing);
+    expect(indicator, findsNothing);
+
+    tester
+        .widget<UploaderScreen>(find.byType(UploaderScreen))
+        .onViewAnalytics!();
+    await tester.pumpAndSettle();
+    expect(_referenceNav(), findsOneWidget);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 4);
+    expect(indicator, findsNothing);
+    await tester.tap(_referenceNavButton('Store link'));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(indicator), const Size(4, 4));
+    expect(
+      tester.getCenter(indicator).dx,
+      closeTo(tester.getCenter(_referenceNavButton('Store link')).dx, 0.1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('running dot updates immediately when animations are disabled',
+      (tester) async {
+    await tester.pumpWidget(
+      _shellApp(
+        PostDeeShell(languageController: _signInShell()),
+        disableAnimations: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+    final indicator =
+        find.byKey(const ValueKey('postdee-nav-selected-indicator'));
+    await tester.tap(_referenceNavButton('Account'));
+    await tester.pump();
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 5);
+    expect(tester.getSize(indicator), const Size(4, 4));
+    expect(
+      tester.getCenter(indicator).dx,
+      closeTo(tester.getCenter(_referenceNavButton('Account')).dx, 0.1),
+    );
+    await tester.pump(const Duration(milliseconds: 130));
+    expect(tester.getSize(indicator), const Size(4, 4));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('running dot stops when reduced motion is enabled mid-flight',
+      (tester) async {
+    final shell = PostDeeShell(languageController: _signInShell());
+    await tester.pumpWidget(_shellApp(shell));
+    await tester.pumpAndSettle();
+    final indicator =
+        find.byKey(const ValueKey('postdee-nav-selected-indicator'));
+    await tester.tap(_referenceNavButton('Account'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(tester.getSize(indicator).width, greaterThan(4));
+
+    await tester.pumpWidget(_shellApp(shell, disableAnimations: true));
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 5);
+    expect(tester.getSize(indicator), const Size(4, 4));
+    final accountX = tester.getCenter(_referenceNavButton('Account')).dx;
+    expect(tester.getCenter(indicator).dx, closeTo(accountX, 0.1));
+    await tester.pump(const Duration(milliseconds: 130));
+    expect(tester.getSize(indicator), const Size(4, 4));
+    expect(tester.getCenter(indicator).dx, closeTo(accountX, 0.1));
+
+    await tester.pumpWidget(_shellApp(shell));
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(tester.getSize(indicator).width, greaterThan(4));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
+    expect(tester.getSize(indicator), const Size(4, 4));
+    expect(
+      tester.getCenter(indicator).dx,
+      closeTo(tester.getCenter(_referenceNavButton('Calendar')).dx, 0.1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('running dot aligns with RTL tabs at 320dp and 2x text',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      _shellApp(
+        PostDeeShell(languageController: _signInShell()),
+        textDirection: TextDirection.rtl,
+        textScale: 2,
+      ),
+    );
+    await tester.pumpAndSettle();
+    final indicator =
+        find.byKey(const ValueKey('postdee-nav-selected-indicator'));
+    expect(
+      tester.getCenter(_referenceNavButton('Home')).dx,
+      greaterThan(tester.getCenter(_referenceNavButton('Account')).dx),
+    );
+    for (final label in ['Home', 'Account', 'Home']) {
+      await tester.tap(_referenceNavButton(label));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(indicator), const Size(4, 4));
+      expect(
+        tester.getCenter(indicator).dx,
+        closeTo(tester.getCenter(_referenceNavButton(label)).dx, 0.1),
+      );
+      expect(tester.getSize(_referenceNavButton(label)).width,
+          greaterThanOrEqualTo(48));
+      expect(tester.getSize(_referenceNavButton(label)).height,
+          greaterThanOrEqualTo(48));
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  for (final disableAnimations in [false, true]) {
+    testWidgets(
+        'create action keeps its tap target and honors reduced motion $disableAnimations',
+        (tester) async {
+      await tester.pumpWidget(
+        _shellApp(
+          PostDeeShell(
+            languageController: _signInShell(),
+            uploaderDraftStore: _ShellDraftStore(),
+            loadSocialConnections: () async => const [],
+          ),
+          disableAnimations: disableAnimations,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final createButton = _referenceNavButton('Create post');
+      final createSurface =
+          find.byKey(const ValueKey('postdee-nav-create-surface'));
+      final hitRect = tester.getRect(createButton);
+      final idleWidth = tester.getRect(createSurface).width;
+      expect(hitRect.width, greaterThanOrEqualTo(48));
+      expect(hitRect.height, greaterThanOrEqualTo(48));
+      final gesture = await tester.startGesture(hitRect.center);
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(tester.getRect(createButton), hitRect);
+      expect(find.byType(UploaderScreen), findsNothing);
+      if (disableAnimations) {
+        expect(tester.getRect(createSurface).width, idleWidth);
+      } else {
+        expect(tester.getRect(createSurface).width, lessThan(idleWidth));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(find.byType(UploaderScreen), findsOneWidget);
+      expect(_referenceNav(), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('uploader-close')));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(createSurface).width, closeTo(idleWidth, 0.1));
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+      expect(
+        find.descendant(
+          of: createButton,
+          matching:
+              find.byKey(const ValueKey('postdee-nav-selected-indicator')),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets(
       'opens profile links from home and nav while keeping navigation visible',

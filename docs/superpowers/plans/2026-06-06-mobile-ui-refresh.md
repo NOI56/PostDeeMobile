@@ -20,6 +20,32 @@
 
 ---
 
+## Current Addendum: Running Navigation Dot (2026-10-08)
+
+The approved bottom-navigation motion is design 2, a running green dot. A
+single 4 dp indicator stretches briefly to 22 dp and slides to the selected
+destination over 260 ms, then returns to a dot. Repeated taps retarget from
+its current position and width. The destination and accessible selected state
+update immediately; navigation does not wait for the animation.
+
+Keep the current order: Home, Calendar, Create post, Store link, Account. The
+center upload action remains icon-only and opens the existing full-screen
+composer. Its visual surface compresses slightly on press and rebounds once;
+the touch target stays fixed. The shared dot is absent on Analytics, and the
+composer retains its full-screen layout without bottom navigation.
+
+Both effects honor `MediaQuery.disableAnimations`. The dot also supports RTL
+and resized layouts, and does not receive pointer or semantic events. No new
+dependency, backend change, or database migration is required.
+
+The isolated implementation starts from `b93aaf2`, which contains verified
+`origin/main` (`ebc9c47`) plus the previously delivered composer and profile
+template changes. Uncommitted work in other checkouts is preserved.
+
+The emulator delivery also retains the existing local Home, connection-list,
+and Account cleanup in `profile-compositions-integrated-staging`. Those
+pre-existing edits are not part of the isolated navigation change.
+
 ## Current Addendum: Full-Screen Create Post (2026-10-07)
 
 This addendum supersedes the long, simultaneous uploader form and its separate

@@ -1,5 +1,38 @@
 # PostDee Staging
 
+## ส่งมอบ API และตรวจภาพ/วิดีโอ R2 — 8 ตุลาคม 2026
+
+- ผู้ใช้อนุญาต deploy Staging และตรวจสื่อเพิ่มจากงาน source/main เดิม
+  [Render dep-db3m2g59fdbs73ecbib0](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db3m2g59fdbs73ecbib0)
+  เป็น Live ที่ source `9baa18c3483b2abd9b6f0ac619e74c00e15cbec6`, instance
+  `gc9v8`; API/runtime ตรงกับ code `36dbacc` ที่ผ่าน CI เดิม
+- Build ผ่านและมี 14 migrations ไม่มี pending; schema/lock/source configuration
+  ไม่มีส่วนต่างจากรุ่น API เดิม `ae65b9d` ยืนยัน Staging DB/Firebase project
+  เดิม และคง `SOCIAL_PUBLISHER=disabled`, memory scheduler 1 instance
+  ไม่เปลี่ยน Production/แพ็กบริการหรือซื้อบริการเพิ่ม
+- `/health` และ `/ready` ตอบ 200 พร้อม DB/queue `ok` และ readiness `no-store`;
+  ไม่ส่ง token แล้ว posts/publishing readiness ตอบ 401
+  SDK token เดิมเรียก `/auth/me` ได้ 200 owner ตรง และ
+  `/posts?includeMedia=true&limit=3` ได้ 200, `private, no-store`, posts 0
+  ส่วน `limit=0` ได้ 400 `INVALID_POST_LIMIT`; publishing readiness ยังตอบ
+  503 `SOCIAL_PUBLISHING_UNAVAILABLE` พร้อม `private, no-store` ตามที่ปิดไว้
+  การปลอม owner header ไม่แทน Firebase owner แต่ยังไม่ใช่หลักฐานสองบัญชีจริง
+- อ่าน metadata/R2 ของ owner เดิมอย่างเดียว: video keys จาก managed upload
+  เก่า 2 รายการตอบ 404 และรูป profile ที่มีอยู่ตอบ Range 206 `image/png`
+  64 bytes จึงยังไม่มีโพสต์/คลิปจริงที่ใช้ยืนยัน native Home preview
+- ตรวจ R2 แยกด้วยไฟล์สร้างใหม่ 2 keys ภายใต้ synthetic-owner namespace:
+  PNG 833 bytes กับ H.264 MP4 1 วินาที 180×320 ขนาด 1,892 bytes
+  PUT/GET ได้ 200; bytes/SHA/MIME ตรง, Range 206 ได้ 64 bytes พร้อม
+  Content-Range/prefix ตรง และ ffmpeg decode ภาพ/คลิปในเครื่องผ่านทั้งคู่
+  ลบเฉพาะ 2 keys ใหม่นี้ใน finally และ GET 404 ยืนยัน cleanup ครบ
+  ไม่เขียน DB/post/quota/customer/provider และไม่บันทึก signed URL/token/UID
+- หลักฐานที่ redacted เก็บเฉพาะในเครื่องที่ `artifacts/staging-api-20261008`
+  ได้แก่ deployment/authenticated-media receipts, R2 results และรูปหน้า Live;
+  ไม่ใส่ artifacts เข้า Git เอกสารสรุปอยู่ในแผนรวมงาน
+- ยังไม่ยืนยัน Home ที่มี cover/video จริงหรือการแยกสอง authorized owners;
+  provider acceptance/crash recovery, Redis worker, multi-instance และ
+  Production gates ยังเหมือนเดิม ไม่อ้างว่าพร้อมใช้งาน Production ทั้งระบบ
+
 ## รวมงานค้างและเครื่องมือทดสอบ — 8 ตุลาคม 2026
 
 - ชุดลด UI ข้างล่างเข้าและ push `main` แล้วที่ `b1f793c`; source แอป `aafd076`
@@ -44,7 +77,8 @@ dock และปิด X โดยไม่แก้ไขกลับ Home ไ
 APK build/install ตรงกัน 281,390,530 bytes, Flutter 3.44.1 / Dart 3.12.1,
 SHA256 `e5620b662a051bd9b0f889fae60f867cbbeaa14ae3bea558eba7c8c7b84cedd7`
 source/runtime/signature receipt รายละเอียดอยู่ในแผนรวมงาน และไม่ใช่ provider E2E
-ไม่ได้ทำ manual API deploy ด้วยคำขอรอบนี้ จึงยังต้องตรวจ signed URLs จริงภายหลัง
+API ชุดนี้ deploy และตรวจ Staging เพิ่มตามผลวันที่ 8 ตุลาคมข้างต้นแล้ว
+แต่ Home ของบัญชีที่ตรวจไม่มีโพสต์ จึงยังไม่ยืนยัน nonempty native preview
 รุ่นมือถือใหม่ยังแสดง placeholder ได้เมื่อ API เก่าไม่ส่ง URL
 
 ## ส่งมอบชุดลด UI มือถือ — 8 ตุลาคม 2026

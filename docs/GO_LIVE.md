@@ -19,11 +19,13 @@ migration, dependency refresh, provider activation or infrastructure change.
 Its dated source/test/delivery record is
 `superpowers/plans/2026-10-08-integrate-pending-main-work.md`.
 
-Local tests/builds do not prove live PostgreSQL, Redis, R2, Firebase or provider
-recovery. Before releasing the new API, verify `/health`, `/ready`, current SHA
-and unchanged flags on the target environment; verify private signed cover/clip
-previews and cross-owner rejection with dedicated accounts. A new mobile build
-against the older API must continue to show placeholders.
+Staging deployment is now complete at source
+`9baa18c3483b2abd9b6f0ac619e74c00e15cbec6` (same API/runtime as `36dbacc`),
+Render `dep-db3m2g59fdbs73ecbib0` on 2026-10-08. Health/readiness, authenticated
+empty-owner contracts and separate R2 fixture delivery/range/cleanup pass;
+configuration remains unchanged. The owner has zero posts, so nonempty native
+Home/two-owner checks remain unverified. Full evidence is in the integration
+plan; these checks do not close Redis/provider/crash/Production gates.
 
 Verify case/trailing-slash variants of mutating social/billing reads and
 `GET`/`HEAD` upload-status reconciliation preserve the account deletion barrier,
@@ -49,9 +51,9 @@ publish, purchase, OTP or connection mutation was performed. Exact APK/source
 receipt is in the integration plan; CI passed API/Mobile and intentionally
 skipped APK build, which was validated locally. These checks do not replace
 the live release gates above. Never uninstall/clear data to bypass an
-update-signature failure. Production has no Staging marker by default. Manual
-API deployment is outside the current main/push request; the new signed-preview
-API has no new live Staging evidence until an explicitly authorized deployment.
+update-signature failure. Production has no Staging marker by default. The user
+separately authorized the Staging deployment/media check; its cleanup and
+remaining device/owner/provider gates are recorded in the integration plan.
 
 ## Profile Page Replacement Gate (2026-10-05)
 

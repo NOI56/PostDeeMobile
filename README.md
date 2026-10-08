@@ -34,6 +34,14 @@ Case/trailing-slash variants of social/billing reads and `GET`/`HEAD`
 `/uploads/:uploadId` retain the owner barrier. Upload status can reconcile
 durable state, so its guard drains through response completion.
 
+Staging API delivery completed on 2026-10-08: source
+`9baa18c3483b2abd9b6f0ac619e74c00e15cbec6` (same API/runtime as tested `36dbacc`)
+is Live on Render deploy `dep-db3m2g59fdbs73ecbib0`. Health/readiness return
+`200`; authenticated empty-owner contracts and separate R2 image/video delivery,
+range and cleanup checks pass. The checked owner has zero posts, so nonempty
+native Home and two-account isolation remain unverified. Configuration is
+preserved; full evidence/limits are in the integration plan linked below.
+
 The validated Staging helper sets `POSTDEE_STAGING_BUILD=true`, showing a small
 noninteractive strip above the app. Production defaults off. Windows developers
 can inspect launcher paths without opening or installing anything:

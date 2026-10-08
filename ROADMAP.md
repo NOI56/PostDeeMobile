@@ -24,8 +24,12 @@ Build roadmap for PostDee.
   change is included. The memory scheduler and deletion/mutation locks remain
   single-process. Readiness is not provider E2E or separate-worker health.
 - Current evidence and delivery gates are recorded in
-  `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`. New API
-  features remain a Staging release check until that API is deployed.
+  `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`. Staging
+  API source `9baa18c` (same runtime as `36dbacc`) is Live on 2026-10-08 deploy
+  `dep-db3m2g59fdbs73ecbib0`; DB/queue readiness, authenticated empty-owner
+  contracts and separate R2 image/video/range/cleanup checks pass. Nonempty
+  native Home and two-authorized-owner isolation remain unverified, alongside
+  provider crash/Redis/multi-instance/Production gates.
 - The reconciled scaling roadmap is future work only. Shared owner coordination,
   shared rate limits and real failure/load evidence must precede horizontal
   scaling; no paid services or worker deployment are enabled by this plan.
@@ -594,7 +598,7 @@ Plan status uses five groups:
 | --- | --- | --- |
 | `docs/superpowers/plans/2026-07-17-scaling-roadmap.md` | อนาคต | Reconciled on 2026-10-08 against the active product and single-process owner boundary; capacity tiers require measured evidence and no scaling infrastructure is enabled. |
 | `docs/superpowers/plans/2026-10-05-backend-hardening.md` | ประวัติ | Original isolated-branch verification is historical; the 2026-10-08 integration ports runtime hardening without its old dependency refresh. |
-| `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md` | ประวัติ | Source `36dbacc` with Home previews, lifecycle/read guards, Staging badge and launcher is pushed/on main; local/native checks and exact-source API/Mobile CI `37754460435` pass. CI skips APK build; the validated local APK receipt is separate. Live API deployment/provider gates remain outside this source delivery. |
+| `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md` | ประวัติ | Source/CI/native delivery is complete at `36dbacc`; the same runtime is Live on Staging at `9baa18c`/`dep-db3m2g59fdbs73ecbib0`. Readiness/auth/empty-owner contracts and separate R2 fixture delivery/cleanup pass. Nonempty native Home, two-owner isolation and provider/crash/scale/Production gates remain. |
 | `docs/superpowers/plans/2026-06-04-store-subscription-billing.md` | ถูกแทนที่ | The direct Apple/Google verification scaffold is retained for history and compatibility; RevenueCat is the production subscription direction. |
 | `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md` | ถูกแทนที่ | The ultra-dark checklist is historical. The current app is light by default with optional dark theme; retain only behavior and navigation improvements that still match the current UI. |
 | `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md` | ถูกแทนที่ | Groq is retired. ElevenLabs/Gemini/FFmpeg editing modules are retained compatibility code; AI editing and Subtitle Studio have no active product entry. |

@@ -14,10 +14,16 @@ account mutation barrier. Main already prepares relational users in its routes
 after their validation/quota gates; this integration does not add a generic
 duplicate preparation step. No migration or provider activation is required.
 Source `36dbaccb1d23ee46f9c970f2fdd8fff3d32b01d0` is pushed/on main; exact-source
-CI `37754460435` passed both API/Mobile jobs. No manual API deployment was performed.
+CI `37754460435` passed both API/Mobile jobs. Staging deploy
+`dep-db3m2g59fdbs73ecbib0` became Live on 2026-10-08 at source
+`9baa18c3483b2abd9b6f0ac619e74c00e15cbec6`, with the same API/runtime code.
 Current source verification and delivery are recorded in
-`docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`; local tests
-do not mean these additions are already running on Staging.
+`docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`.
+
+Health/readiness, authenticated empty-owner contracts and separate R2 fixture
+delivery/range/cleanup pass. The owner has zero posts, so actual nonempty
+Home media and two-authorized-owner isolation remain unverified; full results
+and unchanged publishing/Production limits are in the integration plan above.
 
 ## Base URL
 

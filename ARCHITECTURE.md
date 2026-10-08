@@ -12,6 +12,13 @@ Home previews and backend lifecycle hardening. No schema, dependency lock,
 provider activation or Render topology changes are part of this integration.
 Evidence/delivery: `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`.
 
+The same API/runtime is Live on Staging at source
+`9baa18c3483b2abd9b6f0ac619e74c00e15cbec6`, deploy `dep-db3m2g59fdbs73ecbib0`
+on 2026-10-08. Runtime health/readiness, authenticated empty-owner contracts and
+separate R2 delivery/range/cleanup pass without changing the existing topology
+or configuration. The owner has zero posts; nonempty Home/two-owner isolation
+and provider/crash/scale gates remain unverified. Full evidence is in the plan.
+
 - Home requests the latest three posts with `includeMedia=true`. Media signing
   is opt-in, capped at 50 rows, owner-key checked and bounded per object. Prefer
   the cover and fall back to the clip only when no safe cover URL is available.

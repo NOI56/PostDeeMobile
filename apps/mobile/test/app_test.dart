@@ -397,7 +397,8 @@ void main() {
       });
 
       await tester.pumpWidget(
-        PostDeeApp(locale: const Locale('th'), themeController: themeController),
+        PostDeeApp(
+            locale: const Locale('th'), themeController: themeController),
       );
       await tester.pumpAndSettle();
 
@@ -428,32 +429,45 @@ void main() {
         final expectedColor =
             selected ? AppTheme.navActive : AppTheme.textSecondary;
         expect(
-          tester.widget<Icon>(
-            find.descendant(of: button, matching: find.byIcon(icon)),
-          ).color,
+          tester
+              .widget<Icon>(
+                find.descendant(of: button, matching: find.byIcon(icon)),
+              )
+              .color,
           expectedColor,
         );
         expect(
-          tester.widget<Text>(
-            find.descendant(of: button, matching: find.text(label)),
-          ).style!.color,
+          tester
+              .widget<Text>(
+                find.descendant(of: button, matching: find.text(label)),
+              )
+              .style!
+              .color,
           expectedColor,
         );
+        expect(tester.widget<Semantics>(button).properties.selected, selected);
         final indicator = find.descendant(
-          of: button,
-          matching: find.byKey(const ValueKey('postdee-nav-selected-indicator')),
+          of: _referenceNav(),
+          matching:
+              find.byKey(const ValueKey('postdee-nav-selected-indicator')),
         );
+        expect(indicator, findsOneWidget);
+        final decoration =
+            tester.widget<DecoratedBox>(indicator).decoration as BoxDecoration;
+        expect(decoration.color, AppTheme.navActive);
+        expect(tester.getSize(indicator), const Size(4, 4));
+        final buttonX = tester.getCenter(button).dx;
+        final indicatorX = tester.getCenter(indicator).dx;
         if (selected) {
-          final decoration =
-              tester.widget<DecoratedBox>(indicator).decoration as BoxDecoration;
-          expect(decoration.color, AppTheme.navActive);
+          expect(indicatorX, closeTo(buttonX, 0.1));
         } else {
-          expect(indicator, findsNothing);
+          expect((indicatorX - buttonX).abs(), greaterThan(1));
         }
       }
 
       expectMenuColors('หน้าหลัก', Icons.home_outlined, selected: true);
-      expectMenuColors('ปฏิทิน', Icons.calendar_today_outlined, selected: false);
+      expectMenuColors('ปฏิทิน', Icons.calendar_today_outlined,
+          selected: false);
       expectMenuColors('ลิงก์ร้าน', Icons.link_outlined, selected: false);
       expectMenuColors('บัญชี', Icons.person_outline_rounded, selected: false);
       await _tapReferenceNavButton(tester, 'ปฏิทิน');
@@ -461,15 +475,21 @@ void main() {
       expectMenuColors('ปฏิทิน', Icons.calendar_today_outlined, selected: true);
       await _tapReferenceNavButton(tester, 'ลิงก์ร้าน');
       expectMenuColors('ลิงก์ร้าน', Icons.link_outlined, selected: true);
-      expectMenuColors('ปฏิทิน', Icons.calendar_today_outlined, selected: false);
+      expectMenuColors('ปฏิทิน', Icons.calendar_today_outlined,
+          selected: false);
       await _tapReferenceNavButton(tester, 'บัญชี');
       expectMenuColors('บัญชี', Icons.person_outline_rounded, selected: true);
       expectMenuColors('ลิงก์ร้าน', Icons.link_outlined, selected: false);
+      await _tapReferenceNavButton(tester, 'หน้าหลัก');
+      expectMenuColors('หน้าหลัก', Icons.home_outlined, selected: true);
+      expectMenuColors('บัญชี', Icons.person_outline_rounded, selected: false);
       expect(
-        tester.widget<Icon>(find.descendant(
-          of: _referenceNavButton('สร้างโพสต์'),
-          matching: find.byIcon(Icons.ios_share_outlined),
-        )).color,
+        tester
+            .widget<Icon>(find.descendant(
+              of: _referenceNavButton('สร้างโพสต์'),
+              matching: find.byIcon(Icons.ios_share_outlined),
+            ))
+            .color,
         Colors.white,
       );
       expect(

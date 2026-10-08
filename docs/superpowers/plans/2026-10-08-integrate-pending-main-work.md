@@ -107,8 +107,10 @@ Targeted results recorded so far:
 These are current local/source and limited emulator results, not live provider
 verification. Stage 2 commit/main/push and exact-source API/Mobile CI are
 complete at `36dbacc`. Stage 1 main CI `37751374749` is a separate earlier
-result. Optional unsigned-iOS workflow `37754460621` is separate and has no
-completed result recorded here; no iPhone device/App Store acceptance is claimed.
+result. The separate unsigned-iOS workflow
+[37754460621](https://github.com/NOI56/PostDeeMobile/actions/runs/37754460621)
+also completed successfully at the same exact source SHA. It builds with
+`--no-codesign`; no iPhone device/App Store acceptance is claimed.
 
 ## Remaining operational limits
 

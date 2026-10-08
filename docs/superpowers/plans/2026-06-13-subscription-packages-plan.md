@@ -153,8 +153,9 @@ inside real-clip captioning instead of kept as a separate review feature.
   and local mock auth is disabled. APK size is 303,517,278 bytes with SHA256
   `19DEA44B4779063B785277FE5FD98FF59A96E4D9DD5AC9D38DEB38003F6F1648`.
 - No database migration, credentials, R2 retention policy, plan prices, or
-  provider flags change. The new APK is not installed over the user's app, and
-  the API is not deployed. Real scheduled provider publishing and physical
+  provider flags change. At this initial local check, the new APK is not
+  installed over the user's app and the API is not deployed. The scoped release
+  is recorded below. Real scheduled provider publishing and physical
   Android/iPhone verification remain release gates.
 - Local logs: `artifacts/schedule-policy-full-flutter-test-final.log` and
   `artifacts/schedule-policy-staging-build.log`. Logs/artifacts remain untracked.
@@ -190,3 +191,45 @@ inside real-clip captioning instead of kept as a separate review feature.
   - Starter/paywall screens should make it clear that team access unlocks in Pro.
   - Any separate AI audio review UI should stay removed unless it is renamed into a future clip-based caption workflow.
   - Profile and paywall screens should show clear Starter vs Pro differences.
+
+### Scoped scheduling delivery (2026-10-08)
+
+- User authorized push/deploy. Source `8aa84443734d893d44fe404f1fe5ed58dce27492`
+  is pushed to `origin/main` from baseline `2e5801a`. The release contains only
+  scheduling policy, related screens/tests, and policy documentation. Separate
+  uncommitted app-first OAuth files and their documentation remain preserved
+  in the integration worktree; generated Windows files and artifacts are not
+  committed. No files, routes, existing queue entries or dependencies are removed.
+- Exact-source [CI](https://github.com/NOI56/PostDeeMobile/actions/runs/37791964615)
+  succeeds: API 1,621 tests across 107 files, 22 template-generator tests,
+  build/schema/production audit, plus Flutter analysis and 1,610 tests. The
+  scheduling API blobs match the previously verified compiled local HTTP smoke.
+  [Unsigned iOS build](https://github.com/NOI56/PostDeeMobile/actions/runs/37791964612)
+  and artifact upload succeed at the same source. No signed iPhone build or
+  physical-device acceptance is claimed.
+- Clean-source local Flutter tests (1,610), analysis and validated Staging APK
+  build pass in the `main` worktree. APK is `com.postdee.postdee_mobile.staging`,
+  version `0.1.0-staging`, min SDK 24/target SDK 36, 289,699,911 bytes, SHA256
+  `DF91BBB33DC6B0B93A76FED3702CD71B6BF1B8DE8EAB14087CAA19B5968D3EA8`.
+  Signature verification passes with the existing Firebase-matching debug
+  certificate. API base is `https://postdee-api-staging.onrender.com`; Firebase
+  Auth is enabled, local mock auth is disabled and the existing validated
+  RevenueCat Test Store overlay is used. The APK is not installed over the
+  emulator in this release. Local evidence is in
+  `apps/mobile/artifacts/schedule-main-{flutter-test,flutter-analyze,staging-build}.log`.
+- Render [deploy dep-db3qgqmi0phs73b71tl0](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db3qgqmi0phs73b71tl0)
+  is Live at the exact source above, instance `8cg7w`; build/start succeeds,
+  fourteen existing migrations are present and none are pending. The read-only
+  live Shell imports the compiled entitlement module and confirms
+  `BASIC: 0, STARTER: 14, PRO: 30`, source SHA and API tree
+  `5d2ed3724765bc3183a104b99ac930945fb3cfd5`.
+- After deployment, `/health` and `/ready` return `200`; database/queue checks
+  are `ok` and readiness is `no-store`. Anonymous `/posts` and
+  `/publishing/readiness` return `401`. Publishing remains disabled and the
+  memory queue remains on the existing single instance. No customer post,
+  purchase, quota, credentials, R2 lifecycle, environment or Production write
+  is performed. Actual scheduled social-provider acceptance remains unverified
+  while Staging publishing is disabled.
+- Deployment screenshot and redacted receipt stay local under
+  `artifacts/schedule-release`. Any later documentation-only delivery commit
+  does not change the deployed API tree and does not require another deployment.

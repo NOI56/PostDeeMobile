@@ -202,6 +202,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
   int _posterGeneration = 0;
   int _captionGeneration = 0;
   bool _requestedAutoWatermark = false;
+  SubscriptionStatusResult? _scheduleSubscription;
+  bool _isLoadingScheduleSubscription = false;
 
   static const _wizardStepTitles = [
     'เลือกคลิป',
@@ -243,7 +245,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _isSavingDraft ||
       _isSubmitting ||
       _isPreparingReview ||
-      _isPreparingSubmission;
+      _isPreparingSubmission ||
+      _isLoadingScheduleSubscription;
 
   String get _formSnapshot => jsonEncode([
         _localFilePathController.text,
@@ -459,6 +462,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _scheduledAtController.clear();
       _selectedScheduleDate = null;
       _selectedScheduleTime = null;
+      _scheduleSubscription = null;
+      _isLoadingScheduleSubscription = false;
       _selectedPlatforms.clear();
       _draftUnavailablePlatforms.clear();
       _connectedPlatforms.clear();
@@ -858,19 +863,31 @@ class _UploaderScreenState extends State<UploaderScreen> {
     _syncScheduledAt();
   }
 
-  void _setQuickScheduleDay(int daysFromToday) {
+  Future<void> _setQuickScheduleDay(int daysFromToday) async {
+    if (_scheduleSubscription == null && await _loadSchedulePolicy() == null) {
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _setScheduledDate(_scheduleDateFromToday(daysFromToday));
     });
   }
 
-  void _setQuickScheduleTime(TimeOfDay time) {
+  Future<void> _setQuickScheduleTime(TimeOfDay time) async {
+    if (_scheduleSubscription == null && await _loadSchedulePolicy() == null) {
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _setScheduledTime(time);
     });
   }
 
   Future<void> _pickCustomScheduleTime() async {
+    if (_scheduleSubscription == null && await _loadSchedulePolicy() == null) {
+      return;
+    }
+    if (!mounted) return;
     final picked = await showTimePicker(
       context: context,
       initialTime:
@@ -887,12 +904,23 @@ class _UploaderScreenState extends State<UploaderScreen> {
   }
 
   Future<void> _pickCustomScheduleDate() async {
+    final subscription = await _loadSchedulePolicy();
+    if (subscription == null || !mounted) return;
+    final limit = postScheduleLimitForPlan(subscription.plan)!;
     final today = _scheduleDateFromToday(0);
+    final lastDate = today.add(limit);
+    final selected = _selectedScheduleDate ?? _scheduleDateFromToday(1);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedScheduleDate ?? _scheduleDateFromToday(1),
+      // A restored draft may exceed a newly downgraded plan. Clamp only the
+      // picker's initial focus; never silently rewrite the saved schedule.
+      initialDate: selected.isBefore(today)
+          ? today
+          : selected.isAfter(lastDate)
+              ? lastDate
+              : selected,
       firstDate: today,
-      lastDate: today.add(postScheduleLimit),
+      lastDate: lastDate,
     );
 
     if (picked == null || !mounted) {
@@ -915,6 +943,46 @@ class _UploaderScreenState extends State<UploaderScreen> {
     final loader =
         widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
     return loader();
+  }
+
+  Future<SubscriptionStatusResult?> _loadSchedulePolicy() async {
+    if (_isLoadingScheduleSubscription) return null;
+    final generation = _draftLoadGeneration;
+    setState(() => _isLoadingScheduleSubscription = true);
+    try {
+      final subscription = await _loadSubscription();
+      if (!mounted || generation != _draftLoadGeneration) return null;
+      if (!subscription.canSchedule ||
+          postScheduleLimitForPlan(subscription.plan) == null) {
+        setState(() {
+          _scheduleSubscription = null;
+          _errorMessage = schedulePaidPlanMessage;
+          _successMessage = null;
+        });
+        if (_formScrollController.hasClients) _formScrollController.jumpTo(0);
+        return null;
+      }
+      setState(() {
+        _scheduleSubscription = subscription;
+        _errorMessage = null;
+        _successMessage = null;
+      });
+      return subscription;
+    } catch (_) {
+      if (mounted && generation == _draftLoadGeneration) {
+        setState(() {
+          _scheduleSubscription = null;
+          _errorMessage = scheduleSubscriptionUnavailableMessage;
+          _successMessage = null;
+        });
+        if (_formScrollController.hasClients) _formScrollController.jumpTo(0);
+      }
+      return null;
+    } finally {
+      if (mounted && generation == _draftLoadGeneration) {
+        setState(() => _isLoadingScheduleSubscription = false);
+      }
+    }
   }
 
   Future<UploadResult> _uploadCaptionFile({
@@ -2045,14 +2113,6 @@ class _UploaderScreenState extends State<UploaderScreen> {
       });
       return;
     }
-    if (scheduledAt != null &&
-        !isPostScheduleWithinLimit(scheduledAt: scheduledAt, now: now)) {
-      setState(() {
-        _errorMessage = 'ตั้งเวลาโพสต์ล่วงหน้าได้สูงสุด 30 วัน';
-        _successMessage = null;
-      });
-      return;
-    }
 
     final selectedPlatforms =
         SocialPlatform.values.where(_selectedPlatforms.contains).toList();
@@ -2195,18 +2255,6 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return null;
     }
 
-    if (scheduledAt != null &&
-        !isPostScheduleWithinLimit(
-          scheduledAt: scheduledAt,
-          now: widget.now(),
-        )) {
-      setState(() {
-        _errorMessage = 'ตั้งเวลาโพสต์ล่วงหน้าได้สูงสุด 30 วัน';
-        _successMessage = null;
-      });
-      return null;
-    }
-
     if (width != null &&
         height != null &&
         !_isVerticalNineBySixteen(width: width, height: height)) {
@@ -2239,6 +2287,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
         ? PostDeeAuthSessionStore.instance.session.stableUserId
         : null;
     final submittedDraftGeneration = _draftLoadGeneration;
+    final submittedSessionUserId =
+        PostDeeAuthSessionStore.instance.session.stableUserId;
     final submittedDraftStore = await _resolveDraftStore();
     if (submittedDraftStore == null ||
         _activeDraftId != submittedDraftId ||
@@ -2250,6 +2300,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return null;
     }
     bool submissionStillOwned() =>
+        mounted &&
+        PostDeeAuthSessionStore.instance.session.stableUserId ==
+            submittedSessionUserId &&
         _activeDraftId == submittedDraftId &&
         _draftOperationStillOwned(
           ownerUserId: submittedDraftOwnerUserId,
@@ -2289,17 +2342,33 @@ class _UploaderScreenState extends State<UploaderScreen> {
       report(PublishFlowStage.checkingPlan, 0.28);
       final subscription = await _loadSubscription();
       ensureSubmissionStillOwned();
+      if (mounted) setState(() => _scheduleSubscription = subscription);
 
       if (scheduledAt != null) {
-        if (!subscription.canSchedule) {
+        if (!subscription.canSchedule ||
+            postScheduleLimitForPlan(subscription.plan) == null) {
           if (!mounted) {
             return null;
           }
 
           setState(() {
-            _errorMessage =
-                'การตั้งเวลาโพสต์ต้องใช้แพ็กเกจ Starter 199 หรือ Pro 299';
+            _errorMessage = schedulePaidPlanMessage;
           });
+          return null;
+        }
+        if (!scheduledAt.isAfter(widget.now())) {
+          if (!mounted) return null;
+          setState(() => _errorMessage = 'เวลาตั้งโพสต์ต้องเป็นเวลาในอนาคต');
+          return null;
+        }
+        if (!isPostScheduleWithinLimit(
+            scheduledAt: scheduledAt,
+            now: widget.now(),
+            plan: subscription.plan)) {
+          if (!mounted) return null;
+          setState(() =>
+              _errorMessage = '${postScheduleLimitMessage(subscription.plan)} '
+                  'หากเคยกดยืนยันแล้ว ให้ตรวจปฏิทินก่อนเริ่มโพสต์ใหม่');
           return null;
         }
       }
@@ -2601,7 +2670,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
               : 'ข้อมูลในร่างเปลี่ยนจากคำขอเดิม ร่างยังอยู่ในเครื่อง กรุณาตรวจปลายทางก่อนเริ่มรายการโพสต์ใหม่',
         );
       } else {
-        _setUploadStatus(error.message);
+        _setUploadStatus(postScheduleApiErrorMessage(error,
+                plan: _scheduleSubscription?.plan) ??
+            error.message);
         if (_isRetryablePublishApiError(error)) {
           // The draft was persisted before every remote side effect. Retrying
           // therefore reuses its submission request ID and cannot create a
@@ -2756,7 +2827,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
     });
   }
 
-  void _useSuggestedSchedule() {
+  Future<void> _useSuggestedSchedule() async {
+    if (await _loadSchedulePolicy() == null || !mounted) return;
     setState(() {
       _selectedScheduleDate ??= _scheduleDateFromToday(1);
       _selectedScheduleTime ??= const TimeOfDay(hour: 18, minute: 30);
@@ -2937,6 +3009,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
                             scheduledAtController: _scheduledAtController,
                             selectedDate: _selectedScheduleDate,
                             selectedTime: _selectedScheduleTime,
+                            schedulePlan: _scheduleSubscription?.plan,
                             onPostNow: _clearSchedule,
                             onSchedule: _useSuggestedSchedule,
                             onQuickDaySelected: _setQuickScheduleDay,
@@ -4736,6 +4809,7 @@ class _SchedulePanel extends StatelessWidget {
     required this.onTimeSelected,
     required this.onPickCustomTime,
     required this.onPickCustomDate,
+    this.schedulePlan,
   });
 
   static const _dayOptions = [
@@ -4793,6 +4867,7 @@ class _SchedulePanel extends StatelessWidget {
   final ValueChanged<TimeOfDay> onTimeSelected;
   final VoidCallback onPickCustomTime;
   final VoidCallback onPickCustomDate;
+  final String? schedulePlan;
 
   DateTime _todayDate() {
     final now = DateTime.now();
@@ -5032,9 +5107,12 @@ class _SchedulePanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'ตั้งเวลาได้ล่วงหน้าสูงสุด 30 วันในแพ็กเกจ Starter ขึ้นไป',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    switch (schedulePlan) {
+                      'STARTER' =>
+                        'แพ็กเกจ Starter ตั้งเวลาล่วงหน้าได้สูงสุด 14 วัน',
+                      'PRO' => 'แพ็กเกจ Pro ตั้งเวลาล่วงหน้าได้สูงสุด 30 วัน',
+                      _ => schedulePlanSummary,
+                    },
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppTheme.textSecondary,
                         ),

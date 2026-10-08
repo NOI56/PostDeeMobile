@@ -8,6 +8,21 @@ import 'package:postdee_mobile/features/billing/paywall_screen.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
 
 void main() {
+  testWidgets('shows each paid plan scheduling window', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: PaywallScreen(
+            loadSubscription: () async => _subscription(plan: 'BASIC'))));
+    await tester.pumpAndSettle();
+    final starter = find.text('ตั้งเวลาล่วงหน้า 14 วัน + ปฏิทิน + เทมเพลต');
+    await tester.scrollUntilVisible(starter, 300,
+        scrollable: find.byType(Scrollable).first);
+    expect(starter, findsOneWidget);
+    final pro = find.text('ตั้งเวลาล่วงหน้า 30 วัน');
+    await tester.scrollUntilVisible(pro, 300,
+        scrollable: find.byType(Scrollable).first);
+    expect(pro, findsOneWidget);
+  });
+
   testWidgets(
       'default paywall service retains pending purchase across reopening',
       (tester) async {

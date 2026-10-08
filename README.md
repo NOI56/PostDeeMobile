@@ -752,8 +752,11 @@ submit again from this state is the explicit “เริ่มรายกา�
 warns that the old attempt may already exist, requires confirmation, then saves
 the same editable content as a new draft with a new request ID while retaining
 the original draft for inspection.
-An accepted schedule must be strictly in the future and no more than 30 days
-after the server's current time. The same window applies when rescheduling.
+An accepted schedule must be strictly in the future and no more than 14 days
+ahead for Starter or 30 days for Pro, measured from the server's current time.
+The current plan's window applies when creating or rescheduling a post. Existing
+accepted schedules keep their original time after this policy change or a plan
+downgrade; listing and automatic publishing do not reapply the shorter window.
 `videoS3Key` and optional `coverImageS3Key` must come from `POST /uploads` for
 the same authenticated user; the backend rejects media keys owned by another
 user. `coverFrameTimeMs` stores the selected source-video frame in milliseconds.
@@ -764,8 +767,8 @@ to 250 post units per month. A post unit is counted per selected platform, so
 one video posted to four platforms uses four units. Repeated platform values
 are collapsed, and the quota check plus post insert is atomic. `scheduledAt`
 must be a valid future RFC 3339 timestamp with `Z` or an explicit `±HH:mm`
-timezone, and no more than 30 days ahead. The API rejects impossible calendar
-dates and normalizes accepted offsets to UTC.
+timezone, and stay within the current plan's 14/30-day window. The API rejects
+impossible calendar dates and normalizes accepted offsets to UTC.
 
 When `SOCIAL_PUBLISHER=disabled`, `POST /posts` returns
 `503 SOCIAL_PUBLISHING_UNAVAILABLE` before managed-upload readiness checks,
@@ -1044,7 +1047,8 @@ Current mobile pieces:
   stays explicit; closing a changed form offers continue editing, discard, or
   save and exit. The fourth step combines scheduling and the shared review
   summary with one publish confirmation, without a second review route.
-  9:16 validation, the future/30-day schedule limit, explicit account selection,
+  9:16 validation, future schedules capped at 14 days for Starter or 30 days for
+  Pro, explicit account selection,
   package/phone gates and required per-platform settings are preserved. A
   functional cover editor lets a seller scrub to a source-video frame, add Thai
   text, choose Prompt or Anuphan, adjust weight, size, colors, and position, then

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/theme/app_theme.dart';
@@ -20,6 +21,8 @@ typedef ScheduledPostRescheduler = Future<ScheduledPostResult> Function(
 );
 typedef ScheduledPostCanceller = Future<void> Function(String postId);
 typedef CalendarTimeConverter = DateTime Function(DateTime value);
+typedef CalendarSubscriptionLoader = Future<SubscriptionStatusResult>
+    Function();
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({
@@ -33,6 +36,7 @@ class CalendarScreen extends StatefulWidget {
     this.onOpenPostDetail,
     this.toLocalTime,
     this.now,
+    this.loadSubscription,
   });
 
   final int refreshToken;
@@ -42,6 +46,7 @@ class CalendarScreen extends StatefulWidget {
   final ScheduledPostCanceller? cancelPost;
   final CalendarTimeConverter? toLocalTime;
   final DateTime Function()? now;
+  final CalendarSubscriptionLoader? loadSubscription;
 
   /// Jump to the upload flow to schedule a new post.
   final VoidCallback? onAddPost;
@@ -340,7 +345,48 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   Future<void> _reschedule(ScheduledPostResult post) async {
     if (!_canEditQueue(post) || _pendingActionPostId != null) return;
+    final ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
 
+    setState(() {
+      _pendingActionPostId = post.id;
+      _pendingActionLabel = 'กำลังตรวจสอบแพ็กเกจ...';
+    });
+    try {
+      final subscription = await _loadScheduleSubscription();
+      if (!mounted || !_rescheduleStillOwned(ownerUserId)) return;
+      final limit = postScheduleLimitForPlan(subscription.plan);
+      if (!subscription.canSchedule || limit == null) {
+        _showScheduleMessage(schedulePaidPlanMessage);
+        return;
+      }
+      setState(() => _pendingActionLabel = null);
+      await _rescheduleWhileLocked(post, limit, ownerUserId);
+    } catch (_) {
+      if (_rescheduleStillOwned(ownerUserId)) {
+        _showScheduleMessage(scheduleSubscriptionUnavailableMessage);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _pendingActionPostId = null;
+          _pendingActionLabel = null;
+        });
+      }
+    }
+  }
+
+  Future<SubscriptionStatusResult> _loadScheduleSubscription() =>
+      (widget.loadSubscription ?? _apiClient.loadCurrentSubscription)();
+
+  bool _rescheduleStillOwned(String? ownerUserId) =>
+      mounted &&
+      PostDeeAuthSessionStore.instance.session.stableUserId == ownerUserId;
+
+  void _showScheduleMessage(String message) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(message)));
+
+  Future<void> _rescheduleWhileLocked(
+      ScheduledPostResult post, Duration limit, String? ownerUserId) async {
     final current = _toLocalTime(post.scheduledAt);
     final currentNow = _now();
     final today = DateTime(
@@ -348,7 +394,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       currentNow.month,
       currentNow.day,
     );
-    final lastDate = today.add(postScheduleLimit);
+    final lastDate = today.add(limit);
     final currentDate = DateTime(current.year, current.month, current.day);
     final initialDate = currentDate.isBefore(today)
         ? today
@@ -361,16 +407,23 @@ class _CalendarScreenState extends State<CalendarScreen>
       firstDate: today,
       lastDate: lastDate,
     );
-    if (date == null || !mounted) return;
+    if (date == null || !mounted || !_rescheduleStillOwned(ownerUserId)) return;
 
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
     );
-    if (time == null || !mounted) return;
+    if (time == null || !mounted || !_rescheduleStillOwned(ownerUserId)) return;
 
     final next =
         DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final subscription = await _loadScheduleSubscription();
+    if (!mounted || !_rescheduleStillOwned(ownerUserId)) return;
+    if (!subscription.canSchedule ||
+        postScheduleLimitForPlan(subscription.plan) == null) {
+      _showScheduleMessage(schedulePaidPlanMessage);
+      return;
+    }
     final validationNow = _now();
 
     if (!next.isAfter(validationNow)) {
@@ -383,9 +436,12 @@ class _CalendarScreenState extends State<CalendarScreen>
     if (!isPostScheduleWithinLimit(
       scheduledAt: next,
       now: validationNow,
+      plan: subscription.plan,
     )) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('เลื่อนเวลาได้ล่วงหน้าสูงสุด 30 วัน')),
+        SnackBar(
+            content: Text(postScheduleLimitMessage(subscription.plan,
+                rescheduling: true))),
       );
       return;
     }
@@ -397,7 +453,9 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     try {
       final reschedulePost = widget.reschedulePost ?? _apiClient.reschedulePost;
+      if (!_rescheduleStillOwned(ownerUserId)) return;
       final updatedPost = await reschedulePost(post.id, next);
+      if (!_rescheduleStillOwned(ownerUserId)) return;
       _postMutationGeneration += 1;
       if (mounted) {
         final updatedTime = _calendarTimeFor(updatedPost);
@@ -419,37 +477,35 @@ class _CalendarScreenState extends State<CalendarScreen>
         });
       }
     } on ApiException catch (error) {
-      if (mounted) {
+      if (mounted && _rescheduleStillOwned(ownerUserId)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               isPublishingUnavailable(error)
                   ? publishingUnavailableActionMessage
-                  : 'เลื่อนเวลาไม่สำเร็จ ลองใหม่อีกครั้ง',
+                  : postScheduleApiErrorMessage(error,
+                          plan: subscription.plan, rescheduling: true) ??
+                      'เลื่อนเวลาไม่สำเร็จ ลองใหม่อีกครั้ง',
             ),
           ),
         );
       }
       return;
     } catch (_) {
-      if (mounted) {
+      if (mounted && _rescheduleStillOwned(ownerUserId)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('เลื่อนเวลาไม่สำเร็จ ลองใหม่อีกครั้ง')),
         );
       }
       return;
-    } finally {
-      if (mounted) {
-        setState(() {
-          _pendingActionPostId = null;
-          _pendingActionLabel = null;
-        });
-      }
     }
 
-    if (!mounted) return;
+    if (!mounted || !_rescheduleStillOwned(ownerUserId)) return;
+    // Keep the action locked until refresh finishes, but stop the spinner
+    // once the mutation itself has completed.
+    setState(() => _pendingActionLabel = null);
     await _loadPosts();
-    if (!mounted) return;
+    if (!mounted || !_rescheduleStillOwned(ownerUserId)) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

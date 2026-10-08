@@ -6,7 +6,8 @@ import { createApp as createPostDeeApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
 import { createInMemoryPublishQueue } from '../queue/publishQueue.js';
 import { createInMemoryPlatformPublishStore } from '../platformPublishes/platformPublishStore.js';
-import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
+import { createSubscriptionStore, type SubscriptionPlan } from '../subscriptions/subscriptionStore.js';
+import { createPublishScheduler } from '../../workers/publishScheduler.js';
 import { createUserStore } from '../users/userStore.js';
 import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
 import { createPostStore, type QueuedPost } from './postStore.js';
@@ -24,6 +25,39 @@ describe('post routes', () => {
   };
   const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
     `uploads/${encodeURIComponent(userId)}/${uploadId}/${fileName}`;
+
+  const createPlanScheduleApp = (
+    plan: SubscriptionPlan,
+    now = futureNow,
+    options: Parameters<typeof registerPostRoutes>[7] = {}
+  ) => {
+    const userId = 'seller-plan-window';
+    const app = express();
+    const router = express.Router();
+    const store = createPostStore();
+    const queue = createInMemoryPublishQueue();
+    const reschedule = vi.spyOn(queue, 'reschedule');
+    const subscriptionStore = createSubscriptionStore();
+    const getPlan = vi.spyOn(subscriptionStore, 'getPlan').mockResolvedValue(plan);
+    const userStore = createUserStore();
+    const ensureUser = vi.spyOn(userStore, 'ensure');
+    const platformPublishStore = createInMemoryPlatformPublishStore();
+    app.use(express.json());
+    registerPostRoutes(
+      router, store, queue,
+      (_request, response, next) => {
+        response.locals.authUser = { id: userId, provider: 'mock', phoneVerified: true };
+        next();
+      },
+      userStore, subscriptionStore, platformPublishStore,
+      { ...options, now, allowSubscriptionPlanOverride: false }
+    );
+    app.use(router);
+    app.use((_error: Error, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
+      response.status(500).json({ status: 'error', message: 'Request failed' });
+    });
+    return { app, userId, store, queue, reschedule, subscriptionStore, getPlan, ensureUser, platformPublishStore };
+  };
 
   const mediaPost = (id: string, createdAt: string, userId = 'seller-preview'): QueuedPost => ({
     id,
@@ -597,21 +631,23 @@ describe('post routes', () => {
     expect(publishQueue.remove).toHaveBeenCalledWith(post.id);
   });
 
-  it('accepts schedules up to 30 days and rejects anything later', async () => {
-    const now = new Date('2026-06-01T00:00:00.000Z');
-    const app = createApp({ now: () => now });
+  it.each([['STARTER', 14], ['PRO', 30]] as const)(
+    'enforces the %s rolling %i-day window for create and reschedule', async (plan, days) => {
+    const now = new Date('2026-06-01T14:37:12.345Z');
+    const { app, userId, store, queue, reschedule, ensureUser } = createPlanScheduleApp(plan, () => now);
+    const boundary = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+    const overBoundary = new Date(Date.parse(boundary) + 1).toISOString();
     const baseRequest = {
       caption: 'Post inside scheduling window',
-      platforms: ['TIKTOK'],
-      subscriptionPlan: 'PRO'
+      platforms: ['TIKTOK']
     };
 
     const accepted = await request(app)
       .post('/posts')
       .send({
         ...baseRequest,
-        videoS3Key: ownedUploadKey('local-dev-user', 'day-30.mp4'),
-        scheduledAt: '2026-07-01T00:00:00.000Z'
+        videoS3Key: ownedUploadKey(userId, 'boundary.mp4'),
+        scheduledAt: boundary
       })
       .expect(201);
 
@@ -619,25 +655,225 @@ describe('post routes', () => {
       .post('/posts')
       .send({
         ...baseRequest,
-        videoS3Key: ownedUploadKey('local-dev-user', 'over-day-30.mp4'),
-        scheduledAt: '2026-07-01T00:00:00.001Z'
+        videoS3Key: ownedUploadKey(userId, 'over-boundary.mp4'),
+        scheduledAt: overBoundary
       })
       .expect(400)
       .expect({
         status: 'error',
         code: 'SCHEDULE_LIMIT_EXCEEDED',
-        message: 'Posts can be scheduled up to 30 days in advance'
+        message: `Posts can be scheduled up to ${days} days in advance`
       });
 
     await request(app)
       .patch(`/posts/${accepted.body.post.id}`)
-      .send({ scheduledAt: '2026-07-01T00:00:00.001Z' })
+      .send({ scheduledAt: boundary })
+      .expect(200);
+    reschedule.mockClear();
+    const jobsBeforeRejection = await queue.list({ userId });
+    await request(app)
+      .patch(`/posts/${accepted.body.post.id}`)
+      .send({ scheduledAt: overBoundary, subscriptionPlan: 'PRO' })
       .expect(400)
       .expect({
         status: 'error',
         code: 'SCHEDULE_LIMIT_EXCEEDED',
-        message: 'Posts can be scheduled up to 30 days in advance'
+        message: `Posts can be scheduled up to ${days} days in advance`
       });
+    expect((await store.list({ userId }))[0].scheduledAt).toBe(boundary);
+    expect(await queue.list({ userId })).toEqual(jobsBeforeRejection);
+    expect(reschedule).not.toHaveBeenCalled();
+    expect(ensureUser).toHaveBeenCalledOnce();
+    expect(await store.countMonthlyPostUnits({ userId, now: now.toISOString() })).toBe(1);
+  });
+
+  it('normalizes timezone offsets at the Starter fourteen-day boundary', async () => {
+    const { app, userId } = createPlanScheduleApp('STARTER', () => new Date('2026-06-01T14:37:12.345Z'));
+    const accepted = await request(app).post('/posts').send({
+      caption: 'Offset boundary', platforms: ['TIKTOK'],
+      videoS3Key: ownedUploadKey(userId, 'offset-boundary.mp4'),
+      scheduledAt: '2026-06-15T21:37:12.345+07:00'
+    }).expect(201);
+    expect(accepted.body.post.scheduledAt).toBe('2026-06-15T14:37:12.345Z');
+    await request(app).patch(`/posts/${accepted.body.post.id}`).send({
+      scheduledAt: '2026-06-15T21:37:12.346+07:00'
+    }).expect(400).expect(({ body }) => {
+      expect(body.code).toBe('SCHEDULE_LIMIT_EXCEEDED');
+    });
+  });
+
+  it.each(['STARTER', 'BASIC'] as const)(
+    'rechecks a change from Pro to %s while the new post waits for a platform target', async (plan) => {
+    let markLookupStarted!: () => void;
+    let releaseLookup!: () => void;
+    const lookupStarted = new Promise<void>((resolve) => { markLookupStarted = resolve; });
+    const lookupReleased = new Promise<void>((resolve) => { releaseLookup = resolve; });
+    const target = { accountId: 'postpeer-plan-window', connectedAt: '2026-05-01T00:00:00.000Z' };
+    const resolvePlatformTarget = vi.fn(async () => {
+      markLookupStarted();
+      await lookupReleased;
+      return target;
+    });
+    const { app, userId, store, queue, getPlan, ensureUser } = createPlanScheduleApp('PRO', futureNow, { resolvePlatformTarget });
+    const pending = request(app).post('/posts').send({
+      caption: 'Plan changes during account lookup', platforms: ['TIKTOK'],
+      videoS3Key: ownedUploadKey(userId, 'plan-race.mp4'),
+      scheduledAt: '2026-06-26T00:00:00.000Z'
+    }).then((response) => response);
+    await lookupStarted;
+    getPlan.mockResolvedValue(plan);
+    releaseLookup();
+    const response = await pending;
+    expect(response.status).toBe(plan === 'BASIC' ? 402 : 400);
+    expect(response.body.code).toBe(plan === 'BASIC' ? 'PAID_PLAN_REQUIRED' : 'SCHEDULE_LIMIT_EXCEEDED');
+    if (plan === 'STARTER') {
+      expect(response.body.message).toBe('Posts can be scheduled up to 14 days in advance');
+    }
+    expect(ensureUser).not.toHaveBeenCalled();
+    expect(await store.list({ userId })).toEqual([]);
+    expect(await queue.list({ userId })).toEqual([]);
+    expect(await store.countMonthlyPostUnits({ userId, now: futureNow().toISOString() })).toBe(0);
+  });
+
+  it('keeps a concurrent accepted intent replayable if the plan changes during its first target lookup', async () => {
+    let markLookupStarted!: () => void;
+    let releaseLookup!: () => void;
+    const lookupStarted = new Promise<void>((resolve) => { markLookupStarted = resolve; });
+    const lookupReleased = new Promise<void>((resolve) => { releaseLookup = resolve; });
+    const target = { accountId: 'postpeer-replay-window', connectedAt: '2026-05-01T00:00:00.000Z' };
+    const resolvePlatformTarget = vi.fn(async () => target).mockImplementationOnce(async () => {
+      markLookupStarted();
+      await lookupReleased;
+      return target;
+    });
+    const { app, userId, store, queue, getPlan } = createPlanScheduleApp('PRO', futureNow, { resolvePlatformTarget });
+    const body = { clientRequestId: 'concurrent-accepted-window', caption: 'Concurrent accepted intent',
+      platforms: ['TIKTOK'], videoS3Key: ownedUploadKey(userId, 'concurrent-window.mp4'),
+      scheduledAt: '2026-06-26T00:00:00.000Z' };
+    const pending = request(app).post('/posts').send(body).then((response) => response);
+    await lookupStarted;
+    const accepted = await request(app).post('/posts').send(body).expect(201);
+    getPlan.mockResolvedValue('STARTER');
+    releaseLookup();
+    const response = await pending;
+    expect(response.status).toBe(200);
+    expect(response.body.idempotentReplay).toBe(true);
+    expect(response.body.post.id).toBe(accepted.body.post.id);
+    expect(await store.list({ userId })).toHaveLength(1);
+    expect(await queue.list({ userId })).toHaveLength(1);
+    expect(await store.countMonthlyPostUnits({ userId, now: futureNow().toISOString() })).toBe(1);
+  });
+
+  it('fails closed and releases the creation lock if the plan recheck cannot be read', async () => {
+    const { app, userId, store, queue, getPlan, ensureUser } = createPlanScheduleApp('PRO');
+    getPlan.mockResolvedValueOnce('PRO').mockRejectedValueOnce(new Error('Subscription unavailable'));
+    const body = { clientRequestId: 'plan-recheck-failure', caption: 'Plan check unavailable',
+      platforms: ['TIKTOK'], videoS3Key: ownedUploadKey(userId, 'unavailable.mp4'),
+      scheduledAt: '2026-06-02T00:00:00.000Z' };
+    await request(app).post('/posts').send(body).expect(500);
+    expect(ensureUser).not.toHaveBeenCalled();
+    expect(await store.list({ userId })).toEqual([]);
+    expect(await queue.list({ userId })).toEqual([]);
+    await request(app).post('/posts').send(body).expect(201);
+  });
+
+  it.each(['STARTER', 'BASIC'] as const)(
+    'replays an accepted twenty-day schedule after changing to %s without new quota', async (plan) => {
+    let currentNow = futureNow();
+    const { app, userId, store, queue, getPlan, ensureUser } = createPlanScheduleApp('PRO', () => currentNow);
+    const body = {
+      clientRequestId: 'accepted-before-plan-change', caption: 'Accepted schedule',
+      videoS3Key: ownedUploadKey(userId, 'accepted.mp4'), platforms: ['TIKTOK'],
+      scheduledAt: '2026-06-21T00:00:00.000Z'
+    };
+    const accepted = await request(app).post('/posts').send(body).expect(201);
+    await queue.remove(accepted.body.post.id);
+    getPlan.mockResolvedValue(plan).mockClear();
+    ensureUser.mockClear();
+    currentNow = new Date('2026-06-22T00:00:00.000Z');
+    const replayed = await request(app).post('/posts').send(body).expect(200);
+    expect(replayed.body.idempotentReplay).toBe(true);
+    expect(replayed.body.post.id).toBe(accepted.body.post.id);
+    expect(replayed.body.post.scheduledAt).toBe(body.scheduledAt);
+    expect(getPlan).not.toHaveBeenCalled();
+    expect(ensureUser).not.toHaveBeenCalled();
+    expect(await store.list({ userId })).toHaveLength(1);
+    expect(await store.countMonthlyPostUnits({ userId, now: currentNow.toISOString() })).toBe(1);
+    expect(await queue.list({ userId })).toHaveLength(1);
+  });
+
+  it('keeps an accepted schedule after paid-plan expiry and still publishes it when due', async () => {
+    let currentNow = futureNow();
+    const fixture = createPlanScheduleApp('PRO', () => currentNow);
+    const { app, userId, store, queue, getPlan, subscriptionStore, reschedule, platformPublishStore } = fixture;
+    const accepted = await request(app).post('/posts').send({
+      caption: 'Accepted before expiry', platforms: ['TIKTOK'],
+      videoS3Key: ownedUploadKey(userId, 'before-expiry.mp4'),
+      scheduledAt: '2026-06-21T00:00:00.000Z'
+    }).expect(201);
+    getPlan.mockRestore();
+    await subscriptionStore.activatePlan({ id: userId, provider: 'mock' }, 'PRO', {
+      currentPeriodEnd: '2000-01-01T00:00:00.000Z'
+    });
+    const jobsBeforeRejection = await queue.list({ userId });
+    await request(app).patch(`/posts/${accepted.body.post.id}`).send({
+      scheduledAt: '2026-06-02T00:00:00.000Z'
+    }).expect(402).expect({
+      status: 'error', code: 'PAID_PLAN_REQUIRED',
+      message: 'Cloud Scheduling requires the Starter or Pro plan'
+    });
+    expect(reschedule).not.toHaveBeenCalled();
+    expect(await queue.list({ userId })).toEqual(jobsBeforeRejection);
+    const list = await request(app).get('/posts?scheduled=true').expect(200);
+    expect(list.body.posts[0].scheduledAt).toBe('2026-06-21T00:00:00.000Z');
+    const scheduler = createPublishScheduler({ postStore: store, platformPublishStore,
+      now: () => currentNow.toISOString() });
+    await scheduler.runOnce();
+    expect((await store.list({ userId }))[0].status).toBe('QUEUED');
+    currentNow = new Date('2026-06-21T00:00:00.000Z');
+    await scheduler.runOnce();
+    expect((await store.list({ userId }))[0].status).toBe('PUBLISHED');
+  });
+
+  it('fails closed without changing the post or queue when the current plan cannot be read', async () => {
+    const { app, userId, store, queue, getPlan, reschedule } = createPlanScheduleApp('PRO');
+    const post = await store.create({ userId, caption: 'Existing queue', platforms: ['TIKTOK'],
+      videoS3Key: ownedUploadKey(userId, 'plan-read.mp4'), scheduledAt: '2026-06-21T00:00:00.000Z' });
+    await queue.enqueue(post);
+    const jobsBeforeRejection = await queue.list({ userId });
+    getPlan.mockRejectedValueOnce(new Error('Subscription unavailable'));
+    await request(app).patch(`/posts/${post.id}`).send({ scheduledAt: '2026-06-02T00:00:00.000Z' }).expect(500);
+    expect(post.scheduledAt).toBe('2026-06-21T00:00:00.000Z');
+    expect(await queue.list({ userId })).toEqual(jobsBeforeRejection);
+    expect(reschedule).not.toHaveBeenCalled();
+    await request(app).patch(`/posts/${post.id}`).send({ scheduledAt: '2026-06-02T00:00:00.000Z' }).expect(200);
+  });
+
+  it('does not read a plan or mutate a different owner post when rescheduling', async () => {
+    const { app, store, getPlan, reschedule } = createPlanScheduleApp('BASIC');
+    const post = await store.create({ userId: 'other-owner', caption: 'Other owner', platforms: ['TIKTOK'],
+      videoS3Key: ownedUploadKey('other-owner', 'private.mp4'), scheduledAt: '2026-06-21T00:00:00.000Z' });
+    await request(app).patch(`/posts/${post.id}`).send({ scheduledAt: '2026-06-02T00:00:00.000Z' }).expect(404);
+    expect(getPlan).not.toHaveBeenCalled();
+    expect(reschedule).not.toHaveBeenCalled();
+    expect(post.scheduledAt).toBe('2026-06-21T00:00:00.000Z');
+  });
+
+  it('rolls back to a grandfathered twenty-day schedule if a new Starter reschedule cannot reach the queue', async () => {
+    const { app, userId, store, queue, reschedule } = createPlanScheduleApp('STARTER');
+    const post = await store.create({ userId, caption: 'Grandfathered queue', platforms: ['TIKTOK'],
+      videoS3Key: ownedUploadKey(userId, 'rollback.mp4'), scheduledAt: '2026-06-21T00:00:00.000Z' });
+    await queue.enqueue(post);
+    const jobsBeforeRejection = await queue.list({ userId });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    reschedule.mockRejectedValueOnce(new Error('Queue unavailable'));
+    try {
+      await request(app).patch(`/posts/${post.id}`).send({ scheduledAt: '2026-06-15T00:00:00.000Z' }).expect(503);
+      expect(post.scheduledAt).toBe('2026-06-21T00:00:00.000Z');
+      expect(await queue.list({ userId })).toEqual(jobsBeforeRejection);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('rejects invalid and past schedules instead of publishing immediately', async () => {
@@ -730,6 +966,7 @@ describe('post routes', () => {
 
     await request(app)
       .patch(`/posts/${createResponse.body.post.id}`)
+      .set('x-postdee-subscription-plan', 'PRO')
       .send({ scheduledAt: '2028-02-29T11:30:45+07:00' })
       .expect(200)
       .expect(({ body }) => {
@@ -1926,6 +2163,7 @@ describe('post routes', () => {
 
     const patchResponse = await request(app)
       .patch(`/posts/${postId}`)
+      .set('x-postdee-subscription-plan', 'PRO')
       .send({ scheduledAt: '2026-06-12T15:30:00.000Z' })
       .expect(200);
 
@@ -1941,6 +2179,7 @@ describe('post routes', () => {
 
     await request(app)
       .patch(`/posts/${postId}`)
+      .set('x-postdee-subscription-plan', 'PRO')
       .send({ scheduledAt: '2026-06-12T15:30:00.000Z' })
       .expect(200);
 

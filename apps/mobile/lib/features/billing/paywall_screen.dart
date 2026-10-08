@@ -151,7 +151,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         isCurrent: currentPlanId == 'starter',
         features: const [
           _PlanFeature('โพสต์หลายช่องทาง 120 หน่วย/เดือน'),
-          _PlanFeature('ตั้งเวลาโพสต์ + ปฏิทิน + เทมเพลต'),
+          _PlanFeature('ตั้งเวลาล่วงหน้า 14 วัน + ปฏิทิน + เทมเพลต'),
           _PlanFeature('AI แคปชั่นจากเสียงคลิป 50 ครั้ง/เดือน'),
           _PlanFeature('ลายน้ำอัตโนมัติ'),
         ],
@@ -165,6 +165,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         features: const [
           _PlanFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
           _PlanFeature('ทุกอย่างใน Starter + วิเคราะห์เต็มรูปแบบ'),
+          _PlanFeature('ตั้งเวลาล่วงหน้า 30 วัน'),
           _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน'),
         ],
       ),

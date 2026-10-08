@@ -250,7 +250,8 @@ user-owned PostPeer connections.
   every row also names its connected account/channel/page. A missing display
   name/external account id, unknown outcome, or incomplete setting stays blocked
   and requires refresh/reconnect or correction. Create/reschedule accepts only
-  future times within 30 days; scheduled post detail uses the owner-scoped
+  future times within 14 days for Starter or 30 days for Pro; scheduled post
+  detail uses the owner-scoped
   publish-now command rather than rescheduling to the current time.
 - The post result must preserve the returned lifecycle: queued is not published,
   publishing is not complete, partial is not full success, and an unknown status
@@ -617,7 +618,9 @@ Prove same-process, separate-process, and crash/restart behavior.
    save/restore/account-isolation/backup behavior, zero publish-side effects
    while saving, progressive per-platform settings, exact-account review plus
    missing-identity/unknown-outcome blocking, local-versus-provider draft wording,
-   future/+30-day boundaries, and publish-now compensation on the release candidate.
+   future/+14-day Starter and +30-day Pro boundaries, preservation of previously
+   accepted schedules after downgrades, and publish-now compensation on the
+   release candidate.
 4. **Finish PostPeer controlled publishing** — keep Staging disabled by default.
    Apply/verify the migration and readiness version first; inspect legacy
    backlog. The earlier YouTube Private path passed, but now test TikTok inbox

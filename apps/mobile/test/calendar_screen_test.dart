@@ -2,11 +2,177 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
 
+SubscriptionStatusResult _scheduleSubscription(String plan) =>
+    SubscriptionStatusResult(
+        userId: 'calendar-user',
+        plan: plan,
+        status: plan == 'BASIC' ? 'INACTIVE' : 'ACTIVE',
+        canSchedule: plan == 'STARTER' || plan == 'PRO',
+        canUseAiCaptions: false,
+        canUseAnalytics: false);
+
+ScheduledPostResult _queuedFixture(DateTime now) => ScheduledPostResult(
+    id: 'existing-queue',
+    caption: 'คิวเดิม',
+    videoS3Key: 'uploads/existing.mp4',
+    platforms: const ['TIKTOK'],
+    scheduledAt: now.add(const Duration(days: 20)),
+    status: 'QUEUED',
+    createdAt: now);
+
 void main() {
+  testWidgets(
+      'rechecks a downgrade before PATCH without changing the old queue',
+      (tester) async {
+    final now = DateTime(2026, 10, 8, 12);
+    var plan = 'PRO';
+    var checks = 0;
+    var calls = 0;
+    final post = _queuedFixture(now);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: CalendarScreen(
+      now: () => now,
+      loadSubscription: () async {
+        checks++;
+        return _scheduleSubscription(plan);
+      },
+      loadScheduledPosts: () async => [post],
+      reschedulePost: (_, __) async {
+        calls++;
+        return post;
+      },
+    ))));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text(post.caption));
+    await tester.tap(find.text(post.caption));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เลื่อนเวลา'));
+    await tester.pumpAndSettle();
+    plan = 'STARTER';
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(checks, 2);
+    expect(calls, 0);
+    expect(post.scheduledAt, now.add(const Duration(days: 20)));
+    expect(find.text('คิวเดิม'), findsOneWidget);
+    expect(find.text('เลื่อนเวลาได้ล่วงหน้าสูงสุด 14 วัน กรุณาเลือกเวลาใหม่'),
+        findsOneWidget);
+  });
+
+  testWidgets('does not apply a pending plan from a previous signed-in owner',
+      (tester) async {
+    final session = PostDeeAuthSessionStore.instance;
+    final original = session.session;
+    session.signIn(AuthSession.authenticated(
+        userId: 'calendar-owner-a', idToken: 'test-a'));
+    addTearDown(() => session.signIn(original));
+    final pending = Completer<SubscriptionStatusResult>();
+    final now = DateTime(2026, 10, 8, 12);
+    var calls = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: CalendarScreen(
+      now: () => now,
+      loadSubscription: () => pending.future,
+      loadScheduledPosts: () async => [_queuedFixture(now)],
+      reschedulePost: (_, __) async {
+        calls++;
+        return _queuedFixture(now);
+      },
+    ))));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('คิวเดิม'));
+    await tester.tap(find.text('คิวเดิม'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เลื่อนเวลา'));
+    await tester.pump();
+    session.signIn(AuthSession.authenticated(
+        userId: 'calendar-owner-b', idToken: 'test-b'));
+    pending.complete(_scheduleSubscription('PRO'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CalendarDatePicker), findsNothing);
+    expect(calls, 0);
+  });
+
+  for (final plan in ['STARTER', 'PRO']) {
+    testWidgets('$plan bounds rescheduling using the latest plan',
+        (tester) async {
+      final now = DateTime(2026, 10, 8, 12);
+      var checks = 0;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: CalendarScreen(
+        now: () => now,
+        loadSubscription: () async {
+          checks++;
+          return _scheduleSubscription(plan);
+        },
+        loadScheduledPosts: () async => [_queuedFixture(now)],
+      ))));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('คิวเดิม'));
+      await tester.tap(find.text('คิวเดิม'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('เลื่อนเวลา'));
+      await tester.pumpAndSettle();
+      final picker =
+          tester.widget<CalendarDatePicker>(find.byType(CalendarDatePicker));
+      expect(
+          picker.lastDate,
+          DateTime(2026, 10, 8)
+              .add(Duration(days: plan == 'STARTER' ? 14 : 30)));
+      expect(checks, 1);
+    });
+  }
+
+  for (final unavailable in [false, true]) {
+    testWidgets(
+        'keeps existing queues but blocks rescheduling when '
+        '${unavailable ? 'the plan cannot be loaded' : 'the plan is Basic'}',
+        (tester) async {
+      final now = DateTime(2026, 10, 8, 12);
+      var calls = 0;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: CalendarScreen(
+        now: () => now,
+        loadSubscription: () async {
+          if (unavailable) {
+            throw const ApiException('Request failed', statusCode: 503);
+          }
+          return _scheduleSubscription('BASIC');
+        },
+        loadScheduledPosts: () async => [_queuedFixture(now)],
+        reschedulePost: (_, __) async {
+          calls++;
+          return _queuedFixture(now);
+        },
+      ))));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('คิวเดิม'));
+      await tester.tap(find.text('คิวเดิม'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('เลื่อนเวลา'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CalendarDatePicker), findsNothing);
+      expect(calls, 0);
+      expect(find.text('คิวเดิม'), findsOneWidget);
+      expect(
+          find.text(unavailable
+              ? 'ตรวจสอบแพ็กเกจไม่สำเร็จ กรุณาลองใหม่ก่อนตั้งเวลา'
+              : 'การตั้งเวลาโพสต์ต้องใช้แพ็กเกจ Starter 199 หรือ Pro 299'),
+          findsOneWidget);
+    });
+  }
+
   testWidgets('shows Thai gateway failure and keeps retry available',
       (tester) async {
     await tester.pumpWidget(MaterialApp(
@@ -182,6 +348,7 @@ void main() {
           body: CalendarScreen(
             now: () => now,
             loadScheduledPosts: () async => [post],
+            loadSubscription: () async => _scheduleSubscription('PRO'),
             reschedulePost: (_, __) => pendingReschedule.future,
           ),
         ),
@@ -292,6 +459,7 @@ void main() {
               refreshToken: refreshToken,
               now: () => now,
               loadScheduledPosts: loadPosts,
+              loadSubscription: () async => _scheduleSubscription('PRO'),
               reschedulePost: (postId, next) async {
                 updatedPost = ScheduledPostResult(
                   id: postId,
@@ -362,6 +530,7 @@ void main() {
               refreshToken: refreshToken,
               now: () => now,
               loadScheduledPosts: loadPosts,
+              loadSubscription: () async => _scheduleSubscription('PRO'),
               reschedulePost: (postId, next) async => ScheduledPostResult(
                 id: postId,
                 caption: 'โพสต์หลังเลื่อนจากผลตอบกลับ',
@@ -562,6 +731,7 @@ void main() {
                 createdAt: DateTime.now(),
               ),
             ],
+            loadSubscription: () async => _scheduleSubscription('PRO'),
             reschedulePost: (postId, next) async {
               rescheduleCalls += 1;
               throw const ApiException(
@@ -604,6 +774,7 @@ void main() {
         home: Scaffold(
           body: CalendarScreen(
             now: () => now,
+            loadSubscription: () async => _scheduleSubscription('PRO'),
             loadScheduledPosts: () async => [
               ScheduledPostResult(
                 id: 'bounded-reschedule',
@@ -657,6 +828,7 @@ void main() {
                 createdAt: now.subtract(const Duration(days: 1)),
               ),
             ],
+            loadSubscription: () async => _scheduleSubscription('PRO'),
             reschedulePost: (postId, next) async {
               rescheduleCalls += 1;
               return ScheduledPostResult(

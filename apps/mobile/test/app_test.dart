@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/app.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/localization/language_controller.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
+import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
+import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 
 import 'support/uploader_wizard_test_navigation.dart';
 
@@ -229,7 +232,32 @@ void main() {
     );
     addTearDown(sessionStore.clear);
 
-    await tester.pumpWidget(const PostDeeApp(locale: Locale('th')));
+    // The layout exercise needs a known scheduling entitlement. Use the
+    // existing shell injection rather than assuming the offline API is Pro.
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: PostDeeThemeController.instance.themeMode,
+      locale: const Locale('th'),
+      localizationsDelegates: const [
+        PostDeeLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: PostDeeLocalizations.supportedLocales,
+      home: PostDeeShell(
+        languageController: PostDeeLanguageController.instance,
+        loadSubscription: () async => const SubscriptionStatusResult(
+          userId: 'layout-pro-user',
+          plan: 'PRO',
+          status: 'ACTIVE',
+          canSchedule: true,
+          canUseAiCaptions: true,
+          canUseAnalytics: true,
+        ),
+      ),
+    ));
     await tester.pumpAndSettle();
 
     await _tapReferenceNavButton(tester, 'สร้างโพสต์');

@@ -15,6 +15,7 @@ import type { PublishQueue } from '../queue/publishQueue.js';
 import { isStorageKeyOwnedByUser } from '../storage/storageKeyPolicy.js';
 import {
   canSchedulePosts,
+  maxScheduleAheadDaysByPlan,
   monthlyPostUnitLimits,
   readPlanLabel
 } from '../subscriptions/subscriptionEntitlements.js';
@@ -186,12 +187,10 @@ const readOptionalIsoDate = (value: unknown) => {
     : { ok: true as const, value: normalizedDate };
 };
 
-export const maxScheduleAheadDays = 30;
 export const platformSettingsVersion = 1;
-const maxScheduleAheadMs = maxScheduleAheadDays * 24 * 60 * 60 * 1000;
 
-const isScheduleBeyondLimit = (scheduledAt: string, now: Date) =>
-  Date.parse(scheduledAt) > now.getTime() + maxScheduleAheadMs;
+const isScheduleBeyondLimit = (scheduledAt: string, now: Date, maxDays: number) =>
+  Date.parse(scheduledAt) > now.getTime() + maxDays * 24 * 60 * 60 * 1000;
 
 const isScheduleInPastOrPresent = (scheduledAt: string, now: Date) =>
   Date.parse(scheduledAt) <= now.getTime();
@@ -672,15 +671,6 @@ export const registerPostRoutes = (
       return;
     }
 
-    if (scheduledAt && isScheduleBeyondLimit(scheduledAt, requestNow)) {
-      response.status(400).json({
-        status: 'error',
-        code: 'SCHEDULE_LIMIT_EXCEEDED',
-        message: 'Posts can be scheduled up to 30 days in advance'
-      });
-      return;
-    }
-
     if (!isStorageKeyOwnedByUser({ videoS3Key, userId: authUser.id })) {
       response.status(403).json({
         status: 'error',
@@ -747,7 +737,7 @@ export const registerPostRoutes = (
       return;
     }
 
-    const subscriptionPlan =
+    let subscriptionPlan =
       subscriptionPlanOverride.plan ?? (await subscriptionStore.getPlan(authUser));
 
     if (scheduledAt && !canSchedulePosts(subscriptionPlan)) {
@@ -755,6 +745,16 @@ export const registerPostRoutes = (
         status: 'error',
         code: 'PAID_PLAN_REQUIRED',
         message: 'Cloud Scheduling requires the Starter or Pro plan'
+      });
+      return;
+    }
+
+    const maxScheduleAheadDays = maxScheduleAheadDaysByPlan[subscriptionPlan];
+    if (scheduledAt && isScheduleBeyondLimit(scheduledAt, requestNow, maxScheduleAheadDays)) {
+      response.status(400).json({
+        status: 'error',
+        code: 'SCHEDULE_LIMIT_EXCEEDED',
+        message: `Posts can be scheduled up to ${maxScheduleAheadDays} days in advance`
       });
       return;
     }
@@ -787,7 +787,7 @@ export const registerPostRoutes = (
       }
     }
 
-    const monthlyPostLimit = monthlyPostUnitLimits[subscriptionPlan];
+    let monthlyPostLimit = monthlyPostUnitLimits[subscriptionPlan];
     const idempotentInput: CreatePostWithinMonthlyLimitInput = {
       userId: authUser.id,
       ...(clientRequestId ? { clientRequestId } : {}),
@@ -840,6 +840,36 @@ export const registerPostRoutes = (
           ) {
             response.status(409).json(platformTargetUnavailableResponse);
             return;
+          }
+        }
+
+        if (scheduledAt) {
+          // A matching intent accepted while this request waited keeps its original
+          // entitlement. Only new schedules must recheck the plan under the owner lock.
+          const acceptedPost = clientRequestId
+            ? await store.findIdempotent({ userId: authUser.id, clientRequestId })
+            : undefined;
+          if (!acceptedPost) {
+            subscriptionPlan = subscriptionPlanOverride.plan ?? (await subscriptionStore.getPlan(authUser));
+            if (!canSchedulePosts(subscriptionPlan)) {
+              response.status(402).json({
+                status: 'error',
+                code: 'PAID_PLAN_REQUIRED',
+                message: 'Cloud Scheduling requires the Starter or Pro plan'
+              });
+              return;
+            }
+            const currentMaxDays = maxScheduleAheadDaysByPlan[subscriptionPlan];
+            if (isScheduleBeyondLimit(scheduledAt, requestNow, currentMaxDays)) {
+              response.status(400).json({
+                status: 'error',
+                code: 'SCHEDULE_LIMIT_EXCEEDED',
+                message: `Posts can be scheduled up to ${currentMaxDays} days in advance`
+              });
+              return;
+            }
+            monthlyPostLimit = monthlyPostUnitLimits[subscriptionPlan];
+            idempotentInput.monthlyPostUnitLimit = monthlyPostLimit;
           }
         }
 
@@ -961,15 +991,6 @@ export const registerPostRoutes = (
       return;
     }
 
-    if (isScheduleBeyondLimit(scheduledAt, requestNow)) {
-      response.status(400).json({
-        status: 'error',
-        code: 'SCHEDULE_LIMIT_EXCEEDED',
-        message: 'Posts can be scheduled up to 30 days in advance'
-      });
-      return;
-    }
-
     const postId = String(request.params.id);
     const releaseOwner = await ownerMutationLock.acquire(authUser.id);
     const releaseMutation = await acquireLock(
@@ -1002,6 +1023,35 @@ export const registerPostRoutes = (
         response.status(404).json({
           status: 'error',
           message: 'Scheduled post not found'
+        });
+        return;
+      }
+
+      const subscriptionPlan = await subscriptionStore.getPlan(authUser);
+      if (!canSchedulePosts(subscriptionPlan)) {
+        response.status(402).json({
+          status: 'error',
+          code: 'PAID_PLAN_REQUIRED',
+          message: 'Cloud Scheduling requires the Starter or Pro plan'
+        });
+        return;
+      }
+
+      const maxScheduleAheadDays = maxScheduleAheadDaysByPlan[subscriptionPlan];
+      if (isScheduleBeyondLimit(scheduledAt, requestNow, maxScheduleAheadDays)) {
+        response.status(400).json({
+          status: 'error',
+          code: 'SCHEDULE_LIMIT_EXCEEDED',
+          message: `Posts can be scheduled up to ${maxScheduleAheadDays} days in advance`
+        });
+        return;
+      }
+
+      if (isScheduleInPastOrPresent(scheduledAt, now())) {
+        response.status(400).json({
+          status: 'error',
+          code: 'SCHEDULE_MUST_BE_FUTURE',
+          message: 'scheduledAt must be in the future'
         });
         return;
       }

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/monitoring/postdee_analytics.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
@@ -115,6 +116,15 @@ Future<List<SocialConnectionResult>> _loadConnectedSocialConnections() async =>
 
 Future<void> _publishingReady() async {}
 
+SubscriptionStatusResult _scheduleSubscription(String plan) =>
+    SubscriptionStatusResult(
+        userId: 'uploader-user',
+        plan: plan,
+        status: plan == 'BASIC' ? 'INACTIVE' : 'ACTIVE',
+        canSchedule: plan == 'STARTER' || plan == 'PRO',
+        canUseAiCaptions: false,
+        canUseAnalytics: false);
+
 Future<void> _pickVideoFromPreview(WidgetTester tester) async {
   await goToUploaderStep(tester, 0);
   final pickVideoButton =
@@ -220,6 +230,7 @@ void main() {
       isPostScheduleWithinLimit(
         scheduledAt: now.add(const Duration(days: 30)),
         now: now,
+        plan: 'PRO',
       ),
       isTrue,
     );
@@ -227,12 +238,220 @@ void main() {
       isPostScheduleWithinLimit(
         scheduledAt: now.add(const Duration(days: 30, milliseconds: 1)),
         now: now,
+        plan: 'PRO',
       ),
       isFalse,
     );
   });
 
   final uploaderScroll = find.byType(Scrollable).first;
+
+  for (final interruptedBy in ['disposal', 'owner change', 'time passing']) {
+    testWidgets('stops a pending scheduling plan check after $interruptedBy',
+        (tester) async {
+      final session = PostDeeAuthSessionStore.instance;
+      final original = session.session;
+      session.signIn(AuthSession.authenticated(
+          userId: 'schedule-owner-a', idToken: 'test-a'));
+      addTearDown(() => session.signIn(original));
+      var now = DateTime(2026, 10, 8, 18, 29);
+      final pending = Completer<SubscriptionStatusResult>();
+      var checks = 0;
+      var uploads = 0;
+      var posts = 0;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: UploaderScreen(
+        now: () => now,
+        draftStore: TestPublishDraftStore(),
+        loadSocialConnections: _loadConnectedSocialConnections,
+        checkPublishingReadiness: _publishingReady,
+        pickVideo: () async => _createPickedVideoFixture('pending-plan.mp4'),
+        loadSubscription: () {
+          checks++;
+          return checks == 1
+              ? Future.value(_scheduleSubscription('PRO'))
+              : pending.future;
+        },
+        createUpload: (_) async {
+          uploads++;
+          throw StateError('must not upload');
+        },
+        createPost: (_) async {
+          posts++;
+          throw StateError('must not post');
+        },
+      ))));
+      await _pickVideoFromPreview(tester);
+      await _enterUploadCaption(tester);
+      await goToUploaderStep(tester, 3);
+      final schedule = find.byKey(const ValueKey('uploader-schedule-later'));
+      await tester.scrollUntilVisible(schedule, 300,
+          scrollable: uploaderScroll);
+      await tester.tap(schedule);
+      await tester.pumpAndSettle();
+      final today = find.byKey(const ValueKey('uploader-schedule-day-today'));
+      await tester.ensureVisible(today);
+      await tester.tap(today);
+      await tester.pumpAndSettle();
+      final confirm = find.byKey(const ValueKey('publish-review-confirm'));
+      await tester.ensureVisible(confirm);
+      await tester.tap(confirm);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(checks, 2);
+      if (interruptedBy == 'disposal') {
+        await tester.pumpWidget(const SizedBox());
+      } else if (interruptedBy == 'owner change') {
+        session.signIn(AuthSession.authenticated(
+            userId: 'schedule-owner-b', idToken: 'test-b'));
+      } else {
+        now = now.add(const Duration(minutes: 2));
+      }
+      pending.complete(_scheduleSubscription('PRO'));
+      await tester.pumpAndSettle();
+      expect(uploads, 0);
+      expect(posts, 0);
+      expect(tester.takeException(), isNull);
+      if (interruptedBy == 'time passing') {
+        await tester.drag(uploaderScroll, const Offset(0, 3000));
+        await tester.pumpAndSettle();
+        expect(find.text('เวลาตั้งโพสต์ต้องเป็นเวลาในอนาคต'), findsOneWidget);
+        expect(
+            find.textContaining('ล่วงหน้าได้สูงสุด 30 วัน กรุณาเลือกเวลาใหม่'),
+            findsNothing);
+      }
+    });
+  }
+
+  testWidgets('blocks a stale Pro schedule after downgrade before upload',
+      (tester) async {
+    final now = DateTime(2026, 10, 8, 12);
+    var plan = 'PRO';
+    var checks = 0;
+    var uploads = 0;
+    var posts = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: UploaderScreen(
+      now: () => now,
+      draftStore: TestPublishDraftStore(),
+      loadSocialConnections: _loadConnectedSocialConnections,
+      checkPublishingReadiness: _publishingReady,
+      pickVideo: () async => _createPickedVideoFixture('stale-schedule.mp4'),
+      loadSubscription: () async {
+        checks++;
+        return _scheduleSubscription(plan);
+      },
+      createUpload: (_) async {
+        uploads++;
+        throw StateError('must not upload');
+      },
+      createPost: (_) async {
+        posts++;
+        throw StateError('must not post');
+      },
+    ))));
+    await _pickVideoFromPreview(tester);
+    await _enterUploadCaption(tester);
+    await goToUploaderStep(tester, 3);
+    final schedule = find.byKey(const ValueKey('uploader-schedule-later'));
+    await tester.scrollUntilVisible(schedule, 300, scrollable: uploaderScroll);
+    await tester.tap(schedule);
+    await tester.pumpAndSettle();
+    final custom = find.byKey(const ValueKey('uploader-schedule-day-custom'));
+    await tester.ensureVisible(custom);
+    await tester.tap(custom);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('28'));
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    plan = 'STARTER';
+    final confirm = find.byKey(const ValueKey('publish-review-confirm'));
+    await tester.ensureVisible(confirm);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(checks, 3);
+    expect(uploads, 0);
+    expect(posts, 0);
+    await tester.drag(uploaderScroll, const Offset(0, 3000));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('ตั้งเวลาโพสต์ล่วงหน้าได้สูงสุด 14 วัน'),
+        findsOneWidget);
+    expect(find.textContaining('ตรวจปฏิทินก่อนเริ่มโพสต์ใหม่'), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-schedule-summary')),
+        findsOneWidget);
+  });
+
+  for (final plan in ['STARTER', 'PRO']) {
+    testWidgets('$plan limits the uploader date picker', (tester) async {
+      final now = DateTime(2026, 10, 8, 12);
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: UploaderScreen(
+        draftStore: TestPublishDraftStore(),
+        now: () => now,
+        loadSocialConnections: _loadConnectedSocialConnections,
+        loadSubscription: () async => _scheduleSubscription(plan),
+      ))));
+      await tester.pumpAndSettle();
+      await goToUploaderStep(tester, 3);
+      final schedule = find.byKey(const ValueKey('uploader-schedule-later'));
+      await tester.scrollUntilVisible(schedule, 300,
+          scrollable: uploaderScroll);
+      await tester.tap(schedule);
+      await tester.pumpAndSettle();
+      final custom = find.byKey(const ValueKey('uploader-schedule-day-custom'));
+      await tester.ensureVisible(custom);
+      await tester.tap(custom);
+      await tester.pumpAndSettle();
+      final picker =
+          tester.widget<CalendarDatePicker>(find.byType(CalendarDatePicker));
+      expect(
+          picker.lastDate,
+          DateTime(2026, 10, 8)
+              .add(Duration(days: plan == 'STARTER' ? 14 : 30)));
+    });
+  }
+
+  testWidgets('keeps scheduling closed until its entitlement is known',
+      (tester) async {
+    final pending = Completer<SubscriptionStatusResult>();
+    var checks = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: UploaderScreen(
+      draftStore: TestPublishDraftStore(),
+      loadSocialConnections: _loadConnectedSocialConnections,
+      loadSubscription: () {
+        checks++;
+        return checks == 1
+            ? pending.future
+            : Future.value(_scheduleSubscription('PRO'));
+      },
+    ))));
+    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 3);
+    final schedule = find.byKey(const ValueKey('uploader-schedule-later'));
+    await tester.scrollUntilVisible(schedule, 300, scrollable: uploaderScroll);
+    await tester.ensureVisible(schedule);
+    await tester.tap(schedule);
+    await tester.pump();
+    expect(
+        find.byKey(const ValueKey('uploader-schedule-summary')), findsNothing);
+    pending
+        .completeError(const ApiException('Request failed', statusCode: 503));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('uploader-schedule-summary')), findsNothing);
+    expect(find.text('ตรวจสอบแพ็กเกจไม่สำเร็จ กรุณาลองใหม่ก่อนตั้งเวลา'),
+        findsOneWidget);
+    await tester.ensureVisible(schedule);
+    await tester.tap(schedule);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-schedule-summary')),
+        findsOneWidget);
+    expect(checks, 2);
+  });
 
   testWidgets('failed channel status offers retry without claiming no accounts',
       (tester) async {
@@ -767,7 +986,7 @@ void main() {
         find.byKey(const ValueKey('uploader-schedule-panel')), findsOneWidget);
     expect(
       find.text(
-        'ตั้งเวลาได้ล่วงหน้าสูงสุด 30 วันในแพ็กเกจ Starter ขึ้นไป',
+        'Starter ตั้งเวลาล่วงหน้าได้ 14 วัน · Pro 30 วัน',
       ),
       findsOneWidget,
     );
@@ -1655,23 +1874,8 @@ void main() {
     await tester.tap(scheduleButton);
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('uploader-schedule-summary')),
-        findsOneWidget);
-    await _enterUploadCaption(tester);
-
-    final postButtonFinder =
-        find.byKey(const ValueKey('publish-review-confirm'));
-
-    await tester.scrollUntilVisible(
-      postButtonFinder,
-      500,
-      scrollable: uploaderScroll,
-    );
-    await tester.ensureVisible(postButtonFinder);
-    await tester.pumpAndSettle();
-    await tester.tap(postButtonFinder);
-    await _settlePublishSubmission(tester);
-
+    expect(
+        find.byKey(const ValueKey('uploader-schedule-summary')), findsNothing);
     expect(subscriptionChecks, 1);
     expect(
       find.text('การตั้งเวลาโพสต์ต้องใช้แพ็กเกจ Starter 199 หรือ Pro 299'),

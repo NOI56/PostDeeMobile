@@ -24,7 +24,7 @@ void main() {
     );
     expect(
       PostDeeLegalDocuments.termsOfService.body,
-      contains('ไม่เกิน 30 วัน'),
+      contains('Starter ไม่เกิน 14 วัน และ Pro ไม่เกิน 30 วัน'),
     );
   });
 }

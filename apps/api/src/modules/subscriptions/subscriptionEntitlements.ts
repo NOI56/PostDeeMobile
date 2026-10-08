@@ -12,6 +12,12 @@ export const monthlyAiCaptionGenerationLimits: Record<SubscriptionPlan, number> 
   PRO: 120
 };
 
+export const maxScheduleAheadDaysByPlan: Record<SubscriptionPlan, number> = {
+  BASIC: 0,
+  STARTER: 14,
+  PRO: 30
+};
+
 export type RealClipCaptionEntitlementMode = 'AUDIO_ONLY' | 'AUDIO_WITH_FRAMES';
 
 export const canSchedulePosts = (plan: SubscriptionPlan) => plan !== 'BASIC';

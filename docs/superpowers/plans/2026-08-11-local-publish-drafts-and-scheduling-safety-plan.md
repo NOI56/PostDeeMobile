@@ -73,8 +73,10 @@ migration แบบ API-first และทดสอบ release candidate บน�
 
 ## สัญญาการตั้งเวลาและโพสต์เลย
 
-- การสร้างและเลื่อนเวลาโพสต์ต้องเป็นเวลาในอนาคตอย่างเคร่งครัด และไม่เกิน 30 วัน
-  จากเวลาปัจจุบันของ API; Mobile ใช้กรอบเดียวกันก่อนส่ง
+- การสร้างและเลื่อนเวลาโพสต์ต้องเป็นเวลาในอนาคตอย่างเคร่งครัด และไม่เกิน 14 วัน
+  สำหรับ Starter หรือ 30 วันสำหรับ Pro จากเวลาปัจจุบันของ API; Mobile ใช้กรอบ
+  ตามแพ็กเกจเดียวกันก่อนส่ง คิวเดิมที่รับแล้วคงเวลาเดิมหลังเปลี่ยนกติกาหรือลดแพ็ก
+  โดยไม่ตรวจระยะซ้ำตอนอ่านคิวหรือโพสต์อัตโนมัติ กติกานี้ไม่เปลี่ยนอายุไฟล์ใน R2
 - ร่างอาจถูกเปิดหลังเวลาที่จำไว้ผ่านไปแล้ว แต่ต้องเลือกเวลาใหม่หรือเปลี่ยนเป็นโพสต์เลย
   ก่อนเริ่ม readiness/upload
 - `POST /posts/:id/publish-now` ใช้เฉพาะโพสต์ของผู้ใช้ที่ยัง `QUEUED` และมี
@@ -121,7 +123,7 @@ migration แบบ API-first และทดสอบ release candidate บน�
   Serializable เดียวกัน รับเฉพาะ observation ที่ใหม่กว่าอย่างเคร่งครัด; timestamp
   ที่เก่าหรือเท่ากันห้ามย้อน entitlement และ fallback clock ต้องถูกระบุเป็น residual risk
 - `scheduledAt` ของ create/reschedule ต้องเป็น RFC 3339 ที่มี timezone และวันที่ปฏิทิน
-  ถูกต้อง ก่อนบังคับเงื่อนไขอนาคต/+30 วัน ห้ามกลับไปใช้ parser แบบ permissive
+  ถูกต้อง ก่อนบังคับเงื่อนไขอนาคต/+14 หรือ +30 วันตามแพ็ก ห้ามกลับไปใช้ parser แบบ permissive
 - การนับ post units ต้อง deduplicate แพลตฟอร์มและ reserve quota/insert post แบบ atomic;
   Prisma ใช้ Serializable transaction และ retry write conflict ก่อนตรวจโควตาซ้ำ
 - ต้องรักษา main/recovery publishing readiness, 9:16/rotation, mounted guards,

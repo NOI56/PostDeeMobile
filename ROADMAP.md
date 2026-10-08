@@ -290,7 +290,8 @@ Current status:
   API/R2/provider/queue/quota
   effect when saving. Drafts do not sync across devices and OS backup may include
   them. Destination selection now starts empty, review states each platform's
-  outcome, schedules must be future and within 30 days, and queued schedules have
+  outcome, schedules must be future and within 14 days for Starter or 30 days
+  for Pro, and queued schedules have
   a dedicated publish-now command. The result UI distinguishes queued,
   publishing, published, and partial outcomes and retains a draft for an unknown
   status. Focused automated coverage exists; the final combined suites,
@@ -513,7 +514,8 @@ Planned order:
    save/changed-form exit, and a functional cover editor (video
    frame, Thai text, font/style/position, rendered 1080x1920 image, secure
    upload, preview, and platform-aware delivery), platform toggles,
-   schedule/date/time controls capped at 30 days in advance, draft state, and a
+   schedule/date/time controls capped at 14 days for Starter and 30 days for Pro,
+   draft state, and a
    single clear final Post CTA. The four-step implementation now exists;
    final regression/build/native QA and real connected-account publishing
    verification remain separate release gates.
@@ -627,8 +629,8 @@ removed so this package plan does not compete with a separate review feature.
 | Tier | Price | Main Value | Intended Limits |
 | --- | ---: | --- | --- |
 | Basic | Free | Try posting and publish a profile page | Phone verification required for 3 real-time test posts per month; one profile page with up to 20 links |
-| Starter | 199 THB/month | Practical daily posting plus AI caption from the real clip audio | 120 post units/month, scheduling, calendar, templates, auto watermark, EP clip splitting UI, one profile page with up to 20 links, and 50 real-clip AI caption generations/month |
-| Pro | 299 THB/month | Growth tools, analytics, team workflows, and stronger AI from audio plus selected visual frames | 250 post units/month, scheduling, calendar, templates, auto watermark, EP clip splitting, full analytics, hashtag radar, AI comment center, viral alert, one profile page with up to 20 links, Team & Editor Access, and 120 real-clip AI caption generations/month |
+| Starter | 199 THB/month | Practical daily posting plus AI caption from the real clip audio | 120 post units/month, scheduling up to 14 days ahead, calendar, templates, auto watermark, EP clip splitting UI, one profile page with up to 20 links, and 50 real-clip AI caption generations/month |
+| Pro | 299 THB/month | Growth tools, analytics, team workflows, and stronger AI from audio plus selected visual frames | 250 post units/month, scheduling up to 30 days ahead, calendar, templates, auto watermark, EP clip splitting, full analytics, hashtag radar, AI comment center, viral alert, one profile page with up to 20 links, Team & Editor Access, and 120 real-clip AI caption generations/month |
 
 Package rules:
 
@@ -638,8 +640,11 @@ Package rules:
 - Basic must verify a phone number before using the 3-post free test quota.
 - Post units count by platform: posting one video to four platforms uses four
   units.
-- Starter can schedule posts. Analytics, hashtag radar, AI comment center,
-  viral alert, and team access stay Pro-only.
+- Starter can schedule up to 14 days ahead; Pro can schedule up to 30 days.
+  Previously accepted schedules retain their time after this policy change or
+  a downgrade. New schedules and reschedules use the current plan's limit;
+  these limits do not define R2 file retention. Analytics, hashtag radar,
+  AI comment center, viral alert, and team access stay Pro-only.
 - Starter AI captioning listens to the selected clip audio and returns SEO
   wording, hashtags, caption options, and hook ideas.
 - Pro AI captioning can use audio plus selected visual frames from the clip for

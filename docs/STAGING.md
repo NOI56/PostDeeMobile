@@ -726,7 +726,8 @@ Staging Blueprint ติดตาม `main` และ deploy เมื่อ che
       SOCIAL_PUBLISHING_UNAVAILABLE` พร้อม `Cache-Control: private, no-store`
 - [ ] จำลอง async `202`/ผลไม่แน่นอนเพื่อยืนยันว่ารอ poll แบบ bounded, ไม่สร้าง id
       ปลอม และไม่ retry POST ซ้ำก่อนผู้ทดสอบตรวจปลายทาง
-- [ ] ทดสอบ create/reschedule ว่ารับเฉพาะเวลาอนาคตไม่เกิน 30 วัน และทดสอบ
+- [ ] ทดสอบ create/reschedule ว่ารับเฉพาะเวลาอนาคตไม่เกิน 14 วันสำหรับ Starter
+      หรือ 30 วันสำหรับ Pro และคงคิวเดิมหลังลดแพ็กหรือเปลี่ยนกติกา และทดสอบ
       owner-scoped `publish-now` ว่าย้าย schedule ที่ยัง `QUEUED` เป็น ready โดย
       queue failure คงเวลาเดิม; รวม retry และสถานะล้มเหลวไม่ให้ค้างผิดปกติ
 - [ ] ก่อนเปิด account deletion หรือใช้หลาย API instance/separate real worker ให้ลง

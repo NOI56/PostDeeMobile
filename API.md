@@ -915,8 +915,9 @@ Rules:
 - If `scheduledAt` is present, it must use the RFC 3339 shape
   `YYYY-MM-DDTHH:mm:ss(.fraction)?(Z|±HH:mm)` with a valid calendar date and
   timezone. The API normalizes it to UTC. It must be strictly after the server's
-  current time, cannot be more than 30 days ahead, and the user must be Starter
-  or Pro.
+  current time, cannot be more than 14 days ahead for Starter or 30 days for
+  Pro, and the user must have one of those paid plans. The window is a rolling
+  number of 24-hour days, inclusive at its upper boundary.
 - Basic users must have a verified phone number before using the free quota.
 - Basic is limited to 3 post units per month after phone verification.
 - Starter is limited to 120 post units per month.
@@ -1069,7 +1070,12 @@ Reschedules an authenticated user's queued post. Body:
 returns `404` for a missing/non-queued user-owned post, and returns `503` when
 the publish queue cannot be rescheduled. The timestamp uses the same strict RFC
 3339 contract as post creation, must be in the future, and must be no more than
-30 days after the server's current time. When social publishing is disabled it
+14 days ahead for the current Starter plan or 30 days for Pro; Basic cannot
+create a new schedule or reschedule a queued post. Existing accepted
+schedules retain their original time after a policy change or plan downgrade;
+only a new scheduling request applies the current limit. `SCHEDULE_LIMIT_EXCEEDED`
+keeps its existing error shape, with a message naming the plan's 14- or 30-day
+limit. When social publishing is disabled it
 returns `503 SOCIAL_PUBLISHING_UNAVAILABLE` before reading or changing the post
 or queue schedule.
 
@@ -2568,7 +2574,8 @@ The following work is still required before production launch:
   before enabling Production deletion, multi-instance API, or a real separate
   worker.
 - Run the local-draft, stable-request replay, explicit destination, truthful
-  status, future/30-day, and publish-now matrix on physical Android and iPhone
+  status, future/14-day Starter and 30-day Pro limits, preservation of accepted
+  queues after downgrades, and publish-now matrix on physical Android and iPhone
   release candidates and through controlled Staging provider E2E.
 - Replace the in-app Privacy Policy and Terms working drafts with finalized,
   hosted legal text, and make Android/iOS backup plus Data Safety/App Privacy

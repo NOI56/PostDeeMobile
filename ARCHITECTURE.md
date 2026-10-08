@@ -829,8 +829,11 @@ Rules:
 - Basic users can create real-time posts only.
 - Basic users must verify a phone number before using the free quota.
 - Basic users are limited to 3 post units per month after phone verification.
-- Starter and Pro can schedule posts up to 30 days in advance. The mobile date
-  picker and post API enforce the same limit. The API accepts only calendar-valid
+- Starter can schedule posts up to 14 days in advance; Pro can schedule up to
+  30 days. The mobile date picker and post API enforce the current plan's limit
+  for new schedules and reschedules. Previously accepted queue entries retain
+  their time after a policy change or downgrade, without worker revalidation or
+  data migration. The API accepts only calendar-valid
   RFC 3339 timestamps with `Z` or `±HH:mm`, normalizes them to UTC, and rejects
   past, timezone-free, or malformed values for create and reschedule requests.
 - Starter is limited to 120 post units per month.

@@ -6,7 +6,6 @@ import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/theme/app_theme.dart';
-import '../analytics/analytics_error_message.dart';
 import '../billing/paywall_screen.dart';
 import '../link_in_bio/link_in_bio_screen.dart';
 import '../notifications/push_notification.dart';
@@ -15,7 +14,6 @@ import '../posts/post_detail_screen.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_skeleton.dart';
 
-typedef HomeAnalyticsLoader = Future<AnalyticsSummaryResult> Function();
 typedef HomeSubscriptionLoader = Future<SubscriptionStatusResult> Function();
 typedef HomeRecentPostsLoader = Future<List<PostSummaryResult>> Function();
 
@@ -23,7 +21,6 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     this.isActive = true,
-    this.loadAnalytics,
     this.loadSubscription,
     this.loadRecentPosts,
     this.onViewAllPosts,
@@ -37,7 +34,6 @@ class HomeScreen extends StatefulWidget {
   ///
   /// The latest-post list refreshes whenever this changes from false to true.
   final bool isActive;
-  final HomeAnalyticsLoader? loadAnalytics;
   final HomeSubscriptionLoader? loadSubscription;
   final HomeRecentPostsLoader? loadRecentPosts;
   final VoidCallback? onViewAllPosts;
@@ -55,25 +51,20 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _apiClient = PostDeeApiClient();
-  AnalyticsSummaryResult? _analytics;
   SubscriptionStatusResult? _subscription;
   List<PostSummaryResult> _recentPosts = const [];
-  bool _isLoadingAnalytics = false;
   bool _isLoadingSubscription = true;
   bool _isLoadingPosts = true;
   bool _postsLoadInProgress = false;
   bool _postsReloadPending = false;
   String? _postsErrorMessage;
-  String? _analyticsErrorMessage;
   String? _subscriptionErrorMessage;
   var _subscriptionLoadGeneration = 0;
-  var _analyticsLoadGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     _loadSubscription();
-    _loadAnalytics();
     if (widget.isActive) {
       _loadRecentPosts();
     } else {
@@ -193,7 +184,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openPaywall() async {
-    final hadAnalyticsAccess = _subscription?.canUseAnalytics ?? false;
     final loader =
         widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
 
@@ -205,64 +195,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (mounted) {
       await _loadSubscription();
-      if (mounted &&
-          !hadAnalyticsAccess &&
-          (_subscription?.canUseAnalytics ?? false)) {
-        await _loadAnalytics();
-      }
-    }
-  }
-
-  Future<void> _loadAnalytics() async {
-    final loadGeneration = ++_analyticsLoadGeneration;
-    setState(() {
-      _isLoadingAnalytics = true;
-      _analyticsErrorMessage = null;
-    });
-
-    try {
-      final loader = widget.loadAnalytics ?? _apiClient.loadAnalyticsSummary;
-      final analytics = await loader();
-
-      if (!mounted || loadGeneration != _analyticsLoadGeneration) {
-        return;
-      }
-
-      setState(() {
-        _analytics = analytics;
-      });
-    } on ApiException catch (error) {
-      if (!mounted || loadGeneration != _analyticsLoadGeneration) {
-        return;
-      }
-
-      setState(() {
-        _analyticsErrorMessage = analyticsErrorMessage(error);
-      });
-    } on SocketException {
-      if (!mounted || loadGeneration != _analyticsLoadGeneration) {
-        return;
-      }
-
-      final l10n = PostDeeLocalizations.of(context);
-      setState(() {
-        _analyticsErrorMessage = l10n.homeApiConnectionError;
-      });
-    } catch (_) {
-      if (!mounted || loadGeneration != _analyticsLoadGeneration) {
-        return;
-      }
-
-      final l10n = PostDeeLocalizations.of(context);
-      setState(() {
-        _analyticsErrorMessage = l10n.homeAnalyticsLoadError;
-      });
-    } finally {
-      if (mounted && loadGeneration == _analyticsLoadGeneration) {
-        setState(() {
-          _isLoadingAnalytics = false;
-        });
-      }
     }
   }
 
@@ -283,12 +215,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final l10n = PostDeeLocalizations.of(context);
     final isThai = l10n.locale.languageCode == 'th';
-    final isAnalyticsLocked = !_isLoadingSubscription &&
-        _subscription != null &&
-        !_subscription!.canUseAnalytics;
-    final analyticsMessage = isAnalyticsLocked
-        ? (isThai ? 'เฉพาะแพ็กเกจ Pro' : 'Pro plan only')
-        : _analyticsErrorMessage;
     final name = widget.userName?.trim();
     final avatarInitial = (name != null && name.isNotEmpty)
         ? name.characters.first.toUpperCase()
@@ -314,17 +240,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 14),
         _LinkInBioShortcutCard(onOpen: widget.onOpenLinkInBio),
-        const SizedBox(height: 14),
-        _AnalyticsMetricSection(
-          totalViews: isAnalyticsLocked ? null : _analytics?.totalViews,
-          totalLikes: isAnalyticsLocked ? null : _analytics?.totalLikes,
-          isLoading: !isAnalyticsLocked && _isLoadingAnalytics,
-          errorMessage: analyticsMessage,
-          isLocked: isAnalyticsLocked,
-          onAction: isAnalyticsLocked
-              ? _openPaywall
-              : (_isLoadingAnalytics ? null : _loadAnalytics),
-        ),
         const SizedBox(height: 14),
         Row(
           children: [
@@ -828,248 +743,6 @@ class _PlanSummaryCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _AnalyticsMetricSection extends StatelessWidget {
-  const _AnalyticsMetricSection({
-    required this.totalViews,
-    required this.totalLikes,
-    required this.isLoading,
-    required this.errorMessage,
-    required this.isLocked,
-    required this.onAction,
-  });
-
-  final int? totalViews;
-  final int? totalLikes;
-  final bool isLoading;
-  final String? errorMessage;
-  final bool isLocked;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final viewsCard = _TotalPostsCard(
-      totalViews: totalViews,
-      isLoading: isLoading,
-      errorMessage: errorMessage,
-      isLocked: isLocked,
-      onAction: onAction,
-    );
-    final likesCard = _LikesMetricCard(
-      totalLikes: totalLikes,
-      isLoading: isLoading,
-      errorMessage: errorMessage,
-      isLocked: isLocked,
-      onAction: onAction,
-    );
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 300) {
-          return Column(
-            children: [
-              viewsCard,
-              const SizedBox(height: 10),
-              likesCard,
-            ],
-          );
-        }
-
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: viewsCard),
-            const SizedBox(width: 10),
-            Expanded(child: likesCard),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _TotalPostsCard extends StatelessWidget {
-  const _TotalPostsCard({
-    required this.totalViews,
-    required this.isLoading,
-    required this.errorMessage,
-    required this.isLocked,
-    required this.onAction,
-  });
-
-  final int? totalViews;
-  final bool isLoading;
-  final String? errorMessage;
-  final bool isLocked;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final isThai = Localizations.localeOf(context).languageCode == 'th';
-
-    return _ReferenceMetricCard(
-      key: const ValueKey('home-views-metric-card'),
-      label: isThai ? 'ยอดวิวเดือนนี้' : 'Views this month',
-      value: isLoading ? '...' : (totalViews == null ? '—' : '$totalViews'),
-      icon: Icons.visibility_outlined,
-      errorMessage: errorMessage,
-      isLocked: isLocked,
-      onAction: onAction,
-    );
-  }
-}
-
-class _LikesMetricCard extends StatelessWidget {
-  const _LikesMetricCard({
-    required this.totalLikes,
-    required this.isLoading,
-    required this.errorMessage,
-    required this.isLocked,
-    required this.onAction,
-  });
-
-  final int? totalLikes;
-  final bool isLoading;
-  final String? errorMessage;
-  final bool isLocked;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final isThai = Localizations.localeOf(context).languageCode == 'th';
-
-    return _ReferenceMetricCard(
-      key: const ValueKey('home-likes-metric-card'),
-      label: isThai ? 'ไลก์เดือนนี้' : 'Likes this month',
-      value: isLoading ? '...' : (totalLikes == null ? '—' : '$totalLikes'),
-      icon: Icons.favorite_border_rounded,
-      errorMessage: errorMessage,
-      isLocked: isLocked,
-      onAction: onAction,
-    );
-  }
-}
-
-class _ReferenceMetricCard extends StatelessWidget {
-  const _ReferenceMetricCard({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.isLocked,
-    this.errorMessage,
-    this.onAction,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final bool isLocked;
-  final String? errorMessage;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final isThai = Localizations.localeOf(context).languageCode == 'th';
-    final hasAction = errorMessage != null && onAction != null;
-    final actionLabel = isLocked
-        ? (isThai ? 'ดู Pro' : 'View Pro')
-        : (isThai ? 'ลองใหม่' : 'Try again');
-    final actionIcon =
-        isLocked ? Icons.lock_outline_rounded : Icons.refresh_rounded;
-
-    final card = Material(
-      color: AppTheme.glass,
-      elevation: 1,
-      shadowColor: Colors.black.withValues(alpha: 0.05),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: AppTheme.border),
-      ),
-      child: InkWell(
-        onTap: hasAction ? onAction : null,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 9),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 16,
-                      child: FittedBox(
-                        alignment: Alignment.centerLeft,
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          label,
-                          maxLines: 1,
-                          style: textTheme.labelMedium?.copyWith(
-                            color: AppTheme.textSecondary,
-                            fontWeight: FontWeight.w600,
-                            height: 1,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    hasAction ? actionIcon : icon,
-                    color: AppTheme.textMuted,
-                    size: 16,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 3),
-              Semantics(
-                label: value,
-                child: ExcludeSemantics(
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 24,
-                    child: FittedBox(
-                      alignment: Alignment.centerLeft,
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        value,
-                        maxLines: 1,
-                        style: textTheme.titleLarge?.copyWith(
-                          color: AppTheme.textPrimary,
-                          fontWeight: FontWeight.w900,
-                          height: 1,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              if (errorMessage != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  errorMessage!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                    height: 1,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-
-    return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.2,
-      child: hasAction ? Tooltip(message: actionLabel, child: card) : card,
     );
   }
 }

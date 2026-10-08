@@ -7,6 +7,14 @@ grouped settings: https://in.pinterest.com/pin/818529301071282919/.
 Use the existing white/light-gray PostDee palette with green accents and retain
 the dark palette. Scope is the Account tab only.
 
+### Account shortcut cleanup — 2026-10-08
+
+The user removed the caption-template and profile-link shortcuts from Account.
+Channels/tools now contains only the existing social-connection row. Saved
+caption templates remain selectable in Create post, and profile links open from
+the Store link tab. This supersedes those two shortcut entries in the original
+result below; it does not change template data, profile pages, or API contracts.
+
 ## Baseline and isolation
 
 - Verified remote `main`: `bcd7153f196cd381a786b333b9b61a67dbe95ca3`.

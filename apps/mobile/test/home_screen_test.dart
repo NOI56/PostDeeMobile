@@ -78,9 +78,10 @@ void _expectNoDeveloperTools() {
 Widget _homeTestApp(
   Widget child, {
   double textScale = 1,
+  Locale locale = const Locale('th'),
 }) {
   return MaterialApp(
-    locale: const Locale('th'),
+    locale: locale,
     builder: (context, child) => MediaQuery(
       data: MediaQuery.of(context).copyWith(
         textScaler: TextScaler.linear(textScale),
@@ -99,14 +100,55 @@ Widget _homeTestApp(
 }
 
 void main() {
+  for (final plan in const ['BASIC', 'STARTER', 'PRO']) {
+    for (final languageCode in const ['th', 'en']) {
+      testWidgets(
+          'hides monthly views and likes on home for $plan in $languageCode',
+          (tester) async {
+        await tester.pumpWidget(
+          _homeTestApp(
+            HomeScreen(
+              loadSubscription: () async => SubscriptionStatusResult(
+                userId: 'seller-$plan',
+                plan: plan,
+                status: 'ACTIVE',
+                canSchedule: plan != 'BASIC',
+                canUseAiCaptions: plan != 'BASIC',
+                canUseAnalytics: plan == 'PRO',
+              ),
+              loadRecentPosts: () async => const [],
+            ),
+            locale: Locale(languageCode),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _expectHomeTextsNeverAppearAfterScrolling(
+          tester,
+          [
+            'ยอดวิวเดือนนี้',
+            'ไลก์เดือนนี้',
+            'Views this month',
+            'Likes this month',
+            'เฉพาะแพ็กเกจ Pro',
+            'Pro plan only',
+          ],
+        );
+        expect(find.byKey(const ValueKey('home-views-metric-card')),
+            findsNothing);
+        expect(find.byKey(const ValueKey('home-likes-metric-card')),
+            findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets('shows Thai service-unavailable copy for a gateway failure',
       (tester) async {
     await tester.pumpWidget(_homeTestApp(HomeScreen(
       loadSubscription: () async =>
           throw const ApiException('Request failed', statusCode: 503),
       loadRecentPosts: () async => const [],
-      loadAnalytics: () async => const AnalyticsSummaryResult(
-          totalViews: 0, totalLikes: 0, platforms: []),
     )));
     await tester.pumpAndSettle();
     expect(find.text('ระบบ PostDee ไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่ภายหลัง'),
@@ -121,11 +163,6 @@ void main() {
         HomeScreen(
           loadSubscription: () async =>
               throw const SocketException('subscription offline'),
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
           loadRecentPosts: () async => const [],
         ),
       ),
@@ -137,42 +174,11 @@ void main() {
     expect(find.text('อัปเกรด'), findsNothing);
   });
 
-  testWidgets('replaces the raw Pro analytics error with Thai UI copy',
-      (tester) async {
-    await tester.pumpWidget(
-      _homeTestApp(
-        HomeScreen(
-          loadAnalytics: () async => throw const ApiException(
-            'Unified Analytics requires the Pro plan',
-            statusCode: 402,
-            code: 'PRO_REQUIRED',
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('เฉพาะแพ็กเกจ Pro'), findsNWidgets(2));
-    expect(find.text('—'), findsNWidgets(2));
-    expect(find.byTooltip('ลองใหม่'), findsNWidgets(2));
-    for (final element in find.byTooltip('ลองใหม่').evaluate()) {
-      final size = tester.getSize(find.byWidget(element.widget));
-      expect(size.width, greaterThanOrEqualTo(44));
-      expect(size.height, greaterThanOrEqualTo(44));
-    }
-    expect(find.textContaining('Unified Analytics'), findsNothing);
-  });
-
   testWidgets('shows a latest-post load error instead of an empty account',
       (tester) async {
     await tester.pumpWidget(
       _homeTestApp(
         HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
           loadSubscription: () async => const SubscriptionStatusResult(
             userId: 'seller',
             plan: 'BASIC',
@@ -198,18 +204,10 @@ void main() {
     );
   });
 
-  testWidgets('does not show demo home metrics when no real data exists',
+  testWidgets('does not show demo home values when no real data exists',
       (tester) async {
     await tester.pumpWidget(
-      _homeTestApp(
-        HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
-        ),
-      ),
+      _homeTestApp(const HomeScreen()),
     );
 
     expect(find.text('128'), findsNothing);
@@ -221,40 +219,10 @@ void main() {
     expect(find.text('คงเหลือ 23 วัน'), findsNothing);
   });
 
-  testWidgets('shows both analytics cards as locked for non-Pro plans',
-      (tester) async {
-    await tester.pumpWidget(
-      _homeTestApp(
-        HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
-          loadSubscription: () async => const SubscriptionStatusResult(
-            userId: 'seller-basic',
-            plan: 'BASIC',
-            status: 'ACTIVE',
-            canSchedule: false,
-            canUseAiCaptions: false,
-            canUseAnalytics: false,
-          ),
-          loadRecentPosts: () async => const [],
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('เฉพาะแพ็กเกจ Pro'), findsNWidgets(2));
-    expect(find.text('—'), findsNWidgets(2));
-    expect(find.byTooltip('ดู Pro'), findsNWidgets(2));
-    expect(find.text('0'), findsNothing);
-  });
-
   for (final width in const [360.0, 393.0]) {
     for (final textScale in const [1.45, 2.0]) {
       testWidgets(
-          'keeps home metrics and profile link compact at ${width}dp and ${textScale}x text',
+          'keeps profile link and latest posts compact at ${width}dp and ${textScale}x text',
           (tester) async {
         await tester.binding.setSurfaceSize(Size(width, 852));
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -262,14 +230,9 @@ void main() {
         await tester.pumpWidget(
           _homeTestApp(
             HomeScreen(
-              key: ValueKey('metrics-$width-$textScale'),
-              loadAnalytics: () async => const AnalyticsSummaryResult(
-                totalViews: 0,
-                totalLikes: 0,
-                platforms: [],
-              ),
+              key: ValueKey('home-layout-$width-$textScale'),
               loadSubscription: () async => const SubscriptionStatusResult(
-                userId: 'seller-compact-metrics',
+                userId: 'seller-compact-home',
                 plan: 'BASIC',
                 status: 'ACTIVE',
                 canSchedule: false,
@@ -283,22 +246,6 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await _expectHomeTextAfterScrolling(tester, 'ยอดวิวเดือนนี้');
-        await tester.ensureVisible(find.text('ยอดวิวเดือนนี้'));
-        await tester.pumpAndSettle();
-
-        final viewsCard = find.byKey(const ValueKey('home-views-metric-card'));
-        final likesCard = find.byKey(const ValueKey('home-likes-metric-card'));
-        expect(viewsCard, findsOneWidget);
-        expect(likesCard, findsOneWidget);
-
-        final viewsRect = tester.getRect(viewsCard);
-        final likesRect = tester.getRect(likesCard);
-        expect(viewsRect.right, lessThan(likesRect.left));
-        expect((viewsRect.top - likesRect.top).abs(), lessThan(1));
-        expect(viewsRect.height, lessThanOrEqualTo(96));
-        expect(likesRect.height, lessThanOrEqualTo(96));
-
         final linkShortcut =
             find.byKey(const ValueKey('home-link-in-bio-shortcut'));
         await tester.ensureVisible(linkShortcut);
@@ -309,6 +256,11 @@ void main() {
         expect(linkShortcutRect.right, lessThanOrEqualTo(width));
         expect(linkShortcutRect.height, greaterThanOrEqualTo(44));
         expect(linkShortcutRect.height, lessThanOrEqualTo(144));
+        final latestPostsTop = tester.getTopLeft(find.text('โพสต์ล่าสุด')).dy;
+        expect(
+          latestPostsTop - linkShortcutRect.bottom,
+          inInclusiveRange(12, 20),
+        );
         expect(tester.takeException(), isNull);
       });
     }
@@ -319,11 +271,6 @@ void main() {
     await tester.pumpWidget(
       _homeTestApp(
         HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
           loadSubscription: () async => const SubscriptionStatusResult(
             userId: 'seller-starter',
             plan: 'STARTER',
@@ -356,11 +303,6 @@ void main() {
           _homeTestApp(
             HomeScreen(
               key: ValueKey('$width-$textScale'),
-              loadAnalytics: () async => const AnalyticsSummaryResult(
-                totalViews: 0,
-                totalLikes: 0,
-                platforms: [],
-              ),
               loadSubscription: () async => const SubscriptionStatusResult(
                 userId: 'seller-pro',
                 plan: 'PRO',
@@ -417,11 +359,6 @@ void main() {
     await tester.pumpWidget(
       _homeTestApp(
         HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
           loadSubscription: () async {
             subscriptionLoadCalls += 1;
             final isPro = subscriptionLoadCalls >= 3;
@@ -453,117 +390,6 @@ void main() {
     expect(find.text('แพ็กเกจ Pro'), findsOneWidget);
   });
 
-  testWidgets('reloads stale Pro-required analytics after upgrading',
-      (tester) async {
-    var isPro = false;
-    var analyticsLoadCalls = 0;
-
-    await tester.pumpWidget(
-      _homeTestApp(
-        HomeScreen(
-          loadAnalytics: () async {
-            analyticsLoadCalls += 1;
-            if (analyticsLoadCalls == 1) {
-              throw const ApiException(
-                'Unified Analytics requires the Pro plan',
-                statusCode: 402,
-                code: 'PRO_REQUIRED',
-              );
-            }
-            return const AnalyticsSummaryResult(
-              totalViews: 4321,
-              totalLikes: 321,
-              platforms: [],
-            );
-          },
-          loadSubscription: () async => SubscriptionStatusResult(
-            userId: 'seller-upgrade-analytics',
-            plan: isPro ? 'PRO' : 'BASIC',
-            status: isPro ? 'ACTIVE' : 'INACTIVE',
-            remainingPostsThisMonth: isPro ? 250 : 3,
-            canSchedule: isPro,
-            canUseAiCaptions: isPro,
-            canUseAnalytics: isPro,
-          ),
-          loadRecentPosts: () async => const [],
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('เฉพาะแพ็กเกจ Pro'), findsNWidgets(2));
-    await tester.tap(find.text('แพ็กเกจฟรี'));
-    await tester.pumpAndSettle();
-    isPro = true;
-    await tester.tap(find.byTooltip('กลับ'));
-    await tester.pumpAndSettle();
-
-    expect(analyticsLoadCalls, 2);
-    expect(find.text('4321'), findsOneWidget);
-    expect(find.text('321'), findsOneWidget);
-    expect(find.text('เฉพาะแพ็กเกจ Pro'), findsNothing);
-  });
-
-  testWidgets('stale analytics cannot overwrite fresh Pro analytics',
-      (tester) async {
-    final staleAnalytics = Completer<AnalyticsSummaryResult>();
-    final freshAnalytics = Completer<AnalyticsSummaryResult>();
-    var isPro = false;
-    var analyticsLoadCalls = 0;
-
-    await tester.pumpWidget(
-      _homeTestApp(
-        HomeScreen(
-          loadAnalytics: () {
-            analyticsLoadCalls += 1;
-            return analyticsLoadCalls == 1
-                ? staleAnalytics.future
-                : freshAnalytics.future;
-          },
-          loadSubscription: () async => SubscriptionStatusResult(
-            userId: 'seller-analytics-race',
-            plan: isPro ? 'PRO' : 'BASIC',
-            status: isPro ? 'ACTIVE' : 'INACTIVE',
-            remainingPostsThisMonth: isPro ? 250 : 3,
-            canSchedule: isPro,
-            canUseAiCaptions: isPro,
-            canUseAnalytics: isPro,
-          ),
-          loadRecentPosts: () async => const [],
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('แพ็กเกจฟรี'));
-    await tester.pumpAndSettle();
-    isPro = true;
-    await tester.tap(find.byTooltip('กลับ'));
-    await tester.pump();
-    await tester.pump();
-    expect(analyticsLoadCalls, 2);
-
-    freshAnalytics.complete(const AnalyticsSummaryResult(
-      totalViews: 4321,
-      totalLikes: 321,
-      platforms: [],
-    ));
-    await tester.pumpAndSettle();
-    expect(find.text('4321'), findsOneWidget);
-    expect(find.text('321'), findsOneWidget);
-
-    staleAnalytics.completeError(const ApiException(
-      'Unified Analytics requires the Pro plan',
-      statusCode: 402,
-      code: 'PRO_REQUIRED',
-    ));
-    await tester.pumpAndSettle();
-
-    expect(find.text('4321'), findsOneWidget);
-    expect(find.text('321'), findsOneWidget);
-    expect(find.text('เฉพาะแพ็กเกจ Pro'), findsNothing);
-  });
-
   testWidgets('ignores a stale Basic plan after returning from the paywall',
       (tester) async {
     final initialLoad = Completer<SubscriptionStatusResult>();
@@ -588,11 +414,6 @@ void main() {
     await tester.pumpWidget(
       _homeTestApp(
         HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
           loadSubscription: () {
             subscriptionLoadCalls += 1;
             return switch (subscriptionLoadCalls) {
@@ -625,11 +446,6 @@ void main() {
     await tester.pumpWidget(
       _homeTestApp(
         HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
           loadSubscription: () async => const SubscriptionStatusResult(
             userId: 'seller',
             plan: 'BASIC',
@@ -648,8 +464,8 @@ void main() {
     expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
     expect(find.text('ตัดต่อด้วย AI'), findsNothing);
     expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
-    expect(find.text('ยอดวิวเดือนนี้'), findsOneWidget);
-    expect(find.text('ไลก์เดือนนี้'), findsOneWidget);
+    expect(find.text('ยอดวิวเดือนนี้'), findsNothing);
+    expect(find.text('ไลก์เดือนนี้'), findsNothing);
     expect(find.text('128'), findsNothing);
     expect(find.text('โพสต์ล่าสุด'), findsOneWidget);
     expect(find.text('ดูทั้งหมด'), findsNothing);
@@ -681,11 +497,6 @@ void main() {
     await tester.pumpWidget(
       _homeTestApp(
         HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 1240,
-            totalLikes: 328,
-            platforms: [],
-          ),
           loadSubscription: () async => const SubscriptionStatusResult(
             userId: 'seller',
             plan: 'BASIC',
@@ -714,8 +525,8 @@ void main() {
       find.text('ให้ AI ตัดคลิปให้กระชับ ใส่ซับ เป็นสไตล์ไวรัลอัตโนมัติ'),
       findsNothing,
     );
-    expect(find.text('ยอดวิวเดือนนี้'), findsOneWidget);
-    expect(find.text('ไลก์เดือนนี้'), findsOneWidget);
+    expect(find.text('ยอดวิวเดือนนี้'), findsNothing);
+    expect(find.text('ไลก์เดือนนี้'), findsNothing);
     expect(find.text('สร้างโพสต์ใหม่'), findsNothing);
     expect(
       find.byKey(const ValueKey('home-link-in-bio-shortcut')),
@@ -731,114 +542,26 @@ void main() {
     );
     expect(find.widgetWithText(FilledButton, 'สร้างโพสต์'), findsNothing);
 
-    final metricTop = tester
-        .getTopLeft(find.byKey(const ValueKey('home-likes-metric-card')))
-        .dy;
     final linkShortcutRect = tester.getRect(
       find.byKey(const ValueKey('home-link-in-bio-shortcut')),
     );
     final latestPostsTop = tester.getTopLeft(find.text('โพสต์ล่าสุด')).dy;
-    expect(linkShortcutRect.bottom, lessThan(metricTop));
-    expect(linkShortcutRect.bottom, lessThan(latestPostsTop));
+    expect(
+      latestPostsTop - linkShortcutRect.bottom,
+      inInclusiveRange(12, 20),
+    );
 
     await _expectHomeTextsNeverAppearAfterScrolling(
       tester,
       ['เครื่องมือเติบโต', 'ช่วยให้ขายดี', 'แจ้งเตือนคลิปไวรัล'],
     );
   });
-  testWidgets('loads and displays total views on the home dashboard',
-      (tester) async {
-    final analyticsCompleter = Completer<AnalyticsSummaryResult>();
-
-    await tester.pumpWidget(
-      _homeTestApp(
-        HomeScreen(
-          loadAnalytics: () => analyticsCompleter.future,
-          loadSubscription: () async => const SubscriptionStatusResult(
-            userId: 'seller',
-            plan: 'PRO',
-            status: 'ACTIVE',
-            canSchedule: true,
-            canUseAiCaptions: true,
-            canUseAnalytics: true,
-          ),
-          loadRecentPosts: () async => const [],
-        ),
-      ),
-    );
-    // Analytics now loads on init, so the views card shows the loading label
-    // without a manual refresh tap.
-    await tester.pump();
-
-    expect(find.text('...'), findsNWidgets(2));
-
-    analyticsCompleter.complete(
-      const AnalyticsSummaryResult(
-        totalViews: 1200,
-        totalLikes: 140,
-        platforms: [
-          PlatformAnalyticsResult(
-            platform: 'TIKTOK',
-            label: 'TikTok',
-            views: 1200,
-            likes: 140,
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('1200'), findsOneWidget);
-    expect(find.text('140'), findsOneWidget);
-    expect(find.text('ไลก์เดือนนี้'), findsOneWidget);
-  });
-
-  testWidgets('keeps very large analytics values on one fitted line',
-      (tester) async {
-    await tester.binding.setSurfaceSize(const Size(393, 852));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    const largeValue = '999999999999';
-
-    await tester.pumpWidget(
-      _homeTestApp(
-        HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 999999999999,
-            totalLikes: 999999999999,
-            platforms: [],
-          ),
-          loadSubscription: () async => const SubscriptionStatusResult(
-            userId: 'seller-large-analytics',
-            plan: 'PRO',
-            status: 'ACTIVE',
-            canSchedule: true,
-            canUseAiCaptions: true,
-            canUseAnalytics: true,
-          ),
-          loadRecentPosts: () async => const [],
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text(largeValue), findsNWidgets(2));
-    for (final element in find.text(largeValue).evaluate()) {
-      expect((element.widget as Text).maxLines, 1);
-    }
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets('shows real latest posts on the home dashboard', (tester) async {
     final publishedAt = DateTime.now().subtract(const Duration(hours: 2));
 
     await tester.pumpWidget(
       _homeTestApp(
         HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
           loadSubscription: () async => const SubscriptionStatusResult(
             userId: 'seller',
             plan: 'BASIC',
@@ -878,11 +601,6 @@ void main() {
     await tester.pumpWidget(
       _homeTestApp(
         HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
           loadSubscription: () async => const SubscriptionStatusResult(
             userId: 'seller',
             plan: 'BASIC',
@@ -925,11 +643,6 @@ void main() {
     await tester.pumpWidget(
       _homeTestApp(
         HomeScreen(
-          loadAnalytics: () async => const AnalyticsSummaryResult(
-            totalViews: 0,
-            totalLikes: 0,
-            platforms: [],
-          ),
           loadSubscription: () async => const SubscriptionStatusResult(
             userId: 'seller',
             plan: 'BASIC',
@@ -980,11 +693,6 @@ void main() {
             setHostState = setState;
             return HomeScreen(
               isActive: homeIsActive,
-              loadAnalytics: () async => const AnalyticsSummaryResult(
-                totalViews: 0,
-                totalLikes: 0,
-                platforms: [],
-              ),
               loadSubscription: () async => const SubscriptionStatusResult(
                 userId: 'seller',
                 plan: 'BASIC',
@@ -1051,11 +759,6 @@ void main() {
             setHostState = setState;
             return HomeScreen(
               isActive: homeIsActive,
-              loadAnalytics: () async => const AnalyticsSummaryResult(
-                totalViews: 0,
-                totalLikes: 0,
-                platforms: [],
-              ),
               loadSubscription: () async => const SubscriptionStatusResult(
                 userId: 'seller',
                 plan: 'BASIC',

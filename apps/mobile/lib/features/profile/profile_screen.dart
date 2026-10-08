@@ -12,7 +12,6 @@ import '../../core/theme/theme_controller.dart';
 import '../auth/phone_verification_screen.dart';
 import '../billing/paywall_screen.dart';
 import '../legal/legal_document_screen.dart';
-import '../link_in_bio/link_in_bio_screen.dart';
 import '../platforms/connections_screen.dart';
 import '../shared/postdee_undo_toast.dart';
 import 'edit_profile_screen.dart';
@@ -360,20 +359,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   label: 'เชื่อมต่อช่องทาง',
                   detail: connectedLabel,
                   onTap: _openConnections,
-                ),
-                _ProfileMenuRow(
-                  icon: Icons.text_snippet_outlined,
-                  label: 'เทมเพลตแคปชั่น',
-                  onTap: widget.onOpenTemplates,
-                ),
-                _ProfileMenuRow(
-                  icon: Icons.link,
-                  label: 'ลิงก์หน้าโปรไฟล์',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (context) => const LinkInBioScreen(),
-                    ),
-                  ),
                 ),
               ],
             ),

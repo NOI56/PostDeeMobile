@@ -242,6 +242,52 @@ void main() {
     expect(cachedText('โควต้าตัดต่อ AI'), findsNothing);
   });
 
+  for (final locale in [const Locale('th'), const Locale('en')]) {
+    testWidgets(
+      'hides template and profile link shortcuts while keeping account menus in ${locale.languageCode}',
+      (tester) async {
+        await tester.pumpWidget(_hostProfile(locale: locale));
+        await tester.pumpAndSettle();
+
+        expect(find.text('ยืนยันเบอร์โทร'), findsOneWidget);
+        final connections =
+            find.byKey(const ValueKey('profile-connections-row'));
+        await tester.scrollUntilVisible(
+          connections,
+          250,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('เชื่อมต่อช่องทาง'), findsOneWidget);
+        expect(find.text('ช่องทางและเครื่องมือ'), findsOneWidget);
+        expect(find.text('เทมเพลตแคปชั่น', skipOffstage: false), findsNothing);
+        expect(find.text('ลิงก์หน้าโปรไฟล์', skipOffstage: false), findsNothing);
+
+        final plan = find.byKey(const ValueKey('profile-view-plans'));
+        await tester.scrollUntilVisible(
+          plan,
+          250,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+        expect(plan, findsOneWidget);
+
+        final theme = find.byKey(const ValueKey('profile-theme-row'));
+        await tester.scrollUntilVisible(
+          theme,
+          250,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+        expect(theme, findsOneWidget);
+        expect(find.byKey(const ValueKey('profile-language-row')),
+            findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('opens language choices only when requested', (tester) async {
     final language = PostDeeLanguageController();
     await tester.pumpWidget(_hostProfile(languageController: language));
@@ -1451,6 +1497,7 @@ Future<void> _openConnectionsScreen(WidgetTester tester) async {
 }
 
 Widget _hostProfile({
+  Locale locale = const Locale('th'),
   PostDeeApiClient? apiClient,
   Future<bool> Function(Uri uri)? launchConnectUrl,
   Future<void> Function()? onManageSubscription,
@@ -1464,7 +1511,7 @@ Widget _hostProfile({
       data: MediaQuery.of(context).copyWith(textScaler: textScaler),
       child: child!,
     ),
-    locale: const Locale('th'),
+    locale: locale,
     localizationsDelegates: const [
       PostDeeLocalizations.delegate,
       GlobalMaterialLocalizations.delegate,
@@ -1474,7 +1521,8 @@ Widget _hostProfile({
     supportedLocales: PostDeeLocalizations.supportedLocales,
     home: Scaffold(
       body: ProfileScreen(
-        languageController: languageController ?? PostDeeLanguageController(),
+        languageController: languageController ??
+            PostDeeLanguageController(initialLocale: locale),
         themeController: themeController ?? PostDeeThemeController(),
         onOpenTemplates: () {},
         onDeleteAccount: () {},

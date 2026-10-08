@@ -24,9 +24,15 @@ This navigation-only revision is recorded in
 The Account tab uses a compact profile and four labeled menu groups. Only the
 current package is shown; all packages open in the existing paywall. Language
 and display mode open selection sheets, and logout sits at the bottom.
+The Channels/tools group contains the social-connection row. Profile links open
+from the Store link tab, and saved caption templates are selectable in Create
+post. Their former shortcuts are removed from Account.
 See `docs/superpowers/plans/2026-10-07-grouped-account-ui.md` for the mobile-only
 scope and verification.
-Home has one profile-link shortcut above the analytics cards. AI video
+Home has one profile-link shortcut followed by the latest posts. The monthly
+views/likes cards are temporarily removed, and Home no longer requests
+`GET /analytics/summary`. Analytics remains available from publish results and
+individual post details. AI video
 editing and Subtitle Studio no longer have a product entry point, and the
 paywall/profile no longer advertise editing minutes or top-ups. AI captions in
 the upload flow remain available. The editing implementation and shared media
@@ -973,7 +979,8 @@ Current mobile pieces:
 
 - Light and dark Flutter themes (light is the current default)
 - Generated Android and iOS platform folders with app display name `PostDee`
-- Home dashboard with manual refresh for total views and likes from `GET /analytics/summary`, plus automatic analytics refresh after the plan becomes Pro
+- Home dashboard with the current plan, profile-link shortcut, and latest posts;
+  the monthly views/likes cards are temporarily removed
 - Full-screen create-post flow with four steps: choose clip, write caption,
   choose connected destinations, then review/send now or schedule. Step headers
   show the current step out of four, and the primary Next action names its
@@ -1300,7 +1307,9 @@ Current mobile pieces:
   range selection and a publish-date daily chart without simulated numbers.
   The fourth bottom-navigation slot opens the internal link manager; analytics
   remains available from publish results and individual post details.
-- Home API connection check wired to `GET /health`, a local Gemini caption smoke check, plan status refresh wired to `GET /billing/subscription`, Basic Phone OTP UI for unlocking the 3-post free quota, and one automatic analytics refresh after Pro is unlocked
+- Home plan status refresh wired to `GET /billing/subscription`; Basic Phone OTP
+  UI unlocks the 3-post free quota. Home refreshes the plan after returning from
+  the paywall without requesting analytics.
 - Upload AI captions keep the customer flow simple: select a clip, optionally add guidance, then let AI infer language and market from the clip.
 - Starter and Pro CTAs on Home can use the legacy Flutter `in_app_purchase`
   scaffold by default, or the RevenueCat `purchases_flutter` path when

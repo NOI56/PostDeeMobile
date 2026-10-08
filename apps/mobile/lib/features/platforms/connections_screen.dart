@@ -113,8 +113,8 @@ bool isTrustedSocialConnectUrl(String rawUrl, SocialPlatform platform) {
   return trustedDomains.any((domain) => _matchesDomain(host, domain));
 }
 
-/// Platforms PostPeer can connect a user account for. Shopee/Lazada are listed
-/// in the app but not yet supported by the connect API, so they stay disabled.
+/// Platforms PostPeer can connect a user account for. Only supported
+/// destinations appear in the connection list; Shopee/Lazada are future targets.
 const List<SocialPlatform> connectablePlatforms = [
   SocialPlatform.tiktok,
   SocialPlatform.youtubeShorts,
@@ -637,7 +637,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
           ),
         ),
         const SizedBox(height: 13),
-        for (final platform in SocialPlatform.values)
+        for (final platform in connectablePlatforms)
           _buildRow(context, platform),
       ],
     );

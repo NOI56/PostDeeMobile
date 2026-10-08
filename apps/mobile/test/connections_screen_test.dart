@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/platforms/connections_screen.dart';
+import 'package:postdee_mobile/features/platforms/social_platform.dart';
+import 'package:postdee_mobile/features/platforms/social_platform_logo.dart';
 
 class _StatusApiClient extends PostDeeApiClient {
   _StatusApiClient({required this.list, this.refresh});
@@ -20,6 +22,70 @@ class _StatusApiClient extends PostDeeApiClient {
 }
 
 void main() {
+  for (final inlineCard in [false, true]) {
+    testWidgets(
+        '${inlineCard ? 'inline connection card' : 'connections page'} hides unavailable destinations while retaining connected accounts',
+        (tester) async {
+      final changes = <int>[];
+      final client = _StatusApiClient(
+        list: () async => const [
+          SocialConnectionResult(
+            platform: 'YOUTUBE_SHORTS',
+            connected: true,
+            displayName: '@seller',
+          ),
+          SocialConnectionResult(platform: 'SHOPEE_VIDEO', connected: true),
+          SocialConnectionResult(platform: 'LAZADA_VIDEO', connected: true),
+        ],
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: inlineCard
+            ? Scaffold(
+                body: ListView(children: [
+                  ConnectedPlatformsCard(
+                    apiClient: client,
+                    onConnectionsChanged: changes.add,
+                  ),
+                ]),
+              )
+            : ConnectionsScreen(
+                apiClient: client,
+                onConnectionsChanged: changes.add,
+              ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Facebook Video'), 250);
+      await tester.pumpAndSettle();
+
+      expect(find.text('TikTok'), findsOneWidget);
+      expect(find.text('YouTube Shorts'), findsOneWidget);
+      expect(find.text('Instagram Reels'), findsOneWidget);
+      expect(find.text('Facebook Video'), findsOneWidget);
+      expect(
+        tester
+            .widgetList<SocialPlatformLogo>(find.byType(SocialPlatformLogo))
+            .map((logo) => logo.platform),
+        [
+          SocialPlatform.tiktok,
+          SocialPlatform.youtubeShorts,
+          SocialPlatform.instagramReels,
+          SocialPlatform.facebookReels,
+        ],
+      );
+      expect(find.text('Shopee Video'), findsNothing);
+      expect(find.text('Lazada Video'), findsNothing);
+      expect(find.text('เร็วๆ นี้'), findsNothing);
+      expect(find.text('เชื่อมต่อแล้ว 1/4 ช่องทาง'), findsOneWidget);
+      expect(find.text('@seller'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('profile-platform-disconnect-YOUTUBE_SHORTS')),
+        findsOneWidget,
+      );
+      expect(find.text('เชื่อม'), findsNWidgets(3));
+      expect(changes, [1]);
+    });
+  }
+
   testWidgets('loading social status does not claim zero connected accounts',
       (tester) async {
     final result = Completer<List<SocialConnectionResult>>();

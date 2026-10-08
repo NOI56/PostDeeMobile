@@ -115,8 +115,8 @@ void main() {
     expect(find.text('Could not check package'), findsOneWidget);
     expect(find.text('Free package'), findsNothing);
     expect(find.text('AI editing'), findsNothing);
-    expect(find.text('Views this month'), findsOneWidget);
-    expect(find.text('Likes this month'), findsOneWidget);
+    expect(find.text('Views this month'), findsNothing);
+    expect(find.text('Likes this month'), findsNothing);
     expect(find.text('Create a new post'), findsNothing);
     expect(find.text('Profile link'), findsOneWidget);
     expect(find.text('Store link'), findsOneWidget);
@@ -714,17 +714,17 @@ void main() {
     expect(find.text('0/4 เชื่อมต่อ'), findsNothing);
     expect(find.text('โหลดข้อมูลช่องทางไม่สำเร็จ'), findsWidgets);
     expect(find.text('พร้อมลอง UI'), findsNothing);
-    final templatesAction = find.text('เทมเพลตแคปชั่น');
+    final connectionsAction =
+        find.byKey(const ValueKey('profile-connections-row'));
     await tester.scrollUntilVisible(
-      templatesAction,
+      connectionsAction,
       180,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    await tester.tap(templatesAction);
-    await tester.pumpAndSettle();
-
-    expect(find.text('จัดการแคปชั่นที่ใช้บ่อย'), findsOneWidget);
-    expect(find.text('ชื่อเทมเพลต'), findsOneWidget);
+    expect(connectionsAction, findsOneWidget);
+    expect(find.text('เทมเพลตแคปชั่น'), findsNothing);
+    expect(find.text('ลิงก์หน้าโปรไฟล์'), findsNothing);
+    expect(find.text('จัดการแคปชั่นที่ใช้บ่อย'), findsNothing);
   });
 }

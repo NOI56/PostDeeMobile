@@ -450,17 +450,21 @@ Reference direction:
   Settings/help. The current plan occupies one compact card; the existing
   paywall retains package comparison. Language/theme choices open on demand,
   with logout and confirmed account deletion kept separate at the bottom.
+  Channels/tools contains the connection row; caption-template and profile-link
+  shortcuts are removed from Account.
   See `docs/superpowers/plans/2026-10-07-grouped-account-ui.md`.
-- Home keeps one direct Link in Bio shortcut above the analytics cards. Create
-  post stays in the bottom navigation, while the future viral-alert preview
-  stays off Home until its real end-to-end flow is ready.
+- Home keeps one direct Link in Bio shortcut followed by the latest posts.
+  Monthly views/likes cards are temporarily removed from Home along with their
+  analytics request; analytics stays available from post details and publish
+  results. Create post stays in the bottom navigation, while the future
+  viral-alert preview stays off Home until its real end-to-end flow is ready.
 - Keep AI captioning available from Upload after a clip is selected.
 - Create post opens above the shell as a full-screen four-step flow; the dock
   stays on shell tabs and is hidden while composing. The final step contains
   scheduling and the shared review summary rather than another review page.
   AI starts only from the user's button, and local draft saving remains explicit.
-- Keep Templates available as a secondary entry point instead of a main
-  bottom-nav tab.
+- Keep saved caption-template selection in Create post. Manage profile links
+  through the Store link tab.
 - Legacy AI editing settings are no longer exposed from the active navigation.
 
 Planned order:

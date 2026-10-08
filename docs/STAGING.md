@@ -1,5 +1,39 @@
 # PostDee Staging
 
+## ส่งมอบชุดลด UI มือถือ — 8 ตุลาคม 2026
+
+- Source `aafd0769bd6ded57339531d7dbc1129de2590c67` บน
+  `codex/mobile-ui-cleanup-staging` รวม `main` ล่าสุด `81f0b9f` แล้ว จึงเก็บ
+  ลูกเล่นแท็บด้านล่าง หน้าสร้างโพสต์ 4 ขั้น และเทมเพลตเว็บ 100 แบบครบ
+- เอาการ์ดยอดวิว/ไลก์เดือนนี้ออกจาก Home, เอารายการ Shopee/Lazada ที่ยังไม่รองรับ
+  ออกจากหน้าช่องทาง และเอาเมนูเทมเพลตแคปชัน/ลิงก์หน้าโปรไฟล์ออกจาก Account
+  เทมเพลตยังเลือกในหน้าสร้างโพสต์ และลิงก์ร้านยังเปิดจากแท็บด้านล่างได้
+- [CI รุ่นรวม 37749129032](https://github.com/NOI56/PostDeeMobile/actions/runs/37749129032)
+  ใช้ source/workflow SHA เต็มข้างต้นและผ่านทั้งสอง jobs: Flutter analyze / 1,571 tests,
+  Backend 104 files / 1,556 tests, generator 22 tests, build/schema/audit และ APK build
+- ดาวน์โหลด CI artifact และตรวจ receipt/source/config/package/signature แล้ว;
+  ขนาด 285,747,082 bytes, SHA256
+  `444a6385f13f63c2e450e70bfaa0cfd48264c6fe7a2953f750bae978529c6a9d`
+  ตรงกับไฟล์จริง ใช้ Flutter 3.47.6 / Dart 3.13.5 และไม่ได้ติดตั้ง APK ของ CI
+- APK ในเครื่องสร้างจาก source เดียวกันด้วย Flutter 3.44.1 / Dart 3.12.1
+  ใช้ Staging defines ที่ tracked และ RevenueCat Test Store overlay เดิมที่อยู่
+  เฉพาะในเครื่อง ไม่คัดลอกหรือส่ง SDK key ขึ้น Git; ขนาด 303,482,075 bytes
+  และ SHA256 `a99cc8b2fb3b80802aeda26f3526984cce705494e8a3ee06c9da7ddf81264099`
+- Package `com.postdee.postdee_mobile.staging`, version `0.1.0-staging` / code 1,
+  min/target SDK 24/36 และลายเซ็น debug เดิม ติดตั้ง `install -r -t` บน
+  emulator-5556 สำเร็จ โดย installed APK hash ตรงกับไฟล์ที่สร้าง
+- เปิดแอปใหม่แล้วบัญชีเดิมยังอยู่, YouTube เชื่อม 1/4, แพ็กฟรี 0/3;
+  Native smoke ยืนยัน Home ไม่มีการ์ดสถิติ, Account ไม่มีสอง shortcut และ
+  หน้าช่องทางมีเฉพาะ TikTok/YouTube/Instagram/Facebook โดยไม่กดบันทึกข้อมูล
+  โพสต์ ซื้อแพ็กเกจ เชื่อม/ยกเลิกบัญชี หรือขอ OTP
+- Source API, workflow และ Staging infrastructure ไม่มีส่วนต่างจาก `main`
+  จึงไม่ต้อง deploy Render หรือเพิ่ม migration; `/health` ตอบ HTTP 200
+  เวลา 15:16:53 Asia/Bangkok วันที่ 8 ตุลาคม 2026
+- APK ของ CI ใช้ config ตัวอย่างที่ปิด RevenueCat และ Runner debug key;
+  ใช้ APK ในเครื่องที่มี Test Store overlay และ key เดิมสำหรับเครื่องจำลอง
+  หลักฐาน build/config/hash อยู่ใน ignored `apps/mobile/build` ไม่ใส่ APK หรือ
+  ข้อมูลบัญชีไว้ใน Git; การส่งขึ้น App Store/Play Store ไม่อยู่ในรอบนี้
+
 ## ส่งมอบเทมเพลตโครงหน้าใหม่และแก้กรอบโลโก้ — 7 ตุลาคม 2026
 
 - รุ่นปัจจุบัน `ae65b9d5eacddf6f9cf000bdb4efb44b4e82b3e0` บน

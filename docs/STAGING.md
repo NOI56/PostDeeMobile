@@ -1,5 +1,43 @@
 # PostDee Staging
 
+## รวมงานค้างและเครื่องมือทดสอบ — 8 ตุลาคม 2026
+
+- ชุดลด UI ข้างล่างเข้าและ push `main` แล้วที่ `b1f793c`; source แอป `aafd076`
+  ผ่าน CI `37749129032` จึงถือเป็นงานส่งมอบขั้นแรก ไม่ใช่งานค้างใหม่
+- ชุดถัดไปเพิ่มภาพตัวอย่าง Home ผ่าน `GET /posts?includeMedia=true&limit=3`,
+  `/ready`, ปิดระบบแบบรอให้งานเสร็จ, กู้สถานะโพสต์จากผลที่บันทึกครบ และ
+  ครอบคลุม owner barrier ของ GET/HEAD ที่อาจเปลี่ยนสถานะ รวม URL ตัวพิมพ์และ
+  ท้าย slash ของ social/billing และ `/uploads/:uploadId`; รอคำขอเดิมจบก่อนลบ
+  บัญชี ส่วนเตรียม User มีในแต่ละ route ของ main แล้วหลัง validation/quota
+  จึงรักษาของเดิมและไม่เพิ่ม upsert ซ้ำ ไม่มี migration/การเปิด provider/
+  เปลี่ยน Render หรือ dependency lock; สถานะหลักฐานอยู่ใน
+  `superpowers/plans/2026-10-08-integrate-pending-main-work.md`
+- Helper `tool/postdee-staging.ps1` เปิด `POSTDEE_STAGING_BUILD=true` ชัดเจน
+  แม้ ignored config เดิมไม่มีค่านี้ ป้ายอยู่ในแถบเล็ก 18 dp ไม่ทับปุ่ม;
+  production ปิดโดยค่าเริ่มต้นและไม่เปลี่ยนสิทธิ์ล็อกอินหรือแพ็กเกจ
+- Launcher Windows `tool/launch-postdee-android.ps1` หา worktree ที่เป็น `main`
+  จริง, SDK จาก environment/local.properties/ตำแหน่งผู้ใช้ และ Flutter/ignored
+  Test Store overlay จาก common workspace ใช้ helper ตรวจค่าเดิมก่อน build
+  โดยไม่ฝังชื่อผู้ใช้หรือคัดลอก key เข้า Git
+
+```powershell
+# ตรวจตำแหน่งอย่างเดียว: ไม่เปิดแอป ไม่ build ไม่ install และไม่เรียก adb
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tool\launch-postdee-android.ps1 -ResolveOnly
+# เปิดรุ่นที่ build จาก main; ใช้ AVD ที่เปิดอยู่หรือเลือกชื่อที่มีอยู่จริง
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tool\launch-postdee-android.ps1 -AvdName PostDee_Pixel
+```
+
+Launcher ไม่ fetch/push/deploy และไม่รับรองว่า main ที่ checkout เท่ากับ remote
+ล่าสุด ต้องตรวจ SHA ก่อนเริ่ม QA ใช้ `install -r` โดยคง AVD/keystore เดิม;
+หาก signature ไม่ตรงจะหยุด ไม่ uninstall/ล้างข้อมูลเพื่อแก้ผ่าน
+`-ResolveOnly` กับ parser ผ่านแล้ว; API 1,609 tests/107 files, Flutter 1,588 tests,
+final badge/Home 45 tests, analyze และ Staging APK build ผ่านในเครื่อง
+ติดตั้งแบบ `install -r` ด้วยลายเซ็นเดิมแล้ว บัญชี/session ลิงก์ร้าน และ Free 0/3
+ยังอยู่; hash/source receipt และ native smoke ขั้นสุดท้ายให้ยึดแผนรวมงาน
+ชุดนี้ยังรอ commit/main/push/CI และไม่ใช่การตรวจ provider E2E บนระบบจริง
+API ใหม่ยังไม่ได้ deploy ด้วยคำขอรอบนี้ จึงยังต้องตรวจ signed URLs จริงภายหลัง
+รุ่นมือถือใหม่ยังแสดง placeholder ได้เมื่อ API เก่าไม่ส่ง URL
+
 ## ส่งมอบชุดลด UI มือถือ — 8 ตุลาคม 2026
 
 - Source `aafd0769bd6ded57339531d7dbc1129de2590c67` บน

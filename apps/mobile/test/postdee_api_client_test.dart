@@ -1668,6 +1668,105 @@ void main() {
         post.platformResults.last.errorMessage, 'YouTube rejected the upload');
   });
 
+  test('PostSummaryResult accepts optional preview media and legacy responses',
+      () {
+    final base = <String, Object?>{
+      'id': 'preview-post',
+      'caption': 'สินค้าใหม่',
+      'videoS3Key': 'uploads/seller/clip/video.mp4',
+      'platforms': ['TIKTOK'],
+      'status': 'QUEUED',
+      'createdAt': '2026-06-01T00:00:00.000Z',
+    };
+    final preview = PostSummaryResult.fromJson({
+      ...base,
+      'coverImageUrl': 'https://media.test/cover.jpg?expires=60&signature=test',
+      'videoUrl': 'https://media.test/video.mp4?expires=60&signature=test',
+      'coverFrameTimeMs': 1250,
+    });
+    expect(preview.coverImageUrl?.queryParameters['expires'], '60');
+    expect(preview.videoUrl?.path, '/video.mp4');
+    expect(preview.coverFrameTimeMs, 1250);
+    final legacy = PostSummaryResult.fromJson(base);
+    expect(legacy.coverImageUrl, isNull);
+    expect(legacy.videoUrl, isNull);
+    expect(legacy.coverFrameTimeMs, isNull);
+    for (final value in <Object?>[
+      'javascript:alert(1)',
+      'file:///secret.mp4',
+      '/relative.mp4',
+      'https://user:password@media.test/video.mp4',
+      'https://',
+      123,
+      null,
+    ]) {
+      final malformed = PostSummaryResult.fromJson({
+        ...base,
+        'coverImageUrl': value,
+        'videoUrl': value,
+        'coverFrameTimeMs': -1,
+      });
+      expect(malformed.coverImageUrl, isNull);
+      expect(malformed.videoUrl, isNull);
+      expect(malformed.coverFrameTimeMs, isNull);
+    }
+  });
+
+  for (final limit in [3, 999, 0]) {
+    test('listRecentPosts bounds preview requests with limit $limit', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      Uri? requestedUri;
+      final serverTask = () async {
+        final request = await server.first;
+        requestedUri = request.uri;
+        await request.drain<void>();
+        _writeJsonResponse(request.response, {
+          'status': 'ok',
+          'posts': [
+            for (final day in limit == 999
+                ? List<int>.generate(52, (index) => index)
+                : [1, 4, 2, 3])
+              {
+                'id': 'post-$day',
+                'caption': 'สินค้า $day',
+                'videoS3Key': 'uploads/seller/$day/video.mp4',
+                'platforms': ['TIKTOK'],
+                'status': 'QUEUED',
+                'createdAt': limit == 999
+                    ? DateTime.utc(2026, 6, 1, 0, day).toIso8601String()
+                    : '2026-06-0${day}T00:00:00.000Z',
+              },
+          ],
+        });
+        await request.response.close();
+      }();
+      try {
+        final client = PostDeeApiClient(
+          baseUrl: 'http://${server.address.address}:${server.port}',
+        );
+        final posts = await client.listRecentPosts(limit: limit);
+        await serverTask;
+        expect(requestedUri?.path, '/posts');
+        expect(
+            requestedUri?.queryParameters,
+            limit > 0
+                ? {'includeMedia': 'true', 'limit': '${limit.clamp(1, 50)}'}
+                : isEmpty);
+        expect(posts.first.id, limit == 999 ? 'post-51' : 'post-4');
+        expect(
+            posts.length,
+            limit == 999
+                ? 50
+                : limit == 3
+                    ? 3
+                    : 4);
+        expect(posts.first.coverImageUrl, isNull);
+      } finally {
+        await server.close(force: true);
+      }
+    });
+  }
+
   test('SocialConnectionResult parses connected platform status', () {
     final result = SocialConnectionResult.fromJson({
       'platform': 'TIKTOK',

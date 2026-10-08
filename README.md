@@ -7,6 +7,45 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Pending-work integration (2026-10-08)
+
+The mobile UI cleanup is on remote `main` at `b1f793c`; its app source is
+`aafd076`, verified by CI `37749129032`. The next integration adds bounded
+owner-only Home media previews, `/ready`, graceful shutdown, evidence-only
+interrupted-publish recovery, and complete coverage of mutating reads inside
+the existing account mutation barrier. Relational user preparation already
+exists on main in individual routes after their validation/quota gates;
+the integration preserves it without adding a generic duplicate upsert.
+It changes no database schema, provider
+activation, dependency lock, package entitlement or Render topology.
+
+Home requests `GET /posts?includeMedia=true&limit=3`. The API signs only owned
+objects, prefers a cover, and omits unavailable URLs without hiding the post.
+Older APIs still show the mobile placeholder. `/ready` probes the database and
+queue, not a social provider, account connection or separate-worker heartbeat.
+The memory scheduler and owner locks remain limited to one API process; unknown
+publishing outcomes require reconciliation rather than automatic resending.
+Case/trailing-slash variants of social/billing reads and `GET`/`HEAD`
+`/uploads/:uploadId` retain the owner barrier. Upload status can reconcile
+durable state, so its guard drains through response completion.
+
+The validated Staging helper sets `POSTDEE_STAGING_BUILD=true`, showing a small
+noninteractive strip above the app. Production defaults off. Windows developers
+can inspect launcher paths without opening or installing anything:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\apps\mobile\tool\launch-postdee-android.ps1 -ResolveOnly
+```
+
+Omit `-ResolveOnly` to build the exact checked-out `main` through the Staging
+helper and update the emulator with `install -r`. SDK paths come from the local
+environment/configuration; the existing AVD and debug keystore settings are
+preserved. The ignored RevenueCat Test Store overlay is still validated.
+Delivery/current verification is tracked in
+`docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`.
+The capacity roadmap in `docs/superpowers/plans/2026-07-17-scaling-roadmap.md`
+is a future proposal, not enabled infrastructure or a capacity guarantee.
+
 ## Profile Link Replaces AI Editing (2026-10-05)
 
 The active mobile navigation is Home, Calendar, Create post, Store link, and

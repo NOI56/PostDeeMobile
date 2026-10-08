@@ -148,6 +148,7 @@ import type { SocialConnectionStore } from './modules/socialConnections/socialCo
 import { createSocialConnectionStore } from './modules/socialConnections/socialConnectionStoreFactory.js';
 import { registerPlannedRoutes } from './routes/plannedRoutes.js';
 import { createRateLimitMiddleware } from './modules/security/rateLimit.js';
+import { createReadinessHandler } from './readiness.js';
 
 type AppPrismaClient = PrismaTemplateClient &
   PrismaPostClient &
@@ -217,9 +218,14 @@ export const createAccountAwareAuthMiddleware = ({
         return;
       }
 
+      // Match Express's default case-insensitive, non-strict route behavior.
+      // Alternate spellings must retain the same deletion/write boundary.
+      const normalizedPath = request.path.toLowerCase().replace(/\/+$/, '');
       const mutatingReadRoute =
         (request.method === 'GET' || request.method === 'HEAD') &&
-        (request.path === '/social-connections' || request.path === '/billing/subscription');
+        (normalizedPath === '/social-connections' ||
+          normalizedPath === '/billing/subscription' ||
+          /^\/uploads\/[^/]+$/.test(normalizedPath));
       if (
         !mutatingReadRoute &&
         (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS')
@@ -660,6 +666,10 @@ export const createApp = (options: AppOptions = {}) => {
               maxSizeBytes: postCoverUploadPolicy.maxSizeBytes
             })
         : undefined,
+      createMediaDownloadUrl: async (storageKey) => {
+        const access = await videoStorage.createDownloadAccess(storageKey);
+        return access.accessType === 'signed-url' ? access.downloadUrl : undefined;
+      },
       now: options.now
     }
   );
@@ -796,6 +806,37 @@ export const createApp = (options: AppOptions = {}) => {
         config.socialPublishRequireEmptyBacklog
     });
   }
+
+  const operationalPrisma = prismaClient as unknown as {
+    $queryRawUnsafe?: (query: string) => Promise<unknown>;
+    $disconnect?: () => Promise<void>;
+  } | undefined;
+  app.get('/ready', createReadinessHandler({
+    database: async () => {
+      if (!operationalPrisma) return;
+      if (!operationalPrisma.$queryRawUnsafe) {
+        throw new Error('Database probe unavailable');
+      }
+      await operationalPrisma.$queryRawUnsafe('SELECT 1');
+    },
+    queue: async () => {
+      if (config.publishQueue === 'bullmq') {
+        await publishQueue.checkReady();
+      } else {
+        await app.locals.publishScheduler.checkReady();
+      }
+    },
+    isShuttingDown: () => app.locals.shuttingDown === true
+  }));
+  app.locals.closeResources = async () => {
+    const results = await Promise.allSettled([
+      Promise.resolve().then(() => publishQueue.close()),
+      Promise.resolve().then(() => operationalPrisma?.$disconnect?.())
+    ]);
+    if (results.some((result) => result.status === 'rejected')) {
+      throw new Error('API resource shutdown failed');
+    }
+  };
 
   return app;
 };

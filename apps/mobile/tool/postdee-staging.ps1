@@ -38,6 +38,17 @@ function Resolve-RevenueCatTestStoreDefines {
     $searchRoot = $parent
   }
 
+  # Managed main worktrees can be outside the ancestor workspace. Reuse only
+  # the same ignored overlay from this repository's common workspace.
+  $commonGitDirectory = & git -C $mobileRoot rev-parse --path-format=absolute --git-common-dir 2>$null
+  if ($LASTEXITCODE -eq 0 -and $commonGitDirectory) {
+    $workspaceRoot = Split-Path -Parent ([string]$commonGitDirectory).Trim()
+    $candidate = Join-Path $workspaceRoot 'apps\mobile\revenuecat.local.json'
+    if (Test-Path -LiteralPath $candidate) {
+      return (Resolve-Path -LiteralPath $candidate).Path
+    }
+  }
+
   return $null
 }
 
@@ -211,6 +222,17 @@ function Resolve-FlutterBat {
     $searchRoot = $parent
   }
 
+  # The main checkout may live outside the workspace in a managed Git worktree.
+  # Its common Git directory still identifies the original workspace SDK.
+  $commonGitDirectory = & git -C $mobileRoot rev-parse --path-format=absolute --git-common-dir 2>$null
+  if ($LASTEXITCODE -eq 0 -and $commonGitDirectory) {
+    $workspaceRoot = Split-Path -Parent ([string]$commonGitDirectory).Trim()
+    $candidate = Join-Path $workspaceRoot '.tools\flutter\bin\flutter.bat'
+    if (Test-Path -LiteralPath $candidate) {
+      return $candidate
+    }
+  }
+
   throw 'Workspace Flutter SDK was not found in this checkout or its parent directories.'
 }
 
@@ -232,7 +254,10 @@ $flutterCommand = @(
 
 Push-Location $mobileRoot
 try {
-  $dartDefineArgs = @("--dart-define-from-file=$stagingDefines")
+  $dartDefineArgs = @(
+    "--dart-define-from-file=$stagingDefines",
+    '--dart-define=POSTDEE_STAGING_BUILD=true'
+  )
   if (-not [string]::IsNullOrWhiteSpace($revenueCatDefines)) {
     $dartDefineArgs += "--dart-define-from-file=$revenueCatDefines"
   }

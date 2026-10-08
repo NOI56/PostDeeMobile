@@ -4,6 +4,24 @@ import { createBullMqPublishQueueFromClient } from './bullMqPublishQueue.js';
 import { buildPublishJobId } from './publishQueue.js';
 
 describe('createBullMqPublishQueueFromClient', () => {
+  it('probes Redis without loading jobs and closes the owned connection', async () => {
+    const queueClient = {
+      add: vi.fn(), getJobs: vi.fn(),
+      checkReady: vi.fn(async () => undefined), close: vi.fn(async () => undefined)
+    };
+    const queue = createBullMqPublishQueueFromClient({ queue: queueClient });
+    await queue.checkReady();
+    await queue.close();
+    expect(queueClient.checkReady).toHaveBeenCalledOnce();
+    expect(queueClient.close).toHaveBeenCalledOnce();
+    expect(queueClient.getJobs).not.toHaveBeenCalled();
+  });
+
+  it('does not claim Redis is ready without a configured connection probe', async () => {
+    const queue = createBullMqPublishQueueFromClient({ queue: { add: vi.fn(), getJobs: vi.fn() } });
+    await expect(queue.checkReady()).rejects.toThrow('Publish queue readiness probe unavailable');
+  });
+
   it('adds immediate posts to BullMQ with no delay', async () => {
     const queueClient = {
       add: vi.fn().mockResolvedValue({

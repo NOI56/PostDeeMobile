@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
@@ -16,6 +18,9 @@ import '../shared/postdee_skeleton.dart';
 
 typedef HomeSubscriptionLoader = Future<SubscriptionStatusResult> Function();
 typedef HomeRecentPostsLoader = Future<List<PostSummaryResult>> Function();
+typedef HomeVideoThumbnailControllerFactory = VideoPlayerController Function(
+  Uri videoUrl,
+);
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -23,6 +28,7 @@ class HomeScreen extends StatefulWidget {
     this.isActive = true,
     this.loadSubscription,
     this.loadRecentPosts,
+    this.createVideoThumbnailController,
     this.onViewAllPosts,
     this.onOpenNotifications,
     this.onOpenProfile,
@@ -36,6 +42,7 @@ class HomeScreen extends StatefulWidget {
   final bool isActive;
   final HomeSubscriptionLoader? loadSubscription;
   final HomeRecentPostsLoader? loadRecentPosts;
+  final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
   final VoidCallback? onViewAllPosts;
   final VoidCallback? onOpenNotifications;
   final VoidCallback? onOpenProfile;
@@ -274,6 +281,8 @@ class _HomeScreenState extends State<HomeScreen> {
           errorMessage: _postsErrorMessage,
           onRetry: _loadRecentPosts,
           onOpenPost: _openPostDetail,
+          isActive: widget.isActive,
+          createVideoThumbnailController: widget.createVideoThumbnailController,
         ),
         const SizedBox(height: AppTheme.spaceSm),
       ],
@@ -754,6 +763,8 @@ class _LatestPostList extends StatelessWidget {
     required this.errorMessage,
     required this.onRetry,
     required this.onOpenPost,
+    required this.isActive,
+    required this.createVideoThumbnailController,
   });
 
   final List<PostSummaryResult> posts;
@@ -761,6 +772,8 @@ class _LatestPostList extends StatelessWidget {
   final String? errorMessage;
   final VoidCallback onRetry;
   final ValueChanged<PostSummaryResult> onOpenPost;
+  final bool isActive;
+  final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
 
   @override
   Widget build(BuildContext context) {
@@ -789,8 +802,11 @@ class _LatestPostList extends StatelessWidget {
       children: [
         for (var index = 0; index < posts.length; index += 1) ...[
           _LatestPostRow(
+            key: ValueKey(posts[index].id),
             post: posts[index],
             onTap: () => onOpenPost(posts[index]),
+            isActive: isActive,
+            createVideoThumbnailController: createVideoThumbnailController,
           ),
           if (index < posts.length - 1) const SizedBox(height: 9),
         ],
@@ -976,10 +992,18 @@ class _DashedRRectBorderPainter extends CustomPainter {
 }
 
 class _LatestPostRow extends StatelessWidget {
-  const _LatestPostRow({required this.post, required this.onTap});
+  const _LatestPostRow({
+    super.key,
+    required this.post,
+    required this.onTap,
+    required this.isActive,
+    required this.createVideoThumbnailController,
+  });
 
   final PostSummaryResult post;
   final VoidCallback onTap;
+  final bool isActive;
+  final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
 
   static SocialPlatform? _platformFor(String apiValue) {
     for (final platform in SocialPlatform.values) {
@@ -1097,23 +1121,10 @@ class _LatestPostRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Placeholder video thumbnail (the prototype has no real images).
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFFE7EFE9), Color(0xFFD6E3DA)],
-                  ),
-                ),
-                child: const Icon(
-                  Icons.play_arrow_rounded,
-                  color: Color(0xFF8FA197),
-                  size: 21,
-                ),
+              _LatestPostThumbnail(
+                post: post,
+                isActive: isActive,
+                createController: createVideoThumbnailController,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1169,6 +1180,229 @@ class _LatestPostRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LatestPostThumbnail extends StatelessWidget {
+  const _LatestPostThumbnail({
+    required this.post,
+    required this.isActive,
+    required this.createController,
+  });
+
+  final PostSummaryResult post;
+  final bool isActive;
+  final HomeVideoThumbnailControllerFactory? createController;
+
+  @override
+  Widget build(BuildContext context) {
+    final coverUrl = post.coverImageUrl;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: coverUrl != null
+            ? Image.network(
+                coverUrl.toString(),
+                key: ValueKey('home-latest-post-cover-${post.id}'),
+                fit: BoxFit.cover,
+                cacheWidth: 144,
+                excludeFromSemantics: true,
+                frameBuilder: (context, child, frame, synchronouslyLoaded) =>
+                    synchronouslyLoaded || frame != null
+                        ? child
+                        : _LatestPostThumbnailPlaceholder(postId: post.id),
+                errorBuilder: (context, error, stackTrace) =>
+                    _LatestPostThumbnailPlaceholder(postId: post.id),
+              )
+            : _LatestPostVideoPreview(
+                postId: post.id,
+                videoUrl: post.videoUrl,
+                frameTimeMs: post.coverFrameTimeMs,
+                isActive: isActive,
+                createController: createController,
+              ),
+      ),
+    );
+  }
+}
+
+class _LatestPostVideoPreview extends StatefulWidget {
+  const _LatestPostVideoPreview({
+    required this.postId,
+    required this.videoUrl,
+    required this.frameTimeMs,
+    required this.isActive,
+    required this.createController,
+  });
+
+  final String postId;
+  final Uri? videoUrl;
+  final int? frameTimeMs;
+  final bool isActive;
+  final HomeVideoThumbnailControllerFactory? createController;
+
+  @override
+  State<_LatestPostVideoPreview> createState() =>
+      _LatestPostVideoPreviewState();
+}
+
+class _LatestPostVideoPreviewState extends State<_LatestPostVideoPreview> {
+  VideoPlayerController? _controller;
+  bool _isReady = false;
+  int _generation = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _startController();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LatestPostVideoPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoUrl != widget.videoUrl ||
+        oldWidget.frameTimeMs != widget.frameTimeMs ||
+        oldWidget.isActive != widget.isActive ||
+        oldWidget.createController != widget.createController) {
+      _stopController();
+      _startController();
+    }
+  }
+
+  bool _isCurrent(VideoPlayerController controller, int generation) =>
+      mounted &&
+      widget.isActive &&
+      generation == _generation &&
+      identical(controller, _controller);
+
+  void _startController() {
+    if (!widget.isActive || widget.videoUrl == null) return;
+    try {
+      // This uses the player's network stream without saving a local copy.
+      // A cover skips the player entirely; the fallback never calls play().
+      final controller = widget.createController?.call(widget.videoUrl!) ??
+          VideoPlayerController.networkUrl(
+            widget.videoUrl!,
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          );
+      _controller = controller;
+      controller.addListener(_onControllerChanged);
+      unawaited(_initialize(controller, ++_generation));
+    } catch (_) {
+      _stopController();
+    }
+  }
+
+  Future<void> _prepareFrame(
+      VideoPlayerController controller, int generation) async {
+    await controller.initialize();
+    if (!_isCurrent(controller, generation)) return;
+    await controller.setVolume(0);
+    if (!_isCurrent(controller, generation)) return;
+    await controller.pause();
+    if (!_isCurrent(controller, generation)) return;
+    final durationMs = controller.value.duration.inMilliseconds;
+    final frameTimeMs = (widget.frameTimeMs ?? 0)
+        .clamp(0, durationMs > 0 ? durationMs - 1 : 0)
+        .toInt();
+    await controller.seekTo(Duration(milliseconds: frameTimeMs));
+  }
+
+  Future<void> _initialize(
+      VideoPlayerController controller, int generation) async {
+    try {
+      await _prepareFrame(controller, generation)
+          .timeout(const Duration(seconds: 8));
+      if (_isCurrent(controller, generation)) {
+        setState(() => _isReady = true);
+      }
+    } catch (_) {
+      if (_isCurrent(controller, generation)) {
+        _stopController();
+        if (mounted) setState(() {});
+      }
+    }
+  }
+
+  void _onControllerChanged() {
+    if (_controller?.value.hasError == true) {
+      _stopController();
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _stopController() {
+    _generation += 1;
+    final previous = _controller;
+    _controller = null;
+    _isReady = false;
+    if (previous != null) {
+      previous.removeListener(_onControllerChanged);
+      unawaited(_disposeController(previous));
+    }
+  }
+
+  Future<void> _disposeController(VideoPlayerController controller) async {
+    try {
+      await controller.dispose();
+    } catch (_) {
+      // A failed native player must not affect the rest of the Home page.
+    }
+  }
+
+  @override
+  void dispose() {
+    _stopController();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    final size = controller?.value.size ?? Size.zero;
+    if (!_isReady ||
+        controller == null ||
+        !controller.value.isInitialized ||
+        size.width <= 0 ||
+        size.height <= 0) {
+      return _LatestPostThumbnailPlaceholder(postId: widget.postId);
+    }
+    return SizedBox.expand(
+      key: ValueKey('home-latest-post-video-${widget.postId}'),
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: VideoPlayer(controller),
+        ),
+      ),
+    );
+  }
+}
+
+class _LatestPostThumbnailPlaceholder extends StatelessWidget {
+  const _LatestPostThumbnailPlaceholder({required this.postId});
+
+  final String postId;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: ValueKey('home-latest-post-placeholder-$postId'),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFE7EFE9), Color(0xFFD6E3DA)],
+          ),
+        ),
+        child: const Icon(
+          Icons.play_arrow_rounded,
+          color: Color(0xFF8FA197),
+          size: 21,
+        ),
+      );
 }
 
 class _StatusPill extends StatelessWidget {

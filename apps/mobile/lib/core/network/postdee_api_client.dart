@@ -2413,6 +2413,9 @@ class PostSummaryResult {
     this.scheduledAt,
     this.publishedAt,
     this.platformResults = const [],
+    this.videoUrl,
+    this.coverImageUrl,
+    this.coverFrameTimeMs,
   });
 
   final String id;
@@ -2424,6 +2427,9 @@ class PostSummaryResult {
   final DateTime? scheduledAt;
   final DateTime? publishedAt;
   final List<PostPlatformResult> platformResults;
+  final Uri? videoUrl;
+  final Uri? coverImageUrl;
+  final int? coverFrameTimeMs;
 
   factory PostSummaryResult.fromJson(Map<String, Object?> json) {
     DateTime? parseDate(Object? value) =>
@@ -2432,6 +2438,18 @@ class PostSummaryResult {
             : null;
 
     final createdAt = parseDate(json['createdAt']);
+    Uri? parsePreviewUrl(Object? value) {
+      if (value is! String) return null;
+      final uri = Uri.tryParse(value.trim());
+      return uri != null &&
+              (uri.scheme == 'https' || uri.scheme == 'http') &&
+              uri.host.isNotEmpty &&
+              uri.userInfo.isEmpty
+          ? uri
+          : null;
+    }
+
+    final rawFrameTimeMs = json['coverFrameTimeMs'];
 
     if (createdAt == null) {
       throw const ApiException('Post is missing createdAt');
@@ -2452,6 +2470,10 @@ class PostSummaryResult {
           .whereType<Map<String, Object?>>()
           .map(PostPlatformResult.fromJson)
           .toList(),
+      videoUrl: parsePreviewUrl(json['videoUrl']),
+      coverImageUrl: parsePreviewUrl(json['coverImageUrl']),
+      coverFrameTimeMs:
+          rawFrameTimeMs is int && rawFrameTimeMs >= 0 ? rawFrameTimeMs : null,
     );
   }
 }
@@ -2938,10 +2960,12 @@ class PostDeeApiClient {
         .toList();
   }
 
-  /// Lists the user's posts (any state), newest first, limited to [limit].
+  /// Lists the user's posts (any state), newest first, with up to 50 previews.
   /// Used by the Home dashboard's latest-post list.
   Future<List<PostSummaryResult>> listRecentPosts({int limit = 3}) async {
-    final response = await _getJson('/posts');
+    final previewLimit = limit.clamp(1, 50);
+    final response = await _getJson(
+        limit > 0 ? '/posts?includeMedia=true&limit=$previewLimit' : '/posts');
     final posts = response['posts'];
 
     if (posts is! List<dynamic>) {
@@ -2953,8 +2977,8 @@ class PostDeeApiClient {
         .toList()
       ..sort((left, right) => right.createdAt.compareTo(left.createdAt));
 
-    if (limit > 0 && parsed.length > limit) {
-      return parsed.sublist(0, limit);
+    if (limit > 0 && parsed.length > previewLimit) {
+      return parsed.sublist(0, previewLimit);
     }
 
     return parsed;

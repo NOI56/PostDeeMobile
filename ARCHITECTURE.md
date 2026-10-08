@@ -2,6 +2,52 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Pending-work integration boundary (2026-10-08)
+
+The main UI cleanup is delivered at `b1f793c`. The next source integration keeps
+the current dock/running dot and full-screen composer while adding owner-only
+Home previews and backend lifecycle hardening. No schema, dependency lock,
+provider activation or Render topology changes are part of this integration.
+Evidence/delivery: `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`.
+
+- Home requests the latest three posts with `includeMedia=true`. Media signing
+  is opt-in, capped at 50 rows, owner-key checked and bounded per object. Prefer
+  the cover and fall back to the clip only when no safe cover URL is available.
+  Mobile uses a muted paused frame with an eight-second initialization deadline
+  only on active Home, disposes it when hidden and retains the play placeholder
+  if older APIs/media fail. No storage objects become publicly readable.
+- Account-aware authentication retains the local owner mutation/deletion barrier
+  and active-owner checks. Mutating `GET`/`HEAD` social/billing reads normalize
+  case/trailing slashes, and upload-status reads enter the same barrier because
+  they can reconcile state. The guard drains through response completion even
+  if deletion starts during a read. Main already prepares relational Users in
+  individual routes after their own validation/quota gates; preserve that
+  behavior without duplicate generic preparation. Managed uploads use their
+  existing separate owner transaction.
+- `/ready` combines two-second single-flight read-only DB/queue checks and
+  reports unavailable during shutdown or unresolved interrupted publication.
+  `/health` remains process liveness; publishing readiness remains config-only.
+  Readiness is not proof of a live provider, storage or independent worker.
+- Shutdown marks readiness unavailable, stops scheduler claims and HTTP intake,
+  drains active publishing/requests, then closes queue/database resources within
+  a 30-second deadline. Startup recovery finalizes interrupted rows only from
+  complete saved terminal platform receipts; uncertain rows stay untouched and
+  are never automatically requeued or resent.
+- Per-route limit keys use Express trusted-proxy `req.ip` and IPv6 `/56`
+  grouping. Counters and owner coordination remain process-local. Persisted
+  scheduled posts survive in Prisma, but memory execution is still tied to one
+  API process. Keep one instance until shared mutation/claim-and-drain barriers,
+  shared rate limits and separate-worker failure evidence exist.
+- Staging identity is an explicit build define, displayed in a separate 18 dp
+  strip outside action hit areas. Production defaults off. The Windows launcher
+  resolves exact `main`, environment/local Android SDK paths and the common
+  workspace Flutter SDK, then uses the existing validated Staging helper and
+  ignored Test Store overlay. `-ResolveOnly` has no build/device/UI side effects.
+
+`docs/superpowers/plans/2026-07-17-scaling-roadmap.md` is future planning only.
+It must not enable BullMQ workers, more API instances, Groq, AI editing or new
+statistics providers from a user-count assumption.
+
 ## Profile Page Boundary (2026-10-05)
 
 Profile link replaces the AI editing navigation entry. AI caption generation

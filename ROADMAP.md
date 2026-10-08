@@ -2,6 +2,33 @@
 
 Build roadmap for PostDee.
 
+## Pending-work integration (2026-10-08)
+
+- Mobile cleanup is integrated and pushed to `main` at `b1f793c`; app-source CI
+  `37749129032` passed at `aafd076`. Preserve the dock/running dot, full-screen
+  four-step composer, existing login and all hundred profile templates.
+- Integrate owner-scoped Home previews through opt-in bounded signed URLs,
+  database/queue `/ready`, 30-second graceful shutdown, trusted-proxy/IPv6
+  rate-limit keys and recovery only from complete saved terminal results.
+  Preserve main's route-level Prisma user preparation after validation/quota
+  gates. Normalize case/trailing slashes when guarding mutating social/billing
+  reads, and hold the same barrier through `GET`/`HEAD` upload-status
+  reconciliation until response completion. No generic duplicate upsert is
+  introduced.
+- Add a Staging-only build strip and portable Windows main launcher. Keep
+  production off by default and retain current auth/Test Store validation.
+- No schema/dependency/provider activation, subscription or infrastructure
+  change is included. The memory scheduler and deletion/mutation locks remain
+  single-process. Readiness is not provider E2E or separate-worker health.
+- Current evidence and delivery gates are recorded in
+  `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`. New API
+  features remain a Staging release check until that API is deployed.
+- The reconciled scaling roadmap is future work only. Shared owner coordination,
+  shared rate limits and real failure/load evidence must precede horizontal
+  scaling; no paid services or worker deployment are enabled by this plan.
+  AI editing remains inactive compatibility code, Groq is not selectable, and
+  new cross-platform statistics ingestion remains deferred.
+
 ## Current Product Decision (2026-10-05)
 
 - Replace the AI video editing/Subtitle Studio entry with Profile link in the
@@ -553,18 +580,21 @@ Plan status uses five groups:
 
 - **ใช้งานอยู่**: current product or package direction.
 - **ทำบางส่วน**: the core exists, but named release or follow-up work remains.
-- **อนาคต**: approved direction that has not started. There is currently no
-  whole plan file in this group; future-only work is listed in Phase 2, Global
-  Readiness, and the remaining phases of partial plans.
+- **อนาคต**: a proposed direction that has not started. The reconciled capacity
+  roadmap and remaining Phase 2/Global Readiness work do not activate providers
+  or infrastructure by themselves.
 - **ประวัติ**: completed implementation record; unchecked execution boxes do
   not mean that the capability is absent.
 - **ถูกแทนที่**: an older approach that must not override the current runtime.
 
 | Plan file | Status | Notes |
 | --- | --- | --- |
+| `docs/superpowers/plans/2026-07-17-scaling-roadmap.md` | อนาคต | Reconciled on 2026-10-08 against the active product and single-process owner boundary; capacity tiers require measured evidence and no scaling infrastructure is enabled. |
+| `docs/superpowers/plans/2026-10-05-backend-hardening.md` | ประวัติ | Original isolated-branch verification is historical; the 2026-10-08 integration ports runtime hardening without its old dependency refresh. |
+| `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md` | ทำบางส่วน | UI cleanup is already on main; bounded Home previews, lifecycle/user preparation, Staging badge and launcher have a separate current verification/delivery record. |
 | `docs/superpowers/plans/2026-06-04-store-subscription-billing.md` | ถูกแทนที่ | The direct Apple/Google verification scaffold is retained for history and compatibility; RevenueCat is the production subscription direction. |
 | `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md` | ถูกแทนที่ | The ultra-dark checklist is historical. The current app is light by default with optional dark theme; retain only behavior and navigation improvements that still match the current UI. |
-| `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md` | ถูกแทนที่ | The original Groq provider choice is retired. Current AI editing uses ElevenLabs Scribe v2, Gemini planning, PostDee-rule fallback, and mobile FFmpeg; dated timing and safety notes remain useful history. |
+| `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md` | ถูกแทนที่ | Groq is retired. ElevenLabs/Gemini/FFmpeg editing modules are retained compatibility code; AI editing and Subtitle Studio have no active product entry. |
 | `docs/superpowers/plans/2026-06-13-subscription-packages-plan.md` | ใช้งานอยู่ | Current positioning source for Basic, Starter 199, Pro 299, quotas, paused AI audio review, and Team & Editor Access. Active paywalls must still hide benefits that are not end-to-end ready. |
 | `docs/superpowers/plans/2026-06-21-production-foundation-revenuecat-plan.md` | ทำบางส่วน | Webhook, Test Store purchase, Restore/resync, Play configuration, and signed AAB foundations exist; physical Play Console verification and real Google Play/App Store purchases remain. |
 | `docs/superpowers/plans/2026-06-26-postpeer-user-social-connections.md` | ถูกแทนที่ | The proposed signed-state callback flow was replaced by PostPeer profile state and explicit refresh polling. Use API/architecture docs for the runtime; real connected-account publishing remains a release test, not an unchecked-plan count. |

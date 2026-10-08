@@ -45,6 +45,8 @@ const publishJobMaxAttempts = 3;
 const publishJobRetryBackoffMs = 5_000;
 
 export type BullMqQueueClient = {
+  checkReady?: () => Promise<void>;
+  close?: () => Promise<void>;
   add: (
     name: string,
     data: BullMqPublishJobData,
@@ -111,6 +113,11 @@ export const createBullMqPublishQueueFromClient = ({
   queue: BullMqQueueClient;
   now?: () => number;
 }): PublishQueue => ({
+  checkReady: async () => {
+    if (!queue.checkReady) throw new Error('Publish queue readiness probe unavailable');
+    await queue.checkReady();
+  },
+  close: async () => { await queue.close?.(); },
   enqueue: async (post: QueuedPost) => {
     const runAt = readPublishRunAt(post);
     const status: PublishJob['status'] = post.scheduledAt ? 'SCHEDULED' : 'READY';
@@ -231,9 +238,14 @@ export const createBullMqPublishQueue = ({
   const queue = new Queue<BullMqPublishJobData>(publishQueueName, {
     connection: parseRedisConnection(redisUrl)
   });
+  queue.on('error', () => {
+    console.error('Publish queue connection failed', { code: 'PUBLISH_QUEUE_UNAVAILABLE' });
+  });
 
   return createBullMqPublishQueueFromClient({
     queue: {
+      checkReady: async () => { await (await queue.client).hget(queue.toKey('meta'), 'version'); },
+      close: async () => { await queue.close(); },
       add: async (name, data, options) => {
         const job = await queue.add(name, data, options);
 

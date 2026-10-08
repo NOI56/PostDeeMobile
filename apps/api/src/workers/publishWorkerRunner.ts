@@ -1,6 +1,7 @@
 import 'dotenv/config';
 
 import { Worker } from 'bullmq';
+import { createGracefulShutdown } from '../shutdown.js';
 
 import { readServerConfig } from '../config/env.js';
 import { createPrismaClient } from '../config/prisma.js';
@@ -120,3 +121,26 @@ worker.on('failed', (job, error) => {
 });
 
 console.log(`PostDee publish worker is listening on ${publishQueueName}`);
+
+const shutdown = createGracefulShutdown({
+  markUnavailable: () => undefined,
+  stopScheduling: () => undefined,
+  stopAcceptingRequests: async () => undefined,
+  // BullMQ stops claiming new jobs and waits for the active job by default.
+  drainPublishing: async () => { await worker.close(); },
+  closeResources: async () => { await prisma?.$disconnect(); }
+});
+worker.on('error', () => {
+  console.error('Publish worker connection failed', { code: 'PUBLISH_WORKER_UNAVAILABLE' });
+});
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    void shutdown().then(() => {
+      console.log('PostDee publish worker shutdown completed');
+      process.exitCode = 0;
+    }, () => {
+      console.error('PostDee publish worker shutdown did not complete', { code: 'SHUTDOWN_FAILED' });
+      process.exit(1);
+    });
+  });
+}

@@ -3,6 +3,33 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPrismaPostRepository } from './prismaPostRepository.js';
 
 describe('createPrismaPostRepository', () => {
+  it('reads only interrupted publishing ids and platforms for startup recovery', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      { id: 'post-recovery', selectedPlatforms: ['TIKTOK'] }
+    ]);
+    const repository = createPrismaPostRepository({ prisma: { post: { findMany } } });
+    expect(await repository.listPublishing()).toEqual([
+      { id: 'post-recovery', platforms: ['TIKTOK'] }
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { status: 'PUBLISHING' },
+      select: { id: true, selectedPlatforms: true },
+      orderBy: { createdAt: 'desc' }
+    });
+  });
+
+  it.each([0, 1])('conditionally finalizes a still-publishing row (updated=%s)', async (count) => {
+    const updateMany = vi.fn().mockResolvedValue({ count });
+    const repository = createPrismaPostRepository({ prisma: { post: { updateMany } } });
+    expect(await repository.finalizeInterruptedPublish({
+      postId: 'post-recovery', status: 'PARTIAL_PUBLISHED', publishedAt: '2026-10-05T00:00:00.000Z'
+    })).toBe(count === 1);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: 'post-recovery', status: 'PUBLISHING' },
+      data: { status: 'PARTIAL_PUBLISHED', publishedAt: new Date('2026-10-05T00:00:00.000Z') }
+    });
+  });
+
   it('counts monthly units with UTC bounds and a minimal Prisma projection', async () => {
     const findMany = vi.fn().mockResolvedValue([
       {

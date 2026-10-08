@@ -303,6 +303,7 @@ export const registerPostRoutes = (
     resolvePlatformTarget?: ResolveCurrentPlatformTarget;
     assertUploadReady?: (ownerId: string, videoS3Key: string) => Promise<void>;
     assertCoverUploadReady?: (ownerId: string, coverImageS3Key: string) => Promise<void>;
+    createMediaDownloadUrl?: (storageKey: string) => Promise<string | undefined>;
     now?: () => Date;
   } = {}
 ) => {
@@ -312,6 +313,38 @@ export const registerPostRoutes = (
   const ownerMutationLock = options.ownerMutationLock ?? createOwnerMutationLock();
   const creationLocks = new Map<string, Promise<void>>();
   const mutationLocks = new Map<string, Promise<void>>();
+
+  const createOptionalPreviewUrl = async (storageKey: string | undefined, userId: string) => {
+    if (
+      !storageKey ||
+      !options.createMediaDownloadUrl ||
+      !isStorageKeyOwnedByUser({ videoS3Key: storageKey, userId })
+    ) {
+      return undefined;
+    }
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const rawUrl = await Promise.race([
+        options.createMediaDownloadUrl(storageKey),
+        new Promise<undefined>((resolve) => {
+          timeout = setTimeout(() => resolve(undefined), 1500);
+        })
+      ]);
+      if (!rawUrl) return undefined;
+      const url = new URL(rawUrl);
+      return (url.protocol === 'https:' || url.protocol === 'http:') &&
+        url.hostname && !url.username && !url.password
+        ? rawUrl
+        : undefined;
+    } catch {
+      // Media is temporary. A removed object or unavailable signer must not
+      // hide an otherwise valid post or expose provider errors/signed URLs.
+      return undefined;
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+    }
+  };
 
   const acquireLock = async (locks: Map<string, Promise<void>>, key: string) => {
     const previous = locks.get(key) ?? Promise.resolve();
@@ -399,10 +432,33 @@ export const registerPostRoutes = (
       return;
     }
 
-    const posts = await store.list({
+    const includeMedia = request.query.includeMedia === 'true';
+    const rawLimit = request.query.limit;
+    const parsedLimit = typeof rawLimit === 'string' && /^\d+$/.test(rawLimit)
+      ? Number(rawLimit)
+      : undefined;
+    if (rawLimit !== undefined &&
+      (parsedLimit === undefined || !Number.isSafeInteger(parsedLimit) || parsedLimit < 1)) {
+      response.status(400).json({
+        status: 'error',
+        code: 'INVALID_POST_LIMIT',
+        message: 'limit must be a positive integer'
+      });
+      return;
+    }
+
+    response.setHeader('Cache-Control', 'private, no-store');
+    let posts = (await store.list({
       userId: authUser.id,
       scheduledOnly: request.query.scheduled === 'true'
-    });
+    })).filter((post) => post.userId === authUser.id);
+    // Bound the optional preview work before signing any private objects.
+    // Legacy lists keep their existing ordering and complete result set.
+    if (includeMedia || parsedLimit !== undefined) {
+      posts = [...posts]
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+        .slice(0, Math.min(parsedLimit ?? 50, 50));
+    }
     const ownedPostIds = new Set(posts.map((post) => post.id));
     const platformResults = platformPublishStore.listForPostIds
       ? (await platformPublishStore.listForPostIds([...ownedPostIds])).filter((result) =>
@@ -420,12 +476,23 @@ export const registerPostRoutes = (
       resultsByPostId.set(result.postId, existingResults);
     }
 
+    const publicPosts = await Promise.all(posts.map(async (post) => {
+      const coverImageUrl = includeMedia
+        ? await createOptionalPreviewUrl(post.coverImageS3Key, authUser.id)
+        : undefined;
+      const videoUrl = includeMedia && !coverImageUrl
+        ? await createOptionalPreviewUrl(post.videoS3Key, authUser.id)
+        : undefined;
+      return {
+        ...toPublicPost(post),
+        ...(coverImageUrl ? { coverImageUrl } : {}),
+        ...(videoUrl ? { videoUrl } : {}),
+        platformResults: resultsByPostId.get(post.id) ?? []
+      };
+    }));
     response.json({
       status: 'ok',
-      posts: posts.map((post) => ({
-        ...toPublicPost(post),
-        platformResults: resultsByPostId.get(post.id) ?? []
-      }))
+      posts: publicPosts
     });
   });
 

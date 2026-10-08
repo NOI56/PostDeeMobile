@@ -109,6 +109,10 @@ export type UpdatePostStatusInput = {
   publishedAt?: string;
 };
 
+export type FinalizeInterruptedPublishInput = UpdatePostStatusInput & {
+  status: 'PUBLISHED' | 'PARTIAL_PUBLISHED' | 'FAILED';
+};
+
 export type ReschedulePostInput = {
   postId: string;
   userId: string;
@@ -133,6 +137,9 @@ export type ClaimPostForPublishInput = {
 };
 
 export type PostStore = {
+  // Internal startup recovery reads ids and platforms, never private content.
+  listPublishing: () => Promise<Array<Pick<QueuedPost, 'id' | 'platforms'>>>;
+  finalizeInterruptedPublish: (input: FinalizeInterruptedPublishInput) => Promise<boolean>;
   list: (filter?: { userId?: string; scheduledOnly?: boolean }) => Promise<QueuedPost[]>;
   // Global aggregate only: used by the opt-in real-publisher activation guard.
   // It deliberately returns no post, owner, caption, or media details.
@@ -207,6 +214,16 @@ export const createPostStore = (): PostStore => {
     posts.find((post) => post.id === buildIdempotentPostId(input));
 
   return {
+    listPublishing: async () => posts
+      .filter((post) => post.status === 'PUBLISHING')
+      .map((post) => ({ id: post.id, platforms: [...post.platforms] })),
+    finalizeInterruptedPublish: async ({ postId, status, publishedAt }) => {
+      const post = posts.find((candidate) => candidate.id === postId && candidate.status === 'PUBLISHING');
+      if (!post) return false;
+      post.status = status;
+      if (publishedAt) post.publishedAt = publishedAt;
+      return true;
+    },
     list: async (filter) =>
       posts
         .filter((post) => (filter?.userId ? post.userId === filter.userId : true))

@@ -4,6 +4,7 @@ import {
   createNoopPublishNotifier
 } from '../modules/notifications/publishNotifier.js';
 import type { PostStore } from '../modules/posts/postStore.js';
+import { reconcileInterruptedPublishes } from './interruptedPublishRecovery.js';
 import {
   type PlatformPublisher,
   type VideoStorageCleaner,
@@ -16,6 +17,8 @@ export type PublishScheduler = {
   start: () => Promise<void>;
   stop: () => void;
   runOnce: () => Promise<void>;
+  drain?: () => Promise<void>;
+  checkReady?: () => Promise<void>;
 };
 
 const activationBacklogInspectionFailedMessage =
@@ -62,7 +65,12 @@ export const createPublishScheduler = ({
   sleep?: (delayMs: number) => Promise<void>;
 }): PublishScheduler => {
   let timer: ReturnType<typeof setInterval> | undefined;
-  let isRunning = false;
+  let activeRun: Promise<void> | undefined;
+  let stopped = false;
+  let pollHealthy = true;
+  let requiresReconciliation = false;
+  let starting: Promise<void> | undefined;
+  let generation = 0;
   const attemptLimit = Math.max(1, Math.floor(maxPrePublishAttempts));
   const retryBackoffMs = Math.max(0, prePublishRetryBackoffMs);
 
@@ -110,6 +118,9 @@ export const createPublishScheduler = ({
         // Once a provider call starts, its outcome can be ambiguous. The worker
         // already fails the post closed; never create another provider post.
         if (externalPublishStarted) {
+          // Persistence may have failed after provider acceptance. Keep readiness
+          // unavailable until restart/reconciliation examines the saved receipts.
+          requiresReconciliation = true;
           return;
         }
 
@@ -135,32 +146,48 @@ export const createPublishScheduler = ({
     }
   };
 
-  const runOnce = async () => {
-    if (isRunning) {
-      return;
-    }
-
-    isRunning = true;
-
-    try {
-      const duePosts = await postStore.listDue({ now: now() });
-
-      for (const post of duePosts) {
-        try {
-          await publishDuePost(post);
-        } catch {
-          // A store outage can also prevent persisting FAILED. The next tick
-          // may safely retry while the post remains QUEUED.
+  const runOnce = (): Promise<void> => {
+    if (stopped) return Promise.resolve();
+    if (activeRun) return activeRun;
+    activeRun = Promise.resolve().then(async () => {
+      try {
+        const duePosts = await postStore.listDue({ now: now() });
+        let persistenceFailed = false;
+        for (const post of duePosts) {
+          if (stopped) break;
+          try {
+            await publishDuePost(post);
+          } catch {
+            // Preserve an uncertain provider outcome. A later healthy poll can
+            // retry only rows that remain safely QUEUED before provider intake.
+            persistenceFailed = true;
+          }
         }
+        pollHealthy = !persistenceFailed;
+      } catch (error) {
+        pollHealthy = false;
+        throw error;
       }
-    } finally {
-      isRunning = false;
+    }).finally(() => { activeRun = undefined; });
+    return activeRun;
+  };
+
+  const stop = () => {
+    generation += 1;
+    stopped = true;
+    if (timer) {
+      clearInterval(timer);
+      timer = undefined;
     }
   };
 
   return {
-    start: async () => {
-      if (!timer) {
+    start: () => {
+      if (starting) return starting;
+      if (timer) return Promise.resolve();
+      const startGeneration = generation;
+      starting = (async () => {
+        if (activeRun) throw new Error('Publish scheduler is still draining');
         if (requireEmptyBacklogOnStart) {
           let pendingPostCount: Awaited<ReturnType<PostStore['countPublishBacklog']>>;
 
@@ -178,15 +205,39 @@ export const createPublishScheduler = ({
           }
         }
 
+        try {
+          const recovery = await reconcileInterruptedPublishes({ postStore, platformPublishStore });
+          requiresReconciliation = recovery.requiresReconciliation > 0;
+          if (recovery.recovered > 0) {
+            console.log('Interrupted publishing statuses recovered', { count: recovery.recovered });
+          }
+          if (requiresReconciliation) {
+            console.error('Interrupted publishing requires operator reconciliation', {
+              code: 'PUBLISH_RECONCILIATION_REQUIRED', count: recovery.requiresReconciliation
+            });
+          }
+        } catch {
+          throw new Error('Interrupted publish inspection failed');
+        }
+        if (startGeneration !== generation) return;
         timer = setInterval(() => {
-          void runOnce();
+          void runOnce().catch(() => {
+            console.error('Publish scheduler poll failed', { code: 'PUBLISH_POLL_FAILED' });
+          });
         }, intervalMs);
-      }
+        stopped = false;
+      })().finally(() => { starting = undefined; });
+      return starting;
     },
-    stop: () => {
-      if (timer) {
-        clearInterval(timer);
-        timer = undefined;
+    stop,
+    drain: async () => {
+      stop();
+      await starting;
+      await activeRun;
+    },
+    checkReady: async () => {
+      if (!timer || stopped || !pollHealthy || requiresReconciliation) {
+        throw new Error('Publish scheduler unavailable');
       }
     },
     runOnce

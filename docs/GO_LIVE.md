@@ -8,6 +8,45 @@ ingestion, Sentry, beat/hook rendering, and AI minute top-ups still need code.
 Default values keep everything in mock/local mode so the app runs without any
 third-party accounts.
 
+## Pending-work integration gate (2026-10-08)
+
+Mobile cleanup is already integrated/pushed on main at `b1f793c`, with app-source
+CI `37749129032` at `aafd076`. The next integration adds readiness/lifecycle
+hardening, mutating-read owner guards and opt-in owner media previews without a new
+migration, dependency refresh, provider activation or infrastructure change.
+Its dated source/test/delivery record is
+`superpowers/plans/2026-10-08-integrate-pending-main-work.md`.
+
+Local tests/builds do not prove live PostgreSQL, Redis, R2, Firebase or provider
+recovery. Before releasing the new API, verify `/health`, `/ready`, current SHA
+and unchanged flags on the target environment; verify private signed cover/clip
+previews and cross-owner rejection with dedicated accounts. A new mobile build
+against the older API must continue to show placeholders.
+
+Verify case/trailing-slash variants of mutating social/billing reads and
+`GET`/`HEAD` upload-status reconciliation preserve the account deletion barrier,
+including deletion that begins while the read is running. Main already prepares
+Users in the individual Prisma routes after their own validation/quota gates;
+this integration preserves that behavior without a generic duplicate upsert.
+
+Keep the memory scheduler at one API instance. Drill orderly shutdown and
+restart with complete saved receipts, then separately handle uncertain provider
+acceptance under maintenance. An uncertain `PUBLISHING` row is left untouched,
+keeps readiness unavailable and must not be automatically resent. Restore
+readiness only after verifying the actual provider result and restarting.
+Real Redis worker drain/stalled jobs and a shared owner mutation/deletion barrier
+remain gates before independent workers or multiple API processes.
+
+Local verification now passes 1,609 API tests, 1,588 Flutter tests, analysis,
+build/schema/catalog checks and the final 45-test badge/Home run. Compiled
+mock-safe entry-point health/readiness/auth and SIGTERM smoke pass. The Staging
+APK updates with the existing signature and retains account/profile/session
+state; final native/source/CI receipts belong in the integration plan. These
+checks do not replace the live release gates above. Never uninstall/clear data to bypass an
+update-signature failure. Production has no Staging marker by default. Manual
+API deployment is outside the current main/push request; the new signed-preview
+API has no new live Staging evidence until an explicitly authorized deployment.
+
 ## Profile Page Replacement Gate (2026-10-05)
 
 Profile link replaces AI editing/Subtitle Studio in the active app. The editing

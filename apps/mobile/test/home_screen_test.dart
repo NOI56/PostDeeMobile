@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/home/home_screen.dart';
+import 'package:video_player/video_player.dart';
 
 import 'link_in_bio_test_navigation.dart';
 
@@ -99,7 +100,325 @@ Widget _homeTestApp(
   );
 }
 
+class _PreviewVideoController extends VideoPlayerController {
+  _PreviewVideoController({this.initializeGate, this.failInitialize = false})
+      : super.asset('fake-preview.mp4');
+
+  final Completer<void>? initializeGate;
+  final bool failInitialize;
+  bool disposed = false;
+  int initializeCalls = 0;
+  int playCalls = 0;
+  int pauseCalls = 0;
+  double? requestedVolume;
+  Duration? requestedPosition;
+
+  @override
+  Future<void> initialize() async {
+    initializeCalls += 1;
+    await initializeGate?.future;
+    if (disposed) return;
+    if (failInitialize) throw StateError('unavailable preview');
+    value = const VideoPlayerValue(
+      duration: Duration(seconds: 10),
+      size: Size(1080, 1920),
+      isInitialized: true,
+    );
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    requestedVolume = volume;
+    value = value.copyWith(volume: volume);
+  }
+
+  @override
+  Future<void> pause() async {
+    pauseCalls += 1;
+    value = value.copyWith(isPlaying: false);
+  }
+
+  @override
+  Future<void> play() async {
+    playCalls += 1;
+  }
+
+  @override
+  Future<void> seekTo(Duration position) async {
+    requestedPosition = position;
+    value = value.copyWith(position: position);
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (disposed) return;
+    disposed = true;
+    await super.dispose();
+  }
+}
+
+PostSummaryResult _previewPost(
+        {Uri? coverImageUrl, Uri? videoUrl, int? frameTimeMs}) =>
+    PostSummaryResult(
+      id: 'preview-p1',
+      caption: 'คลิปสินค้าล่าสุด',
+      videoS3Key: 'uploads/seller/clip/video.mp4',
+      platforms: const ['TIKTOK'],
+      status: 'QUEUED',
+      createdAt: DateTime.utc(2026, 6, 1),
+      coverImageUrl: coverImageUrl,
+      videoUrl: videoUrl,
+      coverFrameTimeMs: frameTimeMs,
+    );
+
+Future<SubscriptionStatusResult> _previewSubscription() async =>
+    const SubscriptionStatusResult(
+      userId: 'seller',
+      plan: 'BASIC',
+      status: 'ACTIVE',
+      canSchedule: false,
+      canUseAiCaptions: false,
+      canUseAnalytics: false,
+    );
+
 void main() {
+  testWidgets('uses a cover preview before starting any video controller',
+      (tester) async {
+    var videoControllers = 0;
+    final coverUrl = Uri.parse('https://media.test/cover.jpg?expires=60');
+    await tester.pumpWidget(_homeTestApp(HomeScreen(
+      loadSubscription: _previewSubscription,
+      loadRecentPosts: () async => [
+        _previewPost(
+          coverImageUrl: coverUrl,
+          videoUrl: Uri.parse('https://media.test/video.mp4'),
+        )
+      ],
+      createVideoThumbnailController: (_) {
+        videoControllers += 1;
+        return _PreviewVideoController();
+      },
+    )));
+    await tester.pump();
+    final image = tester.widget<Image>(
+      find.byKey(const ValueKey('home-latest-post-cover-preview-p1')),
+    );
+    final resizedImage = image.image as ResizeImage;
+    expect(
+        (resizedImage.imageProvider as NetworkImage).url, coverUrl.toString());
+    expect(resizedImage.width, 144);
+    expect(image.fit, BoxFit.cover);
+    expect(videoControllers, 0);
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('home-latest-post-placeholder-preview-p1')),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(find.text('ยอดวิวเดือนนี้'), findsNothing);
+  });
+
+  testWidgets('keeps latest posts readable when preview media is missing',
+      (tester) async {
+    await tester.pumpWidget(_homeTestApp(HomeScreen(
+      loadSubscription: _previewSubscription,
+      loadRecentPosts: () async => [_previewPost()],
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('คลิปสินค้าล่าสุด'), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('home-latest-post-placeholder-preview-p1')),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'renders one paused muted frame and clamps the requested cover time',
+      (tester) async {
+    final controller = _PreviewVideoController();
+    final url = Uri.parse('https://media.test/video.mp4?expires=60');
+    await tester.pumpWidget(_homeTestApp(HomeScreen(
+      loadSubscription: _previewSubscription,
+      loadRecentPosts: () async =>
+          [_previewPost(videoUrl: url, frameTimeMs: 12000)],
+      createVideoThumbnailController: (requested) {
+        expect(requested, url);
+        return controller;
+      },
+    )));
+    await tester.pumpAndSettle();
+    expect(controller.initializeCalls, 1);
+    expect(controller.playCalls, 0);
+    expect(controller.pauseCalls, 1);
+    expect(controller.requestedVolume, 0);
+    expect(controller.requestedPosition, const Duration(milliseconds: 9999));
+    expect(find.byKey(const ValueKey('home-latest-post-video-preview-p1')),
+        findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(controller.disposed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('does not initialize a video on an inactive home tab',
+      (tester) async {
+    final controller = _PreviewVideoController();
+    var active = false;
+    late StateSetter setHomeState;
+    await tester
+        .pumpWidget(_homeTestApp(StatefulBuilder(builder: (context, setState) {
+      setHomeState = setState;
+      return HomeScreen(
+        isActive: active,
+        loadSubscription: _previewSubscription,
+        loadRecentPosts: () async =>
+            [_previewPost(videoUrl: Uri.parse('https://media.test/video.mp4'))],
+        createVideoThumbnailController: (_) => controller,
+      );
+    })));
+    await tester.pumpAndSettle();
+    expect(controller.initializeCalls, 0);
+    setHomeState(() => active = true);
+    await tester.pumpAndSettle();
+    expect(controller.initializeCalls, 1);
+    setHomeState(() => active = false);
+    await tester.pumpAndSettle();
+    expect(controller.disposed, isTrue);
+    expect(find.byKey(const ValueKey('home-latest-post-video-preview-p1')),
+        findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final timesOut in [false, true]) {
+    testWidgets(
+        'falls back safely when preview ${timesOut ? 'times out' : 'fails'}',
+        (tester) async {
+      final gate = timesOut ? Completer<void>() : null;
+      final controller = _PreviewVideoController(
+        initializeGate: gate,
+        failInitialize: !timesOut,
+      );
+      await tester.pumpWidget(_homeTestApp(HomeScreen(
+        loadSubscription: _previewSubscription,
+        loadRecentPosts: () async =>
+            [_previewPost(videoUrl: Uri.parse('https://media.test/video.mp4'))],
+        createVideoThumbnailController: (_) => controller,
+      )));
+      await tester.pump();
+      await tester.pump();
+      if (timesOut) await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
+      expect(controller.disposed, isTrue);
+      expect(
+          find.byKey(const ValueKey('home-latest-post-placeholder-preview-p1')),
+          findsOneWidget);
+      expect(find.text('คลิปสินค้าล่าสุด'), findsOneWidget);
+      gate?.complete();
+      await tester.pumpAndSettle();
+      expect(controller.requestedPosition, isNull);
+      expect(controller.playCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('ignores initialization completing after leaving the home tab',
+      (tester) async {
+    final gate = Completer<void>();
+    final controller = _PreviewVideoController(initializeGate: gate);
+    var active = true;
+    late StateSetter setHomeState;
+    await tester
+        .pumpWidget(_homeTestApp(StatefulBuilder(builder: (context, setState) {
+      setHomeState = setState;
+      return HomeScreen(
+        isActive: active,
+        loadSubscription: _previewSubscription,
+        loadRecentPosts: () async =>
+            [_previewPost(videoUrl: Uri.parse('https://media.test/video.mp4'))],
+        createVideoThumbnailController: (_) => controller,
+      );
+    })));
+    await tester.pump();
+    await tester.pump();
+    expect(controller.initializeCalls, 1);
+    setHomeState(() => active = false);
+    await tester.pump();
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(controller.disposed, isTrue);
+    expect(controller.requestedPosition, isNull);
+    expect(find.byKey(const ValueKey('home-latest-post-video-preview-p1')),
+        findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'replaces an expired video URL without accepting its late initialization',
+      (tester) async {
+    final oldGate = Completer<void>();
+    final oldController = _PreviewVideoController(initializeGate: oldGate);
+    final newController = _PreviewVideoController();
+    final oldUrl = Uri.parse('https://media.test/video.mp4?signature=old');
+    final newUrl = Uri.parse('https://media.test/video.mp4?signature=new');
+    var active = true;
+    var currentUrl = oldUrl;
+    late StateSetter setHomeState;
+    VideoPlayerController factory(Uri url) =>
+        url == oldUrl ? oldController : newController;
+    await tester
+        .pumpWidget(_homeTestApp(StatefulBuilder(builder: (context, setState) {
+      setHomeState = setState;
+      return HomeScreen(
+        isActive: active,
+        loadSubscription: _previewSubscription,
+        loadRecentPosts: () async => [_previewPost(videoUrl: currentUrl)],
+        createVideoThumbnailController: factory,
+      );
+    })));
+    await tester.pump();
+    await tester.pump();
+    expect(oldController.initializeCalls, 1);
+    setHomeState(() => active = false);
+    await tester.pump();
+    setHomeState(() {
+      active = true;
+      currentUrl = newUrl;
+    });
+    await tester.pump();
+    await tester.pumpAndSettle();
+    oldGate.complete();
+    await tester.pumpAndSettle();
+    expect(oldController.disposed, isTrue);
+    expect(oldController.requestedPosition, isNull);
+    expect(newController.initializeCalls, 1);
+    expect(newController.playCalls, 0);
+    expect(find.byKey(const ValueKey('home-latest-post-video-preview-p1')),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'falls back if a prepared native video controller later reports an error',
+      (tester) async {
+    final controller = _PreviewVideoController();
+    await tester.pumpWidget(_homeTestApp(HomeScreen(
+      loadSubscription: _previewSubscription,
+      loadRecentPosts: () async =>
+          [_previewPost(videoUrl: Uri.parse('https://media.test/video.mp4'))],
+      createVideoThumbnailController: (_) => controller,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home-latest-post-video-preview-p1')),
+        findsOneWidget);
+    controller.value =
+        controller.value.copyWith(errorDescription: 'expired media');
+    await tester.pumpAndSettle();
+    expect(controller.disposed, isTrue);
+    expect(
+        find.byKey(const ValueKey('home-latest-post-placeholder-preview-p1')),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final plan in const ['BASIC', 'STARTER', 'PRO']) {
     for (final languageCode in const ['th', 'en']) {
       testWidgets(
@@ -134,10 +453,10 @@ void main() {
             'Pro plan only',
           ],
         );
-        expect(find.byKey(const ValueKey('home-views-metric-card')),
-            findsNothing);
-        expect(find.byKey(const ValueKey('home-likes-metric-card')),
-            findsNothing);
+        expect(
+            find.byKey(const ValueKey('home-views-metric-card')), findsNothing);
+        expect(
+            find.byKey(const ValueKey('home-likes-metric-card')), findsNothing);
         expect(tester.takeException(), isNull);
       });
     }

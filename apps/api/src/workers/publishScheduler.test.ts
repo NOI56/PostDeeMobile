@@ -5,6 +5,116 @@ import { createPostStore } from '../modules/posts/postStore.js';
 import { createPublishScheduler } from './publishScheduler.js';
 
 describe('createPublishScheduler', () => {
+  it('detects unknown interrupted publishes at startup without sending them again', async () => {
+    const postStore = createPostStore();
+    const post = await postStore.create({ userId: 'seller-interrupted', caption: 'private', videoS3Key: 'private.mp4', platforms: ['TIKTOK'] });
+    await postStore.claimForPublish({ postId: post.id, expectedRunAt: post.createdAt });
+    const publisher = { publish: vi.fn() };
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const scheduler = createPublishScheduler({ postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher });
+    try {
+      await scheduler.start();
+      await scheduler.runOnce();
+      expect(post.status).toBe('PUBLISHING');
+      expect(publisher.publish).not.toHaveBeenCalled();
+      await expect(scheduler.checkReady!()).rejects.toThrow('Publish scheduler unavailable');
+      expect(warn).toHaveBeenCalledWith('Interrupted publishing requires operator reconciliation', { code: 'PUBLISH_RECONCILIATION_REQUIRED', count: 1 });
+    } finally {
+      scheduler.stop();
+      warn.mockRestore();
+    }
+  });
+
+  it('fails startup safely when recovery inspection cannot reach the store', async () => {
+    const postStore = createPostStore();
+    vi.spyOn(postStore, 'listPublishing').mockRejectedValue(new Error('secret database URL'));
+    const scheduler = createPublishScheduler({ postStore, platformPublishStore: createInMemoryPlatformPublishStore() });
+    await expect(scheduler.start()).rejects.toThrow('Interrupted publish inspection failed');
+  });
+
+  it('stops claiming new posts and drains the active publish before shutdown', async () => {
+    const postStore = createPostStore();
+    const first = await postStore.create({ userId: 'seller-drain', caption: 'first', videoS3Key: 'first.mp4', platforms: ['TIKTOK'] });
+    const second = await postStore.create({ userId: 'seller-drain', caption: 'second', videoS3Key: 'second.mp4', platforms: ['TIKTOK'] });
+    let finishPublish!: () => void;
+    let publishStarted!: () => void;
+    const started = new Promise<void>((resolve) => { publishStarted = resolve; });
+    const publishing = new Promise<void>((resolve) => { finishPublish = resolve; });
+    const publisher = { publish: vi.fn(async ({ platform }) => {
+      publishStarted();
+      await publishing;
+      return { platform, status: 'PUBLISHED' as const, deliveryOutcome: 'LIVE' as const, publishedAt: '2026-10-05T00:00:00.000Z' };
+    }) };
+    const scheduler = createPublishScheduler({ postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher });
+    const run = scheduler.runOnce();
+    await started;
+    let drained = false;
+    const drain = scheduler.drain!().then(() => { drained = true; });
+    await Promise.resolve();
+    expect(drained).toBe(false);
+    finishPublish();
+    await Promise.all([run, drain]);
+    expect(first.status).toBe('PUBLISHED');
+    expect(second.status).toBe('QUEUED');
+    await scheduler.runOnce();
+    expect(publisher.publish).toHaveBeenCalledOnce();
+  });
+
+  it('marks polling failures unavailable and recovers on a successful poll', async () => {
+    const postStore = createPostStore();
+    const scheduler = createPublishScheduler({ postStore, platformPublishStore: createInMemoryPlatformPublishStore() });
+    await scheduler.start();
+    try {
+      vi.spyOn(postStore, 'listDue').mockRejectedValueOnce(new Error('private database detail'));
+      await expect(scheduler.runOnce()).rejects.toThrow();
+      await expect(scheduler.checkReady!()).rejects.toThrow('Publish scheduler unavailable');
+      await scheduler.runOnce();
+      await expect(scheduler.checkReady!()).resolves.toBeUndefined();
+    } finally {
+      scheduler.stop();
+    }
+  });
+
+  it('fails readiness after a post-provider persistence failure and never sends the post again', async () => {
+    const postStore = createPostStore();
+    const platformPublishStore = createInMemoryPlatformPublishStore();
+    const post = await postStore.create({
+      userId: 'seller-persist', caption: 'private', videoS3Key: 'private.mp4', platforms: ['TIKTOK']
+    });
+    const publisher = { publish: vi.fn(async ({ platform }) => ({
+      platform, status: 'PUBLISHED' as const, externalPostId: 'saved-provider-receipt',
+      deliveryOutcome: 'LIVE' as const, publishedAt: '2026-10-05T00:00:00.000Z'
+    })) };
+    const scheduler = createPublishScheduler({ postStore, platformPublishStore, publisher });
+    await scheduler.start();
+    const updateStatus = vi.spyOn(postStore, 'updateStatus')
+      .mockRejectedValue(new Error('private database connection detail'));
+    try {
+      await scheduler.runOnce();
+      expect(post.status).toBe('PUBLISHING');
+      await expect(scheduler.checkReady!()).rejects.toThrow('Publish scheduler unavailable');
+      updateStatus.mockRestore();
+      await scheduler.runOnce();
+      expect(publisher.publish).toHaveBeenCalledOnce();
+      await expect(scheduler.checkReady!()).rejects.toThrow('Publish scheduler unavailable');
+    } finally {
+      updateStatus.mockRestore();
+      scheduler.stop();
+    }
+    const restart = createPublishScheduler({ postStore, platformPublishStore, publisher });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await restart.start();
+      expect(post.status).toBe('PUBLISHED');
+      await expect(restart.checkReady!()).resolves.toBeUndefined();
+      await restart.runOnce();
+      expect(publisher.publish).toHaveBeenCalledOnce();
+    } finally {
+      restart.stop();
+      log.mockRestore();
+    }
+  });
+
   it('checks the complete global backlog before starting an opted-in scheduler', async () => {
     const postStore = createPostStore();
     const platformPublishStore = createInMemoryPlatformPublishStore();

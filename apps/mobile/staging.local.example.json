@@ -1,5 +1,6 @@
 {
   "API_BASE_URL": "https://postdee-api-staging.onrender.com",
+  "POSTDEE_STAGING_BUILD": true,
   "ENABLE_FIREBASE_AUTH": true,
   "ALLOW_LOCAL_MOCK_AUTH": false,
   "GOOGLE_SERVER_CLIENT_ID": "948899042298-bv81r98dc6tjt7m14bnnjn45e1ebocgl.apps.googleusercontent.com",

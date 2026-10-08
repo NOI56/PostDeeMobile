@@ -1,4 +1,5 @@
 import type { Request, RequestHandler } from 'express';
+import { ipKeyGenerator } from 'express-rate-limit';
 
 export type RateLimitOptions = {
   bucket: string;
@@ -12,20 +13,10 @@ type RateBucket = {
   resetAt: number;
 };
 
-const readFirstHeaderValue = (value: string | string[] | undefined) =>
-  Array.isArray(value) ? value[0] : value;
-
-const readClientAddress = (request: Request) => {
-  const forwardedFor = readFirstHeaderValue(request.headers['x-forwarded-for']);
-  const forwardedAddress = forwardedFor?.split(',').at(0)?.trim();
-
-  return (
-    forwardedAddress ||
-    request.ip ||
-    request.socket.remoteAddress ||
-    'unknown-client'
-  );
-};
+// Express resolves req.ip using the configured proxy trust boundary. Reading
+// X-Forwarded-For ourselves lets clients prepend an arbitrary bucket key.
+const readClientAddress = (request: Request) =>
+  ipKeyGenerator(request.ip || request.socket.remoteAddress || 'unknown-client');
 
 const deleteExpiredBuckets = (buckets: Map<string, RateBucket>, now: number) => {
   for (const [key, bucket] of buckets.entries()) {

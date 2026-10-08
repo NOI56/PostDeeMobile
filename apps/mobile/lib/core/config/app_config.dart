@@ -1,6 +1,12 @@
 class AppConfig {
   const AppConfig._();
 
+  /// Set only by the validated Staging build path; production defaults off.
+  static const isStagingBuild = bool.fromEnvironment(
+    'POSTDEE_STAGING_BUILD',
+    defaultValue: false,
+  );
+
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://localhost:4000',

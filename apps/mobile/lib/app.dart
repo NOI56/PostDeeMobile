@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/auth/firebase_bootstrap.dart';
+import 'core/config/app_config.dart';
 import 'core/localization/language_controller.dart';
 import 'core/localization/postdee_localizations.dart';
 import 'core/theme/app_theme.dart';
@@ -17,12 +18,14 @@ class PostDeeApp extends StatefulWidget {
     this.languageController,
     this.themeController,
     this.showSplash = false,
+    this.showStagingBadge = AppConfig.isStagingBuild,
   });
 
   final FirebaseBootstrapResult? firebaseBootstrapResult;
   final Locale? locale;
   final PostDeeLanguageController? languageController;
   final PostDeeThemeController? themeController;
+  final bool showStagingBadge;
 
   /// Shows the animated branded splash before the app. Enabled only for the real
   /// app launch ([main]); left off in widget tests so they reach the shell
@@ -64,8 +67,62 @@ class _PostDeeAppState extends State<PostDeeApp> {
         AppTheme.applyThemeMode(_themeController.themeMode);
 
         return MaterialApp(
-          title: 'PostDee',
+          title: widget.showStagingBadge ? 'PostDee Staging' : 'PostDee',
           debugShowCheckedModeBanner: false,
+          builder: (context, child) {
+            final app = child ?? const SizedBox.shrink();
+            if (!widget.showStagingBadge) return app;
+            // Reserve a small separate strip rather than painting over the
+            // notification bell, composer close button or account actions.
+            return ColoredBox(
+              color: Theme.of(context).colorScheme.surface,
+              child: Column(
+                children: [
+                  SafeArea(
+                    bottom: false,
+                    child: IgnorePointer(
+                      child: SizedBox(
+                        key: const ValueKey('postdee-staging-badge'),
+                        height: 18,
+                        width: double.infinity,
+                        child: Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 12),
+                          child: Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: Semantics(
+                              label: 'PostDee Staging แอปทดสอบ',
+                              child: const ExcludeSemantics(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'STAGING',
+                                    style: TextStyle(
+                                      color: Color(0xFFB45309),
+                                      decoration: TextDecoration.none,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: .8,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: MediaQuery.removePadding(
+                      context: context,
+                      removeTop: true,
+                      child: app,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: _themeController.themeMode,

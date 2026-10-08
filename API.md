@@ -8,6 +8,15 @@ readiness for social publishing, live analytics, Cloudflare R2, real-clip AI
 captioning, Firebase, Apple App Store, and
 Google Play still depends on the provider/device release gates listed below.
 
+The 2026-10-08 pending-work integration adds `/ready`, optional bounded media
+URLs on `GET /posts`, and guard coverage for mutating reads within the existing
+account mutation barrier. Main already prepares relational users in its routes
+after their validation/quota gates; this integration does not add a generic
+duplicate preparation step. No migration or provider activation is required.
+Current source verification and delivery are recorded in
+`docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`; local tests
+do not mean these additions are already running on Staging.
+
 ## Base URL
 
 Local default:
@@ -514,6 +523,31 @@ Response:
 }
 ```
 
+### `GET /ready`
+
+Public operational readiness with `Cache-Control: no-store`. The server probes
+the configured database and queue in parallel, with a two-second response
+deadline and one underlying in-flight probe per dependency. Prisma uses a
+read-only constant query; BullMQ checks Redis metadata, while memory mode
+checks the in-process scheduler. A healthy response is `200`:
+
+```json
+{
+  "status": "ok",
+  "service": "postdee-api",
+  "checks": { "database": "ok", "queue": "ok" }
+}
+```
+
+An unavailable dependency or shutdown returns `503`, `status: "unavailable"`
+and `"unavailable"` for affected checks. Internal errors/connection details are
+not returned. Uncertain interrupted publishes also keep the memory scheduler
+unavailable until reconciliation and restart. The existing global request
+limit still applies. This route does not check PostPeer, Gemini, storage,
+connected accounts or a separate worker's heartbeat. `/health` remains the
+unchanged process-liveness endpoint and `/publishing/readiness` remains the
+configuration gate below.
+
 ### `GET /publishing/readiness`
 
 Authenticated, side-effect-free configuration gate used before a client starts
@@ -775,7 +809,24 @@ Facebook Reels in Store copy.
 
 ### `GET /posts`
 
-Returns posts for the authenticated user.
+Returns posts for the authenticated user, with `Cache-Control: private,
+no-store`. Plain `GET /posts` retains its existing full payload/order and does
+not sign media URLs. Optional query parameters:
+
+| Parameter | Behavior |
+| --- | --- |
+| `scheduled=true` | Retain the existing scheduled-post filter |
+| `includeMedia=true` | Add available signed preview URLs for this owner's objects only |
+| `limit=<positive integer>` | Return newest-created posts first, capped at 50; invalid, zero, fractional, duplicate or unsafe-integer values return `400 INVALID_POST_LIMIT` |
+
+Media opt-in without a limit defaults to 50 posts. Home requests
+`includeMedia=true&limit=3`. A valid owned cover produces optional
+`coverImageUrl`; otherwise an available owned clip produces optional `videoUrl`.
+The API uses the existing storage adapter's signed download access, accepts
+safe HTTP(S) URLs, and bounds each signing attempt to 1.5 seconds. A missing,
+unsafe or failed URL is omitted while retaining the post. A successful cover
+does not also sign the clip. Neither query grants access to another owner's
+keys. These previews do not add cursor pagination to the legacy full history.
 
 Response:
 
@@ -805,6 +856,22 @@ Response:
 `platformResults` is assembled only from results belonging to the authenticated
 user's returned post ids. A failed platform result can contain `errorMessage`;
 the response does not expose another user's publish records.
+
+### Account mutation boundary for stateful reads
+
+Authenticated writes retain the existing owner mutation/deletion barrier and
+active-owner checks. The same guard covers `GET`/`HEAD` `/social-connections`,
+`/billing/subscription` and `/uploads/:uploadId`, because these reads can
+reconcile durable state. Guard matching normalizes case and trailing slashes
+to match Express's existing route behavior; alternate spellings cannot bypass
+the deletion boundary. The barrier drains through handler response completion,
+including an upload-status read in progress when account deletion starts.
+Ordinary reads and unauthenticated requests remain outside this guard path.
+
+Main's individual Prisma-backed routes already ensure User rows after their
+own validation/quota gates. That preparation is preserved without a duplicate
+generic middleware upsert, new public user endpoint or new preparation error
+contract. Managed uploads retain their separate owner transaction.
 
 ### `POST /posts`
 

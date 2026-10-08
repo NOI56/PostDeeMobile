@@ -25,6 +25,151 @@ describe('post routes', () => {
   const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
     `uploads/${encodeURIComponent(userId)}/${uploadId}/${fileName}`;
 
+  const mediaPost = (id: string, createdAt: string, userId = 'seller-preview'): QueuedPost => ({
+    id,
+    userId,
+    caption: id,
+    videoS3Key: ownedUploadKey(userId, `${id}.mp4`),
+    platforms: ['TIKTOK'],
+    status: 'QUEUED',
+    createdAt
+  });
+
+  const createMediaPreviewApp = (
+    posts: QueuedPost[],
+    createMediaDownloadUrl = vi.fn(async (key: string): Promise<string | undefined> =>
+      `https://private-media.test/${key}?expires=60&signature=test`
+    )
+  ) => {
+    const app = express();
+    const router = express.Router();
+    const store = { ...createPostStore(), list: vi.fn(async () => posts) };
+    registerPostRoutes(
+      router,
+      store,
+      createInMemoryPublishQueue(),
+      (_request, response, next) => {
+        response.locals.authUser = { id: 'seller-preview', provider: 'mock' };
+        next();
+      },
+      createUserStore(),
+      createSubscriptionStore(),
+      createInMemoryPlatformPublishStore(),
+      { createMediaDownloadUrl }
+    );
+    app.use(router);
+    return { app, store, createMediaDownloadUrl };
+  };
+
+  it('keeps default post lists compatible and does not sign preview media', async () => {
+    const post = mediaPost('legacy-list', '2026-06-01T00:00:00.000Z');
+    const { app, createMediaDownloadUrl } = createMediaPreviewApp([post]);
+    const response = await request(app).get('/posts').expect(200);
+    expect(response.body.posts).toEqual([{ ...post, platformResults: [] }]);
+    expect(createMediaDownloadUrl).not.toHaveBeenCalled();
+  });
+
+  it('signs only owned media for the newest requested posts and prefers covers', async () => {
+    const oldest = mediaPost('oldest', '2026-06-01T00:00:00.000Z');
+    const covered = {
+      ...mediaPost('covered', '2026-06-03T00:00:00.000Z'),
+      coverImageS3Key: ownedUploadKey('seller-preview', 'cover.jpg'),
+      coverFrameTimeMs: 1250
+    };
+    const video = mediaPost('video', '2026-06-02T00:00:00.000Z');
+    const otherOwner = mediaPost('other', '2026-06-04T00:00:00.000Z', 'another-seller');
+    const { app, store, createMediaDownloadUrl } = createMediaPreviewApp([
+      oldest, covered, video, otherOwner
+    ]);
+    const response = await request(app).get('/posts?includeMedia=true&limit=2').expect(200);
+    expect(store.list).toHaveBeenCalledWith({ userId: 'seller-preview', scheduledOnly: false });
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(response.body.posts.map((post: QueuedPost) => post.id)).toEqual(['covered', 'video']);
+    expect(response.body.posts[0]).toMatchObject({
+      coverImageUrl: expect.stringContaining('cover.jpg?expires=60'),
+      coverFrameTimeMs: 1250
+    });
+    expect(response.body.posts[0]).not.toHaveProperty('videoUrl');
+    expect(response.body.posts[1].videoUrl).toContain('video.mp4?expires=60');
+    expect(createMediaDownloadUrl.mock.calls.map(([key]) => key).sort()).toEqual([
+      covered.coverImageS3Key, video.videoS3Key
+    ].sort());
+  });
+
+  it('bounds preview signing to fifty rows even without a supplied limit', async () => {
+    const posts = Array.from({ length: 52 }, (_, index) =>
+      mediaPost(`p-${index}`, new Date(Date.UTC(2026, 5, 1, 0, index)).toISOString())
+    );
+    for (const query of ['includeMedia=true', 'includeMedia=true&limit=999']) {
+      const { app, createMediaDownloadUrl } = createMediaPreviewApp(posts);
+      const response = await request(app).get(`/posts?${query}`).expect(200);
+      expect(response.body.posts).toHaveLength(50);
+      expect(response.body.posts[0].id).toBe('p-51');
+      expect(createMediaDownloadUrl).toHaveBeenCalledTimes(50);
+      expect(createMediaDownloadUrl).not.toHaveBeenCalledWith(posts[0].videoS3Key);
+      expect(createMediaDownloadUrl).not.toHaveBeenCalledWith(posts[1].videoS3Key);
+    }
+  });
+
+  it('keeps rows when signing fails and never signs foreign or malformed media keys', async () => {
+    const foreignKey = {
+      ...mediaPost('foreign-key', '2026-06-01T00:00:00.000Z'),
+      videoS3Key: ownedUploadKey('another-seller', 'foreign.mp4'),
+      coverImageS3Key: 'uploads/seller-preview/../foreign.jpg'
+    };
+    const deleted = {
+      ...mediaPost('deleted', '2026-06-02T00:00:00.000Z'),
+      coverImageS3Key: ownedUploadKey('seller-preview', 'deleted.jpg')
+    };
+    const createMediaDownloadUrl = vi.fn(async (key: string): Promise<string | undefined> => {
+      if (key.endsWith('.jpg')) throw new Error('storage unavailable');
+      return undefined;
+    });
+    const { app } = createMediaPreviewApp([foreignKey, deleted], createMediaDownloadUrl);
+    const response = await request(app).get('/posts?includeMedia=true').expect(200);
+    expect(response.body.posts.map((post: QueuedPost) => post.id)).toEqual(['deleted', 'foreign-key']);
+    for (const post of response.body.posts) {
+      expect(post).not.toHaveProperty('coverImageUrl');
+      expect(post).not.toHaveProperty('videoUrl');
+    }
+    expect(createMediaDownloadUrl.mock.calls.map(([key]) => key)).toEqual([
+      deleted.coverImageS3Key, deleted.videoS3Key
+    ]);
+  });
+
+  it('ignores unsafe signer URLs while retaining the post and trying its video', async () => {
+    const post = {
+      ...mediaPost('unsafe', '2026-06-01T00:00:00.000Z'),
+      coverImageS3Key: ownedUploadKey('seller-preview', 'cover.jpg')
+    };
+    const signer = vi.fn(async (key: string): Promise<string | undefined> =>
+      key.endsWith('.jpg') ? 'javascript:alert(1)' : 'https://private-media.test/clip.mp4?expires=60'
+    );
+    const { app } = createMediaPreviewApp([post], signer);
+    const response = await request(app).get('/posts?includeMedia=true').expect(200);
+    expect(response.body.posts[0]).not.toHaveProperty('coverImageUrl');
+    expect(response.body.posts[0].videoUrl).toContain('clip.mp4?expires=60');
+  });
+
+  it('returns the post without media when the signer never settles', async () => {
+    const signer = vi.fn((_key: string) => new Promise<string | undefined>(() => {}));
+    const { app } = createMediaPreviewApp([
+      mediaPost('slow-signing', '2026-06-01T00:00:00.000Z')
+    ], signer);
+    const response = await request(app).get('/posts?includeMedia=true').expect(200);
+    expect(response.body.posts[0].id).toBe('slow-signing');
+    expect(response.body.posts[0]).not.toHaveProperty('videoUrl');
+    expect(signer).toHaveBeenCalledOnce();
+  });
+
+  it.each(['0', '-1', '1.5', 'NaN', '2&limit=3'])('rejects invalid post limit %s before signing', async (limit) => {
+    const { app, store, createMediaDownloadUrl } = createMediaPreviewApp([]);
+    const response = await request(app).get(`/posts?includeMedia=true&limit=${limit}`).expect(400);
+    expect(response.body.code).toBe('INVALID_POST_LIMIT');
+    expect(store.list).not.toHaveBeenCalled();
+    expect(createMediaDownloadUrl).not.toHaveBeenCalled();
+  });
+
   it('lists posts from the in-memory store', async () => {
     const app = createApp();
 

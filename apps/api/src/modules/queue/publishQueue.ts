@@ -18,6 +18,8 @@ export type PublishJob = {
 };
 
 export type PublishQueue = {
+  checkReady: () => Promise<void>;
+  close: () => Promise<void>;
   enqueue: (post: QueuedPost) => Promise<PublishJob>;
   ensureEnqueued: (post: QueuedPost) => Promise<PublishJob>;
   list: (filter?: { userId?: string }) => Promise<PublishJob[]>;
@@ -74,6 +76,8 @@ export const createInMemoryPublishQueue = (): PublishQueue => {
   };
 
   return {
+    checkReady: async () => undefined,
+    close: async () => undefined,
     enqueue,
     ensureEnqueued: enqueue,
     list: async (filter) =>

@@ -39,6 +39,7 @@ Future<void> main() async {
     PostDeeApp(
       firebaseBootstrapResult: firebaseBootstrapResult,
       showSplash: true,
+      showStagingBadge: AppConfig.isStagingBuild,
     ),
   );
 }

@@ -56,7 +56,7 @@ type PostDelegate = {
       OR?: Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>;
     };
     orderBy?: { createdAt: 'desc' } | { scheduledAt: 'asc' };
-    select?: { createdAt: true; selectedPlatforms: true };
+    select?: { createdAt: true; selectedPlatforms: true } | { id: true; selectedPlatforms: true };
   }) => Promise<PrismaPost[]>;
   create: (args: {
     data: {
@@ -85,7 +85,7 @@ type PostDelegate = {
       OR?: Array<{ scheduledAt: null } | { scheduledAt: Date }>;
       scheduledAt?: Date | null | { not: null };
     };
-    data: { scheduledAt?: Date | null; status?: PrismaPostStatus };
+    data: { scheduledAt?: Date | null; status?: PrismaPostStatus; publishedAt?: Date };
   }) => Promise<{ count: number }>;
   deleteMany: (args: {
     where: { id: string; userId: string; status: PrismaPostStatus };
@@ -283,6 +283,21 @@ export const createPrismaPostRepository = ({
 }: {
   prisma: PrismaPostClient;
 }): PostStore => ({
+  listPublishing: async () => {
+    const posts = await prisma.post.findMany({
+      where: { status: 'PUBLISHING' },
+      select: { id: true, selectedPlatforms: true },
+      orderBy: { createdAt: 'desc' }
+    });
+    return posts.map((post) => ({ id: post.id, platforms: [...post.selectedPlatforms] }));
+  },
+  finalizeInterruptedPublish: async ({ postId, status, publishedAt }) => {
+    const result = await prisma.post.updateMany({
+      where: { id: postId, status: 'PUBLISHING' },
+      data: { status, ...(publishedAt ? { publishedAt: new Date(publishedAt) } : {}) }
+    });
+    return result.count === 1;
+  },
   countPublishBacklog: async () =>
     prisma.post.count({
       where: {

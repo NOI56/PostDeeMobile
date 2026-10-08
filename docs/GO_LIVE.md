@@ -11,7 +11,9 @@ third-party accounts.
 ## Pending-work integration gate (2026-10-08)
 
 Mobile cleanup is already integrated/pushed on main at `b1f793c`, with app-source
-CI `37749129032` at `aafd076`. The next integration adds readiness/lifecycle
+CI `37749129032` at `aafd076`. Source integration
+`36dbaccb1d23ee46f9c970f2fdd8fff3d32b01d0` is now pushed/on main, with
+exact-source CI `37754460435` passing both API/Mobile jobs. It adds readiness/lifecycle
 hardening, mutating-read owner guards and opt-in owner media previews without a new
 migration, dependency refresh, provider activation or infrastructure change.
 Its dated source/test/delivery record is
@@ -41,8 +43,12 @@ Local verification now passes 1,609 API tests, 1,588 Flutter tests, analysis,
 build/schema/catalog checks and the final 45-test badge/Home run. Compiled
 mock-safe entry-point health/readiness/auth and SIGTERM smoke pass. The Staging
 APK updates with the existing signature and retains account/profile/session
-state; final native/source/CI receipts belong in the integration plan. These
-checks do not replace the live release gates above. Never uninstall/clear data to bypass an
+state. Native smoke observes Home/Calendar/Store/Account, four-step full-screen
+composer without a dock, and close returning Home without edits. No save,
+publish, purchase, OTP or connection mutation was performed. Exact APK/source
+receipt is in the integration plan; CI passed API/Mobile and intentionally
+skipped APK build, which was validated locally. These checks do not replace
+the live release gates above. Never uninstall/clear data to bypass an
 update-signature failure. Production has no Staging marker by default. Manual
 API deployment is outside the current main/push request; the new signed-preview
 API has no new live Staging evidence until an explicitly authorized deployment.

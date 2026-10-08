@@ -7,7 +7,10 @@ Build roadmap for PostDee.
 - Mobile cleanup is integrated and pushed to `main` at `b1f793c`; app-source CI
   `37749129032` passed at `aafd076`. Preserve the dock/running dot, full-screen
   four-step composer, existing login and all hundred profile templates.
-- Integrate owner-scoped Home previews through opt-in bounded signed URLs,
+- Source integration `36dbaccb1d23ee46f9c970f2fdd8fff3d32b01d0` is committed,
+  pushed and fast-forwarded to remote `main`; local/origin main agree. Its
+  exact-source CI `37754460435` passed Backend API and Flutter Mobile. It includes owner-scoped Home
+  previews through opt-in bounded signed URLs,
   database/queue `/ready`, 30-second graceful shutdown, trusted-proxy/IPv6
   rate-limit keys and recovery only from complete saved terminal results.
   Preserve main's route-level Prisma user preparation after validation/quota
@@ -15,7 +18,7 @@ Build roadmap for PostDee.
   reads, and hold the same barrier through `GET`/`HEAD` upload-status
   reconciliation until response completion. No generic duplicate upsert is
   introduced.
-- Add a Staging-only build strip and portable Windows main launcher. Keep
+- The integration adds a Staging-only build strip and portable Windows main launcher. Keep
   production off by default and retain current auth/Test Store validation.
 - No schema/dependency/provider activation, subscription or infrastructure
   change is included. The memory scheduler and deletion/mutation locks remain
@@ -591,7 +594,7 @@ Plan status uses five groups:
 | --- | --- | --- |
 | `docs/superpowers/plans/2026-07-17-scaling-roadmap.md` | อนาคต | Reconciled on 2026-10-08 against the active product and single-process owner boundary; capacity tiers require measured evidence and no scaling infrastructure is enabled. |
 | `docs/superpowers/plans/2026-10-05-backend-hardening.md` | ประวัติ | Original isolated-branch verification is historical; the 2026-10-08 integration ports runtime hardening without its old dependency refresh. |
-| `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md` | ทำบางส่วน | UI cleanup is already on main; bounded Home previews, lifecycle/user preparation, Staging badge and launcher have a separate current verification/delivery record. |
+| `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md` | ประวัติ | Source `36dbacc` with Home previews, lifecycle/read guards, Staging badge and launcher is pushed/on main; local/native checks and exact-source API/Mobile CI `37754460435` pass. CI skips APK build; the validated local APK receipt is separate. Live API deployment/provider gates remain outside this source delivery. |
 | `docs/superpowers/plans/2026-06-04-store-subscription-billing.md` | ถูกแทนที่ | The direct Apple/Google verification scaffold is retained for history and compatibility; RevenueCat is the production subscription direction. |
 | `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md` | ถูกแทนที่ | The ultra-dark checklist is historical. The current app is light by default with optional dark theme; retain only behavior and navigation improvements that still match the current UI. |
 | `docs/superpowers/plans/2026-06-13-ai-auto-editing-whisper-plan.md` | ถูกแทนที่ | Groq is retired. ElevenLabs/Gemini/FFmpeg editing modules are retained compatibility code; AI editing and Subtitle Studio have no active product entry. |

@@ -52,9 +52,12 @@ Current ownership/files: `app.ts`/`server.ts`, `readiness.ts`, `shutdown.ts`,
 post stores, queue adapters, rate limiter, scheduler/worker and
 `interruptedPublishRecovery.ts`, with their focused regression tests. Current
 targeted hardening evidence is 110 tests in 14 files plus build; root wiring has
-its own 49-test owner-guard run. Full exact-source results and delivery must be
-recorded in `2026-10-08-integrate-pending-main-work.md` before claiming main/CI
-completion for this new port. No live API deployment is asserted here.
+its own 49-test owner-guard run. The completed current full suite is 1,609 tests
+in 107 files, with build/schema/helper checks; source `36dbacc` is pushed/on
+main. Exact-source CI `37754460435` passed API/Mobile jobs; its main-push APK
+step was intentionally skipped. Current locally built APK/native/delivery
+receipts are recorded in `2026-10-08-integrate-pending-main-work.md`.
+No live API deployment is asserted here.
 
 ## Remaining release/scale work
 

@@ -4,7 +4,9 @@ Architecture overview for the PostDee mobile app and backend scaffold.
 
 ## Pending-work integration boundary (2026-10-08)
 
-The main UI cleanup is delivered at `b1f793c`. The next source integration keeps
+The main UI cleanup is delivered at `b1f793c`. Source integration
+`36dbaccb1d23ee46f9c970f2fdd8fff3d32b01d0` is pushed/on main; exact-source CI
+`37754460435` passed Backend API and Flutter Mobile. This integration keeps
 the current dock/running dot and full-screen composer while adding owner-only
 Home previews and backend lifecycle hardening. No schema, dependency lock,
 provider activation or Render topology changes are part of this integration.

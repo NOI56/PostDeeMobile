@@ -1,9 +1,11 @@
 # PostDee future capacity roadmap
 
-Original proposal: 2026-07-17. Reconciled against the active product and pending
-integration on 2026-10-08. **Future plan only:** this document enables no worker,
+Original proposal: 2026-07-17. Reconciled against the active product and source
+integration `36dbacc` on main on 2026-10-08. **Future plan only:** this document enables no worker,
 API replica, service subscription, provider, feature flag or database migration.
 No customer-count capacity claim has been verified by this plan.
+The source integration's exact API/Mobile CI `37754460435` passed; those results
+verify source behavior, not any capacity tier or activated scaling infrastructure.
 
 ## Product and runtime baseline
 

@@ -10,7 +10,12 @@ Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 ## Pending-work integration (2026-10-08)
 
 The mobile UI cleanup is on remote `main` at `b1f793c`; its app source is
-`aafd076`, verified by CI `37749129032`. The next integration adds bounded
+`aafd076`, verified by CI `37749129032`. The completed source integration is
+`36dbaccb1d23ee46f9c970f2fdd8fff3d32b01d0`, pushed on both the integration
+branch and remote `main`. Exact-source CI `37754460435` passed both Backend API
+and Flutter Mobile jobs. The main-push CI intentionally skipped APK building;
+the installed APK uses the separately validated local build receipt.
+This integration adds bounded
 owner-only Home media previews, `/ready`, graceful shutdown, evidence-only
 interrupted-publish recovery, and complete coverage of mutating reads inside
 the existing account mutation barrier. Relational user preparation already

@@ -13,6 +13,8 @@ URLs on `GET /posts`, and guard coverage for mutating reads within the existing
 account mutation barrier. Main already prepares relational users in its routes
 after their validation/quota gates; this integration does not add a generic
 duplicate preparation step. No migration or provider activation is required.
+Source `36dbaccb1d23ee46f9c970f2fdd8fff3d32b01d0` is pushed/on main; exact-source
+CI `37754460435` passed both API/Mobile jobs. No manual API deployment was performed.
 Current source verification and delivery are recorded in
 `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`; local tests
 do not mean these additions are already running on Staging.

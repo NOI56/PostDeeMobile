@@ -23,7 +23,16 @@ manual API deployment is included. Scaling is future planning only.
   duplicate Account shortcuts; related features remain in their active flows.
 - [x] Main CI `37751374749` passed on `b1f793c` after integration.
 
-## Stage 2 — implementation and verification
+## Stage 2 — source, native and CI delivery complete
+
+Source commit `36dbaccb1d23ee46f9c970f2fdd8fff3d32b01d0` is pushed to the
+integration branch, fast-forwarded to main and pushed to remote main. The local
+and origin main refs agree with ahead/behind 0/0. Exact-source CI
+[37754460435](https://github.com/NOI56/PostDeeMobile/actions/runs/37754460435)
+completed successfully with both Backend API and Flutter Mobile jobs on that
+exact full source SHA, independently of the earlier Stage 1 run. The main-push
+workflow intentionally skipped APK building; APK acceptance below uses the
+validated local build, not an asserted CI APK.
 
 1. Owner-only Home previews: opt-in `includeMedia=true&limit=3`, newest-first
    bounded signing, cover preference, optional URLs, private/no-store and safe
@@ -83,15 +92,23 @@ Targeted results recorded so far:
 - Full Flutter suite: 1,588 tests passed. The final 45-test badge/Home run also
   passes after explicit `TextDecoration.none` for the Staging text and the
   test-factory lint correction. Final Flutter analyze reports no issues.
-- Validated Staging APK build passed. Native `install -r` with the existing
-  signature succeeded; the account/session, profile links and Free 0/3 state
-  remain present. Final composer/connections smoke, exact APK hash/source
-  receipt and delivery verification will be appended by the integration owner.
+- Validated Staging APK build passed with Flutter 3.44.1 / Dart 3.12.1. Final
+  source/runtime parity and existing signature were verified; the installed
+  APK is identical to the built APK: 281,390,530 bytes, SHA256
+  `e5620b662a051bd9b0f889fae60f867cbbeaa14ae3bea558eba7c8c7b84cedd7`.
+- Native `install -r` succeeded with the account/session, two profile links,
+  Free 0/3 and YouTube 1/4 retained. Home, Calendar, Store and Account are
+  observed; connections list contains only the four supported platforms.
+  Create post opens the four-step full-screen composer, shows draft (1), has
+  no dock and retains the plain Staging badge. Closing with X without edits
+  returns Home. No save/publish, store purchase, OTP or connection write was
+  performed during this smoke.
 
 These are current local/source and limited emulator results, not live provider
-verification. Stage 2 commit/main/push and exact-source CI remain pending;
-append their SHA and receipts only after they complete. Stage 1 main CI
-`37751374749` remains a separate earlier result.
+verification. Stage 2 commit/main/push and exact-source API/Mobile CI are
+complete at `36dbacc`. Stage 1 main CI `37751374749` is a separate earlier
+result. Optional unsigned-iOS workflow `37754460621` is separate and has no
+completed result recorded here; no iPhone device/App Store acceptance is claimed.
 
 ## Remaining operational limits
 

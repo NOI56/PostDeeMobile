@@ -4,7 +4,10 @@
 
 - ชุดลด UI ข้างล่างเข้าและ push `main` แล้วที่ `b1f793c`; source แอป `aafd076`
   ผ่าน CI `37749129032` จึงถือเป็นงานส่งมอบขั้นแรก ไม่ใช่งานค้างใหม่
-- ชุดถัดไปเพิ่มภาพตัวอย่าง Home ผ่าน `GET /posts?includeMedia=true&limit=3`,
+- ชุดรวมงาน `36dbaccb1d23ee46f9c970f2fdd8fff3d32b01d0` commit/push และเข้า
+  remote `main` แล้ว local/origin main ตรงกัน; CI source เดียวกัน
+  `37754460435` ผ่าน Backend API และ Flutter Mobile แล้ว ชุดนี้เพิ่ม Home ผ่าน
+  `GET /posts?includeMedia=true&limit=3`,
   `/ready`, ปิดระบบแบบรอให้งานเสร็จ, กู้สถานะโพสต์จากผลที่บันทึกครบ และ
   ครอบคลุม owner barrier ของ GET/HEAD ที่อาจเปลี่ยนสถานะ รวม URL ตัวพิมพ์และ
   ท้าย slash ของ social/billing และ `/uploads/:uploadId`; รอคำขอเดิมจบก่อนลบ
@@ -33,9 +36,15 @@ Launcher ไม่ fetch/push/deploy และไม่รับรองว่�
 `-ResolveOnly` กับ parser ผ่านแล้ว; API 1,609 tests/107 files, Flutter 1,588 tests,
 final badge/Home 45 tests, analyze และ Staging APK build ผ่านในเครื่อง
 ติดตั้งแบบ `install -r` ด้วยลายเซ็นเดิมแล้ว บัญชี/session ลิงก์ร้าน และ Free 0/3
-ยังอยู่; hash/source receipt และ native smoke ขั้นสุดท้ายให้ยึดแผนรวมงาน
-ชุดนี้ยังรอ commit/main/push/CI และไม่ใช่การตรวจ provider E2E บนระบบจริง
-API ใหม่ยังไม่ได้ deploy ด้วยคำขอรอบนี้ จึงยังต้องตรวจ signed URLs จริงภายหลัง
+ยังอยู่ Native เห็น Home/ปฏิทิน/ลิงก์ร้าน/บัญชี, ลิงก์ 2 รายการ, YouTube 1/4
+และมีเฉพาะ 4 ช่องทาง หน้าสร้างโพสต์ 4 ขั้นพร้อมร่าง (1) เป็น full-screen ไม่มี
+dock และปิด X โดยไม่แก้ไขกลับ Home ได้ ป้าย Staging ไม่มีเส้นใต้
+ไม่ได้กด save/publish/ซื้อแพ็กเกจ/OTP/แก้การเชื่อมต่อ CI รุ่นนี้ผ่านทั้ง 2 jobs
+และตั้งใจข้าม APK build บน main push; ใช้ APK ที่ build/ตรวจจริงในเครื่อง
+APK build/install ตรงกัน 281,390,530 bytes, Flutter 3.44.1 / Dart 3.12.1,
+SHA256 `e5620b662a051bd9b0f889fae60f867cbbeaa14ae3bea558eba7c8c7b84cedd7`
+source/runtime/signature receipt รายละเอียดอยู่ในแผนรวมงาน และไม่ใช่ provider E2E
+ไม่ได้ทำ manual API deploy ด้วยคำขอรอบนี้ จึงยังต้องตรวจ signed URLs จริงภายหลัง
 รุ่นมือถือใหม่ยังแสดง placeholder ได้เมื่อ API เก่าไม่ส่ง URL
 
 ## ส่งมอบชุดลด UI มือถือ — 8 ตุลาคม 2026

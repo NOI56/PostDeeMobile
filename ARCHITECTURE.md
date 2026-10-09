@@ -1004,6 +1004,13 @@ Automated verification passes; the exact-source Staging APK is built and
 installed. Native Free/denied gating and button usability pass; live HTTP
 sequencing and active-paid reconciliation/generation remain unverified.
 
+Subsequent Staging delivery on 2026-10-09 is Live at source `c8e463d`, Render
+deploy `dep-db4ccku0tbcc73dtlasg`, after exact-source CI `37918977276` passed.
+The installed `24266aa` APK has the same runtime. API/schema/environment,
+memory scheduler and disabled social publishing stay unchanged; 16 existing
+migrations have none pending. This delivery adds no live HTTP trace or
+active-paid AI acceptance; the chronological audit receipt retains those gates.
+
 The mobile app never receives `REVENUECAT_REST_API_V1_KEY`. The API derives the
 RevenueCat app user id only from the authenticated Firebase user, prefers Pro if
 both paid entitlements are active, and leaves the existing plan unchanged if the

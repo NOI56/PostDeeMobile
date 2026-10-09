@@ -29,6 +29,13 @@
 > reconciliation/generation remain unverified. Results and delivery limits are
 > recorded in the audit plan.
 
+> Subsequent Staging delivery (2026-10-09): audit source `c8e463d` passed
+> exact-source CI `37918977276` and is Live on Render deploy
+> `dep-db4ccku0tbcc73dtlasg`. The installed `24266aa` APK has the same runtime.
+> Prices, tiers, quotas, API/schema/environment, `main` and Production remain
+> unchanged. Live HTTP sequencing and active-paid AI remain unverified; the
+> chronological audit receipt records the delivery evidence.
+
 > Scheduling update (2026-10-08): Starter allows up to 14 days ahead, and Pro
 > allows up to 30 days ahead. New schedules and reschedules use the current
 > plan and current request time. Previously accepted queue entries keep their

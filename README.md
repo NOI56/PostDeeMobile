@@ -1024,6 +1024,13 @@ Native Free/denied gating and button usability pass. Live HTTP sequencing and
 active-paid reconciliation/generation remain unverified, as recorded in the
 audit plan.
 
+Subsequent authorized Staging delivery on 2026-10-09 pushed source `c8e463d`
+on the audit branch. Exact-source CI `37918977276` passed both jobs, and Render
+deploy `dep-db4ccku0tbcc73dtlasg` is Live. The installed `24266aa` APK has the
+same runtime; the intervening changes are documentation only. This delivery
+keeps the paid AI/HTTP-trace limits above and leaves `main` and Production
+unchanged. The chronological delivery receipt is in the audit plan.
+
 The subscriber response's `request_date_ms` and webhook `event_timestamp_ms`
 share one per-user serializable ordering cursor. Older or equal snapshots/events
 are acknowledged without overwriting newer state. If `request_date_ms` is

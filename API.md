@@ -2327,6 +2327,13 @@ loop. Owner/generation/source guards and quotas remain. Automated checks pass;
 the exact-source Staging APK is built and installed. Native Free/denied gating
 and button usability pass; live HTTP sequencing and active-paid
 reconciliation/generation remain unverified.
+
+Subsequent Staging delivery (2026-10-09): exact-source CI `37918977276` passed
+at `c8e463d`, and Render deploy `dep-db4ccku0tbcc73dtlasg` is Live. The installed
+`24266aa` APK has the same runtime; no API contract, schema or environment
+change accompanies this delivery. Live HTTP sequencing and active-paid AI
+remain unverified; see the chronological audit receipt.
+
 This preflight does not reconcile a later caption `402` after upload or retry
 the AI provider.
 The existing server subscriber lookup is bounded to 8 seconds; these ordinary

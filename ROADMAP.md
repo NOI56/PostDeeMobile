@@ -88,6 +88,13 @@ and installed; native Free/denied gating and button usability pass. Live HTTP
 sequencing and active-paid reconciliation/generation remain unverified.
 No push/deployment occurred in this task.
 
+Subsequent authorized delivery (2026-10-09) pushed audit source `c8e463d`;
+exact-source CI `37918977276` passed both jobs and Render deploy
+`dep-db4ccku0tbcc73dtlasg` is Live. The installed `24266aa` APK has the same
+runtime. No API/schema/environment change, `main` merge or Production delivery
+was made. Active-paid AI and live HTTP sequencing remain unverified; see the
+chronological audit receipt.
+
 ## Android social-connect return (Staging API delivered)
 
 New Android connect links can request the fixed `android` or `android-staging`

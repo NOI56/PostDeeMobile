@@ -680,3 +680,35 @@ form; the draft count was not rechecked after exit. No save, login, purchase,
 Restore or social-publish action was performed.
 Active-paid reconciliation/generation end-to-end remains pending with the
 current fresh Free display; no paid access is granted by this smoke test.
+
+### Authorized Home/AI entitlement Staging delivery (2026-10-09)
+
+The user's subsequent authorization delivered audit-branch source
+`c8e463d2a82ab69e4c952b4da5f77d05e9a1684f` to
+`codex/audit-system-fixes`. Earlier no-push/deployment statements describe
+their respective local runs. Remote `main` remains `c4e5220`; there is no main
+merge or Production delivery. API, Render and workflow files are unchanged
+from `f6bf0f9`; no new migration, environment, credential or package policy
+change accompanies this delivery.
+
+Exact-source CI `37918977276` completed successfully in both jobs: 1,716 API
+tests plus 22 generator tests, 1,744 Flutter tests and clean Flutter analysis.
+CI APK building was disabled; this does not replace the validated local APK.
+
+[Render deploy `dep-db4ccku0tbcc73dtlasg`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db4ccku0tbcc73dtlasg)
+is Deploy succeeded / Live at the exact source above. The UI deployed timestamp
+is 2026-10-09 17:47:47 GMT+7 and duration is 1m51s. Logs show build success at
+17:48:25, 16 migrations with none pending at 17:48:45, API port 10000 with the
+memory scheduler and social publishing disabled at 17:49:31, and service Live
+at 17:49:38. Local proof:
+`D:\PostDeeMobile\.tmp\caption-subscription-20261009\revenuecat-resync-render-live-20261009.png`.
+
+The installed APK remains the exact `24266aa` artifact, SHA-256
+`51D074EB6940F41C7F1A324158552B51939672283103A9390DF1C61EE9BA8D5F`.
+The `24266aa` to `c8e463d` diff contains only the six related documentation
+files, so the installed mobile runtime is identical. Its native Free/denied
+gate, button usability and final Home/Account consistency evidence above
+remain valid; this deployment does not add active-paid reconciliation or
+generation acceptance. Public Staging browser checks remain skipped under
+the existing block: no new health/readiness result or live HTTP sequence is
+claimed. Active-paid AI end-to-end and live HTTP tracing remain unverified.

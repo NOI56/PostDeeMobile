@@ -1481,9 +1481,12 @@ compliance is not guaranteed; no training or additional model call is added.
 Mobile persists this profile per account on the device and sends its selected
 style/eligible examples only with a manually requested generation. Deploy API
 support before installing/shipping Mobile; an older API ignores this field.
-Final mobile tests, APK/native and deployment acceptance remain pending; the
-audit follow-up records current checks. No new route, schema, environment,
-provider/model configuration or package/quota rule is introduced.
+Automated checks and the local `089dcb52` APK build pass. Staging API source
+`7d568458` is Live; the new APK remains uninstalled to preserve the open form.
+Native, real paid AI/style-quality and live HTTP verification remain pending;
+the audit follow-up records exact-source CI and deployment evidence. No new
+route, schema, environment, provider/model configuration or package/quota rule
+is introduced.
 
 Request:
 

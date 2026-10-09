@@ -45,8 +45,11 @@
 > platforms, same owner/source with review cleared, is remembered. Successful
 > account deletion clears that owner's profile. Examples accompany explicit AI
 > generation as untrusted style data, not clip facts or a cloud/social-history
-> profile. Deploy API before Mobile; old servers ignore style. Final mobile
-> tests, APK/native and deployment remain pending in the audit follow-up.
+> profile. Deploy API before Mobile; old servers ignore style. Automated checks
+> and the local `089dcb52` APK build pass. Staging API source `7d568458` is Live;
+> the new APK remains uninstalled to preserve the open form. Native, real paid
+> AI/style-quality and live HTTP verification remain pending. Exact-source CI
+> and deployment are recorded in the audit follow-up.
 
 > Scheduling update (2026-10-08): Starter allows up to 14 days ahead, and Pro
 > allows up to 30 days ahead. New schedules and reschedules use the current

@@ -806,3 +806,54 @@ introduced. Prior limited caption-quality probes and active-paid AI/HTTP-trace
 gates remain unchanged. This feature has not been pushed/deployed. No customer
 write, real provider call, purchase, social import/channel read, account deletion
 or AI training was performed for this follow-up.
+
+### Authorized caption-style Staging API delivery (2026-10-09)
+
+The user authorized pushing and deploying the supporting API first, preserving
+the open emulator form. Source `7d568458f98beb18d83d8fc52c386c8768bd0c3d` was
+pushed to `codex/audit-system-fixes`. A fresh fetch before delivery confirmed
+remote `main` at `c4e52201a58b556f5f47529027549a2fc16af84c`, with this source
+15 ahead / zero behind. No main merge or Production delivery was performed.
+Earlier no-authorization/no-push statements describe their respective local
+runs. Runtime source remains `089dcb52`; the difference to `7d568458` is the
+documentation-only verification receipt.
+
+[Exact-source CI `37938627157`](https://github.com/NOI56/PostDeeMobile/actions/runs/37938627157)
+completed successfully in both jobs on the full source SHA above: 1,781 API
+tests across 109 files, 22 template-generator tests, API build, Prisma
+generation/schema validation and the production high-severity audit gate;
+1,783 Flutter tests and clean analysis. CI APK build/upload were explicitly
+skipped; the validated local `089dcb52` APK receipt above remains separate.
+
+[Render deploy `dep-db4f0qc9v7es73ae21s0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db4f0qc9v7es73ae21s0)
+is **Deploy succeeded / Live** at the exact `7d568458` source. The authenticated
+control-plane UI confirms service `srv-d9bb72ojs32c739osa5g`, Node / Starter,
+configured branch `main`, and Auto-Deploy disabled before deployment. The
+specific-commit action does not change that branch, compute or Auto-Deploy
+setting. Logs check out the exact full SHA and build from `apps/api`, selecting
+Node 26.11.1 under the existing package engine constraint.
+
+The deployed timestamp is 2026-10-09 20:47:21 GMT+7; UI duration is 1m55s.
+Logs show build success at 20:48:03, 16 migrations with none pending at
+20:48:24, API port 10000 with the memory scheduler and social publishing
+disabled at 20:49:11, and service Live at 20:49:17. The development-inclusive
+install audit reports 20 vulnerabilities; after the existing production prune,
+the log reports four moderate vulnerabilities. CI's production high-severity
+audit gate passes; no dependency upgrade or audit suppression accompanies this
+release. Local UI proof:
+`D:\PostDeeMobile\.tmp\caption-writing-style-20261009\caption-style-render-live-20261009.jpg`.
+
+The five related current product/API/architecture/package summaries now record
+the completed automated checks, APK build and Staging API delivery. This
+delivery requires no new migration, configuration flag, credential, package
+rule or provider integration. The new APK remains built but uninstalled; no
+emulator restart, form save/discard, customer write, purchase, real AI call or
+account deletion was performed in this delivery. The previous installed
+version 4001 remains in place; whether the open form's latest edits were saved
+was not confirmed. The current entitlement state was not rechecked.
+
+Public Staging browser checks remain skipped under the existing block. Render
+Live/startup evidence is not a new direct public health/readiness result,
+authenticated HTTP trace or native acceptance result. New native UI, real paid
+AI/style-quality and live HTTP verification remain pending. Other environments
+must still deploy this additive API support before installing/shipping Mobile.

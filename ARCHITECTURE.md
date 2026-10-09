@@ -1164,8 +1164,11 @@ After successful backend account DELETE, Shell clears the captured owner's
 style profile before sign-out, even if auth has already disappeared. Pending
 store work is invalidated; other accounts' keys remain. Cleanup failure still
 signs out and reports incomplete local data cleanup. Deploy API before this
-mobile feature; older servers ignore style. Final mobile tests, build/native
-and deployment remain pending, without schema, environment or package changes.
+mobile feature; older servers ignore style. Automated checks and the local
+`089dcb52` APK build pass. Staging API source `7d568458` is Live; the new APK
+remains uninstalled to preserve the open form. Native, real paid AI/style-quality
+and live HTTP verification remain pending, without schema, environment or
+package changes. The audit follow-up records exact-source CI and deployment.
 
 The clip-first route now reuses the configured transcription provider for
 spoken-language detection. Local mode uses a mock Thai transcript; production

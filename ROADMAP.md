@@ -110,8 +110,11 @@ owner's profile. Learn only edited accepted non-fallback AI on caption Next to
 platforms, same owner/source and review cleared; not jump/save/cancel/unchanged
 AI/fallback. Examples travel with explicit generation, without cloud sync or
 social-history import. Deploy API before Mobile because old servers ignore the
-field. Final mobile tests, APK/native and deployment remain pending; prices,
-rights, quota, model/provider, schema and environment remain unchanged.
+field. Automated checks and the local `089dcb52` APK build pass. Staging API
+source `7d568458` is Live; the new APK remains uninstalled to preserve the open
+form. Native, real paid AI/style-quality and live HTTP verification remain
+pending; prices, rights, quota, model/provider, schema and environment remain
+unchanged. Exact-source CI and deployment are recorded in the audit follow-up.
 
 ## Android social-connect return (Staging API delivered)
 

@@ -729,9 +729,12 @@ fallback do not learn. Style/examples accompany manually requested generation
 to the configured AI; there is no cloud style profile or social-history import.
 
 Deploy the additive API support before installing/shipping this mobile feature;
-an older API ignores `writingStyle`. Final mobile tests, APK/native acceptance
-and deployment remain pending. Prices, rights, quotas, model/provider settings,
-schema and environment remain unchanged; see the chronological audit follow-up.
+an older API ignores `writingStyle`. Automated checks and the local `089dcb52`
+APK build pass. Staging API source `7d568458` is Live; the new APK remains
+uninstalled to preserve the open form. Native, real paid AI/style-quality and
+live HTTP verification remain pending. Prices, rights, quotas, model/provider
+settings, schema and environment remain unchanged; see the chronological audit
+follow-up for the exact-source CI and deployment receipt.
 
 #### Removed: `POST /clip-reviews`
 

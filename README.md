@@ -19,11 +19,14 @@ its existing operation for rechecking instead of starting a second purchase.
 Failed AI-provider requests identify their fallback and release only their own
 quota reservation. Local/mock template generation retains scaffold quota rules.
 
-API commit `85ef2a9` is Live on Staging; both additive Post and LinkInBioImage
-migrations completed before startup. Exact-source CI passed API and Mobile.
-The updated mobile APK is installed locally; its final native smoke remains
-incomplete after the user stopped Computer Use. Direct Staging web checks remain
-blocked by browser access settings. Test private posting, actual payment/OTP and
+API commit `9f0b72904d610c7161c8fca863e7d21f0ff1a1f6` is Live on Staging at
+14:16 GMT+7 on 2026-10-09, deploy `dep-db498ejl550s73b0qu20`; all 16 migrations
+are applied with none pending. Exact-source CI `37897827978` passed API and Mobile.
+The exact split x64 APK is installed locally with the account preserved. An
+injected Android VIEW URI returned to the same Connections screen with its 1/4
+state retained; real provider/browser handoff, Open App confirmation and cold
+callback remain unverified. Direct Staging web checks remain blocked by browser
+access settings. Test private posting, actual payment/OTP and
 two-account native notification delivery separately with authorization.
 Details and verification:
 `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`.
@@ -593,9 +596,10 @@ together; when supplied, both must be positive finite integers. Generic upload
 and mobile posting validation keep their existing 9:16 policy.
 The backend rejects uploads above `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
 
-Deploy this additive upload purpose in the API before releasing the new mobile
-build; no database migration is required. An older API ignores the unfamiliar
-purpose and still rejects known non-9:16 dimensions.
+This additive upload purpose is Live in Staging API `9f0b729`. Other environments
+must deploy the API before the new mobile build; no database migration is
+required for this purpose. An older API ignores the unfamiliar purpose and still
+rejects known non-9:16 dimensions.
 
 New mobile clients opt in with `"uploadProtocol": "multipart-v1"`. In `dual`
 or `multipart` mode, the response contains an opaque session `id`,
@@ -1136,10 +1140,13 @@ Current mobile pieces:
   gate and cannot restore a previous screen that existed only in memory.
   Browsers may require an Open App confirmation. Closing with X and manual
   refresh remain available; iOS keeps the legacy external-browser flow without
-  an automatic-return claim. Deploy API before mobile and create a new connect
-  link to use the return target; links already open retain their prior flow.
+  an automatic-return claim. The fixed-target API is Live on Staging; other
+  environments must deploy API before mobile. Create a new connect link to use
+  the return target; links already open retain their prior flow.
   No new permission, provider OAuth app, database schema or environment setting
-  is required. Real provider/native return verification remains pending.
+  is required. An injected VIEW URI verified warm return to the original
+  Connections screen on the installed Staging APK. Real provider/browser
+  handoff, Open App confirmation and cold callback remain unverified.
 - Calendar tab that refreshes when opened, polls queued/publishing posts while
   visible, uses the real publish time, and opens completed results read-only;
   plus AI caption entry points from Upload after a clip is selected

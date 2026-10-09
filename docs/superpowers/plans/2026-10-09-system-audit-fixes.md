@@ -327,5 +327,28 @@ A local browser-fixture launch command was rejected by automatic policy;
 its test server was stopped. This does not verify actual provider/browser
 handoff, browser Open App confirmation or cold-start authentication. These
 remain explicit acceptance gates; old already-open links cannot acquire the
-new redirect setting. Staging API deployment of this combined contract remains
-pending below; new customer links must use the updated API.
+new redirect setting. Staging API deployment of the combined contract is
+recorded below; new customer links must use the updated API.
+
+### Combined Staging delivery receipt
+
+Authorized source `9f0b72904d610c7161c8fca863e7d21f0ff1a1f6` was pushed to
+`codex/audit-system-fixes` and manually deployed on the existing Staging service
+`srv-d9bb72ojs32c739osa5g`, deploy `dep-db498ejl550s73b0qu20`. Render checked out
+the exact SHA, completed npm/Prisma/TypeScript build and reported Live at
+14:16:00 GMT+7 on 2026-10-09 (duration 1m58s). Runtime instance `qv9d4` found
+16 migrations with none pending, pruned development/optional dependencies and
+started the API on port 10000 at 14:15:58. Logs retain publishing disabled and
+`PUBLISH_QUEUE=memory`; service topology/configuration was not changed. The
+production dependency subset still reports four moderate advisories.
+
+The installed x86_64 APK receipt above uses the same frozen runtime source.
+Proof `.tmp/render-social-return-live.png` shows source SHA and startup/Live
+logs. Public Staging browser access remains blocked; no alternate HTTP, shell
+or URL was used to bypass that block. Render deployment/internal health is
+verified; direct `/ready`, a new provider authorization/return and a real
+AI-caption upload/generation remain unverified. Production and main were not
+deployed/merged in this run. GitHub CI run `37897827978` passed both Backend API
+and Flutter Mobile jobs at exact source `9f0b729`, including production dependency
+audit and shared-template checks. Documentation-only receipt updates do not
+alter the tested/deployed runtime source.

@@ -31,8 +31,9 @@ PostDee backend API reference.
   their exact reservation while preserving the existing error response.
   Successful provider/local-scaffold paths retain their prior quota behavior.
 
-Staging API `85ef2a9` is Live with both additive migrations applied. For other
-environments, apply migrations and regenerate Prisma before API and then mobile.
+Staging API `9f0b729` is Live on 2026-10-09 with all 16 migrations applied and none
+pending, including both additive audit migrations. For other environments,
+apply migrations and regenerate Prisma before API and then mobile.
 No provider or billing configuration is activated by this patch. Direct live
 route/readiness checks remain unverified because browser access is blocked.
 See `docs/superpowers/plans/2026-10-09-system-audit-fixes.md` for legacy recovery
@@ -702,10 +703,10 @@ Validation:
   `UPLOAD_AI_CAPTION_VIDEO_INVALID`.
 - `uploadProtocol`, when present, must be `multipart-v1`.
 
-The AI caption purpose is an additive API-first rollout with no migration.
-Older APIs ignore the unfamiliar purpose and still reject known non-9:16
-dimensions. Generic upload and mobile posting validation retain the existing
-9:16 policy.
+The AI caption purpose is Live in Staging API `9f0b729`; other environments need
+API-first rollout. This purpose requires no migration. Older APIs ignore the
+unfamiliar purpose and still reject known non-9:16 dimensions. Generic upload
+and mobile posting validation retain the existing 9:16 policy.
 
 Legacy responses retain the supplied dimensions; `aspectRatio` is optional and
 does not provide a computed label for every ratio. Use actual dimensions when
@@ -1181,10 +1182,13 @@ and `userId` are ignored; redirect and ownership come from the fixed mapping
 and authenticated user. PostPeer documents this optional redirect after successful
 connection in its [Connect guide](https://www.postpeer.dev/docs/social-accounts/connect).
 The deep link only signals an authenticated refresh; its parameters cannot
-prove connection success or replace provider integration state. Deploy API
-before mobile. The target affects newly generated links only; previously open
-links retain the X/manual-refresh fallback. Browsers may request Open App
-confirmation, and real provider/native return verification remains pending.
+prove connection success or replace provider integration state. The fixed-target
+API is Live on Staging at `9f0b729`; other environments must deploy API before
+mobile. The target affects newly generated links only; previously open links
+retain the X/manual-refresh fallback. An injected VIEW URI verified warm return
+to the original Connections screen on the installed Staging APK. Real
+provider/browser handoff, browser Open App confirmation and cold callback remain
+unverified; the injected URI does not verify provider connection or refresh.
 No new permission, provider OAuth app, schema or environment setting is added.
 
 For a new Firebase identity, the API ensures the local `User` row before saving

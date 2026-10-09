@@ -21,9 +21,10 @@ screen deadline and ignores stale responses. Failed caption-provider requests
 release the exact usage row, preserving concurrent requests' charges.
 Shop previews pause while hidden; local autosave is serialized and owner-scoped,
 and protects new image references before local persistence. Two additive schema
-migrations require API-first rollout. Staging API `85ef2a9` is Live after both
-migrations; actual native/provider acceptance and direct live route checks remain
-separate gates. Detailed constraints and verification:
+migrations require API-first rollout. Staging API `9f0b729` is Live with all 16
+migrations applied and none pending; actual provider/browser return, cold
+callback and direct live route checks remain separate gates. Detailed constraints
+and verification:
 `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`.
 
 ## Pending-work integration boundary (2026-10-08)
@@ -487,10 +488,14 @@ Current mobile pieces:
   only the user's refreshed provider integrations establish connection state.
   A cold start goes through the normal authentication gate and may lack the
   previous in-memory screen. Open App confirmation, X and manual refresh remain
-  possible, and iOS automatic return is not claimed. Deploy API before mobile;
-  only newly generated connect links receive the new redirect. No new
+  possible, and iOS automatic return is not claimed. The fixed-target API is Live
+  on Staging; other environments must deploy API before mobile. Only newly
+  generated connect links receive the new redirect. No new
   permission, provider OAuth app, schema or environment setting is required.
-  Real provider/native return verification remains pending.
+  An injected VIEW URI verified warm return to the same Connections screen on
+  the installed Staging APK; its production URI had no handler in the Staging-only
+  installation. Real provider/browser handoff, Open App confirmation and cold
+  callback remain unverified.
 - RevenueCat webhook scaffold for Starter and Pro entitlements, plus a legacy Store Subscription scaffold.
 
 Important mobile services:
@@ -1034,8 +1039,9 @@ must be positive finite integers. Generic uploads and mobile posting keep their
 existing 9:16 validation. The generation endpoint keeps its Starter/Pro gate,
 owner checks, monthly quota and media-processing limits.
 
-Deploy the additive API purpose before the mobile build; no migration is
-required. Older APIs ignore that purpose and still reject known non-9:16
+The additive API purpose is Live on Staging at `9f0b729`. Other environments must
+deploy it before the mobile build; no migration is required for this purpose.
+Older APIs ignore that purpose and still reject known non-9:16
 dimensions. Generation sends clips and optional Pro frames to configured
 storage/providers and may consume mobile data. No real remote user upload,
 provider generation or paid state change was performed for this fix; production

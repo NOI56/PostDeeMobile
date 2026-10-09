@@ -19,10 +19,13 @@ its existing operation for rechecking instead of starting a second purchase.
 Failed AI-provider requests identify their fallback and release only their own
 quota reservation. Local/mock template generation retains scaffold quota rules.
 
-This is local implementation, not a deployed release. Apply the additive Post
-and LinkInBioImage migrations, regenerate Prisma and deploy API before the
-mobile build. Test private posting, actual payment/OTP and two-account native
-notification delivery separately with authorization. Details and verification:
+API commit `85ef2a9` is Live on Staging; both additive Post and LinkInBioImage
+migrations completed before startup. Exact-source CI passed API and Mobile.
+The updated mobile APK is installed locally; its final native smoke remains
+incomplete after the user stopped Computer Use. Direct Staging web checks remain
+blocked by browser access settings. Test private posting, actual payment/OTP and
+two-account native notification delivery separately with authorization.
+Details and verification:
 `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`.
 
 ## Pending-work integration (2026-10-08)

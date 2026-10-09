@@ -8,7 +8,9 @@ remote-verified main `c4e52201a58b556f5f47529027549a2fc16af84c` in an isolated
 dock, full-screen composer, 100 profile templates, captions, current entitlement
 windows and owner mutation/deletion barriers. Real posts, payments, OTP,
 connections and shop publication are outside the read-only test authorization.
-There is no push, merge, deployment or database mutation in this implementation.
+The initial local implementation had no push, merge, deployment or database
+mutation. The user subsequently authorized push/deploy to Staging; its receipt
+is recorded below. Real customer-content writes remain outside the test scope.
 
 ## Fixes
 
@@ -95,7 +97,8 @@ Regression tests are added before implementation for the audited failures.
 Targeted checks run during development; final full Flutter/API suites, analysis,
 API build, Prisma validation/generation, generated-helper type checks and exact
 Staging APK verification must be recorded before declaring the patch ready.
-Live Staging remains the prior release with social publishing disabled. A
+During local verification, Staging was the prior release with social publishing
+disabled. The authorized rollout below preserves that setting. A
 health/readiness success is not proof of social-provider acceptance or paid-store
 checkout. Native update must preserve the existing account/data and may be
 limited by emulator storage; do not uninstall or wipe it to bypass that limit.
@@ -125,12 +128,17 @@ Final local checks on the combined branch:
   Firebase auth enabled, local mock auth disabled, Staging marker, experimental
   flags disabled and RevenueCat Test Store overlay; it does not print the key.
 
-New migrations and raw SQL were validated/covered with test doubles, not run
-against real PostgreSQL. R2 delete/upload, real purchase/restore/acknowledgement,
+Before rollout, an isolated PGlite 0.5.8 PostgreSQL 18.3 engine applied all 16
+migration files, including seeded pre-upgrade rows, and executed the exact raw
+SQL templates with bound parameters 72 times across ten protection scenarios.
+This supplements the test doubles; it does not certify multi-connection MVCC,
+the Prisma TCP driver or R2 bytes. The Render migration engine also applied both
+new migrations during the authorized rollout below.
+R2 delete/upload, real purchase/restore/acknowledgement,
 OTP/email delivery, two-account/background FCM delivery and real platform
-publication are still service acceptance gates. The new API is not deployed.
-The emulator APK is for local read-only screen checks against the existing
-Staging service; new write contracts require the API rollout above.
+publication are still service acceptance gates. The emulator screen checks below
+ran against the prior Staging API. The new API is now Live as recorded below;
+authenticated new write-contract acceptance remains unverified.
 
 Native screen receipt on Android 14/API 34, `PostDee_Pixel:5556`:
 
@@ -150,3 +158,46 @@ Native screen receipt on Android 14/API 34, `PostDee_Pixel:5556`:
   Use with physical Escape before the final APK screen check. No further native
   input was issued. Final-artifact native smoke remains incomplete; prior screen
   results do not certify the final APK or the new API write contracts.
+
+## Authorized push and Staging deployment
+
+The user requested `push/deploy` after the local fix summary. A fresh fetch
+confirmed `origin/main` still at baseline `c4e5220`. All 95 related source, tests,
+migrations and documentation files were committed and pushed on
+`codex/audit-system-fixes` as
+`85ef2a9e8e48bdce19354bc6fb8952010def2396`. Windows generated files with no
+semantic diff were excluded; private configuration and artifacts were not staged.
+`main` was not changed. Render's specific-commit dialog accepts any branch and
+selected this exact SHA; branch/Auto-Deploy/compute/environment settings were
+not modified.
+
+- [Exact-source CI 37889287192](https://github.com/NOI56/PostDeeMobile/actions/runs/37889287192)
+  passed Backend API and Flutter Mobile. Logs confirm 1,647 API tests, 1,683
+  Flutter tests and no analysis issues. The dispatch did not build another APK.
+- [Render deploy dep-db47shbbc2fs73au8e90](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db47shbbc2fs73au8e90)
+  on `srv-d9bb72ojs32c739osa5g` shows `Deploy succeeded | Live` for exact source
+  `85ef2a9`. Build generated Prisma 6.19.3 and compiled the API. Runtime Node is
+  26.11.1; CI used Node 22.
+- Instance `55gww` connects to database `postdee_staging` at the previously
+  verified Staging database host. Logs found 16 migrations and applied
+  `20261009090000_add_post_media_content_fingerprint` and
+  `20261009114000_protect_link_in_bio_draft_images`, ending with
+  `All migrations have been successfully applied` at 12:41:25 GMT+7.
+- After dependency pruning, the API started at 12:42:13 GMT+7 on port 10000 and
+  Render reported Live at 12:42:15. Social publishing remains disabled;
+  `PUBLISH_QUEUE=memory` and one-instance operation are preserved. The production
+  dependency subset still reports four moderate advisories.
+- The attempted direct browser `/ready` check was blocked by client access
+  settings. No alternate request path was used to bypass the block. Render's
+  deployment/startup/internal health evidence is verified; direct `/ready`,
+  authenticated `/posts`, live protection writes, schema introspection and
+  public-page rendering remain unverified. No customer post, purchase, OTP,
+  image upload, pin/unpin test or shop publication was triggered by this rollout.
+- Local proof: `.tmp/render-audit-fixes-live.png` and
+  `.tmp/pglite-validation/receipt.json`; neither contains credentials. The
+  screenshot shows Live and the selected SHA. Documentation-only delivery
+  updates have the same application runtime as the deployed feature SHA.
+
+Deployment completion is distinct from full product acceptance. Native smoke
+and the external-service acceptance gates above remain open. Production has
+not been deployed in this run.

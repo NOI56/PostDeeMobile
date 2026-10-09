@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## System audit fixes (2026-10-09, implementation branch)
+## System audit fixes (2026-10-09, Staging API delivered)
 
 - Fix correctness before adding new screens: media-aware draft replay and saved
   upload receipts; account-scoped push registration/history; bounded startup
@@ -15,12 +15,13 @@ Build roadmap for PostDee.
 - Read store prices, bound purchase/restore waiting without duplicate purchases,
   identify AI fallback/refund its exact reservation, preserve text typed during
   template saving, and finish login legal/self-service and notification links.
-- Rollout needs additive Post/Image migrations and API before mobile. No paid
+- Staging API `85ef2a9` is Live; additive Post/Image migrations completed before
+  API startup. Other environments still need API-first rollout. No paid
   provider, social publishing, Production activation, purchase or OTP test is
   authorized by the local fix itself. Native E2E remains a separate release gate.
 - Current implementation and verification are tracked in
-  `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`; these changes are not
-  yet a delivered Staging release.
+  `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`. Final native APK smoke,
+  authenticated live route checks and direct `/ready` checks remain unverified.
 
 ## Pending-work integration (2026-10-08)
 

@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Audit-fix rollout (2026-10-09, local branch)
+## Audit-fix rollout (2026-10-09, Staging)
 
 - `POST /posts` accepts optional `mediaContentFingerprint`, a lowercase 64-digit
   SHA-256 identity computed from source clip, watermark mode and rendered cover.
@@ -31,8 +31,10 @@ PostDee backend API reference.
   their exact reservation while preserving the existing error response.
   Successful provider/local-scaffold paths retain their prior quota behavior.
 
-Deploy the two additive migrations and regenerate Prisma before API and then
-mobile. No provider or billing configuration is activated by this patch.
+Staging API `85ef2a9` is Live with both additive migrations applied. For other
+environments, apply migrations and regenerate Prisma before API and then mobile.
+No provider or billing configuration is activated by this patch. Direct live
+route/readiness checks remain unverified because browser access is blocked.
 See `docs/superpowers/plans/2026-10-09-system-audit-fixes.md` for legacy recovery
 and delivery limits.
 

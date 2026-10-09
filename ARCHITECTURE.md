@@ -4,7 +4,7 @@ Architecture overview for the PostDee mobile app and backend scaffold.
 
 ## Audit fix boundary (2026-10-09)
 
-Based on verified main `c4e5220`, the local patch keeps provider activation and
+Based on verified main `c4e5220`, the audit patch keeps provider activation and
 package limits unchanged. A streamed source-media fingerprint plus an atomic
 local upload receipt makes draft replay media-aware; accepted legacy posts with
 no fingerprint require exact storage-key matching. Auth restore runs after the
@@ -21,7 +21,9 @@ screen deadline and ignores stale responses. Failed caption-provider requests
 release the exact usage row, preserving concurrent requests' charges.
 Shop previews pause while hidden; local autosave is serialized and owner-scoped,
 and protects new image references before local persistence. Two additive schema
-migrations require API-first rollout. Detailed constraints and verification:
+migrations require API-first rollout. Staging API `85ef2a9` is Live after both
+migrations; actual native/provider acceptance and direct live route checks remain
+separate gates. Detailed constraints and verification:
 `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`.
 
 ## Pending-work integration boundary (2026-10-08)

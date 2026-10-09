@@ -35,14 +35,16 @@ PickedVideoFile _video(String name) {
 
 RealClipCaptionResult _aiResult(
         {String caption = 'แคปชันจาก AI ของคลิปเดิม',
+        List<String> hashtags = const [],
+        List<String> seoKeywords = const [],
         bool isFallback = false}) =>
     RealClipCaptionResult(
       caption: caption,
       isFallback: isFallback,
       captionOptions: [caption],
       hooks: const [],
-      hashtags: const [],
-      seoKeywords: const [],
+      hashtags: hashtags,
+      seoKeywords: seoKeywords,
       searchTitle: 'คลิปเดิม',
       source: const RealClipCaptionSource(
         videoS3Key: 'uploads/old-clip.mp4',
@@ -78,7 +80,9 @@ class _AiFixture {
   final bool expireFirstUpload;
   final List<CreateUploadRequest> uploadRequests = [];
   final List<String> uploadedPaths = [];
+  final draftStore = TestPublishDraftStore();
   PickedVideoFile? replacementVideo;
+  bool cancelPick = false;
   int uploadsCreated = 0;
   int filesUploaded = 0;
   int captionsGenerated = 0;
@@ -88,7 +92,7 @@ class _AiFixture {
         theme: AppTheme.light,
         home: Scaffold(
           body: UploaderScreen(
-            draftStore: TestPublishDraftStore(),
+            draftStore: draftStore,
             loadSocialConnections: () async => const [],
             loadSubscription: () async => SubscriptionStatusResult(
               userId: 'seller-starter',
@@ -101,7 +105,8 @@ class _AiFixture {
               canUseAiCaptions: true,
               canUseAnalytics: false,
             ),
-            pickVideo: () async => replacementVideo ?? firstVideo,
+            pickVideo: () async =>
+                cancelPick ? null : replacementVideo ?? firstVideo,
             extractFrames: extractFrames,
             createUpload: (request) async {
               uploadsCreated++;
@@ -187,10 +192,189 @@ Future<void> _enterCaption(WidgetTester tester, String caption) async {
 String _caption(WidgetTester tester) =>
     tester.widget<TextField>(find.byKey(_captionKey)).controller!.text;
 
+Future<void> _pickAgain(WidgetTester tester) async {
+  await goToUploaderStep(tester, 0);
+  final picker = find.byKey(const ValueKey('uploader-video-preview-picker'));
+  await _show(tester, picker);
+  await tester.tap(picker);
+  await tester.pumpAndSettle();
+  await goToUploaderStep(tester, 1);
+  await _show(tester, find.byKey(_captionKey));
+}
+
+Future<void> _saveAndRestore(WidgetTester tester, _AiFixture fixture) async {
+  final save = find.byKey(const ValueKey('uploader-save-draft-button'));
+  await _show(tester, save);
+  await tester.tap(save);
+  await tester.pumpAndSettle();
+  final draftId = fixture.draftStore.drafts.keys.single;
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pumpAndSettle();
+  await tester.pumpWidget(fixture.app(prefill: false));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('uploader-open-drafts')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(ValueKey('publish-draft-$draftId')));
+  await tester.pumpAndSettle();
+  await goToUploaderStep(tester, 1);
+  await _show(tester, find.byKey(_captionKey));
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     AppTheme.applyThemeMode(ThemeMode.light);
+  });
+
+  testWidgets(
+      'AI publish text omits SEO and appends unique normalized hashtags',
+      (tester) async {
+    final gate = Completer<RealClipCaptionResult>();
+    final fixture = _AiFixture(captionGate: gate);
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    await _generate(tester);
+    gate.complete(_aiResult(
+      caption: 'เรื่องจากคลิป #Sale #ขายดี',
+      hashtags: [' sale ', '#SALE', 'ขายดี', '#ใหม่', ' ใหม่ ', '##PostDee'],
+      seoKeywords: ['คำค้นหนึ่ง', 'คำค้นสอง'],
+    ));
+    await tester.pumpAndSettle();
+    await _show(tester, find.byKey(_captionKey));
+    expect(_caption(tester), 'เรื่องจากคลิป #Sale #ขายดี\n\n#ใหม่ #PostDee');
+    final seo = find.byKey(const ValueKey('uploader-ai-seo-keywords'));
+    await _show(tester, seo);
+    expect(find.text('คำค้นหนึ่ง, คำค้นสอง'), findsNothing);
+    await tester.tap(seo);
+    await tester.pumpAndSettle();
+    expect(find.text('คำค้นหนึ่ง, คำค้นสอง'), findsOneWidget);
+    expect(_caption(tester), isNot(contains('SEO:')));
+
+    fixture.replacementVideo = _video('different-seo-source.mp4');
+    await _pickAgain(tester);
+    expect(
+        find.byKey(const ValueKey('uploader-ai-seo-keywords')), findsNothing);
+  });
+
+  for (final generated in [false, true]) {
+    testWidgets(
+        '${generated ? 'generated' : 'manual'} caption survives replacement and requires explicit review',
+        (tester) async {
+      final fixture = _AiFixture();
+      await tester.pumpWidget(fixture.app());
+      await tester.pumpAndSettle();
+      if (generated) {
+        await _generate(tester);
+      } else {
+        await goToUploaderStep(tester, 1);
+        await _enterCaption(tester, 'ข้อความที่เขียนเองทั้งหมด #ร้านฉัน');
+      }
+      await _show(tester, find.byKey(_captionKey));
+      final originalCaption = _caption(tester);
+      fixture.replacementVideo = _video('replacement-review.mp4');
+      await _pickAgain(tester);
+      expect(_caption(tester), originalCaption);
+      final notice =
+          find.byKey(const ValueKey('uploader-caption-review-notice'));
+      await _show(tester, notice);
+      expect(notice, findsOneWidget);
+      await _enterCaption(tester, '$originalCaption ');
+      expect(notice, findsOneWidget);
+      final acknowledge =
+          find.byKey(const ValueKey('uploader-caption-reviewed'));
+      await _show(tester, acknowledge);
+      await tester.tap(acknowledge);
+      await tester.pumpAndSettle();
+      expect(notice, findsNothing);
+      expect(_caption(tester), '$originalCaption ');
+      await _saveAndRestore(tester, fixture);
+      expect(_caption(tester), '$originalCaption ');
+      expect(notice, findsNothing);
+    });
+  }
+
+  testWidgets('cancelled and same-path picks do not require caption review',
+      (tester) async {
+    final fixture = _AiFixture();
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 1);
+    await _enterCaption(tester, 'ข้อความเดิม');
+    fixture.cancelPick = true;
+    await _pickAgain(tester);
+    fixture.cancelPick = false;
+    await _pickAgain(tester);
+    expect(_caption(tester), 'ข้อความเดิม');
+    expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
+        findsNothing);
+    await _saveAndRestore(tester, fixture);
+    expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
+        findsNothing);
+    fixture.expectNoApiWrites();
+  });
+
+  testWidgets('replacement review survives saving and reopening a draft',
+      (tester) async {
+    final fixture = _AiFixture();
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 1);
+    await _enterCaption(tester, 'แคปชั่นที่เก็บไว้');
+    fixture.replacementVideo = _video('saved-review.mp4');
+    await _pickAgain(tester);
+    await _saveAndRestore(tester, fixture);
+    expect(_caption(tester), 'แคปชั่นที่เก็บไว้');
+    expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
+        findsOneWidget);
+    fixture.expectNoApiWrites();
+  });
+
+  testWidgets('fresh non-fallback AI result clears replacement review',
+      (tester) async {
+    final fixture = _AiFixture();
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 1);
+    await _enterCaption(tester, 'แคปชั่นเดิม');
+    fixture.replacementVideo = _video('fresh-review.mp4');
+    await _pickAgain(tester);
+    expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
+        findsOneWidget);
+    await goToUploaderStep(tester, 0);
+    await _generate(tester);
+    await _show(tester, find.byKey(_captionKey));
+    expect(_caption(tester), 'แคปชันจาก AI ของคลิปเดิม');
+    expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
+        findsNothing);
+  });
+
+  testWidgets(
+      'fallback review persists in drafts and known warning survives repick',
+      (tester) async {
+    final gate = Completer<RealClipCaptionResult>();
+    final fixture = _AiFixture(captionGate: gate);
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    await _generate(tester);
+    gate.complete(_aiResult(isFallback: true, caption: 'ข้อความสำรอง'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
+        findsOneWidget);
+    final save = find.byKey(const ValueKey('uploader-save-draft-button'));
+    await _show(tester, save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(fixture.draftStore.savedRequests.single.captionNeedsReview, isTrue);
+    fixture.replacementVideo = _video('fallback-review.mp4');
+    await _pickAgain(tester);
+    expect(_caption(tester), 'ข้อความสำรอง');
+    await _show(
+        tester, find.byKey(const ValueKey('uploader-ai-caption-fallback')));
+    expect(find.textContaining('แคปชันนี้เป็นข้อความสำรอง'), findsOneWidget);
+    await _saveAndRestore(tester, fixture);
+    expect(_caption(tester), 'ข้อความสำรอง');
+    expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
+        findsOneWidget);
   });
 
   testWidgets(

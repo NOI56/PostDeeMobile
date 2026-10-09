@@ -42,6 +42,38 @@ storage/providers and may consume mobile data. This fix has not performed real
 remote user uploads, provider generation or paid state changes. Real provider
 and production generation verification remains a separate release gate.
 
+## Caption quality follow-up (2026-10-09, limited provider probes)
+
+Ground the primary caption's opening hook in speech and visible clip evidence,
+including silent clips, without invented claims or tutorial steps. Normalize
+topical hashtags and SEO keywords, deduplicate up to five each, and leave
+missing/invalid metadata empty instead of adding unrelated generic defaults.
+Hooks remain separate. Thai is the prompt default unless actual speech or
+dominant meaningful whole-clip text clearly establishes another language;
+brands, account names, dates and numbers do not override it. Captions use creator
+voice rather than an analysis summary, in one or two short sentences. Silent
+menu navigation previews only visible menus/data without inferred business
+setup, store creation or promotional benefits. Visible buttons, plan or
+link labels do not establish actions or integrations. Real-clip temperature
+decreases from 0.8 to 0.4; prompt instructions cannot guarantee factual accuracy.
+
+Mobile excludes the literal `SEO:` paragraph from publish text, shows search
+keywords in a collapsed current-screen area, and deduplicates tags already in
+the caption. Replacing a clip retains all caption/guidance and requests review
+of nonempty text; applied fallback AI also needs review. Optional local
+`captionNeedsReview` defaults to false in manifest version 3 and persists until
+`ตรวจแล้ว` or an applied non-fallback AI result. Text edits do not clear it.
+
+Historical `AUDIO_ONLY` / `AUDIO_WITH_FRAMES` enums remain compatible: both
+Gemini modes already send the whole MP4, while Pro adds up to three selected
+frames. This is no isolated-audio transport or paid-policy change. Models,
+retries, quotas, SDK and four-platform posting stay unchanged; no API field or
+migration is required. Limited direct-provider probes improved the final primary
+caption but still returned wrong silent-language metadata; this is not a general
+quality benchmark or deployed API/quota verification. The local Staging APK is
+installed; authenticated caption UI smoke remains pending at the user's choice.
+This patch is not pushed/deployed; the earlier Staging receipt does not cover it.
+
 ## Android social-connect return (Staging API delivered)
 
 New Android connect links can request the fixed `android` or `android-staging`

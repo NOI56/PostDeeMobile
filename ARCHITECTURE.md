@@ -1063,11 +1063,11 @@ sequenceDiagram
   A->>A: Verify media keys belong to auth user
   A->>Usage: Reserve monthly caption quota
   alt User is Starter
-    A->>AI: Generate from clip audio context
+    A->>AI: Generate from whole MP4 (legacy AUDIO_ONLY)
     A-->>M: caption + hashtags + SEO + hooks
   else User is Pro
-    A->>AI: Generate from clip audio + selected frames
-    A-->>M: stronger caption + hashtags + SEO + hooks
+    A->>AI: Generate from whole MP4 + up to 3 selected frames
+    A-->>M: caption + hashtags + SEO + hooks
   else User is Basic
     A-->>M: 402 PRO_REQUIRED
   end
@@ -1078,10 +1078,45 @@ Current local mode has two caption routes:
 
 - `POST /captions/generate` remains the legacy keyword scaffold, but paid users still spend monthly AI caption quota and each keyword is capped at 80 characters.
 - `POST /captions/generate-from-clip` is the implemented clip-first flow with
-  Starter audio-only mode, Pro audio plus selected-frame mode, SEO fields, hook
+  historical `AUDIO_ONLY` / `AUDIO_WITH_FRAMES` modes, SEO fields, hook
   ideas, transcription-backed language/market context, authenticated media-key
   ownership checks, opt-in cleanup for AI-only clip/frame uploads, and monthly
   quota reservation through memory or Prisma-backed usage storage.
+
+Both Gemini modes transport the whole MP4; no isolated-audio transport is
+introduced. Pro adds up to three selected frames. The caption-quality follow-up
+changes prompt instructions and result normalization, keeping models, retries,
+mode enums, paid rules, quota and four-platform posting unchanged. The prompt
+grounds the opening hook and caption in speech and visible evidence, including
+silent clips, and avoids invented instructions or claims. Thai is the prompt
+default unless actual speech or dominant meaningful text across the clip clearly
+establishes another language; brands, account names, dates and numbers do not
+override it. Captions use creator voice rather than an analysis summary, in one
+or two short sentences. Silent menu navigation only previews visible menus/data;
+the same evidence boundary applies to options, hooks and metadata, without
+inferred business setup, store creation or promotional benefits. Visible buttons,
+plan and link labels
+do not prove setup, editing, purchase, scheduling or integrations. Real-clip
+temperature decreases from 0.8 to 0.4 to reduce speculation. Prompt rules cannot
+guarantee factual accuracy. Hooks remain separate from the primary caption;
+missing/invalid Gemini hashtags or SEO keywords stay empty, and valid items are
+normalized and deduplicated up to five each without unrelated generic defaults.
+
+Mobile keeps SEO suggestions in a collapsed current-screen area instead of
+appending `SEO:` to publish text, and deduplicates hashtags against the caption.
+Actual clip replacement retains caption/guidance and flags a nonempty caption
+for review; applied fallback AI also sets the flag. The optional boolean
+`captionNeedsReview` stays within local manifest version 3, defaults to false
+when absent, and persists across draft reopening. Explicit `ตรวจแล้ว` or an
+applied non-fallback AI result clears it; ordinary edits do not. Cancelled or
+same-path selection does not add a review flag. Keyword suggestions clear on
+source change, draft restoration and owner reset. No API field or database
+migration is added. Limited direct-provider probes improved one final primary
+caption but still returned wrong silent-language metadata. This metadata is
+echoed in Mobile's DTO and does not control caption selection, routing or
+entitlements. General quality, deployed API/quota and authenticated caption UI
+remain unverified; the local Staging APK is installed and this patch is not
+pushed/deployed.
 
 The clip-first route now reuses the configured transcription provider for
 spoken-language detection. Local mode uses a mock Thai transcript; production

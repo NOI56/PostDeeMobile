@@ -352,3 +352,125 @@ deployed/merged in this run. GitHub CI run `37897827978` passed both Backend API
 and Flutter Mobile jobs at exact source `9f0b729`, including production dependency
 audit and shared-template checks. Documentation-only receipt updates do not
 alter the tested/deployed runtime source.
+
+## Follow-up: caption evidence and publishing text
+
+This follow-up starts from audit branch `084a507`, with remote main still
+`c4e5220` (five commits ahead, none behind). The earlier Staging/API/APK receipt
+above does not certify this new quality patch. The initial local implementation
+did not perform customer uploads, generation, posts, paid-state changes,
+installation or deployment. Later provider probes and the local APK delivery
+are recorded below; they do not replace a deployed API or authenticated caption
+screen acceptance test.
+
+The Gemini prompt asks for an evidence-specific natural opening hook in the
+primary caption, grounded in speech, visible actions and legible text. Silent
+clips must not invent speech, tutorial steps or unsupported product claims;
+the prompt requests `detectedSpokenLanguage: "und"` for them. Incidental
+identifiers must not become marketing content. Thai is the prompt default unless
+actual speech or dominant meaningful text across the clip clearly establishes
+another language; brands, account names, dates and numbers do not override it.
+Captions use creator voice rather than an analysis summary, in one or two short
+sentences. Silent menu navigation previews only menus/data actually visible,
+without inferred store creation, business setup or promotional benefits; the
+same evidence boundary applies to options, hooks and metadata. Visible buttons,
+plan or link labels alone
+do not establish setup, editing, purchase, scheduling or integrations. Real-clip
+generation temperature decreases from 0.8 to 0.4 to reduce speculation.
+These prompt instructions
+cannot guarantee factual accuracy. Hooks remain a separate response field; the
+parser does not prepend hooks or rewrite the primary caption. Gemini hashtags
+and SEO keywords are normalized/deduplicated up to five valid items each; missing,
+empty or invalid metadata stays empty instead of adding generic defaults.
+
+Mobile inserts the caption and deduplicated hashtags, omitting the literal
+`SEO:` paragraph. Search keywords appear only in the collapsed current-screen
+`คำค้นที่ AI แนะนำ` area and clear on source change, draft restoration and owner
+reset. Actual path replacement preserves all caption/guidance and marks
+nonempty caption text for review. Applied fallback AI also requires review.
+Cancelled or same-path selection does not add a flag. The general review notice
+has an explicit `ตรวจแล้ว` action; ordinary edits do not acknowledge it. Only
+that acknowledgement or an applied non-fallback AI result clears the flag.
+The optional local boolean `captionNeedsReview` uses existing manifest version
+3, defaults to false when absent and persists across saved-draft restoration.
+
+Both Gemini modes already receive the whole MP4; `AUDIO_ONLY` is a historical
+enum, not isolated-audio transport. Pro adds at most three selected frames.
+Existing models, retries, network fields, media/owner checks, paid access,
+quotas, four-platform posting and SDK remain unchanged. No API field, database
+migration or configuration change is required. The four root documents are
+synchronized. Final automated verification passes 1,716/1,716 API tests across
+108 files (`--maxWorkers=2`), 45/45 targeted caption tests and API build. Earlier
+Prisma validation/helper type checks pass with schema unchanged. Flutter passes
+1,717/1,717 and analysis reports no issues.
+
+### Caption-quality provider and local APK receipt
+
+The final provider source SHA-256 is
+`c8bb8a53a38be2476e6e47da90064a155e18c9e92ec1f91b2c5d6acef8a8edb9`.
+Six direct Gemini calls completed across refinements: the first three English
+results and one Thai Pro tutorial claim were unsuitable. The final Pro primary
+caption, `มาดูกันว่าในหน้า ลิงก์ร้านค้า มีอะไรให้เราจัดการบ้างนะ`, matches the
+observed menu preview. Its single call took 25.148 seconds using the unchanged
+Gemini 2.5 Flash-Lite model at temperature 0.4 with three Pro frames. Receipt:
+`.tmp/caption-quality-live-menu-preview-pro-20261009.json`. This is a limited
+improvement, not a general quality benchmark or a claim that all semantic checks
+pass. Gemini still returned `detectedSpokenLanguage: "th"` despite ffprobe finding
+no audio stream. The prompt's `und` request is not guaranteed detection; Mobile
+only echoes this context metadata and does not use it for caption selection,
+routing or entitlements. Direct provider probes do not verify deployed Staging
+API routes or quota behavior.
+
+The exact Staging x86_64 debug APK built and installed with `-r`; built and pulled
+installed bytes match SHA-256
+`CAF3349CFBA3A17AA6266827F9C0C5943416B74ECF04E7D474692115B6E8DC68`,
+149,683,019 bytes, package `com.postdee.postdee_mobile.staging`, version code
+4001 / `0.1.0-staging`. Certificate remains
+`014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+The validated helper uses Staging API, real Firebase auth project
+`project-798caf7e-85b8-45e3-af7`, RevenueCat Test Store, mock auth off and
+experimental features off.
+
+The user authorized installation without preserving the unsaved composer form.
+No app-data clearing, uninstall, draft save, post or purchase was performed.
+The installed app opened login; the user chose code/tests only instead of
+authentication. Authenticated caption UI smoke therefore remains pending at
+that choice. No commit, push or deployment was performed for this caption patch;
+the earlier historical Staging delivery receipt remains unchanged.
+
+### Native caption UI acceptance follow-up (2026-10-09, about 16:04 GMT+7)
+
+After the user requested native testing, inspection used the unchanged Staging
+APK with SHA-256
+`CAF3349CFBA3A17AA6266827F9C0C5943416B74ECF04E7D474692115B6E8DC68`.
+The user was already signed in; the composer opened at step 2 with
+`1000000099.mp4` and an existing AI caption. That result was present before
+inspection: this test did not generate it or establish its network/quota history.
+
+Three native caption behaviors pass within visual inspection limits:
+
+- `คำค้นที่ AI แนะนำ` expands separate keyword text; the visible primary caption
+  has no `SEO:` paragraph, and `#TikTok`, `#Reels` and `#Facebook` are not visibly
+  duplicated.
+- Cancelling the Android photo picker retains clip 99 and its caption without
+  adding a review notice.
+- Replacing clip 99 with `1000000096.mp4` (10 seconds) visibly retains the
+  caption, clears the previous SEO suggestions and shows
+  `กรุณาตรวจว่าแคปชั่นตรงกับคลิปที่เลือกก่อนใช้` plus `ตรวจแล้ว`. Acknowledging
+  hides the notice without changing visible text. Selecting clip 99 again
+  preserves the caption and adds the notice again for the changed source path;
+  ephemeral SEO suggestions remain cleared.
+
+The local draft sheet was inspected read-only with two items visible; no draft
+was restored, saved or deleted. Fresh inspection at 16:05 GMT+7 confirms the
+sheet closed, composer step 2 on clip 99, visibly unchanged caption, review
+notice visible and no SEO suggestions. No Generate AI, channel, post, purchase, logout,
+permission or authentication control was used, and no upload/generation action
+was initiated. This visual test cannot assert byte-for-byte text identity.
+The existing 1,717 passing Flutter tests cover exact text preservation, saved
+review-state persistence, fallback results and legacy draft compatibility.
+
+The deployed Staging backend still uses the earlier source; this native smoke
+does not verify the final prompt through the app or deployed API/quota behavior.
+Earlier direct Gemini probes cover one clip only, with the known incorrect
+silent-language metadata. No commit, push or deployment was performed.

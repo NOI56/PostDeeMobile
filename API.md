@@ -1375,8 +1375,11 @@ Generates a mock-safe AI caption package from a selected clip key.
 
 Requires Starter or Pro.
 
-- Starter uses `AUDIO_ONLY` mode and is limited to 50 generations/month.
-- Pro uses `AUDIO_WITH_FRAMES` mode and is limited to 120 generations/month.
+- Starter retains `AUDIO_ONLY` mode and is limited to 50 generations/month.
+- Pro retains `AUDIO_WITH_FRAMES` mode and is limited to 120 generations/month.
+  These historical enum values are unchanged. Both Gemini modes receive the
+  whole MP4; `AUDIO_ONLY` does not describe an isolated audio transport. Pro
+  additionally supplies up to three selected frames under the existing rules.
 - Each successful generate/change request counts as one generation.
 - Local development can keep quota usage in memory with
   `CAPTION_USAGE_STORE=memory`. Production should use
@@ -1400,9 +1403,8 @@ Requires Starter or Pro.
   storage/providers and may consume mobile data. The aspect-ratio fix has not
   performed real remote user uploads, provider generation or paid state
   changes, and does not certify production generation.
-- When `CAPTION_PROVIDER=gemini`, this endpoint sends the clip to Gemini to
-  listen and write the caption directly (Starter = audio only; Pro =
-  `AUDIO_WITH_FRAMES`, also sending the `selectedFrameKeys` images). Gemini
+- When `CAPTION_PROVIDER=gemini`, this endpoint sends the whole MP4 to Gemini;
+  Pro's `AUDIO_WITH_FRAMES` also sends the `selectedFrameKeys` images. Gemini
   retries transient failures on configured-primary `gemini-2.5-flash-lite`,
   then falls back directly to the local template caption, so a caption is
   always returned. No secondary Gemini model is attempted.
@@ -1419,6 +1421,37 @@ Requires Starter or Pro.
   remains the simple override path when a seller wants a specific language,
   market, or style.
 
+Caption-quality behavior keeps the existing request/response fields. The prompt
+asks for an evidence-specific natural opening hook in the primary caption, using
+speech, visible actions and legible text without inventing claims or tutorial
+steps. For silent clips the prompt requests visible evidence and
+`detectedSpokenLanguage: "und"`. Thai is the prompt default unless actual speech
+or dominant meaningful text across the clip clearly establishes another
+language; brands, account names, dates and numbers do not override it. Captions
+use the creator's voice for viewers, not an analysis summary, in one or two
+short sentences. Silent menu navigation only previews visible menus/data;
+store creation, business setup or promotional benefits must not be inferred.
+This evidence boundary applies to options, hooks and metadata too. Visible
+buttons, plan or link labels alone do not prove
+setup, editing, purchase, scheduling or integrations. Real-clip generation
+temperature changes from 0.8 to 0.4 to reduce speculative claims. This is a prompt rule,
+not a guarantee of factual accuracy. `hooks` stays separate: the parser does not
+prepend it or rewrite the primary caption.
+
+Gemini `hashtags` and `seoKeywords` contain up to five normalized unique valid
+items. Missing, empty or invalid metadata remains `[]`, without generic default
+tags or keywords. Hashtags use one `#` prefix and Unicode letters, marks, digits
+or `_`; normalization uses NFC and case-insensitive deduplication. SEO keywords
+also collapse whitespace. The caption uses topical wording naturally; SEO
+metadata is separate, and Mobile does not append a literal `SEO:` list to the
+publish text. Models, retries, paid rules, ownership and quota stay unchanged.
+Limited direct-provider probes improved one final primary caption, while Gemini
+still returned `detectedSpokenLanguage: "th"` for a clip with no audio stream.
+The `und` request is not guaranteed silent detection; this context metadata does
+not drive Mobile caption selection, routing or entitlements. These probes do not
+verify deployed Staging routes or quota. General quality and authenticated
+caption-screen smoke remain pending; this patch is not pushed/deployed.
+
 Request:
 
 ```json
@@ -1433,18 +1466,18 @@ Request:
 }
 ```
 
-Starter response example:
+Starter response shape (illustrative Gemini output):
 
 ```json
 {
   "status": "ok",
-  "model": "local-real-clip-template",
+  "model": "gemini-2.5-flash-lite",
   "caption": "Caption option A",
   "captionOptions": ["Caption option A", "Caption option B", "Caption option C"],
   "hooks": ["Hook A", "Hook B", "Hook C"],
-  "hashtags": ["#PostDee", "#ShortVideo"],
-  "seoKeywords": ["short video", "affiliate seller"],
-  "searchTitle": "Best moments from demo-video.mp4",
+  "hashtags": ["#หัวข้อในคลิป"],
+  "seoKeywords": ["หัวข้อในคลิป"],
+  "searchTitle": "หัวข้อจากคลิป",
   "context": {
     "selectedCaptionLanguage": "Thai",
     "selectedTargetMarket": "Thailand",

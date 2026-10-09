@@ -52,13 +52,13 @@ const defaultSleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const affiliateLinkPlaceholder = '[ใส่ลิงก์ Affiliate ที่นี่]';
-const fallbackHashtags = ['#PostDee', '#ShortVideo', '#Affiliate', '#ViralClip', '#OnlineSeller'];
-const fallbackSeoKeywords = ['short video', 'affiliate seller', 'online shop', 'viral hook', 'product clip'];
 
 const systemPrompt =
-  'You are an expert Thai affiliate marketer writing short-video captions. ' +
-  'Analyze the clip: listen to the spoken audio (and look at any provided frames). ' +
-  'Write in the language actually spoken in the clip. Return ONLY JSON.';
+  'ใช้ภาษาไทยเป็นค่าเริ่มต้น เว้นแต่มั่นใจว่าคำพูดจริงหรือข้อความหลักที่อ่านได้ตลอดคลิปเป็นภาษาอื่น ให้ใช้ภาษานั้น ' +
+  'ไม่เลือกภาษาอังกฤษเพราะชื่อแบรนด์ ชื่อบัญชี วันที่ ตัวเลข หรือชื่อฟิลด์ JSON. ' +
+  'เขียนแคปชั่นพร้อมโพสต์สำหรับครีเอเตอร์และผู้ขาย ในเสียงของครีเอเตอร์ที่พูดกับคนดู ไม่ใช่รายงานวิเคราะห์ภาพ ' +
+  'ยึดเสียง สิ่งที่เห็นและข้อความที่อ่านได้ในคลิปที่ส่งมาและภาพที่แนบเท่านั้น คำแนะนำผู้ขายกำหนดแนวทางได้แต่ไม่ใช่หลักฐานข้อเท็จจริง ' +
+  'ห้ามแต่งประโยชน์ สินค้า ราคา ส่วนลด ผลลัพธ์ หรือขั้นตอนที่ไม่ปรากฏ และไม่ทวนอีเมลหรือรหัสบัญชีที่เห็นผ่าน ๆ. ตอบเฉพาะ JSON.';
 
 type GeminiResponse = {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -90,24 +90,80 @@ const readStringList = (value: unknown, limit: number) => {
 const readString = (value: unknown) =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 
+const readMetadataList = (value: unknown, hashtags = false) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const items: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of value) {
+    if (typeof item !== 'string') {
+      continue;
+    }
+
+    let normalized = item.normalize('NFC').trim().replace(/\s+/gu, ' ');
+
+    if (hashtags) {
+      normalized = normalized.replace(/^#+/u, '');
+      if (!/^[\p{L}\p{M}\p{N}_]+$/u.test(normalized)) {
+        continue;
+      }
+      normalized = `#${normalized}`;
+    }
+
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    items.push(normalized);
+    if (items.length === 5) {
+      break;
+    }
+  }
+
+  return items;
+};
+
 const buildInstruction = (input: RealClipCaptionGenerateInput) => {
   const guidance = input.request.guidance
-    ? ` Extra direction from the seller: ${input.request.guidance}.`
+    ? ` คำแนะนำจากผู้ขาย: ${input.request.guidance}.`
     : '';
   const sourceNote =
     input.mode === 'AUDIO_WITH_FRAMES'
-      ? 'Base the caption on the spoken audio AND the selected frames.'
-      : 'Base the caption on the spoken audio.';
+      ? 'พิจารณาคลิปที่ส่งมาทั้งคลิปพร้อมภาพที่แนบ.'
+      : 'พิจารณาคลิปที่ส่งมาทั้งคลิป ไม่มีภาพแยกแนบเพิ่ม.';
 
   return (
     `${sourceNote}${guidance}\n` +
-    'Respond ONLY with a JSON object using exactly these keys:\n' +
+    'เลือกภาษาโดยเรียงหลักฐาน: ภาษาพูดจริง → ข้อความหลักที่อ่านได้ทั้งคลิป → คำแนะนำผู้ขาย → ภาษาไทย ' +
+    'ใช้ลำดับถัดไปเมื่อไม่มีหลักฐานหรือไม่ชัดเจน หากข้อความหลักเป็นภาษาอื่นให้ใช้ภาษานั้น อย่าให้ชื่อแบรนด์ภาษาอังกฤษเปลี่ยนภาษา. ' +
+    'คลิปไม่มีเสียงให้ตั้ง detectedSpokenLanguage เป็น "und" และเขียนจากสิ่งที่เห็นและข้อความที่อ่านได้เท่านั้น ไม่สมมติว่ามีคำพูด ' +
+    'ถ้าคลิปไม่มีเสียงและมีเพียงการเปิดหรือสลับเมนู เขียนเป็นการพาชมเมนูที่เห็นจริงเท่านั้น ' +
+    'Hook ชวนดูหน้าหรือข้อมูลที่มองเห็น ห้ามเปลี่ยนเป็นวิธีเริ่มธุรกิจ สร้างร้าน โปรโมต หรือประโยชน์ที่ยังไม่เห็น แม้มีชื่อเมนูเกี่ยวกับร้านค้า ' +
+    'แนวแคปชั่นสำหรับกรณีนี้: "[ชื่อเมนูที่เห็นจริง] มีอะไรให้ดูบ้าง? พาดู [ข้อมูลที่มองเห็นจริง] กัน" ' +
+    'แทน placeholder ด้วยชื่อเมนูและข้อมูลที่อ่านได้จริงเท่านั้น ไม่คัดลอกวงเล็บหรือข้อมูลบัญชีที่เห็นผ่าน ๆ ' +
+    'ใช้ขอบเขตสิ่งที่เห็นเดียวกันกับ caption, captionOptions, hooks, seoKeywords และ hashtags ทั้งชุด ไม่อนุมานหัวข้อธุรกิจจากชื่อเมนู. ' +
+    'การสลับหน้าจอไม่พิสูจน์ว่ามีการสอนหรือทำงานสำเร็จ ปุ่ม เมนู ชื่อแพ็กเกจ และลิงก์ไม่ใช่หลักฐานว่าทำสิ่งนั้นสำเร็จ ' +
+    'ห้ามอ้างการตั้งค่า แก้ไข ซื้อสินค้า โพสต์ ตั้งเวลา หรือเชื่อมบัญชี เว้นแต่เห็นการทำจริงหรือได้ยินคำอธิบายชัดเจนในคลิป. ' +
+    'caption ต้องเป็นข้อความพร้อมโพสต์ เปิดด้วย Hook เฉพาะเรื่องที่เห็นจริง เป็นข้อสังเกตหรือคำถามธรรมชาติ ' +
+    'เขียน 1–2 ประโยคสั้น ไม่ทักทาย ไม่ถอดคำพูดเป็นแคปชั่น ไม่ไล่รายการทุกหน้าจอ และห้ามสั่งให้คนดูทำสิ่งที่คลิปไม่ได้แสดง ' +
+    'ไม่เปิดแบบรายงานว่า "แอปแสดง...", "วิดีโอนี้แสดง...", "ผู้ใช้สามารถ...", "The app shows..." หรือ "The app displays..." ' +
+    'captionOptions แต่ละรายการเป็นแคปชั่นพร้อมโพสต์ 1–2 ประโยคที่มี Hook ของตัวเอง ไม่ใช่แค่ชื่อหัวข้อ ' +
+    'hooks ต้องเป็นประโยคเปิดให้คนดูอ่านได้จริงในแนวเดียวกัน ไม่ใช่รายงาน. ' +
+    'ใช้คำค้นที่ตรงกับเรื่องที่เห็นจริงอย่างเป็นธรรมชาติ ไม่ใส่รายการ SEO: หรือแฮชแท็กใน caption และ captionOptions ' +
+    'metadata ใช้ภาษาเดียวกับแคปชั่น ยกเว้นชื่อเฉพาะที่เห็นจริง คำค้นและแฮชแท็กไม่ซ้ำ สูงสุดอย่างละ 5 รายการ ถ้าหลักฐานไม่พอให้ส่ง [] ' +
+    'ไม่เติมแท็กการตลาดทั่วไป เช่น #affiliate #marketing #onlinestore หากคลิปไม่ได้เกี่ยวกับเรื่องนั้น.\n' +
+    'ตอบเฉพาะ JSON object โดยใช้ชื่อฟิลด์เหล่านี้เท่านั้น:\n' +
     '{"caption": string, "captionOptions": string[3], "hooks": string[3], ' +
-    '"hashtags": string[5], "seoKeywords": string[5], "searchTitle": string, ' +
+    '"hashtags": string[0..5], "seoKeywords": string[0..5], "searchTitle": string, ' +
     '"detectedSpokenLanguage": string (ISO code like "th"), ' +
     '"captionLanguage": string, "targetMarket": string}\n' +
-    'Write caption, options, hooks and searchTitle in the spoken language. ' +
-    'Hashtags must start with #. Do not include any text outside the JSON.'
+    'caption, captionOptions, hooks, seoKeywords และ searchTitle ใช้ภาษาที่เลือก captionLanguage ใช้รหัสภาษานั้น ' +
+    'แฮชแท็กเริ่มด้วย #. ไม่มีข้อความนอก JSON.'
   );
 };
 
@@ -147,16 +203,16 @@ const mapResult = (
 
   const captionOptions = readStringList(parsed.captionOptions, 3);
   const hooks = readStringList(parsed.hooks, 3);
-  const hashtags = readStringList(parsed.hashtags, 5);
-  const seoKeywords = readStringList(parsed.seoKeywords, 5);
+  const hashtags = readMetadataList(parsed.hashtags, true);
+  const seoKeywords = readMetadataList(parsed.seoKeywords);
 
   return {
     model,
     caption,
     captionOptions: captionOptions.length > 0 ? captionOptions : [caption],
     hooks,
-    hashtags: hashtags.length > 0 ? hashtags : [...fallbackHashtags],
-    seoKeywords: seoKeywords.length > 0 ? seoKeywords : [...fallbackSeoKeywords],
+    hashtags,
+    seoKeywords,
     searchTitle: readString(parsed.searchTitle) ?? caption,
     affiliateLinkPlaceholder,
     context: buildContext(parsed),
@@ -204,7 +260,7 @@ export const createGeminiRealClipCaptionProvider = ({
     const body = JSON.stringify({
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0.8, responseMimeType: 'application/json' }
+      generationConfig: { temperature: 0.4, responseMimeType: 'application/json' }
     });
 
     const models = [model, ...fallbackModels];

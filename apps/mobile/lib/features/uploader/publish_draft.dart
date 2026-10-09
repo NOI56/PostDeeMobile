@@ -60,6 +60,7 @@ class PublishDraft {
     required this.aiGuidance,
     required this.watermarkEnabled,
     required this.platformApiValues,
+    this.captionNeedsReview = false,
     this.platformSettings = const PlatformPublishSettings(),
     this.videoWidth,
     this.videoHeight,
@@ -81,6 +82,7 @@ class PublishDraft {
   final int? videoWidth;
   final int? videoHeight;
   final String caption;
+  final bool captionNeedsReview;
   final String aiGuidance;
   final bool watermarkEnabled;
   final Set<String> platformApiValues;
@@ -115,6 +117,7 @@ class PublishDraftSaveRequest {
     required this.aiGuidance,
     required this.watermarkEnabled,
     required this.platformApiValues,
+    this.captionNeedsReview = false,
     this.platformSettings = const PlatformPublishSettings(),
     this.videoWidth,
     this.videoHeight,
@@ -137,6 +140,7 @@ class PublishDraftSaveRequest {
   final int? videoWidth;
   final int? videoHeight;
   final String caption;
+  final bool captionNeedsReview;
   final String aiGuidance;
   final bool watermarkEnabled;
   final Set<String> platformApiValues;

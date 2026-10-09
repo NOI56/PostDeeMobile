@@ -183,6 +183,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
   String? _templateErrorMessage;
   String? _aiCaptionErrorMessage;
   String? _aiCaptionFallbackMessage;
+  bool _captionNeedsReview = false;
+  List<String> _aiCaptionSeoKeywords = const [];
   String? _selectedVideoName;
   CoverEditorResult? _coverResult;
   List<PublishDraft> _drafts = const [];
@@ -239,10 +241,13 @@ class _UploaderScreenState extends State<UploaderScreen> {
     };
   }
 
-  void _invalidateAiCaption() {
+  void _invalidateAiCaption({bool clearCaptionMetadata = true}) {
     _captionGeneration++;
     _isGeneratingCaption = false;
-    _aiCaptionFallbackMessage = null;
+    if (clearCaptionMetadata) {
+      _aiCaptionFallbackMessage = null;
+      _aiCaptionSeoKeywords = const [];
+    }
   }
 
   bool get _formBusy =>
@@ -255,6 +260,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
   String get _formSnapshot => jsonEncode([
         _localFilePathController.text,
         _captionController.text,
+        _captionNeedsReview,
         _aiGuidanceController.text,
         _scheduledAtController.text,
         ({..._selectedPlatforms, ..._draftUnavailablePlatforms}
@@ -458,6 +464,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _selectedVideoName = null;
       _coverResult = null;
       _captionController.clear();
+      _captionNeedsReview = false;
       _aiGuidanceController.clear();
       _fileNameController.clear();
       _localFilePathController.clear();
@@ -1202,19 +1209,24 @@ class _UploaderScreenState extends State<UploaderScreen> {
   }
 
   String _formatRealClipCaption(RealClipCaptionResult result) {
-    final hashtags = result.hashtags
-        .map((tag) => tag.trim())
-        .where((tag) => tag.isNotEmpty)
-        .map((tag) => tag.startsWith('#') ? tag : '#$tag')
-        .join(' ');
-    final seoKeywords = result.seoKeywords
-        .map((keyword) => keyword.trim())
-        .where((keyword) => keyword.isNotEmpty)
-        .join(', ');
+    final caption = result.caption.trim();
+    final seenTags = RegExp(r'#[\p{L}\p{M}\p{N}_]+', unicode: true)
+        .allMatches(caption)
+        .map((match) => match.group(0)!.toLowerCase())
+        .toSet();
+    final hashtags = <String>[];
+    for (final rawTag in result.hashtags) {
+      final tagBody = rawTag
+          .trim()
+          .replaceFirst(RegExp(r'^#+'), '')
+          .replaceAll(RegExp(r'\s+'), '');
+      if (tagBody.isEmpty) continue;
+      final tag = '#$tagBody';
+      if (seenTags.add(tag.toLowerCase())) hashtags.add(tag);
+    }
     final parts = [
-      result.caption.trim(),
-      if (seoKeywords.isNotEmpty) 'SEO: $seoKeywords',
-      if (hashtags.isNotEmpty) hashtags,
+      caption,
+      if (hashtags.isNotEmpty) hashtags.join(' '),
     ].where((part) => part.isNotEmpty).toList();
 
     return parts.join('\n\n');
@@ -1245,7 +1257,6 @@ class _UploaderScreenState extends State<UploaderScreen> {
     setState(() {
       _isGeneratingCaption = true;
       _aiCaptionErrorMessage = null;
-      _aiCaptionFallbackMessage = null;
     });
 
     try {
@@ -1306,6 +1317,12 @@ class _UploaderScreenState extends State<UploaderScreen> {
           text: nextCaption,
           selection: TextSelection.collapsed(offset: nextCaption.length),
         );
+        _captionNeedsReview = caption.isFallback;
+        _aiCaptionSeoKeywords = caption.seoKeywords
+            .map((keyword) => keyword.trim())
+            .where((keyword) => keyword.isNotEmpty)
+            .toSet()
+            .toList();
         _aiCaptionFallbackMessage = caption.isFallback
             ? 'AI วิเคราะห์คลิปไม่สำเร็จ แคปชันนี้เป็นข้อความสำรอง กรุณาตรวจและแก้ไขก่อนใช้'
                 '${caption.quota.charged ? '' : ' · ไม่หักโควตา AI'}'
@@ -1318,14 +1335,16 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
       setState(() {
         _aiCaptionErrorMessage = switch (error.code) {
-          'PAID_PLAN_REQUIRED' || 'PRO_REQUIRED' =>
+          'PAID_PLAN_REQUIRED' ||
+          'PRO_REQUIRED' =>
             'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ',
           'AI_CAPTION_QUOTA_REACHED' =>
             'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว กรุณารอรอบเดือนถัดไป',
           'UPLOAD_AI_CAPTION_VIDEO_INVALID' =>
             'อัปโหลดคลิปให้ AI ไม่สำเร็จ กรุณาเลือกไฟล์ MP4 ที่มีขนาดไม่เกินกำหนด',
           _ => apiErrorMessage(error,
-              fallbackMessage: 'ให้ AI คิดแคปชั่นไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'),
+              fallbackMessage:
+                  'ให้ AI คิดแคปชั่นไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'),
         };
       });
     } on SocketException {
@@ -1439,8 +1458,17 @@ class _UploaderScreenState extends State<UploaderScreen> {
       }
 
       final previousCover = _coverResult;
-      _invalidateAiCaption();
+      final previousPath = _localFilePathController.text;
+      final sourceChanged = previousPath != video.path;
+      _invalidateAiCaption(clearCaptionMetadata: false);
       setState(() {
+        if (sourceChanged) {
+          _aiCaptionSeoKeywords = const [];
+          if (previousPath.isNotEmpty &&
+              _captionController.text.trim().isNotEmpty) {
+            _captionNeedsReview = true;
+          }
+        }
         _selectedVideoName = fileName;
         _coverResult = null;
         _localFilePathController.text = video.path;
@@ -1632,6 +1660,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
           videoWidth: _readPositiveInt(_widthController),
           videoHeight: _readPositiveInt(_heightController),
           caption: _captionController.text,
+          captionNeedsReview: _captionNeedsReview,
           aiGuidance: _aiGuidanceController.text,
           watermarkEnabled: watermarkEnabled,
           platformApiValues:
@@ -1731,6 +1760,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
     _selectedVideoName = null;
     _coverResult = null;
     _captionController.clear();
+    _captionNeedsReview = false;
     _aiGuidanceController.clear();
     _fileNameController.clear();
     _localFilePathController.clear();
@@ -1783,6 +1813,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _widthController.text = draft.videoWidth?.toString() ?? '';
       _heightController.text = draft.videoHeight?.toString() ?? '';
       _captionController.text = draft.caption;
+      _captionNeedsReview = draft.captionNeedsReview;
       _aiGuidanceController.text = draft.aiGuidance;
       _selectedPlatforms
         ..clear()
@@ -3231,6 +3262,28 @@ class _UploaderScreenState extends State<UploaderScreen> {
               decoration: const InputDecoration(
                   labelText: 'แคปชั่น',
                   hintText: 'เล่าเรื่องคลิปหรือสิ่งที่อยากบอกลูกค้า...')),
+          if (_captionNeedsReview) ...[
+            const SizedBox(height: 10),
+            Row(
+              key: const ValueKey('uploader-caption-review-notice'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    'กรุณาตรวจว่าแคปชั่นตรงกับคลิปที่เลือกก่อนใช้',
+                    style: TextStyle(color: AppTheme.textSecondary),
+                  ),
+                ),
+                TextButton(
+                  key: const ValueKey('uploader-caption-reviewed'),
+                  onPressed: _formBusy
+                      ? null
+                      : () => setState(() => _captionNeedsReview = false),
+                  child: const Text('ตรวจแล้ว'),
+                ),
+              ],
+            ),
+          ],
           if (_aiCaptionFallbackMessage != null) ...[
             const SizedBox(height: 10),
             Text(_aiCaptionFallbackMessage!,
@@ -3238,6 +3291,21 @@ class _UploaderScreenState extends State<UploaderScreen> {
                 style: TextStyle(color: AppTheme.textSecondary)),
           ],
           const SizedBox(height: 12),
+          if (_aiCaptionSeoKeywords.isNotEmpty)
+            ExpansionTile(
+              key: const ValueKey('uploader-ai-seo-keywords'),
+              tilePadding: EdgeInsets.zero,
+              title: const Text('คำค้นที่ AI แนะนำ'),
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(_aiCaptionSeoKeywords.join(', ')),
+                  ),
+                ),
+              ],
+            ),
           ExpansionTile(
               key: const ValueKey('uploader-ai-open-panel'),
               tilePadding: EdgeInsets.zero,

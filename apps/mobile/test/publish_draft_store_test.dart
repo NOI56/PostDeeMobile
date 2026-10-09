@@ -36,6 +36,7 @@ void main() {
     File? coverSource,
     DateTime? updatedAt,
     String caption = 'แคปชันร่าง',
+    bool captionNeedsReview = false,
     bool watermarkEnabled = true,
     Set<String> platformApiValues = const {
       'TIKTOK',
@@ -55,6 +56,7 @@ void main() {
       videoWidth: 1080,
       videoHeight: 1920,
       caption: caption,
+      captionNeedsReview: captionNeedsReview,
       aiGuidance: 'โทนสนุก เน้นโปรวันนี้',
       watermarkEnabled: watermarkEnabled,
       platformApiValues: platformApiValues,
@@ -94,6 +96,59 @@ void main() {
         ownerUserId: ownerUserId,
         beforePromotion: beforePromotion,
       );
+
+  test(
+      'persists caption review until explicitly acknowledged without a version bump',
+      () async {
+    final video = await fixture('source.mp4', [1, 2, 3, 4]);
+    final store = storeFor('firebase-user-a');
+    await store.saveDraft(request(video: video, captionNeedsReview: true));
+    final restored = (await store.loadDraft('draft-1'))!;
+    expect(restored.version, 3);
+    expect(restored.captionNeedsReview, isTrue);
+    await store.saveDraft(request(
+      video: File(restored.videoPath),
+      caption: restored.caption,
+      captionNeedsReview: false,
+    ));
+    expect((await store.loadDraft('draft-1'))!.captionNeedsReview, isFalse);
+  });
+
+  test(
+      'legacy v2 and v3 drafts without caption review metadata remain readable',
+      () async {
+    final video = await fixture('source.mp4', [1, 2, 3, 4]);
+    final store = storeFor('firebase-user-a');
+    await store.saveDraft(request(video: video));
+    final manifestFile =
+        File('${root.path}/store/firebase-user-a/draft-1/manifest.json');
+    final manifest =
+        jsonDecode(await manifestFile.readAsString()) as Map<String, dynamic>;
+    manifest.remove('captionNeedsReview');
+    for (final version in [2, 3]) {
+      manifest['version'] = version;
+      await manifestFile.writeAsString(jsonEncode(manifest), flush: true);
+      final restored = await store.loadDraft('draft-1');
+      expect(restored, isNotNull);
+      expect(restored!.captionNeedsReview, isFalse);
+      expect(restored.caption, 'แคปชันร่าง');
+    }
+  });
+
+  test('rejects malformed caption review metadata', () async {
+    final video = await fixture('source.mp4', [1, 2, 3, 4]);
+    final store = storeFor('firebase-user-a');
+    await store.saveDraft(request(video: video));
+    final manifestFile =
+        File('${root.path}/store/firebase-user-a/draft-1/manifest.json');
+    final manifest =
+        jsonDecode(await manifestFile.readAsString()) as Map<String, dynamic>;
+    for (final invalid in ['true', 1, null]) {
+      manifest['captionNeedsReview'] = invalid;
+      await manifestFile.writeAsString(jsonEncode(manifest), flush: true);
+      expect(await store.loadDraft('draft-1'), isNull);
+    }
+  });
 
   test('copies video and cover into app-owned storage and restores every field',
       () async {

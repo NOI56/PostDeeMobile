@@ -28,6 +28,7 @@ class TestPublishDraftStore implements PublishDraftStore {
       videoWidth: request.videoWidth,
       videoHeight: request.videoHeight,
       caption: request.caption,
+      captionNeedsReview: request.captionNeedsReview,
       aiGuidance: request.aiGuidance,
       watermarkEnabled: request.watermarkEnabled,
       platformApiValues: request.platformApiValues,

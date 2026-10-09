@@ -660,8 +660,10 @@ access, owner checks, media limits and generation quota remain unchanged. This
 fix has not performed real remote user uploads, provider generation or paid
 state changes; production generation remains unverified.
 
-- Starter uses audio-only mode and has 50 generations/month.
-- Pro uses audio plus selected-frame mode and has 120 generations/month.
+- Starter retains the historical `AUDIO_ONLY` mode and 50 generations/month.
+- Pro retains `AUDIO_WITH_FRAMES`, adds up to three selected frames, and has
+  120 generations/month. Both Gemini modes receive the whole MP4; the mode name
+  does not mean an isolated audio upload or a new package rule.
 - Each successful generate/change request counts as one generation.
 - The current scaffold returns caption options, hooks, hashtags, SEO keywords,
   a search title, auto language/market context, source mode, and remaining
@@ -672,7 +674,38 @@ state changes; production generation remains unverified.
 - In local mode, `TRANSCRIPTION_PROVIDER=mock` returns a safe Thai transcript.
   In production, `TRANSCRIPTION_PROVIDER=elevenlabs` or legacy `openai` downloads the stored
   clip through signed storage access and sends it to the speech provider.
-- It still does not sample real frames from the uploaded video.
+- The backend does not sample frames; Pro's mobile flow extracts them.
+
+The caption-quality follow-up asks Gemini to ground a natural opening hook and
+caption in observed speech, visible actions and legible text. Silent clips must
+not invent speech, tutorial steps, product claims or incidental identifiers.
+Thai is the prompt default unless actual speech or dominant meaningful text
+across the clip clearly establishes another language; brands, account names,
+dates and numbers do not override it. Captions use the creator's voice for the
+viewer, rather than an analysis summary, in one or two short sentences.
+Silent menu navigation should preview only the menus/data actually visible,
+without inferred store creation, business setup or promotional benefits.
+Visible buttons, plan or link labels do not prove setup, editing, purchase,
+scheduling or integrations. Real-clip generation temperature is reduced from
+0.8 to 0.4 to discourage speculative claims. Prompt instructions cannot
+guarantee accuracy; sellers must review
+the result. Gemini hashtags and SEO keywords are normalized and deduplicated,
+with at most five each; missing or invalid metadata stays empty instead of receiving
+unrelated generic defaults. Hooks remain a separate response field.
+
+Mobile inserts the caption and only hashtags not already present; it does not
+append a literal `SEO:` paragraph. Suggested search keywords stay in the collapsed
+`คำค้นที่ AI แนะนำ` area for the current screen. Replacing a clip retains existing
+caption and guidance and asks for review; applied fallback AI also requires
+review. The optional local draft `captionNeedsReview` flag defaults to false in
+existing version-3 manifests and persists until `ตรวจแล้ว` or an applied
+non-fallback AI result. Ordinary text edits do not clear it. This follow-up adds
+no API field, migration, model, retry, quota or publishing-platform change.
+Limited direct-provider probes improved the final primary caption but still
+returned incorrect silent-language metadata; they do not establish general
+quality or deployed API/quota behavior. The local Staging APK is installed;
+authenticated caption-screen smoke remains pending at the user's choice, and
+this caption patch has not been pushed or deployed.
 
 #### Removed: `POST /clip-reviews`
 

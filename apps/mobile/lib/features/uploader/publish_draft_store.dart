@@ -268,6 +268,7 @@ class FilePublishDraftStore implements PublishDraftStore {
       'videoWidth': request.videoWidth,
       'videoHeight': request.videoHeight,
       'caption': request.caption,
+      'captionNeedsReview': request.captionNeedsReview,
       'aiGuidance': request.aiGuidance,
       'watermarkEnabled': request.watermarkEnabled,
       'platformApiValues': platforms,
@@ -403,6 +404,9 @@ class FilePublishDraftStore implements PublishDraftStore {
         videoWidth: _optionalPositiveInt(manifest['videoWidth']),
         videoHeight: _optionalPositiveInt(manifest['videoHeight']),
         caption: _requiredString(manifest, 'caption', allowEmpty: true),
+        captionNeedsReview: manifest.containsKey('captionNeedsReview')
+            ? _requiredBool(manifest, 'captionNeedsReview')
+            : false,
         aiGuidance: _requiredString(
           manifest,
           'aiGuidance',

@@ -526,7 +526,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
     if (owner == null || _isSavingCaptionStyle) return false;
     final generation = ++_captionStyleGeneration;
     if (!_captionStyleIsCurrent(owner, generation) ||
-        (isCurrent != null && !isCurrent())) return false;
+        (isCurrent != null && !isCurrent())) {
+      return false;
+    }
     setState(() => _isSavingCaptionStyle = true);
     try {
       await widget.captionWritingStyleStore.save(owner, profile);
@@ -573,10 +575,14 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _acceptedAiCaption == null ||
         _acceptedAiCaption!.trim() == caption ||
         _acceptedAiCaptionOwner != owner ||
-        _acceptedAiCaptionSource != source) return;
+        _acceptedAiCaptionSource != source) {
+      return;
+    }
     final profile = _captionWritingProfile.withLearnedCaption(caption);
     if (jsonEncode(profile.toJson()) ==
-        jsonEncode(_captionWritingProfile.toJson())) return;
+        jsonEncode(_captionWritingProfile.toJson())) {
+      return;
+    }
     try {
       await _saveCaptionWritingStyle(profile, isCurrent: stillCurrent);
       if (!stillCurrent()) return;
@@ -596,7 +602,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
         owner == null ||
         owner != PostDeeAuthSessionStore.instance.session.stableUserId ||
         source != _localFilePathController.text ||
-        captionGeneration != _captionGeneration) return;
+        captionGeneration != _captionGeneration) {
+      return;
+    }
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -609,7 +617,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
                 owner !=
                     PostDeeAuthSessionStore.instance.session.stableUserId ||
                 source != _localFilePathController.text ||
-                captionGeneration != _captionGeneration) return false;
+                captionGeneration != _captionGeneration) {
+              return false;
+            }
             return _saveCaptionWritingStyle(profile,
                 isCurrent: () =>
                     mounted &&
@@ -622,7 +632,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
       },
     );
     if (!mounted ||
-        owner != PostDeeAuthSessionStore.instance.session.stableUserId) return;
+        owner != PostDeeAuthSessionStore.instance.session.stableUserId) {
+      return;
+    }
     _captionStyleSheetContext = null;
   }
 

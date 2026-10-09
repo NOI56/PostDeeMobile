@@ -512,3 +512,73 @@ Deployment and CI passed; end-to-end app AI remains blocked at entitlement and
 has not passed. No generated-caption quality or provider failure is inferred.
 Existing package policies and guards remain unchanged. Earlier no-push/deploy
 statements above describe their respective historical runs.
+
+### Pro display versus AI entitlement investigation (2026-10-09)
+
+Read-only native inspection of the original installed app closed the tester's
+blank composer without saving: Home showed cached Pro, Account loaded Free,
+then Home refreshed to Free. No draft save, post, purchase, Restore/resync,
+mobile logout or authentication action was performed in this inspection.
+
+After the user logged in, RevenueCat Dashboard inspection confirmed the current
+Firebase UID matched the observed customer; only the sanitized equality result
+was retained. The latest
+Pro purchase used Test Store Sandbox, starting about 15:55 and expiring at
+16:20:43.503 GMT+7 on 2026-10-09. Relevant provider history, all in GMT+7:
+
+| Event | Period purchase | Period expiry | Event timestamp | Webhook sent |
+| --- | --- | --- | --- | --- |
+| Previous renewal | 16:10:43.503 | 16:15:43.503 | 16:14:34.666 | 16:14 |
+| Latest renewal | 16:15:43.503 | 16:20:43.503 | 16:21:42.380 | 16:22 |
+| Expired | — | 16:20:43.503 | 16:21:42.396 | 16:22 |
+
+Late provider delivery is confirmed, and current Sandbox Free is confirmed.
+The original AI action at 16:20:07.708 and its error about six seconds later
+preceded the latest expiry by about 30 seconds; current expiration therefore
+does not fully explain that earlier denial. A backend still holding the prior
+period end is consistent with the delayed renewal, but remains an inference:
+the database row and exact request stage were not read. Render's actual
+`SUBSCRIPTION_STORE=prisma` was verified read-only and masked again, ruling out
+the proposed memory-store reset explanation. Privacy-cropped evidence:
+`D:\PostDeeMobile\.tmp\caption-subscription-20261009\revenuecat-expiry-20261009.png`.
+
+Mobile commit `2800742cfa34df4888281c2cc2728e6c1f9cfaef` changes only
+`postdee_shell.dart` and its tests: Home/Profile become inactive while the
+composer is open and refresh when it closes, preserving state and existing
+same-owner route guards. Three new regressions first produced two failures
+and one pass, then passed; all 45 shell tests pass. Full analysis reports no
+issues and the full Flutter suite passes 1,720/1,720 with `--concurrency=2`.
+An initial run was interrupted by memory/resource pressure after 1,715 passes
+with five incomplete cases; the completed rerun supplies acceptance evidence.
+Per-command temporary storage used D:, and only the tester's prior APK receipt
+was moved to
+`D:\PostDeeMobile\.tmp\caption-subscription-20261009\caption-quality-installed-20261009.apk`,
+retaining the earlier `CAF3349…E8DC68` hash.
+
+The exact detached `2800742` checkout built successfully through the checked-in
+Staging helper with temporary storage on D: (Gradle 92.3 seconds). The x86_64
+debug APK is 127,488,978 bytes, SHA-256
+`13ECE089A7756125AB6DA18BDFF81E40F2FD4762B739E0D7384BC2C23B462859`,
+package `com.postdee.postdee_mobile.staging`, version code 4001 / `0.1.0-staging`.
+API/Firebase configuration and validated RevenueCat Test Store settings match
+the prior build; the certificate remains
+`014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+Build artifact:
+`D:\PostDeeMobile\.tmp\caption-subscription-20261009\verify-worktree\apps\mobile\build\app\outputs\flutter-apk\app-x86_64-debug.apk`.
+Installation with `adb install -r` succeeded; the pulled installed base APK at
+`D:\PostDeeMobile\.tmp\caption-subscription-20261009\package-refresh-installed-20261009.apk`
+matches the same hash and byte size.
+
+Native launch showed PostDee, Splash, then Staging Login. The session did not
+restore to authenticated UI, and no authentication control was pressed. The
+new Home/composer refresh smoke and paid AI remain unverified; the original
+app's Pro-to-Free observation above is separate evidence. No app-data clearing,
+uninstall, mobile logout, draft save, post, purchase or live resync was performed.
+The app was left at Login. This fix is installed locally and has not been
+pushed/deployed.
+
+The backend remains Live at `f6bf0f9`; no new push/deployment or package/API
+policy change was made. A possible follow-up is one existing authenticated
+server resync when AI preflight sees Basic with RevenueCat enabled, followed by
+a fresh subscription GET while retaining the paid gate. This was not
+implemented: it would not invoke SDK Restore/purchase or remove the gate.

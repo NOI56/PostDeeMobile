@@ -201,3 +201,32 @@ not modified.
 Deployment completion is distinct from full product acceptance. Native smoke
 and the external-service acceptance gates above remain open. Production has
 not been deployed in this run.
+
+## Follow-up: Account and Home package display
+
+The installed audit APK hash matched the final artifact above. Native inspection
+reproduced cached Account `Pro / 250` while a fresh Home tab load and a newly
+opened Paywall both reported `BASIC / 0`. Account did not refresh on tab entry;
+neither Account nor Home refreshed its package when the app resumed. This is
+display evidence, not proof of the purchase's expiration/refund history. The
+validated APK uses RevenueCat Test Store; test billing is not a production
+purchase acceptance test. No repeat purchase, restore or resync was performed.
+
+Account now reloads on tab entry. Home and Account reload on app resume only
+when their tab and root route are visible. The shell passes the same optional
+subscription loader to Home, Account and Account's Paywall; production still
+uses authenticated `GET /billing/subscription`. Existing generation guards
+ignore older responses, including a late Pro response after a newer Basic read.
+No package rules, billing verification, API contract, server configuration or
+database schema changed.
+
+Two behavioral regression tests failed before the patch (one load instead of
+two). Five added regressions cover upgrade, expiration, hidden-tab resume,
+late-response ordering and Home/Account/Paywall integration. Full Flutter tests
+pass 1,688/1,688; full analysis reports no issues. The validated Staging debug
+APK builds, keeps the same package and debug certificate, and has SHA-256
+`1b7b577ab4c5dce527465641be14bbc6332ea9da88bfe09a70f6647e240fbe98`.
+It was installed with `adb install -r --streaming`; installed bytes match.
+Native Home and Account display the current Free `0 / 3` status with the same
+signed-in account retained. A live new purchase/restore and this account's
+provider transaction history have not been re-tested or confirmed.

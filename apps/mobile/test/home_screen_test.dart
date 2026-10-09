@@ -184,6 +184,58 @@ Future<SubscriptionStatusResult> _previewSubscription() async =>
     );
 
 void main() {
+  testWidgets('refreshes a paid plan when returning to the app',
+      (tester) async {
+    var loads = 0;
+    var plan = 'BASIC';
+    await tester.pumpWidget(_homeTestApp(HomeScreen(
+      loadSubscription: () async {
+        loads++;
+        return SubscriptionStatusResult(
+          userId: 'seller',
+          plan: plan,
+          status: 'ACTIVE',
+          remainingPostsThisMonth: plan == 'PRO' ? 250 : 0,
+          canSchedule: plan == 'PRO',
+          canUseAiCaptions: plan == 'PRO',
+          canUseAnalytics: plan == 'PRO',
+        );
+      },
+      loadRecentPosts: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    plan = 'PRO';
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(loads, 2);
+    expect(find.text('แพ็กเกจ Pro'), findsOneWidget);
+    expect(find.text('เหลือ 250/250 หน่วย'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('does not reload a hidden home plan on app resume',
+      (tester) async {
+    var loads = 0;
+    await tester.pumpWidget(_homeTestApp(HomeScreen(
+      isActive: false,
+      loadSubscription: () async {
+        loads++;
+        return _previewSubscription();
+      },
+      loadRecentPosts: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(loads, 1);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
       'View all opens the complete post list including immediate failed posts',
       (tester) async {

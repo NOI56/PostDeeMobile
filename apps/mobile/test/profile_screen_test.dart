@@ -19,6 +19,79 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  testWidgets('refreshes an expired plan when returning to the app',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      subscription: const SubscriptionStatusResult(
+        userId: 'seller',
+        plan: 'PRO',
+        status: 'ACTIVE',
+        remainingPostsThisMonth: 250,
+        canSchedule: true,
+        canUseAiCaptions: true,
+        canUseAnalytics: true,
+      ),
+    );
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('profile-plan-pro')), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    apiClient.subscription = _basicSubscription();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(apiClient.subscriptionLoadCalls, 2);
+    expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-plan-pro')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tab refresh ignores an older Pro response and hidden resume',
+      (tester) async {
+    final initialLoad = Completer<SubscriptionStatusResult>();
+    // Only the initial request waits; the newer request reads expired access.
+    var loads = 0;
+    final refreshedClient = _FakeSocialApiClient(
+      connections: const [],
+      subscriptionLoader: () {
+        loads++;
+        return loads == 1
+            ? initialLoad.future
+            : Future.value(_basicSubscription());
+      },
+    );
+    await tester.pumpWidget(_hostProfile(apiClient: refreshedClient));
+    await tester.pump();
+    await tester
+        .pumpWidget(_hostProfile(apiClient: refreshedClient, isActive: false));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(loads, 1);
+
+    await tester.pumpWidget(_hostProfile(apiClient: refreshedClient));
+    await tester.pumpAndSettle();
+    expect(loads, 2);
+    expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
+    initialLoad.complete(const SubscriptionStatusResult(
+      userId: 'seller',
+      plan: 'PRO',
+      status: 'ACTIVE',
+      remainingPostsThisMonth: 250,
+      canSchedule: true,
+      canUseAiCaptions: true,
+      canUseAnalytics: true,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-plan-pro')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   test('social OAuth uses the native Android Custom Tab without url_launcher',
       () async {
     final connectUri = Uri.parse('https://www.tiktok.com/v2/auth/authorize');
@@ -1498,6 +1571,7 @@ Future<void> _openConnectionsScreen(WidgetTester tester) async {
 
 Widget _hostProfile({
   Locale locale = const Locale('th'),
+  bool isActive = true,
   PostDeeApiClient? apiClient,
   Future<bool> Function(Uri uri)? launchConnectUrl,
   Future<void> Function()? onManageSubscription,
@@ -1521,6 +1595,7 @@ Widget _hostProfile({
     supportedLocales: PostDeeLocalizations.supportedLocales,
     home: Scaffold(
       body: ProfileScreen(
+        isActive: isActive,
         languageController: languageController ??
             PostDeeLanguageController(initialLocale: locale),
         themeController: themeController ?? PostDeeThemeController(),

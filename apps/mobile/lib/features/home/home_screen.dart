@@ -59,7 +59,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _apiClient = PostDeeApiClient();
   SubscriptionStatusResult? _subscription;
   List<PostSummaryResult> _recentPosts = const [];
@@ -74,11 +74,27 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSubscription();
     if (widget.isActive) {
       _loadRecentPosts();
     } else {
       _isLoadingPosts = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        widget.isActive &&
+        (ModalRoute.of(context)?.isCurrent ?? true)) {
+      _loadSubscription();
     }
   }
 

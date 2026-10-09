@@ -10,6 +10,7 @@ import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
 import 'package:postdee_mobile/features/auth/auth_controller.dart';
+import 'package:postdee_mobile/features/billing/paywall_screen.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/profile/profile_screen.dart';
@@ -148,6 +149,102 @@ class _ShellEmailRecoveryGateway
 }
 
 void main() {
+  testWidgets(
+      'shares fresh package and quota across profile paywall returns and tab activation',
+      (tester) async {
+    final languageController = _signInShell();
+    var backend = const SubscriptionStatusResult(
+      userId: 'firebase-user-shell',
+      plan: 'FREE',
+      status: 'ACTIVE',
+      monthlyPostLimit: 3,
+      remainingPostsThisMonth: 0,
+      canSchedule: false,
+      canUseAiCaptions: false,
+      canUseAnalytics: false,
+    );
+    final loadedPlans = <String>[];
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: languageController,
+      loadRecentPosts: () async => const [],
+      loadScheduledPosts: () async => const [],
+      loadSocialConnections: () async => const [],
+      loadSubscription: () async {
+        loadedPlans.add(backend.plan);
+        return backend;
+      },
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Free package'), findsOneWidget);
+    expect(find.text('0/3 units left'), findsOneWidget);
+
+    await tester.tap(_referenceNavButton('Account'));
+    await tester.pumpAndSettle();
+    final viewPlans = find.byKey(const ValueKey('profile-view-plans'));
+    await tester.scrollUntilVisible(
+      viewPlans,
+      300,
+      scrollable: find.descendant(
+        of: find.byType(ProfileScreen),
+        matching: find.byType(Scrollable),
+      ).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
+    expect(find.text('เหลือโพสต์ 0 / 3 หน่วยเดือนนี้'), findsOneWidget);
+
+    final loadsBeforePaywall = loadedPlans.length;
+    await tester.tap(viewPlans);
+    await tester.pumpAndSettle();
+    expect(find.byType(PaywallScreen), findsOneWidget);
+    expect(find.byKey(const ValueKey('paywall-subscription-error')), findsNothing);
+    expect(loadedPlans.length, greaterThan(loadsBeforePaywall));
+    backend = const SubscriptionStatusResult(
+      userId: 'firebase-user-shell',
+      plan: 'PRO',
+      status: 'ACTIVE',
+      monthlyPostLimit: 250,
+      remainingPostsThisMonth: 247,
+      canSchedule: true,
+      canUseAiCaptions: true,
+      canUseAnalytics: true,
+    );
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('profile-plan-pro')), findsOneWidget);
+    expect(find.text('เหลือโพสต์ 247 / 250 หน่วยเดือนนี้'), findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-plan-free')), findsNothing);
+
+    await tester.tap(_referenceNavButton('Home'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pro package'), findsOneWidget);
+    expect(find.text('247/250 units left'), findsOneWidget);
+
+    backend = const SubscriptionStatusResult(
+      userId: 'firebase-user-shell',
+      plan: 'BASIC',
+      status: 'ACTIVE',
+      monthlyPostLimit: 3,
+      remainingPostsThisMonth: 2,
+      canSchedule: false,
+      canUseAiCaptions: false,
+      canUseAnalytics: false,
+    );
+    await tester.tap(_referenceNavButton('Account'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
+    expect(find.text('เหลือโพสต์ 2 / 3 หน่วยเดือนนี้'), findsOneWidget);
+    expect(find.byKey(const ValueKey('profile-plan-pro')), findsNothing);
+    await tester.tap(_referenceNavButton('Home'));
+    await tester.pumpAndSettle();
+    expect(find.text('Free package'), findsOneWidget);
+    expect(find.text('2/3 units left'), findsOneWidget);
+    expect(loadedPlans, containsAll(['FREE', 'PRO', 'BASIC']));
+    expect(PostDeeAuthSessionStore.instance.session.stableUserId,
+        'firebase-user-shell');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('email form provides safe password recovery feedback',
       (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});

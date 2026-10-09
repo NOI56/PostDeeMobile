@@ -24,6 +24,8 @@ class ProfileScreen extends StatefulWidget {
     required this.onOpenTemplates,
     required this.onDeleteAccount,
     this.onSignOut,
+    this.isActive = true,
+    this.loadSubscription,
     this.apiClient,
     this.launchConnectUrl,
     this.onManageSubscription,
@@ -40,6 +42,8 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback onOpenTemplates;
   final VoidCallback onDeleteAccount;
   final VoidCallback? onSignOut;
+  final bool isActive;
+  final PaywallSubscriptionLoader? loadSubscription;
   final PostDeeApiClient? apiClient;
   final ConnectUrlLauncher? launchConnectUrl;
   final Future<void> Function()? onManageSubscription;
@@ -53,7 +57,8 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen>
+    with WidgetsBindingObserver {
   late final PostDeeApiClient _apiClient =
       widget.apiClient ?? PostDeeApiClient();
 
@@ -79,6 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _accountScope = _currentAccountScope;
     PostDeeAuthSessionStore.instance.addListener(_handleSessionChanged);
     _loadConnectedCount();
@@ -88,8 +94,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     PostDeeAuthSessionStore.instance.removeListener(_handleSessionChanged);
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      _loadSubscription();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        widget.isActive &&
+        (ModalRoute.of(context)?.isCurrent ?? true)) {
+      _loadSubscription();
+    }
   }
 
   void _handleSessionChanged() {
@@ -204,7 +228,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
 
     try {
-      final subscription = await _apiClient.loadCurrentSubscription();
+      final loader =
+          widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
+      final subscription = await loader();
       if (!mounted || loadGeneration != _subscriptionLoadGeneration) return;
       setState(() {
         _subscription = subscription;
@@ -230,7 +256,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => PaywallScreen(
-          loadSubscription: _apiClient.loadCurrentSubscription,
+          loadSubscription:
+              widget.loadSubscription ?? _apiClient.loadCurrentSubscription,
         ),
       ),
     );

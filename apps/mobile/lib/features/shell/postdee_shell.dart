@@ -203,6 +203,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
         const AnalyticsScreen(showTitle: true),
         // Profile is the 5th nav tab per the design handoff (no pushed route).
         ProfileScreen(
+          isActive: _selectedIndex == 5,
+          loadSubscription: widget.loadSubscription,
           languageController: widget.languageController,
           themeController:
               widget.themeController ?? PostDeeThemeController.instance,

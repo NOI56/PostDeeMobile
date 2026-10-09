@@ -13,6 +13,7 @@ import '../link_in_bio/link_in_bio_screen.dart';
 import '../notifications/push_notification.dart';
 import '../platforms/social_platform.dart';
 import '../posts/post_detail_screen.dart';
+import '../posts/posts_screen.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_skeleton.dart';
 
@@ -28,6 +29,7 @@ class HomeScreen extends StatefulWidget {
     this.isActive = true,
     this.loadSubscription,
     this.loadRecentPosts,
+    this.loadAllPosts,
     this.createVideoThumbnailController,
     this.onViewAllPosts,
     this.onOpenNotifications,
@@ -42,6 +44,7 @@ class HomeScreen extends StatefulWidget {
   final bool isActive;
   final HomeSubscriptionLoader? loadSubscription;
   final HomeRecentPostsLoader? loadRecentPosts;
+  final PostsLoader? loadAllPosts;
   final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
   final VoidCallback? onViewAllPosts;
   final VoidCallback? onOpenNotifications;
@@ -85,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!oldWidget.isActive && widget.isActive) {
       _loadRecentPosts();
+      _loadSubscription();
     }
   }
 
@@ -214,8 +218,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // A publish-now or cancel changed the post list, so reload it.
     if (changed == true && mounted) {
-      await _loadRecentPosts();
+      await Future.wait([_loadRecentPosts(), _loadSubscription()]);
     }
+  }
+
+  Future<void> _openAllPosts() async {
+    if (widget.onViewAllPosts != null) {
+      widget.onViewAllPosts!();
+      return;
+    }
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => PostsScreen(loadPosts: widget.loadAllPosts),
+    ));
+    if (mounted) await Future.wait([_loadRecentPosts(), _loadSubscription()]);
   }
 
   @override
@@ -262,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             if (_recentPosts.isNotEmpty)
               TextButton(
-                onPressed: widget.onViewAllPosts,
+                onPressed: _openAllPosts,
                 child: Text(
                   isThai ? 'ดูทั้งหมด' : l10n.homeViewAll,
                   style: TextStyle(
@@ -800,6 +815,10 @@ class _LatestPostList extends StatelessWidget {
 
     return Column(
       children: [
+        if (errorMessage != null) ...[
+          _LatestPostsErrorState(message: errorMessage!, onRetry: onRetry),
+          const SizedBox(height: 9),
+        ],
         for (var index = 0; index < posts.length; index += 1) ...[
           _LatestPostRow(
             key: ValueKey(posts[index].id),

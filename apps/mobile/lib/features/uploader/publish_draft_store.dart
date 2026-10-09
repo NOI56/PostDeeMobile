@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
 import 'publish_draft.dart';
+import 'publish_media_identity.dart';
 
 abstract class PublishDraftStore {
   Future<PublishDraft> saveDraft(PublishDraftSaveRequest request);
@@ -235,12 +236,30 @@ class FilePublishDraftStore implements PublishDraftStore {
     }
 
     final platforms = request.platformApiValues.toList()..sort();
+    final usesCover = platforms.any(
+        (value) => value == 'INSTAGRAM_REELS' || value == 'FACEBOOK_REELS');
+    final mediaContentFingerprint = await publishMediaContentFingerprint(
+      videoFile: videoTarget,
+      watermarkEnabled: request.watermarkEnabled,
+      coverImageFile: usesCover && cover != null
+          ? _resolveRelative(next, cover['imageRelativePath']! as String)
+          : null,
+    );
+    final uploadedMedia = request.uploadedMedia;
     final submissionRequestId = _buildSubmissionRequestId(request.id);
     return {
       'version': publishDraftManifestVersion,
       'id': request.id,
       'ownerUserId': _ownerUserId,
       'submissionRequestId': submissionRequestId,
+      'mediaContentFingerprint': mediaContentFingerprint,
+      if (uploadedMedia != null &&
+          uploadedMedia.mediaContentFingerprint == mediaContentFingerprint)
+        'uploadedMedia': {
+          'mediaContentFingerprint': mediaContentFingerprint,
+          'videoS3Key': uploadedMedia.videoS3Key,
+          'coverImageS3Key': uploadedMedia.coverImageS3Key,
+        },
       'createdAt': request.createdAt.toUtc().toIso8601String(),
       'updatedAt': request.updatedAt.toUtc().toIso8601String(),
       'videoName': request.videoName,
@@ -308,6 +327,28 @@ class FilePublishDraftStore implements PublishDraftStore {
         'submissionRequestId',
       );
       if (!_submissionRequestId.hasMatch(submissionRequestId)) return null;
+      final fingerprint = manifest['mediaContentFingerprint'];
+      if (fingerprint != null &&
+          (fingerprint is! String ||
+              !RegExp(r'^[0-9a-f]{64}$').hasMatch(fingerprint))) {
+        return null;
+      }
+      PublishDraftUploadedMedia? uploadedMedia;
+      final uploadedValue = manifest['uploadedMedia'];
+      if (uploadedValue != null) {
+        if (uploadedValue is! Map<String, dynamic> ||
+            uploadedValue['mediaContentFingerprint'] != fingerprint ||
+            fingerprint is! String) {
+          return null;
+        }
+        uploadedMedia = PublishDraftUploadedMedia(
+          mediaContentFingerprint: fingerprint,
+          videoS3Key: _requiredString(uploadedValue, 'videoS3Key'),
+          coverImageS3Key: uploadedValue['coverImageS3Key'] == null
+              ? null
+              : _requiredString(uploadedValue, 'coverImageS3Key'),
+        );
+      }
 
       final videoRelativePath = _requiredString(manifest, 'videoRelativePath');
       final videoFile = _resolveRelative(directory, videoRelativePath);
@@ -352,6 +393,8 @@ class FilePublishDraftStore implements PublishDraftStore {
         id: expectedId,
         ownerUserId: _ownerUserId,
         submissionRequestId: submissionRequestId,
+        mediaContentFingerprint: fingerprint as String?,
+        uploadedMedia: uploadedMedia,
         createdAt: createdAt,
         updatedAt: updatedAt,
         videoPath: videoFile.path,

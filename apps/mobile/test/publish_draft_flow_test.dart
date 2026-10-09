@@ -7,9 +7,11 @@ import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
+import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/uploader_wizard_test_navigation.dart';
+import 'support/test_publish_media_identity.dart';
 
 class _MemoryPublishDraftStore implements PublishDraftStore {
   _MemoryPublishDraftStore([
@@ -55,6 +57,7 @@ class _MemoryPublishDraftStore implements PublishDraftStore {
     if (saveError case final error?) throw error;
     savedRequests.add(request);
     final storedVideo = persistedVideoFile ?? request.videoFile;
+    final fingerprint = testPublishMediaFingerprint(request);
     final draft = PublishDraft(
       version: publishDraftManifestVersion,
       id: request.id,
@@ -73,6 +76,11 @@ class _MemoryPublishDraftStore implements PublishDraftStore {
       platformApiValues: request.platformApiValues,
       platformSettings: request.platformSettings,
       scheduledAt: request.scheduledAt,
+      mediaContentFingerprint: fingerprint,
+      uploadedMedia:
+          request.uploadedMedia?.mediaContentFingerprint == fingerprint
+              ? request.uploadedMedia
+              : null,
     );
     drafts[draft.id] = draft;
     return draft;
@@ -114,6 +122,7 @@ Widget _app({
   Future<void> Function(UploadResult upload, File file)? uploadVideo,
   Future<QueuedPostResult> Function(CreatePostRequest request)? createPost,
   DateTime Function()? now,
+  Future<PickedVideoFile?> Function()? pickVideo,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -126,6 +135,7 @@ Widget _app({
         uploadVideoFile: uploadVideo,
         createPost: createPost,
         now: now ?? DateTime.now,
+        pickVideo: pickVideo,
         initialVideoPath: video.path,
         initialVideoName: 'clip.mp4',
         initialVideoSizeBytes: video.lengthSync(),
@@ -565,6 +575,7 @@ void main() {
       final video = _videoFixture();
       final store = _MemoryPublishDraftStore([_readyDraft(video)]);
       final requests = <CreatePostRequest>[];
+      var uploadedCount = 0;
 
       await tester.pumpWidget(
         _app(
@@ -577,7 +588,9 @@ void main() {
             videoS3Key: 'uploads/retryable.mp4',
             storageProvider: 'mock',
           ),
-          uploadVideo: (_, __) async {},
+          uploadVideo: (_, __) async {
+            uploadedCount++;
+          },
           createPost: (request) async {
             requests.add(request);
             if (requests.length == 1) {
@@ -610,6 +623,11 @@ void main() {
 
       expect(requests, hasLength(2));
       expect(requests[1].clientRequestId, requests[0].clientRequestId);
+      expect(requests[1].mediaContentFingerprint,
+          requests[0].mediaContentFingerprint);
+      expect(requests[0].mediaContentFingerprint,
+          matches(RegExp(r'^[0-9a-f]{64}$')));
+      expect(uploadedCount, 1);
       expect(find.byKey(const ValueKey('publish-flow-done')), findsOneWidget);
       expect(store.drafts, isEmpty);
     },
@@ -701,6 +719,69 @@ void main() {
           findsOneWidget);
     },
   );
+
+  testWidgets(
+      'replacement video after a lost response keeps request ID and draft when the server rejects its changed media',
+      (tester) async {
+    final video = _videoFixture();
+    final replacement = _videoFixture()
+      ..writeAsBytesSync(List<int>.filled(512, 2));
+    final store = _MemoryPublishDraftStore([_readyDraft(video)]);
+    final requests = <CreatePostRequest>[];
+    await tester.pumpWidget(_app(
+        video: video,
+        draftStore: store,
+        loadSubscription: () async => _proSubscription,
+        checkReadiness: () async {},
+        pickVideo: () async => PickedVideoFile(
+            path: replacement.path,
+            name: 'replacement.mp4',
+            sizeBytes: replacement.lengthSync(),
+            width: 1080,
+            height: 1920),
+        createUpload: (_) async => UploadResult(
+            id: 'u${requests.length}',
+            videoS3Key: 'uploads/clip-${requests.length}.mp4',
+            storageProvider: 'mock'),
+        uploadVideo: (_, __) async {},
+        createPost: (request) async {
+          requests.add(request);
+          if (requests.length == 1) {
+            throw const SocketException('response lost after commit');
+          }
+          throw const ApiException('Changed media',
+              code: 'IDEMPOTENCY_KEY_REUSED', statusCode: 409);
+        }));
+    await tester.pumpAndSettle();
+    await _openDraft(tester, 'draft-ready');
+    await _submitDraft(tester);
+    await tester
+        .tap(find.byKey(const ValueKey('publish-flow-back-after-error')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('กลับไปตรวจสอบ'));
+    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 0);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 3000));
+    await tester.pumpAndSettle();
+    final picker = find.byKey(const ValueKey('uploader-video-preview-picker'));
+    await tester.scrollUntilVisible(picker, 300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(picker);
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 3);
+    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
+    await tester.pumpAndSettle();
+    expect(requests, hasLength(2));
+    expect(requests[1].clientRequestId, requests[0].clientRequestId);
+    expect(requests[1].mediaContentFingerprint,
+        isNot(requests[0].mediaContentFingerprint));
+    expect(requests[1].videoS3Key, isNot(requests[0].videoS3Key));
+    expect(store.deletedIds, isEmpty);
+    expect(store.drafts['draft-ready']!.videoPath, replacement.path);
+    expect(find.byKey(const ValueKey('postdee-system-status-sheet')),
+        findsOneWidget);
+  });
 
   testWidgets('deletes the active draft only after a post enters the queue',
       (tester) async {
@@ -953,7 +1034,8 @@ void main() {
 
       expect(requests, hasLength(2));
       expect(requests[1].clientRequestId, requests[0].clientRequestId);
-      expect(requests[1].videoS3Key, isNot(requests[0].videoS3Key));
+      expect(requests[1].videoS3Key, requests[0].videoS3Key);
+      expect(uploadNumber, 1);
       expect(store.drafts, isEmpty);
     },
   );

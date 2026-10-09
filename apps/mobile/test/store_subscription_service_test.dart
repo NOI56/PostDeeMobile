@@ -6,6 +6,62 @@ import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
 
 void main() {
+  test('a completed SDK timeout is an error, not an unfinished purchase', () async {
+    final completion = Completer<StorePurchasePayload>();
+    final gateway = _DelayedStoreGateway(completion);
+    final service = StoreSubscriptionService(
+      gateway: gateway,
+      useRevenueCat: false,
+      verifyPurchase: (request) async => _verifiedSubscription(request),
+    );
+    final purchase = service.startProSubscription();
+    final expectation = expectLater(purchase, throwsA(isA<TimeoutException>()));
+    completion.completeError(TimeoutException('SDK operation ended'));
+    await expectation;
+    expect(service.hasPendingConfirmation, isFalse);
+  });
+
+  test('a late confirmed purchase awaiting the API shows receipt pending', () async {
+    final completion = Completer<StorePurchasePayload>();
+    final verification = Completer<StoreSubscriptionVerificationResult>();
+    final service = StoreSubscriptionService(
+      gateway: _DelayedStoreGateway(completion),
+      useRevenueCat: false,
+      storeOperationTimeout: const Duration(milliseconds: 20),
+      verifyPurchase: (_) => verification.future,
+    );
+    await expectLater(service.startProSubscription(),
+        throwsA(isA<StoreSubscriptionStorePendingException>()));
+    completion.complete(const StorePurchasePayload.android(
+        productId: 'postdee_pro_monthly', purchaseToken: 'late-receipt'));
+    await Future<void>.delayed(Duration.zero);
+    expect(service.hasPendingConfirmation, isTrue);
+    expect(service.hasPendingStoreOperation, isFalse);
+    verification.complete(_verifiedSubscription(const VerifyStorePurchaseRequest.android(
+        productId: 'postdee_pro_monthly', purchaseToken: 'late-receipt')));
+    await service.retryPendingConfirmation();
+  });
+
+  test('a stalled store purchase stops waiting and rechecks without buying twice',
+      () async {
+    final completion = Completer<StorePurchasePayload>();
+    final gateway = _DelayedStoreGateway(completion);
+    final service = StoreSubscriptionService(gateway: gateway,
+      useRevenueCat: false, storeOperationTimeout: const Duration(milliseconds: 30),
+      verifyPurchase: (request) async => _verifiedSubscription(request));
+    await expectLater(service.startProSubscription(),
+      throwsA(isA<StoreSubscriptionStorePendingException>()));
+    expect(service.hasPendingConfirmation, isTrue);
+    await expectLater(service.startProSubscription(),
+      throwsA(isA<StoreSubscriptionStorePendingException>()));
+    completion.complete(const StorePurchasePayload.android(
+      productId: 'postdee_pro_monthly', purchaseToken: 'delayed-receipt'));
+    final result = await service.retryPendingConfirmation();
+    expect(result.subscription.isPro, isTrue);
+    expect(gateway.purchaseCalls, 1);
+    expect(service.hasPendingConfirmation, isFalse);
+  });
+
   test('session cache retains pending purchases only for the signed-in owner',
       () async {
     final sessionStore = PostDeeAuthSessionStore(
@@ -667,6 +723,16 @@ SubscriptionStatusResult _subscription({
       canUseAiAudioReview: false,
       canUseAiVideoReview: false,
     );
+
+class _DelayedStoreGateway extends FakeStoreBillingGateway {
+  _DelayedStoreGateway(this.completion);
+  final Completer<StorePurchasePayload> completion;
+  @override
+  Future<StorePurchasePayload> buySubscription(String productId) {
+    purchaseCalls++;
+    return completion.future;
+  }
+}
 
 class FakeStoreBillingGateway implements StoreBillingGateway {
   FakeStoreBillingGateway({

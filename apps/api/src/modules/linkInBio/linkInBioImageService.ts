@@ -1,4 +1,5 @@
 import type { VideoStorage } from '../storage/videoStorage.js';
+import { randomUUID } from 'node:crypto';
 import { createOwnerMutationLock } from '../account/ownerMutationLock.js';
 import { isStorageKeyOwnedByUser } from '../storage/storageKeyPolicy.js';
 import type { LinkInBioAppearance } from './linkInBioAppearance.js';
@@ -43,6 +44,15 @@ export const readProfileImageBase64 = (value: unknown) => {
 const imageKeys = (appearance?: LinkInBioAppearance) => [
   appearance?.logoKey, appearance?.coverKey, appearance?.background.imageKey
 ].filter((key): key is string => Boolean(key));
+const draftReferenceVersion = (reference: string) => {
+  const match = /^([a-f0-9]{32})_(\d+)$/.exec(reference);
+  if (!match) return { base: reference, revision: 0 };
+  const revision = Number(match[2]);
+  if (!Number.isSafeInteger(revision) || revision < 1) {
+    throw new LinkInBioError(400, 'LINK_IN_BIO_DRAFT_IMAGES_INVALID', 'ข้อมูลรุ่นแบบร่างไม่ถูกต้อง');
+  }
+  return { base: match[1]!, revision };
+};
 const readBoundedImage = async (response: Response): Promise<Uint8Array> => {
   const length = Number(response.headers.get('content-length'));
   if (length > profileImageMaxBytes || !response.body) throw invalidImage();
@@ -83,26 +93,54 @@ export const createLinkInBioImageService = ({ store, storage, profiles, now = ()
     }
     const cutoff = now().getTime() - 24 * 60 * 60 * 1000;
     for (const image of images) {
-      if (keep.has(image.storageKey) || image.createdAt.getTime() >= cutoff) continue;
-      // Recheck current references before deleting. Drafts get a 24-hour grace
-      // window and the newest image per slot remains until replaced/deleted account.
+      if (image.legacyRetention !== false || image.draftReferences?.length || keep.has(image.storageKey) || image.createdAt.getTime() >= cutoff) continue;
+      // Offline legacy references are unknown. Managed drafts pin their keys;
+      // only unpinned replacements can expire after the grace window.
       if (imageKeys((await profiles.getForUser(userId))?.appearance).includes(image.storageKey)) continue;
+      if (!await store.claimPrune(userId, image.storageKey)) continue;
+      // A waiting SQL update can use an older profile snapshot. Once claimed,
+      // no new publication can pin this key; check the committed profile anew.
+      // If this read fails, retain the claim and never attempt object deletion.
+      if (imageKeys((await profiles.getForUser(userId))?.appearance).includes(image.storageKey)) {
+        await store.cancelPrune(userId, image.storageKey);
+        continue;
+      }
+      // A storage timeout can mean deletion succeeded without a response.
+      // Keep the claim on any interrupted cleanup; never pin uncertain bytes.
       await storage.deleteVideo(image.storageKey);
       await store.remove(userId, image.storageKey);
     }
   };
   const prune = (userId: string) => withOwnerLock(userId, () => pruneUnlocked(userId));
   const validateImages = async (userId: string, appearance: LinkInBioAppearance) => {
-    for (const key of imageKeys(appearance)) {
+    const keys = [...new Set(imageKeys(appearance))];
+    for (const key of keys) {
       const image = await store.get(key);
-      if (!image || image.userId !== userId || !isStorageKeyOwnedByUser({ videoS3Key: key, userId })) {
+      if (!image || image.deletionClaimed || image.userId !== userId || !isStorageKeyOwnedByUser({ videoS3Key: key, userId })) {
         throw new LinkInBioError(400, 'LINK_IN_BIO_IMAGE_INVALID', 'รูปที่เลือกไม่พร้อมใช้งาน กรุณาอัปโหลดรูปอีกครั้ง');
       }
     }
+    const reference = `publication_${randomUUID()}`;
+    const pinned: string[] = [];
+    const release = async () => {
+      for (const key of pinned) await store.removeDraftReference(userId, key, reference);
+    };
+    try {
+      for (const key of keys) {
+        if (!await store.addDraftReference(userId, key, reference)) {
+          throw new LinkInBioError(400, 'LINK_IN_BIO_IMAGE_INVALID', 'รูปที่เลือกไม่พร้อมใช้งาน กรุณาอัปโหลดรูปอีกครั้ง');
+        }
+        pinned.push(key);
+      }
+    } catch (error) {
+      try { await release(); } catch { /* Retain extra protection on cleanup failure. */ }
+      throw error;
+    }
+    return release;
   };
   const read = async (key: string, userId?: string) => {
     const image = await store.get(key);
-    if (!image || (userId !== undefined && image.userId !== userId)) {
+    if (!image || image.deletionClaimed || (userId !== undefined && image.userId !== userId)) {
       throw new LinkInBioError(404, 'LINK_IN_BIO_IMAGE_NOT_FOUND', 'ไม่พบรูปภาพ');
     }
     if (image.bytes) return image.bytes;
@@ -112,13 +150,48 @@ export const createLinkInBioImageService = ({ store, storage, profiles, now = ()
     if (!response.ok) throw new Error('Private image download failed');
     return readBoundedImage(response);
   };
+  const protectDraft = (userId: string, draftId: string, keys: string[], mode: 'add' | 'replace') => withOwnerLock(userId, async () => {
+    if (typeof draftId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(draftId) || !Array.isArray(keys) || keys.length > 3 ||
+        keys.some((key) => typeof key !== 'string' || key.length > 512) || !['add', 'replace'].includes(mode)) {
+      throw new LinkInBioError(400, 'LINK_IN_BIO_DRAFT_IMAGES_INVALID', 'ข้อมูลรูปแบบร่างไม่ถูกต้อง');
+    }
+    const wanted = new Set(keys);
+    const version = draftReferenceVersion(draftId);
+    const images = await store.list(userId);
+    for (const key of wanted) {
+      const image = images.find((entry) => entry.storageKey === key);
+      if (!image || image.deletionClaimed || !isStorageKeyOwnedByUser({ videoS3Key: key, userId })) {
+        throw new LinkInBioError(400, 'LINK_IN_BIO_IMAGE_INVALID', 'รูปที่เลือกไม่พร้อมใช้งาน กรุณาอัปโหลดรูปอีกครั้ง');
+      }
+      if (!(image.draftReferences ?? []).includes(draftId) && (image.draftReferences ?? []).length >= 32) {
+        throw new LinkInBioError(429, 'LINK_IN_BIO_DRAFT_IMAGE_LIMIT', 'รูปนี้ถูกใช้ในแบบร่างหลายเครื่องเกินไป');
+      }
+    }
+    // Add before releasing any old references. A failed write must keep prior
+    // draft keys safe; callers replace only after their local save succeeds.
+    for (const image of images.filter((entry) => wanted.has(entry.storageKey))) {
+      if (!await store.addDraftReference(userId, image.storageKey, draftId)) {
+        throw new LinkInBioError(400, 'LINK_IN_BIO_IMAGE_INVALID', 'รูปที่เลือกไม่พร้อมใช้งาน กรุณาอัปโหลดรูปอีกครั้ง');
+      }
+    }
+    if (mode === 'replace') for (const image of images) {
+      const references = image.draftReferences ?? [];
+      for (const reference of references) {
+        const storedVersion = draftReferenceVersion(reference);
+        if (storedVersion.base === version.base && storedVersion.revision <= version.revision &&
+            (reference !== draftId || !wanted.has(image.storageKey))) {
+          await store.removeDraftReference(userId, image.storageKey, reference);
+        }
+      }
+    }
+  });
   return {
-    prune, validateImages, read, withOwnerLock,
-    upload: (userId: string, slot: LinkInBioImage['slot'], bytes: Uint8Array) => withOwnerLock(userId, async () => {
+    prune, validateImages, read, withOwnerLock, protectDraft,
+    upload: (userId: string, slot: LinkInBioImage['slot'], bytes: Uint8Array, legacyRetention = false) => withOwnerLock(userId, async () => {
       if (!isProfileImageSlot(slot)) throw invalidImage();
       validateProfilePng(bytes);
       await pruneUnlocked(userId);
-      if ((await store.list(userId)).length >= 20) {
+      if ((await store.list(userId)).filter((image) => (image.legacyRetention !== false) === legacyRetention).length >= 20) {
         throw new LinkInBioError(429, 'LINK_IN_BIO_IMAGE_LIMIT', 'อัปโหลดรูปบ่อยเกินไป กรุณาลองใหม่ภายหลัง');
       }
       const upload = await storage.createUpload({ fileName: `profile-${slot}.png`, contentType: 'image/png', sizeBytes: bytes.length }, userId);
@@ -130,7 +203,8 @@ export const createLinkInBioImageService = ({ store, storage, profiles, now = ()
         }
         lastCreatedAt = Math.max(now().getTime(), lastCreatedAt + 1);
         await store.save({ id: upload.id, userId, slot, storageKey: upload.videoS3Key, sizeBytes: bytes.length,
-          createdAt: new Date(lastCreatedAt), ...(upload.storageProvider === 'mock-s3' ? { bytes } : {}) });
+          createdAt: new Date(lastCreatedAt), draftReferences: [], legacyRetention,
+          ...(upload.storageProvider === 'mock-s3' ? { bytes } : {}) });
       } catch (error) {
         try { await storage.deleteVideo(upload.videoS3Key); } catch { /* Keep original error; owner cleanup includes this key. */ }
         throw error;

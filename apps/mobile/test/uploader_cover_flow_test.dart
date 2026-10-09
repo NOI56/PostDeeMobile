@@ -121,6 +121,15 @@ void main() {
     await _selectAllPlatforms(tester);
     await _openCoverEditor(tester);
 
+    // Saving the cover adds a notice above the card, so reveal the frame time
+    // below it before asserting content in this lazily built list.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('uploader-cover-time')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
     expect(editorRequest?.videoFile.path, pickedVideo.path);
     expect(editorRequest?.platforms.single.apiValue, 'INSTAGRAM_REELS');
     expect(

@@ -46,8 +46,7 @@ class BioTemplatePreview extends StatelessWidget {
           : bioColor(appearance.background.gradientColor);
   Widget _photo(String key, double height,
           {Widget? fallback, BoxFit fit = BoxFit.cover}) =>
-      Image.memory(
-          images[key]!,
+      Image.memory(images[key]!,
           height: height,
           width: double.infinity,
           fit: fit,
@@ -463,10 +462,13 @@ class BioTemplatePreview extends StatelessWidget {
       final candidate = colors[rhythm % 4];
       if (readable(textColor, candidate)) color = candidate;
     }
+    final openPage = const {'editorial', 'botanical', 'gallery', 'rail'}
+        .contains(_composition);
     final transparent = (outline || hairline) &&
         link.buttonColor == null &&
         readable(textColor, bioColor(appearance.surfaceColor)) &&
-        readable(textColor, bioColor(appearance.background.color));
+        (!openPage ||
+            readable(textColor, bioColor(appearance.background.color)));
     final radius = switch (appearance.buttonRadius) {
       'pill' => 999.0,
       'square' => 4.0,
@@ -627,8 +629,8 @@ class BioTemplatePreview extends StatelessWidget {
           (link.category.trim().isNotEmpty &&
               link.category.trim() != currentCategory)) {
         groups.add([]);
-        currentCategory = link.category.trim();
       }
+      currentCategory = link.category.trim();
       groups.last.add((index, link));
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

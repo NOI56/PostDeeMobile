@@ -1098,6 +1098,43 @@ describe('post routes', () => {
     expect(publishQueue.enqueue).toHaveBeenCalledOnce();
   });
 
+  it('replays identical media after reupload but rejects replacement video or cover without another quota charge', async () => {
+    const app = createApp();
+    const userId = 'seller-stable-media';
+    const body = {
+      clientRequestId: 'stable-media', caption: 'Same settings',
+      videoS3Key: ownedUploadKey(userId, 'clip.mp4', 'first'),
+      coverImageS3Key: ownedUploadKey(userId, 'cover.jpg', 'first-cover'),
+      mediaContentFingerprint: 'a'.repeat(64), platforms: ['TIKTOK']
+    };
+    const first = await request(app).post('/posts').set('x-postdee-user-id', userId)
+      .set('x-postdee-phone-verified', 'true').send(body).expect(201);
+    const replay = await request(app).post('/posts').set('x-postdee-user-id', userId)
+      .send({ ...body, videoS3Key: ownedUploadKey(userId, 'clip.mp4', 'retry'),
+        coverImageS3Key: ownedUploadKey(userId, 'cover.jpg', 'retry-cover') }).expect(200);
+    expect(replay.body.idempotentReplay).toBe(true);
+    expect(replay.body.post.id).toBe(first.body.post.id);
+    for (const changed of [
+      { mediaContentFingerprint: 'b'.repeat(64), videoS3Key: ownedUploadKey(userId, 'new.mp4') },
+      { mediaContentFingerprint: 'c'.repeat(64), coverImageS3Key: ownedUploadKey(userId, 'new.jpg') }
+    ]) {
+      await request(app).post('/posts').set('x-postdee-user-id', userId)
+        .send({ ...body, ...changed }).expect(409)
+        .expect(({ body }) => expect(body.code).toBe('IDEMPOTENCY_KEY_REUSED'));
+    }
+    await request(app).get('/posts').set('x-postdee-user-id', userId).expect(200)
+      .expect(({ body }) => expect(body.posts).toHaveLength(1));
+  });
+
+  it('rejects an invalid content fingerprint even when the request ID already exists', async () => {
+    const app = createApp();
+    const body = { clientRequestId: 'bad-fingerprint', caption: 'Original',
+      videoS3Key: ownedUploadKey('local-dev-user', 'clip.mp4'), platforms: ['TIKTOK'], subscriptionPlan: 'PRO' };
+    await request(app).post('/posts').send(body).expect(201);
+    await request(app).post('/posts').send({ ...body, mediaContentFingerprint: 'not-a-sha256' }).expect(400)
+      .expect(({ body }) => expect(body.code).toBe('INVALID_MEDIA_CONTENT_FINGERPRINT'));
+  });
+
   it('stores and queues cover metadata only after both uploads are ready', async () => {
     const app = express();
     const router = express.Router();

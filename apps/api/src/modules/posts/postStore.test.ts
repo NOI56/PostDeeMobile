@@ -59,6 +59,7 @@ describe('createPostStore', () => {
       clientRequestId: 'draft-123',
       caption: 'โพสต์ครั้งเดียว',
       videoS3Key: 'uploads/seller-idempotent/video.mp4',
+      mediaContentFingerprint: 'a'.repeat(64),
       platforms: ['TIKTOK', 'YOUTUBE_SHORTS'] as const,
       monthlyPostUnitLimit: 2,
       now: '2026-06-15T10:00:00.000Z'
@@ -96,6 +97,31 @@ describe('createPostStore', () => {
     await expect(
       store.createWithinMonthlyLimit({ ...input, caption: 'Changed caption' })
     ).rejects.toBeInstanceOf(PostIdempotencyKeyReusedError);
+  });
+
+  it('rejects changed media and accepts legacy retries only with the original media keys', async () => {
+    const store = createPostStore();
+    const input = {
+      userId: 'seller-media-conflict', clientRequestId: 'media-conflict',
+      caption: 'Unchanged text', videoS3Key: 'uploads/original.mp4',
+      coverImageS3Key: 'uploads/original.jpg', platforms: ['TIKTOK'] as const,
+      monthlyPostUnitLimit: 3, now: '2026-06-15T10:00:00.000Z'
+    };
+    await store.createWithinMonthlyLimit(input);
+    await expect(store.createWithinMonthlyLimit({ ...input, monthlyPostUnitLimit: 0 }))
+      .resolves.toMatchObject({ ok: true, created: false });
+    for (const changed of [
+      { videoS3Key: 'uploads/replaced.mp4' },
+      { coverImageS3Key: 'uploads/replaced.jpg' }
+    ]) {
+      await expect(store.createWithinMonthlyLimit({ ...input, ...changed }))
+        .rejects.toBeInstanceOf(PostIdempotencyKeyReusedError);
+    }
+    const fingerprintInput = { ...input, clientRequestId: 'with-fingerprint', mediaContentFingerprint: 'a'.repeat(64) };
+    await store.createWithinMonthlyLimit(fingerprintInput);
+    await expect(store.createWithinMonthlyLimit({ ...fingerprintInput, mediaContentFingerprint: 'b'.repeat(64) }))
+      .rejects.toBeInstanceOf(PostIdempotencyKeyReusedError);
+    await expect(store.list({ userId: input.userId })).resolves.toHaveLength(2);
   });
 
   it('reports one aggregate queued-or-publishing backlog total', async () => {

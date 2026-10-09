@@ -25,9 +25,12 @@ import '../link_in_bio/link_in_bio_screen.dart';
 import '../notifications/firebase_push_messaging_gateway.dart';
 import '../notifications/notifications_screen.dart';
 import '../notifications/push_messaging_gateway.dart';
+import '../notifications/push_notification.dart';
 import '../onboarding/onboarding_flow.dart';
 import '../profile/profile_screen.dart';
 import '../posts/post_detail_screen.dart';
+import '../posts/posts_screen.dart';
+import '../legal/legal_document_screen.dart';
 import '../shared/postdee_undo_toast.dart';
 import '../templates/templates_screen.dart';
 import '../uploader/uploader_screen.dart';
@@ -63,6 +66,7 @@ class PostDeeShell extends StatefulWidget {
     this.uploaderDraftStore,
     this.accountAccessRevoker,
     this.pushMessagingGateway,
+    this.emailAuthGateway,
   });
 
   final FirebaseBootstrapResult? firebaseBootstrapResult;
@@ -84,6 +88,7 @@ class PostDeeShell extends StatefulWidget {
   final PublishDraftStore? uploaderDraftStore;
   final AccountAccessRevoker? accountAccessRevoker;
   final PushMessagingGateway? pushMessagingGateway;
+  final EmailAuthGateway? emailAuthGateway;
 
   @override
   State<PostDeeShell> createState() => _PostDeeShellState();
@@ -100,6 +105,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
   bool _isDeletingAccount = false;
   MaterialPageRoute<void>? _composerRoute;
   String? _composerOwnerUserId;
+  String? _notificationOwnerUserId;
+  final Set<MaterialPageRoute<void>> _notificationRoutes = {};
 
   // null = still loading; the main shell shows meanwhile so the flow never
   // blocks startup. true only on a genuine first run.
@@ -116,9 +123,10 @@ class _PostDeeShellState extends State<PostDeeShell> {
       googleAuthGateway: createGoogleAuthGatewayFromConfig(
         firebaseBootstrapResult: widget.firebaseBootstrapResult,
       ),
-      emailAuthGateway: createEmailAuthGatewayFromConfig(
-        firebaseBootstrapResult: widget.firebaseBootstrapResult,
-      ),
+      emailAuthGateway: widget.emailAuthGateway ??
+          createEmailAuthGatewayFromConfig(
+            firebaseBootstrapResult: widget.firebaseBootstrapResult,
+          ),
       appleAuthGateway: createAppleAuthGatewayFromConfig(
         firebaseBootstrapResult: widget.firebaseBootstrapResult,
       ),
@@ -141,11 +149,31 @@ class _PostDeeShellState extends State<PostDeeShell> {
     _pushMessagingGateway = widget.pushMessagingGateway ??
         createPushMessagingGatewayFromConfig(
           firebaseBootstrapResult: widget.firebaseBootstrapResult,
-          // Send the FCM token to the backend so it can target this device.
-          onToken: (token) => unawaited(
-            PostDeeApiClient().registerDeviceToken(token).catchError((_) {}),
-          ),
+          registerToken: (token, session) async {
+            final store = PostDeeAuthSessionStore.instance;
+            if (store.session.stableUserId != session.stableUserId) return;
+            final idToken = await store.currentIdToken();
+            if (store.session.stableUserId != session.stableUserId) return;
+            await PostDeeApiClient(authTokenProvider: () async => idToken)
+                .registerDeviceToken(token);
+          },
+          unregisterToken: (token, session) =>
+              PostDeeApiClient(authTokenProvider: () async => session.idToken)
+                  .unregisterDeviceToken(token),
+          onOpenPost: (postId) {
+            final owner = _authController.session.stableUserId;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && owner == _authController.session.stableUserId) {
+                unawaited(_openNotificationPost(postId));
+              }
+            });
+          },
         );
+    _notificationOwnerUserId = _authController.session.stableUserId;
+    final gateway = _pushMessagingGateway;
+    if (gateway is PushMessagingLifecycle) {
+      unawaited((gateway as PushMessagingLifecycle).start().catchError((_) {}));
+    }
   }
 
   List<Widget> _buildScreens() => [
@@ -153,7 +181,6 @@ class _PostDeeShellState extends State<PostDeeShell> {
           isActive: _selectedIndex == 0,
           loadSubscription: widget.loadSubscription,
           loadRecentPosts: widget.loadRecentPosts,
-          onViewAllPosts: () => _selectTab(3),
           onOpenNotifications: _openNotifications,
           onOpenProfile: () => _selectTab(5),
           onOpenLinkInBio: () => _selectTab(1),
@@ -183,6 +210,12 @@ class _PostDeeShellState extends State<PostDeeShell> {
           onDeleteAccount: _handleDeleteAccount,
           isDeletingAccount: _isDeletingAccount,
           onSignOut: _authController.signOut,
+          onSendEmailVerification: _authController.supportsEmailRecovery
+              ? _authController.sendEmailVerification
+              : null,
+          onRefreshEmailVerification: _authController.supportsEmailRecovery
+              ? _authController.refreshEmailVerification
+              : null,
         ),
       ];
 
@@ -201,14 +234,46 @@ class _PostDeeShellState extends State<PostDeeShell> {
   Future<void> _openNotificationsAfterPermission() async {
     // Ask for notification permission only after the user taps the bell. This
     // gives the system prompt clear context instead of interrupting sign-in.
-    await _pushMessagingGateway.initialize();
-    if (!mounted) return;
-
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => const NotificationsScreen(),
+    final owner = _authController.session.stableUserId;
+    try {
+      await _pushMessagingGateway
+          .initialize()
+          .timeout(const Duration(seconds: 10));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('เชื่อมการแจ้งเตือนไม่สำเร็จ กรุณาลองอีกครั้ง')),
+        );
+      }
+    }
+    if (!mounted ||
+        !_authController.session.isSignedIn ||
+        owner != _authController.session.stableUserId) {
+      return;
+    }
+    final route = MaterialPageRoute<void>(
+      builder: (context) => NotificationsScreen(
+        onOpenPost: (postId) => unawaited(_openNotificationPost(postId)),
       ),
     );
+    _notificationRoutes.add(route);
+    await Navigator.of(context).push<void>(route);
+    _notificationRoutes.remove(route);
+  }
+
+  Future<void> _openNotificationPost(String postId) async {
+    if (!mounted ||
+        !_authController.session.isSignedIn ||
+        _authController.session.stableUserId == null) {
+      return;
+    }
+    final route = MaterialPageRoute<void>(
+      builder: (_) => PostDetailLoaderScreen(postId: postId),
+    );
+    _notificationRoutes.add(route);
+    await Navigator.of(context).push<void>(route);
+    _notificationRoutes.remove(route);
   }
 
   void _openTemplates() {
@@ -300,6 +365,15 @@ class _PostDeeShellState extends State<PostDeeShell> {
       _authController.session.stableUserId == _composerOwnerUserId;
 
   void _handleComposerOwnerChanged() {
+    final owner = _authController.session.isSignedIn
+        ? _authController.session.stableUserId
+        : null;
+    if (owner != _notificationOwnerUserId) {
+      _notificationOwnerUserId = owner;
+      PostDeeNotificationCenter.instance.clear();
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      _notificationRoutes.clear();
+    }
     final route = _composerRoute;
     if (route == null ||
         (_authController.session.isSignedIn &&
@@ -1231,22 +1305,58 @@ class _LoginGate extends StatelessWidget {
                               : 'By continuing you accept our ',
                         ),
                         TextSpan(
-                          text: isThai
-                              ? 'เงื่อนไขการใช้บริการ'
-                              : 'Terms of Service',
-                          style: TextStyle(
-                            color: AppTheme.accentCyanInk,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          children: [
+                            WidgetSpan(
+                              alignment: PlaceholderAlignment.middle,
+                              child: TextButton(
+                                key: const ValueKey('login-terms'),
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  foregroundColor: AppTheme.accentCyanInk,
+                                  textStyle: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                                onPressed: () => Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                      builder: (_) => const LegalDocumentScreen(
+                                            document: PostDeeLegalDocuments
+                                                .termsOfService,
+                                          )),
+                                ),
+                                child: Text(isThai
+                                    ? 'เงื่อนไขการใช้บริการ'
+                                    : 'Terms of Service'),
+                              ),
+                            ),
+                          ],
                         ),
                         TextSpan(text: isThai ? '\nและ' : '\nand '),
-                        TextSpan(
-                          text: isThai
-                              ? 'นโยบายความเป็นส่วนตัว'
-                              : 'Privacy Policy',
-                          style: TextStyle(
-                            color: AppTheme.accentCyanInk,
-                            fontWeight: FontWeight.w600,
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: TextButton(
+                            key: const ValueKey('login-privacy'),
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              foregroundColor: AppTheme.accentCyanInk,
+                              textStyle: const TextStyle(
+                                  fontSize: 11.5, fontWeight: FontWeight.w600),
+                            ),
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                  builder: (_) => const LegalDocumentScreen(
+                                        document:
+                                            PostDeeLegalDocuments.privacyPolicy,
+                                      )),
+                            ),
+                            child: Text(isThai
+                                ? 'นโยบายความเป็นส่วนตัว'
+                                : 'Privacy Policy'),
                           ),
                         ),
                       ],
@@ -1283,6 +1393,7 @@ class _EmailSignInDialogState extends State<_EmailSignInDialog> {
   var _createAccount = false;
   var _isSubmitting = false;
   String? _validationMessage;
+  String? _recoveryMessage;
 
   @override
   void dispose() {
@@ -1331,6 +1442,26 @@ class _EmailSignInDialogState extends State<_EmailSignInDialog> {
     });
   }
 
+  Future<void> _resetPassword() async {
+    setState(() {
+      _isSubmitting = true;
+      _validationMessage = null;
+      _recoveryMessage = null;
+    });
+    final success =
+        await widget.controller.resetEmailPassword(_emailController.text);
+    if (!mounted) return;
+    setState(() {
+      _isSubmitting = false;
+      if (success) {
+        _recoveryMessage =
+            'หากอีเมลนี้มีบัญชี คุณจะได้รับลิงก์ตั้งรหัสผ่าน กรุณาตรวจสอบกล่องอีเมลและจดหมายขยะ';
+      } else {
+        _validationMessage = widget.controller.errorMessage;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final title =
@@ -1339,6 +1470,7 @@ class _EmailSignInDialogState extends State<_EmailSignInDialog> {
 
     return AlertDialog(
       key: const ValueKey('email-sign-in-form'),
+      scrollable: true,
       title: Text(title),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
@@ -1376,6 +1508,16 @@ class _EmailSignInDialogState extends State<_EmailSignInDialog> {
                 ),
               ),
             ],
+            if (_recoveryMessage != null) ...[
+              const SizedBox(height: 12),
+              Text(_recoveryMessage!, style: const TextStyle(fontSize: 12)),
+            ],
+            if (!_createAccount && widget.controller.supportsEmailRecovery)
+              TextButton(
+                key: const ValueKey('email-forgot-password'),
+                onPressed: _isSubmitting ? null : _resetPassword,
+                child: const Text('ลืมรหัสผ่าน?'),
+              ),
             const SizedBox(height: 10),
             TextButton(
               onPressed: _isSubmitting

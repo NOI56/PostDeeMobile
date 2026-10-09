@@ -68,7 +68,7 @@ export const createPublishNotifier = ({
       tokens,
       title,
       body,
-      data: { postId, type: 'publish_result' }
+      data: { postId, userId, type: 'publish_result' }
     });
   }
 });

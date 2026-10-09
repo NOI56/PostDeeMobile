@@ -35,6 +35,11 @@ typedef LinkInBioImageUploader = Future<String> Function({
   required Uint8List bytes,
 });
 typedef LinkInBioImageLoader = Future<Uint8List> Function(String key);
+typedef LinkInBioDraftImageProtector = Future<void> Function({
+  required String draftId,
+  required Set<String> keys,
+  required String mode,
+});
 
 class LinkInBioScreen extends StatefulWidget {
   const LinkInBioScreen({
@@ -51,6 +56,7 @@ class LinkInBioScreen extends StatefulWidget {
     this.pickImage,
     this.uploadImage,
     this.loadImage,
+    this.protectDraftImages,
   });
 
   final LinkInBioDraftStore? draftStore;
@@ -65,6 +71,7 @@ class LinkInBioScreen extends StatefulWidget {
   final LinkInBioImagePicker? pickImage;
   final LinkInBioImageUploader? uploadImage;
   final LinkInBioImageLoader? loadImage;
+  final LinkInBioDraftImageProtector? protectDraftImages;
 
   @override
   State<LinkInBioScreen> createState() => _LinkInBioScreenState();
@@ -97,13 +104,21 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   bool _isBusy = false;
   bool _publicationUncertain = false;
   int _editVersion = 0;
+  Future<void> _draftSaveQueue = Future.value();
+  Future<String>? _draftReferenceId;
+  final Set<String> _protectedImageKeys = {};
+  bool _draftPinsNeedCleanup = false;
+  String? _savedDraftSignature;
+  int _pendingDraftSaves = 0;
+  bool _draftSaveFailed = false;
   String? _errorMessage;
   String? _noticeMessage;
   Timer? _noticeTimer;
 
-  bool get _ownerStillCurrent =>
-      mounted &&
+  bool get _ownerMatchesSession =>
+      _ownerUserId != null &&
       PostDeeAuthSessionStore.instance.session.stableUserId == _ownerUserId;
+  bool get _ownerStillCurrent => mounted && _ownerMatchesSession;
   bool get _canEdit => !_isBusy;
   List<LinkInBioCustomLink> get _activeLinks =>
       _customLinks.where((link) => _enabledLinkIds.contains(link.id)).toList();
@@ -115,6 +130,128 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
         customLinks: List.of(_customLinks),
         appearance: _appearance,
       );
+  String _draftSignature(LinkInBioDraft draft) => jsonEncode({
+        'storeName': draft.storeName,
+        'slug': draft.slug,
+        'enabledLinkIds': draft.enabledLinkIds.toList()..sort(),
+        'links': draft.customLinks.map((link) => link.toJson()).toList(),
+        'appearance': draft.appearance.toJson(),
+      });
+  Set<String> _imageKeys(LinkInBioDraft draft) => {
+        draft.appearance.logoKey,
+        draft.appearance.coverKey,
+        draft.appearance.background.imageKey,
+      }.whereType<String>().toSet();
+
+  String _draftErrorMessage(Object error, {required String fallbackMessage}) {
+    if (error is ApiException &&
+        (error.statusCode == 404 || error.statusCode == 405)) {
+      return 'ระบบคุ้มครองรูปแบบร่างยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง';
+    }
+    return apiErrorMessage(error, fallbackMessage: fallbackMessage);
+  }
+
+  Future<String> _referenceId() async {
+    final pending =
+        _draftReferenceId ??= linkInBioDraftReferenceIdForUser(_ownerUserId!);
+    try {
+      return await pending;
+    } catch (_) {
+      if (identical(_draftReferenceId, pending)) _draftReferenceId = null;
+      rethrow;
+    }
+  }
+
+  Future<String> _nextReferenceToken() async =>
+      '${await _referenceId()}_${await nextLinkInBioDraftRevisionForUser(_ownerUserId!)}';
+
+  Future<void> _protectImages(Set<String> keys,
+      {String? referenceToken}) async {
+    if (!_ownerMatchesSession) throw StateError('Draft owner changed');
+    _protectedImageKeys
+      ..clear()
+      ..addAll(await loadLinkInBioProtectedImageKeysForUser(_ownerUserId!));
+    if (_protectedImageKeys.any((key) => !keys.contains(key))) {
+      _draftPinsNeedCleanup = true;
+    }
+    if (keys.every(_protectedImageKeys.contains)) return;
+    final draftId = referenceToken ?? await _nextReferenceToken();
+    if (!_ownerMatchesSession) throw StateError('Draft owner changed');
+    await (widget.protectDraftImages ?? _apiClient.protectLinkInBioDraftImages)(
+        draftId: draftId, keys: keys, mode: 'add');
+    if (!_ownerMatchesSession) throw StateError('Draft owner changed');
+    _protectedImageKeys.addAll(keys);
+    _draftPinsNeedCleanup = true;
+    try {
+      await saveLinkInBioProtectedImageKeysForUser(
+          _ownerUserId, _protectedImageKeys);
+    } catch (_) {/* Server protection is already confirmed. */}
+  }
+
+  Future<bool> _persistDraft(LinkInBioDraft draft, int version) {
+    final result = Completer<bool>();
+    _pendingDraftSaves++;
+    _draftSaveQueue = _draftSaveQueue.then(
+        (_) => withLinkInBioDraftMutationForUser(_ownerUserId ?? '', () async {
+              var saved = false;
+              try {
+                if (!_ownerMatchesSession) return;
+                final keys = _imageKeys(draft);
+                final referenceToken = await _nextReferenceToken();
+                // Protection precedes disk persistence. Keep old pins if either step
+                // fails, so the last saved local draft always remains recoverable.
+                await _protectImages(keys, referenceToken: referenceToken);
+                if (!_ownerMatchesSession) return;
+                await _draftStore.saveDraft(draft);
+                if (!_ownerMatchesSession) return;
+                saved = true;
+                _hasLocalDraft = true;
+                _savedDraftSignature = _draftSignature(draft);
+                if (version == _editVersion) _draftSaveFailed = false;
+                if (_draftPinsNeedCleanup) {
+                  try {
+                    // Remove obsolete local confirmations before releasing server pins.
+                    // Other managers on this device must read the current confirmation.
+                    await saveLinkInBioProtectedImageKeysForUser(
+                        _ownerUserId!, keys);
+                    if (!_ownerMatchesSession) return;
+                    await (widget.protectDraftImages ??
+                            _apiClient.protectLinkInBioDraftImages)(
+                        draftId: referenceToken, keys: keys, mode: 'replace');
+                    if (_ownerMatchesSession) {
+                      _protectedImageKeys
+                        ..clear()
+                        ..addAll(keys);
+                      _draftPinsNeedCleanup = false;
+                      await saveLinkInBioProtectedImageKeysForUser(
+                          _ownerUserId, keys);
+                    }
+                  } catch (_) {
+                    /* Extra pins are safe; retry on the next save. */
+                  }
+                }
+              } catch (error) {
+                if (_ownerStillCurrent && version == _editVersion) {
+                  _draftSaveFailed = true;
+                  _errorMessage = _draftErrorMessage(error,
+                      fallbackMessage: 'บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่');
+                }
+              } finally {
+                _pendingDraftSaves--;
+                if (_ownerStillCurrent) setState(() {});
+                result.complete(saved);
+              }
+            }));
+    return result.future;
+  }
+
+  void _markEdited() {
+    _editVersion++;
+    _errorMessage = null;
+    _draftSaveFailed = false;
+    unawaited(_persistDraft(_draft, _editVersion));
+  }
+
   bool get _hasUnpublishedChanges {
     final profile = _profile;
     if (profile == null || !profile.isPublished) return false;
@@ -214,8 +351,14 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     if (!_ownerStillCurrent || bytes == null) return null;
     setState(() => _isBusy = true);
     try {
-      final key = await (widget.uploadImage ?? _apiClient.uploadLinkInBioImage)(
-          slot: slot, bytes: bytes);
+      await _draftSaveQueue;
+      await withLinkInBioDraftMutationForUser(
+          _ownerUserId!, () => _protectImages(_imageKeys(_draft)));
+      if (!_ownerStillCurrent) return null;
+      final key = widget.uploadImage != null
+          ? await widget.uploadImage!(slot: slot, bytes: bytes)
+          : await _apiClient.uploadLinkInBioImage(
+              slot: slot, bytes: bytes, draftId: await _referenceId());
       if (!_ownerStillCurrent) return null;
       _images[key] = bytes;
       _imageRevision.value++;
@@ -245,7 +388,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     setState(() {
       _appearance = value;
       _descriptionController.text = value.description;
-      _editVersion++;
+      _markEdited();
     });
   }
 
@@ -270,8 +413,33 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
         if (!_ownerStillCurrent) return;
         _hasLoadedDraft = true;
         if (draft != null) {
+          final referenceId =
+              await existingLinkInBioDraftReferenceIdForUser(_ownerUserId!);
+          if (!_ownerStillCurrent) return;
+          if (referenceId != null) {
+            _draftReferenceId = Future.value(referenceId);
+            _draftPinsNeedCleanup = true;
+            _protectedImageKeys.addAll(
+                await loadLinkInBioProtectedImageKeysForUser(_ownerUserId));
+            if (!_ownerStillCurrent) return;
+          }
           _hasLocalDraft = true;
-          if (_editVersion == editVersion) setState(() => _applyDraft(draft));
+          if (_editVersion == editVersion) {
+            setState(() {
+              _applyDraft(draft);
+              _savedDraftSignature = _draftSignature(draft);
+            });
+          }
+          try {
+            await withLinkInBioDraftMutationForUser(
+                _ownerUserId, () => _protectImages(_imageKeys(draft)));
+          } catch (error) {
+            if (_ownerStillCurrent) {
+              setState(() => _errorMessage = _draftErrorMessage(error,
+                  fallbackMessage:
+                      'ยังคุ้มครองรูปแบบร่างไม่ได้ กรุณาลองใหม่ก่อนเปลี่ยนรูป'));
+            }
+          }
         }
       }
       final profile =
@@ -319,8 +487,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   void _edited() => setState(() {
-        _editVersion++;
-        _errorMessage = null;
+        _markEdited();
       });
 
   void _message(String text) {
@@ -339,21 +506,22 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     }
   }
 
-  Future<void> _saveDraft() async {
-    if (!_canEdit) return;
+  Future<bool> _saveDraft() async {
+    if (!_canEdit) return false;
     setState(() {
       _isBusy = true;
       _errorMessage = null;
     });
     try {
-      await _draftStore.saveDraft(_draft);
-      if (!_ownerStillCurrent) return;
-      _hasLocalDraft = true;
+      final saved = await _persistDraft(_draft, _editVersion);
+      if (!_ownerStillCurrent || !saved) return false;
       _message('บันทึกแบบร่างในเครื่องแล้ว ยังไม่ได้อัปเดตเว็บไซต์');
+      return true;
     } catch (_) {
       if (_ownerStillCurrent) {
         setState(() => _errorMessage = 'บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่');
       }
+      return false;
     } finally {
       if (_ownerStillCurrent) setState(() => _isBusy = false);
     }
@@ -415,7 +583,9 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     });
     var requested = false;
     try {
-      await _draftStore.saveDraft(draft);
+      if (!await _persistDraft(draft, _editVersion)) {
+        throw const ApiException('บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่');
+      }
       if (!_ownerStillCurrent) return;
       _hasLocalDraft = true;
       requested = true;
@@ -459,7 +629,9 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       // Publication is already confirmed. A local disk failure must not turn
       // that server result into an unknown or failed publication.
       try {
-        await _draftStore.saveDraft(_draft);
+        if (!await _persistDraft(_draft, _editVersion)) {
+          throw StateError('Draft save failed');
+        }
       } catch (_) {
         if (_ownerStillCurrent) {
           setState(() => _errorMessage =
@@ -599,7 +771,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     setState(() {
       _customLinks = [..._customLinks, link];
       _enabledLinkIds.add(link.id);
-      _editVersion++;
+      _markEdited();
     });
   }
 
@@ -619,7 +791,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       _customLinks = [
         for (final item in _customLinks) item.id == link.id ? link : item
       ];
-      _editVersion++;
+      _markEdited();
     });
   }
 
@@ -630,7 +802,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       if (!value && _appearance.featuredLinkId == id) {
         _appearance = _appearance.copyWith(featuredLinkId: null);
       }
-      _editVersion++;
+      _markEdited();
     });
   }
 
@@ -642,7 +814,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       if (_appearance.featuredLinkId == id) {
         _appearance = _appearance.copyWith(featuredLinkId: null);
       }
-      _editVersion++;
+      _markEdited();
     });
   }
 
@@ -652,7 +824,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       final items = List<LinkInBioCustomLink>.of(_customLinks);
       items.insert(to, items.removeAt(from));
       _customLinks = items;
-      _editVersion++;
+      _markEdited();
     });
   }
 
@@ -661,7 +833,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     setState(() {
       _appearance = _appearance.copyWith(
           featuredLinkId: _appearance.featuredLinkId == id ? null : id);
-      _editVersion++;
+      _markEdited();
     });
   }
 
@@ -674,7 +846,24 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     _showStatus();
   }
 
-  void _finishSection() {
+  Future<void> _leave() async {
+    if (!_canEdit) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (_step != 1) {
+      _setStep(1);
+      return;
+    }
+    if (_editVersion > 0 && _savedDraftSignature != _draftSignature(_draft)) {
+      if (!await _saveDraft() || !_ownerStillCurrent) return;
+    }
+    if (widget.onBack != null) {
+      widget.onBack!();
+    } else if (mounted) {
+      Navigator.of(context).maybePop();
+    }
+  }
+
+  Future<void> _finishSection() async {
     String? error;
     if (_step == 0) {
       if (!(_infoForm.currentState?.validate() ?? false)) return;
@@ -697,7 +886,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       return;
     }
     setState(() => _errorMessage = null);
-    _setStep(1);
+    if (await _saveDraft() && _ownerStillCurrent) _setStep(1);
   }
 
   Future<void> _chooseLogo() async {
@@ -706,7 +895,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       if (!_ownerStillCurrent || key == null) return;
       setState(() {
         _appearance = _appearance.copyWith(logoKey: key);
-        _editVersion++;
+        _markEdited();
       });
     } catch (_) {
       if (_ownerStillCurrent) {
@@ -890,7 +1079,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
               if (value.length <= 280) {
                 setState(() {
                   _appearance = _appearance.copyWith(description: value);
-                  _editVersion++;
+                  _markEdited();
                 });
               }
             }),
@@ -921,7 +1110,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 onPressed: _canEdit
                     ? () => setState(() {
                           _appearance = _appearance.copyWith(logoKey: null);
-                          _editVersion++;
+                          _markEdited();
                         })
                     : null,
                 icon: const Icon(Icons.delete_outline)),
@@ -1060,7 +1249,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
             enabled: _canEdit && !_isLoading,
             onChanged: (value) => setState(() {
                   _appearance = value;
-                  _editVersion++;
+                  _markEdited();
                 })),
         const SizedBox(height: 16),
         OutlinedButton.icon(
@@ -1213,19 +1402,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                                 ? 'link-in-bio-close-editor'
                                 : 'link-in-bio-back'),
                             tooltip: 'กลับ',
-                            onPressed: !_canEdit
-                                ? null
-                                : () {
-                                    FocusManager.instance.primaryFocus
-                                        ?.unfocus();
-                                    if (_step != 1) {
-                                      _setStep(1);
-                                    } else {
-                                      (widget.onBack ??
-                                          () => Navigator.of(context)
-                                              .maybePop())();
-                                    }
-                                  },
+                            onPressed: !_canEdit ? null : _leave,
                             icon: const Icon(Icons.arrow_back)),
                         Expanded(
                             child: Text(
@@ -1249,6 +1426,22 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                               fontSize: 13, color: AppTheme.textSecondary))),
+                  Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 2),
+                      child: Text(
+                          _pendingDraftSaves > 0
+                              ? 'กำลังบันทึกแบบร่างในเครื่อง...'
+                              : _draftSaveFailed
+                                  ? 'มีการแก้ไขที่ยังไม่ได้บันทึก'
+                                  : _savedDraftSignature ==
+                                          _draftSignature(_draft)
+                                      ? 'บันทึกแบบร่างในเครื่องแล้ว'
+                                      : 'แบบร่างยังไม่ได้บันทึก',
+                          key: const ValueKey('link-in-bio-draft-status'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.textSecondary))),
                   if (_noticeMessage != null)
                     Padding(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -1321,9 +1514,17 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                       ])),
                   _footer(),
                 ])));
-    return widget.embeddedInTab
-        ? Material(color: Colors.transparent, child: body)
-        : Scaffold(backgroundColor: Colors.transparent, body: body);
+    return PopScope(
+        canPop: !widget.isActive ||
+            (!_isBusy && _pendingDraftSaves == 0 && !_draftSaveFailed),
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop && widget.isActive) unawaited(_leave());
+        },
+        child: TickerMode(
+            enabled: widget.isActive,
+            child: widget.embeddedInTab
+                ? Material(color: Colors.transparent, child: body)
+                : Scaffold(backgroundColor: Colors.transparent, body: body)));
   }
 }
 

@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
+import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -173,10 +175,19 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
   Future<void> clearDraft() async {
     final key = _ownedKey;
     if (key == null) return;
-    final preferences = await _activePreferences;
-    if (!await preferences.remove(key)) {
-      throw StateError('Link in Bio draft could not be removed');
-    }
+    await withLinkInBioDraftMutationForUser(ownerUserId!, () async {
+      final preferences = await _activePreferences;
+      for (final ownedKey in [
+        key,
+        '$key.image_reference',
+        '$key.image_revision',
+        '$key.protected_images'
+      ]) {
+        if (!await preferences.remove(ownedKey)) {
+          throw StateError('Link in Bio draft could not be removed');
+        }
+      }
+    });
   }
 
   List<LinkInBioCustomLink> _decodeCustomLinks(List<String> rawLinks) {
@@ -199,3 +210,92 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
 
 Future<void> clearLinkInBioDraftForUser(String ownerUserId) =>
     SharedPreferencesLinkInBioDraftStore(ownerUserId: ownerUserId).clearDraft();
+
+Future<String> linkInBioDraftReferenceIdForUser(String ownerUserId) async {
+  if (ownerUserId.trim().isEmpty) {
+    throw StateError('Draft reference requires an owner');
+  }
+  final preferences = await SharedPreferences.getInstance();
+  final key =
+      'postdee_link_in_bio.user.${Uri.encodeComponent(ownerUserId)}.image_reference';
+  final existing = preferences.getString(key);
+  if (existing != null && RegExp(r'^[a-f0-9]{32}$').hasMatch(existing)) {
+    return existing;
+  }
+  final random = Random.secure();
+  final value = List.generate(
+      16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  if (!await preferences.setString(key, value)) {
+    throw StateError('Draft reference could not be saved');
+  }
+  return value;
+}
+
+Future<String?> existingLinkInBioDraftReferenceIdForUser(
+    String ownerUserId) async {
+  final preferences = await SharedPreferences.getInstance();
+  final value = preferences.getString(
+      'postdee_link_in_bio.user.${Uri.encodeComponent(ownerUserId)}.image_reference');
+  return value != null && RegExp(r'^[a-f0-9]{32}$').hasMatch(value)
+      ? value
+      : null;
+}
+
+// Call inside the owner mutation queue, before sending any protection request.
+Future<int> nextLinkInBioDraftRevisionForUser(String ownerUserId) async {
+  if (ownerUserId.trim().isEmpty) {
+    throw StateError('Draft revision requires an owner');
+  }
+  final preferences = await SharedPreferences.getInstance();
+  final key =
+      'postdee_link_in_bio.user.${Uri.encodeComponent(ownerUserId)}.image_revision';
+  final previous = preferences.getInt(key) ?? 0;
+  if (previous < 0 || previous >= 9007199254740991) {
+    throw StateError('Draft revision is invalid');
+  }
+  final revision = previous + 1;
+  if (!await preferences.setInt(key, revision)) {
+    throw StateError('Draft revision could not be saved');
+  }
+  return revision;
+}
+
+Future<Set<String>> loadLinkInBioProtectedImageKeysForUser(
+    String ownerUserId) async {
+  final preferences = await SharedPreferences.getInstance();
+  return (preferences.getStringList(
+              'postdee_link_in_bio.user.${Uri.encodeComponent(ownerUserId)}.protected_images') ??
+          [])
+      .toSet();
+}
+
+Future<void> saveLinkInBioProtectedImageKeysForUser(
+    String ownerUserId, Set<String> keys) async {
+  final preferences = await SharedPreferences.getInstance();
+  final sorted = keys.toList()..sort();
+  if (!await preferences.setStringList(
+      'postdee_link_in_bio.user.${Uri.encodeComponent(ownerUserId)}.protected_images',
+      sorted)) {
+    throw StateError('Draft image protection confirmation could not be saved');
+  }
+}
+
+final _linkInBioDraftMutations = <String, Future<void>>{};
+
+Future<T> withLinkInBioDraftMutationForUser<T>(
+    String ownerUserId, Future<T> Function() operation) async {
+  final previous =
+      _linkInBioDraftMutations[ownerUserId] ?? Future<void>.value();
+  final release = Completer<void>();
+  final queued = previous.then((_) => release.future);
+  _linkInBioDraftMutations[ownerUserId] = queued;
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release.complete();
+    if (identical(_linkInBioDraftMutations[ownerUserId], queued)) {
+      _linkInBioDraftMutations.remove(ownerUserId);
+    }
+  }
+}

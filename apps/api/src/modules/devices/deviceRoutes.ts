@@ -18,6 +18,21 @@ export const registerDeviceRoutes = (
   deviceTokenStore: DeviceTokenStore,
   userStore: UserStore
 ) => {
+  router.delete('/devices', authMiddleware, async (request, response) => {
+    const authUser = readAuthUser(response.locals);
+    if (!authUser) {
+      response.status(401).json({ status: 'error', message: 'Authenticated user is required' });
+      return;
+    }
+    const token = typeof request.body?.token === 'string' ? request.body.token.trim() : '';
+    if (!token) {
+      response.status(400).json({ status: 'error', message: 'token is required' });
+      return;
+    }
+    await deviceTokenStore.unregister({ userId: authUser.id, token });
+    response.json({ status: 'ok' });
+  });
+
   router.post('/devices', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
 

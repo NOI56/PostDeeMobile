@@ -2,6 +2,28 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Audit fix boundary (2026-10-09)
+
+Based on verified main `c4e5220`, the local patch keeps provider activation and
+package limits unchanged. A streamed source-media fingerprint plus an atomic
+local upload receipt makes draft replay media-aware; accepted legacy posts with
+no fingerprint require exact storage-key matching. Auth restore runs after the
+UI starts and is bounded, with session-generation checks discarding late reads.
+Notification registration is scoped/rebound on account changes, old token
+unregistration is caller-scoped, and push owner/post ids survive cold-start taps.
+Profile draft preferences are UID-scoped; legacy migration requires a matching
+nonempty email instead of accepting another account's email-less session.
+
+The store service retains an in-flight SDK purchase/restore after the UI wait
+deadline. Rechecking shares that future and backend receipt confirmation;
+account changes invalidate its ownership. Product-price loading has a cancelable
+screen deadline and ignores stale responses. Failed caption-provider requests
+release the exact usage row, preserving concurrent requests' charges.
+Shop previews pause while hidden; local autosave is serialized and owner-scoped,
+and protects new image references before local persistence. Two additive schema
+migrations require API-first rollout. Detailed constraints and verification:
+`docs/superpowers/plans/2026-10-09-system-audit-fixes.md`.
+
 ## Pending-work integration boundary (2026-10-08)
 
 The main UI cleanup is delivered at `b1f793c`. Source integration
@@ -323,10 +345,13 @@ published reference without exposing storage keys, signed URLs or owner IDs.
 Unpublishing/renaming/account deletion invalidates those public image routes.
 
 Image mutations are serialized per owner inside the current single API instance,
-in addition to the account-deletion barrier. Metadata is capped at 20 images per
-owner, and upload routes share the existing upload rate limit. Cleanup runs on
-upload/publication, removing images older than 24 hours that are neither saved
-profile references nor the newest draft per slot. Inactive accounts are not
+in addition to the account-deletion barrier. Metadata is capped at 20 legacy
+and 20 managed images per owner, and upload routes share the existing upload
+rate limit. Cleanup runs on
+upload/publication, removing only managed images older than 24 hours that are
+neither saved profile references, protected device-draft references nor the
+newest image per slot. Legacy images remain to protect unknown offline drafts.
+The transition retains at most 20 legacy plus 20 managed images. Inactive accounts are not
 background-swept; account deletion removes all media and metadata. Cleanup errors
 after confirmed publication do not turn that publication into a failure. Before
 horizontal scaling, replace the process-local image lock with a durable owner

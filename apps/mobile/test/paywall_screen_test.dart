@@ -8,6 +8,22 @@ import 'package:postdee_mobile/features/billing/paywall_screen.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
 
 void main() {
+  testWidgets('uses actual store prices instead of fixed Thai prices', (tester) async {
+    tester.view.physicalSize = const Size(393, 1500);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(home: PaywallScreen(
+      loadSubscription: () async => _subscription(plan: 'BASIC'),
+      service: StoreSubscriptionService(gateway: _PricedStoreBillingGateway(),
+        useRevenueCat: false))));
+    await tester.pumpAndSettle();
+    expect(find.text('€5.49/เดือน'), findsOneWidget);
+    expect(find.text('€8.49/เดือน'), findsOneWidget);
+    expect(find.text('199 ฿/เดือน'), findsNothing);
+    expect(find.text('299 ฿/เดือน'), findsNothing);
+  });
+
   testWidgets('shows each paid plan scheduling window', (tester) async {
     await tester.pumpWidget(MaterialApp(
         home: PaywallScreen(
@@ -262,7 +278,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('กู้คืนการซื้อ'));
+    await tester.scrollUntilVisible(
+        find.widgetWithText(OutlinedButton, 'กู้คืนการซื้อ'), 400,
+        scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'กู้คืนการซื้อ'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('กู้คืนการซื้อ'));
     await tester.pumpAndSettle();
 
@@ -555,6 +575,13 @@ SubscriptionStatusResult _subscription({required String plan}) =>
       canUseAiCaptions: plan != 'BASIC',
       canUseAnalytics: plan == 'PRO',
     );
+
+class _PricedStoreBillingGateway extends _FakeStoreBillingGateway {
+  @override
+  Future<List<StoreProductInfo>> queryProducts(Set<String> productIds) async =>
+      productIds.map((id) => StoreProductInfo(id: id, title: id, description: '',
+        price: id.contains('starter') ? '€5.49' : '€8.49')).toList();
+}
 
 class _FakeStoreBillingGateway implements StoreBillingGateway {
   var purchaseCalls = 0;

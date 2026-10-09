@@ -1,4 +1,5 @@
 export type RealClipCaptionUsageRecord = {
+  id?: string;
   userId: string;
   monthKey: string;
   createdAt: string;
@@ -23,6 +24,8 @@ export type RealClipCaptionUsageStore = {
     monthKey: string;
     limit: number;
   }) => Promise<RealClipCaptionUsageReservation>;
+  // Removes only this reservation, never another concurrent request's usage.
+  release?: (record: RealClipCaptionUsageRecord) => Promise<boolean>;
   // Hard-deletes every usage record owned by userId. Used by account deletion.
   // Optional because the Prisma store relies on the User cascade instead.
   deleteAllForUser?: (userId: string) => Promise<void>;
@@ -71,6 +74,12 @@ export const createInMemoryRealClipCaptionUsageStore = ({
         usedThisMonth: usedThisMonth + 1,
         record: createRecord({ userId, monthKey })
       };
+    },
+    release: async (record) => {
+      const index = records.indexOf(record);
+      if (index < 0) return false;
+      records.splice(index, 1);
+      return true;
     },
     deleteAllForUser: async (userId) => {
       for (let index = records.length - 1; index >= 0; index -= 1) {

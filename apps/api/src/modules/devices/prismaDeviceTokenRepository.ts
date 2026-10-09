@@ -19,6 +19,7 @@ type DeviceTokenSelect = {
 };
 
 type DeviceTokenDelegate = {
+  deleteMany: (args: { where: { userId: string; token: string } }) => Promise<{ count: number }>;
   upsert: (args: {
     where: { token: string };
     update: { userId: string; platform?: string | null };
@@ -71,6 +72,9 @@ export const createPrismaDeviceTokenRepository = ({
     });
 
     return records.map(mapToken);
+  },
+  unregister: async ({ userId, token }) => {
+    await prisma.deviceToken.deleteMany({ where: { userId, token } });
   }
   // deleteAllForUser is intentionally omitted: the User cascade removes tokens.
 });

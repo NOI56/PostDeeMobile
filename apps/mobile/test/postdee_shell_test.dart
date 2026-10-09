@@ -9,15 +9,20 @@ import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
+import 'package:postdee_mobile/features/auth/auth_controller.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
+import 'package:postdee_mobile/features/profile/profile_screen.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
+import 'package:postdee_mobile/features/legal/legal_document_screen.dart';
+import 'package:postdee_mobile/features/templates/templates_screen.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'support/test_publish_media_identity.dart';
 
 Finder _referenceNav() =>
     find.byKey(const ValueKey('postdee-reference-bottom-nav'));
@@ -93,6 +98,7 @@ class _ShellDraftStore implements PublishDraftStore {
 
   @override
   Future<PublishDraft> saveDraft(PublishDraftSaveRequest request) async {
+    final fingerprint = testPublishMediaFingerprint(request);
     final draft = PublishDraft(
       version: publishDraftManifestVersion,
       id: request.id,
@@ -112,13 +118,86 @@ class _ShellDraftStore implements PublishDraftStore {
       platformApiValues: request.platformApiValues,
       platformSettings: request.platformSettings,
       scheduledAt: request.scheduledAt,
+      mediaContentFingerprint: fingerprint,
+      uploadedMedia:
+          request.uploadedMedia?.mediaContentFingerprint == fingerprint
+              ? request.uploadedMedia
+              : null,
     );
     drafts[draft.id] = draft;
     return draft;
   }
 }
 
+class _ShellEmailRecoveryGateway
+    implements EmailAuthGateway, EmailAccountRecoveryGateway {
+  final resets = <String>[];
+  @override
+  Future<AuthSession> signIn(
+          {required String email,
+          required String password,
+          required bool createAccount}) async =>
+      const AuthSession(userId: 'seller', idToken: 'token');
+  @override
+  Future<void> sendPasswordResetEmail(String email) async => resets.add(email);
+  @override
+  Future<void> sendEmailVerification() async {}
+  @override
+  Future<AuthSession> reloadSession() async =>
+      const AuthSession(userId: 'seller', idToken: 'token');
+}
+
 void main() {
+  testWidgets('email form provides safe password recovery feedback',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+    PostDeeAuthSessionStore.instance.clear();
+    final language =
+        PostDeeLanguageController(initialLocale: const Locale('en'));
+    addTearDown(language.dispose);
+    final gateway = _ShellEmailRecoveryGateway();
+    await tester.pumpWidget(_shellApp(
+        PostDeeShell(languageController: language, emailAuthGateway: gateway)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('login-email-sign-in')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byType(TextField).first, ' seller@example.com ');
+    await tester.tap(find.byKey(const ValueKey('email-forgot-password')));
+    await tester.pumpAndSettle();
+    expect(gateway.resets, ['seller@example.com']);
+    expect(find.textContaining('หากอีเมลนี้มีบัญชี'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('login legal links open the existing legal documents',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+    PostDeeAuthSessionStore.instance.clear();
+    final language =
+        PostDeeLanguageController(initialLocale: const Locale('en'));
+    addTearDown(language.dispose);
+    await tester
+        .pumpWidget(_shellApp(PostDeeShell(languageController: language)));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('login-terms')));
+    await tester.tap(find.byKey(const ValueKey('login-terms')));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<LegalDocumentScreen>(find.byType(LegalDocumentScreen))
+            .document,
+        PostDeeLegalDocuments.termsOfService);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('login-privacy')));
+    await tester.tap(find.byKey(const ValueKey('login-privacy')));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<LegalDocumentScreen>(find.byType(LegalDocumentScreen))
+            .document,
+        PostDeeLegalDocuments.privacyPolicy);
+  });
   testWidgets('opens one full screen composer without a hidden uploader',
       (tester) async {
     final languageController = _signInShell();
@@ -232,6 +311,51 @@ void main() {
     expect(_referenceNav(), findsOneWidget);
     expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 4);
     expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
+  });
+
+  testWidgets('owner changes close ordinary private routes above the shell',
+      (tester) async {
+    final languageController = _signInShell();
+    await tester.pumpWidget(
+      _shellApp(PostDeeShell(languageController: languageController)),
+    );
+    await tester.pumpAndSettle();
+    final profile = tester.widget<ProfileScreen>(
+      find.byType(ProfileScreen, skipOffstage: false),
+    );
+    profile.onOpenTemplates();
+    await tester.pumpAndSettle();
+    expect(find.byType(TemplatesScreen), findsOneWidget);
+
+    PostDeeAuthSessionStore.instance.signIn(
+      const AuthSession(
+        userId: 'firebase-user-shell',
+        idToken: 'refreshed-id-token',
+        email: 'seller@example.com',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(TemplatesScreen), findsOneWidget);
+
+    Navigator.of(tester.element(find.byType(TemplatesScreen))).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('Private child route')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    PostDeeAuthSessionStore.instance.signIn(
+      const AuthSession(
+        userId: 'different-shell-user',
+        idToken: 'different-id-token',
+        email: 'other@example.com',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(TemplatesScreen, skipOffstage: false), findsNothing);
+    expect(find.text('Private child route', skipOffstage: false), findsNothing);
+    expect(_referenceNav(), findsOneWidget);
+    expect(ModalRoute.of(tester.element(_referenceNav()))?.isFirst, isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('changing the signed-in owner closes the active composer',
@@ -1800,7 +1924,8 @@ void main() {
     addTearDown(sessionStore.clear);
     addTearDown(languageController.dispose);
 
-    final publishedAt = DateTime(2026, 7, 16, 19, 25);
+    final today = DateTime.now();
+    final publishedAt = DateTime(today.year, today.month, today.day, 19, 25);
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.dark,

@@ -13,7 +13,6 @@ import '../ai_editing/review_video_timeline.dart';
 import '../platforms/connections_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
-import '../shared/growth_tool_detail_sheet.dart';
 import '../shared/growth_tool_settings_store.dart';
 import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
@@ -27,6 +26,7 @@ import 'platform_publish_settings.dart';
 import 'publish_draft.dart';
 import 'publish_draft_store.dart';
 import 'publish_draft_store_factory.dart';
+import 'publish_media_identity.dart';
 import 'publish_flow_screen.dart';
 import 'publish_review_screen.dart';
 import 'post_video_preview_screen.dart';
@@ -181,12 +181,14 @@ class _UploaderScreenState extends State<UploaderScreen> {
   String? _errorMessage;
   String? _templateErrorMessage;
   String? _aiCaptionErrorMessage;
+  String? _aiCaptionFallbackMessage;
   String? _selectedVideoName;
   CoverEditorResult? _coverResult;
   List<PublishDraft> _drafts = const [];
   String? _activeDraftId;
   DateTime? _activeDraftCreatedAt;
   bool? _activeDraftWatermarkEnabled;
+  PublishDraftUploadedMedia? _activeDraftUploadedMedia;
   String? _resolvedDraftOwnerUserId;
   Future<PublishDraftStore?>? _draftStoreFuture;
   BuildContext? _draftSheetContext;
@@ -239,6 +241,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
   void _invalidateAiCaption() {
     _captionGeneration++;
     _isGeneratingCaption = false;
+    _aiCaptionFallbackMessage = null;
   }
 
   bool get _formBusy =>
@@ -450,6 +453,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _activeDraftId = null;
       _activeDraftCreatedAt = null;
       _activeDraftWatermarkEnabled = null;
+      _activeDraftUploadedMedia = null;
       _selectedVideoName = null;
       _coverResult = null;
       _captionController.clear();
@@ -1095,9 +1099,10 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return const [];
     }
 
+    List<File> frames = const [];
     try {
       final extractor = widget.extractFrames ?? FfmpegClipFrameExtractor().call;
-      final frames = await extractor(videoFile, maxFrames: 3);
+      frames = await extractor(videoFile, maxFrames: 3);
 
       if (!stillCurrent() || frames.isEmpty) {
         return const [];
@@ -1133,6 +1138,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return frameKeys;
     } catch (_) {
       return const [];
+    } finally {
+      await cleanupExtractedCaptionFrames(frames, videoFile);
     }
   }
 
@@ -1244,6 +1251,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
     setState(() {
       _isGeneratingCaption = true;
       _aiCaptionErrorMessage = null;
+      _aiCaptionFallbackMessage = null;
     });
 
     try {
@@ -1304,6 +1312,10 @@ class _UploaderScreenState extends State<UploaderScreen> {
           text: nextCaption,
           selection: TextSelection.collapsed(offset: nextCaption.length),
         );
+        _aiCaptionFallbackMessage = caption.isFallback
+            ? 'AI วิเคราะห์คลิปไม่สำเร็จ แคปชันนี้เป็นข้อความสำรอง กรุณาตรวจและแก้ไขก่อนใช้'
+                '${caption.quota.charged ? '' : ' · ไม่หักโควตา AI'}'
+            : null;
       });
     } on ApiException catch (error) {
       if (!stillCurrent()) {
@@ -1491,9 +1503,11 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
     final previousDraftId = _activeDraftId;
     final previousCreatedAt = _activeDraftCreatedAt;
+    final previousUploadedMedia = _activeDraftUploadedMedia;
     setState(() {
       _activeDraftId = null;
       _activeDraftCreatedAt = null;
+      _activeDraftUploadedMedia = null;
     });
     final saved = await _persistCurrentDraft(showSavedMessage: false);
     if (!mounted) return;
@@ -1501,6 +1515,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       setState(() {
         _activeDraftId = previousDraftId;
         _activeDraftCreatedAt = previousCreatedAt;
+        _activeDraftUploadedMedia = previousUploadedMedia;
       });
       return;
     }
@@ -1626,6 +1641,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
           coverSourceKind: cover?.sourceKind ?? CoverSourceKind.videoFrame,
           coverSourceImageFile: cover?.sourceImageFile,
           coverSourceImageName: cover?.sourceImageName,
+          uploadedMedia: _activeDraftUploadedMedia,
         ),
       );
       if (!_draftOperationStillOwned(
@@ -1647,6 +1663,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _activeDraftId = saved.id;
         _activeDraftCreatedAt = saved.createdAt;
         _activeDraftWatermarkEnabled = saved.watermarkEnabled;
+        _activeDraftUploadedMedia = saved.uploadedMedia;
         _platformSettings = saved.platformSettings;
         _selectedVideoName = saved.videoName;
         _localFilePathController.text = saved.videoPath;
@@ -1707,6 +1724,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
     _activeDraftId = null;
     _activeDraftCreatedAt = null;
     _activeDraftWatermarkEnabled = null;
+    _activeDraftUploadedMedia = null;
     _selectedVideoName = null;
     _coverResult = null;
     _captionController.clear();
@@ -1754,6 +1772,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _activeDraftId = draft.id;
       _activeDraftCreatedAt = draft.createdAt;
       _activeDraftWatermarkEnabled = draft.watermarkEnabled;
+      _activeDraftUploadedMedia = draft.uploadedMedia;
       _selectedVideoName = draft.videoName;
       _localFilePathController.text = draft.videoPath;
       _fileNameController.text = draft.videoName;
@@ -2389,6 +2408,24 @@ class _UploaderScreenState extends State<UploaderScreen> {
       var uploadSizeBytes = sizeBytes;
       var didApplyWatermark = false;
       final shouldApplyWatermark = await _watermarkEnabledForCurrentSelection();
+      final usesCover = submittedDraft.cover != null &&
+          _selectedPlatforms.any((platform) =>
+              platform == SocialPlatform.instagramReels ||
+              platform == SocialPlatform.facebookReels);
+      final mediaContentFingerprint = submittedDraft.mediaContentFingerprint ??
+          await publishMediaContentFingerprint(
+              videoFile: localVideoFile,
+              watermarkEnabled: shouldApplyWatermark,
+              coverImageFile:
+                  usesCover ? File(submittedDraft.cover!.imagePath) : null);
+      final cachedMedia =
+          submittedDraft.uploadedMedia?.mediaContentFingerprint ==
+                  mediaContentFingerprint
+              ? submittedDraft.uploadedMedia
+              : null;
+      var uploadedVideoS3Key = cachedMedia?.videoS3Key;
+      String? coverImageS3Key = cachedMedia?.coverImageS3Key;
+      var selectedCover = _coverResult;
       ensureSubmissionStillOwned();
       unawaited(_analytics.logPublishStarted(
         platformCount: _selectedPlatforms.length,
@@ -2396,118 +2433,138 @@ class _UploaderScreenState extends State<UploaderScreen> {
         watermarkEnabled: shouldApplyWatermark,
       ));
 
-      if (shouldApplyWatermark) {
-        if (!mounted) {
-          return null;
+      if (cachedMedia == null) {
+        if (shouldApplyWatermark) {
+          if (!mounted) {
+            return null;
+          }
+
+          setState(() {
+            _successMessage = 'กำลังใส่ลายน้ำวิดีโอ...';
+          });
+          report(PublishFlowStage.applyingWatermark, 0.38);
+
+          final watermarkedVideo = await _applyAutoWatermark(
+            inputFile: localVideoFile,
+            fileName: fileName,
+          );
+          generatedWatermarkedVideo = watermarkedVideo;
+          ensureSubmissionStillOwned();
+
+          uploadVideoFileForRequest = watermarkedVideo.file;
+          uploadFileName = watermarkedVideo.fileName;
+          uploadSizeBytes = watermarkedVideo.sizeBytes;
+          didApplyWatermark = true;
         }
 
-        setState(() {
-          _successMessage = 'กำลังใส่ลายน้ำวิดีโอ...';
-        });
-        report(PublishFlowStage.applyingWatermark, 0.38);
+        final rawCreateUpload = widget.createUpload ?? _apiClient.createUpload;
+        final rawUploadVideoFile =
+            widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
+        Future<UploadResult> createUpload(CreateUploadRequest request) async {
+          ensureSubmissionStillOwned();
+          final result = await rawCreateUpload(request);
+          ensureSubmissionStillOwned();
+          return result;
+        }
 
-        final watermarkedVideo = await _applyAutoWatermark(
-          inputFile: localVideoFile,
-          fileName: fileName,
+        Future<void> uploadVideoFile(UploadResult upload, File file) async {
+          ensureSubmissionStillOwned();
+          await rawUploadVideoFile(upload, file);
+          ensureSubmissionStillOwned();
+        }
+
+        report(PublishFlowStage.uploadingVideo, 0.5);
+        final upload = await createAndUploadFileWithRetry(
+          request: CreateUploadRequest(
+            fileName: uploadFileName,
+            contentType: 'video/mp4',
+            sizeBytes: uploadSizeBytes,
+            width: width,
+            height: height,
+          ),
+          file: uploadVideoFileForRequest,
+          createUpload: createUpload,
+          uploadFile: uploadVideoFile,
+          onRetry: () {
+            report(PublishFlowStage.retryingUpload, 0.55);
+            if (mounted) {
+              setState(() {
+                _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+              });
+            }
+          },
         );
-        generatedWatermarkedVideo = watermarkedVideo;
         ensureSubmissionStillOwned();
-
-        uploadVideoFileForRequest = watermarkedVideo.file;
-        uploadFileName = watermarkedVideo.fileName;
-        uploadSizeBytes = watermarkedVideo.sizeBytes;
-        didApplyWatermark = true;
-      }
-
-      final rawCreateUpload = widget.createUpload ?? _apiClient.createUpload;
-      final rawUploadVideoFile =
-          widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-      Future<UploadResult> createUpload(CreateUploadRequest request) async {
-        ensureSubmissionStillOwned();
-        final result = await rawCreateUpload(request);
-        ensureSubmissionStillOwned();
-        return result;
-      }
-
-      Future<void> uploadVideoFile(UploadResult upload, File file) async {
-        ensureSubmissionStillOwned();
-        await rawUploadVideoFile(upload, file);
-        ensureSubmissionStillOwned();
-      }
-
-      report(PublishFlowStage.uploadingVideo, 0.5);
-      final upload = await createAndUploadFileWithRetry(
-        request: CreateUploadRequest(
-          fileName: uploadFileName,
-          contentType: 'video/mp4',
-          sizeBytes: uploadSizeBytes,
-          width: width,
-          height: height,
-        ),
-        file: uploadVideoFileForRequest,
-        createUpload: createUpload,
-        uploadFile: uploadVideoFile,
-        onRetry: () {
-          report(PublishFlowStage.retryingUpload, 0.55);
+        didUploadVideo = true;
+        uploadedVideoS3Key = upload.videoS3Key;
+        report(PublishFlowStage.uploadingVideo, 0.72);
+        final uploadedWatermarkedVideo = generatedWatermarkedVideo;
+        if (uploadedWatermarkedVideo != null) {
+          try {
+            await uploadedWatermarkedVideo.cleanupTemporaryFiles();
+            generatedWatermarkedVideo = null;
+          } catch (_) {
+            // The final cleanup block retries. Upload has already completed, so
+            // a local cleanup problem must not create an accidental repost.
+          }
+        }
+        final shouldUploadCoverImage = selectedCover != null &&
+            _selectedPlatforms.any(
+              (platform) =>
+                  platform == SocialPlatform.instagramReels ||
+                  platform == SocialPlatform.facebookReels,
+            );
+        if (shouldUploadCoverImage) {
+          final cover = await _readCoverForUpload(
+            videoFile: localVideoFile,
+            fileName: fileName,
+          );
+          ensureSubmissionStillOwned();
+          selectedCover = cover;
           if (mounted) {
             setState(() {
-              _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+              _successMessage = 'กำลังอัปโหลดหน้าปก...';
             });
           }
-        },
-      );
-      ensureSubmissionStillOwned();
-      didUploadVideo = true;
-      report(PublishFlowStage.uploadingVideo, 0.72);
-      final uploadedWatermarkedVideo = generatedWatermarkedVideo;
-      if (uploadedWatermarkedVideo != null) {
-        try {
-          await uploadedWatermarkedVideo.cleanupTemporaryFiles();
-          generatedWatermarkedVideo = null;
-        } catch (_) {
-          // The final cleanup block retries. Upload has already completed, so
-          // a local cleanup problem must not create an accidental repost.
+          report(PublishFlowStage.uploadingCover, 0.8);
+          final coverLease = cover.retainTemporaryFiles();
+          try {
+            final coverUpload = await createAndUploadFileWithRetry(
+              request: CreateUploadRequest(
+                fileName: 'postdee-cover.jpg',
+                contentType: 'image/jpeg',
+                sizeBytes: cover.imageFile.lengthSync(),
+                width: 1080,
+                height: 1920,
+              ),
+              file: cover.imageFile,
+              createUpload: createUpload,
+              uploadFile: uploadVideoFile,
+            );
+            coverImageS3Key = coverUpload.videoS3Key;
+          } finally {
+            await coverLease?.release();
+          }
         }
-      }
-      String? coverImageS3Key;
-      var selectedCover = _coverResult;
-      final shouldUploadCoverImage = selectedCover != null &&
-          _selectedPlatforms.any(
-            (platform) =>
-                platform == SocialPlatform.instagramReels ||
-                platform == SocialPlatform.facebookReels,
-          );
-      if (shouldUploadCoverImage) {
-        final cover = await _readCoverForUpload(
-          videoFile: localVideoFile,
-          fileName: fileName,
+        // Keep the completed upload keys before the server may accept the post.
+        // Retrying or reopening this draft can recover an uncertain response
+        // without uploading again, including legacy posts without fingerprints.
+        _activeDraftUploadedMedia = PublishDraftUploadedMedia(
+          mediaContentFingerprint: mediaContentFingerprint,
+          videoS3Key: uploadedVideoS3Key,
+          coverImageS3Key: coverImageS3Key,
         );
+        final savedReceipt =
+            await _persistCurrentDraftWhileLocked(showSavedMessage: false);
         ensureSubmissionStillOwned();
-        selectedCover = cover;
-        if (mounted) {
-          setState(() {
-            _successMessage = 'กำลังอัปโหลดหน้าปก...';
-          });
+        if (savedReceipt?.uploadedMedia?.mediaContentFingerprint !=
+            mediaContentFingerprint) {
+          throw const PublishDraftValidationException(
+              'บันทึกข้อมูลอัปโหลดไม่สำเร็จ กรุณาลองใหม่');
         }
-        report(PublishFlowStage.uploadingCover, 0.8);
-        final coverLease = cover.retainTemporaryFiles();
-        try {
-          final coverUpload = await createAndUploadFileWithRetry(
-            request: CreateUploadRequest(
-              fileName: 'postdee-cover.jpg',
-              contentType: 'image/jpeg',
-              sizeBytes: cover.imageFile.lengthSync(),
-              width: 1080,
-              height: 1920,
-            ),
-            file: cover.imageFile,
-            createUpload: createUpload,
-            uploadFile: uploadVideoFile,
-          );
-          coverImageS3Key = coverUpload.videoS3Key;
-        } finally {
-          await coverLease?.release();
-        }
+        selectedCover = _coverResult;
+      } else {
+        didApplyWatermark = shouldApplyWatermark;
       }
       final createPost = widget.createPost ?? _apiClient.createPost;
       report(PublishFlowStage.creatingPost, 0.9);
@@ -2516,7 +2573,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
         CreatePostRequest(
           clientRequestId: submittedDraft.submissionRequestId,
           caption: caption,
-          videoS3Key: upload.videoS3Key,
+          videoS3Key: uploadedVideoS3Key!,
+          mediaContentFingerprint: mediaContentFingerprint,
           platforms:
               _selectedPlatforms.map((platform) => platform.apiValue).toList(),
           platformSettings: submittedDraft.platformSettings.toApiJson(
@@ -2925,11 +2983,6 @@ class _UploaderScreenState extends State<UploaderScreen> {
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodySmall),
                   ],
-                  const SizedBox(height: 24),
-                  const ExpansionTile(
-                      title: Text('เครื่องมือเพิ่มเติม'),
-                      tilePadding: EdgeInsets.zero,
-                      children: [_UploadEpToolSection()]),
                 ],
                 if (_currentStep == 1) ...[
                   if (_selectedVideoName != null) ...[
@@ -3175,6 +3228,12 @@ class _UploaderScreenState extends State<UploaderScreen> {
               decoration: const InputDecoration(
                   labelText: 'แคปชั่น',
                   hintText: 'เล่าเรื่องคลิปหรือสิ่งที่อยากบอกลูกค้า...')),
+          if (_aiCaptionFallbackMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(_aiCaptionFallbackMessage!,
+                key: const ValueKey('uploader-ai-caption-fallback'),
+                style: TextStyle(color: AppTheme.textSecondary)),
+          ],
           const SizedBox(height: 12),
           ExpansionTile(
               key: const ValueKey('uploader-ai-open-panel'),
@@ -3402,161 +3461,6 @@ class _UploadStepHeader extends StatelessWidget {
         fontSize: 13.5,
         fontWeight: FontWeight.w700,
         color: AppTheme.textPrimary,
-      ),
-    );
-  }
-}
-
-class _UploadEpToolSection extends StatelessWidget {
-  const _UploadEpToolSection();
-
-  static const _epTrimmerDetail = GrowthToolDetail(
-    id: 'ep_trimmer',
-    title: 'ตัดคลิปเป็น EP',
-    description: 'ตรวจความยาวคลิปก่อนโพสต์ และเตรียมร่าง EP.1 / EP.2 ให้',
-    status: 'เร็ว ๆ นี้',
-    icon: Icons.content_cut,
-    color: Color(0xFFFFD166),
-    prototypeOnly: true,
-    settings: [
-      GrowthToolSettingOption(
-        id: 'platform_duration_check',
-        label: 'ดูความยาวคลิปและข้อจำกัดของแต่ละแพลตฟอร์ม',
-      ),
-      GrowthToolSettingOption(
-        id: 'ep_title_draft',
-        label: 'เตรียมชื่อ EP.1 / EP.2 / EP.3',
-      ),
-      GrowthToolSettingOption(
-        id: 'next_ep_comment_draft',
-        label: 'ร่างข้อความคอมเมนต์ลิงก์ EP ถัดไปเพื่อให้เจ้าของร้านอนุมัติ',
-      ),
-    ],
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      key: const ValueKey('uploader-ep-tool-section'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              Icons.tune_outlined,
-              color: AppTheme.textSecondary,
-              size: 18,
-            ),
-            const SizedBox(width: AppTheme.spaceSm),
-            Expanded(
-              child: Text(
-                'เครื่องมือเสริม',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppTheme.spaceSm),
-        Row(
-          children: const [
-            Expanded(
-              child: _CompactUploadToolButton(
-                key: ValueKey('uploader-tool-ep-trimmer'),
-                detail: _epTrimmerDetail,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _CompactUploadToolButton extends StatelessWidget {
-  const _CompactUploadToolButton({
-    required this.detail,
-    super.key,
-  });
-
-  final GrowthToolDetail detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = detail.color;
-
-    return Semantics(
-      button: true,
-      label: detail.title,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-        onTap: () => showGrowthToolDetailSheet(context, detail),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppTheme.glass.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-            border: Border.all(
-              color: AppTheme.borderSoft.withValues(alpha: 0.84),
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            child: Row(
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-                  ),
-                  child: SizedBox(
-                    width: 34,
-                    height: 34,
-                    child: Icon(
-                      detail.icon,
-                      color: AppTheme.inkFor(color),
-                      size: 19,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        detail.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style:
-                            Theme.of(context).textTheme.labelMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.15,
-                                ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        detail.status,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: AppTheme.textSecondary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right,
-                  color: AppTheme.textMuted,
-                  size: 17,
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -4,6 +4,22 @@ import 'package:postdee_mobile/features/notifications/notifications_screen.dart'
 import 'package:postdee_mobile/features/notifications/push_notification.dart';
 
 void main() {
+  testWidgets('notification tap opens its post', (tester) async {
+    String? openedPost;
+    final center = PostDeeNotificationCenter()
+      ..add(PostDeeNotification(
+          title: 'Done',
+          body: 'Tap',
+          receivedAt: DateTime.now(),
+          postId: 'post-1'));
+    await tester.pumpWidget(MaterialApp(
+        home: NotificationsScreen(
+      center: center,
+      onOpenPost: (id) => openedPost = id,
+    )));
+    await tester.tap(find.text('Done'));
+    expect(openedPost, 'post-1');
+  });
   testWidgets('shows an empty state instead of sample notifications by default',
       (tester) async {
     await tester.pumpWidget(

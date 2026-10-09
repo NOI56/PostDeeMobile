@@ -32,6 +32,7 @@ export type QueuedPost = {
   userId: string;
   caption: string;
   videoS3Key: string;
+  mediaContentFingerprint?: string;
   coverImageS3Key?: string;
   coverFrameTimeMs?: number;
   platforms: Platform[];
@@ -48,6 +49,7 @@ export type CreatePostInput = {
   userId: string;
   caption: string;
   videoS3Key: string;
+  mediaContentFingerprint?: string;
   coverImageS3Key?: string;
   coverFrameTimeMs?: number;
   platforms: Platform[];
@@ -97,6 +99,9 @@ export const isMatchingIdempotentIntent = (
   post.scheduledAt === input.scheduledAt &&
   post.coverFrameTimeMs === input.coverFrameTimeMs &&
   Boolean(post.coverImageS3Key) === Boolean(input.coverImageS3Key) &&
+  (post.mediaContentFingerprint && input.mediaContentFingerprint
+    ? post.mediaContentFingerprint === input.mediaContentFingerprint
+    : post.videoS3Key === input.videoS3Key && post.coverImageS3Key === input.coverImageS3Key) &&
   post.platforms.length === input.platforms.length &&
   post.platforms.every((platform) => input.platforms.includes(platform)) &&
   arePlatformSettingsEqual(post.platformSettings, input.platformSettings, input.platforms) &&
@@ -185,6 +190,7 @@ export const createPostStore = (): PostStore => {
       userId: input.userId,
       caption: input.caption,
       videoS3Key: input.videoS3Key,
+      ...(input.mediaContentFingerprint ? { mediaContentFingerprint: input.mediaContentFingerprint } : {}),
       ...(input.coverImageS3Key
         ? { coverImageS3Key: input.coverImageS3Key }
         : {}),

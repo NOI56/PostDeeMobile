@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/posts/post_detail_screen.dart';
 
@@ -24,20 +27,23 @@ PostSummaryResult _post({
 }
 
 class _FakePostApiClient extends PostDeeApiClient {
-  _FakePostApiClient({this.publishNowError});
+  _FakePostApiClient({this.publishNowError, this.operationGate});
 
   final ApiException? publishNowError;
+  final Future<void>? operationGate;
   final List<String> cancelledPostIds = [];
   final List<String> publishedNowPostIds = [];
 
   @override
   Future<void> cancelPost(String postId) async {
     cancelledPostIds.add(postId);
+    await operationGate;
   }
 
   @override
   Future<void> publishPostNow(String postId) async {
     publishedNowPostIds.add(postId);
+    await operationGate;
     final error = publishNowError;
     if (error != null) {
       throw error;
@@ -46,6 +52,94 @@ class _FakePostApiClient extends PostDeeApiClient {
 }
 
 void main() {
+  testWidgets(
+      'same-owner token refresh keeps details but UID change hides all private content and actions',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final original = sessions.session;
+    addTearDown(() => sessions.signIn(original));
+    sessions.signIn(AuthSession.authenticated(userId: 'owner-a', idToken: 'a'));
+    await tester.pumpWidget(MaterialApp(
+        home: PostDetailScreen(
+            post: _post(scheduledAt: DateTime(2026, 10, 10)),
+            apiClient: _FakePostApiClient())));
+    sessions.signIn(
+        AuthSession.authenticated(userId: 'owner-a', idToken: 'refreshed'));
+    await tester.pumpAndSettle();
+    expect(find.text('โปรโมตครีมกันแดดตัวใหม่'), findsOneWidget);
+    sessions.signIn(AuthSession.authenticated(userId: 'owner-b', idToken: 'b'));
+    await tester.pumpAndSettle();
+    expect(find.text('โปรโมตครีมกันแดดตัวใหม่'), findsNothing);
+    expect(find.byKey(const ValueKey('post-detail-publish-now')), findsNothing);
+    expect(find.byKey(const ValueKey('post-detail-owner-changed')),
+        findsOneWidget);
+    sessions
+        .signIn(AuthSession.authenticated(userId: 'owner-a', idToken: 'again'));
+    await tester.pumpAndSettle();
+    expect(find.text('โปรโมตครีมกันแดดตัวใหม่'), findsNothing);
+  });
+
+  testWidgets(
+      'owner transition during confirmation blocks the original publish command',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final original = sessions.session;
+    addTearDown(() => sessions.signIn(original));
+    sessions.signIn(AuthSession.authenticated(userId: 'owner-a', idToken: 'a'));
+    final api = _FakePostApiClient();
+    await tester.pumpWidget(MaterialApp(
+        home: PostDetailScreen(
+            post: _post(scheduledAt: DateTime(2026, 10, 10)), apiClient: api)));
+    await tester.tap(find.byKey(const ValueKey('post-detail-publish-now')));
+    await tester.pumpAndSettle();
+    sessions.signIn(AuthSession.authenticated(userId: 'owner-b', idToken: 'b'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('โพสต์เลย').last);
+    await tester.pumpAndSettle();
+    expect(api.publishedNowPostIds, isEmpty);
+    expect(find.byKey(const ValueKey('post-detail-owner-changed')),
+        findsOneWidget);
+  });
+
+  for (final cancel in [false, true]) {
+    for (final fails in [false, true]) {
+      testWidgets(
+          'ignores late ${cancel ? 'cancel' : 'publish'} ${fails ? 'failure' : 'completion'} after the owner changed',
+          (tester) async {
+        final sessions = PostDeeAuthSessionStore.instance;
+        final original = sessions.session;
+        addTearDown(() => sessions.signIn(original));
+        sessions
+            .signIn(AuthSession.authenticated(userId: 'owner-a', idToken: 'a'));
+        final gate = Completer<void>();
+        final api = _FakePostApiClient(operationGate: gate.future);
+        await tester.pumpWidget(MaterialApp(
+            home: PostDetailScreen(
+                post: _post(scheduledAt: DateTime(2026, 10, 10)),
+                apiClient: api)));
+        await tester.tap(cancel
+            ? find.bySemanticsLabel('ยกเลิกโพสต์')
+            : find.byKey(const ValueKey('post-detail-publish-now')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(cancel ? 'ยกเลิกโพสต์' : 'โพสต์เลย').last);
+        await tester.pump();
+        sessions
+            .signIn(AuthSession.authenticated(userId: 'owner-b', idToken: 'b'));
+        await tester.pump();
+        if (fails) {
+          gate.completeError(const ApiException('Operation failed'));
+        } else {
+          gate.complete();
+        }
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('post-detail-owner-changed')),
+            findsOneWidget);
+        expect(find.text('โปรโมตครีมกันแดดตัวใหม่'), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
   testWidgets('shows scheduled post details with honest actions',
       (tester) async {
     await tester.pumpWidget(

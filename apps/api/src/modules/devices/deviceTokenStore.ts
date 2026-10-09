@@ -19,6 +19,7 @@ export type DeviceTokenStore = {
   register: (input: RegisterDeviceTokenInput) => Promise<DeviceToken>;
   // All tokens for a user — used by the (future) push sender to target devices.
   listForUser: (userId: string) => Promise<DeviceToken[]>;
+  unregister: (input: { userId: string; token: string }) => Promise<void>;
   // Hard-deletes every token owned by userId. Used by account deletion. Optional
   // because the Prisma store relies on the User cascade instead.
   deleteAllForUser?: (userId: string) => Promise<void>;
@@ -45,6 +46,9 @@ export const createInMemoryDeviceTokenStore = ({
     },
     listForUser: async (userId) =>
       [...tokens.values()].filter((record) => record.userId === userId),
+    unregister: async ({ userId, token }) => {
+      if (tokens.get(token)?.userId === userId) tokens.delete(token);
+    },
     deleteAllForUser: async (userId) => {
       for (const [token, record] of tokens) {
         if (record.userId === userId) {

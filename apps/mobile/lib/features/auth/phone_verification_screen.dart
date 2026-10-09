@@ -80,6 +80,13 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   FirebasePhoneVerificationGateway? _firebasePhoneVerificationGateway;
+  late final String? _ownerUserId =
+      PostDeeAuthSessionStore.instance.session.stableUserId;
+  AuthSession? _verifiedSession;
+
+  bool get _isCurrentOwner =>
+      _ownerUserId == null ||
+      PostDeeAuthSessionStore.instance.session.stableUserId == _ownerUserId;
 
   @override
   void dispose() {
@@ -159,6 +166,10 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       if (!mounted) {
         return;
       }
+      if (!_isCurrentOwner) {
+        _showError('บัญชีเปลี่ยน กรุณาเปิดหน้ายืนยันเบอร์อีกครั้ง');
+        return;
+      }
 
       if (result.isAutoVerified) {
         _finish(result.autoVerifiedSession!);
@@ -209,6 +220,12 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   }
 
   void _finish(AuthSession session) {
+    if (!_isCurrentOwner ||
+        (_ownerUserId != null && session.stableUserId != _ownerUserId)) {
+      _showError('บัญชีเปลี่ยน กรุณาเปิดหน้ายืนยันเบอร์อีกครั้ง');
+      return;
+    }
+    _verifiedSession = session;
     widget.onVerified?.call(session);
     setState(() => _step = _PhoneStep.done);
   }
@@ -474,7 +491,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
           _GreenActionButton(
             label: 'เสร็จสิ้น',
             icon: Icons.done,
-            onPressed: () => Navigator.of(context).maybePop(),
+            onPressed: () => Navigator.of(context).maybePop(_verifiedSession),
           ),
         ],
       ),

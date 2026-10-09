@@ -2,6 +2,40 @@
 
 PostDee backend API reference.
 
+## Audit-fix rollout (2026-10-09, local branch)
+
+- `POST /posts` accepts optional `mediaContentFingerprint`, a lowercase 64-digit
+  SHA-256 identity computed from source clip, watermark mode and rendered cover.
+  Matching identities permit the same draft request to replay across upload-key
+  changes; differing identities return `409 IDEMPOTENCY_KEY_REUSED`.
+  If either side lacks an identity, video and cover keys must match exactly.
+- `DELETE /devices` accepts JSON `{ "token": "..." }`, requires authentication
+  and removes that token only when it still belongs to the caller. It is
+  idempotent. Push payload data now includes owner `userId` and `postId`.
+- `PUT /link-in-bio/draft-images` accepts `{ "draftId": "...", "keys": [],
+  "mode": "add" }` or `mode: "replace"`. At most three owned image keys are
+  accepted. New mobile clients send a 32-hex device base plus `_revision` as
+  `draftId`, persisting its increasing safe-integer revision before requests.
+  Delayed `replace` only removes that base's references at the request revision
+  or earlier; it cannot release newer or other-device references. Add new
+  protections before committing a local draft, then replace its old references.
+  `POST /link-in-bio/images` accepts that optional `draftId`; older clients that
+  omit it upload retained legacy images. Claimed/deleted images cannot be pinned.
+- Provider failures on either caption endpoint return an explicit
+  `isFallback: true` with `quota.charged: false` after releasing the exact usage
+  reservation. If release fails or a custom adapter lacks release support,
+  `charged: true` reports the remaining charge rather than promising a refund.
+  If recount fails after a committed refund, `quota.usageRefreshPending: true`
+  accompanies the last known conservative count; the next subscription refresh
+  reads the authoritative ledger. Legacy transcription errors also release
+  their exact reservation while preserving the existing error response.
+  Successful provider/local-scaffold paths retain their prior quota behavior.
+
+Deploy the two additive migrations and regenerate Prisma before API and then
+mobile. No provider or billing configuration is activated by this patch.
+See `docs/superpowers/plans/2026-10-09-system-audit-fixes.md` for legacy recovery
+and delivery limits.
+
 This document describes the current Express + TypeScript API in `apps/api`.
 Implemented adapters remain mock-safe for local development, while production
 readiness for social publishing, live analytics, Cloudflare R2, real-clip AI
@@ -281,11 +315,14 @@ Image bytes use private R2/S3 storage in durable deployments. The API never
 returns bucket URLs. Missing image repositories fail closed with 503
 `LINK_IN_BIO_IMAGES_UNAVAILABLE`. Invalid bytes/keys return 400
 `LINK_IN_BIO_IMAGE_INVALID`; unknown owner images return 404
-`LINK_IN_BIO_IMAGE_NOT_FOUND`; reaching 20 stored images returns 429
-`LINK_IN_BIO_IMAGE_LIMIT`. Existing upload rate limits also apply. On subsequent
-upload/publication, unused images older than 24 hours are pruned, retaining
-saved profile references and the newest image per slot. Inactive accounts are
-not periodically swept. Account deletion clears all images and metadata.
+`LINK_IN_BIO_IMAGE_NOT_FOUND`; reaching 20 managed images or 20 retained legacy
+images returns 429 `LINK_IN_BIO_IMAGE_LIMIT` for that upload class. Total retained
+metadata is bounded at 40 during transition. Existing upload rate limits apply.
+On subsequent upload/publication, only managed images older than 24 hours without
+saved profile, pinned-device-draft or newest-slot references can be pruned.
+Legacy images stay because an offline old-client draft can still use them.
+Inactive accounts are not periodically swept. Account deletion clears all images
+and metadata. Explicit legacy-image cleanup remains future work.
 
 Apply migration `20261005193000_customize_link_in_bio_profile`, regenerate Prisma,
 deploy API plus bundled font assets, and only then distribute the new mobile build.

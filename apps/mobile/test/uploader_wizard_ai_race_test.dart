@@ -34,9 +34,11 @@ PickedVideoFile _video(String name) {
 }
 
 RealClipCaptionResult _aiResult(
-        {String caption = 'แคปชันจาก AI ของคลิปเดิม'}) =>
+        {String caption = 'แคปชันจาก AI ของคลิปเดิม',
+        bool isFallback = false}) =>
     RealClipCaptionResult(
       caption: caption,
+      isFallback: isFallback,
       captionOptions: [caption],
       hooks: const [],
       hashtags: const [],
@@ -47,10 +49,11 @@ RealClipCaptionResult _aiResult(
         mode: 'AUDIO_ONLY',
         selectedFrameCount: 0,
       ),
-      quota: const RealClipCaptionQuota(
+      quota: RealClipCaptionQuota(
         limit: 50,
         usedThisMonth: 1,
         remainingThisMonth: 49,
+        charged: !isFallback,
       ),
     );
 
@@ -188,6 +191,24 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     AppTheme.applyThemeMode(ThemeMode.light);
+  });
+
+  testWidgets(
+      'shows a fallback notice beside the caption without claiming an AI quota charge',
+      (tester) async {
+    final gate = Completer<RealClipCaptionResult>();
+    final fixture = _AiFixture(captionGate: gate);
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    await _generate(tester);
+    gate.complete(_aiResult(isFallback: true, caption: 'ข้อความสำรอง'));
+    await tester.pumpAndSettle();
+    await _show(
+        tester, find.byKey(const ValueKey('uploader-ai-caption-fallback')));
+    expect(find.textContaining('แคปชันนี้เป็นข้อความสำรอง'), findsOneWidget);
+    expect(find.textContaining('ไม่หักโควตา AI'), findsOneWidget);
+    expect(_caption(tester), 'ข้อความสำรอง');
+    expect(fixture.postsCreated, 0);
   });
 
   testWidgets(
@@ -362,6 +383,8 @@ void main() {
       expect(fixture.uploadedPaths, [fixture.firstVideo.path]);
       expect(fixture.captionsGenerated, 0);
       expect(fixture.postsCreated, 0);
+      expect(frame.existsSync(), isFalse);
+      expect(File(fixture.firstVideo.path).existsSync(), isTrue);
     });
   }
 

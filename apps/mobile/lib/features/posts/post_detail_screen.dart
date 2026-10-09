@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../analytics/analytics_screen.dart';
@@ -26,7 +27,34 @@ class PostDetailScreen extends StatefulWidget {
 class _PostDetailScreenState extends State<PostDetailScreen> {
   late final PostDeeApiClient _apiClient =
       widget.apiClient ?? PostDeeApiClient();
+  final _sessions = PostDeeAuthSessionStore.instance;
+  late final String? _ownerUserId;
+  bool _ownerChanged = false;
   bool _isWorking = false;
+
+  bool get _ownerStillCurrent =>
+      mounted &&
+      !_ownerChanged &&
+      _sessions.session.stableUserId == _ownerUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownerUserId = _sessions.session.stableUserId;
+    _sessions.addListener(_onSessionChanged);
+  }
+
+  void _onSessionChanged() {
+    if (!_ownerChanged && _sessions.session.stableUserId != _ownerUserId) {
+      setState(() => _ownerChanged = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _sessions.removeListener(_onSessionChanged);
+    super.dispose();
+  }
 
   bool get _isScheduled =>
       widget.post.status.toUpperCase() == 'QUEUED' &&
@@ -184,11 +212,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _openPostLink(String value) async {
+    if (!_ownerStillCurrent) return;
     final uri = Uri.tryParse(value);
     if (uri == null || !_isWebLink(value)) return;
 
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened && mounted) {
+    if (!opened && mounted && _ownerStillCurrent) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('เปิดลิงก์โพสต์ไม่สำเร็จ')),
       );
@@ -300,20 +329,21 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _publishNow() async {
+    if (!_ownerStillCurrent) return;
     final confirmed = await _confirm(
       title: 'โพสต์เลยตอนนี้?',
       body: 'โพสต์นี้จะถูกส่งไปทุกช่องทางที่เลือกทันที',
       confirmLabel: 'โพสต์เลย',
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || !_ownerStillCurrent) return;
 
     setState(() => _isWorking = true);
     try {
       await _apiClient.publishPostNow(widget.post.id);
-      if (!mounted) return;
+      if (!mounted || !_ownerStillCurrent) return;
       Navigator.of(context).pop(true);
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_ownerStillCurrent) return;
       setState(() => _isWorking = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -323,7 +353,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ),
       );
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_ownerStillCurrent) return;
       setState(() => _isWorking = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง')),
@@ -346,21 +376,22 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _cancelPost() async {
+    if (!_ownerStillCurrent) return;
     final confirmed = await _confirm(
       title: 'ยกเลิกโพสต์นี้?',
       body: 'โพสต์ที่ตั้งเวลาไว้จะถูกนำออกจากคิว',
       confirmLabel: 'ยกเลิกโพสต์',
       destructive: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || !_ownerStillCurrent) return;
 
     setState(() => _isWorking = true);
     try {
       await _apiClient.cancelPost(widget.post.id);
-      if (!mounted) return;
+      if (!mounted || !_ownerStillCurrent) return;
       Navigator.of(context).pop(true);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_ownerStillCurrent) return;
       setState(() => _isWorking = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('ยกเลิกโพสต์ไม่สำเร็จ ลองใหม่อีกครั้ง')),
@@ -399,6 +430,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   void _openAnalytics() {
+    if (!_ownerStillCurrent) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => Scaffold(
@@ -421,6 +453,21 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_ownerStillCurrent) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('รายละเอียดโพสต์')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายละเอียดโพสต์ใหม่',
+              key: ValueKey('post-detail-owner-changed'),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
     final status = _statusMeta;
     final caption = widget.post.caption.trim();
 

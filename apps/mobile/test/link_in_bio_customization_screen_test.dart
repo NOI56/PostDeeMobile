@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -45,6 +46,22 @@ Future<void> _select(WidgetTester tester, String key, String label) async {
   await tester.pumpAndSettle();
 }
 
+class _ProtectedImageDraftStore implements LinkInBioDraftStore {
+  _ProtectedImageDraftStore(this.saved, this.protected);
+  LinkInBioDraft saved;
+  final Set<String> protected;
+  @override
+  Future<LinkInBioDraft?> loadDraft() async => saved;
+  @override
+  Future<void> saveDraft(LinkInBioDraft draft) async {
+    if (draft.appearance.logoKey != null &&
+        !protected.contains(draft.appearance.logoKey)) {
+      throw StateError('Local save attempted before image protection');
+    }
+    saved = draft;
+  }
+}
+
 void main() {
   const store = SharedPreferencesLinkInBioDraftStore(ownerUserId: 'seller-a');
   setUp(() async {
@@ -54,6 +71,232 @@ void main() {
     await store.saveDraft(_draft);
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
+
+  for (final (label, error, message) in <(String, Object, String)>[
+    (
+      '404',
+      const ApiException('Request failed', statusCode: 404),
+      'ระบบคุ้มครองรูปแบบร่างยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง'
+    ),
+    (
+      '405',
+      const ApiException('Request failed', statusCode: 405),
+      'ระบบคุ้มครองรูปแบบร่างยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง'
+    ),
+    (
+      'network',
+      const SocketException('offline'),
+      'เชื่อมต่อ PostDee ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'
+    ),
+  ]) {
+    testWidgets(
+        'draft protection $label reports its cause and preserves the saved draft',
+        (tester) async {
+      await store.saveDraft(LinkInBioDraft(
+          storeName: _draft.storeName,
+          slug: _draft.slug,
+          autoUpdateFromScheduledPosts: false,
+          enabledLinkIds: _draft.enabledLinkIds,
+          customLinks: _links,
+          appearance: const LinkInBioAppearance(logoKey: _imageKey)));
+      await tester.pumpWidget(_app(LinkInBioScreen(
+          loadProfile: () async => null,
+          loadImage: (_) async => _png,
+          protectDraftImages: (
+              {required draftId, required keys, required mode}) async {
+            throw error;
+          })));
+      await tester.pumpAndSettle();
+      expect(find.text(message), findsOneWidget);
+      await showBioStep(tester, 'info');
+      await tester.enterText(
+          find.byKey(const ValueKey('link-in-bio-store-name')),
+          'ชื่อที่ยังไม่บันทึก');
+      await tester.pumpAndSettle();
+      expect(find.text(message), findsOneWidget);
+      expect((await store.loadDraft())!.storeName, _draft.storeName);
+      expect((await store.loadDraft())!.appearance.logoKey, _imageKey);
+      expect(find.text('มีการแก้ไขที่ยังไม่ได้บันทึก'), findsOneWidget);
+    });
+  }
+
+  testWidgets(
+      'two managers refresh image protection before replacing a shared owner draft',
+      (tester) async {
+    const nextImage =
+        'uploads/seller-a/42345678-1234-1234-1234-123456789abc/profile-logo.png';
+    final protected = {_imageKey};
+    final sentRevisions = <(String, int?)>[];
+    final shared = _ProtectedImageDraftStore(
+        LinkInBioDraft(
+            storeName: _draft.storeName,
+            slug: _draft.slug,
+            autoUpdateFromScheduledPosts: false,
+            enabledLinkIds: _draft.enabledLinkIds,
+            customLinks: _links,
+            appearance: const LinkInBioAppearance(logoKey: _imageKey)),
+        protected);
+    await linkInBioDraftReferenceIdForUser('seller-a');
+    await saveLinkInBioProtectedImageKeysForUser('seller-a', protected);
+    LinkInBioScreen screen(String id) => LinkInBioScreen(
+        key: ValueKey(id),
+        draftStore: shared,
+        loadProfile: () async => null,
+        loadImage: (_) async => _png,
+        pickImage: () async => _png,
+        uploadImage: ({required slot, required bytes}) async => nextImage,
+        protectDraftImages: (
+            {required draftId, required keys, required mode}) async {
+          final preferences = await SharedPreferences.getInstance();
+          sentRevisions.add((
+            draftId,
+            preferences
+                .getInt('postdee_link_in_bio.user.seller-a.image_revision')
+          ));
+          if (mode == 'replace') protected.clear();
+          protected.addAll(keys);
+        });
+    await tester.pumpWidget(_app(screen('first-manager')));
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.byKey(const ValueKey('first-manager'))))
+        .push(
+            MaterialPageRoute<void>(builder: (_) => screen('second-manager')));
+    await tester.pumpAndSettle();
+    await showBioStep(tester, 'info');
+    await _tap(tester, 'link-in-bio-image-logo');
+    expect(shared.saved.appearance.logoKey, nextImage);
+    expect(protected, {nextImage});
+    await _tap(tester, 'link-in-bio-close-editor');
+    await _tap(tester, 'link-in-bio-back');
+    await showBioStep(tester, 'info');
+    await tester.enterText(find.byKey(const ValueKey('link-in-bio-store-name')),
+        'ชื่อจากตัวจัดการแรก');
+    await tester.pumpAndSettle();
+    expect(shared.saved.storeName, 'ชื่อจากตัวจัดการแรก');
+    expect(shared.saved.appearance.logoKey, _imageKey);
+    expect(protected, {_imageKey});
+    for (final (token, persistedRevision) in sentRevisions) {
+      expect(token, matches(RegExp(r'^[a-f0-9]{32}_[1-9][0-9]*$')));
+      expect(persistedRevision,
+          greaterThanOrEqualTo(int.parse(token.split('_').last)));
+    }
+  });
+
+  testWidgets(
+      'confirmed protected image allows offline local edits after restart and retries stale pin cleanup',
+      (tester) async {
+    await store.saveDraft(LinkInBioDraft(
+        storeName: _draft.storeName,
+        slug: _draft.slug,
+        autoUpdateFromScheduledPosts: false,
+        enabledLinkIds: _draft.enabledLinkIds,
+        customLinks: _links,
+        appearance: const LinkInBioAppearance(logoKey: _imageKey)));
+    await linkInBioDraftReferenceIdForUser('seller-a');
+    await saveLinkInBioProtectedImageKeysForUser('seller-a', {_imageKey});
+    final calls = <String>[];
+    var offline = true;
+    await tester.pumpWidget(_app(LinkInBioScreen(
+        loadProfile: () async => null,
+        loadImage: (_) async => _png,
+        protectDraftImages: (
+            {required draftId, required keys, required mode}) async {
+          calls.add(mode);
+          if (offline) throw StateError('offline');
+        })));
+    await tester.pumpAndSettle();
+    expect(calls, isEmpty);
+    await showBioStep(tester, 'info');
+    await tester.enterText(find.byKey(const ValueKey('link-in-bio-store-name')),
+        'ชื่อใหม่แบบออฟไลน์');
+    await tester.pumpAndSettle();
+    expect((await store.loadDraft())!.storeName, 'ชื่อใหม่แบบออฟไลน์');
+    expect(find.text('บันทึกแบบร่างในเครื่องแล้ว'), findsOneWidget);
+    expect(calls, ['replace']);
+    offline = false;
+    await _tap(tester, 'link-in-bio-save-draft');
+    expect(calls, ['replace', 'replace']);
+    expect(
+        await loadLinkInBioProtectedImageKeysForUser('seller-a'), {_imageKey});
+  });
+
+  testWidgets('canceling a replacement keeps the saved draft image protected',
+      (tester) async {
+    const replacement =
+        'uploads/seller-a/22345678-1234-1234-1234-123456789abc/profile-logo.png';
+    await store.saveDraft(LinkInBioDraft(
+        storeName: _draft.storeName,
+        slug: _draft.slug,
+        autoUpdateFromScheduledPosts: false,
+        enabledLinkIds: _draft.enabledLinkIds,
+        customLinks: _links,
+        appearance: const LinkInBioAppearance(logoKey: _imageKey)));
+    final calls = <Set<String>>[];
+    await tester.pumpWidget(_app(LinkInBioScreen(
+        loadProfile: () async => null,
+        pickImage: () async => _png,
+        uploadImage: ({required slot, required bytes}) async => replacement,
+        loadImage: (_) async => _png,
+        protectDraftImages: (
+            {required draftId, required keys, required mode}) async {
+          calls.add({...keys});
+        })));
+    await tester.pumpAndSettle();
+    expect(calls, [
+      {_imageKey}
+    ]);
+    await _tap(tester, 'link-in-bio-decorate');
+    await _tap(tester, 'link-in-bio-disclosure-images');
+    await _tap(tester, 'link-in-bio-image-logo');
+    await tester.tap(find.byTooltip('ปิด'));
+    await tester.pumpAndSettle();
+    expect((await store.loadDraft())!.appearance.logoKey, _imageKey);
+    expect(calls, [
+      {_imageKey}
+    ]);
+  });
+
+  testWidgets(
+      'new draft image must be protected before local save and a failed protection remains retryable',
+      (tester) async {
+    const replacement =
+        'uploads/seller-a/32345678-1234-1234-1234-123456789abc/profile-logo.png';
+    await store.saveDraft(LinkInBioDraft(
+        storeName: _draft.storeName,
+        slug: _draft.slug,
+        autoUpdateFromScheduledPosts: false,
+        enabledLinkIds: _draft.enabledLinkIds,
+        customLinks: _links,
+        appearance: const LinkInBioAppearance(logoKey: _imageKey)));
+    var fail = true;
+    final calls = <String>[];
+    await tester.pumpWidget(_app(LinkInBioScreen(
+        loadProfile: () async => null,
+        pickImage: () async => _png,
+        uploadImage: ({required slot, required bytes}) async => replacement,
+        loadImage: (_) async => _png,
+        protectDraftImages: (
+            {required draftId, required keys, required mode}) async {
+          calls.add('$mode:${keys.single}');
+          if (keys.contains(replacement) && mode == 'add') {
+            expect((await store.loadDraft())!.appearance.logoKey, _imageKey);
+            if (fail) throw StateError('offline');
+          }
+          if (mode == 'replace') {
+            expect((await store.loadDraft())!.appearance.logoKey, replacement);
+          }
+        })));
+    await tester.pumpAndSettle();
+    await showBioStep(tester, 'info');
+    await _tap(tester, 'link-in-bio-image-logo');
+    expect((await store.loadDraft())!.appearance.logoKey, _imageKey);
+    expect(find.text('มีการแก้ไขที่ยังไม่ได้บันทึก'), findsOneWidget);
+    fail = false;
+    await _tap(tester, 'link-in-bio-save-draft');
+    expect((await store.loadDraft())!.appearance.logoKey, replacement);
+    expect(calls.last, 'replace:$replacement');
+    expect(find.text('บันทึกแบบร่างในเครื่องแล้ว'), findsOneWidget);
+  });
 
   testWidgets(
       'decoration apply stays above an open keyboard on a narrow screen',
@@ -114,6 +357,8 @@ void main() {
     final pending = Completer<Uint8List>();
     await tester.pumpWidget(_app(LinkInBioScreen(
         loadProfile: () => Future.value(null),
+        protectDraftImages: (
+            {required draftId, required keys, required mode}) async {},
         loadImage: (_) => pending.future)));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-decorate');
@@ -254,6 +499,8 @@ void main() {
     await tester.pumpWidget(_app(LinkInBioScreen(
         loadProfile: () async => null,
         pickImage: () async => _png,
+        protectDraftImages: (
+            {required draftId, required keys, required mode}) async {},
         uploadImage: ({required slot, required bytes}) async {
           expect(slot, 'logo');
           expect(bytes, _png);
@@ -298,6 +545,8 @@ void main() {
     await tester.pumpWidget(_app(LinkInBioScreen(
         loadProfile: () async => null,
         pickImage: () async => _png,
+        protectDraftImages: (
+            {required draftId, required keys, required mode}) async {},
         uploadImage: ({required slot, required bytes}) async =>
             throw StateError('offline'),
         loadImage: (_) async => _png)));

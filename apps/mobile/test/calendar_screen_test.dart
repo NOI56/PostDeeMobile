@@ -26,6 +26,29 @@ ScheduledPostResult _queuedFixture(DateTime now) => ScheduledPostResult(
     createdAt: now);
 
 void main() {
+  testWidgets('opens the current month when older scheduled history exists',
+      (tester) async {
+    final now = DateTime(2026, 10, 9);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: CalendarScreen(
+      now: () => now,
+      loadScheduledPosts: () async => [
+        ScheduledPostResult(
+            id: 'history',
+            caption: 'Old post',
+            videoS3Key: 'uploads/history.mp4',
+            platforms: const ['TIKTOK'],
+            status: 'PUBLISHED',
+            createdAt: DateTime(2026, 1, 1),
+            scheduledAt: DateTime(2026, 1, 2))
+      ],
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.text('ตุลาคม 2026'), findsOneWidget);
+    expect(find.text('9 ต.ค. 2026'), findsOneWidget);
+    expect(find.text('Old post'), findsNothing);
+  });
   testWidgets(
       'rechecks a downgrade before PATCH without changing the old queue',
       (tester) async {
@@ -196,6 +219,7 @@ void main() {
         theme: AppTheme.dark,
         home: Scaffold(
           body: CalendarScreen(
+            now: () => DateTime(2026, 6, 1),
             loadScheduledPosts: () => scheduledPosts.future,
           ),
         ),
@@ -249,6 +273,7 @@ void main() {
         home: Scaffold(
           body: CalendarScreen(
             refreshToken: 0,
+            now: () => DateTime(2026, 6, 1),
             loadScheduledPosts: loadScheduledPosts,
           ),
         ),
@@ -277,6 +302,7 @@ void main() {
         home: Scaffold(
           body: CalendarScreen(
             refreshToken: 1,
+            now: () => DateTime(2026, 6, 1),
             loadScheduledPosts: loadScheduledPosts,
           ),
         ),
@@ -298,6 +324,7 @@ void main() {
         theme: AppTheme.dark,
         home: Scaffold(
           body: CalendarScreen(
+            now: () => DateTime(2026, 6, 1),
             loadScheduledPosts: () async => [
               ScheduledPostResult(
                 id: 'post-actions',
@@ -870,6 +897,7 @@ void main() {
         theme: AppTheme.dark,
         home: Scaffold(
           body: CalendarScreen(
+            now: () => DateTime(2026, 2, 1),
             toLocalTime: (value) => value.toUtc().add(const Duration(hours: 7)),
             loadScheduledPosts: () async => [
               ScheduledPostResult(
@@ -902,6 +930,7 @@ void main() {
         theme: AppTheme.dark,
         home: Scaffold(
           body: CalendarScreen(
+            now: () => DateTime(2026, 6, 1),
             loadScheduledPosts: () async => [
               ScheduledPostResult(
                 id: 'partial-post',
@@ -941,6 +970,7 @@ void main() {
         theme: AppTheme.dark,
         home: Scaffold(
           body: CalendarScreen(
+            now: () => DateTime(2026, 6, 1),
             loadScheduledPosts: () async => [
               ScheduledPostResult(
                 id: 'unknown-outcome',
@@ -995,6 +1025,7 @@ void main() {
           theme: AppTheme.dark,
           home: Scaffold(
             body: CalendarScreen(
+              now: () => DateTime(2026, 6, 1),
               loadScheduledPosts: () async => [post],
               onOpenPostDetail: (value) => openedPost = value,
             ),
@@ -1021,6 +1052,7 @@ void main() {
         theme: AppTheme.dark,
         home: Scaffold(
           body: CalendarScreen(
+            now: () => DateTime(2026, 6, 1),
             loadScheduledPosts: () async => [
               ScheduledPostResult(
                 id: 'publishing-post',
@@ -1077,7 +1109,9 @@ void main() {
       MaterialApp(
         theme: AppTheme.dark,
         home: Scaffold(
-          body: CalendarScreen(loadScheduledPosts: loadScheduledPosts),
+          body: CalendarScreen(
+              now: () => DateTime(2026, 6, 1),
+              loadScheduledPosts: loadScheduledPosts),
         ),
       ),
     );

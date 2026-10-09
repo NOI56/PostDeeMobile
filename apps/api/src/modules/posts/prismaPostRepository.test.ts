@@ -325,6 +325,7 @@ describe('createPrismaPostRepository', () => {
       userId: 'seller-replay',
       caption: 'Original intent',
       videoS3Key: 'uploads/seller-replay/original.mp4',
+      mediaContentFingerprint: 'a'.repeat(64),
       selectedPlatforms: ['TIKTOK'] as const,
       scheduledAt: null,
       status: 'QUEUED' as const,
@@ -350,6 +351,7 @@ describe('createPrismaPostRepository', () => {
         clientRequestId: 'same-request',
         caption: persisted.caption,
         videoS3Key: 'uploads/seller-replay/retry-upload.mp4',
+        mediaContentFingerprint: persisted.mediaContentFingerprint,
         platforms: ['TIKTOK'],
         monthlyPostUnitLimit: 0,
         now: '2026-06-15T10:00:00.000Z'
@@ -375,6 +377,7 @@ describe('createPrismaPostRepository', () => {
       userId: 'seller-idempotent-race',
       caption: 'One durable post',
       videoS3Key: 'uploads/seller-idempotent-race/original.mp4',
+      mediaContentFingerprint: 'a'.repeat(64),
       selectedPlatforms: ['TIKTOK'] as const,
       scheduledAt: null,
       status: 'QUEUED' as const,
@@ -410,6 +413,7 @@ describe('createPrismaPostRepository', () => {
         clientRequestId: 'same-race',
         caption: persisted.caption,
         videoS3Key: 'uploads/seller-idempotent-race/retry.mp4',
+        mediaContentFingerprint: persisted.mediaContentFingerprint,
         platforms: ['TIKTOK'],
         monthlyPostUnitLimit: 3,
         now: '2026-06-15T10:00:00.000Z'

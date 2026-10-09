@@ -58,6 +58,71 @@ final _tallLogo = base64Decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAIAAAAICAYAAADTLS5CAAAAFElEQVR4nGO4Y6P7X87tzn8GyhgABfckGXD401AAAAAASUVORK5CYII=');
 
 void main() {
+  testWidgets(
+      'category resumes after an uncategorized link with a new heading and rhythm',
+      (tester) async {
+    final template = getProfileTemplate('cute-sticker-layers')!;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: BioTemplatePreview(
+                    template: template,
+                    storeName: 'ร้าน',
+                    links: const [
+                      LinkInBioCustomLink(
+                          id: 'first',
+                          title: 'หนึ่ง',
+                          url: 'https://example.com/1',
+                          category: 'สินค้า'),
+                      LinkInBioCustomLink(
+                          id: 'empty',
+                          title: 'สอง',
+                          url: 'https://example.com/2'),
+                      LinkInBioCustomLink(
+                          id: 'again',
+                          title: 'สาม',
+                          url: 'https://example.com/3',
+                          category: 'สินค้า'),
+                    ],
+                    appearance: LinkInBioAppearance.forTemplate(template.id),
+                    images: const {},
+                    staticPreview: true)))));
+    await tester.pumpAndSettle();
+    expect(find.text('สินค้า'), findsNWidgets(2));
+    final first = tester
+        .getSize(find.byKey(const ValueKey('link-in-bio-template-link-first')));
+    final empty = tester
+        .getSize(find.byKey(const ValueKey('link-in-bio-template-link-empty')));
+    final again = tester
+        .getSize(find.byKey(const ValueKey('link-in-bio-template-link-again')));
+    expect(empty.width, lessThan(first.width));
+    expect(again.width, first.width);
+  });
+
+  testWidgets(
+      'outline on an opaque white panel stays transparent above a black page',
+      (tester) async {
+    final template = getProfileTemplate('minimal-mono-pair')!;
+    final appearance = LinkInBioAppearance.forTemplate(template.id).copyWith(
+        surfaceColor: '#ffffff',
+        background: const LinkInBioBackground(color: '#000000'),
+        buttonStyle: const LinkInBioTextStyle(color: '#000000'));
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: BioTemplatePreview(
+                    template: template,
+                    storeName: 'ร้าน',
+                    links: _links.take(1).toList(),
+                    appearance: appearance,
+                    images: const {},
+                    staticPreview: true)))));
+    await tester.pumpAndSettle();
+    final button = tester.widget<Container>(
+        find.byKey(const ValueKey('link-in-bio-template-link-link-0')));
+    expect((button.decoration as BoxDecoration).color, Colors.transparent);
+  });
+
   for (final composition in ['collage', 'torn', 'tag', 'notebook']) {
     testWidgets('$composition paper preserves the owner panel color',
         (tester) async {
@@ -247,8 +312,8 @@ void main() {
         expect(identical((image.image as MemoryImage).bytes, bytes), isTrue,
             reason: template.id);
         expect(image.alignment, Alignment.center, reason: template.id);
-        final fitted = applyBoxFit(
-            image.fit!, sourceSize, tester.getSize(imageFinder));
+        final fitted =
+            applyBoxFit(image.fit!, sourceSize, tester.getSize(imageFinder));
         expect(fitted.source, sourceSize, reason: template.id);
         expect(fitted.destination.aspectRatio,
             closeTo(sourceSize.aspectRatio, .000001),

@@ -11,7 +11,7 @@ import { linkInBioPlatformLogoFiles } from './linkInBioPlatformLogos.js';
 import { readLinkInBioUrl } from './linkInBioDestinations.js';
 
 export type LinkInBioRouteOptions = {
-  validateImages?: (userId: string, appearance: LinkInBioAppearance) => Promise<void>;
+  validateImages?: (userId: string, appearance: LinkInBioAppearance) => Promise<void | (() => Promise<void>)>;
   onPublished?: (userId: string, profile: LinkInBioProfile) => Promise<void>;
   withImageMutation?: (userId: string, operation: () => Promise<LinkInBioProfile>) => Promise<LinkInBioProfile>;
 };
@@ -115,12 +115,14 @@ export const registerLinkInBioRoutes = (
     response.set('Cache-Control', 'no-store');
     try {
       await userStore?.ensure(user);
+      const imageGuard: { release?: () => Promise<void> } = {};
       const commit = async () => {
         const appearance = input.appearance ?? normalizeStoredLinkInBioAppearance((await store.getForUser(user.id))?.appearance, input.links);
         if (appearance.logoKey || appearance.coverKey || appearance.background.imageKey) {
           if (!options.validateImages) throw new LinkInBioError(400, 'LINK_IN_BIO_IMAGE_INVALID', 'ระบบรูปหน้าโปรไฟล์ยังไม่พร้อม กรุณานำรูปออกก่อนเผยแพร่');
         }
-        await options.validateImages?.(user.id, appearance);
+        const releaseImages = await options.validateImages?.(user.id, appearance);
+        imageGuard.release = typeof releaseImages === 'function' ? releaseImages : undefined;
         // Omitted appearance remains omitted at the atomic store update, so an
         // older client cannot overwrite a concurrent appearance customization.
         return store.publish({ ...input, userId: user.id });
@@ -130,6 +132,9 @@ export const registerLinkInBioRoutes = (
       const profile = options.withImageMutation
         ? await options.withImageMutation(user.id, commit)
         : await commit();
+      // Keep guards after an uncertain write. After a confirmed commit, SQL
+      // pruning also checks the persisted profile before claiming an image.
+      try { await imageGuard.release?.(); } catch { /* Publication is already accepted. */ }
       // A cleanup failure after the commit cannot change publication success.
       try { await options.onPublished?.(user.id, profile); } catch { /* The page is already committed. */ }
       response.json({ status: 'ok', profile });

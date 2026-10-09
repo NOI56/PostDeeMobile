@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
@@ -67,11 +69,55 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Object? _subscriptionLoadError;
   var _subscriptionLoadGeneration = 0;
   var _isBillingInProgress = false;
+  final Map<String, StoreProductInfo> _products = {};
+  var _isPriceLoading = true;
+  var _priceLoadFailed = false;
+  var _priceLoadGeneration = 0;
+  Timer? _priceTimer;
 
   @override
   void initState() {
     super.initState();
     _loadSubscription();
+    _loadPrices();
+  }
+
+  Future<void> _loadPrices() async {
+    final generation = ++_priceLoadGeneration;
+    _priceTimer?.cancel();
+    setState(() { _isPriceLoading = true; _priceLoadFailed = false; });
+    _priceTimer = Timer(_service.productQueryTimeout, () {
+      if (!mounted || generation != _priceLoadGeneration) return;
+      _priceLoadGeneration++;
+      setState(() { _isPriceLoading = false; _priceLoadFailed = true; });
+    });
+    try {
+      final products = await _service.loadPaidProducts();
+      if (!mounted || generation != _priceLoadGeneration) return;
+      _priceTimer?.cancel();
+      setState(() {
+        _products..clear()..addEntries(products.map((product) => MapEntry(product.id, product)));
+        _isPriceLoading = false;
+        _priceLoadFailed = products.isEmpty;
+      });
+    } catch (_) {
+      if (!mounted || generation != _priceLoadGeneration) return;
+      _priceTimer?.cancel();
+      setState(() { _isPriceLoading = false; _priceLoadFailed = true; });
+    }
+  }
+
+  @override
+  void dispose() {
+    _priceLoadGeneration++;
+    _priceTimer?.cancel();
+    super.dispose();
+  }
+
+  String _price(String productId) {
+    final price = _products[productId]?.price.trim();
+    if (price != null && price.isNotEmpty) return '$price/เดือน';
+    return _isPriceLoading ? 'กำลังโหลดราคา...' : 'ตรวจราคาในร้านค้า';
   }
 
   Future<void> _loadSubscription() async {
@@ -147,7 +193,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _PlanOption(
         id: 'starter',
         name: 'Starter',
-        price: '199 ฿/เดือน',
+        price: _price(_service.starterProductId),
         isCurrent: currentPlanId == 'starter',
         features: const [
           _PlanFeature('โพสต์หลายช่องทาง 120 หน่วย/เดือน'),
@@ -159,7 +205,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _PlanOption(
         id: 'pro',
         name: 'Pro',
-        price: '299 ฿/เดือน',
+        price: _price(_service.productId),
         isCurrent: currentPlanId == 'pro',
         isRecommended: true,
         features: const [
@@ -409,8 +455,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
               if (_service.hasPendingConfirmation) ...[
                 _PaywallSubscriptionStatus(
                   key: const ValueKey('paywall-purchase-awaiting-confirmation'),
-                  message: const StoreSubscriptionConfirmationPendingException()
-                      .message,
+                  message: _service.hasPendingStoreAcknowledgement
+                      ? 'ร้านค้ายังปิดรายการซื้อไม่สำเร็จ กรุณาตรวจสอบรายการเดิมก่อนซื้อซ้ำ'
+                      : _service.hasPendingStoreOperation
+                          ? const StoreSubscriptionStorePendingException().message
+                          : const StoreSubscriptionConfirmationPendingException().message,
                   onRetry: _isBillingInProgress ? null : _recheckPurchase,
                   retryKey: const ValueKey('paywall-retry-purchase'),
                   retryLabel: 'ตรวจสอบการซื้ออีกครั้ง',
@@ -431,6 +480,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 if (index < _plans.length - 1) const SizedBox(height: 13),
               ],
               const SizedBox(height: 16),
+              if (_priceLoadFailed)
+                TextButton(
+                  key: const ValueKey('paywall-price-error'),
+                  onPressed: _isBillingInProgress ? null : _loadPrices,
+                  child: const Text('โหลดราคาจากร้านค้าอีกครั้ง'),
+                ),
               if (_service.supportsUnifiedRestore) ...[
                 SizedBox(
                   height: 48,

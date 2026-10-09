@@ -1536,6 +1536,8 @@ void main() {
       () {
     final result = RealClipCaptionResult.fromJson({
       'caption': 'Caption option',
+      'model': 'local-real-clip-template',
+      'isFallback': true,
       'captionOptions': ['Caption option', 'Second option'],
       'hooks': ['Hook one', 'Hook two'],
       'hashtags': ['#PostDee', '#ShortVideo'],
@@ -1558,10 +1560,14 @@ void main() {
         'limit': 120,
         'usedThisMonth': 1,
         'remainingThisMonth': 119,
+        'charged': false,
       },
     });
 
     expect(result.caption, 'Caption option');
+    expect(result.model, 'local-real-clip-template');
+    expect(result.isFallback, isTrue);
+    expect(result.quota.charged, isFalse);
     expect(result.captionOptions, ['Caption option', 'Second option']);
     expect(result.hooks, ['Hook one', 'Hook two']);
     expect(result.hashtags, ['#PostDee', '#ShortVideo']);

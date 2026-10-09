@@ -25,7 +25,7 @@ describe('publish notifier', () => {
       tokens: ['t1', 't2'],
       title: 'ส่งคลิปสำเร็จ',
       body: 'ระบบส่งคลิปไปยังช่องทางที่เลือกเรียบร้อยแล้ว แตะเพื่อดูผลลัพธ์',
-      data: { postId: 'p1', type: 'publish_result' }
+      data: { postId: 'p1', userId: 'u1', type: 'publish_result' }
     });
   });
 

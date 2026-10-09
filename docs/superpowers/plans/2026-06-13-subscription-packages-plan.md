@@ -7,6 +7,14 @@
 > existing prices stay the same; editing-minute quotas and top-ups are retired
 > from the active mobile offer. Public deployment/migration is a release gate.
 
+> Reliability update (2026-10-09, local branch): quota limits and package rules
+> stay unchanged. Failed caption providers refund only their exact reservation;
+> fallback responses identify `isFallback` and `quota.charged`. A failed usage
+> recount keeps the last known conservative count with `usageRefreshPending`.
+> Mobile prices come from the store and pending purchases are rechecked without
+> starting a second purchase. Verification and release order are recorded in
+> `2026-10-09-system-audit-fixes.md`; these changes are not deployed yet.
+
 > Scheduling update (2026-10-08): Starter allows up to 14 days ahead, and Pro
 > allows up to 30 days ahead. New schedules and reschedules use the current
 > plan and current request time. Previously accepted queue entries keep their

@@ -8,6 +8,7 @@ import 'package:postdee_mobile/features/uploader/cover_image_processor.dart';
 import 'package:postdee_mobile/features/uploader/platform_publish_settings.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
+import 'package:postdee_mobile/features/uploader/publish_media_identity.dart';
 
 void main() {
   late Directory root;
@@ -42,6 +43,7 @@ void main() {
     },
     DateTime? scheduledAt,
     PlatformPublishSettings platformSettings = const PlatformPublishSettings(),
+    PublishDraftUploadedMedia? uploadedMedia,
   }) {
     return PublishDraftSaveRequest(
       id: id,
@@ -57,6 +59,7 @@ void main() {
       watermarkEnabled: watermarkEnabled,
       platformApiValues: platformApiValues,
       platformSettings: platformSettings,
+      uploadedMedia: uploadedMedia,
       scheduledAt: scheduledAt ?? DateTime.utc(2026, 8, 12, 11, 30),
       coverImageFile: cover,
       coverDesign: cover == null
@@ -195,6 +198,29 @@ void main() {
     expect(sameIntent.submissionRequestId, first.submissionRequestId);
     expect(changedCaption.submissionRequestId, first.submissionRequestId);
     expect(changedMedia.submissionRequestId, first.submissionRequestId);
+  });
+
+  test(
+      'keeps uploaded keys across retry and restart but discards them when source media changes',
+      () async {
+    final video = await fixture('source.mp4', [1, 2, 3, 4]);
+    final changed = await fixture('changed.mp4', [4, 3, 2, 1]);
+    final store = storeFor('firebase-user-a');
+    final fingerprint = await publishMediaContentFingerprint(
+        videoFile: video, watermarkEnabled: true);
+    final receipt = PublishDraftUploadedMedia(
+        mediaContentFingerprint: fingerprint,
+        videoS3Key: 'uploads/firebase-user-a/video/clip.mp4');
+    final saved =
+        await store.saveDraft(request(video: video, uploadedMedia: receipt));
+    final restored = await store.loadDraft(saved.id);
+    expect(restored!.uploadedMedia!.videoS3Key, receipt.videoS3Key);
+    expect(restored.mediaContentFingerprint, fingerprint);
+    final replacement =
+        await store.saveDraft(request(video: changed, uploadedMedia: receipt));
+    expect(replacement.submissionRequestId, saved.submissionRequestId);
+    expect(replacement.uploadedMedia, isNull);
+    expect(replacement.mediaContentFingerprint, isNot(fingerprint));
   });
 
   test('reads v2 drafts without settings but rejects incomplete v3 drafts',

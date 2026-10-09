@@ -1575,6 +1575,7 @@ class CreatePostRequest {
     this.scheduledAt,
     this.coverImageS3Key,
     this.coverFrameTimeMs,
+    this.mediaContentFingerprint,
   });
 
   final String clientRequestId;
@@ -1585,11 +1586,13 @@ class CreatePostRequest {
   final DateTime? scheduledAt;
   final String? coverImageS3Key;
   final int? coverFrameTimeMs;
+  final String? mediaContentFingerprint;
 
   Map<String, Object?> toJson() => {
         'clientRequestId': clientRequestId,
         'caption': caption,
         'videoS3Key': videoS3Key,
+        if (mediaContentFingerprint != null) 'mediaContentFingerprint': mediaContentFingerprint,
         'platforms': platforms,
         if (platformSettings.isNotEmpty) 'platformSettings': platformSettings,
         if (scheduledAt != null)
@@ -1716,17 +1719,20 @@ class RealClipCaptionQuota {
     required this.limit,
     required this.usedThisMonth,
     required this.remainingThisMonth,
+    this.charged = true,
   });
 
   final int limit;
   final int usedThisMonth;
   final int remainingThisMonth;
+  final bool charged;
 
   factory RealClipCaptionQuota.fromJson(Map<String, Object?> json) =>
       RealClipCaptionQuota(
         limit: json['limit'] as int,
         usedThisMonth: json['usedThisMonth'] as int,
         remainingThisMonth: json['remainingThisMonth'] as int,
+        charged: json['charged'] as bool? ?? true,
       );
 }
 
@@ -1741,6 +1747,8 @@ class RealClipCaptionResult {
     required this.source,
     required this.quota,
     this.context = RealClipCaptionContext.fallback,
+    this.model,
+    this.isFallback = false,
   });
 
   final String caption;
@@ -1752,6 +1760,8 @@ class RealClipCaptionResult {
   final RealClipCaptionSource source;
   final RealClipCaptionQuota quota;
   final RealClipCaptionContext context;
+  final String? model;
+  final bool isFallback;
 
   factory RealClipCaptionResult.fromJson(Map<String, Object?> json) {
     final source = json['source'];
@@ -1774,6 +1784,8 @@ class RealClipCaptionResult {
       hashtags: _readStringList(json['hashtags']),
       seoKeywords: _readStringList(json['seoKeywords']),
       searchTitle: json['searchTitle'] as String,
+      model: json['model'] as String?,
+      isFallback: json['isFallback'] as bool? ?? false,
       source: RealClipCaptionSource.fromJson(source),
       quota: RealClipCaptionQuota.fromJson(quota),
       context: context is Map<String, Object?>
@@ -2629,15 +2641,28 @@ class PostDeeApiClient {
     return LinkInBioProfileResult.fromJson(profile, apiBaseUri: _baseUri);
   }
 
+  Future<void> protectLinkInBioDraftImages({required String draftId, required Set<String> keys, required String mode}) async {
+    if (!RegExp(r'^[a-zA-Z0-9_-]{8,80}$').hasMatch(draftId) || keys.length > 3 ||
+        keys.any((key) => !isSafeLinkInBioImageKey(key)) || !const {'add', 'replace'}.contains(mode)) {
+      throw const ApiException('Invalid profile draft image references');
+    }
+    final response = await _requestJson('PUT', '/link-in-bio/draft-images', body: {
+      'draftId': draftId, 'keys': keys.toList()..sort(), 'mode': mode,
+    });
+    if (response['status'] != 'ok') {
+      throw const ApiException('Profile draft image protection was not confirmed');
+    }
+  }
+
   Future<String> uploadLinkInBioImage(
-      {required String slot, required Uint8List bytes}) async {
+      {required String slot, required Uint8List bytes, String? draftId}) async {
     if (!const {'logo', 'cover', 'background'}.contains(slot) ||
-        !_isProfilePng(bytes)) {
+        !_isProfilePng(bytes) || (draftId != null && !RegExp(r'^[a-zA-Z0-9_-]{8,80}$').hasMatch(draftId))) {
       throw const ApiException(
           'Profile images must be PNG files up to 512 KiB and 1280 pixels');
     }
     final response = await _postJson('/link-in-bio/images',
-        {'slot': slot, 'imageBase64': base64Encode(bytes)});
+        {'slot': slot, 'imageBase64': base64Encode(bytes), if (draftId != null) 'draftId': draftId});
     final image = response['image'];
     final key = image is Map<String, Object?> ? image['key'] : null;
     if (response['status'] != 'ok' ||
@@ -2830,6 +2855,12 @@ class PostDeeApiClient {
       'token': token,
       if (platform != null) 'platform': platform,
     });
+  }
+
+  /// Removes only this caller's binding; an old account cannot remove a token
+  /// that has already been rebound to another account on a shared device.
+  Future<void> unregisterDeviceToken(String token) async {
+    await _requestJson('DELETE', '/devices', body: {'token': token});
   }
 
   Future<List<SocialConnectionResult>> listSocialConnections() async {

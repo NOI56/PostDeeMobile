@@ -2,6 +2,26 @@
 
 Build roadmap for PostDee.
 
+## System audit fixes (2026-10-09, implementation branch)
+
+- Fix correctness before adding new screens: media-aware draft replay and saved
+  upload receipts; account-scoped push registration/history; bounded startup
+  restoration that cannot replace a newer session.
+- Refresh Home/account quota after navigation, show stale-load failures and list
+  all post statuses. Keep Calendar on the current month. Remove disabled EP UI.
+- Autosave local shop edits with clear state; keep publishing explicit. Align
+  mobile category rhythm/outline contrast with HTML, pause hidden animations and
+  pin device-draft images before saving. Preserve legacy image references.
+- Read store prices, bound purchase/restore waiting without duplicate purchases,
+  identify AI fallback/refund its exact reservation, preserve text typed during
+  template saving, and finish login legal/self-service and notification links.
+- Rollout needs additive Post/Image migrations and API before mobile. No paid
+  provider, social publishing, Production activation, purchase or OTP test is
+  authorized by the local fix itself. Native E2E remains a separate release gate.
+- Current implementation and verification are tracked in
+  `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`; these changes are not
+  yet a delivered Staging release.
+
 ## Pending-work integration (2026-10-08)
 
 - Mobile cleanup is integrated and pushed to `main` at `b1f793c`; app-source CI
@@ -318,8 +338,10 @@ Current status:
   `201`, a matching replay is `200 idempotentReplay: true` and repairs a missing
   queue job, while mismatched intent or a terminal failed replay returns `409`.
   Legacy clients may omit the key but get no deduplication guarantee. This
-  protects post/quota state, not remote uploads; completed R2 keys are not stored
-  in the draft, so lost-response retries can leave unused replacement objects.
+  protects post/quota state. New drafts persist completed R2 video/cover receipts
+  with their source-media fingerprint before submit and reuse matching receipts.
+  Interrupted uploads and old uncertain drafts without receipts still require
+  recovery/orphan handling before explicitly starting another post.
 - Mobile outage recovery bounds ordinary JSON requests to 20 seconds, AI
   transcription/prepare/plan/caption POSTs to 120 seconds, and legacy or
   per-part upload PUTs to 180 seconds. Client-local `API_REQUEST_TIMEOUT`/`408`

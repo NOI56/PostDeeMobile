@@ -17,6 +17,16 @@ const sendImage = (response: Response, bytes: Uint8Array) => {
 
 export const registerLinkInBioImageRoutes = (router: Router, auth: RequestHandler,
   service: LinkInBioImageService, profiles: LinkInBioStore, userStore: UserStore, uploadLimit: RequestHandler) => {
+  router.put('/link-in-bio/draft-images', auth, uploadLimit, async (request, response) => {
+    response.set('Cache-Control', 'no-store');
+    const user = readAuthUser(response.locals);
+    if (!user) { response.status(401).json({ status: 'error', message: 'Authenticated user is required' }); return; }
+    try {
+      await userStore.ensure(user);
+      await service.protectDraft(user.id, request.body?.draftId, request.body?.keys, request.body?.mode);
+      response.json({ status: 'ok' });
+    } catch (error) { fail(response, error); }
+  });
   router.post('/link-in-bio/images', auth, uploadLimit, async (request, response) => {
     response.set('Cache-Control', 'no-store');
     const user = readAuthUser(response.locals);
@@ -25,8 +35,12 @@ export const registerLinkInBioImageRoutes = (router: Router, auth: RequestHandle
       const slot: unknown = request.body?.slot;
       if (!isProfileImageSlot(slot)) throw new LinkInBioError(400, 'LINK_IN_BIO_IMAGE_INVALID', 'เลือกประเภทของรูปให้ถูกต้อง');
       const bytes = readProfileImageBase64(request.body?.imageBase64);
+      const draftId: unknown = request.body?.draftId;
+      if (draftId !== undefined && (typeof draftId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(draftId))) {
+        throw new LinkInBioError(400, 'LINK_IN_BIO_DRAFT_IMAGES_INVALID', 'ข้อมูลรูปแบบร่างไม่ถูกต้อง');
+      }
       await userStore.ensure(user);
-      const image = await service.upload(user.id, slot, bytes);
+      const image = await service.upload(user.id, slot, bytes, draftId === undefined);
       response.status(201).json({ status: 'ok', image });
     } catch (error) { fail(response, error); }
   });

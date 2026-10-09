@@ -20,6 +20,10 @@ typedef RevenueCatSubscriptionResync = Future<String> Function();
 Future<void> _defaultSubscriptionWait(Duration duration) =>
     Future<void>.delayed(duration);
 
+class _StoreOperationWaitExpired implements Exception {
+  const _StoreOperationWaitExpired();
+}
+
 class StoreSubscriptionException implements Exception {
   const StoreSubscriptionException(this.message);
 
@@ -27,6 +31,12 @@ class StoreSubscriptionException implements Exception {
 
   @override
   String toString() => 'StoreSubscriptionException: $message';
+}
+
+class StoreSubscriptionStorePendingException
+    extends StoreSubscriptionException {
+  const StoreSubscriptionStorePendingException()
+      : super('ยังไม่ทราบผลจากร้านค้า กรุณาตรวจสอบรายการเดิมก่อนซื้อซ้ำ');
 }
 
 class StoreSubscriptionConfirmationPendingException
@@ -101,6 +111,12 @@ abstract class StoreBillingGateway {
   Future<List<StoreProductInfo>> queryProducts(Set<String> productIds);
   Future<StorePurchasePayload> buySubscription(String productId);
   Future<StorePurchasePayload> restoreSubscription(String productId);
+}
+
+/// Rechecks the native store's existing transaction without starting a buy.
+abstract interface class PendingNativePurchaseReconciler {
+  bool get hasPendingAcknowledgement;
+  Future<void> reconcilePendingPurchase();
 }
 
 abstract class RevenueCatBillingGateway {
@@ -182,8 +198,12 @@ class StoreSubscriptionService {
     SubscriptionWait? revenueCatEntitlementWait,
     RevenueCatSubscriptionResync? resyncRevenueCatSubscription,
     this.subscriptionConfirmationTimeout = const Duration(seconds: 30),
+    this.storeOperationTimeout = const Duration(minutes: 2),
+    this.productQueryTimeout = const Duration(seconds: 10),
   })  : assert(revenueCatEntitlementPollAttempts > 0),
         assert(subscriptionConfirmationTimeout > Duration.zero),
+        assert(storeOperationTimeout > Duration.zero),
+        assert(productQueryTimeout > Duration.zero),
         _revenueCatEntitlementPollAttempts = revenueCatEntitlementPollAttempts,
         _revenueCatEntitlementPollInterval = revenueCatEntitlementPollInterval,
         _revenueCatEntitlementWait =
@@ -213,6 +233,9 @@ class StoreSubscriptionService {
   final String productId;
   final String starterProductId;
   final Duration subscriptionConfirmationTimeout;
+  final Duration storeOperationTimeout;
+  final Duration productQueryTimeout;
+  Future<StoreSubscriptionVerificationResult>? _storeOperation;
   _PendingSubscriptionConfirmation? _pendingConfirmation;
   bool Function()? _sessionValidator;
   var _sessionInvalidated = false;
@@ -221,13 +244,27 @@ class StoreSubscriptionService {
   bool get _isSessionValid =>
       !_sessionInvalidated && (_sessionValidator?.call() ?? true);
   bool get hasPendingConfirmation {
-    if (!_isSessionValid) _pendingConfirmation = null;
-    return _pendingConfirmation != null;
+    if (!_isSessionValid) {
+      _pendingConfirmation = null;
+      _storeOperation = null;
+    }
+    return _pendingConfirmation != null || _storeOperation != null;
   }
+
+  bool get hasPendingStoreOperation =>
+      _isSessionValid &&
+      _storeOperation != null &&
+      _pendingConfirmation == null;
+  bool get hasPendingStoreAcknowledgement =>
+      _isSessionValid &&
+      _revenueCatGateway == null &&
+      _gateway is PendingNativePurchaseReconciler &&
+      (_gateway as PendingNativePurchaseReconciler).hasPendingAcknowledgement;
 
   void _invalidateSession() {
     _sessionInvalidated = true;
     _pendingConfirmation = null;
+    _storeOperation = null;
   }
 
   void _ensureSessionActive() {
@@ -240,6 +277,26 @@ class StoreSubscriptionService {
   }
 
   Future<StoreSubscriptionVerificationResult> retryPendingConfirmation() async {
+    _ensureSessionActive();
+    final operation = _storeOperation;
+    if (operation != null) {
+      if (_pendingConfirmation == null &&
+          _revenueCatGateway == null &&
+          _gateway is PendingNativePurchaseReconciler) {
+        // Store reconciliation can emit a terminal event into the original
+        // operation; continue verifying that same future and receipt once.
+        await (_gateway as PendingNativePurchaseReconciler)
+            .reconcilePendingPurchase()
+            .timeout(productQueryTimeout)
+            .catchError((_) {});
+      }
+      return _awaitStoreOperation(operation);
+    }
+    return _retryReceiptConfirmation();
+  }
+
+  Future<StoreSubscriptionVerificationResult>
+      _retryReceiptConfirmation() async {
     _ensureSessionActive();
     final pending = _pendingConfirmation;
     if (pending == null) {
@@ -274,6 +331,11 @@ class StoreSubscriptionService {
       if (identical(_pendingConfirmation, pending)) {
         _pendingConfirmation = null;
       }
+      if (hasPendingStoreAcknowledgement && _storeOperation == null) {
+        // Keep this verified result available while the native acknowledgement
+        // is retried, without submitting its receipt for verification again.
+        _storeOperation = Future.value(result);
+      }
       return result;
     } catch (error) {
       _ensureSessionActive();
@@ -283,6 +345,9 @@ class StoreSubscriptionService {
 
   void _ensureNoPendingPurchase() {
     _ensureSessionActive();
+    if (_storeOperation != null) {
+      throw const StoreSubscriptionStorePendingException();
+    }
     if (hasPendingConfirmation) {
       throw const StoreSubscriptionConfirmationPendingException();
     }
@@ -297,7 +362,44 @@ class StoreSubscriptionService {
       productId: productId,
       confirm: confirm,
     );
-    return retryPendingConfirmation();
+    return _retryReceiptConfirmation();
+  }
+
+  Future<StoreSubscriptionVerificationResult> _runStoreOperation(
+    Future<StoreSubscriptionVerificationResult> Function() operation,
+  ) {
+    _ensureSessionActive();
+    final running = _storeOperation;
+    if (running != null) return _awaitStoreOperation(running);
+    final future = Future<StoreSubscriptionVerificationResult>.sync(operation);
+    _storeOperation = future;
+    return _awaitStoreOperation(future);
+  }
+
+  Future<StoreSubscriptionVerificationResult> _awaitStoreOperation(
+    Future<StoreSubscriptionVerificationResult> operation,
+  ) async {
+    try {
+      final result = await operation.timeout(storeOperationTimeout,
+          onTimeout: () => throw const _StoreOperationWaitExpired());
+      _ensureSessionActive();
+      if (identical(_storeOperation, operation) &&
+          !hasPendingStoreAcknowledgement) {
+        _storeOperation = null;
+      }
+      return result;
+    } on _StoreOperationWaitExpired {
+      _ensureSessionActive();
+      // Keep the actual SDK future: a UI timeout cannot cancel a store purchase.
+      throw const StoreSubscriptionStorePendingException();
+    } catch (_) {
+      if (identical(_storeOperation, operation)) _storeOperation = null;
+      rethrow;
+    }
+  }
+
+  Future<List<StoreProductInfo>> loadPaidProducts() async {
+    return _queryProducts({starterProductId, productId});
   }
 
   StoreSubscriptionVerificationResult _recordRestoredSubscription(
@@ -326,6 +428,11 @@ class StoreSubscriptionService {
 
   Future<StoreSubscriptionVerificationResult> startStarterSubscription() async {
     _ensureNoPendingPurchase();
+    return _runStoreOperation(_startStarterSubscription);
+  }
+
+  Future<StoreSubscriptionVerificationResult>
+      _startStarterSubscription() async {
     final revenueCatGateway = _revenueCatGateway;
 
     if (revenueCatGateway != null) {
@@ -347,6 +454,10 @@ class StoreSubscriptionService {
 
   Future<StoreSubscriptionVerificationResult> startProSubscription() async {
     _ensureNoPendingPurchase();
+    return _runStoreOperation(_startProSubscription);
+  }
+
+  Future<StoreSubscriptionVerificationResult> _startProSubscription() async {
     final revenueCatGateway = _revenueCatGateway;
 
     if (revenueCatGateway != null) {
@@ -368,6 +479,11 @@ class StoreSubscriptionService {
 
   Future<StoreSubscriptionVerificationResult>
       restoreStarterSubscription() async {
+    return _runStoreOperation(_restoreStarterSubscription);
+  }
+
+  Future<StoreSubscriptionVerificationResult>
+      _restoreStarterSubscription() async {
     _ensureSessionActive();
     final revenueCatGateway = _revenueCatGateway;
 
@@ -388,6 +504,10 @@ class StoreSubscriptionService {
   }
 
   Future<StoreSubscriptionVerificationResult> restoreProSubscription() async {
+    return _runStoreOperation(_restoreProSubscription);
+  }
+
+  Future<StoreSubscriptionVerificationResult> _restoreProSubscription() async {
     _ensureSessionActive();
     final revenueCatGateway = _revenueCatGateway;
 
@@ -408,6 +528,10 @@ class StoreSubscriptionService {
   }
 
   Future<StoreSubscriptionVerificationResult> restoreSubscription() async {
+    return _runStoreOperation(_restoreSubscription);
+  }
+
+  Future<StoreSubscriptionVerificationResult> _restoreSubscription() async {
     _ensureSessionActive();
     final revenueCatGateway = _revenueCatGateway;
 
@@ -839,14 +963,28 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
   }
 }
 
-class InAppPurchaseStoreBillingGateway implements StoreBillingGateway {
+class InAppPurchaseStoreBillingGateway
+    implements StoreBillingGateway, PendingNativePurchaseReconciler {
   InAppPurchaseStoreBillingGateway({
     InAppPurchase? store,
     this.purchaseTimeout = const Duration(minutes: 2),
+    this.acknowledgementTimeout = const Duration(seconds: 5),
   }) : _store = store ?? InAppPurchase.instance;
 
   final InAppPurchase _store;
+
+  /// Kept for source compatibility. The service owns UI deadlines; this gateway
+  /// must keep listening while the native store still has an unknown result.
   final Duration purchaseTimeout;
+  final Duration acknowledgementTimeout;
+  Future<StorePurchasePayload>? _activeOperation;
+  String? _activeProductId;
+  Set<PurchaseStatus>? _activeStatuses;
+  Future<void>? _reconciliationFuture;
+  final Map<String, PurchaseDetails> _pendingAcknowledgements = {};
+  final Map<String, Future<void>> _acknowledgementOperations = {};
+  @override
+  bool get hasPendingAcknowledgement => _pendingAcknowledgements.isNotEmpty;
 
   @override
   Future<bool> isAvailable() => _store.isAvailable();
@@ -873,13 +1011,23 @@ class InAppPurchaseStoreBillingGateway implements StoreBillingGateway {
 
   @override
   Future<StorePurchasePayload> buySubscription(String productId) async {
-    return _runPurchaseFlow(
+    if (_activeOperation != null || _pendingAcknowledgements.isNotEmpty) {
+      throw const StoreSubscriptionStorePendingException();
+    }
+    return _retainPurchaseFlow(
       productId: productId,
       startFlow: () async {
         final product = await _loadProduct(productId);
-        final started = await _store.buyNonConsumable(
-          purchaseParam: PurchaseParam(productDetails: product),
-        );
+        late final bool started;
+        try {
+          started = await _store.buyNonConsumable(
+            purchaseParam: PurchaseParam(productDetails: product),
+          );
+        } catch (_) {
+          // The request may have reached the store. Its purchase stream or a
+          // later reconciliation must determine the outcome before buying again.
+          return;
+        }
 
         if (!started) {
           throw const StoreSubscriptionException(
@@ -893,14 +1041,103 @@ class InAppPurchaseStoreBillingGateway implements StoreBillingGateway {
 
   @override
   Future<StorePurchasePayload> restoreSubscription(String productId) async {
-    return _runPurchaseFlow(
+    final active = _activeOperation;
+    if (active != null) {
+      if (_activeProductId != productId) {
+        throw const StoreSubscriptionStorePendingException();
+      }
+      unawaited(reconcilePendingPurchase().catchError((_) {}));
+      return active;
+    }
+    return _retainPurchaseFlow(
       productId: productId,
-      startFlow: () => _store.restorePurchases(),
+      startFlow: () async {
+        await _retryAcknowledgements();
+        try {
+          await _store.restorePurchases();
+        } catch (_) {
+          // A transport error does not prove that the store has no transaction.
+        }
+      },
       acceptedStatuses: const {
         PurchaseStatus.purchased,
         PurchaseStatus.restored,
       },
     );
+  }
+
+  Future<StorePurchasePayload> _retainPurchaseFlow({
+    required String productId,
+    required Future<void> Function() startFlow,
+    required Set<PurchaseStatus> acceptedStatuses,
+  }) {
+    final statuses = Set<PurchaseStatus>.of(acceptedStatuses);
+    _activeProductId = productId;
+    _activeStatuses = statuses;
+    late final Future<StorePurchasePayload> operation;
+    operation = _runPurchaseFlow(
+      productId: productId,
+      startFlow: startFlow,
+      acceptedStatuses: statuses,
+    ).whenComplete(() {
+      if (identical(_activeOperation, operation)) {
+        _activeOperation = null;
+        _activeProductId = null;
+        _activeStatuses = null;
+      }
+    });
+    _activeOperation = operation;
+    return operation;
+  }
+
+  @override
+  Future<void> reconcilePendingPurchase() {
+    final running = _reconciliationFuture;
+    if (running != null) return running;
+    _activeStatuses?.add(PurchaseStatus.restored);
+    late final Future<void> operation;
+    operation = (() async {
+      await _retryAcknowledgements();
+      await _store.restorePurchases();
+    })()
+        .whenComplete(() {
+      if (identical(_reconciliationFuture, operation)) {
+        _reconciliationFuture = null;
+      }
+    });
+    _reconciliationFuture = operation;
+    return operation;
+  }
+
+  String _receiptKey(PurchaseDetails purchase) =>
+      '${purchase.productID}:${purchase.purchaseID ?? purchase.verificationData.serverVerificationData}';
+
+  Future<void> _acknowledge(PurchaseDetails purchase) {
+    final key = _receiptKey(purchase);
+    final running = _acknowledgementOperations[key];
+    if (running != null) return running;
+    _pendingAcknowledgements[key] = purchase;
+    late final Future<void> operation;
+    operation = Future<void>.sync(() => _store.completePurchase(purchase))
+        .then<void>((_) {
+      _pendingAcknowledgements.remove(key);
+    }).whenComplete(() {
+      if (identical(_acknowledgementOperations[key], operation)) {
+        _acknowledgementOperations.remove(key);
+      }
+    });
+    _acknowledgementOperations[key] = operation;
+    return operation;
+  }
+
+  Future<void> _retryAcknowledgements() async {
+    for (final purchase in _pendingAcknowledgements.values.toList()) {
+      try {
+        await _acknowledge(purchase);
+      } catch (_) {
+        // Keep this known receipt for another explicit reconciliation attempt.
+      }
+    }
   }
 
   Future<ProductDetails> _loadProduct(String productId) async {
@@ -925,28 +1162,39 @@ class InAppPurchaseStoreBillingGateway implements StoreBillingGateway {
     required Set<PurchaseStatus> acceptedStatuses,
   }) async {
     final completer = Completer<StorePurchasePayload>();
+    var isHandlingTerminal = false;
     late final StreamSubscription<List<PurchaseDetails>> subscription;
 
     subscription = _store.purchaseStream.listen(
       (purchases) async {
         for (final purchase in purchases) {
-          if (purchase.productID != productId || completer.isCompleted) {
+          if (purchase.productID != productId ||
+              completer.isCompleted ||
+              isHandlingTerminal) {
             continue;
           }
 
           if (acceptedStatuses.contains(purchase.status)) {
+            isHandlingTerminal = true;
             try {
               if (purchase.pendingCompletePurchase) {
-                await _store.completePurchase(purchase);
+                try {
+                  await _acknowledge(purchase).timeout(acknowledgementTimeout);
+                } catch (_) {
+                  // A purchased/restored receipt is still available to verify.
+                  // Keep its acknowledgement queued and never start a second buy.
+                }
               }
 
               completer.complete(_payloadFromPurchase(purchase));
             } catch (error) {
-              completer.completeError(
-                StoreSubscriptionException(
-                  'Could not complete store purchase: $error',
-                ),
-              );
+              if (!completer.isCompleted) {
+                completer.completeError(
+                  StoreSubscriptionException(
+                    'Could not complete store purchase: $error',
+                  ),
+                );
+              }
             }
             continue;
           }
@@ -968,22 +1216,19 @@ class InAppPurchaseStoreBillingGateway implements StoreBillingGateway {
         }
       },
       onError: (Object error) {
-        if (!completer.isCompleted) {
-          completer.completeError(
-            StoreSubscriptionException('Store purchase stream failed: $error'),
-          );
-        }
+        // Transport failure is an unknown result, not store cancellation.
+        // Keep the listener and original future for a late event or restore.
       },
     );
 
     try {
-      await startFlow();
-      return await completer.future.timeout(
-        purchaseTimeout,
-        onTimeout: () => throw const StoreSubscriptionException(
-          'Timed out waiting for the store purchase update.',
-        ),
-      );
+      unawaited(startFlow().then<void>((_) {},
+          onError: (Object error, StackTrace stack) {
+        if (!completer.isCompleted && !isHandlingTerminal) {
+          completer.completeError(error, stack);
+        }
+      }));
+      return await completer.future;
     } finally {
       await subscription.cancel();
     }

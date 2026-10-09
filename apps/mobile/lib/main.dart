@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
@@ -30,9 +32,6 @@ Future<void> main() async {
     FirebaseMessaging.onBackgroundMessage(
       postDeeFirebaseMessagingBackgroundHandler,
     );
-    // Restore the persisted Firebase session so a returning user skips the login
-    // gate instead of having to sign in again on every launch.
-    await restoreFirebaseSession();
   }
 
   runApp(
@@ -42,4 +41,9 @@ Future<void> main() async {
       showStagingBadge: AppConfig.isStagingBuild,
     ),
   );
+  if (AppConfig.enableFirebaseAuth && firebaseBootstrapResult.isInitialized) {
+    // Paint the app before network-dependent restoration; the session listener
+    // opens the signed-in shell when bounded restoration succeeds.
+    unawaited(restoreFirebaseSession());
+  }
 }

@@ -4,10 +4,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/home/home_screen.dart';
 import 'package:video_player/video_player.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'link_in_bio_test_navigation.dart';
 
@@ -182,6 +184,69 @@ Future<SubscriptionStatusResult> _previewSubscription() async =>
     );
 
 void main() {
+  testWidgets(
+      'View all opens the complete post list including immediate failed posts',
+      (tester) async {
+    final failed = PostSummaryResult(
+        id: 'failed-immediate',
+        caption: 'โพสต์ทันทีที่ล้มเหลว',
+        videoS3Key: 'uploads/failed.mp4',
+        platforms: const ['TIKTOK'],
+        status: 'FAILED',
+        createdAt: DateTime(2026, 10, 9));
+    await tester.pumpWidget(_homeTestApp(HomeScreen(
+        loadSubscription: _previewSubscription,
+        loadRecentPosts: () async => [_previewPost()],
+        loadAllPosts: () async => [_previewPost(), failed])));
+    await tester.pumpAndSettle();
+    await _tapHomeTextAfterScrolling(tester, 'ดูทั้งหมด');
+    expect(find.text('โพสต์ทั้งหมด'), findsOneWidget);
+    expect(find.text('โพสต์ทันทีที่ล้มเหลว'), findsOneWidget);
+    expect(find.text('คลิปสินค้าล่าสุด'), findsOneWidget);
+  });
+  testWidgets(
+      'reloads plan and quota when returning from another tab and shows stale post refresh errors',
+      (tester) async {
+    var active = true;
+    var loads = 0;
+    var failPosts = false;
+    late StateSetter update;
+    await tester
+        .pumpWidget(_homeTestApp(StatefulBuilder(builder: (context, setState) {
+      update = setState;
+      return HomeScreen(
+          isActive: active,
+          loadSubscription: () async {
+            loads++;
+            return SubscriptionStatusResult(
+                userId: 'seller',
+                plan: 'STARTER',
+                status: 'ACTIVE',
+                remainingPostsThisMonth: loads == 1 ? 8 : 7,
+                canSchedule: true,
+                canUseAiCaptions: true,
+                canUseAnalytics: false);
+          },
+          loadRecentPosts: () async {
+            if (failPosts) throw const SocketException('offline');
+            return [_previewPost()];
+          });
+    })));
+    await tester.pumpAndSettle();
+    update(() => active = false);
+    await tester.pump();
+    update(() {
+      active = true;
+      failPosts = true;
+    });
+    await tester.pumpAndSettle();
+    expect(loads, 2);
+    expect(find.text('เหลือ 7/120 หน่วย'), findsOneWidget);
+    await _scrollHomeDown(tester);
+    expect(
+        find.byKey(const ValueKey('home-latest-posts-error')), findsOneWidget);
+    expect(find.text('คลิปสินค้าล่าสุด'), findsOneWidget);
+  });
   testWidgets('uses a cover preview before starting any video controller',
       (tester) async {
     var videoControllers = 0;
@@ -1148,6 +1213,10 @@ void main() {
 
   testWidgets('opens Link in Bio manager from the home shortcut',
       (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    PostDeeAuthSessionStore.instance.signIn(
+        const AuthSession(userId: 'home-shop-owner', idToken: 'test-token'));
+    addTearDown(PostDeeAuthSessionStore.instance.clear);
     await tester.pumpWidget(
       _homeTestApp(const HomeScreen()),
     );

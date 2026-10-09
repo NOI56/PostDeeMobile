@@ -3,12 +3,64 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
+import { createInMemoryRealClipCaptionUsageStore } from './captionUsageStore.js';
 
 const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
   `uploads/${userId}/${uploadId}/${fileName}`;
 
 describe('caption routes', () => {
   const app = createApp();
+
+  for (const endpoint of ['/captions/generate', '/captions/generate-from-clip']) {
+    it(`keeps ${endpoint} fallback usable when usage recount fails after refund`, async () => {
+      const usageStore = createInMemoryRealClipCaptionUsageStore();
+      let released = false;
+      const failingProvider = { generate: async () => { throw new Error('provider down'); } };
+      const fallbackApp = createApp({
+        captionGenerator: failingProvider,
+        realClipCaptionProvider: failingProvider,
+        fetchClipMedia: async () => ({ data: new Uint8Array([1]), mimeType: 'video/mp4' }),
+        realClipCaptionUsageStore: {
+          ...usageStore,
+          release: async (record) => {
+            const result = await usageStore.release!(record);
+            released = result;
+            return result;
+          },
+          countForMonth: async (input) => {
+            if (released) throw new Error('database read unavailable');
+            return usageStore.countForMonth(input);
+          }
+        }
+      });
+      const userId = 'refund-recount-owner';
+      const response = await request(fallbackApp).post(endpoint)
+        .set('x-postdee-user-id', userId)
+        .set('x-postdee-subscription-plan', 'PRO')
+        .send(endpoint.endsWith('from-clip')
+          ? { videoS3Key: ownedUploadKey(userId, 'clip.mp4') }
+          : { keywords: ['สินค้า'] }).expect(200);
+      expect(response.body.isFallback).toBe(true);
+      expect(response.body.quota).toMatchObject({ charged: false, usageRefreshPending: true });
+      expect(await usageStore.countForMonth({ userId, monthKey: new Date().toISOString().slice(0, 7) })).toBe(0);
+    });
+  }
+
+  it('releases only the reserved usage when legacy transcription fails', async () => {
+    const usageStore = createInMemoryRealClipCaptionUsageStore();
+    const userId = 'legacy-transcript-failure';
+    const monthKey = new Date().toISOString().slice(0, 7);
+    await usageStore.record({ userId, monthKey });
+    const failingApp = createApp({
+      realClipCaptionUsageStore: usageStore,
+      transcriptionProvider: { transcribe: async () => { throw new Error('transcription down'); } }
+    });
+    await request(failingApp).post('/captions/generate-from-clip')
+      .set('x-postdee-user-id', userId)
+      .set('x-postdee-subscription-plan', 'STARTER')
+      .send({ videoS3Key: ownedUploadKey(userId, 'clip.mp4') }).expect(502);
+    expect(await usageStore.countForMonth({ userId, monthKey })).toBe(1);
+  });
 
   it('ensures a Prisma user immediately before reserving relational caption usage', async () => {
     const events: string[] = [];
@@ -88,6 +140,8 @@ describe('caption routes', () => {
       .expect(200);
 
     expect(generate).toHaveBeenCalledWith(['กันแดด', 'ผิวใส']);
+    expect(response.body.isFallback).toBe(true);
+    expect(response.body.quota).toMatchObject({ usedThisMonth: 0, remainingThisMonth: 120, charged: false });
     expect(response.body).toMatchObject({
       status: 'ok',
       model: 'local-template',
@@ -732,6 +786,8 @@ describe('caption routes', () => {
 
     expect(generate).toHaveBeenCalledTimes(1);
     expect(response.body.model).toBe('local-real-clip-template');
+    expect(response.body.isFallback).toBe(true);
+    expect(response.body.quota).toMatchObject({ usedThisMonth: 0, remainingThisMonth: 50, charged: false });
   });
 
   it('uses automatic clip context when no caption language or market is selected', async () => {

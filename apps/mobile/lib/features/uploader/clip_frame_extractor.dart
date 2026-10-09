@@ -13,6 +13,35 @@ typedef UploaderClipFrameExtractor = Future<List<File>> Function(
   int maxFrames,
 });
 
+/// Returned frames are disposable outputs; the selected source clip is retained.
+Future<void> cleanupExtractedCaptionFrames(
+    List<File> frames, File source) async {
+  final parents = <String>{};
+  for (final frame in frames) {
+    try {
+      if (!frame.existsSync() ||
+          FileSystemEntity.identicalSync(frame.path, source.path)) {
+        continue;
+      }
+      parents.add(frame.parent.path);
+      frame.deleteSync();
+    } catch (_) {
+      // A cleanup failure must not replace a caption or upload result.
+    }
+  }
+  for (final path in parents) {
+    final directory = Directory(path);
+    final name = path.replaceAll('\\', '/').split('/').last;
+    if (!name.startsWith('postdee-frames-') ||
+        directory.parent.absolute.path != Directory.systemTemp.absolute.path) {
+      continue;
+    }
+    try {
+      directory.deleteSync();
+    } catch (_) {/* Keep non-empty directories. */}
+  }
+}
+
 class FfmpegClipFrameExtractor {
   FfmpegClipFrameExtractor({VideoDurationProbe? probeDuration})
       : probeDuration = probeDuration ?? const FfprobeVideoDurationProbe().call;
@@ -25,26 +54,34 @@ class FfmpegClipFrameExtractor {
     }
 
     final directory = await Directory.systemTemp.createTemp('postdee-frames-');
-    final duration = await probeDuration(videoFile);
-    final timestamps = _frameTimestamps(duration, maxFrames);
-    final frames = <File>[];
+    var succeeded = false;
+    try {
+      final duration = await probeDuration(videoFile);
+      final timestamps = _frameTimestamps(duration, maxFrames);
+      final frames = <File>[];
 
-    for (var index = 0; index < timestamps.length; index += 1) {
-      final output = File(
-        '${directory.path}${Platform.pathSeparator}frame_${index + 1}.jpg',
-      );
-      // Fast-seek before input, grab a single frame as a JPEG.
-      final command = "-y -ss ${timestamps[index].toStringAsFixed(2)} "
-          "-i '${videoFile.path}' -frames:v 1 -q:v 3 '${output.path}'";
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
+      for (var index = 0; index < timestamps.length; index += 1) {
+        final output = File(
+          '${directory.path}${Platform.pathSeparator}frame_${index + 1}.jpg',
+        );
+        // Fast-seek before input, grab a single frame as a JPEG.
+        final command = "-y -ss ${timestamps[index].toStringAsFixed(2)} "
+            "-i '${videoFile.path}' -frames:v 1 -q:v 3 '${output.path}'";
+        final session = await FFmpegKit.execute(command);
+        final returnCode = await session.getReturnCode();
 
-      if (ReturnCode.isSuccess(returnCode) && await output.exists()) {
-        frames.add(output);
+        if (ReturnCode.isSuccess(returnCode) && await output.exists()) {
+          frames.add(output);
+        } else if (await output.exists()) {
+          await output.delete();
+        }
       }
-    }
 
-    return frames;
+      succeeded = frames.isNotEmpty;
+      return frames;
+    } finally {
+      if (!succeeded) await directory.delete(recursive: true);
+    }
   }
 
   // Evenly spaced sample points across the clip, avoiding the very first and

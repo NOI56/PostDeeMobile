@@ -65,6 +65,8 @@ class PublishDraft {
     this.videoHeight,
     this.scheduledAt,
     this.cover,
+    this.mediaContentFingerprint,
+    this.uploadedMedia,
   });
 
   final int version;
@@ -85,6 +87,20 @@ class PublishDraft {
   final PlatformPublishSettings platformSettings;
   final DateTime? scheduledAt;
   final PublishDraftCover? cover;
+  final String? mediaContentFingerprint;
+  final PublishDraftUploadedMedia? uploadedMedia;
+}
+
+/// Persisted before sending the post request, including when its response is lost.
+class PublishDraftUploadedMedia {
+  const PublishDraftUploadedMedia(
+      {required this.mediaContentFingerprint,
+      required this.videoS3Key,
+      this.coverImageS3Key});
+
+  final String mediaContentFingerprint;
+  final String videoS3Key;
+  final String? coverImageS3Key;
 }
 
 class PublishDraftSaveRequest {
@@ -109,6 +125,7 @@ class PublishDraftSaveRequest {
     this.coverSourceKind = CoverSourceKind.videoFrame,
     this.coverSourceImageFile,
     this.coverSourceImageName,
+    this.uploadedMedia,
   });
 
   final String id;
@@ -131,4 +148,5 @@ class PublishDraftSaveRequest {
   final CoverSourceKind coverSourceKind;
   final File? coverSourceImageFile;
   final String? coverSourceImageName;
+  final PublishDraftUploadedMedia? uploadedMedia;
 }

@@ -29,6 +29,9 @@ class ProfileScreen extends StatefulWidget {
     this.onManageSubscription,
     this.isDeletingAccount = false,
     this.profileDraftStore = const SharedPreferencesProfileDraftStore(),
+    this.verifyPhone,
+    this.onSendEmailVerification,
+    this.onRefreshEmailVerification,
     super.key,
   });
 
@@ -42,6 +45,9 @@ class ProfileScreen extends StatefulWidget {
   final Future<void> Function()? onManageSubscription;
   final bool isDeletingAccount;
   final ProfileDraftStore profileDraftStore;
+  final Future<AuthSession?> Function(BuildContext context)? verifyPhone;
+  final Future<bool> Function()? onSendEmailVerification;
+  final Future<bool> Function()? onRefreshEmailVerification;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -60,24 +66,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ProfileDraft? _profileDraft;
   var _connectedCountLoadGeneration = 0;
   var _subscriptionLoadGeneration = 0;
+  var _profileDraftLoadGeneration = 0;
+  String? _accountScope;
+  bool _isEmailActionBusy = false;
+
+  String? get _currentAccountScope {
+    final session = PostDeeAuthSessionStore.instance.session;
+    if (!session.isSignedIn) return null;
+    return session.stableUserId ?? session.email?.trim().toLowerCase();
+  }
 
   @override
   void initState() {
     super.initState();
+    _accountScope = _currentAccountScope;
+    PostDeeAuthSessionStore.instance.addListener(_handleSessionChanged);
     _loadConnectedCount();
     _loadSubscription();
     _loadProfileDraft();
   }
 
-  Future<void> _loadProfileDraft() async {
-    final draft = await widget.profileDraftStore.load();
-    if (!mounted || draft == null) return;
+  @override
+  void dispose() {
+    PostDeeAuthSessionStore.instance.removeListener(_handleSessionChanged);
+    super.dispose();
+  }
 
-    final sessionEmail =
-        PostDeeAuthSessionStore.instance.session.email?.trim().toLowerCase() ??
-            '';
-    if (draft.accountEmail.isNotEmpty &&
-        sessionEmail.isNotEmpty &&
+  void _handleSessionChanged() {
+    if (!mounted) return;
+    final scope = _currentAccountScope;
+    if (scope != _accountScope) {
+      _accountScope = scope;
+      _profileDraftLoadGeneration += 1;
+      _connectedCountLoadGeneration += 1;
+      _subscriptionLoadGeneration += 1;
+      setState(() {
+        _profileDraft = null;
+        _subscription = null;
+        _connectedCount = null;
+        _isEmailActionBusy = false;
+      });
+      if (scope != null) {
+        _loadProfileDraft();
+        _loadConnectedCount();
+        _loadSubscription();
+      }
+    } else {
+      setState(() {});
+    }
+  }
+
+  Future<void> _loadProfileDraft() async {
+    final generation = ++_profileDraftLoadGeneration;
+    final scope = _currentAccountScope;
+    final draft = await widget.profileDraftStore.load();
+    if (!mounted ||
+        draft == null ||
+        generation != _profileDraftLoadGeneration ||
+        scope != _currentAccountScope) {
+      return;
+    }
+
+    final session = PostDeeAuthSessionStore.instance.session;
+    final sessionEmail = session.email?.trim().toLowerCase() ?? '';
+    if (draft.accountUserId.isNotEmpty) {
+      if (draft.accountUserId != session.stableUserId) return;
+    } else if (draft.accountEmail.isEmpty ||
+        sessionEmail.isEmpty ||
         draft.accountEmail != sessionEmail) {
       return;
     }
@@ -214,6 +269,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _openEditProfile() async {
+    final scope = _currentAccountScope;
     final session = PostDeeAuthSessionStore.instance.session;
     final email = session.email?.trim() ?? '';
     final savedDraft = _profileDraft;
@@ -221,6 +277,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       displayName: savedDraft?.displayName ?? session.displayLabel,
       storeName: savedDraft?.storeName ?? '',
       accountEmail: email.toLowerCase(),
+      accountUserId: session.stableUserId ?? '',
     );
     final updated = await Navigator.of(context).push<ProfileDraft>(
       MaterialPageRoute<ProfileDraft>(
@@ -232,10 +289,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
 
-    if (updated == null || !mounted) return;
+    if (updated == null || !mounted || scope != _currentAccountScope) return;
 
     await widget.profileDraftStore.save(updated);
-    if (!mounted) return;
+    if (!mounted || scope != _currentAccountScope) return;
 
     setState(() => _profileDraft = updated);
     PostDeeAuthSessionStore.instance.updateDisplayName(updated.displayName);
@@ -244,17 +301,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context,
       message: 'บันทึกโปรไฟล์แล้ว',
       onUndo: () async {
+        if (scope != _currentAccountScope) return;
         if (previous.displayName.isEmpty && previous.storeName.isEmpty) {
           await widget.profileDraftStore.clear();
         } else {
           await widget.profileDraftStore.save(previous);
         }
-        if (!mounted) return;
+        if (!mounted || scope != _currentAccountScope) return;
         setState(() => _profileDraft = previous);
         PostDeeAuthSessionStore.instance
             .updateDisplayName(previous.displayName);
       },
     );
+  }
+
+  Future<void> _verifyPhone() async {
+    final owner = _currentAccountScope;
+    final session = widget.verifyPhone != null
+        ? await widget.verifyPhone!(context)
+        : await Navigator.of(context).push<AuthSession>(
+            MaterialPageRoute<AuthSession>(
+                builder: (_) => PhoneVerificationScreen(
+                      onVerified: (verified) {
+                        if (_currentAccountScope == owner &&
+                            verified.stableUserId ==
+                                PostDeeAuthSessionStore
+                                    .instance.session.stableUserId) {
+                          PostDeeAuthSessionStore.instance.signIn(verified);
+                        }
+                      },
+                    )),
+          );
+    if (!mounted || owner != _currentAccountScope) return;
+    if (session != null &&
+        session.stableUserId ==
+            PostDeeAuthSessionStore.instance.session.stableUserId) {
+      PostDeeAuthSessionStore.instance.signIn(session);
+    }
+    await _loadSubscription();
+  }
+
+  Future<void> _emailAction({required bool refresh}) async {
+    if (_isEmailActionBusy) return;
+    final owner = _currentAccountScope;
+    setState(() => _isEmailActionBusy = true);
+    final action = refresh
+        ? widget.onRefreshEmailVerification
+        : widget.onSendEmailVerification;
+    var success = false;
+    try {
+      success = await action?.call() ?? false;
+    } catch (_) {}
+    if (!mounted || owner != _currentAccountScope) return;
+    setState(() => _isEmailActionBusy = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+      !success
+          ? 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่'
+          : refresh
+              ? (PostDeeAuthSessionStore.instance.session.emailVerified
+                  ? 'ยืนยันอีเมลแล้ว'
+                  : 'อีเมลยังไม่ยืนยัน กรุณาเปิดลิงก์ในอีเมลก่อน')
+              : 'ส่งลิงก์ยืนยันแล้ว กรุณาตรวจสอบกล่องอีเมลและจดหมายขยะ',
+    )));
   }
 
   String? get _currentTierId {
@@ -313,6 +422,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
               emailVerified: session.emailVerified,
               onEdit: _openEditProfile,
             ),
+            if (!session.emailVerified &&
+                accountEmail != null &&
+                accountEmail.isNotEmpty &&
+                widget.onSendEmailVerification != null) ...[
+              const SizedBox(height: 4),
+              Wrap(
+                children: [
+                  TextButton(
+                    key: const ValueKey('profile-send-email-verification'),
+                    onPressed: _isEmailActionBusy
+                        ? null
+                        : () => _emailAction(refresh: false),
+                    child: const Text('ส่งอีเมลยืนยัน'),
+                  ),
+                  TextButton(
+                    key: const ValueKey('profile-refresh-email-verification'),
+                    onPressed: _isEmailActionBusy
+                        ? null
+                        : () => _emailAction(refresh: true),
+                    child: const Text('ตรวจสอบการยืนยัน'),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 10),
             _ProfileMenuCard(
               rows: [
@@ -342,7 +475,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ? AppTheme.accentCyanInk
                                       : AppTheme.textSecondary,
                                 ),
-                  onTap: () => _openPhoneVerification(context),
+                  onTap: _verifyPhone,
                 ),
               ],
             ),
@@ -999,14 +1132,6 @@ void _openLegal(BuildContext context, LegalDocument document) {
   Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (context) => LegalDocumentScreen(document: document),
-    ),
-  );
-}
-
-void _openPhoneVerification(BuildContext context) {
-  Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (context) => const PhoneVerificationScreen(),
     ),
   );
 }

@@ -5,6 +5,7 @@ import type {
 } from './captionUsageStore.js';
 
 type PrismaRealClipCaptionUsage = {
+  id?: string;
   userId: string;
   monthKey: string;
   createdAt: Date;
@@ -23,11 +24,13 @@ type RealClipCaptionUsageDelegate = {
       monthKey: string;
     };
     select: {
+      id: true;
       userId: true;
       monthKey: true;
       createdAt: true;
     };
   }) => Promise<PrismaRealClipCaptionUsage>;
+  deleteMany?: (args: { where: { id: string; userId: string; monthKey: string } }) => Promise<{ count: number }>;
 };
 
 export type PrismaRealClipCaptionUsageClient = {
@@ -41,6 +44,7 @@ export type PrismaRealClipCaptionUsageClient = {
 const mapUsageRecord = (
   record: PrismaRealClipCaptionUsage
 ): RealClipCaptionUsageRecord => ({
+  ...(record.id ? { id: record.id } : {}),
   userId: record.userId,
   monthKey: record.monthKey,
   createdAt: record.createdAt.toISOString()
@@ -52,6 +56,7 @@ export const createPrismaRealClipCaptionUsageRepository = ({
   prisma: PrismaRealClipCaptionUsageClient;
 }): RealClipCaptionUsageStore => {
   const usageSelect = {
+    id: true,
     userId: true,
     monthKey: true,
     createdAt: true
@@ -115,6 +120,13 @@ export const createPrismaRealClipCaptionUsageRepository = ({
       });
 
       return mapUsageRecord(record);
+    },
+    release: async (record) => {
+      if (!record.id || !prisma.realClipCaptionUsage.deleteMany) return false;
+      const result = await prisma.realClipCaptionUsage.deleteMany({
+        where: { id: record.id, userId: record.userId, monthKey: record.monthKey }
+      });
+      return result.count === 1;
     },
     reserve: async (input) => {
       if (prisma.$transaction) {

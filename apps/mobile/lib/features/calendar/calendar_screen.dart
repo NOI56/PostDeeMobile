@@ -176,12 +176,18 @@ class _CalendarScreenState extends State<CalendarScreen>
           setState(() {
             _posts = sorted;
             _errorMessage = null;
-            // Until the user picks a day, follow the first scheduled post so
-            // the day list below the grid is never pointlessly empty.
-            if (_selectedDay == null && sorted.isNotEmpty) {
-              final first = _calendarTimeFor(sorted.first);
+            // Prefer upcoming posts in the visible month. Old scheduled
+            // history must never pull the initial calendar into a past month.
+            final today = _now();
+            final firstInMonth = sorted.where((post) {
+              final at = _calendarTimeFor(post);
+              return at.year == _visibleMonth.year &&
+                  at.month == _visibleMonth.month &&
+                  !at.isBefore(DateTime(today.year, today.month, today.day));
+            }).firstOrNull;
+            if (_selectedDay == null && firstInMonth != null) {
+              final first = _calendarTimeFor(firstInMonth);
               _selectedDay = DateTime(first.year, first.month, first.day);
-              _visibleMonth = DateTime(first.year, first.month);
             }
           });
         } on ApiException catch (error) {

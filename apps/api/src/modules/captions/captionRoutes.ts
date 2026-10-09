@@ -39,6 +39,36 @@ const sendForbiddenMediaKeyResponse = (response: Response) => {
   });
 };
 
+const releaseFailedCaptionUsage = async (
+  store: RealClipCaptionUsageStore,
+  reservation?: RealClipCaptionUsageReservation
+) => {
+  if (!reservation?.ok || !store.release) return false;
+  try {
+    return await store.release(reservation.record);
+  } catch (error) {
+    console.error('Could not release failed AI caption usage:', error);
+    return false;
+  }
+};
+
+const readUsageAfterFallback = async (
+  store: RealClipCaptionUsageStore,
+  input: { userId: string; monthKey: string },
+  released: boolean,
+  reservedCount: number
+) => {
+  if (!released) return { usedThisMonth: reservedCount };
+  try {
+    return { usedThisMonth: await store.countForMonth(input) };
+  } catch (error) {
+    // The refund is already committed. Keep the caption usable and show the
+    // last known conservative count until the next subscription refresh.
+    console.error('Could not refresh AI caption usage after refund:', error);
+    return { usedThisMonth: reservedCount, usageRefreshPending: true };
+  }
+};
+
 const sendMediaDownloadErrorResponse = (response: Response, error: MediaDownloadError) => {
   response.status(error.statusCode).json({
     status: 'error',
@@ -180,6 +210,8 @@ export const registerCaptionRoutes = (
     }
 
     let caption;
+    let isFallback = false;
+    let releasedFallbackUsage = false;
 
     try {
       caption = await generator.generate(validation.keywords);
@@ -194,15 +226,21 @@ export const registerCaptionRoutes = (
         error instanceof Error ? error.message : error
       );
       caption = generateLocalAffiliateCaption(validation.keywords);
+      isFallback = true;
+      releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
     }
 
+    const finalUsage = await readUsageAfterFallback(realClipCaptionUsageStore,
+      { userId: authUser.id, monthKey }, releasedFallbackUsage, reservation.usedThisMonth);
     response.json({
       status: 'ok',
       ...caption,
+      ...(isFallback ? { isFallback: true } : {}),
       quota: {
         limit,
-        usedThisMonth: reservation.usedThisMonth,
-        remainingThisMonth: Math.max(limit - reservation.usedThisMonth, 0)
+        ...finalUsage,
+        remainingThisMonth: Math.max(limit - finalUsage.usedThisMonth, 0),
+        ...(isFallback ? { charged: !releasedFallbackUsage } : {})
       }
     });
   });
@@ -305,6 +343,8 @@ export const registerCaptionRoutes = (
 
     let caption: GeneratedRealClipCaption | RealClipCaptionResult;
     let reservation: RealClipCaptionUsageReservation | undefined;
+    let isFallback = false;
+    let releasedFallbackUsage = false;
     const reserveUsageOrRespond = async () => {
       if (reservation) {
         return reservation;
@@ -360,6 +400,7 @@ export const registerCaptionRoutes = (
         });
       } catch (error) {
         if (error instanceof MediaDownloadError) {
+          await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
           await cleanupRequestedMedia();
           sendMediaDownloadErrorResponse(response, error);
           return;
@@ -376,6 +417,8 @@ export const registerCaptionRoutes = (
           error instanceof Error ? error.message : error
         );
         caption = generateLocalRealClipCaption({ request: validation.request, mode });
+        isFallback = true;
+        releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
       }
     } else if (transcriptionProvider) {
       // Legacy path: Whisper transcript -> local template.
@@ -391,6 +434,7 @@ export const registerCaptionRoutes = (
           mediaKind: 'legacy-video'
         });
       } catch (error) {
+        await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
         if (error instanceof MediaDownloadError) {
           await cleanupRequestedMedia();
           sendMediaDownloadErrorResponse(response, error);
@@ -421,13 +465,18 @@ export const registerCaptionRoutes = (
 
     await cleanupRequestedMedia();
 
+    const finalUsage = await readUsageAfterFallback(realClipCaptionUsageStore,
+      { userId: authUser.id, monthKey }, releasedFallbackUsage,
+      reservation?.usedThisMonth ?? usedThisMonth);
     response.json({
       status: 'ok',
       ...caption,
+      ...(isFallback ? { isFallback: true } : {}),
       quota: {
         limit,
-        usedThisMonth: reservation?.usedThisMonth ?? usedThisMonth,
-        remainingThisMonth: Math.max(limit - (reservation?.usedThisMonth ?? usedThisMonth), 0)
+        ...finalUsage,
+        remainingThisMonth: Math.max(limit - finalUsage.usedThisMonth, 0),
+        ...(isFallback ? { charged: !releasedFallbackUsage } : {})
       }
     });
   });

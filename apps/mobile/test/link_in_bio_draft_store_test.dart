@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/models/link_in_bio_appearance.dart';
@@ -7,6 +8,65 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('draft revisions persist monotonically and remain owner scoped',
+      () async {
+    expect(await nextLinkInBioDraftRevisionForUser('first'), 1);
+    expect(await nextLinkInBioDraftRevisionForUser('first'), 2);
+    expect(await nextLinkInBioDraftRevisionForUser('second'), 1);
+  });
+
+  test('an invalid persisted revision cannot send an older draft token',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'postdee_link_in_bio.user.first.image_revision': 9007199254740991,
+    });
+    await expectLater(
+        nextLinkInBioDraftRevisionForUser('first'), throwsStateError);
+  });
+
+  test('shared owner draft mutations serialize while other owners continue',
+      () async {
+    final gate = Completer<void>();
+    final steps = <String>[];
+    final first = withLinkInBioDraftMutationForUser('first', () async {
+      steps.add('first-start');
+      await gate.future;
+      steps.add('first-end');
+    });
+    final second = withLinkInBioDraftMutationForUser(
+        'first', () async => steps.add('second'));
+    await withLinkInBioDraftMutationForUser(
+        'other', () async => steps.add('other'));
+    expect(steps, ['first-start', 'other']);
+    gate.complete();
+    await Future.wait([first, second]);
+    expect(steps, ['first-start', 'other', 'first-end', 'second']);
+  });
+
+  test('draft image reference IDs survive reload and stay owner scoped',
+      () async {
+    final first = await linkInBioDraftReferenceIdForUser('first');
+    expect(first, matches(RegExp(r'^[a-zA-Z0-9_-]{8,80}$')));
+    expect(await linkInBioDraftReferenceIdForUser('first'), first);
+    expect(await linkInBioDraftReferenceIdForUser('second'), isNot(first));
+  });
+
+  test('image protection confirmations and account cleanup remain owner scoped',
+      () async {
+    await linkInBioDraftReferenceIdForUser('first');
+    final second = await linkInBioDraftReferenceIdForUser('second');
+    await saveLinkInBioProtectedImageKeysForUser('first', {'first-image'});
+    await saveLinkInBioProtectedImageKeysForUser('second', {'second-image'});
+    expect(
+        await loadLinkInBioProtectedImageKeysForUser('first'), {'first-image'});
+    await clearLinkInBioDraftForUser('first');
+    expect(await existingLinkInBioDraftReferenceIdForUser('first'), isNull);
+    expect(await loadLinkInBioProtectedImageKeysForUser('first'), isEmpty);
+    expect(await existingLinkInBioDraftReferenceIdForUser('second'), second);
+    expect(await loadLinkInBioProtectedImageKeysForUser('second'),
+        {'second-image'});
+  });
 
   test(
       'scopes saved links and deletion to their owner, ignoring legacy globals',

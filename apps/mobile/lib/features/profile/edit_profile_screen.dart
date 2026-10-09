@@ -47,6 +47,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         displayName: displayName,
         storeName: storeName,
         accountEmail: widget.initialDraft.accountEmail,
+        accountUserId: widget.initialDraft.accountUserId,
       ),
     );
   }

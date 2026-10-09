@@ -1,5 +1,6 @@
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
+import 'test_publish_media_identity.dart';
 
 class TestPublishDraftStore implements PublishDraftStore {
   TestPublishDraftStore({this.ownerUserId = 'test-user'});
@@ -13,6 +14,7 @@ class TestPublishDraftStore implements PublishDraftStore {
     savedRequests.add(request);
     final coverFile = request.coverImageFile;
     final coverDesign = request.coverDesign;
+    final fingerprint = testPublishMediaFingerprint(request);
     final draft = PublishDraft(
       version: publishDraftManifestVersion,
       id: request.id,
@@ -31,6 +33,11 @@ class TestPublishDraftStore implements PublishDraftStore {
       platformApiValues: request.platformApiValues,
       platformSettings: request.platformSettings,
       scheduledAt: request.scheduledAt,
+      mediaContentFingerprint: fingerprint,
+      uploadedMedia:
+          request.uploadedMedia?.mediaContentFingerprint == fingerprint
+              ? request.uploadedMedia
+              : null,
       cover: coverFile == null || coverDesign == null
           ? null
           : PublishDraftCover(

@@ -32,6 +32,7 @@ type PrismaPost = {
   userId: string;
   caption: string;
   videoS3Key: string;
+  mediaContentFingerprint?: string | null;
   coverImageS3Key?: string | null;
   coverFrameTimeMs?: number | null;
   selectedPlatforms: Platform[];
@@ -64,6 +65,7 @@ type PostDelegate = {
       userId: string;
       caption: string;
       videoS3Key: string;
+      mediaContentFingerprint?: string;
       coverImageS3Key?: string;
       coverFrameTimeMs?: number;
       selectedPlatforms: Platform[];
@@ -115,6 +117,7 @@ const mapPost = (post: PrismaPost): QueuedPost => {
     userId: post.userId,
     caption: post.caption,
     videoS3Key: post.videoS3Key,
+    ...(post.mediaContentFingerprint ? { mediaContentFingerprint: post.mediaContentFingerprint } : {}),
     ...(post.coverImageS3Key
       ? { coverImageS3Key: post.coverImageS3Key }
       : {}),
@@ -149,6 +152,7 @@ const createPost = async (
       userId: input.userId,
       caption: input.caption,
       videoS3Key: input.videoS3Key,
+      ...(input.mediaContentFingerprint ? { mediaContentFingerprint: input.mediaContentFingerprint } : {}),
       ...(input.coverImageS3Key
         ? { coverImageS3Key: input.coverImageS3Key }
         : {}),

@@ -7,6 +7,39 @@ import { createInMemoryDeviceTokenStore } from './deviceTokenStore.js';
 import { registerDeviceRoutes } from './deviceRoutes.js';
 
 describe('device routes', () => {
+  it('requires a token when unregistering a device', async () => {
+    const response = await request(createApp())
+      .delete('/devices')
+      .set('x-postdee-user-id', 'seller-device')
+      .send({})
+      .expect(400);
+    expect(response.body.message).toBe('token is required');
+  });
+  it('unregisters only a token owned by the caller, including after rebind', async () => {
+    const app = express();
+    const router = express.Router();
+    const store = createInMemoryDeviceTokenStore();
+    const userStore = {
+      ensure: vi.fn(),
+      exists: vi.fn(async () => true)
+    };
+    const authMiddleware: express.RequestHandler = (req, response, next) => {
+      response.locals.authUser = { id: req.header('x-user'), provider: 'mock' };
+      next();
+    };
+    app.use(express.json());
+    registerDeviceRoutes(router, authMiddleware, store, userStore);
+    app.use(router);
+    await store.register({ userId: 'owner', token: 'shared:token' });
+    await request(app).delete('/devices').set('x-user', 'other').send({token: 'shared:token'}).expect(200);
+    expect(await store.listForUser('owner')).toHaveLength(1);
+    await store.register({ userId: 'other', token: 'shared:token' });
+    await request(app).delete('/devices').set('x-user', 'owner').send({token: 'shared:token'}).expect(200);
+    expect(await store.listForUser('other')).toHaveLength(1);
+    await request(app).delete('/devices').set('x-user', 'other').send({token: 'shared:token'}).expect(200);
+    expect(await store.listForUser('other')).toEqual([]);
+  });
+
   it('registers a device token for the authenticated user', async () => {
     const app = createApp();
 

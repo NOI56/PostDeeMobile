@@ -10,6 +10,97 @@ import 'package:postdee_mobile/features/profile/profile_draft_store.dart';
 import 'package:postdee_mobile/features/profile/profile_screen.dart';
 
 void main() {
+  testWidgets('profile can request and refresh email verification',
+      (tester) async {
+    final store = PostDeeAuthSessionStore.instance;
+    store.signIn(const AuthSession(
+        userId: 'seller', idToken: 'token', email: 'seller@example.com'));
+    addTearDown(store.clear);
+    var sends = 0;
+    var refreshes = 0;
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('th'),
+      localizationsDelegates: const [
+        PostDeeLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate
+      ],
+      supportedLocales: PostDeeLocalizations.supportedLocales,
+      home: Scaffold(
+          body: ProfileScreen(
+        languageController: PostDeeLanguageController(),
+        themeController: PostDeeThemeController(),
+        onOpenTemplates: () {},
+        onDeleteAccount: () {},
+        apiClient: _ProfileApiClient(),
+        profileDraftStore: _MemoryProfileDraftStore(),
+        onSendEmailVerification: () async {
+          sends += 1;
+          return true;
+        },
+        onRefreshEmailVerification: () async {
+          refreshes += 1;
+          store.signIn(const AuthSession(
+              userId: 'seller',
+              idToken: 'fresh-token',
+              email: 'seller@example.com',
+              emailVerified: true));
+          return true;
+        },
+      )),
+    ));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('profile-send-email-verification')));
+    await tester.pumpAndSettle();
+    expect(sends, 1);
+    await tester
+        .tap(find.byKey(const ValueKey('profile-refresh-email-verification')));
+    await tester.pumpAndSettle();
+    expect(refreshes, 1);
+    expect(store.session.emailVerified, isTrue);
+    expect(find.byKey(const ValueKey('profile-send-email-verification')),
+        findsNothing);
+  });
+  testWidgets('phone verification refreshes the token and entitlement',
+      (tester) async {
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    sessionStore
+        .signIn(const AuthSession(userId: 'seller', idToken: 'old-token'));
+    addTearDown(sessionStore.clear);
+    final api = _ProfileApiClient();
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('th'),
+      localizationsDelegates: const [
+        PostDeeLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate
+      ],
+      supportedLocales: PostDeeLocalizations.supportedLocales,
+      home: Scaffold(
+          body: ProfileScreen(
+        languageController: PostDeeLanguageController(),
+        themeController: PostDeeThemeController(),
+        onOpenTemplates: () {},
+        onDeleteAccount: () {},
+        apiClient: api,
+        profileDraftStore: _MemoryProfileDraftStore(),
+        verifyPhone: (_) async {
+          api.verified = true;
+          return const AuthSession(userId: 'seller', idToken: 'fresh-token');
+        },
+      )),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('ยังไม่ยืนยัน'), findsOneWidget);
+    await tester.tap(find.text('ยืนยันเบอร์โทร'));
+    await tester.pumpAndSettle();
+    expect(sessionStore.session.idToken, 'fresh-token');
+    expect(api.subscriptionLoads, 2);
+    expect(find.text('ยืนยันแล้ว'), findsOneWidget);
+  });
   testWidgets('edits the profile and can undo the local change',
       (tester) async {
     final sessionStore = PostDeeAuthSessionStore.instance;
@@ -103,21 +194,25 @@ class _MemoryProfileDraftStore implements ProfileDraftStore {
 }
 
 class _ProfileApiClient extends PostDeeApiClient {
+  bool verified = false;
+  int subscriptionLoads = 0;
   @override
   Future<List<SocialConnectionResult>> listSocialConnections() async =>
       const [];
 
   @override
-  Future<SubscriptionStatusResult> loadCurrentSubscription() async =>
-      const SubscriptionStatusResult(
-        userId: 'seller',
-        plan: 'BASIC',
-        status: 'ACTIVE',
-        phoneVerified: true,
-        requiresPhoneVerification: false,
-        canUseFreePostQuota: true,
-        canSchedule: false,
-        canUseAiCaptions: false,
-        canUseAnalytics: false,
-      );
+  Future<SubscriptionStatusResult> loadCurrentSubscription() async {
+    subscriptionLoads += 1;
+    return SubscriptionStatusResult(
+      userId: 'seller',
+      plan: 'BASIC',
+      status: 'ACTIVE',
+      phoneVerified: verified,
+      requiresPhoneVerification: false,
+      canUseFreePostQuota: true,
+      canSchedule: false,
+      canUseAiCaptions: false,
+      canUseAnalytics: false,
+    );
+  }
 }

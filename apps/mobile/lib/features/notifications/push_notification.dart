@@ -8,11 +8,13 @@ class PostDeeNotification {
     required this.title,
     required this.body,
     required this.receivedAt,
+    this.postId,
   });
 
   final String title;
   final String body;
   final DateTime receivedAt;
+  final String? postId;
 
   @override
   bool operator ==(Object other) =>
@@ -20,10 +22,11 @@ class PostDeeNotification {
       other is PostDeeNotification &&
           title == other.title &&
           body == other.body &&
+          postId == other.postId &&
           receivedAt == other.receivedAt;
 
   @override
-  int get hashCode => Object.hash(title, body, receivedAt);
+  int get hashCode => Object.hash(title, body, receivedAt, postId);
 }
 
 /// In-memory store of received notifications, newest first. The notifications

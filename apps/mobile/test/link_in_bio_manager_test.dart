@@ -59,6 +59,23 @@ Future<void> _reload(WidgetTester tester) async {
   await _mount(tester, LinkInBioScreen(loadProfile: () async => null));
 }
 
+class _ControlledDraftStore implements LinkInBioDraftStore {
+  _ControlledDraftStore({this.fail = false});
+  bool fail;
+  Completer<void>? gate;
+  int saves = 0;
+  LinkInBioDraft saved = _draft;
+  @override
+  Future<LinkInBioDraft?> loadDraft() async => saved;
+  @override
+  Future<void> saveDraft(LinkInBioDraft value) async {
+    saves++;
+    if (gate != null) await gate!.future;
+    if (fail) throw StateError('disk unavailable');
+    saved = value;
+  }
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -66,6 +83,113 @@ void main() {
         .signIn(const AuthSession(userId: 'seller-a', idToken: 'token'));
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
+
+  testWidgets(
+      'automatic draft saves serialize edits and skip queued work after an owner change',
+      (tester) async {
+    final store = _ControlledDraftStore()..gate = Completer<void>();
+    await _mount(tester,
+        LinkInBioScreen(draftStore: store, loadProfile: () async => null));
+    await tester.tap(find.byKey(const ValueKey('link-in-bio-toggle-shop')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('link-in-bio-toggle-shop')));
+    await tester.pump();
+    expect(store.saves, 1);
+    expect(find.text('กำลังบันทึกแบบร่างในเครื่อง...'), findsOneWidget);
+    store.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(store.saves, 2);
+    expect(store.saved.enabledLinkIds, {'shop'});
+    store.gate = Completer<void>();
+    await tester.tap(find.byKey(const ValueKey('link-in-bio-toggle-shop')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('link-in-bio-toggle-shop')));
+    await tester.pump();
+    PostDeeAuthSessionStore.instance
+        .signIn(const AuthSession(userId: 'seller-b', idToken: 'token-b'));
+    store.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(store.saves, 3);
+    expect(store.saved.enabledLinkIds, isEmpty);
+  });
+
+  testWidgets(
+      'failed automatic save reports unsaved changes and back waits for a successful retry',
+      (tester) async {
+    final store = _ControlledDraftStore(fail: true);
+    var backs = 0;
+    await _mount(
+        tester,
+        LinkInBioScreen(
+            draftStore: store,
+            loadProfile: () async => null,
+            onBack: () => backs++));
+    await _tap(tester, 'link-in-bio-toggle-shop');
+    expect(find.text('มีการแก้ไขที่ยังไม่ได้บันทึก'), findsOneWidget);
+    expect(store.saved.enabledLinkIds, {'shop'});
+    await _tap(tester, 'link-in-bio-back');
+    expect(backs, 0);
+    store.fail = false;
+    await _tap(tester, 'link-in-bio-back');
+    expect(backs, 1);
+    expect(store.saved.enabledLinkIds, isEmpty);
+  });
+
+  testWidgets(
+      'Save Link and Done persist without a second parent save or publication',
+      (tester) async {
+    var publications = 0;
+    await _mount(
+        tester,
+        LinkInBioScreen(
+            loadProfile: () async => null,
+            publishProfile: (
+                {required storeName,
+                required slug,
+                required links,
+                appearance}) async {
+              publications++;
+              return _profile();
+            }));
+    await _tap(tester, 'link-in-bio-add');
+    await tester.enterText(
+        find.byKey(const ValueKey('link-in-bio-link-title')), 'ร้านใหม่');
+    await tester.enterText(find.byKey(const ValueKey('link-in-bio-link-url')),
+        'https://example.com/new');
+    await _tap(tester, 'link-in-bio-link-save');
+    expect((await _store.loadDraft())!.customLinks.single.title, 'ร้านใหม่');
+    await showBioUrlSettings(tester);
+    await tester.enterText(
+        find.byKey(const ValueKey('link-in-bio-slug')), 'new-shop');
+    await tester.enterText(
+        find.byKey(const ValueKey('link-in-bio-store-name')), 'ร้านใหม่ของฉัน');
+    await _tap(tester, 'link-in-bio-done');
+    expect((await _store.loadDraft())!.storeName, 'ร้านใหม่ของฉัน');
+    expect(find.text('บันทึกแบบร่างในเครื่องแล้ว'), findsOneWidget);
+    await _reload(tester);
+    expect(find.text('ร้านใหม่'), findsOneWidget);
+    expect(publications, 0);
+    expect(find.byKey(const ValueKey('link-in-bio-public-url')), findsNothing);
+  });
+
+  testWidgets('inactive embedded preview disables animation tickers',
+      (tester) async {
+    await _store.saveDraft(_draft);
+    Widget screen(bool active) => MaterialApp(
+        theme: AppTheme.light,
+        home: LinkInBioScreen(
+            isActive: active,
+            embeddedInTab: true,
+            loadProfile: () async => null));
+    await tester.pumpWidget(screen(true));
+    await tester.pumpAndSettle();
+    await _tap(tester, 'link-in-bio-review');
+    final preview = find.byType(LinkInBioPreview);
+    expect(TickerMode.valuesOf(tester.element(preview)).enabled, isTrue);
+    await tester.pumpWidget(screen(false));
+    await tester.pump();
+    expect(TickerMode.valuesOf(tester.element(preview)).enabled, isFalse);
+  });
 
   testWidgets('empty manager opens directly with Add Link and no setup wizard',
       (tester) async {

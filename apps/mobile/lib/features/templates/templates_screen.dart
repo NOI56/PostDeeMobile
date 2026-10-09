@@ -43,6 +43,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
   }
 
   Future<void> _loadTemplates() async {
+    if (_isLoading || _isSaving) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -89,6 +90,9 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
   }
 
   Future<void> _saveTemplate() async {
+    if (_isLoading || _isSaving) return;
+    final originalTitle = _titleController.text;
+    final originalBody = _bodyController.text;
     final title = _titleController.text.trim();
     final body = _bodyController.text.trim();
 
@@ -114,8 +118,11 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
 
       setState(() {
         _templates.insert(0, template);
-        _titleController.clear();
-        _bodyController.clear();
+        if (_titleController.text == originalTitle &&
+            _bodyController.text == originalBody) {
+          _titleController.clear();
+          _bodyController.clear();
+        }
       });
     } on ApiException catch (error) {
       if (!mounted) {
@@ -223,7 +230,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                     child: SizedBox(
                       height: 46,
                       child: FilledButton.icon(
-                        onPressed: _isSaving ? null : _saveTemplate,
+                        onPressed: _isSaving || _isLoading ? null : _saveTemplate,
                         icon: const Icon(Icons.save_outlined, size: 19),
                         label: Text(
                             _isSaving ? 'กำลังบันทึก...' : 'บันทึกเทมเพลต'),
@@ -248,7 +255,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   const SizedBox(width: AppTheme.spaceMd),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _isLoading ? null : _loadTemplates,
+                      onPressed: _isLoading || _isSaving ? null : _loadTemplates,
                       icon: const Icon(Icons.sync, size: 18),
                       label: Text(
                           _isLoading ? 'กำลังโหลดเทมเพลต...' : 'โหลดเทมเพลต'),

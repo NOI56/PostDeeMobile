@@ -82,6 +82,13 @@ const invalidClientRequestIdResponse = {
     'clientRequestId must be 1-128 ASCII letters, numbers, dots, underscores, colons, or hyphens'
 } as const;
 
+const readOptionalMediaContentFingerprint = (value: unknown) =>
+  value === undefined
+    ? { ok: true as const, value: undefined }
+    : typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
+      ? { ok: true as const, value }
+      : { ok: false as const, value: undefined };
+
 const idempotencyKeyReusedResponse = {
   status: 'error',
   code: 'IDEMPOTENCY_KEY_REUSED',
@@ -214,7 +221,7 @@ const platformTargetUnavailableResponse = {
   message: 'A selected connected account is no longer available. Review the post again.'
 } as const;
 
-const toPublicPost = ({ platformTargets: _platformTargets, ...post }: QueuedPost) => post;
+const toPublicPost = ({ platformTargets: _platformTargets, mediaContentFingerprint: _mediaContentFingerprint, ...post }: QueuedPost) => post;
 const toPublicPlatformResult = ({
   providerPostId: _providerPostId,
   ...result
@@ -501,6 +508,8 @@ export const registerPostRoutes = (
     const videoS3Key = readRequiredString(request.body?.videoS3Key);
     const clientRequestIdResult = readOptionalClientRequestId(request.body?.clientRequestId);
     const clientRequestId = clientRequestIdResult.value;
+    const mediaFingerprintResult = readOptionalMediaContentFingerprint(request.body?.mediaContentFingerprint);
+    const mediaContentFingerprint = mediaFingerprintResult.value;
     const platformsResult = readPlatforms(request.body?.platforms);
     const platformSettingsResult = readPlatformSettings(
       request.body?.platformSettings,
@@ -534,7 +543,8 @@ export const registerPostRoutes = (
       platformSettingsResult.ok &&
       scheduledAtResult.ok &&
       coverImageKeyResult.ok &&
-      coverFrameTimeResult.ok
+      coverFrameTimeResult.ok &&
+      mediaFingerprintResult.ok
     ) {
       const existing = await store.findIdempotent({
         userId: authUser.id,
@@ -546,6 +556,7 @@ export const registerPostRoutes = (
           clientRequestId,
           caption,
           videoS3Key,
+          ...(mediaContentFingerprint ? { mediaContentFingerprint } : {}),
           ...(coverImageKeyResult.value
             ? { coverImageS3Key: coverImageKeyResult.value }
             : {}),
@@ -572,6 +583,10 @@ export const registerPostRoutes = (
             clientRequestId
           });
           if (current) {
+            if (!isMatchingIdempotentIntent(current, replayInput)) {
+              response.status(409).json(idempotencyKeyReusedResponse);
+              return;
+            }
             if (current.status === 'FAILED') {
               response.status(409).json(idempotentPostFailedResponse(current.id));
               return;
@@ -628,6 +643,12 @@ export const registerPostRoutes = (
 
     if (!clientRequestIdResult.ok) {
       response.status(400).json(invalidClientRequestIdResponse);
+      return;
+    }
+
+    if (!mediaFingerprintResult.ok) {
+      response.status(400).json({ status: 'error', code: 'INVALID_MEDIA_CONTENT_FINGERPRINT',
+        message: 'mediaContentFingerprint must be a lowercase SHA-256 digest when provided' });
       return;
     }
 
@@ -793,6 +814,7 @@ export const registerPostRoutes = (
       ...(clientRequestId ? { clientRequestId } : {}),
       caption,
       videoS3Key,
+      ...(mediaContentFingerprint ? { mediaContentFingerprint } : {}),
       ...(coverImageS3Key ? { coverImageS3Key } : {}),
       ...(coverFrameTimeMs !== undefined ? { coverFrameTimeMs } : {}),
       platforms,

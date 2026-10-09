@@ -111,6 +111,9 @@ model LinkInBioImage {
   storageKey String   @unique
   sizeBytes  Int
   createdAt  DateTime @default(now())
+  draftReferences Json @default("[]")
+  legacyRetention Boolean @default(true)
+  deletionClaimed Boolean @default(false)
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
@@ -121,6 +124,7 @@ model Post {
   userId            String
   caption           String
   videoS3Key        String
+  mediaContentFingerprint String?
   coverImageS3Key   String?
   coverFrameTimeMs  Int?
   scheduledAt       DateTime?

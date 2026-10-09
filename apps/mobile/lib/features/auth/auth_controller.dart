@@ -24,6 +24,14 @@ abstract class EmailAuthGateway {
   });
 }
 
+/// Optional Firebase-backed self-service actions; unavailable/mock gateways do
+/// not advertise actions they cannot carry out.
+abstract interface class EmailAccountRecoveryGateway {
+  Future<void> sendPasswordResetEmail(String email);
+  Future<void> sendEmailVerification();
+  Future<AuthSession> reloadSession();
+}
+
 class UnavailableEmailAuthGateway implements EmailAuthGateway {
   const UnavailableEmailAuthGateway({
     this.message = 'Email sign-in is not configured yet',
@@ -128,6 +136,67 @@ class PostDeeAuthController extends ChangeNotifier {
   AuthSession get session => _sessionStore.session;
   bool get isSigningIn => _isSigningIn;
   String? get errorMessage => _errorMessage;
+  bool get supportsEmailRecovery =>
+      _emailAuthGateway is EmailAccountRecoveryGateway;
+
+  Future<bool> resetEmailPassword(String email) async {
+    final normalized = email.trim();
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(normalized)) {
+      _errorMessage = 'กรอกอีเมลให้ถูกต้อง';
+      notifyListeners();
+      return false;
+    }
+    return _recoverEmail(
+        (gateway) => gateway.sendPasswordResetEmail(normalized));
+  }
+
+  Future<bool> sendEmailVerification() => _recoverEmail(
+        (gateway) => gateway.sendEmailVerification(),
+      );
+
+  Future<bool> refreshEmailVerification() async {
+    final owner = _sessionStore.session.stableUserId;
+    final attempt = _signInAttempt;
+    AuthSession? refreshed;
+    final success = await _recoverEmail((gateway) async {
+      refreshed = await gateway.reloadSession();
+    });
+    if (!success ||
+        _isDisposed ||
+        attempt != _signInAttempt ||
+        owner == null ||
+        owner != _sessionStore.session.stableUserId ||
+        refreshed?.stableUserId != owner) {
+      return false;
+    }
+    final current = _sessionStore.session;
+    _sessionStore.signIn(AuthSession(
+      userId: current.userId,
+      idToken: refreshed!.idToken,
+      email: refreshed!.email,
+      displayName: current.displayName,
+      emailVerified: refreshed!.emailVerified,
+    ));
+    return true;
+  }
+
+  Future<bool> _recoverEmail(
+      Future<void> Function(EmailAccountRecoveryGateway) action) async {
+    final gateway = _emailAuthGateway;
+    if (_isDisposed || gateway is! EmailAccountRecoveryGateway) return false;
+    _errorMessage = null;
+    try {
+      await action(gateway as EmailAccountRecoveryGateway)
+          .timeout(_signInTimeout);
+      return !_isDisposed;
+    } on AuthUnavailableException catch (error) {
+      _errorMessage = error.message;
+    } catch (_) {
+      _errorMessage = 'ดำเนินการไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
+    }
+    if (!_isDisposed) notifyListeners();
+    return false;
+  }
 
   Future<void> signInWithGoogle() =>
       _signInWith('google', _googleAuthGateway.signIn);

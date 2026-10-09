@@ -36,8 +36,14 @@ class FirebasePhoneVerificationGateway {
 
   final firebase_auth.FirebaseAuth _firebaseAuth;
   final Duration timeout;
+  String? _verificationOwnerUserId;
 
   Future<PhoneVerificationStartResult> sendCode(String phoneNumber) async {
+    final owner = _firebaseAuth.currentUser?.uid;
+    if (owner == null) {
+      throw const AuthUnavailableException('กรุณาเข้าสู่ระบบก่อนยืนยันเบอร์');
+    }
+    _verificationOwnerUserId = owner;
     final completer = Completer<PhoneVerificationStartResult>();
 
     await _firebaseAuth.verifyPhoneNumber(
@@ -45,7 +51,8 @@ class FirebasePhoneVerificationGateway {
       timeout: timeout,
       verificationCompleted: (credential) async {
         try {
-          final session = await _linkPhoneCredential(credential);
+          final session =
+              await _linkPhoneCredential(credential, expectedUserId: owner);
 
           if (!completer.isCompleted) {
             completer.complete(
@@ -99,18 +106,22 @@ class FirebasePhoneVerificationGateway {
       smsCode: smsCode,
     );
 
-    return _linkPhoneCredential(credential);
+    return _linkPhoneCredential(credential,
+        expectedUserId: _verificationOwnerUserId);
   }
 
   Future<AuthSession> _linkPhoneCredential(
-    firebase_auth.PhoneAuthCredential credential,
-  ) async {
+      firebase_auth.PhoneAuthCredential credential,
+      {String? expectedUserId}) async {
     final user = _firebaseAuth.currentUser;
 
     if (user == null) {
       throw const AuthUnavailableException(
         'Sign in with Google before verifying a phone number.',
       );
+    }
+    if (expectedUserId != null && user.uid != expectedUserId) {
+      throw const AuthSessionChangedException();
     }
 
     try {
@@ -125,9 +136,15 @@ class FirebasePhoneVerificationGateway {
 
     await user.reload();
     final refreshedUser = _firebaseAuth.currentUser ?? user;
+    if (refreshedUser.uid != user.uid ||
+        _firebaseAuth.currentUser?.uid != user.uid) {
+      throw const AuthSessionChangedException();
+    }
     final idToken = (await refreshedUser.getIdToken(true))?.trim();
 
-    if (idToken == null || idToken.isEmpty) {
+    if (idToken == null ||
+        idToken.isEmpty ||
+        _firebaseAuth.currentUser?.uid != user.uid) {
       throw const AuthUnavailableException(
         'Firebase Auth did not return a refreshed ID token.',
       );

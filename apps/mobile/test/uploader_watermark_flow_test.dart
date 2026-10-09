@@ -11,6 +11,7 @@ import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:postdee_mobile/features/uploader/watermark_video_processor.dart';
 
 import 'support/uploader_wizard_test_navigation.dart';
+import 'support/test_publish_media_identity.dart';
 
 Future<List<SocialConnectionResult>> _loadConnectedSocialConnections() async =>
     const [
@@ -132,6 +133,7 @@ class _WatermarkDraftStore implements PublishDraftStore {
 
   @override
   Future<PublishDraft> saveDraft(PublishDraftSaveRequest request) async {
+    final fingerprint = testPublishMediaFingerprint(request);
     final draft = PublishDraft(
       version: publishDraftManifestVersion,
       id: request.id,
@@ -151,6 +153,11 @@ class _WatermarkDraftStore implements PublishDraftStore {
       platformApiValues: request.platformApiValues,
       platformSettings: request.platformSettings,
       scheduledAt: request.scheduledAt,
+      mediaContentFingerprint: fingerprint,
+      uploadedMedia:
+          request.uploadedMedia?.mediaContentFingerprint == fingerprint
+              ? request.uploadedMedia
+              : null,
     );
     drafts[draft.id] = draft;
     return draft;

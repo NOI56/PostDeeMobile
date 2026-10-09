@@ -28,6 +28,27 @@ Future<void> withServer(Future<void> Function(PostDeeApiClient) run,
 }
 
 void main() {
+  test('protects owner draft images with an authenticated bounded request',
+      () async {
+    await withServer((client) async {
+      await client.protectLinkInBioDraftImages(
+          draftId: 'device-one', keys: {imageKey}, mode: 'add');
+    }, (request) async {
+      expect(request.method, 'PUT');
+      expect(request.uri.path, '/link-in-bio/draft-images');
+      expect(request.headers.value(HttpHeaders.authorizationHeader),
+          'Bearer firebase-image-token');
+      expect(jsonDecode(await utf8.decoder.bind(request).join()), {
+        'draftId': 'device-one',
+        'keys': [imageKey],
+        'mode': 'add'
+      });
+      request.response.headers.contentType = ContentType.json;
+      request.response.write('{"status":"ok"}');
+      await request.response.close();
+    });
+  });
+
   test(
       'image upload uses authenticated JSON, returns a registered owned key, and loads PNG bytes',
       () async {

@@ -14,6 +14,12 @@ abstract class PushMessagingGateway {
   Future<void> dispose();
 }
 
+/// Listens for already-authorized delivery and cold-start taps without showing
+/// a permission prompt. Permission is requested only by [initialize].
+abstract interface class PushMessagingLifecycle {
+  Future<void> start();
+}
+
 /// No-op gateway used when push messaging is not configured.
 class DisabledPushMessagingGateway implements PushMessagingGateway {
   const DisabledPushMessagingGateway();

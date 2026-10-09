@@ -14,18 +14,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support/test_publish_draft_store.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
-Future<void> _openVideoTools(WidgetTester tester) async {
-  await goToUploaderStep(tester, 0);
-  final tools = find.text('เครื่องมือเพิ่มเติม');
-  await tester.scrollUntilVisible(
-    tools,
-    300,
-    scrollable: find.byType(Scrollable).first,
-  );
-  await tester.tap(tools);
-  await tester.pumpAndSettle();
-}
-
 Future<void> _openCaptionOptions(WidgetTester tester, String key) async {
   await goToUploaderStep(tester, 1);
   final options = find.byKey(ValueKey(key));
@@ -39,39 +27,6 @@ Future<void> _openCaptionOptions(WidgetTester tester, String key) async {
   final label =
       key == 'uploader-ai-open-panel' ? 'ช่วยเขียนด้วย AI' : 'เทมเพลตแคปชัน';
   await tester.tap(find.text(label));
-  await tester.pumpAndSettle();
-}
-
-Future<void> _expectTextAfterScrolling(
-  WidgetTester tester,
-  Finder scrollable,
-  String text,
-) async {
-  if (text == 'ตัดคลิปเป็น EP') await _openVideoTools(tester);
-  final finder = find.text(text);
-
-  for (var attempt = 0; attempt < 10; attempt += 1) {
-    if (finder.evaluate().isNotEmpty) {
-      expect(finder, findsOneWidget);
-      return;
-    }
-
-    await tester.drag(scrollable, const Offset(0, -260));
-    await tester.pumpAndSettle();
-  }
-
-  expect(finder, findsOneWidget);
-}
-
-Future<void> _tapTextAfterScrolling(
-  WidgetTester tester,
-  Finder scrollable,
-  String text,
-) async {
-  await _expectTextAfterScrolling(tester, scrollable, text);
-  await tester.ensureVisible(find.text(text));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text(text));
   await tester.pumpAndSettle();
 }
 
@@ -993,18 +948,12 @@ void main() {
     expect(find.text('ตั้งเวลาใช้ได้ใน Starter/Pro'), findsNothing);
     expect(find.text('โพสต์เลยหรือเลือกวันเวลาที่ต้องการ'), findsNothing);
 
-    await _openVideoTools(tester);
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('uploader-ep-tool-section')),
-      500,
-      scrollable: uploaderScroll,
-    );
-    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 0);
     expect(
       find.byKey(const ValueKey('uploader-ep-tool-section')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('ตัดคลิปเป็น EP'), findsOneWidget);
+    expect(find.text('ตัดคลิปเป็น EP'), findsNothing);
     expect(find.text('ตัดต่อเอง'), findsNothing);
     expect(
       find.text('วางแผนไทม์ไลน์ ซับ สติกเกอร์ และฟิลเตอร์ไว้ล่วงหน้า'),
@@ -1032,81 +981,17 @@ void main() {
     expect(find.text('โพสต์'), findsOneWidget);
   });
 
-  testWidgets('shows compact EP trimming tool on the upload screen',
+  testWidgets('hides the unfinished EP tool and its empty optional section',
       (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: UploaderScreen(),
-        ),
-      ),
-    );
-
-    await _expectTextAfterScrolling(
-      tester,
-      uploaderScroll,
-      'ตัดคลิปเป็น EP',
-    );
+    await tester
+        .pumpWidget(const MaterialApp(home: Scaffold(body: UploaderScreen())));
+    await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey('uploader-tool-ep-trimmer')),
-      findsOneWidget,
-    );
+        find.byKey(const ValueKey('uploader-ep-tool-section')), findsNothing);
     expect(
-      find.text('ตรวจความยาวคลิปก่อนโพสต์ และเตรียมร่าง EP.1 / EP.2 ให้'),
-      findsNothing,
-    );
-    expect(find.text('เหมาะกับ Shorts/Reels'), findsNothing);
-  });
-
-  testWidgets('hides upload tools other than the EP trimmer', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: UploaderScreen(),
-        ),
-      ),
-    );
-
-    await _openVideoTools(tester);
-
-    expect(
-      find.byKey(const ValueKey('uploader-tool-auto-watermark')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey('uploader-tool-manual-editor')),
-      findsNothing,
-    );
-    expect(find.text('ใส่ลายน้ำอัตโนมัติ'), findsNothing);
-    expect(find.text('ตัดต่อเอง'), findsNothing);
-    expect(find.text('แต่งหน้าปก'), findsNothing);
-    expect(find.text('โหมดตั้งค่าขั้นสูง'), findsNothing);
-  });
-
-  testWidgets('opens EP trimming detail settings', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: UploaderScreen(),
-        ),
-      ),
-    );
-
-    const title = 'ตัดคลิปเป็น EP';
-    await _tapTextAfterScrolling(tester, uploaderScroll, title);
-
-    expect(find.text('รายละเอียดและตั้งค่า'), findsOneWidget);
-    expect(find.text('ตั้งค่า: $title'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('growth-tool-real-status-note')),
-      findsOneWidget,
-    );
-    expect(find.text('แบบร่างในเครื่อง'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('growth-tool-enabled-switch')),
-      findsNothing,
-    );
-    expect(find.text('บันทึกแบบร่าง'), findsOneWidget);
+        find.byKey(const ValueKey('uploader-tool-ep-trimmer')), findsNothing);
+    expect(find.text('ตัดคลิปเป็น EP'), findsNothing);
+    expect(find.text('เครื่องมือเพิ่มเติม'), findsNothing);
   });
 
   testWidgets('shows platform choices as a stacked toggle list on phones',
@@ -1604,6 +1489,9 @@ void main() {
       'uploads/frames/frame_2.jpg',
     ]);
     expect(requestedRequest!.deleteAfterUse, isTrue);
+    expect(frame1.existsSync(), isFalse);
+    expect(frame2.existsSync(), isFalse);
+    expect(File(pickedVideo.path).existsSync(), isTrue);
   });
 
   testWidgets('lets AI infer caption language from the selected clip',
@@ -2832,7 +2720,7 @@ void main() {
           findsOneWidget,
         );
 
-        await _openVideoTools(tester);
+        await goToUploaderStep(tester, 0);
         final scroll = find.byKey(const ValueKey('uploader-scroll'));
         final scrollable = find.descendant(
           of: scroll,
@@ -2848,7 +2736,7 @@ void main() {
         }
 
         final finalItem = tester.getRect(
-          find.byKey(const ValueKey('uploader-ep-tool-section')),
+          find.byKey(const ValueKey('uploader-cover-edit-button')),
         );
         final footer = tester.getRect(
           find.byKey(const ValueKey('uploader-sticky-action-bar')),

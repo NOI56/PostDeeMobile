@@ -37,6 +37,19 @@ class _ImmediateEmailGateway implements EmailAuthGateway {
       AuthSession.authenticated(userId: 'email-user', idToken: 'email-token');
 }
 
+class _RecoveryEmailGateway extends _ImmediateEmailGateway
+    implements EmailAccountRecoveryGateway {
+  final resets = <String>[];
+  int verificationRequests = 0;
+  final refresh = Completer<AuthSession>();
+  @override
+  Future<void> sendPasswordResetEmail(String email) async => resets.add(email);
+  @override
+  Future<void> sendEmailVerification() async => verificationRequests += 1;
+  @override
+  Future<AuthSession> reloadSession() => refresh.future;
+}
+
 class _StalledEmailGateway implements EmailAuthGateway {
   final request = Completer<AuthSession>();
 
@@ -64,6 +77,33 @@ const _googleSession =
     AuthSession(userId: 'google-user', idToken: 'google-token');
 
 void main() {
+  test('email recovery validates input and uses the existing gateway',
+      () async {
+    final gateway = _RecoveryEmailGateway();
+    final controller = PostDeeAuthController(
+        emailAuthGateway: gateway, sessionStore: PostDeeAuthSessionStore());
+    addTearDown(controller.dispose);
+    expect(await controller.resetEmailPassword('invalid'), isFalse);
+    expect(gateway.resets, isEmpty);
+    expect(await controller.resetEmailPassword(' seller@example.com '), isTrue);
+    expect(gateway.resets, ['seller@example.com']);
+  });
+
+  test('verification refresh does not replace a newer account', () async {
+    final gateway = _RecoveryEmailGateway();
+    final store = PostDeeAuthSessionStore(
+        initialSession: const AuthSession(userId: 'owner', idToken: 'token'));
+    final controller =
+        PostDeeAuthController(emailAuthGateway: gateway, sessionStore: store);
+    addTearDown(controller.dispose);
+    final refresh = controller.refreshEmailVerification();
+    store.signIn(const AuthSession(userId: 'other', idToken: 'other-token'));
+    gateway.refresh.complete(const AuthSession(
+        userId: 'owner', idToken: 'new-token', emailVerified: true));
+    expect(await refresh, isFalse);
+    expect(store.session.userId, 'other');
+    expect(store.session.emailVerified, isFalse);
+  });
   testWidgets('email login stops waiting after thirty seconds', (tester) async {
     final gateway = _StalledEmailGateway();
     final controller = PostDeeAuthController(

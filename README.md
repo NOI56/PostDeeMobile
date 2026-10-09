@@ -7,6 +7,24 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## System audit fixes (2026-10-09)
+
+The audit-fix branch starts from verified `main` `c4e5220`. It preserves the
+four-step composer, all 100 profile templates, package limits and disabled
+Staging social publishing. It adds safe media-aware publish replay with saved
+upload receipts, owner-bound notifications, nonblocking session restore, a full
+post list, fresh entitlement state, local shop-draft autosave and durable image
+protection. Store prices come from the device store; a timed-out purchase keeps
+its existing operation for rechecking instead of starting a second purchase.
+Failed AI-provider requests identify their fallback and release only their own
+quota reservation. Local/mock template generation retains scaffold quota rules.
+
+This is local implementation, not a deployed release. Apply the additive Post
+and LinkInBioImage migrations, regenerate Prisma and deploy API before the
+mobile build. Test private posting, actual payment/OTP and two-account native
+notification delivery separately with authorization. Details and verification:
+`docs/superpowers/plans/2026-10-09-system-audit-fixes.md`.
+
 ## Pending-work integration (2026-10-08)
 
 The mobile UI cleanup is on remote `main` at `b1f793c`; its app source is
@@ -780,10 +798,12 @@ must be handled by the normal temporary-media cleanup policy.
 Post creation is database-first: the durable owner-scoped `QUEUED` row remains
 when queue enqueue returns `503 PUBLISH_QUEUE_UNAVAILABLE`, and a retry with the
 same supplied request ID repairs the queue without a second post/quota charge.
-The draft does not yet persist completed remote upload keys, so a lost response
-can still leave replacement video/cover objects unused even though the post row
-is deduplicated. Production needs remote-key reuse or explicit superseded-object
-cleanup plus a verified R2 lifecycle rule.
+The draft now persists completed remote video/cover keys with a stable source
+media fingerprint before submitting the post. A matching retry reuses them;
+changing the clip or cover conflicts with an already accepted request and keeps
+the draft. Pre-upgrade uncertain drafts without upload receipts cannot infer
+the old media safely; check the existing post before explicitly starting anew.
+Interrupted pre-submit uploads still need a verified R2 lifecycle rule.
 
 Mobile bounds each ordinary JSON request to 20 seconds from authentication
 refresh through connection and response-body completion. AI transcription,

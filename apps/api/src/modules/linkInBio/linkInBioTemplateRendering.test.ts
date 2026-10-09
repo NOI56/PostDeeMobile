@@ -23,6 +23,27 @@ const createProfile = (templateId: string): LinkInBioProfile => ({
 });
 
 describe('categorized profile template rendering', () => {
+  it('repeats a category heading and resets rhythm after an uncategorized link', () => {
+    const profile = createProfile('cute-sticker-layers');
+    profile.links = [
+      { id: 'first', title: 'หนึ่ง', url: 'https://example.com/1', category: 'สินค้า' },
+      { id: 'empty', title: 'สอง', url: 'https://example.com/2' },
+      { id: 'again', title: 'สาม', url: 'https://example.com/3', category: 'สินค้า' }
+    ];
+    const html = renderLinkInBioPage(profile, 'nonce');
+    expect(html.match(/<li class="category">สินค้า<\/li>/g)).toHaveLength(2);
+    expect([...html.matchAll(/data-position="\d+" data-rhythm="(\d+)"/g)].map((match) => match[1])).toEqual(['0', '1', '0']);
+  });
+
+  it('keeps readable outline text transparent on an opaque panel above a contrasting page', () => {
+    const profile = createProfile('minimal-mono-pair');
+    profile.appearance!.surfaceColor = '#ffffff';
+    profile.appearance!.background.color = '#000000';
+    profile.appearance!.buttonStyle.color = '#000000';
+    profile.links = [{ id: 'one', title: 'ลิงก์', url: 'https://example.com' }];
+    expect(renderLinkInBioPage(profile, 'nonce')).toContain('.link-0{color:#000000;background:transparent;');
+  });
+
   it.each(profileTemplates)('renders $id using its catalog layout without losing existing content or link customization', (template) => {
     const html = renderLinkInBioPage(createProfile(template.id), 'safe-nonce');
     expect(html).toContain(`data-template="${template.id}"`);

@@ -5,12 +5,64 @@ import '../../core/auth/firebase_bootstrap.dart';
 import '../../core/config/app_config.dart';
 import 'auth_controller.dart';
 
-class FirebaseEmailAuthGateway implements EmailAuthGateway {
+class FirebaseEmailAuthGateway
+    implements EmailAuthGateway, EmailAccountRecoveryGateway {
   FirebaseEmailAuthGateway({
     firebase_auth.FirebaseAuth? firebaseAuth,
   }) : _firebaseAuth = firebaseAuth ?? firebase_auth.FirebaseAuth.instance;
 
   final firebase_auth.FirebaseAuth _firebaseAuth;
+
+  @override
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _firebaseAuth.sendPasswordResetEmail(email: email);
+    } on firebase_auth.FirebaseAuthException catch (error) {
+      // Keep the same success message when Firebase uses an older setup that
+      // reports unknown emails; do not reveal whether an account exists.
+      if (error.code == 'user-not-found') return;
+      throw const AuthUnavailableException(
+          'ส่งอีเมลตั้งรหัสผ่านไม่สำเร็จ กรุณาลองใหม่');
+    }
+  }
+
+  @override
+  Future<void> sendEmailVerification() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw const AuthUnavailableException('กรุณาเข้าสู่ระบบก่อน');
+    }
+    if (user.emailVerified) return;
+    try {
+      await user.sendEmailVerification();
+    } on firebase_auth.FirebaseAuthException {
+      throw const AuthUnavailableException(
+          'ส่งอีเมลยืนยันไม่สำเร็จ กรุณาลองใหม่');
+    }
+  }
+
+  @override
+  Future<AuthSession> reloadSession() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) throw const AuthSessionChangedException();
+    await user.reload();
+    final refreshed = _firebaseAuth.currentUser;
+    if (refreshed == null || refreshed.uid != user.uid) {
+      throw const AuthSessionChangedException();
+    }
+    final token = (await refreshed.getIdToken(true))?.trim();
+    if (token == null ||
+        token.isEmpty ||
+        _firebaseAuth.currentUser?.uid != user.uid) {
+      throw const AuthSessionChangedException();
+    }
+    return AuthSession.authenticated(
+        userId: refreshed.uid,
+        idToken: token,
+        email: refreshed.email,
+        displayName: refreshed.displayName,
+        emailVerified: refreshed.emailVerified);
+  }
 
   @override
   Future<AuthSession> signIn({

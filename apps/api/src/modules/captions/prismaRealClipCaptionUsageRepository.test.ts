@@ -3,6 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPrismaRealClipCaptionUsageRepository } from './prismaRealClipCaptionUsageRepository.js';
 
 describe('createPrismaRealClipCaptionUsageRepository', () => {
+  it('releases only the exact reserved row owned by the caller', async () => {
+    const prisma = { realClipCaptionUsage: {
+      count: vi.fn(), create: vi.fn(), deleteMany: vi.fn().mockResolvedValue({ count: 1 })
+    }};
+    const repository = createPrismaRealClipCaptionUsageRepository({ prisma });
+    expect(await repository.release!({ id: 'reservation-1', userId: 'owner',
+      monthKey: '2026-10', createdAt: '2026-10-09T00:00:00.000Z' })).toBe(true);
+    expect(prisma.realClipCaptionUsage.deleteMany).toHaveBeenCalledWith({
+      where: { id: 'reservation-1', userId: 'owner', monthKey: '2026-10' }
+    });
+  });
   it('counts real-clip caption usage for a user and month', async () => {
     const prisma = {
       realClipCaptionUsage: {
@@ -56,6 +67,7 @@ describe('createPrismaRealClipCaptionUsageRepository', () => {
         monthKey: '2026-06'
       },
       select: {
+        id: true,
         userId: true,
         monthKey: true,
         createdAt: true
@@ -108,6 +120,7 @@ describe('createPrismaRealClipCaptionUsageRepository', () => {
         monthKey: '2026-06'
       },
       select: {
+        id: true,
         userId: true,
         monthKey: true,
         createdAt: true

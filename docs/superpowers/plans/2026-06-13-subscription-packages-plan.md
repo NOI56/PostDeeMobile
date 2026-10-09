@@ -36,6 +36,18 @@
 > unchanged. Live HTTP sequencing and active-paid AI remain unverified; the
 > chronological audit receipt records the delivery evidence.
 
+> Caption-style follow-up (2026-10-09, verification in progress): optional
+> `writingStyle` adds tone/length/emoji and up to three trimmed examples of
+> 500 UTF-16 code units each, without changing tiers, rights, prices or quotas.
+> Mobile remembers settings/eligible human edits per account on this device;
+> the visible switch defaults on, off excludes examples, and clear memory keeps
+> manual settings. Only edited accepted non-fallback AI on caption Next to
+> platforms, same owner/source with review cleared, is remembered. Successful
+> account deletion clears that owner's profile. Examples accompany explicit AI
+> generation as untrusted style data, not clip facts or a cloud/social-history
+> profile. Deploy API before Mobile; old servers ignore style. Final mobile
+> tests, APK/native and deployment remain pending in the audit follow-up.
+
 > Scheduling update (2026-10-08): Starter allows up to 14 days ahead, and Pro
 > allows up to 30 days ahead. New schedules and reschedules use the current
 > plan and current request time. Previously accepted queue entries keep their

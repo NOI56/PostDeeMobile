@@ -1141,6 +1141,32 @@ entitlements. General quality, deployed API/quota and authenticated caption UI
 remain unverified; the local Staging APK is installed and this patch is not
 pushed/deployed.
 
+### Caption writing style follow-up (2026-10-09, verification in progress)
+
+The additive optional `writingStyle` request carries selected tone, length,
+emoji and at most three trimmed examples of 500 UTF-16 code units each. Omitted
+style keeps legacy behavior; invalid supplied data is rejected. Presets have
+priority over untrusted examples, which guide writing form only. Current
+clip/frame evidence and clip-language rules retain priority; no social-history
+fetch, model training or additional provider call is introduced. Local fallback
+keeps its existing label/behavior, and prompt compliance is not guaranteed.
+
+Mobile's version-1 SharedPreferences profile is keyed by stable account UID,
+with owner guards around asynchronous access. It retains selected settings and
+up to three latest unique human edits on this device, not a cloud profile.
+Remember-edits defaults on; off excludes examples from generation and learning.
+Clear memory retains manual settings. Learning occurs only on caption Next to
+platforms after an edited accepted non-fallback baseline for the same owner and
+source, with review cleared; jump/save/cancel/unchanged AI/fallback do not learn.
+Style/examples are transmitted with the explicit AI request.
+
+After successful backend account DELETE, Shell clears the captured owner's
+style profile before sign-out, even if auth has already disappeared. Pending
+store work is invalidated; other accounts' keys remain. Cleanup failure still
+signs out and reports incomplete local data cleanup. Deploy API before this
+mobile feature; older servers ignore style. Final mobile tests, build/native
+and deployment remain pending, without schema, environment or package changes.
+
 The clip-first route now reuses the configured transcription provider for
 spoken-language detection. Local mode uses a mock Thai transcript; production
 can use ElevenLabs/OpenAI by downloading the stored clip through signed storage

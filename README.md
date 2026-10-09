@@ -648,8 +648,9 @@ If the authenticated user is Basic, the API returns `402` with code `PRO_REQUIRE
 
 Generates the new mock-safe real-clip AI caption package after a clip is
 selected. This route accepts `videoS3Key`, optional `guidance`, optional
-`selectedFrameKeys`, and optional `deleteAfterUse`. The mobile upload flow sends
-`deleteAfterUse: true` for AI-only clip/frame uploads so the backend attempts
+`writingStyle`, optional `selectedFrameKeys`, and optional `deleteAfterUse`.
+The mobile upload flow sends `deleteAfterUse: true` for AI-only clip/frame
+uploads so the backend attempts
 R2/S3 cleanup after the caption request. The route also checks that media keys
 belong to the authenticated user and reserves monthly quota before calling the
 AI provider.
@@ -706,6 +707,31 @@ returned incorrect silent-language metadata; they do not establish general
 quality or deployed API/quota behavior. The local Staging APK is installed;
 authenticated caption-screen smoke remains pending at the user's choice, and
 this caption patch has not been pushed or deployed.
+
+The subsequent caption-style follow-up is in progress. Optional `writingStyle`
+selects tone (`auto`, `friendly`, `playful`, `direct_review`, `soft_sell`), length
+(`auto`, `short`, `medium`) and emoji (`auto`, `none`, `light`). Omitted fields
+default to `auto`, with no examples; an omitted object keeps legacy requests.
+The prompt requests 1–2 sentences for auto/short and 3–4 for medium, without
+inventing facts to fill the length. Presets outrank remembered style; examples
+are untrusted style data, not clip evidence or instructions. Compliance is not
+guaranteed and local fallback retains its existing labeled behavior.
+
+Mobile keeps the selected style and up to three human-edited caption examples
+on this device, separately per account. Each stored example is trimmed and
+limited to 500 UTF-16 code units. The visible remember-edits switch defaults on;
+when off, examples are neither learned nor sent. Clear memory keeps manual
+style choices; successful account deletion clears that owner's whole profile.
+An example is learned only after editing an applied non-fallback AI caption
+for the same account/clip, with review cleared, then tapping Next from caption
+to platforms. Progress jumps, draft saves, cancellation, unchanged AI and
+fallback do not learn. Style/examples accompany manually requested generation
+to the configured AI; there is no cloud style profile or social-history import.
+
+Deploy the additive API support before installing/shipping this mobile feature;
+an older API ignores `writingStyle`. Final mobile tests, APK/native acceptance
+and deployment remain pending. Prices, rights, quotas, model/provider settings,
+schema and environment remain unchanged; see the chronological audit follow-up.
 
 #### Removed: `POST /clip-reviews`
 

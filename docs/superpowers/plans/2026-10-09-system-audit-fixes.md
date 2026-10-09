@@ -712,3 +712,52 @@ remain valid; this deployment does not add active-paid reconciliation or
 generation acceptance. Public Staging browser checks remain skipped under
 the existing block: no new health/readiness result or live HTTP sequence is
 claimed. Active-paid AI end-to-end and live HTTP tracing remain unverified.
+
+### Follow-up: caption presets and remembered human edits (verification pending)
+
+The user selected caption-style presets plus remembering human edits. Work
+starts from audit HEAD `a1384d2`; freshly fetched `origin/main` remains
+`c4e5220`, with the audit branch 12 ahead / zero behind. This follow-up is
+separate from the delivered `c8e463d` receipt above and has no push/deploy
+authorization yet.
+
+The additive optional `writingStyle` object accepts tone
+`auto/friendly/playful/direct_review/soft_sell`, length `auto/short/medium`,
+emoji `auto/none/light`, and at most three trimmed nonempty example strings,
+each at most 500 UTF-16 code units. Missing fields default to auto/empty;
+omitted style preserves legacy behavior. Invalid supplied style returns 400
+within the existing paid flow, before media/quota work; unknown extra fields
+are ignored. The prompt requests 1–2 sentences for auto/short, 3–4 for medium,
+with no fact padding. Presets outrank examples; examples are untrusted writing
+form, not instructions, clip facts or language overrides. Local fallback is
+unchanged/labeled. No live style-compliance or instruction-isolation guarantee
+is claimed, and no training or additional model call is added.
+
+Mobile retains a version-1, stable-UID-scoped SharedPreferences profile for
+selected settings and up to three latest unique human-edited examples. Local
+normalization trims/bounds stored examples to 500 UTF-16 code units without
+splitting a surrogate pair. Remember-edits defaults on with a visible switch;
+off sends no examples and learns none. Clear memory preserves manual presets.
+Learn only when an accepted non-fallback AI baseline is edited, same owner and
+source with review cleared, then Next moves caption to platforms. Progress
+jumps, saves, cancellation, unchanged AI and fallback do not learn. The profile
+is device-local, but settings/examples accompany manually requested generation
+to the configured AI; there is no cloud profile or social-history import.
+
+After successful backend DELETE, Shell clears the UID captured before awaiting
+deletion, even when auth is already gone. Store deletion invalidates pending
+work; other owners' keys remain. Remote deletion failure retains local style.
+The incomplete-cleanup warning now names local data rather than only drafts.
+Shell's targeted TDD was one pass/two failures before implementation, then
+three passes; its scoped diff check passes. Store's initial ten tests pass;
+additional store/mobile cases remain in progress. Backend checks pass:
+110 targeted, 1,781 full API tests across 109 files, build, Prisma validation
+and helper TypeScript checks.
+
+Final full mobile tests/analysis, exact-source APK build, native acceptance and
+deployment remain pending. Deploy the supporting API before installing/shipping
+this mobile feature; older servers ignore `writingStyle`. No price, paid gate,
+quota, model/retry/provider, route, schema, environment or credential change is
+introduced. Prior limited caption-quality probes and active-paid AI/HTTP-trace
+gates remain unchanged. No real provider, purchase, social import or account
+delete was performed for this follow-up.

@@ -1384,8 +1384,8 @@ Requires Starter or Pro.
 - Local development can keep quota usage in memory with
   `CAPTION_USAGE_STORE=memory`. Production should use
   `CAPTION_USAGE_STORE=prisma` so monthly usage survives API restarts.
-- It uses `videoS3Key`, optional `guidance`, optional `selectedFrameKeys`, and
-  optional `deleteAfterUse`.
+- It uses `videoS3Key`, optional `guidance`, optional `writingStyle`, optional
+  `selectedFrameKeys`, and optional `deleteAfterUse`.
 - Mobile creates the clip upload with `purpose: "ai-caption-video"`; its source
   aspect ratio does not change Starter/Pro access, media ownership, generation
   quota or existing server media-processing limits.
@@ -1452,12 +1452,51 @@ not drive Mobile caption selection, routing or entitlements. These probes do not
 verify deployed Staging routes or quota. General quality and authenticated
 caption-screen smoke remain pending; this patch is not pushed/deployed.
 
+#### Caption writing style follow-up (2026-10-09, final verification pending)
+
+`writingStyle` is an optional object. Omitting it preserves legacy request
+behavior; omitted fields within a supplied object use these defaults:
+
+| Field | Accepted values | Default |
+| --- | --- | --- |
+| `tone` | `auto`, `friendly`, `playful`, `direct_review`, `soft_sell` | `auto` |
+| `length` | `auto`, `short`, `medium` | `auto` |
+| `emoji` | `auto`, `none`, `light` | `auto` |
+| `examples` | Up to three strings, trimmed nonempty, each at most 500 UTF-16 code units | `[]` |
+
+For an eligible paid request, null/array/non-object styles, invalid enum values,
+non-array examples, invalid elements or exceeded bounds return `400` rather
+than silently dropping/truncating the style. Unknown extra fields are ignored.
+The existing paid gate, ownership and quota checks remain unchanged.
+
+The real-provider prompt requests 1–2 sentences for auto/short and 3–4 for
+medium, without fact padding. Emoji none requests no emoji in `caption`,
+`captionOptions` or `hooks`; light allows 0–2 appropriate emoji per text. Presets outrank
+examples, which are JSON style data, never instructions or facts about the
+current clip. They do not override clip-language rules or supply products,
+discounts, URLs or account details. Real-provider `context.selectedTone`
+reflects the chosen enum; labeled local fallback remains unchanged. Prompt
+compliance is not guaranteed; no training or additional model call is added.
+
+Mobile persists this profile per account on the device and sends its selected
+style/eligible examples only with a manually requested generation. Deploy API
+support before installing/shipping Mobile; an older API ignores this field.
+Final mobile tests, APK/native and deployment acceptance remain pending; the
+audit follow-up records current checks. No new route, schema, environment,
+provider/model configuration or package/quota rule is introduced.
+
 Request:
 
 ```json
 {
   "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
   "guidance": "focus on the opening hook",
+  "writingStyle": {
+    "tone": "friendly",
+    "length": "short",
+    "emoji": "light",
+    "examples": ["แวะมาดูของชิ้นนี้ด้วยกันนะ"]
+  },
   "selectedFrameKeys": [
     "uploads/local-dev-user/frame-upload-1/demo-1.jpg",
     "uploads/local-dev-user/frame-upload-2/demo-2.jpg"

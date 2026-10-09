@@ -19,6 +19,7 @@ import '../auth/firebase_email_auth_gateway.dart';
 import '../auth/firebase_google_auth_gateway.dart';
 import '../auth/firebase_id_token_refresher.dart';
 import '../calendar/calendar_screen.dart';
+import '../captions/caption_writing_style_store.dart';
 import '../home/home_screen.dart';
 import '../link_in_bio/link_in_bio_draft_store.dart';
 import '../link_in_bio/link_in_bio_screen.dart';
@@ -435,7 +436,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     final apiClient = PostDeeApiClient();
-    final linkInBioOwnerId = _authController.session.stableUserId;
+    final capturedOwnerUserId = _authController.session.stableUserId;
     final deleteAccount = widget.deleteAccount ?? apiClient.deleteAccount;
     final checkAccountDeletionReady = widget.checkAccountDeletionReady ??
         (widget.deleteAccount == null
@@ -467,9 +468,15 @@ class _PostDeeShellState extends State<PostDeeShell> {
         localDraftCleanupFailed = true;
       }
 
-      if (linkInBioOwnerId != null) {
+      if (capturedOwnerUserId != null) {
         try {
-          await clearLinkInBioDraftForUser(linkInBioOwnerId);
+          await clearLinkInBioDraftForUser(capturedOwnerUserId);
+        } catch (_) {
+          localDraftCleanupFailed = true;
+        }
+        try {
+          await const SharedPreferencesCaptionWritingStyleStore()
+              .clearForDeletedAccount(capturedOwnerUserId);
         } catch (_) {
           localDraftCleanupFailed = true;
         }
@@ -498,7 +505,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
       showPostDeeUndoToast(
         context,
         message: localDraftCleanupFailed
-            ? 'ลบบัญชีแล้ว แต่ลบร่างในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป'
+            ? 'ลบบัญชีแล้ว แต่ลบข้อมูลในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป'
             : 'ลบบัญชีและออกจากระบบแล้ว',
       );
     } on AccountAccessRevocationException catch (error) {

@@ -69,9 +69,17 @@ const defaultSeoKeywords = ['short video', 'affiliate seller', 'online shop', 'v
 
 export type RealClipCaptionMode = 'AUDIO_ONLY' | 'AUDIO_WITH_FRAMES';
 
+export type RealClipCaptionWritingStyle = {
+  tone: 'auto' | 'friendly' | 'playful' | 'direct_review' | 'soft_sell';
+  length: 'auto' | 'short' | 'medium';
+  emoji: 'auto' | 'none' | 'light';
+  examples: string[];
+};
+
 export type RealClipCaptionRequest = {
   videoS3Key: string;
   guidance?: string;
+  writingStyle?: RealClipCaptionWritingStyle;
   selectedFrameKeys: string[];
   deleteAfterUse: boolean;
 };
@@ -137,6 +145,40 @@ const normalizeStringList = (value: unknown) => {
 
 const readBoolean = (value: unknown) => value === true;
 
+const readStyleEnum = <T extends string>(value: unknown, values: readonly T[]): T | undefined => {
+  if (value === undefined) return 'auto' as T;
+  return typeof value === 'string' && values.includes(value as T) ? value as T : undefined;
+};
+
+const validateWritingStyle = (value: unknown) => {
+  if (value === undefined) return { ok: true as const, style: undefined };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { ok: false as const, message: 'writingStyle must be an object' };
+  }
+
+  const input = value as Record<string, unknown>;
+  const tone = readStyleEnum(input.tone, ['auto', 'friendly', 'playful', 'direct_review', 'soft_sell'] as const);
+  const length = readStyleEnum(input.length, ['auto', 'short', 'medium'] as const);
+  const emoji = readStyleEnum(input.emoji, ['auto', 'none', 'light'] as const);
+  if (!tone) return { ok: false as const, message: 'writingStyle.tone is invalid' };
+  if (!length) return { ok: false as const, message: 'writingStyle.length is invalid' };
+  if (!emoji) return { ok: false as const, message: 'writingStyle.emoji is invalid' };
+
+  const examples = input.examples === undefined ? [] : input.examples;
+  if (!Array.isArray(examples) || examples.length > 3) {
+    return { ok: false as const, message: 'writingStyle.examples must be an array of at most 3 strings' };
+  }
+  const normalizedExamples: string[] = [];
+  for (const example of examples) {
+    if (typeof example !== 'string' || !example.trim() || example.trim().length > 500) {
+      return { ok: false as const, message: 'writingStyle.examples must contain non-empty strings of at most 500 characters' };
+    }
+    normalizedExamples.push(example.trim());
+  }
+
+  return { ok: true as const, style: { tone, length, emoji, examples: normalizedExamples } };
+};
+
 export const validateRealClipCaptionRequest = (body: unknown) => {
   const payload = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const videoS3Key = readRequiredString(payload.videoS3Key);
@@ -148,11 +190,15 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
     };
   }
 
+  const writingStyle = validateWritingStyle(payload.writingStyle);
+  if (!writingStyle.ok) return writingStyle;
+
   return {
     ok: true as const,
     request: {
       videoS3Key,
       guidance: readOptionalString(payload.guidance),
+      ...(writingStyle.style ? { writingStyle: writingStyle.style } : {}),
       selectedFrameKeys: normalizeStringList(payload.selectedFrameKeys),
       deleteAfterUse: readBoolean(payload.deleteAfterUse)
     }

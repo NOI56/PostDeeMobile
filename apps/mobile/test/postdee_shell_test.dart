@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,12 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/localization/language_controller.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
+import 'package:postdee_mobile/core/models/caption_writing_style.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
 import 'package:postdee_mobile/features/auth/auth_controller.dart';
 import 'package:postdee_mobile/features/billing/paywall_screen.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
+import 'package:postdee_mobile/features/captions/caption_writing_style_store.dart';
 import 'package:postdee_mobile/features/home/home_screen.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/profile/profile_screen.dart';
@@ -1353,6 +1356,24 @@ void main() {
     addTearDown(sessionStore.clear);
     addTearDown(languageController.dispose);
 
+    const styleStore = SharedPreferencesCaptionWritingStyleStore();
+    await styleStore.save(
+      'firebase-user-shell',
+      const CaptionWritingStyleProfile(
+        style: CaptionWritingStyle(tone: CaptionWritingTone.friendly),
+      ),
+    );
+    final preferences = await SharedPreferences.getInstance();
+    const ownerStyleKey =
+        'postdee.caption_writing_style.v1.firebase-user-shell';
+    const otherStyleKey = 'postdee.caption_writing_style.v1.another-user';
+    final otherStyle = jsonEncode(
+      const CaptionWritingStyleProfile(
+        style: CaptionWritingStyle(tone: CaptionWritingTone.playful),
+      ).toJson(),
+    );
+    await preferences.setString(otherStyleKey, otherStyle);
+
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.dark,
@@ -1374,6 +1395,7 @@ void main() {
           deleteAccount: () async {
             deleteCalls += 1;
             deletionCalls.add('delete');
+            sessionStore.clear();
           },
           loadLocalPublishDraftDeleter: () async {
             deletionCalls.add('capture-local-drafts');
@@ -1409,6 +1431,8 @@ void main() {
     expect(deleteCalls, 1);
     expect(await ownerDrafts.loadDraft(), isNull);
     expect(await otherDrafts.loadDraft(), isNotNull);
+    expect(preferences.getString(ownerStyleKey), isNull);
+    expect(preferences.getString(otherStyleKey), otherStyle);
     expect(deletionCalls, [
       'capture-local-drafts',
       'ready',
@@ -1506,12 +1530,93 @@ void main() {
       expect(find.text('Sign in to PostDee'), findsOneWidget);
       expect(
         find.text(
-          'ลบบัญชีแล้ว แต่ลบร่างในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป',
+          'ลบบัญชีแล้ว แต่ลบข้อมูลในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป',
         ),
         findsOneWidget,
       );
     },
   );
+
+  testWidgets('preserves caption styles when remote account deletion fails',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+    sessionStore.signIn(
+      const AuthSession(
+        userId: 'firebase-user-shell',
+        idToken: 'firebase-id-token',
+        email: 'seller@example.com',
+      ),
+    );
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+    const styleStore = SharedPreferencesCaptionWritingStyleStore();
+    await styleStore.save(
+      'firebase-user-shell',
+      const CaptionWritingStyleProfile(
+        style: CaptionWritingStyle(tone: CaptionWritingTone.friendly),
+      ),
+    );
+    final preferences = await SharedPreferences.getInstance();
+    const otherStyleKey = 'postdee.caption_writing_style.v1.another-user';
+    final otherStyle = jsonEncode(
+      const CaptionWritingStyleProfile(
+        style: CaptionWritingStyle(tone: CaptionWritingTone.playful),
+      ).toJson(),
+    );
+    await preferences.setString(otherStyleKey, otherStyle);
+    var localCleanupCalls = 0;
+
+    await tester.pumpWidget(
+      _shellApp(
+        PostDeeShell(
+          languageController: languageController,
+          checkAccountDeletionReady: () async => true,
+          deleteAccount: () async => throw const ApiException(
+            'remote cleanup failed',
+            statusCode: 503,
+            code: 'ACCOUNT_MEDIA_CLEANUP_FAILED',
+          ),
+          deleteLocalPublishDrafts: () async {
+            localCleanupCalls += 1;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(_referenceNavButton('Account'));
+    await tester.pumpAndSettle();
+    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    await tester.scrollUntilVisible(
+      deleteButton,
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+    tester
+        .widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+        )
+        .onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(sessionStore.session.stableUserId, 'firebase-user-shell');
+    expect(localCleanupCalls, 0);
+    expect(
+      (await styleStore.load('firebase-user-shell')).style.tone,
+      CaptionWritingTone.friendly,
+    );
+    expect(preferences.getString(otherStyleKey), otherStyle);
+    expect(
+      find.text('ลบวิดีโอยังไม่สำเร็จ บัญชีของคุณยังอยู่ กรุณาลองใหม่'),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('retries deletion without revoking Apple when identity is gone',
       (tester) async {

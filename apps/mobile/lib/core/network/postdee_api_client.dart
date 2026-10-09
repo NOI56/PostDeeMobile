@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import '../auth/auth_session.dart';
 import '../config/app_config.dart';
+import '../models/caption_writing_style.dart';
 import '../models/link_in_bio_appearance.dart';
 
 const socialPublishingUnavailableCode = 'SOCIAL_PUBLISHING_UNAVAILABLE';
@@ -1637,12 +1638,14 @@ class GenerateRealClipCaptionRequest {
     this.guidance,
     this.selectedFrameKeys = const [],
     this.deleteAfterUse = false,
+    this.writingStyle,
   });
 
   final String videoS3Key;
   final String? guidance;
   final List<String> selectedFrameKeys;
   final bool deleteAfterUse;
+  final CaptionWritingStyle? writingStyle;
 
   Map<String, Object?> toJson() => {
         'videoS3Key': videoS3Key,
@@ -1651,6 +1654,7 @@ class GenerateRealClipCaptionRequest {
         if (selectedFrameKeys.isNotEmpty)
           'selectedFrameKeys': selectedFrameKeys,
         if (deleteAfterUse) 'deleteAfterUse': true,
+        if (writingStyle != null) 'writingStyle': writingStyle!.toJson(),
       };
 }
 

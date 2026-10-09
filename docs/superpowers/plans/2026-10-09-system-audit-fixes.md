@@ -713,7 +713,7 @@ generation acceptance. Public Staging browser checks remain skipped under
 the existing block: no new health/readiness result or live HTTP sequence is
 claimed. Active-paid AI end-to-end and live HTTP tracing remain unverified.
 
-### Follow-up: caption presets and remembered human edits (verification pending)
+### Follow-up: caption presets and remembered human edits (local checks/APK pass; native pending)
 
 The user selected caption-style presets plus remembering human edits. Work
 starts from audit HEAD `a1384d2`; freshly fetched `origin/main` remains
@@ -749,15 +749,60 @@ deletion, even when auth is already gone. Store deletion invalidates pending
 work; other owners' keys remain. Remote deletion failure retains local style.
 The incomplete-cleanup warning now names local data rather than only drafts.
 Shell's targeted TDD was one pass/two failures before implementation, then
-three passes; its scoped diff check passes. Store's initial ten tests pass;
-additional store/mobile cases remain in progress. Backend checks pass:
+three passes; its scoped diff check passes. Final targeted coverage passes:
+128 UI cases (23 new and 105 existing), 15 store cases and three Shell cases.
+Backend checks pass:
 110 targeted, 1,781 full API tests across 109 files, build, Prisma validation
-and helper TypeScript checks.
+and helper TypeScript checks. API files are unchanged from the verified feature
+source; the API checks were captured as tool outputs, not a separate log file.
 
-Final full mobile tests/analysis, exact-source APK build, native acceptance and
-deployment remain pending. Deploy the supporting API before installing/shipping
-this mobile feature; older servers ignore `writingStyle`. No price, paid gate,
+The final runtime source is `089dcb52ff00590972759c736cc254d3f2e98457`:
+feature commit `111819d` plus braces-only lint fixes on six guards. A fresh fetch
+still shows `origin/main` at `c4e52201a58b556f5f47529027549a2fc16af84c`,
+with this source 14 ahead / zero behind. Final-source Flutter passes
+1,783/1,783, exit 0, in 4m43s; analysis reports no issues, exit 0, in 11.3s.
+Logs:
+`D:\PostDeeMobile\.tmp\caption-writing-style-20261009\flutter-test-final-source.log`
+and `flutter-analyze-final.log` in the same directory. The first full run on
+`111819d` had 1,782 passes and one Windows errno 32 temporary-file deletion
+failure in the unchanged deadline test. Its isolated eight deadline cases
+passed, then the full `111819d` suite passed 1,783, followed by the final-source
+full pass above. No test suppression or deadline patch was used.
+
+The exact-source `089dcb52` Staging APK build passed, exit 0, in 110.3s through
+the checked-in helper
+with `--no-pub --split-per-abi --target-platform android-x64 --build-number 4002`,
+TEMP/TMP on `D:\Temp`, Gradle cache on D: and the existing SDK on C:.
+Artifact:
+`D:\PostDeeMobile\.tmp\caption-writing-style-20261009\verify-worktree\apps\mobile\build\app\outputs\flutter-apk\app-x86_64-debug.apk`,
+SHA-256 `19E4916D6A7F0FF58F4D60601815946E5B7CD0A481E645A244020E51672ED438`.
+`aapt` verifies package `com.postdee.postdee_mobile.staging`, version name
+`0.1.0-staging` and version code 8002: the x86_64 split adds 4000 to build number
+4002. Minimum SDK is 24, target/compile SDK is 36, and the launch activity is
+`com.postdee.postdee_mobile.MainActivity`. `apksigner` verification passes;
+new and existing APK certificates share SHA-256
+`014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+The helper validates the example configuration and existing common RevenueCat
+test overlay without recording its key. Its API is
+`https://postdee-api-staging.onrender.com`, with Firebase project
+`project-798caf7e-85b8-45e3-af7`, real Firebase enabled, local mock disabled,
+and RevenueCat using that validated test overlay. Existing Kotlin Gradle Plugin,
+Java 8 and deprecation warnings remain; there is no compile failure or plugin
+upgrade. The required local profile-template generator tests also pass 22/22,
+exit 0, on `089dcb52`; log `profile-template-generator-test.log` is in the same
+receipt directory. This is local verification, not a new CI delivery.
+
+Native installation/acceptance remain pending. At the read-only `native-before.png`
+observation, the emulator had a clip/caption form open; whether its latest edits
+were saved was not confirmed. Installed version 4001 remains in place;
+read-only ADB hashing confirms its APK SHA-256
+`51D074EB6940F41C7F1A324158552B51939672283103A9390DF1C61EE9BA8D5F`.
+
+Native acceptance, real paid AI/style-quality, live HTTP tracing and deployment
+remain pending. Deploy the supporting API before installing/shipping this
+mobile feature; older servers ignore `writingStyle`. No price, paid gate,
 quota, model/retry/provider, route, schema, environment or credential change is
 introduced. Prior limited caption-quality probes and active-paid AI/HTTP-trace
-gates remain unchanged. No real provider, purchase, social import or account
-delete was performed for this follow-up.
+gates remain unchanged. This feature has not been pushed/deployed. No customer
+write, real provider call, purchase, social import/channel read, account deletion
+or AI training was performed for this follow-up.

@@ -582,3 +582,44 @@ policy change was made. A possible follow-up is one existing authenticated
 server resync when AI preflight sees Basic with RevenueCat enabled, followed by
 a fresh subscription GET while retaining the paid gate. This was not
 implemented: it would not invoke SDK Restore/purchase or remove the gate.
+
+### Follow-up: bounded AI entitlement reconciliation (automated checks pass)
+
+The user's subsequent instruction to continue authorized this mobile follow-up
+from audit HEAD `6f6e018`. The earlier recommendation-only receipt above remains
+historical. After a successful initial subscription GET reports AI access
+disabled, and only with RevenueCat enabled, the implemented preflight calls the
+existing authenticated server resync once per Generate action, then fetches subscription
+again. It ignores the resync reply's plan; the second GET controls the unchanged
+paid gate and Pro-frame choice. Paid users, disabled RevenueCat and a failed
+initial GET add no resync. There is no automatic retry loop or reconciliation
+of a later caption `402` after upload; the AI provider is not retried.
+
+Resync or fresh-read failure stops before AI media/generation and reports Thai
+rights-verification unavailability with user-triggered retry. It preserves the
+current caption and owner/generation/source guards. No SDK Restore, purchase,
+free grant, quota, package, API route/response, schema or key-handling change is
+introduced. The server subscriber lookup remains bounded to 8 seconds, ordinary
+client JSON requests retain their 20-second deadline per request, and resync
+shares the existing per-IP 10-requests-per-10-minutes limit per API instance.
+
+The five related product/API/architecture/package documents are synchronized.
+The new 24 regressions first produced eight passes and 16 failures, then all
+24 passed. Together with 75 existing targeted cases, 99 pass. The unchanged
+backend RevenueCat contract passes its 21 targeted tests. Full Flutter analysis
+reports no issues (20.1 seconds); the serialized full suite passes 1,744/1,744
+with `--concurrency=1`, exit 0, in 4m40s. An initial concurrency-2 run alongside
+analysis hit Windows VM memory pressure with two worker-load interruptions and
+was cancelled; no semantic assertion failure is inferred from that resource
+interruption. The completed serial run supplies acceptance evidence. Logs:
+`D:\PostDeeMobile\.tmp\caption-subscription-20261009\flutter-resync-full-test-serial-20261009.log`
+and `flutter-resync-analyze-20261009.log` in that same directory.
+
+Exact-source commit/build, APK installation and native paid end-to-end checks
+remain pending. The prior installation ended at Login and the prior user choice
+was code/tests first. A fresh observation now shows a signed-in Account screen
+displaying Pro, with no composer open; the tester did not log in or purchase.
+This display does not establish the new resync end-to-end result. No
+push/deployment occurred in this task; no API,
+schema, credential or configuration flag changed. This section does not claim
+a completed live rights reconciliation or end-to-end AI generation.

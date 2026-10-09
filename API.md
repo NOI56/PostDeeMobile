@@ -2308,12 +2308,27 @@ until the paid period actually expires. Unknown product or entitlement ids retur
 
 ### `POST /billing/revenuecat/resync`
 
-Reconciles a user-initiated RevenueCat restore with PostDee's subscription
-store when `BILLING_PROVIDER=revenuecat`. This authenticated endpoint accepts an
+Reconciles RevenueCat rights with PostDee's subscription store when
+`BILLING_PROVIDER=revenuecat`. This authenticated endpoint accepts an
 empty JSON body and always uses the authenticated PostDee/Firebase uid as
 RevenueCat `app_user_id`; any user id
-in the request body is ignored. The mobile flow calls RevenueCat
-`restorePurchases` first, then calls this endpoint.
+in the request body is ignored. Explicit mobile Restore calls RevenueCat
+`restorePurchases` first, then this endpoint; SDK Restore is not a prerequisite
+for the server lookup.
+
+The implemented AI preflight uses this unchanged endpoint once per Generate
+action only after a successful subscription GET denies AI access and RevenueCat is
+enabled. It then performs a fresh GET and ignores the resync response's plan;
+the fresh `canUseAiCaptions` value controls the unchanged paid gate and Pro frame
+selection. Paid users, disabled RevenueCat and failed initial GETs skip resync.
+Resync/fresh-GET failure keeps access closed with a Thai verification error and
+manual retry. There is no purchase, SDK Restore, free grant or automatic retry
+loop. Owner/generation/source guards and quotas remain. Automated checks pass;
+exact-source APK build and native paid end-to-end verification remain pending.
+This preflight does not reconcile a later caption `402` after upload or retry
+the AI provider.
+The existing server subscriber lookup is bounded to 8 seconds; these ordinary
+JSON calls keep the client deadline of 20 seconds per request.
 
 Mobile does not report a completed store purchase as failed solely because
 PostDee confirmation is unavailable. It shows pending confirmation and retries
@@ -2372,7 +2387,8 @@ Paid response example:
 }
 ```
 
-The route has a fixed per-IP limit of 10 requests per 10 minutes. Errors are:
+The route has a fixed per-IP limit of 10 requests per 10 minutes per API
+instance. Errors are:
 
 - `401` when the user is not authenticated.
 - `409 REVENUECAT_ENTITLEMENT_NOT_MAPPED` when RevenueCat reports active access

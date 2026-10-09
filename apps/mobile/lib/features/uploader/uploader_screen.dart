@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/auth_session.dart';
+import '../../core/config/app_config.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/monitoring/postdee_analytics.dart';
@@ -39,6 +40,7 @@ export '../shared/post_schedule_policy.dart';
 typedef UploaderTemplateLoader = Future<List<TextTemplateResult>> Function();
 typedef UploaderSubscriptionLoader = Future<SubscriptionStatusResult>
     Function();
+typedef UploaderSubscriptionResync = Future<void> Function();
 typedef UploaderCaptionGenerator = Future<CaptionResult> Function(
     List<String> keywords);
 typedef UploaderRealClipCaptionGenerator = Future<RealClipCaptionResult>
@@ -77,6 +79,8 @@ class UploaderScreen extends StatefulWidget {
     super.key,
     this.loadTemplates,
     this.loadSubscription,
+    this.resyncRevenueCatSubscription,
+    this.enableRevenueCatBilling = AppConfig.enableRevenueCatBilling,
     this.generateCaption,
     this.generateRealClipCaption,
     this.pickVideo,
@@ -107,6 +111,8 @@ class UploaderScreen extends StatefulWidget {
 
   final UploaderTemplateLoader? loadTemplates;
   final UploaderSubscriptionLoader? loadSubscription;
+  final UploaderSubscriptionResync? resyncRevenueCatSubscription;
+  final bool enableRevenueCatBilling;
   final UploaderCaptionGenerator? generateCaption;
   final UploaderRealClipCaptionGenerator? generateRealClipCaption;
   final UploaderVideoPicker? pickVideo;
@@ -1260,8 +1266,32 @@ class _UploaderScreenState extends State<UploaderScreen> {
     });
 
     try {
-      final subscription = await _loadSubscription();
+      var subscription = await _loadSubscription();
       if (!stillCurrent()) return;
+
+      if (!subscription.canUseAiCaptions && widget.enableRevenueCatBilling) {
+        try {
+          final resync = widget.resyncRevenueCatSubscription;
+          if (resync != null) {
+            await resync();
+          } else {
+            await _apiClient.resyncRevenueCatSubscription();
+          }
+          if (!stillCurrent()) return;
+
+          // A resync can echo a plan whose period expires during the request.
+          // Only the fresh server subscription decides access and frame mode.
+          subscription = await _loadSubscription();
+          if (!stillCurrent()) return;
+        } catch (_) {
+          if (!stillCurrent()) return;
+          setState(() {
+            _aiCaptionErrorMessage =
+                'ตรวจสอบสิทธิ์แพ็กเกจไม่สำเร็จ กรุณาลองใหม่';
+          });
+          return;
+        }
+      }
 
       if (!subscription.canUseAiCaptions) {
         if (!mounted) {

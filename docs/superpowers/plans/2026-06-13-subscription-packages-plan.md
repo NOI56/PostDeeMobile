@@ -16,6 +16,17 @@
 > `2026-10-09-system-audit-fixes.md`; API `85ef2a9` is Live on Staging with both
 > additive migrations applied. Native payment/provider acceptance remains open.
 
+> AI entitlement update (2026-10-09, implemented; automated checks pass): after
+> a successful subscription GET denies AI access with RevenueCat enabled, Mobile calls
+> the existing authenticated server resync once per Generate action, then use
+> a fresh GET rather than the resync reply's plan. Paid users, disabled
+> RevenueCat and a failed initial GET skip it. Failure keeps the paid gate
+> closed with a Thai verification error and manual retry. No purchase, SDK
+> Restore, free grant, price, tier, quota or API/schema change is introduced.
+> Owner/source guards and existing Starter mode / Pro frames stay unchanged.
+> Exact-source APK build and native paid end-to-end checks remain pending;
+> automated results and delivery limits are recorded in the audit plan.
+
 > Scheduling update (2026-10-08): Starter allows up to 14 days ahead, and Pro
 > allows up to 30 days ahead. New schedules and reschedules use the current
 > plan and current request time. Previously accepted queue entries keep their

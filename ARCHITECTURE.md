@@ -988,6 +988,21 @@ sequenceDiagram
   A-->>M: Current subscription
 ```
 
+The implemented AI preflight reuses only the server
+resync endpoint. A successful initial subscription GET denying AI access with
+RevenueCat enabled allows one resync per Generate action, then a fresh GET.
+The resync reply's plan is ignored; the second GET controls the existing paid
+gate and Pro frames. Paid users, disabled RevenueCat and failed initial GETs
+do not resync. Lookup/read failures keep the gate closed, show a Thai
+rights-verification error and allow manual retry. It calls neither SDK Restore
+nor purchase, grants no free access, and preserves owner/generation/source
+guards and quotas. The server lookup keeps its 8-second bound, ordinary client
+calls keep 20 seconds per request, and resync shares the existing per-IP
+10-per-10-minute limit per API instance. No API route, response contract, schema
+or key handling changes.
+Automated verification passes; the exact-source APK build and native paid
+end-to-end flow remain pending.
+
 The mobile app never receives `REVENUECAT_REST_API_V1_KEY`. The API derives the
 RevenueCat app user id only from the authenticated Firebase user, prefers Pro if
 both paid entitlements are active, and leaves the existing plan unchanged if the

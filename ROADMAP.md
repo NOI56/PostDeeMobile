@@ -74,6 +74,18 @@ quality benchmark or deployed API/quota verification. The local Staging APK is
 installed; authenticated caption UI smoke remains pending at the user's choice.
 This patch is not pushed/deployed; the earlier Staging receipt does not cover it.
 
+## AI caption entitlement reconciliation (implemented, automated checks pass)
+
+Only a successful initial subscription GET denying AI access with RevenueCat
+enabled performs one existing authenticated server resync per Generate
+action, followed by a fresh GET. Ignore the resync reply's plan and retain the
+paid gate, Pro frames and owner/source guards. Paid users, disabled RevenueCat
+and failed initial reads add no resync. Failure shows a Thai rights-verification
+error with manual retry. This does not purchase, call SDK Restore, grant free
+access or change package/quota/API/schema rules. Automated checks pass, including
+1,744 Flutter tests and clean analysis. Exact-source APK build and native paid
+end-to-end verification remain pending; no push/deployment occurred in this task.
+
 ## Android social-connect return (Staging API delivered)
 
 New Android connect links can request the fixed `android` or `android-staging`

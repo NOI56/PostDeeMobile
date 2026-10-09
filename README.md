@@ -1000,8 +1000,9 @@ change are atomic, so retries and older events cannot overwrite newer state.
 
 #### `POST /billing/revenuecat/resync`
 
-Reconciles the authenticated Firebase user's subscription after the mobile app
-calls RevenueCat `restorePurchases`. The backend reads the RevenueCat subscriber
+Reconciles the authenticated Firebase user's subscription. Explicit mobile
+Restore calls RevenueCat `restorePurchases` first; this server endpoint does not
+require SDK Restore. The backend reads the RevenueCat subscriber
 with the server-only `REVENUECAT_REST_API_V1_KEY`, prefers Pro when both paid
 entitlements are active, and updates the configured subscription store. If
 RevenueCat has no active entitlement, only the matching RevenueCat-backed local
@@ -1009,6 +1010,17 @@ subscription is deactivated. An active but unmapped entitlement returns a safe
 configuration error without removing existing access.
 Clients must not send or choose another RevenueCat app user id; the route always
 uses the authenticated PostDee user id.
+
+In the implemented AI preflight, only a successful initial subscription GET
+denying AI access, with RevenueCat enabled, triggers one
+authenticated server resync per Generate action, then a fresh subscription GET.
+That second GET is authoritative; the resync reply's plan is ignored. Paid users,
+disabled RevenueCat and a failed initial GET do not trigger extra resync calls.
+Failures keep the paid gate closed and show a Thai rights-verification error;
+the user can retry manually. This adds no SDK Restore, purchase or free grant,
+and keeps owner/source guards, Pro frames, Starter mode and quota unchanged.
+Automated checks pass; an APK built from the final source and native paid
+end-to-end verification remain pending, as recorded in the audit plan.
 
 The subscriber response's `request_date_ms` and webhook `event_timestamp_ms`
 share one per-user serializable ordering cursor. Older or equal snapshots/events

@@ -474,3 +474,41 @@ The deployed Staging backend still uses the earlier source; this native smoke
 does not verify the final prompt through the app or deployed API/quota behavior.
 Earlier direct Gemini probes cover one clip only, with the known incorrect
 silent-language metadata. No commit, push or deployment was performed.
+
+### Caption-quality Staging delivery and bounded app smoke (2026-10-09)
+
+The user subsequently authorized deployment. Source
+`f6bf0f9b60a229448aa04dfd5920e24884c577fc` was pushed to
+`codex/audit-system-fixes`; exact-source CI `37909530347` completed successfully
+for both Backend API and Flutter Mobile. Render deployed that exact source as
+`dep-db4b0t3tqb8s73emmb40`: the UI lists 16:14:28 GMT+7, logs report Live at
+16:16:20 GMT+7, duration 1m52s. Build succeeded, all 16 migrations were found
+with none pending, and the API listened on port 10000. The memory queue and
+disabled social publishing remain unchanged. Proof:
+`.tmp/render-caption-quality-live-20261009.png`. Main and Production were not
+deployed. The installed APK remains SHA-256
+`CAF3349CFBA3A17AA6266827F9C0C5943416B74ECF04E7D474692115B6E8DC68`.
+
+One normal app Generate AI action was attempted at 09:20:07 UTC (16:20:07 GMT+7)
+in a new unsaved composer, with blank caption/guidance and `1000000099.mp4`.
+This silent whole MP4 lasts 3.875111 seconds and has SHA-256
+`F0775992DF8AB5DD2558790C6C1301FEAA2F5CFA95F358EBCD63C6233D7F8F9F`,
+distinct from the earlier 10-second clip 96. About six seconds later, the UI
+showed `AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ`.
+No caption result, retry, draft save, post or purchase occurred.
+
+Home's visible Pro 250/250 is cached post-unit information, not observed AI
+quota or proof of a current backend entitlement. AI reloads `/billing/subscription`
+and checks `canUseAiCaptions`; the server rechecks the same subscription store.
+The displayed message can arise from the fresh mobile gate before upload or
+the server paid gate after media upload. The screenshot does not establish the
+exact stage, current entitlement/expiry, upload activity or cost. Both known
+paid gates reject before provider execution/quota reservation, but the UI alone
+does not prove the request path taken. Local Test Store Pro alone does not grant
+backend access; it needs the existing resync/webhook confirmation. Pro AI's
+120/month limit is unchanged and its actual usage was not observed.
+
+Deployment and CI passed; end-to-end app AI remains blocked at entitlement and
+has not passed. No generated-caption quality or provider failure is inferred.
+Existing package policies and guards remain unchanged. Earlier no-push/deploy
+statements above describe their respective historical runs.

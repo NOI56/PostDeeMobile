@@ -873,6 +873,155 @@ void main() {
         ),
       );
 
+  for (final dimensions in [
+    (width: 1080, height: 2400),
+    (width: 1080, height: 1080),
+    (width: 1920, height: 1080),
+    (width: 1080, height: null),
+    (width: null, height: 1920),
+  ]) {
+    testWidgets(
+        'AI captions accept ${dimensions.width}x${dimensions.height} metadata without the posting aspect-ratio restriction',
+        (tester) async {
+      final fixture = _createPickedVideoFixture('any-ratio.mp4');
+      CreateUploadRequest? uploadRequest;
+      var generated = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () async => PickedVideoFile(
+              name: fixture.name,
+              path: fixture.path,
+              sizeBytes: fixture.sizeBytes,
+              width: dimensions.width,
+              height: dimensions.height,
+            ),
+            loadSubscription: () async => const SubscriptionStatusResult(
+              userId: 'starter-user',
+              plan: 'STARTER',
+              status: 'ACTIVE',
+              canSchedule: true,
+              canUseAiCaptions: true,
+              canUseAnalytics: false,
+            ),
+            createUpload: (request) async {
+              uploadRequest = request;
+              return const UploadResult(
+                id: 'caption-upload',
+                videoS3Key: 'uploads/any-ratio.mp4',
+                storageProvider: 's3',
+              );
+            },
+            uploadVideoFile: (_, file) async {
+              expect(file.path, fixture.path);
+            },
+            generateRealClipCaption: (request) async {
+              generated = true;
+              expect(request.deleteAfterUse, isTrue);
+              return buildRealClipCaptionResult();
+            },
+          ),
+        ),
+      ));
+      await _pickVideoFromPreview(tester);
+      await _openCaptionOptions(tester, 'uploader-ai-open-panel');
+      final generate =
+          find.byKey(const ValueKey('uploader-ai-generate-button'));
+      await tester.ensureVisible(generate);
+      await tester.pumpAndSettle();
+      await tester.tap(generate);
+      await tester.pumpAndSettle();
+
+      expect(generated, isTrue);
+      expect(uploadRequest?.purpose, 'ai-caption-video');
+      final hasDimensions =
+          dimensions.width != null && dimensions.height != null;
+      expect(uploadRequest?.width, hasDimensions ? dimensions.width : null);
+      expect(uploadRequest?.height, hasDimensions ? dimensions.height : null);
+      final caption = tester.widget<TextField>(
+        find.byKey(const ValueKey('uploader-caption-field')),
+      );
+      expect(caption.controller!.text, contains('Generated SEO caption'));
+    });
+  }
+
+  for (final failure in [
+    (
+      error: const ApiException('Paid plan required',
+          statusCode: 402, code: 'PAID_PLAN_REQUIRED'),
+      message: 'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ',
+      onUpload: false,
+    ),
+    (
+      error: const ApiException('Monthly AI quota reached',
+          statusCode: 429, code: 'AI_CAPTION_QUOTA_REACHED'),
+      message: 'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว กรุณารอรอบเดือนถัดไป',
+      onUpload: false,
+    ),
+    (
+      error: const ApiException('Invalid AI caption video',
+          statusCode: 400, code: 'UPLOAD_AI_CAPTION_VIDEO_INVALID'),
+      message: 'อัปโหลดคลิปให้ AI ไม่สำเร็จ กรุณาเลือกไฟล์ MP4 ที่มีขนาดไม่เกินกำหนด',
+      onUpload: true,
+    ),
+    (
+      error: const ApiException('<html>Service unavailable</html>',
+          statusCode: 503),
+      message: 'ระบบ PostDee ไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่ภายหลัง',
+      onUpload: false,
+    ),
+  ]) {
+    testWidgets(
+        'AI caption failure ${failure.error.code ?? failure.error.statusCode} explains the cause in Thai and preserves the caption',
+        (tester) async {
+      final fixture = _createPickedVideoFixture('error-demo.mp4');
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () async => fixture,
+            loadSubscription: () async => const SubscriptionStatusResult(
+              userId: 'starter-user',
+              plan: 'STARTER',
+              status: 'ACTIVE',
+              canSchedule: true,
+              canUseAiCaptions: true,
+              canUseAnalytics: false,
+            ),
+            createUpload: (_) async {
+              if (failure.onUpload) throw failure.error;
+              return const UploadResult(
+                id: 'caption-upload',
+                videoS3Key: 'uploads/error-demo.mp4',
+                storageProvider: 's3',
+              );
+            },
+            uploadVideoFile: (_, __) async {},
+            generateRealClipCaption: (_) async => throw failure.error,
+          ),
+        ),
+      ));
+      await _pickVideoFromPreview(tester);
+      await goToUploaderStep(tester, 1);
+      final caption = find.byKey(const ValueKey('uploader-caption-field'));
+      await tester.ensureVisible(caption);
+      await tester.enterText(caption, 'แคปชั่นที่ฉันเขียนไว้');
+      await _openCaptionOptions(tester, 'uploader-ai-open-panel');
+      final generate =
+          find.byKey(const ValueKey('uploader-ai-generate-button'));
+      await tester.ensureVisible(generate);
+      await tester.pumpAndSettle();
+      await tester.tap(generate);
+      await tester.pumpAndSettle();
+
+      expect(find.text(failure.message), findsOneWidget);
+      expect(tester.widget<TextField>(caption).controller!.text,
+          'แคปชั่นที่ฉันเขียนไว้');
+      expect(find.text(failure.error.message), findsNothing);
+    });
+  }
+
   testWidgets('shows the refreshed upload workflow sections', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -1391,6 +1540,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(createdUploadRequest?.fileName, 'real-demo.mp4');
+    expect(createdUploadRequest?.purpose, 'ai-caption-video');
     expect(createdUploadRequest?.sizeBytes, pickedVideo.sizeBytes);
     expect(uploadedFilePath, pickedVideo.path);
     expect(requestedRequest, isNotNull);
@@ -1711,7 +1861,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(didGenerateCaption, isFalse);
-    expect(find.textContaining('Starter 199'), findsOneWidget);
+    expect(find.textContaining('Starter หรือ Pro'), findsOneWidget);
   });
 
   testWidgets('blocks scheduled posts for Basic users before uploading',

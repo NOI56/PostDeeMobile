@@ -106,6 +106,137 @@ describe('upload routes', () => {
     );
   });
 
+  it.each([
+    { ratio: '9:20', width: 1080, height: 2400 },
+    { ratio: 'landscape', width: 1920, height: 1080 },
+    { ratio: 'square', width: 1080, height: 1080 },
+    { ratio: '9:16', width: 1080, height: 1920 }
+  ])('creates an owner-scoped $ratio AI caption video upload with actual dimensions', async ({ width, height }) => {
+    const response = await request(createApp())
+      .post('/uploads')
+      .set('x-postdee-user-id', 'seller-caption')
+      .send({
+        purpose: 'ai-caption-video',
+        fileName: 'caption clip.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 1000,
+        width,
+        height
+      })
+      .expect(201);
+
+    expect(response.body.upload).toMatchObject({
+      fileName: 'caption clip.mp4',
+      contentType: 'video/mp4',
+      sizeBytes: 1000,
+      width,
+      height,
+      storageProvider: 'private'
+    });
+    expect(response.body.upload.videoS3Key).toMatch(
+      /^uploads\/seller-caption\/.+\/caption-clip\.mp4$/
+    );
+    if (width === 1080 && height === 1920) {
+      expect(response.body.upload.aspectRatio).toBe('9:16');
+    } else {
+      expect(response.body.upload.aspectRatio).toBeUndefined();
+    }
+  });
+
+  it('keeps AI caption upload authentication mandatory', async () => {
+    const app = createApp({
+      config: readServerConfig({
+        AUTH_PROVIDER: 'firebase',
+        FIREBASE_PROJECT_ID: 'postdee-test'
+      }),
+      firebaseVerifier: {
+        verifyIdToken: async () => ({ id: 'seller-firebase', provider: 'firebase' })
+      }
+    });
+
+    await request(app)
+      .post('/uploads')
+      .send({
+        purpose: 'ai-caption-video',
+        fileName: 'caption.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 1000,
+        width: 1080,
+        height: 2400
+      })
+      .expect(401);
+  });
+
+  it.each([
+    { name: 'non-MP4 extension', fields: { fileName: 'caption.mov' } },
+    { name: 'non-MP4 MIME type', fields: { contentType: 'video/quicktime' } },
+    { name: 'oversized file', fields: { sizeBytes: 1001 } },
+    { name: 'partial dimensions', fields: { height: undefined } },
+    { name: 'fractional dimensions', fields: { width: 1080.5 } }
+  ])('rejects AI caption upload with $name before creating storage', async ({ fields }) => {
+    const managedUploadService = createManagedUploadService();
+    const app = createApp({
+      config: readServerConfig({
+        DATABASE_URL: 'postgresql://user:pass@localhost:5432/postdee',
+        UPLOAD_PROTOCOL_MODE: 'dual',
+        UPLOAD_MAX_SIZE_BYTES: '1000'
+      }),
+      managedUploadService
+    });
+
+    const response = await request(app)
+      .post('/uploads')
+      .set('x-postdee-user-id', 'seller-caption')
+      .send({
+        purpose: 'ai-caption-video',
+        fileName: 'caption.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 1000,
+        width: 1080,
+        height: 2400,
+        uploadProtocol: 'multipart-v1',
+        ...fields
+      })
+      .expect(400);
+
+    expect(response.body.code).toBe('UPLOAD_AI_CAPTION_VIDEO_INVALID');
+    expect(managedUploadService.create).not.toHaveBeenCalled();
+  });
+
+  it('passes an AI caption video and its real dimensions through the existing multipart owner boundary', async () => {
+    const managedUploadService = createManagedUploadService();
+    const app = createApp({
+      config: readManagedUploadConfig(),
+      managedUploadService
+    });
+
+    await request(app)
+      .post('/uploads')
+      .set('x-postdee-user-id', 'seller-caption')
+      .send({
+        purpose: 'ai-caption-video',
+        fileName: 'caption.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 17,
+        width: 1080,
+        height: 2400,
+        uploadProtocol: 'multipart-v1'
+      })
+      .expect(201);
+
+    expect(managedUploadService.assertOwnerActive).toHaveBeenCalledWith('seller-caption');
+    expect(managedUploadService.create).toHaveBeenCalledWith(
+      {
+        fileName: 'caption.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 17,
+        width: 1080,
+        height: 2400
+      },
+      'seller-caption'
+    );
+  });
+
   it('creates an S3 upload record when S3 storage is configured', async () => {
     const app = createApp({
       config: readServerConfig({
@@ -359,7 +490,10 @@ describe('upload routes', () => {
     });
   });
 
-  it('rejects video metadata that is not vertical 9:16', async () => {
+  it.each([
+    { ratio: 'landscape', width: 1920, height: 1080 },
+    { ratio: '9:20', width: 1080, height: 2400 }
+  ])('rejects generic $ratio video metadata that is not vertical 9:16', async ({ width, height }) => {
     const app = createApp();
 
     const response = await request(app)
@@ -368,8 +502,8 @@ describe('upload routes', () => {
         fileName: 'landscape reel.mp4',
         contentType: 'video/mp4',
         sizeBytes: 12_345_678,
-        width: 1920,
-        height: 1080
+        width,
+        height
       })
       .expect(400);
 

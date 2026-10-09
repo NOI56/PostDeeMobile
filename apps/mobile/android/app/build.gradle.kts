@@ -46,6 +46,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["socialConnectScheme"] = "postdee"
     }
 
     signingConfigs {
@@ -64,6 +65,7 @@ android {
             // app. Release continues to use the production application ID.
             applicationIdSuffix = ".staging"
             versionNameSuffix = "-staging"
+            manifestPlaceholders["socialConnectScheme"] = "postdee-staging"
         }
         release {
             signingConfig = signingConfigs.getByName("release")
@@ -84,4 +86,5 @@ flutter {
 
 dependencies {
     implementation("androidx.browser:browser:1.9.0")
+    testImplementation("junit:junit:4.13.2")
 }

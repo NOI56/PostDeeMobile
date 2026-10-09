@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'social_platform.dart';
@@ -189,10 +190,16 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
   String? _busyPlatform;
   bool _waitingForOAuthReturn = false;
   bool _leftAppForOAuth = false;
+  bool _pendingOAuthRefresh = false;
+  String? _ownerUserId;
+  int _loadGeneration = 0;
+  int _operationGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    _ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
+    PostDeeAuthSessionStore.instance.addListener(_handleOwnerChanged);
     WidgetsBinding.instance.addObserver(this);
     _loadConnections();
   }
@@ -200,6 +207,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    PostDeeAuthSessionStore.instance.removeListener(_handleOwnerChanged);
     super.dispose();
   }
 
@@ -217,29 +225,74 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         if (!_leftAppForOAuth) return;
         _waitingForOAuthReturn = false;
         _leftAppForOAuth = false;
-        unawaited(_refresh());
+        _pendingOAuthRefresh = true;
+        _drainOAuthRefresh();
         break;
       case AppLifecycleState.detached:
         break;
     }
   }
 
+  void _handleOwnerChanged() {
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    if (!mounted || owner == _ownerUserId) return;
+    _ownerUserId = owner;
+    _loadGeneration += 1;
+    _operationGeneration += 1;
+    _waitingForOAuthReturn = false;
+    _leftAppForOAuth = false;
+    _pendingOAuthRefresh = false;
+    setState(() {
+      _statuses = {};
+      _busyPlatform = null;
+      _loading = false;
+      _statusError = 'กรุณาเข้าสู่ระบบใหม่เพื่อตรวจสอบช่องทาง';
+    });
+    if (owner != null) unawaited(_loadConnections());
+  }
+
+  bool _loadIsCurrent(int generation, String? owner) =>
+      mounted &&
+      generation == _loadGeneration &&
+      owner == PostDeeAuthSessionStore.instance.session.stableUserId;
+
+  bool _operationIsCurrent(int generation, String? owner) =>
+      mounted &&
+      generation == _operationGeneration &&
+      owner == PostDeeAuthSessionStore.instance.session.stableUserId;
+
+  void _drainOAuthRefresh() {
+    if (!mounted ||
+        !_pendingOAuthRefresh ||
+        _loading ||
+        _busyPlatform != null ||
+        _ownerUserId != PostDeeAuthSessionStore.instance.session.stableUserId) {
+      return;
+    }
+    _pendingOAuthRefresh = false;
+    unawaited(_refresh());
+  }
+
   Future<void> _loadConnections() async {
+    final generation = ++_loadGeneration;
+    final owner = _ownerUserId;
     setState(() {
       _loading = true;
       _statusError = null;
     });
     try {
       final results = await _apiClient.listSocialConnections();
-      if (!mounted) return;
+      if (!_loadIsCurrent(generation, owner)) return;
       setState(() {
         _statuses = {for (final result in results) result.platform: result};
         _loading = false;
       });
       widget.onConnectionsChanged?.call(_connectedCount);
     } catch (_) {
-      if (!mounted) return;
+      if (!_loadIsCurrent(generation, owner)) return;
       _setStatusUnavailable();
+    } finally {
+      if (_loadIsCurrent(generation, owner)) _drainOAuthRefresh();
     }
   }
 
@@ -271,71 +324,98 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
 
   Future<void> _connect(SocialPlatform platform) async {
     if (_actionsLocked) return;
+    final generation = ++_operationGeneration;
+    final owner = _ownerUserId;
     setState(() => _busyPlatform = platform.apiValue);
     try {
-      final link =
-          await _apiClient.createSocialConnectionLink(platform.apiValue);
-      if (!mounted) return;
+      final returnTarget = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+          ? kDebugMode
+              ? 'android-staging'
+              : 'android'
+          : null;
+      final link = await _apiClient.createSocialConnectionLink(
+        platform.apiValue,
+        returnTarget: returnTarget,
+      );
+      if (!_operationIsCurrent(generation, owner)) return;
       if (!isTrustedSocialConnectUrl(link.connectUrl, platform)) {
         _showMessage('ลิงก์เชื่อมบัญชีไม่ปลอดภัย กรุณาลองใหม่อีกครั้ง');
         return;
       }
       _waitingForOAuthReturn = true;
+      _leftAppForOAuth = false;
       final launched = await _launch(link.connectUri);
+      if (!_operationIsCurrent(generation, owner)) return;
       if (!launched) {
         _waitingForOAuthReturn = false;
         throw StateError('Could not open the PostPeer connect URL.');
       }
-      // PostPeer OAuth uses a browser-owned in-app surface when available and
-      // an external browser fallback otherwise. The lifecycle observer makes
-      // one explicit refresh after the user closes it and returns to PostDee.
+      // Returning is only a hint to reconcile via the authenticated API. The
+      // browser and callback never prove that an account was connected.
       _showMessage(
-        'เปิดหน้าล็อกอินด้วยเบราว์เซอร์ของระบบแล้ว — เมื่อเชื่อมเสร็จให้ปิดหน้าต่างหรือกลับเข้า PostDee ระบบจะตรวจให้อัตโนมัติ',
+        'เปิดหน้าล็อกอินด้วยเบราว์เซอร์ของระบบแล้ว เมื่อเชื่อมเสร็จให้กดเปิด PostDee หากไม่กลับอัตโนมัติให้ปิดหน้าต่างหรือกลับเข้าแอป แล้วกดรีเฟรชสถานะได้',
       );
     } on ApiException catch (error) {
+      if (!_operationIsCurrent(generation, owner)) return;
       _waitingForOAuthReturn = false;
       _leftAppForOAuth = false;
+      _pendingOAuthRefresh = false;
       _showMessage(error.message);
     } catch (_) {
+      if (!_operationIsCurrent(generation, owner)) return;
       _waitingForOAuthReturn = false;
       _leftAppForOAuth = false;
+      _pendingOAuthRefresh = false;
       _showMessage('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
-      if (mounted) setState(() => _busyPlatform = null);
+      if (_operationIsCurrent(generation, owner)) {
+        setState(() => _busyPlatform = null);
+        _drainOAuthRefresh();
+      }
     }
   }
 
   Future<void> _refresh() async {
     if (_loading || _busyPlatform != null) return;
+    final generation = ++_loadGeneration;
+    final owner = _ownerUserId;
     setState(() {
       _loading = true;
       _statusError = null;
     });
     try {
       final results = await _apiClient.refreshSocialConnections();
-      if (!mounted) return;
+      if (!_loadIsCurrent(generation, owner)) return;
       setState(() {
         _statuses = {for (final result in results) result.platform: result};
         _loading = false;
       });
       widget.onConnectionsChanged?.call(_connectedCount);
     } catch (_) {
-      if (!mounted) return;
+      if (!_loadIsCurrent(generation, owner)) return;
       _setStatusUnavailable();
+    } finally {
+      if (_loadIsCurrent(generation, owner)) _drainOAuthRefresh();
     }
   }
 
   Future<void> _disconnect(SocialPlatform platform) async {
     if (_actionsLocked) return;
+    final generation = ++_operationGeneration;
+    final owner = _ownerUserId;
     setState(() => _busyPlatform = platform.apiValue);
     try {
       await _apiClient.disconnectSocialConnection(platform.apiValue);
-      if (!mounted) return;
+      if (!_operationIsCurrent(generation, owner)) return;
       await _loadConnections();
     } catch (_) {
+      if (!_operationIsCurrent(generation, owner)) return;
       _showMessage('ยกเลิกการเชื่อมไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
-      if (mounted) setState(() => _busyPlatform = null);
+      if (_operationIsCurrent(generation, owner)) {
+        setState(() => _busyPlatform = null);
+        _drainOAuthRefresh();
+      }
     }
   }
 
@@ -623,7 +703,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'เปิดด้วยเบราว์เซอร์ที่ระบบเชื่อถือ PostDee ไม่ได้รับรหัสผ่านของคุณ เมื่อเสร็จให้ปิดหน้าต่างหรือกลับเข้าแอป',
+                      'เปิดด้วยเบราว์เซอร์ที่ระบบเชื่อถือ PostDee ไม่ได้รับรหัสผ่านของคุณ เมื่อเสร็จให้กดเปิด PostDee หากไม่กลับให้ปิดหน้าต่างหรือกลับเข้าแอป แล้วรีเฟรชสถานะ',
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.4,

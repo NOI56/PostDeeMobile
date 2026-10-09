@@ -1790,6 +1790,42 @@ void main() {
         '2026-06-26T09:00:00.000Z');
   });
 
+  for (final returnTarget in <String?>[null, 'android', 'android-staging']) {
+    test('social connection request includes only opted-in return target $returnTarget',
+        () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final serverTask = () async {
+        final request = await server.first;
+        expect(request.method, 'POST');
+        expect(request.uri.path, '/social-connections/TIKTOK/connect');
+        expect(request.headers.value(HttpHeaders.authorizationHeader),
+            'Bearer owner-token');
+        expect(await _readJsonRequest(request),
+            returnTarget == null ? {} : {'returnTarget': returnTarget});
+        _writeJsonResponse(request.response, {
+          'status': 'ok',
+          'connectUrl': 'https://www.tiktok.com/v2/auth/authorize',
+        });
+        await request.response.close();
+      }();
+
+      try {
+        final client = PostDeeApiClient(
+          baseUrl: 'http://${server.address.address}:${server.port}',
+          authTokenProvider: () async => 'owner-token',
+        );
+        final result = returnTarget == null
+            ? await client.createSocialConnectionLink('TIKTOK')
+            : await client.createSocialConnectionLink('TIKTOK',
+                returnTarget: returnTarget);
+        expect(result.connectUrl, 'https://www.tiktok.com/v2/auth/authorize');
+        await serverTask;
+      } finally {
+        await server.close(force: true);
+      }
+    });
+  }
+
   test('SocialConnectLinkResult parses connect URLs', () {
     final result = SocialConnectLinkResult.fromJson({
       'connectUrl': 'https://postpeer.test/connect/youtube',

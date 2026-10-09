@@ -23,6 +23,33 @@ Build roadmap for PostDee.
   `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`. Final native APK smoke,
   authenticated live route checks and direct `/ready` checks remain unverified.
 
+## AI caption aspect-ratio fix (2026-10-09, API-first rollout pending)
+
+AI caption uploads use `purpose: "ai-caption-video"` for `.mp4` / `video/mp4`
+clips at any aspect ratio, within the existing size limit. Known dimensions
+are retained, including the observed `1080x2400` (9:20) clip; omit both when
+unknown or supply both as positive finite integers. Generic uploads and mobile
+posting retain 9:16 validation. Starter/Pro access, ownership and caption quota
+stay unchanged. Deploy API before mobile; no migration is required, and the
+older API still rejects known non-9:16 dimensions.
+
+Generation uploads the clip and optional Pro frames to configured
+storage/providers and may consume mobile data. This fix has not performed real
+remote user uploads, provider generation or paid state changes. Real provider
+and production generation verification remains a separate release gate.
+
+## Android social-connect return (API-first rollout pending)
+
+New Android connect links can request the fixed `android` or `android-staging`
+return target. The native warm return keeps the original screen and triggers
+an authenticated connection refresh; a deep link alone never proves success.
+Cold starts use the normal authentication gate and may lack the previous
+in-memory screen. Browser Open App confirmation, X/manual refresh and iOS's
+legacy external-browser flow remain supported. Deploy API before mobile and
+generate a new link to use the return target. No new permission, provider OAuth
+app, schema or environment setting is required. Real provider/native return
+verification remains pending.
+
 ## Pending-work integration (2026-10-08)
 
 - Mobile cleanup is integrated and pushed to `main` at `b1f793c`; app-source CI
@@ -401,7 +428,7 @@ Primary backend choices:
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to configured-primary Gemini 2.5 Flash-Lite, retries transient failures, then falls back directly to the local template; media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`) | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
 | AI auto editing | ElevenLabs Scribe v2 + Gemini 3.5 Flash-Lite + mobile FFmpeg | Pro transcript/highlight planning, optional verified-silence/repeated-speech cleanup, AI-selected sound effects, subtitle burn-in, phone-side review, and video export | `/ai-edits/prepare`, fair quota outcomes, waveform-verified silence, safe repeated-speech review, atomic accepted-source state, subtitle-safe rendering, and local colour compatibility exist. AI SFX uses a separate catalog-only planner: it returns at most eight trusted `soundId + sourceSeconds` anchors; mobile fixes volume, maps through final cuts, and mixes bundled procedural WAVs. Manual SFX selection is removed. Production beat sync and the 3-second hook remain default-off. | Tasks 3–8 and deployed identity/health are verified. Pixel 8 `color-local` passed device/render checks, while the main matrix remains blocked: a new STT-only Staging key still received upstream HTTP `401`, PostDee quota stayed unchanged, and ElevenLabs showed only 6/10,000 workspace credits remaining. Wait for or restore provider quota, rerun the API-dependent matrix, then capture AI SFX Preview/full-export listening, peak, and A/V-sync evidence on Android and iPhone before Production. |
 | Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase and true Restore/resync E2E pass on Emulator; RevenueCat Play config, production Android public SDK key, and signed AAB are ready | Verify Play Console access on a physical Android device, then create the Play app/subscriptions/service credentials/internal testing and test lifecycle plus real Google Play/App Store purchases before claiming production billing E2E. |
-| Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect uses a native Android Custom Tab bridge with external-only fallback, trusted OAuth-host validation, one resume/manual refresh, and provider-first disconnect; iOS currently uses the external system browser; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; the config-only readiness gate and fail-fast create/reschedule path exist; Staging has an opt-in startup guard whose single atomic aggregate status-in query refuses PostPeer activation when any global `QUEUED` (including future) or `PUBLISHING` row exists, or when inspection fails; YouTube defaults private and TikTok SELF_ONLY for controlled testing; the disabled Mobile fail-fast passed, but the first controlled YouTube attempt stopped at readiness before upload and the runtime mode/guard pass were not observable, so connected-account E2E is still pending | Readiness does not probe PostPeer/accounts. Verify native Custom Tab close/resume on physical Android, the iOS system-browser return, and external fallback; then wire and verify PostPeer's optional `redirectUri` with an authenticated Mobile deep-link return before using an iOS in-app browser view. Keep Staging disabled except for a controlled run; require explicit runtime-mode and empty-backlog guard-pass evidence before another single private attempt. Treat `FACEBOOK_REELS` as Page Video. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
+| Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect uses a native Android Custom Tab bridge with external-only fallback, trusted OAuth-host validation, fixed Android return targets and one authenticated return/resume/manual refresh, and provider-first disconnect; iOS currently uses the external system browser; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; the config-only readiness gate and fail-fast create/reschedule path exist; Staging has an opt-in startup guard whose single atomic aggregate status-in query refuses PostPeer activation when any global `QUEUED` (including future) or `PUBLISHING` row exists, or when inspection fails; YouTube defaults private and TikTok SELF_ONLY for controlled testing; the disabled Mobile fail-fast passed, but the first controlled YouTube attempt stopped at readiness before upload and the runtime mode/guard pass were not observable, so connected-account E2E is still pending | Readiness does not probe PostPeer/accounts. Verify native Custom Tab return, browser Open App confirmation, cold-start authentication, the iOS external-browser flow and manual fallback on physical devices. Deploy the fixed-target API before mobile and generate new links; real provider/native return verification remains pending. Keep Staging disabled except for a controlled run; require explicit runtime-mode and empty-backlog guard-pass evidence before another single private attempt. Treat `FACEBOOK_REELS` as Page Video. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
 | Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
 | Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile registration, `POST /devices`, notifier, and firebase-admin sender exist; mock remains default | Add the service account, set `PUSH_SENDER=firebase`, enable APNs/iOS capabilities, and test on a real device. |
 

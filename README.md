@@ -584,8 +584,18 @@ Request:
 ```
 
 Response includes `upload.videoS3Key`, the existing legacy field name for the temporary object key that can be passed to `POST /posts`. New upload keys are scoped to the authenticated user, for example `uploads/<user-id>/<upload-id>/<file>`.
-When `width` and `height` are provided, the backend validates that the metadata describes a vertical 9:16 video, such as `1080x1920`.
+For generic uploads, provided `width` and `height` must describe a vertical
+9:16 video, such as `1080x1920`. AI caption clip uploads use the explicit
+`"purpose": "ai-caption-video"`: an `.mp4` file with `video/mp4` can have any
+aspect ratio. Mobile retains known source dimensions, so `1080x2400` (9:20)
+can be analyzed without changing its metadata. Dimensions may be omitted
+together; when supplied, both must be positive finite integers. Generic upload
+and mobile posting validation keep their existing 9:16 policy.
 The backend rejects uploads above `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
+
+Deploy this additive upload purpose in the API before releasing the new mobile
+build; no database migration is required. An older API ignores the unfamiliar
+purpose and still rejects known non-9:16 dimensions.
 
 New mobile clients opt in with `"uploadProtocol": "multipart-v1"`. In `dual`
 or `multipart` mode, the response contains an opaque session `id`,
@@ -639,6 +649,12 @@ selected. This route accepts `videoS3Key`, optional `guidance`, optional
 R2/S3 cleanup after the caption request. The route also checks that media keys
 belong to the authenticated user and reserves monthly quota before calling the
 AI provider.
+
+AI caption generation uploads the selected clip and optional Pro frames to
+configured storage/providers and may consume mobile data. Existing Starter/Pro
+access, owner checks, media limits and generation quota remain unchanged. This
+fix has not performed real remote user uploads, provider generation or paid
+state changes; production generation remains unverified.
 
 - Starter uses audio-only mode and has 50 generations/month.
 - Pro uses audio plus selected-frame mode and has 120 generations/month.
@@ -1112,13 +1128,18 @@ Current mobile pieces:
   disabled until status is successfully refreshed.
 - Social account authorization opens the PostPeer URL in a browser-owned
   surface, never a Flutter WebView. Android uses a dedicated native Custom Tab
-  bridge that fails back to the external browser without a WebView; iOS uses
-  the external system browser because `url_launcher` does not report dismissal
-  of its in-app browser view.
-  Returning to PostDee triggers one explicit
-  `POST /social-connections/refresh`, and the manual refresh button remains
-  available. PostPeer supports an optional `redirectUri`, but the current API
-  does not request one until a verified Mobile return/deep-link flow is wired.
+  bridge with external-browser fallback. New Android connect requests use the
+  fixed `android` or `android-staging` return target. A native return preserves
+  the original screen while the app process is alive, then triggers one
+  authenticated `POST /social-connections/refresh`; the return itself does not
+  prove that connection succeeded. A cold start uses the normal authentication
+  gate and cannot restore a previous screen that existed only in memory.
+  Browsers may require an Open App confirmation. Closing with X and manual
+  refresh remain available; iOS keeps the legacy external-browser flow without
+  an automatic-return claim. Deploy API before mobile and create a new connect
+  link to use the return target; links already open retain their prior flow.
+  No new permission, provider OAuth app, database schema or environment setting
+  is required. Real provider/native return verification remains pending.
 - Calendar tab that refreshes when opened, polls queued/publishing posts while
   visible, uses the real publish time, and opens completed results read-only;
   plus AI caption entry points from Upload after a clip is selected

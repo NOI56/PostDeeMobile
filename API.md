@@ -692,8 +692,24 @@ Validation:
 - `fileName` is required.
 - `contentType` must start with `video/` or `image/`.
 - `sizeBytes` must be positive and no larger than `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
-- If `width` and `height` are provided, the media must be vertical 9:16 within a 2 percent tolerance.
+- For generic uploads, provided `width` and `height` must describe vertical
+  9:16 media within a 2 percent tolerance.
+- `purpose: "ai-caption-video"` accepts an `.mp4` file with `video/mp4` at any
+  aspect ratio, within the same `UPLOAD_MAX_SIZE_BYTES` limit. Preserve known
+  source dimensions, including `1080x2400` (9:20). Omit both dimensions when
+  unknown; if either is supplied, both must be positive finite integers.
+  Invalid metadata for this purpose returns `400` with code
+  `UPLOAD_AI_CAPTION_VIDEO_INVALID`.
 - `uploadProtocol`, when present, must be `multipart-v1`.
+
+The AI caption purpose is an additive API-first rollout with no migration.
+Older APIs ignore the unfamiliar purpose and still reject known non-9:16
+dimensions. Generic upload and mobile posting validation retain the existing
+9:16 policy.
+
+Legacy responses retain the supplied dimensions; `aspectRatio` is optional and
+does not provide a computed label for every ratio. Use actual dimensions when
+present. Managed responses retain their existing shape without a new ratio field.
 
 Mock response:
 
@@ -1149,6 +1165,28 @@ Mobile repeats that check before opening it. Android uses a dedicated native
 Custom Tab bridge that returns failure to Dart instead of substituting a
 WebView; iOS and unsupported Android devices use the external system browser.
 
+The optional JSON body accepts `returnTarget: "android"` or
+`returnTarget: "android-staging"`. The API maps these to fixed provider
+`redirectUri` values:
+
+| `returnTarget` | PostPeer `redirectUri` |
+| --- | --- |
+| `android` | `postdee://social-connect/return` |
+| `android-staging` | `postdee-staging://social-connect/return` |
+
+Omitting the target preserves the legacy request without `redirectUri`.
+Unsupported targets return `400 SOCIAL_CONNECTION_RETURN_TARGET_INVALID`
+before the provider call. Caller-supplied `redirectUri`, `returnUrl`, `profileId`
+and `userId` are ignored; redirect and ownership come from the fixed mapping
+and authenticated user. PostPeer documents this optional redirect after successful
+connection in its [Connect guide](https://www.postpeer.dev/docs/social-accounts/connect).
+The deep link only signals an authenticated refresh; its parameters cannot
+prove connection success or replace provider integration state. Deploy API
+before mobile. The target affects newly generated links only; previously open
+links retain the X/manual-refresh fallback. Browsers may request Open App
+confirmation, and real provider/native return verification remains pending.
+No new permission, provider OAuth app, schema or environment setting is added.
+
 For a new Firebase identity, the API ensures the local `User` row before saving
 the foreign-keyed PostPeer profile. Profile creation sends PostPeer a required,
 stable HMAC-derived pseudonymous name and does not send the Firebase UID, email,
@@ -1170,8 +1208,11 @@ flow, then upserts connected platforms and removes stale local connections.
 Mobile calls this once when returning to PostDee; the manual refresh remains
 available. This is an explicit reconciliation request, not an OAuth completion
 callback, and it must not be polled aggressively. PostPeer documents an
-optional `redirectUri`, but the current adapter does not send it until a
-verified Mobile deep-link return flow exists.
+optional `redirectUri`; Android requests use the fixed targets above. A warm
+native return preserves the original screen. A cold start follows the normal
+authentication gate, where the previous in-memory screen may no longer exist.
+iOS retains its legacy external-browser/resume and manual-refresh behavior;
+automatic iOS return is not claimed.
 
 ### `DELETE /social-connections/:platform`
 
@@ -1338,6 +1379,9 @@ Requires Starter or Pro.
   `CAPTION_USAGE_STORE=prisma` so monthly usage survives API restarts.
 - It uses `videoS3Key`, optional `guidance`, optional `selectedFrameKeys`, and
   optional `deleteAfterUse`.
+- Mobile creates the clip upload with `purpose: "ai-caption-video"`; its source
+  aspect ratio does not change Starter/Pro access, media ownership, generation
+  quota or existing server media-processing limits.
 - `videoS3Key` and any `selectedFrameKeys` must be upload keys owned by the
   authenticated user, using the `uploads/<user-id>/<upload-id>/<file>` shape
   returned by `POST /uploads`.
@@ -1348,6 +1392,10 @@ Requires Starter or Pro.
 - Usage is reserved before the AI provider is called so simultaneous requests
   cannot exceed the monthly quota within the configured usage store.
 - Media downloaded for AI processing is capped to protect API memory.
+- This flow transfers the clip and optional Pro frames to configured
+  storage/providers and may consume mobile data. The aspect-ratio fix has not
+  performed real remote user uploads, provider generation or paid state
+  changes, and does not certify production generation.
 - When `CAPTION_PROVIDER=gemini`, this endpoint sends the clip to Gemini to
   listen and write the caption directly (Starter = audio only; Pro =
   `AUDIO_WITH_FRAMES`, also sending the `selectedFrameKeys` images). Gemini

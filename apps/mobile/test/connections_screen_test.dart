@@ -1,17 +1,20 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/platforms/connections_screen.dart';
 import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/platforms/social_platform_logo.dart';
 
 class _StatusApiClient extends PostDeeApiClient {
-  _StatusApiClient({required this.list, this.refresh});
+  _StatusApiClient({required this.list, this.refresh, this.connect});
 
   final Future<List<SocialConnectionResult>> Function() list;
   final Future<List<SocialConnectionResult>> Function()? refresh;
+  final Future<SocialConnectLinkResult> Function(String? returnTarget)? connect;
 
   @override
   Future<List<SocialConnectionResult>> listSocialConnections() => list();
@@ -19,9 +22,210 @@ class _StatusApiClient extends PostDeeApiClient {
   @override
   Future<List<SocialConnectionResult>> refreshSocialConnections() =>
       (refresh ?? list)();
+
+  @override
+  Future<SocialConnectLinkResult> createSocialConnectionLink(
+    String platform, {
+    String? returnTarget,
+  }) async =>
+      connect == null
+          ? const SocialConnectLinkResult(
+              connectUrl: 'https://www.tiktok.com/v2/auth/authorize')
+          : connect!(returnTarget);
 }
 
 void main() {
+  setUp(() => PostDeeAuthSessionStore.instance.clear());
+  tearDown(() {
+    debugDefaultTargetPlatformOverride = null;
+    PostDeeAuthSessionStore.instance.clear();
+  });
+
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    testWidgets('social return opt-in matches $platform', (tester) async {
+      String? requestedTarget;
+      var launched = false;
+      await tester.pumpWidget(MaterialApp(
+        home: ConnectionsScreen(
+          apiClient: _StatusApiClient(
+            list: () async => const [],
+            connect: (returnTarget) async {
+              requestedTarget = returnTarget;
+              return const SocialConnectLinkResult(
+                  connectUrl: 'https://www.tiktok.com/v2/auth/authorize');
+            },
+          ),
+          launchConnectUrl: (_) async {
+            launched = true;
+            return true;
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await _tapConnect(tester);
+      await tester.pumpAndSettle();
+
+      expect(launched, isTrue);
+      expect(
+        requestedTarget,
+        platform == TargetPlatform.android
+            ? 'android-staging'
+            : null,
+      );
+    }, variant: TargetPlatformVariant.only(platform));
+  }
+
+  for (final launched in [true, false]) {
+    testWidgets(
+        'return before launcher completion ${launched ? 'refreshes once' : 'does not refresh a failed launch'}',
+        (tester) async {
+      _signIn('owner-a');
+      final launch = Completer<bool>();
+      var refreshes = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: ConnectionsScreen(
+          apiClient: _StatusApiClient(
+            list: () async => const [],
+            refresh: () async {
+              refreshes += 1;
+              return const [
+                SocialConnectionResult(
+                    platform: 'TIKTOK', connected: true, displayName: '@seller'),
+              ];
+            },
+          ),
+          launchConnectUrl: (_) => launch.future,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await _tapConnect(tester);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(refreshes, 0);
+
+      // Token rotation preserves the pending return for the same account.
+      _signIn('owner-a', token: 'refreshed-token');
+      launch.complete(launched);
+      await tester.pumpAndSettle();
+      expect(refreshes, launched ? 1 : 0);
+      expect(find.text('@seller'), launched ? findsOneWidget : findsNothing);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(refreshes, launched ? 1 : 0);
+    });
+  }
+
+  testWidgets('owner switch discards a pending OAuth link before browser launch',
+      (tester) async {
+    _signIn('owner-a');
+    final link = Completer<SocialConnectLinkResult>();
+    var launched = false;
+    await tester.pumpWidget(MaterialApp(
+      home: ConnectionsScreen(
+        apiClient: _StatusApiClient(
+          list: () async => const [],
+          connect: (_) => link.future,
+        ),
+        launchConnectUrl: (_) async {
+          launched = true;
+          return true;
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _tapConnect(tester);
+    await tester.pump();
+    _signIn('owner-b');
+    await tester.pump();
+    link.complete(const SocialConnectLinkResult(
+        connectUrl: 'https://www.tiktok.com/v2/auth/authorize'));
+    await tester.pumpAndSettle();
+
+    expect(launched, isFalse);
+    expect(find.textContaining('เปิดหน้าล็อกอิน'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('owner switch ignores a late refresh and reloads current accounts',
+      (tester) async {
+    _signIn('owner-a');
+    final refresh = Completer<List<SocialConnectionResult>>();
+    final counts = <int>[];
+    await tester.pumpWidget(MaterialApp(
+      home: ConnectionsScreen(
+        apiClient: _StatusApiClient(
+          list: () async => [
+            SocialConnectionResult(
+              platform: 'TIKTOK',
+              connected: true,
+              displayName: PostDeeAuthSessionStore.instance.session.stableUserId ==
+                      'owner-a'
+                  ? '@owner-a'
+                  : '@owner-b',
+            ),
+          ],
+          refresh: () => refresh.future,
+        ),
+        onConnectionsChanged: counts.add,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+    await tester.pump();
+    _signIn('owner-b');
+    await tester.pump();
+    await tester.pump();
+    refresh.complete(const [
+      SocialConnectionResult(
+          platform: 'TIKTOK', connected: true, displayName: '@old-refresh'),
+      SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: true),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('@owner-b'), findsOneWidget);
+    expect(find.text('@owner-a'), findsNothing);
+    expect(find.text('@old-refresh'), findsNothing);
+    expect(find.text('เชื่อมต่อแล้ว 1/4 ช่องทาง'), findsOneWidget);
+    expect(counts, [1, 1]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('owner switch cancels a return waiting on browser completion',
+      (tester) async {
+    _signIn('owner-a');
+    final launch = Completer<bool>();
+    var refreshes = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: ConnectionsScreen(
+        apiClient: _StatusApiClient(
+          list: () async => const [],
+          refresh: () async {
+            refreshes += 1;
+            return const [];
+          },
+        ),
+        launchConnectUrl: (_) => launch.future,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _tapConnect(tester);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    _signIn('owner-b');
+    await tester.pump();
+    launch.complete(true);
+    await tester.pumpAndSettle();
+    expect(refreshes, 0);
+    expect(find.textContaining('เปิดหน้าล็อกอิน'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final inlineCard in [false, true]) {
     testWidgets(
         '${inlineCard ? 'inline connection card' : 'connections page'} hides unavailable destinations while retaining connected accounts',
@@ -182,4 +386,18 @@ void main() {
     expect(find.text('เชื่อมต่อแล้ว 1/4 ช่องทาง'), findsOneWidget);
     expect(changes, [1, 1]);
   });
+}
+
+void _signIn(String owner, {String token = 'test-token'}) {
+  PostDeeAuthSessionStore.instance.signIn(
+    AuthSession(userId: owner, idToken: token),
+  );
+}
+
+Future<void> _tapConnect(WidgetTester tester) async {
+  final button =
+      find.byKey(const ValueKey('profile-platform-connect-TIKTOK'));
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
 }

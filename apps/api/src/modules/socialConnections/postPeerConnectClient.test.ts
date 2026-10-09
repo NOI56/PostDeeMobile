@@ -582,6 +582,62 @@ describe('createPostPeerConnectClient', () => {
   });
 
   it.each([
+    'postdee://social-connect/return',
+    'postdee-staging://social-connect/return'
+  ])('passes the allowlisted app return URI as an encoded query: %s', async (redirectUri) => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ url: 'https://www.tiktok.com/auth?x=1' })
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(
+      client.createConnectUrl({
+        platform: 'TIKTOK',
+        profileId: 'profile /?&=1',
+        redirectUri
+      })
+    ).resolves.toEqual({ connectUrl: 'https://www.tiktok.com/auth?x=1' });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      `https://api.postpeer.test/v1/connect/tiktok?profileId=profile%20%2F%3F%26%3D1&redirectUri=${encodeURIComponent(redirectUri)}`,
+      { method: 'GET', headers: { 'x-access-key': 'pp-key' } }
+    );
+  });
+
+  it.each([
+    '',
+    'https://attacker.example/return',
+    'postdee://attacker.example/return',
+    'postdee://social-connect/return?next=https://attacker.example',
+    'postdee://social-connect/return#fragment',
+    'postdee://social-connect/return/extra',
+    'postdee://attacker@social-connect/return',
+    'postdee-staging://social-connect/other',
+    ' POSTDEE://social-connect/return '
+  ])('rejects an unapproved app return URI before contacting PostPeer: %s', async (redirectUri) => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ url: 'https://www.tiktok.com/auth' })
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(
+      client.createConnectUrl({ platform: 'TIKTOK', profileId: 'profile-1', redirectUri })
+    ).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ['YOUTUBE_SHORTS', 'https://accounts.google.com/o/oauth2/v2/auth'],
     ['INSTAGRAM_REELS', 'https://www.instagram.com/oauth/authorize'],
     ['INSTAGRAM_REELS', 'https://www.facebook.com/dialog/oauth'],

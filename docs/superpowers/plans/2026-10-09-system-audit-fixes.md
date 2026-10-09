@@ -230,3 +230,102 @@ It was installed with `adb install -r --streaming`; installed bytes match.
 Native Home and Account display the current Free `0 / 3` status with the same
 signed-in account retained. A live new purchase/restore and this account's
 provider transaction history have not been re-tested or confirmed.
+
+## Follow-up: AI captions blocked by clip aspect ratio
+
+Fresh `git fetch origin` retained main baseline
+`c4e52201a58b556f5f47529027549a2fc16af84c`; this follow-up starts from the
+already-pushed audit branch `80fa9b6` (three commits ahead, none behind main).
+Unrelated generated Windows line-ending changes and the dirty original
+workspace are preserved and excluded from delivery.
+
+Local metadata inspection of the selected `1000000096.mp4` on the Staging
+emulator returned actual `1080x2400` dimensions (9:20), rather than 9:16.
+The composer stopped before uploading it for AI. No rotation change, crop,
+remote user upload, provider generation or quota-consuming action was performed.
+
+Caption uploads now identify `purpose: "ai-caption-video"` and retain complete
+source dimensions at any aspect ratio. When legacy draft metadata knows only
+one dimension, mobile omits both instead of fabricating the missing value.
+The API requires `.mp4` / `video/mp4`, the existing maximum upload size and
+either absent or positive finite integer dimension pairs. Existing ownership,
+authentication, paid-plan and AI quota gates remain. AI upload receipts remain
+separate from the posting cache; generic uploads and mobile posting retain the
+9:16 rule. This is not a new server-side `/posts` aspect-ratio guarantee.
+
+The AI panel maps paid access, exhausted monthly quota and invalid upload errors
+to Thai, uses the shared safe API error mapper for other errors, and retains the
+user's caption on failure. Paid-plan copy uses package names without embedding
+store prices. The related four root documents are synchronized. No database
+migration or configuration change is required; deploy API before mobile.
+
+Backend regression tests failed before the patch (30 failures) and pass 63/63
+targeted; full API tests pass 1,684/1,684 across 108 files. API build, Prisma
+schema validation and Prisma helper type checks pass. Mobile aspect tests fail
+with the old guard (three cases); partial-dimension regressions also fail before
+normalization (two cases). The final targeted AI tests pass 14/14, full Flutter
+tests pass 1,697/1,697, and full analysis reports no issues.
+
+The final Staging debug APK builds with the validated Staging/Firebase and
+RevenueCat Test Store configuration, unchanged package
+`com.postdee.postdee_mobile.staging` and debug certificate
+`014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+It is 196,657,846 bytes with SHA-256
+`0b6183303c95a5a034fe154276e3ed61869a7f0f16cceeb48c62418a2f204232`.
+It has not yet replaced the installed APK: the user currently has an unsaved
+selected clip open, and the earlier test scope forbids saving a draft for them.
+That interim APK was not installed. The user's later instruction to start the
+social-connect return rollout authorized restarting/installing the combined
+build below, without saving their draft. Live provider generation remains
+unverified.
+
+## Follow-up: Android social-connect return
+
+Fresh remote verification again retained main `c4e5220`, with audit HEAD
+`80fa9b6` three commits ahead and none behind. The existing provider callback
+showed JSON because the connect link omitted the optional PostPeer `redirectUri`.
+New authenticated connect requests accept only fixed `returnTarget` values:
+`android` maps to `postdee://social-connect/return`, and `android-staging` to
+`postdee-staging://social-connect/return`. Legacy clients omit the field and
+keep their existing behavior. Invalid targets fail before provider/profile
+work; arbitrary caller redirect/profile/owner fields are never forwarded.
+
+Android debug builds use the Staging target, matching the existing package
+suffix independently of the UI's Staging badge. A transient native return
+activity validates the exact package/scheme/authority/path and reuses
+MainActivity. It does not forward callback metadata, tokens or success claims.
+The connection screen reconciles the signed-in owner through authenticated
+refresh, coalesces early resume/launcher completion and ignores work from a
+previous owner. iOS and web retain the legacy flow. Existing billing deep links,
+Google/email authentication, publishing destinations and AI plan/quota gates
+are preserved. No schema, environment or permission change is required.
+
+Tests-first social regressions failed before implementation. Final combined
+API tests pass 1,708/1,708 across 108 files; API build, Prisma schema validation
+and Prisma helper type checks pass. Flutter passes 1,707/1,707, full analysis
+reports no issues, and Android's five JVM URI regressions pass. Both validated
+Staging debug and x86_64 split builds succeed with the existing Firebase/API
+and RevenueCat Test Store configuration.
+
+The emulator lacked space for the universal artifact. Regenerable caches and
+PostDee dexopt artifacts were reclaimed without clearing app data, uninstalling
+or deleting user media. The delivered x86_64 split APK is 127,485,886 bytes,
+version code 4001, package `com.postdee.postdee_mobile.staging`, SHA-256
+`5262c27323f593bc0932ff9526ec8ebde3d31c9629eb91522c69434cc48e289e`.
+Its certificate is unchanged from the previous receipt. Installation used
+`adb install -r --streaming`; pulled installed bytes match that exact hash.
+The first launch was slow during emulator I/O/GC work, then Home and Account
+loaded with the signed-in account and existing TikTok connection retained.
+
+Developer VIEW-intent smoke resolves the Staging URI to the new return activity
+and preserves the same MainActivity record and task (`38a5398`, task 105).
+Native inspection still shows the original connection screen and existing
+1/4 connected status, with no duplicate screen. The production URI has no
+handler in this Staging-only install. No real new OAuth grant, account
+disconnect, customer upload, AI generation, purchase or post was performed.
+A local browser-fixture launch command was rejected by automatic policy;
+its test server was stopped. This does not verify actual provider/browser
+handoff, browser Open App confirmation or cold-start authentication. These
+remain explicit acceptance gates; old already-open links cannot acquire the
+new redirect setting. Staging API deployment of this combined contract remains
+pending below; new customer links must use the updated API.

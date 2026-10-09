@@ -477,10 +477,20 @@ Current mobile pieces:
 - PostPeer social authorization uses a browser-owned surface and never a
   Flutter WebView. Android uses a dedicated native Custom Tab bridge whose only
   fallback is the external browser; iOS currently uses the external system
-  browser so returning to the app reliably produces the lifecycle signal used
-  for one explicit connection refresh. Manual refresh remains the fallback.
-  PostPeer's optional `redirectUri` is not sent until a verified Mobile
-  deep-link return flow is implemented.
+  browser with legacy resume/manual refresh. Android connect requests may send
+  only `returnTarget: android|android-staging`; the API maps these to fixed
+  `postdee://social-connect/return` or `postdee-staging://social-connect/return`
+  provider redirects. Omitted targets retain the legacy request; unsupported
+  targets and arbitrary redirect URIs cannot reach the provider.
+  The native warm return keeps the original screen and triggers one
+  authenticated refresh. The deep link is a signal, not evidence of success;
+  only the user's refreshed provider integrations establish connection state.
+  A cold start goes through the normal authentication gate and may lack the
+  previous in-memory screen. Open App confirmation, X and manual refresh remain
+  possible, and iOS automatic return is not claimed. Deploy API before mobile;
+  only newly generated connect links receive the new redirect. No new
+  permission, provider OAuth app, schema or environment setting is required.
+  Real provider/native return verification remains pending.
 - RevenueCat webhook scaffold for Starter and Pro entitlements, plus a legacy Store Subscription scaffold.
 
 Important mobile services:
@@ -1015,6 +1025,21 @@ Production status and remaining work:
 - Run sandbox/device purchases and renewal/cancel/refund webhook tests.
 
 ## Real-Clip AI Caption Flow
+
+AI caption clip uploads use `POST /uploads` with the explicit
+`purpose: "ai-caption-video"`. This accepts `.mp4` / `video/mp4` at any aspect
+ratio within the existing upload size limit. Mobile retains known dimensions,
+including `1080x2400` (9:20); dimensions can be omitted together, otherwise both
+must be positive finite integers. Generic uploads and mobile posting keep their
+existing 9:16 validation. The generation endpoint keeps its Starter/Pro gate,
+owner checks, monthly quota and media-processing limits.
+
+Deploy the additive API purpose before the mobile build; no migration is
+required. Older APIs ignore that purpose and still reject known non-9:16
+dimensions. Generation sends clips and optional Pro frames to configured
+storage/providers and may consume mobile data. No real remote user upload,
+provider generation or paid state change was performed for this fix; production
+generation remains unverified.
 
 ```mermaid
 sequenceDiagram

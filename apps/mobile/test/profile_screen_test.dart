@@ -1690,7 +1690,9 @@ class _FakeSocialApiClient extends PostDeeApiClient {
 
   @override
   Future<SocialConnectLinkResult> createSocialConnectionLink(
-      String platform) async {
+    String platform, {
+    String? returnTarget,
+  }) async {
     connectCalls.add(platform);
     final loader = connectLinkLoader;
     if (loader != null) {

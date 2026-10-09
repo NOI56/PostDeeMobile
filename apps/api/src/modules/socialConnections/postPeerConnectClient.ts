@@ -17,6 +17,11 @@ type PostPeerLegacyRecoveryConfig = {
 
 const profileVerificationRetryDelaysMs = [100, 250, 500] as const;
 
+export const postPeerReturnUriByTarget = {
+  android: 'postdee://social-connect/return',
+  'android-staging': 'postdee-staging://social-connect/return'
+} as const;
+
 const wait = async (delayMs: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, delayMs));
 
@@ -116,9 +121,9 @@ export type PostPeerIntegration = {
  * - `POST /v1/profiles` creates a profile that groups a user's accounts.
  * - `GET /v1/connect/{slug}?profileId=` returns the OAuth URL to open.
  * - `GET /v1/connect/integrations?profileId=` lists connected accounts so the
- *   backend can resolve each platform's account id after OAuth. The current
- *   Mobile flow reconciles explicitly and does not yet send PostPeer's optional
- *   redirectUri.
+ *   backend can resolve each platform's account id after OAuth. Supported
+ *   Android clients opt in to a fixed app return URI; completion is still
+ *   verified by authenticated integration reconciliation.
  * - `DELETE /v1/connect/integrations/{id}` removes an external connection.
  */
 export type PostPeerConnectClient = {
@@ -128,6 +133,7 @@ export type PostPeerConnectClient = {
   createConnectUrl: (input: {
     platform: SocialConnectionPlatform;
     profileId: string;
+    redirectUri?: string;
   }) => Promise<{ connectUrl: string }>;
   listIntegrations: (input: { profileId: string }) => Promise<PostPeerIntegration[]>;
   disconnectIntegration?: (input: { integrationId: string }) => Promise<void>;
@@ -442,10 +448,21 @@ export const createPostPeerConnectClient = ({
 
       return trackedCreation;
     },
-    createConnectUrl: async ({ platform, profileId }) => {
+    createConnectUrl: async ({ platform, profileId, redirectUri }) => {
+      if (
+        redirectUri !== undefined &&
+        !Object.values(postPeerReturnUriByTarget).some((allowedUri) => allowedUri === redirectUri)
+      ) {
+        throw new PostPeerConnectProviderError();
+      }
+
       const slug = postPeerPlatformSlug[platform];
+      const redirectQuery =
+        redirectUri === undefined ? '' : `&redirectUri=${encodeURIComponent(redirectUri)}`;
       const payload = readRecord(
-        await request(`/v1/connect/${slug}?profileId=${encodeURIComponent(profileId)}`)
+        await request(
+          `/v1/connect/${slug}?profileId=${encodeURIComponent(profileId)}${redirectQuery}`
+        )
       );
       const connectUrl = readString(payload.url) ?? readString(payload.connectUrl);
 

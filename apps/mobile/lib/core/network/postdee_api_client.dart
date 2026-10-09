@@ -2879,9 +2879,12 @@ class PostDeeApiClient {
   }
 
   Future<SocialConnectLinkResult> createSocialConnectionLink(
-      String platform) async {
-    final response =
-        await _postJson('/social-connections/$platform/connect', {});
+    String platform, {
+    String? returnTarget,
+  }) async {
+    final response = await _postJson('/social-connections/$platform/connect', {
+      if (returnTarget != null) 'returnTarget': returnTarget,
+    });
 
     return SocialConnectLinkResult.fromJson(response);
   }

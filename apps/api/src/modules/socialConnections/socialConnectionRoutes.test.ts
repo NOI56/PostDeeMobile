@@ -122,6 +122,80 @@ describe('social connection routes', () => {
     });
   });
 
+  it.each([
+    { returnTarget: 'android', redirectUri: 'postdee://social-connect/return' },
+    {
+      returnTarget: 'android-staging',
+      redirectUri: 'postdee-staging://social-connect/return'
+    }
+  ])('maps $returnTarget to the fixed return URI for the authenticated profile', async ({ returnTarget, redirectUri }) => {
+    const store = createInMemorySocialConnectionStore();
+    await store.setProfileId({ userId: 'seller-social', profileId: 'owner-profile' });
+    await store.setProfileId({ userId: 'other-seller', profileId: 'other-profile' });
+    const { app, connectClient } = createTestApp({ store });
+
+    const response = await request(app)
+      .post('/social-connections/TIKTOK/connect')
+      .send({
+        returnTarget,
+        profileId: 'other-profile',
+        userId: 'other-seller',
+        returnUrl: 'https://attacker.example/return',
+        redirectUri: 'https://attacker.example/return'
+      })
+      .expect(200);
+
+    expect(response.body.connectUrl).toBe('https://postpeer.test/connect/tiktok');
+    expect(connectClient.createProfile).not.toHaveBeenCalled();
+    expect(connectClient.createConnectUrl).toHaveBeenCalledWith({
+      platform: 'TIKTOK',
+      profileId: 'owner-profile',
+      redirectUri
+    });
+  });
+
+  it('does not forward arbitrary return URLs when a legacy request omits returnTarget', async () => {
+    const { app, connectClient } = createTestApp();
+
+    await request(app)
+      .post('/social-connections/TIKTOK/connect')
+      .send({
+        returnUrl: 'https://attacker.example/return',
+        redirectUri: 'postdee://attacker.example/return'
+      })
+      .expect(200);
+
+    expect(connectClient.createConnectUrl).toHaveBeenCalledWith({
+      platform: 'TIKTOK',
+      profileId: 'profile-1'
+    });
+  });
+
+  it.each([
+    'ios',
+    'ANDROID',
+    ' android ',
+    'https://attacker.example/return',
+    'toString',
+    '',
+    null,
+    1,
+    {},
+    ['android']
+  ])('rejects invalid returnTarget %j before creating a provider profile', async (returnTarget) => {
+    const { app, connectClient, store } = createTestApp();
+
+    const response = await request(app)
+      .post('/social-connections/TIKTOK/connect')
+      .send({ returnTarget })
+      .expect(400);
+
+    expect(response.body.code).toBe('SOCIAL_CONNECTION_RETURN_TARGET_INVALID');
+    expect(connectClient.createProfile).not.toHaveBeenCalled();
+    expect(connectClient.createConnectUrl).not.toHaveBeenCalled();
+    await expect(store.getProfileId('seller-social')).resolves.toBeUndefined();
+  });
+
   it('persists a fresh authenticated user before saving their PostPeer profile', async () => {
     const events: string[] = [];
     const userStore = createUserStore();

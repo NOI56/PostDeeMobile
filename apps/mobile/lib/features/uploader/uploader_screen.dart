@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/auth_session.dart';
+import '../../core/network/api_error_message.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/monitoring/postdee_analytics.dart';
 import '../../core/theme/app_theme.dart';
@@ -1026,6 +1027,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
     var sizeBytes = _readPositiveInt(_sizeBytesController);
     final width = _readPositiveInt(_widthController);
     final height = _readPositiveInt(_heightController);
+    final hasDimensions = width != null && height != null;
 
     if (localVideoFile == null) {
       setState(() {
@@ -1050,22 +1052,14 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return null;
     }
 
-    if (width != null &&
-        height != null &&
-        !_isVerticalNineBySixteen(width: width, height: height)) {
-      setState(() {
-        _aiCaptionErrorMessage = 'ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920';
-      });
-      return null;
-    }
-
     final upload = await _uploadCaptionFile(
       request: CreateUploadRequest(
         fileName: fileName,
         contentType: 'video/mp4',
         sizeBytes: sizeBytes,
-        width: width,
-        height: height,
+        purpose: 'ai-caption-video',
+        width: hasDimensions ? width : null,
+        height: hasDimensions ? height : null,
       ),
       file: localVideoFile,
       stillCurrent: stillCurrent,
@@ -1265,7 +1259,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
         setState(() {
           _aiCaptionErrorMessage =
-              'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter 199 หรือ Pro 299';
+              'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ';
         });
         return;
       }
@@ -1323,7 +1317,16 @@ class _UploaderScreenState extends State<UploaderScreen> {
       }
 
       setState(() {
-        _aiCaptionErrorMessage = error.message;
+        _aiCaptionErrorMessage = switch (error.code) {
+          'PAID_PLAN_REQUIRED' || 'PRO_REQUIRED' =>
+            'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ',
+          'AI_CAPTION_QUOTA_REACHED' =>
+            'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว กรุณารอรอบเดือนถัดไป',
+          'UPLOAD_AI_CAPTION_VIDEO_INVALID' =>
+            'อัปโหลดคลิปให้ AI ไม่สำเร็จ กรุณาเลือกไฟล์ MP4 ที่มีขนาดไม่เกินกำหนด',
+          _ => apiErrorMessage(error,
+              fallbackMessage: 'ให้ AI คิดแคปชั่นไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'),
+        };
       });
     } on SocketException {
       if (!stillCurrent()) {

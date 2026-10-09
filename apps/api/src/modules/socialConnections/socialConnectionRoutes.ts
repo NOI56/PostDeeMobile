@@ -5,6 +5,7 @@ import type { UserStore } from '../users/userStore.js';
 import {
   PostPeerConnectProviderError,
   PostPeerConnectUnavailableError,
+  postPeerReturnUriByTarget,
   type PostPeerConnectClient
 } from './postPeerConnectClient.js';
 import {
@@ -157,6 +158,28 @@ export const registerSocialConnectionRoutes = (
         return;
       }
 
+      const payload =
+        request.body && typeof request.body === 'object'
+          ? (request.body as Record<string, unknown>)
+          : {};
+      const returnTarget = payload.returnTarget;
+
+      if (
+        returnTarget !== undefined &&
+        returnTarget !== 'android' &&
+        returnTarget !== 'android-staging'
+      ) {
+        response.status(400).json({
+          status: 'error',
+          code: 'SOCIAL_CONNECTION_RETURN_TARGET_INVALID',
+          message: 'returnTarget must be android or android-staging when provided'
+        });
+        return;
+      }
+
+      const redirectUri =
+        returnTarget === undefined ? undefined : postPeerReturnUriByTarget[returnTarget];
+
       try {
         const profileId = await ensureProfileId(
           store,
@@ -167,7 +190,8 @@ export const registerSocialConnectionRoutes = (
         );
         const { connectUrl } = await connectClient.createConnectUrl({
           platform,
-          profileId
+          profileId,
+          ...(redirectUri === undefined ? {} : { redirectUri })
         });
 
         response.json({ status: 'ok', connectUrl });
@@ -181,9 +205,9 @@ export const registerSocialConnectionRoutes = (
     }
   );
 
-  // Called after the user finishes the PostPeer OAuth flow in the browser.
-  // PostPeer does not call back, so the backend polls the profile's
-  // integrations and stores each connected account id.
+  // Called after the user returns from PostPeer OAuth. A browser return URI
+  // only signals completion; authenticated reconciliation verifies the
+  // owner's profile integrations before saving connected account ids.
   router.post('/social-connections/refresh', authMiddleware, async (_request, response) => {
     const authUser = readAuthUser(response.locals);
 

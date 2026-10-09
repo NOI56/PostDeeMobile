@@ -1,5 +1,7 @@
 import type { UploadMetadata } from '../storage/videoStorage.js';
 
+export const aiCaptionVideoUploadPurpose = 'ai-caption-video' as const;
+export const aiCaptionVideoUploadInvalidCode = 'UPLOAD_AI_CAPTION_VIDEO_INVALID' as const;
 export const aiEditAudioUploadPurpose = 'ai-edit-audio' as const;
 export const aiEditAudioUploadMaxBytes = 25 * 1024 * 1024;
 export const aiEditAudioUploadInvalidCode = 'UPLOAD_AI_EDIT_AUDIO_INVALID' as const;
@@ -35,6 +37,40 @@ export const readUploadMetadata = (body: unknown, { maxSizeBytes }: ReadUploadMe
   const sizeBytes = payload.sizeBytes;
   const width = readOptionalPositiveNumber(payload.width);
   const height = readOptionalPositiveNumber(payload.height);
+
+  if (payload.purpose === aiCaptionVideoUploadPurpose) {
+    const hasNoDimensions = payload.width === undefined && payload.height === undefined;
+    const hasValidDimensions =
+      isPositiveNumber(payload.width) &&
+      Number.isInteger(payload.width) &&
+      isPositiveNumber(payload.height) &&
+      Number.isInteger(payload.height);
+    const isValidAiCaptionVideo =
+      fileName.toLowerCase().endsWith('.mp4') &&
+      contentType === 'video/mp4' &&
+      isPositiveNumber(sizeBytes) &&
+      sizeBytes <= maxSizeBytes &&
+      (hasNoDimensions || hasValidDimensions);
+
+    if (!isValidAiCaptionVideo) {
+      return {
+        ok: false as const,
+        code: aiCaptionVideoUploadInvalidCode,
+        message: `AI caption video must be an MP4 video/mp4 file no larger than ${maxSizeBytes} bytes; dimensions must both be positive integers or omitted.`
+      };
+    }
+
+    return {
+      ok: true as const,
+      metadata: {
+        fileName,
+        contentType,
+        sizeBytes,
+        width,
+        height
+      }
+    };
+  }
 
   if (payload.purpose === aiEditAudioUploadPurpose) {
     const hasDimensions = payload.width !== undefined || payload.height !== undefined;

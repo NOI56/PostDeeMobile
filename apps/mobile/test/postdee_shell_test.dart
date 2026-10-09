@@ -12,6 +12,7 @@ import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dar
 import 'package:postdee_mobile/features/auth/auth_controller.dart';
 import 'package:postdee_mobile/features/billing/paywall_screen.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
+import 'package:postdee_mobile/features/home/home_screen.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/profile/profile_screen.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
@@ -149,6 +150,69 @@ class _ShellEmailRecoveryGateway
 }
 
 void main() {
+  for (final origin in ['Home', 'Account', 'Calendar']) {
+    testWidgets(
+        '$origin composer return refreshes only the visible package snapshot',
+        (tester) async {
+      final languageController = _signInShell();
+      var isPro = true;
+      var subscriptionLoads = 0;
+      await tester.pumpWidget(_shellApp(PostDeeShell(
+        languageController: languageController,
+        uploaderDraftStore: _ShellDraftStore(),
+        loadRecentPosts: () async => const [],
+        loadScheduledPosts: () async => const [],
+        loadSocialConnections: () async => const [],
+        loadSubscription: () async {
+          subscriptionLoads++;
+          return SubscriptionStatusResult(
+            userId: 'firebase-user-shell',
+            plan: isPro ? 'PRO' : 'BASIC',
+            status: isPro ? 'ACTIVE' : 'INACTIVE',
+            monthlyPostLimit: isPro ? 250 : 3,
+            remainingPostsThisMonth: isPro ? 250 : 0,
+            canSchedule: isPro,
+            canUseAiCaptions: isPro,
+            canUseAnalytics: isPro,
+          );
+        },
+      )));
+      await tester.pumpAndSettle();
+      final home = find.byType(HomeScreen, skipOffstage: false);
+      final profile = find.byType(ProfileScreen, skipOffstage: false);
+      final homeState = tester.state(home);
+      final profileState = tester.state(profile);
+      await tester.tap(_referenceNavButton(origin));
+      await tester.pumpAndSettle();
+      final loadsBeforeComposer = subscriptionLoads;
+      await tester.tap(_referenceNavButton('Create post'));
+      await tester.pumpAndSettle();
+      expect(subscriptionLoads, loadsBeforeComposer);
+
+      isPro = false;
+      await tester.tap(find.byKey(const ValueKey('uploader-close')));
+      await tester.pumpAndSettle();
+      expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
+      expect(tester.state(home), same(homeState));
+      expect(tester.state(profile), same(profileState));
+      expect(subscriptionLoads,
+          loadsBeforeComposer + (origin == 'Calendar' ? 0 : 1));
+      if (origin == 'Home') {
+        expect(find.text('Free package'), findsOneWidget);
+        expect(find.text('0/3 units left'), findsOneWidget);
+        expect(find.text('Pro package'), findsNothing);
+      } else if (origin == 'Account') {
+        expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
+        expect(find.text('เหลือโพสต์ 0 / 3 หน่วยเดือนนี้'), findsOneWidget);
+        expect(find.text('Pro package', skipOffstage: false), findsOneWidget);
+      } else {
+        expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
+        expect(find.text('Pro package', skipOffstage: false), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
       'shares fresh package and quota across profile paywall returns and tab activation',
       (tester) async {

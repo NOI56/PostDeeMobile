@@ -178,7 +178,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
 
   List<Widget> _buildScreens() => [
         HomeScreen(
-          isActive: _selectedIndex == 0,
+          isActive: _selectedIndex == 0 && _composerRoute == null,
           loadSubscription: widget.loadSubscription,
           loadRecentPosts: widget.loadRecentPosts,
           onOpenNotifications: _openNotifications,
@@ -203,7 +203,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
         const AnalyticsScreen(showTitle: true),
         // Profile is the 5th nav tab per the design handoff (no pushed route).
         ProfileScreen(
-          isActive: _selectedIndex == 5,
+          isActive: _selectedIndex == 5 && _composerRoute == null,
           loadSubscription: widget.loadSubscription,
           languageController: widget.languageController,
           themeController:
@@ -339,14 +339,18 @@ class _PostDeeShellState extends State<PostDeeShell> {
         ),
       ),
     );
-    _composerRoute = route;
-    _composerOwnerUserId = _authController.session.stableUserId;
+    setState(() {
+      _composerRoute = route;
+      _composerOwnerUserId = _authController.session.stableUserId;
+    });
     try {
       await Navigator.of(context).push<void>(route);
     } finally {
-      if (identical(_composerRoute, route)) {
-        _composerRoute = null;
-        _composerOwnerUserId = null;
+      if (mounted && identical(_composerRoute, route)) {
+        setState(() {
+          _composerRoute = null;
+          _composerOwnerUserId = null;
+        });
       }
     }
   }

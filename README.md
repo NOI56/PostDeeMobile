@@ -1019,8 +1019,10 @@ disabled RevenueCat and a failed initial GET do not trigger extra resync calls.
 Failures keep the paid gate closed and show a Thai rights-verification error;
 the user can retry manually. This adds no SDK Restore, purchase or free grant,
 and keeps owner/source guards, Pro frames, Starter mode and quota unchanged.
-Automated checks pass; an APK built from the final source and native paid
-end-to-end verification remain pending, as recorded in the audit plan.
+Automated checks pass; the exact-source Staging APK is built and installed.
+Native Free/denied gating and button usability pass. Live HTTP sequencing and
+active-paid reconciliation/generation remain unverified, as recorded in the
+audit plan.
 
 The subscriber response's `request_date_ms` and webhook `event_timestamp_ms`
 share one per-user serializable ordering cursor. Older or equal snapshots/events

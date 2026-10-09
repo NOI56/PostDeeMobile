@@ -24,8 +24,10 @@
 > closed with a Thai verification error and manual retry. No purchase, SDK
 > Restore, free grant, price, tier, quota or API/schema change is introduced.
 > Owner/source guards and existing Starter mode / Pro frames stay unchanged.
-> Exact-source APK build and native paid end-to-end checks remain pending;
-> automated results and delivery limits are recorded in the audit plan.
+> The exact-source Staging APK is built and installed; native Free/denied gating
+> and button usability pass. Live HTTP sequencing and active-paid
+> reconciliation/generation remain unverified. Results and delivery limits are
+> recorded in the audit plan.
 
 > Scheduling update (2026-10-08): Starter allows up to 14 days ahead, and Pro
 > allows up to 30 days ahead. New schedules and reschedules use the current

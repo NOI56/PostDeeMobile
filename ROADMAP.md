@@ -83,8 +83,10 @@ paid gate, Pro frames and owner/source guards. Paid users, disabled RevenueCat
 and failed initial reads add no resync. Failure shows a Thai rights-verification
 error with manual retry. This does not purchase, call SDK Restore, grant free
 access or change package/quota/API/schema rules. Automated checks pass, including
-1,744 Flutter tests and clean analysis. Exact-source APK build and native paid
-end-to-end verification remain pending; no push/deployment occurred in this task.
+1,744 Flutter tests and clean analysis. The exact-source Staging APK is built
+and installed; native Free/denied gating and button usability pass. Live HTTP
+sequencing and active-paid reconciliation/generation remain unverified.
+No push/deployment occurred in this task.
 
 ## Android social-connect return (Staging API delivered)
 

@@ -615,11 +615,68 @@ interruption. The completed serial run supplies acceptance evidence. Logs:
 `D:\PostDeeMobile\.tmp\caption-subscription-20261009\flutter-resync-full-test-serial-20261009.log`
 and `flutter-resync-analyze-20261009.log` in that same directory.
 
-Exact-source commit/build, APK installation and native paid end-to-end checks
-remain pending. The prior installation ended at Login and the prior user choice
-was code/tests first. A fresh observation now shows a signed-in Account screen
-displaying Pro, with no composer open; the tester did not log in or purchase.
+The prior Login and signed-in Account Pro observations are historical. Fresh
+pre-install inspection showed cached Account Pro, then Home loaded Free 0/3,
+then Account loaded Free 0/3. No login, purchase or draft save was performed.
 This display does not establish the new resync end-to-end result. No
-push/deployment occurred in this task; no API,
-schema, credential or configuration flag changed. This section does not claim
-a completed live rights reconciliation or end-to-end AI generation.
+push/deployment occurred in this task; no API, schema, credential or
+configuration flag changed. Live entitlement reconciliation and native paid
+end-to-end checks remain pending.
+
+### Exact-source resync APK receipt
+
+Local source commit `24266aa218d63646eea26989f636b4452e50e823`, tree
+`2c90f54fa3bd000183bae8c1f1c926eea9be5b50`, uploader blob
+`2ceffcf59b9b1e24f9b5ce4277dd1504605a381e` built from a fresh detached
+`verify-resync-worktree` on D: through the checked-in Staging helper. The x86_64
+split debug build took 72.1 seconds and exited 0. Log:
+`D:\PostDeeMobile\.tmp\caption-subscription-20261009\resync-apk-build-20261009-172231.log`.
+The APK is 127,489,846 bytes, SHA-256
+`51D074EB6940F41C7F1A324158552B51939672283103A9390DF1C61EE9BA8D5F`,
+package `com.postdee.postdee_mobile.staging`, version code 4001 /
+`0.1.0-staging`. Its certificate remains
+`014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+Staging API/Firebase configuration matches project
+`project-798caf7e-85b8-45e3-af7`, mock auth/plan are off, RevenueCat is enabled
+through the existing validated Test Store overlay, and experimental features
+remain off.
+
+`adb install -r` succeeded without app-data clearing. The pulled installed APK
+at `D:\PostDeeMobile\.tmp\caption-subscription-20261009\revenuecat-resync-installed-20261009.apk`
+has the identical hash. Package metadata reports last update
+`2026-10-09 10:25:10 UTC`; first install remains `2026-10-05 06:30:36 UTC`.
+The new launch reached Splash and then signed-in Home, as recorded below.
+Active-paid AI reconciliation/generation remains unverified. The existing
+Staging `/health` returned 200/ok but exposes
+no source commit, so it is not a version proof. No backend change, migration,
+new key, global configuration change, cache deletion, push or deployment was
+performed in this follow-up.
+
+### Native denied-rights smoke on the resync APK (2026-10-09)
+
+The verified `24266aa` APK launched Splash then signed-in Home displaying Free
+0/3, preserving the existing account without a login action. A blank composer
+showed the unchanged count of two existing drafts. The original clip 96 was
+not found in Recent, so the tester selected the pre-existing owned QA video
+`postdee-nav-motion-final.mp4` through Android Files. No new QA media was
+generated or draft saved.
+
+At caption step 2, Generate AI was pressed exactly once at about 17:30 GMT+7.
+The final UI showed
+`AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ`;
+the caption stayed blank, the button was enabled and the spinner was gone.
+No verification-unavailable message appeared. This verifies native Free/denied
+gating and button usability, not active-paid reconciliation or AI generation.
+
+Automated tests assert GET1 → resync → GET2, and the production wiring plus
+RevenueCat-enabled build configuration were reviewed. No live HTTP request
+trace was captured: this native observation does not establish that network
+sequence, current RevenueCat expiry/customer identity, upload activity or a
+provider call. No caption was generated. The tester closed this owned blank QA
+form with X and explicitly chose `ออกโดยไม่บันทึก`. Home displayed Free 0/3
+with no posts; fresh Account also displayed Free 0/3, then Home again showed
+Free 0/3 and was left open. Two saved drafts were visible before/during the QA
+form; the draft count was not rechecked after exit. No save, login, purchase,
+Restore or social-publish action was performed.
+Active-paid reconciliation/generation end-to-end remains pending with the
+current fresh Free display; no paid access is granted by this smoke test.

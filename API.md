@@ -2324,7 +2324,9 @@ selection. Paid users, disabled RevenueCat and failed initial GETs skip resync.
 Resync/fresh-GET failure keeps access closed with a Thai verification error and
 manual retry. There is no purchase, SDK Restore, free grant or automatic retry
 loop. Owner/generation/source guards and quotas remain. Automated checks pass;
-exact-source APK build and native paid end-to-end verification remain pending.
+the exact-source Staging APK is built and installed. Native Free/denied gating
+and button usability pass; live HTTP sequencing and active-paid
+reconciliation/generation remain unverified.
 This preflight does not reconcile a later caption `402` after upload or retry
 the AI provider.
 The existing server subscriber lookup is bounded to 8 seconds; these ordinary

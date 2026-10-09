@@ -1000,8 +1000,9 @@ guards and quotas. The server lookup keeps its 8-second bound, ordinary client
 calls keep 20 seconds per request, and resync shares the existing per-IP
 10-per-10-minute limit per API instance. No API route, response contract, schema
 or key handling changes.
-Automated verification passes; the exact-source APK build and native paid
-end-to-end flow remain pending.
+Automated verification passes; the exact-source Staging APK is built and
+installed. Native Free/denied gating and button usability pass; live HTTP
+sequencing and active-paid reconciliation/generation remain unverified.
 
 The mobile app never receives `REVENUECAT_REST_API_V1_KEY`. The API derives the
 RevenueCat app user id only from the authenticated Firebase user, prefers Pro if

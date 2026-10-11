@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Home next-action revision (2026-10-11, locally verified; Staging delivery authorized)
+## Home next-action revision (2026-10-11, Staging delivered)
 
 - Prioritize the latest explicitly saved owner/device-local draft or a clear
   create-post action. Keep the existing full-screen composer and navigation.
@@ -36,10 +36,14 @@ Build roadmap for PostDee.
   built/installed with clean analysis and final native bell/pull/create-and-close
   checks passing. The final receipts are recorded in the implementation plan.
 - No route/schema migration, credential, dependency or environment change is
-  required. Local verification above is the pre-delivery receipt. The user has
-  authorized push and Staging deployment; exact-source CI and Render delivery
-  receipts are pending. Main merge and Production delivery are outside this
-  rollout. Acceptance and fidelity ledger:
+  required. Local verification above is the pre-delivery receipt. Feature
+  `ce89a0e464517f87f5902dd8ab32c764f2e67a72` is pushed to the existing branch;
+  exact-source CI `38125004499` passes and Render deploy
+  `dep-db5kk4h42hec739a7gg0` is Live. Post-Live health/readiness and native
+  version 8005 pull refresh pass with the same session/Free 0/3/connections 0/4.
+  CI intentionally skips APK build/upload; the verified local Staging debug/Test
+  Store APK stays installed. All 16 existing migrations have none pending;
+  main and Production remain unchanged. Acceptance and fidelity ledger:
   `docs/superpowers/plans/2026-10-11-home-ux.md`.
 
 ## System audit fixes (2026-10-09, Staging API delivered)

@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Home read composition (2026-10-11, locally verified; Staging delivery authorized)
+## Home read composition (2026-10-11, Staging delivered)
 
 The Home revision composes existing authenticated subscription, social
 connection, scheduled-post and profile-link reads. Recent previews retain
@@ -22,9 +22,14 @@ the unchanged API source. The base Staging mobile version 8003 reads the existin
 connections and published-profile state and opens the empty native Calendar.
 Positive future-queue and partial/unknown outcomes are covered by automated
 fixtures; no real post was created for this check. No database migration or
-API contract change is required. These are pre-delivery local receipts; the
-user has authorized push and Staging deployment, with exact-source CI and
-Render delivery receipts pending. Detailed
+API contract change is required. These are pre-delivery local receipts.
+Feature source `ce89a0e464517f87f5902dd8ab32c764f2e67a72` is pushed, passes
+exact-source CI `38125004499` and is Live on Staging through Render deploy
+`dep-db5kk4h42hec739a7gg0`. CI rechecks the unchanged API: 1,781 tests/109 files,
+22/22 generator checks, build, Prisma and high-severity production audit pass.
+Render reports all 16 existing migrations applied with none pending;
+post-Live `/health` and `/ready` return 200, with database/queue ready and
+readiness marked `no-store`. Detailed
 mobile build/native evidence:
 `docs/superpowers/plans/2026-10-11-home-ux.md`.
 
@@ -36,15 +41,18 @@ limit and a compact 120 logical-pixel cropped presentation; it creates no upload
 thumbnail file or FFmpeg job. Refresh awaits the
 same authenticated plan/posts/connections/queue/profile reads plus owner-local
 drafts, coalesces same-owner requests and preserves previously loaded content,
-including known empty results. No new endpoint, statistics request, API schema
-or remote deployment is needed. A failed section retains its error/retry state
+including known empty results. No new endpoint, statistics request or API schema
+is needed. A failed section retains its error/retry state
 rather than an all-sections success claim; owner changes invalidate late results.
 Intermediate native version 8004 reads the existing live plan/connection/profile
 state. Frozen-source version 8005 is built/installed; analysis and native
 notification/pull-refresh/create-and-close checks pass without saving. The
-final full mobile suite passed in 2m54s; this changes no API contract or backend
-release state. The API checks above are prior receipts for unchanged source,
-not a new backend run or deployment in this mobile follow-up.
+final local full mobile suite passed in 2m54s; exact-source CI also passes all
+1,863 Mobile tests and analysis. This rollout changes no API contract or
+provider mode. Post-Live native version 8005 refreshes the same Free 0/3 and
+connections 0/4 without writes; positive draft/cover cases remain fixture-only.
+CI intentionally skips APK build/upload; the verified local Staging debug/Test
+Store APK remains installed. Main and Production remain unchanged.
 
 ## Audit-fix rollout (2026-10-09, Staging)
 

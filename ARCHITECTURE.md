@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Home next-action boundary (2026-10-11, locally verified; Staging delivery authorized)
+## Home next-action boundary (2026-10-11, Staging delivered)
 
 Home uses the existing shell navigation and full-screen composer. A continuation
 action opens the latest explicitly saved publish draft only for its current
@@ -28,9 +28,14 @@ drafts. Native Home, blank composer, saved-draft resume, Connections, empty
 Calendar and existing shop editor navigation pass without saving or publishing.
 Future-queue/partial-outcome behavior is tested with fixtures; active paid
 purchase/publishing is outside this read-only check. These are pre-delivery
-local receipts. Push and Staging deployment are now authorized by the user;
-exact-source CI and Render delivery receipts are pending. No database migration
-is required, and main merge/Production delivery are outside this rollout; see
+local receipts. The pushed feature source `ce89a0e464517f87f5902dd8ab32c764f2e67a72`
+passes exact-source CI `38125004499` and is Live through Render deploy
+`dep-db5kk4h42hec739a7gg0`. The 16 existing migrations have none pending;
+`PUBLISH_QUEUE=memory` and disabled social publisher/startup mode stay unchanged.
+Post-Live health/readiness are 200 with database/queue ready. Version 8005
+refreshes successfully with the same session/Free 0/3/connections 0/4;
+CI skips APK build/upload and the local Staging debug/Test Store APK remains
+installed. No new migration is required; main and Production are untouched. See
 `docs/superpowers/plans/2026-10-11-home-ux.md`.
 
 The approved motion follow-up uses the “พร้อมภาพปก” preview variant. The saved

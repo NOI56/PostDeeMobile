@@ -31,7 +31,7 @@ two-account native notification delivery separately with authorization.
 Details and verification:
 `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`.
 
-## Home next-action revision (2026-10-11, locally verified; Staging delivery authorized)
+## Home next-action revision (2026-10-11, Staging delivered)
 
 Home prioritizes continuing the latest saved draft or creating a post, followed
 by a compact connection summary, the next future queued post, recent posts and
@@ -80,9 +80,13 @@ built and installed at version 8005; clean analysis and final native bell/pull/
 create-and-close checks pass with the existing account preserved. The emulator has no draft for
 this follow-up, so positive draft/cover acceptance uses fixtures instead of
 creating customer data. These are pre-delivery local verification receipts.
-The user has authorized push and Staging deployment; exact-source CI and Render
-delivery receipts are pending. Main merge and Production delivery are outside
-this authorized rollout.
+Feature source `ce89a0e464517f87f5902dd8ab32c764f2e67a72` is pushed to
+`origin/codex/audit-system-fixes`. Exact-source CI `38125004499` passes API and
+Mobile; Render deploy `dep-db5kk4h42hec739a7gg0` is Live at the same source.
+Post-deploy health/readiness return 200, and native version 8005 refreshes
+successfully with the same Free 0/3 and connections 0/4. CI intentionally skips
+APK build/upload; the verified local Staging debug/Test Store APK stays
+installed. Main and Production remain unchanged; detailed receipts are in the plan.
 
 ## Pending-work integration (2026-10-08)
 

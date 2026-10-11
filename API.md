@@ -2,6 +2,23 @@
 
 PostDee backend API reference.
 
+## Calendar compact composition (2026-10-11, locally verified)
+
+The implemented Calendar UI keeps `GET /posts?scheduled=true` and the existing
+owner-scoped post mutation/detail routes. Week/month/day counts and platform
+filters are mobile projections; each matching post counts once, even with
+multiple destinations. Selected-date handoff is local composer input, not a
+new API field or automatic post. Existing future-only RFC 3339 conversion,
+Starter 14-day/Pro 30-day limits, subscription checks, publishing kill switch and
+queue-only reschedule/cancel rules remain authoritative. No backend contract,
+schema or deployment is required by this revision. Local Flutter checks pass
+1,882 tests, analysis, fixture renders and APK build/install 4006/8006. Native
+Calendar/composer native QA passes after user login, including date-only handoff,
+Free scheduling denial and retained empty-data refresh. Positive queue/partial/
+mutation cases use fixtures; the real account has no posts. API source is unchanged; no new backend run or Calendar
+push/deploy is claimed. Evidence:
+`docs/superpowers/plans/2026-10-11-calendar-ux.md`.
+
 ## Home read composition (2026-10-11, Staging delivered)
 
 The Home revision composes existing authenticated subscription, social

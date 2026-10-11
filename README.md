@@ -31,6 +31,25 @@ two-account native notification delivery separately with authorization.
 Details and verification:
 `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`.
 
+## Calendar compact revision (2026-10-11, locally verified)
+
+The compact-list Calendar is implemented locally with week/month views, Today, real per-day
+post counts, all/four-platform filters and readable time/status rows. Its create
+action passes the selected local date to the existing full-screen composer;
+choosing a date does not publish, save or bypass scheduling entitlement/time
+validation. The initial view is week; the existing first upcoming-day selection
+is retained when today has no post in the current month. Refresh retains confirmed content and selection while showing
+read errors/retry. Existing queue actions, real publish timestamps, partial/
+unknown outcomes and visible-only polling remain. This mobile-only revision adds
+no API/schema/provider/configuration change. Local checks pass: 1,882 Flutter
+tests, clean analysis, week/month fixture renders and Staging APK build 4006.
+Version 8006 installs without clearing app data. After user login, native
+week/month, selected-date composer handoff, Free scheduling guard, retained
+selection/filter refresh and past-date/Today controls pass without saving.
+The real account has no posts; positive queue/partial/mutation cases use fixtures.
+The preceding Home release is a separate receipt. Plan:
+`docs/superpowers/plans/2026-10-11-calendar-ux.md`.
+
 ## Home next-action revision (2026-10-11, Staging delivered)
 
 Home prioritizes continuing the latest saved draft or creating a post, followed

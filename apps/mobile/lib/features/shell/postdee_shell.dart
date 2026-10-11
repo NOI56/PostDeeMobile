@@ -210,10 +210,14 @@ class _PostDeeShellState extends State<PostDeeShell> {
         ),
         const SizedBox.shrink(),
         CalendarScreen(
+          key: ValueKey('calendar-${_authController.session.stableUserId}'),
+          ownerUserId: _authController.session.stableUserId,
           refreshToken: _calendarRefreshToken,
-          isActive: _selectedIndex == 3,
+          isActive: _selectedIndex == 3 && _composerRoute == null,
           loadScheduledPosts: widget.loadScheduledPosts,
           onAddPost: () => _selectTab(2),
+          onAddPostForDate: (date) =>
+              unawaited(_openPostComposer(initialScheduleDate: date)),
           onOpenPostDetail: _openCalendarPostDetail,
         ),
         const AnalyticsScreen(showTitle: true),
@@ -388,7 +392,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
     }
   }
 
-  Future<void> _openPostComposer({String? initialDraftId}) async {
+  Future<void> _openPostComposer(
+      {String? initialDraftId, DateTime? initialScheduleDate}) async {
     if (!mounted ||
         _composerRoute != null ||
         _isHomeConnectionsOpen ||
@@ -408,6 +413,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
               fullScreen: true,
               draftStore: widget.uploaderDraftStore,
               initialDraftId: initialDraftId,
+              initialScheduleDate: initialScheduleDate,
               loadSubscription: widget.loadSubscription,
               pickVideo: widget.pickVideo,
               createUpload: widget.createUpload,

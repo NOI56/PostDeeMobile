@@ -2,6 +2,29 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Calendar compact boundary (2026-10-11, locally verified)
+
+The implemented compact-list view projects existing scheduled-post results into
+week/month periods, selected-day counts and all/four-platform filters. Week is
+initial; if today has no post, the existing first on/after-today selection in the
+current month is retained. Display
+grouping uses local time; terminal results retain actual `publishedAt` with the
+existing scheduled-time fallback. Calendar passes a date-only selection through
+shell into the existing composer; it does not override a restored draft's
+schedule or submit a post. Date/time, entitlement and publishing checks stay in
+the existing scheduling flow. Refresh preserves loaded data and selection,
+surfaces retryable failures and rejects stale owner/mutation results. Existing
+visible/foreground-only 30-second queued/publishing polling, queue actions and
+read-only terminal details remain. This revision adds no API, schema, provider,
+dependency or configuration. Local full Flutter checks pass 1,882 tests and
+analysis; actual-widget week/month renders and Staging APK build 4006 pass.
+Version 8006 installs successfully with the same package/signature and retained
+app data. Native week/month/date handoff, Free scheduling denial, selection/
+filter retention, refresh and past-day/Today controls pass after user login
+without saving. The account is empty, so positive queue/partial/mutation
+acceptance remains fixture-based. No Calendar push/deploy is authorized. Evidence:
+`docs/superpowers/plans/2026-10-11-calendar-ux.md`.
+
 ## Home next-action boundary (2026-10-11, Staging delivered)
 
 Home uses the existing shell navigation and full-screen composer. A continuation

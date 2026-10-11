@@ -102,6 +102,7 @@ class UploaderScreen extends StatefulWidget {
     this.coverImageProcessor,
     this.draftStore,
     this.initialDraftId,
+    this.initialScheduleDate,
     this.now = DateTime.now,
     this.extractFrames,
     this.growthToolSettingsStore =
@@ -138,6 +139,10 @@ class UploaderScreen extends StatefulWidget {
   // Resume a persisted draft by reloading it from the current owner's store.
   // An explicitly handed-over clip takes precedence over this request.
   final String? initialDraftId;
+
+  // A local day chosen in Calendar. It remains a suggestion until the seller
+  // enables scheduling and the existing entitlement check succeeds.
+  final DateTime? initialScheduleDate;
 
   // Wall clock used to reject schedules in the past. Injectable so tests can
   // pin "now" instead of depending on the real time of day.
@@ -463,6 +468,15 @@ class _UploaderScreenState extends State<UploaderScreen> {
     super.initState();
     _savedFormSnapshot = _formSnapshot;
     _prefillInitialVideo();
+    final requestedDate = widget.initialScheduleDate?.toLocal();
+    if (requestedDate != null &&
+        !(widget.initialDraftId?.trim().isNotEmpty ?? false)) {
+      final day =
+          DateTime(requestedDate.year, requestedDate.month, requestedDate.day);
+      if (!day.isBefore(_scheduleDateFromToday(0))) {
+        _selectedScheduleDate = day;
+      }
+    }
     _isRestoringInitialDraft =
         (widget.initialDraftId?.trim().isNotEmpty ?? false) &&
             _localFilePathController.text.isEmpty;
@@ -3217,9 +3231,33 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
   Future<void> _useSuggestedSchedule() async {
     if (await _loadSchedulePolicy() == null || !mounted) return;
+    final day = _selectedScheduleDate ?? _scheduleDateFromToday(1);
+    var time = _selectedScheduleTime ?? const TimeOfDay(hour: 18, minute: 30);
+    if (widget.initialScheduleDate != null && _selectedScheduleTime == null) {
+      final now = widget.now().toLocal();
+      final candidate =
+          DateTime(day.year, day.month, day.day, time.hour, time.minute);
+      if (!candidate.isAfter(now)) {
+        final next = now.add(const Duration(minutes: 5));
+        final lastMinute = DateTime(day.year, day.month, day.day, 23, 59);
+        final nextTime = next.isAfter(lastMinute) ? lastMinute : next;
+        if (!nextTime.isAfter(now)) {
+          setState(() {
+            _errorMessage =
+                'วันนี้ไม่มีเวลาเหลือสำหรับตั้งโพสต์ เลือกโพสต์เลยหรือวันใหม่';
+            _successMessage = null;
+          });
+          if (_formScrollController.hasClients) {
+            _formScrollController.jumpTo(0);
+          }
+          return;
+        }
+        time = TimeOfDay(hour: nextTime.hour, minute: nextTime.minute);
+      }
+    }
     setState(() {
-      _selectedScheduleDate ??= _scheduleDateFromToday(1);
-      _selectedScheduleTime ??= const TimeOfDay(hour: 18, minute: 30);
+      _selectedScheduleDate = day;
+      _selectedScheduleTime = time;
       _syncScheduledAt();
     });
   }
@@ -5464,6 +5502,16 @@ class _SchedulePanel extends StatelessWidget {
             ),
           ],
         ),
+        if (!hasSchedule && selectedDate != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            'วันที่จากปฏิทิน: ${_formatDate(selectedDate!)} · กดตั้งเวลาเพื่อเลือกเวลา',
+            key: const ValueKey('uploader-calendar-date-hint'),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppTheme.textSecondary,
+                ),
+          ),
+        ],
         if (hasSchedule) ...[
           const SizedBox(height: 10),
           DecoratedBox(

@@ -2,6 +2,27 @@
 
 Build roadmap for PostDee.
 
+## Calendar compact revision (2026-10-11, locally verified)
+
+- Implemented the approved compact list with week/month switch, Today, real
+  per-day counts, all/four-platform filters and concise time/status rows. Initial
+  week view keeps the existing upcoming-day selection if today has no post.
+- Pass the selected local day into the existing composer without automatic
+  saving/publishing or changed scheduling limits. Preserve terminal detail,
+  partial/unknown outcomes and queued-post reschedule/cancel behavior.
+- Keep confirmed content/selection during refresh, expose errors/retry and
+  preserve owner/mutation guards plus visible-only polling. Run the relevant
+  regression/full suite, analysis, exact-environment build and native QA.
+- Implementation is complete locally; full Flutter 1,882 tests, analysis,
+  fixture week/month renders and Staging APK build/install 4006/8006 pass without
+  clearing app data. Native week/month/date handoff, Free scheduling denial,
+  retained empty-data refresh and past-date/Today controls pass after user login
+  without saving. Positive queue/partial/mutations remain fixtures because the
+  real account has no posts. No Calendar
+  push/deploy is authorized. No backend/API/schema/provider/
+  configuration change or release is implied; Home delivery remains separate.
+  Plan: `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
+
 ## Home next-action revision (2026-10-11, Staging delivered)
 
 - Prioritize the latest explicitly saved owner/device-local draft or a clear

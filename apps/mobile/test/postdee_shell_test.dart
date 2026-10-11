@@ -635,6 +635,33 @@ void main() {
     expect(tester.state(find.byType(CalendarScreen)), same(calendarState));
   });
 
+  testWidgets('calendar passes the chosen date into a new composer',
+      (tester) async {
+    final languageController = _signInShell();
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: languageController,
+      uploaderDraftStore: _ShellDraftStore(),
+      loadScheduledPosts: () async => const [],
+      loadSocialConnections: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pumpAndSettle();
+    final calendarState = tester.state(find.byType(CalendarScreen));
+    final calendar = tester.widget<CalendarScreen>(find.byType(CalendarScreen));
+    final today = DateTime.now();
+    final chosen = DateTime(today.year, today.month, today.day + 3);
+    calendar.onAddPostForDate!(chosen);
+    await tester.pumpAndSettle();
+    final uploader = tester.widget<UploaderScreen>(find.byType(UploaderScreen));
+    expect(uploader.initialScheduleDate, chosen);
+    expect(uploader.initialDraftId, isNull);
+    await tester.tap(find.byKey(const ValueKey('uploader-close')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
+    expect(tester.state(find.byType(CalendarScreen)), same(calendarState));
+  });
+
   testWidgets('composer callbacks close only their own active route',
       (tester) async {
     final languageController = _signInShell();

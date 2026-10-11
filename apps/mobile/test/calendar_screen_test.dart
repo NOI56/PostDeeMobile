@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
+import 'package:postdee_mobile/features/platforms/social_platform_logo.dart';
 
 SubscriptionStatusResult _scheduleSubscription(String plan) =>
     SubscriptionStatusResult(
@@ -25,7 +27,386 @@ ScheduledPostResult _queuedFixture(DateTime now) => ScheduledPostResult(
     status: 'QUEUED',
     createdAt: now);
 
+Widget _calendarApp(CalendarScreen calendar) => MaterialApp(
+      theme: AppTheme.light,
+      home: Scaffold(body: calendar),
+    );
+
+ScheduledPostResult _compactPost(String id, DateTime date,
+        {String status = 'QUEUED',
+        List<String> platforms = const ['TIKTOK'],
+        String? owner}) =>
+    ScheduledPostResult(
+      id: id,
+      caption: id,
+      videoS3Key: 'uploads/$id.mp4',
+      platforms: platforms,
+      scheduledAt: date,
+      status: status,
+      userId: owner,
+      createdAt: date.subtract(const Duration(days: 1)),
+    );
+
 void main() {
+  testWidgets(
+      'compact rows retain all channels and one-line time with large text',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final now = DateTime(2026, 10, 11, 12, 30);
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: MediaQuery(
+          data: MediaQueryData.fromView(tester.view)
+              .copyWith(textScaler: const TextScaler.linear(1.8)),
+          child: Scaffold(
+              body: CalendarScreen(
+            now: () => now,
+            loadScheduledPosts: () async => [
+              _compactPost('Clip with all channels', now,
+                  status: 'PARTIAL_PUBLISHED',
+                  platforms: const [
+                    'TIKTOK',
+                    'YOUTUBE_SHORTS',
+                    'INSTAGRAM_REELS',
+                    'FACEBOOK_REELS'
+                  ])
+            ],
+            onAddPostForDate: (_) {},
+          )),
+        )));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(tester.widget<Text>(find.text('12:30')).maxLines, 1);
+    final channels =
+        find.byKey(const ValueKey('calendar-channels-Clip with all channels'));
+    expect(
+        find.descendant(
+            of: channels, matching: find.byType(SocialPlatformLogo)),
+        findsNWidgets(4));
+    final status = find
+        .ancestor(
+            of: find.text('ส่งสำเร็จบางช่องทาง'),
+            matching: find.byType(Container))
+        .first;
+    final decoration =
+        tester.widget<Container>(status).decoration! as BoxDecoration;
+    expect(decoration.color, AppTheme.accentPinkInk.withValues(alpha: 0.09));
+  });
+
+  testWidgets(
+      'normal filters share one row and show platform icons above labels',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => DateTime(2026, 10, 11),
+      loadScheduledPosts: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    final keys = [
+      'all',
+      'TIKTOK',
+      'YOUTUBE_SHORTS',
+      'INSTAGRAM_REELS',
+      'FACEBOOK_REELS'
+    ];
+    final first =
+        tester.getRect(find.byKey(ValueKey('calendar-filter-${keys.first}')));
+    for (final key in keys) {
+      final filter = find.byKey(ValueKey('calendar-filter-$key'));
+      final rect = tester.getRect(filter);
+      expect(rect.top, first.top);
+      expect(rect.width, closeTo(first.width, 0.1));
+      expect(rect.height, greaterThanOrEqualTo(48));
+      if (key != 'all') {
+        final logo = find.descendant(
+            of: filter, matching: find.byType(SocialPlatformLogo));
+        final label = find.descendant(of: filter, matching: find.byType(Text));
+        expect(tester.getRect(logo).bottom,
+            lessThanOrEqualTo(tester.getRect(label).top));
+      }
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'changing owner during cancellation confirmation does not call API',
+      (tester) async {
+    final session = PostDeeAuthSessionStore.instance;
+    final original = session.session;
+    addTearDown(() => session.signIn(original));
+    session.signIn(const AuthSession(userId: 'owner-a', idToken: 'a'));
+    var cancellations = 0;
+    final now = DateTime(2026, 10, 11, 15, 45);
+    CalendarScreen screen(String owner) => CalendarScreen(
+          ownerUserId: owner,
+          now: () => now,
+          loadScheduledPosts: () async =>
+              [_compactPost('$owner clip', now, owner: owner)],
+          cancelPost: (_) async => cancellations++,
+        );
+    await tester.pumpWidget(_calendarApp(screen('owner-a')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('owner-a clip'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ยกเลิกโพสต์'));
+    await tester.pumpAndSettle();
+    session.signIn(const AuthSession(userId: 'owner-b', idToken: 'b'));
+    await tester.pumpWidget(_calendarApp(screen('owner-b')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ยกเลิกโพสต์').last);
+    await tester.pumpAndSettle();
+    expect(cancellations, 0);
+    expect(find.text('owner-b clip'), findsOneWidget);
+    expect(find.text('owner-a clip'), findsNothing);
+    expect(find.text('ยกเลิกโพสต์แล้ว'), findsNothing);
+  });
+
+  testWidgets('month selection handles leap day and week crossing a year',
+      (tester) async {
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => DateTime(2028, 2, 29),
+      loadScheduledPosts: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('calendar-month-view')));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('calendar-day-2028-02-29')), findsOneWidget);
+    expect(find.byKey(const ValueKey('calendar-day-2028-02-30')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('calendar-next-period')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 มี.ค. 2028'), findsOneWidget);
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      key: const ValueKey('year-boundary'),
+      now: () => DateTime(2026, 12, 31),
+      loadScheduledPosts: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('calendar-day-2027-01-03')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('calendar-next-period')));
+    await tester.pumpAndSettle();
+    expect(find.text('7 ม.ค. 2027'), findsOneWidget);
+    expect(find.text('มกราคม 2027'), findsOneWidget);
+  });
+
+  testWidgets('defaults to a compact week and keeps period selection in sync',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: CalendarScreen(
+          now: () => DateTime(2026, 10, 11, 15, 45),
+          loadScheduledPosts: () async => const [],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('สัปดาห์'), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('calendar-day-2026-10-05')), findsOneWidget);
+    expect(find.byKey(const ValueKey('calendar-day-2026-10-12')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('calendar-next-period')));
+    await tester.pumpAndSettle();
+    expect(find.text('18 ต.ค. 2026'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('calendar-month-view')));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('calendar-day-2026-10-01')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('calendar-next-period')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 พ.ย. 2026'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('calendar-today')));
+    await tester.pumpAndSettle();
+    expect(find.text('11 ต.ค. 2026'), findsOneWidget);
+  });
+
+  testWidgets('counts posts once and shows every channel in the compact row',
+      (tester) async {
+    final now = DateTime(2026, 10, 11, 15, 45);
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => now,
+      loadScheduledPosts: () async => [
+        _compactPost('Four channels', now, platforms: const [
+          'TIKTOK',
+          'YOUTUBE_SHORTS',
+          'INSTAGRAM_REELS',
+          'FACEBOOK_REELS'
+        ]),
+        _compactPost('Needs review', now,
+            status: 'PARTIAL_PUBLISHED', platforms: const ['INSTAGRAM_REELS']),
+        _compactPost('Failed clip', now, status: 'FAILED'),
+      ],
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('สัปดาห์นี้ 3 โพสต์ · รอส่ง 1 · ต้องตรวจสอบ 2'),
+        findsOneWidget);
+    final channels =
+        find.byKey(const ValueKey('calendar-channels-Four channels'));
+    expect(
+        find.descendant(
+            of: channels, matching: find.byType(SocialPlatformLogo)),
+        findsNWidgets(4));
+    await tester
+        .tap(find.byKey(const ValueKey('calendar-filter-INSTAGRAM_REELS')));
+    await tester.pumpAndSettle();
+    expect(find.text('สัปดาห์นี้ 2 โพสต์ · รอส่ง 1 · ต้องตรวจสอบ 1'),
+        findsOneWidget);
+    expect(find.text('Four channels'), findsOneWidget);
+    expect(find.text('Failed clip'), findsNothing);
+  });
+
+  testWidgets(
+      'creates for the selected local day and retains the legacy callback',
+      (tester) async {
+    DateTime? selected;
+    var legacy = 0;
+    final now = DateTime(2026, 10, 11, 15, 45);
+    CalendarScreen screen({bool dated = true}) => CalendarScreen(
+          now: () => now,
+          loadScheduledPosts: () async => const [],
+          onAddPost: () => legacy++,
+          onAddPostForDate: dated ? (date) => selected = date : null,
+        );
+    await tester.pumpWidget(_calendarApp(screen()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('calendar-next-period')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('calendar-day-2026-10-12')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('calendar-add-post')));
+    await tester.pumpAndSettle();
+    expect(selected, DateTime(2026, 10, 12));
+    expect(selected!.isUtc, isFalse);
+    expect(legacy, 0);
+    await tester.pumpWidget(_calendarApp(screen(dated: false)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('calendar-add-post')));
+    await tester.pumpAndSettle();
+    expect(legacy, 1);
+  });
+
+  testWidgets('past empty dates offer Today without creating a past schedule',
+      (tester) async {
+    var creates = 0;
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => DateTime(2026, 10, 11, 15, 45),
+      loadScheduledPosts: () async => const [],
+      onAddPostForDate: (_) => creates++,
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('calendar-day-2026-10-10')));
+    await tester.pumpAndSettle();
+    expect(find.text('วันที่เลือกยังไม่มีโพสต์'), findsOneWidget);
+    await tester.ensureVisible(find.text('กลับไปวันนี้'));
+    await tester.tap(find.text('กลับไปวันนี้'));
+    await tester.pumpAndSettle();
+    expect(creates, 0);
+    expect(find.text('11 ต.ค. 2026'), findsOneWidget);
+  });
+
+  testWidgets(
+      'pull refresh keeps rows and reports stale data until retry succeeds',
+      (tester) async {
+    var now = DateTime(2026, 10, 11, 15, 45);
+    var loads = 0;
+    final gate = Completer<List<ScheduledPostResult>>();
+    final post = _compactPost('Cached clip', now);
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => now,
+      loadScheduledPosts: () =>
+          ++loads == 2 ? gate.future : Future.value([post]),
+    )));
+    await tester.pumpAndSettle();
+    final refresh =
+        tester.widget<RefreshIndicator>(find.byType(RefreshIndicator));
+    final pending = refresh.onRefresh();
+    await tester.pump();
+    expect(find.text('Cached clip'), findsOneWidget);
+    expect(find.byKey(const ValueKey('calendar-loading')), findsNothing);
+    now = now.add(const Duration(minutes: 1));
+    gate.completeError(StateError('offline'));
+    await pending;
+    await tester.pumpAndSettle();
+    expect(find.text('Cached clip'), findsOneWidget);
+    expect(find.textContaining('ข้อมูลเดิม'), findsWidgets);
+    expect(find.text('อัปเดตล่าสุด 15:45'), findsOneWidget);
+    await tester.ensureVisible(find.text('ลองใหม่'));
+    await tester.tap(find.text('ลองใหม่'));
+    await tester.pumpAndSettle();
+    expect(find.text('อัปเดตล่าสุด 15:46'), findsOneWidget);
+    expect(find.byKey(const ValueKey('calendar-error')), findsNothing);
+  });
+
+  testWidgets(
+      'owner change clears cached posts and rejects late or foreign results',
+      (tester) async {
+    final session = PostDeeAuthSessionStore.instance;
+    final original = session.session;
+    addTearDown(() => session.signIn(original));
+    session.signIn(const AuthSession(userId: 'owner-a', idToken: 'a'));
+    final gate = Completer<List<ScheduledPostResult>>();
+    final now = DateTime(2026, 10, 11, 15, 45);
+    var loads = 0;
+    CalendarScreen screen(String owner) => CalendarScreen(
+          ownerUserId: owner,
+          now: () => now,
+          loadScheduledPosts: () => ++loads == 1
+              ? gate.future
+              : Future.value([
+                  _compactPost('Current owner', now, owner: 'owner-b'),
+                  _compactPost('Foreign owner', now, owner: 'owner-a'),
+                ]),
+        );
+    await tester.pumpWidget(_calendarApp(screen('owner-a')));
+    await tester.pump();
+    session.signIn(const AuthSession(userId: 'owner-b', idToken: 'b'));
+    await tester.pumpWidget(_calendarApp(screen('owner-b')));
+    await tester.pumpAndSettle();
+    expect(find.text('Current owner'), findsOneWidget);
+    expect(find.text('Foreign owner'), findsNothing);
+    gate.complete([_compactPost('Late owner', now, owner: 'owner-a')]);
+    await tester.pumpAndSettle();
+    expect(find.text('Late owner'), findsNothing);
+    expect(find.text('Current owner'), findsOneWidget);
+  });
+
+  testWidgets(
+      'calendar accessibility actions fire once and expose selected days',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    var creates = 0;
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => DateTime(2026, 10, 11, 15, 45),
+      loadScheduledPosts: () async => const [],
+      onAddPostForDate: (_) => creates++,
+    )));
+    await tester.pumpAndSettle();
+    final add =
+        tester.getSemantics(find.byKey(const ValueKey('calendar-add-post')));
+    expect(add.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+    add.owner!.performAction(add.id, SemanticsAction.tap);
+    await tester.pumpAndSettle();
+    expect(creates, 1);
+    final next =
+        tester.getSemantics(find.byKey(const ValueKey('calendar-next-period')));
+    next.owner!.performAction(next.id, SemanticsAction.tap);
+    await tester.pumpAndSettle();
+    expect(find.text('18 ต.ค. 2026'), findsOneWidget);
+    expect(
+      tester
+          .getSemantics(find.byKey(const ValueKey('calendar-day-2026-10-18'))),
+      isSemantics(isButton: true, isSelected: true, hasTapAction: true),
+    );
+    semantics.dispose();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('opens the current month when older scheduled history exists',
       (tester) async {
     final now = DateTime(2026, 10, 9);
@@ -243,16 +624,24 @@ void main() {
 
     expect(find.byKey(const ValueKey('calendar-loading')), findsNothing);
     // The first scheduled day is auto-selected, so its posts show below the
-    // grid with the prototype's "status · time" line.
+    // grid with time and delivery status shown independently.
     expect(find.text('Launch clip'), findsOneWidget);
     expect(find.text('7 มิ.ย. 2026'), findsOneWidget);
-    expect(find.text('รอส่งตามเวลา · 18:30'), findsOneWidget);
+    expect(find.text('รอส่งตามเวลา'), findsOneWidget);
+    expect(find.text('18:30'), findsOneWidget);
     expect(find.byKey(const ValueKey('calendar-empty')), findsNothing);
     expect(
       find.byKey(const ValueKey('calendar-platform-filters')),
       findsOneWidget,
     );
-    expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
+    for (final platform in const [
+      'TIKTOK',
+      'YOUTUBE_SHORTS',
+      'INSTAGRAM_REELS',
+      'FACEBOOK_REELS'
+    ]) {
+      expect(find.byKey(ValueKey('calendar-filter-$platform')), findsOneWidget);
+    }
     expect(find.text('Shopee'), findsNothing);
     expect(find.text('Lazada'), findsNothing);
   });
@@ -673,6 +1062,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('calendar-month-view')));
+      await tester.pumpAndSettle();
       return tester.getSize(find.byType(GridView)).height;
     }
 
@@ -919,7 +1310,8 @@ void main() {
 
     // 31 Jan 18:30 UTC is 1 Feb 01:30 in Asia/Bangkok.
     expect(find.text('1 ก.พ. 2026'), findsOneWidget);
-    expect(find.text('ส่งสำเร็จ · 01:30'), findsOneWidget);
+    expect(find.text('ส่งสำเร็จ'), findsOneWidget);
+    expect(find.text('01:30'), findsOneWidget);
     expect(find.text('Published after midnight'), findsOneWidget);
   });
 
@@ -949,7 +1341,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('ส่งสำเร็จบางช่องทาง · 09:05'), findsOneWidget);
+    expect(find.text('ส่งสำเร็จบางช่องทาง'), findsOneWidget);
+    expect(find.text('09:05'), findsOneWidget);
     // Only the month-navigation chevron remains; terminal post rows do not
     // show the queue-action chevron.
     expect(find.byIcon(Icons.chevron_right), findsOneWidget);
@@ -997,8 +1390,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('ผลยังไม่ยืนยัน · 09:05'), findsOneWidget);
-    expect(find.text('ส่งสำเร็จ · 09:05'), findsNothing);
+    expect(find.text('ผลยังไม่ยืนยัน'), findsOneWidget);
+    expect(find.text('09:05'), findsOneWidget);
+    expect(find.text('ส่งสำเร็จ'), findsNothing);
   });
 
   for (final status in const [
@@ -1124,14 +1518,16 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pump();
     expect(loadCount, 2);
-    expect(find.text('กำลังส่ง · 10:00'), findsOneWidget);
+    expect(find.text('กำลังส่ง'), findsOneWidget);
+    expect(find.text('10:00'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 29));
     expect(loadCount, 2);
     await tester.pump(const Duration(seconds: 1));
     await tester.pump();
     expect(loadCount, 3);
-    expect(find.text('ส่งสำเร็จ · 10:01'), findsOneWidget);
+    expect(find.text('ส่งสำเร็จ'), findsOneWidget);
+    expect(find.text('10:01'), findsOneWidget);
   });
 
   testWidgets('refreshes after the app resumes', (tester) async {

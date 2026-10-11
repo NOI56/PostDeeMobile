@@ -2,6 +2,24 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Calendar Compact Revision (2026-10-11)
+
+The compact-list Calendar is implemented locally: week/month, Today,
+real day counts, all/four-platform filters and concise time/status rows. It starts
+in week view and retains the existing upcoming-day selection if today has no post.
+Creating
+from Calendar passes the selected local date into the existing composer;
+it must preserve saved-draft schedules and existing future/paid-plan checks.
+Refresh retains confirmed content and exposes retryable failures. API,
+publishing, provider and environment contracts remain unchanged. Local full
+Flutter 1,882 tests, analysis, actual-widget week/month renders and Staging APK
+build/install 4006/8006 pass with retained app data. Native week/month/date
+handoff, Free scheduling denial, retained filter/selection refresh and past-date/
+Today controls pass after user login without saving. Positive queue/partial/
+mutation cases are fixtures; the real account has no posts. No Calendar push/
+deploy is authorized. The Home release is a separate receipt.
+See `../../docs/superpowers/plans/2026-10-11-calendar-ux.md`.
+
 ## Local Commands
 
 Run commands from this folder with the workspace-local Flutter SDK:

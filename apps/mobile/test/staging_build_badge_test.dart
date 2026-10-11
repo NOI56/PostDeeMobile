@@ -66,6 +66,13 @@ void main() {
 
   testWidgets('Staging strip preserves dock, composer close and account taps',
       (tester) async {
+    Future<void> pumpTransition() async {
+      // Home skeletons may keep animating while local draft reads are pending.
+      // This test checks controls during loading, so only finish the transition.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
     PostDeeAuthSessionStore.instance.signIn(const AuthSession(
       userId: 'staging-badge-test',
       idToken: 'test-id-token',
@@ -75,7 +82,7 @@ void main() {
     await tester.pumpWidget(
       const PostDeeApp(locale: Locale('en'), showStagingBadge: true),
     );
-    await tester.pumpAndSettle();
+    await pumpTransition();
 
     final nav = find.byKey(const ValueKey('postdee-reference-bottom-nav'));
     Finder tab(String label) =>
@@ -88,15 +95,15 @@ void main() {
         badge.overlaps(tester.getRect(find.bySemanticsLabel('Notifications'))),
         isFalse);
     await tester.tap(tab('Create post'));
-    await tester.pumpAndSettle();
+    await pumpTransition();
     expect(nav, findsNothing);
     final close = find.byKey(const ValueKey('uploader-close'));
     expect(badge.overlaps(tester.getRect(close)), isFalse);
     await tester.tap(close);
-    await tester.pumpAndSettle();
+    await pumpTransition();
     expect(nav, findsOneWidget);
     await tester.tap(tab('Account'));
-    await tester.pumpAndSettle();
+    await pumpTransition();
     expect(
         tester.widget<Semantics>(tab('Account')).properties.selected, isTrue);
     expect(tester.takeException(), isNull);

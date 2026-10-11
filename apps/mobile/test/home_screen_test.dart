@@ -692,11 +692,12 @@ void main() {
         expect(linkShortcutRect.right, lessThanOrEqualTo(width));
         expect(linkShortcutRect.height, greaterThanOrEqualTo(44));
         expect(linkShortcutRect.height, lessThanOrEqualTo(144));
-        final latestPostsTop = tester.getTopLeft(find.text('โพสต์ล่าสุด')).dy;
+        final emptyPostsBottom = tester
+            .getBottomLeft(
+                find.byKey(const ValueKey('home-latest-posts-empty')))
+            .dy;
         expect(
-          latestPostsTop - linkShortcutRect.bottom,
-          inInclusiveRange(12, 20),
-        );
+            linkShortcutRect.top - emptyPostsBottom, inInclusiveRange(12, 20));
         expect(tester.takeException(), isNull);
       });
     }
@@ -768,10 +769,8 @@ void main() {
         expect(title.maxLines, isNull);
         expect(subtitle.overflow, isNull);
         expect(subtitle.maxLines, isNull);
-        final planProgress = tester.widget<FractionallySizedBox>(
-          find.byKey(const ValueKey('home-plan-progress-fill')),
-        );
-        expect(planProgress.widthFactor, 1);
+        expect(find.byKey(const ValueKey('home-plan-progress-fill')),
+            findsNothing);
         expect(tester.takeException(), isNull);
 
         for (var attempt = 0; attempt < 20; attempt += 1) {
@@ -929,7 +928,11 @@ void main() {
     _expectNoDeveloperTools();
   });
 
-  testWidgets('matches the reference home first screen', (tester) async {
+  testWidgets('prioritizes the approved first-post action and compact plan',
+      (tester) async {
+    PostDeeAuthSessionStore.instance
+        .signIn(const AuthSession(userId: 'seller', idToken: 'test-token'));
+    addTearDown(PostDeeAuthSessionStore.instance.clear);
     await tester.pumpWidget(
       _homeTestApp(
         HomeScreen(
@@ -943,6 +946,11 @@ void main() {
             canUseAnalytics: false,
           ),
           loadRecentPosts: () async => const [],
+          loadDrafts: () async => const [],
+          loadConnections: () async => const [],
+          loadScheduledPosts: () async => const [],
+          loadLinkProfile: () async => null,
+          onCreatePost: () async {},
         ),
       ),
     );
@@ -951,10 +959,7 @@ void main() {
     expect(find.text('หน้าแรก'), findsOneWidget);
     expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
     expect(find.text('เหลือ 1/3 หน่วย'), findsOneWidget);
-    final planProgress = tester.widget<FractionallySizedBox>(
-      find.byKey(const ValueKey('home-plan-progress-fill')),
-    );
-    expect(planProgress.widthFactor, moreOrLessEquals(1 / 3));
+    expect(find.byKey(const ValueKey('home-plan-progress-fill')), findsNothing);
     expect(find.text('อัปเกรด'), findsOneWidget);
     expect(find.text('ตัดต่อด้วย AI'), findsNothing);
     expect(
@@ -973,19 +978,17 @@ void main() {
     expect(find.text('โพสต์ล่าสุด'), findsOneWidget);
     expect(find.text('ยังไม่มีโพสต์'), findsOneWidget);
     expect(
-      find.text('เริ่มสร้างโพสต์แรกของร้านคุณ\nโพสต์คลิปเดียวไปได้ทุกช่องทาง'),
+      find.text('เริ่มโพสต์แรกของคุณ'),
       findsOneWidget,
     );
     expect(find.widgetWithText(FilledButton, 'สร้างโพสต์'), findsNothing);
 
-    final linkShortcutRect = tester.getRect(
-      find.byKey(const ValueKey('home-link-in-bio-shortcut')),
-    );
+    final primaryActionBottom =
+        tester.getBottomLeft(find.byKey(const ValueKey('home-create-post'))).dy;
     final latestPostsTop = tester.getTopLeft(find.text('โพสต์ล่าสุด')).dy;
+    expect(primaryActionBottom, lessThan(latestPostsTop));
     expect(
-      latestPostsTop - linkShortcutRect.bottom,
-      inInclusiveRange(12, 20),
-    );
+        find.byKey(const ValueKey('home-empty-create-post')), findsOneWidget);
 
     await _expectHomeTextsNeverAppearAfterScrolling(
       tester,
@@ -1162,7 +1165,8 @@ void main() {
     expect(loadCount, 2);
   });
 
-  testWidgets('queues a home refresh instead of overlapping post loads',
+  testWidgets(
+      'coalesces a home refresh without overlapping or queued post loads',
       (tester) async {
     final firstLoad = Completer<List<PostSummaryResult>>();
     var loadCount = 0;
@@ -1223,7 +1227,7 @@ void main() {
     firstLoad.complete(const []);
     await tester.pumpAndSettle();
 
-    expect(loadCount, 2);
+    expect(loadCount, 1);
     expect(maxInFlight, 1);
   });
 
@@ -1270,7 +1274,12 @@ void main() {
         const AuthSession(userId: 'home-shop-owner', idToken: 'test-token'));
     addTearDown(PostDeeAuthSessionStore.instance.clear);
     await tester.pumpWidget(
-      _homeTestApp(const HomeScreen()),
+      _homeTestApp(HomeScreen(
+        loadDrafts: () async => const [],
+        loadConnections: () async => const [],
+        loadScheduledPosts: () async => const [],
+        loadLinkProfile: () async => null,
+      )),
     );
 
     await _tapHomeTextAfterScrolling(tester, 'ลิงก์หน้าโปรไฟล์');

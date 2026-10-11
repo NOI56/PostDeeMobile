@@ -2,6 +2,50 @@
 
 PostDee backend API reference.
 
+## Home read composition (2026-10-11, locally verified; Staging delivery authorized)
+
+The Home revision composes existing authenticated subscription, social
+connection, scheduled-post and profile-link reads. Recent previews retain
+`GET /posts?includeMedia=true&limit=3`; saved publish drafts come from the
+current stable UID's device-local draft store rather than an API endpoint.
+Mobile selects the earliest future `QUEUED` scheduled post and does not derive
+an all-post count from the recent-three response. A failed connection lookup
+is unknown, not zero connections; a connected flag is not token-health or
+publishing-readiness evidence. The profile shortcut requires the server's
+`isPublished` and confirmed `publicUrl` to report a published page.
+Existing subscription entitlement/quota behavior and partial/unknown delivery
+outcomes remain authoritative. No route, response field, schema, provider,
+analytics call or package contract is added; `apps/api` source remains unchanged.
+Local API regression checks pass: 1,781 tests across 109 files, build, Prisma
+validation against a dummy local connection string and helper type-check on
+the unchanged API source. The base Staging mobile version 8003 reads the existing subscription,
+connections and published-profile state and opens the empty native Calendar.
+Positive future-queue and partial/unknown outcomes are covered by automated
+fixtures; no real post was created for this check. No database migration or
+API contract change is required. These are pre-delivery local receipts; the
+user has authorized push and Staging deployment, with exact-source CI and
+Render delivery receipts pending. Detailed
+mobile build/native evidence:
+`docs/superpowers/plans/2026-10-11-home-ux.md`.
+
+The subsequent cover/motion/pull-to-refresh follow-up is mobile-only and passes
+the final 1,863-test Flutter suite. Its step hint is computed from existing saved-draft
+fields, not a new persisted current-step field or API response. Cover fallback
+reads a muted paused local first video frame with a five-second initialization
+limit and a compact 120 logical-pixel cropped presentation; it creates no upload,
+thumbnail file or FFmpeg job. Refresh awaits the
+same authenticated plan/posts/connections/queue/profile reads plus owner-local
+drafts, coalesces same-owner requests and preserves previously loaded content,
+including known empty results. No new endpoint, statistics request, API schema
+or remote deployment is needed. A failed section retains its error/retry state
+rather than an all-sections success claim; owner changes invalidate late results.
+Intermediate native version 8004 reads the existing live plan/connection/profile
+state. Frozen-source version 8005 is built/installed; analysis and native
+notification/pull-refresh/create-and-close checks pass without saving. The
+final full mobile suite passed in 2m54s; this changes no API contract or backend
+release state. The API checks above are prior receipts for unchanged source,
+not a new backend run or deployment in this mobile follow-up.
+
 ## Audit-fix rollout (2026-10-09, Staging)
 
 - `POST /posts` accepts optional `mediaContentFingerprint`, a lowercase 64-digit

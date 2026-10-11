@@ -31,6 +31,59 @@ two-account native notification delivery separately with authorization.
 Details and verification:
 `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`.
 
+## Home next-action revision (2026-10-11, locally verified; Staging delivery authorized)
+
+Home prioritizes continuing the latest saved draft or creating a post, followed
+by a compact connection summary, the next future queued post, recent posts and
+the store-link publication state. The package row stays compact and retains
+the existing authoritative subscription refresh and failure states. Drafts
+are account-scoped and device-local; an unsaved composer is not a saved draft.
+Connection counts cover the four currently supported destinations and do not
+promise valid tokens or publishing readiness. Failed reads remain unknown,
+with a retry action, rather than fabricated empty or disconnected states.
+The store-link row reports publication only from the server-confirmed profile
+and public URL. This mobile revision uses existing API reads, keeps the
+full-screen composer and five-item navigation, and adds no analytics request,
+provider, package rule, configuration flag or database migration.
+Implementation, concept fidelity and verification:
+`docs/superpowers/plans/2026-10-11-home-ux.md`. The base Home checks pass: 1,825 Flutter
+tests, clean analysis, 1,781 API tests across 109 files, API build and Prisma
+validation/helper type-check. The exact-source Staging x86_64 APK (build 4003,
+installed version code 8003) is installed without clearing account data. Native
+Home reads the current Free 0/3 quota and three existing local drafts; create,
+resume, Connections, Calendar and the published shop shortcut open correctly.
+Checks closed forms without saving and performed no purchase, OAuth connection
+or social post. Future-queue/partial-outcome cases use tests and sample widgets,
+not customer writes. These results and version 8003 cover the base revision,
+before the subsequently approved motion follow-up.
+
+The selected interactive-preview variant is “พร้อมภาพปก”: a full-width real
+saved-draft cover, or a muted paused first frame of its local clip when no cover
+is usable. The preview is a compact 120 logical-pixel crop matching the selected
+prototype, with `BoxFit.cover`, rather than a full video player. Initialization
+has a five-second limit and falls back to a static
+icon; the decoder is disposed when hidden, backgrounded or replaced. This
+preview never plays the clip, writes a thumbnail, uses FFmpeg or uploads media.
+The card also has a next-required-step hint derived from existing draft fields,
+brief press feedback and accessible loading skeletons
+and pull-to-refresh across the existing Home sections. Drafts do not persist
+an exact current wizard step. Refresh awaits/coalesces all six existing data
+sources, retains current content including previously confirmed empty results,
+and never announces that everything updated when a read failed. Narrow layouts,
+large Thai text and reduced-motion preferences are verified by the final
+1,863-test Flutter suite (2m54s, concurrency 2). Intermediate native
+version 8004 confirms the real Free 0/3 state, initial loading, retained
+content during pull refresh, press feedback and existing composer/Connections/
+Calendar/shop navigation without saving. Final source adds the 120-pixel cover
+correction and accessible notification-button action. The frozen-source APK is
+built and installed at version 8005; clean analysis and final native bell/pull/
+create-and-close checks pass with the existing account preserved. The emulator has no draft for
+this follow-up, so positive draft/cover acceptance uses fixtures instead of
+creating customer data. These are pre-delivery local verification receipts.
+The user has authorized push and Staging deployment; exact-source CI and Render
+delivery receipts are pending. Main merge and Production delivery are outside
+this authorized rollout.
+
 ## Pending-work integration (2026-10-08)
 
 The mobile UI cleanup is on remote `main` at `b1f793c`; its app source is
@@ -105,8 +158,9 @@ from the Store link tab, and saved caption templates are selectable in Create
 post. Their former shortcuts are removed from Account.
 See `docs/superpowers/plans/2026-10-07-grouped-account-ui.md` for the mobile-only
 scope and verification.
-Home has one profile-link shortcut followed by the latest posts. The monthly
-views/likes cards are temporarily removed, and Home no longer requests
+Home now puts a saved-draft/new-post action before compact connection,
+upcoming-post, recent-post and profile-link sections. The monthly
+views/likes cards remain removed, and Home does not request
 `GET /analytics/summary`. Analytics remains available from publish results and
 individual post details. AI video
 editing and Subtitle Studio no longer have a product entry point, and the
@@ -1160,8 +1214,12 @@ Current mobile pieces:
 
 - Light and dark Flutter themes (light is the current default)
 - Generated Android and iOS platform folders with app display name `PostDee`
-- Home dashboard with the current plan, profile-link shortcut, and latest posts;
-  the monthly views/likes cards are temporarily removed
+- Home dashboard with a compact current-plan row, an owner-local saved-draft or
+  new-post action, supported-channel connection summary, the earliest future
+  queued post, recent posts and the server-confirmed store-link state. Load
+  failures stay distinct from empty states; the monthly views/likes cards remain
+  removed. Local revision verification is tracked in
+  `docs/superpowers/plans/2026-10-11-home-ux.md`.
 - Full-screen create-post flow with four steps: choose clip, write caption,
   choose connected destinations, then review/send now or schedule. Step headers
   show the current step out of four, and the primary Next action names its

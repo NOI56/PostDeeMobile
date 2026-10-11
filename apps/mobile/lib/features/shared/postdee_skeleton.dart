@@ -10,11 +10,13 @@ class PostDeeSkeleton extends StatefulWidget {
     this.width,
     this.height = 14,
     this.radius = 8,
+    this.animate = true,
   });
 
   final double? width;
   final double height;
   final double radius;
+  final bool animate;
 
   @override
   State<PostDeeSkeleton> createState() => _PostDeeSkeletonState();
@@ -29,8 +31,32 @@ class _PostDeeSkeletonState extends State<PostDeeSkeleton>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat();
+      duration: const Duration(milliseconds: 1500),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant PostDeeSkeleton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _updateAnimation();
+  }
+
+  void _updateAnimation() {
+    final shouldAnimate = widget.animate &&
+        TickerMode.valuesOf(context).enabled &&
+        !(MediaQuery.maybeOf(context)?.disableAnimations ?? false);
+    if (shouldAnimate && !_controller.isAnimating) {
+      _controller.repeat();
+    } else if (!shouldAnimate && _controller.isAnimating) {
+      _controller.stop();
+      _controller.value = 0;
+    }
   }
 
   @override

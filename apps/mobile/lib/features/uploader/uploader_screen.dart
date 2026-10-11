@@ -101,6 +101,7 @@ class UploaderScreen extends StatefulWidget {
     this.openCoverEditor,
     this.coverImageProcessor,
     this.draftStore,
+    this.initialDraftId,
     this.now = DateTime.now,
     this.extractFrames,
     this.growthToolSettingsStore =
@@ -134,6 +135,9 @@ class UploaderScreen extends StatefulWidget {
   final UploaderCoverEditorLauncher? openCoverEditor;
   final CoverImageProcessor? coverImageProcessor;
   final PublishDraftStore? draftStore;
+  // Resume a persisted draft by reloading it from the current owner's store.
+  // An explicitly handed-over clip takes precedence over this request.
+  final String? initialDraftId;
 
   // Wall clock used to reject schedules in the past. Injectable so tests can
   // pin "now" instead of depending on the real time of day.
@@ -185,6 +189,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
   bool _isGeneratingCaption = false;
   bool _isLoadingConnections = true;
   bool _isLoadingDrafts = true;
+  bool _isRestoringInitialDraft = false;
+  bool _initialDraftRestoreAttempted = false;
+  String? _initialDraftOwnerUserId;
   bool _draftStoreAvailable = false;
   bool _isSavingDraft = false;
   final Set<String> _blockedSubmissionDraftIds = {};
@@ -275,6 +282,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
   }
 
   bool get _formBusy =>
+      _isRestoringInitialDraft ||
       _isSavingDraft ||
       _isSubmitting ||
       _isPreparingReview ||
@@ -455,6 +463,11 @@ class _UploaderScreenState extends State<UploaderScreen> {
     super.initState();
     _savedFormSnapshot = _formSnapshot;
     _prefillInitialVideo();
+    _isRestoringInitialDraft =
+        (widget.initialDraftId?.trim().isNotEmpty ?? false) &&
+            _localFilePathController.text.isEmpty;
+    _initialDraftOwnerUserId =
+        PostDeeAuthSessionStore.instance.session.stableUserId;
     unawaited(_loadVideoPoster());
     if (widget.draftStore == null) {
       PostDeeAuthSessionStore.instance.addListener(_handleDraftOwnerChanged);
@@ -699,8 +712,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
   Future<void> _loadDrafts() async {
     final generation = ++_draftLoadGeneration;
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
     try {
-      final store = await _resolveDraftStore();
+      final store = await _readStartupDraft(_resolveDraftStore());
       if (generation != _draftLoadGeneration) return;
       if (store == null) {
         if (mounted) {
@@ -711,13 +725,45 @@ class _UploaderScreenState extends State<UploaderScreen> {
         }
         return;
       }
-      final drafts = await store.listDrafts();
+      final drafts = await _readStartupDraft(store.listDrafts());
       if (!mounted || generation != _draftLoadGeneration) return;
       setState(() {
         _drafts = drafts;
         _isLoadingDrafts = false;
         _draftStoreAvailable = true;
       });
+      if (_isRestoringInitialDraft && !_initialDraftRestoreAttempted) {
+        _initialDraftRestoreAttempted = true;
+        if (owner == null ||
+            owner != _initialDraftOwnerUserId ||
+            owner != PostDeeAuthSessionStore.instance.session.stableUserId) {
+          _showDraftOwnerChangedError();
+          return;
+        }
+        try {
+          final draft = await _readStartupDraft(
+              store.loadDraft(widget.initialDraftId!.trim()));
+          if (!mounted || generation != _draftLoadGeneration) return;
+          if (owner != PostDeeAuthSessionStore.instance.session.stableUserId ||
+              (draft != null && draft.ownerUserId != owner)) {
+            _showDraftOwnerChangedError();
+            return;
+          }
+          if (draft == null) {
+            setState(() {
+              _errorMessage =
+                  'เปิดฉบับร่างนี้ไม่ได้ อาจถูกลบแล้ว เลือกฉบับร่างอื่นหรือสร้างโพสต์ใหม่';
+            });
+          } else {
+            await _restoreDraft(draft);
+          }
+        } catch (_) {
+          if (!mounted || generation != _draftLoadGeneration) return;
+          setState(() {
+            _errorMessage = 'เปิดฉบับร่างไม่สำเร็จ เลือกฉบับร่างอีกครั้ง';
+          });
+        }
+      }
     } catch (_) {
       if (!mounted || generation != _draftLoadGeneration) return;
       setState(() {
@@ -725,8 +771,16 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _draftStoreAvailable = false;
         _errorMessage = 'โหลดฉบับร่างในเครื่องไม่สำเร็จ';
       });
+    } finally {
+      if (mounted && generation == _draftLoadGeneration) {
+        setState(() => _isRestoringInitialDraft = false);
+      }
     }
   }
+
+  Future<T> _readStartupDraft<T>(Future<T> read) => _isRestoringInitialDraft
+      ? read.timeout(const Duration(seconds: 10))
+      : read;
 
   Future<PublishDraftStore?> _resolveDraftStore() async {
     final injectedStore = widget.draftStore;
@@ -3434,6 +3488,12 @@ class _UploaderScreenState extends State<UploaderScreen> {
                 icon: const Icon(Icons.save_outlined, size: 17),
                 label: Text(_isSavingDraft ? 'กำลังบันทึก...' : 'บันทึกร่าง')),
           ]),
+          if (_isRestoringInitialDraft) ...[
+            const SizedBox(height: 8),
+            Text('กำลังเปิดฉบับร่าง...',
+                key: const ValueKey('uploader-opening-draft'),
+                style: TextStyle(color: AppTheme.textSecondary)),
+          ],
         ]),
       );
 

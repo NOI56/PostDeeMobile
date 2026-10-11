@@ -2,6 +2,67 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Home next-action boundary (2026-10-11, locally verified; Staging delivery authorized)
+
+Home uses the existing shell navigation and full-screen composer. A continuation
+action opens the latest explicitly saved publish draft only for its current
+stable UID; creating a post remains available without a social connection.
+The draft store remains device-local. The compact plan row retains the existing
+subscription refresh/generation protection and never assumes Free after a failed
+read. Existing authenticated loaders supply the four-supported-platform
+connection summary, earliest future `QUEUED` scheduled post and store-link
+publication state. Unknown/error states expose retry without inventing empty
+data, ready-to-publish credentials or a published public page. Recent-three
+previews keep owner-only signed media and the shared partial/unknown delivery
+interpretation. Section refreshes discard stale owner/session responses,
+avoid new hidden activity loads and keep failures isolated so one unavailable
+section does not block creating a post.
+
+This revision changes mobile presentation/composition, not API contracts,
+entitlements, schema, provider activation, dependency locks or environment
+configuration. The white/mint/green concept is a design reference with sample
+data, not a live-account receipt. The base revision's local full Flutter/API suites, analysis,
+API build and Prisma checks pass. The exact-source Staging x86_64 APK (build
+4003, installed version code 8003) preserves the account and three existing
+drafts. Native Home, blank composer, saved-draft resume, Connections, empty
+Calendar and existing shop editor navigation pass without saving or publishing.
+Future-queue/partial-outcome behavior is tested with fixtures; active paid
+purchase/publishing is outside this read-only check. These are pre-delivery
+local receipts. Push and Staging deployment are now authorized by the user;
+exact-source CI and Render delivery receipts are pending. No database migration
+is required, and main merge/Production delivery are outside this rollout; see
+`docs/superpowers/plans/2026-10-11-home-ux.md`.
+
+The approved motion follow-up uses the “พร้อมภาพปก” preview variant. The saved
+draft hero uses its real full-width cover, then a local video first-frame
+fallback: initialize `VideoPlayerController.file`, mute, pause and seek zero;
+never call play. A five-second deadline and decoder errors leave the static
+placeholder. Owner/draft/file identity and active/foreground state guard late
+frames; inactive/background/replacement/dispose releases the controller. This
+does not use FFmpeg, write a file, upload media or fetch a network preview.
+The selected preview uses a fixed 120 logical-pixel height and `BoxFit.cover`;
+cropping is intentional to keep the draft hero compact rather than preserving
+the entire video's aspect ratio. Metadata wraps and actions stack when needed
+for narrow layouts or large text. The header notification button exposes an
+enabled semantic tap action alongside its existing gesture handler.
+The next required form step comes from existing draft fields; manifest version
+3 has no saved current wizard-step field. Shared press feedback preserves the
+child's actions/semantics/hit area and disables scaling for reduced motion;
+skeletons honor reduced motion, `TickerMode` and active state. Home
+pull-to-refresh awaits and coalesces subscription, recent posts, local drafts,
+connections, upcoming posts and the profile-link read, preserving current
+content and known empty results while refreshing.
+Success/error announcements stay tied to the resulting section states and
+current owner; late responses cannot claim success for a newer session. This
+follow-up adds no contract, schema, provider, dependency or configuration change.
+The final follow-up Flutter suite passes all 1,863 tests in 2m54s; version 8003
+evidence above belongs to the base revision. Intermediate version 8004 covers real empty Home/pull/
+press/navigation. Frozen-source version 8005 is built and installed, with clean
+analysis and native notification-button/pull/create-and-close checks passing
+without saving or losing the current session.
+The current follow-up emulator has no draft;
+positive draft/cover cases use fixtures under the existing read-only QA scope.
+
 ## Audit fix boundary (2026-10-09)
 
 Based on verified main `c4e5220`, the audit patch keeps provider activation and
@@ -443,7 +504,11 @@ apps/mobile
 Current mobile pieces:
 
 - Light and dark Flutter themes; light is the current default.
-- Home dashboard with total views, total likes, subscription status, Basic Phone OTP verification, and Starter/Pro CTAs.
+- Home dashboard prioritizes a saved-draft/new-post action, with compact
+  subscription status, supported-channel connections, the next future queued
+  post, recent posts and store-link publication state. Monthly views/likes
+  cards remain removed; package/Basic Phone OTP gates stay in their existing
+  billing/profile flows.
 - Full-screen four-step uploader (clip, caption, destinations, review/send)
   with local poster/full-screen playback, manual AI caption requests,
   explicit draft saving and changed-form exit choices. The final step embeds

@@ -28,6 +28,7 @@ import '../notifications/notifications_screen.dart';
 import '../notifications/push_messaging_gateway.dart';
 import '../notifications/push_notification.dart';
 import '../onboarding/onboarding_flow.dart';
+import '../platforms/connections_screen.dart';
 import '../profile/profile_screen.dart';
 import '../posts/post_detail_screen.dart';
 import '../posts/posts_screen.dart';
@@ -35,6 +36,7 @@ import '../legal/legal_document_screen.dart';
 import '../shared/postdee_undo_toast.dart';
 import '../templates/templates_screen.dart';
 import '../uploader/uploader_screen.dart';
+import '../uploader/publish_draft.dart';
 import '../uploader/publish_draft_store.dart';
 import '../uploader/publish_draft_store_factory.dart';
 import '../uploader/video_picker_service.dart';
@@ -104,6 +106,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
   int _selectedIndex = 0;
   int _calendarRefreshToken = 0;
   bool _isDeletingAccount = false;
+  bool _isHomeConnectionsOpen = false;
   MaterialPageRoute<void>? _composerRoute;
   String? _composerOwnerUserId;
   String? _notificationOwnerUserId;
@@ -179,9 +182,21 @@ class _PostDeeShellState extends State<PostDeeShell> {
 
   List<Widget> _buildScreens() => [
         HomeScreen(
-          isActive: _selectedIndex == 0 && _composerRoute == null,
+          key: ValueKey('home-${_authController.session.stableUserId}'),
+          isActive: _selectedIndex == 0 &&
+              _composerRoute == null &&
+              !_isHomeConnectionsOpen,
           loadSubscription: widget.loadSubscription,
           loadRecentPosts: widget.loadRecentPosts,
+          loadDrafts: _loadHomeDrafts,
+          loadConnections: widget.loadSocialConnections,
+          loadScheduledPosts: widget.loadScheduledPosts == null
+              ? null
+              : _loadHomeScheduledPosts,
+          onCreatePost: _openPostComposer,
+          onResumeDraft: _resumeHomeDraft,
+          onOpenConnections: () => unawaited(_openHomeConnections()),
+          onOpenCalendar: () => _selectTab(3),
           onOpenNotifications: _openNotifications,
           onOpenProfile: () => _selectTab(5),
           onOpenLinkInBio: () => _selectTab(1),
@@ -307,8 +322,79 @@ class _PostDeeShellState extends State<PostDeeShell> {
     setState(() => _selectedIndex = index);
   }
 
-  Future<void> _openPostComposer() async {
-    if (_composerRoute != null || !_authController.session.isSignedIn) return;
+  Future<List<PublishDraft>> _loadHomeDrafts() async {
+    final owner = _authController.session.stableUserId;
+    if (owner == null || !_authController.session.isSignedIn) return const [];
+    final store =
+        widget.uploaderDraftStore ?? await createPublishDraftStoreForSession();
+    if (!mounted || owner != _authController.session.stableUserId) {
+      return const [];
+    }
+    if (store == null) throw StateError('Draft store is unavailable.');
+    final drafts = await store.listDrafts();
+    if (!mounted || owner != _authController.session.stableUserId) {
+      return const [];
+    }
+    return drafts.where((draft) => draft.ownerUserId == owner).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  Future<List<PostSummaryResult>> _loadHomeScheduledPosts() async {
+    final owner = _authController.session.stableUserId;
+    if (owner == null || !_authController.session.isSignedIn) return const [];
+    final posts = await widget.loadScheduledPosts!();
+    if (!mounted || owner != _authController.session.stableUserId) {
+      return const [];
+    }
+    return posts
+        .where((post) => post.userId == null || post.userId == owner)
+        .map((post) => PostSummaryResult(
+              id: post.id,
+              caption: post.caption,
+              videoS3Key: post.videoS3Key,
+              platforms: post.platforms,
+              status: post.status,
+              createdAt: post.createdAt,
+              scheduledAt: post.scheduledAt,
+              publishedAt: post.publishedAt,
+              platformResults: post.platformResults,
+            ))
+        .toList();
+  }
+
+  Future<void> _resumeHomeDraft(PublishDraft draft) async {
+    if (!mounted ||
+        !_authController.session.isSignedIn ||
+        draft.ownerUserId != _authController.session.stableUserId) {
+      return;
+    }
+    await _openPostComposer(initialDraftId: draft.id);
+  }
+
+  Future<void> _openHomeConnections() async {
+    if (!mounted ||
+        _isHomeConnectionsOpen ||
+        _composerRoute != null ||
+        !_authController.session.isSignedIn) {
+      return;
+    }
+    setState(() => _isHomeConnectionsOpen = true);
+    try {
+      await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+        builder: (_) => const ConnectionsScreen(),
+      ));
+    } finally {
+      if (mounted) setState(() => _isHomeConnectionsOpen = false);
+    }
+  }
+
+  Future<void> _openPostComposer({String? initialDraftId}) async {
+    if (!mounted ||
+        _composerRoute != null ||
+        _isHomeConnectionsOpen ||
+        !_authController.session.isSignedIn) {
+      return;
+    }
 
     late final MaterialPageRoute<void> route;
     route = MaterialPageRoute<void>(
@@ -321,6 +407,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
             child: UploaderScreen(
               fullScreen: true,
               draftStore: widget.uploaderDraftStore,
+              initialDraftId: initialDraftId,
               loadSubscription: widget.loadSubscription,
               pickVideo: widget.pickVideo,
               createUpload: widget.createUpload,

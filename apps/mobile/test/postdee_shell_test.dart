@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -18,6 +19,7 @@ import 'package:postdee_mobile/features/captions/caption_writing_style_store.dar
 import 'package:postdee_mobile/features/home/home_screen.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/profile/profile_screen.dart';
+import 'package:postdee_mobile/features/platforms/connections_screen.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
 import 'package:postdee_mobile/features/legal/legal_document_screen.dart';
@@ -153,6 +155,191 @@ class _ShellEmailRecoveryGateway
 }
 
 void main() {
+  testWidgets('Home create shares the guarded composer and awaits its return',
+      (tester) async {
+    final languageController = _signInShell();
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: languageController,
+      uploaderDraftStore: _ShellDraftStore(),
+      loadRecentPosts: () async => const [],
+      loadScheduledPosts: () async => const [],
+      loadSocialConnections: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    final home = tester.widget<HomeScreen>(find.byType(HomeScreen));
+    var returned = false;
+    final first = home.onCreatePost!().then((_) => returned = true);
+    unawaited(home.onCreatePost!());
+    await tester.pumpAndSettle();
+    expect(find.byType(UploaderScreen), findsOneWidget);
+    expect(returned, isFalse);
+    await tester.tap(find.byKey(const ValueKey('uploader-close')));
+    await tester.pumpAndSettle();
+    await first;
+    expect(returned, isTrue);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+  });
+
+  testWidgets('Home resumes the persisted draft and excludes another owner',
+      (tester) async {
+    final languageController = _signInShell();
+    final draftStore = _ShellDraftStore();
+    final draft = PublishDraft(
+      version: publishDraftManifestVersion,
+      id: 'home-owned',
+      ownerUserId: 'firebase-user-shell',
+      submissionRequestId: 'submit_${List.filled(64, 'a').join()}',
+      createdAt: DateTime.utc(2026, 10, 10),
+      updatedAt: DateTime.utc(2026, 10, 11),
+      videoPath: '/not-present/clip.mp4',
+      videoName: 'clip.mp4',
+      videoSizeBytes: 128,
+      caption: 'ร่างที่บันทึกไว้',
+      aiGuidance: '',
+      watermarkEnabled: false,
+      platformApiValues: const {},
+    );
+    final otherDraft = PublishDraft(
+      version: publishDraftManifestVersion,
+      id: 'home-other',
+      ownerUserId: 'other-owner',
+      submissionRequestId: 'submit_${List.filled(64, 'b').join()}',
+      createdAt: DateTime.utc(2026, 10, 10),
+      updatedAt: DateTime.utc(2026, 10, 12),
+      videoPath: '/not-present/other.mp4',
+      videoName: 'other.mp4',
+      videoSizeBytes: 128,
+      caption: 'ข้อมูลบัญชีอื่น',
+      aiGuidance: '',
+      watermarkEnabled: false,
+      platformApiValues: const {},
+    );
+    draftStore.drafts.addAll({draft.id: draft, otherDraft.id: otherDraft});
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: languageController,
+      uploaderDraftStore: draftStore,
+      loadRecentPosts: () async => const [],
+      loadScheduledPosts: () async => const [],
+      loadSocialConnections: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    final home = tester.widget<HomeScreen>(find.byType(HomeScreen));
+    expect(await home.loadDrafts!(), [draft]);
+    await home.onResumeDraft!(otherDraft);
+    await tester.pumpAndSettle();
+    expect(find.byType(UploaderScreen), findsNothing);
+    final resume = home.onResumeDraft!(draft);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<UploaderScreen>(find.byType(UploaderScreen)).initialDraftId,
+      draft.id,
+    );
+    expect(find.textContaining('ไม่พบวิดีโอของฉบับร่าง'), findsWidgets);
+    await tester.tap(find.byKey(const ValueKey('uploader-close')));
+    await tester.pumpAndSettle();
+    await resume;
+  });
+
+  testWidgets('Home calendar action reuses the existing calendar tab',
+      (tester) async {
+    final languageController = _signInShell();
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: languageController,
+      uploaderDraftStore: _ShellDraftStore(),
+      loadRecentPosts: () async => const [],
+      loadScheduledPosts: () async => const [],
+      loadSocialConnections: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    final calendarState = tester.state(
+      find.byType(CalendarScreen, skipOffstage: false),
+    );
+    tester.widget<HomeScreen>(find.byType(HomeScreen)).onOpenCalendar!();
+    await tester.pumpAndSettle();
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
+    expect(tester.state(find.byType(CalendarScreen)), same(calendarState));
+    expect(_referenceNav(), findsOneWidget);
+  });
+
+  testWidgets('Home connections action pauses Home and refreshes on return',
+      (tester) async {
+    final languageController = _signInShell();
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: languageController,
+      uploaderDraftStore: _ShellDraftStore(),
+      loadRecentPosts: () async => const [],
+      loadScheduledPosts: () async => const [],
+      loadSocialConnections: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    tester.widget<HomeScreen>(find.byType(HomeScreen)).onOpenConnections!();
+    await tester.pumpAndSettle();
+    expect(find.byType(ConnectionsScreen), findsOneWidget);
+    expect(
+      tester
+          .widget<HomeScreen>(find.byType(HomeScreen, skipOffstage: false))
+          .isActive,
+      isFalse,
+    );
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(tester.widget<HomeScreen>(find.byType(HomeScreen)).isActive, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Home state is replaced when the signed-in owner changes',
+      (tester) async {
+    final languageController = _signInShell();
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: languageController,
+      uploaderDraftStore: _ShellDraftStore(),
+      loadRecentPosts: () async => const [],
+      loadScheduledPosts: () async => const [],
+      loadSocialConnections: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    final previousState = tester.state(find.byType(HomeScreen));
+    PostDeeAuthSessionStore.instance.signIn(
+      const AuthSession(userId: 'new-home-owner', idToken: 'new-token'),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.state(find.byType(HomeScreen)), isNot(same(previousState)));
+    expect(find.byKey(const ValueKey('home-new-home-owner')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Home upcoming loader excludes explicitly foreign-owned posts',
+      (tester) async {
+    final languageController = _signInShell();
+    ScheduledPostResult scheduled(String id, String? owner) =>
+        ScheduledPostResult(
+          id: id,
+          userId: owner,
+          caption: id,
+          videoS3Key: '$id.mp4',
+          platforms: const ['YOUTUBE_SHORTS'],
+          scheduledAt: DateTime.utc(2027, 1, 1),
+          status: 'QUEUED',
+          createdAt: DateTime.utc(2026, 10, 11),
+        );
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: languageController,
+      uploaderDraftStore: _ShellDraftStore(),
+      loadRecentPosts: () async => const [],
+      loadScheduledPosts: () async => [
+        scheduled('mine', 'firebase-user-shell'),
+        scheduled('foreign', 'other-owner'),
+        scheduled('legacy', null),
+      ],
+      loadSocialConnections: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    final home = tester.widget<HomeScreen>(find.byType(HomeScreen));
+    final posts = await home.loadScheduledPosts!();
+    expect(posts.map((post) => post.id), ['mine', 'legacy']);
+    expect(find.text('foreign'), findsNothing);
+  });
+
   for (final origin in ['Home', 'Account', 'Calendar']) {
     testWidgets(
         '$origin composer return refreshes only the visible package snapshot',
@@ -232,6 +419,7 @@ void main() {
     );
     final loadedPlans = <String>[];
     await tester.pumpWidget(_shellApp(PostDeeShell(
+      uploaderDraftStore: _ShellDraftStore(),
       languageController: languageController,
       loadRecentPosts: () async => const [],
       loadScheduledPosts: () async => const [],
@@ -251,10 +439,12 @@ void main() {
     await tester.scrollUntilVisible(
       viewPlans,
       300,
-      scrollable: find.descendant(
-        of: find.byType(ProfileScreen),
-        matching: find.byType(Scrollable),
-      ).first,
+      scrollable: find
+          .descendant(
+            of: find.byType(ProfileScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
@@ -264,7 +454,8 @@ void main() {
     await tester.tap(viewPlans);
     await tester.pumpAndSettle();
     expect(find.byType(PaywallScreen), findsOneWidget);
-    expect(find.byKey(const ValueKey('paywall-subscription-error')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('paywall-subscription-error')), findsNothing);
     expect(loadedPlans.length, greaterThan(loadsBeforePaywall));
     backend = const SubscriptionStatusResult(
       userId: 'firebase-user-shell',
@@ -320,8 +511,10 @@ void main() {
         PostDeeLanguageController(initialLocale: const Locale('en'));
     addTearDown(language.dispose);
     final gateway = _ShellEmailRecoveryGateway();
-    await tester.pumpWidget(_shellApp(
-        PostDeeShell(languageController: language, emailAuthGateway: gateway)));
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+        uploaderDraftStore: _ShellDraftStore(),
+        languageController: language,
+        emailAuthGateway: gateway)));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('login-email-sign-in')));
     await tester.pumpAndSettle();
@@ -340,8 +533,8 @@ void main() {
     final language =
         PostDeeLanguageController(initialLocale: const Locale('en'));
     addTearDown(language.dispose);
-    await tester
-        .pumpWidget(_shellApp(PostDeeShell(languageController: language)));
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+        uploaderDraftStore: _ShellDraftStore(), languageController: language)));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey('login-terms')));
     await tester.tap(find.byKey(const ValueKey('login-terms')));
@@ -380,7 +573,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
-    expect(connectionLoads, 0);
+    expect(connectionLoads, 1,
+        reason:
+            'Home reads the connection summary without creating an uploader.');
 
     final createAction = tester
         .widget<Semantics>(
@@ -394,7 +589,9 @@ void main() {
 
     expect(find.byType(UploaderScreen, skipOffstage: false), findsOneWidget);
     expect(_referenceNav(), findsNothing);
-    expect(connectionLoads, 1);
+    expect(connectionLoads, 2,
+        reason:
+            'Only the visible composer makes an additional connection read.');
     expect(
       ModalRoute.of(tester.element(find.byType(UploaderScreen)))?.settings.name,
       '/create-post',
@@ -481,7 +678,9 @@ void main() {
       (tester) async {
     final languageController = _signInShell();
     await tester.pumpWidget(
-      _shellApp(PostDeeShell(languageController: languageController)),
+      _shellApp(PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
+          languageController: languageController)),
     );
     await tester.pumpAndSettle();
     final profile = tester.widget<ProfileScreen>(
@@ -603,7 +802,9 @@ void main() {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: PostDeeLocalizations.supportedLocales,
-            home: PostDeeShell(languageController: languageController),
+            home: PostDeeShell(
+                uploaderDraftStore: _ShellDraftStore(),
+                languageController: languageController),
           ),
         );
         await tester.pumpAndSettle();
@@ -658,6 +859,7 @@ void main() {
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
         home: PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
           languageController: languageController,
           pushMessagingGateway: pushGateway,
         ),
@@ -695,7 +897,9 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
-        home: PostDeeShell(languageController: languageController),
+        home: PostDeeShell(
+            uploaderDraftStore: _ShellDraftStore(),
+            languageController: languageController),
       ),
     );
     await tester.pumpAndSettle();
@@ -756,7 +960,9 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
-        home: PostDeeShell(languageController: languageController),
+        home: PostDeeShell(
+            uploaderDraftStore: _ShellDraftStore(),
+            languageController: languageController),
       ),
     );
     await tester.pumpAndSettle();
@@ -957,7 +1163,9 @@ void main() {
       (tester) async {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(
-      _shellApp(PostDeeShell(languageController: _signInShell())),
+      _shellApp(PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
+          languageController: _signInShell())),
     );
     await tester.pumpAndSettle();
     final indicator =
@@ -993,7 +1201,9 @@ void main() {
       'running dot retargets rapid taps without jumping or selecting an old tab',
       (tester) async {
     await tester.pumpWidget(
-      _shellApp(PostDeeShell(languageController: _signInShell())),
+      _shellApp(PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
+          languageController: _signInShell())),
     );
     await tester.pumpAndSettle();
     final indicator =
@@ -1061,7 +1271,9 @@ void main() {
       (tester) async {
     await tester.pumpWidget(
       _shellApp(
-        PostDeeShell(languageController: _signInShell()),
+        PostDeeShell(
+            uploaderDraftStore: _ShellDraftStore(),
+            languageController: _signInShell()),
         disableAnimations: true,
       ),
     );
@@ -1083,7 +1295,9 @@ void main() {
 
   testWidgets('running dot stops when reduced motion is enabled mid-flight',
       (tester) async {
-    final shell = PostDeeShell(languageController: _signInShell());
+    final shell = PostDeeShell(
+        uploaderDraftStore: _ShellDraftStore(),
+        languageController: _signInShell());
     await tester.pumpWidget(_shellApp(shell));
     await tester.pumpAndSettle();
     final indicator =
@@ -1125,7 +1339,9 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
       _shellApp(
-        PostDeeShell(languageController: _signInShell()),
+        PostDeeShell(
+            uploaderDraftStore: _ShellDraftStore(),
+            languageController: _signInShell()),
         textDirection: TextDirection.rtl,
         textScale: 2,
       ),
@@ -1238,7 +1454,9 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
-        home: PostDeeShell(languageController: languageController),
+        home: PostDeeShell(
+            uploaderDraftStore: _ShellDraftStore(),
+            languageController: languageController),
       ),
     );
     await tester.pumpAndSettle();
@@ -1311,7 +1529,9 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
-        home: PostDeeShell(languageController: languageController),
+        home: PostDeeShell(
+            uploaderDraftStore: _ShellDraftStore(),
+            languageController: languageController),
       ),
     );
     await tester.pumpAndSettle();
@@ -1386,6 +1606,7 @@ void main() {
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
         home: PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
           languageController: languageController,
           checkAccountDeletionReady: () async {
             deletionCalls.add('ready');
@@ -1498,6 +1719,7 @@ void main() {
           ],
           supportedLocales: PostDeeLocalizations.supportedLocales,
           home: PostDeeShell(
+            uploaderDraftStore: _ShellDraftStore(),
             languageController: languageController,
             checkAccountDeletionReady: () async => true,
             deleteAccount: () async {},
@@ -1573,6 +1795,7 @@ void main() {
     await tester.pumpWidget(
       _shellApp(
         PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
           languageController: languageController,
           checkAccountDeletionReady: () async => true,
           deleteAccount: () async => throw const ApiException(
@@ -1648,6 +1871,7 @@ void main() {
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
         home: PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
           languageController: languageController,
           checkAccountDeletionReady: () async {
             deletionCalls.add('ready');
@@ -1712,6 +1936,7 @@ void main() {
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
         home: PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
           languageController: languageController,
           checkAccountDeletionReady: () async {
             deletionCalls.add('ready');
@@ -1780,6 +2005,7 @@ void main() {
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
         home: PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
           languageController: languageController,
           checkAccountDeletionReady: () async => false,
           accountAccessRevoker: _RecordingAccountAccessRevoker(<String>[]),
@@ -1850,7 +2076,9 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
-        home: PostDeeShell(languageController: languageController),
+        home: PostDeeShell(
+            uploaderDraftStore: _ShellDraftStore(),
+            languageController: languageController),
       ),
     );
     await tester.pumpAndSettle();
@@ -1912,7 +2140,9 @@ void main() {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: PostDeeLocalizations.supportedLocales,
-            home: PostDeeShell(languageController: languageController),
+            home: PostDeeShell(
+                uploaderDraftStore: _ShellDraftStore(),
+                languageController: languageController),
           ),
         );
         await tester.pumpAndSettle();
@@ -2145,6 +2375,7 @@ void main() {
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
         home: PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
           languageController: languageController,
           loadScheduledPosts: () async {
             calendarLoadCount += 1;
@@ -2155,19 +2386,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // IndexedStack creates the calendar up front, but an inactive tab should
-    // not call the API until the user actually opens it.
-    expect(calendarLoadCount, 0);
-
-    await tester.tap(_referenceNavButton('Calendar'));
-    await tester.pumpAndSettle();
+    // Home reads its next-post summary. The inactive calendar adds no read.
     expect(calendarLoadCount, 1);
 
-    await tester.tap(_referenceNavButton('Home'));
-    await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Calendar'));
     await tester.pumpAndSettle();
     expect(calendarLoadCount, 2);
+
+    await tester.tap(_referenceNavButton('Home'));
+    await tester.pumpAndSettle();
+    expect(calendarLoadCount, 3,
+        reason: 'Only the reactivated Home refreshes its next-post summary.');
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pumpAndSettle();
+    expect(calendarLoadCount, 4);
   });
 
   testWidgets('opens published calendar posts in the detail screen',
@@ -2204,6 +2436,7 @@ void main() {
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
         home: PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
           languageController: languageController,
           loadScheduledPosts: () async => [
             ScheduledPostResult(
@@ -2275,6 +2508,7 @@ void main() {
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
         home: PostDeeShell(
+          uploaderDraftStore: _ShellDraftStore(),
           languageController: languageController,
           loadRecentPosts: () async {
             recentPostsLoadCount += 1;
@@ -2326,7 +2560,9 @@ void main() {
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: PostDeeLocalizations.supportedLocales,
-        home: PostDeeShell(languageController: languageController),
+        home: PostDeeShell(
+            uploaderDraftStore: _ShellDraftStore(),
+            languageController: languageController),
       ),
     );
     await tester.pumpAndSettle();

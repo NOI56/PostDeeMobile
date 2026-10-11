@@ -2,6 +2,46 @@
 
 Build roadmap for PostDee.
 
+## Home next-action revision (2026-10-11, locally verified; Staging delivery authorized)
+
+- Prioritize the latest explicitly saved owner/device-local draft or a clear
+  create-post action. Keep the existing full-screen composer and navigation.
+- Make subscription status compact; show real supported-channel connections,
+  the earliest future queued post, recent delivery outcomes and server-confirmed
+  store-link publication. Keep load errors distinct from empty/Free/disconnected
+  states and expose retry.
+- Preserve account isolation, subscription refresh, owner-only media previews,
+  partial/unknown publishing outcomes, calendar state and all existing package
+  gates. This is not a new statistics feature or API/provider integration.
+- Base-revision local verification passes: 1,825 Flutter tests, clean analysis, 1,781 API
+  tests/109 files, API build and Prisma validation/helper type-check. The
+  exact-source Staging x86_64 APK is installed at version code 8003 without
+  clearing account/draft data; native create/resume, Connections, empty Calendar
+  and published-shop navigation pass. Positive future queue and partial/unknown
+  outcomes use automated fixtures, not new customer posts.
+- Implement the subsequently selected “พร้อมภาพปก” variant: full-width saved
+  cover, or a muted paused local first frame with a five-second limit and static
+  fallback; dispose decoders while hidden/backgrounded/replaced. Add a derived
+  next-required-step hint, accessible press/loading feedback, and coordinated
+  six-source pull-to-refresh retaining current content and known empty results.
+  No playback, thumbnail write, FFmpeg job or media upload is added.
+  Match the accepted 120 logical-pixel cropped cover, wrap metadata/stack actions
+  for large text and preserve the notification button's semantic tap action.
+  No persisted exact wizard-step field exists. Respect reduced motion and
+  verify Thai large-text/narrow layouts. The preceding counts/version 8003 cover
+  the base revision; the final follow-up suite passes all 1,863 tests in 2m54s.
+  The current follow-up emulator has no draft; positive draft/cover cases use
+  fixtures without creating customer data. Intermediate version 8004 native
+  empty-Home/pull/press/navigation checks pass. Frozen-source version 8005 is
+  built/installed with clean analysis and final native bell/pull/create-and-close
+  checks passing. The final receipts are recorded in the implementation plan.
+- No route/schema migration, credential, dependency or environment change is
+  required. Local verification above is the pre-delivery receipt. The user has
+  authorized push and Staging deployment; exact-source CI and Render delivery
+  receipts are pending. Main merge and Production delivery are outside this
+  rollout. Acceptance and fidelity ledger:
+  `docs/superpowers/plans/2026-10-11-home-ux.md`.
+
 ## System audit fixes (2026-10-09, Staging API delivered)
 
 - Fix correctness before adding new screens: media-aware draft replay and saved

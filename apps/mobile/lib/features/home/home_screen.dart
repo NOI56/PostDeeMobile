@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/network/api_error_message.dart';
@@ -16,9 +17,15 @@ import '../posts/post_detail_screen.dart';
 import '../posts/posts_screen.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_skeleton.dart';
+import '../shared/postdee_press_feedback.dart';
+import '../uploader/publish_draft.dart';
+import '../uploader/uploader_screen.dart';
+import 'home_activity_section.dart';
+import 'home_draft_thumbnail.dart';
 
 typedef HomeSubscriptionLoader = Future<SubscriptionStatusResult> Function();
 typedef HomeRecentPostsLoader = Future<List<PostSummaryResult>> Function();
+typedef HomeLinkProfileLoader = Future<LinkInBioProfileResult?> Function();
 typedef HomeVideoThumbnailControllerFactory = VideoPlayerController Function(
   Uri videoUrl,
 );
@@ -31,10 +38,20 @@ class HomeScreen extends StatefulWidget {
     this.loadRecentPosts,
     this.loadAllPosts,
     this.createVideoThumbnailController,
+    this.createDraftThumbnailController,
     this.onViewAllPosts,
     this.onOpenNotifications,
     this.onOpenProfile,
     this.onOpenLinkInBio,
+    this.loadDrafts,
+    this.loadConnections,
+    this.loadScheduledPosts,
+    this.loadLinkProfile,
+    this.onCreatePost,
+    this.onResumeDraft,
+    this.onOpenConnections,
+    this.onOpenCalendar,
+    this.now,
     this.userName,
   });
 
@@ -46,10 +63,20 @@ class HomeScreen extends StatefulWidget {
   final HomeRecentPostsLoader? loadRecentPosts;
   final PostsLoader? loadAllPosts;
   final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
+  final HomeDraftThumbnailControllerFactory? createDraftThumbnailController;
   final VoidCallback? onViewAllPosts;
   final VoidCallback? onOpenNotifications;
   final VoidCallback? onOpenProfile;
   final VoidCallback? onOpenLinkInBio;
+  final Future<List<PublishDraft>> Function()? loadDrafts;
+  final Future<List<SocialConnectionResult>> Function()? loadConnections;
+  final HomeRecentPostsLoader? loadScheduledPosts;
+  final HomeLinkProfileLoader? loadLinkProfile;
+  final Future<void> Function()? onCreatePost;
+  final Future<void> Function(PublishDraft)? onResumeDraft;
+  final VoidCallback? onOpenConnections;
+  final VoidCallback? onOpenCalendar;
+  final DateTime Function()? now;
 
   /// Real signed-in display name, appended to the greeting. When null/empty the
   /// greeting shows without a name (no hardcoded demo name).
@@ -65,15 +92,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<PostSummaryResult> _recentPosts = const [];
   bool _isLoadingSubscription = true;
   bool _isLoadingPosts = true;
-  bool _postsLoadInProgress = false;
-  bool _postsReloadPending = false;
+  bool _hasLoadedPosts = false;
+  Future<bool>? _postsLoadFuture;
+  Future<bool>? _subscriptionLoadFuture;
+  Future<void>? _dashboardRefreshFuture;
+  final _activityKey = GlobalKey<HomeActivitySectionState>();
+  final _shopKey = GlobalKey<_LinkInBioShortcutCardState>();
+  bool? _refreshSucceeded;
   String? _postsErrorMessage;
   String? _subscriptionErrorMessage;
   var _subscriptionLoadGeneration = 0;
+  var _activityRefreshToken = 0;
+  String? _ownerUserId;
+  var _ownerGeneration = 0;
+  bool _openingComposer = false;
 
   @override
   void initState() {
     super.initState();
+    _ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
+    PostDeeAuthSessionStore.instance.addListener(_handleOwnerChanged);
     WidgetsBinding.instance.addObserver(this);
     _loadSubscription();
     if (widget.isActive) {
@@ -85,8 +123,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    PostDeeAuthSessionStore.instance.removeListener(_handleOwnerChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _handleOwnerChanged() {
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    if (!mounted || owner == _ownerUserId) return;
+    _ownerUserId = owner;
+    _ownerGeneration++;
+    _subscriptionLoadGeneration++;
+    _postsLoadFuture = null;
+    _subscriptionLoadFuture = null;
+    _dashboardRefreshFuture = null;
+    setState(() {
+      _subscription = null;
+      _recentPosts = const [];
+      _hasLoadedPosts = false;
+      _postsErrorMessage = null;
+      _subscriptionErrorMessage = null;
+      _isLoadingPosts = widget.isActive;
+      _isLoadingSubscription = true;
+      _openingComposer = false;
+      _refreshSucceeded = null;
+    });
+    _loadSubscription();
+    if (widget.isActive) _loadRecentPosts();
   }
 
   @override
@@ -108,58 +171,79 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _loadRecentPosts() async {
-    if (_postsLoadInProgress) {
-      _postsReloadPending = widget.isActive;
-      return;
-    }
-    _postsLoadInProgress = true;
+  Future<bool> _loadRecentPosts({bool preserveContent = false}) {
+    final pending = _postsLoadFuture;
+    if (pending != null) return pending;
+    final operation = _performRecentPostsLoad(preserveContent: preserveContent);
+    _postsLoadFuture = operation;
+    unawaited(operation.then((_) {
+      if (identical(_postsLoadFuture, operation)) _postsLoadFuture = null;
+    }));
+    return operation;
+  }
+
+  Future<bool> _performRecentPostsLoad({required bool preserveContent}) async {
+    final ownerGeneration = _ownerGeneration;
     setState(() {
-      _isLoadingPosts = true;
+      _isLoadingPosts =
+          !_hasLoadedPosts && (!preserveContent || _recentPosts.isEmpty);
       _postsErrorMessage = null;
+      _refreshSucceeded = null;
     });
 
     try {
       final loader = widget.loadRecentPosts ?? _apiClient.listRecentPosts;
       final posts = await loader();
 
-      if (!mounted) {
-        return;
+      if (mounted && ownerGeneration == _ownerGeneration) {
+        setState(() {
+          _recentPosts = posts;
+          _hasLoadedPosts = true;
+          _postsErrorMessage = null;
+        });
+        return true;
       }
-
-      setState(() {
-        _recentPosts = posts;
-        _postsErrorMessage = null;
-      });
     } catch (_) {
-      if (!mounted) {
-        return;
+      if (mounted && ownerGeneration == _ownerGeneration) {
+        final isThai = Localizations.localeOf(context).languageCode == 'th';
+        setState(() {
+          _postsErrorMessage = isThai
+              ? 'โหลดโพสต์ล่าสุดไม่สำเร็จ'
+              : 'Could not load latest posts';
+        });
       }
-
-      final isThai = Localizations.localeOf(context).languageCode == 'th';
-      setState(() {
-        _postsErrorMessage =
-            isThai ? 'โหลดโพสต์ล่าสุดไม่สำเร็จ' : 'Could not load latest posts';
-      });
     } finally {
-      _postsLoadInProgress = false;
-      if (mounted) {
+      if (mounted && ownerGeneration == _ownerGeneration) {
         setState(() => _isLoadingPosts = false);
       }
     }
 
-    final shouldReload = _postsReloadPending && mounted && widget.isActive;
-    _postsReloadPending = false;
-    if (shouldReload) {
-      await _loadRecentPosts();
-    }
+    return false;
   }
 
-  Future<void> _loadSubscription() async {
+  Future<bool> _loadSubscription({
+    bool preserveContent = false,
+    bool force = false,
+  }) {
+    final pending = _subscriptionLoadFuture;
+    if (!force && pending != null) return pending;
+    final operation =
+        _performSubscriptionLoad(preserveContent: preserveContent);
+    _subscriptionLoadFuture = operation;
+    unawaited(operation.then((_) {
+      if (identical(_subscriptionLoadFuture, operation)) {
+        _subscriptionLoadFuture = null;
+      }
+    }));
+    return operation;
+  }
+
+  Future<bool> _performSubscriptionLoad({required bool preserveContent}) async {
     final loadGeneration = ++_subscriptionLoadGeneration;
     setState(() {
-      _isLoadingSubscription = true;
+      _isLoadingSubscription = _subscription == null;
       _subscriptionErrorMessage = null;
+      _refreshSucceeded = null;
     });
 
     try {
@@ -168,15 +252,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final subscription = await loader();
 
       if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
-        return;
+        return false;
       }
 
       setState(() {
         _subscription = subscription;
       });
+      return true;
     } on ApiException catch (error) {
       if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
-        return;
+        return false;
       }
 
       setState(() {
@@ -185,7 +270,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
     } on SocketException {
       if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
-        return;
+        return false;
       }
 
       final l10n = PostDeeLocalizations.of(context);
@@ -194,7 +279,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
     } catch (_) {
       if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
-        return;
+        return false;
       }
 
       final l10n = PostDeeLocalizations.of(context);
@@ -207,6 +292,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _isLoadingSubscription = false;
         });
       }
+    }
+    return false;
+  }
+
+  Future<void> _refreshDashboard() {
+    if (!mounted || !widget.isActive || _ownerUserId == null) {
+      return Future<void>.value();
+    }
+    final pending = _dashboardRefreshFuture;
+    if (pending != null) return pending;
+    final operation = _performDashboardRefresh();
+    _dashboardRefreshFuture = operation;
+    unawaited(operation.then((_) {
+      if (identical(_dashboardRefreshFuture, operation)) {
+        _dashboardRefreshFuture = null;
+      }
+    }));
+    return operation;
+  }
+
+  Future<void> _performDashboardRefresh() async {
+    final ownerGeneration = _ownerGeneration;
+    setState(() => _refreshSucceeded = null);
+    bool succeeded;
+    try {
+      final results = await Future.wait<bool>([
+        _loadSubscription(preserveContent: true),
+        _loadRecentPosts(preserveContent: true),
+        _activityKey.currentState?.refresh(preserveContent: true) ??
+            Future<bool>.value(false),
+        _shopKey.currentState?.refresh(preserveContent: true) ??
+            Future<bool>.value(false),
+      ]);
+      succeeded = results.every((result) => result);
+    } catch (_) {
+      succeeded = false;
+    }
+    if (mounted && ownerGeneration == _ownerGeneration) {
+      setState(() => _refreshSucceeded = succeeded);
     }
   }
 
@@ -221,7 +345,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
 
     if (mounted) {
-      await _loadSubscription();
+      await _loadSubscription(force: true);
     }
   }
 
@@ -234,6 +358,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // A publish-now or cancel changed the post list, so reload it.
     if (changed == true && mounted) {
+      setState(() => _activityRefreshToken++);
       await Future.wait([_loadRecentPosts(), _loadSubscription()]);
     }
   }
@@ -246,7 +371,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => PostsScreen(loadPosts: widget.loadAllPosts),
     ));
-    if (mounted) await Future.wait([_loadRecentPosts(), _loadSubscription()]);
+    if (mounted) {
+      setState(() => _activityRefreshToken++);
+      await Future.wait([_loadRecentPosts(), _loadSubscription()]);
+    }
+  }
+
+  Future<void> _createPost() async {
+    if (_openingComposer) return;
+    final ownerGeneration = _ownerGeneration;
+    setState(() => _openingComposer = true);
+    try {
+      if (widget.onCreatePost != null) {
+        await widget.onCreatePost!();
+      } else {
+        await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const UploaderScreen(),
+        ));
+      }
+      if (mounted && ownerGeneration == _ownerGeneration) {
+        setState(() => _activityRefreshToken++);
+        await Future.wait([_loadRecentPosts(), _loadSubscription()]);
+      }
+    } finally {
+      if (mounted && ownerGeneration == _ownerGeneration) {
+        setState(() => _openingComposer = false);
+      }
+    }
+  }
+
+  Future<void> _resumeDraft(PublishDraft draft) async {
+    if (widget.onResumeDraft != null) {
+      await widget.onResumeDraft!(draft);
+    } else {
+      if (PostDeeAuthSessionStore.instance.session.stableUserId !=
+          draft.ownerUserId) {
+        return;
+      }
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => UploaderScreen(initialDraftId: draft.id),
+      ));
+    }
+    if (mounted) {
+      setState(() => _activityRefreshToken++);
+      await Future.wait([_loadRecentPosts(), _loadSubscription()]);
+    }
   }
 
   @override
@@ -258,66 +427,123 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? name.characters.first.toUpperCase()
         : 'P';
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, AppTheme.navOverlap),
-      children: [
-        _HomeHeader(
-          title: isThai ? 'หน้าแรก' : l10n.homeTab,
-          avatarInitial: avatarInitial,
-          notificationsLabel: l10n.notificationsAction,
-          accountLabel: l10n.userAccountAction,
-          onNotificationsPressed: widget.onOpenNotifications,
-          onAccountPressed: widget.onOpenProfile,
-        ),
-        const SizedBox(height: 14),
-        _PlanSummaryCard(
-          subscription: _subscription,
-          isLoading: _isLoadingSubscription,
-          errorMessage: _subscriptionErrorMessage,
-          onTap: _openPaywall,
-        ),
-        const SizedBox(height: 14),
-        _LinkInBioShortcutCard(onOpen: widget.onOpenLinkInBio),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                isThai ? 'โพสต์ล่าสุด' : l10n.homeLatestPostStatus,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-            ),
-            if (_recentPosts.isNotEmpty)
-              TextButton(
-                onPressed: _openAllPosts,
-                child: Text(
-                  isThai ? 'ดูทั้งหมด' : l10n.homeViewAll,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.accentCyanInk,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        _LatestPostList(
-          posts: _recentPosts,
-          isLoading: _isLoadingPosts,
-          errorMessage: _postsErrorMessage,
-          onRetry: _loadRecentPosts,
-          onOpenPost: _openPostDetail,
-          isActive: widget.isActive,
-          createVideoThumbnailController: widget.createVideoThumbnailController,
-        ),
-        const SizedBox(height: AppTheme.spaceSm),
-      ],
-    );
+    return ColoredBox(
+        color: AppTheme.ink,
+        child: RefreshIndicator(
+            key: const ValueKey('home-pull-refresh'),
+            color: AppTheme.accent,
+            onRefresh: _refreshDashboard,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding:
+                  const EdgeInsets.fromLTRB(16, 8, 16, AppTheme.navOverlap),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _HomeHeader(
+                      title: isThai ? 'หน้าแรก' : l10n.homeTab,
+                      avatarInitial: avatarInitial,
+                      notificationsLabel: l10n.notificationsAction,
+                      accountLabel: l10n.userAccountAction,
+                      onNotificationsPressed: widget.onOpenNotifications,
+                      onAccountPressed: widget.onOpenProfile,
+                    ),
+                    const SizedBox(height: 14),
+                    _PlanSummaryCard(
+                      subscription: _subscription,
+                      isLoading: _isLoadingSubscription,
+                      errorMessage: _subscriptionErrorMessage,
+                      onTap: _openPaywall,
+                      onRetry: _loadSubscription,
+                      animateSkeleton: widget.isActive && _ownerUserId != null,
+                    ),
+                    if (_refreshSucceeded != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _refreshSucceeded!
+                            ? (isThai
+                                ? 'อัปเดตข้อมูลล่าสุดแล้ว'
+                                : 'Home is up to date')
+                            : (isThai
+                                ? 'อัปเดตข้อมูลยังไม่ครบ ลองใหม่ในส่วนที่มีปัญหา'
+                                : 'Some updates failed. Retry the affected section'),
+                        key: const ValueKey('home-refresh-status'),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _refreshSucceeded!
+                              ? AppTheme.accentCyanInk
+                              : Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    HomeActivitySection(
+                      key: _activityKey,
+                      isActive: widget.isActive,
+                      hasPosts: _isLoadingPosts || _postsErrorMessage != null
+                          ? null
+                          : _recentPosts.isNotEmpty,
+                      loadDrafts: widget.loadDrafts,
+                      loadConnections: widget.loadConnections,
+                      loadScheduledPosts: widget.loadScheduledPosts,
+                      onCreatePost: _createPost,
+                      onResumeDraft: _resumeDraft,
+                      onOpenConnections: widget.onOpenConnections,
+                      onOpenCalendar: widget.onOpenCalendar,
+                      now: widget.now,
+                      createDraftThumbnailController:
+                          widget.createDraftThumbnailController,
+                      refreshToken: _activityRefreshToken,
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            isThai ? 'โพสต์ล่าสุด' : l10n.homeLatestPostStatus,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (_recentPosts.isNotEmpty)
+                          PostDeePressFeedback(
+                              child: TextButton(
+                            onPressed: _openAllPosts,
+                            child: Text(
+                              isThai ? 'ดูทั้งหมด' : l10n.homeViewAll,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.accentCyanInk,
+                              ),
+                            ),
+                          )),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    _LatestPostList(
+                      posts: _recentPosts,
+                      isLoading: _isLoadingPosts,
+                      errorMessage: _postsErrorMessage,
+                      onRetry: _loadRecentPosts,
+                      onOpenPost: _openPostDetail,
+                      isActive: widget.isActive,
+                      createVideoThumbnailController:
+                          widget.createVideoThumbnailController,
+                      onCreatePost: _openingComposer ? null : _createPost,
+                    ),
+                    const SizedBox(height: 16),
+                    _LinkInBioShortcutCard(
+                      key: _shopKey,
+                      isActive: widget.isActive,
+                      loadProfile: widget.loadLinkProfile,
+                      onOpen: widget.onOpenLinkInBio,
+                    ),
+                  ]),
+            )));
   }
 }
 
@@ -343,13 +569,26 @@ class _HomeHeader extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: AppTheme.textPrimary,
-                  fontWeight: FontWeight.w900,
-                ),
-          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text.rich(
+                TextSpan(children: [
+                  TextSpan(
+                      text: 'Post',
+                      style: TextStyle(color: AppTheme.textPrimary)),
+                  const TextSpan(
+                      text: 'Dee', style: TextStyle(color: AppTheme.accent)),
+                ]),
+                style:
+                    const TextStyle(fontSize: 25, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 7),
+            Text(title,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                    )),
+          ]),
         ),
         // The red dot only shows while there are unread notifications.
         ListenableBuilder(
@@ -365,23 +604,26 @@ class _HomeHeader extends StatelessWidget {
         Semantics(
           label: accountLabel,
           button: true,
-          child: GestureDetector(
-            onTap: onAccountPressed,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppTheme.mint,
-                shape: BoxShape.circle,
-              ),
-              child: SizedBox(
-                width: 44,
-                height: 44,
-                child: Center(
-                  child: Text(
-                    avatarInitial,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: AppTheme.accentCyanInk,
-                          fontWeight: FontWeight.w900,
-                        ),
+          child: PostDeePressFeedback(
+            enabled: onAccountPressed != null,
+            child: GestureDetector(
+              onTap: onAccountPressed,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppTheme.mint,
+                  shape: BoxShape.circle,
+                ),
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Center(
+                    child: Text(
+                      avatarInitial,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: AppTheme.accentCyanInk,
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
                   ),
                 ),
               ),
@@ -408,49 +650,54 @@ class _RoundHeaderButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      label: label,
-      button: true,
-      child: ExcludeSemantics(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: onPressed,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppTheme.glass,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppTheme.border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 2,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                ),
-                child: SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: Icon(icon, color: AppTheme.textSecondary, size: 22),
-                ),
-              ),
-              if (hasBadge)
-                Positioned(
-                  top: 9,
-                  right: 10,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppTheme.glass, width: 2),
-                    ),
-                    child: const SizedBox(width: 8, height: 8),
+    return PostDeePressFeedback(
+      enabled: onPressed != null,
+      child: Semantics(
+        label: label,
+        button: true,
+        enabled: onPressed != null,
+        onTap: onPressed,
+        child: ExcludeSemantics(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: onPressed,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppTheme.glass,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppTheme.border),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 2,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(icon, color: AppTheme.textSecondary, size: 22),
                   ),
                 ),
-            ],
+                if (hasBadge)
+                  Positioned(
+                    top: 9,
+                    right: 10,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppTheme.glass, width: 2),
+                      ),
+                      child: const SizedBox(width: 8, height: 8),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -458,21 +705,138 @@ class _RoundHeaderButton extends StatelessWidget {
   }
 }
 
-class _LinkInBioShortcutCard extends StatelessWidget {
-  const _LinkInBioShortcutCard({this.onOpen});
+class _LinkInBioShortcutCard extends StatefulWidget {
+  const _LinkInBioShortcutCard({
+    super.key,
+    this.onOpen,
+    required this.isActive,
+    this.loadProfile,
+  });
 
   final VoidCallback? onOpen;
+  final bool isActive;
+  final HomeLinkProfileLoader? loadProfile;
 
-  void _open(BuildContext context) {
-    if (onOpen != null) {
-      onOpen!();
+  @override
+  State<_LinkInBioShortcutCard> createState() => _LinkInBioShortcutCardState();
+}
+
+class _LinkInBioShortcutCardState extends State<_LinkInBioShortcutCard>
+    with WidgetsBindingObserver {
+  LinkInBioProfileResult? _profile;
+  bool _loading = true;
+  bool _failed = false;
+  bool _hasLoaded = false;
+  Future<bool>? _loadFuture;
+  int _generation = 0;
+  String? _owner;
+
+  @override
+  void initState() {
+    super.initState();
+    _owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    PostDeeAuthSessionStore.instance.addListener(_onSessionChanged);
+    WidgetsBinding.instance.addObserver(this);
+    if (widget.isActive) _load();
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    _loadFuture = null;
+    PostDeeAuthSessionStore.instance.removeListener(_onSessionChanged);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _onSessionChanged() {
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    if (_owner == owner) return;
+    _owner = owner;
+    _generation++;
+    _loadFuture = null;
+    setState(() {
+      _profile = null;
+      _loading = true;
+      _failed = false;
+      _hasLoaded = false;
+    });
+    if (widget.isActive) _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LinkInBioShortcutCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) _load();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        widget.isActive &&
+        (ModalRoute.of(context)?.isCurrent ?? true)) {
+      _load();
+    }
+  }
+
+  Future<bool> _load() => refresh(preserveContent: false);
+
+  Future<bool> refresh({bool preserveContent = true}) {
+    final pending = _loadFuture;
+    if (pending != null) return pending;
+    final operation = _performLoad(preserveContent: preserveContent);
+    _loadFuture = operation;
+    unawaited(operation.then((_) {
+      if (identical(_loadFuture, operation)) _loadFuture = null;
+    }));
+    return operation;
+  }
+
+  Future<bool> _performLoad({required bool preserveContent}) async {
+    final generation = ++_generation;
+    final owner = _owner;
+    setState(() {
+      _loading = !_hasLoaded;
+      _failed = false;
+    });
+    try {
+      if (owner == null) {
+        throw const AuthSessionChangedException();
+      }
+      final profile = await (widget.loadProfile ??
+          PostDeeApiClient().loadLinkInBioProfile)();
+      if (!mounted || generation != _generation || owner != _owner) {
+        return false;
+      }
+      setState(() {
+        _profile = profile;
+        _loading = false;
+        _hasLoaded = true;
+      });
+      return true;
+    } catch (_) {
+      if (!mounted || generation != _generation || owner != _owner) {
+        return false;
+      }
+      setState(() {
+        _failed = true;
+        _loading = false;
+      });
+      return false;
+    }
+  }
+
+  Future<void> _open(BuildContext context) async {
+    if (widget.onOpen != null) {
+      widget.onOpen!();
       return;
     }
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => const LinkInBioScreen(),
       ),
     );
+    if (mounted) await _load();
   }
 
   @override
@@ -480,6 +844,17 @@ class _LinkInBioShortcutCard extends StatelessWidget {
     final isThai = Localizations.localeOf(context).languageCode == 'th';
     const accent = Color(0xFF0EA5B7);
     final tint = accent.withValues(alpha: 0.14);
+    final published =
+        _profile?.isPublished == true && _profile?.publicUrl != null;
+    final subtitle = _loading
+        ? (isThai ? 'กำลังตรวจสอบลิงก์ร้าน' : 'Checking shop link')
+        : _failed
+            ? (isThai ? 'ตรวจสอบลิงก์ร้านไม่ได้' : 'Could not check shop link')
+            : published
+                ? (isThai ? 'เผยแพร่แล้ว' : 'Published')
+                : _profile == null
+                    ? (isThai ? 'สร้างหน้าร้าน' : 'Create your shop page')
+                    : (isThai ? 'ยังไม่เผยแพร่' : 'Not published');
     final statusBadge = DecoratedBox(
       decoration: BoxDecoration(
         color: tint,
@@ -488,7 +863,9 @@ class _LinkInBioShortcutCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
         child: Text(
-          isThai ? 'หน้าร้าน' : 'Storefront',
+          published
+              ? (isThai ? 'จัดการ' : 'Manage')
+              : (isThai ? 'เปิด' : 'Open'),
           style: const TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w700,
@@ -498,78 +875,101 @@ class _LinkInBioShortcutCard extends StatelessWidget {
       ),
     );
 
-    return Semantics(
-      excludeSemantics: true,
-      button: true,
-      label: isThai ? 'ลิงก์หน้าโปรไฟล์' : 'Profile link',
-      hint: isThai
-          ? 'เปิดหน้าสร้างลิงก์หน้าโปรไฟล์'
-          : 'Open the profile link builder',
-      child: MediaQuery.withClampedTextScaling(
-        maxScaleFactor: 1.3,
-        child: Material(
-          key: const ValueKey('home-link-in-bio-shortcut'),
-          color: AppTheme.glass,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(17),
-            side: BorderSide(color: AppTheme.border),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () => _open(context),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      color: tint,
+    return PostDeePressFeedback(
+      child: Semantics(
+        button: true,
+        explicitChildNodes: true,
+        label: isThai ? 'ลิงก์หน้าโปรไฟล์' : 'Profile link',
+        hint: isThai
+            ? 'เปิดหน้าสร้างลิงก์หน้าโปรไฟล์'
+            : 'Open the profile link builder',
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.3,
+          child: Material(
+            key: const ValueKey('home-link-in-bio-shortcut'),
+            color: AppTheme.glass,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(17),
+              side: BorderSide(color: AppTheme.border),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => _open(context),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: tint,
+                      ),
+                      child: const Icon(Icons.link_rounded,
+                          color: accent, size: 22),
                     ),
-                    child:
-                        const Icon(Icons.link_rounded, color: accent, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isThai ? 'ลิงก์หน้าโปรไฟล์' : 'Profile link',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          isThai
-                              ? 'รวมลิงก์ร้านและแคมเปญ'
-                              : 'Store and campaign links',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppTheme.textMuted,
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ExcludeSemantics(
+                              child: Text(
+                            isThai ? 'ลิงก์หน้าโปรไฟล์' : 'Profile link',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.textPrimary,
+                            ),
+                          )),
+                          const SizedBox(height: 2),
+                          if (_loading && !_hasLoaded)
+                            Semantics(
+                              label: subtitle,
+                              child: PostDeeSkeleton(
+                                key: const ValueKey('home-shop-skeleton'),
+                                width: 130,
+                                height: 11,
+                                animate: widget.isActive && _owner != null,
+                              ),
+                            )
+                          else
+                            Text(
+                              subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textMuted,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: AppTheme.spaceSm),
-                  statusBadge,
-                  const SizedBox(width: AppTheme.spaceXs),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: AppTheme.textMuted,
-                    size: 20,
-                  ),
-                ],
+                    const SizedBox(width: AppTheme.spaceSm),
+                    if (_failed)
+                      IconButton(
+                        key: const ValueKey('home-shop-retry'),
+                        tooltip:
+                            isThai ? 'ลองตรวจลิงก์ร้านใหม่' : 'Retry shop link',
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh_rounded,
+                            color: accent, size: 20),
+                      )
+                    else
+                      statusBadge,
+                    const SizedBox(width: AppTheme.spaceXs),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppTheme.textMuted,
+                      size: 20,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -585,12 +985,16 @@ class _PlanSummaryCard extends StatelessWidget {
     required this.isLoading,
     required this.errorMessage,
     required this.onTap,
+    required this.onRetry,
+    this.animateSkeleton = false,
   });
 
   final SubscriptionStatusResult? subscription;
   final bool isLoading;
   final String? errorMessage;
   final VoidCallback onTap;
+  final VoidCallback onRetry;
+  final bool animateSkeleton;
 
   String _planTitle(PostDeeLocalizations l10n) {
     final isThai = l10n.locale.languageCode == 'th';
@@ -637,19 +1041,14 @@ class _PlanSummaryCard extends StatelessWidget {
       return errorMessage!;
     }
 
-    final remainingPosts = subscription?.remainingPostsThisMonth ?? 1;
+    final remainingPosts = subscription?.remainingPostsThisMonth;
+    if (remainingPosts == null) {
+      return isThai ? 'ยังไม่ทราบหน่วยคงเหลือ' : 'Remaining units unavailable';
+    }
     final includedUnits = _planIncludedUnits();
     return isThai
         ? 'เหลือ $remainingPosts/$includedUnits หน่วย'
         : '$remainingPosts/$includedUnits units left';
-  }
-
-  double _planProgressRatio() {
-    final includedUnits = _planIncludedUnits();
-    final remainingPosts = subscription?.remainingPostsThisMonth ?? 1;
-    final remainingUnits = remainingPosts.clamp(0, includedUnits);
-
-    return remainingUnits / includedUnits;
   }
 
   @override
@@ -657,129 +1056,69 @@ class _PlanSummaryCard extends StatelessWidget {
     final l10n = PostDeeLocalizations.of(context);
     final title = _planTitle(l10n);
     final subtitle = _planSubtitle(l10n);
-    final progressRatio = _planProgressRatio();
     final isPro = subscription?.plan.toUpperCase() == 'PRO';
-    final hasUnknownPlan = subscription == null && errorMessage != null;
-    final showQuota = !isLoading && errorMessage == null;
     final showUpgrade =
         !isLoading && errorMessage == null && subscription != null && !isPro;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AppTheme.mint,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.accent.withValues(alpha: 0.20)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppTheme.accent.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: const SizedBox(
-                  width: 38,
-                  height: 38,
-                  child: Icon(
-                    Icons.card_membership_rounded,
-                    color: AppTheme.accent,
-                    size: 20,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 13),
+    return PostDeePressFeedback(
+      child: Material(
+        key: const ValueKey('home-plan-summary'),
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            child: Row(children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 3,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Text(
-                      title,
-                      key: const ValueKey('home-plan-title'),
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelLarge
-                          ?.copyWith(fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      key: const ValueKey('home-plan-subtitle'),
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelSmall
-                          ?.copyWith(color: AppTheme.textSecondary),
-                    ),
-                    if (showQuota) ...[
-                      const SizedBox(height: 8),
-                      Semantics(
-                        value: subtitle,
-                        child: ExcludeSemantics(
-                          child: SizedBox(
-                            height: 6,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: AppTheme.accent.withValues(alpha: 0.18),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: FractionallySizedBox(
-                                  key: const ValueKey(
-                                    'home-plan-progress-fill',
-                                  ),
-                                  widthFactor: progressRatio,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.accentCyanInk,
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: const SizedBox(height: 6),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (showUpgrade && !hasUnknownPlan) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              l10n.locale.languageCode == 'th'
-                                  ? 'อัปเกรด'
-                                  : 'Upgrade',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelMedium
-                                  ?.copyWith(
-                                    color: AppTheme.accentCyanInk,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                            ),
-                          ),
-                          const SizedBox(width: 2),
-                          Icon(
-                            Icons.arrow_forward_rounded,
-                            color: AppTheme.accentCyanInk,
-                            size: 15,
-                          ),
-                        ],
-                      ),
-                    ],
+                    Text(title,
+                        key: const ValueKey('home-plan-title'),
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textSecondary)),
+                    if (isLoading && subscription == null && animateSkeleton)
+                      PostDeeSkeleton(
+                        key: const ValueKey('home-plan-skeleton'),
+                        width: 145,
+                        height: 12,
+                        animate: animateSkeleton,
+                      )
+                    else
+                      Text(subtitle,
+                          key: const ValueKey('home-plan-subtitle'),
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.textSecondary)),
                   ],
                 ),
               ),
-            ],
+              if (errorMessage != null)
+                IconButton(
+                  key: const ValueKey('home-plan-retry'),
+                  onPressed: onRetry,
+                  tooltip: l10n.locale.languageCode == 'th'
+                      ? 'ลองตรวจแพ็กเกจใหม่'
+                      : 'Retry package',
+                  icon: Icon(Icons.refresh_rounded,
+                      size: 20, color: AppTheme.accentCyanInk),
+                )
+              else if (showUpgrade)
+                Text(
+                  l10n.locale.languageCode == 'th' ? 'อัปเกรด' : 'Upgrade',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.accentCyanInk),
+                )
+              else
+                Icon(Icons.chevron_right_rounded,
+                    color: AppTheme.textMuted, size: 18),
+            ]),
           ),
         ),
       ),
@@ -796,6 +1135,7 @@ class _LatestPostList extends StatelessWidget {
     required this.onOpenPost,
     required this.isActive,
     required this.createVideoThumbnailController,
+    required this.onCreatePost,
   });
 
   final List<PostSummaryResult> posts;
@@ -805,15 +1145,26 @@ class _LatestPostList extends StatelessWidget {
   final ValueChanged<PostSummaryResult> onOpenPost;
   final bool isActive;
   final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
+  final VoidCallback? onCreatePost;
 
   @override
   Widget build(BuildContext context) {
     if (isLoading && posts.isEmpty) {
       return Column(
-        children: const [
-          PostDeeSkeleton(width: double.infinity, height: 58),
-          SizedBox(height: AppTheme.spaceSm),
-          PostDeeSkeleton(width: double.infinity, height: 58),
+        children: [
+          PostDeeSkeleton(
+            width: double.infinity,
+            height: 58,
+            animate: isActive &&
+                PostDeeAuthSessionStore.instance.session.stableUserId != null,
+          ),
+          const SizedBox(height: AppTheme.spaceSm),
+          PostDeeSkeleton(
+            width: double.infinity,
+            height: 58,
+            animate: isActive &&
+                PostDeeAuthSessionStore.instance.session.stableUserId != null,
+          ),
         ],
       );
     }
@@ -826,7 +1177,7 @@ class _LatestPostList extends StatelessWidget {
     }
 
     if (posts.isEmpty) {
-      return const _LatestPostsEmptyState();
+      return _LatestPostsEmptyState(onCreatePost: onCreatePost);
     }
 
     return Column(
@@ -889,7 +1240,8 @@ class _LatestPostsErrorState extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 8),
-            TextButton.icon(
+            PostDeePressFeedback(
+                child: TextButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh_rounded),
               label: Text(isThai ? 'ลองใหม่' : 'Try again'),
@@ -897,7 +1249,7 @@ class _LatestPostsErrorState extends StatelessWidget {
                 foregroundColor: colors.onErrorContainer,
                 minimumSize: const Size(48, 48),
               ),
-            ),
+            )),
           ],
         ),
       ),
@@ -906,7 +1258,8 @@ class _LatestPostsErrorState extends StatelessWidget {
 }
 
 class _LatestPostsEmptyState extends StatelessWidget {
-  const _LatestPostsEmptyState();
+  const _LatestPostsEmptyState({required this.onCreatePost});
+  final VoidCallback? onCreatePost;
 
   @override
   Widget build(BuildContext context) {
@@ -922,7 +1275,7 @@ class _LatestPostsEmptyState extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -953,14 +1306,27 @@ class _LatestPostsEmptyState extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'เริ่มสร้างโพสต์แรกของร้านคุณ\nโพสต์คลิปเดียวไปได้ทุกช่องทาง',
+                Localizations.localeOf(context).languageCode == 'th'
+                    ? 'โพสต์ที่สร้างจะแสดงที่นี่'
+                    : 'Your posts will appear here',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12.5,
                   height: 1.5,
-                  color: AppTheme.textMuted,
+                  color: AppTheme.textSecondary,
                 ),
               ),
+              const SizedBox(height: 8),
+              PostDeePressFeedback(
+                  enabled: onCreatePost != null,
+                  child: TextButton(
+                    key: const ValueKey('home-empty-create-post'),
+                    onPressed: onCreatePost,
+                    child: Text(
+                        Localizations.localeOf(context).languageCode == 'th'
+                            ? 'สร้างโพสต์'
+                            : 'Create post'),
+                  )),
             ],
           ),
         ),
@@ -1137,79 +1503,82 @@ class _LatestPostRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: title,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(15),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: AppTheme.border),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF122018).withValues(alpha: 0.04),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              _LatestPostThumbnail(
-                post: post,
-                isActive: isActive,
-                createController: createVideoThumbnailController,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
+      child: PostDeePressFeedback(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(15),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.glass,
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: AppTheme.border),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF122018).withValues(alpha: 0.04),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                _LatestPostThumbnail(
+                  post: post,
+                  isActive: isActive,
+                  createController: createVideoThumbnailController,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        for (final platform in platforms.take(4)) ...[
-                          Container(
-                            width: 13,
-                            height: 13,
-                            margin: const EdgeInsets.only(right: 3),
-                            decoration: BoxDecoration(
-                              color: platform.displayColor,
-                              borderRadius: BorderRadius.circular(4),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          for (final platform in platforms.take(4)) ...[
+                            Container(
+                              width: 13,
+                              height: 13,
+                              margin: const EdgeInsets.only(right: 3),
+                              decoration: BoxDecoration(
+                                color: platform.displayColor,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ],
+                          if (platforms.isNotEmpty) const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              sub,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textMuted,
+                              ),
                             ),
                           ),
                         ],
-                        if (platforms.isNotEmpty) const SizedBox(width: 3),
-                        Expanded(
-                          child: Text(
-                            sub,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppTheme.textMuted,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              _StatusPill(label: status.label, bg: status.bg, ink: status.ink),
-            ],
+                const SizedBox(width: 6),
+                _StatusPill(
+                    label: status.label, bg: status.bg, ink: status.ink),
+              ],
+            ),
           ),
         ),
       ),

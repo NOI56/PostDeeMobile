@@ -157,19 +157,32 @@ class _AiFixture {
   }
 }
 
+Future<void> _pumpUi(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump();
+  final waiting = find.byKey(const ValueKey('uploader-ai-waiting-indicator'));
+  // A real pending request keeps its indeterminate indicator animating. Allow
+  // async work and entrance animations to advance without waiting for its gate.
+  for (var frame = 0; frame < 8 && waiting.evaluate().isNotEmpty; frame++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  if (waiting.evaluate().isEmpty) await tester.pumpAndSettle();
+}
+
 Future<void> _show(WidgetTester tester, Finder finder) async {
+  await _pumpUi(tester);
   await tester.scrollUntilVisible(
     finder,
     250,
     scrollable: find.byType(Scrollable).first,
   );
   await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
+  await _pumpUi(tester);
 }
 
 Future<void> _openAi(WidgetTester tester) async {
   await goToUploaderStep(tester, 1);
-  final panel = find.byKey(const ValueKey('uploader-ai-open-panel'));
+  final panel = find.text('ปรับสไตล์และคำแนะนำ');
   await _show(tester, panel);
   await tester.tap(panel);
   await tester.pumpAndSettle();
@@ -180,7 +193,7 @@ Future<void> _generate(WidgetTester tester) async {
   final button = find.byKey(const ValueKey('uploader-ai-generate-button'));
   await _show(tester, button);
   await tester.tap(button);
-  await tester.pumpAndSettle();
+  await _pumpUi(tester);
 }
 
 Future<void> _enterCaption(WidgetTester tester, String caption) async {
@@ -677,11 +690,11 @@ void main() {
     await _show(tester, generate);
     expect(tester.widget<PostDeeGradientButton>(generate).onPressed, isNotNull);
     await tester.tap(generate);
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
     expect(fixture.captionsGenerated, 2);
 
     firstGate.complete(_aiResult(caption: 'ผลเก่าของคลิป A'));
-    await tester.pumpAndSettle();
+    await _pumpUi(tester);
     expect(tester.widget<PostDeeGradientButton>(generate).onPressed, isNull);
     expect(
         tester

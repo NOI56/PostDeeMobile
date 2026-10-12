@@ -7,6 +7,40 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Guided create-post revision (2026-10-12, locally verified and installed)
+
+The approved “ทีละขั้น” direction keeps the existing four-step composer and
+explicit draft saving. It makes the AI action visible while collapsing optional
+writing controls, shows verified destination account names and clip metadata,
+and keeps a concise step/channel-count summary beside the confirmation action.
+Date/time remains in the shared review and schedule panel.
+Connection refreshes reject stale owner/request results and withhold account
+names while the latest lookup is loading, failed or belongs to another owner.
+Home press feedback and current-only step entrance effects must respect reduced
+motion, `TickerMode` and background state. Publishing, caption-style learning,
+cover editing and all account/package/scheduling gates remain unchanged; no API,
+schema, dependency or environment change or migration is required. The latest
+local feedback follow-up adds focused inline caption validation, a waiting
+indicator tied to the existing AI request/full returned caption and a temporary
+check only after a verified explicit local-draft Save. The final rapid-save guard
+rejects duplicate busy callbacks before clearing success-feedback generation.
+Final feedback has 10 new tests; guard/save tests pass 86/86, the full Flutter
+suite passes 1,915/1,915 and analysis passes. APK 4012/8012 is installed with the
+retained account. Native blank-caption Next shows inline error/focus/keyboard;
+the app remains on clean empty step two after resetting the notice.
+Prior 187/187, 1,914/1,914 and native validation on 8011 are pre-guard receipts;
+AI/save success uses widget fixtures.
+The preceding connector source passed 1,905 Flutter tests and analysis. It adds
+three thin lines between the four progress circles and outlines pending steps.
+At that release Staging APK 4010/8010 was installed with the same signature and
+retained session; native checks showed lines/outlines and the active circle moving from
+clip to caption without inventing completion. The base 8009 four-step/AI/
+zero-destination checks are separate history; positive identities, metadata,
+schedules, AI and narrow/large-text cases use widget fixtures. This revision
+has not been pushed or deployed; the existing Staging server is unchanged.
+Scope, source/build hashes and separate native/fixture receipts belong in
+`docs/superpowers/plans/2026-10-12-create-post-guided-ux.md`.
+
 ## System audit fixes (2026-10-09)
 
 The audit-fix branch starts from verified `main` `c4e5220`. It preserves the
@@ -68,8 +102,9 @@ setting or dependency is added. Authorized source `df8df1d` is pushed;
 exact-source CI `38189859822` passes 1,891 Flutter tests, analysis and Backend
 checks. Render deploy `dep-db6327ajnfac73c7vr90` is Live at 08:02:20 GMT+7;
 16 existing migrations have none pending and health/readiness return HTTP 200.
-The locally verified Staging APK 4008/8008 remains installed with its account.
-Post-Live native refresh preserves the selected date/filter and account state.
+At that Calendar release, the locally verified Staging APK 4008/8008 was
+installed with its account. Post-Live native refresh preserved the selected
+date/filter and account state; the later guided revision updates the local APK.
 Verification and delivery are recorded separately from the preceding release in
 `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 

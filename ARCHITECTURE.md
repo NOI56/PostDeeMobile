@@ -2,6 +2,51 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Guided create-post presentation boundary (2026-10-12, locally verified and installed)
+
+The approved guided revision stays inside the existing four-step composer and
+its state/controller owner. Compact AI controls retain explicit generation,
+style/profile learning, review and fallback rules. Destination names come from
+the existing confirmed connection identities; clip facts come only from known
+local metadata. Connection loading adds owner/request generation guards so a
+stale response or its `finally` cannot overwrite/finalize a newer lookup. Review
+identities are withheld while loading, after errors or for an owner mismatch.
+The motion lifecycle observer does not initiate a fetch on resume. The sticky
+confirmation summary projects existing step/selected-channel state without
+creating a post or changing readiness checks. Date/time remains in the shared
+review and schedule panel.
+Home press feedback and keyed current-only step entrance must preserve native
+gestures, semantics and hit targets, unmount outgoing controls immediately, and
+stop for reduced motion, disabled `TickerMode` and background state. Drafts,
+cover handling, account isolation, scheduling and retry/result paths retain
+their existing ownership. No backend/API/schema/dependency/environment change
+or migration is required. The progress-only connector follow-up adds three thin
+decorative lines and pending-circle outlines without hit/semantic actions.
+The latest feedback adds field focus/inline required-caption error,
+an accessible wait state tied to the actual AI operation/full returned caption
+and a 2.2-second saved check only for a verified explicit local Save. Snapshot,
+owner/generation and foreground guards invalidate stale saved feedback; manual
+edits/late AI/fallback rules remain. No autosave/provider request is introduced.
+The final rapid-save guard exits on busy/AI state before clearing feedback
+generation, so a rejected duplicate cannot invalidate the first save's check.
+Final feedback has 10 new tests; guard/save tests pass 86/86, the full Flutter
+suite passes 1,915/1,915 and analysis passes. APK 4012/8012 is installed with the
+retained account; native blank-caption inline error/focus/keyboard is verified,
+then reset to a clean empty caption step without writing data. Prior
+187/187, 1,914/1,914 and native 8011 validation are pre-guard receipts; wait/save
+outcomes use fixtures. Three test helpers wait explicitly for pending AI while
+preserving assertions.
+The preceding connector source passed all 1,905 Flutter tests and analysis;
+Staging APK 4010/8010 was installed with the same signer and retained session.
+Native clip/caption checks showed connectors/outlines and changes without invented
+completion. Prior 8009 four-step/blocked-confirmation checks remain a separate
+receipt; positive identity/metadata/schedule/AI and motion/narrow/large-text cases
+use widget fixtures. The earlier user-selected form was not saved/discarded by
+the agent; installation followed the user's return to Calendar.
+No push/deploy or new database-deployment verification was
+performed; the earlier Calendar/Home deliveries are separate receipts. See
+`docs/superpowers/plans/2026-10-12-create-post-guided-ux.md`.
+
 ## Calendar compact boundary (2026-10-12, Staging delivered)
 
 The implemented compact-list view projects existing scheduled-post results into
@@ -51,10 +96,11 @@ API, schema, migration, environment setting or dependency is added. Authorized
 source `df8df1d` is pushed; exact-source CI `38189859822` passes 1,891 Flutter
 tests, analysis and Backend checks. Render deploy `dep-db6327ajnfac73c7vr90`
 is Live at 08:02:20 GMT+7; 16 existing migrations have none pending and
-health/readiness return HTTP 200. Local Staging APK 4008/8008 remains installed
-with its account. Social publishing/publisher stay disabled and the existing
-memory queue remains. Post-Live native refresh preserves the selected date/
-filter and account state without saving or publishing. This receipt is separate from the preceding release;
+health/readiness return HTTP 200. At that Calendar release, local Staging APK
+4008/8008 was installed with its account; the later guided revision updates the
+local APK. Social publishing/publisher stay disabled and the existing memory
+queue remains. Post-Live native refresh preserved the selected date/filter and
+account state without saving or publishing. This receipt is separate from the preceding release;
 see `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
 ## Home next-action boundary (2026-10-11, Staging delivered)

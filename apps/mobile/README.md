@@ -2,6 +2,41 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Guided Create Post (2026-10-12, locally verified and installed)
+
+The approved “ทีละขั้น” presentation keeps clip, caption, destinations and
+review/time/send as four steps. The AI action is visible with optional controls
+collapsed; destination account names, known clip metadata and a concise
+step/channel-count footer make the next action clearer. Date/time remains in
+the shared review and schedule panel. Preserve
+explicit drafts, cover editing, caption-style learning, SEO/fallback handling,
+owner guards and all publishing/package/scheduling rules. Connection owner/request
+generation guards reject old results and hide names during loading/error or
+owner mismatch without adding requests. Home press feedback
+and current-only step entrance must respect reduced motion, `TickerMode` and
+background state. No API, migration, dependency or environment change is required.
+The connector follow-up adds three thin lines between the four circles and
+outlines pending steps. Latest feedback work adds focused inline caption
+validation, an AI wait/full-response reveal tied to the existing operation and
+a temporary check after verified explicit local Save. The final rapid-save
+guard rejects busy callbacks before clearing success-feedback generation.
+Final feedback includes 10 new tests; guard/save tests pass 86/86, the full suite
+passes 1,915/1,915 and analysis passes. APK 4012/8012 is installed with the retained
+account; native empty-caption Next shows inline error/focus/keyboard, then the
+notice is reset and clean empty step two stays open. Prior
+187/187, 1,914/1,914 and native 8011 validation are pre-guard history; AI/save
+success uses fixtures. The preceding connector
+source passed 1,905 Flutter tests and analysis; Staging APK 4010/8010 was installed
+with the same signer/session, and native checks showed lines/outlines, active selection
+and no invented completion. The base 8009 four-step/AI/blocked-confirmation
+checks are a separate receipt.
+Positive identity/metadata/schedule/AI and narrow/large-text/motion cases use
+widget fixtures. The agent left the earlier user-selected form untouched;
+installation followed the user's return to Calendar.
+This revision has not been pushed or deployed; verification is recorded separately
+from Calendar/Home in
+`../../docs/superpowers/plans/2026-10-12-create-post-guided-ux.md`.
+
 ## Calendar Compact Revision (2026-10-12, Staging delivered)
 
 The compact-list Calendar has week/month, Today,
@@ -35,9 +70,10 @@ behavior stay unchanged; no migration, environment setting or dependency is
 added. Authorized source `df8df1d` is pushed; exact-source CI `38189859822`
 passes 1,891 Flutter tests and analysis. Render deploy
 `dep-db6327ajnfac73c7vr90` is Live at 08:02:20 GMT+7; 16 existing migrations
-have none pending and health/readiness return HTTP 200. Locally verified
-Staging APK 4008/8008 remains installed with its account; post-Live native
-refresh preserves the selected date/filter and account state. Check the separate
+have none pending and health/readiness return HTTP 200. At that Calendar release,
+locally verified Staging APK 4008/8008 was installed with its account;
+post-Live native refresh preserved the selected date/filter and account state.
+The later guided revision updates the local APK. Check the separate
 follow-up receipt in `../../docs/superpowers/plans/2026-10-11-calendar-ux.md`;
 the preceding Staging release does not verify these effects.
 

@@ -2,6 +2,44 @@
 
 Build roadmap for PostDee.
 
+## Guided create-post revision (2026-10-12, locally verified and installed)
+
+- Implemented the approved “ทีละขั้น” direction in the existing clip → caption →
+  destinations → review/time/send flow. Keep explicit local drafts and one
+  publish confirmation; make the AI action visible with optional controls
+  collapsed, verified account names and a concise step/channel-count footer.
+  Keep date/time in the shared review and schedule panel.
+- Show only known clip metadata. Preserve cover editing, caption-style learning,
+  SEO/fallback handling, owner isolation, account identity and all package,
+  scheduling, submission/retry and truthful delivery-result guards.
+  Reject stale owner/request connection results and hide identities while the
+  current lookup is loading, failed or belongs to another owner.
+- Reuse Home press feedback, short selection transitions and current-only step
+  entrance. Stop motion for reduced motion, disabled `TickerMode` and background
+  state. No endpoint, schema, provider, dependency or environment change or
+  migration is required.
+- Implement focused inline validation for missing caption, an AI waiting
+  indicator/full-response reveal tied to the existing operation and a temporary
+  check only after verified explicit local Save. Preserve manual-edit/owner/clip
+  guards, fallback/review and existing save triggers. The final rapid-save guard
+  rejects busy callbacks before clearing feedback generation. Save/guard tests
+  pass 86/86, the final full suite passes 1,915/1,915 and analysis passes. Final
+  feedback includes 10 new tests. APK 4012/8012 is installed with the same account;
+  native blank-caption error/focus/keyboard is verified and the clean empty
+  caption step stays open. The 187/187, 1,914/1,914 and
+  native 8011 validation receipts precede this guard; AI/save outcomes are fixtures.
+- The preceding connector source added three thin lines and pending-step
+  outlines, and passed all 1,905 Flutter tests and analysis. At that release
+  Staging APK 4010/8010 was installed with the same signer and retained session.
+  Native clip/caption checks showed connectors/outlines and correct active
+  selection without invented completion. The preceding 8009 four-step checks
+  remain a separate receipt. Positive identity/metadata/schedule/AI and narrow/
+  large-text cases use widget fixtures. The earlier user-selected form was left
+  untouched by the agent; installation followed the user's return to Calendar.
+  No push/deploy was performed for this revision; Staging
+  backend remains unchanged. Keep these receipts separate from Calendar/Home in
+  `docs/superpowers/plans/2026-10-12-create-post-guided-ux.md`.
+
 ## Calendar compact revision (2026-10-12, Staging delivered)
 
 - Implemented the approved compact list with week/month switch, Today, real
@@ -39,9 +77,10 @@ Build roadmap for PostDee.
 - Authorized source `df8df1d` is pushed; exact-source CI `38189859822` passes
   1,891 Flutter tests, analysis and Backend checks. Render deploy
   `dep-db6327ajnfac73c7vr90` is Live at 08:02:20 GMT+7; 16 existing migrations
-  have none pending and health/readiness return HTTP 200. Locally verified
-  Staging APK 4008/8008 remains installed with its account; post-Live native
-  refresh preserves the selected date/filter and account state. Record this
+  have none pending and health/readiness return HTTP 200. At that Calendar
+  release, locally verified Staging APK 4008/8008 was installed with its account;
+  post-Live native refresh preserved the selected date/filter and account state.
+  The later guided revision updates the local APK. Record this
   follow-up's checks and delivery separately from the preceding release in
   `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 

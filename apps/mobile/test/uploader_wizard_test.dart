@@ -53,8 +53,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('uploader-wizard-next')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('uploader-step-caption')), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-ai-caption-panel')),
+        findsOneWidget);
     expect(
-        find.byKey(const ValueKey('uploader-ai-caption-panel')), findsNothing);
+        find.byKey(const ValueKey('uploader-ai-guidance-field')), findsNothing);
   });
 
   testWidgets('navigation keeps caption and does not upload or post',

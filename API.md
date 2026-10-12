@@ -41,9 +41,10 @@ the high-severity production audit threshold (four moderate findings remain).
 Flutter checks pass 1,891 tests and analysis. Render deploy
 `dep-db6327ajnfac73c7vr90` is Live at 08:02:20 GMT+7; 16 existing migrations
 have none pending and health/readiness return HTTP 200. Source identity comes
-from checkout/Render UI, not the health response. Local Staging APK 4008/8008
-remains installed; post-Live native refresh preserves the selected date/filter
-and account state. These checks are a separate receipt in the Calendar plan;
+from checkout/Render UI, not the health response. At that Calendar release,
+local Staging APK 4008/8008 was installed; post-Live native refresh preserved
+the selected date/filter and account state. The later guided revision updates
+the local APK. These checks are a separate receipt in the Calendar plan;
 the preceding Staging/health receipt does not verify this follow-up.
 
 ## Home read composition (2026-10-11, Staging delivered)
@@ -917,6 +918,38 @@ has a replay window until strict `multipart` mode is enabled for all clients.
 ## Posts
 
 ### Mobile creation presentation (2026-10-07)
+
+The approved 2026-10-12 guided presentation and feedback follow-up are locally
+verified and installed. They keep
+these four steps and makes AI controls, verified account names, known clip
+metadata and the step/channel-count confirmation summary easier to read.
+Date/time remains in the shared review and schedule panel.
+Opening optional controls and presentation motion do not generate captions,
+learn examples, save drafts or submit posts. Optional writing controls remain
+reachable and keep their existing explicit triggers, including learning an
+edited accepted non-fallback AI caption on Caption Next. There is no new endpoint, request field,
+quota, provider mapping or migration. Latest feedback ties required-caption
+focus/error, AI wait/full-response presentation and a temporary saved check to
+the existing validation/request/explicit-local-save results; it adds no request
+or persistence trigger. The final rapid-save guard rejects busy callbacks before
+clearing feedback generation. Final feedback includes 10 new tests; save/guard
+tests pass 86/86, the full Flutter suite passes 1,915/1,915 and analysis passes.
+APK 4012/8012 is installed; native blank-caption inline error/focus/keyboard
+is verified without writing data or invoking AI/upload/post/Save.
+187/187, 1,914/1,914 and native 8011 validation are pre-guard history. AI/save
+results use fixtures, without native AI/upload/post requests or Save.
+The preceding connector source passed
+1,905 Flutter tests and analysis; Staging APK 4010/8010 was installed with its
+existing session and native checks verified selection without invented completion.
+Prior 8009 four-step/zero-destination checks are a separate receipt from positive
+identity/metadata/schedule/AI and narrow/large-text widget fixtures. No real AI/upload/post request was
+performed for native UI QA. This revision has not been pushed/deployed and adds
+no fresh database/server-deployment receipt. Details:
+`docs/superpowers/plans/2026-10-12-create-post-guided-ux.md`.
+The existing connection lookup gains owner/request generation guards so late
+responses cannot restore another account's identity or finish a newer load.
+Identity labels are withheld while loading, on error or on owner mismatch;
+neither lifecycle motion handling nor this guard adds a network request.
 
 The full-screen Mobile composer has four UI steps: clip, caption, connected
 destinations, and inline review/time/send with one explicit confirmation.

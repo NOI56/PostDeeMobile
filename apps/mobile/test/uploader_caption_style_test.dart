@@ -142,11 +142,24 @@ class _Fixture {
       );
 }
 
+Future<void> _pumpUi(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump();
+  final waiting = find.byKey(const ValueKey('uploader-ai-waiting-indicator'));
+  // A gated AI request has an indeterminate spinner. Advance UI transitions
+  // without waiting for a response that this test has deliberately withheld.
+  for (var i = 0; i < 8 && waiting.evaluate().isNotEmpty; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  if (waiting.evaluate().isEmpty) await tester.pumpAndSettle();
+}
+
 Future<void> _show(WidgetTester tester, Finder finder) async {
+  await _pumpUi(tester);
   await tester.scrollUntilVisible(finder, 250,
       scrollable: find.byType(Scrollable).first);
   await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
+  await _pumpUi(tester);
 }
 
 Future<void> _showAiPanel(WidgetTester tester, _Fixture fixture) async {
@@ -155,7 +168,7 @@ Future<void> _showAiPanel(WidgetTester tester, _Fixture fixture) async {
   await tester.pumpWidget(fixture.app());
   await tester.pumpAndSettle();
   await goToUploaderStep(tester, 1);
-  final panel = find.byKey(const ValueKey('uploader-ai-open-panel'));
+  final panel = find.text('ปรับสไตล์และคำแนะนำ');
   await tester.scrollUntilVisible(panel, 250,
       scrollable: find.byType(Scrollable).first);
   await tester.ensureVisible(panel);
@@ -167,7 +180,7 @@ Future<void> _showAiPanel(WidgetTester tester, _Fixture fixture) async {
 Future<void> _generate(WidgetTester tester) async {
   await _show(tester, find.byKey(_generateButton));
   await tester.tap(find.byKey(_generateButton));
-  await tester.pumpAndSettle();
+  await _pumpUi(tester);
 }
 
 Future<void> _editAndNext(WidgetTester tester, String caption) async {
@@ -509,7 +522,7 @@ void main() {
     expect(fixture.store.saves.single.profile.style.examples,
         ['ข้อความแก้ของคลิปแรก']);
     await goToUploaderStep(tester, 1);
-    final panel = find.byKey(const ValueKey('uploader-ai-open-panel'));
+    final panel = find.text('ปรับสไตล์และคำแนะนำ');
     await _show(tester, panel);
     await tester.tap(panel);
     await tester.pumpAndSettle();
@@ -577,7 +590,7 @@ void main() {
     await _generate(tester);
     await _editAndNext(tester, 'ข้อความที่กำลังจำ');
     await goToUploaderStep(tester, 1);
-    final panel = find.byKey(const ValueKey('uploader-ai-open-panel'));
+    final panel = find.text('ปรับสไตล์และคำแนะนำ');
     await _show(tester, panel);
     await tester.tap(panel);
     await tester.pumpAndSettle();

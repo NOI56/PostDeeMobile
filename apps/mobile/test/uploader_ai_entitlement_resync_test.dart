@@ -150,6 +150,7 @@ class _ResyncFixture {
 }
 
 Future<void> _show(WidgetTester tester, Finder finder) async {
+  await tester.pumpAndSettle();
   await tester.scrollUntilVisible(
     finder,
     250,
@@ -165,7 +166,7 @@ Future<void> _prepare(WidgetTester tester, _ResyncFixture fixture) async {
   await goToUploaderStep(tester, 1);
   await _show(tester, find.byKey(_captionKey));
   await tester.enterText(find.byKey(_captionKey), 'ข้อความเดิมที่ต้องเก็บไว้');
-  final panel = find.byKey(const ValueKey('uploader-ai-open-panel'));
+  final panel = find.text('ปรับสไตล์และคำแนะนำ');
   await _show(tester, panel);
   await tester.tap(panel);
   await tester.pumpAndSettle();
@@ -174,8 +175,45 @@ Future<void> _prepare(WidgetTester tester, _ResyncFixture fixture) async {
   await _show(tester, find.byKey(_generateKey));
 }
 
-Future<void> _generate(WidgetTester tester) async {
+Future<void> _pumpUntil(
+  WidgetTester tester,
+  bool Function() ready, {
+  required String reason,
+}) async {
+  for (var frame = 0; frame < 100; frame++) {
+    await tester.pump(const Duration(milliseconds: 16));
+    if (ready()) return;
+  }
+  expect(ready(), isTrue, reason: reason);
+}
+
+Future<void> _generate(
+  WidgetTester tester, {
+  bool Function()? pendingStageReached,
+}) async {
   await tester.tap(find.byKey(_generateKey));
+  if (pendingStageReached != null) {
+    // The indeterminate indicator keeps scheduling frames while this test
+    // deliberately holds a verification request. Wait for that request,
+    // rather than for animation frames to stop.
+    await _pumpUntil(tester, pendingStageReached,
+        reason: 'The pending verification stage must be reached');
+    expect(
+        tester
+            .widget<PostDeeGradientButton>(find.byKey(_generateKey))
+            .onPressed,
+        isNull);
+    return;
+  }
+  await _pumpUntil(
+    tester,
+    () =>
+        tester
+            .widget<PostDeeGradientButton>(find.byKey(_generateKey))
+            .onPressed !=
+        null,
+    reason: 'AI generation must finish before settling its result animation',
+  );
   await tester.pumpAndSettle();
 }
 
@@ -365,20 +403,26 @@ void main() {
           (tester) async {
         final readGate = Completer<SubscriptionStatusResult>();
         final resyncGate = Completer<void>();
+        final pendingStageReached = Completer<void>();
         final fixture = _ResyncFixture(
           load: (call) async {
             if ((stage == 'initial read' && call == 1) ||
                 (stage == 'second read' && call == 2)) {
+              pendingStageReached.complete();
               return readGate.future;
             }
             return _subscription('BASIC');
           },
           resync: () async {
-            if (stage == 'resync') await resyncGate.future;
+            if (stage == 'resync') {
+              pendingStageReached.complete();
+              await resyncGate.future;
+            }
           },
         )..replacement = _video('replacement.mp4');
         await _prepare(tester, fixture);
-        await _generate(tester);
+        await _generate(tester,
+            pendingStageReached: () => pendingStageReached.isCompleted);
         expect(fixture.loads, stage == 'second read' ? 2 : 1);
         expect(fixture.resyncs, stage == 'initial read' ? 0 : 1);
 

@@ -152,6 +152,59 @@ void _expectProgressSemantics(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  for (final configuration in [
+    (width: 393.0, textScale: 1.0),
+    (width: 320.0, textScale: 1.0),
+    (width: 320.0, textScale: 2.0),
+  ]) {
+    testWidgets(
+        'progress lines join circle edges at ${configuration.width}dp and ${configuration.textScale}x text',
+        (tester) async {
+      tester.view.physicalSize = Size(configuration.width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final semantics = tester.ensureSemantics();
+      try {
+        final calls =
+            await _openWizard(tester, textScale: configuration.textScale);
+        for (var step = 0; step < 4; step += 1) {
+          await goToUploaderStep(tester, step);
+          final circles = [
+            for (var index = 0; index < 4; index += 1)
+              tester.getRect(
+                  find.byKey(ValueKey('uploader-progress-circle-$index'))),
+          ];
+          for (var index = 0; index < 3; index += 1) {
+            final connector =
+                find.byKey(ValueKey('uploader-progress-connector-$index'));
+            expect(connector, findsOneWidget);
+            final line = tester.getRect(connector);
+            expect(line.left, closeTo(circles[index].right, 0.5));
+            expect(line.right, closeTo(circles[index + 1].left, 0.5));
+            expect(line.center.dy, closeTo(circles[index].center.dy, 0.5));
+            expect(line.center.dy, closeTo(circles[index + 1].center.dy, 0.5));
+            expect(line.width, greaterThan(0));
+            expect(line.height, inInclusiveRange(1, 2));
+            expect(
+                find.ancestor(
+                    of: connector, matching: find.byType(IgnorePointer)),
+                findsWidgets);
+            expect(
+                find.ancestor(
+                    of: connector, matching: find.byType(ExcludeSemantics)),
+                findsWidgets);
+          }
+          _expectProgressSemantics(tester, currentStep: step, completed: {});
+          expect(tester.takeException(), isNull);
+        }
+        calls.expectNoSubmission();
+      } finally {
+        semantics.dispose();
+      }
+    });
+  }
+
   testWidgets('names the current stage and the next destination in every stage',
       (tester) async {
     final calls = await _openWizard(tester);

@@ -25,7 +25,7 @@ Future<void> _openCaptionOptions(WidgetTester tester, String key) async {
   await tester.ensureVisible(options);
   await tester.pumpAndSettle();
   final label =
-      key == 'uploader-ai-open-panel' ? 'ช่วยเขียนด้วย AI' : 'เทมเพลตแคปชัน';
+      key == 'uploader-ai-open-panel' ? 'ปรับสไตล์และคำแนะนำ' : 'เทมเพลตแคปชัน';
   await tester.tap(find.text(label));
   await tester.pumpAndSettle();
 }
@@ -721,7 +721,11 @@ void main() {
       find.byKey(const ValueKey('uploader-platform-settings-sheet')),
       findsOneWidget,
     );
-    expect(find.text('channel-123'), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('uploader-platform-settings-sheet')),
+            matching: find.text('channel-123')),
+        findsOneWidget);
     final youtubeTitle = find.byKey(const ValueKey('uploader-youtube-title'));
     await tester.ensureVisible(youtubeTitle);
     await tester.enterText(
@@ -950,7 +954,8 @@ void main() {
     (
       error: const ApiException('Paid plan required',
           statusCode: 402, code: 'PAID_PLAN_REQUIRED'),
-      message: 'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ',
+      message:
+          'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ',
       onUpload: false,
     ),
     (
@@ -962,7 +967,8 @@ void main() {
     (
       error: const ApiException('Invalid AI caption video',
           statusCode: 400, code: 'UPLOAD_AI_CAPTION_VIDEO_INVALID'),
-      message: 'อัปโหลดคลิปให้ AI ไม่สำเร็จ กรุณาเลือกไฟล์ MP4 ที่มีขนาดไม่เกินกำหนด',
+      message:
+          'อัปโหลดคลิปให้ AI ไม่สำเร็จ กรุณาเลือกไฟล์ MP4 ที่มีขนาดไม่เกินกำหนด',
       onUpload: true,
     ),
     (
@@ -1071,8 +1077,10 @@ void main() {
         find.text('เล่าเรื่องคลิปหรือสิ่งที่อยากบอกลูกค้า...'), findsOneWidget);
     expect(
         find.byKey(const ValueKey('uploader-ai-open-panel')), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-ai-caption-panel')),
+        findsOneWidget);
     expect(
-        find.byKey(const ValueKey('uploader-ai-caption-panel')), findsNothing);
+        find.byKey(const ValueKey('uploader-ai-guidance-field')), findsNothing);
     expect(
       find.text('ให้ AI คิดจากคลิปจริง หรือแก้แคปชั่นเองก่อนโพสต์'),
       findsNothing,
@@ -1122,12 +1130,12 @@ void main() {
 
     await goToUploaderStep(tester, 3);
     await tester.scrollUntilVisible(
-      find.text('โพสต์'),
+      find.text('ยืนยันส่ง 0 ช่องทาง'),
       500,
       scrollable: uploaderScroll,
     );
     await tester.pumpAndSettle();
-    expect(find.text('โพสต์'), findsOneWidget);
+    expect(find.text('ยืนยันส่ง 0 ช่องทาง'), findsOneWidget);
   });
 
   testWidgets('hides the unfinished EP tool and its empty optional section',

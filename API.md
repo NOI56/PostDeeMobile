@@ -2,6 +2,35 @@
 
 PostDee backend API reference.
 
+## Mobile motion audit boundary (2026-10-12, local audit complete)
+
+The cross-screen audit changes presentation guards and thumbnail lifecycle only.
+Keep API requests/owner scope, AI/save/publish triggers, entitlement/scheduling,
+billing and persistence contracts unchanged. Public-preview entrance settles
+when interrupted without replay; requested ambient effects may resume. No new
+endpoint, quota rule, provider/configuration/dependency, schema or migration.
+Final source passes 2,058 Flutter tests and analysis (No issues, 8.6 s); exact
+Staging x64 4016/8016 build/install and safe native navigation preserve data.
+Native AI, Save, OAuth, purchase and publication were not invoked; positive
+business paths use fixtures. Diagnostic debug frames do not certify production
+FPS or prove a before/after speedup. Existing backend `904a3f8` and the prior
+8015 receipt stay separate;
+no new push/deploy. Plan:
+`docs/superpowers/plans/2026-10-12-mobile-motion-smoothness-audit.md`.
+
+## Bottom navigation presentation boundary (2026-10-12, local complete)
+
+Dock icon selection/press feedback changes presentation only. Existing tab
+callbacks, guarded `/create-post` navigation, owner/request scope and all API/
+billing/publishing contracts retain their triggers. No new request, persistence,
+quota, provider, schema/config/dependency or migration. Final source passes 1,979
+Flutter tests and analysis, including 13 new navigation cases. Exact Staging x64
+APK 4015/8015 is installed; native navigation/composer open-close preserve data.
+Guard/accessibility paths use fixtures, with no real mutations. Existing backend
+`904a3f8` stays unchanged; no new backend suite/migration or commit/push/deploy.
+Plan:
+`docs/superpowers/plans/2026-10-12-bottom-nav-ui-motion.md`.
+
 ## Account mobile motion boundary (2026-10-12, Staging delivered)
 
 The approved Account-only presentation follow-up adds finite entrance/press

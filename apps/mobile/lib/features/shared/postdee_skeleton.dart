@@ -23,8 +23,9 @@ class PostDeeSkeleton extends StatefulWidget {
 }
 
 class _PostDeeSkeletonState extends State<PostDeeSkeleton>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _controller;
+  bool _resumed = true;
 
   @override
   void initState() {
@@ -33,6 +34,9 @@ class _PostDeeSkeletonState extends State<PostDeeSkeleton>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _resumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
@@ -47,13 +51,20 @@ class _PostDeeSkeletonState extends State<PostDeeSkeleton>
     _updateAnimation();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _resumed = state == AppLifecycleState.resumed;
+    _updateAnimation();
+  }
+
   void _updateAnimation() {
     final shouldAnimate = widget.animate &&
+        _resumed &&
         TickerMode.valuesOf(context).enabled &&
         !(MediaQuery.maybeOf(context)?.disableAnimations ?? false);
     if (shouldAnimate && !_controller.isAnimating) {
       _controller.repeat();
-    } else if (!shouldAnimate && _controller.isAnimating) {
+    } else if (!shouldAnimate) {
       _controller.stop();
       _controller.value = 0;
     }
@@ -61,6 +72,7 @@ class _PostDeeSkeletonState extends State<PostDeeSkeleton>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }

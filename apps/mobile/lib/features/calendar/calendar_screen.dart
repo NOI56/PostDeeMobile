@@ -798,20 +798,9 @@ class _CalendarScreenState extends State<CalendarScreen>
         // Outgoing post controls must never remain actionable or readable.
         key: ValueKey(
             'calendar-content-$_ownerGeneration-${_dayKey(_activeDay)}-$_platformFilter-$_hasLoaded'),
-        child: TweenAnimationBuilder<double>(
+        child: _CalendarDayTransition(
           key: const ValueKey('calendar-day-transition'),
-          tween: Tween(begin: 0, end: 1),
-          duration: _calendarMotionDuration(context, _motionEnabled, 180),
-          curve: Curves.easeOutCubic,
-          builder: (context, progress, child) => Transform.translate(
-            offset: Offset(0, 8 * (1 - progress)),
-            transformHitTests: false,
-            child: Opacity(
-              key: const ValueKey('calendar-day-content-opacity'),
-              opacity: progress,
-              child: child,
-            ),
-          ),
+          animate: _motionEnabled,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: _buildDaySection(context),
@@ -974,9 +963,8 @@ class _CalendarScreenState extends State<CalendarScreen>
             child: InkWell(
           borderRadius: BorderRadius.circular(11),
           onTap: () => _selectDay(date),
-          child: AnimatedContainer(
-            duration: _calendarMotionDuration(context, _motionEnabled, 160),
-            curve: Curves.easeOutCubic,
+          child: _CalendarSelectionDecoration(
+            animate: _motionEnabled,
             decoration: BoxDecoration(
                 color: selected ? AppTheme.accent : Colors.transparent,
                 borderRadius: BorderRadius.circular(11)),
@@ -1169,6 +1157,177 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 }
 
+class _CalendarDayTransition extends StatefulWidget {
+  const _CalendarDayTransition({
+    super.key,
+    required this.animate,
+    required this.child,
+  });
+
+  final bool animate;
+  final Widget child;
+
+  @override
+  State<_CalendarDayTransition> createState() => _CalendarDayTransitionState();
+}
+
+class _CalendarDayTransitionState extends State<_CalendarDayTransition>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  bool _started = false;
+
+  bool get _allowed =>
+      widget.animate &&
+      TickerMode.valuesOf(context).enabled &&
+      !MediaQuery.disableAnimationsOf(context);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 180));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMotion();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CalendarDayTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncMotion();
+  }
+
+  void _syncMotion() {
+    if (!_allowed) {
+      _controller.stop();
+      _controller.value = 1;
+    } else if (!_started) {
+      _controller.forward();
+    }
+    _started = true;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final progress = Curves.easeOutCubic.transform(_controller.value);
+          return Transform.translate(
+            offset: Offset(0, 8 * (1 - progress)),
+            transformHitTests: false,
+            child: Opacity(
+              key: const ValueKey('calendar-day-content-opacity'),
+              opacity: progress,
+              child: child,
+            ),
+          );
+        },
+        child: widget.child,
+      );
+}
+
+/// Retargets the visible decoration, and settles it immediately when the tab,
+/// parent ticker or accessibility setting blocks motion.
+class _CalendarSelectionDecoration extends StatefulWidget {
+  const _CalendarSelectionDecoration({
+    required this.animate,
+    required this.decoration,
+    required this.child,
+    this.constraints,
+    this.padding,
+  });
+
+  final bool animate;
+  final BoxDecoration decoration;
+  final Widget child;
+  final BoxConstraints? constraints;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  State<_CalendarSelectionDecoration> createState() =>
+      _CalendarSelectionDecorationState();
+}
+
+class _CalendarSelectionDecorationState
+    extends State<_CalendarSelectionDecoration>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late DecorationTween _decoration;
+
+  bool get _allowed =>
+      widget.animate &&
+      TickerMode.valuesOf(context).enabled &&
+      !MediaQuery.disableAnimationsOf(context);
+
+  Decoration? get _visibleDecoration =>
+      _decoration.transform(Curves.easeOutCubic.transform(_controller.value));
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+      value: 1,
+    );
+    _decoration =
+        DecorationTween(begin: widget.decoration, end: widget.decoration);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _finishIfBlocked();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CalendarSelectionDecoration oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_allowed) {
+      _finishIfBlocked();
+    } else if (oldWidget.decoration != widget.decoration) {
+      _decoration =
+          DecorationTween(begin: _visibleDecoration, end: widget.decoration);
+      _controller.forward(from: 0);
+    }
+  }
+
+  void _finishIfBlocked() {
+    if (_allowed) return;
+    _controller.stop();
+    _decoration =
+        DecorationTween(begin: widget.decoration, end: widget.decoration);
+    _controller.value = 1;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) => Container(
+          constraints: widget.constraints,
+          padding: widget.padding,
+          decoration: _visibleDecoration,
+          child: child,
+        ),
+        child: widget.child,
+      );
+}
+
 class _CalendarPeriodSize extends StatelessWidget {
   const _CalendarPeriodSize({required this.animate, required this.child});
 
@@ -1264,9 +1423,8 @@ class _FilterChip extends StatelessWidget {
                 child: InkWell(
               onTap: onTap,
               borderRadius: BorderRadius.circular(999),
-              child: AnimatedContainer(
-                duration: _calendarMotionDuration(context, animate, 160),
-                curve: Curves.easeOutCubic,
+              child: _CalendarSelectionDecoration(
+                animate: animate,
                 constraints: const BoxConstraints(minHeight: 48),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1319,9 +1477,8 @@ class _PlatformFilterButton extends StatelessWidget {
             child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(11),
-          child: AnimatedContainer(
-            duration: _calendarMotionDuration(context, animate, 160),
-            curve: Curves.easeOutCubic,
+          child: _CalendarSelectionDecoration(
+            animate: animate,
             constraints: const BoxConstraints(minHeight: 58),
             padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
             decoration: BoxDecoration(

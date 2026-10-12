@@ -2,6 +2,35 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Mobile Motion Smoothness Audit (2026-10-12, local audit complete)
+
+Audit all main tabs, composer, video preview, publish results and account sheets.
+Settle interrupted press/selection/entrance feedback, remove outgoing Home hero
+controls, release background thumbnail decoding and prevent shop-preview entrance
+replay. Preserve native actions/semantics, data, all 100 templates and requested
+ambient effects. Final source passes 2,058 Flutter tests and analysis (No issues,
+8.6 s). Exact Staging x64 4016/8016 is built/installed; safe native tab/day/filter,
+preview background/resume and composer-return checks preserve data. Debug emulator
+samples are diagnostic and do not prove a speedup or certify physical-device
+60/120 FPS. Populated-content physical profile-mode measurement remains unverified.
+No API/schema/config/dependency change, migration or new push/deploy. Keep the
+completed 8015 receipt below separate. Plan:
+`../../docs/superpowers/plans/2026-10-12-mobile-motion-smoothness-audit.md`.
+
+## Bottom Navigation Motion (2026-10-12, local complete)
+
+The approved shell-only follow-up adds selected-icon halo/lift/scale/color and
+native press feedback to the four ordinary tabs. Retain the running dot, center
+Create post pulse, 84 dp controls, labels/semantics, route callbacks and retained
+owner-scoped screen state. Reduced motion, lifecycle and parent `TickerMode`
+settle effects without replay. No API/persistence/business/schema/config/
+dependency or migration change. Final source passes 1,979 Flutter tests and
+analysis, including 13 new navigation cases. Exact Staging x64 APK 4015/8015 is
+installed with retained account/shop data. Native four-tab feedback and one
+composer open/close/previous-tab return pass; guard/accessibility paths use
+fixtures. No new commit/push/deploy; external Staging remains `904a3f8`. Plan:
+`../../docs/superpowers/plans/2026-10-12-bottom-nav-ui-motion.md`.
+
 ## Account UI Motion (2026-10-12, Staging delivered)
 
 The approved Account-only follow-up adds passive press feedback and finite

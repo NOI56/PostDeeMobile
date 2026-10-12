@@ -57,6 +57,25 @@ double _contentOpacity(WidgetTester tester) => tester
     .widget<Opacity>(find.byKey(const ValueKey('calendar-day-content-opacity')))
     .opacity;
 
+Color? _selectionColor(WidgetTester tester, Finder control) => (tester
+        .widget<DecoratedBox>(find
+            .descendant(of: control, matching: find.byType(DecoratedBox))
+            .first)
+        .decoration as BoxDecoration)
+    .color;
+
+void _resumeMotion(TestWidgetsFlutterBinding binding) {
+  if (binding.lifecycleState == AppLifecycleState.paused) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  }
+  if (binding.lifecycleState == AppLifecycleState.hidden) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  }
+  if (binding.lifecycleState != AppLifecycleState.resumed) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
+}
+
 void main() {
   setUp(() {
     final session = PostDeeAuthSessionStore.instance;
@@ -64,6 +83,110 @@ void main() {
     addTearDown(() => session.signIn(previous));
     session.signIn(const AuthSession(userId: 'motion-user', idToken: 'test'));
   });
+
+  for (final mode in ['inactive', 'reduced', 'ticker', 'background']) {
+    testWidgets('motion audit $mode finishes a live day fade without replay',
+        (tester) async {
+      _resumeMotion(tester.binding);
+      addTearDown(() => _resumeMotion(tester.binding));
+      final key = GlobalKey();
+      Widget host(bool blocked) => _app(
+            CalendarScreen(
+              key: key,
+              isActive: mode != 'inactive' || !blocked,
+              now: () => _now,
+              loadScheduledPosts: () async => [
+                _post('Monday current', 12),
+                _post('Tuesday current', 13),
+              ],
+            ),
+            reducedMotion: mode == 'reduced' && blocked,
+            tickerEnabled: mode != 'ticker' || !blocked,
+          );
+      await tester.pumpWidget(host(false));
+      await tester.pumpAndSettle();
+      await tester.tap(_day(13));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(_contentOpacity(tester), inExclusiveRange(0, 1));
+      expect(find.text('Monday current'), findsNothing);
+      if (mode == 'background') {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.scheduleForcedFrame();
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(host(true));
+      }
+      expect(_contentOpacity(tester), 1);
+      expect(find.text('Tuesday current'), findsOneWidget);
+      if (mode == 'background') {
+        _resumeMotion(tester.binding);
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(host(false));
+      }
+      expect(_contentOpacity(tester), 1);
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(_contentOpacity(tester), 1);
+      await tester.pumpAndSettle();
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final control in ['day', 'view', 'platform']) {
+      testWidgets('motion audit $mode snaps live $control selection color',
+          (tester) async {
+        _resumeMotion(tester.binding);
+        addTearDown(() => _resumeMotion(tester.binding));
+        final key = GlobalKey();
+        Widget host(bool blocked) => _app(
+              CalendarScreen(
+                key: key,
+                isActive: mode != 'inactive' || !blocked,
+                now: () => _now,
+                loadScheduledPosts: () async => const [],
+              ),
+              reducedMotion: mode == 'reduced' && blocked,
+              tickerEnabled: mode != 'ticker' || !blocked,
+            );
+        await tester.pumpWidget(host(false));
+        await tester.pumpAndSettle();
+        final selected = control == 'day'
+            ? _day(13)
+            : find.byKey(ValueKey(control == 'view'
+                ? 'calendar-month-view'
+                : 'calendar-filter-YOUTUBE_SHORTS'));
+        final target = control == 'platform'
+            ? AppTheme.accent.withValues(alpha: .12)
+            : AppTheme.accent;
+        await tester.tap(selected);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 40));
+        expect(_selectionColor(tester, selected), isNot(target));
+        if (mode == 'background') {
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+          tester.binding.scheduleForcedFrame();
+          await tester.pump();
+        } else {
+          await tester.pumpWidget(host(true));
+        }
+        expect(_selectionColor(tester, selected), target);
+        if (mode == 'background') {
+          _resumeMotion(tester.binding);
+          await tester.pump();
+        } else {
+          await tester.pumpWidget(host(false));
+        }
+        expect(_selectionColor(tester, selected), target);
+        await tester.pump(const Duration(milliseconds: 30));
+        expect(_selectionColor(tester, selected), target);
+        await tester.pumpAndSettle();
+        expect(tester.binding.hasScheduledFrame, isFalse);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   testWidgets('day press keeps its hit target and cancellation keeps selection',
       (tester) async {

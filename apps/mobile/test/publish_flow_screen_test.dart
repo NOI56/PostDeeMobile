@@ -6,7 +6,134 @@ import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/uploader/publish_flow_screen.dart';
 
+void _resumeMotionTest(WidgetTester tester) {
+  final binding = tester.binding;
+  if (binding.lifecycleState == AppLifecycleState.paused) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  }
+  if (binding.lifecycleState == AppLifecycleState.hidden) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  }
+  if (binding.lifecycleState != AppLifecycleState.resumed) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
+}
+
 void main() {
+  for (final mode in ['reduced', 'ticker', 'background']) {
+    for (final outcome in ['done', 'error']) {
+      testWidgets('motion audit $mode settles $outcome and retains its action',
+          (tester) async {
+        addTearDown(() => _resumeMotionTest(tester));
+        _resumeMotionTest(tester);
+        final operation = Completer<QueuedPostResult?>();
+        final actions = <PublishFlowAction?>[];
+        var attempts = 0;
+        const post = QueuedPostResult(
+          id: 'motion-result',
+          videoS3Key: 'uploads/motion.mp4',
+          platforms: ['TIKTOK'],
+          status: 'QUEUED',
+        );
+        final screen = PublishFlowScreen(
+          platforms: const [SocialPlatform.tiktok],
+          isScheduled: false,
+          publish: (_) {
+            attempts++;
+            return attempts == 1 ? operation.future : Future.value(post);
+          },
+        );
+        Widget host({bool blocked = false}) => MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(disableAnimations: mode == 'reduced' && blocked),
+                child: TickerMode(
+                    enabled: mode != 'ticker' || !blocked, child: child!),
+              ),
+              home: Builder(
+                builder: (context) => Scaffold(
+                  body: FilledButton(
+                    onPressed: () => Navigator.of(context)
+                        .push<PublishFlowAction>(
+                            MaterialPageRoute(builder: (_) => screen))
+                        .then(actions.add),
+                    child: const Text('เปิดการส่งทดสอบ'),
+                  ),
+                ),
+              ),
+            );
+        await tester.pumpWidget(host());
+        await tester.tap(find.text('เปิดการส่งทดสอบ'));
+        await tester.pumpAndSettle();
+        expect(attempts, 1);
+        if (outcome == 'done') {
+          operation.complete(post);
+        } else {
+          operation.completeError(const ApiException('เครือข่ายทดสอบไม่พร้อม'));
+        }
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 40));
+        final result = find.byKey(ValueKey('publish-flow-$outcome'));
+        double opacity() => tester
+            .widget<FadeTransition>(find
+                .ancestor(of: result, matching: find.byType(FadeTransition))
+                .first)
+            .opacity
+            .value;
+        expect(opacity(), allOf(greaterThan(0), lessThan(1)));
+        final button = find.byKey(ValueKey(
+            outcome == 'done' ? 'publish-flow-finish' : 'publish-flow-retry'));
+        final resultElement = tester.element(result);
+        final buttonState = tester.state(button);
+        final bounds = tester.getRect(button);
+        if (mode == 'background') {
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+          await tester.pump();
+        } else {
+          await tester.pumpWidget(host(blocked: true));
+        }
+        expect(opacity(), 1,
+            reason:
+                'The current result must become fully visible immediately.');
+        expect(tester.element(result), same(resultElement));
+        expect(tester.state(button), same(buttonState));
+        expect(tester.getRect(button), bounds);
+        expect(
+            find.byKey(const ValueKey('publish-flow-posting')), findsNothing);
+        expect(attempts, 1);
+        await tester.pumpAndSettle();
+        expect(tester.binding.hasScheduledFrame, isFalse);
+        if (mode == 'background') {
+          _resumeMotionTest(tester);
+          await tester.pump();
+        } else {
+          await tester.pumpWidget(host());
+        }
+        expect(opacity(), 1);
+        await tester.pump(const Duration(milliseconds: 40));
+        expect(opacity(), 1);
+        if (outcome == 'error') {
+          await tester.tap(button);
+          await tester.pumpAndSettle();
+          expect(attempts, 2);
+          expect(
+              find.byKey(const ValueKey('publish-flow-done')), findsOneWidget);
+        }
+        await tester.tap(find.byKey(const ValueKey('publish-flow-finish')));
+        await tester.pumpAndSettle();
+        expect(actions, [PublishFlowAction.finish]);
+        expect(attempts, outcome == 'error' ? 2 : 1);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets('shows posting progress and an honest queued screen',
       (tester) async {
     final operation = Completer<QueuedPostResult?>();

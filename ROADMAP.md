@@ -2,6 +2,35 @@
 
 Build roadmap for PostDee.
 
+## Mobile motion smoothness audit (2026-10-12, local audit complete)
+
+- Check main tabs, composer, video/results and account overlays for interrupted
+  motion, stale actions, hidden tickers and lifecycle/disposal behavior.
+- Keep controls/data stable, settle finite feedback without stale replay, stop
+  background thumbnail decoding and preserve requested public-preview effects.
+- Final source passes 2,058 Flutter tests and analysis (No issues, 8.6 s).
+  Exact Staging x64 4016/8016 build/install and safe native navigation/preview
+  background-resume/composer-return checks pass with data retained. Debug emulator
+  samples do not prove a speedup or certify physical-device 60/120 FPS; physical
+  profile-mode measurements with populated content remain unverified. No business API,
+  schema/config/dependency change, migration or new push/deploy. Keep the prior
+  bottom-navigation 8015 receipt separate. Plan:
+  `docs/superpowers/plans/2026-10-12-mobile-motion-smoothness-audit.md`.
+
+## Bottom navigation motion (2026-10-12, local complete)
+
+- Add a finite selected-icon halo/lift/scale/color and native press feedback to
+  the four ordinary dock tabs. Retain the running dot, center Create post,
+  84 dp controls, localized semantics and existing navigation/state guards.
+- Settle motion for reduced motion, background state and parent `TickerMode`
+  without replay or new API/persistence/business triggers. No schema/config/
+  dependency or migration change. Final source passes 1,979 Flutter tests and
+  analysis, including 13 new navigation cases. Exact Staging x64 APK 4015/8015 is
+  installed; native four-tab feedback and composer return preserve account/shop
+  data. Motion/accessibility guards use fixtures. No new commit/push/deploy;
+  external Staging remains prior `904a3f8`. Plan:
+  `docs/superpowers/plans/2026-10-12-bottom-nav-ui-motion.md`.
+
 ## Account UI motion (2026-10-12, Staging delivered)
 
 - Add Account-only finite content/sheet entrances and press feedback, preserving

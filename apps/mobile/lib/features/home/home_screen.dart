@@ -1651,15 +1651,30 @@ class _LatestPostVideoPreview extends StatefulWidget {
       _LatestPostVideoPreviewState();
 }
 
-class _LatestPostVideoPreviewState extends State<_LatestPostVideoPreview> {
+class _LatestPostVideoPreviewState extends State<_LatestPostVideoPreview>
+    with WidgetsBindingObserver {
   VideoPlayerController? _controller;
   bool _isReady = false;
   int _generation = 0;
+  bool _foreground = true;
 
   @override
   void initState() {
     super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
     _startController();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final foreground = state == AppLifecycleState.resumed;
+    if (_foreground == foreground) return;
+    _foreground = foreground;
+    _stopController();
+    if (_foreground) _startController();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -1677,11 +1692,12 @@ class _LatestPostVideoPreviewState extends State<_LatestPostVideoPreview> {
   bool _isCurrent(VideoPlayerController controller, int generation) =>
       mounted &&
       widget.isActive &&
+      _foreground &&
       generation == _generation &&
       identical(controller, _controller);
 
   void _startController() {
-    if (!widget.isActive || widget.videoUrl == null) return;
+    if (!widget.isActive || !_foreground || widget.videoUrl == null) return;
     try {
       // This uses the player's network stream without saving a local copy.
       // A cover skips the player entirely; the fallback never calls play().
@@ -1757,6 +1773,7 @@ class _LatestPostVideoPreviewState extends State<_LatestPostVideoPreview> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopController();
     super.dispose();
   }

@@ -62,7 +62,10 @@ void _signIn(String owner) => PostDeeAuthSessionStore.instance.signIn(
     );
 
 Widget _app(HomeActivitySection child,
-        {double textScale = 1, double width = 390}) =>
+        {double textScale = 1,
+        double width = 390,
+        bool reducedMotion = true,
+        bool tickerEnabled = true}) =>
     MaterialApp(
       locale: const Locale('th'),
       supportedLocales: PostDeeLocalizations.supportedLocales,
@@ -76,14 +79,16 @@ Widget _app(HomeActivitySection child,
         body: MediaQuery(
           data: MediaQueryData(
               textScaler: TextScaler.linear(textScale),
-              disableAnimations: true),
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: SizedBox(
-              width: width,
-              child: SingleChildScrollView(child: child),
-            ),
-          ),
+              disableAnimations: reducedMotion),
+          child: TickerMode(
+              enabled: tickerEnabled,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: width,
+                  child: SingleChildScrollView(child: child),
+                ),
+              )),
         ),
       ),
     );
@@ -146,12 +151,119 @@ Future<void> _tap(WidgetTester tester, String key) async {
   await tester.pump();
 }
 
+void _resumeMotion(TestWidgetsFlutterBinding binding) {
+  if (binding.lifecycleState == AppLifecycleState.paused) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  }
+  if (binding.lifecycleState == AppLifecycleState.hidden) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  }
+  if (binding.lifecycleState != AppLifecycleState.resumed) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
+}
+
+double _heroOpacity(WidgetTester tester) {
+  final opacity = find.byKey(const ValueKey('home-hero-content-opacity'));
+  if (opacity.evaluate().isNotEmpty) {
+    return tester.widget<Opacity>(opacity).opacity;
+  }
+  return tester
+      .widget<FadeTransition>(find
+          .descendant(
+              of: find.byKey(const ValueKey('home-hero-owner-0')),
+              matching: find.byType(FadeTransition))
+          .last)
+      .opacity
+      .value;
+}
+
 void main() {
   setUp(() {
     AppTheme.applyThemeMode(ThemeMode.light);
     _signIn('seller');
   });
   tearDown(() => PostDeeAuthSessionStore.instance.clear());
+
+  for (final mode in ['inactive', 'reduced', 'ticker', 'background']) {
+    testWidgets('motion audit $mode stops a live hero fade without replay',
+        (tester) async {
+      _resumeMotion(tester.binding);
+      addTearDown(() => _resumeMotion(tester.binding));
+      final key = GlobalKey<HomeActivitySectionState>();
+      final drafts = Completer<List<PublishDraft>>();
+      Future<List<PublishDraft>> loadDrafts() => drafts.future;
+      Widget host(bool blocked) => _app(
+            _section(
+              key: key,
+              isActive: mode != 'inactive' || !blocked,
+              loadDrafts: loadDrafts,
+            ),
+            reducedMotion: mode == 'reduced' && blocked,
+            tickerEnabled: mode != 'ticker' || !blocked,
+          );
+      await tester.pumpWidget(host(false));
+      drafts.complete([_draft('current')]);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(find.text('แคปชัน current'), findsOneWidget);
+      expect(_heroOpacity(tester), inExclusiveRange(0, 1));
+      if (mode == 'background') {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.scheduleForcedFrame();
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(host(true));
+      }
+      expect(_heroOpacity(tester), 1);
+      expect(find.text('แคปชัน current'), findsOneWidget);
+      if (mode == 'background') {
+        _resumeMotion(tester.binding);
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(host(false));
+      }
+      expect(_heroOpacity(tester), 1);
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(_heroOpacity(tester), 1);
+      await tester.pumpAndSettle();
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('motion audit hero replacement removes previous actionable draft',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    final key = GlobalKey<HomeActivitySectionState>();
+    var current = _draft('old');
+    final opened = <String>[];
+    await tester.pumpWidget(_app(
+      _section(
+        key: key,
+        loadDrafts: () async => [current],
+        onResumeDraft: (draft) async => opened.add(draft.id),
+      ),
+      reducedMotion: false,
+    ));
+    await tester.pumpAndSettle();
+    current = _draft('new');
+    final refresh = key.currentState!.refresh();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(find.text('แคปชัน old'), findsNothing);
+    expect(find.text('แคปชัน new'), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-resume-draft')), findsOneWidget);
+    expect(find.bySemanticsLabel('ทำต่อ'), findsOneWidget);
+    await _tap(tester, 'home-resume-draft');
+    await tester.pumpAndSettle();
+    expect(opened, ['new']);
+    expect(await refresh, isTrue);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
 
   testWidgets('starts the first post without requiring a connected channel',
       (tester) async {

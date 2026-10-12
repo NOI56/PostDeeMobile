@@ -15,13 +15,37 @@ class BioMotionSurface extends StatefulWidget {
 }
 
 class _BioMotionSurfaceState extends State<BioMotionSurface>
-    with TickerProviderStateMixin {
-  late final _ambient =
-      AnimationController(vsync: this, duration: const Duration(seconds: 18));
-  late final _entrance = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 500), value: 1);
-  late final _animation = Listenable.merge([_ambient, _entrance]);
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  late final AnimationController _ambient;
+  late final AnimationController _entrance;
+  late final Listenable _animation;
+  late bool _resumed;
   bool _reduced = false;
+  bool _configured = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _resumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    _ambient =
+        AnimationController(vsync: this, duration: const Duration(seconds: 18));
+    _entrance = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500), value: 1);
+    _animation = Listenable.merge([_ambient, _entrance]);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (!mounted || resumed == _resumed) return;
+    setState(() {
+      _resumed = resumed;
+      _configure();
+    });
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -32,13 +56,19 @@ class _BioMotionSurfaceState extends State<BioMotionSurface>
   void didUpdateWidget(covariant BioMotionSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.effects != widget.effects) {
-      _configure();
+      _configure(
+          startEntrance:
+              !oldWidget.effects.entrance && widget.effects.entrance);
     }
   }
 
-  void _configure() {
-    _reduced = MediaQuery.disableAnimationsOf(context);
-    final active = !_reduced && TickerMode.valuesOf(context).enabled;
+  void _configure({bool startEntrance = false}) {
+    final enter = !_configured || startEntrance;
+    _configured = true;
+    _reduced = !_resumed ||
+        MediaQuery.disableAnimationsOf(context) ||
+        !TickerMode.valuesOf(context).enabled;
+    final active = !_reduced;
     if (active &&
         (widget.effects.background ||
             widget.effects.featured ||
@@ -47,16 +77,18 @@ class _BioMotionSurfaceState extends State<BioMotionSurface>
     } else {
       _ambient.stop();
     }
-    if (active && widget.effects.entrance) {
-      _entrance.forward(from: 0);
-    } else {
+    if (!active || !widget.effects.entrance) {
       _entrance.stop();
       _entrance.value = 1;
+    } else if (enter) {
+      // Dependency changes and resuming ambient motion keep links visible.
+      _entrance.forward(from: 0);
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _ambient.dispose();
     _entrance.dispose();
     super.dispose();

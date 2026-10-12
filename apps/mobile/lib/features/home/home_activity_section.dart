@@ -827,13 +827,9 @@ class HomeActivitySectionState extends State<HomeActivitySection>
               style: TextStyle(color: AppTheme.textSecondary)));
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      AnimatedSwitcher(
+      _HomeHeroTransition(
         key: ValueKey('home-hero-owner-$_ownerGeneration'),
-        duration: widget.isActive &&
-                TickerMode.valuesOf(context).enabled &&
-                !MediaQuery.disableAnimationsOf(context)
-            ? const Duration(milliseconds: 180)
-            : Duration.zero,
+        enabled: widget.isActive,
         child: KeyedSubtree(
           key: ValueKey(_hasLoadedDrafts
               ? 'loaded-${_latestDraft?.id ?? 'new'}'
@@ -853,4 +849,92 @@ class HomeActivitySectionState extends State<HomeActivitySection>
       ],
     ]);
   }
+}
+
+/// Only the current card stays mounted, so a fading draft cannot leave old
+/// buttons or semantics behind after the data changes.
+class _HomeHeroTransition extends StatefulWidget {
+  const _HomeHeroTransition({
+    super.key,
+    required this.enabled,
+    required this.child,
+  });
+
+  final bool enabled;
+  final Widget child;
+
+  @override
+  State<_HomeHeroTransition> createState() => _HomeHeroTransitionState();
+}
+
+class _HomeHeroTransitionState extends State<_HomeHeroTransition>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  late final AnimationController _controller;
+  bool _resumed = true;
+  bool _tickerEnabled = true;
+  bool _reduceMotion = false;
+
+  bool get _allowed =>
+      widget.enabled && _resumed && _tickerEnabled && !_reduceMotion;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+      value: 1,
+    );
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _resumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _tickerEnabled = TickerMode.valuesOf(context).enabled;
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    _finishIfBlocked();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeHeroTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_allowed) {
+      _finishIfBlocked();
+    } else if (oldWidget.child.key != widget.child.key) {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _resumed = state == AppLifecycleState.resumed;
+    _finishIfBlocked();
+  }
+
+  void _finishIfBlocked() {
+    if (_allowed) return;
+    _controller.stop();
+    _controller.value = 1;
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) => Opacity(
+          key: const ValueKey('home-hero-content-opacity'),
+          opacity: Curves.easeOutCubic.transform(_controller.value),
+          child: child,
+        ),
+        child: widget.child,
+      );
 }

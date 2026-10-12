@@ -67,7 +67,8 @@ class PublishFlowScreen extends StatefulWidget {
   State<PublishFlowScreen> createState() => _PublishFlowScreenState();
 }
 
-class _PublishFlowScreenState extends State<PublishFlowScreen> {
+class _PublishFlowScreenState extends State<PublishFlowScreen>
+    with WidgetsBindingObserver {
   static const _initialProgress = PublishFlowProgress(
     stage: PublishFlowStage.preparing,
     fraction: 0.05,
@@ -77,14 +78,32 @@ class _PublishFlowScreenState extends State<PublishFlowScreen> {
   PublishFlowProgress _progress = _initialProgress;
   Object? _publishError;
   bool _isPublishing = false;
+  bool _appIsResumed = true;
   int _publishAttempt = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _appIsResumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _publish();
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (mounted && _appIsResumed != resumed) {
+      setState(() => _appIsResumed = resumed);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _publish() async {
@@ -153,8 +172,8 @@ class _PublishFlowScreenState extends State<PublishFlowScreen> {
         body: DecoratedBox(
           decoration: AppTheme.screenBackground,
           child: SafeArea(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
+            child: _PublishViewTransition(
+              animate: _appIsResumed,
               child: _post != null
                   ? _PublishDoneView(
                       key: const ValueKey('publish-flow-done'),
@@ -180,6 +199,59 @@ class _PublishFlowScreenState extends State<PublishFlowScreen> {
       ),
     );
   }
+}
+
+class _PublishViewTransition extends StatefulWidget {
+  const _PublishViewTransition({required this.animate, required this.child});
+
+  final bool animate;
+  final Widget child;
+
+  @override
+  State<_PublishViewTransition> createState() => _PublishViewTransitionState();
+}
+
+class _PublishViewTransitionState extends State<_PublishViewTransition>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 260), value: 1);
+
+  bool get _motionAllowed =>
+      widget.animate &&
+      TickerMode.valuesOf(context).enabled &&
+      !MediaQuery.disableAnimationsOf(context);
+
+  void _finishBlockedMotion() {
+    if (!_motionAllowed) {
+      _controller.stop();
+      _controller.value = 1;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _finishBlockedMotion();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PublishViewTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!Widget.canUpdate(oldWidget.child, widget.child) && _motionAllowed) {
+      _controller.forward(from: 0);
+    }
+    _finishBlockedMotion();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      FadeTransition(opacity: _controller, child: widget.child);
 }
 
 class _PublishingView extends StatelessWidget {

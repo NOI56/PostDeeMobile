@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -315,6 +316,8 @@ void main() {
     var subscriptionChecks = 0;
     var existedDuringUpload = false;
     var createPostCalls = 0;
+    final publishCompletion = Completer<QueuedPostResult>();
+    late final QueuedPostResult queuedPost;
     late final _TrackedWatermarkedVideoResult watermarkResult;
     final draftStore = _WatermarkDraftStore();
 
@@ -380,12 +383,13 @@ void main() {
             },
             createPost: (request) async {
               createPostCalls += 1;
-              return QueuedPostResult(
+              queuedPost = QueuedPostResult(
                 id: 'post-watermarked',
                 videoS3Key: request.videoS3Key,
                 platforms: request.platforms,
                 status: 'QUEUED',
               );
+              return publishCompletion.future;
             },
           ),
         ),
@@ -434,6 +438,12 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
     });
+    expect(createPostCalls, 1);
+    expect(
+      find.byKey(const ValueKey('publish-flow-posting')),
+      findsOneWidget,
+    );
+    publishCompletion.complete(queuedPost);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await _pumpUntilFound(
@@ -472,6 +482,10 @@ void main() {
           .map((widget) => widget.data)
           .whereType<String>()
           .join(' | '),
+    );
+    expect(
+      find.byKey(const ValueKey('publish-flow-posting')),
+      findsNothing,
     );
   });
 }

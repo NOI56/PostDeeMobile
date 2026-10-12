@@ -3819,15 +3819,9 @@ class _UploaderScreenState extends State<UploaderScreen>
                 '${_wizardStepLabel(index)}${isComplete ? ' เสร็จแล้ว' : ''}',
             child: ExcludeSemantics(
               child: Column(children: [
-                AnimatedContainer(
+                _UploaderDecorationTransition(
                   key: ValueKey('uploader-progress-circle-$index'),
-                  duration: _uploaderMotionAllowed(context, _appIsResumed)
-                      ? const Duration(milliseconds: 160)
-                      : Duration.zero,
-                  curve: Curves.easeOutCubic,
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
+                  animate: _appIsResumed,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: !isCurrent && !isComplete
@@ -3839,19 +3833,27 @@ class _UploaderScreenState extends State<UploaderScreen>
                             ? AppTheme.accent.withValues(alpha: 0.12)
                             : AppTheme.glassDeep,
                   ),
-                  child: isComplete
-                      ? Icon(Icons.check_rounded,
-                          key: ValueKey('uploader-progress-complete-$index'),
-                          size: 17,
-                          color: AppTheme.accent)
-                      : Text('${index + 1}',
-                          textScaler: TextScaler.noScaling,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                            color:
-                                isCurrent ? Colors.white : AppTheme.textMuted,
-                          )),
+                  child: SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: Center(
+                      child: isComplete
+                          ? Icon(Icons.check_rounded,
+                              key:
+                                  ValueKey('uploader-progress-complete-$index'),
+                              size: 17,
+                              color: AppTheme.accent)
+                          : Text('${index + 1}',
+                              textScaler: TextScaler.noScaling,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                                color: isCurrent
+                                    ? Colors.white
+                                    : AppTheme.textMuted,
+                              )),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 5),
                 Text(['คลิป', 'แคปชัน', 'ช่องทาง', 'ตรวจทาน'][index],
@@ -4152,6 +4154,74 @@ bool _uploaderMotionAllowed(BuildContext context, bool active) =>
     active &&
     TickerMode.valuesOf(context).enabled &&
     !(MediaQuery.maybeOf(context)?.disableAnimations ?? false);
+
+class _UploaderDecorationTransition extends StatefulWidget {
+  const _UploaderDecorationTransition({
+    super.key,
+    required this.decoration,
+    required this.animate,
+    required this.child,
+  });
+
+  final BoxDecoration decoration;
+  final bool animate;
+  final Widget child;
+
+  @override
+  State<_UploaderDecorationTransition> createState() =>
+      _UploaderDecorationTransitionState();
+}
+
+class _UploaderDecorationTransitionState
+    extends State<_UploaderDecorationTransition>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 160), value: 1);
+  late final Animation<double> _progress =
+      _controller.drive(CurveTween(curve: Curves.easeOutCubic));
+  late DecorationTween _decoration =
+      DecorationTween(begin: widget.decoration, end: widget.decoration);
+
+  void _finishBlockedMotion() {
+    if (!_uploaderMotionAllowed(context, widget.animate)) {
+      _controller.stop();
+      _controller.value = 1;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _finishBlockedMotion();
+  }
+
+  @override
+  void didUpdateWidget(covariant _UploaderDecorationTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.decoration != oldWidget.decoration) {
+      _decoration = DecorationTween(
+          begin: _decoration.evaluate(_progress), end: widget.decoration);
+      if (_uploaderMotionAllowed(context, widget.animate)) {
+        _controller.forward(from: 0);
+      }
+    }
+    _finishBlockedMotion();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _progress,
+        child: widget.child,
+        builder: (context, child) => DecoratedBox(
+            decoration: _decoration.evaluate(_progress), child: child),
+      );
+}
 
 class _UploaderStepEntrance extends StatefulWidget {
   const _UploaderStepEntrance({
@@ -4853,14 +4923,13 @@ class _PlatformRow extends StatelessWidget {
       button: true,
       enabled: true,
       selected: isSelected,
-      child: AnimatedContainer(
-        duration: _uploaderMotionAllowed(context, animate)
-            ? const Duration(milliseconds: 160)
-            : Duration.zero,
-        curve: Curves.easeOutCubic,
-        color: isSelected
-            ? AppTheme.accent.withValues(alpha: 0.10)
-            : Colors.transparent,
+      child: _UploaderDecorationTransition(
+        animate: animate,
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.accent.withValues(alpha: 0.10)
+              : Colors.transparent,
+        ),
         child: Column(
           children: [
             PostDeePressFeedback(

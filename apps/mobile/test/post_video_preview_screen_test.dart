@@ -106,14 +106,17 @@ class _PreviewVideoPlatform extends VideoPlayerPlatform {
 Widget _testApp({
   double textScale = 1,
   String videoPath = 'local-selected-clip.mp4',
+  bool reducedMotion = false,
+  bool tickerEnabled = true,
 }) =>
     MaterialApp(
       theme: AppTheme.light,
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(
           textScaler: TextScaler.linear(textScale),
+          disableAnimations: reducedMotion,
         ),
-        child: child!,
+        child: TickerMode(enabled: tickerEnabled, child: child!),
       ),
       home: PostVideoPreviewScreen(
         videoFile: File(videoPath),
@@ -125,6 +128,19 @@ Future<void> _settleNativeDisposal(WidgetTester tester) async {
   // video_player cancels its event subscription asynchronously on disposal.
   await tester.runAsync(() => Future<void>.delayed(Duration.zero));
   await tester.pump();
+}
+
+void _resumePreviewMotion(WidgetTester tester) {
+  final binding = tester.binding;
+  if (binding.lifecycleState == AppLifecycleState.paused) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  }
+  if (binding.lifecycleState == AppLifecycleState.hidden) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  }
+  if (binding.lifecycleState != AppLifecycleState.resumed) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
 }
 
 void main() {
@@ -141,6 +157,82 @@ void main() {
   tearDown(() {
     VideoPlayerPlatform.instance = previousPlatform;
   });
+
+  for (final mode in ['reduced', 'ticker', 'background']) {
+    for (final phase in ['waiting', 'created']) {
+      testWidgets('motion audit $mode keeps $phase preview loading static',
+          (tester) async {
+        addTearDown(() => _resumePreviewMotion(tester));
+        _resumePreviewMotion(tester);
+        final gate = Completer<void>();
+        platform = _PreviewVideoPlatform(firstCreationGate: gate);
+        VideoPlayerPlatform.instance = platform;
+        if (phase == 'created' && mode == 'background') {
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        }
+        await tester.pumpWidget(_testApp(
+            reducedMotion: phase == 'created' && mode == 'reduced',
+            tickerEnabled: phase != 'created' || mode != 'ticker'));
+        if (phase == 'created' && mode == 'background') {
+          // The binding suppresses new frames while paused. Force only the
+          // mounting frame to exercise a screen created in that lifecycle.
+          tester.binding.scheduleForcedFrame();
+        }
+        await tester.pump();
+        if (phase == 'waiting') {
+          expect(find.byType(CircularProgressIndicator), findsOneWidget);
+          await tester.pump(const Duration(milliseconds: 40));
+          if (mode == 'background') {
+            tester.binding
+                .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+            tester.binding
+                .handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+            tester.binding
+                .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+            await tester.pump();
+          } else {
+            await tester.pumpWidget(_testApp(
+                reducedMotion: mode == 'reduced',
+                tickerEnabled: mode != 'ticker'));
+          }
+        }
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.byIcon(Icons.hourglass_empty), findsOneWidget);
+        expect(find.text('กำลังเปิดคลิป…'), findsOneWidget);
+        await tester.pumpAndSettle();
+        expect(tester.binding.hasScheduledFrame, isFalse);
+        expect(platform.sources, hasLength(1));
+        expect(platform.played, isEmpty);
+        if (mode == 'background') {
+          _resumePreviewMotion(tester);
+          await tester.pump();
+        } else {
+          await tester.pumpWidget(_testApp());
+        }
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(platform.sources, hasLength(1),
+            reason: 'A motion setting must not recreate the video controller.');
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(
+            find.byKey(const ValueKey('fake-preview-video-1')), findsOneWidget);
+        expect(platform.played, isEmpty);
+        await tester.tap(find.byTooltip('เล่นคลิป'));
+        await tester.pump();
+        expect(platform.played, [1]);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        await _settleNativeDisposal(tester);
+        expect(platform.disposeCounts, {1: 1});
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   testWidgets('opens the local file fitted without autoplay and plays on tap',
       (tester) async {

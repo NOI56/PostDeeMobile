@@ -694,7 +694,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
   }
 }
 
-class _PostDeeBottomNav extends StatelessWidget {
+class _PostDeeBottomNav extends StatefulWidget {
   const _PostDeeBottomNav({
     required this.currentIndex,
     required this.onHome,
@@ -725,7 +725,40 @@ class _PostDeeBottomNav extends StatelessWidget {
       };
 
   @override
+  State<_PostDeeBottomNav> createState() => _PostDeeBottomNavState();
+}
+
+class _PostDeeBottomNavState extends State<_PostDeeBottomNav>
+    with WidgetsBindingObserver {
+  late bool _resumed;
+
+  @override
+  void initState() {
+    super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _resumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (mounted && resumed != _resumed) {
+      setState(() => _resumed = resumed);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final reduceMotion = !_resumed ||
+        !TickerMode.valuesOf(context).enabled ||
+        MediaQuery.disableAnimationsOf(context);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         // Screens without an AppBar also inherit status-bar contrast here.
@@ -761,48 +794,57 @@ class _PostDeeBottomNav extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: SizedBox(
-                  height: _height,
+                  height: _PostDeeBottomNav._height,
                   child: Stack(
                     children: [
                       Row(
                         children: [
                           Expanded(
                             child: _ReferenceNavButton(
-                              label: l10n.navigationHome,
+                              slot: 0,
+                              reduceMotion: reduceMotion,
+                              label: widget.l10n.navigationHome,
                               icon: Icons.home_outlined,
-                              selected: currentIndex == 0,
-                              onPressed: onHome,
+                              selected: widget.currentIndex == 0,
+                              onPressed: widget.onHome,
                             ),
                           ),
                           Expanded(
                             child: _ReferenceNavButton(
-                              label: l10n.captionTab,
+                              slot: 1,
+                              reduceMotion: reduceMotion,
+                              label: widget.l10n.captionTab,
                               icon: Icons.calendar_today_outlined,
-                              selected: currentIndex == 3,
-                              onPressed: onCalendar,
+                              selected: widget.currentIndex == 3,
+                              onPressed: widget.onCalendar,
                             ),
                           ),
                           Expanded(
                             child: _ReferenceCreateNavButton(
-                              label: l10n.createPostTab,
-                              selected: currentIndex == 2,
-                              onPressed: onCreate,
+                              reduceMotion: reduceMotion,
+                              label: widget.l10n.createPostTab,
+                              selected: widget.currentIndex == 2,
+                              onPressed: widget.onCreate,
                             ),
                           ),
                           Expanded(
                             child: _ReferenceNavButton(
-                              label: l10n.navigationStoreLink,
+                              slot: 3,
+                              reduceMotion: reduceMotion,
+                              label: widget.l10n.navigationStoreLink,
                               icon: Icons.link_outlined,
-                              selected: currentIndex == 1,
-                              onPressed: onLinkInBio,
+                              selected: widget.currentIndex == 1,
+                              onPressed: widget.onLinkInBio,
                             ),
                           ),
                           Expanded(
                             child: _ReferenceNavButton(
-                              label: l10n.navigationAccount,
+                              slot: 4,
+                              reduceMotion: reduceMotion,
+                              label: widget.l10n.navigationAccount,
                               icon: Icons.person_outline_rounded,
-                              selected: currentIndex == 5,
-                              onPressed: onProfile,
+                              selected: widget.currentIndex == 5,
+                              onPressed: widget.onProfile,
                             ),
                           ),
                         ],
@@ -811,9 +853,8 @@ class _PostDeeBottomNav extends StatelessWidget {
                         child: IgnorePointer(
                           child: ExcludeSemantics(
                             child: _RunningNavDot(
-                              selectedSlot: _selectedSlot,
-                              reduceMotion:
-                                  MediaQuery.disableAnimationsOf(context),
+                              selectedSlot: widget._selectedSlot,
+                              reduceMotion: reduceMotion,
                             ),
                           ),
                         ),
@@ -933,8 +974,10 @@ class _RunningNavDotState extends State<_RunningNavDot>
   }
 }
 
-class _ReferenceNavButton extends StatelessWidget {
+class _ReferenceNavButton extends StatefulWidget {
   const _ReferenceNavButton({
+    required this.slot,
+    required this.reduceMotion,
     required this.label,
     required this.icon,
     required this.selected,
@@ -944,6 +987,8 @@ class _ReferenceNavButton extends StatelessWidget {
     this.onHighlightChanged,
   });
 
+  final int slot;
+  final bool reduceMotion;
   final String label;
   final IconData icon;
   final bool selected;
@@ -953,22 +998,128 @@ class _ReferenceNavButton extends StatelessWidget {
   final ValueChanged<bool>? onHighlightChanged;
 
   @override
-  Widget build(BuildContext context) {
-    final color = selected ? AppTheme.navActive : AppTheme.textSecondary;
+  State<_ReferenceNavButton> createState() => _ReferenceNavButtonState();
+}
 
+class _ReferenceNavButtonState extends State<_ReferenceNavButton>
+    with TickerProviderStateMixin {
+  late final AnimationController _selection = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+    value: widget.selected ? 1 : 0,
+  );
+  late final AnimationController _press =
+      AnimationController.unbounded(vsync: this, value: 1);
+  late final Listenable _feedback = Listenable.merge([_selection, _press]);
+  bool _disposed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize even for the center action, which renders its own feedback.
+    // Creating a previously unused ticker during disposal is unsafe.
+    _feedback;
+  }
+
+  @override
+  void didUpdateWidget(_ReferenceNavButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.reduceMotion) {
+      _selection.stop();
+      _selection.value = widget.selected ? 1 : 0;
+      _press.stop();
+      _press.value = 1;
+    } else if (!widget.isCreateAction &&
+        oldWidget.selected != widget.selected) {
+      _selection.animateTo(
+        widget.selected ? 1 : 0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _highlightChanged(bool highlighted) {
+    if (_disposed || !mounted) return;
+    if (!widget.isCreateAction && !widget.reduceMotion) {
+      _press.animateTo(
+        highlighted ? .9 : 1,
+        duration: Duration(milliseconds: highlighted ? 80 : 180),
+        curve: highlighted ? Curves.easeOut : Curves.easeOutBack,
+      );
+    }
+    widget.onHighlightChanged?.call(highlighted);
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _selection.dispose();
+    _press.dispose();
+    super.dispose();
+  }
+
+  Widget _animatedIcon() {
+    return AnimatedBuilder(
+      animation: _feedback,
+      builder: (context, _) {
+        final progress = _selection.value;
+        return Transform.scale(
+          key: ValueKey('postdee-nav-icon-feedback-${widget.slot}'),
+          scale: _press.value,
+          transformHitTests: false,
+          child: Transform.translate(
+            key: ValueKey('postdee-nav-icon-lift-${widget.slot}'),
+            offset: Offset(0, -2 * progress),
+            transformHitTests: false,
+            child: Transform.scale(
+              key: ValueKey('postdee-nav-icon-selection-${widget.slot}'),
+              scale: 1 + .08 * progress,
+              transformHitTests: false,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox.square(
+                    dimension: 36,
+                    child: DecoratedBox(
+                      key: ValueKey('postdee-nav-icon-halo-${widget.slot}'),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppTheme.navActive
+                            .withValues(alpha: .12 * progress),
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    widget.icon,
+                    size: 22,
+                    color: Color.lerp(
+                        AppTheme.textSecondary, AppTheme.navActive, progress),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Semantics(
-      label: label,
+      label: widget.label,
       button: true,
-      selected: selected,
-      onTap: onPressed,
+      selected: widget.selected,
+      onTap: widget.onPressed,
       child: ExcludeSemantics(
         child: Tooltip(
-          message: label,
+          message: widget.label,
           child: Material(
             type: MaterialType.transparency,
             child: InkWell(
-              onTap: onPressed,
-              onHighlightChanged: onHighlightChanged,
+              onTap: widget.onPressed,
+              onHighlightChanged: _highlightChanged,
               borderRadius: BorderRadius.circular(18),
               child: SizedBox(
                 height: _PostDeeBottomNav._height,
@@ -980,11 +1131,13 @@ class _ReferenceNavButton extends StatelessWidget {
                       SizedBox(
                         width: 44,
                         height: 44,
-                        child: isCreateAction
+                        child: widget.isCreateAction
                             ? Transform.translate(
                                 offset: const Offset(0, -8),
+                                transformHitTests: false,
                                 child: Transform.scale(
-                                  scale: createScale,
+                                  scale: widget.createScale,
+                                  transformHitTests: false,
                                   child: DecoratedBox(
                                     key: const ValueKey(
                                         'postdee-nav-create-surface'),
@@ -992,18 +1145,19 @@ class _ReferenceNavButton extends StatelessWidget {
                                       color: AppTheme.accent,
                                       shape: BoxShape.circle,
                                     ),
-                                    child: Icon(icon,
+                                    child: Icon(widget.icon,
                                         color: Colors.white, size: 25),
                                   ),
                                 ),
                               )
-                            : Icon(icon, color: color, size: 22),
+                            : _animatedIcon(),
                       ),
                       const SizedBox(height: 1),
-                      if (isCreateAction)
+                      if (widget.isCreateAction)
                         const SizedBox(height: 15)
                       else
-                        _ReferenceNavLabel(label: label, selected: selected),
+                        _ReferenceNavLabel(
+                            label: widget.label, selected: widget.selected),
                       const SizedBox(height: 3),
                       const SizedBox(width: 4, height: 4),
                     ],
@@ -1020,11 +1174,13 @@ class _ReferenceNavButton extends StatelessWidget {
 
 class _ReferenceCreateNavButton extends StatefulWidget {
   const _ReferenceCreateNavButton({
+    required this.reduceMotion,
     required this.label,
     required this.selected,
     required this.onPressed,
   });
 
+  final bool reduceMotion;
   final String label;
   final bool selected;
   final VoidCallback onPressed;
@@ -1038,20 +1194,19 @@ class _ReferenceCreateNavButtonState extends State<_ReferenceCreateNavButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _press =
       AnimationController.unbounded(vsync: this, value: 1);
-  bool _reduceMotion = false;
+  bool _disposed = false;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _reduceMotion = MediaQuery.disableAnimationsOf(context);
-    if (_reduceMotion) {
+  void didUpdateWidget(_ReferenceCreateNavButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.reduceMotion) {
       _press.stop();
       _press.value = 1;
     }
   }
 
   void _highlightChanged(bool highlighted) {
-    if (_reduceMotion) return;
+    if (_disposed || !mounted || widget.reduceMotion) return;
     _press.animateTo(
       highlighted ? .9 : 1,
       duration: Duration(milliseconds: highlighted ? 80 : 180),
@@ -1060,7 +1215,8 @@ class _ReferenceCreateNavButtonState extends State<_ReferenceCreateNavButton>
   }
 
   void _onPressed() {
-    if (!_reduceMotion) {
+    if (_disposed || !mounted) return;
+    if (!widget.reduceMotion) {
       _press.value = .9;
       _highlightChanged(false);
     }
@@ -1069,6 +1225,7 @@ class _ReferenceCreateNavButtonState extends State<_ReferenceCreateNavButton>
 
   @override
   void dispose() {
+    _disposed = true;
     _press.dispose();
     super.dispose();
   }
@@ -1078,6 +1235,8 @@ class _ReferenceCreateNavButtonState extends State<_ReferenceCreateNavButton>
     return AnimatedBuilder(
       animation: _press,
       builder: (context, _) => _ReferenceNavButton(
+        slot: 2,
+        reduceMotion: widget.reduceMotion,
         label: widget.label,
         icon: Icons.ios_share_outlined,
         selected: widget.selected,

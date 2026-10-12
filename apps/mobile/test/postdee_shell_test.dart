@@ -11,6 +11,7 @@ import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/models/caption_writing_style.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
+import 'package:postdee_mobile/core/theme/theme_controller.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
 import 'package:postdee_mobile/features/auth/auth_controller.dart';
 import 'package:postdee_mobile/features/billing/paywall_screen.dart';
@@ -42,6 +43,7 @@ Finder _referenceNavButton(String label) => find.descendant(
 Widget _shellApp(
   PostDeeShell shell, {
   bool disableAnimations = false,
+  bool tickerEnabled = true,
   TextDirection? textDirection,
   double? textScale,
 }) =>
@@ -55,9 +57,12 @@ Widget _shellApp(
               ? MediaQuery.of(context).textScaler
               : TextScaler.linear(textScale),
         ),
-        child: textDirection == null
-            ? child!
-            : Directionality(textDirection: textDirection, child: child!),
+        child: TickerMode(
+          enabled: tickerEnabled,
+          child: textDirection == null
+              ? child!
+              : Directionality(textDirection: textDirection, child: child!),
+        ),
       ),
       localizationsDelegates: const [
         PostDeeLocalizations.delegate,
@@ -154,7 +159,467 @@ class _ShellEmailRecoveryGateway
       const AuthSession(userId: 'seller', idToken: 'token');
 }
 
+const _navMotionTabs = {
+  'Home': 0,
+  'Calendar': 1,
+  'Store link': 3,
+  'Account': 4
+};
+
+Finder _navMotionKey(String kind, int slot) =>
+    find.byKey(ValueKey('postdee-nav-icon-$kind-$slot'));
+
+Finder _navMotionIndicator() =>
+    find.byKey(const ValueKey('postdee-nav-selected-indicator'));
+
+double _navMotionScale(WidgetTester tester, int slot,
+        {bool selection = false}) =>
+    tester
+        .widget<Transform>(
+            _navMotionKey(selection ? 'selection' : 'feedback', slot))
+        .transform
+        .entry(0, 0);
+
+double _navMotionLift(WidgetTester tester, int slot) =>
+    tester.widget<Transform>(_navMotionKey('lift', slot)).transform.entry(1, 3);
+
+BoxDecoration _navMotionHalo(WidgetTester tester, int slot) =>
+    tester.widget<DecoratedBox>(_navMotionKey('halo', slot)).decoration
+        as BoxDecoration;
+
+Color? _navMotionIconColor(WidgetTester tester, String label) => tester
+    .widget<Icon>(find.descendant(
+        of: _referenceNavButton(label), matching: find.byType(Icon)))
+    .color;
+
+void _expectNavMotionSelection(WidgetTester tester, String selected) {
+  for (final entry in _navMotionTabs.entries) {
+    final active = entry.key == selected;
+    expect(_navMotionScale(tester, entry.value, selection: true),
+        closeTo(active ? 1.08 : 1, .0001));
+    expect(_navMotionLift(tester, entry.value), active ? -2 : 0);
+    expect(_navMotionHalo(tester, entry.value).color!.a,
+        closeTo(active ? .12 : 0, .0001));
+    expect(_navMotionIconColor(tester, entry.key),
+        active ? AppTheme.navActive : AppTheme.textSecondary);
+  }
+  expect(tester.getSize(_navMotionIndicator()), const Size(4, 4));
+  expect(tester.getCenter(_navMotionIndicator()).dx,
+      closeTo(tester.getCenter(_referenceNavButton(selected)).dx, .1));
+}
+
+void _resumeNavMotion(WidgetTester tester) {
+  final binding = tester.binding;
+  if (binding.lifecycleState == AppLifecycleState.paused) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  }
+  if (binding.lifecycleState == AppLifecycleState.hidden) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  }
+  if (binding.lifecycleState != AppLifecycleState.resumed) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
+}
+
+class _NavMotionFixture {
+  _NavMotionFixture({ThemeMode mode = ThemeMode.light}) {
+    addTearDown(theme.dispose);
+    addTearDown(() => AppTheme.applyThemeMode(ThemeMode.light));
+    theme.setThemeMode(mode);
+  }
+
+  final language = _signInShell();
+  final theme = PostDeeThemeController();
+  final drafts = _ShellDraftStore();
+  var calendarLoads = 0;
+  var recentLoads = 0;
+  var subscriptionLoads = 0;
+  var videoPicks = 0;
+  late final shell = PostDeeShell(
+    languageController: language,
+    themeController: theme,
+    uploaderDraftStore: drafts,
+    loadScheduledPosts: () async {
+      calendarLoads++;
+      return const [];
+    },
+    loadRecentPosts: () async {
+      recentLoads++;
+      return const [];
+    },
+    loadSocialConnections: () async => const [],
+    loadSubscription: () async {
+      subscriptionLoads++;
+      return const SubscriptionStatusResult(
+        userId: 'firebase-user-shell',
+        plan: 'BASIC',
+        status: 'INACTIVE',
+        remainingPostsThisMonth: 3,
+        monthlyPostLimit: 3,
+        canSchedule: false,
+        canUseAiCaptions: false,
+        canUseAnalytics: false,
+      );
+    },
+    pickVideo: () async {
+      videoPicks++;
+      return null;
+    },
+  );
+
+  Widget app({
+    bool reduced = false,
+    bool ticker = true,
+    TextDirection? direction,
+    double? textScale,
+  }) =>
+      _shellApp(shell,
+          disableAnimations: reduced,
+          tickerEnabled: ticker,
+          textDirection: direction,
+          textScale: textScale);
+}
+
 void main() {
+  testWidgets('bottom nav motion keeps all four selected halos finite and flat',
+      (tester) async {
+    final fixture = _NavMotionFixture();
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    for (final entry in _navMotionTabs.entries) {
+      await tester.tap(_referenceNavButton(entry.key));
+      await tester.pumpAndSettle();
+      _expectNavMotionSelection(tester, entry.key);
+      for (final slot in _navMotionTabs.values) {
+        final halo = _navMotionHalo(tester, slot);
+        expect(tester.getSize(_navMotionKey('halo', slot)), const Size(36, 36));
+        expect(halo.shape, BoxShape.circle);
+        expect(halo.boxShadow ?? const <BoxShadow>[], isEmpty);
+        expect(halo.gradient, isNull);
+        expect(_navMotionScale(tester, slot), 1);
+        for (final transform in ['selection', 'feedback', 'lift']) {
+          expect(
+              tester
+                  .widget<Transform>(_navMotionKey(transform, slot))
+                  .transformHitTests,
+              isFalse);
+        }
+      }
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.takeException(), isNull);
+    }
+    expect(fixture.drafts.drafts, isEmpty);
+    expect(fixture.videoPicks, 0);
+  });
+
+  testWidgets(
+      'bottom nav motion preserves semantics edge taps and cancellation',
+      (tester) async {
+    final fixture = _NavMotionFixture();
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    final semantics = tester.ensureSemantics();
+    try {
+      final calendar = _referenceNavButton('Calendar');
+      final bounds = tester.getRect(calendar);
+      final loads = fixture.calendarLoads;
+      final gesture =
+          await tester.startGesture(bounds.topLeft + const Offset(2, 40));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(_navMotionScale(tester, 1), closeTo(.9, .0001));
+      expect(tester.getRect(calendar), bounds);
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+      expect(fixture.calendarLoads, loads);
+      expect(tester.getSemantics(calendar),
+          isSemantics(label: 'Calendar', isButton: true, hasTapAction: true));
+      await gesture.cancel();
+      await tester.pumpAndSettle();
+      expect(_navMotionScale(tester, 1), 1);
+      expect(fixture.calendarLoads, loads);
+      await tester.tapAt(bounds.bottomRight - const Offset(2, 2));
+      await tester.pumpAndSettle();
+      expect(fixture.calendarLoads, loads + 1,
+          reason: 'One native tap activates the existing calendar once.');
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
+      expect(tester.getRect(calendar), bounds);
+      _expectNavMotionSelection(tester, 'Calendar');
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  testWidgets('bottom nav motion updates selection before the finite visual',
+      (tester) async {
+    final fixture = _NavMotionFixture();
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.tap(_referenceNavButton('Calendar'));
+      await tester.pump();
+      expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
+      expect(tester.getSemantics(_referenceNavButton('Calendar')),
+          isSemantics(isSelected: true, hasTapAction: true));
+      expect(tester.getSemantics(_referenceNavButton('Home')),
+          isSemantics(isSelected: false));
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(_navMotionScale(tester, 1, selection: true),
+          inExclusiveRange(1, 1.08));
+      expect(_navMotionLift(tester, 1), inExclusiveRange(-2, 0));
+      expect(_navMotionHalo(tester, 1).color!.a, inExclusiveRange(0, .12));
+      expect(_navMotionIconColor(tester, 'Calendar'),
+          isNot(AppTheme.textSecondary));
+      expect(
+          _navMotionIconColor(tester, 'Calendar'), isNot(AppTheme.navActive));
+      expect(tester.getSize(_navMotionIndicator()).width, greaterThan(4));
+      await tester.pumpAndSettle();
+      _expectNavMotionSelection(tester, 'Calendar');
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  testWidgets(
+      'bottom nav motion rapid retarget keeps tab state and final target',
+      (tester) async {
+    final fixture = _NavMotionFixture();
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    final home = tester.state(find.byType(HomeScreen));
+    final calendar =
+        tester.state(find.byType(CalendarScreen, skipOffstage: false));
+    final profile =
+        tester.state(find.byType(ProfileScreen, skipOffstage: false));
+    await tester.tap(_referenceNavButton('Account'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    final interrupted = _navMotionScale(tester, 4, selection: true);
+    final indicatorX = tester.getCenter(_navMotionIndicator()).dx;
+    expect(interrupted, inExclusiveRange(1, 1.08));
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pump();
+    expect(_navMotionScale(tester, 4, selection: true),
+        closeTo(interrupted, .0001));
+    expect(tester.getCenter(_navMotionIndicator()).dx, closeTo(indicatorX, .1));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(_referenceNavButton('Home'));
+    await tester.pumpAndSettle();
+    _expectNavMotionSelection(tester, 'Home');
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+    expect(tester.state(find.byType(HomeScreen)), same(home));
+    expect(tester.state(find.byType(CalendarScreen, skipOffstage: false)),
+        same(calendar));
+    expect(tester.state(find.byType(ProfileScreen, skipOffstage: false)),
+        same(profile));
+    for (final label in _navMotionTabs.keys) {
+      expect(_referenceNavButton(label), findsOneWidget);
+    }
+    expect(find.byType(UploaderScreen), findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bottom nav motion reduced start keeps static feedback usable',
+      (tester) async {
+    final fixture = _NavMotionFixture();
+    await tester.pumpWidget(fixture.app(reduced: true));
+    await tester.pumpAndSettle();
+    final account = _referenceNavButton('Account');
+    final gesture = await tester.startGesture(tester.getCenter(account));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 90));
+    expect(_navMotionScale(tester, 4), 1);
+    await gesture.up();
+    await tester.pump();
+    _expectNavMotionSelection(tester, 'Account');
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 5);
+    await tester.pumpAndSettle();
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final block in ['reduced', 'ticker', 'background']) {
+    testWidgets('bottom nav motion $block settles every in-flight feedback',
+        (tester) async {
+      addTearDown(() => _resumeNavMotion(tester));
+      final fixture = _NavMotionFixture();
+      await tester.pumpWidget(fixture.app());
+      await tester.pumpAndSettle();
+      final shellState = tester.state(find.byType(PostDeeShell));
+      final create = _referenceNavButton('Create post');
+      final createSurface =
+          find.byKey(const ValueKey('postdee-nav-create-surface'));
+      final createIdleWidth = tester.getRect(createSurface).width;
+      await tester.tap(_referenceNavButton('Account'));
+      await tester.pump();
+      final ordinaryGesture = await tester.startGesture(
+          tester.getCenter(_referenceNavButton('Calendar')),
+          pointer: 31);
+      final createGesture =
+          await tester.startGesture(tester.getCenter(create), pointer: 32);
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 90));
+      expect(_navMotionScale(tester, 1), closeTo(.9, .0001));
+      expect(tester.getRect(createSurface).width, lessThan(createIdleWidth));
+      expect(_navMotionScale(tester, 4, selection: true),
+          inExclusiveRange(1, 1.08));
+      expect(tester.getSize(_navMotionIndicator()).width, greaterThan(4));
+      if (block == 'background') {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.scheduleForcedFrame();
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(fixture.app(
+            reduced: block == 'reduced', ticker: block != 'ticker'));
+      }
+      _expectNavMotionSelection(tester, 'Account');
+      expect(_navMotionScale(tester, 1), 1);
+      expect(
+          tester.getRect(createSurface).width, closeTo(createIdleWidth, .0001));
+      expect(tester.state(find.byType(PostDeeShell)), same(shellState));
+      expect(find.byType(UploaderScreen), findsNothing);
+      await ordinaryGesture.cancel();
+      await createGesture.cancel();
+      if (block == 'background') {
+        _resumeNavMotion(tester);
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(fixture.app());
+      }
+      await tester.pump(const Duration(milliseconds: 40));
+      _expectNavMotionSelection(tester, 'Account');
+      expect(_navMotionScale(tester, 1), 1);
+      expect(
+          tester.getRect(createSurface).width, closeTo(createIdleWidth, .0001));
+      await tester.pumpAndSettle();
+      expect(find.byType(UploaderScreen), findsNothing);
+      expect(fixture.drafts.drafts, isEmpty);
+      expect(fixture.videoPicks, 0);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+      'bottom nav motion disposes held controls without stale callbacks',
+      (tester) async {
+    for (final label in ['Calendar', 'Create post']) {
+      final fixture = _NavMotionFixture();
+      await tester.pumpWidget(fixture.app());
+      await tester.pumpAndSettle();
+      final loads = fixture.calendarLoads;
+      final gesture = await tester
+          .startGesture(tester.getCenter(_referenceNavButton(label)));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 90));
+      if (label == 'Calendar') {
+        expect(_navMotionScale(tester, 1), closeTo(.9, .0001));
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+      await gesture.cancel();
+      await tester.pumpAndSettle();
+      expect(fixture.calendarLoads, loads);
+      expect(fixture.drafts.drafts, isEmpty);
+      expect(fixture.videoPicks, 0);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('bottom nav motion keeps RTL and 2x text at 320dp in $mode',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 852);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final fixture = _NavMotionFixture(mode: mode);
+      await tester
+          .pumpWidget(fixture.app(direction: TextDirection.rtl, textScale: 2));
+      await tester.pumpAndSettle();
+      final bounds = {
+        for (final label in _navMotionTabs.keys)
+          label: tester.getRect(_referenceNavButton(label)),
+      };
+      expect(
+          bounds['Home']!.center.dx, greaterThan(bounds['Account']!.center.dx));
+      for (final label in ['Account', 'Calendar', 'Store link', 'Home']) {
+        await tester.tap(_referenceNavButton(label));
+        await tester.pumpAndSettle();
+        _expectNavMotionSelection(tester, label);
+        for (final entry in bounds.entries) {
+          expect(tester.getRect(_referenceNavButton(entry.key)), entry.value);
+          expect(entry.value.width, greaterThanOrEqualTo(48));
+          expect(entry.value.height, 84);
+        }
+        expect(tester.takeException(), isNull);
+      }
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+  }
+
+  testWidgets('bottom nav motion keeps the center composer visually separate',
+      (tester) async {
+    final fixture = _NavMotionFixture();
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    final create = _referenceNavButton('Create post');
+    final surface = find.byKey(const ValueKey('postdee-nav-create-surface'));
+    final bounds = tester.getRect(create);
+    final width = tester.getRect(surface).width;
+    for (final effect in ['feedback', 'selection', 'lift', 'halo']) {
+      expect(_navMotionKey(effect, 2), findsNothing);
+    }
+    expect(find.descendant(of: create, matching: find.text('Create post')),
+        findsNothing);
+    expect(find.descendant(of: create, matching: _navMotionIndicator()),
+        findsNothing);
+    final decoration =
+        tester.widget<DecoratedBox>(surface).decoration as BoxDecoration;
+    expect(decoration.color, AppTheme.accent);
+    expect(decoration.boxShadow ?? const <BoxShadow>[], isEmpty);
+    final gesture = await tester.startGesture(bounds.center);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 90));
+    expect(tester.getRect(surface).width, closeTo(width * .9, .01));
+    expect(tester.getRect(create), bounds);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.byType(UploaderScreen), findsOneWidget);
+    expect(_referenceNav(), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('uploader-close')));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(create), bounds);
+    expect(tester.getRect(surface).width, closeTo(width, .01));
+    _expectNavMotionSelection(tester, 'Home');
+    expect(fixture.videoPicks, 0);
+    expect(fixture.drafts.drafts, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bottom nav motion created while paused resumes without replay',
+      (tester) async {
+    addTearDown(() => _resumeNavMotion(tester));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.scheduleForcedFrame();
+    final fixture = _NavMotionFixture();
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    _expectNavMotionSelection(tester, 'Home');
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    _resumeNavMotion(tester);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+    _expectNavMotionSelection(tester, 'Home');
+    await tester.pumpAndSettle();
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Home create shares the guarded composer and awaits its return',
       (tester) async {
     final languageController = _signInShell();

@@ -97,6 +97,7 @@ class _Fixture {
   var generators = 0;
   var posts = 0;
   var readiness = 0;
+  var connected = false;
 
   Widget app({bool reducedMotion = false, bool tickerEnabled = true}) =>
       MaterialApp(
@@ -117,7 +118,16 @@ class _Fixture {
               initialVideoSizeBytes: video.sizeBytes,
               initialVideoWidth: video.width,
               initialVideoHeight: video.height,
-              loadSocialConnections: () async => const [],
+              loadSocialConnections: () async => connected
+                  ? const [
+                      SocialConnectionResult(
+                        platform: 'TIKTOK',
+                        connected: true,
+                        displayName: 'ร้านของเรา',
+                        externalAccountId: 'feedback-tiktok',
+                      ),
+                    ]
+                  : const [],
               enableRevenueCatBilling: false,
               loadSubscription: () async => const SubscriptionStatusResult(
                 userId: 'feedback-owner',
@@ -249,6 +259,98 @@ void main() {
     sessions.signIn(const AuthSession(
         userId: 'feedback-owner', idToken: 'feedback-test-token'));
   });
+
+  for (final mode in ['reduced', 'ticker', 'background']) {
+    for (final target in ['step', 'platform']) {
+      testWidgets('motion audit $mode finishes $target color without replay',
+          (tester) async {
+        addTearDown(() => _resumeApp(tester));
+        _resumeApp(tester);
+        final fixture = _Fixture()..connected = true;
+        await _captionStep(tester, fixture, caption: 'ข้อความของร้านยังอยู่');
+        final editable = find.descendant(
+            of: _captionField, matching: find.byType(EditableText));
+        late Finder control;
+        late Color expectedColor;
+        if (target == 'step') {
+          await tester.tap(_key('uploader-progress-0'));
+          await tester.pumpAndSettle();
+          await tester.tap(_key('uploader-progress-1'));
+          control = _key('uploader-progress-circle-1');
+          expectedColor = AppTheme.accent;
+        } else {
+          await goToUploaderStep(tester, 2);
+          final row = _key('uploader-platform-TIKTOK');
+          await _show(tester, row);
+          await tester.tap(row);
+          control =
+              find.ancestor(of: row, matching: find.byType(DecoratedBox)).first;
+          expectedColor = AppTheme.accent.withValues(alpha: .10);
+        }
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 40));
+        Color? visibleColor() => (tester
+                .widget<DecoratedBox>(find
+                    .descendant(
+                        of: control,
+                        matching: find.byType(DecoratedBox),
+                        matchRoot: true)
+                    .first)
+                .decoration as BoxDecoration)
+            .color;
+        expect(visibleColor(), isNot(expectedColor));
+        final bounds = tester.getRect(control);
+        final currentEditor =
+            target == 'step' ? tester.state<EditableTextState>(editable) : null;
+        if (mode == 'background') {
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+          await tester.pump();
+        } else {
+          await tester.pumpWidget(fixture.app(
+              reducedMotion: mode == 'reduced',
+              tickerEnabled: mode != 'ticker'));
+        }
+        expect(visibleColor(), expectedColor,
+            reason: 'A disabled effect must finish at its selected color.');
+        expect(tester.getRect(control), bounds);
+        if (target == 'step') {
+          expect(
+              tester.state<EditableTextState>(editable), same(currentEditor));
+          expect(_caption(tester), 'ข้อความของร้านยังอยู่');
+        } else {
+          expect(find.text('เลือกแล้ว 1 ช่องทาง'), findsOneWidget);
+        }
+        await tester.pumpAndSettle();
+        expect(tester.binding.hasScheduledFrame, isFalse);
+        if (mode == 'background') {
+          _resumeApp(tester);
+          await tester.pump();
+        } else {
+          await tester.pumpWidget(fixture.app());
+        }
+        expect(visibleColor(), expectedColor);
+        await tester.pump(const Duration(milliseconds: 40));
+        expect(visibleColor(), expectedColor);
+        if (target == 'platform') {
+          await tester.tap(_key('uploader-platform-TIKTOK'));
+          await tester.pumpAndSettle();
+          expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
+          await goToUploaderStep(tester, 1);
+          expect(_caption(tester), 'ข้อความของร้านยังอยู่');
+        }
+        fixture.expectNoRemoteWrites();
+        expect(fixture.drafts.attempts, 0);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      });
+    }
+  }
 
   testWidgets(
       'empty caption focuses the field and its inline notice clears on edit',

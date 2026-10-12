@@ -2,6 +2,41 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Mobile motion audit boundary (2026-10-12, local audit complete)
+
+Shared press/skeleton lifecycle guards settle interrupted feedback, respecting
+reduced motion and parent tickers. Home keeps only the current hero controls and
+releases its thumbnail decoder in background; Calendar and composer selections,
+entrances/results settle without stale replay. BioMotionSurface distinguishes
+initial/explicit entrance enable from guard/dependency refresh and preserves
+requested ambient motion. Static chooser thumbnails and all 100 templates remain.
+Keep native hit targets, semantics, data/owner guards and all business contracts.
+Whole-preview per-frame rebuild cost is unproven and is not refactored here.
+Final source passes 2,058 Flutter tests and analysis (No issues, 8.6 s); exact
+Staging x64 4016/8016 build/install and safe native navigation/preview lifecycle
+checks pass with account/shop data retained. Debug emulator Flutter.Frame samples
+are diagnostic, with no controlled before/after comparison; physical-device
+60/120 FPS and populated-content profiling remain unverified. No API/schema/config/
+dependency/backend change, migration or new push/deploy; retain prior 8015 proof.
+Plan: `docs/superpowers/plans/2026-10-12-mobile-motion-smoothness-audit.md`.
+
+## Bottom navigation finite motion boundary (2026-10-12, local complete)
+
+The shell-owned follow-up retains the 260 ms running dot and native dock
+controls. Four ordinary icons gain a 36 dp mint halo at .12 alpha without shadow,
+finite 220 ms selection scale 1.08/two-pixel lift/color feedback and icon-only
+native press scale .9→1 over 80/180 ms. The 84 dp controls/semantics remain stable;
+the center green action keeps its blank visible label, no dot and existing pulse.
+Lifecycle/parent-ticker/reduced-motion guards settle controllers without replay;
+mounted cancellation guards protect disposal. No new request, persistence or
+business callback; existing shell/route/owner state remains. No API/schema/
+config/dependency/migration change. Final source passes 1,979 Flutter tests and
+analysis, including 13 new navigation cases; exact Staging x64 APK 4015/8015 is
+installed. Native four-tab feedback/composer return preserve account/shop data;
+reduced-motion/lifecycle/ticker/accessibility/disposal paths use fixtures. No new
+commit/push/deploy or main merge; external Staging remains `904a3f8`. Plan:
+`docs/superpowers/plans/2026-10-12-bottom-nav-ui-motion.md`.
+
 ## Account finite UI motion boundary (2026-10-12, Staging delivered)
 
 An Account-owned helper adds lifecycle/active/parent-ticker motion scope, passive

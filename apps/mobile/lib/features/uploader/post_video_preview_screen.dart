@@ -338,13 +338,22 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
       );
     }
     if (_loading || controller == null) {
-      return const Center(
+      final animate = _foreground &&
+          TickerMode.valuesOf(context).enabled &&
+          !MediaQuery.disableAnimationsOf(context);
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('กำลังเปิดคลิป…'),
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: animate
+                  ? const CircularProgressIndicator()
+                  : const Icon(Icons.hourglass_empty, size: 28),
+            ),
+            const SizedBox(height: 16),
+            const Text('กำลังเปิดคลิป…'),
           ],
         ),
       );

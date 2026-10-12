@@ -183,7 +183,105 @@ Future<SubscriptionStatusResult> _previewSubscription() async =>
       canUseAnalytics: false,
     );
 
+void _resumeThumbnailLifecycle(TestWidgetsFlutterBinding binding) {
+  if (binding.lifecycleState == AppLifecycleState.paused) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  }
+  if (binding.lifecycleState == AppLifecycleState.hidden) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  }
+  if (binding.lifecycleState != AppLifecycleState.resumed) {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
+}
+
 void main() {
+  for (final pending in [false, true]) {
+    testWidgets(
+        'motion audit background disposes ${pending ? 'pending' : 'ready'} latest video frame',
+        (tester) async {
+      _resumeThumbnailLifecycle(tester.binding);
+      addTearDown(() => _resumeThumbnailLifecycle(tester.binding));
+      final gate = pending ? Completer<void>() : null;
+      final controllers = <_PreviewVideoController>[];
+      await tester.pumpWidget(_homeTestApp(HomeScreen(
+        loadSubscription: _previewSubscription,
+        loadRecentPosts: () async =>
+            [_previewPost(videoUrl: Uri.parse('https://media.test/video.mp4'))],
+        createVideoThumbnailController: (_) {
+          final controller = _PreviewVideoController(
+              initializeGate: controllers.isEmpty ? gate : null);
+          controllers.add(controller);
+          return controller;
+        },
+      )));
+      await tester.pump();
+      await tester.pump();
+      if (!pending) await tester.pumpAndSettle();
+      expect(controllers, hasLength(1));
+      expect(controllers.single.initializeCalls, 1);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.scheduleForcedFrame();
+      await tester.pump();
+      expect(controllers.first.disposed, isTrue);
+      gate?.complete();
+      tester.binding.scheduleForcedFrame();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('home-latest-post-video-preview-p1')),
+          findsNothing);
+      expect(controllers, hasLength(1));
+      _resumeThumbnailLifecycle(tester.binding);
+      await tester.pumpAndSettle();
+      expect(controllers, hasLength(2));
+      expect(controllers.last.initializeCalls, 1);
+      expect(controllers.last.pauseCalls, 1);
+      expect(controllers.last.requestedVolume, 0);
+      expect(
+          controllers.every((controller) => controller.playCalls == 0), isTrue);
+      expect(find.byKey(const ValueKey('home-latest-post-video-preview-p1')),
+          findsOneWidget);
+      expect(find.text('คลิปสินค้าล่าสุด'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      expect(controllers.every((controller) => controller.disposed), isTrue);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('motion audit latest video created while paused waits for resume',
+      (tester) async {
+    _resumeThumbnailLifecycle(tester.binding);
+    addTearDown(() => _resumeThumbnailLifecycle(tester.binding));
+    final controllers = <_PreviewVideoController>[];
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.scheduleForcedFrame();
+    await tester.pumpWidget(_homeTestApp(HomeScreen(
+      loadSubscription: _previewSubscription,
+      loadRecentPosts: () async =>
+          [_previewPost(videoUrl: Uri.parse('https://media.test/video.mp4'))],
+      createVideoThumbnailController: (_) {
+        final controller = _PreviewVideoController();
+        controllers.add(controller);
+        return controller;
+      },
+    )));
+    for (var frame = 0; frame < 3; frame++) {
+      tester.binding.scheduleForcedFrame();
+      await tester.pump();
+    }
+    expect(find.text('คลิปสินค้าล่าสุด'), findsOneWidget);
+    expect(controllers, isEmpty);
+    _resumeThumbnailLifecycle(tester.binding);
+    await tester.pumpAndSettle();
+    expect(controllers, hasLength(1));
+    expect(controllers.single.initializeCalls, 1);
+    expect(controllers.single.playCalls, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    expect(controllers.single.disposed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('refreshes a paid plan when returning to the app',
       (tester) async {
     var loads = 0;

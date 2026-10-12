@@ -109,6 +109,35 @@ void main() {
     expect(find.text('ลงโพสต์ วันนี้ เวลา 20:05 น.'), findsOneWidget);
   });
 
+  testWidgets('UTC injected clock formats the selected local day and time',
+      (tester) async {
+    final clockUtc = DateTime.utc(2026, 10, 11, 23, 30);
+    final localNow = clockUtc.toLocal();
+    final localDay = DateTime(localNow.year, localNow.month, localNow.day);
+    final defaultTime =
+        DateTime(localNow.year, localNow.month, localNow.day, 18, 30);
+    final expectedTime = defaultTime.isAfter(localNow)
+        ? defaultTime
+        : localNow.add(const Duration(minutes: 5));
+    final expectedHour = expectedTime.hour.toString().padLeft(2, '0');
+    final expectedMinute = expectedTime.minute.toString().padLeft(2, '0');
+    final store = TestPublishDraftStore();
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: UploaderScreen(
+      initialScheduleDate: localDay,
+      now: () => clockUtc,
+      draftStore: store,
+      loadSocialConnections: () async => const [],
+      loadSubscription: () async => _subscription('PRO'),
+    ))));
+    await tester.pumpAndSettle();
+    await _chooseSchedule(tester);
+    expect(find.text('ลงโพสต์ วันนี้ เวลา $expectedHour:$expectedMinute น.'),
+        findsOneWidget);
+    expect(store.savedRequests, isEmpty);
+  });
+
   testWidgets('past calendar suggestion is ignored', (tester) async {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(

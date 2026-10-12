@@ -3433,6 +3433,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
                             padding: const EdgeInsets.all(AppTheme.spaceMd),
                             glowColor: AppTheme.accent,
                             child: _SchedulePanel(
+                              now: widget.now,
                               scheduledAtController: _scheduledAtController,
                               selectedDate: _selectedScheduleDate,
                               selectedTime: _selectedScheduleTime,
@@ -5312,6 +5313,7 @@ class _ScheduleTimeOption {
 
 class _SchedulePanel extends StatelessWidget {
   const _SchedulePanel({
+    required this.now,
     required this.scheduledAtController,
     required this.selectedDate,
     required this.selectedTime,
@@ -5370,6 +5372,7 @@ class _SchedulePanel extends StatelessWidget {
     'ธ.ค.',
   ];
 
+  final DateTime Function() now;
   final TextEditingController scheduledAtController;
   final DateTime? selectedDate;
   final TimeOfDay? selectedTime;
@@ -5382,8 +5385,8 @@ class _SchedulePanel extends StatelessWidget {
   final String? schedulePlan;
 
   DateTime _todayDate() {
-    final now = DateTime.now();
-    return DateTime(now.year, now.month, now.day);
+    final currentTime = now().toLocal();
+    return DateTime(currentTime.year, currentTime.month, currentTime.day);
   }
 
   bool _isSameDate(DateTime left, DateTime right) =>

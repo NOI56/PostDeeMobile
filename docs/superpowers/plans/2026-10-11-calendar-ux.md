@@ -158,3 +158,23 @@ race ใช้ fixture/regression tests ไม่อ้างเป็น native
 ผลชุดนี้ต้องแยกจาก Home CI `38125004499`/Staging feature `ce89a0e` ซึ่งเป็น
 receipt ของ runtime ก่อน Calendar ห้ามเติม counts/SHA/Live หรืออ้าง native
 positive queue/mutation โดยยังไม่ตรวจด้วยข้อมูลจริงหรือ fixture ที่ระบุชัด
+
+## Release validation follow-up (2026-10-12, รอ receipt รอบแก้ไข)
+
+ผู้ใช้อนุญาต push/deploy Staging แล้วในวันที่ 12 ต.ค.; สถานะ local/native
+และข้อความยังไม่ได้รับอนุญาตด้านบนเป็น receipt ก่อนคำอนุญาตนี้ ยังไม่ใช้
+ผลดังกล่าวแทน CI/build/native/deploy ของแพตช์ follow-up
+
+CI `38187274274` ของ Calendar SHA
+`591ddb721a014222e92ba6f836af0350c77ef3b8` ผ่าน Flutter 1,878 tests และไม่ผ่าน
+4 tests ใน `uploader_calendar_schedule_test.dart`: fixture ตรึง `now` เป็น
+11 ต.ค. แต่ `_SchedulePanel` อ่านวันที่เครื่องจริงซึ่งเป็น 12 ต.ค. จึงแสดง
+“วันนี้/พรุ่งนี้” ไม่ตรงกับวันที่จำลองของ policy ทั้งสี่ assertions ยังรักษาไว้
+เพื่อยืนยันวันและเวลาที่เลือก ไม่ลดเกณฑ์ทดสอบให้ผ่าน
+
+ขอบเขตแพตช์คือส่ง callback `widget.now` เข้า `_SchedulePanel` และ normalize
+เวลาที่อ่านเป็น local ให้ตรงกับ date seed/policy เดิม โดยค่า default ของ
+`UploaderScreen.now` ยังเป็น `DateTime.now`. ไม่มี API/schema/provider/
+environment หรือกฎแพ็กเกจเปลี่ยน ต้องสร้าง APK จาก source รอบแก้ไขและตรวจ
+native อีกครั้ง; ผล targeted/full tests, analyze, APK และ CI/Render Live รอบใหม่
+ยังรอ receipt ไม่อ้างผล 8006 หรือ CI ก่อนหน้าเป็นผลของแพตช์นี้

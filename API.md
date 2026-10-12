@@ -2,6 +2,37 @@
 
 PostDee backend API reference.
 
+## Account mobile motion boundary (2026-10-12, authorized release in progress)
+
+The approved Account-only presentation follow-up adds finite entrance/press
+feedback, without a new request, persistence trigger, quota, price or entitlement
+rule. Profile/request ownership, existing subscription refresh, phone/email
+verification and account/billing callbacks retain their contracts and guards.
+Native QA browsed and dismissed only; positive mutations use controlled
+fixtures. Final source passes 1,966 Flutter tests and analysis, including 29 new
+Account cases. Exact Staging x64 APK 4014/8014 is built/installed with the retained
+account. Native read/browse/dismiss/tab-return checks retain account/settings/
+scroll; no verification, OAuth, purchase, delete or sign-out action was performed.
+No API/schema/config/dependency change or migration. Combined Shop/Account
+push/deploy is authorized; exact push/CI/Render receipts are pending. Plan:
+`docs/superpowers/plans/2026-10-12-account-ui-motion.md`.
+
+## Shop-link mobile motion boundary (2026-10-12, authorized release in progress)
+
+The approved manager/theme motion follow-up changes presentation only. Existing
+owner-scoped local autosave/image protection and explicit publish/update/
+unpublish/confirmed-URL requests retain their triggers and contracts. Section,
+category, press and drag feedback add no request, persistence trigger, quota,
+provider mapping, schema/config/dependency change or migration. Public page
+motion and the 100-template catalog remain unchanged. Final mobile source passes
+1,937 Flutter tests and analysis, including 22 new motion cases; exact Staging
+x64 APK 4013/8013 was installed at that Shop release with the account/shop data retained. Native read/
+browse/cancel/navigation checks pass; mutation/Save/Apply/publication paths use
+controlled fixtures. No new backend suite or migration execution was required by
+local UI verification. Combined Shop/Account push/deploy is authorized; exact
+push/CI/Render receipts are pending. Plan:
+`docs/superpowers/plans/2026-10-12-shop-link-ui-motion.md`.
+
 ## Calendar compact composition (2026-10-12, Staging delivered)
 
 The implemented Calendar UI keeps `GET /posts?scheduled=true` and the existing
@@ -934,7 +965,7 @@ the existing validation/request/explicit-local-save results; it adds no request
 or persistence trigger. The final rapid-save guard rejects busy callbacks before
 clearing feedback generation. Final feedback includes 10 new tests; save/guard
 tests pass 86/86, the full Flutter suite passes 1,915/1,915 and analysis passes.
-APK 4012/8012 is installed; native blank-caption inline error/focus/keyboard
+At that composer release, APK 4012/8012 was installed; native blank-caption inline error/focus/keyboard
 is verified without writing data or invoking AI/upload/post/Save.
 187/187, 1,914/1,914 and native 8011 validation are pre-guard history. AI/save
 results use fixtures, without native AI/upload/post requests or Save.
@@ -946,7 +977,7 @@ identity/metadata/schedule/AI and narrow/large-text widget fixtures. No real AI/
 performed for native UI QA. Authorized source
 `430f82ad1c493b5a8bcf1f51b007e2a7604dae1e` is pushed to
 `origin/codex/audit-system-fixes`; exact-source CI `38200231563` passed Backend
-and Mobile. No remote APK build was requested; local 8012 is unchanged. Render
+and Mobile. No remote APK build was requested; local 8012 was unchanged in that delivery. Render
 specific-commit deploy `dep-db65d08473hc73d6fp50` is Live at 10:41:35 GMT+7;
 16 existing migrations have none pending and health/readiness return HTTP 200
 with database/queue ready. This adds no API/schema/config/dependency change;

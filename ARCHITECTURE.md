@@ -2,6 +2,47 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Account finite UI motion boundary (2026-10-12, authorized release in progress)
+
+An Account-owned helper adds lifecycle/active/parent-ticker motion scope, passive
+press feedback and finite 220 ms/six-pixel entrances. Keep the stable existing
+ListView/children mounted once; provider rebuilds must not replay the entrance.
+Navigator overlays listen to the origin notifier with coalesced post-frame
+updates and safe listener disposal. Reduced motion keeps native controls working
+while finite feedback settles. Preserve existing ProfileScreen ownership and
+generation guards and its tab/paywall-return/current-route resume subscription
+refresh; the new presentation observer adds no fetch. Existing email/phone,
+billing, settings, delete/sign-out and package contracts remain. No API/schema/
+config/dependency/migration change. Shared press mounted/dispose
+guards prevent held-control cancellation from updating unmounted state. Final
+source passes 1,966 Flutter tests and analysis, including 29 new Account cases;
+exact Staging x64 APK 4014/8014 is built/installed with the retained account.
+Native edit/connections/paywall browse, setting-sheet close, help and tab-return
+checks retain account/settings/scroll without mutations. Motion/accessibility/
+owner and positive business paths use controlled fixtures; no native verification,
+purchase, delete or sign-out action is claimed. Combined Shop/Account push/deploy
+is authorized; exact push/CI/Render receipts are pending. Plan:
+`docs/superpowers/plans/2026-10-12-account-ui-motion.md`.
+
+## Shop-link finite UI motion boundary (2026-10-12, authorized release in progress)
+
+The approved mobile follow-up adds finite press/section/category/drag feedback
+inside the current manager and appearance controls. A current-only 220 ms
+fade/six-pixel entrance must avoid duplicate outgoing forms, controller ownership
+or actions. Reduced motion, lifecycle, `TickerMode`, hidden tabs and drag guards
+stop effects. Preserve the existing owner-scoped serialized autosave and image
+protection queue; view/motion changes introduce no persistence or API triggers.
+Explicit publishing and confirmed-URL actions remain. Public preview effects,
+100-template catalog, backend/schema/configuration/dependencies and migration
+requirements are unchanged. Drag overlays listen to their origin ticker via a
+coalesced post-frame update; listener swap/disposal and current-only controls are
+covered by 22 new motion cases. Final source passes 1,937 Flutter tests and
+analysis. At that Shop release, exact Staging x64 APK 4013/8013 was installed with retained account/shop
+data; native read/browse/cancel/navigation checks pass. Mutation/Save/Apply/
+publication paths use controlled fixtures. Combined Shop/Account push/deploy is
+authorized; exact push/CI/Render receipts are pending. Existing local proof adds
+no backend/migration checks. See `docs/superpowers/plans/2026-10-12-shop-link-ui-motion.md`.
+
 ## Guided create-post presentation boundary (2026-10-12, Staging delivered)
 
 The approved guided revision stays inside the existing four-step composer and
@@ -30,8 +71,8 @@ edits/late AI/fallback rules remain. No autosave/provider request is introduced.
 The final rapid-save guard exits on busy/AI state before clearing feedback
 generation, so a rejected duplicate cannot invalidate the first save's check.
 Final feedback has 10 new tests; guard/save tests pass 86/86, the full Flutter
-suite passes 1,915/1,915 and analysis passes. APK 4012/8012 is installed with the
-retained account; native blank-caption inline error/focus/keyboard is verified,
+suite passes 1,915/1,915 and analysis passes. At that composer release, APK
+4012/8012 was installed with the retained account; native blank-caption inline error/focus/keyboard is verified,
 then reset to a clean empty caption step without writing data. Prior
 187/187, 1,914/1,914 and native 8011 validation are pre-guard receipts; wait/save
 outcomes use fixtures. Three test helpers wait explicitly for pending AI while
@@ -45,7 +86,7 @@ use widget fixtures. The earlier user-selected form was not saved/discarded by
 the agent; installation followed the user's return to Calendar.
 Authorized source `430f82ad1c493b5a8bcf1f51b007e2a7604dae1e` is pushed to
 `origin/codex/audit-system-fixes`; exact-source CI `38200231563` passed Backend
-and Mobile. Local 8012 is unchanged; no remote APK build was requested. Render
+and Mobile. Local 8012 was unchanged in that delivery; no remote APK build was requested. Render
 specific-commit deploy `dep-db65d08473hc73d6fp50` is Live at 10:41:35 GMT+7
 on the existing Staging service. Its 16 existing migrations have none pending;
 health/readiness return HTTP 200 with database/queue ready. Social publishing

@@ -41,11 +41,19 @@ class _PostDeePressFeedbackState extends State<PostDeePressFeedback> {
   }
 
   void _release(int pointer) {
-    if (_pointer != pointer) return;
+    if (!mounted || _pointer != pointer) return;
     setState(() {
       _pointer = null;
       _pressed = false;
     });
+  }
+
+  @override
+  void dispose() {
+    // Pointer release events can outlive a control removed while held.
+    _pointer = null;
+    _pressed = false;
+    super.dispose();
   }
 
   @override

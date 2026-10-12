@@ -7,6 +7,37 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Account UI motion (2026-10-12, authorized release in progress)
+
+The approved Account-only follow-up adds brief press feedback and a finite
+220 ms/six-pixel entrance to the existing content and setting sheets. Preserve
+native controls, owner/request guards, email/phone verification, billing,
+settings, deletion confirmation and sign out. Stop effects for reduced motion,
+lifecycle, `TickerMode` and inactive tabs without adding persistence or provider
+requests. Final source passes 1,966 Flutter tests and analysis, including 29 new
+Account cases. Exact Staging x64 APK 4014/8014 is built and installed with the
+retained account. Native edit/connections/paywall browse, setting-sheet close,
+help and tab-return checks pass without changing data; the existing scroll
+position and account values remain. Mutation/business actions use controlled
+fixtures. No API/schema/config/dependency/migration change. Combined Shop/Account
+push/deploy is authorized; exact push/CI/Render receipts are pending. Plan:
+`docs/superpowers/plans/2026-10-12-account-ui-motion.md`.
+
+## Shop-link UI motion (2026-10-12, authorized release in progress)
+
+The approved mobile follow-up adds brief press feedback, current-only section
+entrances and drag-proxy feedback to the existing shop-link manager and theme
+controls. Preserve owner-scoped serialized local draft autosave, explicit
+publish/update/unpublish, confirmed-URL sharing and all 100 templates. Public
+page motion and API/schema/configuration/dependencies remain unchanged; no new
+migration is required. Final source passes 1,937 Flutter tests and analysis,
+including 22 new motion cases. At that Shop release, exact Staging x64 APK 4013/8013 was installed with
+the account and original shop data preserved. Native manager/info/Add cancel/
+theme browse and preview cancel/review/navigation checks pass; Save, theme Apply,
+edit/reorder and publication outcomes use controlled fixtures. Combined Shop/
+Account push/deploy is authorized; exact push/CI/Render receipts are pending. Plan:
+`docs/superpowers/plans/2026-10-12-shop-link-ui-motion.md`.
+
 ## Guided create-post revision (2026-10-12, Staging delivered)
 
 The approved “ทีละขั้น” direction keeps the existing four-step composer and
@@ -25,9 +56,9 @@ indicator tied to the existing AI request/full returned caption and a temporary
 check only after a verified explicit local-draft Save. The final rapid-save guard
 rejects duplicate busy callbacks before clearing success-feedback generation.
 Final feedback has 10 new tests; guard/save tests pass 86/86, the full Flutter
-suite passes 1,915/1,915 and analysis passes. APK 4012/8012 is installed with the
-retained account. Native blank-caption Next shows inline error/focus/keyboard;
-the app remains on clean empty step two after resetting the notice.
+suite passes 1,915/1,915 and analysis passes. At that composer release, APK
+4012/8012 was installed with the retained account. Native blank-caption Next
+showed inline error/focus/keyboard; the app was left on clean empty step two.
 Prior 187/187, 1,914/1,914 and native validation on 8011 are pre-guard receipts;
 AI/save success uses widget fixtures.
 The preceding connector source passed 1,905 Flutter tests and analysis. It adds
@@ -39,7 +70,7 @@ zero-destination checks are separate history; positive identities, metadata,
 schedules, AI and narrow/large-text cases use widget fixtures. Authorized source
 `430f82ad1c493b5a8bcf1f51b007e2a7604dae1e` is pushed to
 `origin/codex/audit-system-fixes`; exact-source CI `38200231563` passed Backend
-and Mobile. No remote APK build was requested; local 8012 is unchanged.
+and Mobile. No remote APK build was requested; local 8012 was unchanged in that delivery.
 Render specific-commit deploy `dep-db65d08473hc73d6fp50` is Live at 10:41:35
 GMT+7 on the existing Staging service. Its 16 existing migrations have none
 pending; `/health` and `/ready` return HTTP 200. Social publishing stays disabled
@@ -366,7 +397,9 @@ The footer exposes Save draft and review, with Publish/Update kept as an explici
 action in review. Confirmed publication returns to the manager. Copy/open uses
 only the confirmed public URL; status refresh and unpublishing remain available.
 The mobile draft still holds at most 20 links, including disabled links, and
-publishes only enabled links. Drafts never save or publish automatically.
+publishes only enabled links. At that 2026-10-06 revision drafts saved explicitly;
+the later system audit adds owner-scoped serialized local autosave. Publication
+still requires the explicit review action.
 This revision requires no API/schema/configuration change. All 1,132 Flutter
 tests, analysis, the Staging debug build and native Android emulator checks pass.
 Evidence and remaining device/server limits are recorded in

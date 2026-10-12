@@ -16,6 +16,7 @@ import '../platforms/connections_screen.dart';
 import '../shared/postdee_undo_toast.dart';
 import 'edit_profile_screen.dart';
 import 'profile_draft_store.dart';
+import 'profile_ui_motion.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -423,249 +424,273 @@ class _ProfileScreenState extends State<ProfileScreen>
             ? 'โหลดข้อมูลช่องทางไม่สำเร็จ'
             : '${_connectedCount!}/${connectablePlatforms.length} เชื่อมต่อ';
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, AppTheme.navOverlap),
-      children: [
-        Text(
-          'บัญชีและโปรไฟล์',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'จัดการบัญชีและการตั้งค่า',
-          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-        ),
-        _ProfileSection(
-          title: 'บัญชีของฉัน',
-          children: [
-            _ProfileHeaderCard(
-              name: accountName,
-              email: accountDetail,
-              hasEmail: accountEmail != null && accountEmail.isNotEmpty,
-              emailVerified: session.emailVerified,
-              onEdit: _openEditProfile,
-            ),
-            if (!session.emailVerified &&
-                accountEmail != null &&
-                accountEmail.isNotEmpty &&
-                widget.onSendEmailVerification != null) ...[
+    return AccountUiMotionScope(
+      enabled: widget.isActive,
+      child: Builder(
+        builder: (motionContext) => AccountUiEntrance(
+          key: const ValueKey('profile-content-motion'),
+          isActive: widget.isActive,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, AppTheme.navOverlap),
+            children: [
+              Text(
+                'บัญชีและโปรไฟล์',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
               const SizedBox(height: 4),
-              Wrap(
+              Text(
+                'จัดการบัญชีและการตั้งค่า',
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              ),
+              _ProfileSection(
+                title: 'บัญชีของฉัน',
                 children: [
-                  TextButton(
-                    key: const ValueKey('profile-send-email-verification'),
-                    onPressed: _isEmailActionBusy
-                        ? null
-                        : () => _emailAction(refresh: false),
-                    child: const Text('ส่งอีเมลยืนยัน'),
+                  _ProfileHeaderCard(
+                    name: accountName,
+                    email: accountDetail,
+                    hasEmail: accountEmail != null && accountEmail.isNotEmpty,
+                    emailVerified: session.emailVerified,
+                    onEdit: _openEditProfile,
                   ),
-                  TextButton(
-                    key: const ValueKey('profile-refresh-email-verification'),
-                    onPressed: _isEmailActionBusy
-                        ? null
-                        : () => _emailAction(refresh: true),
-                    child: const Text('ตรวจสอบการยืนยัน'),
+                  if (!session.emailVerified &&
+                      accountEmail != null &&
+                      accountEmail.isNotEmpty &&
+                      widget.onSendEmailVerification != null) ...[
+                    const SizedBox(height: 4),
+                    Wrap(
+                      children: [
+                        AccountUiPress(
+                          enabled: !_isEmailActionBusy,
+                          child: TextButton(
+                            key: const ValueKey(
+                                'profile-send-email-verification'),
+                            onPressed: _isEmailActionBusy
+                                ? null
+                                : () => _emailAction(refresh: false),
+                            child: const Text('ส่งอีเมลยืนยัน'),
+                          ),
+                        ),
+                        AccountUiPress(
+                          enabled: !_isEmailActionBusy,
+                          child: TextButton(
+                            key: const ValueKey(
+                                'profile-refresh-email-verification'),
+                            onPressed: _isEmailActionBusy
+                                ? null
+                                : () => _emailAction(refresh: true),
+                            child: const Text('ตรวจสอบการยืนยัน'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  _ProfileMenuCard(
+                    rows: [
+                      _ProfileMenuRow(
+                        icon: Icons.phone_outlined,
+                        label: 'ยืนยันเบอร์โทร',
+                        trailing: _isSubscriptionLoading &&
+                                _subscription == null
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : _subscriptionLoadError != null &&
+                                    _subscription == null
+                                ? Text(
+                                    'โหลดไม่สำเร็จ',
+                                    style: TextStyle(
+                                        color: AppTheme.textSecondary),
+                                  )
+                                : _subscription == null
+                                    ? null
+                                    : _StatusPill(
+                                        label: phoneVerified
+                                            ? 'ยืนยันแล้ว'
+                                            : 'ยังไม่ยืนยัน',
+                                        background: phoneVerified
+                                            ? AppTheme.mint
+                                            : AppTheme.glassDeep,
+                                        foreground: phoneVerified
+                                            ? AppTheme.accentCyanInk
+                                            : AppTheme.textSecondary,
+                                      ),
+                        onTap: _verifyPhone,
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-            const SizedBox(height: 10),
-            _ProfileMenuCard(
-              rows: [
-                _ProfileMenuRow(
-                  icon: Icons.phone_outlined,
-                  label: 'ยืนยันเบอร์โทร',
-                  trailing: _isSubscriptionLoading && _subscription == null
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : _subscriptionLoadError != null && _subscription == null
-                          ? Text(
-                              'โหลดไม่สำเร็จ',
-                              style: TextStyle(color: AppTheme.textSecondary),
-                            )
-                          : _subscription == null
-                              ? null
-                              : _StatusPill(
-                                  label: phoneVerified
-                                      ? 'ยืนยันแล้ว'
-                                      : 'ยังไม่ยืนยัน',
-                                  background: phoneVerified
-                                      ? AppTheme.mint
-                                      : AppTheme.glassDeep,
-                                  foreground: phoneVerified
-                                      ? AppTheme.accentCyanInk
-                                      : AppTheme.textSecondary,
-                                ),
-                  onTap: _verifyPhone,
-                ),
-              ],
-            ),
-          ],
-        ),
-        _ProfileSection(
-          title: 'ช่องทางและเครื่องมือ',
-          children: [
-            _ProfileMenuCard(
-              rows: [
-                _ProfileMenuRow(
-                  key: const ValueKey('profile-connections-row'),
-                  icon: Icons.hub_outlined,
-                  label: 'เชื่อมต่อช่องทาง',
-                  detail: connectedLabel,
-                  onTap: _openConnections,
-                ),
-              ],
-            ),
-            if (_connectedCountLoadError != null) ...[
-              const SizedBox(height: 10),
-              _ProfileDataStatusCard(
-                key: const ValueKey('profile-connections-error'),
-                message: 'โหลดข้อมูลช่องทางไม่สำเร็จ',
-                retryKey: const ValueKey('profile-retry-connections'),
-                onRetry: _loadConnectedCount,
-              ),
-            ],
-          ],
-        ),
-        _ProfileSection(
-          title: 'แพ็กเกจของฉัน',
-          children: [
-            if (_isSubscriptionLoading)
-              const _ProfileDataStatusCard(
-                key: ValueKey('profile-subscription-loading'),
-                message: 'กำลังโหลดข้อมูลแพ็กเกจ...',
-                isLoading: true,
-              )
-            else if (_subscriptionLoadError != null)
-              _ProfileDataStatusCard(
-                key: const ValueKey('profile-subscription-error'),
-                message: 'โหลดข้อมูลแพ็กเกจไม่สำเร็จ',
-                retryKey: const ValueKey('profile-retry-subscription'),
-                onRetry: _loadSubscription,
-              )
-            else if (_subscription != null)
-              _CurrentPlanCard(
-                key: ValueKey('profile-plan-${_currentTierId ?? 'unknown'}'),
-                subscription: _subscription!,
-              ),
-            const SizedBox(height: 10),
-            _ProfileMenuCard(
-              rows: [
-                _ProfileMenuRow(
-                  key: const ValueKey('profile-view-plans'),
-                  icon: Icons.workspace_premium_outlined,
-                  label: 'ดูแพ็กเกจทั้งหมด',
-                  onTap: _openPaywall,
-                ),
-                _ProfileMenuRow(
-                  icon: Icons.credit_card_outlined,
-                  label: 'จัดการสมาชิก',
-                  onTap: widget.onManageSubscription ??
-                      _openSubscriptionManagement,
-                ),
-              ],
-            ),
-          ],
-        ),
-        _ProfileSection(
-          title: 'ตั้งค่าและช่วยเหลือ',
-          children: [
-            AnimatedBuilder(
-              animation: Listenable.merge([
-                widget.languageController,
-                widget.themeController,
-              ]),
-              builder: (context, _) {
-                final l10n = PostDeeLocalizations.of(context);
-                final locale = widget.languageController.locale ??
-                    Localizations.localeOf(context);
-                return _ProfileMenuCard(
-                  rows: [
-                    _ProfileMenuRow(
-                      key: const ValueKey('profile-language-row'),
-                      icon: Icons.language_outlined,
-                      label: l10n.profileLanguageTitle,
-                      trailing: Text(
-                        locale.languageCode == 'en'
-                            ? l10n.languageEnglish
-                            : l10n.languageThai,
+              _ProfileSection(
+                title: 'ช่องทางและเครื่องมือ',
+                children: [
+                  _ProfileMenuCard(
+                    rows: [
+                      _ProfileMenuRow(
+                        key: const ValueKey('profile-connections-row'),
+                        icon: Icons.hub_outlined,
+                        label: 'เชื่อมต่อช่องทาง',
+                        detail: connectedLabel,
+                        onTap: _openConnections,
                       ),
-                      onTap: _chooseLanguage,
-                    ),
-                    _ProfileMenuRow(
-                      key: const ValueKey('profile-theme-row'),
-                      icon: Icons.contrast_outlined,
-                      label: 'โหมดการแสดงผล',
-                      trailing: Text(
-                        widget.themeController.isLightMode ? 'สว่าง' : 'มืด',
-                      ),
-                      onTap: _chooseTheme,
-                    ),
-                    _ProfileMenuRow(
-                      icon: Icons.security_outlined,
-                      label: 'ความปลอดภัย',
-                      onTap: () => _openLegal(context, _securityInfo),
-                    ),
-                    _ProfileMenuRow(
-                      icon: Icons.help_outline,
-                      label: 'ช่วยเหลือ',
-                      onTap: () => _openLegal(context, _helpInfo),
-                    ),
-                    _ProfileMenuRow(
-                      icon: Icons.privacy_tip_outlined,
-                      label: 'นโยบายความเป็นส่วนตัว',
-                      onTap: () => _openLegal(
-                        context,
-                        PostDeeLegalDocuments.privacyPolicy,
-                      ),
-                    ),
-                    _ProfileMenuRow(
-                      icon: Icons.description_outlined,
-                      label: 'ข้อกำหนดการใช้งาน',
-                      onTap: () => _openLegal(
-                        context,
-                        PostDeeLegalDocuments.termsOfService,
-                      ),
+                    ],
+                  ),
+                  if (_connectedCountLoadError != null) ...[
+                    const SizedBox(height: 10),
+                    _ProfileDataStatusCard(
+                      key: const ValueKey('profile-connections-error'),
+                      message: 'โหลดข้อมูลช่องทางไม่สำเร็จ',
+                      retryKey: const ValueKey('profile-retry-connections'),
+                      onRetry: _loadConnectedCount,
                     ),
                   ],
-                );
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        if (widget.onSignOut != null) ...[
-          _ProfileMenuCard(
-            rows: [
-              _ProfileMenuRow(
-                icon: Icons.logout,
-                label: 'ออกจากระบบ',
-                onTap: widget.onSignOut,
+                ],
+              ),
+              _ProfileSection(
+                title: 'แพ็กเกจของฉัน',
+                children: [
+                  if (_isSubscriptionLoading)
+                    const _ProfileDataStatusCard(
+                      key: ValueKey('profile-subscription-loading'),
+                      message: 'กำลังโหลดข้อมูลแพ็กเกจ...',
+                      isLoading: true,
+                    )
+                  else if (_subscriptionLoadError != null)
+                    _ProfileDataStatusCard(
+                      key: const ValueKey('profile-subscription-error'),
+                      message: 'โหลดข้อมูลแพ็กเกจไม่สำเร็จ',
+                      retryKey: const ValueKey('profile-retry-subscription'),
+                      onRetry: _loadSubscription,
+                    )
+                  else if (_subscription != null)
+                    _CurrentPlanCard(
+                      key: ValueKey(
+                          'profile-plan-${_currentTierId ?? 'unknown'}'),
+                      subscription: _subscription!,
+                    ),
+                  const SizedBox(height: 10),
+                  _ProfileMenuCard(
+                    rows: [
+                      _ProfileMenuRow(
+                        key: const ValueKey('profile-view-plans'),
+                        icon: Icons.workspace_premium_outlined,
+                        label: 'ดูแพ็กเกจทั้งหมด',
+                        onTap: _openPaywall,
+                      ),
+                      _ProfileMenuRow(
+                        icon: Icons.credit_card_outlined,
+                        label: 'จัดการสมาชิก',
+                        onTap: widget.onManageSubscription ??
+                            _openSubscriptionManagement,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              _ProfileSection(
+                title: 'ตั้งค่าและช่วยเหลือ',
+                children: [
+                  AnimatedBuilder(
+                    animation: Listenable.merge([
+                      widget.languageController,
+                      widget.themeController,
+                    ]),
+                    builder: (context, _) {
+                      final l10n = PostDeeLocalizations.of(context);
+                      final locale = widget.languageController.locale ??
+                          Localizations.localeOf(context);
+                      return _ProfileMenuCard(
+                        rows: [
+                          _ProfileMenuRow(
+                            key: const ValueKey('profile-language-row'),
+                            icon: Icons.language_outlined,
+                            label: l10n.profileLanguageTitle,
+                            trailing: Text(
+                              locale.languageCode == 'en'
+                                  ? l10n.languageEnglish
+                                  : l10n.languageThai,
+                            ),
+                            onTap: () => _chooseLanguage(motionContext),
+                          ),
+                          _ProfileMenuRow(
+                            key: const ValueKey('profile-theme-row'),
+                            icon: Icons.contrast_outlined,
+                            label: 'โหมดการแสดงผล',
+                            trailing: Text(
+                              widget.themeController.isLightMode
+                                  ? 'สว่าง'
+                                  : 'มืด',
+                            ),
+                            onTap: () => _chooseTheme(motionContext),
+                          ),
+                          _ProfileMenuRow(
+                            icon: Icons.security_outlined,
+                            label: 'ความปลอดภัย',
+                            onTap: () => _openLegal(context, _securityInfo),
+                          ),
+                          _ProfileMenuRow(
+                            icon: Icons.help_outline,
+                            label: 'ช่วยเหลือ',
+                            onTap: () => _openLegal(context, _helpInfo),
+                          ),
+                          _ProfileMenuRow(
+                            icon: Icons.privacy_tip_outlined,
+                            label: 'นโยบายความเป็นส่วนตัว',
+                            onTap: () => _openLegal(
+                              context,
+                              PostDeeLegalDocuments.privacyPolicy,
+                            ),
+                          ),
+                          _ProfileMenuRow(
+                            icon: Icons.description_outlined,
+                            label: 'ข้อกำหนดการใช้งาน',
+                            onTap: () => _openLegal(
+                              context,
+                              PostDeeLegalDocuments.termsOfService,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              if (widget.onSignOut != null) ...[
+                _ProfileMenuCard(
+                  rows: [
+                    _ProfileMenuRow(
+                      icon: Icons.logout,
+                      label: 'ออกจากระบบ',
+                      onTap: widget.onSignOut,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+              _DeleteAccountButton(
+                onDeleteAccount: widget.onDeleteAccount,
+                onManageSubscription:
+                    widget.onManageSubscription ?? _openSubscriptionManagement,
+                isDeleting: widget.isDeletingAccount,
               ),
             ],
           ),
-          const SizedBox(height: 12),
-        ],
-        _DeleteAccountButton(
-          onDeleteAccount: widget.onDeleteAccount,
-          onManageSubscription:
-              widget.onManageSubscription ?? _openSubscriptionManagement,
-          isDeleting: widget.isDeletingAccount,
         ),
-      ],
+      ),
     );
   }
 
-  Future<void> _chooseLanguage() async {
+  Future<void> _chooseLanguage(BuildContext motionContext) async {
     final l10n = PostDeeLocalizations.of(context);
     final locale = await _showSettingChoices<Locale>(
-      context,
+      motionContext,
       title: l10n.profileLanguageTitle,
       current:
           widget.languageController.locale ?? Localizations.localeOf(context),
@@ -677,9 +702,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     if (locale != null && mounted) widget.languageController.setLocale(locale);
   }
 
-  Future<void> _chooseTheme() async {
+  Future<void> _chooseTheme(BuildContext motionContext) async {
     final mode = await _showSettingChoices<ThemeMode>(
-      context,
+      motionContext,
       title: 'โหมดการแสดงผล',
       current: widget.themeController.themeMode,
       choices: [
@@ -774,10 +799,12 @@ class _ProfileDataStatusCard extends StatelessWidget {
           ),
           if (onRetry != null) ...[
             const SizedBox(width: 8),
-            TextButton(
-              key: retryKey,
-              onPressed: onRetry,
-              child: const Text('ลองใหม่'),
+            AccountUiPress(
+              child: TextButton(
+                key: retryKey,
+                onPressed: onRetry,
+                child: const Text('ลองใหม่'),
+              ),
             ),
           ],
         ],
@@ -806,92 +833,95 @@ class _ProfileHeaderCard extends StatelessWidget {
     final initial =
         name.trim().isEmpty ? 'P' : name.trim().characters.first.toUpperCase();
 
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: AppTheme.glass,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Semantics(
-        button: true,
-        label: 'แก้ไขโปรไฟล์',
-        child: InkWell(
-          key: const ValueKey('profile-edit-button'),
-          onTap: onEdit,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppTheme.mint,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(
-                    initial,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.accentCyanInk,
+    return AccountUiPress(
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: AppTheme.glass,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Semantics(
+          button: true,
+          label: 'แก้ไขโปรไฟล์',
+          child: InkWell(
+            key: const ValueKey('profile-edit-button'),
+            onTap: onEdit,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppTheme.mint,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      initial,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.accentCyanInk,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary,
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        email,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.textSecondary,
+                        const SizedBox(height: 3),
+                        Text(
+                          email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        emailVerified
-                            ? 'ยืนยันอีเมลแล้ว'
-                            : hasEmail
-                                ? 'อีเมลยังไม่ยืนยัน'
-                                : 'ยังไม่เชื่อมอีเมล',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppTheme.textSecondary,
+                        const SizedBox(height: 3),
+                        Text(
+                          emailVerified
+                              ? 'ยืนยันอีเมลแล้ว'
+                              : hasEmail
+                                  ? 'อีเมลยังไม่ยืนยัน'
+                                  : 'ยังไม่เชื่อมอีเมล',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppTheme.textSecondary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'แก้ไขโปรไฟล์',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.accentCyanInk,
+                        const SizedBox(height: 8),
+                        Text(
+                          'แก้ไขโปรไฟล์',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.accentCyanInk,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Icon(Icons.chevron_right, size: 20, color: AppTheme.textMuted),
-              ],
+                  const SizedBox(width: 8),
+                  Icon(Icons.chevron_right,
+                      size: 20, color: AppTheme.textMuted),
+                ],
+              ),
             ),
           ),
         ),
@@ -1003,57 +1033,60 @@ class _ProfileMenuRow extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             child: trailing!,
           );
-    return Semantics(
-      button: true,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
-          child: Row(
-            children: [
-              Icon(icon, size: 21, color: AppTheme.textSecondary),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    if (detail != null) ...[
-                      const SizedBox(height: 3),
+    return AccountUiPress(
+      enabled: onTap != null,
+      child: Semantics(
+        button: true,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
+            child: Row(
+              children: [
+                Icon(icon, size: 21, color: AppTheme.textSecondary),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        detail!,
+                        label,
                         style: TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.textSecondary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.textPrimary,
                         ),
                       ),
+                      if (detail != null) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          detail!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                      if (stackValue && value != null) ...[
+                        const SizedBox(height: 6),
+                        value,
+                      ],
                     ],
-                    if (stackValue && value != null) ...[
-                      const SizedBox(height: 6),
-                      value,
-                    ],
-                  ],
-                ),
-              ),
-              if (!stackValue && value != null) ...[
-                const SizedBox(width: 8),
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.sizeOf(context).width * 0.32,
                   ),
-                  child: value,
                 ),
+                if (!stackValue && value != null) ...[
+                  const SizedBox(width: 8),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.sizeOf(context).width * 0.32,
+                    ),
+                    child: value,
+                  ),
+                ],
+                const SizedBox(width: 6),
+                Icon(Icons.chevron_right, size: 20, color: AppTheme.textMuted),
               ],
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right, size: 20, color: AppTheme.textMuted),
-            ],
+            ),
           ),
         ),
       ),
@@ -1198,172 +1231,183 @@ class _DeleteAccountButton extends StatelessWidget {
   final bool isDeleting;
 
   Future<void> _confirm(BuildContext context) async {
+    final originTicker = TickerMode.getValuesNotifier(context);
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.transparent,
       barrierColor: const Color(0xFF0A120E).withValues(alpha: 0.5),
       useSafeArea: true,
       isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.all(18),
-        child: Container(
-          key: const ValueKey('delete-account-confirm-sheet'),
-          padding: const EdgeInsets.all(22),
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.9,
-          ),
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x550A120E),
-                blurRadius: 50,
-                spreadRadius: -16,
-                offset: Offset(0, 24),
-              ),
-            ],
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEF4444).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(
-                    Icons.delete_forever_rounded,
-                    size: 28,
-                    color: Color(0xFFEF4444),
-                  ),
+      builder: (sheetContext) => AccountUiOriginScope(
+        originTicker: originTicker,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Container(
+            key: const ValueKey('delete-account-confirm-sheet'),
+            padding: const EdgeInsets.all(22),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.9,
+            ),
+            decoration: BoxDecoration(
+              color: AppTheme.glass,
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x550A120E),
+                  blurRadius: 50,
+                  spreadRadius: -16,
+                  offset: Offset(0, 24),
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  'ก่อนลบบัญชี',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary,
+              ],
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.delete_forever_rounded,
+                      size: 28,
+                      color: Color(0xFFEF4444),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'ระบบจะลบข้อมูลบัญชีที่อยู่บนบริการของ PostDee อย่างถาวร '
-                  'ฉบับร่างและไฟล์ในเครื่องนี้ รวมถึงสำเนาสำรองของระบบ '
-                  'อาจยังคงอยู่ หากต้องการลบ ให้ลบฉบับร่างก่อนลบบัญชี '
-                  'หรือล้างข้อมูลแอปและจัดการข้อมูลสำรองแยกต่างหาก',
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.55,
-                    color: AppTheme.textSecondary,
+                  const SizedBox(height: 14),
+                  Text(
+                    'ก่อนลบบัญชี',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7E8),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFF2C66D)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'ระบบจะลบข้อมูลบัญชีที่อยู่บนบริการของ PostDee อย่างถาวร '
+                    'ฉบับร่างและไฟล์ในเครื่องนี้ รวมถึงสำเนาสำรองของระบบ '
+                    'อาจยังคงอยู่ หากต้องการลบ ให้ลบฉบับร่างก่อนลบบัญชี '
+                    'หรือล้างข้อมูลแอปและจัดการข้อมูลสำรองแยกต่างหาก',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.55,
+                      color: AppTheme.textSecondary,
+                    ),
                   ),
-                  child: const Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.info_outline_rounded,
-                        size: 20,
-                        color: Color(0xFF9A6700),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7E8),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFF2C66D)),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 20,
+                          color: Color(0xFF9A6700),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'การลบบัญชี PostDee ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro '
+                            'ที่ซื้อผ่าน App Store หรือ Google Play หากไม่ต้องการให้ต่ออายุ '
+                            'กรุณายกเลิกสมาชิกในร้านค้าก่อนลบบัญชี',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              height: 1.45,
+                              color: Color(0xFF6B4F00),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: AccountUiPress(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await onManageSubscription();
+                        },
+                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                        label: const Text('จัดการสมาชิก'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.accentCyanInk,
+                          side: BorderSide(color: AppTheme.border),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
                       ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'การลบบัญชี PostDee ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro '
-                          'ที่ซื้อผ่าน App Store หรือ Google Play หากไม่ต้องการให้ต่ออายุ '
-                          'กรุณายกเลิกสมาชิกในร้านค้าก่อนลบบัญชี',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            height: 1.45,
-                            color: Color(0xFF6B4F00),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Column(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 50),
+                          child: AccountUiPress(
+                            child: OutlinedButton(
+                              onPressed: () =>
+                                  Navigator.of(sheetContext).pop(false),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.textPrimary,
+                                side: BorderSide(color: AppTheme.border),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text('ยกเลิก'),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 50),
+                          child: AccountUiPress(
+                            enabled: !isDeleting,
+                            child: FilledButton(
+                              onPressed: isDeleting
+                                  ? null
+                                  : () => Navigator.of(sheetContext).pop(true),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFEF4444),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: isDeleting
+                                  ? const SizedBox.square(
+                                      dimension: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Text('ลบบัญชีถาวร'),
+                            ),
                           ),
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  height: 46,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      await onManageSubscription();
-                    },
-                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                    label: const Text('จัดการสมาชิก'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.accentCyanInk,
-                      side: BorderSide(color: AppTheme.border),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Column(
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 50),
-                        child: OutlinedButton(
-                          onPressed: () =>
-                              Navigator.of(sheetContext).pop(false),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.textPrimary,
-                            side: BorderSide(color: AppTheme.border),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: const Text('ยกเลิก'),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 50),
-                        child: FilledButton(
-                          onPressed: isDeleting
-                              ? null
-                              : () => Navigator.of(sheetContext).pop(true),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFFEF4444),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: isDeleting
-                              ? const SizedBox.square(
-                                  dimension: 20,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Text('ลบบัญชีถาวร'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1379,25 +1423,28 @@ class _DeleteAccountButton extends StatelessWidget {
   Widget build(BuildContext context) {
     const errorColor = Color(0xFFEF4444);
 
-    return Semantics(
-      button: true,
-      label: 'ลบบัญชี',
-      child: OutlinedButton.icon(
-        onPressed: isDeleting ? null : () => _confirm(context),
-        icon: const Icon(Icons.delete_outline, color: errorColor, size: 19),
-        label: const Text(
-          'ลบบัญชี',
-          style: TextStyle(
-            color: errorColor,
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
+    return AccountUiPress(
+      enabled: !isDeleting,
+      child: Semantics(
+        button: true,
+        label: 'ลบบัญชี',
+        child: OutlinedButton.icon(
+          onPressed: isDeleting ? null : () => _confirm(context),
+          icon: const Icon(Icons.delete_outline, color: errorColor, size: 19),
+          label: const Text(
+            'ลบบัญชี',
+            style: TextStyle(
+              color: errorColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: errorColor.withValues(alpha: 0.45)),
-          padding: const EdgeInsets.symmetric(vertical: 13),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: errorColor.withValues(alpha: 0.45)),
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
         ),
       ),
@@ -1411,60 +1458,71 @@ Future<T?> _showSettingChoices<T>(
   required T current,
   required List<({T value, String label})> choices,
 }) {
+  final originTicker = TickerMode.getValuesNotifier(context);
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     backgroundColor: AppTheme.glass,
-    builder: (context) => SafeArea(
-      top: false,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.75,
-        ),
-        child: SingleChildScrollView(
-          key: const ValueKey('profile-setting-sheet'),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 8, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary,
+    builder: (context) => AccountUiOriginScope(
+      originTicker: originTicker,
+      child: AccountUiEntrance(
+        key: const ValueKey('profile-setting-motion'),
+        child: SafeArea(
+          top: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.75,
+            ),
+            child: SingleChildScrollView(
+              key: const ValueKey('profile-setting-sheet'),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 8, 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
                         ),
+                        AccountUiPress(
+                          child: IconButton(
+                            tooltip: 'ปิด',
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  for (final choice in choices)
+                    AccountUiPress(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 4,
+                        ),
+                        selected: choice.value == current,
+                        selectedColor: AppTheme.accentCyanInk,
+                        title: Text(choice.label),
+                        trailing: choice.value == current
+                            ? Icon(Icons.check, color: AppTheme.accentCyanInk)
+                            : null,
+                        onTap: () => Navigator.pop(context, choice.value),
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'ปิด',
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
+                  const SizedBox(height: 16),
+                ],
               ),
-              for (final choice in choices)
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 4,
-                  ),
-                  selected: choice.value == current,
-                  selectedColor: AppTheme.accentCyanInk,
-                  title: Text(choice.label),
-                  trailing: choice.value == current
-                      ? Icon(Icons.check, color: AppTheme.accentCyanInk)
-                      : null,
-                  onTap: () => Navigator.pop(context, choice.value),
-                ),
-              const SizedBox(height: 16),
-            ],
+            ),
           ),
         ),
       ),

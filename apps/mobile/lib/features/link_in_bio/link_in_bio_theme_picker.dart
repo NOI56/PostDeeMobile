@@ -8,6 +8,7 @@ import '../../core/models/profile_template_catalog.generated.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_preview.dart';
 import 'link_in_bio_template_preview.dart';
+import 'link_in_bio_ui_motion.dart';
 
 const _categoryChipNames = {
   'minimal': 'เรียบง่าย',
@@ -77,50 +78,57 @@ class _BioThemePickerState extends State<BioThemePicker> {
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
-        builder: (context) => FractionallySizedBox(
-            heightFactor: .9,
-            child: Column(children: [
-              Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
-                  child: Row(children: [
-                    Expanded(
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                          Text(template.name,
-                              style: const TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.w700)),
-                          Text(profileTemplateCategories[template.category]!,
-                              style: const TextStyle(fontSize: 13)),
-                        ])),
-                    IconButton(
-                        key: const ValueKey(
-                            'link-in-bio-template-preview-close'),
-                        tooltip: 'ปิดตัวอย่าง',
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close)),
-                  ])),
-              Expanded(
-                  child: SingleChildScrollView(
-                      key: const ValueKey('link-in-bio-template-preview'),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: widget.imageRevision == null
-                          ? _page(candidate)
-                          : ValueListenableBuilder<int>(
-                              valueListenable: widget.imageRevision!,
-                              builder: (_, value, child) => _page(candidate)))),
-              SafeArea(
-                  top: false,
-                  child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(
-                              key: const ValueKey('link-in-bio-template-use'),
-                              onPressed: () =>
-                                  Navigator.pop(context, candidate),
-                              child: const Text('ใช้แบบนี้'))))),
-            ])));
+        builder: (context) => BioUiMotionScope(
+            child: FractionallySizedBox(
+                heightFactor: .9,
+                child: Column(children: [
+                  Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
+                      child: Row(children: [
+                        Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              Text(template.name,
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700)),
+                              Text(
+                                  profileTemplateCategories[template.category]!,
+                                  style: const TextStyle(fontSize: 13)),
+                            ])),
+                        BioUiPress(
+                            child: IconButton(
+                                key: const ValueKey(
+                                    'link-in-bio-template-preview-close'),
+                                tooltip: 'ปิดตัวอย่าง',
+                                onPressed: () => Navigator.pop(context),
+                                icon: const Icon(Icons.close))),
+                      ])),
+                  Expanded(
+                      child: SingleChildScrollView(
+                          key: const ValueKey('link-in-bio-template-preview'),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: widget.imageRevision == null
+                              ? _page(candidate)
+                              : ValueListenableBuilder<int>(
+                                  valueListenable: widget.imageRevision!,
+                                  builder: (_, value, child) =>
+                                      _page(candidate)))),
+                  SafeArea(
+                      top: false,
+                      child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: SizedBox(
+                              width: double.infinity,
+                              child: BioUiPress(
+                                  child: FilledButton(
+                                      key: const ValueKey(
+                                          'link-in-bio-template-use'),
+                                      onPressed: () =>
+                                          Navigator.pop(context, candidate),
+                                      child: const Text('ใช้แบบนี้')))))),
+                ]))));
     if (!mounted || result == null || !widget.enabled) return;
     widget.onChanged(result);
   }
@@ -133,7 +141,10 @@ class _BioThemePickerState extends State<BioThemePicker> {
       images: widget.images);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      BioUiMotionScope(child: Builder(builder: _buildPicker));
+
+  Widget _buildPicker(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final templates =
         profileTemplates.where((item) => item.category == _category).toList();
@@ -145,19 +156,21 @@ class _BioThemePickerState extends State<BioThemePicker> {
             for (final category in profileTemplateCategories.entries)
               Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                      key: ValueKey('link-in-bio-category-${category.key}'),
-                      label: Text(_categoryChipNames[category.key]!),
-                      selected: _category == category.key,
-                      showCheckmark: false,
-                      selectedColor: colors.primary,
-                      labelStyle: TextStyle(
-                          color: _category == category.key
-                              ? colors.onPrimary
-                              : colors.onSurface),
-                      onSelected: widget.enabled
-                          ? (_) => setState(() => _category = category.key)
-                          : null)),
+                  child: BioUiPress(
+                      enabled: widget.enabled,
+                      child: ChoiceChip(
+                          key: ValueKey('link-in-bio-category-${category.key}'),
+                          label: Text(_categoryChipNames[category.key]!),
+                          selected: _category == category.key,
+                          showCheckmark: false,
+                          selectedColor: colors.primary,
+                          labelStyle: TextStyle(
+                              color: _category == category.key
+                                  ? colors.onPrimary
+                                  : colors.onSurface),
+                          onSelected: widget.enabled
+                              ? (_) => setState(() => _category = category.key)
+                              : null))),
           ])),
       const SizedBox(height: 14),
       Text('${profileTemplateCategories[_category]} · 20 แบบ',
@@ -172,7 +185,9 @@ class _BioThemePickerState extends State<BioThemePicker> {
                 style: TextStyle(fontSize: 12, color: colors.primary))),
       const SizedBox(height: 12),
       LayoutBuilder(
-          builder: (_, size) => Wrap(
+          builder: (_, size) => BioUiEntrance(
+              key: ValueKey('link-in-bio-category-motion-$_category'),
+              child: Wrap(
                   key: const ValueKey('link-in-bio-template-grid'),
                   spacing: 12,
                   runSpacing: 12,
@@ -180,49 +195,56 @@ class _BioThemePickerState extends State<BioThemePicker> {
                     for (final template in templates)
                       SizedBox(
                           width: (size.maxWidth - 12) / 2,
-                          child: Material(
-                              color: colors.surface,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  side: BorderSide(
-                                      color: widget.appearance.templateId ==
-                                              template.id
-                                          ? colors.primary
-                                          : colors.outlineVariant,
-                                      width: widget.appearance.templateId ==
-                                              template.id
-                                          ? 2
-                                          : 1)),
-                              clipBehavior: Clip.antiAlias,
-                              child: InkWell(
-                                  key: ValueKey(
-                                      'link-in-bio-template-${template.id}'),
-                                  onTap: widget.enabled
-                                      ? () => _preview(template)
-                                      : null,
-                                  child: Padding(
-                                      padding: const EdgeInsets.all(8),
-                                      child: Column(children: [
-                                        BioTemplateSample(template: template),
-                                        const SizedBox(height: 8),
-                                        Row(children: [
-                                          Expanded(
-                                              child: Text(template.name,
-                                                  style: const TextStyle(
-                                                      fontSize: 12,
-                                                      fontWeight:
-                                                          FontWeight.w600),
-                                                  maxLines: 2,
-                                                  overflow:
-                                                      TextOverflow.ellipsis)),
-                                          if (widget.appearance.templateId ==
-                                              template.id)
-                                            Icon(Icons.check_circle,
-                                                color: colors.primary,
-                                                size: 17),
-                                        ]),
-                                      ])))))
-                  ])),
+                          child: BioUiPress(
+                              enabled: widget.enabled,
+                              child: Material(
+                                  animationDuration: bioUiMotionAllowed(context)
+                                      ? const Duration(milliseconds: 160)
+                                      : Duration.zero,
+                                  color: colors.surface,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      side: BorderSide(
+                                          color: widget.appearance.templateId ==
+                                                  template.id
+                                              ? colors.primary
+                                              : colors.outlineVariant,
+                                          width: widget.appearance.templateId ==
+                                                  template.id
+                                              ? 2
+                                              : 1)),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: InkWell(
+                                      key: ValueKey(
+                                          'link-in-bio-template-${template.id}'),
+                                      onTap: widget.enabled
+                                          ? () => _preview(template)
+                                          : null,
+                                      child: Padding(
+                                          padding: const EdgeInsets.all(8),
+                                          child: Column(children: [
+                                            BioTemplateSample(
+                                                template: template),
+                                            const SizedBox(height: 8),
+                                            Row(children: [
+                                              Expanded(
+                                                  child: Text(template.name,
+                                                      style: const TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight:
+                                                              FontWeight.w600),
+                                                      maxLines: 2,
+                                                      overflow: TextOverflow
+                                                          .ellipsis)),
+                                              if (widget
+                                                      .appearance.templateId ==
+                                                  template.id)
+                                                Icon(Icons.check_circle,
+                                                    color: colors.primary,
+                                                    size: 17),
+                                            ]),
+                                          ]))))))
+                  ]))),
       const SizedBox(height: 12),
       ExpansionTile(
           key: const ValueKey('link-in-bio-legacy-themes'),
@@ -239,15 +261,17 @@ class _BioThemePickerState extends State<BioThemePicker> {
           children: [
             Wrap(spacing: 8, runSpacing: 8, children: [
               for (final theme in linkInBioThemeNames.entries)
-                ChoiceChip(
-                    key: ValueKey('link-in-bio-theme-${theme.key}'),
-                    selected: widget.appearance.templateId == null &&
-                        widget.appearance.themeId == theme.key,
-                    label: Text(theme.value),
-                    onSelected: widget.enabled
-                        ? (_) => widget.onChanged(
-                            bioApplyTheme(widget.appearance, theme.key))
-                        : null),
+                BioUiPress(
+                    enabled: widget.enabled,
+                    child: ChoiceChip(
+                        key: ValueKey('link-in-bio-theme-${theme.key}'),
+                        selected: widget.appearance.templateId == null &&
+                            widget.appearance.themeId == theme.key,
+                        label: Text(theme.value),
+                        onSelected: widget.enabled
+                            ? (_) => widget.onChanged(
+                                bioApplyTheme(widget.appearance, theme.key))
+                            : null)),
             ])
           ]),
     ]);

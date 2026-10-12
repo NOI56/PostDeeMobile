@@ -8,6 +8,7 @@ import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_color_picker.dart';
 import 'link_in_bio_preview.dart';
 import 'link_in_bio_theme_picker.dart';
+import 'link_in_bio_ui_motion.dart';
 export 'link_in_bio_theme_picker.dart';
 
 const bioFontOptions = {
@@ -76,12 +77,13 @@ class _BioColorFieldState extends State<BioColorField> {
           labelText: widget.label,
           hintText: '#123456',
           counterText: '',
-          suffixIcon: IconButton(
-              key: ValueKey(
-                  '${(widget.key as ValueKey?)?.value ?? widget.label}-picker'),
-              tooltip: 'เลือกสี${widget.label}',
-              onPressed: _pickColor,
-              icon: const Icon(Icons.color_lens_outlined)),
+          suffixIcon: BioUiPress(
+              child: IconButton(
+                  key: ValueKey(
+                      '${(widget.key as ValueKey?)?.value ?? widget.label}-picker'),
+                  tooltip: 'เลือกสี${widget.label}',
+                  onPressed: _pickColor,
+                  icon: const Icon(Icons.color_lens_outlined))),
           prefixIcon: Padding(
               padding: const EdgeInsets.all(13),
               child: Container(
@@ -291,15 +293,20 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
       Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Wrap(spacing: 8, children: [
-            OutlinedButton.icon(
-                key: ValueKey('link-in-bio-image-$slot'),
-                onPressed: _uploading ? null : () => _upload(slot),
-                icon: const Icon(Icons.photo_library_outlined),
-                label: Text(key == null ? 'เพิ่ม$label' : 'เปลี่ยน$label')),
+            BioUiPress(
+                enabled: !_uploading,
+                child: OutlinedButton.icon(
+                    key: ValueKey('link-in-bio-image-$slot'),
+                    onPressed: _uploading ? null : () => _upload(slot),
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label:
+                        Text(key == null ? 'เพิ่ม$label' : 'เปลี่ยน$label'))),
             if (key != null)
-              TextButton(
-                  onPressed: _uploading ? null : remove,
-                  child: Text('ลบ$label'))
+              BioUiPress(
+                  enabled: !_uploading,
+                  child: TextButton(
+                      onPressed: _uploading ? null : remove,
+                      child: Text('ลบ$label')))
           ]));
 
   Widget _effects() => _section(
@@ -519,7 +526,10 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) =>
+      BioUiMotionScope(child: Builder(builder: _buildEditor));
+
+  Widget _buildEditor(BuildContext context) => Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SafeArea(
           child: SizedBox(
@@ -543,12 +553,14 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                                   style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w700))),
-                          IconButton(
-                              tooltip: 'ปิด',
-                              onPressed: _uploading
-                                  ? null
-                                  : () => Navigator.pop(context),
-                              icon: const Icon(Icons.close))
+                          BioUiPress(
+                              enabled: !_uploading,
+                              child: IconButton(
+                                  tooltip: 'ปิด',
+                                  onPressed: _uploading
+                                      ? null
+                                      : () => Navigator.pop(context),
+                                  icon: const Icon(Icons.close)))
                         ])),
                     Expanded(
                         child: Form(
@@ -605,10 +617,13 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                         padding: const EdgeInsets.all(16),
                         child: SizedBox(
                             width: double.infinity,
-                            child: FilledButton(
-                                key: const ValueKey(
-                                    'link-in-bio-decoration-done'),
-                                onPressed: _uploading ? null : _apply,
-                                child: const Text('ใช้แบบนี้กับแบบร่าง')))),
+                            child: BioUiPress(
+                                enabled: !_uploading,
+                                child: FilledButton(
+                                    key: const ValueKey(
+                                        'link-in-bio-decoration-done'),
+                                    onPressed: _uploading ? null : _apply,
+                                    child:
+                                        const Text('ใช้แบบนี้กับแบบร่าง'))))),
                   ])))));
 }

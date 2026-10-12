@@ -2,6 +2,37 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Account UI Motion (2026-10-12, authorized release in progress)
+
+The approved Account-only follow-up adds passive press feedback and finite
+content/setting-sheet entrances. Keep native actions and stable content state;
+provider updates do not replay entrances. Reduced motion, lifecycle,
+`TickerMode` and inactive tabs stop feedback. Preserve owner/generation guards,
+email/phone, billing/settings/delete/sign-out and existing subscription refresh.
+No API/schema/config/dependency/migration change. Final source
+passes 1,966 Flutter tests and analysis, including 29 new Account cases; exact
+Staging x64 APK 4014/8014 is built/installed with the retained account. Native
+edit/connections/paywall browse, settings close/help/tab-return checks pass with
+unchanged account/settings and retained scroll. Motion/accessibility and positive
+business actions use fixtures. Prior Shop 1,937/8013 is separate history. Combined
+Shop/Account push/deploy is authorized; exact push/CI/Render receipts are pending.
+Plan: `../../docs/superpowers/plans/2026-10-12-account-ui-motion.md`.
+
+## Shop-link UI Motion (2026-10-12, authorized release in progress)
+
+The approved mobile follow-up adds brief manager/button feedback, current-only
+section/category entrances and guarded drag-proxy feedback. Respect reduced
+motion, lifecycle, `TickerMode` and hidden tabs. Preserve existing owner-scoped
+local autosave, explicit publication, confirmed-URL sharing, 100 templates and
+all retained link/media/font settings. No public-page motion or API/schema/
+configuration/dependency change or migration is required. Final source passes
+1,937 Flutter tests and analysis, including 22 new motion cases. Exact Staging
+x64 APK 4013/8013 was installed at that Shop release with retained account/shop data. Native manager/
+info/Add cancel/theme browse/preview cancel/review/navigation checks pass;
+mutation/Save/Apply/publication paths use controlled fixtures. Combined Shop/
+Account push/deploy is authorized; exact push/CI/Render receipts are pending. See
+`../../docs/superpowers/plans/2026-10-12-shop-link-ui-motion.md`.
+
 ## Guided Create Post (2026-10-12, Staging delivered)
 
 The approved “ทีละขั้น” presentation keeps clip, caption, destinations and
@@ -21,9 +52,9 @@ validation, an AI wait/full-response reveal tied to the existing operation and
 a temporary check after verified explicit local Save. The final rapid-save
 guard rejects busy callbacks before clearing success-feedback generation.
 Final feedback includes 10 new tests; guard/save tests pass 86/86, the full suite
-passes 1,915/1,915 and analysis passes. APK 4012/8012 is installed with the retained
-account; native empty-caption Next shows inline error/focus/keyboard, then the
-notice is reset and clean empty step two stays open. Prior
+passes 1,915/1,915 and analysis passes. At that composer release, APK 4012/8012
+was installed with the retained account; native empty-caption Next showed inline
+error/focus/keyboard, then clean empty step two was left open. Prior
 187/187, 1,914/1,914 and native 8011 validation are pre-guard history; AI/save
 success uses fixtures. The preceding connector
 source passed 1,905 Flutter tests and analysis; Staging APK 4010/8010 was installed
@@ -35,7 +66,7 @@ widget fixtures. The agent left the earlier user-selected form untouched;
 installation followed the user's return to Calendar.
 Authorized source `430f82ad1c493b5a8bcf1f51b007e2a7604dae1e` is pushed to
 `origin/codex/audit-system-fixes`; exact-source CI `38200231563` passed both
-jobs. No remote APK build was requested; installed 8012 is unchanged. Render
+jobs. No remote APK build was requested; installed 8012 was unchanged in that delivery. Render
 specific-commit deploy `dep-db65d08473hc73d6fp50` is Live at 10:41:35 GMT+7;
 16 existing migrations have none pending and health/readiness return HTTP 200.
 Social publishing stays disabled, the queue remains memory and main is not merged.

@@ -55,6 +55,19 @@ exact source; all 16 existing migrations are applied with none pending, and
 The preceding Home release is a separate receipt. Plan:
 `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
+### Calendar motion follow-up (2026-10-12, local)
+
+Calendar now reuses Home's brief press feedback and initial-loading skeletons.
+Day/view/platform selection transitions over 160 ms; week/month height adjusts
+over 220 ms. Only the current owner/day/filter content is mounted during its
+180 ms fade and eight-pixel entrance, so outgoing post actions do not linger.
+Silent refresh keeps confirmed data visible. Reduced motion, inactive tabs and
+background state stop the effects. Existing owner guards, date handoff,
+scheduling limits and API behavior are preserved; no migration, environment
+setting or dependency is added. Verification and delivery for this local
+follow-up are recorded separately in the Calendar plan, not in the preceding
+Staging receipt.
+
 ## Home next-action revision (2026-10-11, Staging delivered)
 
 Home prioritizes continuing the latest saved draft or creating a post, followed

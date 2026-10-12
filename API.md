@@ -27,6 +27,17 @@ disabled. Source identity is verified in Render checkout/UI, not the health
 response. Evidence:
 `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
+### Calendar motion follow-up (2026-10-12, local)
+
+The press, selection, week/month-size, current-day entrance and initial-loading
+skeleton effects are mobile-only presentation. They add no request, endpoint,
+response field, entitlement change, dependency, environment setting or database
+migration. Silent refresh retains confirmed content; current owner/mutation
+guards, selected-date handoff and scheduling validation remain authoritative.
+Reduced motion, inactive tabs and background state stop effects. Local motion
+verification and delivery are recorded separately in the Calendar plan; the
+preceding Staging/health receipt does not verify this follow-up.
+
 ## Home read composition (2026-10-11, Staging delivered)
 
 The Home revision composes existing authenticated subscription, social

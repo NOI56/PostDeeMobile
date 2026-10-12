@@ -30,6 +30,27 @@ account. Exact-source Render deploy `dep-db62jdvlot8c738l37q0` is Live at
 memory queue plus disabled social-publishing/publisher mode remain. Evidence:
 `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
+### Calendar motion boundary (2026-10-12, local follow-up)
+
+Calendar reuses `PostDeePressFeedback` and `PostDeeSkeleton` from Home.
+Presses scale briefly to .97 and restore without changing gesture ownership,
+semantics or hit targets. Selection surfaces transition over 160 ms and the
+week/month grid uses a 220 ms `AnimatedSize`. A keyed current-only subtree
+enters over 180 ms with opacity and an eight-pixel translation; its identity
+includes owner generation, day, platform filter and initial-load state.
+Outgoing content is unmounted rather than retained by an `AnimatedSwitcher`,
+so stale owner/day post controls cannot remain actionable during a transition.
+Initial-load skeletons replace the loading notice while preserving its accessible
+loading label; silent refresh retains confirmed content and selection.
+Calendar gates tickers by active/foreground state and sets selection/entrance
+durations to zero for reduced motion or a disabled `TickerMode`. Disabled
+resizing uses a static grid instead of a zero-duration `AnimatedSize`, avoiding
+a Flutter 3.44 layout assertion when the grid changes height. Existing request/mutation
+guards, polling, date handoff and scheduling/package rules are unchanged. No
+API, schema, migration, environment setting or dependency is added. This local
+verification/delivery receipt is separate from the preceding Staging release;
+see `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
+
 ## Home next-action boundary (2026-10-11, Staging delivered)
 
 Home uses the existing shell navigation and full-screen composer. A continuation

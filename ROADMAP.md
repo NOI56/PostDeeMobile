@@ -27,6 +27,19 @@ Build roadmap for PostDee.
   provider/configuration change or new migration; Home delivery remains separate.
   Plan: `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
+### Calendar motion follow-up (2026-10-12, local)
+
+- Reuse Home press feedback and initial-loading skeletons. Animate day/view/
+  platform selection over 160 ms, week/month height over 220 ms and only the
+  current owner/day/filter section's fade/eight-pixel entrance over 180 ms.
+- Preserve loaded content during silent refresh, current owner guards, date
+  handoff, queue actions and all scheduling/package rules. Stop effects for
+  reduced motion, inactive tabs and background state. Add no API, migration,
+  environment setting or dependency.
+- Record this follow-up's local checks and delivery separately from the
+  preceding compact-Calendar Staging receipt in
+  `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
+
 ## Home next-action revision (2026-10-11, Staging delivered)
 
 - Prioritize the latest explicitly saved owner/device-local draft or a clear

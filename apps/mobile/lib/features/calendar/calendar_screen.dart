@@ -13,6 +13,8 @@ import '../platforms/social_platform_logo.dart';
 import '../shared/post_schedule_policy.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_notice.dart';
+import '../shared/postdee_press_feedback.dart';
+import '../shared/postdee_skeleton.dart';
 import '../shared/publishing_availability.dart';
 
 typedef ScheduledPostsLoader = Future<List<ScheduledPostResult>> Function();
@@ -130,7 +132,10 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _appIsResumed = state == AppLifecycleState.resumed;
+    final resumed = state == AppLifecycleState.resumed;
+    if (_appIsResumed != resumed) {
+      setState(() => _appIsResumed = resumed);
+    }
     if (!_appIsResumed) {
       _queuedRefreshTimer?.cancel();
       _queuedRefreshTimer = null;
@@ -686,88 +691,133 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.sizeOf(context).width <= 360 ? 8.0 : 16.0;
-    return RefreshIndicator(
-      key: const ValueKey('calendar-pull-refresh'),
-      onRefresh: _loadPosts,
-      color: AppTheme.accent,
-      child: SingleChildScrollView(
-        key: const ValueKey('calendar-screen'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(padding, 8, padding, AppTheme.navOverlap),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 12),
-            Wrap(spacing: 5, runSpacing: 6, children: [
-              _FilterChip(
-                  key: const ValueKey('calendar-week-view'),
-                  label: 'สัปดาห์',
-                  selected: _isWeekView,
-                  onTap: () => setState(() => _isWeekView = true)),
-              _FilterChip(
-                  key: const ValueKey('calendar-month-view'),
-                  label: 'เดือน',
-                  selected: !_isWeekView,
-                  onTap: () => setState(() => _isWeekView = false)),
-              TextButton.icon(
-                key: const ValueKey('calendar-today'),
-                onPressed: () => _selectDay(_now().toLocal()),
-                icon: const Icon(Icons.today_outlined, size: 18),
-                label: const Text('วันนี้'),
-                style: TextButton.styleFrom(
-                    minimumSize: const Size(48, 48),
-                    foregroundColor: AppTheme.accentCyanInk),
-              ),
-            ]),
-            const SizedBox(height: 9),
-            _buildMonthCard(),
-            const SizedBox(height: 10),
-            _buildPeriodSummary(),
-            const SizedBox(height: 10),
-            _buildPlatformFilter(),
-            const SizedBox(height: 16),
-            ..._buildDaySection(context),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                  child: Semantics(
-                liveRegion: true,
-                child: Text(
-                    _isRefreshing
-                        ? 'กำลังอัปเดต · ข้อมูลเดิมยังแสดงอยู่'
-                        : _lastUpdated == null
-                            ? 'ยังไม่ได้อัปเดตข้อมูล'
-                            : 'อัปเดตล่าสุด ${_formatTime(_lastUpdated!)}',
-                    key: const ValueKey('calendar-update-status'),
-                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-              )),
-              TextButton.icon(
-                key: const ValueKey('calendar-refresh'),
-                onPressed:
-                    _isLoading || _isRefreshing ? null : () => _loadPosts(),
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('รีเฟรช'),
-              ),
-            ]),
-            if (_hasAddAction && !_isPastDay)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: FilledButton.icon(
-                  key: const ValueKey('calendar-create-selected-day'),
-                  onPressed: _addPostForDay,
-                  icon: const Icon(Icons.add_outlined),
-                  label: Text('สร้างโพสต์ · ${_formatThaiDate(_activeDay)}'),
-                  style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.accent,
-                      minimumSize: const Size(48, 48)),
+    return TickerMode(
+      enabled: _motionEnabled,
+      child: RefreshIndicator(
+        key: const ValueKey('calendar-pull-refresh'),
+        onRefresh: _loadPosts,
+        color: AppTheme.accent,
+        child: SingleChildScrollView(
+          key: const ValueKey('calendar-screen'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding:
+              EdgeInsets.fromLTRB(padding, 8, padding, AppTheme.navOverlap),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildHeader(),
+              const SizedBox(height: 12),
+              Wrap(spacing: 5, runSpacing: 6, children: [
+                _FilterChip(
+                    key: const ValueKey('calendar-week-view'),
+                    label: 'สัปดาห์',
+                    animate: _motionEnabled,
+                    selected: _isWeekView,
+                    onTap: () => setState(() => _isWeekView = true)),
+                _FilterChip(
+                    key: const ValueKey('calendar-month-view'),
+                    label: 'เดือน',
+                    animate: _motionEnabled,
+                    selected: !_isWeekView,
+                    onTap: () => setState(() => _isWeekView = false)),
+                PostDeePressFeedback(
+                  enabled: _motionEnabled,
+                  child: TextButton.icon(
+                    key: const ValueKey('calendar-today'),
+                    onPressed: () => _selectDay(_now().toLocal()),
+                    icon: const Icon(Icons.today_outlined, size: 18),
+                    label: const Text('วันนี้'),
+                    style: TextButton.styleFrom(
+                        minimumSize: const Size(48, 48),
+                        foregroundColor: AppTheme.accentCyanInk),
+                  ),
                 ),
-              ),
-          ],
+              ]),
+              const SizedBox(height: 9),
+              _buildMonthCard(),
+              const SizedBox(height: 10),
+              _buildPeriodSummary(),
+              const SizedBox(height: 10),
+              _buildPlatformFilter(),
+              const SizedBox(height: 16),
+              _buildDayContent(),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                    child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                      _isRefreshing
+                          ? 'กำลังอัปเดต · ข้อมูลเดิมยังแสดงอยู่'
+                          : _lastUpdated == null
+                              ? 'ยังไม่ได้อัปเดตข้อมูล'
+                              : 'อัปเดตล่าสุด ${_formatTime(_lastUpdated!)}',
+                      key: const ValueKey('calendar-update-status'),
+                      style:
+                          TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                )),
+                PostDeePressFeedback(
+                  enabled: _motionEnabled && !_isLoading && !_isRefreshing,
+                  child: TextButton.icon(
+                    key: const ValueKey('calendar-refresh'),
+                    onPressed:
+                        _isLoading || _isRefreshing ? null : () => _loadPosts(),
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('รีเฟรช'),
+                  ),
+                ),
+              ]),
+              if (_hasAddAction && !_isPastDay)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: PostDeePressFeedback(
+                    enabled: _motionEnabled,
+                    child: FilledButton.icon(
+                      key: const ValueKey('calendar-create-selected-day'),
+                      onPressed: _addPostForDay,
+                      icon: const Icon(Icons.add_outlined),
+                      label:
+                          Text('สร้างโพสต์ · ${_formatThaiDate(_activeDay)}'),
+                      style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.accent,
+                          minimumSize: const Size(48, 48)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  bool get _motionEnabled => widget.isActive && _appIsResumed;
+
+  Widget _buildDayContent() => KeyedSubtree(
+        // Keep only the current day/owner mounted, including during a fade.
+        // Outgoing post controls must never remain actionable or readable.
+        key: ValueKey(
+            'calendar-content-$_ownerGeneration-${_dayKey(_activeDay)}-$_platformFilter-$_hasLoaded'),
+        child: TweenAnimationBuilder<double>(
+          key: const ValueKey('calendar-day-transition'),
+          tween: Tween(begin: 0, end: 1),
+          duration: _calendarMotionDuration(context, _motionEnabled, 180),
+          curve: Curves.easeOutCubic,
+          builder: (context, progress, child) => Transform.translate(
+            offset: Offset(0, 8 * (1 - progress)),
+            transformHitTests: false,
+            child: Opacity(
+              key: const ValueKey('calendar-day-content-opacity'),
+              opacity: progress,
+              child: child,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: _buildDaySection(context),
+          ),
+        ),
+      );
 
   Widget _buildHeader() {
     final title =
@@ -803,27 +853,30 @@ class _CalendarScreenState extends State<CalendarScreen>
       button: true,
       enabled: !_isPastDay,
       onTap: _isPastDay ? null : _addPostForDay,
-      child: ExcludeSemantics(
-          child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: _isPastDay ? null : _addPostForDay,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 48),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-              color: _isPastDay ? AppTheme.border : AppTheme.accent,
-              borderRadius: BorderRadius.circular(12)),
-          child: const Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.add_rounded, color: Colors.white, size: 21),
-            SizedBox(width: 4),
-            Text('สร้างโพสต์',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700)),
-          ]),
-        ),
-      )),
+      child: PostDeePressFeedback(
+        enabled: _motionEnabled && !_isPastDay,
+        child: ExcludeSemantics(
+            child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _isPastDay ? null : _addPostForDay,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+                color: _isPastDay ? AppTheme.border : AppTheme.accent,
+                borderRadius: BorderRadius.circular(12)),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.add_rounded, color: Colors.white, size: 21),
+              SizedBox(width: 4),
+              Text('สร้างโพสต์',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+            ]),
+          ),
+        )),
+      ),
     );
   }
 
@@ -844,6 +897,7 @@ class _CalendarScreenState extends State<CalendarScreen>
         Row(children: [
           _MonthNavButton(
               key: const ValueKey('calendar-previous-period'),
+              animate: _motionEnabled,
               icon: Icons.chevron_left,
               label: _isWeekView ? 'สัปดาห์ก่อนหน้า' : 'เดือนก่อนหน้า',
               onTap: () => _changePeriod(-1)),
@@ -863,6 +917,7 @@ class _CalendarScreenState extends State<CalendarScreen>
           ])),
           _MonthNavButton(
               key: const ValueKey('calendar-next-period'),
+              animate: _motionEnabled,
               icon: Icons.chevron_right,
               label: _isWeekView ? 'สัปดาห์ถัดไป' : 'เดือนถัดไป',
               onTap: () => _changePeriod(1)),
@@ -876,20 +931,23 @@ class _CalendarScreenState extends State<CalendarScreen>
                     style: TextStyle(fontSize: 11, color: AppTheme.textMuted))),
         ]),
         const SizedBox(height: 5),
-        GridView.count(
-          crossAxisCount: 7,
-          childAspectRatio: 1,
-          mainAxisSpacing: 2,
-          crossAxisSpacing: 1,
-          padding: EdgeInsets.zero,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          children: [
-            for (var i = 0; i < blanks; i++) const SizedBox.shrink(),
-            for (var offset = 0; offset < days; offset++)
-              _dayCell(DateTime(start.year, start.month, start.day + offset),
-                  counts),
-          ],
+        _CalendarPeriodSize(
+          animate: _motionEnabled,
+          child: GridView.count(
+            crossAxisCount: 7,
+            childAspectRatio: 1,
+            mainAxisSpacing: 2,
+            crossAxisSpacing: 1,
+            padding: EdgeInsets.zero,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: [
+              for (var i = 0; i < blanks; i++) const SizedBox.shrink(),
+              for (var offset = 0; offset < days; offset++)
+                _dayCell(DateTime(start.year, start.month, start.day + offset),
+                    counts),
+            ],
+          ),
         ),
       ]),
     );
@@ -909,46 +967,54 @@ class _CalendarScreenState extends State<CalendarScreen>
       button: true,
       selected: selected,
       onTap: () => _selectDay(date),
-      child: ExcludeSemantics(
-          child: InkWell(
-        borderRadius: BorderRadius.circular(11),
-        onTap: () => _selectDay(date),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-              color: selected ? AppTheme.accent : Colors.transparent,
-              borderRadius: BorderRadius.circular(11)),
-          child: Column(children: [
-            Expanded(
-                child: Center(
-                    child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text('${date.day}',
-                  maxLines: 1,
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight:
-                          selected || today ? FontWeight.w700 : FontWeight.w500,
-                      decoration:
-                          today && !selected ? TextDecoration.underline : null,
-                      color: selected ? Colors.white : AppTheme.textPrimary)),
-            ))),
-            Expanded(
-                child: Center(
-                    child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                  count == 0
-                      ? ''
-                      : shortCount
-                          ? '$count'
-                          : '$count โพสต์',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: selected ? Colors.white : AppTheme.textMuted)),
-            ))),
-          ]),
-        ),
-      )),
+      child: PostDeePressFeedback(
+        key: ValueKey('calendar-day-feedback-${_dayKey(date)}'),
+        enabled: _motionEnabled,
+        child: ExcludeSemantics(
+            child: InkWell(
+          borderRadius: BorderRadius.circular(11),
+          onTap: () => _selectDay(date),
+          child: AnimatedContainer(
+            duration: _calendarMotionDuration(context, _motionEnabled, 160),
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+                color: selected ? AppTheme.accent : Colors.transparent,
+                borderRadius: BorderRadius.circular(11)),
+            child: Column(children: [
+              Expanded(
+                  child: Center(
+                      child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('${date.day}',
+                    maxLines: 1,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: selected || today
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        decoration: today && !selected
+                            ? TextDecoration.underline
+                            : null,
+                        color: selected ? Colors.white : AppTheme.textPrimary)),
+              ))),
+              Expanded(
+                  child: Center(
+                      child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                    count == 0
+                        ? ''
+                        : shortCount
+                            ? '$count'
+                            : '$count โพสต์',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: selected ? Colors.white : AppTheme.textMuted)),
+              ))),
+            ]),
+          ),
+        )),
+      ),
     );
   }
 
@@ -987,12 +1053,14 @@ class _CalendarScreenState extends State<CalendarScreen>
       _PlatformFilterButton(
           key: const ValueKey('calendar-filter-all'),
           label: 'ทั้งหมด',
+          animate: _motionEnabled,
           selected: _platformFilter == 'all',
           onTap: () => setState(() => _platformFilter = 'all')),
       for (final platform in connectablePlatforms)
         _PlatformFilterButton(
             key: ValueKey('calendar-filter-${platform.apiValue}'),
             label: platform.shortLabel,
+            animate: _motionEnabled,
             platform: platform,
             selected: _platformFilter == platform.apiValue,
             onTap: () => setState(() => _platformFilter = platform.apiValue)),
@@ -1020,12 +1088,30 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   List<Widget> _buildDaySection(BuildContext context) {
     if (_isLoading && !_hasLoaded) {
-      return const [
-        PostDeeNotice(
-            key: ValueKey('calendar-loading'),
-            icon: Icons.hourglass_top,
-            message: 'กำลังโหลดปฏิทินโพสต์...',
-            color: AppTheme.accent)
+      return [
+        Semantics(
+          key: const ValueKey('calendar-loading'),
+          label: 'กำลังโหลดปฏิทินโพสต์...',
+          liveRegion: true,
+          child: ExcludeSemantics(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: PostDeeSkeleton(
+                      width: 140, height: 14, animate: _motionEnabled),
+                ),
+                const SizedBox(height: 14),
+                PostDeeSkeleton(
+                    height: 76, radius: 13, animate: _motionEnabled),
+                const SizedBox(height: 10),
+                PostDeeSkeleton(
+                    height: 76, radius: 13, animate: _motionEnabled),
+              ],
+            ),
+          ),
+        ),
       ];
     }
     final dayPosts = _dayPosts;
@@ -1057,6 +1143,7 @@ class _CalendarScreenState extends State<CalendarScreen>
         if (dayPosts.isEmpty)
           _EmptyDayCard(
             key: const ValueKey('calendar-empty'),
+            animate: _motionEnabled,
             title: _platformFilter == 'all'
                 ? 'วันที่เลือกยังไม่มีโพสต์'
                 : 'ไม่มีโพสต์สำหรับช่องทางนี้',
@@ -1071,6 +1158,7 @@ class _CalendarScreenState extends State<CalendarScreen>
           for (final post in dayPosts)
             _DayPostRow(
                 post: post,
+                animate: _motionEnabled,
                 displayAt: _calendarTimeFor(post),
                 onTap: _postTapHandler(post),
                 busyLabel: _pendingActionPostId == post.id
@@ -1081,17 +1169,44 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 }
 
+class _CalendarPeriodSize extends StatelessWidget {
+  const _CalendarPeriodSize({required this.animate, required this.child});
+
+  final bool animate;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = _calendarMotionDuration(context, animate, 220);
+    // Bypass resizing entirely when disabled. A zero-duration AnimatedSize can
+    // mutate its own render object during layout when the grid changes height.
+    if (duration == Duration.zero) {
+      return KeyedSubtree(
+          key: const ValueKey('calendar-period-size'), child: child);
+    }
+    return AnimatedSize(
+      key: const ValueKey('calendar-period-size'),
+      duration: duration,
+      curve: Curves.easeInOutCubic,
+      alignment: Alignment.topCenter,
+      child: child,
+    );
+  }
+}
+
 class _MonthNavButton extends StatelessWidget {
   const _MonthNavButton({
     super.key,
     required this.icon,
     required this.label,
     required this.onTap,
+    required this.animate,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final bool animate;
 
   @override
   Widget build(BuildContext context) {
@@ -1099,19 +1214,22 @@ class _MonthNavButton extends StatelessWidget {
       label: label,
       button: true,
       onTap: onTap,
-      child: ExcludeSemantics(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: onTap,
-          child: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.glass,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.border),
+      child: PostDeePressFeedback(
+        enabled: animate,
+        child: ExcludeSemantics(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: onTap,
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppTheme.glass,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Icon(icon, size: 19, color: AppTheme.textSecondary),
             ),
-            child: Icon(icon, size: 19, color: AppTheme.textSecondary),
           ),
         ),
       ),
@@ -1125,11 +1243,13 @@ class _FilterChip extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    required this.animate,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final bool animate;
 
   @override
   Widget build(BuildContext context) {
@@ -1138,30 +1258,35 @@ class _FilterChip extends StatelessWidget {
         button: true,
         selected: selected,
         onTap: onTap,
-        child: ExcludeSemantics(
-            child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(999),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 48),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: selected ? AppTheme.accent : AppTheme.glass,
+        child: PostDeePressFeedback(
+            enabled: animate,
+            child: ExcludeSemantics(
+                child: InkWell(
+              onTap: onTap,
               borderRadius: BorderRadius.circular(999),
-              border: selected ? null : Border.all(color: AppTheme.border),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                  color: selected ? Colors.white : AppTheme.textSecondary,
+              child: AnimatedContainer(
+                duration: _calendarMotionDuration(context, animate, 160),
+                curve: Curves.easeOutCubic,
+                constraints: const BoxConstraints(minHeight: 48),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: selected ? AppTheme.accent : AppTheme.glass,
+                  borderRadius: BorderRadius.circular(999),
+                  border: selected ? null : Border.all(color: AppTheme.border),
                 ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                      color: selected ? Colors.white : AppTheme.textSecondary,
+                    ),
+                  ),
+                ]),
               ),
-            ]),
-          ),
-        )));
+            ))));
   }
 }
 
@@ -1171,12 +1296,14 @@ class _PlatformFilterButton extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    required this.animate,
     this.platform,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final bool animate;
   final SocialPlatform? platform;
 
   @override
@@ -1186,47 +1313,52 @@ class _PlatformFilterButton extends StatelessWidget {
       button: true,
       selected: selected,
       onTap: onTap,
-      child: ExcludeSemantics(
-          child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(11),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 58),
-          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
-          decoration: BoxDecoration(
-              color: selected
-                  ? AppTheme.accent.withValues(alpha: 0.12)
-                  : AppTheme.glass,
-              border: Border.all(
-                  color: selected
-                      ? AppTheme.accent.withValues(alpha: 0.4)
-                      : AppTheme.border),
-              borderRadius: BorderRadius.circular(11)),
-          child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (platform != null)
-                  SocialPlatformLogo(platform: platform!, size: 16)
-                else
-                  Icon(Icons.layers_outlined,
-                      size: 16,
-                      color: selected
-                          ? AppTheme.accentCyanInk
-                          : AppTheme.textMuted),
-                const SizedBox(height: 4),
-                Text(label,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 11,
+      child: PostDeePressFeedback(
+        enabled: animate,
+        child: ExcludeSemantics(
+            child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(11),
+          child: AnimatedContainer(
+            duration: _calendarMotionDuration(context, animate, 160),
+            curve: Curves.easeOutCubic,
+            constraints: const BoxConstraints(minHeight: 58),
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
+            decoration: BoxDecoration(
+                color: selected
+                    ? AppTheme.accent.withValues(alpha: 0.12)
+                    : AppTheme.glass,
+                border: Border.all(
+                    color: selected
+                        ? AppTheme.accent.withValues(alpha: 0.4)
+                        : AppTheme.border),
+                borderRadius: BorderRadius.circular(11)),
+            child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (platform != null)
+                    SocialPlatformLogo(platform: platform!, size: 16)
+                  else
+                    Icon(Icons.layers_outlined,
+                        size: 16,
                         color: selected
                             ? AppTheme.accentCyanInk
-                            : AppTheme.textSecondary,
-                        fontWeight:
-                            selected ? FontWeight.w700 : FontWeight.w500)),
-              ]),
-        ),
-      )),
+                            : AppTheme.textMuted),
+                  const SizedBox(height: 4),
+                  Text(label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: selected
+                              ? AppTheme.accentCyanInk
+                              : AppTheme.textSecondary,
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w500)),
+                ]),
+          ),
+        )),
+      ),
     );
   }
 }
@@ -1237,12 +1369,14 @@ class _DayPostRow extends StatelessWidget {
     required this.displayAt,
     required this.onTap,
     required this.busyLabel,
+    required this.animate,
   });
 
   final ScheduledPostResult post;
   final DateTime displayAt;
   final VoidCallback? onTap;
   final String? busyLabel;
+  final bool animate;
 
   @override
   Widget build(BuildContext context) {
@@ -1266,90 +1400,93 @@ class _DayPostRow extends StatelessWidget {
       onTap: onTap,
       label:
           '${_formatTime(displayAt)} ${post.caption} $status ${platforms.map((platform) => platform.shortLabel).join(', ')}',
-      child: ExcludeSemantics(
-          child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(13),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(color: AppTheme.border),
-          ),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(
-                width: 57 *
-                    (MediaQuery.textScalerOf(context).scale(15) / 15)
-                        .clamp(1.0, 2.0),
-                child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(_formatTime(displayAt),
-                        maxLines: 1,
-                        style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.textPrimary)))),
-            const SizedBox(width: 9),
-            Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  Text(post.caption,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary)),
-                  const SizedBox(height: 6),
-                  Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.09),
-                          borderRadius: BorderRadius.circular(6)),
-                      child: Text(status,
+      child: PostDeePressFeedback(
+        enabled: animate && onTap != null,
+        child: ExcludeSemantics(
+            child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(13),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+            decoration: BoxDecoration(
+              color: AppTheme.glass,
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(
+                  width: 57 *
+                      (MediaQuery.textScalerOf(context).scale(15) / 15)
+                          .clamp(1.0, 2.0),
+                  child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(_formatTime(displayAt),
+                          maxLines: 1,
                           style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: color))),
-                  const SizedBox(height: 7),
-                  Wrap(
-                      key: ValueKey('calendar-channels-${post.id}'),
-                      spacing: 8,
-                      runSpacing: 5,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textPrimary)))),
+              const SizedBox(width: 9),
+              Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (final platform in platforms)
-                          Row(mainAxisSize: MainAxisSize.min, children: [
-                            SocialPlatformLogo(platform: platform, size: 15),
-                            const SizedBox(width: 4),
-                            Flexible(
-                                child: Text(platform.shortLabel,
-                                    style: TextStyle(
-                                        fontSize: 10.5,
-                                        color: AppTheme.textMuted))),
-                          ]),
-                        for (final value in post.platforms
-                            .toSet()
-                            .where((value) => _platformFor(value) == null))
-                          Text(value,
-                              style: TextStyle(
-                                  fontSize: 10.5, color: AppTheme.textMuted)),
-                      ]),
-                ])),
-            if (busyLabel != null)
-              const SizedBox(
-                  key: ValueKey('calendar-post-action-progress'),
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2.5))
-            else if (onTap != null)
-              Icon(Icons.chevron_right, size: 18, color: AppTheme.textMuted),
-          ]),
-        ),
-      )),
+                    Text(post.caption,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary)),
+                    const SizedBox(height: 6),
+                    Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.09),
+                            borderRadius: BorderRadius.circular(6)),
+                        child: Text(status,
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: color))),
+                    const SizedBox(height: 7),
+                    Wrap(
+                        key: ValueKey('calendar-channels-${post.id}'),
+                        spacing: 8,
+                        runSpacing: 5,
+                        children: [
+                          for (final platform in platforms)
+                            Row(mainAxisSize: MainAxisSize.min, children: [
+                              SocialPlatformLogo(platform: platform, size: 15),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                  child: Text(platform.shortLabel,
+                                      style: TextStyle(
+                                          fontSize: 10.5,
+                                          color: AppTheme.textMuted))),
+                            ]),
+                          for (final value in post.platforms
+                              .toSet()
+                              .where((value) => _platformFor(value) == null))
+                            Text(value,
+                                style: TextStyle(
+                                    fontSize: 10.5, color: AppTheme.textMuted)),
+                        ]),
+                  ])),
+              if (busyLabel != null)
+                const SizedBox(
+                    key: ValueKey('calendar-post-action-progress'),
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.5))
+              else if (onTap != null)
+                Icon(Icons.chevron_right, size: 18, color: AppTheme.textMuted),
+            ]),
+          ),
+        )),
+      ),
     );
   }
 }
@@ -1360,11 +1497,13 @@ class _EmptyDayCard extends StatelessWidget {
     required this.onTap,
     required this.title,
     required this.actionLabel,
+    required this.animate,
   });
 
   final VoidCallback? onTap;
   final String title;
   final String actionLabel;
+  final bool animate;
 
   @override
   Widget build(BuildContext context) {
@@ -1388,12 +1527,15 @@ class _EmptyDayCard extends StatelessWidget {
                   color: AppTheme.textSecondary)),
           if (onTap != null) ...[
             const SizedBox(height: 4),
-            TextButton(
-                onPressed: onTap,
-                style: TextButton.styleFrom(
-                    minimumSize: const Size(48, 48),
-                    foregroundColor: AppTheme.accentCyanInk),
-                child: Text(actionLabel)),
+            PostDeePressFeedback(
+              enabled: animate,
+              child: TextButton(
+                  onPressed: onTap,
+                  style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      foregroundColor: AppTheme.accentCyanInk),
+                  child: Text(actionLabel)),
+            ),
           ],
         ]),
       ),
@@ -1462,6 +1604,14 @@ SocialPlatform? _platformFor(String apiValue) {
   }
   return null;
 }
+
+Duration _calendarMotionDuration(
+        BuildContext context, bool enabled, int milliseconds) =>
+    enabled &&
+            TickerMode.valuesOf(context).enabled &&
+            !MediaQuery.disableAnimationsOf(context)
+        ? Duration(milliseconds: milliseconds)
+        : Duration.zero;
 
 bool _isSameDay(DateTime left, DateTime right) =>
     left.year == right.year &&

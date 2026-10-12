@@ -242,3 +242,86 @@ Current-PID Flutter/AndroidRuntime error log 0 bytes:
 ในการตรวจรอบนี้; full Calendar native รุ่น 8006 และ positive fixtures ยังคง
 เป็น receipt แยกตามขอบเขตข้างต้น การเทียบ fingerprints ครอบคลุมเฉพาะ
 shared preferences XML ไม่ใช่ hash ของ files directory
+
+## Motion follow-up (2026-10-12, local)
+
+ผู้ใช้ขอให้หน้าปฏิทินมีลูกเล่นเหมือนหน้าหลัก รอบนี้เพิ่มเฉพาะ mobile presentation
+ต่อจาก HEAD `78ee597183b8b27e3954f68023ac85ee73b49da2` บน
+`codex/audit-system-fixes`; verified `origin/main` และ merge base ยังเป็น
+`c4e52201a58b556f5f47529027549a2fc16af84c` ก่อนแก้ 21 ahead / 0 behind
+รักษา generated Windows dirt เดิมสามไฟล์ไว้
+
+### ขอบเขต runtime
+
+- ใช้ `PostDeePressFeedback` เดิมจาก Home: ย่อ .97 ขณะกดแล้วคืนขนาด
+  คง gesture/semantics/hit target ของ control เดิม ทั้งเลือกวัน ปุ่มช่วงเวลา
+  Today, week/month/platform filter, refresh, create และแถวโพสต์ที่กดได้
+- สีวันที่เลือกและ view/platform filters เปลี่ยนใน 160 ms; grid ปรับความสูง
+  week/month ใน 220 ms โดยคง initial week view และ selection เดิม
+- รายการปัจจุบันค่อยปรากฏ/เลื่อนขึ้น 8 px ใน 180 ms โดย key รวม owner
+  generation/day/platform/initial-load state และ unmount รายการก่อนหน้าทันที
+  ไม่เก็บ outgoing post controls ระหว่าง transition
+- Initial load ใช้ `PostDeeSkeleton` เดิม พร้อม accessible loading label;
+  silent refresh คงข้อมูลที่ยืนยันแล้วและวันที่/filter เดิม
+- Reduced motion, inactive tab, app background และ disabled `TickerMode`
+  หยุด effects; grid ใช้ static layout แทน `AnimatedSize` เมื่อปิด animation
+  เพื่อหลีกเลี่ยง Flutter 3.44 layout assertion ตอนเปลี่ยนความสูง
+  owner/request/mutation guards และ visible-only polling คงเดิม
+
+ไม่เปลี่ยน API/backend/schema/provider/plan rules, date handoff หรือ publishing
+kill switch และไม่เพิ่ม migration/environment setting/dependency. Runtime scope
+คือ `apps/mobile/lib/features/calendar/calendar_screen.dart`; ตรวจและ sync
+README, ROADMAP, ARCHITECTURE, API และ mobile README เฉพาะเรื่องนี้
+
+### ผลตรวจและการส่งมอบรอบ motion
+
+Targeted regressions ผ่าน 119/119 ใน 26s: motion ใหม่ 8, Calendar เดิม 45,
+shell 53, date handoff 8 และ Home shared primitives 5. Log:
+`D:\Temp\postdee-calendar-motion-targeted-final-20261012.log`.
+Runtime source `calendar_screen.dart` SHA-256 ที่ freeze สำหรับตรวจ:
+`4D1281880605AB18A844F9A70BEC8EE1EA6678068ABB7BCB66D068BD588C7CCA`.
+Diff check ผ่าน ไม่มี tracked deletion; runtime API, pubspec/lock, Android,
+shared widgets, shell และ uploader ไม่เปลี่ยนจาก HEAD ที่ระบุ
+
+Full Flutter suite ของ frozen source ผ่าน 1,891/1,891 ใน 3m19s (exit 0);
+`flutter analyze` ไม่พบปัญหาใน 17.3s (exit 0). Logs:
+`D:\Temp\postdee-calendar-motion-full-20261012.log` และ
+`D:\Temp\postdee-calendar-motion-analyze-final-20261012.log`.
+
+Staging helper build 4008 ผ่าน Gradle `assembleDebug` 18.3s. APK
+`apps/mobile/build/app/outputs/flutter-apk/app-x86_64-debug.apk` ขนาด
+127,586,142 bytes มี SHA-256
+`32EEC7945BC0736AF2D153419EC39162A22815C5EAFFBF70C8EA1F5B2CAFBF28`.
+Package `com.postdee.postdee_mobile.staging`, installed versionCode 8008,
+versionName `0.1.0-staging`, min SDK 24/target SDK 36, x86_64.
+Signer SHA-256
+`014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`
+ตรงกับรุ่น 8007; frozen runtime hash ตรงก่อนติดตั้ง. Build log:
+`D:\Temp\postdee-calendar-motion-build-20261012.log`.
+
+Environment ใช้ API `https://postdee-api-staging.onrender.com` และ Firebase
+`project-798caf7e-85b8-45e3-af7`, Firebase auth เปิด/local mock ปิด,
+validated RevenueCat Test Store overlay และ feature flags เดิม.
+`adb install -r` สำเร็จ, firstInstallTime เดิม 2026-10-05; cold launch 5.092s.
+Visible native Home คืนบัญชี A, Free 0/3, social 0/4 และข้อมูลไม่มีโพสต์
+
+Native รุ่น 8008 ตรวจผ่านบนเครื่องจำลองที่มองเห็น โดยไม่ Save/Publish/OAuth
+หรือซื้อแพ็กเกจ:
+
+- Calendar เริ่ม week วันที่ 12; เลือก 13 แล้ว footer แสดงวันที่เดียวกัน
+- สลับ month เห็น 1–31 และยังเลือก 13; กลับ week ยังรักษา 13
+- เลือก TikTok แสดง empty copy ของช่องทางนั้น; refresh แสดงกำลังอัปเดต
+  พร้อมคงข้อมูลเดิม แล้วเวลาอัปเดต 00:51 ยังรักษา 13/TikTok
+- Today คืนวันที่ 12 โดยคง TikTok; All คืนตัวกรองทั้งหมด ปล่อยแอปเปิดไว้ที่
+  Calendar week วันที่ 12/All
+
+Current-PID Flutter/AndroidRuntime error log 0 bytes:
+`D:\Temp\postdee-calendar-motion-native-errors-20261012.log`.
+บัญชีจริงไม่มีโพสต์ จึงตรวจ native empty path; positive current-post actions,
+reduced motion/background guards และ intermediate shrink ใช้ fixtures.
+ไม่ใช้ tool highlight เป็นหลักฐานลูกเล่นของแอป
+
+รุ่น 8007, CI `38187776818` และ Render Live ข้างต้นเป็น receipt ก่อน motion
+follow-up จึงไม่ใช้ยืนยัน effects ใหม่นี้ ไม่มี API/schema/migration ใหม่และ
+ไม่ได้รัน backend/health/Render/CI ใหม่รอบนี้ เพราะ runtime backend ไม่เปลี่ยน
+รอบนี้ตรวจและติดตั้ง local รุ่น 8008 แล้ว ยังไม่ push/deploy

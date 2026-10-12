@@ -30,7 +30,7 @@ account. Exact-source Render deploy `dep-db62jdvlot8c738l37q0` is Live at
 memory queue plus disabled social-publishing/publisher mode remain. Evidence:
 `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
-### Calendar motion boundary (2026-10-12, local follow-up)
+### Calendar motion boundary (2026-10-12, Staging delivered)
 
 Calendar reuses `PostDeePressFeedback` and `PostDeeSkeleton` from Home.
 Presses scale briefly to .97 and restore without changing gesture ownership,
@@ -47,8 +47,14 @@ durations to zero for reduced motion or a disabled `TickerMode`. Disabled
 resizing uses a static grid instead of a zero-duration `AnimatedSize`, avoiding
 a Flutter 3.44 layout assertion when the grid changes height. Existing request/mutation
 guards, polling, date handoff and scheduling/package rules are unchanged. No
-API, schema, migration, environment setting or dependency is added. This local
-verification/delivery receipt is separate from the preceding Staging release;
+API, schema, migration, environment setting or dependency is added. Authorized
+source `df8df1d` is pushed; exact-source CI `38189859822` passes 1,891 Flutter
+tests, analysis and Backend checks. Render deploy `dep-db6327ajnfac73c7vr90`
+is Live at 08:02:20 GMT+7; 16 existing migrations have none pending and
+health/readiness return HTTP 200. Local Staging APK 4008/8008 remains installed
+with its account. Social publishing/publisher stay disabled and the existing
+memory queue remains. Post-Live native refresh preserves the selected date/
+filter and account state without saving or publishing. This receipt is separate from the preceding release;
 see `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
 ## Home next-action boundary (2026-10-11, Staging delivered)

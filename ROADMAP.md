@@ -27,7 +27,7 @@ Build roadmap for PostDee.
   provider/configuration change or new migration; Home delivery remains separate.
   Plan: `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
-### Calendar motion follow-up (2026-10-12, local)
+### Calendar motion follow-up (2026-10-12, Staging delivered)
 
 - Reuse Home press feedback and initial-loading skeletons. Animate day/view/
   platform selection over 160 ms, week/month height over 220 ms and only the
@@ -36,8 +36,13 @@ Build roadmap for PostDee.
   handoff, queue actions and all scheduling/package rules. Stop effects for
   reduced motion, inactive tabs and background state. Add no API, migration,
   environment setting or dependency.
-- Record this follow-up's local checks and delivery separately from the
-  preceding compact-Calendar Staging receipt in
+- Authorized source `df8df1d` is pushed; exact-source CI `38189859822` passes
+  1,891 Flutter tests, analysis and Backend checks. Render deploy
+  `dep-db6327ajnfac73c7vr90` is Live at 08:02:20 GMT+7; 16 existing migrations
+  have none pending and health/readiness return HTTP 200. Locally verified
+  Staging APK 4008/8008 remains installed with its account; post-Live native
+  refresh preserves the selected date/filter and account state. Record this
+  follow-up's checks and delivery separately from the preceding release in
   `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
 ## Home next-action revision (2026-10-11, Staging delivered)

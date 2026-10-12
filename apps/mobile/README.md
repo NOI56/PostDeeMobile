@@ -23,7 +23,7 @@ migrations have none pending and health/ready return HTTP 200. Staging social
 publishing remains disabled. The Home release is a separate receipt.
 See `../../docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
-### Calendar Motion Follow-up (2026-10-12, local)
+### Calendar Motion Follow-up (2026-10-12, Staging delivered)
 
 The Calendar reuses Home's press feedback and initial-loading skeletons.
 Day/view/platform selection takes 160 ms, week/month grid height 220 ms, and
@@ -32,9 +32,14 @@ translation. Outgoing post controls are unmounted immediately. Silent refresh
 keeps confirmed data and selection. Reduced motion, inactive tabs and background
 state stop effects. Owner guards, date handoff, scheduling/package rules and API
 behavior stay unchanged; no migration, environment setting or dependency is
-added. Check the separate local follow-up receipt in
-`../../docs/superpowers/plans/2026-10-11-calendar-ux.md`; the preceding Staging
-release does not verify these effects.
+added. Authorized source `df8df1d` is pushed; exact-source CI `38189859822`
+passes 1,891 Flutter tests and analysis. Render deploy
+`dep-db6327ajnfac73c7vr90` is Live at 08:02:20 GMT+7; 16 existing migrations
+have none pending and health/readiness return HTTP 200. Locally verified
+Staging APK 4008/8008 remains installed with its account; post-Live native
+refresh preserves the selected date/filter and account state. Check the separate
+follow-up receipt in `../../docs/superpowers/plans/2026-10-11-calendar-ux.md`;
+the preceding Staging release does not verify these effects.
 
 ## Local Commands
 

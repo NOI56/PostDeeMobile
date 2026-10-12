@@ -1,6 +1,7 @@
 # ปฏิทิน: รายการกระชับและสร้างโพสต์ตามวันที่เลือก (2026-10-11)
 
-สถานะปัจจุบัน 2026-10-12: ผู้ใช้อนุญาต push/deploy Staging แล้ว feature SHA
+ผลส่งมอบ compact Calendar ก่อน motion follow-up (2026-10-12): ผู้ใช้อนุญาต
+push/deploy Staging แล้ว feature SHA
 `3368f4d541daafb6eaac2e2af5a93800d27831c4` pushed และ exact-source CI
 `38187776818` ผ่าน Flutter 1,883 tests/analyze และ Backend checks.
 แพตช์ clock follow-up ผ่าน targeted 66 และ local analyze; APK 4007/8007
@@ -243,7 +244,7 @@ Current-PID Flutter/AndroidRuntime error log 0 bytes:
 เป็น receipt แยกตามขอบเขตข้างต้น การเทียบ fingerprints ครอบคลุมเฉพาะ
 shared preferences XML ไม่ใช่ hash ของ files directory
 
-## Motion follow-up (2026-10-12, local)
+## Motion follow-up (2026-10-12, Staging delivered)
 
 ผู้ใช้ขอให้หน้าปฏิทินมีลูกเล่นเหมือนหน้าหลัก รอบนี้เพิ่มเฉพาะ mobile presentation
 ต่อจาก HEAD `78ee597183b8b27e3954f68023ac85ee73b49da2` บน
@@ -322,6 +323,60 @@ reduced motion/background guards และ intermediate shrink ใช้ fixture
 ไม่ใช้ tool highlight เป็นหลักฐานลูกเล่นของแอป
 
 รุ่น 8007, CI `38187776818` และ Render Live ข้างต้นเป็น receipt ก่อน motion
-follow-up จึงไม่ใช้ยืนยัน effects ใหม่นี้ ไม่มี API/schema/migration ใหม่และ
-ไม่ได้รัน backend/health/Render/CI ใหม่รอบนี้ เพราะ runtime backend ไม่เปลี่ยน
-รอบนี้ตรวจและติดตั้ง local รุ่น 8008 แล้ว ยังไม่ push/deploy
+follow-up จึงไม่ใช้ยืนยัน effects ใหม่นี้ ไม่มี API/schema/migration ใหม่.
+ผล local ด้านบนตรวจและติดตั้งรุ่น 8008 ก่อนส่งมอบ ตอนนั้นยังไม่ push/deploy
+และยังไม่ได้รัน backend/health/Render/CI ใหม่ ผล delivery อยู่ในหัวข้อถัดไป
+
+### Release delivery follow-up (2026-10-12)
+
+ผู้ใช้อนุญาต push/deploy ผ่าน annotation แล้ว feature
+`df8df1daf8d6578b32262200a9d475764668093f` (`feat: add Home-style motion to
+the compact calendar`) pushed ไป `origin/codex/audit-system-fixes`.
+CI [38189859822](https://github.com/NOI56/PostDeeMobile/actions/runs/38189859822)
+สำเร็จและ checkout ของ Backend/Mobile เป็น exact SHA นี้ทั้งคู่:
+
+- Flutter: analyze ไม่พบปัญหาใน 13.0s, tests 1,891 ผ่านจบ
+  2026-10-12 00:59:25.937 UTC / 07:59:25.937 GMT+7
+- Backend: 1,781 tests/109 files, generator 22 checks, build, Prisma validation
+  และ shared-catalog verification ผ่าน. Production audit ที่
+  `--omit=dev --omit=optional --audit-level=high` ผ่าน แต่ยังมี 4 moderate
+  findings; ไม่ใช่ผล audit ทั้ง development dependencies ว่าไม่มีปัญหา
+
+CI ใช้ Flutter 3.47.7 ต่างจาก local 3.44.1 จึงเก็บผลแต่ละ environment แยกกัน.
+`build_staging_apk=false` จึงไม่มี CI APK build/upload; local Staging debug/
+Test Store APK รุ่น 8008 ที่ระบุด้านบนยังเป็น artifact ที่ตรวจและติดตั้งไว้.
+CI log: `D:\Temp\postdee-calendar-motion-ci-20261012.log`.
+
+Render service `postdee-api-staging` / `srv-d9bb72ojs32c739osa5g` deploy
+[dep-db6327ajnfac73c7vr90](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db6327ajnfac73c7vr90)
+แบบ specific commit exact `df8df1daf8d6578b32262200a9d475764668093f`.
+Start 08:00:13 GMT+7, UI duration 2m06s; log ยืนยัน service Live 08:02:20
+และหน้า deploy แสดง `Deploy succeeded|Live`.
+Build สำเร็จ 08:01:06; 08:01:26 พบ 16 existing migrations และ
+`No pending migrations to apply` ไม่มี migration ใหม่.
+Startup 08:02:12 ยืนยัน social-publishing mode/publisher `disabled`;
+08:02:13 ยืนยัน `PUBLISH_QUEUE=memory` คงเดิม
+
+ตรวจ 08:02:44 GMT+7: `/health` และ `/ready` HTTP 200/status ok;
+readiness ยืนยัน database/queue ok. ผลนี้ยืนยัน service readiness ไม่ใช่
+การโพสต์โซเชียลจริง และ source identity ตรวจจาก CI checkout/Render UI
+ไม่ใช่ health response. Render receipts:
+`D:\Temp\postdee-calendar-motion-render-live-20261012.txt` และ
+`D:\Temp\postdee-calendar-motion-render-live-20261012.png`.
+
+### Post-Live native smoke (รุ่น 8008)
+
+ตรวจบนเครื่องจำลองที่มองเห็น: Calendar week วันที่ 12/All แสดง empty path;
+Refresh แสดงกำลังอัปเดตโดยคงข้อมูลเดิม แล้วเวลาอัปเดต 01:04 UTC /
+08:04 GMT+7 ไม่มี error และยังรักษา 12/All. Home แสดงบัญชี A, Free 0/3,
+social 0/4 และไม่มีโพสต์; กลับ Calendar แล้วยังคง week 12/All และปล่อย
+แอปเปิดไว้ที่หน้านี้ ไม่มี Save/Publish/OAuth/ซื้อแพ็กเกจ
+
+รอบ delivery ไม่ reinstall หรือ restart; ตรวจ package เดิมว่า versionCode
+8008/versionName `0.1.0-staging`, firstInstallTime
+`2026-10-05 06:30:36` และ recheck runtime/APK hashes ตรงกับ frozen artifacts
+ด้านบน. Current-PID Flutter/AndroidRuntime error log 0 bytes:
+`D:\Temp\postdee-calendar-motion-post-live-native-errors-20261012.log`.
+ผล native นี้ตรวจบัญชีจริงที่ไม่มีโพสต์; positive current-post actions,
+reduced motion/background guards และ intermediate shrink ยังคงใช้ fixtures
+ไม่ใช้ผล native empty path แทนการโพสต์โซเชียลจริง

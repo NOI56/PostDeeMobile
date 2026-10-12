@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Account UI Motion (2026-10-12, authorized release in progress)
+## Account UI Motion (2026-10-12, Staging delivered)
 
 The approved Account-only follow-up adds passive press feedback and finite
 content/setting-sheet entrances. Keep native actions and stable content state;
@@ -15,22 +15,28 @@ Staging x64 APK 4014/8014 is built/installed with the retained account. Native
 edit/connections/paywall browse, settings close/help/tab-return checks pass with
 unchanged account/settings and retained scroll. Motion/accessibility and positive
 business actions use fixtures. Prior Shop 1,937/8013 is separate history. Combined
-Shop/Account push/deploy is authorized; exact push/CI/Render receipts are pending.
+source `904a3f89c3601a1fac28eedfaf8781434b19bd49` is pushed to
+`origin/codex/audit-system-fixes`; exact-source CI `38205149761` passed both jobs
+with 1,966 Mobile tests. CI APK build was skipped; local installed 8014 is retained.
+Render `dep-db66eh8473hc73dabfcg` is Live at 11:53:11 GMT+7; 16 existing migrations/
+no pending and health/readiness HTTP 200. Post-Live Home → Shop → Account keeps
+account/shop data; no main merge or change to disabled publishing/memory queue.
 Plan: `../../docs/superpowers/plans/2026-10-12-account-ui-motion.md`.
 
-## Shop-link UI Motion (2026-10-12, authorized release in progress)
+## Shop-link UI Motion (2026-10-12, Staging delivered)
 
 The approved mobile follow-up adds brief manager/button feedback, current-only
 section/category entrances and guarded drag-proxy feedback. Respect reduced
 motion, lifecycle, `TickerMode` and hidden tabs. Preserve existing owner-scoped
 local autosave, explicit publication, confirmed-URL sharing, 100 templates and
 all retained link/media/font settings. No public-page motion or API/schema/
-configuration/dependency change or migration is required. Final source passes
+configuration/dependency change or migration is required. The earlier Shop-only source passed
 1,937 Flutter tests and analysis, including 22 new motion cases. Exact Staging
 x64 APK 4013/8013 was installed at that Shop release with retained account/shop data. Native manager/
 info/Add cancel/theme browse/preview cancel/review/navigation checks pass;
-mutation/Save/Apply/publication paths use controlled fixtures. Combined Shop/
-Account push/deploy is authorized; exact push/CI/Render receipts are pending. See
+mutation/Save/Apply/publication paths use controlled fixtures. Combined source
+`904a3f8` passed CI `38205149761` and is Live via `dep-db66eh8473hc73dabfcg`;
+installed 8014 is retained. Post-Live Shop keeps its two original links/confirmed URL. See
 `../../docs/superpowers/plans/2026-10-12-shop-link-ui-motion.md`.
 
 ## Guided Create Post (2026-10-12, Staging delivered)

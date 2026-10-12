@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Account mobile motion boundary (2026-10-12, authorized release in progress)
+## Account mobile motion boundary (2026-10-12, Staging delivered)
 
 The approved Account-only presentation follow-up adds finite entrance/press
 feedback, without a new request, persistence trigger, quota, price or entitlement
@@ -13,24 +13,30 @@ fixtures. Final source passes 1,966 Flutter tests and analysis, including 29 new
 Account cases. Exact Staging x64 APK 4014/8014 is built/installed with the retained
 account. Native read/browse/dismiss/tab-return checks retain account/settings/
 scroll; no verification, OAuth, purchase, delete or sign-out action was performed.
-No API/schema/config/dependency change or migration. Combined Shop/Account
-push/deploy is authorized; exact push/CI/Render receipts are pending. Plan:
+No API/schema/config/dependency change or new migration. Combined source
+`904a3f89c3601a1fac28eedfaf8781434b19bd49` is pushed to
+`origin/codex/audit-system-fixes`; exact-source CI `38205149761` passed both jobs
+with 1,966 Mobile tests. Render `dep-db66eh8473hc73dabfcg` is Live at 11:53:11
+GMT+7; 16 existing migrations/no pending and health/readiness HTTP 200 with
+database/queue ready. Publishing stays disabled/queue memory; installed 8014
+and post-Live account/shop data are retained. No main merge. Plan:
 `docs/superpowers/plans/2026-10-12-account-ui-motion.md`.
 
-## Shop-link mobile motion boundary (2026-10-12, authorized release in progress)
+## Shop-link mobile motion boundary (2026-10-12, Staging delivered)
 
 The approved manager/theme motion follow-up changes presentation only. Existing
 owner-scoped local autosave/image protection and explicit publish/update/
 unpublish/confirmed-URL requests retain their triggers and contracts. Section,
 category, press and drag feedback add no request, persistence trigger, quota,
 provider mapping, schema/config/dependency change or migration. Public page
-motion and the 100-template catalog remain unchanged. Final mobile source passes
+motion and the 100-template catalog remain unchanged. The earlier Shop-only source passed
 1,937 Flutter tests and analysis, including 22 new motion cases; exact Staging
 x64 APK 4013/8013 was installed at that Shop release with the account/shop data retained. Native read/
 browse/cancel/navigation checks pass; mutation/Save/Apply/publication paths use
 controlled fixtures. No new backend suite or migration execution was required by
-local UI verification. Combined Shop/Account push/deploy is authorized; exact
-push/CI/Render receipts are pending. Plan:
+local UI verification. Combined source `904a3f8` passed CI `38205149761` and is
+Live via `dep-db66eh8473hc73dabfcg`; installed 8014 is retained. Post-Live Shop
+remains published/saved clean with its two original links/confirmed URL. Plan:
 `docs/superpowers/plans/2026-10-12-shop-link-ui-motion.md`.
 
 ## Calendar compact composition (2026-10-12, Staging delivered)

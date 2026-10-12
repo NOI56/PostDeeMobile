@@ -1,12 +1,13 @@
 # ลูกเล่น UI ลิงก์ร้านในแอป (2026-10-12)
 
-สถานะ: AUTHORIZED RELEASE IN PROGRESS — local Shop complete; final SDK source
+สถานะ: STAGING DELIVERED — local Shop complete; final SDK source
 C019... ผ่าน tests ใหม่ 22/22,
 full 1,937/1,937 และ analyze no issues. Exact Staging x64 APK 4013/8013 build/
 install/native safe QA ผ่านโดยคงบัญชีและข้อมูลร้านเดิม; mutation paths ใช้ fixtures.
 519/519 และ full 1,937/1,937 ของ source 7CDD... เป็นประวัติก่อน SDK correction.
 ผู้ใช้สั่ง push/deploy ทั้ง Shop และ Account แล้วในวันที่2026-10-12;
-exact feature commit/CI/Render Live ยังรอ receipt ไม่ใช้ local proof แทนผล deploy
+feature `904a3f89c3601a1fac28eedfaf8781434b19bd49` pushed/CI ผ่านและ Render
+`dep-db66eh8473hc73dabfcg` Live 11:53:11 GMT+7; health/ready/post-Live native ผ่าน
 
 ## Baseline และขอบเขต
 
@@ -224,7 +225,7 @@ Staging helper `-Command build-apk` พร้อม x64/split ABI/build-number 4
 `adb install -r`, MainActivity launch และ `git diff --check`.
 งานส่งมอบในเครื่องเสร็จแล้ว; ณ local receipt external release ยังไม่ได้ทำ
 
-## Authorized combined release (2026-10-12, in progress)
+## Authorized combined release (2026-10-12, Staging delivered)
 
 ผู้ใช้อนุญาต push/deploy Shop-link และ Account UI motion พร้อมกัน.
 Fresh fetch ก่อน release ยืนยัน HEAD
@@ -234,5 +235,27 @@ feature ref ตรง baseline. Combined18-file scope ไม่รวม Windows
 Current combined126-file runtime manifest เป็น
 `2B7E4D05D08AE00099F97288A28C5F2751A248F32EFC70EFAC72CA942B992403`.
 Shop C019.../8013 เป็น local history; combined source/APK8014/native Account
-receipts อยู่ใน `2026-10-12-account-ui-motion.md`. Exact feature commit,
-push/CI/Render Live/health/migration receipts จะบันทึกเมื่อยืนยันจริง
+receipts อยู่ใน `2026-10-12-account-ui-motion.md`. Combined18-file feature
+`904a3f89c3601a1fac28eedfaf8781434b19bd49` commit/push ไป
+`origin/codex/audit-system-fixes` สำเร็จ; ไม่ merge main, Windows dirt3ไม่รวม
+
+Exact-source CI [38205149761](https://github.com/NOI56/PostDeeMobile/actions/runs/38205149761)
+successทั้งสองjobs (`04:46:26Z`–`04:50:27Z`): Backend1,781 tests/109files,
+build/schema/catalog/high-threshold auditผ่าน (4moderateเดิม); Mobile1,966 tests
+และ analyze no issues10.7s. CI APK build/uploadข้ามโดยตั้งใจ; installed8014
+source1262B7.../APK7E6585... เดิม retained ไม่ reinstall
+
+Render specific exactSHAบน `srv-d9bb72ojs32c739osa5g`:
+[dep-db66eh8473hc73dabfcg](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db66eh8473hc73dabfcg)
+`Deploy succeeded | Live`11:53:11 GMT+7, duration1m55s จาก11:51:17.
+Checkout11:51:22/buildsuccess11:51:57/migrations16existing-no-pending11:52:18,
+startup11:53:08 port10000/publishing-disabled/queue-memory. ไม่มี schema/config/
+dependency หรือ migration ใหม่; source identityมาจาก CI/Rendercheckout
+Health/readyHTTP200ที่ `2026-10-12T11:53:49.0454574+07:00`, database/queueok.
+Post-Live Home → Shop → Account nativeรักษาAccountFree0/3/connected0/4และ
+Shopnoikub published/savedclean2/20/twooriginalenabledlinks/confirmedURL.
+ไม่มี Save/Publish/purchase/OAuth/delete/signout; PID10537 recent206linesCritical0
+ที่ `2026-10-12T11:54:49.0090913+07:00`. Positive mutationsยังเป็นfixtures
+Raw Render JPEG `C:\Users\stopp\.codex\visualizations\2026\10\12\01a12dc1-f51c-7ec2-9a95-f89a5069c32c\release-live-904a3f8.jpg`.
+Receipt follow-upจะเป็นdocs-only ไม่มีruntime delta; detailed combined proof
+อยู่ใน Account plan ไม่เปลี่ยน historicalShop125C019.../8013 receipts

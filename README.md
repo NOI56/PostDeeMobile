@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Account UI motion (2026-10-12, authorized release in progress)
+## Account UI motion (2026-10-12, Staging delivered)
 
 The approved Account-only follow-up adds brief press feedback and a finite
 220 ms/six-pixel entrance to the existing content and setting sheets. Preserve
@@ -19,23 +19,30 @@ Account cases. Exact Staging x64 APK 4014/8014 is built and installed with the
 retained account. Native edit/connections/paywall browse, setting-sheet close,
 help and tab-return checks pass without changing data; the existing scroll
 position and account values remain. Mutation/business actions use controlled
-fixtures. No API/schema/config/dependency/migration change. Combined Shop/Account
-push/deploy is authorized; exact push/CI/Render receipts are pending. Plan:
+fixtures. No API/schema/config/dependency/migration change. Combined source
+`904a3f89c3601a1fac28eedfaf8781434b19bd49` is pushed to
+`origin/codex/audit-system-fixes`; exact-source CI `38205149761` passed both jobs
+with 1,966 Mobile tests. Render `dep-db66eh8473hc73dabfcg` is Live at 11:53:11
+GMT+7; 16 existing migrations have none pending and health/readiness return HTTP
+200. Disabled publishing/memory queue and installed 8014 are unchanged.
+Post-Live Home → Shop → Account navigation retains account/shop data; no main merge. Plan:
 `docs/superpowers/plans/2026-10-12-account-ui-motion.md`.
 
-## Shop-link UI motion (2026-10-12, authorized release in progress)
+## Shop-link UI motion (2026-10-12, Staging delivered)
 
 The approved mobile follow-up adds brief press feedback, current-only section
 entrances and drag-proxy feedback to the existing shop-link manager and theme
 controls. Preserve owner-scoped serialized local draft autosave, explicit
 publish/update/unpublish, confirmed-URL sharing and all 100 templates. Public
 page motion and API/schema/configuration/dependencies remain unchanged; no new
-migration is required. Final source passes 1,937 Flutter tests and analysis,
+migration is required. The earlier Shop-only source passed 1,937 Flutter tests and analysis,
 including 22 new motion cases. At that Shop release, exact Staging x64 APK 4013/8013 was installed with
 the account and original shop data preserved. Native manager/info/Add cancel/
 theme browse and preview cancel/review/navigation checks pass; Save, theme Apply,
 edit/reorder and publication outcomes use controlled fixtures. Combined Shop/
-Account push/deploy is authorized; exact push/CI/Render receipts are pending. Plan:
+Account source `904a3f8` passes CI `38205149761` and is Live through Render
+`dep-db66eh8473hc73dabfcg`; installed 8014 is retained. Post-Live Shop remains
+published/saved clean with its two original links and confirmed URL. Plan:
 `docs/superpowers/plans/2026-10-12-shop-link-ui-motion.md`.
 
 ## Guided create-post revision (2026-10-12, Staging delivered)

@@ -1,12 +1,13 @@
 # ลูกเล่นหน้าบัญชีในแอป (2026-10-12)
 
-สถานะ: AUTHORIZED RELEASE IN PROGRESS — local complete; final frozen source
+สถานะ: STAGING DELIVERED — local complete; final frozen source
 2B7... targeted 105/105, tests ใหม่29,
 full 1,966/1,966 และ analyze no issues ผ่าน. Exact Staging x64 APK4014/8014
 build/install/native safe QA ผ่านโดยคงบัญชี/ค่าเดิมและตำแหน่งเลื่อน;
 positive business/mutation และ motion/accessibility guards ใช้ fixtures
 ผู้ใช้สั่ง push/deploy ทั้ง Account และ Shop แล้วในวันที่2026-10-12;
-exact feature commit/CI/Render Live ยังรอ receipt ไม่ใช้ local proof แทนผล deploy
+feature `904a3f89c3601a1fac28eedfaf8781434b19bd49` pushed/CI ผ่านและ Render
+`dep-db66eh8473hc73dabfcg` Live 11:53:11 GMT+7; health/ready/post-Live native ผ่าน
 
 ## Baseline และขอบเขต
 
@@ -229,7 +230,7 @@ helper `-Command build-apk` พร้อม `--build-number=4014 --split-per-abi
 `git diff --check`. Local implementation/tests/docs/build/install/native safe QA
 เสร็จแล้ว; ณ local receipt ยังไม่มี external release ของงานนี้
 
-## Authorized combined release (2026-10-12, in progress)
+## Authorized combined release (2026-10-12, Staging delivered)
 
 ผู้ใช้อนุญาต push/deploy Shop-link และ Account UI motion พร้อมกัน.
 Fresh fetch ก่อน release ยืนยัน HEAD
@@ -238,5 +239,38 @@ Fresh fetch ก่อน release ยืนยัน HEAD
 feature ref ตรง baseline. Combined18-file scope ไม่รวม Windows dirt3เดิม
 Final126-file runtime manifest ยังเป็น
 `2B7E4D05D08AE00099F97288A28C5F2751A248F32EFC70EFAC72CA942B992403`.
-คง source/APK8014/native/fixtures receipts ข้างต้น; exact feature commit,
-push/CI/Render Live/health/migration receipts จะบันทึกเมื่อยืนยันจริง
+คง source/APK8014/native/fixtures receipts ข้างต้น. Combined18-file feature
+`904a3f89c3601a1fac28eedfaf8781434b19bd49` commit/push ไป
+`origin/codex/audit-system-fixes` สำเร็จ; ไม่ merge main, Windows dirt3ไม่รวม
+
+Exact-source CI [38205149761](https://github.com/NOI56/PostDeeMobile/actions/runs/38205149761)
+created `2026-10-12 04:46:26Z`, completed success `04:50:27Z` ทั้งสอง jobs.
+Backend 1,781 tests/109 files, build, Prisma schema validation, shared catalog
+generator check/tests และ high-threshold production audit ผ่าน; ยังมี4moderate
+findings เดิม ไม่ใช่ audit0. Mobile analyze no issues10.7s และ1,966 testsผ่านจบ
+`04:50:22Z`. Checkout/head SHA ทั้งสองงานตรง full feature SHA ข้างต้น.
+`build_staging_apk=false` ข้าม CI APK build/uploadโดยตั้งใจ; local installed8014
+source126 manifest2B7.../APK7E6585... เดิมคงไว้ ไม่มี reinstall หรือ artifactใหม่
+
+Render service `postdee-api-staging` / `srv-d9bb72ojs32c739osa5g` ใช้ specific
+commit exactSHA:
+[dep-db66eh8473hc73dabfcg](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db66eh8473hc73dabfcg).
+`Deploy succeeded | Live`, duration1m55s: start11:51:17 GMT+7,
+checkout11:51:22, build successful11:51:57, Prisma16existing migrations/
+`No pending migrations to apply`11:52:18, startup11:53:08 port10000 และ
+service Live11:53:11. Publishing mode/publisher `disabled`, queue `memory`
+คงเดิม; ไม่มี API/schema/config/dependency หรือ migration ใหม่
+
+`/health` และ `/ready` HTTP200 ทั้งคู่จริงที่
+`2026-10-12T11:53:49.0454574+07:00`; health statusok, readiness databaseok/queueok.
+Source identity มาจาก exact CI/Render checkout ไม่ใช่ health response
+Post-Live native Home → Shop → Account safe navigation ผ่าน: AccountFree0/3,
+connected0/4; Shopnoikub published/savedclean2/20 คงสองลิงก์ enabledเดิม/
+confirmedURL. ไม่มี Save/Publish/purchase/OAuth/delete/signout.
+PID10537 recent206lines Critical0 ที่ `2026-10-12T11:54:49.0090913+07:00`.
+Positive business/mutation และ motion/accessibility pathsยังเป็นfixturesตามขอบเขต
+
+Raw Render proof JPEG:
+`C:\Users\stopp\.codex\visualizations\2026\10\12\01a12dc1-f51c-7ec2-9a95-f89a5069c32c\release-live-904a3f8.jpg`.
+Receipt follow-up จะเป็น docs-only ไม่มี runtime delta; ไม่ใช้ SHA เอกสารที่ยัง
+ไม่สร้างมาอ้างเป็น deployed feature source

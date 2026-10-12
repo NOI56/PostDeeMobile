@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Account finite UI motion boundary (2026-10-12, authorized release in progress)
+## Account finite UI motion boundary (2026-10-12, Staging delivered)
 
 An Account-owned helper adds lifecycle/active/parent-ticker motion scope, passive
 press feedback and finite 220 ms/six-pixel entrances. Keep the stable existing
@@ -20,11 +20,17 @@ exact Staging x64 APK 4014/8014 is built/installed with the retained account.
 Native edit/connections/paywall browse, setting-sheet close, help and tab-return
 checks retain account/settings/scroll without mutations. Motion/accessibility/
 owner and positive business paths use controlled fixtures; no native verification,
-purchase, delete or sign-out action is claimed. Combined Shop/Account push/deploy
-is authorized; exact push/CI/Render receipts are pending. Plan:
+purchase, delete or sign-out action is claimed. Combined source
+`904a3f89c3601a1fac28eedfaf8781434b19bd49` is pushed to
+`origin/codex/audit-system-fixes`; exact-source CI `38205149761` passed both jobs
+with 1,966 Mobile tests. Render `dep-db66eh8473hc73dabfcg` is Live at 11:53:11
+GMT+7; 16 existing migrations/no pending and health/readiness HTTP 200. Publishing
+stays disabled and queue memory; no schema/config/dependency change or main merge.
+Installed 8014 and post-Live account/shop values are retained. Identity comes
+from CI/Render checkout, not health responses. Plan:
 `docs/superpowers/plans/2026-10-12-account-ui-motion.md`.
 
-## Shop-link finite UI motion boundary (2026-10-12, authorized release in progress)
+## Shop-link finite UI motion boundary (2026-10-12, Staging delivered)
 
 The approved mobile follow-up adds finite press/section/category/drag feedback
 inside the current manager and appearance controls. A current-only 220 ms
@@ -36,12 +42,14 @@ Explicit publishing and confirmed-URL actions remain. Public preview effects,
 100-template catalog, backend/schema/configuration/dependencies and migration
 requirements are unchanged. Drag overlays listen to their origin ticker via a
 coalesced post-frame update; listener swap/disposal and current-only controls are
-covered by 22 new motion cases. Final source passes 1,937 Flutter tests and
+covered by 22 new motion cases. The earlier Shop-only source passed 1,937 Flutter tests and
 analysis. At that Shop release, exact Staging x64 APK 4013/8013 was installed with retained account/shop
 data; native read/browse/cancel/navigation checks pass. Mutation/Save/Apply/
-publication paths use controlled fixtures. Combined Shop/Account push/deploy is
-authorized; exact push/CI/Render receipts are pending. Existing local proof adds
-no backend/migration checks. See `docs/superpowers/plans/2026-10-12-shop-link-ui-motion.md`.
+publication paths use controlled fixtures. Combined source `904a3f8` passed CI
+`38205149761` and is Live via `dep-db66eh8473hc73dabfcg`; installed 8014 is retained.
+Post-Live Shop has the two original links/confirmed URL with no mutation.
+The Shop-only local receipt remains distinct from combined external checks. See
+`docs/superpowers/plans/2026-10-12-shop-link-ui-motion.md`.
 
 ## Guided create-post presentation boundary (2026-10-12, Staging delivered)
 

@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Calendar compact boundary (2026-10-11, locally verified)
+## Calendar compact boundary (2026-10-12, Staging delivered)
 
 The implemented compact-list view projects existing scheduled-post results into
 week/month periods, selected-day counts and all/four-platform filters. Week is
@@ -16,13 +16,18 @@ the existing scheduling flow. Refresh preserves loaded data and selection,
 surfaces retryable failures and rejects stale owner/mutation results. Existing
 visible/foreground-only 30-second queued/publishing polling, queue actions and
 read-only terminal details remain. This revision adds no API, schema, provider,
-dependency or configuration. Local full Flutter checks pass 1,882 tests and
-analysis; actual-widget week/month renders and Staging APK build 4006 pass.
-Version 8006 installs successfully with the same package/signature and retained
-app data. Native week/month/date handoff, Free scheduling denial, selection/
-filter retention, refresh and past-day/Today controls pass after user login
-without saving. The account is empty, so positive queue/partial/mutation
-acceptance remains fixture-based. No Calendar push/deploy is authorized. Evidence:
+dependency or configuration. The composer passes its clock into the schedule
+panel and normalizes it to local time, keeping policy and relative labels
+consistent; the default remains `DateTime.now`. Authorized SHA `3368f4d` is
+pushed and exact-source CI `38187776818` passes 1,883 Flutter tests, analysis and
+Backend checks. APK 4007/8007 installs with the same package/signature and
+retained data/session; post-deploy native verification is a Home cold launch. Full native
+Calendar/date-handoff/Free-guard/refresh checks belong to the preceding 8006
+revision. Positive queue/partial/mutations remain fixture-based for this empty
+account. Exact-source Render deploy `dep-db62jdvlot8c738l37q0` is Live at
+07:30:34 GMT+7 on 2026-10-12. Its 16 existing migrations have none pending;
+`/health` and `/ready` return HTTP 200. No migration is added, and the existing
+memory queue plus disabled social-publishing/publisher mode remain. Evidence:
 `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
 ## Home next-action boundary (2026-10-11, Staging delivered)

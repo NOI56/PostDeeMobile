@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Calendar compact composition (2026-10-11, locally verified)
+## Calendar compact composition (2026-10-12, Staging delivered)
 
 The implemented Calendar UI keeps `GET /posts?scheduled=true` and the existing
 owner-scoped post mutation/detail routes. Week/month/day counts and platform
@@ -11,12 +11,20 @@ multiple destinations. Selected-date handoff is local composer input, not a
 new API field or automatic post. Existing future-only RFC 3339 conversion,
 Starter 14-day/Pro 30-day limits, subscription checks, publishing kill switch and
 queue-only reschedule/cancel rules remain authoritative. No backend contract,
-schema or deployment is required by this revision. Local Flutter checks pass
-1,882 tests, analysis, fixture renders and APK build/install 4006/8006. Native
-Calendar/composer native QA passes after user login, including date-only handoff,
-Free scheduling denial and retained empty-data refresh. Positive queue/partial/
-mutation cases use fixtures; the real account has no posts. API source is unchanged; no new backend run or Calendar
-push/deploy is claimed. Evidence:
+schema or migration is required by this revision. Composer relative-date labels
+share its injected local clock; the default remains `DateTime.now`.
+Authorized SHA `3368f4d` is pushed. Exact-source CI `38187776818` passes 1,883
+Flutter tests and 1,781 Backend tests/109 files, generator checks, build, Prisma
+validation and the high-severity production audit threshold (four moderate,
+zero high findings). API source is unchanged. Local APK 4007/8007 installs with
+retained data/session and a post-deploy Home cold-launch smoke; full native Calendar/composer
+checks belong to the preceding 8006 revision. Positive queue/partial/mutations
+remain fixtures for the empty real account. Render deploy
+`dep-db62jdvlot8c738l37q0` is Live with this exact source at 07:30:34 GMT+7 on
+2026-10-12; 16 existing migrations have none pending and `/health` plus `/ready`
+return HTTP 200. No new migration is added; Staging social publishing remains
+disabled. Source identity is verified in Render checkout/UI, not the health
+response. Evidence:
 `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
 ## Home read composition (2026-10-11, Staging delivered)

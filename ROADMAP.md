@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Calendar compact revision (2026-10-11, locally verified)
+## Calendar compact revision (2026-10-12, Staging delivered)
 
 - Implemented the approved compact list with week/month switch, Today, real
   per-day counts, all/four-platform filters and concise time/status rows. Initial
@@ -13,14 +13,18 @@ Build roadmap for PostDee.
 - Keep confirmed content/selection during refresh, expose errors/retry and
   preserve owner/mutation guards plus visible-only polling. Run the relevant
   regression/full suite, analysis, exact-environment build and native QA.
-- Implementation is complete locally; full Flutter 1,882 tests, analysis,
-  fixture week/month renders and Staging APK build/install 4006/8006 pass without
-  clearing app data. Native week/month/date handoff, Free scheduling denial,
-  retained empty-data refresh and past-date/Today controls pass after user login
-  without saving. Positive queue/partial/mutations remain fixtures because the
-  real account has no posts. No Calendar
-  push/deploy is authorized. No backend/API/schema/provider/
-  configuration change or release is implied; Home delivery remains separate.
+- Share the composer's injected local clock with relative-date labels, preserving
+  `DateTime.now` as the default and the original scheduling assertions.
+- Authorized feature SHA `3368f4d` is pushed; exact-source CI `38187776818`
+  passes 1,883 Flutter tests, analysis and Backend checks. Local Staging APK
+  4007/8007 installs with retained data/session; post-deploy native smoke is a
+  Home cold launch. Full native Calendar/date-handoff/Free-guard checks are the preceding
+  8006 receipt. Positive queue/partial/mutations remain fixtures because the real
+  account has no posts. Exact-source Render deploy `dep-db62jdvlot8c738l37q0`
+  is Live at 07:30:34 GMT+7 on 2026-10-12; 16 existing migrations have none
+  pending and health/ready return HTTP 200. Social publishing remains disabled
+  on Staging. No backend/API/schema/
+  provider/configuration change or new migration; Home delivery remains separate.
   Plan: `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
 ## Home next-action revision (2026-10-11, Staging delivered)

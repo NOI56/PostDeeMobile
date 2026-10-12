@@ -2,22 +2,25 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Calendar Compact Revision (2026-10-11)
+## Calendar Compact Revision (2026-10-12, Staging delivered)
 
-The compact-list Calendar is implemented locally: week/month, Today,
+The compact-list Calendar has week/month, Today,
 real day counts, all/four-platform filters and concise time/status rows. It starts
 in week view and retains the existing upcoming-day selection if today has no post.
 Creating
 from Calendar passes the selected local date into the existing composer;
 it must preserve saved-draft schedules and existing future/paid-plan checks.
 Refresh retains confirmed content and exposes retryable failures. API,
-publishing, provider and environment contracts remain unchanged. Local full
-Flutter 1,882 tests, analysis, actual-widget week/month renders and Staging APK
-build/install 4006/8006 pass with retained app data. Native week/month/date
-handoff, Free scheduling denial, retained filter/selection refresh and past-date/
-Today controls pass after user login without saving. Positive queue/partial/
-mutation cases are fixtures; the real account has no posts. No Calendar push/
-deploy is authorized. The Home release is a separate receipt.
+publishing, provider and environment contracts remain unchanged. Composer date
+labels share its injected local clock; `DateTime.now` remains the default.
+Authorized SHA `3368f4d` is pushed; exact-source CI `38187776818` passes 1,883
+Flutter tests and analysis. Local APK 4007/8007 installs with retained data/session
+and a post-deploy Home cold-launch smoke. Full native Calendar/date-handoff/Free-guard/refresh
+checks belong to the preceding 8006 revision. Positive queue/partial/mutations
+are fixtures for the empty real account. Exact-source Render deploy
+`dep-db62jdvlot8c738l37q0` is Live at 07:30:34 GMT+7 on 2026-10-12; 16 existing
+migrations have none pending and health/ready return HTTP 200. Staging social
+publishing remains disabled. The Home release is a separate receipt.
 See `../../docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 
 ## Local Commands

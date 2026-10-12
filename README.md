@@ -31,9 +31,9 @@ two-account native notification delivery separately with authorization.
 Details and verification:
 `docs/superpowers/plans/2026-10-09-system-audit-fixes.md`.
 
-## Calendar compact revision (2026-10-11, locally verified)
+## Calendar compact revision (2026-10-12, Staging delivered)
 
-The compact-list Calendar is implemented locally with week/month views, Today, real per-day
+The compact-list Calendar has week/month views, Today, real per-day
 post counts, all/four-platform filters and readable time/status rows. Its create
 action passes the selected local date to the existing full-screen composer;
 choosing a date does not publish, save or bypass scheduling entitlement/time
@@ -41,12 +41,17 @@ validation. The initial view is week; the existing first upcoming-day selection
 is retained when today has no post in the current month. Refresh retains confirmed content and selection while showing
 read errors/retry. Existing queue actions, real publish timestamps, partial/
 unknown outcomes and visible-only polling remain. This mobile-only revision adds
-no API/schema/provider/configuration change. Local checks pass: 1,882 Flutter
-tests, clean analysis, week/month fixture renders and Staging APK build 4006.
-Version 8006 installs without clearing app data. After user login, native
-week/month, selected-date composer handoff, Free scheduling guard, retained
-selection/filter refresh and past-date/Today controls pass without saving.
-The real account has no posts; positive queue/partial/mutation cases use fixtures.
+no API/schema/provider/configuration change. The composer date labels now use
+its injected local clock consistently; the default remains `DateTime.now`.
+Authorized feature SHA `3368f4d` is pushed; exact-source CI `38187776818` passes
+1,883 Flutter tests, analysis and Backend checks. Staging APK 4007/8007 installs
+with the same signature and retained data/session; the post-deploy native cold
+launch opens Home. Full native Calendar/date-handoff/Free-guard checks passed on the
+preceding 8006 revision, without saving. The real account has no posts;
+positive queue/partial/mutation cases use fixtures. Render deploy
+`dep-db62jdvlot8c738l37q0` is Live at 07:30:34 GMT+7 on 2026-10-12 with this
+exact source; all 16 existing migrations are applied with none pending, and
+`/health` plus `/ready` return HTTP 200. Staging social publishing remains disabled.
 The preceding Home release is a separate receipt. Plan:
 `docs/superpowers/plans/2026-10-11-calendar-ux.md`.
 

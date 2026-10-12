@@ -1,11 +1,15 @@
 # ปฏิทิน: รายการกระชับและสร้างโพสต์ตามวันที่เลือก (2026-10-11)
 
-สถานะ: ผู้ใช้ยอมรับแบบ “รายการกระชับ” และให้เริ่มทำแล้ว implementation เสร็จ
-ในเครื่อง Targeted Calendar 45/45 และ date-handoff 7/7, full Flutter
-1,882/1,882, analyze, fixture render และ APK build/install 4006/8006 ผ่านแล้ว
-โดยไม่ล้าง app data. Native Calendar/composer ผ่านหลังผู้ใช้ล็อกอินตามขอบเขต
-บัญชีจริงที่ไม่มีโพสต์ ส่วน positive queue/partial/mutations เป็น fixtures
-ไม่ใช้ผล Home ที่ส่งมอบก่อนหน้าแทน และยังไม่มีคำอนุญาต/receipt push/deploy Calendar
+สถานะปัจจุบัน 2026-10-12: ผู้ใช้อนุญาต push/deploy Staging แล้ว feature SHA
+`3368f4d541daafb6eaac2e2af5a93800d27831c4` pushed และ exact-source CI
+`38187776818` ผ่าน Flutter 1,883 tests/analyze และ Backend checks.
+แพตช์ clock follow-up ผ่าน targeted 66 และ local analyze; APK 4007/8007
+build/install ผ่านโดยเก็บ data/session และ post-deploy native Home cold launch ผ่าน.
+Render deploy `dep-db62jdvlot8c738l37q0` ของ exact SHA นี้ Live แล้ว
+07:30:34 GMT+7; migrations/health/ready ผ่านตาม receipt ด้านล่าง.
+Full native Calendar/composer
+รุ่น 8006 ด้านล่างเป็นผลก่อน clock follow-up; positive queue/partial/mutations
+ใช้ fixtures เพราะบัญชีจริงไม่มีโพสต์ ไม่ใช้ผล Home แทนผล Calendar
 
 ## ฐานที่ตรวจและภาพอ้างอิง
 
@@ -69,20 +73,20 @@ silent refresh เดิมซ่อน failure เมื่อมีข้อ�
 Calendar/shell/uploader tests เดิมและ tests สำหรับ behavior ใหม่ เอกสารที่ sync
 คือ README/API/ARCHITECTURE/ROADMAP, mobile README และแผนนี้
 
-## Verification และ fidelity ledger (local/native ผ่านตามขอบเขต)
+## Verification และ fidelity ledger (Staging delivered; native ตามขอบเขต)
 
 | การตรวจ | สถานะปัจจุบัน |
 | --- | --- |
-| Targeted Calendar/date-handoff regressions | Calendar 45/45 และ uploader date-handoff 7/7 ผ่าน; scoped analyze สะอาด |
-| Full Flutter suite และ analyze | 1,882/1,882 ผ่าน 2m40s, concurrency 2; analyze no issues 13.1s |
+| Targeted Calendar/date-handoff regressions | Calendar 45 เดิม; clock follow-up 66 ผ่าน (date-handoff 8, uploader 57, app schedule panel 1) |
+| Full Flutter suite และ analyze | exact-source CI 1,883 tests ผ่าน/analyze no issues 12.9s; local final analyze no issues 14.6s |
 | Diff/backend contract | Read-only diff ใน API/pubspec/lock ว่าง; ไม่มี schema/environment/provider change |
 | Actual Flutter renders | 1/1 ผ่าน 4s; week/month ที่ 390/text 1.0 และ 320/text 1.8 ดูแล้วไม่ overflow; เป็น fixture data |
-| Staging exact-source APK/environment | helper build 4006 ผ่าน 21.1s, package/environment/signature ตาม receipt ด้านล่าง |
-| Native install/package | install-r สำเร็จรุ่น 8006, signature ตรง, firstInstallTime เดิม; login screen render ผ่าน |
-| Native Calendar/composer | รุ่น 8006 หลังผู้ใช้ล็อกอิน: week/month/date handoff, Free guard, retained refresh และ past-date/Today ผ่านโดยไม่ Save |
-| Push/deploy/CI | ไม่ได้รับอนุญาตและยังไม่มี receipt สำหรับ Calendar รอบนี้ |
+| Staging exact-source APK/environment | helper build 4007/installed 8007, Gradle 144.2s; package/environment/signature ตาม receipt ใหม่ด้านล่าง |
+| Native install/package | รุ่น 8007 install-r สำเร็จ, signature/firstInstallTime เดิม, shared_prefs XML fingerprints diff 0, session คืนได้และ post-deploy Home cold launch ผ่าน |
+| Native Calendar/composer | receipt รุ่น 8006 ก่อน clock follow-up: week/month/date handoff, Free guard, retained refresh และ past-date/Today ผ่านโดยไม่ Save; ไม่อ้างว่าทำ interactive Calendar ซ้ำบน 8007 |
+| Push/deploy/CI | authorized/pushed SHA 3368f4d; CI 38187776818 ผ่านทั้งสอง jobs; exact-source Render dep-db62jdvlot8c738l37q0 Live, 16 migrations/no pending และ health/ready HTTP 200 |
 
-### Local verification และ APK receipt
+### Prior local verification และ APK receipt (2026-10-11, รุ่น 8006)
 
 Full `flutter test --concurrency=2 --reporter compact` ผ่าน 1,882/1,882 ใน
 2m40s; full `flutter analyze` no issues 13.1s. Logs:
@@ -159,11 +163,10 @@ race ใช้ fixture/regression tests ไม่อ้างเป็น native
 receipt ของ runtime ก่อน Calendar ห้ามเติม counts/SHA/Live หรืออ้าง native
 positive queue/mutation โดยยังไม่ตรวจด้วยข้อมูลจริงหรือ fixture ที่ระบุชัด
 
-## Release validation follow-up (2026-10-12, รอ receipt รอบแก้ไข)
+## Release validation follow-up (2026-10-12, Staging delivered)
 
-ผู้ใช้อนุญาต push/deploy Staging แล้วในวันที่ 12 ต.ค.; สถานะ local/native
-และข้อความยังไม่ได้รับอนุญาตด้านบนเป็น receipt ก่อนคำอนุญาตนี้ ยังไม่ใช้
-ผลดังกล่าวแทน CI/build/native/deploy ของแพตช์ follow-up
+ผู้ใช้อนุญาต push/deploy Staging แล้วในวันที่ 12 ต.ค.; receipt รุ่น 8006
+ด้านบนเป็นผลก่อน clock follow-up แยกจาก CI/build/native startup รอบใหม่
 
 CI `38187274274` ของ Calendar SHA
 `591ddb721a014222e92ba6f836af0350c77ef3b8` ผ่าน Flutter 1,878 tests และไม่ผ่าน
@@ -175,6 +178,67 @@ CI `38187274274` ของ Calendar SHA
 ขอบเขตแพตช์คือส่ง callback `widget.now` เข้า `_SchedulePanel` และ normalize
 เวลาที่อ่านเป็น local ให้ตรงกับ date seed/policy เดิม โดยค่า default ของ
 `UploaderScreen.now` ยังเป็น `DateTime.now`. ไม่มี API/schema/provider/
-environment หรือกฎแพ็กเกจเปลี่ยน ต้องสร้าง APK จาก source รอบแก้ไขและตรวจ
-native อีกครั้ง; ผล targeted/full tests, analyze, APK และ CI/Render Live รอบใหม่
-ยังรอ receipt ไม่อ้างผล 8006 หรือ CI ก่อนหน้าเป็นผลของแพตช์นี้
+environment หรือกฎแพ็กเกจเปลี่ยน เพิ่ม UTC-clock regression ที่ derive local
+day/time โดยไม่สมมติ timezone ไทย และรักษา assertions เดิมครบ
+
+### Exact-source CI และ APK/native startup receipt
+
+SHA `3368f4d541daafb6eaac2e2af5a93800d27831c4` pushed ไป
+`origin/codex/audit-system-fixes`. CI `38187776818` ผ่าน Backend API และ
+Flutter Mobile; head SHA และ checkout logs ของทั้งสอง jobs ตรง full SHA นี้
+Flutter 1,883 tests ผ่าน/analyze no issues 12.9s. Backend 1,781 tests/109 files,
+generator 22/22, build, Prisma validate และ production dependency audit ที่
+threshold high ผ่าน โดยยังมี 4 moderate/0 high findings ไม่ใช่ zero findings
+Targeted local follow-up 66 ผ่าน; final local analyze no issues 14.6s
+CI completed 2026-10-12 00:27:09 UTC / 07:27:09 GMT+7. Optional APK build/upload
+ใน CI ถูก skip ตามที่เลือก; APK signed/Test Store รุ่น 8007 เป็น local artifact
+ที่สร้างและติดตั้งจริง ไม่ใช่ CI APK
+
+Official Staging helper build 4007 สร้าง split x86_64 debug APK; Gradle 144.2s,
+127,583,210 bytes; local builder ใช้ Flutter 3.44.1/Dart 3.12.1.
+Package `com.postdee.postdee_mobile.staging`, installed
+versionCode 8007, min SDK 24/target SDK 36. SHA-256:
+`F41156646D3204B0329BCA1B7A7483C4B28DE96CCEB0F8213FECF3C315A942B6`.
+Certificate SHA-256 ตรงกับรุ่นเดิม
+`014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+API Staging/Firebase project `project-798caf7e-85b8-45e3-af7`, auth/local-mock
+flags และ validated RevenueCat Test Store overlay คงเดิม ไม่พิมพ์ SDK key
+
+`adb install -r` สำเร็จ; before/after `shared_prefs/*.xml` fingerprints diff 0 และ
+firstInstallTime 2026-10-05 คงเดิม. Session คืนได้และ Home อ่านข้อมูลจริง Free
+เหลือ 0/3, ไม่มีโพสต์, social 0/4, ลิงก์ร้านเผยแพร่แล้ว. Current-PID scoped
+error log 0 bytes. การตรวจรุ่น 8007 รอบนี้เป็น startup/Home smoke เท่านั้น
+ไม่ได้กด interactive Calendar/composer ซ้ำ และไม่แทน receipt รุ่น 8006
+
+### Exact-source Render receipt
+
+Render specific-commit deploy `dep-db62jdvlot8c738l37q0` ใช้ full SHA
+`3368f4d541daafb6eaac2e2af5a93800d27831c4` ตรง CI; ตรวจ identity จาก
+Render checkout/UI ไม่ใช่ response ของ health endpoint. Page/start timestamp
+2026-10-12 07:28:39 GMT+7; Live/Deploy succeeded 07:30:34 GMT+7 ใช้ 1m55s
+Build สำเร็จ; pre-deploy 07:29:41 พบ 16 existing migrations และ
+“No pending migrations to apply” ไม่มี migration ใหม่ใน Calendar
+
+ตรวจ 07:31:15 GMT+7: `/health` และ `/ready` HTTP 200/status ok. Startup
+07:30:28 ยืนยัน social-publishing mode/publisher `disabled` และ
+`PUBLISH_QUEUE=memory` คงเดิม ผลนี้ยืนยัน service/database/queue readiness
+ตาม endpoint ไม่ใช่การส่งโพสต์โซเชียลจริง. Screenshot:
+`D:\Temp\postdee-calendar-release-render-live-20261012.png`.
+
+Fresh fetch ก่อนส่งมอบยังพบ `main`/merge base `c4e5220`, feature 20 ahead /
+0 behind; runtime API/schema/native-platform/configuration diff เทียบ Live
+ก่อนหน้า `ce89a0e` ว่าง ยกเว้น mobile feature ที่ระบุ ไม่ merge main หรือ
+เปลี่ยน Production และรักษา Windows generated dirt เดิมสามไฟล์ไว้
+
+### Post-deploy native smoke (รุ่น 8007)
+
+หลัง Render Live force-stop/start รุ่น 8007 เดิม แล้ว cold launch สำเร็จ 7.4s;
+auth session คืนและ Home อ่าน Free เหลือ 0/3, social 0/4, ไม่มีโพสต์ และ
+ลิงก์ร้านเผยแพร่แล้ว. UI XML:
+`D:\Temp\postdee-calendar-release-native-live-20261012.xml`.
+Current-PID Flutter/AndroidRuntime error log 0 bytes:
+`D:\Temp\postdee-calendar-release-native-live-errors-20261012.log`.
+ไม่มี interactive Calendar/composer ซ้ำหรือ Save/Publish/OAuth/ซื้อแพ็กเกจ
+ในการตรวจรอบนี้; full Calendar native รุ่น 8006 และ positive fixtures ยังคง
+เป็น receipt แยกตามขอบเขตข้างต้น การเทียบ fingerprints ครอบคลุมเฉพาะ
+shared preferences XML ไม่ใช่ hash ของ files directory

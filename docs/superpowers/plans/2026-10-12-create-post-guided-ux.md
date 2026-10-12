@@ -11,7 +11,10 @@ Staging APK 4010/8010 ติดตั้งแล้วโดยคง session. 
 active circle ย้ายจากคลิปไปแคปชันโดยไม่แต่ง completion.
 Base guided 1,902 tests/8009/4-step blocked path ด้านล่างเป็นประวัติก่อน follow-up;
 positive account/metadata/schedule/AI และ narrow/large-text ใช้ widget fixtures
-ยังไม่ได้ push/deploy ชุดนี้ ใช้ Staging server เดิมที่ไม่ได้เปลี่ยนในรอบนี้
+ผู้ใช้อนุญาต push/deploy แล้ว: source `430f82ad1c493b5a8bcf1f51b007e2a7604dae1e`
+push สำเร็จและ exact-source CI `38200231563` ผ่านทั้งสอง jobs.
+Render deploy `dep-db65d08473hc73d6fp50` Live 10:41:35 GMT+7;
+16 existing migrations/no pending และ health/ready HTTP 200 ตรวจแล้ว
 ผลส่งมอบ Home/Calendar ก่อนหน้านี้เป็นหลักฐานคนละรอบ
 
 ## Baseline และเหตุผล
@@ -103,7 +106,7 @@ schema/migration, provider mapping, dependency, environment flag, ราคา/�
 | Diff review | ไม่มี deletion/unrelated rewrite/API/schema/env/dependency/settings lost | final read-only guard review ไม่มี material finding; diff --check ผ่าน |
 | Exact Staging APK | package/signature/API/Firebase/flags ตรง source; ติดตั้งไม่ล้างบัญชี/ข้อมูล | helper build 4009/installed 8009 ผ่าน 21.8s, same signer, install -r สำเร็จ; session คงเดิม |
 | Native/visual | 4 ขั้น, compact AI/options, actual identity/metadata states; ระบุ account/clip ที่ตรวจจริง | default-font 4 ขั้นผ่าน; no-destination confirm disabled; positive/narrow/large-text/motion ใช้ widget fixtures |
-| Delivery | แยก push/CI/Render Live/health/migration receipt เมื่อได้รับอนุญาตและทำจริง | local source/APK/native ส่งมอบแล้ว; ไม่ได้ push/CI/Render deploy ชุดนี้ |
+| Delivery | แยก push/CI/Render Live/health/migration receipt เมื่อได้รับอนุญาตและทำจริง | local source/APK/native และ push/CI/Render exact-source Live ส่งมอบแล้ว; 16 migrations/no pending, health/ready HTTP 200 |
 
 Runtime ที่แก้คือ `apps/mobile/lib/features/uploader/uploader_screen.dart`;
 เพิ่ม `uploader_guided_ux_test.dart` และปรับ helpers/assertions ที่สัมพันธ์โดยตรง
@@ -236,7 +239,7 @@ Final native error log
 ### ขอบเขตส่งมอบและสิ่งที่ยังไม่ได้ยืนยัน
 
 รอบนี้ส่งมอบ local source/tests/docs และ installed Staging APK เท่านั้น
-ไม่มี push, remote CI หรือ Render deploy ของ guided revision; backend server
+ณ local guided receipt นี้ ยังไม่มี push, remote CI หรือ Render deploy; backend server
 เดิมไม่ได้เปลี่ยน. ไม่มี database/schema/API/backend files เปลี่ยน จึงไม่ต้องมี
 migration และไม่อ้าง fresh migration/database/deployment checks จากการทำ mobile UI
 ผล backend/Render Live ของ Calendar ก่อนหน้าเป็นประวัติแยก ไม่ใช้แทนผลรอบนี้
@@ -315,7 +318,7 @@ Actual native screenshot ของขั้นแคปชันที่ active
 ตรวจ current-process `flutter:E`/`AndroidRuntime:E` สำเร็จ exit 0;
 `D:\Temp\postdee-composer-connectors-native-errors-20261012.log` มี 0 bytes
 ไม่พบ error. ปล่อยแอปที่ขั้นแคปชันให้ผู้ใช้เห็น; runtime hash สุดท้ายยัง FB415... ข้างต้น
-ผล native 8009 ก่อนหน้าเป็นประวัติแยก; ไม่มี push/CI/Render deploy follow-up นี้
+ผล native 8009 ก่อนหน้าเป็นประวัติแยก; ณ local connector receipt ยังไม่มี push/CI/Render deploy
 
 คำสั่ง follow-up ใช้ `flutter.bat test` (red/targeted/full), `flutter.bat analyze`,
 Staging helper `-Command build-apk` พร้อม x64/split ABI/`--build-number=4010`,
@@ -343,7 +346,7 @@ Fresh `git fetch origin` สำเร็จ; HEAD ของรอบนี้ค
 Runtime ก่อน feedback patch มี SHA-256
 `FB4158707E4B68BD08AA142F9ADD2E9B3B4C0DE5BB627444793483CF265EFFA1`;
 เป็น source ก่อนรอบนี้ ไม่ใช่ final feedback hash หรือผล test ใหม่
-ไม่มี push/deploy authorization ของ feedback รอบนี้
+ณ เริ่มทำ feedback ยังไม่มี push/deploy authorization; ผู้ใช้อนุญาตภายหลังตาม delivery receipt
 
 1. **แคปชันว่าง:** เมื่อกดไปต่อจากขั้นแคปชันโดยไม่มีข้อความที่ trim แล้ว
    ต้องคงขั้นเดิม แสดง inline error คู่ช่องแคปชันและย้าย focus ให้แก้ได้
@@ -376,7 +379,7 @@ API/request field, backend/schema/migration, dependency หรือ environment
 | Full suite / analysis | source รวมสุดท้ายของ feedback ไม่ใช้ count 1,905 มาแทน | source D531 final full 1,915/1,915 ผ่าน 3m47s และ analysis ผ่าน 12.5s; source F1E6 full 1,914 เป็นก่อน guard |
 | Read-only diff/guard review | เก็บ existing side effects/guards, ไม่มี deletion/unrelated changes | rapid Save guard แก้แล้ว; final static reviewer ไม่พบ blocker |
 | Exact APK/native | ตรวจ source/environment/signature/installed version จริงและประเมิน form ก่อนติดตั้ง | build 4012/installed 8012 ผ่าน 21.8s; retained account/native error-focus-keyboard ผ่าน; final filtered error log 0 hits |
-| Delivery | แยก local proof จาก push/CI/Render Live เมื่อมี authorization และทำจริง | local implementation/tests/docs/APK/native ส่งมอบแล้ว; ไม่ได้ push/CI/Render deploy ชุดนี้ |
+| Delivery | แยก local proof จาก push/CI/Render Live เมื่อมี authorization และทำจริง | local implementation/tests/docs/APK/native และ push/CI/Render exact-source Live ส่งมอบแล้ว; 16 migrations/no pending, health/ready HTTP 200 |
 
 Runtime/tests อยู่ในส่วน composer ที่สัมพันธ์โดยตรง: `uploader_screen.dart`
 และ new `apps/mobile/test/uploader_interaction_feedback_test.dart`.
@@ -447,7 +450,7 @@ Actual screenshots:
 Current-process relevant fatal/layout/asset/disposed errors ไม่พบ;
 `D:\Temp\postdee-composer-feedback-native-errors-20261012.log` มี 0 bytes
 ผล native นี้เป็นของรุ่น 8011 ก่อน rapid-save guard ไม่ใช่รุ่นส่งมอบสุดท้าย
-ไม่มี push/remote CI/Render deploy หรือ backend/schema/env change ของรอบนี้
+ณ local รุ่น 8011 receipt ยังไม่มี push/remote CI/Render deploy หรือ backend/schema/env change
 
 ### Rapid Save callback guard (verified)
 
@@ -507,7 +510,7 @@ Actual final screenshots:
 - `C:\Users\stopp\.codex\visualizations\2026\10\12\01a12dc1-f51c-7ec2-9a95-f89a5069c32c\create-post-caption-focus-8012.png`
 - `C:\Users\stopp\.codex\visualizations\2026\10\12\01a12dc1-f51c-7ec2-9a95-f89a5069c32c\create-post-feedback-8012.png`
 
-รอบนี้ไม่มี push/remote CI/Render deploy หรือ backend/schema/API/env/dependency
+ณ final local receipt นี้ ยังไม่มี push/remote CI/Render deploy หรือ backend/schema/API/env/dependency
 เปลี่ยน จึงไม่มี migration หรือ fresh database/deployment receipt
 Staging server เดิมไม่เปลี่ยน. คำสั่งของ source สุดท้ายคือ `flutter.bat test`,
 `flutter.bat analyze`, Staging helper `-Command build-apk` พร้อม x64/split ABI/
@@ -536,3 +539,57 @@ Docs 6: `README.md`, `ROADMAP.md`, `API.md`, `ARCHITECTURE.md`,
 รวม 15 ไฟล์ที่สัมพันธ์โดยตรง; Windows generated-plugin dirt 3 ไฟล์เดิมยังเก็บไว้
 และไม่รวมใน feature inventory. Base app fold assertions คงเดิม ไม่มี backend/
 API/schema/config/dependency changes หรือ unrelated deletions
+
+## Authorized release delivery (2026-10-12, Staging delivered)
+
+ผู้ใช้สั่ง push/deploy ภายหลัง local delivery. Feature commit
+`430f82ad1c493b5a8bcf1f51b007e2a7604dae1e` รวม 15 ไฟล์ที่ระบุข้างต้นและ
+push ไป `origin/codex/audit-system-fixes` สำเร็จ; `ls-remote` ตรง SHA นี้
+Windows generated-plugin dirt 3 ไฟล์เดิมไม่รวมใน commit. ไม่ merge main
+และไม่เปลี่ยน Production.
+
+Exact-source CI [38200231563](https://github.com/NOI56/PostDeeMobile/actions/runs/38200231563)
+completed success ทั้ง Backend API และ Flutter Mobile:
+
+- Backend: 57s, `2026-10-12 03:33:43Z` ถึง `03:34:40Z`; 1,781 tests/109 files,
+  profile generator 22/22, TypeScript build, Prisma validation และ production
+  high-severity audit ผ่าน โดยยังมี 4 moderate findings เดิม ไม่ใช่ audit 0 findings
+- Mobile: 4m59s, `2026-10-12 03:33:44Z` ถึง `03:38:43Z`; analyze no issues
+  14.9s และ tests 1,915 ผ่านจบ `03:38:39Z`
+
+Job logs ของทั้งสองงานยืนยัน checkout full feature SHA เดียวกัน:
+`D:\Temp\postdee-composer-feedback-delivery-ci-backend-20261012.log` และ
+`D:\Temp\postdee-composer-feedback-delivery-ci-mobile-20261012.log`.
+
+ไม่ได้ร้องขอ remote APK build; local installed 8012/runtime D531.../APK F59...
+ยังเป็น artifact/environment เดิมที่ตรวจไว้ ไม่อ้าง APK ใหม่จาก CI
+
+Render Manual Deploy → Deploy a specific commit บน service
+`postdee-api-staging` / `srv-d9bb72ojs32c739osa5g` เริ่ม 10:39:45 GMT+7.
+[Deploy dep-db65d08473hc73d6fp50](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db65d08473hc73d6fp50)
+UI SOURCE และ checkout log ยืนยัน full feature SHA `430f82ad1c493b5a8bcf1f51b007e2a7604dae1e`.
+Render แสดง service-configured branch label `main` แต่ specific checkout เป็น
+feature SHA นี้ ไม่ใช่การ merge main. Build successful 10:40:22 GMT+7;
+10:40:41 GMT+7 migration บน `postdee_staging` พบ 16 existing migrations และ
+`No pending migrations to apply` โดยไม่มี schema/backend/config change.
+Render แสดง `Deploy succeeded | Live`; log `Your service is live` เวลา
+10:41:35 GMT+7 รวม 1m50s จากเริ่ม deploy. Startup 10:41:29 GMT+7 ยืนยัน
+social-publishing mode/publisher `disabled`, `PUBLISH_QUEUE=memory` และ
+listening port 10000. Production prune audit มี 4 moderate findings เดิม;
+CI high-severity threshold ผ่าน ไม่อ้าง dependency audit ว่าไม่มี findings
+ไม่มี dependency/config/backend/API/schema change หรือ migration ใหม่
+
+Public `/health` และ `/ready` ทั้งคู่ HTTP 200 ที่ response Date
+`Mon, 12 Oct 2026 03:41:42 GMT` / 10:41:42 GMT+7.
+Health body `status: ok`, `service: postdee-api`; readiness `status: ok`
+พร้อม `checks.database: ok` และ `checks.queue: ok`.
+ไม่ใช้ Live ของ Calendar แทนรอบนี้ และไม่ใช้ `/health` เป็น source-identity proof;
+Render SOURCE/checkout และ CI checkout ยืนยัน exact full feature SHA ข้างต้น
+
+Actual final Live screenshot:
+`C:\Users\stopp\.codex\visualizations\2026\10\12\01a12dc1-f51c-7ec2-9a95-f89a5069c32c\create-post-staging-live-430f82a.jpg`.
+Local installed 8012 และ source/APK hashes D531.../F59... ยังตรง artifacts ที่
+ตรวจไว้ ไม่มี reinstall/remote APK แทนรุ่นนี้. Native AI provider invocation
+และ verified Save success ยังไม่ได้ทำบนบัญชีจริง; ผลเหล่านั้นเป็น controlled
+widget/store fixtures ตามข้อจำกัดที่ระบุ. การ deploy API ไม่ได้ติดตั้ง mobile
+build ใหม่หรือยืนยันการโพสต์โซเชียลจริง; main/Production ไม่เปลี่ยน

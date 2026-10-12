@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Guided create-post presentation boundary (2026-10-12, locally verified and installed)
+## Guided create-post presentation boundary (2026-10-12, Staging delivered)
 
 The approved guided revision stays inside the existing four-step composer and
 its state/controller owner. Compact AI controls retain explicit generation,
@@ -43,8 +43,15 @@ completion. Prior 8009 four-step/blocked-confirmation checks remain a separate
 receipt; positive identity/metadata/schedule/AI and motion/narrow/large-text cases
 use widget fixtures. The earlier user-selected form was not saved/discarded by
 the agent; installation followed the user's return to Calendar.
-No push/deploy or new database-deployment verification was
-performed; the earlier Calendar/Home deliveries are separate receipts. See
+Authorized source `430f82ad1c493b5a8bcf1f51b007e2a7604dae1e` is pushed to
+`origin/codex/audit-system-fixes`; exact-source CI `38200231563` passed Backend
+and Mobile. Local 8012 is unchanged; no remote APK build was requested. Render
+specific-commit deploy `dep-db65d08473hc73d6fp50` is Live at 10:41:35 GMT+7
+on the existing Staging service. Its 16 existing migrations have none pending;
+health/readiness return HTTP 200 with database/queue ready. Social publishing
+stays disabled and the memory queue is unchanged; no main merge is performed.
+Render SOURCE/checkout and CI checkout establish identity, not health responses.
+The earlier Calendar/Home deliveries are separate receipts. See
 `docs/superpowers/plans/2026-10-12-create-post-guided-ux.md`.
 
 ## Calendar compact boundary (2026-10-12, Staging delivered)

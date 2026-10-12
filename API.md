@@ -943,8 +943,15 @@ The preceding connector source passed
 existing session and native checks verified selection without invented completion.
 Prior 8009 four-step/zero-destination checks are a separate receipt from positive
 identity/metadata/schedule/AI and narrow/large-text widget fixtures. No real AI/upload/post request was
-performed for native UI QA. This revision has not been pushed/deployed and adds
-no fresh database/server-deployment receipt. Details:
+performed for native UI QA. Authorized source
+`430f82ad1c493b5a8bcf1f51b007e2a7604dae1e` is pushed to
+`origin/codex/audit-system-fixes`; exact-source CI `38200231563` passed Backend
+and Mobile. No remote APK build was requested; local 8012 is unchanged. Render
+specific-commit deploy `dep-db65d08473hc73d6fp50` is Live at 10:41:35 GMT+7;
+16 existing migrations have none pending and health/readiness return HTTP 200
+with database/queue ready. This adds no API/schema/config/dependency change;
+social publishing stays disabled and the memory queue is unchanged. Source
+identity comes from Render/CI checkout, not health responses. Details:
 `docs/superpowers/plans/2026-10-12-create-post-guided-ux.md`.
 The existing connection lookup gains owner/request generation guards so late
 responses cannot restore another account's identity or finish a newer load.

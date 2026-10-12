@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Guided create-post revision (2026-10-12, locally verified and installed)
+## Guided create-post revision (2026-10-12, Staging delivered)
 
 The approved “ทีละขั้น” direction keeps the existing four-step composer and
 explicit draft saving. It makes the AI action visible while collapsing optional
@@ -36,8 +36,14 @@ At that release Staging APK 4010/8010 was installed with the same signature and
 retained session; native checks showed lines/outlines and the active circle moving from
 clip to caption without inventing completion. The base 8009 four-step/AI/
 zero-destination checks are separate history; positive identities, metadata,
-schedules, AI and narrow/large-text cases use widget fixtures. This revision
-has not been pushed or deployed; the existing Staging server is unchanged.
+schedules, AI and narrow/large-text cases use widget fixtures. Authorized source
+`430f82ad1c493b5a8bcf1f51b007e2a7604dae1e` is pushed to
+`origin/codex/audit-system-fixes`; exact-source CI `38200231563` passed Backend
+and Mobile. No remote APK build was requested; local 8012 is unchanged.
+Render specific-commit deploy `dep-db65d08473hc73d6fp50` is Live at 10:41:35
+GMT+7 on the existing Staging service. Its 16 existing migrations have none
+pending; `/health` and `/ready` return HTTP 200. Social publishing stays disabled
+and the queue remains memory; no new migration or main merge was required.
 Scope, source/build hashes and separate native/fixture receipts belong in
 `docs/superpowers/plans/2026-10-12-create-post-guided-ux.md`.
 

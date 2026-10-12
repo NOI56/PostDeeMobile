@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Guided create-post revision (2026-10-12, locally verified and installed)
+## Guided create-post revision (2026-10-12, Staging delivered)
 
 - Implemented the approved “ทีละขั้น” direction in the existing clip → caption →
   destinations → review/time/send flow. Keep explicit local drafts and one
@@ -36,8 +36,13 @@ Build roadmap for PostDee.
   remain a separate receipt. Positive identity/metadata/schedule/AI and narrow/
   large-text cases use widget fixtures. The earlier user-selected form was left
   untouched by the agent; installation followed the user's return to Calendar.
-  No push/deploy was performed for this revision; Staging
-  backend remains unchanged. Keep these receipts separate from Calendar/Home in
+  Authorized source `430f82ad1c493b5a8bcf1f51b007e2a7604dae1e` is pushed to
+  `origin/codex/audit-system-fixes`; exact-source CI `38200231563` passed both
+  jobs. No remote APK build was requested; local 8012 is unchanged. Render
+  specific-commit deploy `dep-db65d08473hc73d6fp50` is Live at 10:41:35 GMT+7;
+  16 existing migrations have none pending and health/readiness return HTTP 200.
+  Social publishing stays disabled, the queue remains memory and main is not
+  merged. Keep receipts separate from Calendar/Home in
   `docs/superpowers/plans/2026-10-12-create-post-guided-ux.md`.
 
 ## Calendar compact revision (2026-10-12, Staging delivered)

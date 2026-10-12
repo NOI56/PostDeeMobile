@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Guided Create Post (2026-10-12, locally verified and installed)
+## Guided Create Post (2026-10-12, Staging delivered)
 
 The approved “ทีละขั้น” presentation keeps clip, caption, destinations and
 review/time/send as four steps. The AI action is visible with optional controls
@@ -33,8 +33,13 @@ checks are a separate receipt.
 Positive identity/metadata/schedule/AI and narrow/large-text/motion cases use
 widget fixtures. The agent left the earlier user-selected form untouched;
 installation followed the user's return to Calendar.
-This revision has not been pushed or deployed; verification is recorded separately
-from Calendar/Home in
+Authorized source `430f82ad1c493b5a8bcf1f51b007e2a7604dae1e` is pushed to
+`origin/codex/audit-system-fixes`; exact-source CI `38200231563` passed both
+jobs. No remote APK build was requested; installed 8012 is unchanged. Render
+specific-commit deploy `dep-db65d08473hc73d6fp50` is Live at 10:41:35 GMT+7;
+16 existing migrations have none pending and health/readiness return HTTP 200.
+Social publishing stays disabled, the queue remains memory and main is not merged.
+Receipts are separate from Calendar/Home in
 `../../docs/superpowers/plans/2026-10-12-create-post-guided-ux.md`.
 
 ## Calendar Compact Revision (2026-10-12, Staging delivered)

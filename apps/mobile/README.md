@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Mobile Motion Smoothness Audit (2026-10-12, local audit complete)
+## Mobile Motion Smoothness Audit (2026-10-12, Staging delivered)
 
 Audit all main tabs, composer, video preview, publish results and account sheets.
 Settle interrupted press/selection/entrance feedback, remove outgoing Home hero
@@ -13,22 +13,31 @@ ambient effects. Final source passes 2,058 Flutter tests and analysis (No issues
 preview background/resume and composer-return checks preserve data. Debug emulator
 samples are diagnostic and do not prove a speedup or certify physical-device
 60/120 FPS. Populated-content physical profile-mode measurement remains unverified.
-No API/schema/config/dependency change, migration or new push/deploy. Keep the
-completed 8015 receipt below separate. Plan:
+No API/schema/config/dependency change or new migration. Combined source
+`7b0c51d71090e5c080182daa8630d5b90e6d3d49` is pushed to
+`origin/codex/audit-system-fixes`; CI `38249605630` passed both jobs/2,058 Mobile
+tests/analysis14.2 s. CI APK build/upload was skipped; installed8016 is retained.
+Render `dep-db6d96vavr4c73b21o2g` is Live at 19:39:44 GMT+7 with 16 existing
+migrations/no pending and health/readiness HTTP200. Post-Live safe Home→Shop→
+Account→Home preserves data; disabled publishing/memory queue stay unchanged.
+No main merge or second source deployment for the docs-only receipt. Keep the
+initial 8015 receipt below separate. Plan:
 `../../docs/superpowers/plans/2026-10-12-mobile-motion-smoothness-audit.md`.
 
-## Bottom Navigation Motion (2026-10-12, local complete)
+## Bottom Navigation Motion (2026-10-12, Staging delivered)
 
 The approved shell-only follow-up adds selected-icon halo/lift/scale/color and
 native press feedback to the four ordinary tabs. Retain the running dot, center
 Create post pulse, 84 dp controls, labels/semantics, route callbacks and retained
 owner-scoped screen state. Reduced motion, lifecycle and parent `TickerMode`
 settle effects without replay. No API/persistence/business/schema/config/
-dependency or migration change. Final source passes 1,979 Flutter tests and
-analysis, including 13 new navigation cases. Exact Staging x64 APK 4015/8015 is
-installed with retained account/shop data. Native four-tab feedback and one
+dependency or migration change. Initial dock-only source passed 1,979 Flutter
+tests and analysis, including 13 new cases. Exact Staging x64 APK4015/8015 was
+installed then with retained account/shop data. Native four-tab feedback and one
 composer open/close/previous-tab return pass; guard/accessibility paths use
-fixtures. No new commit/push/deploy; external Staging remains `904a3f8`. Plan:
+fixtures. Combined source `7b0c51d` passes CI `38249605630` and is Live through
+`dep-db6d96vavr4c73b21o2g`; current8016 has the separate 2,058-test audit receipt.
+Keep initial8015 verification distinct; no main merge. Plan:
 `../../docs/superpowers/plans/2026-10-12-bottom-nav-ui-motion.md`.
 
 ## Account UI Motion (2026-10-12, Staging delivered)

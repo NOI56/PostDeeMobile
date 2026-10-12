@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Mobile motion audit boundary (2026-10-12, local audit complete)
+## Mobile motion audit boundary (2026-10-12, Staging delivered)
 
 Shared press/skeleton lifecycle guards settle interrupted feedback, respecting
 reduced motion and parent tickers. Home keeps only the current hero controls and
@@ -17,10 +17,17 @@ Staging x64 4016/8016 build/install and safe native navigation/preview lifecycle
 checks pass with account/shop data retained. Debug emulator Flutter.Frame samples
 are diagnostic, with no controlled before/after comparison; physical-device
 60/120 FPS and populated-content profiling remain unverified. No API/schema/config/
-dependency/backend change, migration or new push/deploy; retain prior 8015 proof.
+dependency/backend change or new migration. Combined source
+`7b0c51d71090e5c080182daa8630d5b90e6d3d49` is pushed to
+`origin/codex/audit-system-fixes`; CI `38249605630` passed both jobs/2,058 Mobile
+tests/analysis14.2 s. CI APK build/upload was skipped; installed8016 is unchanged.
+Render `dep-db6d96vavr4c73b21o2g` is Live at 19:39:44 GMT+7; 16 existing
+migrations/no pending and health/readiness HTTP200. Disabled publishing/memory
+queue remain; post-Live Home→Shop→Account→Home retains data. No main merge or
+second source deployment for the docs-only receipt; retain initial8015 proof.
 Plan: `docs/superpowers/plans/2026-10-12-mobile-motion-smoothness-audit.md`.
 
-## Bottom navigation finite motion boundary (2026-10-12, local complete)
+## Bottom navigation finite motion boundary (2026-10-12, Staging delivered)
 
 The shell-owned follow-up retains the 260 ms running dot and native dock
 controls. Four ordinary icons gain a 36 dp mint halo at .12 alpha without shadow,
@@ -30,11 +37,12 @@ the center green action keeps its blank visible label, no dot and existing pulse
 Lifecycle/parent-ticker/reduced-motion guards settle controllers without replay;
 mounted cancellation guards protect disposal. No new request, persistence or
 business callback; existing shell/route/owner state remains. No API/schema/
-config/dependency/migration change. Final source passes 1,979 Flutter tests and
-analysis, including 13 new navigation cases; exact Staging x64 APK 4015/8015 is
-installed. Native four-tab feedback/composer return preserve account/shop data;
-reduced-motion/lifecycle/ticker/accessibility/disposal paths use fixtures. No new
-commit/push/deploy or main merge; external Staging remains `904a3f8`. Plan:
+config/dependency/migration change. Initial dock-only source passed 1,979 Flutter
+tests and analysis, including 13 new cases; exact APK4015/8015 was installed then.
+Native four-tab feedback/composer return preserved data; motion/accessibility/
+disposal paths use fixtures. Combined source `7b0c51d` passes CI `38249605630` and
+is Live through `dep-db6d96vavr4c73b21o2g`; current installed8016 and 2,058-test
+audit proof remain separate from initial8015. No main merge. Plan:
 `docs/superpowers/plans/2026-10-12-bottom-nav-ui-motion.md`.
 
 ## Account finite UI motion boundary (2026-10-12, Staging delivered)

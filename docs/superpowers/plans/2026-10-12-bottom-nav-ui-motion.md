@@ -1,8 +1,29 @@
 # Bottom navigation finite UI motion
 
-สถานะ: LOCAL COMPLETE — final frozen source passes tests/analysis; exact Staging
-x64 APK 4015/8015 is installed and safe native navigation verified. No new
-commit/push/deploy or main merge; prior Shop/Account server release stays unchanged.
+สถานะ: STAGING DELIVERED — the dock and subsequent motion audit are included in
+combined source `7b0c51d71090e5c080182daa8630d5b90e6d3d49`, with CI and Render
+Live confirmed. Current installed APK is 4016/8016 with retained data. Original
+dock-only 1,979-test/4015/8015 verification below is historical; no main merge.
+
+## Authorized combined Staging delivery (2026-10-12)
+
+- Source `7b0c51d71090e5c080182daa8630d5b90e6d3d49` is pushed and remote-verified on
+  `origin/codex/audit-system-fixes`, 28 ahead/0 behind verified main `c4e52201`.
+- Exact-source CI `38249605630` passed Backend (1,781 tests/109 files, generator22,
+  build/catalog/Prisma checks) and Mobile (2,058 tests, analysis14.2 s).
+  CI APK build/upload was skipped; local4016/8016 remains installed unchanged.
+- Render service `srv-d9bb72ojs32c739osa5g`, deploy `dep-db6d96vavr4c73b21o2g`,
+  is Live on this source at **19:39:44 GMT+7**, duration1m56s. Its 16 existing
+  migrations have none pending; no new migration or business/config/API change.
+  Disabled publishing and memory queue remain unchanged.
+- `/health` and `/ready` return HTTP200/databaseok/queueok at **19:40:37 GMT+7**.
+  Post-Live Home→Shop→Account→Home retains login, Free0/3 and the original noikub
+  Shopee/YouTube links. No mutation was performed; recent PID17571 log has
+  **0 critical hits/146 lines** at **19:41:31 GMT+7**.
+- This follow-up receipt changes documentation only; it is not a second runtime,
+  APK or Render deployment. Complete source/build/native/environment and diagnostic
+  receipts are in `2026-10-12-mobile-motion-smoothness-audit.md`. Physical-device
+  60/120 FPS remains unverified; differing debug samples do not prove a speedup.
 
 ## Accepted scope and baseline
 
@@ -70,13 +91,14 @@ edit links/apply themes, publish, invoke AI/OAuth, purchase, delete or sign out.
 Positive business/mutation and reduced-motion/background/accessibility paths
 can use controlled fixtures; do not claim them as real native success.
 
-Final inventory: eight intended files, plus three preserved/excluded preexisting
+Original dock-only inventory: eight intended files, plus three preserved/excluded preexisting
 Windows generated-plugin changes. Runtime: `apps/mobile/lib/features/shell/postdee_shell.dart`;
 tests: `apps/mobile/test/postdee_shell_test.dart`; docs: `README.md`, `ROADMAP.md`,
 `API.md`, `ARCHITECTURE.md`, `apps/mobile/README.md` and this plan. Runtime diff is
 201 insertions/42 deletions limited to navigation classes; no unexpected deleted
 files. Baseline remains 27 ahead/0 behind main. Prior Staging deployment is not a
-deployment of this new feature; no external release action was requested.
+deployment of this new feature. At dock-only local completion no external release
+action had been requested; the later authorized combined delivery is above.
 
 ## Final local receipts (2026-10-12)
 
@@ -121,4 +143,5 @@ deployment of this new feature; no external release action was requested.
 - Existing backend `/health` and `/ready` HTTP200 with database/queueok at
   **18:38:18 GMT+7**, still prior `904a3f8`; this is availability, not new deployed
   source proof. No backend/schema/config/dependency change, new backend suite or
-  migration execution; no new commit/push/deploy or main merge for this feature.
+  migration execution at that local verification; no commit/push/deploy or main
+  merge had occurred then. The later combined source/8016 delivery is recorded above.

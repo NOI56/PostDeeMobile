@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Mobile motion smoothness audit (2026-10-12, local audit complete)
+## Mobile motion smoothness audit (2026-10-12, Staging delivered)
 
 Audit every main tab and the composer, video preview, publish results and account
 overlays. Fix interrupted press/selection/entrance feedback, hidden Home actions,
@@ -17,23 +17,32 @@ analysis (No issues, 8.6 s). Exact Staging x64 4016/8016 is built/installed with
 retained account/shop data; native navigation, preview background/resume and
 composer return pass without data changes. Debug emulator frame samples are
 diagnostic only; physical-device 60/120 FPS remains unverified and the two sample
-windows do not prove a speedup. No API/schema/config/dependency change,
-migration or new push/deploy. Preserve the completed 8015 receipt below. Details:
+windows do not prove a speedup. No API/schema/config/dependency change or new
+migration. Combined source `7b0c51d71090e5c080182daa8630d5b90e6d3d49` is pushed to
+`origin/codex/audit-system-fixes`; exact-source CI `38249605630` passed Backend
+and Mobile (2,058 tests, analysis14.2 s; CI APK build/upload skipped). Render
+`dep-db6d96vavr4c73b21o2g` is Live at 19:39:44 GMT+7 with 16 existing migrations,
+none pending; health/readiness return HTTP200. Installed8016 and disabled
+publishing/memory queue stay unchanged. Post-Live Home→Shop→Account→Home
+preserves account/shop data. No main merge; the following receipt is docs only.
+Preserve the initial 8015 receipt below. Details:
 `docs/superpowers/plans/2026-10-12-mobile-motion-smoothness-audit.md`.
 
-## Bottom navigation motion (2026-10-12, local complete)
+## Bottom navigation motion (2026-10-12, Staging delivered)
 
 The approved mobile-only follow-up adds a soft selected-icon halo, finite icon
 lift/scale/color transitions and native press feedback to the four ordinary dock
 tabs. Keep the existing running dot, center Create post action, tap targets,
 semantics and navigation/state/owner guards. Reduced motion, lifecycle and parent
 `TickerMode` settle feedback without replay. No new API request, persistence,
-business callback, schema/config/dependency or migration. Final source passes
-1,979 Flutter tests and analysis, including 13 new navigation cases. Exact Staging
-x64 APK 4015/8015 is installed with the account/shop data retained. Native four-tab
+business callback, schema/config/dependency or migration. The initial dock-only
+source passed 1,979 Flutter tests and analysis, including 13 new navigation cases.
+Exact Staging x64 APK 4015/8015 was installed at that verification with the account/shop data retained. Native four-tab
 halo/icon/dot and one composer open/close/previous-tab return checks pass without
-changing data; motion/accessibility guards use controlled fixtures. No new
-commit/push/deploy; external Staging remains the prior `904a3f8` release. Plan:
+changing data; motion/accessibility guards use controlled fixtures. Combined dock/
+audit source `7b0c51d` passes CI `38249605630` and is Live through
+`dep-db6d96vavr4c73b21o2g`; current installed8016 and its 2,058-test receipt are
+separate from initial8015. Post-Live account/shop data are retained. Plan:
 `docs/superpowers/plans/2026-10-12-bottom-nav-ui-motion.md`.
 
 ## Account UI motion (2026-10-12, Staging delivered)

@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Mobile motion audit boundary (2026-10-12, local audit complete)
+## Mobile motion audit boundary (2026-10-12, Staging delivered)
 
 The cross-screen audit changes presentation guards and thumbnail lifecycle only.
 Keep API requests/owner scope, AI/save/publish triggers, entitlement/scheduling,
@@ -13,21 +13,29 @@ Final source passes 2,058 Flutter tests and analysis (No issues, 8.6 s); exact
 Staging x64 4016/8016 build/install and safe native navigation preserve data.
 Native AI, Save, OAuth, purchase and publication were not invoked; positive
 business paths use fixtures. Diagnostic debug frames do not certify production
-FPS or prove a before/after speedup. Existing backend `904a3f8` and the prior
-8015 receipt stay separate;
-no new push/deploy. Plan:
+FPS or prove a before/after speedup. Combined source
+`7b0c51d71090e5c080182daa8630d5b90e6d3d49` is pushed to
+`origin/codex/audit-system-fixes`; exact-source CI `38249605630` passed Backend
+and Mobile/2,058 tests/analysis14.2 s. CI APK build/upload was skipped; local8016
+remains installed. Render `dep-db6d96vavr4c73b21o2g` is Live at 19:39:44 GMT+7
+with 16 existing migrations/no pending and health/readiness HTTP200. Publishing
+stays disabled/queue memory; post-Live safe navigation retains account/shop data.
+No new API/schema/config/dependency or migration, no main merge and no second
+source deployment for the docs-only receipt. Keep initial8015 proof separate. Plan:
 `docs/superpowers/plans/2026-10-12-mobile-motion-smoothness-audit.md`.
 
-## Bottom navigation presentation boundary (2026-10-12, local complete)
+## Bottom navigation presentation boundary (2026-10-12, Staging delivered)
 
 Dock icon selection/press feedback changes presentation only. Existing tab
 callbacks, guarded `/create-post` navigation, owner/request scope and all API/
 billing/publishing contracts retain their triggers. No new request, persistence,
-quota, provider, schema/config/dependency or migration. Final source passes 1,979
-Flutter tests and analysis, including 13 new navigation cases. Exact Staging x64
-APK 4015/8015 is installed; native navigation/composer open-close preserve data.
-Guard/accessibility paths use fixtures, with no real mutations. Existing backend
-`904a3f8` stays unchanged; no new backend suite/migration or commit/push/deploy.
+quota, provider, schema/config/dependency or migration. Initial dock-only source
+passed 1,979 Flutter tests and analysis, including 13 new cases; APK4015/8015 was
+installed then with native navigation/composer open-close preserving data.
+Guard/accessibility paths use fixtures, with no real mutations. Combined source
+`7b0c51d` passed CI `38249605630` and is Live through
+`dep-db6d96vavr4c73b21o2g`; current installed8016 has the separate 2,058-test audit
+receipt. API contracts remain unchanged; no new migration or main merge.
 Plan:
 `docs/superpowers/plans/2026-10-12-bottom-nav-ui-motion.md`.
 

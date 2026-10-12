@@ -1,12 +1,47 @@
 # Mobile motion smoothness audit
 
-สถานะ: LOCAL AUDIT COMPLETE — final full suite 2,058/2,058 and analysis passed;
+สถานะ: STAGING DELIVERED — final full suite 2,058/2,058 and analysis passed;
 exact Staging x64 4016/8016 build/install and safe native navigation/lifecycle
 checks passed with retained data. Physical-device profile-mode 60/120 FPS and
 populated-content performance remain unverified; debug samples do not prove a
-speedup. No new commit/push/deploy or main merge. The completed
+speedup. Combined source `7b0c51d71090e5c080182daa8630d5b90e6d3d49` is pushed
+and confirmed Live through the authorized delivery below; no main merge. The completed
 bottom-navigation 4015/8015 receipt is separate history and is preserved in
 `2026-10-12-bottom-nav-ui-motion.md`.
+
+## Authorized Staging delivery receipt (2026-10-12)
+
+- Source commit `7b0c51d71090e5c080182daa8630d5b90e6d3d49` is pushed and
+  remote-verified on `origin/codex/audit-system-fixes`. Fresh verified main and
+  merge-base remain `c4e52201a58b556f5f47529027549a2fc16af84c`, **28 ahead/0 behind**.
+  No API/config/dependency/Android/tool/.github/Render configuration diff from
+  prior Live source `904a3f8`; three preexisting generated-plugin files stay excluded.
+- Exact-source CI run `38249605630` is **SUCCESS**. Backend job`114812174372`
+  passes **1,781 tests/109 files**, generator **22**, build/catalog and Prisma
+  generate/validate. Mobile job`114812174508` passes **2,058/2,058 tests** and
+  analysis **No issues, 14.2 s**; CI APK build/upload was skipped. Local analysis
+  **8.6 s** and installed4016/8016 are separate receipts, retained unchanged.
+- Render service `srv-d9bb72ojs32c739osa5g`, deploy `dep-db6d96vavr4c73b21o2g`,
+  started **19:37:47 GMT+7**, build succeeded **19:38:31**, and Prisma found
+  **16 existing migrations/no pending** at **19:38:51**. Startup **19:39:38**
+  shows mode/publisher`disabled`, emptyBacklogGuard`not-enforced`; **19:39:39**
+  listens on10000 with `PUBLISH_QUEUE=memory`, preserving baseline flags.
+  **Deploy succeeded/Live at 19:39:44 GMT+7**, duration **1 m 56 s**, exact full
+  source `7b0c51d71090e5c080182daa8630d5b90e6d3d49`. No new migration required.
+- Post-Live `/health` and `/ready` are **HTTP200** at **19:40:37 GMT+7**,
+  with databaseok/queueok. Source identity comes from CI/Render, not health bodies.
+- Local installed8016/APK `E875...` and 126-lib manifest `25C2...` below are
+  unchanged with **0 runtime source changes**. Post-Live Home→Shop (review/preview,
+  original noikub Shopee/YouTube links)→Account Free0/3→Home passed, preserving
+  login/data. No Save, Apply, AI, publish/purchase, OAuth, delete or signout.
+  PID17571 at **19:41:31 GMT+7** has **0 critical hits/146 lines**.
+- Render proof outside repository:
+  `C:/Users/stopp/.codex/visualizations/2026/10/12/01a12dc1-f51c-7ec2-9a95-f89a5069c32c/mobile-motion-staging-live-7b0c51d.jpg`.
+- This release-receipt follow-up changes only seven documentation files. Its
+  separate docs commit is not the deployed source; no second runtime/APK/Render
+  deployment is required. No main merge or dependency fix; the production audit
+  retains four preexisting moderate findings and passes the high threshold.
+  Physical-device FPS remains unverified and diagnostic runs do not prove speedup.
 
 ## Request, scope and verified baseline
 
@@ -26,7 +61,7 @@ Canonical `D:\PostDeeMobile` remains outside the feature edits.
 Installed 4015/8015 before this audit contains the completed dock feature, not
 the new audit fixes. Its prior 126-lib manifest is
 `27EB7DE65D9E7D3E0E04088354EB0E53C764CD5311A4CEDCA081E8296DBB820D`.
-Existing server `904a3f89c3601a1fac28eedfaf8781434b19bd49` is the earlier
+At audit start, server `904a3f89c3601a1fac28eedfaf8781434b19bd49` was the earlier
 Shop/Account release; its Render/CI receipts do not verify these new changes.
 
 ## Findings and smallest fixes
@@ -142,7 +177,7 @@ publishing, OAuth or data modification was performed.
 The unchanged backend returned `/health` HTTP200 at **19:10:15 GMT+7** and `/ready`
 HTTP200 at **19:10:16 GMT+7**, with database/queue healthy. This establishes
 availability only, not new source deployment or a migration run. The external
-Staging source remains the prior `904a3f8` release; 8016 build/install/final native
+Staging source at those baseline checks was the prior `904a3f8` release; 8016 build/install/final native
 checks are recorded separately below.
 
 ## Final retained-data native checks (8016)
@@ -254,6 +289,8 @@ Audit tests (nine files): `home_motion_primitives_test.dart`,
 `link_in_bio_motion_surface_test.dart`, all under `apps/mobile/test/`.
 
 Audit docs: `README.md`, `ROADMAP.md`, `API.md`, `ARCHITECTURE.md`,
-`apps/mobile/README.md` and this report. The prior uncommitted dock runtime/test/
-plan remain preserved; their completed 8015 receipts are not replaced by this
-audit. Preexisting Windows generated-plugin changes remain excluded.
+`apps/mobile/README.md` and this report. At audit start the dock runtime/test/plan
+were uncommitted; they are preserved and included in the combined `7b0c51d`
+source, with original8015 receipts separate from current8016. The delivery receipt
+also updates `2026-10-12-bottom-nav-ui-motion.md`, totaling seven documentation
+files. Preexisting Windows generated-plugin changes remain excluded.

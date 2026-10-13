@@ -258,6 +258,25 @@ Post-deploy health/readiness return 200, and native version 8005 refreshes
 successfully with the same Free 0/3 and connections 0/4. CI intentionally skips
 APK build/upload; the verified local Staging debug/Test Store APK stays
 installed. Main and Production remain unchanged; detailed receipts are in the plan.
+## Security integration preparation (2026-10-13)
+
+Branch `codex/security-main-delivery` initially started from verified main
+`c4e5220`; delivery now reconciles the newer verified remote main
+`f5dea16f59bfb317c92971c6bbef60d8b742ea5d`. It selectively ports the earlier
+security work while retaining current Store link publication/customization,
+the four-step composer, scheduling/idempotency and pending billing confirmation.
+The old audited worktree remains untouched; its unrun cases and dated CI/smoke
+results are not verification of this branch.
+
+Purchase readiness is an additive protocol-1 POST before a new RevenueCat buy.
+Legacy GET user preparation remains during this stage, subject to the final
+owner write fence; read-only GET cutover is deferred until incompatible mobile
+builds are retired. Session-bound auth/native operations, push recipient UID
+and final User/Post/Subscription transactions are integrated in this branch.
+Source review is complete; all runtime checks and Staging delivery are pending.
+Production is outside this
+delivery stage. See
+[`2026-10-13-security-main-delivery.md`](docs/superpowers/plans/2026-10-13-security-main-delivery.md).
 
 ## Pending-work integration (2026-10-08)
 

@@ -1,4 +1,5 @@
 import type { ServerConfig } from '../../config/env.js';
+import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 import {
   type PrismaUserClient,
   createPrismaUserRepository
@@ -9,10 +10,12 @@ type UserStoreConfig = Pick<ServerConfig, 'postStore'>;
 
 export const createUserStoreForPostStore = ({
   config,
-  prisma
+  prisma,
+  runWithActiveOwner
 }: {
   config: UserStoreConfig;
   prisma?: PrismaUserClient;
+  runWithActiveOwner?: RunWithActiveOwner;
 }): UserStore => {
   // Every Prisma-backed relation points at User. Once a Prisma client exists,
   // keep the canonical user in the same database even when posts use memory.
@@ -24,5 +27,5 @@ export const createUserStoreForPostStore = ({
     throw new Error('Prisma user store requires a Prisma client');
   }
 
-  return createUserStore();
+  return createUserStore({ runWithActiveOwner });
 };

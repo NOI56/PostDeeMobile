@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createPrismaPostRepository } from './prismaPostRepository.js';
+import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 
 describe('createPrismaPostRepository', () => {
   it('reads only interrupted publishing ids and platforms for startup recovery', async () => {
@@ -96,7 +97,7 @@ describe('createPrismaPostRepository', () => {
         create: vi.fn()
       }
     };
-    const repository = createPrismaPostRepository({ prisma });
+    const repository = createPrismaPostRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     expect(await repository.list({ userId: 'seller-1' })).toEqual([
       {
@@ -136,7 +137,7 @@ describe('createPrismaPostRepository', () => {
         create: vi.fn()
       }
     };
-    const repository = createPrismaPostRepository({ prisma });
+    const repository = createPrismaPostRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     expect(await repository.list({ userId: 'seller-1', scheduledOnly: true })).toEqual([
       {
@@ -181,7 +182,7 @@ describe('createPrismaPostRepository', () => {
         })
       }
     };
-    const repository = createPrismaPostRepository({ prisma });
+    const repository = createPrismaPostRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     expect(
       await repository.create({
@@ -224,7 +225,7 @@ describe('createPrismaPostRepository', () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 })
       }
     };
-    const repository = createPrismaPostRepository({ prisma });
+    const repository = createPrismaPostRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     expect(
       await repository.claimForPublish({
@@ -253,7 +254,7 @@ describe('createPrismaPostRepository', () => {
         updateMany: vi.fn().mockResolvedValue({ count: 0 })
       }
     };
-    const repository = createPrismaPostRepository({ prisma });
+    const repository = createPrismaPostRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     expect(
       await repository.claimForPublish({
@@ -287,7 +288,7 @@ describe('createPrismaPostRepository', () => {
         operation({ post: transactionPost })
       )
     };
-    const repository = createPrismaPostRepository({ prisma });
+    const repository = createPrismaPostRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(
       repository.createWithinMonthlyLimit({
@@ -343,7 +344,7 @@ describe('createPrismaPostRepository', () => {
         operation({ post: transactionPost })
       )
     };
-    const repository = createPrismaPostRepository({ prisma });
+    const repository = createPrismaPostRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(
       repository.createWithinMonthlyLimit({
@@ -405,7 +406,7 @@ describe('createPrismaPostRepository', () => {
           operation({ post: secondPost })
         )
     };
-    const repository = createPrismaPostRepository({ prisma });
+    const repository = createPrismaPostRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(
       repository.createWithinMonthlyLimit({
@@ -451,7 +452,7 @@ describe('createPrismaPostRepository', () => {
           operation({ post: transactionPost })
         )
     };
-    const repository = createPrismaPostRepository({ prisma });
+    const repository = createPrismaPostRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(
       repository.createWithinMonthlyLimit({

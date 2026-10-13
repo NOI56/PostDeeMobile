@@ -1,5 +1,23 @@
 # PostDee Staging
 
+## เตรียมรวม security fixes จาก main ปัจจุบัน — 13 ตุลาคม 2026
+
+- ใช้ baseline remote `main` ล่าสุด `f5dea16` ที่ fetch แล้ว (เริ่มจาก `c4e5220`) แยก branch
+  `codex/security-main-delivery` และเก็บงานที่ยังไม่ commit ใน worktree เดิมไว้
+  ไม่ใช้ patch จาก branch เก่าทับหน้าลิงก์ร้าน/เผยแพร่เว็บไซต์หรือระบบโพสต์ใหม่
+- API เพิ่ม purchase-readiness protocol 1 แบบ additive และคง GET preparation
+  สำหรับแอปเก่าไว้ก่อน โดยล็อก owner ใน transaction สุดท้ายของ User/Post/
+  Subscription; เปิด owner marker ใน legacy ด้วย ไม่เปลี่ยน schema/provider
+  หรือ Production flags คิวข้ามหลาย process และ provider calls ที่เริ่มแล้ว
+  ยังมีข้อจำกัด
+- แอปรักษา draft/ธีม/รูป/หน้าร้านและ pending purchase เดิม พร้อมเพิ่ม generation
+  guards, bound HTTP/native auth และ push recipient UID ต้องส่ง API additive
+  ก่อนติดตั้ง APK ใหม่ การเปลี่ยน GET เป็น read-only เป็นขั้นปล่อยแยกภายหลัง
+- รวม source และตรวจโค้ดซ้ำแล้ว เพิ่ม test 147 กรณี แต่ยังไม่ได้รัน
+  Tests/build/analyze และการอัปเดต Emulator ของชุดนี้ยัง pending ข้อกำหนด
+  sandbox ของ security-audit skill ยังไม่ครบ ผล CI/smoke เก่าไม่ใช่ผลชุดใหม่
+  เอกสารส่งมอบอยู่ใน `superpowers/plans/2026-10-13-security-main-delivery.md`
+
 ## ส่งมอบ API และตรวจภาพ/วิดีโอ R2 — 8 ตุลาคม 2026
 
 - ผู้ใช้อนุญาต deploy Staging และตรวจสื่อเพิ่มจากงาน source/main เดิม

@@ -1,11 +1,25 @@
 import 'package:flutter/material.dart';
 
+/// Carries ownership into dialogs opened from a Link in Bio editor.
+class BioOwnedModalScope extends InheritedWidget {
+  const BioOwnedModalScope({super.key, required this.onOpened, required super.child});
+  final void Function(ModalRoute<dynamic> route) onOpened;
+  static BioOwnedModalScope? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<BioOwnedModalScope>();
+  @override
+  bool updateShouldNotify(BioOwnedModalScope oldWidget) => onOpened != oldWidget.onOpened;
+}
+
 String bioColorHex(Color color) =>
     '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
 
 Future<String?> selectBioColor(BuildContext context, Color initial) async {
+  final ownership = BioOwnedModalScope.maybeOf(context);
   final color = await showDialog<Color>(
-      context: context, builder: (_) => _BioColorPicker(initial: initial));
+      context: context, builder: (dialogContext) {
+        final route = ModalRoute.of(dialogContext);
+        if (route != null) ownership?.onOpened(route);
+        return _BioColorPicker(initial: initial);
+      });
   return color == null ? null : bioColorHex(color);
 }
 

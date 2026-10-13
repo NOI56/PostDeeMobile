@@ -14,9 +14,11 @@ class FakeFirebaseMessagingClient implements FirebaseMessagingClient {
     this.initialMessage,
   });
 
-  final bool permissionGranted;
+  bool permissionGranted;
   String? token;
   final PushNotificationMessage? initialMessage;
+  Future<bool> Function()? permissionHandler;
+  Future<String?> Function()? tokenHandler;
   final foreground = StreamController<PushNotificationMessage>.broadcast();
   final opened = StreamController<PushNotificationMessage>.broadcast();
   final refreshed = StreamController<String>.broadcast();
@@ -41,11 +43,14 @@ class FakeFirebaseMessagingClient implements FirebaseMessagingClient {
   @override
   Future<bool> requestPermission() async {
     permissionRequests += 1;
-    return permissionGranted;
+    return permissionHandler == null
+        ? permissionGranted
+        : await permissionHandler!();
   }
 
   @override
-  Future<String?> getToken() async => token;
+  Future<String?> getToken() async =>
+      tokenHandler == null ? token : await tokenHandler!();
 
   @override
   Stream<PushNotificationMessage> get onForegroundMessage => foreground.stream;
@@ -65,6 +70,18 @@ class _RetryRotationClient extends FakeFirebaseMessagingClient {
 }
 
 void main() {
+  test('recipientless push cannot belong to a session without a stable UID', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(idToken: 'token'));
+    final client = FakeFirebaseMessagingClient();
+    final center = PostDeeNotificationCenter();
+    final gateway = FirebasePushMessagingGateway(client: client, center: center, sessionStore: sessions);
+    await gateway.start();
+    client.foreground.add(const PushNotificationMessage(title: 'legacy', body: 'unscoped'));
+    await Future<void>.delayed(Duration.zero);
+    expect(center.items, isEmpty);
+    await gateway.dispose();
+  });
+
   test('a failed SDK rotation blocks new ownership until a retry succeeds',
       () async {
     final client = _RetryRotationClient();
@@ -362,6 +379,64 @@ void main() {
 
     expect(center.items, isEmpty);
 
+    await gateway.dispose();
+  });
+
+  test('same-UID new sign-in invalidates registration binding and clears history', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'owner', idToken: 'token'));
+    final client = FakeFirebaseMessagingClient();
+    final center = PostDeeNotificationCenter();
+    final bindings = <AuthSessionBinding>[];
+    final gateway = FirebasePushMessagingGateway(client: client, center: center, sessionStore: sessions,
+      registerBoundToken: (token, binding) async { bindings.add(binding); });
+    await gateway.start();
+    center.add(PostDeeNotification(title: 'private', body: 'old', receivedAt: DateTime(2026)));
+    sessions.signIn(const AuthSession(userId: 'owner', idToken: 'new-token'));
+    expect(center.items, isEmpty);
+    expect(bindings.first.isCurrent, isFalse);
+    await gateway.initialize();
+    expect(bindings.last.isCurrent, isTrue);
+    expect(client.tokenDeletes, 1);
+    await gateway.dispose();
+  });
+
+  test('bound registration keeps its original lifecycle while cleanup reasserts a new owner', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'owner', idToken: 'token'));
+    final client = FakeFirebaseMessagingClient();
+    final registered = Completer<void>();
+    final started = Completer<void>();
+    final bindings = <AuthSessionBinding>[];
+    final gateway = FirebasePushMessagingGateway(client: client, sessionStore: sessions,
+      registerBoundToken: (token, binding) {
+        bindings.add(binding);
+        if (bindings.length == 1) { started.complete(); return registered.future; }
+        return Future<void>.value();
+      }, unregisterToken: (_, __) async {});
+    final starting = gateway.start();
+    await started.future;
+    sessions.signIn(const AuthSession(userId: 'next', idToken: 'next-token'));
+    expect(bindings.first.isCurrent, isFalse);
+    registered.complete();
+    await starting;
+    await gateway.initialize();
+    expect(bindings.last.isCurrent, isTrue);
+    await gateway.dispose();
+  });
+
+  test('a delayed explicit permission response cannot initialize a later sign-in', () async {
+    final permission = Completer<bool>();
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'owner', idToken: 'token'));
+    final client = FakeFirebaseMessagingClient(permissionGranted: false)..permissionHandler = () => permission.future;
+    var registrations = 0;
+    final gateway = FirebasePushMessagingGateway(client: client, sessionStore: sessions,
+      registerBoundToken: (_, __) async { registrations++; });
+    await gateway.start();
+    final initialize = gateway.initialize();
+    await Future<void>.delayed(Duration.zero);
+    sessions.signIn(const AuthSession(userId: 'next', idToken: 'next-token'));
+    permission.complete(true);
+    await initialize;
+    expect(registrations, 0);
     await gateway.dispose();
   });
 

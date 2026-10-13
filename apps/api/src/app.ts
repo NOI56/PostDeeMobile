@@ -1,5 +1,5 @@
 import cors from 'cors';
-import express, { type RequestHandler } from 'express';
+import express, { type RequestHandler, type ErrorRequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 
@@ -101,6 +101,8 @@ import {
 } from './modules/aiEdits/transcriptionProvider.js';
 import { createPostStoreFromConfig } from './modules/posts/postStoreFactory.js';
 import { createPublishQueueFromConfig } from './modules/queue/publishQueueFactory.js';
+import { createOwnerAwarePublishQueue } from './modules/queue/ownerAwarePublishQueue.js';
+import { OwnerOperationBusyError } from './modules/account/ownerOperationQueue.js';
 import { createPlatformPublisherFromConfig } from './workers/platformPublisherFactory.js';
 import { createPublishScheduler } from './workers/publishScheduler.js';
 import { registerPublishQueueRoutes } from './modules/queue/publishQueueRoutes.js';
@@ -125,6 +127,7 @@ import {
 } from './modules/uploads/managedUploadService.js';
 import {
   createInMemoryUploadSessionStore,
+  UploadSessionConflictError,
   type UploadSessionStore
 } from './modules/uploads/uploadSessionStore.js';
 import {
@@ -201,13 +204,15 @@ const readFileNameFromStorageKey = (videoS3Key: string) =>
 export const createAccountAwareAuthMiddleware = ({
   authMiddleware,
   managedUploadService,
-  ownerMutationLock
+  ownerMutationLock,
+  assertOwnerActive
 }: {
   authMiddleware: RequestHandler;
   managedUploadService?: ManagedUploadService;
   ownerMutationLock?: OwnerMutationCoordinator;
+  assertOwnerActive?: (ownerId: string) => Promise<void>;
 }): RequestHandler => {
-  if (!managedUploadService && !ownerMutationLock) {
+  if (!managedUploadService && !ownerMutationLock && !assertOwnerActive) {
     return authMiddleware;
   }
 
@@ -261,7 +266,11 @@ export const createAccountAwareAuthMiddleware = ({
               'Account deletion is in progress. New mutations are disabled.'
             );
           }
-          await managedUploadService?.assertOwnerActive(authUser.id);
+          if (assertOwnerActive) {
+            await assertOwnerActive(authUser.id);
+          } else {
+            await managedUploadService?.assertOwnerActive(authUser.id);
+          }
           const originalEnd = response.end;
           response.end = function (this: typeof response, ...args: unknown[]) {
             try {
@@ -286,6 +295,10 @@ export const createAccountAwareAuthMiddleware = ({
             code: error.code,
             message: error.message
           });
+          return;
+        }
+        if (error instanceof UploadSessionConflictError) {
+          response.status(409).json({ status: 'error', code: error.code, message: error.message });
           return;
         }
 
@@ -468,19 +481,29 @@ export const createApp = (options: AppOptions = {}) => {
   const prismaClient =
     options.prisma ??
     (requiresPrismaClient ? createPrismaClient() : undefined);
+  // The owner tombstone must remain available even with legacy uploads.
+  const uploadSessionStore =
+    options.uploadSessionStore ??
+    (prismaClient
+      ? createPrismaUploadSessionRepository({ prisma: prismaClient as unknown as PrismaUploadSessionClient })
+      : createInMemoryUploadSessionStore());
+  const runWithActiveOwner = uploadSessionStore.runWithActiveOwner;
   const postStore = createPostStoreFromConfig({
     config,
-    prisma: prismaClient as unknown as PrismaPostClient | undefined
+    prisma: prismaClient as unknown as PrismaPostClient | undefined,
+    runWithActiveOwner
   });
   const userStore = createUserStoreForPostStore({
     config,
-    prisma: prismaClient
+    prisma: prismaClient,
+    runWithActiveOwner
   });
   const subscriptionStore = createSubscriptionStoreFromConfig({
     config,
-    prisma: prismaClient
+    prisma: prismaClient,
+    runWithActiveOwner
   });
-  const publishQueue = createPublishQueueFromConfig({ config });
+  const publishQueue = createOwnerAwarePublishQueue(createPublishQueueFromConfig({ config }), runWithActiveOwner);
   const platformPublishStore =
     options.platformPublishStore ??
     (config.postStore === 'prisma' && prismaClient
@@ -510,13 +533,6 @@ export const createApp = (options: AppOptions = {}) => {
       s3Client: options.s3Client,
       r2Client: options.r2Client
     });
-  const uploadSessionStore =
-    options.uploadSessionStore ??
-    (prismaClient
-      ? createPrismaUploadSessionRepository({
-          prisma: prismaClient as unknown as PrismaUploadSessionClient
-        })
-      : createInMemoryUploadSessionStore());
   const managedUploadService =
     options.managedUploadService ??
     (videoStorage.multipart
@@ -541,12 +557,14 @@ export const createApp = (options: AppOptions = {}) => {
         'Account deletion is in progress. New mutations are disabled.'
       );
     }
+    await uploadSessionStore.assertOwnerActive(ownerId);
     await managedUploadService?.assertOwnerActive(ownerId);
   };
   const accountAwareAuthMiddleware = createAccountAwareAuthMiddleware({
     authMiddleware,
     managedUploadService,
-    ownerMutationLock
+    ownerMutationLock,
+    assertOwnerActive
   });
   const transcriptionProvider =
     options.transcriptionProvider ??
@@ -768,6 +786,7 @@ export const createApp = (options: AppOptions = {}) => {
     videoStorage,
     managedUploadService,
     ownerMutationLock,
+    ownerLifecycleStore: uploadSessionStore,
     accountIdentityDeleter:
       options.accountIdentityDeleter ??
       createFirebaseIdentityDeleterFromConfig({
@@ -838,5 +857,15 @@ export const createApp = (options: AppOptions = {}) => {
     }
   };
 
+  const handleOwnerLifecycleError: ErrorRequestHandler = (error, _request, response, next) => {
+    if (response.headersSent) { next(error); return; }
+    if (error instanceof UploadSessionConflictError || error instanceof OwnerOperationBusyError) {
+      response.status(error instanceof UploadSessionConflictError ? 409 : 503)
+        .json({ status: 'error', code: error.code, message: error.message });
+      return;
+    }
+    next(error);
+  };
+  app.use(handleOwnerLifecycleError);
   return app;
 };

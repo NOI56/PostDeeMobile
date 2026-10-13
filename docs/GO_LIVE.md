@@ -8,6 +8,28 @@ ingestion, Sentry, beat/hook rendering, and AI minute top-ups still need code.
 Default values keep everything in mock/local mode so the app runs without any
 third-party accounts.
 
+## Security integration gate (2026-10-13)
+
+Port only the applicable earlier security fixes onto verified main `f5dea16`
+(initial preparation started from `c4e5220`);
+retain current Store link/composer, scheduling/idempotency, auth timeouts and
+billing pending-confirmation behavior. The source port has no new migration,
+dependency change, provider activation or Production release. Existing
+`FIREBASE_AUTH_DELETE_ENABLED=false` and infrastructure gates remain.
+
+Purchase readiness is additive; keep legacy GET preparation until incompatible
+buying builds are retired. Deploy protocol-1 API first, then the updated Staging
+APK. Require source-specific full checks and exact package/API/Firebase/signature
+build/smoke before merge/deployment; do not count old CI or the earlier 180 unrun
+audit cases as delivery evidence. The existing Actions workflow is not proof
+of all OS sandbox controls required by the installed audit skill.
+
+Verification/deployment are pending. Record actual SHA/checks/PR/deployment/APK
+receipt in `superpowers/plans/2026-10-13-security-main-delivery.md`. Remaining
+cross-process Redis/provider drain and OS background notification guarantees
+are not closed by a source review. Existing token rotation and authenticated
+unregistration are retained; runtime verification of that lifecycle is pending.
+
 ## Pending-work integration gate (2026-10-08)
 
 Mobile cleanup is already integrated/pushed on main at `b1f793c`, with app-source

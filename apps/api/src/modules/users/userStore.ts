@@ -1,4 +1,5 @@
 import type { AuthUser } from '../auth/authTypes.js';
+import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 
 export type AppUser = {
   id: string;
@@ -40,15 +41,17 @@ export const normalizeAuthUserForStorage = (authUser: AuthUser) => ({
 });
 
 export const createUserStore = ({
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  runWithActiveOwner = async (_ownerId, operation) => operation()
 }: {
   now?: () => string;
+  runWithActiveOwner?: RunWithActiveOwner;
 } = {}): UserStore => {
   const users = new Map<string, AppUser>();
 
   return {
     exists: async (userId) => users.has(userId),
-    ensure: async (authUser) => {
+    ensure: (authUser) => runWithActiveOwner(authUser.id, async () => {
       const normalizedUser = normalizeAuthUserForStorage(authUser);
       const existingUser = users.get(authUser.id);
       const timestamp = now();
@@ -61,7 +64,7 @@ export const createUserStore = ({
 
       users.set(authUser.id, user);
       return user;
-    },
+    }),
     deleteAllForUser: async (userId) => {
       users.delete(userId);
     }

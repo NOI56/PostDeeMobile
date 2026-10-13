@@ -57,6 +57,13 @@
 > original time after the policy change or a downgrade. No data migration or
 > R2 lifecycle/retention change is required by this package rule.
 
+> Security rollout (2026-10-13): add authenticated purchase-readiness protocol 1
+> before a new RevenueCat SDK buy, preserving current pending-confirmation and
+> retry behavior. Keep owner-fenced legacy GET preparation during this additive
+> stage; a read-only GET cutover requires retiring incompatible buying builds.
+> No package price/benefit or provider flag changes. Current-main source port and
+> delivery verification are pending; see `2026-10-13-security-main-delivery.md`.
+
 The scheduling release uses the existing subscription `plan` and `canSchedule`
 contract; it does not add a billing field, change prices/quotas, or migrate queued
 rows. Deploy the API enforcement before distributing the matching mobile build.

@@ -31,6 +31,39 @@ void _writeJsonResponse(
 }
 
 void main() {
+  for (final readiness in <Map<String, Object?>>[
+    {'status': 'ok', 'purchaseReady': true, 'preparationProtocol': 1},
+    {'status': 'ok'},
+    {'status': 'ok', 'purchaseReady': false, 'preparationProtocol': 1},
+    {'status': 'ok', 'purchaseReady': true, 'preparationProtocol': 2},
+    {'status': 'ok', 'purchaseReady': true, 'preparationProtocol': 1.0},
+    {'status': 'ok', 'purchaseReady': true, 'preparationProtocol': '1'},
+    {'status': 'error', 'purchaseReady': true, 'preparationProtocol': 1},
+  ]) {
+    test('purchase readiness validates protocol acknowledgement $readiness', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final task = () async {
+        final request = await server.first;
+        expect(request.method, 'POST');
+        expect(request.uri.path, '/billing/purchase-readiness');
+        expect(await _readJsonRequest(request), isEmpty);
+        _writeJsonResponse(request.response, readiness);
+        await request.response.close();
+      }();
+      try {
+        final client = PostDeeApiClient(baseUrl: 'http://${server.address.address}:${server.port}');
+        if (readiness['status'] == 'ok' && readiness['purchaseReady'] == true && readiness['preparationProtocol'] is int && readiness['preparationProtocol'] == 1) {
+          await client.prepareSubscriptionPurchase();
+        } else {
+          await expectLater(client.prepareSubscriptionPurchase(), throwsA(isA<ApiException>().having((error) => error.code, 'code', 'PURCHASE_READINESS_UNSUPPORTED')));
+        }
+        await task;
+      } finally {
+        await server.close(force: true);
+      }
+    });
+  }
+
   test('CreatePostRequest serializes optional cover metadata', () {
     final request = CreatePostRequest(
       clientRequestId: 'draft-123',

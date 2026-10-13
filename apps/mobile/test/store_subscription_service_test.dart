@@ -6,6 +6,249 @@ import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
 
 void main() {
+  setUp(() {
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(
+      userId: 'seller-revenuecat', idToken: 'dummy-billing-token',
+    ));
+  });
+  tearDown(PostDeeAuthSessionStore.instance.clear);
+
+  test('native pending purchase keeps its original binding after the UI timeout', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession:
+      const AuthSession(userId: 'seller-revenuecat', idToken: 'owner-a'));
+    final completion = Completer<StorePurchasePayload>();
+    var verifications = 0;
+    final service = StoreSubscriptionService(
+      sessionStore: sessions,
+      gateway: _DelayedStoreGateway(completion), useRevenueCat: false,
+      storeOperationTimeout: const Duration(milliseconds: 20),
+      verifyPurchase: (request) async { verifications += 1; return _verifiedSubscription(request); },
+    );
+    await expectLater(service.startProSubscription(),
+      throwsA(isA<StoreSubscriptionStorePendingException>()));
+    sessions.signIn(const AuthSession(userId: 'next-owner', idToken: 'owner-b'));
+    await expectLater(service.retryPendingConfirmation(), throwsA(isA<AuthSessionChangedException>()));
+    completion.complete(const StorePurchasePayload.android(
+      productId: 'postdee_pro_monthly', purchaseToken: 'old-owner-receipt'));
+    await Future<void>.delayed(Duration.zero);
+    expect(verifications, 0);
+    expect(service.hasPendingConfirmation, isFalse);
+  });
+
+  test('native acknowledgement is never reconciled for the next account', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession:
+      const AuthSession(userId: 'seller-revenuecat', idToken: 'owner-a'));
+    final gateway = _AcknowledgementStoreGateway();
+    final service = StoreSubscriptionService(
+      sessionStore: sessions, gateway: gateway, useRevenueCat: false,
+      verifyPurchase: (request) async => _verifiedSubscription(request),
+    );
+    await service.startProSubscription();
+    expect(service.hasPendingStoreAcknowledgement, isTrue);
+    sessions.signIn(const AuthSession(userId: 'next-owner', idToken: 'owner-b'));
+    await expectLater(service.retryPendingConfirmation(), throwsA(isA<AuthSessionChangedException>()));
+    expect(gateway.reconciliations, 0);
+    expect(service.hasPendingConfirmation, isFalse);
+    expect(service.hasPendingStoreAcknowledgement, isFalse);
+    await expectLater(service.startProSubscription(), throwsA(isA<AuthSessionChangedException>()));
+    expect(gateway.purchaseCalls, 1);
+  });
+
+  for (final starter in [false, true]) {
+    test('readiness completes before ${starter ? 'Starter' : 'Pro'} purchase', () async {
+      final prepared = Completer<void>();
+      final preparationStarted = Completer<void>();
+      final gateway = FakeRevenueCatBillingGateway();
+      final service = StoreSubscriptionService(
+        revenueCatGateway: gateway,
+        useRevenueCat: true,
+        prepareSubscriptionPurchase: () {
+          preparationStarted.complete();
+          return prepared.future;
+        },
+        loadSubscription: () async => _subscription(plan: starter ? 'STARTER' : 'PRO'),
+      );
+      final purchase = starter ? service.startStarterSubscription() : service.startProSubscription();
+      await preparationStarted.future;
+      expect(gateway.purchaseCalls, 0);
+      prepared.complete();
+      expect((await purchase).subscription.plan, starter ? 'STARTER' : 'PRO');
+      expect(gateway.purchaseCalls, 1);
+    });
+
+    for (final failure in [
+      const ApiException('Missing', statusCode: 404),
+      const ApiException('Unsupported', statusCode: 501),
+      const ApiException('Old protocol', code: 'PURCHASE_READINESS_UNSUPPORTED'),
+    ]) {
+      test('unsupported readiness blocks ${starter ? 'Starter' : 'Pro'} ${failure.statusCode ?? failure.code}', () async {
+        final gateway = FakeRevenueCatBillingGateway();
+        var loads = 0;
+        final service = StoreSubscriptionService(
+          revenueCatGateway: gateway,
+          useRevenueCat: true,
+          prepareSubscriptionPurchase: () async => throw failure,
+          loadSubscription: () async { loads += 1; return _subscription(plan: 'PRO'); },
+        );
+        await expectLater(starter ? service.startStarterSubscription() : service.startProSubscription(),
+          throwsA(isA<StoreSubscriptionException>().having((e) => e.message, 'message',
+            'ระบบสมาชิกยังไม่พร้อมสำหรับแอปเวอร์ชันนี้ กรุณาลองใหม่ภายหลัง')));
+        expect(gateway.purchaseCalls, 0);
+        expect(loads, 0);
+        expect(service.hasPendingConfirmation, isFalse);
+      });
+    }
+  }
+
+  test('switch during readiness never starts a purchase for the next account', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'owner-a', idToken: 'a'));
+    final prepared = Completer<void>();
+    final preparationStarted = Completer<void>();
+    final gateway = FakeRevenueCatBillingGateway();
+    final service = StoreSubscriptionService(
+      sessionStore: sessions, revenueCatGateway: gateway, useRevenueCat: true,
+      prepareSubscriptionPurchase: () { preparationStarted.complete(); return prepared.future; },
+      loadSubscription: () async => throw StateError('must not load'),
+    );
+    final expectation = expectLater(service.startProSubscription(), throwsA(isA<AuthSessionChangedException>()));
+    await preparationStarted.future;
+    sessions.signIn(const AuthSession(userId: 'owner-b', idToken: 'b'));
+    prepared.complete();
+    await expectation;
+    expect(gateway.purchaseCalls, 0);
+  });
+
+  test('pending confirmation retains its original binding after account changes', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'owner-a', idToken: 'a'));
+    final gateway = FakeRevenueCatBillingGateway();
+    var loads = 0;
+    final service = StoreSubscriptionService(
+      sessionStore: sessions, revenueCatGateway: gateway, useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
+      loadSubscription: () async { loads += 1; throw const ApiException('Unavailable', statusCode: 503); },
+      revenueCatEntitlementPollAttempts: 1,
+    );
+    await expectLater(service.startProSubscription(), throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+    sessions.signIn(const AuthSession(userId: 'owner-b', idToken: 'b'));
+    await expectLater(service.retryPendingConfirmation(), throwsA(isA<AuthSessionChangedException>()));
+    expect(loads, 1);
+    expect(gateway.purchaseCalls, 1);
+    expect(service.hasPendingConfirmation, isFalse);
+  });
+
+  test('RevenueCat refuses an entitlement from a different UID', () async {
+    final service = StoreSubscriptionService(
+      revenueCatGateway: FakeRevenueCatBillingGateway(), useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
+      loadSubscription: () async => _subscription(plan: 'PRO', userId: 'another-user'),
+    );
+    await expectLater(service.startProSubscription(), throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+  });
+
+  for (final status in [401, 409, 503]) {
+    test('readiness preserves backend failure $status without buying', () async {
+      final failure = ApiException('Blocked', statusCode: status);
+      final gateway = FakeRevenueCatBillingGateway();
+      final service = StoreSubscriptionService(
+        revenueCatGateway: gateway, useRevenueCat: true,
+        prepareSubscriptionPurchase: () async => throw failure,
+        loadSubscription: () async => throw StateError('must not poll'),
+      );
+      await expectLater(service.startProSubscription(), throwsA(same(failure)));
+      expect(gateway.purchaseCalls, 0);
+    });
+  }
+
+  test('default billing API factory keeps preparation and confirmation in one binding', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'seller-revenuecat', idToken: 'original-token'));
+    final clients = <_RecordingSubscriptionApi>[];
+    final service = StoreSubscriptionService(
+      sessionStore: sessions, revenueCatGateway: FakeRevenueCatBillingGateway(), useRevenueCat: true,
+      apiClientFactory: (binding) {
+        final api = _RecordingSubscriptionApi(binding);
+        clients.add(api);
+        return api;
+      },
+    );
+    expect((await service.startProSubscription()).subscription.isPro, isTrue);
+    expect(clients, hasLength(1));
+    expect(clients.single.calls, ['prepare:original-token', 'load:original-token']);
+  });
+
+  test('default receipt verification keeps the purchase binding while a token refresh is pending', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'seller-revenuecat', idToken: 'original-token'));
+    final refreshStarted = Completer<void>();
+    final refreshed = Completer<AuthCredentialSnapshot?>();
+    sessions.setAuthCredentialRefresher(() { refreshStarted.complete(); return refreshed.future; });
+    late _RecordingSubscriptionApi api;
+    final service = StoreSubscriptionService(
+      sessionStore: sessions, gateway: FakeStoreBillingGateway(), useRevenueCat: false,
+      apiClientFactory: (binding) => api = _RecordingSubscriptionApi(binding),
+    );
+    final expectation = expectLater(service.startProSubscription(), throwsA(isA<AuthSessionChangedException>()));
+    await refreshStarted.future;
+    sessions.signIn(const AuthSession(userId: 'next-account', idToken: 'next-token'));
+    refreshed.complete(const AuthCredentialSnapshot(userId: 'next-account', idToken: 'next-token'));
+    await expectation;
+    expect(api.calls, isEmpty);
+    expect(service.hasPendingConfirmation, isFalse);
+  });
+
+  for (final phase in ['availability', 'purchase', 'restore', 'resync']) {
+    test('billing stops work after an account change during $phase', () async {
+      final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'seller-revenuecat', idToken: 'a'));
+      final started = Completer<void>();
+      final release = Completer<void>();
+      Future<void> pause() { started.complete(); return release.future; }
+      var preparationCalls = 0;
+      var resyncCalls = 0;
+      var loads = 0;
+      final gateway = FakeRevenueCatBillingGateway(
+        onAvailable: phase == 'availability' ? pause : null,
+        onPurchase: phase == 'purchase' ? pause : null,
+        onRestore: phase == 'restore' ? pause : null,
+      );
+      final service = StoreSubscriptionService(
+        sessionStore: sessions, revenueCatGateway: gateway, useRevenueCat: true,
+        prepareSubscriptionPurchase: () async { preparationCalls += 1; },
+        resyncRevenueCatSubscription: () async {
+          resyncCalls += 1;
+          if (phase == 'resync') await pause();
+          return 'PRO';
+        },
+        loadSubscription: () async { loads += 1; return _subscription(plan: 'PRO'); },
+      );
+      final restoring = phase == 'restore' || phase == 'resync';
+      final expectation = expectLater(restoring ? service.restoreSubscription() : service.startProSubscription(),
+        throwsA(isA<AuthSessionChangedException>()));
+      await started.future;
+      sessions.signIn(const AuthSession(userId: 'next-account', idToken: 'b'));
+      release.complete();
+      await expectation;
+      expect(loads, 0);
+      expect(resyncCalls, phase == 'resync' ? 1 : 0);
+      expect(preparationCalls, phase == 'purchase' ? 1 : 0);
+      expect(service.hasPendingConfirmation, isFalse);
+      if (phase == 'availability') expect(gateway.purchaseCalls, 0);
+    });
+  }
+
+  test('polling never loads the next account after its wait callback changes the session', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'seller-revenuecat', idToken: 'a'));
+    var loads = 0;
+    final service = StoreSubscriptionService(
+      sessionStore: sessions, revenueCatGateway: FakeRevenueCatBillingGateway(), useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
+      loadSubscription: () async { loads += 1; return _subscription(plan: 'BASIC'); },
+      revenueCatEntitlementWait: (_) async {
+        sessions.signIn(const AuthSession(userId: 'next-account', idToken: 'b'));
+      },
+    );
+    await expectLater(service.startProSubscription(), throwsA(isA<AuthSessionChangedException>()));
+    expect(loads, 1);
+    expect(service.hasPendingConfirmation, isFalse);
+  });
+
   test('a completed SDK timeout is an error, not an unfinished purchase', () async {
     final completion = Completer<StorePurchasePayload>();
     final gateway = _DelayedStoreGateway(completion);
@@ -61,7 +304,6 @@ void main() {
     expect(gateway.purchaseCalls, 1);
     expect(service.hasPendingConfirmation, isFalse);
   });
-
   test('session cache retains pending purchases only for the signed-in owner',
       () async {
     final sessionStore = PostDeeAuthSessionStore(
@@ -85,8 +327,10 @@ void main() {
     await expectLater(original.startProSubscription(),
         throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
 
-    sessionStore.signIn(
-        AuthSession.authenticated(userId: 'owner-a', idToken: 'rotated-token'));
+    sessionStore.setAuthCredentialRefresher(() async =>
+        const AuthCredentialSnapshot(userId: 'owner-a', idToken: 'rotated-token'));
+    expect(await sessionStore.currentIdToken(), 'rotated-token');
+    sessionStore.updateDisplayName('Renamed owner');
     expect(cache.service, same(original));
     expect(cache.service.hasPendingConfirmation, isTrue);
     sessionStore.signIn(
@@ -105,6 +349,25 @@ void main() {
         userId: 'owner-a', idToken: 'new-session-token'));
     expect(cache.service, isNot(same(original)));
     expect(cache.service.hasPendingConfirmation, isFalse);
+  });
+
+  test('same-UID sign-in starts a new billing cache lifecycle', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'owner-a', idToken: 'a'));
+    final gateway = FakeStoreBillingGateway();
+    final cache = StoreSubscriptionSessionCache(
+      sessionStore: sessions,
+      createService: () => StoreSubscriptionService(
+        gateway: gateway, useRevenueCat: false,
+        verifyPurchase: (_) async => throw const ApiException('Unavailable', statusCode: 503),
+      ),
+    );
+    addTearDown(cache.dispose);
+    final previous = cache.service;
+    await expectLater(previous.startProSubscription(), throwsA(isA<StoreSubscriptionConfirmationPendingException>()));
+    sessions.signIn(const AuthSession(userId: 'owner-a', idToken: 'new-sign-in-token'));
+    expect(cache.service, isNot(same(previous)));
+    expect(cache.service.hasPendingConfirmation, isFalse);
+    expect(previous.hasPendingConfirmation, isFalse);
   });
 
   test('legacy completed purchase can recheck the same receipt without buying',
@@ -217,6 +480,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: gateway,
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       subscriptionConfirmationTimeout: const Duration(milliseconds: 50),
       loadSubscription: () {
         loadCalls += 1;
@@ -253,6 +517,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: gateway,
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       loadSubscription: () async => throw StateError('must not check backend'),
     );
 
@@ -271,6 +536,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: gateway,
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       revenueCatEntitlementPollAttempts: 1,
       resyncRevenueCatSubscription: () async => 'PRO',
       loadSubscription: () async {
@@ -299,6 +565,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: gateway,
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       loadSubscription: () async =>
           throw const ApiException('Service Suspended', statusCode: 503),
       revenueCatEntitlementPollAttempts: 1,
@@ -356,6 +623,7 @@ void main() {
       ),
       revenueCatGateway: revenueCatGateway,
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       verifyPurchase: (_) async {
         verifyCalls += 1;
         throw StateError('store verify should not be called');
@@ -378,6 +646,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: FakeRevenueCatBillingGateway(),
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       loadSubscription: () async {
         loadCalls += 1;
         return _subscription(plan: loadCalls < 3 ? 'BASIC' : 'STARTER');
@@ -400,6 +669,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: FakeRevenueCatBillingGateway(),
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       loadSubscription: () async {
         loadCalls += 1;
         return _subscription(plan: 'BASIC');
@@ -423,6 +693,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: FakeRevenueCatBillingGateway(),
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       loadSubscription: () async {
         loadCalls += 1;
         if (loadCalls == 1) {
@@ -448,6 +719,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: FakeRevenueCatBillingGateway(),
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       loadSubscription: () async {
         loadCalls += 1;
         throw const ApiException('Unauthorized', statusCode: 401);
@@ -481,6 +753,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: revenueCatGateway,
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       resyncRevenueCatSubscription: () async {
         resyncCalls += 1;
         return 'STARTER';
@@ -503,6 +776,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: revenueCatGateway,
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       resyncRevenueCatSubscription: () async => 'BASIC',
       loadSubscription: () async {
         loadCalls += 1;
@@ -561,6 +835,7 @@ void main() {
       final service = StoreSubscriptionService(
         revenueCatGateway: revenueCatGateway,
         useRevenueCat: true,
+        prepareSubscriptionPurchase: () async {},
         resyncRevenueCatSubscription: () async => throw ApiException(
           'Backend RevenueCat resync failed',
           statusCode: errorCase.statusCode,
@@ -699,7 +974,7 @@ StoreSubscriptionVerificationResult _verifiedSubscription(
         transactionId: request.transactionId,
       ),
       subscription: SubscriptionStatusResult(
-        userId: 'seller-store',
+        userId: 'seller-revenuecat',
         plan: plan,
         status: 'ACTIVE',
         canSchedule: true,
@@ -712,9 +987,10 @@ StoreSubscriptionVerificationResult _verifiedSubscription(
 
 SubscriptionStatusResult _subscription({
   required String plan,
+  String userId = 'seller-revenuecat',
 }) =>
     SubscriptionStatusResult(
-      userId: 'seller-revenuecat',
+      userId: userId,
       plan: plan,
       status: plan == 'BASIC' ? 'INACTIVE' : 'ACTIVE',
       canSchedule: plan != 'BASIC',
@@ -732,6 +1008,15 @@ class _DelayedStoreGateway extends FakeStoreBillingGateway {
     purchaseCalls++;
     return completion.future;
   }
+}
+
+class _AcknowledgementStoreGateway extends FakeStoreBillingGateway
+    implements PendingNativePurchaseReconciler {
+  var reconciliations = 0;
+  @override
+  bool get hasPendingAcknowledgement => true;
+  @override
+  Future<void> reconcilePendingPurchase() async { reconciliations += 1; }
 }
 
 class FakeStoreBillingGateway implements StoreBillingGateway {
@@ -782,17 +1067,49 @@ class FakeStoreBillingGateway implements StoreBillingGateway {
       );
 }
 
+class _RecordingSubscriptionApi extends PostDeeApiClient {
+  _RecordingSubscriptionApi(this.binding) : super(sessionBinding: binding);
+  final AuthSessionBinding binding;
+  final calls = <String>[];
+
+  @override
+  Future<void> prepareSubscriptionPurchase() async {
+    calls.add('prepare:${await binding.currentIdToken()}');
+  }
+
+  @override
+  Future<SubscriptionStatusResult> loadCurrentSubscription() async {
+    calls.add('load:${await binding.currentIdToken()}');
+    return _subscription(plan: 'PRO');
+  }
+
+  @override
+  Future<StoreSubscriptionVerificationResult> verifyStoreSubscription(VerifyStorePurchaseRequest request) async {
+    calls.add('verify:${await binding.currentIdToken()}');
+    return _verifiedSubscription(request);
+  }
+}
+
 class FakeRevenueCatBillingGateway implements RevenueCatBillingGateway {
-  FakeRevenueCatBillingGateway({this.available = true, this.purchaseError});
+  FakeRevenueCatBillingGateway({
+    this.available = true, this.purchaseError,
+    this.onAvailable, this.onPurchase, this.onRestore,
+  });
 
   final bool available;
   final StoreSubscriptionException? purchaseError;
+  final Future<void> Function()? onAvailable;
+  final Future<void> Function()? onPurchase;
+  final Future<void> Function()? onRestore;
   String? purchasedProductId;
   var purchaseCalls = 0;
   var restoreCalls = 0;
 
   @override
-  Future<bool> isAvailable() async => available;
+  Future<bool> isAvailable() async {
+    await onAvailable?.call();
+    return available;
+  }
 
   @override
   Future<List<StoreProductInfo>> queryProducts(Set<String> productIds) async =>
@@ -810,6 +1127,7 @@ class FakeRevenueCatBillingGateway implements RevenueCatBillingGateway {
   @override
   Future<void> buySubscription(String productId) async {
     purchaseCalls += 1;
+    await onPurchase?.call();
     if (purchaseError != null) throw purchaseError!;
     purchasedProductId = productId;
   }
@@ -817,5 +1135,6 @@ class FakeRevenueCatBillingGateway implements RevenueCatBillingGateway {
   @override
   Future<void> restorePurchases() async {
     restoreCalls += 1;
+    await onRestore?.call();
   }
 }

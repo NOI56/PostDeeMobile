@@ -22,6 +22,8 @@ import {
 } from '../uploads/managedUploadService.js';
 import type { AccountIdentityDeleter } from './firebaseIdentityDeleter.js';
 import type { OwnerMutationCoordinator } from './ownerMutationLock.js';
+import { OwnerOperationBusyError } from './ownerOperationQueue.js';
+import type { UploadSessionStore } from '../uploads/uploadSessionStore.js';
 
 /**
  * Minimal Prisma surface needed to hard-delete an account. Removing the User row
@@ -56,6 +58,7 @@ export type AccountRouteDependencies = {
     'prepareOwnerDeletion' | 'finishOwnerDeletion'
   >;
   ownerMutationLock?: OwnerMutationCoordinator;
+  ownerLifecycleStore?: Pick<UploadSessionStore, 'beginOwnerDeletion' | 'finishOwnerDeletion'>;
   prisma?: PrismaAccountClient;
   nowSeconds?: () => number;
 };
@@ -91,6 +94,7 @@ export const registerAccountRoutes = (
     accountIdentityDeleter,
     managedUploadService,
     ownerMutationLock,
+    ownerLifecycleStore,
     prisma,
     nowSeconds = () => Math.floor(Date.now() / 1000)
   } = dependencies;
@@ -222,6 +226,19 @@ export const registerAccountRoutes = (
 
     ownerMutationLock?.markDeleting(userId);
 
+    // Independent of multipart support, this permanent marker fences final
+    // entity writes in other API instances and drains local queue admission.
+    try {
+      await ownerLifecycleStore?.beginOwnerDeletion(userId);
+    } catch (error) {
+      response.status(503).json({
+        status: 'error',
+        code: error instanceof OwnerOperationBusyError ? error.code : 'ACCOUNT_WRITE_DRAIN_FAILED',
+        message: 'Could not finish active account work. Please try again.'
+      });
+      return;
+    }
+
     // Seal the owner before draining queued/external work so concurrent upload
     // and post requests cannot recreate work after the cleanup snapshots it.
     if (managedUploadService) {
@@ -252,8 +269,20 @@ export const registerAccountRoutes = (
     // Stop queued work before external cleanup so a worker cannot publish while
     // deletion is in progress. Posts remain intact until cleanup succeeds.
     const posts = await postStore.list({ userId });
-    for (const post of posts) {
-      await publishQueue.remove(post.id);
+    try {
+      // Jobs may outlive their original row after a failed/late queue add.
+      const queuedJobs = await publishQueue.list({ userId });
+      const ownedPostIds = new Set([
+        ...posts.map((post) => post.id),
+        ...queuedJobs.filter((job) => job.userId === userId).map((job) => job.postId)
+      ]);
+      for (const postId of ownedPostIds) await publishQueue.remove(postId);
+    } catch {
+      response.status(503).json({
+        status: 'error', code: 'ACCOUNT_PUBLISH_CLEANUP_FAILED',
+        message: 'Could not remove account publishing work. Please try again.'
+      });
+      return;
     }
 
     // Disconnect provider-side accounts before deleting local account data.
@@ -357,6 +386,15 @@ export const registerAccountRoutes = (
       }
     }
 
+    try {
+      await ownerLifecycleStore?.finishOwnerDeletion(userId);
+    } catch {
+      response.status(503).json({
+        status: 'error', code: 'ACCOUNT_UPLOAD_STATE_CLEANUP_FAILED',
+        message: 'Account deletion is almost complete. Please try again.'
+      });
+      return;
+    }
     ownerMutationLock?.markDeleted(userId);
     response.json({ status: 'ok' });
     } finally {

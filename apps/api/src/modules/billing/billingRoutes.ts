@@ -13,6 +13,8 @@ import type {
   SubscriptionStore
 } from '../subscriptions/subscriptionStore.js';
 import type { UserStore } from '../users/userStore.js';
+import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
+import { OwnerOperationBusyError } from '../account/ownerOperationQueue.js';
 import { readPaidPlanRequest } from './billingService.js';
 import {
   StorePurchaseVerificationError,
@@ -240,6 +242,16 @@ export const registerBillingRoutes = (
 ) => {
   const config = options.config ?? defaultBillingRoutesConfig;
 
+  router.post('/billing/purchase-readiness', authMiddleware, async (_request, response) => {
+    const authUser = readAuthUser(response.locals);
+    if (!authUser) {
+      response.status(401).json({ status: 'error', message: 'Authenticated user is required' });
+      return;
+    }
+    await userStore.ensure(authUser);
+    response.json({ status: 'ok', purchaseReady: true, preparationProtocol: 1 });
+  });
+
   router.get('/billing/subscription', authMiddleware, async (_request, response) => {
     const authUser = readAuthUser(response.locals);
 
@@ -251,6 +263,8 @@ export const registerBillingRoutes = (
       return;
     }
 
+    // Retain legacy bootstrap during the additive readiness rollout. The
+    // repository's final owner fence still prevents a deleted-owner revival.
     await userStore.ensure(authUser);
     const plan = await subscriptionStore.getPlan(authUser);
     const usedPostsThisMonth = await postStore.countMonthlyPostUnits({
@@ -376,6 +390,7 @@ export const registerBillingRoutes = (
         subscription
       });
     } catch (error) {
+      if (error instanceof UploadSessionConflictError || error instanceof OwnerOperationBusyError) throw error;
       handleStorePurchaseError(response, error);
     }
   });

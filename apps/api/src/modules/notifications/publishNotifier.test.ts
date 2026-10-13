@@ -4,6 +4,18 @@ import { createInMemoryDeviceTokenStore } from '../devices/deviceTokenStore.js';
 import { createPublishNotifier } from './publishNotifier.js';
 
 describe('publish notifier', () => {
+  it('labels the exact recipient and sends only that owner device tokens', async () => {
+    const deviceTokenStore = createInMemoryDeviceTokenStore();
+    await deviceTokenStore.register({ userId: 'owner-a', token: 'token-a' });
+    await deviceTokenStore.register({ userId: 'owner-b', token: 'token-b' });
+    const send = vi.fn(async () => undefined);
+    await createPublishNotifier({ deviceTokenStore, pushSender: { send } })
+      .notifyPublishResult({ userId: 'owner-a', postId: 'private-a', outcome: 'PUBLISHED' });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      tokens: ['token-a'], data: { postId: 'private-a', type: 'publish_result', userId: 'owner-a' }
+    }));
+  });
+
   it('sends a Thai push to every registered device on success', async () => {
     const deviceTokenStore = createInMemoryDeviceTokenStore();
     await deviceTokenStore.register({ userId: 'u1', token: 't1' });

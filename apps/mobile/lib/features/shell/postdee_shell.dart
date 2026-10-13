@@ -111,6 +111,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
   String? _composerOwnerUserId;
   String? _notificationOwnerUserId;
   final Set<MaterialPageRoute<void>> _notificationRoutes = {};
+  late AuthSessionBinding _notificationSession;
+  int _linkSessionGeneration = 0;
 
   // null = still loading; the main shell shows meanwhile so the flow never
   // blocks startup. true only on a genuine first run.
@@ -136,6 +138,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
       ),
     );
     _authController.addListener(_handleComposerOwnerChanged);
+    _notificationSession = PostDeeAuthSessionStore.instance.captureSession();
+    _authController.addListener(_handleNotificationSessionChanged);
     _accountAccessRevoker = widget.accountAccessRevoker ??
         createAccountAccessRevokerFromConfig(
           firebaseBootstrapResult: widget.firebaseBootstrapResult,
@@ -153,21 +157,15 @@ class _PostDeeShellState extends State<PostDeeShell> {
     _pushMessagingGateway = widget.pushMessagingGateway ??
         createPushMessagingGatewayFromConfig(
           firebaseBootstrapResult: widget.firebaseBootstrapResult,
-          registerToken: (token, session) async {
-            final store = PostDeeAuthSessionStore.instance;
-            if (store.session.stableUserId != session.stableUserId) return;
-            final idToken = await store.currentIdToken();
-            if (store.session.stableUserId != session.stableUserId) return;
-            await PostDeeApiClient(authTokenProvider: () async => idToken)
-                .registerDeviceToken(token);
-          },
+          registerBoundToken: (token, binding) => PostDeeApiClient(sessionBinding: binding).registerDeviceToken(token),
           unregisterToken: (token, session) =>
               PostDeeApiClient(authTokenProvider: () async => session.idToken)
                   .unregisterDeviceToken(token),
           onOpenPost: (postId) {
+            final binding = PostDeeAuthSessionStore.instance.captureSession();
             final owner = _authController.session.stableUserId;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && owner == _authController.session.stableUserId) {
+              if (mounted && binding.isCurrent && owner == _authController.session.stableUserId) {
                 unawaited(_openNotificationPost(postId));
               }
             });
@@ -203,7 +201,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
           userName: _authController.session.displayName,
         ),
         LinkInBioScreen(
-          key: ValueKey(_authController.session.stableUserId),
+          key: ValueKey((_authController.session.stableUserId, _linkSessionGeneration)),
           onBack: () => _selectTab(0),
           embeddedInTab: true,
           isActive: _selectedIndex == 1,
@@ -238,6 +236,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
           onRefreshEmailVerification: _authController.supportsEmailRecovery
               ? _authController.refreshEmailVerification
               : null,
+          runNativePhoneAuthOperation: _authController.runBoundNativeAuthOperation,
         ),
       ];
 
@@ -245,6 +244,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
   void dispose() {
     unawaited(_pushMessagingGateway.dispose());
     _authController.removeListener(_handleComposerOwnerChanged);
+    _authController.removeListener(_handleNotificationSessionChanged);
     _authController.dispose();
     super.dispose();
   }
@@ -254,6 +254,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
   }
 
   Future<void> _openNotificationsAfterPermission() async {
+    final binding = PostDeeAuthSessionStore.instance.captureSession();
     // Ask for notification permission only after the user taps the bell. This
     // gives the system prompt clear context instead of interrupting sign-in.
     final owner = _authController.session.stableUserId;
@@ -262,7 +263,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
           .initialize()
           .timeout(const Duration(seconds: 10));
     } catch (_) {
-      if (mounted) {
+      if (mounted && binding.isCurrent) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text('เชื่อมการแจ้งเตือนไม่สำเร็จ กรุณาลองอีกครั้ง')),
@@ -270,6 +271,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
       }
     }
     if (!mounted ||
+        !binding.isCurrent ||
         !_authController.session.isSignedIn ||
         owner != _authController.session.stableUserId) {
       return;
@@ -296,6 +298,17 @@ class _PostDeeShellState extends State<PostDeeShell> {
     _notificationRoutes.add(route);
     await Navigator.of(context).push<void>(route);
     _notificationRoutes.remove(route);
+  }
+
+  void _handleNotificationSessionChanged() {
+    if (_notificationSession.isCurrent) return;
+    _notificationSession = PostDeeAuthSessionStore.instance.captureSession();
+    _linkSessionGeneration += 1;
+    PostDeeNotificationCenter.instance.clear();
+    for (final route in _notificationRoutes.toList()) {
+      if (route.isActive) route.navigator?.removeRoute(route);
+    }
+    _notificationRoutes.clear();
   }
 
   void _openTemplates() {
@@ -528,7 +541,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
     // user lands back on the login gate. Only sign out after the delete succeeds.
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    final apiClient = PostDeeApiClient();
+    final deletionSession = PostDeeAuthSessionStore.instance.captureSession();
+    final apiClient = PostDeeApiClient(sessionBinding: deletionSession);
     final capturedOwnerUserId = _authController.session.stableUserId;
     final deleteAccount = widget.deleteAccount ?? apiClient.deleteAccount;
     final checkAccountDeletionReady = widget.checkAccountDeletionReady ??
@@ -548,12 +562,17 @@ class _PostDeeShellState extends State<PostDeeShell> {
 
     try {
       final identityAlreadyDeleted = await checkAccountDeletionReady();
+      deletionSession.ensureCurrent();
       if (!identityAlreadyDeleted) {
-        await _accountAccessRevoker.revokeBeforeAccountDeletion();
+        await _authController.runBoundNativeAuthOperation(sessionBinding: deletionSession,
+          operation: _accountAccessRevoker.revokeBeforeAccountDeletion);
       }
+      deletionSession.ensureCurrent();
       await deleteAccount();
+      deletionSession.ensureCurrent();
       try {
         final deleteLocalPublishDrafts = await localDraftDeleterFuture;
+        deletionSession.ensureCurrent();
         await deleteLocalPublishDrafts?.call();
       } catch (_) {
         // The server account is already deleted. Continue signing out, but
@@ -575,24 +594,27 @@ class _PostDeeShellState extends State<PostDeeShell> {
         }
       }
 
-      if (!mounted) {
+      if (!mounted || !deletionSession.isCurrent) {
         return;
       }
 
       navigator.popUntil((route) => route.isFirst);
+      AuthSessionBinding? signedOutSession;
       try {
-        await _authController.signOut();
+        final signOut = _authController.signOut(sessionBinding: deletionSession);
+        signedOutSession = PostDeeAuthSessionStore.instance.captureSession();
+        await signOut;
       } catch (_) {
         // The controller always clears the local session in a finally block.
       }
-      if (!mounted) {
+      if (!mounted || signedOutSession?.isCurrent != true) {
         return;
       }
       // The auth change swaps the signed-in Scaffold for the login Scaffold.
       // Wait until that frame is mounted so the success toast attaches to the
       // screen the user actually lands on instead of the Scaffold being removed.
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) {
+      if (!mounted || signedOutSession?.isCurrent != true) {
         return;
       }
       showPostDeeUndoToast(
@@ -601,9 +623,13 @@ class _PostDeeShellState extends State<PostDeeShell> {
             ? 'ลบบัญชีแล้ว แต่ลบข้อมูลในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป'
             : 'ลบบัญชีและออกจากระบบแล้ว',
       );
+    } on AuthSessionChangedException {
+      // A late deletion result must not sign out or navigate a later account.
     } on AccountAccessRevocationException catch (error) {
+      if (!deletionSession.isCurrent || !mounted) return;
       messenger.showSnackBar(SnackBar(content: Text(error.message)));
     } on ApiException catch (error) {
+      if (!deletionSession.isCurrent || !mounted) return;
       final message = switch (error.code) {
         'ACCOUNT_DELETION_UNAVAILABLE' =>
           'ระบบลบบัญชียังไม่พร้อม กรุณาลองใหม่ภายหลัง',
@@ -623,6 +649,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
       };
       messenger.showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
+      if (!deletionSession.isCurrent || !mounted) return;
       messenger.showSnackBar(
         const SnackBar(content: Text('ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง')),
       );

@@ -18,6 +18,7 @@ import {
 } from './postStore.js';
 import { normalizePersistedPlatformSettings } from './platformSettings.js';
 import { normalizePersistedPlatformTargets } from './platformTargets.js';
+import { lockActiveOwner, runActiveOwnerTransaction, type PrismaOwnerLifecycleTransaction } from '../account/ownerLifecycle.js';
 
 type PrismaPostStatus =
   | 'DRAFT'
@@ -95,11 +96,13 @@ type PostDelegate = {
   findFirst: (args: { where: { id: string; userId?: string } }) => Promise<PrismaPost | null>;
 };
 
-export type PrismaPostClient = {
+type PrismaPostTransaction = PrismaOwnerLifecycleTransaction & {
   post: PostDelegate;
-  $transaction?: <Result>(
-    operation: (client: { post: PostDelegate }) => Promise<Result>,
-    options: { isolationLevel: 'Serializable' }
+};
+export type PrismaPostClient = PrismaPostTransaction & {
+  $transaction: <Result>(
+    operation: (client: PrismaPostTransaction) => Promise<Result>,
+    options: { isolationLevel: 'Serializable'; maxWait?: number; timeout?: number }
   ) => Promise<Result>;
 };
 
@@ -225,6 +228,7 @@ const createWithinMonthlyLimit = async (
     try {
       return await prisma.$transaction(
         async (transaction) => {
+          await lockActiveOwner(transaction, input.userId);
           if (input.clientRequestId) {
             const idempotencyKey = {
               userId: input.userId,
@@ -327,7 +331,8 @@ export const createPrismaPostRepository = ({
 
     return posts.map(mapPost);
   },
-  create: async (input: CreatePostInput) => createPost(prisma.post, input),
+  create: (input: CreatePostInput) => runActiveOwnerTransaction(prisma, input.userId,
+    (transaction) => createPost(transaction.post, input)),
   findIdempotent: async (input: FindIdempotentPostInput) => {
     const persisted = await prisma.post.findFirst({
       where: {
@@ -370,8 +375,8 @@ export const createPrismaPostRepository = ({
       }
     });
   },
-  reschedule: async ({ postId, userId, expectedScheduledAt, scheduledAt }) => {
-    const result = await prisma.post.updateMany({
+  reschedule: ({ postId, userId, expectedScheduledAt, scheduledAt }) => runActiveOwnerTransaction(prisma, userId, async (transaction) => {
+    const result = await transaction.post.updateMany({
       where: {
         id: postId,
         userId,
@@ -390,11 +395,11 @@ export const createPrismaPostRepository = ({
       return undefined;
     }
 
-    const post = await prisma.post.findFirst({ where: { id: postId } });
+    const post = await transaction.post.findFirst({ where: { id: postId } });
     return post ? mapPost(post) : undefined;
-  },
-  publishNow: async ({ postId, userId, expectedScheduledAt }) => {
-    const result = await prisma.post.updateMany({
+  }),
+  publishNow: ({ postId, userId, expectedScheduledAt }) => runActiveOwnerTransaction(prisma, userId, async (transaction) => {
+    const result = await transaction.post.updateMany({
       where: {
         id: postId,
         userId,
@@ -410,9 +415,9 @@ export const createPrismaPostRepository = ({
       return undefined;
     }
 
-    const post = await prisma.post.findFirst({ where: { id: postId, userId } });
+    const post = await transaction.post.findFirst({ where: { id: postId, userId } });
     return post ? mapPost(post) : undefined;
-  },
+  }),
   remove: async ({ postId, userId }) => {
     const result = await prisma.post.deleteMany({
       where: { id: postId, userId, status: 'QUEUED' }

@@ -3,17 +3,23 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../core/auth/auth_session.dart';
+import '../../core/config/app_config.dart';
 import '../../core/monitoring/postdee_analytics.dart';
 
 /// All local auth gateways represent the same development-only demo account.
 /// Keeping one stable ID mirrors Firebase phone linking and prevents local
 /// per-account data from changing scope when the mock sign-in method changes.
-const localMockAuthUserId = 'local-mock-user';
+const localMockAuthUserId = AppConfig.mockUserId != '' ? AppConfig.mockUserId : 'local-mock-user';
 
 abstract class GoogleAuthGateway {
   Future<AuthSession> signIn();
 
   Future<void> signOut();
+}
+
+/// The controller owns UI deadlines; this path retains actual SDK settlement.
+abstract interface class NativeGoogleAuthGateway {
+  Future<AuthSession> signInForNativeQueue({required void Function() ensureCurrent});
 }
 
 abstract class EmailAuthGateway {
@@ -131,6 +137,7 @@ class PostDeeAuthController extends ChangeNotifier {
   bool _isDisposed = false;
   int _signInAttempt = 0;
   Future<void>? _signOutFuture;
+  Future<void> _nativeAuthQueue = Future<void>.value();
   String? _errorMessage;
 
   AuthSession get session => _sessionStore.session;
@@ -170,7 +177,7 @@ class PostDeeAuthController extends ChangeNotifier {
       return false;
     }
     final current = _sessionStore.session;
-    _sessionStore.signIn(AuthSession(
+    _sessionStore.updateCredentials(AuthSession(
       userId: current.userId,
       idToken: refreshed!.idToken,
       email: refreshed!.email,
@@ -184,14 +191,28 @@ class PostDeeAuthController extends ChangeNotifier {
       Future<void> Function(EmailAccountRecoveryGateway) action) async {
     final gateway = _emailAuthGateway;
     if (_isDisposed || gateway is! EmailAccountRecoveryGateway) return false;
+    final binding = _sessionStore.captureSession();
+    var admissionExpired = false;
     _errorMessage = null;
     try {
-      await action(gateway as EmailAccountRecoveryGateway)
-          .timeout(_signInTimeout);
-      return !_isDisposed;
+      await _serializeNativeAuth(() async {
+        binding.ensureCurrent();
+        if (admissionExpired || _isDisposed) throw const AuthSessionChangedException();
+        await action(gateway as EmailAccountRecoveryGateway);
+        binding.ensureCurrent();
+      }).timeout(_signInTimeout);
+      return !_isDisposed && binding.isCurrent;
+    } on AuthSessionChangedException {
+      return false;
+    } on TimeoutException {
+      admissionExpired = true;
+      if (!binding.isCurrent || _isDisposed) return false;
+      _errorMessage = 'ดำเนินการใช้เวลานานเกินไป กรุณาลองใหม่';
     } on AuthUnavailableException catch (error) {
+      if (!binding.isCurrent || _isDisposed) return false;
       _errorMessage = error.message;
     } catch (_) {
+      if (!binding.isCurrent || _isDisposed) return false;
       _errorMessage = 'ดำเนินการไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
     }
     if (!_isDisposed) notifyListeners();
@@ -199,7 +220,8 @@ class PostDeeAuthController extends ChangeNotifier {
   }
 
   Future<void> signInWithGoogle() =>
-      _signInWith('google', _googleAuthGateway.signIn);
+      _signInWith('google', _googleAuthGateway.signIn,
+        nativeGoogleGateway: _googleAuthGateway is NativeGoogleAuthGateway ? _googleAuthGateway as NativeGoogleAuthGateway : null);
 
   Future<void> signInWithEmail({
     required String email,
@@ -220,13 +242,16 @@ class PostDeeAuthController extends ChangeNotifier {
 
   Future<void> _signInWith(
     String provider,
-    Future<AuthSession> Function() signIn,
-  ) async {
+    Future<AuthSession> Function() signIn, {
+    NativeGoogleAuthGateway? nativeGoogleGateway,
+  }) async {
     if (_isDisposed || _isSigningIn || _signOutFuture != null) {
       return;
     }
 
     final attempt = ++_signInAttempt;
+    final binding = _sessionStore.captureSession();
+    var admissionExpired = false;
     _isSigningIn = true;
     _errorMessage = null;
     notifyListeners();
@@ -237,12 +262,29 @@ class PostDeeAuthController extends ChangeNotifier {
     try {
       final timeout =
           provider == 'email' ? _signInTimeout : _interactiveSignInTimeout;
-      final signedInSession = await signIn().timeout(timeout);
+      final signedInSession = await _serializeNativeAuth(() async {
+        binding.ensureCurrent();
+        if (admissionExpired || !_isCurrentSignIn(attempt)) throw const AuthSessionChangedException();
+        // A UI timeout cannot cancel Firebase. Hold the native queue until the
+        // actual SDK future settles, then admit later login/logout/OTP work.
+        void ensureAdmission() {
+          binding.ensureCurrent();
+          if (admissionExpired || !_isCurrentSignIn(attempt)) throw const AuthSessionChangedException();
+        }
+        final session = await (nativeGoogleGateway != null
+            ? nativeGoogleGateway.signInForNativeQueue(ensureCurrent: ensureAdmission)
+            : signIn());
+        binding.ensureCurrent();
+        return session;
+      }).timeout(timeout);
       if (!_isCurrentSignIn(attempt)) return;
 
       _sessionStore.signIn(signedInSession);
       unawaited(_analytics.logSignInSucceeded(provider));
+    } on AuthSessionChangedException {
+      // A later session superseded this attempt while native work waited.
     } on TimeoutException {
+      admissionExpired = true;
       if (!_isCurrentSignIn(attempt)) return;
       _errorMessage = provider == 'google'
           ? 'Google ตอบกลับช้าเกินไป กรุณาลองใหม่ หรือเข้าสู่ระบบด้วยอีเมล'
@@ -276,25 +318,58 @@ class PostDeeAuthController extends ChangeNotifier {
   bool _isCurrentSignIn(int attempt) =>
       !_isDisposed && attempt == _signInAttempt;
 
-  Future<void> signOut() {
-    return _signOutFuture ??= _performSignOut().whenComplete(() {
-      _signOutFuture = null;
+  Future<void> runBoundNativeAuthOperation({
+    required AuthSessionBinding sessionBinding,
+    required Future<void> Function() operation,
+  }) async {
+    sessionBinding.ensureCurrent();
+    await _serializeNativeAuth(() async {
+      sessionBinding.ensureCurrent();
+      await operation();
+      sessionBinding.ensureCurrent();
     });
   }
 
-  Future<void> _performSignOut() async {
+  Future<T> _serializeNativeAuth<T>(Future<T> Function() operation) {
+    final result = _nativeAuthQueue.then((_) => operation());
+    _nativeAuthQueue = result.then<void>((_) {}, onError: (Object error, StackTrace stack) {});
+    return result;
+  }
+
+  Future<void> signOut({AuthSessionBinding? sessionBinding}) async {
+    sessionBinding?.ensureCurrent();
+    final pending = _signOutFuture;
+    if (pending != null) {
+      await pending;
+      return;
+    }
+    late final AuthSessionBinding signedOut;
+    late final Future<void> operation;
+    operation = _serializeNativeAuth(() => _signOutProviders(signedOut)).whenComplete(() {
+      if (identical(_signOutFuture, operation)) _signOutFuture = null;
+    });
+    _signOutFuture = operation;
     ++_signInAttempt;
+    _sessionStore.signOut();
+    _isSigningIn = false;
+    signedOut = _sessionStore.captureSession();
+    await operation;
+  }
+
+  Future<void> _signOutProviders(AuthSessionBinding signedOut) async {
+    if (!signedOut.isCurrent) return;
     try {
       await _googleAuthGateway.signOut();
     } finally {
       try {
-        await _appleAuthGateway.signOut();
+        if (signedOut.isCurrent) await _appleAuthGateway.signOut();
       } finally {
-        _sessionStore.signOut();
         unawaited(_analytics.logSignOut());
         _isSigningIn = false;
-        _errorMessage = null;
-        if (!_isDisposed) notifyListeners();
+        if (signedOut.isCurrent) {
+          _errorMessage = null;
+          if (!_isDisposed) notifyListeners();
+        }
       }
     }
   }

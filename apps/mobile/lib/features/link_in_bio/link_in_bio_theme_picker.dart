@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'link_in_bio_color_picker.dart' show BioOwnedModalScope;
 
 import '../../core/models/link_in_bio_appearance.dart';
 import '../../core/models/profile_template_catalog.generated.dart';
@@ -73,12 +74,16 @@ class _BioThemePickerState extends State<BioThemePicker> {
   }
 
   Future<void> _preview(ProfileTemplate template) async {
+    final ownership = BioOwnedModalScope.maybeOf(context);
     final candidate = bioApplyTemplate(widget.appearance, template.id);
     final result = await showModalBottomSheet<LinkInBioAppearance>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
-        builder: (context) => BioUiMotionScope(
+        builder: (context) {
+          final route = ModalRoute.of(context);
+          if (route != null) ownership?.onOpened(route);
+          return BioUiMotionScope(
             child: FractionallySizedBox(
                 heightFactor: .9,
                 child: Column(children: [
@@ -128,7 +133,8 @@ class _BioThemePickerState extends State<BioThemePicker> {
                                       onPressed: () =>
                                           Navigator.pop(context, candidate),
                                       child: const Text('ใช้แบบนี้')))))),
-                ]))));
+                ])));
+        });
     if (!mounted || result == null || !widget.enabled) return;
     widget.onChanged(result);
   }

@@ -22,6 +22,7 @@ import {
 import type { SubscriptionPlan, SubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import type { UserStore } from '../users/userStore.js';
 import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
+import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
 import {
   PostIdempotencyKeyReusedError,
   buildIdempotentPostId,
@@ -388,10 +389,10 @@ export const registerPostRoutes = (
     response: Parameters<RequestHandler>[1],
     error: unknown
   ) => {
-    if (!(error instanceof ManagedUploadServiceError)) {
+    if (!(error instanceof ManagedUploadServiceError) && !(error instanceof UploadSessionConflictError)) {
       return false;
     }
-    response.status(error.statusCode).json({
+    response.status(error instanceof UploadSessionConflictError ? 409 : error.statusCode).json({
       status: 'error',
       code: error.code,
       message: error.message
@@ -952,6 +953,7 @@ export const registerPostRoutes = (
               );
             }
           }
+          if (respondWithManagedUploadError(response, error)) return;
           console.error('Publish queue enqueue failed:', error);
           response.status(503).json({
             status: 'error',
@@ -1096,6 +1098,7 @@ export const registerPostRoutes = (
       try {
         await publishQueue.reschedule(post);
       } catch (error) {
+        if (respondWithManagedUploadError(response, error)) return;
         console.error('Publish queue reschedule failed:', error);
         try {
           if (originalScheduledAt === undefined) {
@@ -1194,6 +1197,7 @@ export const registerPostRoutes = (
       try {
         publishJob = await publishQueue.reschedule(post);
       } catch (error) {
+        if (respondWithManagedUploadError(response, error)) return;
         console.error('Publish-now queue transition failed:', error);
         try {
           await store.reschedule({

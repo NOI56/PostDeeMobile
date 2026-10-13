@@ -11,6 +11,7 @@ import '../../core/network/api_error_message.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'link_in_bio_appearance_editor.dart';
+import 'link_in_bio_color_picker.dart' show BioOwnedModalScope;
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_image_picker.dart';
 import 'link_in_bio_link_defaults.dart';
@@ -58,6 +59,7 @@ class LinkInBioScreen extends StatefulWidget {
     this.uploadImage,
     this.loadImage,
     this.protectDraftImages,
+    this.sessionStore,
   });
 
   final LinkInBioDraftStore? draftStore;
@@ -73,13 +75,18 @@ class LinkInBioScreen extends StatefulWidget {
   final LinkInBioImageUploader? uploadImage;
   final LinkInBioImageLoader? loadImage;
   final LinkInBioDraftImageProtector? protectDraftImages;
+  final PostDeeAuthSessionStore? sessionStore;
 
   @override
   State<LinkInBioScreen> createState() => _LinkInBioScreenState();
 }
 
 class _LinkInBioScreenState extends State<LinkInBioScreen> {
-  final _apiClient = PostDeeApiClient();
+  late final PostDeeApiClient _apiClient;
+  late final PostDeeAuthSessionStore _sessionStore;
+  late final AuthSessionBinding _screenSession;
+  final _ownedModals = <ModalRoute<dynamic>>{};
+  bool _modalOpening = false;
   final _scrollController = ScrollController();
   late final LinkInBioDraftStore _draftStore;
   late final String? _ownerUserId;
@@ -117,10 +124,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   Timer? _noticeTimer;
 
   bool get _ownerMatchesSession =>
-      _ownerUserId != null &&
-      PostDeeAuthSessionStore.instance.session.stableUserId == _ownerUserId;
+      _screenSession.isCurrent && _sessionStore.session.isSignedIn &&
+      _ownerUserId != null && _sessionStore.session.stableUserId == _ownerUserId;
   bool get _ownerStillCurrent => mounted && _ownerMatchesSession;
-  bool get _canEdit => !_isBusy;
+  bool get _canEdit => _ownerStillCurrent && !_isBusy;
   List<LinkInBioCustomLink> get _activeLinks =>
       _customLinks.where((link) => _enabledLinkIds.contains(link.id)).toList();
   LinkInBioDraft get _draft => LinkInBioDraft(
@@ -267,9 +274,13 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   @override
   void initState() {
     super.initState();
-    _ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
+    _sessionStore = widget.sessionStore ?? PostDeeAuthSessionStore.instance;
+    _screenSession = _sessionStore.captureSession();
+    _ownerUserId = _sessionStore.session.stableUserId;
+    _apiClient = PostDeeApiClient(sessionBinding: _screenSession);
+    _sessionStore.addListener(_handleSessionChanged);
     _draftStore = widget.draftStore ??
-        SharedPreferencesLinkInBioDraftStore(ownerUserId: _ownerUserId);
+        SharedPreferencesLinkInBioDraftStore(ownerUserId: _ownerUserId, sessionBinding: _screenSession);
     _storeNameController =
         TextEditingController(text: LinkInBioDraft.defaults().storeName);
     _slugController = TextEditingController();
@@ -285,6 +296,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   @override
   void dispose() {
+    _sessionStore.removeListener(_handleSessionChanged);
+    _closeOwnedModals();
     _storeNameController.dispose();
     _slugController.dispose();
     _descriptionController.dispose();
@@ -295,6 +308,64 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     _loadingImages.clear();
     _noticeTimer?.cancel();
     super.dispose();
+  }
+
+  Widget _ownedModal(BuildContext context, Widget child) {
+    final route = ModalRoute.of(context);
+    if (route != null) _recordModal(route);
+    return BioOwnedModalScope(onOpened: _recordModal, child: child);
+  }
+
+  void _recordModal(ModalRoute<dynamic> route) {
+    _ownedModals.add(route);
+    if (!mounted || !_screenSession.isCurrent) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (route.isActive) route.navigator?.removeRoute(route);
+        _ownedModals.remove(route);
+      });
+    }
+  }
+
+  Future<T?> _showOwnedModal<T>(Future<T?> Function() open) async {
+    if (!_canEdit || _modalOpening || _ownedModals.any((route) => route.isActive)) return null;
+    _modalOpening = true;
+    try {
+      return await open();
+    } finally {
+      _modalOpening = false;
+      _ownedModals.removeWhere((route) => !route.isActive);
+    }
+  }
+
+  void _closeOwnedModals() {
+    final routes = _ownedModals.toList().reversed.toList();
+    _ownedModals.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final route in routes) {
+        if (route.isActive) route.navigator?.removeRoute(route);
+      }
+    });
+  }
+
+  void _handleSessionChanged() {
+    if (_screenSession.isCurrent || !mounted) return;
+    _closeOwnedModals();
+    _noticeTimer?.cancel();
+    setState(() {
+      _storeNameController.text = LinkInBioDraft.defaults().storeName;
+      _slugController.clear();
+      _descriptionController.clear();
+      _customLinks = [];
+      _enabledLinkIds = {};
+      _appearance = const LinkInBioAppearance();
+      _images.clear();
+      _profile = null;
+      _hasLocalDraft = false;
+      _isLoading = false;
+      _isBusy = false;
+      _noticeMessage = null;
+      _errorMessage = 'บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าลิงก์ร้านอีกครั้ง';
+    });
   }
 
   void _applyDraft(LinkInBioDraft draft) {
@@ -371,12 +442,12 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   Future<void> _decorate() async {
     if (!_canEdit || _isLoading) return;
-    final value = await showModalBottomSheet<LinkInBioAppearance>(
+    final value = await _showOwnedModal(() => showModalBottomSheet<LinkInBioAppearance>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
         backgroundColor: Colors.transparent,
-        builder: (context) => LinkInBioAppearanceEditor(
+        builder: (context) => _ownedModal(context, LinkInBioAppearanceEditor(
             showThemePicker: false,
             appearance: _appearance,
             storeName: _storeNameController.text,
@@ -384,7 +455,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
             links: _activeLinks,
             images: _images,
             imageRevision: _imageRevision,
-            uploadImage: _uploadDraftImage));
+            uploadImage: _uploadDraftImage))));
     if (!_ownerStillCurrent || value == null) return;
     setState(() {
       _appearance = value;
@@ -675,7 +746,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     if (!_canEdit || _isLoading || _publicationUncertain) return;
     final confirmed = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => _ownedModal(context, AlertDialog(
               title: const Text('หยุดเผยแพร่หน้าโปรไฟล์?'),
               content: const Text(
                   'ลูกค้าจะเปิดลิงก์หน้านี้ไม่ได้จนกว่าจะเผยแพร่อีกครั้ง แบบร่างของคุณยังอยู่'),
@@ -688,7 +759,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                     onPressed: () => Navigator.pop(context, true),
                     child: const Text('หยุดเผยแพร่')),
               ],
-            ));
+            )));
     if (confirmed != true ||
         !_ownerStillCurrent ||
         !_canEdit ||
@@ -753,9 +824,9 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   void _preview() {
-    showDialog<void>(
+    unawaited(_showOwnedModal(() => showDialog<void>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => _ownedModal(context, AlertDialog(
               title: const Text('ตัวอย่างก่อนเผยแพร่'),
               content: SizedBox(
                   width: 360,
@@ -765,7 +836,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                     onPressed: () => Navigator.pop(context),
                     child: const Text('ปิดตัวอย่าง'))
               ],
-            ));
+            )))));
   }
 
   Future<void> _showAddLinkSheet() async {
@@ -784,12 +855,12 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   Future<LinkInBioCustomLink?> _linkSheet({LinkInBioCustomLink? initialLink}) =>
-      showModalBottomSheet<LinkInBioCustomLink>(
+      _showOwnedModal(() => showModalBottomSheet<LinkInBioCustomLink>(
           context: context,
           isScrollControlled: true,
           useSafeArea: true,
           backgroundColor: Colors.transparent,
-          builder: (context) => _AddLinkSheet(initialLink: initialLink));
+          builder: (context) => _ownedModal(context, _AddLinkSheet(initialLink: initialLink))));
 
   Future<void> _showEditLinkSheet(LinkInBioCustomLink existingLink) async {
     if (!_canEdit) return;
@@ -1269,7 +1340,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
             appearance: _appearance,
             child: _draftPreview()),
         const SizedBox(height: 16),
-        BioThemePicker(
+        BioOwnedModalScope(onOpened: _recordModal, child: BioThemePicker(
             appearance: _appearance,
             storeName: _storeNameController.text,
             slug: _slugController.text,
@@ -1281,8 +1352,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
             enabled: _canEdit && !_isLoading,
             onChanged: (value) => setState(() {
                   _appearance = value;
-                  _markEdited();
-                })),
+                    _markEdited();
+                  }))),
         const SizedBox(height: 16),
         BioUiPress(
             enabled: _canEdit && !_isLoading,

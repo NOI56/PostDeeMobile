@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/models/link_in_bio_appearance.dart';
 
 class LinkInBioCustomLink {
@@ -105,7 +106,9 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
   const SharedPreferencesLinkInBioDraftStore({
     SharedPreferences? preferences,
     this.ownerUserId,
-  }) : _preferences = preferences;
+    this.sessionBinding,
+    Future<SharedPreferences> Function()? preferencesLoader,
+  }) : _preferences = preferences, _preferencesLoader = preferencesLoader;
 
   static const storeNameKey = 'postdee_link_in_bio.store_name';
   static const slugKey = 'postdee_link_in_bio.slug';
@@ -115,6 +118,8 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
 
   final SharedPreferences? _preferences;
   final String? ownerUserId;
+  final AuthSessionBinding? sessionBinding;
+  final Future<SharedPreferences> Function()? _preferencesLoader;
 
   String? get _ownedKey {
     final owner = ownerUserId?.trim();
@@ -124,17 +129,21 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
   }
 
   Future<SharedPreferences> get _activePreferences async =>
-      _preferences ?? SharedPreferences.getInstance();
+      _preferences ?? await (_preferencesLoader ?? SharedPreferences.getInstance)();
 
   @override
   Future<LinkInBioDraft?> loadDraft() async {
+    sessionBinding?.ensureCurrent();
     final key = _ownedKey;
     if (key == null) return null;
     final preferences = await _activePreferences;
+    sessionBinding?.ensureCurrent();
     final raw = preferences.getString(key);
     if (raw == null) return null;
     try {
       final json = jsonDecode(raw) as Map<String, dynamic>;
+      // Earlier owned drafts have no envelope, but already have a proven UID key.
+      if (json.containsKey('version') && (json['version'] != 1 || json['ownerUserId'] != ownerUserId?.trim())) return null;
       return LinkInBioDraft(
         storeName: json['storeName'] as String,
         slug: json['slug'] as String,
@@ -154,13 +163,17 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
 
   @override
   Future<void> saveDraft(LinkInBioDraft draft) async {
+    sessionBinding?.ensureCurrent();
     final preferences = await _activePreferences;
+    sessionBinding?.ensureCurrent();
     final key = _ownedKey;
     if (key == null) throw StateError('Link in Bio draft requires an owner');
     final enabledLinkIds = draft.enabledLinkIds.toList()..sort();
     final saved = await preferences.setString(
         key,
         jsonEncode({
+          'version': 1,
+          'ownerUserId': ownerUserId?.trim(),
           'storeName': draft.storeName,
           'slug': draft.slug,
           'enabledLinkIds': enabledLinkIds,
@@ -170,6 +183,7 @@ class SharedPreferencesLinkInBioDraftStore implements LinkInBioDraftStore {
           'appearance': draft.appearance.toJson(),
         }));
     if (!saved) throw StateError('Link in Bio draft could not be saved');
+    sessionBinding?.ensureCurrent();
   }
 
   Future<void> clearDraft() async {

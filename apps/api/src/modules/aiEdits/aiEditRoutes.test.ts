@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
+import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 import { createMockVideoStorage } from '../storage/videoStorage.js';
 
 const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
@@ -42,7 +43,7 @@ describe('ai edit routes', () => {
         DATABASE_URL: 'postgresql://postdee:postdee_password@localhost:5432/postdee',
         AI_EDIT_USAGE_STORE: 'prisma'
       }),
-      prisma: prisma as never,
+      prisma: withOwnerLifecycleFixture(prisma) as never,
       transcriptionProvider: {
         transcribe: vi.fn(async () => ({
           text: 'trusted transcript',

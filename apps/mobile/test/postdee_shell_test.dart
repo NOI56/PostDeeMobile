@@ -25,6 +25,8 @@ import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
 import 'package:postdee_mobile/features/legal/legal_document_screen.dart';
 import 'package:postdee_mobile/features/templates/templates_screen.dart';
+import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
+import 'package:postdee_mobile/features/notifications/push_notification.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
@@ -1019,6 +1021,62 @@ void main() {
             .widget<LegalDocumentScreen>(find.byType(LegalDocumentScreen))
             .document,
         PostDeeLegalDocuments.privacyPolicy);
+  });
+  testWidgets('a fresh sign-in for the same owner rebuilds the shop screen', (tester) async {
+    final language = _signInShell();
+    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language)));
+    await tester.pumpAndSettle();
+    final before = tester.state(find.byType(LinkInBioScreen));
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'firebase-user-shell', idToken: 'new-token'));
+    await tester.pumpAndSettle();
+    expect(identical(tester.state(find.byType(LinkInBioScreen)), before), isFalse);
+  });
+
+  testWidgets('a late bell initialization cannot open notifications for a later account', (tester) async {
+    final language = _signInShell();
+    final ready = Completer<void>();
+    final gateway = _FakePushMessagingGateway()..initialization = ready.future;
+    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language, pushMessagingGateway: gateway)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Notifications'));
+    await tester.pump();
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'b', idToken: 'b'));
+    ready.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('การแจ้งเตือน'), findsNothing);
+  });
+
+  testWidgets('account transitions clear the shared notification history', (tester) async {
+    final language = _signInShell();
+    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language)));
+    await tester.pumpAndSettle();
+    PostDeeNotificationCenter.instance.add(PostDeeNotification(title: 'private A', body: 'body', receivedAt: DateTime(2026)));
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'b', idToken: 'b'));
+    expect(PostDeeNotificationCenter.instance.items, isEmpty);
+  });
+
+  testWidgets('late account deletion cannot sign out a replacement account', (tester) async {
+    final language = _signInShell();
+    final deleted = Completer<void>();
+    var cleanupCalls = 0;
+    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language,
+      checkAccountDeletionReady: () async => true, deleteAccount: () => deleted.future,
+      deleteLocalPublishDrafts: () async { cleanupCalls++; })));
+    await tester.pumpAndSettle();
+    await tester.tap(_referenceNavButton('Account'));
+    await tester.pumpAndSettle();
+    final button = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    await tester.scrollUntilVisible(button, 400, scrollable: find.byType(Scrollable).first);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'ลบบัญชีถาวร')).onPressed!();
+    await tester.pump();
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'b', idToken: 'b'));
+    deleted.complete();
+    await tester.pumpAndSettle();
+    expect(PostDeeAuthSessionStore.instance.session.userId, 'b');
+    expect(cleanupCalls, 0);
+    expect(find.text('ลบบัญชีและออกจากระบบแล้ว'), findsNothing);
   });
   testWidgets('opens one full screen composer without a hidden uploader',
       (tester) async {
@@ -3094,9 +3152,13 @@ class _RecordingAccountAccessRevoker implements AccountAccessRevoker {
 
 class _FakePushMessagingGateway implements PushMessagingGateway {
   int initializeCalls = 0;
+  Future<void>? initialization;
 
   @override
-  Future<void> initialize() async => initializeCalls += 1;
+  Future<void> initialize() async {
+    initializeCalls += 1;
+    await initialization;
+  }
 
   @override
   Future<void> dispose() async {}

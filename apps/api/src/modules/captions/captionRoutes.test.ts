@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
 import { createInMemoryRealClipCaptionUsageStore } from './captionUsageStore.js';
+import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 
 const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
   `uploads/${userId}/${uploadId}/${fileName}`;
@@ -78,7 +79,7 @@ describe('caption routes', () => {
       })
     };
     const appWithPrismaUser = createApp({
-      prisma: {
+      prisma: withOwnerLifecycleFixture({
         user: {
           findUnique: vi.fn(),
           upsert: vi.fn(async () => {
@@ -93,7 +94,7 @@ describe('caption routes', () => {
             };
           })
         }
-      } as never,
+      }) as never,
       realClipCaptionUsageStore: usageStore
     });
 

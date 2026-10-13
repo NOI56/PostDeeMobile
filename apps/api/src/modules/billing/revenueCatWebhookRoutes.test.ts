@@ -8,6 +8,7 @@ import { createOwnerMutationLock } from '../account/ownerMutationLock.js';
 import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import { createUserStore } from '../users/userStore.js';
 import { registerRevenueCatWebhookRoutes } from './revenueCatWebhookRoutes.js';
+import { createInMemoryUploadSessionStore } from '../uploads/uploadSessionStore.js';
 
 const revenueCatToken = 'revenuecat-webhook-token';
 
@@ -60,6 +61,25 @@ const createKnownUser = (app: ReturnType<typeof createRevenueCatApp>, userId: st
     .expect(200);
 
 describe('RevenueCat webhooks', () => {
+  it('acknowledges a final-write tombstone even when the process coordinator still sees an active owner', async () => {
+    const app = express();
+    const router = express.Router();
+    const owners = createInMemoryUploadSessionStore();
+    const userStore = createUserStore();
+    await userStore.ensure({ id: 'owner-remote-deleted', provider: 'firebase' });
+    const subscriptionStore = createSubscriptionStore({ runWithActiveOwner: owners.runWithActiveOwner });
+    await owners.beginOwnerDeletion('owner-remote-deleted');
+    app.use(express.json());
+    registerRevenueCatWebhookRoutes({ router, userStore, subscriptionStore,
+      config: readServerConfig({ BILLING_PROVIDER: 'revenuecat', REVENUECAT_WEBHOOK_AUTH_TOKEN: revenueCatToken }) });
+    app.use(router);
+    await request(app).post('/billing/revenuecat/webhooks').set('Authorization', `Bearer ${revenueCatToken}`)
+      .send({ event: { id: 'event-remote-deleted', event_timestamp_ms: 1, type: 'RENEWAL',
+        app_user_id: 'owner-remote-deleted', entitlement_ids: ['pro'], product_id: 'postdee_pro_monthly' } })
+      .expect(202).expect(({ body }) => { expect(body.code).toBe('REVENUECAT_USER_NOT_FOUND'); });
+    await expect(subscriptionStore.getPlan({ id: 'owner-remote-deleted', provider: 'firebase' })).resolves.toBe('BASIC');
+  });
+
   it('acknowledges an actionable event without mutating after account deletion seals the owner', async () => {
     const app = express();
     const router = express.Router();

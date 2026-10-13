@@ -77,6 +77,19 @@ const _googleSession =
     AuthSession(userId: 'google-user', idToken: 'google-token');
 
 void main() {
+  test('email verification refresh preserves the existing authentication binding', () async {
+    final gateway = _RecoveryEmailGateway();
+    final store = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'owner', idToken: 'old-token'));
+    final controller = PostDeeAuthController(emailAuthGateway: gateway, sessionStore: store);
+    addTearDown(controller.dispose);
+    final binding = store.captureSession();
+    final refresh = controller.refreshEmailVerification();
+    gateway.refresh.complete(const AuthSession(userId: 'owner', idToken: 'fresh-token', emailVerified: true));
+    expect(await refresh, isTrue);
+    expect(binding.isCurrent, isTrue);
+    expect(store.session.emailVerified, isTrue);
+  });
+
   test('email recovery validates input and uses the existing gateway',
       () async {
     final gateway = _RecoveryEmailGateway();
@@ -104,6 +117,61 @@ void main() {
     expect(store.session.userId, 'other');
     expect(store.session.emailVerified, isFalse);
   });
+  testWidgets('a timed-out login retains the native gate until SDK settlement', (tester) async {
+    final gateway = _ControlledGoogleGateway();
+    final store = PostDeeAuthSessionStore(initialSession: _googleSession);
+    final controller = PostDeeAuthController(googleAuthGateway: gateway, sessionStore: store, interactiveSignInTimeout: const Duration(seconds: 1));
+    addTearDown(controller.dispose);
+    final login = controller.signInWithGoogle();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    await login;
+    expect(controller.isSigningIn, isFalse);
+    var dispatched = false;
+    final next = controller.runBoundNativeAuthOperation(sessionBinding: store.captureSession(), operation: () async { dispatched = true; });
+    await tester.pump();
+    expect(dispatched, isFalse);
+    gateway.requests.single.complete(_googleSession);
+    await tester.pump();
+    await next;
+    expect(dispatched, isTrue);
+  });
+
+  test('sign-out invalidates the session before queued native work completes', () async {
+    final store = PostDeeAuthSessionStore(initialSession: _googleSession);
+    final gateway = _ControlledSignOutGateway();
+    final controller = PostDeeAuthController(googleAuthGateway: gateway, sessionStore: store);
+    addTearDown(controller.dispose);
+    final release = Completer<void>();
+    final entered = Completer<void>();
+    final binding = store.captureSession();
+    final native = controller.runBoundNativeAuthOperation(sessionBinding: binding, operation: () async {
+      entered.complete();
+      await release.future;
+    });
+    final nativeRejected = expectLater(native, throwsA(isA<AuthSessionChangedException>()));
+    await entered.future;
+    final signOut = controller.signOut();
+    expect(store.session.isSignedIn, isFalse);
+    expect(binding.isCurrent, isFalse);
+    expect(gateway.signOutCalls, 0);
+    release.complete();
+    await nativeRejected;
+    await Future<void>.delayed(Duration.zero);
+    expect(gateway.signOutCalls, 1);
+    gateway.signOutRequest.complete();
+    await signOut;
+  });
+
+  test('stale account-bound sign-out cannot clear a later account', () async {
+    final store = PostDeeAuthSessionStore(initialSession: _googleSession);
+    final controller = PostDeeAuthController(sessionStore: store);
+    addTearDown(controller.dispose);
+    final binding = store.captureSession();
+    store.signIn(const AuthSession(userId: 'next', idToken: 'next-token'));
+    await expectLater(controller.signOut(sessionBinding: binding), throwsA(isA<AuthSessionChangedException>()));
+    expect(store.session.userId, 'next');
+  });
   testWidgets('email login stops waiting after thirty seconds', (tester) async {
     final gateway = _StalledEmailGateway();
     final controller = PostDeeAuthController(
@@ -125,7 +193,7 @@ void main() {
     await login;
   });
 
-  testWidgets('releases a stalled Google login and permits an email retry',
+  testWidgets('releases the stalled login UI while retry waits for native completion',
       (tester) async {
     final gateway = _ControlledGoogleGateway();
     final store = PostDeeAuthSessionStore();
@@ -148,17 +216,18 @@ void main() {
     expect(store.session.isSignedIn, isFalse);
     await login;
 
-    await controller.signInWithEmail(
+    final retry = controller.signInWithEmail(
       email: 'seller@example.com',
       password: 'test-password',
       createAccount: false,
     );
-    expect(store.session.userId, 'email-user');
-    expect(controller.errorMessage, isNull);
-
+    await tester.pump();
+    expect(store.session.isSignedIn, isFalse);
     gateway.requests.single.complete(_googleSession);
     await tester.pump();
+    await retry;
     expect(store.session.userId, 'email-user');
+    expect(controller.errorMessage, isNull);
   });
 
   testWidgets('analytics that never returns cannot block login success',
@@ -286,9 +355,11 @@ void main() {
 
     final login = controller.signInWithGoogle();
     await tester.pump();
-    await controller.signOut();
+    final logout = controller.signOut();
+    expect(store.session.isSignedIn, isFalse);
     gateway.requests.single.complete(_googleSession);
     await tester.pump();
+    await logout;
     await login;
     expect(store.session.isSignedIn, isFalse);
     expect(controller.isSigningIn, isFalse);
@@ -319,7 +390,7 @@ void main() {
       password: 'test-password',
       createAccount: false,
     );
-    expect(store.session.userId, 'google-user');
+    expect(store.session.isSignedIn, isFalse);
 
     gateway.signOutRequest.complete();
     await tester.pump();

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createPrismaUserRepository } from './prismaUserRepository.js';
+import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 
 describe('createPrismaUserRepository', () => {
   it('upserts Firebase users by auth user id', async () => {
@@ -18,7 +19,7 @@ describe('createPrismaUserRepository', () => {
         })
       }
     };
-    const repository = createPrismaUserRepository({ prisma });
+    const repository = createPrismaUserRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     expect(
       await repository.ensure({
@@ -65,7 +66,7 @@ describe('createPrismaUserRepository', () => {
         })
       }
     };
-    const repository = createPrismaUserRepository({ prisma });
+    const repository = createPrismaUserRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await repository.ensure({
       id: 'seller-a',
@@ -97,7 +98,7 @@ describe('createPrismaUserRepository', () => {
         upsert: vi.fn()
       }
     };
-    const repository = createPrismaUserRepository({ prisma });
+    const repository = createPrismaUserRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(repository.exists('firebase-user-1')).resolves.toBe(true);
     await expect(repository.exists('deleted-user')).resolves.toBe(false);

@@ -47,7 +47,7 @@ abstract class FirebaseAuthClient {
   Future<void> signOut();
 }
 
-class FirebaseGoogleAuthGateway implements GoogleAuthGateway {
+class FirebaseGoogleAuthGateway implements GoogleAuthGateway, NativeGoogleAuthGateway {
   const FirebaseGoogleAuthGateway({
     required GoogleIdentityClient googleClient,
     required FirebaseAuthClient firebaseAuthClient,
@@ -62,13 +62,22 @@ class FirebaseGoogleAuthGateway implements GoogleAuthGateway {
   final Duration firebaseSignInTimeout;
 
   @override
-  Future<AuthSession> signIn() async {
+  Future<AuthSession> signIn() => _signIn(applyTimeouts: true);
+
+  @override
+  Future<AuthSession> signInForNativeQueue({required void Function() ensureCurrent}) =>
+      _signIn(applyTimeouts: false, ensureCurrent: ensureCurrent);
+
+  Future<AuthSession> _signIn({required bool applyTimeouts, void Function()? ensureCurrent}) async {
     final GoogleAccountSnapshot googleAccount;
 
     try {
+      ensureCurrent?.call();
       // Cover initialization and the native account picker together. A result
       // arriving after this deadline must not start a Firebase sign-in.
-      googleAccount = await _googleClient.signIn().timeout(googleSignInTimeout);
+      final picking = _googleClient.signIn();
+      googleAccount = await (applyTimeouts ? picking.timeout(googleSignInTimeout) : picking);
+      ensureCurrent?.call();
     } on GoogleSignInException catch (error) {
       throw AuthUnavailableException(_describeGoogleSignInFailure(error));
     }
@@ -82,9 +91,10 @@ class FirebaseGoogleAuthGateway implements GoogleAuthGateway {
 
     // The client includes both the credential exchange and fetching an ID
     // token. The SDK request itself cannot be cancelled by Future.timeout.
-    final firebaseUser = await _firebaseAuthClient
-        .signInWithGoogleIdToken(googleIdToken)
-        .timeout(firebaseSignInTimeout);
+    ensureCurrent?.call();
+    final signingIn = _firebaseAuthClient.signInWithGoogleIdToken(googleIdToken);
+    final firebaseUser = await (applyTimeouts ? signingIn.timeout(firebaseSignInTimeout) : signingIn);
+    ensureCurrent?.call();
 
     return AuthSession.authenticated(
       userId: firebaseUser.userId,

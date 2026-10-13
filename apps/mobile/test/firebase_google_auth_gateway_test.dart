@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/auth/firebase_bootstrap.dart';
 import 'package:postdee_mobile/features/auth/auth_controller.dart';
 import 'package:postdee_mobile/features/auth/firebase_google_auth_gateway.dart';
@@ -51,6 +52,7 @@ class FakeFirebaseAuthClient implements FirebaseAuthClient {
 
 class PendingGoogleIdentityClient implements GoogleIdentityClient {
   final requests = <Completer<GoogleAccountSnapshot>>[];
+  int signOutCalls = 0;
 
   @override
   Future<GoogleAccountSnapshot> signIn() {
@@ -60,12 +62,13 @@ class PendingGoogleIdentityClient implements GoogleIdentityClient {
   }
 
   @override
-  Future<void> signOut() async {}
+  Future<void> signOut() async { signOutCalls++; }
 }
 
 class PendingFirebaseAuthClient implements FirebaseAuthClient {
   final requests = <Completer<FirebaseUserSnapshot>>[];
   final googleIdTokens = <String>[];
+  int signOutCalls = 0;
 
   @override
   Future<FirebaseUserSnapshot> signInWithGoogleIdToken(String googleIdToken) {
@@ -76,10 +79,46 @@ class PendingFirebaseAuthClient implements FirebaseAuthClient {
   }
 
   @override
-  Future<void> signOut() async {}
+  Future<void> signOut() async { signOutCalls++; }
 }
 
 void main() {
+  for (final stage in ['picker', 'firebase']) {
+    testWidgets('controller logout waits for actual Google $stage settlement after UI timeout', (tester) async {
+      final google = PendingGoogleIdentityClient();
+      final firebase = PendingFirebaseAuthClient();
+      final gateway = FirebaseGoogleAuthGateway(googleClient: google, firebaseAuthClient: firebase,
+        googleSignInTimeout: const Duration(seconds: 1), firebaseSignInTimeout: const Duration(seconds: 1));
+      final store = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'owner', idToken: 'owner-token'));
+      final controller = PostDeeAuthController(googleAuthGateway: gateway, sessionStore: store, interactiveSignInTimeout: const Duration(seconds: 1));
+      addTearDown(controller.dispose);
+      final login = controller.signInWithGoogle();
+      await tester.pump();
+      if (stage == 'firebase') {
+        google.requests.single.complete(const GoogleAccountSnapshot(idToken: 'google-token'));
+        await tester.pump();
+        expect(firebase.requests, hasLength(1));
+      }
+      await tester.pump(const Duration(seconds: 2));
+      await login;
+      final logout = controller.signOut();
+      await tester.pump();
+      expect(google.signOutCalls, 0);
+      expect(firebase.signOutCalls, 0);
+      if (stage == 'picker') {
+        google.requests.single.complete(const GoogleAccountSnapshot(idToken: 'late-google-token'));
+      } else {
+        firebase.requests.single.complete(const FirebaseUserSnapshot(userId: 'owner', idToken: 'fresh-token'));
+      }
+      await tester.pump();
+      await logout;
+      if (stage == 'picker') expect(firebase.requests, isEmpty);
+      expect(google.signOutCalls, 1);
+      expect(firebase.signOutCalls, 1);
+      expect(store.session.isSignedIn, isFalse);
+    });
+  }
+
   testWidgets('times out when Google identity never responds', (tester) async {
     const timeout = Duration(seconds: 2);
     final googleClient = PendingGoogleIdentityClient();

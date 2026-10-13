@@ -60,7 +60,7 @@ const postStore = createPostStoreFromConfig({
   prisma: prisma as unknown as PrismaPostClient | undefined
 });
 const uploadSessionStore =
-  prisma && config.uploadProtocolMode !== 'legacy'
+  prisma
     ? createPrismaUploadSessionRepository({
         prisma: prisma as unknown as PrismaUploadSessionClient
       })

@@ -1,4 +1,5 @@
 import type { AuthUser } from '../auth/authTypes.js';
+import { runActiveOwnerTransaction, type PrismaOwnerLifecycleTransaction } from '../account/ownerLifecycle.js';
 import {
   type ApplyRevenueCatEventInput,
   type ApplyRevenueCatEventResult,
@@ -89,7 +90,7 @@ type RevenueCatUserDelegate = {
   }) => Promise<{ id: string }>;
 };
 
-type PrismaSubscriptionTransaction = {
+type PrismaSubscriptionTransaction = PrismaOwnerLifecycleTransaction & {
   subscription: SubscriptionDelegate;
   user: RevenueCatUserDelegate;
 };
@@ -109,27 +110,6 @@ const readErrorCode = (error: unknown) =>
   error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
     ? error.code
     : undefined;
-
-const runSerializable = async <T>(
-  prisma: PrismaSubscriptionClient,
-  action: (transaction: PrismaSubscriptionTransaction) => Promise<T>
-) => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await prisma.$transaction(action, {
-        isolationLevel: 'Serializable',
-        maxWait: 5_000,
-        timeout: 10_000
-      });
-    } catch (error) {
-      if (readErrorCode(error) !== 'P2034' || attempt === 2) {
-        throw error;
-      }
-    }
-  }
-
-  throw new Error('Serializable RevenueCat transaction retry was exhausted');
-};
 
 export const createPrismaSubscriptionRepository = ({
   prisma
@@ -192,7 +172,7 @@ export const createPrismaSubscriptionRepository = ({
   const applyRevenueCatEvent = (
     input: ApplyRevenueCatEventInput
   ): Promise<ApplyRevenueCatEventResult> =>
-    runSerializable(prisma, async (transaction) => {
+    runActiveOwnerTransaction(prisma, input.authUser.id, async (transaction) => {
       const storedCursor = await transaction.user.findUnique({
         where: { id: input.authUser.id },
         select: {
@@ -311,12 +291,12 @@ export const createPrismaSubscriptionRepository = ({
 
       return 'BASIC';
     },
-    activatePlan: async (authUser: AuthUser, plan, options = {}) => {
+    activatePlan: (authUser: AuthUser, plan, options = {}) => runActiveOwnerTransaction(prisma, authUser.id, async (transaction) => {
       const activationData = buildActivationData({
         plan,
         ...options
       });
-      const subscription = await prisma.subscription.upsert({
+      const subscription = await transaction.subscription.upsert({
         where: { userId: authUser.id },
         update: activationData,
         create: {
@@ -327,13 +307,13 @@ export const createPrismaSubscriptionRepository = ({
       });
 
       return mapSubscription(subscription);
-    },
-    activatePro: async (authUser: AuthUser, options = {}) => {
+    }),
+    activatePro: (authUser: AuthUser, options = {}) => runActiveOwnerTransaction(prisma, authUser.id, async (transaction) => {
       const activationData = buildActivationData({
         plan: 'PRO',
         ...options
       });
-      const subscription = await prisma.subscription.upsert({
+      const subscription = await transaction.subscription.upsert({
         where: { userId: authUser.id },
         update: activationData,
         create: {
@@ -344,7 +324,7 @@ export const createPrismaSubscriptionRepository = ({
       });
 
       return mapSubscription(subscription);
-    },
+    }),
     updateStatusByBillingSubscriptionId: async ({ billingSubscriptionId, status }) => {
       try {
         const subscription = await prisma.subscription.update({

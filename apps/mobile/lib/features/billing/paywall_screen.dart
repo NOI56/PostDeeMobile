@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'store_subscription_service.dart';
@@ -43,6 +45,7 @@ class PaywallScreen extends StatefulWidget {
     this.service,
     this.loadSubscription,
     this.sessionCache,
+    this.sessionStore,
   });
 
   /// Called with the chosen plan id after a verified purchase.
@@ -55,15 +58,20 @@ class PaywallScreen extends StatefulWidget {
   /// Injectable for tests; defaults to the real backend.
   final PaywallSubscriptionLoader? loadSubscription;
   final StoreSubscriptionSessionCache? sessionCache;
+  final PostDeeAuthSessionStore? sessionStore;
 
   @override
   State<PaywallScreen> createState() => _PaywallScreenState();
 }
 
 class _PaywallScreenState extends State<PaywallScreen> {
+  late final _sessionStore =
+      widget.sessionStore ?? PostDeeAuthSessionStore.instance;
+  late final _screenBinding = _sessionStore.captureSession();
   late final StoreSubscriptionService _service = widget.service ??
       (widget.sessionCache ?? StoreSubscriptionSessionCache.instance).service;
-  final _apiClient = PostDeeApiClient();
+  late final _apiClient = PostDeeApiClient(sessionBinding: _screenBinding);
+  final _ownedDialogs = <DialogRoute<void>>{};
   SubscriptionStatusResult? _subscription;
   var _isSubscriptionLoading = true;
   Object? _subscriptionLoadError;
@@ -78,22 +86,25 @@ class _PaywallScreenState extends State<PaywallScreen> {
   @override
   void initState() {
     super.initState();
+    _screenBinding.ensureCurrent();
+    _sessionStore.addListener(_handleSessionChanged);
     _loadSubscription();
     _loadPrices();
   }
 
   Future<void> _loadPrices() async {
+    if (!_screenBinding.isCurrent) return;
     final generation = ++_priceLoadGeneration;
     _priceTimer?.cancel();
     setState(() { _isPriceLoading = true; _priceLoadFailed = false; });
     _priceTimer = Timer(_service.productQueryTimeout, () {
-      if (!mounted || generation != _priceLoadGeneration) return;
+      if (!_canUpdateScreen || generation != _priceLoadGeneration) return;
       _priceLoadGeneration++;
       setState(() { _isPriceLoading = false; _priceLoadFailed = true; });
     });
     try {
       final products = await _service.loadPaidProducts();
-      if (!mounted || generation != _priceLoadGeneration) return;
+      if (!_canUpdateScreen || generation != _priceLoadGeneration) return;
       _priceTimer?.cancel();
       setState(() {
         _products..clear()..addEntries(products.map((product) => MapEntry(product.id, product)));
@@ -101,7 +112,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         _priceLoadFailed = products.isEmpty;
       });
     } catch (_) {
-      if (!mounted || generation != _priceLoadGeneration) return;
+      if (!_canUpdateScreen || generation != _priceLoadGeneration) return;
       _priceTimer?.cancel();
       setState(() { _isPriceLoading = false; _priceLoadFailed = true; });
     }
@@ -109,8 +120,17 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
   @override
   void dispose() {
+    _sessionStore.removeListener(_handleSessionChanged);
+    _subscriptionLoadGeneration++;
     _priceLoadGeneration++;
     _priceTimer?.cancel();
+    final ownedDialogs = _ownedDialogs.toList();
+    _ownedDialogs.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final route in ownedDialogs) {
+        _removeOwnedRoute(route);
+      }
+    });
     super.dispose();
   }
 
@@ -121,6 +141,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Future<void> _loadSubscription() async {
+    if (!_screenBinding.isCurrent) return;
     final loadGeneration = ++_subscriptionLoadGeneration;
 
     setState(() {
@@ -133,7 +154,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
       final subscription = await loader();
 
-      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
+      if (!_canUpdateScreen || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -143,7 +164,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         _subscriptionLoadError = null;
       });
     } catch (error) {
-      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
+      if (!_canUpdateScreen || loadGeneration != _subscriptionLoadGeneration) {
         return;
       }
 
@@ -155,12 +176,87 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   void _applyVerifiedSubscription(SubscriptionStatusResult subscription) {
+    if (!_canUpdateScreen) return;
     _subscriptionLoadGeneration += 1;
     setState(() {
       _subscription = subscription;
       _isSubscriptionLoading = false;
       _subscriptionLoadError = null;
     });
+  }
+
+  bool get _canUpdateScreen => mounted && _screenBinding.isCurrent;
+
+  void _handleSessionChanged() {
+    if (_screenBinding.isCurrent || !mounted) return;
+    _subscriptionLoadGeneration++;
+    _priceLoadGeneration++;
+    _priceTimer?.cancel();
+    for (final route in _ownedDialogs.toList()) {
+      _closeOwnedDialog(route);
+    }
+    setState(() {
+      _subscription = null;
+      _subscriptionLoadError = const AuthSessionChangedException();
+      _isSubscriptionLoading = false;
+      _products.clear();
+      _isPriceLoading = false;
+      _priceLoadFailed = false;
+      _isBillingInProgress = false;
+    });
+  }
+
+  DialogRoute<void> _showOwnedDialog(WidgetBuilder builder,
+      {bool barrierDismissible = true}) {
+    final route = DialogRoute<void>(
+      context: context,
+      barrierDismissible: barrierDismissible,
+      builder: builder,
+    );
+    _ownedDialogs.add(route);
+    unawaited(Navigator.of(context, rootNavigator: true).push(route).then<void>(
+      (_) => _ownedDialogs.remove(route),
+      onError: (Object _, StackTrace __) => _ownedDialogs.remove(route),
+    ));
+    return route;
+  }
+
+  static void _removeOwnedRoute(DialogRoute<void> route) {
+    final navigator = route.navigator;
+    if (navigator != null && navigator.mounted && route.isActive) {
+      navigator.removeRoute(route);
+    }
+  }
+
+  void _closeOwnedDialog(DialogRoute<void> route) {
+    _ownedDialogs.remove(route);
+    final phase = WidgetsBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.transientCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _removeOwnedRoute(route));
+    } else {
+      _removeOwnedRoute(route);
+    }
+  }
+
+  DialogRoute<void> _showProgress(String message) => _showOwnedDialog(
+        (_) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            backgroundColor: AppTheme.charcoal,
+            content: Row(children: [
+              const CircularProgressIndicator(color: AppTheme.accent),
+              const SizedBox(width: AppTheme.spaceLg),
+              Expanded(child: Text(message)),
+            ]),
+          ),
+        ),
+        barrierDismissible: false,
+      );
+
+  void _showBillingError(String message) {
+    if (!_canUpdateScreen) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   // Maps a backend plan code (e.g. PRO, FREE) to a paywall card id.
@@ -219,7 +315,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Future<void> _subscribe(_PlanOption plan) async {
-    if (plan.id == 'basic' ||
+    if (!_canUpdateScreen ||
+        plan.id == 'basic' ||
         _isBillingInProgress ||
         _isSubscriptionLoading ||
         _subscriptionLoadError != null ||
@@ -229,158 +326,89 @@ class _PaywallScreenState extends State<PaywallScreen> {
     }
 
     setState(() => _isBillingInProgress = true);
-    final messenger = ScaffoldMessenger.of(context);
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          backgroundColor: AppTheme.charcoal,
-          content: const Row(
-            children: [
-              CircularProgressIndicator(color: AppTheme.accent),
-              SizedBox(width: AppTheme.spaceLg),
-              Expanded(child: Text('กำลังดำเนินการสั่งซื้อ...')),
-            ],
-          ),
-        ),
-      ),
-    );
+    final progress = _showProgress('กำลังดำเนินการสั่งซื้อ...');
 
     try {
       // Real store purchase → backend receipt verification → entitlement.
-      late final StoreSubscriptionVerificationResult result;
-      if (plan.id == 'pro') {
-        result = await _service.startProSubscription();
-      } else {
-        result = await _service.startStarterSubscription();
-      }
-
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
+      final result = plan.id == 'pro'
+          ? await _service.startProSubscription()
+          : await _service.startStarterSubscription();
+      if (!_canUpdateScreen) return;
       _applyVerifiedSubscription(result.subscription);
       widget.onSubscribed?.call(plan.id);
-      _showSuccess(plan);
+      if (_canUpdateScreen) _showSuccess(plan);
+    } on AuthSessionChangedException {
+      _showBillingError('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่');
     } on StoreSubscriptionConfirmationPendingException {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      setState(() {});
+      if (_canUpdateScreen) setState(() {});
     } on StoreSubscriptionException catch (error) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+      _showBillingError(error.message);
     } catch (_) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      messenger.showSnackBar(
-        const SnackBar(content: Text('สมัครไม่สำเร็จ ลองใหม่อีกครั้ง')),
-      );
+      _showBillingError('สมัครไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
-      if (mounted) setState(() => _isBillingInProgress = false);
+      _closeOwnedDialog(progress);
+      if (_canUpdateScreen) setState(() => _isBillingInProgress = false);
     }
   }
 
   Future<void> _recheckPurchase() async {
-    if (_isBillingInProgress || !_service.hasPendingConfirmation) return;
+    if (!_canUpdateScreen ||
+        _isBillingInProgress ||
+        !_service.hasPendingConfirmation) {
+      return;
+    }
     setState(() => _isBillingInProgress = true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          backgroundColor: AppTheme.charcoal,
-          content: const Row(
-            children: [
-              CircularProgressIndicator(color: AppTheme.accent),
-              SizedBox(width: AppTheme.spaceLg),
-              Expanded(child: Text('กำลังตรวจสอบการซื้อ...')),
-            ],
-          ),
-        ),
-      ),
-    );
+    final progress = _showProgress('กำลังตรวจสอบการซื้อ...');
 
     try {
       final result = await _service.retryPendingConfirmation();
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
+      if (!_canUpdateScreen) return;
       _applyVerifiedSubscription(result.subscription);
       widget.onSubscribed?.call(result.subscription.plan.toLowerCase());
-      _showRestoreSuccess(
-        result.subscription.plan,
-        title: 'ยืนยันการซื้อสำเร็จ',
-      );
-    } on StoreSubscriptionConfirmationPendingException catch (error) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      if (_canUpdateScreen) {
+        _showRestoreSuccess(
+          result.subscription.plan,
+          title: 'ยืนยันการซื้อสำเร็จ',
+        );
+      }
+    } on AuthSessionChangedException {
+      _showBillingError('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่');
     } on StoreSubscriptionException catch (error) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      _showBillingError(error.message);
+    } catch (_) {
+      _showBillingError('ตรวจสอบการซื้อไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
-      if (mounted) setState(() => _isBillingInProgress = false);
+      _closeOwnedDialog(progress);
+      if (_canUpdateScreen) setState(() => _isBillingInProgress = false);
     }
   }
 
   Future<void> _restorePurchase() async {
-    if (_isBillingInProgress) return;
+    if (!_canUpdateScreen || _isBillingInProgress) return;
     setState(() => _isBillingInProgress = true);
-    final messenger = ScaffoldMessenger.of(context);
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          backgroundColor: AppTheme.charcoal,
-          content: const Row(
-            children: [
-              CircularProgressIndicator(color: AppTheme.accent),
-              SizedBox(width: AppTheme.spaceLg),
-              Expanded(child: Text('กำลังกู้คืนการซื้อ...')),
-            ],
-          ),
-        ),
-      ),
-    );
+    final progress = _showProgress('กำลังกู้คืนการซื้อ...');
 
     try {
       final result = await _service.restoreSubscription();
-      final planId = result.subscription.plan.toLowerCase();
-
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
+      if (!_canUpdateScreen) return;
       _applyVerifiedSubscription(result.subscription);
-      widget.onSubscribed?.call(planId);
-      _showRestoreSuccess(result.subscription.plan);
+      widget.onSubscribed?.call(result.subscription.plan.toLowerCase());
+      if (_canUpdateScreen) _showRestoreSuccess(result.subscription.plan);
+    } on AuthSessionChangedException {
+      _showBillingError('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่');
     } on StoreSubscriptionException catch (error) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+      _showBillingError(error.message);
     } catch (_) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      messenger.showSnackBar(
-        const SnackBar(content: Text('กู้คืนการซื้อไม่สำเร็จ ลองใหม่อีกครั้ง')),
-      );
+      _showBillingError('กู้คืนการซื้อไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
-      if (mounted) setState(() => _isBillingInProgress = false);
+      _closeOwnedDialog(progress);
+      if (_canUpdateScreen) setState(() => _isBillingInProgress = false);
     }
   }
 
   void _showSuccess(_PlanOption plan) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
+    _showOwnedDialog(
+      (context) => AlertDialog(
         backgroundColor: AppTheme.charcoal,
         title: Text('สมัคร ${plan.name} สำเร็จ'),
         content: const Text('ปลดล็อกฟีเจอร์ของแพ็กเกจเรียบร้อยแล้ว'),
@@ -396,9 +424,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
   void _showRestoreSuccess(String plan,
       {String title = 'กู้คืนการซื้อสำเร็จ'}) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
+    _showOwnedDialog(
+      (context) => AlertDialog(
         backgroundColor: AppTheme.charcoal,
         title: Text(title),
         content: Text('คืนสิทธิ์แพ็กเกจ ${plan.toUpperCase()} เรียบร้อยแล้ว'),
@@ -446,13 +473,14 @@ class _PaywallScreenState extends State<PaywallScreen> {
               else if (_subscriptionLoadError != null)
                 _PaywallSubscriptionStatus(
                   key: const ValueKey('paywall-subscription-error'),
-                  message:
-                      'โหลดแพ็กเกจปัจจุบันไม่สำเร็จ กรุณาลองใหม่ก่อนสมัคร หรือกู้คืนการซื้อเดิม',
-                  onRetry: _loadSubscription,
+                  message: _screenBinding.isCurrent
+                      ? 'โหลดแพ็กเกจปัจจุบันไม่สำเร็จ กรุณาลองใหม่ก่อนสมัคร หรือกู้คืนการซื้อเดิม'
+                      : 'บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่',
+                  onRetry: _screenBinding.isCurrent ? _loadSubscription : null,
                 ),
               if (_isSubscriptionLoading || _subscriptionLoadError != null)
                 const SizedBox(height: 13),
-              if (_service.hasPendingConfirmation) ...[
+              if (_screenBinding.isCurrent && _service.hasPendingConfirmation) ...[
                 _PaywallSubscriptionStatus(
                   key: const ValueKey('paywall-purchase-awaiting-confirmation'),
                   message: _service.hasPendingStoreAcknowledgement
@@ -469,7 +497,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
               for (var index = 0; index < _plans.length; index += 1) ...[
                 _PlanCard(
                   plan: _plans[index],
-                  onSubscribe: !_isSubscriptionLoading &&
+                  onSubscribe: _screenBinding.isCurrent &&
+                          !_isSubscriptionLoading &&
                           !_isBillingInProgress &&
                           !_service.hasPendingConfirmation &&
                           _subscriptionLoadError == null &&
@@ -483,14 +512,16 @@ class _PaywallScreenState extends State<PaywallScreen> {
               if (_priceLoadFailed)
                 TextButton(
                   key: const ValueKey('paywall-price-error'),
-                  onPressed: _isBillingInProgress ? null : _loadPrices,
+                  onPressed: !_screenBinding.isCurrent || _isBillingInProgress
+                      ? null : _loadPrices,
                   child: const Text('โหลดราคาจากร้านค้าอีกครั้ง'),
                 ),
               if (_service.supportsUnifiedRestore) ...[
                 SizedBox(
                   height: 48,
                   child: OutlinedButton.icon(
-                    onPressed: _isBillingInProgress ? null : _restorePurchase,
+                    onPressed: !_screenBinding.isCurrent || _isBillingInProgress
+                        ? null : _restorePurchase,
                     icon: const Icon(Icons.restore, size: 19),
                     label: const Text('กู้คืนการซื้อ'),
                     style: OutlinedButton.styleFrom(

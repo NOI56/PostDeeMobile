@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createPrismaSubscriptionRepository } from './prismaSubscriptionRepository.js';
+import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 
 describe('createPrismaSubscriptionRepository', () => {
   it('returns PRO for active Pro subscriptions', async () => {
@@ -12,7 +13,7 @@ describe('createPrismaSubscriptionRepository', () => {
         })
       }
     };
-    const repository = createPrismaSubscriptionRepository({ prisma });
+    const repository = createPrismaSubscriptionRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(repository.getPlan({ id: 'seller-1', provider: 'mock' })).resolves.toBe('PRO');
     expect(prisma.subscription.findUnique).toHaveBeenCalledWith({
@@ -34,7 +35,7 @@ describe('createPrismaSubscriptionRepository', () => {
         })
       }
     };
-    const repository = createPrismaSubscriptionRepository({ prisma });
+    const repository = createPrismaSubscriptionRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(repository.getPlan({ id: 'seller-1', provider: 'mock' })).resolves.toBe('BASIC');
   });
@@ -54,7 +55,7 @@ describe('createPrismaSubscriptionRepository', () => {
         })
       }
     };
-    const repository = createPrismaSubscriptionRepository({ prisma });
+    const repository = createPrismaSubscriptionRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(
       repository.activatePro(
@@ -113,7 +114,7 @@ describe('createPrismaSubscriptionRepository', () => {
         })
       }
     };
-    const repository = createPrismaSubscriptionRepository({ prisma });
+    const repository = createPrismaSubscriptionRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await repository.activatePlan(
       { id: 'seller-lifetime', provider: 'firebase' },
@@ -147,7 +148,7 @@ describe('createPrismaSubscriptionRepository', () => {
         })
       }
     };
-    const repository = createPrismaSubscriptionRepository({ prisma });
+    const repository = createPrismaSubscriptionRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await repository.activatePlan(
       { id: 'seller-preserve-period', provider: 'firebase' },
@@ -176,7 +177,7 @@ describe('createPrismaSubscriptionRepository', () => {
         })
       }
     };
-    const repository = createPrismaSubscriptionRepository({ prisma });
+    const repository = createPrismaSubscriptionRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(
       repository.updateStatusByBillingSubscriptionId({
@@ -234,7 +235,7 @@ describe('createPrismaSubscriptionRepository', () => {
       ...transaction,
       $transaction: vi.fn(async (callback) => callback(transaction))
     };
-    const repository = createPrismaSubscriptionRepository({ prisma });
+    const repository = createPrismaSubscriptionRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(
       repository.applyRevenueCatEvent({
@@ -272,7 +273,7 @@ describe('createPrismaSubscriptionRepository', () => {
       ...transaction,
       $transaction: vi.fn(async (callback) => callback(transaction))
     };
-    const repository = createPrismaSubscriptionRepository({ prisma });
+    const repository = createPrismaSubscriptionRepository({ prisma: withOwnerLifecycleFixture(prisma) });
 
     await expect(
       repository.applyRevenueCatEvent({

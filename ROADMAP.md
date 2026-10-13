@@ -347,6 +347,21 @@ An injected VIEW URI returned to the original Connections screen with its 1/4
 state retained on the installed Staging APK; the production URI had no handler
 in that Staging-only installation. Real provider/browser handoff, Open App
 confirmation and cold callback remain unverified.
+## Security integration into current main (2026-10-13)
+
+- Selectively port security fixes from the old audited worktree onto verified
+  `main` `f5dea16` (advanced from initial `c4e5220` during preparation), preserving the current Store link/customization, full-screen
+  composer, scheduling/idempotency and billing pending-confirmation behavior.
+- Add final User/Post/Subscription owner write fences, legacy owner checks,
+  session-bound auth/native/HTTP operations, purchase-readiness protocol 1 and
+  push recipient UID. Keep legacy GET bootstrap for this additive rollout;
+  retire incompatible mobile builds before considering read-only GET.
+- Current status: selective source integration/review complete in the local
+  branch; tests/build/analyze and Staging delivery remain pending. Previous
+  audit cases and old CI/device smoke do not validate this delivery branch.
+  Preserve Production feature flags and infrastructure; Staging/Emulator are
+  the first delivery stage. Exact evidence belongs in
+  `docs/superpowers/plans/2026-10-13-security-main-delivery.md`.
 
 ## Pending-work integration (2026-10-08)
 

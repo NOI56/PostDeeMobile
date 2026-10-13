@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
+import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 import type { PostPeerConnectClient } from '../socialConnections/postPeerConnectClient.js';
 import { createInMemorySocialConnectionStore } from '../socialConnections/socialConnectionStore.js';
 import type { VideoStorage } from '../storage/videoStorage.js';
@@ -580,7 +581,7 @@ describe('account routes', () => {
   it('uses the authenticated user id for the production Prisma cascade', async () => {
     const deleteMany = vi.fn(async () => ({ count: 1 }));
     const app = createApp({
-      prisma: { user: { deleteMany } } as never,
+      prisma: withOwnerLifecycleFixture({ user: { deleteMany } }) as never,
       socialConnectionStore: createInMemorySocialConnectionStore()
     });
 

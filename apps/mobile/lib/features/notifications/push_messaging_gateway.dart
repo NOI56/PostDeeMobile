@@ -6,8 +6,9 @@
 /// is unaffected.
 abstract class PushMessagingGateway {
   /// Requests notification permission, retrieves the device token, and starts
-  /// forwarding incoming messages to the notification center. Safe to call once;
-  /// repeated calls are ignored by the real implementation.
+  /// forwarding incoming messages for the current sign-in. Concurrent calls
+  /// share initialization; denied or failed initialization may be retried.
+  /// The real gateway clears history and rebinds delivery on account changes.
   Future<void> initialize();
 
   /// Cancels any active message subscriptions.

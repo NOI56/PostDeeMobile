@@ -12,6 +12,7 @@ import { createUserStore } from '../users/userStore.js';
 import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
 import { createPostStore, type QueuedPost } from './postStore.js';
 import { registerPostRoutes } from './postRoutes.js';
+import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 
 describe('post routes', () => {
   const allPlatforms = ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'];
@@ -558,12 +559,12 @@ describe('post routes', () => {
     const userUpsert = vi.fn();
     const app = createApp({
       config: readServerConfig({ SOCIAL_PUBLISHER: 'disabled' }),
-      prisma: {
+      prisma: withOwnerLifecycleFixture({
         user: {
           findUnique: vi.fn(),
           upsert: userUpsert
         }
-      } as never
+      }) as never
     });
 
     await request(app)
@@ -1812,7 +1813,7 @@ describe('post routes', () => {
         DATABASE_URL: 'postgresql://postdee:postdee_password@localhost:5432/postdee',
         POST_STORE: 'prisma'
       }),
-      prisma
+      prisma: withOwnerLifecycleFixture(prisma)
     });
 
     const response = await request(app)

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createUserStoreForPostStore } from './userStoreFactory.js';
+import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 
 describe('createUserStoreForPostStore', () => {
   it('uses the in-memory user store when no Prisma client is available', async () => {
@@ -45,7 +46,7 @@ describe('createUserStoreForPostStore', () => {
       config: {
         postStore: 'memory'
       },
-      prisma
+      prisma: withOwnerLifecycleFixture(prisma)
     });
 
     expect(

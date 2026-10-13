@@ -1,12 +1,36 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/models/link_in_bio_appearance.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('a delayed owned save is cancelled after session change', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final ready = Completer<SharedPreferences>();
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'a', idToken: 'a'));
+    final store = SharedPreferencesLinkInBioDraftStore(ownerUserId: 'a', sessionBinding: sessions.captureSession(), preferencesLoader: () => ready.future);
+    final save = store.saveDraft(LinkInBioDraft.defaults());
+    final rejected = expectLater(save, throwsA(isA<AuthSessionChangedException>()));
+    sessions.signIn(const AuthSession(userId: 'b', idToken: 'b'));
+    ready.complete(preferences);
+    await rejected;
+    expect(preferences.getKeys(), isEmpty);
+  });
+
+  test('owned payload must match the owner recorded in its key', () async {
+    SharedPreferences.setMockInitialValues({'postdee_link_in_bio.user.a': jsonEncode({
+      'version': 1, 'ownerUserId': 'b', 'storeName': 'other', 'slug': 'other',
+      'enabledLinkIds': [], 'customLinks': [],
+    })});
+    expect(await const SharedPreferencesLinkInBioDraftStore(ownerUserId: 'a').loadDraft(), isNull);
+  });
+
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test('draft revisions persist monotonically and remain owner scoped',

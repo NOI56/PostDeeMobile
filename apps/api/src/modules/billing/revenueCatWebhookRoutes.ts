@@ -8,6 +8,7 @@ import {
 import type { PaidSubscriptionPlan, SubscriptionStatus } from '../subscriptions/subscriptionStore.js';
 import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import type { UserStore } from '../users/userStore.js';
+import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
 
 type RevenueCatWebhookConfig = Pick<
   ServerConfig,
@@ -292,6 +293,12 @@ export const registerRevenueCatWebhookRoutes = ({
         });
         return;
       }
+    } catch (error) {
+      if (!(error instanceof UploadSessionConflictError) || error.code !== 'ACCOUNT_DELETION_IN_PROGRESS') throw error;
+      response.status(202).json({
+        status: 'ok', ignored: true, code: 'REVENUECAT_USER_NOT_FOUND',
+        message: 'RevenueCat event belongs to a PostDee user that no longer exists'
+      });
     } finally {
       releaseOwner();
     }

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -16,6 +15,30 @@ typedef StorePurchaseVerifier = Future<StoreSubscriptionVerificationResult>
 typedef SubscriptionLoader = Future<SubscriptionStatusResult> Function();
 typedef SubscriptionWait = Future<void> Function(Duration duration);
 typedef RevenueCatSubscriptionResync = Future<String> Function();
+typedef SubscriptionPurchasePreparation = Future<void> Function();
+typedef BoundSubscriptionApiClientFactory = PostDeeApiClient Function(
+    AuthSessionBinding sessionBinding);
+
+PostDeeApiClient _createBoundSubscriptionApiClient(AuthSessionBinding binding) =>
+    PostDeeApiClient(sessionBinding: binding);
+
+class _BillingOperation {
+  const _BillingOperation({
+    required this.binding,
+    required this.userId,
+    required this.prepare,
+    required this.load,
+    required this.resync,
+    required this.verify,
+  });
+
+  final AuthSessionBinding binding;
+  final String? userId;
+  final SubscriptionPurchasePreparation prepare;
+  final SubscriptionLoader load;
+  final RevenueCatSubscriptionResync resync;
+  final StorePurchaseVerifier verify;
+}
 
 Future<void> _defaultSubscriptionWait(Duration duration) =>
     Future<void>.delayed(duration);
@@ -53,10 +76,12 @@ class _PendingSubscriptionConfirmation {
   _PendingSubscriptionConfirmation({
     required this.productId,
     required this.confirm,
+    required this.operation,
   });
 
   final String productId;
   final Future<StoreSubscriptionVerificationResult> Function() confirm;
+  final _BillingOperation operation;
   Future<StoreSubscriptionVerificationResult>? inFlight;
 }
 
@@ -132,7 +157,8 @@ class StoreSubscriptionSessionCache {
     PostDeeAuthSessionStore? sessionStore,
     StoreSubscriptionService Function()? createService,
   })  : _sessionStore = sessionStore ?? PostDeeAuthSessionStore.instance,
-        _createService = createService ?? StoreSubscriptionService.new {
+        _createService = createService ??
+            (() => StoreSubscriptionService(sessionStore: sessionStore)) {
     _sessionStore.addListener(_handleSessionChanged);
   }
 
@@ -141,6 +167,7 @@ class StoreSubscriptionSessionCache {
   final StoreSubscriptionService Function() _createService;
   StoreSubscriptionService? _cachedService;
   String? _cachedOwner;
+  AuthSessionBinding? _cachedBinding;
   var _generation = 0;
 
   String? get _currentOwner => _sessionStore.session.isSignedIn
@@ -149,7 +176,9 @@ class StoreSubscriptionSessionCache {
 
   StoreSubscriptionService get service {
     final owner = _currentOwner;
-    if (_cachedOwner != owner) _invalidateCachedService();
+    if (_cachedOwner != owner || !(_cachedBinding?.isCurrent ?? true)) {
+      _invalidateCachedService();
+    }
     if (owner == null) return _newService(owner);
     _cachedOwner = owner;
     return _cachedService ??= _newService(owner);
@@ -158,9 +187,13 @@ class StoreSubscriptionSessionCache {
   StoreSubscriptionService _newService(String? owner) {
     final generation = _generation;
     final originalSession = _sessionStore.session;
+    final binding = _sessionStore.captureSession();
+    _cachedBinding = binding;
     final service = _createService();
+    service._sessionStore = _sessionStore;
     service._sessionValidator = () =>
         _generation == generation &&
+        binding.isCurrent &&
         (owner == null
             ? identical(_sessionStore.session, originalSession)
             : _currentOwner == owner);
@@ -168,7 +201,9 @@ class StoreSubscriptionSessionCache {
   }
 
   void _handleSessionChanged() {
-    if (_currentOwner != _cachedOwner) _invalidateCachedService();
+    if (_currentOwner != _cachedOwner || !(_cachedBinding?.isCurrent ?? true)) {
+      _invalidateCachedService();
+    }
   }
 
   void _invalidateCachedService() {
@@ -176,6 +211,7 @@ class StoreSubscriptionSessionCache {
     _cachedService?._invalidateSession();
     _cachedService = null;
     _cachedOwner = null;
+    _cachedBinding = null;
   }
 
   void dispose() {
@@ -197,6 +233,9 @@ class StoreSubscriptionService {
     Duration revenueCatEntitlementPollInterval = const Duration(seconds: 1),
     SubscriptionWait? revenueCatEntitlementWait,
     RevenueCatSubscriptionResync? resyncRevenueCatSubscription,
+    SubscriptionPurchasePreparation? prepareSubscriptionPurchase,
+    PostDeeAuthSessionStore? sessionStore,
+    BoundSubscriptionApiClientFactory? apiClientFactory,
     this.subscriptionConfirmationTimeout = const Duration(seconds: 30),
     this.storeOperationTimeout = const Duration(minutes: 2),
     this.productQueryTimeout = const Duration(seconds: 10),
@@ -204,38 +243,46 @@ class StoreSubscriptionService {
         assert(subscriptionConfirmationTimeout > Duration.zero),
         assert(storeOperationTimeout > Duration.zero),
         assert(productQueryTimeout > Duration.zero),
+        _sessionStore = sessionStore ?? PostDeeAuthSessionStore.instance,
+        _apiClientFactory = apiClientFactory ?? _createBoundSubscriptionApiClient,
         _revenueCatEntitlementPollAttempts = revenueCatEntitlementPollAttempts,
         _revenueCatEntitlementPollInterval = revenueCatEntitlementPollInterval,
         _revenueCatEntitlementWait =
             revenueCatEntitlementWait ?? _defaultSubscriptionWait,
-        _resyncRevenueCatSubscription = resyncRevenueCatSubscription ??
-            PostDeeApiClient().resyncRevenueCatSubscription,
+        _resyncRevenueCatSubscription = resyncRevenueCatSubscription,
+        _prepareSubscriptionPurchase = prepareSubscriptionPurchase,
         _gateway = gateway ??
             (useRevenueCat
                 ? const _UnavailableStoreBillingGateway()
                 : InAppPurchaseStoreBillingGateway()),
         _revenueCatGateway = useRevenueCat
-            ? revenueCatGateway ?? createRevenueCatBillingGatewayFromConfig()
+            ? revenueCatGateway ??
+                createRevenueCatBillingGatewayFromConfig(
+                  sessionStore: sessionStore,
+                )
             : null,
-        _loadSubscription =
-            loadSubscription ?? PostDeeApiClient().loadCurrentSubscription,
-        _verifyPurchase =
-            verifyPurchase ?? PostDeeApiClient().verifyStoreSubscription;
+        _loadSubscription = loadSubscription,
+        _verifyPurchase = verifyPurchase;
 
   final StoreBillingGateway _gateway;
   final RevenueCatBillingGateway? _revenueCatGateway;
-  final StorePurchaseVerifier _verifyPurchase;
-  final SubscriptionLoader _loadSubscription;
+  final StorePurchaseVerifier? _verifyPurchase;
+  final SubscriptionLoader? _loadSubscription;
+  PostDeeAuthSessionStore _sessionStore;
+  final BoundSubscriptionApiClientFactory _apiClientFactory;
   final int _revenueCatEntitlementPollAttempts;
   final Duration _revenueCatEntitlementPollInterval;
   final SubscriptionWait _revenueCatEntitlementWait;
-  final RevenueCatSubscriptionResync _resyncRevenueCatSubscription;
+  final RevenueCatSubscriptionResync? _resyncRevenueCatSubscription;
+  final SubscriptionPurchasePreparation? _prepareSubscriptionPurchase;
   final String productId;
   final String starterProductId;
   final Duration subscriptionConfirmationTimeout;
   final Duration storeOperationTimeout;
   final Duration productQueryTimeout;
   Future<StoreSubscriptionVerificationResult>? _storeOperation;
+  AuthSessionBinding? _storeOperationBinding;
+  AuthSessionBinding? _nativeOperationBinding;
   _PendingSubscriptionConfirmation? _pendingConfirmation;
   bool Function()? _sessionValidator;
   var _sessionInvalidated = false;
@@ -244,19 +291,24 @@ class StoreSubscriptionService {
   bool get _isSessionValid =>
       !_sessionInvalidated && (_sessionValidator?.call() ?? true);
   bool get hasPendingConfirmation {
-    if (!_isSessionValid) {
+    if (!_isSessionValid ||
+        !(_pendingConfirmation?.operation.binding.isCurrent ?? true) ||
+        !(_storeOperationBinding?.isCurrent ?? true) ||
+        !(_nativeOperationBinding?.isCurrent ?? true)) {
       _pendingConfirmation = null;
       _storeOperation = null;
+      _storeOperationBinding = null;
     }
     return _pendingConfirmation != null || _storeOperation != null;
   }
 
   bool get hasPendingStoreOperation =>
-      _isSessionValid &&
+      hasPendingConfirmation &&
       _storeOperation != null &&
       _pendingConfirmation == null;
   bool get hasPendingStoreAcknowledgement =>
       _isSessionValid &&
+      (_nativeOperationBinding?.isCurrent ?? true) &&
       _revenueCatGateway == null &&
       _gateway is PendingNativePurchaseReconciler &&
       (_gateway as PendingNativePurchaseReconciler).hasPendingAcknowledgement;
@@ -265,21 +317,67 @@ class StoreSubscriptionService {
     _sessionInvalidated = true;
     _pendingConfirmation = null;
     _storeOperation = null;
+    _storeOperationBinding = null;
   }
 
   void _ensureSessionActive() {
     if (!_isSessionValid) {
       _pendingConfirmation = null;
+      _storeOperation = null;
+      _storeOperationBinding = null;
       throw const StoreSubscriptionException(
         'บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่',
       );
     }
   }
 
+  _BillingOperation _captureOperation() {
+    _ensureSessionActive();
+    final binding = _sessionStore.captureSession();
+    final userId = _sessionStore.session.userId;
+    final api = _apiClientFactory(binding);
+    binding.ensureCurrent();
+    return _BillingOperation(
+      binding: binding,
+      userId: userId,
+      prepare: _prepareSubscriptionPurchase ?? api.prepareSubscriptionPurchase,
+      load: _loadSubscription ?? api.loadCurrentSubscription,
+      resync: _resyncRevenueCatSubscription ?? api.resyncRevenueCatSubscription,
+      verify: _verifyPurchase ?? api.verifyStoreSubscription,
+    );
+  }
+
+  void _ensureOperationCurrent(_BillingOperation operation) {
+    _ensureSessionActive();
+    if (!operation.binding.isCurrent) {
+      if (identical(_pendingConfirmation?.operation, operation)) {
+        _pendingConfirmation = null;
+      }
+    }
+    operation.binding.ensureCurrent();
+  }
+
+  void _ensureSubscriptionOwner(
+    SubscriptionStatusResult subscription,
+    _BillingOperation operation,
+  ) {
+    final userId = operation.userId;
+    if (userId != null &&
+        userId.trim().isNotEmpty &&
+        subscription.userId != userId) {
+      throw const StoreSubscriptionException(
+        'Subscription does not belong to the account that started this operation.',
+      );
+    }
+  }
+
   Future<StoreSubscriptionVerificationResult> retryPendingConfirmation() async {
     _ensureSessionActive();
+    _nativeOperationBinding?.ensureCurrent();
     final operation = _storeOperation;
     if (operation != null) {
+      final binding = _storeOperationBinding!;
+      binding.ensureCurrent();
       if (_pendingConfirmation == null &&
           _revenueCatGateway == null &&
           _gateway is PendingNativePurchaseReconciler) {
@@ -289,8 +387,9 @@ class StoreSubscriptionService {
             .reconcilePendingPurchase()
             .timeout(productQueryTimeout)
             .catchError((_) {});
+        binding.ensureCurrent();
       }
-      return _awaitStoreOperation(operation);
+      return _awaitStoreOperation(operation, binding: binding);
     }
     return _retryReceiptConfirmation();
   }
@@ -302,6 +401,7 @@ class StoreSubscriptionService {
     if (pending == null) {
       throw const StoreSubscriptionException('ไม่มีรายการซื้อที่รอยืนยัน');
     }
+    _ensureOperationCurrent(pending.operation);
 
     // Share any unfinished verification so a retry cannot submit the same
     // receipt concurrently after the UI deadline expires.
@@ -327,7 +427,7 @@ class StoreSubscriptionService {
     try {
       final result =
           await confirmation.timeout(subscriptionConfirmationTimeout);
-      _ensureSessionActive();
+      _ensureOperationCurrent(pending.operation);
       if (identical(_pendingConfirmation, pending)) {
         _pendingConfirmation = null;
       }
@@ -335,16 +435,18 @@ class StoreSubscriptionService {
         // Keep this verified result available while the native acknowledgement
         // is retried, without submitting its receipt for verification again.
         _storeOperation = Future.value(result);
+        _storeOperationBinding = pending.operation.binding;
       }
       return result;
     } catch (error) {
-      _ensureSessionActive();
+      _ensureOperationCurrent(pending.operation);
       throw StoreSubscriptionConfirmationPendingException(cause: error);
     }
   }
 
   void _ensureNoPendingPurchase() {
     _ensureSessionActive();
+    _nativeOperationBinding?.ensureCurrent();
     if (_storeOperation != null) {
       throw const StoreSubscriptionStorePendingException();
     }
@@ -356,11 +458,13 @@ class StoreSubscriptionService {
   Future<StoreSubscriptionVerificationResult> _confirmCompletedPurchase({
     required String productId,
     required Future<StoreSubscriptionVerificationResult> Function() confirm,
+    required _BillingOperation operation,
   }) {
-    _ensureSessionActive();
+    _ensureOperationCurrent(operation);
     _pendingConfirmation = _PendingSubscriptionConfirmation(
       productId: productId,
       confirm: confirm,
+      operation: operation,
     );
     return _retryReceiptConfirmation();
   }
@@ -369,31 +473,48 @@ class StoreSubscriptionService {
     Future<StoreSubscriptionVerificationResult> Function() operation,
   ) {
     _ensureSessionActive();
+    _nativeOperationBinding?.ensureCurrent();
     final running = _storeOperation;
-    if (running != null) return _awaitStoreOperation(running);
+    if (running != null) {
+      return _awaitStoreOperation(running, binding: _storeOperationBinding!);
+    }
+    final binding = _sessionStore.captureSession();
+    _nativeOperationBinding ??= binding;
     final future = Future<StoreSubscriptionVerificationResult>.sync(operation);
     _storeOperation = future;
-    return _awaitStoreOperation(future);
+    _storeOperationBinding = binding;
+    return _awaitStoreOperation(future, binding: binding);
   }
 
   Future<StoreSubscriptionVerificationResult> _awaitStoreOperation(
-    Future<StoreSubscriptionVerificationResult> operation,
-  ) async {
+    Future<StoreSubscriptionVerificationResult> operation, {
+    required AuthSessionBinding binding,
+  }) async {
+    _ensureSessionActive();
+    binding.ensureCurrent();
     try {
       final result = await operation.timeout(storeOperationTimeout,
           onTimeout: () => throw const _StoreOperationWaitExpired());
       _ensureSessionActive();
+      binding.ensureCurrent();
       if (identical(_storeOperation, operation) &&
           !hasPendingStoreAcknowledgement) {
         _storeOperation = null;
+        _storeOperationBinding = null;
       }
       return result;
     } on _StoreOperationWaitExpired {
       _ensureSessionActive();
+      binding.ensureCurrent();
       // Keep the actual SDK future: a UI timeout cannot cancel a store purchase.
       throw const StoreSubscriptionStorePendingException();
     } catch (_) {
-      if (identical(_storeOperation, operation)) _storeOperation = null;
+      if (identical(_storeOperation, operation)) {
+        _storeOperation = null;
+        _storeOperationBinding = null;
+      }
+      _ensureSessionActive();
+      binding.ensureCurrent();
       rethrow;
     }
   }
@@ -433,6 +554,7 @@ class StoreSubscriptionService {
 
   Future<StoreSubscriptionVerificationResult>
       _startStarterSubscription() async {
+    final operation = _captureOperation();
     final revenueCatGateway = _revenueCatGateway;
 
     if (revenueCatGateway != null) {
@@ -440,15 +562,19 @@ class StoreSubscriptionService {
         gateway: revenueCatGateway,
         productId: starterProductId,
         expectedPlan: 'STARTER',
+        operation: operation,
       );
     }
 
     await _ensureStoreAvailable();
+    _ensureOperationCurrent(operation);
     final payload = await _gateway.buySubscription(starterProductId);
+    _ensureOperationCurrent(operation);
 
     return _confirmCompletedPurchase(
       productId: starterProductId,
-      confirm: () => _verifyPayload(payload, starterProductId),
+      confirm: () => _verifyPayload(payload, starterProductId, operation),
+      operation: operation,
     );
   }
 
@@ -458,6 +584,7 @@ class StoreSubscriptionService {
   }
 
   Future<StoreSubscriptionVerificationResult> _startProSubscription() async {
+    final operation = _captureOperation();
     final revenueCatGateway = _revenueCatGateway;
 
     if (revenueCatGateway != null) {
@@ -465,15 +592,19 @@ class StoreSubscriptionService {
         gateway: revenueCatGateway,
         productId: productId,
         expectedPlan: 'PRO',
+        operation: operation,
       );
     }
 
     await _ensureStoreAvailable();
+    _ensureOperationCurrent(operation);
     final payload = await _gateway.buySubscription(productId);
+    _ensureOperationCurrent(operation);
 
     return _confirmCompletedPurchase(
       productId: productId,
-      confirm: () => _verifyPayload(payload, productId),
+      confirm: () => _verifyPayload(payload, productId, operation),
+      operation: operation,
     );
   }
 
@@ -485,6 +616,7 @@ class StoreSubscriptionService {
   Future<StoreSubscriptionVerificationResult>
       _restoreStarterSubscription() async {
     _ensureSessionActive();
+    final operation = _captureOperation();
     final revenueCatGateway = _revenueCatGateway;
 
     if (revenueCatGateway != null) {
@@ -492,14 +624,17 @@ class StoreSubscriptionService {
         gateway: revenueCatGateway,
         productId: starterProductId,
         expectedPlan: 'STARTER',
+        operation: operation,
       );
     }
 
     await _ensureStoreAvailable();
+    _ensureOperationCurrent(operation);
     final payload = await _gateway.restoreSubscription(starterProductId);
+    _ensureOperationCurrent(operation);
 
     return _recordRestoredSubscription(
-      await _verifyPayload(payload, starterProductId),
+      await _verifyPayload(payload, starterProductId, operation),
     );
   }
 
@@ -509,6 +644,7 @@ class StoreSubscriptionService {
 
   Future<StoreSubscriptionVerificationResult> _restoreProSubscription() async {
     _ensureSessionActive();
+    final operation = _captureOperation();
     final revenueCatGateway = _revenueCatGateway;
 
     if (revenueCatGateway != null) {
@@ -516,14 +652,17 @@ class StoreSubscriptionService {
         gateway: revenueCatGateway,
         productId: productId,
         expectedPlan: 'PRO',
+        operation: operation,
       );
     }
 
     await _ensureStoreAvailable();
+    _ensureOperationCurrent(operation);
     final payload = await _gateway.restoreSubscription(productId);
+    _ensureOperationCurrent(operation);
 
     return _recordRestoredSubscription(
-      await _verifyPayload(payload, productId),
+      await _verifyPayload(payload, productId, operation),
     );
   }
 
@@ -533,6 +672,7 @@ class StoreSubscriptionService {
 
   Future<StoreSubscriptionVerificationResult> _restoreSubscription() async {
     _ensureSessionActive();
+    final operation = _captureOperation();
     final revenueCatGateway = _revenueCatGateway;
 
     if (revenueCatGateway == null) {
@@ -542,8 +682,10 @@ class StoreSubscriptionService {
     }
 
     await _ensureRevenueCatAvailable(revenueCatGateway);
+    _ensureOperationCurrent(operation);
     await revenueCatGateway.restorePurchases();
-    final resyncedPlan = await _resyncRevenueCatForRestore();
+    _ensureOperationCurrent(operation);
+    final resyncedPlan = await _resyncRevenueCatForRestore(operation);
     final expectedProductsByPlan = {
       'STARTER': starterProductId,
       'PRO': productId,
@@ -554,6 +696,7 @@ class StoreSubscriptionService {
       await _readRevenueCatSubscription(
         expectedProductsByPlan: expectedProductsByPlan,
         operation: 'restore',
+        sessionOperation: operation,
       ),
     );
   }
@@ -571,15 +714,24 @@ class StoreSubscriptionService {
 
   Future<List<StoreProductInfo>> _queryProducts(Set<String> productIds) async {
     _ensureSessionActive();
+    final binding = _sessionStore.captureSession();
     final revenueCatGateway = _revenueCatGateway;
 
     if (revenueCatGateway != null) {
       await _ensureRevenueCatAvailable(revenueCatGateway);
-      return revenueCatGateway.queryProducts(productIds);
+      binding.ensureCurrent();
+      final products = await revenueCatGateway.queryProducts(productIds);
+      _ensureSessionActive();
+      binding.ensureCurrent();
+      return products;
     }
 
     await _ensureStoreAvailable();
-    return _gateway.queryProducts(productIds);
+    binding.ensureCurrent();
+    final products = await _gateway.queryProducts(productIds);
+    _ensureSessionActive();
+    binding.ensureCurrent();
+    return products;
   }
 
   Future<void> _ensureRevenueCatAvailable(
@@ -599,15 +751,23 @@ class StoreSubscriptionService {
     required RevenueCatBillingGateway gateway,
     required String productId,
     required String expectedPlan,
+    required _BillingOperation operation,
   }) async {
+    _ensureOperationCurrent(operation);
     await _ensureRevenueCatAvailable(gateway);
+    _ensureOperationCurrent(operation);
+    await _prepareRevenueCatPurchase(operation);
+    _ensureOperationCurrent(operation);
     await gateway.buySubscription(productId);
+    _ensureOperationCurrent(operation);
 
     return _confirmCompletedPurchase(
       productId: productId,
+      operation: operation,
       confirm: () => _readRevenueCatSubscription(
         expectedProductsByPlan: {expectedPlan: productId},
         operation: 'purchase',
+        sessionOperation: operation,
       ),
     );
   }
@@ -616,25 +776,51 @@ class StoreSubscriptionService {
     required RevenueCatBillingGateway gateway,
     required String productId,
     required String expectedPlan,
+    required _BillingOperation operation,
   }) async {
+    _ensureOperationCurrent(operation);
     await _ensureRevenueCatAvailable(gateway);
+    _ensureOperationCurrent(operation);
     await gateway.restorePurchases();
-    final resyncedPlan = await _resyncRevenueCatForRestore();
+    _ensureOperationCurrent(operation);
+    final resyncedPlan = await _resyncRevenueCatForRestore(operation);
     _ensureRestorablePlan(resyncedPlan, {expectedPlan});
 
     return _recordRestoredSubscription(
       await _readRevenueCatSubscription(
         expectedProductsByPlan: {expectedPlan: productId},
         operation: 'restore',
+        sessionOperation: operation,
       ),
     );
   }
 
-  Future<String> _resyncRevenueCatForRestore() async {
-    _ensureSessionActive();
+  Future<void> _prepareRevenueCatPurchase(_BillingOperation operation) async {
+    _ensureOperationCurrent(operation);
     try {
-      return await _resyncRevenueCatSubscription();
+      await operation.prepare();
+      _ensureOperationCurrent(operation);
     } on ApiException catch (error) {
+      _ensureOperationCurrent(operation);
+      if (error.statusCode == HttpStatus.notFound ||
+          error.statusCode == HttpStatus.notImplemented ||
+          error.code == 'PURCHASE_READINESS_UNSUPPORTED') {
+        throw const StoreSubscriptionException(
+          'ระบบสมาชิกยังไม่พร้อมสำหรับแอปเวอร์ชันนี้ กรุณาลองใหม่ภายหลัง',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<String> _resyncRevenueCatForRestore(_BillingOperation operation) async {
+    _ensureOperationCurrent(operation);
+    try {
+      final plan = await operation.resync();
+      _ensureOperationCurrent(operation);
+      return plan;
+    } on ApiException catch (error) {
+      _ensureOperationCurrent(operation);
       final code = error.code;
       final statusCode = error.statusCode;
 
@@ -679,6 +865,7 @@ class StoreSubscriptionService {
   Future<StoreSubscriptionVerificationResult> _readRevenueCatSubscription({
     required Map<String, String> expectedProductsByPlan,
     required String operation,
+    required _BillingOperation sessionOperation,
   }) async {
     final elapsed = Stopwatch()..start();
     Duration remainingTime() {
@@ -692,14 +879,15 @@ class StoreSubscriptionService {
     for (var attempt = 0;
         attempt < _revenueCatEntitlementPollAttempts;
         attempt += 1) {
-      _ensureSessionActive();
+      _ensureOperationCurrent(sessionOperation);
       late final SubscriptionStatusResult subscription;
 
       try {
         final remaining = remainingTime();
-        subscription = await _loadSubscription().timeout(remaining);
-        _ensureSessionActive();
+        subscription = await sessionOperation.load().timeout(remaining);
+        _ensureOperationCurrent(sessionOperation);
       } catch (error) {
+        _ensureOperationCurrent(sessionOperation);
         final hasAnotherAttempt =
             attempt + 1 < _revenueCatEntitlementPollAttempts;
         if (!hasAnotherAttempt ||
@@ -712,9 +900,11 @@ class StoreSubscriptionService {
         await _revenueCatEntitlementWait(
           _revenueCatEntitlementPollInterval,
         ).timeout(remaining);
+        _ensureOperationCurrent(sessionOperation);
         continue;
       }
 
+      _ensureSubscriptionOwner(subscription, sessionOperation);
       final productId = expectedProductsByPlan[subscription.plan.toUpperCase()];
 
       if (productId != null) {
@@ -734,6 +924,7 @@ class StoreSubscriptionService {
         await _revenueCatEntitlementWait(
           _revenueCatEntitlementPollInterval,
         ).timeout(remaining);
+        _ensureOperationCurrent(sessionOperation);
       }
     }
 
@@ -761,8 +952,9 @@ class StoreSubscriptionService {
   Future<StoreSubscriptionVerificationResult> _verifyPayload(
     StorePurchasePayload payload,
     String expectedProductId,
-  ) {
-    _ensureSessionActive();
+    _BillingOperation operation,
+  ) async {
+    _ensureOperationCurrent(operation);
     if (payload.productId != expectedProductId) {
       throw StoreSubscriptionException(
         'Store returned an unexpected product: ${payload.productId}',
@@ -778,12 +970,15 @@ class StoreSubscriptionService {
         );
       }
 
-      return _verifyPurchase(
+      final result = await operation.verify(
         VerifyStorePurchaseRequest.android(
           productId: payload.productId,
           purchaseToken: purchaseToken,
         ),
       );
+      _ensureOperationCurrent(operation);
+      _ensureSubscriptionOwner(result.subscription, operation);
+      return result;
     }
 
     if (payload.platform == 'IOS') {
@@ -795,12 +990,15 @@ class StoreSubscriptionService {
         );
       }
 
-      return _verifyPurchase(
+      final result = await operation.verify(
         VerifyStorePurchaseRequest.ios(
           productId: payload.productId,
           transactionId: transactionId,
         ),
       );
+      _ensureOperationCurrent(operation);
+      _ensureSubscriptionOwner(result.subscription, operation);
+      return result;
     }
 
     throw StoreSubscriptionException(
@@ -809,7 +1007,9 @@ class StoreSubscriptionService {
   }
 }
 
-RevenueCatBillingGateway? createRevenueCatBillingGatewayFromConfig() {
+RevenueCatBillingGateway? createRevenueCatBillingGatewayFromConfig({
+  PostDeeAuthSessionStore? sessionStore,
+}) {
   if (!AppConfig.enableRevenueCatBilling) {
     return null;
   }
@@ -818,7 +1018,64 @@ RevenueCatBillingGateway? createRevenueCatBillingGatewayFromConfig() {
     apiKey: AppConfig.revenueCatApiKey,
     androidApiKey: AppConfig.revenueCatAndroidApiKey,
     iosApiKey: AppConfig.revenueCatIosApiKey,
+    sessionStore: sessionStore,
   );
+}
+
+abstract class RevenueCatPurchasesSdk {
+  Future<bool> get isConfigured;
+  Future<String> get appUserId;
+  Future<void> setDebugLogLevel();
+  Future<void> configure(String apiKey, String appUserId);
+  Future<void> logIn(String appUserId);
+  Future<bool> canMakePayments();
+  Future<List<purchases.StoreProduct>> getProducts(List<String> productIds);
+  Future<void> purchase(purchases.StoreProduct product);
+  Future<void> restorePurchases();
+}
+
+class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk {
+  const _RevenueCatPurchasesSdk();
+
+  @override
+  Future<bool> get isConfigured => purchases.Purchases.isConfigured;
+
+  @override
+  Future<String> get appUserId => purchases.Purchases.appUserID;
+
+  @override
+  Future<void> setDebugLogLevel() =>
+      purchases.Purchases.setLogLevel(purchases.LogLevel.debug);
+
+  @override
+  Future<void> configure(String apiKey, String appUserId) =>
+      purchases.Purchases.configure(
+        purchases.PurchasesConfiguration(apiKey)..appUserID = appUserId,
+      );
+
+  @override
+  Future<void> logIn(String appUserId) async {
+    await purchases.Purchases.logIn(appUserId);
+  }
+
+  @override
+  Future<bool> canMakePayments() => purchases.Purchases.canMakePayments();
+
+  @override
+  Future<List<purchases.StoreProduct>> getProducts(List<String> productIds) =>
+      purchases.Purchases.getProducts(productIds);
+
+  @override
+  Future<void> purchase(purchases.StoreProduct product) async {
+    await purchases.Purchases.purchase(
+      purchases.PurchaseParams.storeProduct(product),
+    );
+  }
+
+  @override
+  Future<void> restorePurchases() async {
+    await purchases.Purchases.restorePurchases();
+  }
 }
 
 class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
@@ -827,67 +1084,120 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
     required this.androidApiKey,
     required this.iosApiKey,
     this.appUserIdProvider,
-  });
+    PostDeeAuthSessionStore? sessionStore,
+    RevenueCatPurchasesSdk? sdk,
+  })  : _sessionStore = sessionStore ?? PostDeeAuthSessionStore.instance,
+        _sdk = sdk ?? const _RevenueCatPurchasesSdk();
 
   final String apiKey;
   final String androidApiKey;
   final String iosApiKey;
   final Future<String?> Function()? appUserIdProvider;
+  final PostDeeAuthSessionStore _sessionStore;
+  final RevenueCatPurchasesSdk _sdk;
 
-  @override
-  Future<bool> isAvailable() async {
-    await _ensureConfigured();
-    return purchases.Purchases.canMakePayments();
-  }
+  // RevenueCat's native identity is global. Keep configuration through the
+  // terminal purchase/restore callback serialized across gateway instances.
+  // A dispatched native operation cannot be canceled on a session change.
+  static Future<void> _sdkQueue = Future<void>.value();
 
-  @override
-  Future<List<StoreProductInfo>> queryProducts(Set<String> productIds) async {
-    await _ensureConfigured();
-    final products = await purchases.Purchases.getProducts(productIds.toList());
-
-    return products
-        .map(
-          (product) => StoreProductInfo(
-            id: product.identifier,
-            title: product.title,
-            description: product.description,
-            price: product.priceString,
-          ),
-        )
-        .toList();
-  }
-
-  @override
-  Future<void> buySubscription(String productId) async {
-    await _ensureConfigured();
-    final product = await _loadProduct(productId);
-
-    try {
-      await purchases.Purchases.purchase(
-        purchases.PurchaseParams.storeProduct(product),
-      );
-    } on PlatformException catch (error) {
-      throw StoreSubscriptionException(
-        error.message ?? 'RevenueCat purchase failed.',
+  Future<T> _runWithSession<T>(
+    Future<T> Function(AuthSessionBinding binding, String userId) operation,
+  ) async {
+    final binding = _sessionStore.captureSession();
+    final session = _sessionStore.session;
+    final userId = session.userId;
+    if (!session.isSignedIn || userId == null || userId.trim().isEmpty) {
+      throw const StoreSubscriptionException(
+        'Sign in with Firebase before starting RevenueCat purchases.',
       );
     }
+    final result = _sdkQueue.then((_) async {
+      binding.ensureCurrent();
+      try {
+        final value = await operation(binding, userId);
+        binding.ensureCurrent();
+        return value;
+      } catch (_) {
+        binding.ensureCurrent();
+        rethrow;
+      }
+    });
+    _sdkQueue = result.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    return result;
   }
 
   @override
-  Future<void> restorePurchases() async {
-    await _ensureConfigured();
+  Future<bool> isAvailable() => _runWithSession((binding, userId) async {
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+        final available = await _sdk.canMakePayments();
+        binding.ensureCurrent();
+        return available;
+      });
 
-    try {
-      await purchases.Purchases.restorePurchases();
-    } on PlatformException catch (error) {
-      throw StoreSubscriptionException(
-        error.message ?? 'RevenueCat restore failed.',
-      );
-    }
-  }
+  @override
+  Future<List<StoreProductInfo>> queryProducts(Set<String> productIds) =>
+      _runWithSession((binding, userId) async {
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+        final products = await _sdk.getProducts(productIds.toList());
+        binding.ensureCurrent();
 
-  Future<purchases.StoreProduct> _loadProduct(String productId) async {
-    final products = await purchases.Purchases.getProducts([productId]);
+        return products
+            .map(
+              (product) => StoreProductInfo(
+                id: product.identifier,
+                title: product.title,
+                description: product.description,
+                price: product.priceString,
+              ),
+            )
+            .toList();
+      });
+
+  @override
+  Future<void> buySubscription(String productId) =>
+      _runWithSession((binding, userId) async {
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+        final product = await _loadProduct(productId, binding);
+        binding.ensureCurrent();
+
+        try {
+          await _sdk.purchase(product);
+          binding.ensureCurrent();
+        } on PlatformException catch (error) {
+          binding.ensureCurrent();
+          throw StoreSubscriptionException(
+            error.message ?? 'RevenueCat purchase failed.',
+          );
+        }
+      });
+
+  @override
+  Future<void> restorePurchases() => _runWithSession((binding, userId) async {
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+
+        try {
+          await _sdk.restorePurchases();
+          binding.ensureCurrent();
+        } on PlatformException catch (error) {
+          binding.ensureCurrent();
+          throw StoreSubscriptionException(
+            error.message ?? 'RevenueCat restore failed.',
+          );
+        }
+      });
+
+  Future<purchases.StoreProduct> _loadProduct(
+    String productId,
+    AuthSessionBinding binding,
+  ) async {
+    binding.ensureCurrent();
+    final products = await _sdk.getProducts([productId]);
+    binding.ensureCurrent();
     final matchingProducts =
         products.where((product) => product.identifier == productId);
 
@@ -900,7 +1210,11 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
     return matchingProducts.first;
   }
 
-  Future<void> _ensureConfigured() async {
+  Future<void> _ensureConfigured(
+    AuthSessionBinding binding,
+    String appUserId,
+  ) async {
+    binding.ensureCurrent();
     final selectedApiKey = _apiKeyForCurrentPlatform();
 
     if (selectedApiKey.isEmpty) {
@@ -909,29 +1223,38 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
       );
     }
 
-    final appUserId = await _readAppUserId();
-
-    if (appUserId == null || appUserId.isEmpty) {
-      throw const StoreSubscriptionException(
-        'Sign in with Firebase before starting RevenueCat purchases.',
-      );
+    // Retain the injection seam as a consistency check, never as a source of a
+    // later account's UID. Identity comes from the session captured at admission.
+    final provider = appUserIdProvider;
+    if (provider != null) {
+      final providedUserId = await provider();
+      binding.ensureCurrent();
+      if (providedUserId != appUserId) {
+        throw const StoreSubscriptionException(
+          'RevenueCat identity does not match the account that started this operation.',
+        );
+      }
     }
 
-    if (!await purchases.Purchases.isConfigured) {
+    final isConfigured = await _sdk.isConfigured;
+    binding.ensureCurrent();
+    if (!isConfigured) {
       if (!kReleaseMode) {
-        await purchases.Purchases.setLogLevel(purchases.LogLevel.debug);
+        await _sdk.setDebugLogLevel();
+        binding.ensureCurrent();
       }
 
-      final configuration = purchases.PurchasesConfiguration(selectedApiKey)
-        ..appUserID = appUserId;
-      await purchases.Purchases.configure(configuration);
+      await _sdk.configure(selectedApiKey, appUserId);
+      binding.ensureCurrent();
       return;
     }
 
-    final currentAppUserId = await purchases.Purchases.appUserID;
+    final currentAppUserId = await _sdk.appUserId;
+    binding.ensureCurrent();
 
     if (currentAppUserId != appUserId) {
-      await purchases.Purchases.logIn(appUserId);
+      await _sdk.logIn(appUserId);
+      binding.ensureCurrent();
     }
   }
 
@@ -952,14 +1275,6 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
     }
 
     return apiKey.trim();
-  }
-
-  Future<String?> _readAppUserId() async {
-    final provided = await appUserIdProvider?.call();
-    final appUserId =
-        provided ?? firebase_auth.FirebaseAuth.instance.currentUser?.uid.trim();
-
-    return appUserId == null || appUserId.isEmpty ? null : appUserId;
   }
 }
 

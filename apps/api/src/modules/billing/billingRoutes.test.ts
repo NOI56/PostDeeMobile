@@ -8,6 +8,30 @@ const encodeGoogleNotification = (payload: Record<string, unknown>) =>
   Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
 
 describe('billing routes', () => {
+  it('acknowledges protocol 1 purchase readiness after preparing the authenticated owner', async () => {
+    const app = createApp();
+    await request(app).post('/billing/purchase-readiness')
+      .set('x-postdee-user-id', 'seller-readiness').send({}).expect(200)
+      .expect({ status: 'ok', purchaseReady: true, preparationProtocol: 1 });
+  });
+
+  it('requires authentication before purchase readiness', async () => {
+    const app = createApp({
+      config: readServerConfig({ AUTH_PROVIDER: 'firebase', FIREBASE_PROJECT_ID: 'postdee-test' }),
+      firebaseVerifier: { verifyIdToken: async () => ({ id: 'fixture-user', provider: 'firebase' }) }
+    });
+    await request(app).post('/billing/purchase-readiness').send({}).expect(401);
+  });
+
+  it.each(['post', 'get'] as const)('never bootstraps a deleted owner via billing %s', async (method) => {
+    const app = createApp();
+    const userId = `seller-readiness-deleted-${method}`;
+    await request(app).delete('/account').set('x-postdee-user-id', userId).expect(200);
+    const path = method === 'post' ? '/billing/purchase-readiness' : '/billing/subscription';
+    await request(app)[method](path).set('x-postdee-user-id', userId).expect(409)
+      .expect(({ body }) => { expect(body.code).toBe('ACCOUNT_DELETION_IN_PROGRESS'); });
+  });
+
   const googlePlayNotificationAuthToken = 'google-play-notification-token';
   const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
     'uploads/' + encodeURIComponent(userId) + '/' + uploadId + '/' + fileName;

@@ -1,8 +1,110 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 
 void main() {
+  test('a mock binding without a UID cannot inherit the global principal', () async {
+    final global = PostDeeAuthSessionStore.instance;
+    addTearDown(global.clear);
+    global.signIn(const AuthSession(userId: 'global-b', idToken: 'local-mock-id-token'));
+    final custom = PostDeeAuthSessionStore(initialSession: const AuthSession(idToken: 'local-mock-id-token'));
+    await expectLater(PostDeeApiAuthHeaders(sessionBinding: custom.captureSession(), mockUserId: 'global-b', enableFirebaseAuth: false, allowLocalMockAuth: true).load(), throwsA(isA<ApiException>()));
+  });
+
+  test('local mock headers use the binding owner instead of the global account', () async {
+    final global = PostDeeAuthSessionStore.instance;
+    addTearDown(global.clear);
+    global.signIn(const AuthSession(userId: 'global-b', idToken: 'local-mock-id-token'));
+    final custom = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'custom-a', idToken: 'local-mock-id-token'));
+    final headers = await PostDeeApiAuthHeaders(sessionBinding: custom.captureSession(), mockUserId: 'custom-a', enableFirebaseAuth: false, allowLocalMockAuth: true).load();
+    expect(headers['x-postdee-user-id'], 'custom-a');
+  });
+
+  test('bound mock headers reject configuration for a different global owner', () async {
+    final global = PostDeeAuthSessionStore.instance;
+    addTearDown(global.clear);
+    global.signIn(const AuthSession(userId: 'global-b', idToken: 'local-mock-id-token'));
+    final custom = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'custom-a', idToken: 'local-mock-id-token'));
+    await expectLater(PostDeeApiAuthHeaders(sessionBinding: custom.captureSession(), mockUserId: 'global-b', enableFirebaseAuth: false, allowLocalMockAuth: true).load(), throwsA(isA<ApiException>()));
+  });
+
+  test('explicit local mock auth sends its configured stable API principal', () async {
+    final store = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'demo-owner', idToken: 'local-mock-id-token'));
+    final headers = await PostDeeApiAuthHeaders(sessionStore: store, mockUserId: 'demo-owner', enableFirebaseAuth: false, allowLocalMockAuth: true).load();
+    expect(headers['x-postdee-user-id'], 'demo-owner');
+  });
+
+  test('Firebase token never receives a development principal header', () async {
+    final store = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'firebase-owner', idToken: 'real-token'));
+    final headers = await PostDeeApiAuthHeaders(sessionStore: store, mockUserId: 'demo-owner', enableFirebaseAuth: true, allowLocalMockAuth: true).load();
+    expect(headers.containsKey('x-postdee-user-id'), isFalse);
+  });
+
+  test('explicit mock auth without matching configuration fails closed', () async {
+    final store = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'demo-owner', idToken: 'local-mock-id-token'));
+    await expectLater(PostDeeApiAuthHeaders(sessionStore: store, mockUserId: '', enableFirebaseAuth: false, allowLocalMockAuth: true).load(), throwsA(isA<ApiException>()));
+  });
+
+  test('credential updates retain the binding only for its existing UID', () {
+    final store = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'a', idToken: 'a'));
+    final binding = store.captureSession();
+    store.updateCredentials(const AuthSession(userId: 'a', idToken: 'fresh-a', emailVerified: true));
+    expect(binding.isCurrent, isTrue);
+    expect(store.session.emailVerified, isTrue);
+    expect(() => store.updateCredentials(const AuthSession(userId: 'b', idToken: 'b')), throwsA(isA<AuthSessionChangedException>()));
+    expect(store.session.userId, 'a');
+  });
+
+  test('bound headers reject a delayed token after an account transition', () async {
+    final token = Completer<String?>();
+    final store = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'a', idToken: 'a'));
+    final headers = PostDeeApiAuthHeaders(sessionBinding: store.captureSession(), authTokenProvider: () => token.future);
+    final loaded = headers.load();
+    final rejected = expectLater(loaded, throwsA(isA<AuthSessionChangedException>()));
+    store.signIn(const AuthSession(userId: 'b', idToken: 'b'));
+    token.complete('token-a');
+    await rejected;
+  });
+
+  test('session binding survives profile edits but not another sign-in', () {
+    final store = PostDeeAuthSessionStore(initialSession: const AuthSession(
+      userId: 'a', idToken: 'token-a',
+    ));
+    final binding = store.captureSession();
+    store.updateDisplayName('Updated');
+    expect(binding.isCurrent, isTrue);
+    store.signIn(store.session);
+    expect(binding.isCurrent, isFalse);
+    expect(binding.ensureCurrent, throwsA(isA<AuthSessionChangedException>()));
+  });
+
+  test('binding rejects a token refresh after signing out and back in', () async {
+    final refresh = Completer<AuthCredentialSnapshot?>();
+    final store = PostDeeAuthSessionStore(initialSession: const AuthSession(
+      userId: 'a', idToken: 'token-a',
+    ))..setAuthCredentialRefresher(() => refresh.future);
+    final token = store.captureSession().currentIdToken();
+    final rejected = expectLater(token, throwsA(isA<AuthSessionChangedException>()));
+    store.signOut();
+    store.signIn(const AuthSession(userId: 'a', idToken: 'new-token-a'));
+    refresh.complete(const AuthCredentialSnapshot(userId: 'a', idToken: 'old-refresh'));
+    await rejected;
+  });
+
+  test('failed token refresh never falls back to a later account', () async {
+    final refresh = Completer<String?>();
+    final store = PostDeeAuthSessionStore(initialSession: const AuthSession(
+      userId: 'a', idToken: 'token-a',
+    ))..setIdTokenRefresher(() => refresh.future);
+    final token = store.currentIdToken();
+    final rejected = expectLater(token, throwsA(isA<AuthSessionChangedException>()));
+    store.signIn(const AuthSession(userId: 'b', idToken: 'token-b'));
+    refresh.completeError(StateError('refresh failed'));
+    await rejected;
+  });
+
   test('authenticated session keeps a normalized stable user id', () {
     final session = AuthSession.authenticated(
       userId: '  firebase-user-123  ',

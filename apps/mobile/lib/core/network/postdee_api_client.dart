@@ -1331,16 +1331,25 @@ class PostDeeApiAuthHeaders {
   PostDeeApiAuthHeaders({
     AuthTokenProvider? authTokenProvider,
     PostDeeAuthSessionStore? sessionStore,
+    this.sessionBinding,
     this.mockUserId = AppConfig.mockUserId,
     this.mockSubscriptionPlan = AppConfig.mockSubscriptionPlan,
-  }) : authTokenProvider = authTokenProvider ??
-            (sessionStore ?? PostDeeAuthSessionStore.instance).currentIdToken;
+    this.enableFirebaseAuth = AppConfig.enableFirebaseAuth,
+    this.allowLocalMockAuth = AppConfig.allowLocalMockAuth,
+  }) : authTokenProvider = authTokenProvider ?? sessionBinding?.currentIdToken ??
+            (sessionStore ?? PostDeeAuthSessionStore.instance).currentIdToken,
+       _sessionStore = sessionStore ?? PostDeeAuthSessionStore.instance;
 
   final AuthTokenProvider authTokenProvider;
+  final AuthSessionBinding? sessionBinding;
   final String mockUserId;
   final String mockSubscriptionPlan;
+  final bool enableFirebaseAuth;
+  final bool allowLocalMockAuth;
+  final PostDeeAuthSessionStore _sessionStore;
 
   Future<Map<String, String>> load() async {
+    sessionBinding?.ensureCurrent();
     final headers = <String, String>{
       'Accept': 'application/json',
     };
@@ -1354,8 +1363,18 @@ class PostDeeApiAuthHeaders {
     }
 
     final token = (await authTokenProvider())?.trim();
+    sessionBinding?.ensureCurrent();
 
     if (token != null && token.isNotEmpty) {
+      if (!enableFirebaseAuth && allowLocalMockAuth && token == 'local-mock-id-token') {
+        final owner = mockUserId.trim();
+        final binding = sessionBinding;
+        final sessionOwner = binding != null ? binding.userId?.trim() : _sessionStore.session.stableUserId;
+        if (owner.isEmpty || sessionOwner != owner) {
+          throw const ApiException('ระบบบัญชีทดสอบยังไม่พร้อม', code: 'LOCAL_MOCK_IDENTITY_UNAVAILABLE');
+        }
+        headers['x-postdee-user-id'] = owner;
+      }
       headers['Authorization'] = 'Bearer $token';
       return headers;
     }
@@ -2549,6 +2568,7 @@ class PostDeeApiClient {
     String baseUrl = AppConfig.apiBaseUrl,
     AuthTokenProvider? authTokenProvider,
     PostDeeApiAuthHeaders? authHeaders,
+    AuthSessionBinding? sessionBinding,
     Future<void> Function(Duration)? multipartCompletionPollDelay,
     this.requestTimeout = const Duration(seconds: 20),
     this.aiRequestTimeout = const Duration(seconds: 120),
@@ -2558,9 +2578,11 @@ class PostDeeApiClient {
         assert(uploadRequestTimeout > Duration.zero),
         _customHttpClient = httpClient,
         _baseUri = Uri.parse(baseUrl),
+        _sessionBinding = sessionBinding,
         _authHeaders = authHeaders ??
             PostDeeApiAuthHeaders(
               authTokenProvider: authTokenProvider,
+              sessionBinding: sessionBinding,
             ),
         _multipartCompletionPollDelay = multipartCompletionPollDelay ??
             ((duration) => Future<void>.delayed(duration));
@@ -2585,6 +2607,7 @@ class PostDeeApiClient {
 
   final Uri _baseUri;
   final PostDeeApiAuthHeaders _authHeaders;
+  final AuthSessionBinding? _sessionBinding;
   final Future<void> Function(Duration) _multipartCompletionPollDelay;
 
   Future<LinkInBioProfileResult?> loadLinkInBioProfile() async {
@@ -2685,15 +2708,18 @@ class PostDeeApiClient {
     }
     return _withRequestDeadline(requestTimeout, (scope) async {
       final headers = await _authHeaders.load();
+      _sessionBinding?.ensureCurrent();
       scope.checkActive();
       final uri = _baseUri
           .resolve('/link-in-bio/image')
           .replace(queryParameters: {'key': key});
       final request = await scope.open(_httpClient.openUrl('GET', uri));
+      _sessionBinding?.ensureCurrent();
       for (final header in headers.entries) {
         request.headers.set(header.key, header.value);
       }
       request.headers.set(HttpHeaders.acceptHeader, 'image/png');
+      _sessionBinding?.ensureCurrent();
       scope.checkActive();
       final response = await request.close();
       final bytes = await scope.readBytes(response, maxBytes: 512 * 1024);
@@ -2743,7 +2769,8 @@ class PostDeeApiClient {
   ) async {
     final scope = _ApiRequestScope();
     try {
-      return await operation(scope).timeout(timeout, onTimeout: () {
+      _sessionBinding?.ensureCurrent();
+      final result = await operation(scope).timeout(timeout, onTimeout: () {
         const error = ApiException(
           'ระบบตอบกลับช้าเกินไป กรุณาลองใหม่อีกครั้ง',
           statusCode: HttpStatus.requestTimeout,
@@ -2752,6 +2779,8 @@ class PostDeeApiClient {
         scope.cancel(error);
         throw error;
       });
+      _sessionBinding?.ensureCurrent();
+      return result;
     } catch (error) {
       scope.cancel(error);
       rethrow;
@@ -2762,6 +2791,14 @@ class PostDeeApiClient {
     final response = await _getJson('/health');
 
     return ApiHealthResult.fromJson(response);
+  }
+
+  Future<void> prepareSubscriptionPurchase() async {
+    final response = await _postJson('/billing/purchase-readiness', {});
+    if (response['status'] != 'ok' || response['purchaseReady'] != true ||
+        response['preparationProtocol'] is! int || response['preparationProtocol'] != 1) {
+      throw const ApiException('Purchase preparation is not supported by this API.', code: 'PURCHASE_READINESS_UNSUPPORTED');
+    }
   }
 
   Future<void> checkPublishingReadiness() async {
@@ -3567,15 +3604,18 @@ class PostDeeApiClient {
     return _withRequestDeadline(
         isAiOperation ? aiRequestTimeout : requestTimeout, (scope) async {
       final headers = await _authHeaders.load();
+      _sessionBinding?.ensureCurrent();
       scope.checkActive();
       final request =
           await scope.open(_httpClient.openUrl(method, _baseUri.resolve(path)));
+      _sessionBinding?.ensureCurrent();
       if (body != null) request.headers.contentType = ContentType.json;
 
       for (final header in headers.entries) {
         request.headers.set(header.key, header.value);
       }
       if (body != null) request.write(jsonEncode(body));
+      _sessionBinding?.ensureCurrent();
       scope.checkActive();
       return _readJsonResponse(request, scope);
     });

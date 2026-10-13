@@ -102,6 +102,23 @@ class AuthSessionChangedException implements Exception {
 typedef AuthIdTokenRefresher = Future<String?> Function();
 typedef AuthCredentialRefresher = Future<AuthCredentialSnapshot?> Function();
 
+/// One sign-in lifecycle. Profile edits do not invalidate this binding.
+class AuthSessionBinding {
+  const AuthSessionBinding._(this._store, this._generation, this.userId);
+
+  final PostDeeAuthSessionStore _store;
+  final int _generation;
+  final String? userId;
+
+  bool get isCurrent => _store._generation == _generation;
+
+  void ensureCurrent() {
+    if (!isCurrent) throw const AuthSessionChangedException();
+  }
+
+  Future<String?> currentIdToken() => _store._currentIdTokenFor(this);
+}
+
 class PostDeeAuthSessionStore extends ChangeNotifier {
   PostDeeAuthSessionStore({
     AuthSession initialSession = AuthSession.unauthenticated,
@@ -110,10 +127,13 @@ class PostDeeAuthSessionStore extends ChangeNotifier {
   static final instance = PostDeeAuthSessionStore();
 
   AuthSession _session;
+  int _generation = 0;
   AuthIdTokenRefresher? _idTokenRefresher;
   AuthCredentialRefresher? _authCredentialRefresher;
 
   AuthSession get session => _session;
+
+  AuthSessionBinding captureSession() => AuthSessionBinding._(this, _generation, _session.userId);
 
   /// Sets the live token source used by [currentIdToken]. With Firebase this is
   /// `FirebaseAuth.instance.currentUser.getIdToken()`, which auto-refreshes an
@@ -132,13 +152,18 @@ class PostDeeAuthSessionStore extends ChangeNotifier {
     if (refresher != null) _idTokenRefresher = null;
   }
 
-  Future<String?> currentIdToken() async {
+  Future<String?> currentIdToken() => captureSession().currentIdToken();
+
+  Future<String?> _currentIdTokenFor(AuthSessionBinding binding) async {
+    binding.ensureCurrent();
+    final cachedToken = _session.idToken?.trim();
     final credentialRefresher = _authCredentialRefresher;
     if (credentialRefresher != null) {
       final expectedUserId = _session.stableUserId;
       if (expectedUserId == null) return null;
 
       final credential = await credentialRefresher();
+      binding.ensureCurrent();
       final liveUserId = credential?.userId.trim();
       if (credential == null ||
           liveUserId == null ||
@@ -153,7 +178,6 @@ class PostDeeAuthSessionStore extends ChangeNotifier {
         return freshToken;
       }
 
-      final cachedToken = _session.idToken?.trim();
       return cachedToken == null || cachedToken.isEmpty ? null : cachedToken;
     }
 
@@ -162,22 +186,22 @@ class PostDeeAuthSessionStore extends ChangeNotifier {
     final refresher = _idTokenRefresher;
 
     if (refresher != null) {
+      String? freshToken;
       try {
-        final freshToken = (await refresher())?.trim();
-
-        if (freshToken != null && freshToken.isNotEmpty) {
-          return freshToken;
-        }
+        freshToken = (await refresher())?.trim();
       } catch (_) {
         // Fall through to the cached token on any refresh error.
       }
+      binding.ensureCurrent();
+      if (freshToken != null && freshToken.isNotEmpty) return freshToken;
     }
 
-    final token = _session.idToken?.trim();
-    return token == null || token.isEmpty ? null : token;
+    binding.ensureCurrent();
+    return cachedToken == null || cachedToken.isEmpty ? null : cachedToken;
   }
 
   void signIn(AuthSession session) {
+    _generation += 1;
     _session = session;
     notifyListeners();
   }
@@ -199,11 +223,20 @@ class PostDeeAuthSessionStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Refreshes credentials for the existing principal without a new sign-in.
+  void updateCredentials(AuthSession session) {
+    if (!_session.isSignedIn || !session.isSignedIn || _session.stableUserId == null ||
+        session.stableUserId != _session.stableUserId) throw const AuthSessionChangedException();
+    _session = session;
+    notifyListeners();
+  }
+
   void signOut() {
     clear();
   }
 
   void clear() {
+    _generation += 1;
     _session = AuthSession.unauthenticated;
     notifyListeners();
   }

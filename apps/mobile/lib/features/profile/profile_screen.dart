@@ -10,6 +10,7 @@ import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_controller.dart';
 import '../auth/phone_verification_screen.dart';
+import '../auth/phone_verification_service.dart' show BoundPhoneAuthOperation;
 import '../billing/paywall_screen.dart';
 import '../legal/legal_document_screen.dart';
 import '../platforms/connections_screen.dart';
@@ -27,6 +28,7 @@ class ProfileScreen extends StatefulWidget {
     this.onSignOut,
     this.isActive = true,
     this.loadSubscription,
+    this.runNativePhoneAuthOperation,
     this.apiClient,
     this.launchConnectUrl,
     this.onManageSubscription,
@@ -45,6 +47,7 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback? onSignOut;
   final bool isActive;
   final PaywallSubscriptionLoader? loadSubscription;
+  final BoundPhoneAuthOperation? runNativePhoneAuthOperation;
   final PostDeeApiClient? apiClient;
   final ConnectUrlLauncher? launchConnectUrl;
   final Future<void> Function()? onManageSubscription;
@@ -345,26 +348,28 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> _verifyPhone() async {
     final owner = _currentAccountScope;
+    final binding = PostDeeAuthSessionStore.instance.captureSession();
     final session = widget.verifyPhone != null
         ? await widget.verifyPhone!(context)
         : await Navigator.of(context).push<AuthSession>(
             MaterialPageRoute<AuthSession>(
                 builder: (_) => PhoneVerificationScreen(
+                      runNativeAuthOperation: widget.runNativePhoneAuthOperation,
                       onVerified: (verified) {
-                        if (_currentAccountScope == owner &&
+                        if (binding.isCurrent && _currentAccountScope == owner &&
                             verified.stableUserId ==
                                 PostDeeAuthSessionStore
                                     .instance.session.stableUserId) {
-                          PostDeeAuthSessionStore.instance.signIn(verified);
+                          PostDeeAuthSessionStore.instance.updateCredentials(verified);
                         }
                       },
                     )),
           );
-    if (!mounted || owner != _currentAccountScope) return;
+    if (!mounted || !binding.isCurrent || owner != _currentAccountScope) return;
     if (session != null &&
         session.stableUserId ==
             PostDeeAuthSessionStore.instance.session.stableUserId) {
-      PostDeeAuthSessionStore.instance.signIn(session);
+      PostDeeAuthSessionStore.instance.updateCredentials(session);
     }
     await _loadSubscription();
   }
@@ -1195,6 +1200,7 @@ void _openLegal(BuildContext context, LegalDocument document) {
     ),
   );
 }
+
 
 const _securityInfo = LegalDocument(
   title: 'ความปลอดภัย',

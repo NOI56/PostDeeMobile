@@ -8,6 +8,153 @@ import 'package:postdee_mobile/features/billing/paywall_screen.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
 
 void main() {
+  setUp(() {
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(
+      userId: 'paywall-user', idToken: 'dummy-paywall-token',
+    ));
+  });
+  tearDown(PostDeeAuthSessionStore.instance.clear);
+
+  for (final operation in ['buy', 'restore', 'retry']) {
+    testWidgets('$operation closes only its own progress route', (tester) async {
+      tester.view.physicalSize = const Size(393, 1500);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final navigator = GlobalKey<NavigatorState>();
+      final completion = Completer<StoreSubscriptionVerificationResult>();
+      final service = _DeferredScreenBillingService(operation, completion);
+      await tester.pumpWidget(MaterialApp(
+        navigatorKey: navigator,
+        home: PaywallScreen(service: service,
+          loadSubscription: () async => _subscription(plan: 'BASIC')),
+      ));
+      await tester.pumpAndSettle();
+      final action = operation == 'buy' ? find.text('สมัคร Pro')
+          : operation == 'restore' ? find.text('กู้คืนการซื้อ')
+          : find.byKey(const ValueKey('paywall-retry-purchase'));
+      await tester.ensureVisible(action);
+      await tester.tap(action);
+      await tester.pump();
+      unawaited(navigator.currentState!.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('Unrelated route')),
+      )));
+      await tester.pump();
+      completion.complete(_verifiedSubscription(
+        const VerifyStorePurchaseRequest.android(
+          productId: 'postdee_pro_monthly', purchaseToken: 'receipt',
+        ), plan: 'PRO',
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('Unrelated route'), findsOneWidget);
+      expect(find.textContaining('กำลังดำเนินการสั่งซื้อ'), findsNothing);
+      expect(find.textContaining('กำลังกู้คืนการซื้อ'), findsNothing);
+      expect(find.textContaining('กำลังตรวจสอบการซื้อ'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('retry handles session rejection and dismisses its progress route', (tester) async {
+    final completion = Completer<StoreSubscriptionVerificationResult>();
+    await tester.pumpWidget(MaterialApp(home: PaywallScreen(
+      service: _DeferredScreenBillingService('retry', completion),
+      loadSubscription: () async => _subscription(plan: 'BASIC'),
+    )));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('paywall-retry-purchase')));
+    await tester.tap(find.byKey(const ValueKey('paywall-retry-purchase')));
+    await tester.pump();
+    completion.completeError(const AuthSessionChangedException());
+    await tester.pumpAndSettle();
+    expect(find.text('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่'), findsOneWidget);
+    expect(find.text('กำลังตรวจสอบการซื้อ...'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('account replacement suppresses an old purchase callback without popping a new route', (tester) async {
+    tester.view.physicalSize = const Size(393, 1500);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final sessions = PostDeeAuthSessionStore(initialSession:
+      const AuthSession(userId: 'paywall-user', idToken: 'owner-a'));
+    final navigator = GlobalKey<NavigatorState>();
+    final completion = Completer<StoreSubscriptionVerificationResult>();
+    var subscribedCalls = 0;
+    await tester.pumpWidget(MaterialApp(navigatorKey: navigator,
+      home: PaywallScreen(
+        sessionStore: sessions,
+        service: _DeferredScreenBillingService('buy', completion),
+        onSubscribed: (_) => subscribedCalls += 1,
+        loadSubscription: () async => _subscription(plan: 'BASIC'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('สมัคร Pro'));
+    await tester.tap(find.text('สมัคร Pro'));
+    await tester.pump();
+    unawaited(navigator.currentState!.push(MaterialPageRoute<void>(
+      builder: (_) => const Scaffold(body: Text('Next account route')),
+    )));
+    await tester.pump();
+    sessions.signIn(const AuthSession(userId: 'next-owner', idToken: 'owner-b'));
+    await tester.pump();
+    completion.complete(_verifiedSubscription(
+      const VerifyStorePurchaseRequest.android(
+        productId: 'postdee_pro_monthly', purchaseToken: 'old-receipt',
+      ), plan: 'PRO',
+    ));
+    await tester.pumpAndSettle();
+    expect(subscribedCalls, 0);
+    expect(find.text('Next account route'), findsOneWidget);
+    expect(find.text('สมัคร Pro สำเร็จ'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('late subscription loading cannot display the previous account plan', (tester) async {
+    final sessions = PostDeeAuthSessionStore(initialSession:
+      const AuthSession(userId: 'paywall-user', idToken: 'owner-a'));
+    final subscription = Completer<SubscriptionStatusResult>();
+    await tester.pumpWidget(MaterialApp(home: PaywallScreen(
+      sessionStore: sessions,
+      service: StoreSubscriptionService(gateway: _FakeStoreBillingGateway(), useRevenueCat: false),
+      loadSubscription: () => subscription.future,
+    )));
+    await tester.pump();
+    sessions.signIn(const AuthSession(userId: 'next-owner', idToken: 'owner-b'));
+    subscription.complete(_subscription(plan: 'PRO'));
+    await tester.pumpAndSettle();
+    expect(find.text('แพ็กเกจปัจจุบัน'), findsNothing);
+    expect(find.text('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่'), findsOneWidget);
+  });
+
+  testWidgets('unsupported preparation displays a Thai error before store purchase', (tester) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final gateway = _FakeRevenueCatBillingGateway();
+    var confirmationCalls = 0;
+    await tester.pumpWidget(MaterialApp(home: PaywallScreen(
+      service: StoreSubscriptionService(
+        revenueCatGateway: gateway, useRevenueCat: true,
+        prepareSubscriptionPurchase: () async => throw const ApiException(
+          'Old protocol', code: 'PURCHASE_READINESS_UNSUPPORTED',
+        ),
+        loadSubscription: () async { confirmationCalls += 1; return _subscription(plan: 'PRO'); },
+      ),
+      loadSubscription: () async => _subscription(plan: 'BASIC'),
+    )));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('สมัคร Pro'));
+    await tester.tap(find.text('สมัคร Pro'));
+    await tester.pumpAndSettle();
+    expect(find.text('ระบบสมาชิกยังไม่พร้อมสำหรับแอปเวอร์ชันนี้ กรุณาลองใหม่ภายหลัง'), findsOneWidget);
+    expect(gateway.purchaseCalls, 0);
+    expect(confirmationCalls, 0);
+    expect(find.text('สมัคร Pro สำเร็จ'), findsNothing);
+  });
+
   testWidgets('uses actual store prices instead of fixed Thai prices', (tester) async {
     tester.view.physicalSize = const Size(393, 1500);
     tester.view.devicePixelRatio = 1;
@@ -264,6 +411,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: revenueCatGateway,
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       resyncRevenueCatSubscription: () async => 'PRO',
       loadSubscription: () async => _subscription(plan: 'PRO'),
     );
@@ -357,6 +505,7 @@ void main() {
     final service = StoreSubscriptionService(
       revenueCatGateway: _FakeRevenueCatBillingGateway(),
       useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
       loadSubscription: () async => _subscription(plan: 'PRO'),
       resyncRevenueCatSubscription: () async => 'PRO',
     );
@@ -610,8 +759,27 @@ class _FakeStoreBillingGateway implements StoreBillingGateway {
       );
 }
 
+class _DeferredScreenBillingService extends StoreSubscriptionService {
+  _DeferredScreenBillingService(this.operation, this.completion)
+      : super(gateway: _FakeStoreBillingGateway(), useRevenueCat: false);
+  final String operation;
+  final Completer<StoreSubscriptionVerificationResult> completion;
+
+  @override
+  bool get supportsUnifiedRestore => true;
+  @override
+  bool get hasPendingConfirmation => operation == 'retry';
+  @override
+  Future<StoreSubscriptionVerificationResult> startProSubscription() => completion.future;
+  @override
+  Future<StoreSubscriptionVerificationResult> restoreSubscription() => completion.future;
+  @override
+  Future<StoreSubscriptionVerificationResult> retryPendingConfirmation() => completion.future;
+}
+
 class _FakeRevenueCatBillingGateway implements RevenueCatBillingGateway {
   var restoreCalls = 0;
+  var purchaseCalls = 0;
 
   @override
   Future<bool> isAvailable() async => true;
@@ -621,7 +789,7 @@ class _FakeRevenueCatBillingGateway implements RevenueCatBillingGateway {
       const [];
 
   @override
-  Future<void> buySubscription(String productId) async {}
+  Future<void> buySubscription(String productId) async => purchaseCalls += 1;
 
   @override
   Future<void> restorePurchases() async => restoreCalls += 1;

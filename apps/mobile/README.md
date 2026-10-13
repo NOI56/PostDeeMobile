@@ -168,6 +168,27 @@ post-Live native refresh preserved the selected date/filter and account state.
 The later guided revision updates the local APK. Check the separate
 follow-up receipt in `../../docs/superpowers/plans/2026-10-11-calendar-ux.md`;
 the preceding Staging release does not verify these effects.
+## Security integration preparation (2026-10-13)
+
+Current-main UI, Store link publication/appearance, scheduling/composer,
+Firebase UID credential refresh and billing pending-confirmation cache remain.
+The selective security port adds session-generation guards, bound HTTP clients,
+native auth serialization for OTP/Apple revocation, protocol-1 purchase readiness
+and scoped in-app push history/recipient matching. New readiness failure stops
+a new buy; a previously dispatched payment keeps the confirmation/retry flow.
+
+The API rollout is additive and retains legacy GET user preparation, now owner
+fenced. Deploy that API before installing this preparation-aware Staging app;
+read-only GET is deferred until incompatible buying builds are retired.
+Tests/analyze/build and exact Staging Emulator smoke for this branch are pending.
+Older passed CI/native evidence does not validate this patch. Delivery evidence:
+`../../docs/superpowers/plans/2026-10-13-security-main-delivery.md`.
+
+The native auth queue retains actual SDK settlement after a caller/UI timeout,
+including the Google picker and Firebase exchange. Mock sign-in uses the
+configured mock UID; existing server profiles reload under that owner, while
+older drafts stored under `local-mock-user` remain in their original local scope.
+This patch does not migrate or delete those drafts.
 
 ## Local Commands
 

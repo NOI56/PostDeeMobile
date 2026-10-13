@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/profile_platform_catalog.generated.dart';
 import 'link_in_bio_platform_logo.dart';
+import 'link_in_bio_color_picker.dart' show BioOwnedModalScope;
 
 const _genericNames = {
   'auto': 'เลือกจากลิงก์อัตโนมัติ',
@@ -14,12 +15,15 @@ const _genericNames = {
 String bioPlatformLabel(String id) =>
     profilePlatformNames[id] ?? _genericNames[id] ?? _genericNames['auto']!;
 
-Future<String?> showBioPlatformPicker(BuildContext context, String selected) =>
-    showModalBottomSheet<String>(
+Future<String?> showBioPlatformPicker(BuildContext context, String selected) {
+  final ownership = BioOwnedModalScope.maybeOf(context);
+  return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) {
+        final route = ModalRoute.of(context);
+        if (route != null) ownership?.onOpened(route);
         final media = MediaQuery.of(context);
         return Padding(
           padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
@@ -37,6 +41,7 @@ Future<String?> showBioPlatformPicker(BuildContext context, String selected) =>
         );
       },
     );
+}
 
 class BioPlatformPicker extends StatefulWidget {
   const BioPlatformPicker({

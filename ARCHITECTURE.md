@@ -789,6 +789,19 @@ Important mobile services:
   session owner or changes while the async refresh is running.
 - Without Firebase auth, the app falls back to local mock headers.
 - `PostDeeAuthSessionStore` stores the active mobile auth session.
+- Session generations supplement the existing stable UID/credential snapshot.
+  Sign-in/logout invalidate delayed operations; display-name/token refresh do
+  not. Bound HTTP clients retain API deadlines while checking generation across
+  request/response work. Native auth serialization covers phone linking and
+  Apple deletion revocation together with login/logout.
+- Store link retains its current published profile, images/appearance and local
+  per-UID draft structure; generation checks discard stale loads, saves and
+  owned modal results without replacing the current UI.
+- In-app FCM history clears on identity transitions; registration is bound to
+  the original auth operation and publish-result messages require an exact
+  recipient UID. Existing token rotation, authenticated unregistration and
+  cold-start tap handling are retained. Recipient filtering alone does not
+  establish cleanup or OS background suppression; runtime checks remain pending.
 - Home uses the legacy `POST /billing/store/verify` path by default for local
   scaffold runs, and can use RevenueCat `purchases_flutter` when
   `ENABLE_REVENUECAT_BILLING=true`; entitlements are then updated by
@@ -995,11 +1008,13 @@ path additionally requires `FIREBASE_SERVICE_ACCOUNT_JSON`; the API then uses
 Firebase Admin token verification with revocation checks.
 
 Account deletion is an idempotent cleanup saga, but is not yet production-safe.
-Its durable managed-upload owner marker is set first, while the process-local
-owner coordinator serializes authenticated API mutations and RevenueCat webhook
-application within one API process. A mutation already running in another API
-process can pass the durable-marker check before deletion starts and commit
-afterward. The publish worker atomically claims a due post before
+Its durable owner marker applies in legacy upload mode too, while the
+process-local owner coordinator serializes authenticated API mutations and
+RevenueCat webhook application within one API process. Explicit final User
+ensure, Post create/quota/reschedule/publish-now and Subscription
+activation/RevenueCat event writes lock ACTIVE in the same Serializable
+transaction as their final write. Other stores and managed-upload snapshot
+admission do not yet have this same boundary. The publish worker atomically claims a due post before
 checking the marker and calling a provider, without a lease spanning that call.
 The Production feature remains off until this incomplete mutation boundary and
 the remaining device/slow-network cleanup gates are closed.
@@ -1237,6 +1252,9 @@ sequenceDiagram
   participant DB as Subscription Store
 
   U->>M: Tap Start Starter or Start Pro
+  M->>A: POST /billing/purchase-readiness
+  A->>DB: Check active owner and ensure canonical User
+  A-->>M: purchaseReady true, preparationProtocol 1
   M->>RC: Request purchase
   RC->>Store: Process payment
   Store-->>RC: Receipt/Token

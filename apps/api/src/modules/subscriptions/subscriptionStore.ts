@@ -1,4 +1,5 @@
 import type { AuthUser } from '../auth/authTypes.js';
+import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 
 export type SubscriptionPlan = 'BASIC' | 'STARTER' | 'PRO';
 export type PaidSubscriptionPlan = Exclude<SubscriptionPlan, 'BASIC'>;
@@ -88,9 +89,11 @@ export const isSubscriptionExpired = (
 };
 
 export const createSubscriptionStore = ({
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  runWithActiveOwner = async (_ownerId, operation) => operation()
 }: {
   now?: () => string;
+  runWithActiveOwner?: RunWithActiveOwner;
 } = {}): SubscriptionStore => {
   const subscriptions = new Map<string, UserSubscription>();
   const subscriptionUserIdsByBillingId = new Map<string, string>();
@@ -149,8 +152,10 @@ export const createSubscriptionStore = ({
 
       return 'BASIC';
     },
-    activatePlan: activatePaidPlan,
-    activatePro: async (authUser, options = {}) => activatePaidPlan(authUser, 'PRO', options),
+    activatePlan: (authUser, plan, options) => runWithActiveOwner(authUser.id,
+      () => activatePaidPlan(authUser, plan, options)),
+    activatePro: (authUser, options = {}) => runWithActiveOwner(authUser.id,
+      () => activatePaidPlan(authUser, 'PRO', options)),
     updateStatusByBillingSubscriptionId: async ({ billingSubscriptionId, status }) => {
       const userId = subscriptionUserIdsByBillingId.get(billingSubscriptionId);
 
@@ -173,7 +178,7 @@ export const createSubscriptionStore = ({
       subscriptions.set(userId, subscription);
       return subscription;
     },
-    applyRevenueCatEvent: async (input) => {
+    applyRevenueCatEvent: (input) => runWithActiveOwner(input.authUser.id, async () => {
       const lastEvent = lastRevenueCatEventByUserId.get(input.authUser.id);
 
       if (
@@ -228,7 +233,7 @@ export const createSubscriptionStore = ({
         applied: true,
         subscription
       };
-    },
+    }),
     deleteAllForUser: async (userId) => {
       const existingSubscription = subscriptions.get(userId);
 

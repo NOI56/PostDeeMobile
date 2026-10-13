@@ -55,6 +55,7 @@ class FirebasePushMessagingGateway
     void Function(String token)? onToken,
     PostDeeAuthSessionStore? sessionStore,
     Future<void> Function(String token, AuthSession session)? registerToken,
+    Future<void> Function(String token, AuthSessionBinding binding)? registerBoundToken,
     Future<void> Function(String token, AuthSession session)? unregisterToken,
     void Function(String postId)? onOpenPost,
     Duration operationTimeout = const Duration(seconds: 5),
@@ -62,27 +63,32 @@ class FirebasePushMessagingGateway
   })  : assert(operationTimeout > Duration.zero),
         _client = client,
         _center = center ?? PostDeeNotificationCenter.instance,
-        _onToken = onToken,
         _sessionStore = sessionStore ?? PostDeeAuthSessionStore.instance,
+        _onToken = onToken,
         _registerToken = registerToken,
+        _registerBoundToken = registerBoundToken,
         _unregisterToken = unregisterToken,
         _onOpenPost = onOpenPost,
         _operationTimeout = operationTimeout,
-        _now = now;
+        _now = now {
+    _sessionBinding = _sessionStore.captureSession();
+  }
 
   final FirebaseMessagingClient _client;
   final PostDeeNotificationCenter _center;
+  final PostDeeAuthSessionStore _sessionStore;
   final void Function(String token)? _onToken;
   final DateTime Function() _now;
-  final PostDeeAuthSessionStore _sessionStore;
   final Future<void> Function(String token, AuthSession session)?
       _registerToken;
+  final Future<void> Function(String token, AuthSessionBinding binding)? _registerBoundToken;
   final Future<void> Function(String token, AuthSession session)?
       _unregisterToken;
   final void Function(String postId)? _onOpenPost;
   final Duration _operationTimeout;
 
   bool _started = false;
+  late AuthSessionBinding _sessionBinding;
   bool _disposed = false;
   bool _permissionGranted = false;
   int _accountGeneration = 0;
@@ -102,11 +108,14 @@ class FirebasePushMessagingGateway
 
   @override
   Future<void> initialize() async {
+    final binding = _sessionStore.captureSession();
     await start();
-    if (_disposed) return;
+    if (_disposed || !binding.isCurrent || !_sessionStore.session.isSignedIn) return;
     // Recheck permission on an explicit bell tap, including a previously denied
     // permission that the user later enabled in system settings.
-    _permissionGranted = await _client.requestPermission();
+    final granted = await _client.requestPermission();
+    if (_disposed || !binding.isCurrent) return;
+    _permissionGranted = granted;
     await _scheduleSync();
   }
 
@@ -116,6 +125,7 @@ class FirebasePushMessagingGateway
   Future<void> _start() async {
     if (_disposed) return;
     _started = true;
+    _sessionBinding = _sessionStore.captureSession();
     _ownerUserId = _sessionStore.session.stableUserId;
     _sessionStore.addListener(_handleSessionChanged);
     _foregroundSubscription = _client.onForegroundMessage.listen(
@@ -149,13 +159,14 @@ class FirebasePushMessagingGateway
   void _handleSessionChanged() {
     final session = _sessionStore.session;
     final owner = session.isSignedIn ? session.stableUserId : null;
-    if (owner != _ownerUserId) {
+    if (owner != _ownerUserId || !_sessionBinding.isCurrent) {
       if (_ownerUserId != null) {
         _needsTokenRotation = true;
         _latestToken = null;
         _tokenRevision += 1;
       }
       _ownerUserId = owner;
+      _sessionBinding = _sessionStore.captureSession();
       _accountGeneration += 1;
       _center.clear();
       unawaited(_scheduleSync());
@@ -180,6 +191,7 @@ class FirebasePushMessagingGateway
     if (!_started || _disposed) return;
     final generation = _accountGeneration;
     final revision = _tokenRevision;
+    final binding = _sessionStore.captureSession();
     final session = _sessionStore.session;
     final owner = session.isSignedIn ? session.stableUserId : null;
     final oldToken = _registeredToken;
@@ -201,6 +213,7 @@ class FirebasePushMessagingGateway
       await _rotateToken();
     }
     if (_disposed ||
+        !binding.isCurrent ||
         generation != _accountGeneration ||
         revision != _tokenRevision ||
         owner == null ||
@@ -211,6 +224,7 @@ class FirebasePushMessagingGateway
         (_latestToken ?? await _client.getToken().timeout(_operationTimeout))
             ?.trim();
     if (_disposed ||
+        !binding.isCurrent ||
         generation != _accountGeneration ||
         revision != _tokenRevision ||
         token == null ||
@@ -226,8 +240,10 @@ class FirebasePushMessagingGateway
     _registeredSession = session;
     _onToken?.call(token);
     final register = _registerToken;
-    if (register == null) return;
-    final pending = register(token, session);
+    final boundRegister = _registerBoundToken;
+    if (register == null && boundRegister == null) return;
+    binding.ensureCurrent();
+    final pending = boundRegister != null ? boundRegister(token, binding) : register!(token, session);
     // A timed-out request can still complete at the server. Clean up with its
     // original credentials, then reassert the current owner after completion.
     unawaited(pending.then((_) async {
@@ -274,11 +290,14 @@ class FirebasePushMessagingGateway
 
   void _handleMessage(PushNotificationMessage message, {bool opened = false}) {
     final session = _sessionStore.session;
+    final owner = session.userId;
+    final recipient = message.userId;
     // UID is required: unscoped legacy payloads cannot safely identify the
     // owner of a message delayed across logout or an account switch.
     if (_disposed ||
         !session.isSignedIn ||
-        message.userId != session.stableUserId ||
+        owner == null || owner.trim().isEmpty ||
+        recipient == null || recipient.trim().isEmpty || recipient != owner ||
         (!opened && !_permissionGranted)) {
       return;
     }
@@ -305,7 +324,9 @@ class FirebasePushMessagingGateway
 
   @override
   Future<void> dispose() async {
+    if (_disposed) return;
     _disposed = true;
+    _center.clear();
     _sessionStore.removeListener(_handleSessionChanged);
     await _foregroundSubscription?.cancel();
     await _openedSubscription?.cancel();
@@ -384,8 +405,10 @@ PushMessagingGateway createPushMessagingGatewayFromConfig({
   PostDeeNotificationCenter? center,
   void Function(String token)? onToken,
   Future<void> Function(String token, AuthSession session)? registerToken,
+  Future<void> Function(String token, AuthSessionBinding binding)? registerBoundToken,
   Future<void> Function(String token, AuthSession session)? unregisterToken,
   void Function(String postId)? onOpenPost,
+  PostDeeAuthSessionStore? sessionStore,
 }) {
   if (!enableFirebaseAuth) {
     return const DisabledPushMessagingGateway();
@@ -401,8 +424,10 @@ PushMessagingGateway createPushMessagingGatewayFromConfig({
   return FirebasePushMessagingGateway(
     client: FirebaseMessagingPackageClient(),
     center: center,
+    sessionStore: sessionStore,
     onToken: onToken,
     registerToken: registerToken,
+    registerBoundToken: registerBoundToken,
     unregisterToken: unregisterToken,
     onOpenPost: onOpenPost,
   );

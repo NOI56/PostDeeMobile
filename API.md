@@ -1371,6 +1371,14 @@ so queued or scheduled records can be removed safely.
 Registers the authenticated user's FCM token. Body:
 `{ "token": "...", "platform": "IOS|ANDROID|WEB" }`; `platform` is optional.
 
+Publish-result pushes include `data: { postId, type: "publish_result", userId }`,
+using the same owner as device-token selection. Mobile clears its in-app list
+on session transitions and accepts only exact matching recipient UIDs. Old
+recipientless messages are ignored. Existing token rotation, authenticated
+`DELETE /devices` unregistration and cold-start tap handling are retained.
+Recipient filtering alone cannot establish backend cleanup or control OS
+background notifications; that lifecycle still needs runtime verification.
+
 ### `GET /social-connections`
 
 Lists the authenticated user's saved PostPeer connections.
@@ -1477,16 +1485,22 @@ durable full-user mutation barrier and drain are implemented.
 
 Behavior:
 
-- Marks the managed-upload owner as deleting before cleanup starts. This marker
-  is durable for the managed-upload prefix, while the current process-local
-  coordinator serializes authenticated API mutations and RevenueCat webhook
-  application only inside one API process. A mutation already running in another
-  process can pass the durable-marker check before deletion starts and commit
-  afterward. The
+- Marks the owner as deleting before cleanup starts, including legacy upload
+  mode. Prisma supplies a durable marker whenever active; otherwise it is
+  process-local. The existing coordinator serializes mutation/deletion within
+  one API process. User ensure, Post create/quota/reschedule/publish-now and
+  Subscription activation/RevenueCat event writes additionally lock an ACTIVE
+  owner in the same Serializable transaction as the final mutation. Other
+  stores and managed-upload snapshot admission remain outside this guarantee. The
   publish worker atomically claims a due job, then checks the marker before
   calling a provider without a lease spanning that call. This endpoint is not
   production-safe until the full mutation-drain gap below is closed.
-- Cancels any queued or scheduled publish jobs for the user's posts.
+- Drains same-process queue admission before removing owned queued/scheduled
+  jobs, including jobs whose post row is absent after rollback. Busy drain or
+  failed queue cleanup returns a retryable
+  `503 ACCOUNT_WRITE_DRAIN_FAILED` / `503 ACCOUNT_PUBLISH_CLEANUP_FAILED`.
+  SQL/Redis, multiple processes and already-admitted provider calls remain
+  separate reconciliation/draining gates.
 - Lists every paginated integration in the user's PostPeer profile and
   disconnects each one through the provider before deleting local records.
   This includes integration ids for platforms PostDee does not yet recognize.
@@ -2432,9 +2446,30 @@ An unsupported range returns `400 INVALID_ANALYTICS_RANGE`.
 
 ## Billing And Subscriptions
 
+### `POST /billing/purchase-readiness`
+
+Authenticated preparation before a new RevenueCat SDK purchase. Send `{}`;
+body owner selectors cannot choose another principal. Success:
+`{ "status": "ok", "purchaseReady": true, "preparationProtocol": 1 }`.
+The route ensures the canonical User only for an active owner. Authentication
+errors remain 401 and a deleting/deleted owner returns
+`409 ACCOUNT_DELETION_IN_PROGRESS`. It does not activate entitlement or call a
+payment/subscriber provider.
+
+Current Mobile requires this explicit acknowledgement before a new SDK buy.
+404/501 or unsupported/missing readiness shows a Thai compatibility message
+and prevents purchase. Existing pending-confirmation/retry and Restore flows
+remain separate from a new payment. Install the additive API first, then the
+preparation-aware app; read-only GET is a separate later rollout step.
+
 ### `GET /billing/subscription`
 
 Returns the current user's plan and feature flags.
+
+During the additive security rollout this route retains legacy canonical-user
+preparation so existing buying builds continue to work. That User ensure uses
+the active-owner final-write fence. This delivery stage does not switch GET to
+read-only; retire/disable any incompatible buying builds before a later cutover.
 
 Basic response example:
 

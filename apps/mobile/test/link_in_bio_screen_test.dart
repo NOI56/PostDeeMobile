@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
+import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
@@ -30,6 +32,43 @@ Future<void> _add(WidgetTester tester,
 }
 
 void main() {
+  testWidgets('account transition closes an owned link editor', (tester) async {
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'seller-a', idToken: 'a'));
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
+    await _tap(tester, 'link-in-bio-add');
+    await tester.enterText(find.byKey(const ValueKey('link-in-bio-link-title')), 'private A');
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'seller-b', idToken: 'b'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('link-in-bio-link-title')), findsNothing);
+    expect(find.text('private A'), findsNothing);
+  });
+
+  testWidgets('same-owner new login cannot accept a pending old profile', (tester) async {
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'seller-a', idToken: 'a'));
+    final profile = Completer<LinkInBioProfileResult?>();
+    await tester.pumpWidget(MaterialApp(home: LinkInBioScreen(loadProfile: () => profile.future)));
+    await tester.pump();
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'seller-a', idToken: 'new-a'));
+    profile.complete(null);
+    await tester.pumpAndSettle();
+    expect(find.text('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าลิงก์ร้านอีกครั้ง'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('account transition closes a nested platform picker and editor', (tester) async {
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
+    await _tap(tester, 'link-in-bio-add');
+    await _tap(tester, 'link-in-bio-link-advanced');
+    await _tap(tester, 'link-in-bio-link-icon');
+    expect(find.text('เลือกโลโก้'), findsOneWidget);
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'b', idToken: 'b'));
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกโลโก้'), findsNothing);
+    expect(find.byKey(const ValueKey('link-in-bio-link-title')), findsNothing);
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     PostDeeAuthSessionStore.instance

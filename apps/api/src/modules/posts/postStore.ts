@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 
 import { countCurrentMonthPostUnits } from './postUsage.js';
 import {
@@ -178,7 +179,9 @@ export type PostStore = {
 export const isValidPlatform = (value: unknown): value is Platform =>
   typeof value === 'string' && validPlatforms.includes(value as Platform);
 
-export const createPostStore = (): PostStore => {
+export const createPostStore = ({
+  runWithActiveOwner = async (_ownerId, operation) => operation()
+}: { runWithActiveOwner?: RunWithActiveOwner } = {}): PostStore => {
   const posts: QueuedPost[] = [];
   const createPost = (
     input: CreatePostInput,
@@ -250,9 +253,9 @@ export const createPostStore = (): PostStore => {
         posts.filter((post) => post.userId === userId),
         new Date(now)
       ),
-    create: async (input) => createPost(input),
+    create: (input) => runWithActiveOwner(input.userId, async () => createPost(input)),
     findIdempotent: async (input) => findIdempotent(input),
-    createWithinMonthlyLimit: async (input) => {
+    createWithinMonthlyLimit: (input) => runWithActiveOwner(input.userId, async () => {
       if (input.clientRequestId) {
         const idempotencyKey = {
           userId: input.userId,
@@ -290,7 +293,7 @@ export const createPostStore = (): PostStore => {
         ),
         created: true
       };
-    },
+    }),
     listDue: async ({ now }) =>
       posts.filter(
         (post) =>
@@ -322,7 +325,7 @@ export const createPostStore = (): PostStore => {
         }
       }
     },
-    reschedule: async ({ postId, userId, expectedScheduledAt, scheduledAt }) => {
+    reschedule: ({ postId, userId, expectedScheduledAt, scheduledAt }) => runWithActiveOwner(userId, async () => {
       const post = posts.find(
         (candidate) =>
           candidate.id === postId &&
@@ -340,8 +343,8 @@ export const createPostStore = (): PostStore => {
 
       post.scheduledAt = scheduledAt;
       return post;
-    },
-    publishNow: async ({ postId, userId, expectedScheduledAt }) => {
+    }),
+    publishNow: ({ postId, userId, expectedScheduledAt }) => runWithActiveOwner(userId, async () => {
       const post = posts.find(
         (candidate) =>
           candidate.id === postId &&
@@ -358,7 +361,7 @@ export const createPostStore = (): PostStore => {
 
       delete post.scheduledAt;
       return post;
-    },
+    }),
     remove: async ({ postId, userId }) => {
       const index = posts.findIndex(
         (candidate) =>

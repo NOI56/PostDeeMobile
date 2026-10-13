@@ -1,5 +1,34 @@
 # PostDee Staging
 
+## ส่งมอบ account deletion authorization — 14 ตุลาคม 2026
+
+- ผู้ใช้อนุญาต main/push/deploy หลังแก้ช่องทาง retry ลบบัญชี Source เริ่มจาก
+  main `1bf125c` เป็น `5ebb0ac` และ follow-up `3481f3f` ที่เพิ่ม await การแปลงโลโก้
+  เพื่อผ่าน Flutter analyzer รุ่นใหม่ ทั้ง main และ branch งาน push แล้ว
+  งานเดิมที่ยังไม่ commit และ QA artifacts ถูกเก็บไว้ ไม่แก้ Production
+- CI [`38452410378`](https://github.com/NOI56/PostDeeMobile/actions/runs/38452410378)
+  ที่ SHA `3481f3fcff4c78d11b954a45906341a784d7654c` ผ่าน API 1,871 tests,
+  Mobile เต็ม 2,189 tests, build/analyze/Prisma และ generator 22 tests
+  มีการทดสอบ migration บน PostgreSQL 18.1 จำลองและ Prisma จริง 16 กรณี
+  ก่อนส่งมอบ ไม่สร้างหรือติดตั้ง APK ใหม่
+- [Render `dep-db785nvavr4c73a1cm80`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db785nvavr4c73a1cm80)
+  เป็น Live ที่ source เดียวกันเวลา 02:15:41 GMT+7 ใช้ 2m06s
+  Start command ลง migration ก่อนเปิด API ตรวจภายในฐาน Staging ยืนยัน
+  migration `20261014003000_authorize_account_deletion` สำเร็จ รวม 17 รายการ
+  คอลัมน์ proof nullable ไม่มี default และไม่มีการเติมสิทธิ์ให้ข้อมูลเดิม
+- `/health` และ `/ready` ตอบ 200 พร้อม DB/queue ok; ไม่ส่ง token แล้ว
+  account/publishing readiness และ POST purchase-readiness ตอบ 401
+  หน้าร้าน noikub เดิมเปิดได้ มี 2 ลิงก์ ตรวจ error log ของ instance ใหม่ไม่พบ
+  ไม่ได้ทดสอบลบบัญชีหรือ cleanup ผ่าน Firebase/provider จริง
+- คง Firebase project/ฐานข้อมูล Staging เดิม, 1 instance,
+  `FIREBASE_AUTH_DELETE_ENABLED=false`, `SOCIAL_PUBLISHER=disabled` และ
+  `PUBLISH_QUEUE=memory`; auto-deploy ปิดอยู่ ไม่แก้ secret/plan/network rules
+  Production API ยัง user-suspended และไม่มี deployment ใหม่
+- เอกสาร receipt เท่านั้นไม่ต้อง deploy ซ้ำ รายละเอียดอยู่ใน
+  `superpowers/plans/2026-10-14-account-deletion-authorization.md`
+  ข้อจำกัด TypeScript fixtures เดิม 142 จุด และ Redis/หลาย process/
+  Firebase/provider/device acceptance ยังไม่ถือว่าปิดงาน
+
 ## ส่งมอบ security fixes จาก main ปัจจุบัน — 13 ตุลาคม 2026
 
 - ใช้ baseline remote `main` ล่าสุด `f5dea16` ที่ fetch แล้ว (เริ่มจาก `c4e5220`) แยก branch

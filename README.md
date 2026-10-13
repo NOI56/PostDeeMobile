@@ -280,7 +280,7 @@ signature; published shop data and signed-in state are retained. Basic device
 smoke passes. Production remains outside this delivery stage. See
 [`2026-10-13-security-main-delivery.md`](docs/superpowers/plans/2026-10-13-security-main-delivery.md).
 
-## Account deletion retry authorization (2026-10-14, verified locally)
+## Account deletion retry authorization (2026-10-14, delivered to Staging)
 
 The follow-up starts from main `1bf125c` and separates a lifecycle tombstone
 from permission to finish account deletion. A missing Firebase UID by itself
@@ -290,8 +290,13 @@ Firebase authentication; only that proof can authorize a later retry. The
 observed failure used a Firebase SDK fixture, not a confirmed real-Firebase
 exploit. Local verification passed 1,871 API cases, the production API build,
 Prisma generation/schema/helper checks, 159 mobile compatibility cases and
-Flutter analyze. Offline migration DDL matches the schema change; no live
-migration or deployment has been performed. Full test-inclusive TypeScript
+Flutter analyze. Disposable PostgreSQL execution passed 16 checks and actual
+migration deployment. Source `3481f3f` is pushed on main and Live on Staging at
+`dep-db785nvavr4c73a1cm80`; migration 17 is applied and health/readiness pass.
+Exact-source CI `38452410378` passed 1,871 API and 2,189 Mobile cases plus
+build/analyze/schema checks. The logo follow-up adds `await` to normalization
+before resource disposal to satisfy the newer Flutter analyzer. No new APK
+was installed. Full test-inclusive TypeScript
 checking retains main's 142 existing fixture errors with no new errors.
 This is not a Production-readiness claim.
 

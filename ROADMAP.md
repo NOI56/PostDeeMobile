@@ -366,7 +366,7 @@ confirmation and cold callback remain unverified.
   the first delivery stage. Exact evidence belongs in
   `docs/superpowers/plans/2026-10-13-security-main-delivery.md`.
 
-## Account deletion retry authorization (2026-10-14, verified locally)
+## Account deletion retry authorization (2026-10-14, delivered to Staging)
 
 - Start from verified main `1bf125c`; turn the SDK-fixture missing-identity
   failure into a regression test. The fixture is not confirmation that the
@@ -387,8 +387,12 @@ confirmation and cold callback remain unverified.
   Readiness response fields and the mobile flow remain compatible.
 - Local verification passed 1,871 API cases, production API build,
   Prisma generation/schema/helper checks, 159 mobile compatibility cases and
-  Flutter analyze. Offline migration DDL matches the schema addition; the
-  migration and API delivery are pending. Full test-inclusive TypeScript still
+  Flutter analyze. Disposable PostgreSQL execution passed 16 checks and real
+  migration deployment. Main `3481f3f` is Live on Staging at
+  `dep-db785nvavr4c73a1cm80`, with migration 17 applied and health/readiness ok.
+  Exact-source CI `38452410378` passed API 1,871 and full Mobile 2,189 cases,
+  build/analyze/schema; the CI compatibility follow-up adds an await during
+  logo normalization. No new APK was installed. Full test-inclusive TypeScript still
   has main's 142 existing fixture errors with no new errors. Keep Production
   deletion disabled; durable multi-process draining and real provider/device
   cleanup acceptance remain separate gates. Plan:

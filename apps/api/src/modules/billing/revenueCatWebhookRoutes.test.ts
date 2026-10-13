@@ -24,7 +24,7 @@ const createRevenueCatApp = () =>
     })
   });
 
-const postRevenueCatWebhookRaw = (app: ReturnType<typeof createRevenueCatApp>, body: unknown) =>
+const postRevenueCatWebhookRaw = (app: ReturnType<typeof createRevenueCatApp>, body: string | object | undefined) =>
   request(app)
     .post('/billing/revenuecat/webhooks')
     .set('Authorization', `Bearer ${revenueCatToken}`)
@@ -32,7 +32,7 @@ const postRevenueCatWebhookRaw = (app: ReturnType<typeof createRevenueCatApp>, b
 
 let revenueCatEventSequence = 0;
 
-const postRevenueCatWebhook = (app: ReturnType<typeof createRevenueCatApp>, body: unknown) => {
+const postRevenueCatWebhook = (app: ReturnType<typeof createRevenueCatApp>, body: string | object | undefined) => {
   if (
     typeof body !== 'object' ||
     body === null ||

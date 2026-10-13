@@ -15,6 +15,7 @@ describe('createPublishQueueFromConfig', () => {
 
     const job = await queue.enqueue({
       id: 'post-1',
+      userId: 'seller-1',
       caption: 'Ready now',
       videoS3Key: 'uploads/video.mp4',
       platforms: ['TIKTOK'],
@@ -47,6 +48,7 @@ describe('createPublishQueueFromConfig', () => {
 
     const job = await queue.enqueue({
       id: 'post-2',
+      userId: 'seller-2',
       caption: 'Schedule later',
       videoS3Key: 'uploads/video.mp4',
       platforms: ['YOUTUBE_SHORTS'],

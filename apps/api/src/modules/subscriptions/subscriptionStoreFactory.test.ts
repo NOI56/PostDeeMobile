@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createSubscriptionStoreFromConfig } from './subscriptionStoreFactory.js';
+import { withSubscriptionRepositoryFixture } from '../../../test/repositoryFixtures.js';
 
 describe('createSubscriptionStoreFromConfig', () => {
   it('uses the in-memory subscription store by default', async () => {
@@ -33,7 +34,7 @@ describe('createSubscriptionStoreFromConfig', () => {
       config: {
         subscriptionStore: 'prisma'
       },
-      prisma
+      prisma: withSubscriptionRepositoryFixture(prisma)
     });
 
     await expect(store.getPlan({ id: 'seller-1', provider: 'mock' })).resolves.toBe('PRO');

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   PostIdempotencyKeyReusedError,
-  createPostStore
+  createPostStore,
+  type CreatePostWithinMonthlyLimitInput
 } from './postStore.js';
 
 describe('createPostStore', () => {
@@ -54,13 +55,13 @@ describe('createPostStore', () => {
 
   it('replays the same client request inside the atomic quota operation without charging twice', async () => {
     const store = createPostStore();
-    const input = {
+    const input: CreatePostWithinMonthlyLimitInput = {
       userId: 'seller-idempotent',
       clientRequestId: 'draft-123',
       caption: 'โพสต์ครั้งเดียว',
       videoS3Key: 'uploads/seller-idempotent/video.mp4',
       mediaContentFingerprint: 'a'.repeat(64),
-      platforms: ['TIKTOK', 'YOUTUBE_SHORTS'] as const,
+      platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
       monthlyPostUnitLimit: 2,
       now: '2026-06-15T10:00:00.000Z'
     };
@@ -83,12 +84,12 @@ describe('createPostStore', () => {
 
   it('rejects reusing a client request id for a different publishing intent', async () => {
     const store = createPostStore();
-    const input = {
+    const input: CreatePostWithinMonthlyLimitInput = {
       userId: 'seller-intent-conflict',
       clientRequestId: 'draft-conflict',
       caption: 'Original caption',
       videoS3Key: 'uploads/seller-intent-conflict/video.mp4',
-      platforms: ['TIKTOK'] as const,
+      platforms: ['TIKTOK'],
       monthlyPostUnitLimit: 3,
       now: '2026-06-15T10:00:00.000Z'
     };
@@ -101,10 +102,10 @@ describe('createPostStore', () => {
 
   it('rejects changed media and accepts legacy retries only with the original media keys', async () => {
     const store = createPostStore();
-    const input = {
+    const input: CreatePostWithinMonthlyLimitInput = {
       userId: 'seller-media-conflict', clientRequestId: 'media-conflict',
       caption: 'Unchanged text', videoS3Key: 'uploads/original.mp4',
-      coverImageS3Key: 'uploads/original.jpg', platforms: ['TIKTOK'] as const,
+      coverImageS3Key: 'uploads/original.jpg', platforms: ['TIKTOK'],
       monthlyPostUnitLimit: 3, now: '2026-06-15T10:00:00.000Z'
     };
     await store.createWithinMonthlyLimit(input);

@@ -280,6 +280,25 @@ signature; published shop data and signed-in state are retained. Basic device
 smoke passes. Production remains outside this delivery stage. See
 [`2026-10-13-security-main-delivery.md`](docs/superpowers/plans/2026-10-13-security-main-delivery.md).
 
+## Staging regression and test typing (2026-10-14, local follow-up)
+
+Starting from verified main `f07ee30`, the local branch
+`codex/staging-regression-and-test-types` repairs all 142 existing test-inclusive
+TypeScript errors with typed fixtures. `npm run typecheck` now checks tests as
+well as runtime source, and CI runs it after Prisma generation. Targeted tests
+pass 474/474; the full API suite passes 1,871/1,871 in 116 files, with typecheck,
+production build and Prisma validation passing. Runtime, schema, dependencies
+and mobile source are unchanged; this follow-up has not been merged, pushed or
+deployed. The existing Staging app retains its session and original shop draft
+after restart and a temporary edit/restore. Two independent processes on a local
+PostgreSQL instance verify durable owner admission, while a simulated remote
+operation confirms the remaining cross-process drain gap. A disposable Staging
+deletion account does not exist yet; creation steps are prepared only. Keep
+deletion and social publishing disabled. Native synthetic clip/manual-caption
+checks and authenticated Staging R2 part transfer/recovery/abort pass; upload
+completion and social delivery remain unverified. Evidence and enablement gates:
+[`2026-10-14-staging-regression-and-typecheck.md`](docs/superpowers/plans/2026-10-14-staging-regression-and-typecheck.md).
+
 ## Account deletion retry authorization (2026-10-14, delivered to Staging)
 
 The follow-up starts from main `1bf125c` and separates a lifecycle tombstone
@@ -296,8 +315,9 @@ migration deployment. Source `3481f3f` is pushed on main and Live on Staging at
 Exact-source CI `38452410378` passed 1,871 API and 2,189 Mobile cases plus
 build/analyze/schema checks. The logo follow-up adds `await` to normalization
 before resource disposal to satisfy the newer Flutter analyzer. No new APK
-was installed. Full test-inclusive TypeScript
-checking retains main's 142 existing fixture errors with no new errors.
+was installed. At that delivery, full test-inclusive TypeScript
+checking retained main's 142 existing fixture errors with no new errors;
+the separate local follow-up above repairs them.
 This is not a Production-readiness claim.
 
 The nullable `ManagedUploadOwner.deletionAuthorizedAt` column requires migration
@@ -747,6 +767,8 @@ Run backend checks:
 ```powershell
 cd apps/api
 npm.cmd install
+npm.cmd run prisma:generate
+npm.cmd run typecheck
 npm.cmd run test
 npm.cmd run build
 $env:DATABASE_URL='postgresql://postdee:postdee_password@localhost:5432/postdee?schema=public'; npm.cmd run prisma:validate

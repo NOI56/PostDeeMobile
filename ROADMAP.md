@@ -366,6 +366,32 @@ confirmation and cold callback remain unverified.
   the first delivery stage. Exact evidence belongs in
   `docs/superpowers/plans/2026-10-13-security-main-delivery.md`.
 
+## Staging regression and test typing (2026-10-14, local follow-up)
+
+- Start from verified main `f07ee30` on
+  `codex/staging-regression-and-test-types`. Repair the 142 existing fixture
+  typing errors and add `npm run typecheck` to CI after Prisma generation.
+  Targeted tests pass 474/474; full API tests pass 1,871/1,871 in 116 files,
+  with typecheck, production build and Prisma schema validation passing.
+  Runtime, schema, dependencies and mobile source are unchanged. No main
+  merge, push, deploy, APK installation or feature activation has occurred.
+- The existing Staging app preserves its session and complete original shop
+  draft through restart and a temporary edit/restore. Native synthetic clip,
+  manual caption and zero-destination guard checks pass. Authenticated Staging
+  R2 part transfer/recovery/abort pass; no upload completion, AI or social post.
+- Actual local PostgreSQL 18.1 with 17 migrations and two independent Node
+  processes passes seven checks. Late User/Post/Subscription writes and new
+  remote admission reject `DELETING`/`DELETED` owners. An IPC simulation also
+  confirms already-admitted remote work can finish after deletion in another
+  process; real Redis/provider draining remains unverified. Keep deletion
+  disabled until shared operation lifetime coordination and cleanup acceptance
+  pass.
+- The user has no disposable Staging deletion account. Prepare its creation
+  procedure only, using a separate test device/emulator and synthetic data;
+  later account creation, deletion and flag changes require authorization.
+  Plan and precise evidence:
+  [`2026-10-14-staging-regression-and-typecheck.md`](docs/superpowers/plans/2026-10-14-staging-regression-and-typecheck.md).
+
 ## Account deletion retry authorization (2026-10-14, delivered to Staging)
 
 - Start from verified main `1bf125c`; turn the SDK-fixture missing-identity
@@ -392,8 +418,9 @@ confirmation and cold callback remain unverified.
   `dep-db785nvavr4c73a1cm80`, with migration 17 applied and health/readiness ok.
   Exact-source CI `38452410378` passed API 1,871 and full Mobile 2,189 cases,
   build/analyze/schema; the CI compatibility follow-up adds an await during
-  logo normalization. No new APK was installed. Full test-inclusive TypeScript still
-  has main's 142 existing fixture errors with no new errors. Keep Production
+  logo normalization. No new APK was installed. At that delivery, full
+  test-inclusive TypeScript retained main's 142 existing fixture errors with no
+  new errors; the separate local follow-up above repairs them. Keep Production
   deletion disabled; durable multi-process draining and real provider/device
   cleanup acceptance remain separate gates. Plan:
   `docs/superpowers/plans/2026-10-14-account-deletion-authorization.md`.
@@ -1003,6 +1030,7 @@ Plan status uses five groups:
 
 | Plan file | Status | Notes |
 | --- | --- | --- |
+| `docs/superpowers/plans/2026-10-14-staging-regression-and-typecheck.md` | ทำบางส่วน | Local typing/CI validation, native draft/clip guards and Staging R2 part transfer/recovery/abort pass. Upload completion, real Redis/provider drain and disposable-account deletion remain separate gates. No main/push/deploy or flag activation in this follow-up. |
 | `docs/superpowers/plans/2026-07-17-scaling-roadmap.md` | อนาคต | Reconciled on 2026-10-08 against the active product and single-process owner boundary; capacity tiers require measured evidence and no scaling infrastructure is enabled. |
 | `docs/superpowers/plans/2026-10-05-backend-hardening.md` | ประวัติ | Original isolated-branch verification is historical; the 2026-10-08 integration ports runtime hardening without its old dependency refresh. |
 | `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md` | ประวัติ | Source/CI/native delivery is complete at `36dbacc`; the same runtime is Live on Staging at `9baa18c`/`dep-db3m2g59fdbs73ecbib0`. Readiness/auth/empty-owner contracts and separate R2 fixture delivery/cleanup pass. Nonempty native Home, two-owner isolation and provider/crash/scale/Production gates remain. |

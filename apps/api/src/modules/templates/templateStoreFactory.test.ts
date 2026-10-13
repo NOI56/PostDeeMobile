@@ -6,8 +6,7 @@ describe('createTemplateStoreFromConfig', () => {
   it('uses the in-memory store by default', async () => {
     const store = createTemplateStoreFromConfig({
       config: {
-        templateStore: 'memory',
-        templateStoreUserId: 'local-dev-user'
+        templateStore: 'memory'
       }
     });
 
@@ -37,8 +36,7 @@ describe('createTemplateStoreFromConfig', () => {
     };
     const store = createTemplateStoreFromConfig({
       config: {
-        templateStore: 'prisma',
-        templateStoreUserId: 'user-1'
+        templateStore: 'prisma'
       },
       prisma
     });
@@ -61,8 +59,7 @@ describe('createTemplateStoreFromConfig', () => {
     expect(() =>
       createTemplateStoreFromConfig({
         config: {
-          templateStore: 'prisma',
-          templateStoreUserId: 'user-1'
+          templateStore: 'prisma'
         }
       })
     ).toThrow('Prisma template store requires a Prisma client');

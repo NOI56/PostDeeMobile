@@ -5,11 +5,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { createAuthMiddlewareFromConfig } from './authMiddlewareFactory.js';
 import { registerAuthRoutes } from './authRoutes.js';
 
-const createTestApp = (...middleware: express.RequestHandler[]) => {
+const createTestApp = (authMiddleware: express.RequestHandler) => {
   const app = express();
   const router = express.Router();
 
-  registerAuthRoutes(router, ...middleware);
+  registerAuthRoutes(router, authMiddleware);
   app.use(router);
 
   return app;

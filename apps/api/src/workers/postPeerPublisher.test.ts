@@ -22,7 +22,8 @@ const createTestVideoStorage = (): VideoStorage => ({
     downloadMethod: 'GET',
     downloadExpiresAt: '2026-06-24T12:00:00.000Z'
   }),
-  deleteVideo: async () => undefined
+  deleteVideo: async () => undefined,
+  deleteAllVideosForOwner: async () => undefined
 });
 
 afterEach(() => {

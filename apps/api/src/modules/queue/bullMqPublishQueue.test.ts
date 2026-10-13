@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { QueuedPost } from '../posts/postStore.js';
 import { createBullMqPublishQueueFromClient } from './bullMqPublishQueue.js';
 import { buildPublishJobId } from './publishQueue.js';
 
@@ -123,12 +124,12 @@ describe('createBullMqPublishQueueFromClient', () => {
   });
 
   it('repairs a failed deterministic job and leaves a healthy retry alone', async () => {
-    const post = {
+    const post: QueuedPost = {
       id: 'post-idempotent-repair',
       userId: 'seller-repair',
       caption: 'Repair queue',
       videoS3Key: 'uploads/repair.mp4',
-      platforms: ['TIKTOK'] as const,
+      platforms: ['TIKTOK'],
       status: 'QUEUED' as const,
       createdAt: '2026-06-01T00:00:00.000Z'
     };

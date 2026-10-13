@@ -12,6 +12,7 @@
     "start": "node dist/server.js",
     "worker:publish": "tsx src/workers/publishWorkerRunner.ts",
     "benchmark:transcription": "tsx scripts/compareTranscriptions.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",

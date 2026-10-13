@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
 import { createInMemoryRealClipCaptionUsageStore } from './captionUsageStore.js';
+import type { GeneratedRealClipCaption, RealClipCaptionGenerateInput } from './realClipCaptionProvider.js';
 import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 
 const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
@@ -378,11 +379,7 @@ describe('caption routes', () => {
     });
   });
 
-  const fakeRealClipCaption = (input: {
-    request: { videoS3Key: string };
-    mode: string;
-    frames?: unknown[];
-  }) => ({
+  const fakeRealClipCaption = (input: RealClipCaptionGenerateInput): GeneratedRealClipCaption => ({
     model: 'gemini-2.5-flash-lite',
     caption: 'AI ฟังคลิปแล้วเขียนแคปชั่นให้',
     captionOptions: ['ก', 'ข', 'ค'],

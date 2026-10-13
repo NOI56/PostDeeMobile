@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { Platform } from '../modules/posts/postStore.js';
+import type { BullMqPublishJobData } from '../modules/queue/bullMqPublishQueue.js';
 import {
+  type PlatformPublishInput,
+  type PlatformPublishSuccess,
   PublishOutcomeUnknownError,
   RetryablePublishError,
   processPublishJob,
@@ -30,27 +34,28 @@ const makeFakePostStore = ({ status = 'QUEUED' }: { status?: string } = {}) => {
   };
 };
 
-const publishedResult = (platform: string) => ({
+const publishedResult = (platform: Platform): PlatformPublishSuccess => ({
   platform,
   status: 'PUBLISHED' as const,
+  deliveryOutcome: 'LIVE',
   externalPostId: `mock-${platform}`,
   publishedAt: '2026-06-01T00:00:00.000Z'
 });
 
 describe('processPublishJobForPost', () => {
-  const jobData = {
+  const jobData: BullMqPublishJobData = {
     userId: 'seller-1',
     postId: 'post-1',
     caption: 'Caption',
     videoS3Key: 'uploads/video.mp4',
-    platforms: ['TIKTOK', 'YOUTUBE_SHORTS'] as const,
+    platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
     runAt: '2026-06-01T00:00:00.000Z',
     status: 'READY' as const
   };
 
   it('does not claim or publish a post after account deletion starts', async () => {
     const { store, statuses } = makeFakePostStore();
-    const publisher = { publish: vi.fn(async ({ platform }) => publishedResult(platform)) };
+    const publisher = { publish: vi.fn(async ({ platform }: PlatformPublishInput) => publishedResult(platform)) };
 
     await expect(
       processPublishJobForPost({
@@ -71,7 +76,7 @@ describe('processPublishJobForPost', () => {
 
   it('fails a claimed post closed when account deletion starts between the precheck and provider call', async () => {
     const { store, statuses } = makeFakePostStore();
-    const publisher = { publish: vi.fn(async ({ platform }) => publishedResult(platform)) };
+    const publisher = { publish: vi.fn(async ({ platform }: PlatformPublishInput) => publishedResult(platform)) };
     const assertOwnerActive = vi
       .fn()
       .mockResolvedValueOnce(undefined)
@@ -99,7 +104,7 @@ describe('processPublishJobForPost', () => {
     await processPublishJobForPost({
       jobData,
       postStore: store,
-      publisher: { publish: async ({ platform }) => publishedResult(platform) },
+      publisher: { publish: async ({ platform }: PlatformPublishInput) => publishedResult(platform) },
       storage: { deleteVideo: async () => undefined },
       platformPublishStore: { recordResults: async () => [] }
     });
@@ -114,7 +119,7 @@ describe('processPublishJobForPost', () => {
       jobData,
       postStore: store,
       publisher: {
-        publish: async ({ platform }) => {
+        publish: async ({ platform }: PlatformPublishInput) => {
           if (platform === 'YOUTUBE_SHORTS') {
             throw new Error('youtube down');
           }
@@ -136,7 +141,7 @@ describe('processPublishJobForPost', () => {
       processPublishJobForPost({
         jobData,
         postStore: store,
-        publisher: { publish: async ({ platform }) => publishedResult(platform) },
+        publisher: { publish: async ({ platform }: PlatformPublishInput) => publishedResult(platform) },
         storage: { deleteVideo: async () => undefined },
         platformPublishStore: {
           recordResults: async () => {
@@ -155,7 +160,7 @@ describe('processPublishJobForPost', () => {
     const result = await processPublishJobForPost({
       jobData,
       postStore: store,
-      publisher: { publish: async ({ platform }) => publishedResult(platform) },
+      publisher: { publish: async ({ platform }: PlatformPublishInput) => publishedResult(platform) },
       storage: {
         deleteVideo: async () => {
           throw new Error('r2 cleanup down');
@@ -177,7 +182,7 @@ describe('processPublishJobForPost', () => {
   it('skips already finished posts so retry jobs do not publish twice', async () => {
     const { store, statuses } = makeFakePostStore({ status: 'PUBLISHED' });
     const publisher = {
-      publish: vi.fn(async ({ platform }) => publishedResult(platform))
+      publish: vi.fn(async ({ platform }: PlatformPublishInput) => publishedResult(platform))
     };
 
     const result = await processPublishJobForPost({
@@ -204,7 +209,7 @@ describe('processPublishJobForPost', () => {
   it('skips a post already being published so a recovery attempt does not create duplicates', async () => {
     const { store, statuses } = makeFakePostStore({ status: 'PUBLISHING' });
     const publisher = {
-      publish: vi.fn(async ({ platform }) => publishedResult(platform))
+      publish: vi.fn(async ({ platform }: PlatformPublishInput) => publishedResult(platform))
     };
 
     const result = await processPublishJobForPost({
@@ -221,11 +226,11 @@ describe('processPublishJobForPost', () => {
   });
 });
 
-const baseJobData = {
+const baseJobData: BullMqPublishJobData = {
   postId: 'post-1',
   caption: 'Caption',
   videoS3Key: 'uploads/video.mp4',
-  platforms: ['TIKTOK', 'YOUTUBE_SHORTS'] as const,
+  platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
   runAt: '2026-06-01T00:00:00.000Z',
   status: 'READY' as const
 };
@@ -234,7 +239,7 @@ describe('processPublishJob', () => {
   it('retries an explicitly safe provider rejection with exponential backoff', async () => {
     const sleep = vi.fn(async () => undefined);
     const publisher = {
-      publish: vi.fn(async ({ platform }) => {
+      publish: vi.fn(async ({ platform }: PlatformPublishInput) => {
         if (publisher.publish.mock.calls.length < 3) {
           throw new RetryablePublishError('provider explicitly rejected before accepting');
         }
@@ -381,9 +386,10 @@ describe('processPublishJob', () => {
 
   it('passes the post owner id to the platform publisher', async () => {
     const publisher = {
-      publish: vi.fn(async ({ platform }) => ({
+      publish: vi.fn(async ({ platform }: PlatformPublishInput) => ({
         platform,
         status: 'PUBLISHED' as const,
+        deliveryOutcome: 'LIVE' as const,
         externalPostId: `mock-${platform}`,
         publishedAt: '2026-06-01T00:00:00.000Z'
       }))
@@ -414,7 +420,7 @@ describe('processPublishJob', () => {
 
   it('passes the selected cover image and frame time to every platform publisher', async () => {
     const publisher = {
-      publish: vi.fn(async ({ platform }) => publishedResult(platform))
+      publish: vi.fn(async ({ platform }: PlatformPublishInput) => publishedResult(platform))
     };
 
     await processPublishJob({
@@ -445,9 +451,10 @@ describe('processPublishJob', () => {
 
   it('publishes to every selected platform and cleans up the uploaded video after all succeed', async () => {
     const publisher = {
-      publish: vi.fn(async ({ platform }) => ({
+      publish: vi.fn(async ({ platform }: PlatformPublishInput) => ({
         platform,
         status: 'PUBLISHED' as const,
+        deliveryOutcome: 'LIVE' as const,
         externalPostId: `mock-${platform}`,
         publishedAt: '2026-06-01T00:00:00.000Z'
       }))
@@ -494,12 +501,14 @@ describe('processPublishJob', () => {
         {
           platform: 'TIKTOK',
           status: 'PUBLISHED',
+          deliveryOutcome: 'LIVE',
           externalPostId: 'mock-TIKTOK',
           publishedAt: '2026-06-01T00:00:00.000Z'
         },
         {
           platform: 'YOUTUBE_SHORTS',
           status: 'PUBLISHED',
+          deliveryOutcome: 'LIVE',
           externalPostId: 'mock-YOUTUBE_SHORTS',
           publishedAt: '2026-06-01T00:00:00.000Z'
         }
@@ -512,12 +521,14 @@ describe('processPublishJob', () => {
         {
           platform: 'TIKTOK',
           status: 'PUBLISHED',
+          deliveryOutcome: 'LIVE',
           externalPostId: 'mock-TIKTOK',
           publishedAt: '2026-06-01T00:00:00.000Z'
         },
         {
           platform: 'YOUTUBE_SHORTS',
           status: 'PUBLISHED',
+          deliveryOutcome: 'LIVE',
           externalPostId: 'mock-YOUTUBE_SHORTS',
           publishedAt: '2026-06-01T00:00:00.000Z'
         }
@@ -547,7 +558,7 @@ describe('processPublishJob', () => {
           coverImageS3Key: 'uploads/cover.jpg'
         },
         publisher: {
-          publish: vi.fn(async ({ platform }) => publishedResult(platform))
+          publish: vi.fn(async ({ platform }: PlatformPublishInput) => publishedResult(platform))
         },
         storage,
         platformPublishStore: { recordResults: vi.fn(async () => []) },
@@ -571,9 +582,10 @@ describe('processPublishJob', () => {
 
   it('does NOT delete the video by default, even when all platforms succeed', async () => {
     const publisher = {
-      publish: vi.fn(async ({ platform }) => ({
+      publish: vi.fn(async ({ platform }: PlatformPublishInput) => ({
         platform,
         status: 'PUBLISHED' as const,
+        deliveryOutcome: 'LIVE' as const,
         externalPostId: `mock-${platform}`,
         publishedAt: '2026-06-01T00:00:00.000Z'
       }))
@@ -596,7 +608,7 @@ describe('processPublishJob', () => {
 
   it('skips cleanup and reports failed platform results when a platform publish fails', async () => {
     const publisher = {
-      publish: vi.fn(async ({ platform }) => {
+      publish: vi.fn(async ({ platform }: PlatformPublishInput) => {
         if (platform === 'YOUTUBE_SHORTS') {
           throw new Error('YouTube API unavailable');
         }
@@ -604,6 +616,7 @@ describe('processPublishJob', () => {
         return {
           platform,
           status: 'PUBLISHED' as const,
+          deliveryOutcome: 'LIVE' as const,
           externalPostId: `mock-${platform}`,
           publishedAt: '2026-06-01T00:00:00.000Z'
         };
@@ -627,6 +640,7 @@ describe('processPublishJob', () => {
         {
           platform: 'TIKTOK',
           status: 'PUBLISHED',
+          deliveryOutcome: 'LIVE',
           externalPostId: 'mock-TIKTOK',
           publishedAt: '2026-06-01T00:00:00.000Z'
         },
@@ -645,9 +659,10 @@ describe('processPublishJob', () => {
 
   it('reports cleanup failure without failing an already published job', async () => {
     const publisher = {
-      publish: vi.fn(async ({ platform }) => ({
+      publish: vi.fn(async ({ platform }: PlatformPublishInput) => ({
         platform,
         status: 'PUBLISHED' as const,
+        deliveryOutcome: 'LIVE' as const,
         externalPostId: `mock-${platform}`,
         publishedAt: '2026-06-01T00:00:00.000Z'
       }))
@@ -679,9 +694,10 @@ describe('processPublishJob', () => {
 
   it('publishes each unique platform once for legacy jobs with duplicates', async () => {
     const publisher = {
-      publish: vi.fn(async ({ platform }) => ({
+      publish: vi.fn(async ({ platform }: PlatformPublishInput) => ({
         platform,
         status: 'PUBLISHED' as const,
+        deliveryOutcome: 'LIVE' as const,
         externalPostId: `mock-${platform}`,
         publishedAt: '2026-06-01T00:00:00.000Z'
       }))

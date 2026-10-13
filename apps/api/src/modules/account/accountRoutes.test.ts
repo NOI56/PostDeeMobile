@@ -57,7 +57,7 @@ describe('account routes', () => {
       .expect(201);
 
   const createTestVideoStorage = (
-    deleteAllVideosForOwner = vi.fn(async () => undefined)
+    deleteAllVideosForOwner: VideoStorage['deleteAllVideosForOwner'] = vi.fn(async () => undefined)
   ): VideoStorage => ({
     supportsOwnerCleanup: true,
     createUpload: vi.fn(),
@@ -376,7 +376,7 @@ describe('account routes', () => {
       postPeerAccountId: 'int-tiktok'
     });
     const postPeerConnectClient = createPostPeerCleanupClient({
-      listIntegrations: vi.fn(async () => {
+      listIntegrations: vi.fn<NonNullable<PostPeerConnectClient['listIntegrations']>>(async () => {
         calls.push('list');
         return [
           { id: 'int-tiktok', platform: 'TIKTOK' },
@@ -428,7 +428,7 @@ describe('account routes', () => {
     const disconnectAttempts: string[] = [];
     let app: ReturnType<typeof createApp>;
     const postPeerConnectClient = createPostPeerCleanupClient({
-      listIntegrations: vi.fn(async () => {
+      listIntegrations: vi.fn<NonNullable<PostPeerConnectClient['listIntegrations']>>(async () => {
         const queue = await request(app)
           .get('/queue/jobs')
           .set('x-postdee-user-id', userId)
@@ -610,7 +610,7 @@ describe('account routes', () => {
     const userId = 'firebase-delete-order';
     const calls: string[] = [];
     const videoStorage = createTestVideoStorage(
-      vi.fn(async (ownerId) => {
+      vi.fn(async (ownerId: string) => {
         calls.push(`media:${ownerId}`);
       })
     );

@@ -33,7 +33,7 @@ describe('upload routes', () => {
   const createManagedUploadService = (): ManagedUploadService => ({
     assertOwnerActive: vi.fn(async () => undefined),
     create: vi.fn(async () => managedUpload),
-    createPart: vi.fn(async (_id, _ownerId, partNumber) => ({
+    createPart: vi.fn<ManagedUploadService['createPart']>(async (_id, _ownerId, partNumber) => ({
       partNumber,
       sizeBytes: partNumber === 3 ? 1 : 8,
       uploadUrl: `https://r2.test/part-${partNumber}`,
@@ -42,7 +42,7 @@ describe('upload routes', () => {
       uploadExpiresAt: '2026-07-13T10:05:00.000Z'
     })),
     complete: vi.fn(async () => managedUpload),
-    get: vi.fn(async () => ({
+    get: vi.fn<ManagedUploadService['get']>(async () => ({
       sessionStatus: 'COMPLETED',
       upload: managedUpload
     })),
@@ -246,6 +246,7 @@ describe('upload routes', () => {
       }),
       s3Client: {
         createPresignedUploadUrl: async () => 'https://s3.local/upload-url',
+        createPresignedDownloadUrl: async () => 'https://s3.local/download-url',
         deleteObject: async () => undefined
       }
     });

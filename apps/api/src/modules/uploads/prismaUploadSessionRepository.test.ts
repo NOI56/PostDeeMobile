@@ -8,7 +8,7 @@ import type { UploadOwnerStatus } from './uploadSessionStore.js';
 
 const timestamp = new Date('2026-07-13T10:00:00.000Z');
 
-const persistedSession = {
+const persistedSession: NonNullable<Awaited<ReturnType<PrismaUploadSessionClient['managedUploadSession']['findUnique']>>> = {
   id: 'session-1',
   ownerId: 'seller-1',
   storageUploadId: 'r2-upload-1',
@@ -29,7 +29,7 @@ const persistedSession = {
 const createPrismaDouble = () => {
   const transaction = {
     managedUploadOwner: {
-      upsert: vi.fn(async () => ({ ownerId: 'seller-1', status: 'ACTIVE' as const })),
+      upsert: vi.fn<PrismaUploadSessionClient['managedUploadOwner']['upsert']>(async () => ({ ownerId: 'seller-1', status: 'ACTIVE' })),
       findUnique: vi.fn(async () => ({ ownerId: 'seller-1', status: 'ACTIVE' as const })),
       update: vi.fn(async () => ({ ownerId: 'seller-1', status: 'DELETING' as const }))
     },

@@ -5,6 +5,8 @@ import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
 import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 import { createMockVideoStorage } from '../storage/videoStorage.js';
+import type { EditPlanProvider } from './editPlanProvider.js';
+import type { VisualEditPlanProvider } from './visualEditPlanProvider.js';
 
 const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
   `uploads/${userId}/${uploadId}/${fileName}`;
@@ -1989,7 +1991,7 @@ describe('ai edit routes', () => {
   it('uses an owned whole-clip proxy for visual highlight planning and cleans it',
       async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
-    const visualPlan = vi.fn(async () => ({
+    const visualPlan = vi.fn<VisualEditPlanProvider['plan']>(async () => ({
       cuts: [
         { start: 0, end: 5 },
         { start: 15, end: 20 }
@@ -2050,12 +2052,12 @@ describe('ai edit routes', () => {
   });
 
   it('falls back to the audio planner when visual planning fails', async () => {
-    const audioPlan = vi.fn(async () => ({
+    const audioPlan = vi.fn<EditPlanProvider['plan']>(async () => ({
       cuts: [{ start: 10, end: 20 }],
       summary: 'ใช้แผนจากเสียง',
       model: 'audio-fallback'
     }));
-    const visualPlan = vi.fn(async () => {
+    const visualPlan = vi.fn<VisualEditPlanProvider['plan']>(async () => {
       throw new Error('Gemini unavailable');
     });
     const proxyKey = ownedUploadKey(

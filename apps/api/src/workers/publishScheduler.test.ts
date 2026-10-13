@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createInMemoryPlatformPublishStore } from '../modules/platformPublishes/platformPublishStore.js';
 import { createPostStore } from '../modules/posts/postStore.js';
 import { createPublishScheduler } from './publishScheduler.js';
+import type { PlatformPublishInput } from './publishWorker.js';
 
 describe('createPublishScheduler', () => {
   it('detects unknown interrupted publishes at startup without sending them again', async () => {
@@ -40,7 +41,7 @@ describe('createPublishScheduler', () => {
     let publishStarted!: () => void;
     const started = new Promise<void>((resolve) => { publishStarted = resolve; });
     const publishing = new Promise<void>((resolve) => { finishPublish = resolve; });
-    const publisher = { publish: vi.fn(async ({ platform }) => {
+    const publisher = { publish: vi.fn(async ({ platform }: PlatformPublishInput) => {
       publishStarted();
       await publishing;
       return { platform, status: 'PUBLISHED' as const, deliveryOutcome: 'LIVE' as const, publishedAt: '2026-10-05T00:00:00.000Z' };
@@ -81,7 +82,7 @@ describe('createPublishScheduler', () => {
     const post = await postStore.create({
       userId: 'seller-persist', caption: 'private', videoS3Key: 'private.mp4', platforms: ['TIKTOK']
     });
-    const publisher = { publish: vi.fn(async ({ platform }) => ({
+    const publisher = { publish: vi.fn(async ({ platform }: PlatformPublishInput) => ({
       platform, status: 'PUBLISHED' as const, externalPostId: 'saved-provider-receipt',
       deliveryOutcome: 'LIVE' as const, publishedAt: '2026-10-05T00:00:00.000Z'
     })) };
@@ -263,9 +264,10 @@ describe('createPublishScheduler', () => {
     const postStore = createPostStore();
     const platformPublishStore = createInMemoryPlatformPublishStore();
     const publisher = {
-      publish: vi.fn(async ({ postId, platform }) => ({
+      publish: vi.fn(async ({ postId, platform }: PlatformPublishInput) => ({
         platform,
         status: 'PUBLISHED' as const,
+        deliveryOutcome: 'LIVE' as const,
         externalPostId: `${platform}-${postId}`,
         publishedAt: '2026-07-16T00:00:00.000Z'
       }))
@@ -312,17 +314,15 @@ describe('createPublishScheduler', () => {
       publish: async ({
         postId,
         platform
-      }: {
-        postId: string;
-        platform: string;
-      }) => {
+      }: PlatformPublishInput) => {
         if (platform === 'YOUTUBE_SHORTS') {
           throw new Error('youtube down');
         }
 
         return {
-          platform: platform as 'TIKTOK',
+          platform,
           status: 'PUBLISHED' as const,
+          deliveryOutcome: 'LIVE' as const,
           externalPostId: `tiktok-${postId}`,
           publishedAt: new Date().toISOString()
         };
@@ -386,9 +386,10 @@ describe('createPublishScheduler', () => {
       .mockRejectedValueOnce(new Error('database temporarily unavailable'))
       .mockResolvedValue(undefined);
     const publisher = {
-      publish: vi.fn(async ({ postId, platform }) => ({
+      publish: vi.fn(async ({ postId, platform }: PlatformPublishInput) => ({
         platform,
         status: 'PUBLISHED' as const,
+        deliveryOutcome: 'LIVE' as const,
         externalPostId: `${platform}-${postId}`,
         publishedAt: '2026-06-01T00:00:00.000Z'
       }))
@@ -462,9 +463,10 @@ describe('createPublishScheduler', () => {
     const postStore = createPostStore();
     const sleep = vi.fn(async () => undefined);
     const publisher = {
-      publish: vi.fn(async ({ postId, platform }) => ({
+      publish: vi.fn(async ({ postId, platform }: PlatformPublishInput) => ({
         platform,
         status: 'PUBLISHED' as const,
+        deliveryOutcome: 'LIVE' as const,
         externalPostId: `${platform}-${postId}`,
         publishedAt: '2026-06-01T00:00:00.000Z'
       }))

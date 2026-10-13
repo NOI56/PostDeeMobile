@@ -41,6 +41,9 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
+      - name: Check TypeScript including tests
+        run: npm run typecheck
+
       - name: Check shared profile template catalog
         run: node ../../scripts/generate-profile-templates.mjs --check
 

@@ -13,6 +13,7 @@ import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
 import { createPostStore, type QueuedPost } from './postStore.js';
 import { registerPostRoutes } from './postRoutes.js';
 import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
+import { withAppPrismaFixture } from '../../../test/repositoryFixtures.js';
 
 describe('post routes', () => {
   const allPlatforms = ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'];
@@ -1813,7 +1814,7 @@ describe('post routes', () => {
         DATABASE_URL: 'postgresql://postdee:postdee_password@localhost:5432/postdee',
         POST_STORE: 'prisma'
       }),
-      prisma: withOwnerLifecycleFixture(prisma)
+      prisma: withAppPrismaFixture(prisma)
     });
 
     const response = await request(app)

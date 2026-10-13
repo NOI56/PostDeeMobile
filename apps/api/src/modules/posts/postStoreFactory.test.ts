@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createPostStoreFromConfig } from './postStoreFactory.js';
+import { withPostRepositoryFixture } from '../../../test/repositoryFixtures.js';
 
 describe('createPostStoreFromConfig', () => {
   it('uses the in-memory post store by default', async () => {
@@ -43,7 +44,7 @@ describe('createPostStoreFromConfig', () => {
       config: {
         postStore: 'prisma'
       },
-      prisma
+      prisma: withPostRepositoryFixture(prisma)
     });
 
     expect(await store.list({ userId: 'seller-1' })).toEqual([

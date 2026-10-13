@@ -158,14 +158,14 @@ describe('reconstructThaiTimedWords', () => {
   });
 
   it.each([
-    [{ word: 'ชุมชน!', start: 1, end: 1.5 }],
-    [
+    { fragments: [{ word: 'ชุมชน!', start: 1, end: 1.5 }] },
+    { fragments: [
       { word: 'ชุมชน', start: 1, end: 1.4 },
       { word: '!', start: 1.45, end: 1.5 }
-    ]
-  ] satisfies TranscriptWord[][]) (
+    ] }
+  ] satisfies Array<{ fragments: TranscriptWord[] }>) (
     'rejects mismatched or excess provider punctuation',
-    (fragments) => {
+    ({ fragments }) => {
       expect(reconstructThaiTimedWords({
         segments: [{ text: 'ชุมชน?', start: 1, end: 2 }],
         durationSeconds: 2,

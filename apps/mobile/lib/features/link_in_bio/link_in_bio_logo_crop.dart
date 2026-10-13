@@ -29,7 +29,7 @@ Future<Uint8List> cropLinkInBioLogo(ui.Image image, Rect source) async {
     output = await picture.toImage(dimension, dimension);
     final data = await output.toByteData(format: ui.ImageByteFormat.png);
     if (data == null) throw const FormatException('บันทึกโลโก้ไม่สำเร็จ');
-    return normalizeLinkInBioImage(
+    return await normalizeLinkInBioImage(
         data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
   } finally {
     output?.dispose();

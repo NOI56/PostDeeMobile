@@ -225,8 +225,12 @@ class PostDeeAuthSessionStore extends ChangeNotifier {
 
   /// Refreshes credentials for the existing principal without a new sign-in.
   void updateCredentials(AuthSession session) {
-    if (!_session.isSignedIn || !session.isSignedIn || _session.stableUserId == null ||
-        session.stableUserId != _session.stableUserId) throw const AuthSessionChangedException();
+    if (!_session.isSignedIn ||
+        !session.isSignedIn ||
+        _session.stableUserId == null ||
+        session.stableUserId != _session.stableUserId) {
+      throw const AuthSessionChangedException();
+    }
     _session = session;
     notifyListeners();
   }

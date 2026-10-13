@@ -180,8 +180,9 @@ a new buy; a previously dispatched payment keeps the confirmation/retry flow.
 The API rollout is additive and retains legacy GET user preparation, now owner
 fenced. Deploy that API before installing this preparation-aware Staging app;
 read-only GET is deferred until incompatible buying builds are retired.
-Tests/analyze/build and exact Staging Emulator smoke for this branch are pending.
-Older passed CI/native evidence does not validate this patch. Delivery evidence:
+Full Flutter tests pass (2,171) and analyze has no issues. Exact Staging APK
+build and retained-data Emulator smoke are pending. Older CI/native evidence
+does not validate this patch. Delivery evidence:
 `../../docs/superpowers/plans/2026-10-13-security-main-delivery.md`.
 
 The native auth queue retains actual SDK settlement after a caller/UI timeout,

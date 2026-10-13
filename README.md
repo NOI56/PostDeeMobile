@@ -273,8 +273,8 @@ Legacy GET user preparation remains during this stage, subject to the final
 owner write fence; read-only GET cutover is deferred until incompatible mobile
 builds are retired. Session-bound auth/native operations, push recipient UID
 and final User/Post/Subscription transactions are integrated in this branch.
-Source review is complete; all runtime checks and Staging delivery are pending.
-Production is outside this
+Source review, API tests/build/schema checks and Flutter tests/analyze pass;
+exact Staging APK/device delivery is pending. Production is outside this
 delivery stage. See
 [`2026-10-13-security-main-delivery.md`](docs/superpowers/plans/2026-10-13-security-main-delivery.md).
 

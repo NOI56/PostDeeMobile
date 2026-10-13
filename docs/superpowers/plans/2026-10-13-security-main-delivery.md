@@ -83,24 +83,50 @@ rescheduling admission, stable mobile identity and per-owner drafts.
 
 Add/update regression cases before implementation, review the diff against the
 verified main baseline and run the relevant full API/Flutter checks plus exact
-Staging APK build/smoke before merge/deployment. Check package/API/Firebase/
+Staging APK build/identity checks before deployment. Deploy the additive API
+before updating the installed app, then smoke-test the retained-data device
+against that compatible API before declaring delivery complete. Check package/API/Firebase/
 entitlement/source SHA and keep the existing signature/session/data when
 updating the Emulator; never uninstall or clear data to bypass a signature
 mismatch.
 
 Current status: selective source integration and independent source review are
-complete in the local branch based on `f5dea16`. Added regression cases: 34 API
-and 113 mobile (147 total), all UNRUN. Trusted-parent `git diff --check` passes;
-no merge markers remain. This static evidence does not establish runtime behavior.
-Tests/build/analyze/Prisma and
-Emulator smoke are UNRUN for this branch. The installed security-audit skill
-requires a complete OS sandbox for target execution. The host inventory has
-no such runner, and the existing Actions workflow is not proof of those
-controls. Do not dispatch ordinary target tests or builds while this execution
-requirement is unresolved; do not treat old smoke/CI results as new evidence.
+complete in the local branch based on `f5dea16`. Added regression cases: 35 API
+and 113 mobile (148 total). Trusted-parent `git diff --check` passes and no merge
+markers remain. The user explicitly answered "อนุญาตให้รัน test/build ตามปกติ"
+to the delivery execution question, exempting the audit skill's OS-sandbox rule
+for normal project test/build on the host or CI. The earlier audit evidence
+retains its original needs-validation/UNRUN status; this is new delivery evidence.
+
+Local verification on the prepared source:
+
+- Fresh API `npm ci` and Prisma generation pass; lockfile unchanged and only a
+  dummy local `DATABASE_URL` is used. No database/server/provider is launched.
+- API targeted changed tests: 293/293 in 16 files, plus helper regression runtime
+  tests. Final full `npm run test -- --maxWorkers=4`: **1,816/1,816 in 115 files**
+  (32.23 s). API production build, schema validation and seed/config helper
+  compilation pass. The new `ownerLifecycleTypes.test.ts` standalone strict
+  compilation fails before the generic fix and passes after it.
+- Catalogue `--check` passes with all 100 templates; generator tests **22/22**.
+  Production dependency audit at CI's high threshold passes (0 high/critical,
+  4 moderate advisories); no dependency change was made.
+- Flutter **3.44.1 / Dart 3.12.1**, locked `pub get` passes; targeted **318/318**,
+  analyze **No issues found** (24.0 s), full tests **2,171/2,171** (2:25).
+- Initial checks exposed and fixed generic transaction result inference, a
+  duplicate Dart import, missing braces, and shell test fixtures. An unchanged
+  catalogue image sweep timed out once while checks competed for host resources;
+  isolated 20/20 and the controlled-worker full suite pass without timeout edits.
+- Full test-inclusive API `tsc -p tsconfig.json` remains **failed with 142 fixture
+  typing errors**. A clean pinned-f5 snapshot using the same dependencies has
+  the same file/error-code counts. Some wrapper error messages differ; this does
+  not claim full type-check success or eliminate that existing test typing debt.
+
+Logs: `apps/api/.tmp/security-delivery-api/` and
+`apps/mobile/.tmp/security-delivery-mobile/`. These are local ignored artifacts.
+Exact APK build, main push, Staging deploy and native smoke remain pending.
 
 Source preparation and independent review are complete in a local branch
-(77 changed files: 37 API source/tests, 31 mobile source/tests, 9 documentation).
+(78 changed files: 38 API source/tests, 31 mobile source/tests, 9 documentation).
 This record does not claim a push, PR, main merge, deploy, APK build or Emulator update.
 Update the exact delivery evidence here when those actions actually happen.
 

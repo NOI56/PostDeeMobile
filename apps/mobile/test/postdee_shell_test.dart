@@ -1024,19 +1024,22 @@ void main() {
   });
   testWidgets('a fresh sign-in for the same owner rebuilds the shop screen', (tester) async {
     final language = _signInShell();
-    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language)));
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: language, uploaderDraftStore: _ShellDraftStore())));
     await tester.pumpAndSettle();
-    final before = tester.state(find.byType(LinkInBioScreen));
+    final shop = find.byType(LinkInBioScreen, skipOffstage: false);
+    final before = tester.state(shop);
     PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'firebase-user-shell', idToken: 'new-token'));
     await tester.pumpAndSettle();
-    expect(identical(tester.state(find.byType(LinkInBioScreen)), before), isFalse);
+    expect(identical(tester.state(shop), before), isFalse);
   });
 
   testWidgets('a late bell initialization cannot open notifications for a later account', (tester) async {
     final language = _signInShell();
     final ready = Completer<void>();
     final gateway = _FakePushMessagingGateway()..initialization = ready.future;
-    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language, pushMessagingGateway: gateway)));
+    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language,
+      uploaderDraftStore: _ShellDraftStore(), pushMessagingGateway: gateway)));
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('Notifications'));
     await tester.pump();
@@ -1048,7 +1051,8 @@ void main() {
 
   testWidgets('account transitions clear the shared notification history', (tester) async {
     final language = _signInShell();
-    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language)));
+    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language,
+      uploaderDraftStore: _ShellDraftStore())));
     await tester.pumpAndSettle();
     PostDeeNotificationCenter.instance.add(PostDeeNotification(title: 'private A', body: 'body', receivedAt: DateTime(2026)));
     PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'b', idToken: 'b'));
@@ -1060,6 +1064,7 @@ void main() {
     final deleted = Completer<void>();
     var cleanupCalls = 0;
     await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language,
+      uploaderDraftStore: _ShellDraftStore(),
       checkAccountDeletionReady: () async => true, deleteAccount: () => deleted.future,
       deleteLocalPublishDrafts: () async { cleanupCalls++; })));
     await tester.pumpAndSettle();
@@ -2166,7 +2171,6 @@ void main() {
           deleteAccount: () async {
             deleteCalls += 1;
             deletionCalls.add('delete');
-            sessionStore.clear();
           },
           loadLocalPublishDraftDeleter: () async {
             deletionCalls.add('capture-local-drafts');

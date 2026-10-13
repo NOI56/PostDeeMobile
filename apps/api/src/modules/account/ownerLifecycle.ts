@@ -33,9 +33,9 @@ export const lockActiveOwner = async (transaction: PrismaOwnerLifecycleTransacti
 };
 
 export const runActiveOwnerTransaction = async <T, Transaction extends PrismaOwnerLifecycleTransaction>(
-  prisma: { $transaction: (operation: (transaction: Transaction) => Promise<T>, options: {
+  prisma: { $transaction: <Result>(operation: (transaction: Transaction) => Promise<Result>, options: {
     isolationLevel: 'Serializable'; maxWait: number; timeout: number;
-  }) => Promise<T> },
+  }) => Promise<Result> },
   ownerId: string,
   operation: (transaction: Transaction) => Promise<T>
 ): Promise<T> => {

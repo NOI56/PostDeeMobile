@@ -13,9 +13,10 @@
 - แอปรักษา draft/ธีม/รูป/หน้าร้านและ pending purchase เดิม พร้อมเพิ่ม generation
   guards, bound HTTP/native auth และ push recipient UID ต้องส่ง API additive
   ก่อนติดตั้ง APK ใหม่ การเปลี่ยน GET เป็น read-only เป็นขั้นปล่อยแยกภายหลัง
-- รวม source และตรวจโค้ดซ้ำแล้ว เพิ่ม test 147 กรณี แต่ยังไม่ได้รัน
-  Tests/build/analyze และการอัปเดต Emulator ของชุดนี้ยัง pending ข้อกำหนด
-  sandbox ของ security-audit skill ยังไม่ครบ ผล CI/smoke เก่าไม่ใช่ผลชุดใหม่
+- รวม source และตรวจโค้ดซ้ำแล้ว เพิ่ม test 148 กรณี ผ่าน API 1,816 tests,
+  build/schema และ Flutter 2,171 tests/analyze ผู้ใช้อนุญาตให้ใช้ test/build
+  ตามปกติของโปรเจกต์สำหรับการส่งมอบนี้ โดยยกเว้น sandbox ของ skill
+  การสร้าง APK/deploy/อัปเดต Emulator ยัง pending ผล CI/smoke เก่าไม่ใช่ผลชุดใหม่
   เอกสารส่งมอบอยู่ใน `superpowers/plans/2026-10-13-security-main-delivery.md`
 
 ## ส่งมอบ API และตรวจภาพ/วิดีโอ R2 — 8 ตุลาคม 2026

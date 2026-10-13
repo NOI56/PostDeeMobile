@@ -20,11 +20,14 @@ dependency change, provider activation or Production release. Existing
 Purchase readiness is additive; keep legacy GET preparation until incompatible
 buying builds are retired. Deploy protocol-1 API first, then the updated Staging
 APK. Require source-specific full checks and exact package/API/Firebase/signature
-build/smoke before merge/deployment; do not count old CI or the earlier 180 unrun
+build checks before deployment, then retained-data device smoke against the
+compatible API before declaring delivery complete; do not count old CI or the earlier 180 unrun
 audit cases as delivery evidence. The existing Actions workflow is not proof
-of all OS sandbox controls required by the installed audit skill.
+of all OS sandbox controls required by the installed audit skill. The user
+explicitly approved normal host/CI test/build execution for this delivery.
 
-Verification/deployment are pending. Record actual SHA/checks/PR/deployment/APK
+API tests/build/schema and Flutter tests/analyze pass; APK/device/deployment
+are pending. Record actual SHA/checks/PR/deployment/APK
 receipt in `superpowers/plans/2026-10-13-security-main-delivery.md`. Remaining
 cross-process Redis/provider drain and OS background notification guarantees
 are not closed by a source review. Existing token rotation and authenticated

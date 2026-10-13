@@ -357,7 +357,8 @@ confirmation and cold callback remain unverified.
   push recipient UID. Keep legacy GET bootstrap for this additive rollout;
   retire incompatible mobile builds before considering read-only GET.
 - Current status: selective source integration/review complete in the local
-  branch; tests/build/analyze and Staging delivery remain pending. Previous
+  branch; API 1,816 tests/build/schema and Flutter 2,171 tests/analyze pass.
+  Exact APK/device delivery remains pending. Previous
   audit cases and old CI/device smoke do not validate this delivery branch.
   Preserve Production feature flags and infrastructure; Staging/Emulator are
   the first delivery stage. Exact evidence belongs in

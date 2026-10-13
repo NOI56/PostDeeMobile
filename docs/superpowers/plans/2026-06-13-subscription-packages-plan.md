@@ -63,7 +63,9 @@
 > stage; a read-only GET cutover requires retiring incompatible buying builds.
 > No package price/benefit or provider flag changes. Current-main source port,
 > API tests/build and Flutter tests/analyze pass; exact APK/device delivery is
-> pending. See `2026-10-13-security-main-delivery.md`.
+> complete for Staging runtime `9244f16` / Emulator APK8017 basic smoke. Real
+> purchase/restore and OTP acceptance remain separate gates.
+> See `2026-10-13-security-main-delivery.md`.
 
 The scheduling release uses the existing subscription `plan` and `canSchedule`
 contract; it does not add a billing field, change prices/quotas, or migrate queued

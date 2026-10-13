@@ -1,6 +1,6 @@
 # PostDee Staging
 
-## เตรียมรวม security fixes จาก main ปัจจุบัน — 13 ตุลาคม 2026
+## ส่งมอบ security fixes จาก main ปัจจุบัน — 13 ตุลาคม 2026
 
 - ใช้ baseline remote `main` ล่าสุด `f5dea16` ที่ fetch แล้ว (เริ่มจาก `c4e5220`) แยก branch
   `codex/security-main-delivery` และเก็บงานที่ยังไม่ commit ใน worktree เดิมไว้
@@ -16,7 +16,13 @@
 - รวม source และตรวจโค้ดซ้ำแล้ว เพิ่ม test 148 กรณี ผ่าน API 1,816 tests,
   build/schema และ Flutter 2,171 tests/analyze ผู้ใช้อนุญาตให้ใช้ test/build
   ตามปกติของโปรเจกต์สำหรับการส่งมอบนี้ โดยยกเว้น sandbox ของ skill
-  การสร้าง APK/deploy/อัปเดต Emulator ยัง pending ผล CI/smoke เก่าไม่ใช่ผลชุดใหม่
+  Runtime `9244f16` push เข้า main แล้ว และ deploy เป็น Live บน STAGING
+  [dep-db71pfbl550s73ag4uo0](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db71pfbl550s73ag4uo0)
+  เมื่อ 18:59:41 GMT+7; `/health` และ `/ready` ผ่าน ตรวจพบ migrations เดิม 16
+  ชุด ไม่มีค้าง APK8017 ติดตั้งทับด้วยลายเซ็นเดิม ข้อมูลร้าน/session ยังอยู่
+  ตรวจ Home/Calendar/Account/ร้าน noikub 2 ลิงก์, ราคา Test Store และเปิด/ปิด
+  ฟอร์มยืนยันเบอร์ผ่าน ไม่ส่ง OTP ไม่ซื้อจริง ไม่โพสต์หรือลบบัญชีจริง
+  ผล CI/smoke เก่าไม่ใช่ผลชุดใหม่ Production API ยัง user-suspended
   เอกสารส่งมอบอยู่ใน `superpowers/plans/2026-10-13-security-main-delivery.md`
 
 ## ส่งมอบ API และตรวจภาพ/วิดีโอ R2 — 8 ตุลาคม 2026

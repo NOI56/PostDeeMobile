@@ -26,8 +26,9 @@ audit cases as delivery evidence. The existing Actions workflow is not proof
 of all OS sandbox controls required by the installed audit skill. The user
 explicitly approved normal host/CI test/build execution for this delivery.
 
-API tests/build/schema and Flutter tests/analyze pass; APK/device/deployment
-are pending. Record actual SHA/checks/PR/deployment/APK
+API tests/build/schema and Flutter tests/analyze pass. Runtime `9244f16` is
+pushed to main, Staging Live and installed as exact APK8017 with retained-data
+basic Emulator smoke. See the actual SHA/checks/deployment/APK
 receipt in `superpowers/plans/2026-10-13-security-main-delivery.md`. Remaining
 cross-process Redis/provider drain and OS background notification guarantees
 are not closed by a source review. Existing token rotation and authenticated

@@ -168,7 +168,7 @@ post-Live native refresh preserved the selected date/filter and account state.
 The later guided revision updates the local APK. Check the separate
 follow-up receipt in `../../docs/superpowers/plans/2026-10-11-calendar-ux.md`;
 the preceding Staging release does not verify these effects.
-## Security integration preparation (2026-10-13)
+## Security integration delivery (2026-10-13)
 
 Current-main UI, Store link publication/appearance, scheduling/composer,
 Firebase UID credential refresh and billing pending-confirmation cache remain.
@@ -180,9 +180,11 @@ a new buy; a previously dispatched payment keeps the confirmation/retry flow.
 The API rollout is additive and retains legacy GET user preparation, now owner
 fenced. Deploy that API before installing this preparation-aware Staging app;
 read-only GET is deferred until incompatible buying builds are retired.
-Full Flutter tests pass (2,171) and analyze has no issues. Exact Staging APK
-build and retained-data Emulator smoke are pending. Older CI/native evidence
-does not validate this patch. Delivery evidence:
+Full Flutter tests pass (2,171) and analyze has no issues. Exact Staging debug
+APK8017 from `9244f16` builds and retained-data Emulator smoke passes after the
+compatible API reaches Staging Live. Shop remains published with both original
+links; Account, paywall prices and phone-form open/cancel work. No actual
+purchase, OTP send, post publish or account deletion was performed. Delivery evidence:
 `../../docs/superpowers/plans/2026-10-13-security-main-delivery.md`.
 
 The native auth queue retains actual SDK settlement after a caller/UI timeout,

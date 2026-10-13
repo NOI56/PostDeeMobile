@@ -1,5 +1,10 @@
 # Security integration into current main — 2026-10-13
 
+Status: MAIN PUSH + STAGING DELIVERY + EMULATOR UPDATE COMPLETE. Runtime source
+`9244f16dba0850839029a3a6ada89f7df0e008e2` has fresh local verification, Staging
+Live deployment and retained-data basic native smoke. This does not declare
+Production ready or close the original audit's remaining validation gaps.
+
 ## Scope and baseline
 
 The user requested main push/deployment and showed the Android Emulator with
@@ -121,14 +126,69 @@ Local verification on the prepared source:
   the same file/error-code counts. Some wrapper error messages differ; this does
   not claim full type-check success or eliminate that existing test typing debt.
 
-Logs: `apps/api/.tmp/security-delivery-api/` and
+Logs: `.tmp/security-delivery-api/` and
 `apps/mobile/.tmp/security-delivery-mobile/`. These are local ignored artifacts.
-Exact APK build, main push, Staging deploy and native smoke remain pending.
+Exact APK build, main push, Staging deploy and basic native smoke pass as below.
 
 Source preparation and independent review are complete in a local branch
 (78 changed files: 38 API source/tests, 31 mobile source/tests, 9 documentation).
-This record does not claim a push, PR, main merge, deploy, APK build or Emulator update.
-Update the exact delivery evidence here when those actions actually happen.
+Only the following recorded actions constitute delivery evidence; earlier
+audit findings and historical CI/smoke keep their original meaning.
+
+## Exact delivery receipt
+
+- Verified source: `9244f16dba0850839029a3a6ada89f7df0e008e2`, two commits ahead
+  of pinned `f5dea16` and zero behind. Fresh-fetch immediately before delivery
+  confirms that baseline. No changed schema/migration/dependency/provider/Render
+  configuration, unexpected deletions or Home/Calendar/composer rewrites.
+- Root pushes the review branch, fast-forwards canonical local main, and pushes
+  remote main normally. Both remote refs are verified exact `9244f16`. Fresh
+  branch protection is absent and applicable branch rules are empty; no PR is
+  required or created. Existing generated files and three QA artifacts in the
+  main checkout retain all six SHA256 hashes and remain excluded from commits.
+- These commits carry `[skip ci] [skip render]`. Verification is the new local
+  evidence above, not an asserted new CI run. Manual Staging deployment pins the
+  tested SHA and avoids an automatic Production release.
+- Render Staging service `srv-d9bb72ojs32c739osa5g`, deployment
+  [dep-db71pfbl550s73ag4uo0](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-db71pfbl550s73ag4uo0),
+  manually starts **18:57:50 GMT+7** and reaches **Deploy succeeded | Live at
+  18:59:41 GMT+7 on 2026-10-13**, duration **1m51s**, source exact `9244f16`.
+  Build succeeds; start logs show **16 migrations / No pending migrations**,
+  social publisher disabled and memory publish scheduler. Actual auto-deploy
+  remains disabled/specific-commit; no service setting/feature flag is changed.
+- Post-deployment `/health` and `/ready` return HTTP200, with database/queue ok.
+  Unauthenticated `POST /billing/purchase-readiness` returns HTTP401 requiring
+  a Bearer token. This establishes the live auth gate; the authenticated protocol
+  response is covered by local route tests, not a claimed live SDK purchase.
+- Exact APK command: `apps/mobile/tool/postdee-staging.ps1 -Command build-apk`
+  with `--target=lib/main.dart --target-platform=android-x64 --build-number=8017`.
+  Flutter 3.44.1, Gradle assembleDebug succeeds (108.1 s). Package
+  `com.postdee.postdee_mobile.staging`, versionCode **8017**, Staging API,
+  Firebase project `project-798caf7e-85b8-45e3-af7`, Firebase auth on/local mock
+  off, and existing ignored RevenueCat Test Store overlay (key not retained).
+  This debug target is for the Emulator; it is not an app-store release.
+- APK SHA256: `A4A8798201602CCAA0F9E4E9321B411822883C2057C6B0F2D493405D5CFB5D57`.
+  Signer SHA256: `014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`,
+  matching installed8016. Root uses `adb -s emulator-5556 install -r`; **Success**.
+  Package metadata confirms8017, same data directory/signature/first-install time.
+  No uninstall, clear-data, credential change or sign-out is performed.
+- Native basic smoke: app running; Home, Calendar, Account and Store link load.
+  Shop **noikub** remains published at the same profile slug with **2/20 links**.
+  Test Store paywall loads product prices; back navigation returns normally.
+  Phone form opens/cancels without sending SMS. Current app PID log scan has no
+  fatal/unhandled/framework exception matches. No buy/restore, real OTP, publish,
+  account deletion, provider-failure injection or A→B live identity switch is
+  performed; their mock regression coverage is not physical-device acceptance.
+- Production API `srv-d8uf2sbtqb8s73b6ptmg` is freshly observed **Suspended by you**
+  after delivery. No Production resume, deploy, environment or database mutation
+  is performed. Original dirty `D:/PostDeeMobile` remains untouched.
+- Local ignored evidence: `.tmp/security-delivery/{receipt.json,
+  post-deploy-probes.json,mobile-source-manifest.json,apk-build.log,
+  main-preserved-before.json,main-preserved-after.json,emulator-8017-final.png}`.
+  Screenshots/QA records containing account details are kept local, not pushed.
+
+The receipt-only follow-up commit changes documentation, with skip tokens;
+runtime blobs must match `9244f16`. It requires no duplicate build/deploy/install.
 
 ## Remaining limitations
 

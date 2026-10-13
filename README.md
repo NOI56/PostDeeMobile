@@ -258,7 +258,7 @@ Post-deploy health/readiness return 200, and native version 8005 refreshes
 successfully with the same Free 0/3 and connections 0/4. CI intentionally skips
 APK build/upload; the verified local Staging debug/Test Store APK stays
 installed. Main and Production remain unchanged; detailed receipts are in the plan.
-## Security integration preparation (2026-10-13)
+## Security integration delivery (2026-10-13)
 
 Branch `codex/security-main-delivery` initially started from verified main
 `c4e5220`; delivery now reconciles the newer verified remote main
@@ -273,9 +273,11 @@ Legacy GET user preparation remains during this stage, subject to the final
 owner write fence; read-only GET cutover is deferred until incompatible mobile
 builds are retired. Session-bound auth/native operations, push recipient UID
 and final User/Post/Subscription transactions are integrated in this branch.
-Source review, API tests/build/schema checks and Flutter tests/analyze pass;
-exact Staging APK/device delivery is pending. Production is outside this
-delivery stage. See
+Source review, API 1,816 tests/build/schema and Flutter 2,171 tests/analyze pass.
+Runtime source `9244f16` is pushed to main and deployed Live to Staging. Exact
+Staging debug APK8017 is installed over the existing Emulator app with the same
+signature; published shop data and signed-in state are retained. Basic device
+smoke passes. Production remains outside this delivery stage. See
 [`2026-10-13-security-main-delivery.md`](docs/superpowers/plans/2026-10-13-security-main-delivery.md).
 
 ## Pending-work integration (2026-10-08)

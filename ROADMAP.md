@@ -358,7 +358,9 @@ confirmation and cold callback remain unverified.
   retire incompatible mobile builds before considering read-only GET.
 - Current status: selective source integration/review complete in the local
   branch; API 1,816 tests/build/schema and Flutter 2,171 tests/analyze pass.
-  Exact APK/device delivery remains pending. Previous
+  Runtime `9244f16` is on main and Staging Live; APK8017 retained-data Emulator
+  smoke passes. Real purchase/OTP/publishing and background push acceptance
+  remain separate gates. Previous
   audit cases and old CI/device smoke do not validate this delivery branch.
   Preserve Production feature flags and infrastructure; Staging/Emulator are
   the first delivery stage. Exact evidence belongs in

@@ -1472,8 +1472,16 @@ Checks that Firebase identity deletion, owner-prefix media cleanup, and any
 stored PostPeer profile cleanup are configured before the mobile app starts
 Apple reauthentication. Returns
 `{ "status": "ok", "identityAlreadyDeleted": false }` or a retryable `503`
-without changing account data. `identityAlreadyDeleted=true` lets the mobile
-app finish an idempotent retry without repeating Apple reauthentication.
+without changing account data. For an extant identity the ordinary `200`/`false`
+preflight remains available before recent mobile reauthentication. For an
+already-missing Firebase identity, `200`/`identityAlreadyDeleted=true` requires
+valid stored deletion authorization for the same UID with owner status
+`DELETING` or `DELETED`; this lets the mobile app finish an authorized retry
+without repeating Apple reauthentication. A missing identity without that
+proof returns `403 ACCOUNT_REAUTHENTICATION_REQUIRED`; neither a legacy
+tombstone nor `auth/user-not-found` alone grants permission. Missing proof-store
+methods or a proof read failure returns
+`503 ACCOUNT_DELETION_AUTHORIZATION_UNAVAILABLE` before cleanup.
 If a stored PostPeer profile exists but provider cleanup is not configured,
 the endpoint returns `503 ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE`.
 
@@ -1490,6 +1498,27 @@ durable full-user mutation barrier and drain are implemented.
 
 Behavior:
 
+- Initial Firebase deletion requires an extant identity and a finite ID-token
+  `auth_time` no more than five minutes old, allowing at most 60 seconds of
+  future clock skew. The API atomically records its server timestamp in
+  `ManagedUploadOwner.deletionAuthorizedAt` and marks that UID `DELETING`
+  before cleanup. This record is independent of `User`, so cascading user-data
+  deletion cannot remove the retry proof. An existing valid proof on a
+  `DELETING`/`DELETED` owner allows the same UID's authorized retry even when its
+  signed token is older or Firebase confirms its identity is missing.
+  Otherwise return `403 ACCOUNT_REAUTHENTICATION_REQUIRED`. Revoked or invalid
+  tokens remain rejected. Generic lifecycle begin/finish operations and mock
+  deletion must not create Firebase deletion authorization.
+- Missing proof-store methods or proof read/write failures return a retryable
+  `503 ACCOUNT_DELETION_AUTHORIZATION_UNAVAILABLE` before a local deleting mark
+  or queue, provider, media, database or identity cleanup. Authorization is
+  rechecked under the owner lock before proof persistence and cleanup.
+  A busy owner-write drain retains `503 ACCOUNT_WRITE_DRAIN_FAILED`. Apply
+  migration `20261014003000_authorize_account_deletion` and regenerate Prisma
+  before deploying this API. The new timestamp is nullable, with no backfill;
+  existing `NULL` tombstones are not permission to retry. A legacy account with
+  missing identity and no proof needs separately verified operator recovery,
+  not an automatic authorization stamp.
 - Marks the owner as deleting before cleanup starts, including legacy upload
   mode. Prisma supplies a durable marker whenever active; otherwise it is
   process-local. The existing coordinator serializes mutation/deletion within
@@ -1527,15 +1556,16 @@ Behavior:
 - With in-memory stores, each store drops the user's records.
 - When Firebase auth is used in a controlled environment,
   `FIREBASE_AUTH_DELETE_ENABLED=true` and `FIREBASE_SERVICE_ACCOUNT_JSON` are
-  required. Firebase identity is deleted
-  last. Active identities must present an ID token whose `auth_time` is no more
-  than five minutes old or receive `403 ACCOUNT_REAUTHENTICATION_REQUIRED`.
-- `auth/user-not-found` is treated as an idempotent success. Other Firebase
+  required. Firebase identity is deleted last, after deletion authorization
+  and user-scoped cleanup.
+- After authorization, `auth/user-not-found` during identity cleanup is treated
+  as an idempotent success. Other Firebase
   failures return `503 ACCOUNT_IDENTITY_DELETE_FAILED`; retrying the same
   request completes identity deletion after the already-idempotent data cleanup.
-  The account-only verifier accepts a still-valid signed token when (and only
-  when) Firebase Admin confirms that the UID is already missing; revoked tokens
-  remain rejected.
+  The account-only verifier can recognize a still-valid signed token whose UID
+  Firebase Admin confirms is already missing, but the account routes require
+  persisted authorization before readiness or deletion treats it as a retry.
+  Revoked tokens remain rejected.
 - If Firebase identity deletion is not enabled, the endpoint returns
   `503 ACCOUNT_DELETION_UNAVAILABLE` before changing any data.
 - On iOS/macOS, the mobile flow calls the readiness endpoint, reauthenticates

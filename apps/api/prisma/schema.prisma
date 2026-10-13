@@ -248,11 +248,13 @@ model PostPeerProfile {
 // Kept separate from User so a DELETED marker survives a failed Firebase
 // identity cleanup and stale credentials cannot start another upload session.
 model ManagedUploadOwner {
-  ownerId   String                   @id
-  status    ManagedUploadOwnerStatus @default(ACTIVE)
-  sessions  ManagedUploadSession[]
-  createdAt DateTime                 @default(now())
-  updatedAt DateTime                 @updatedAt
+  ownerId              String                   @id
+  status               ManagedUploadOwnerStatus @default(ACTIVE)
+  // Not inferred or backfilled from an existing deletion status.
+  deletionAuthorizedAt DateTime?
+  sessions             ManagedUploadSession[]
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
 }
 
 model ManagedUploadSession {

@@ -280,6 +280,29 @@ signature; published shop data and signed-in state are retained. Basic device
 smoke passes. Production remains outside this delivery stage. See
 [`2026-10-13-security-main-delivery.md`](docs/superpowers/plans/2026-10-13-security-main-delivery.md).
 
+## Account deletion retry authorization (2026-10-14, verified locally)
+
+The follow-up starts from main `1bf125c` and separates a lifecycle tombstone
+from permission to finish account deletion. A missing Firebase UID by itself
+must not let an old token delete PostDee data. The API must first persist a
+server-generated deletion authorization for the same UID after a recent
+Firebase authentication; only that proof can authorize a later retry. The
+observed failure used a Firebase SDK fixture, not a confirmed real-Firebase
+exploit. Local verification passed 1,871 API cases, the production API build,
+Prisma generation/schema/helper checks, 159 mobile compatibility cases and
+Flutter analyze. Offline migration DDL matches the schema change; no live
+migration or deployment has been performed. Full test-inclusive TypeScript
+checking retains main's 142 existing fixture errors with no new errors.
+This is not a Production-readiness claim.
+
+The nullable `ManagedUploadOwner.deletionAuthorizedAt` column requires migration
+`20261014003000_authorize_account_deletion` and a regenerated Prisma client
+before deploying the API. Existing tombstones remain `NULL` and cannot be
+automatically treated as authorized. A legacy account whose Firebase identity
+is gone without proof needs verified operator recovery. This patch does not
+change mobile response fields, dependencies or feature flags. See
+[`2026-10-14-account-deletion-authorization.md`](docs/superpowers/plans/2026-10-14-account-deletion-authorization.md).
+
 ## Pending-work integration (2026-10-08)
 
 The mobile UI cleanup is on remote `main` at `b1f793c`; its app source is
@@ -1833,9 +1856,20 @@ controlled environment, enabling the path also requires
 the user's PostPeer integrations, removes
 the R2 owner prefix (or an S3-compatible client that implements owner-prefix
 listing), deletes local data, and deletes the Firebase identity last. Active
-Firebase users must have signed in within five minutes. A dedicated
-account-only retry path accepts a still-valid token only when Firebase confirms
-the UID is already gone; revoked tokens remain rejected. RevenueCat webhooks do
+Firebase users starting deletion must present a finite `auth_time` within five
+minutes, with no more than 60 seconds of future clock skew, while the Firebase
+identity still exists. The API atomically marks the owner `DELETING` and records
+the server time in `ManagedUploadOwner.deletionAuthorizedAt` before cleanup.
+This owner record is separate from `User` so the proof survives data deletion.
+A dedicated account-only retry path accepts a still-valid token for the same
+UID, including an older token or an already-missing Firebase identity, only
+when a valid stored proof exists on a `DELETING` or `DELETED` owner. Revoked
+tokens remain rejected. Missing identity alone, a lifecycle marker alone, and
+legacy `NULL` proof never authorize deletion. If proof storage is unavailable
+or cannot be read/written, the API fails closed with
+`503 ACCOUNT_DELETION_AUTHORIZATION_UNAVAILABLE` before cleanup or a local
+deleting mark. Authorization is rechecked under the owner lock before cleanup.
+RevenueCat webhooks do
 not recreate users that no longer exist. PostPeer cleanup follows every page of
 the profile's integrations and fails before local deletion when provider cleanup
 is unavailable or any external disconnect fails. A durable marker protects the

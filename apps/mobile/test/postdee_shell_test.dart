@@ -2460,75 +2460,85 @@ void main() {
     expect(find.text('Sign in to PostDee'), findsOneWidget);
   });
 
-  testWidgets('does not revoke Apple access when deletion preflight fails',
-      (tester) async {
-    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
-    final sessionStore = PostDeeAuthSessionStore.instance;
-    final languageController = PostDeeLanguageController(
-      initialLocale: const Locale('en'),
-    );
-    final deletionCalls = <String>[];
-    sessionStore.signIn(
-      const AuthSession(
-        userId: 'firebase-user-shell',
-        idToken: 'firebase-id-token',
-        email: 'seller@example.com',
-      ),
-    );
-    addTearDown(sessionStore.clear);
-    addTearDown(languageController.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark,
-        locale: const Locale('en'),
-        localizationsDelegates: const [
-          PostDeeLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: PostDeeLocalizations.supportedLocales,
-        home: PostDeeShell(
-          uploaderDraftStore: _ShellDraftStore(),
-          languageController: languageController,
-          checkAccountDeletionReady: () async {
-            deletionCalls.add('ready');
-            throw const ApiException(
-              'unavailable',
-              statusCode: 503,
-              code: 'ACCOUNT_DELETION_UNAVAILABLE',
-            );
-          },
-          accountAccessRevoker: _RecordingAccountAccessRevoker(deletionCalls),
-          deleteAccount: () async => deletionCalls.add('delete'),
+  for (final code in [
+    'ACCOUNT_DELETION_UNAVAILABLE',
+    'ACCOUNT_REAUTHENTICATION_REQUIRED',
+    'ACCOUNT_DELETION_AUTHORIZATION_UNAVAILABLE',
+  ]) {
+    testWidgets(
+        'does not revoke Apple access when deletion preflight fails: $code',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+      final sessionStore = PostDeeAuthSessionStore.instance;
+      final languageController = PostDeeLanguageController(
+        initialLocale: const Locale('en'),
+      );
+      final deletionCalls = <String>[];
+      sessionStore.signIn(
+        const AuthSession(
+          userId: 'firebase-user-shell',
+          idToken: 'firebase-id-token',
+          email: 'seller@example.com',
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(_referenceNavButton('Account'));
-    await tester.pumpAndSettle();
-    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
-    await tester.scrollUntilVisible(
-      deleteButton,
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(deleteButton);
-    await tester.pumpAndSettle();
-    tester
-        .widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
-        )
-        .onPressed!();
-    await tester.pumpAndSettle();
+      );
+      addTearDown(sessionStore.clear);
+      addTearDown(languageController.dispose);
 
-    expect(deletionCalls, ['ready']);
-    expect(sessionStore.session.isSignedIn, isTrue);
-    expect(find.text('ระบบลบบัญชียังไม่พร้อม กรุณาลองใหม่ภายหลัง'),
-        findsOneWidget);
-  });
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark,
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            PostDeeLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: PostDeeLocalizations.supportedLocales,
+          home: PostDeeShell(
+            uploaderDraftStore: _ShellDraftStore(),
+            languageController: languageController,
+            checkAccountDeletionReady: () async {
+              deletionCalls.add('ready');
+              throw ApiException(
+                'unavailable',
+                statusCode:
+                    code == 'ACCOUNT_REAUTHENTICATION_REQUIRED' ? 403 : 503,
+                code: code,
+              );
+            },
+            accountAccessRevoker: _RecordingAccountAccessRevoker(deletionCalls),
+            deleteAccount: () async => deletionCalls.add('delete'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(_referenceNavButton('Account'));
+      await tester.pumpAndSettle();
+      final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+      await tester.scrollUntilVisible(
+        deleteButton,
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(deleteButton);
+      await tester.pumpAndSettle();
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+          )
+          .onPressed!();
+      await tester.pumpAndSettle();
+
+      expect(deletionCalls, ['ready']);
+      expect(sessionStore.session.isSignedIn, isTrue);
+      if (code == 'ACCOUNT_DELETION_UNAVAILABLE') {
+        expect(find.text('ระบบลบบัญชียังไม่พร้อม กรุณาลองใหม่ภายหลัง'),
+            findsOneWidget);
+      }
+    });
+  }
 
   testWidgets('explains how to reauthenticate before retrying deletion',
       (tester) async {

@@ -366,6 +366,34 @@ confirmation and cold callback remain unverified.
   the first delivery stage. Exact evidence belongs in
   `docs/superpowers/plans/2026-10-13-security-main-delivery.md`.
 
+## Account deletion retry authorization (2026-10-14, verified locally)
+
+- Start from verified main `1bf125c`; turn the SDK-fixture missing-identity
+  failure into a regression test. The fixture is not confirmation that the
+  same condition is reachable through real Firebase.
+- Authorize the first deletion only from an extant Firebase identity with a
+  finite `auth_time` within five minutes (future skew at most 60 seconds).
+  Persist server time and `DELETING` atomically under the same UID in
+  `ManagedUploadOwner`, separate from the cascading `User` row.
+- Allow an older-token or missing-identity retry only when that UID has valid
+  authorization and status `DELETING`/`DELETED`. Mock cleanup and generic
+  lifecycle begin/finish calls must not create authorization. Absent storage
+  methods or read/write failures must stop cleanup with
+  `503 ACCOUNT_DELETION_AUTHORIZATION_UNAVAILABLE` before marking the owner
+  locally. Recheck proof under the owner lock before cleanup.
+- Migrate `20261014003000_authorize_account_deletion` and regenerate Prisma
+  before the API rollout. Do not backfill existing `NULL` tombstones: a legacy
+  missing-identity account without proof needs verified operator recovery.
+  Readiness response fields and the mobile flow remain compatible.
+- Local verification passed 1,871 API cases, production API build,
+  Prisma generation/schema/helper checks, 159 mobile compatibility cases and
+  Flutter analyze. Offline migration DDL matches the schema addition; the
+  migration and API delivery are pending. Full test-inclusive TypeScript still
+  has main's 142 existing fixture errors with no new errors. Keep Production
+  deletion disabled; durable multi-process draining and real provider/device
+  cleanup acceptance remain separate gates. Plan:
+  `docs/superpowers/plans/2026-10-14-account-deletion-authorization.md`.
+
 ## Pending-work integration (2026-10-08)
 
 - Mobile cleanup is integrated and pushed to `main` at `b1f793c`; app-source CI
@@ -1132,7 +1160,12 @@ To ensure the app passes store review guidelines, the following must be implemen
 3. **Account Deletion**: Partially implemented and temporarily disabled in
    Production. The Profile screen warns that store subscriptions must be managed
    separately; iOS/macOS Apple users pass readiness, reauthenticate, and revoke
-   Apple access before `DELETE /account`. The cleanup saga sets a durable marker
+   Apple access before `DELETE /account`. Initial Firebase deletion must persist
+   recent-authentication authorization; stale/missing-identity retries require
+   that same UID's stored proof, not only a lifecycle tombstone. Apply migration
+   `20261014003000_authorize_account_deletion` and regenerate Prisma before the
+   patched API; existing tombstones receive no authorization backfill.
+   The cleanup saga sets a durable marker
    for the managed-upload owner prefix, reconciles/aborts multipart sessions,
    disconnects PostPeer integrations, removes queued jobs/R2 objects/database
    data, and deletes the Firebase identity last. Its owner coordinator is still

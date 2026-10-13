@@ -12,6 +12,7 @@ import {
 type PrismaUploadOwner = {
   ownerId: string;
   status: UploadOwnerStatus;
+  deletionAuthorizedAt?: Date | null;
 };
 type PrismaUploadSession = {
   id: string;
@@ -34,13 +35,13 @@ type PrismaUploadSession = {
 type UploadOwnerDelegate = {
   upsert: (args: {
     where: { ownerId: string };
-    create: { ownerId: string; status: UploadOwnerStatus };
+    create: { ownerId: string; status: UploadOwnerStatus; deletionAuthorizedAt?: Date };
     update: Record<string, never>;
   }) => Promise<PrismaUploadOwner>;
   findUnique: (args: { where: { ownerId: string } }) => Promise<PrismaUploadOwner | null>;
   update: (args: {
     where: { ownerId: string };
-    data: { status: UploadOwnerStatus };
+    data: { status: UploadOwnerStatus; deletionAuthorizedAt?: Date };
   }) => Promise<PrismaUploadOwner>;
   updateMany: (args: {
     where: { ownerId: string; status: 'ACTIVE' };
@@ -353,6 +354,34 @@ export const createPrismaUploadSessionRepository = ({
         })
       );
     }),
+  getOwnerDeletionAuthorization: async (ownerId) => {
+    const owner = await prisma.managedUploadOwner.findUnique({ where: { ownerId } });
+    if (owner?.ownerId !== ownerId || (owner.status !== 'DELETING' && owner.status !== 'DELETED')) {
+      return undefined;
+    }
+    const timestamp = owner.deletionAuthorizedAt;
+    return timestamp && Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : undefined;
+  },
+  authorizeOwnerDeletion: async (ownerId, authorizedAt) => {
+    const timestamp = new Date(authorizedAt);
+    if (!Number.isFinite(timestamp.getTime())) {
+      throw new Error('Invalid account deletion authorization timestamp.');
+    }
+    await runOwnerOperation(ownerId, () => runSerializable(prisma, async (transaction) => {
+      const owner = await transaction.managedUploadOwner.upsert({
+        where: { ownerId },
+        create: { ownerId, status: 'DELETING', deletionAuthorizedAt: timestamp },
+        update: {}
+      });
+      const status = owner.status === 'DELETED' ? 'DELETED' : 'DELETING';
+      if (owner.status !== status || !owner.deletionAuthorizedAt) {
+        await transaction.managedUploadOwner.update({
+          where: { ownerId },
+          data: { status, deletionAuthorizedAt: owner.deletionAuthorizedAt ?? timestamp }
+        });
+      }
+    }));
+  },
   beginOwnerDeletion: (ownerId) => runOwnerOperation(ownerId, () =>
     runSerializable(prisma, async (transaction) => {
       const owner = await transaction.managedUploadOwner.upsert({

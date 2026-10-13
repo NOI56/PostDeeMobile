@@ -68,6 +68,9 @@ export type UploadSessionStore = {
   beginAbort: (id: string, ownerId: string) => Promise<UploadSession>;
   markCompleted: (id: string, completedAt: string) => Promise<UploadSession>;
   markAborted: (id: string) => Promise<UploadSession | undefined>;
+  getOwnerDeletionAuthorization: (ownerId: string) => Promise<string | undefined>;
+  // Called only after confirming a recent Firebase identity, never from a status marker.
+  authorizeOwnerDeletion: (ownerId: string, authorizedAt: string) => Promise<void>;
   beginOwnerDeletion: (ownerId: string) => Promise<UploadOwnerStatus>;
   listOpenForOwner: (ownerId: string) => Promise<UploadSession[]>;
   finishOwnerDeletion: (ownerId: string) => Promise<void>;
@@ -119,6 +122,7 @@ export const createInMemoryUploadSessionStore = ({
   now?: () => string;
 } = {}): UploadSessionStore => {
   const owners = new Map<string, UploadOwnerStatus>();
+  const deletionAuthorizations = new Map<string, string>();
   const sessions = new Map<string, UploadSession>();
   const runOwnerOperation = createOwnerOperationQueue();
 
@@ -279,6 +283,27 @@ export const createInMemoryUploadSessionStore = ({
       };
       sessions.set(id, updated);
       return updated;
+    },
+    getOwnerDeletionAuthorization: async (ownerId) => {
+      const status = owners.get(ownerId);
+      const authorizedAt = deletionAuthorizations.get(ownerId);
+      if ((status !== 'DELETING' && status !== 'DELETED') || !authorizedAt) {
+        return undefined;
+      }
+      const timestamp = new Date(authorizedAt);
+      return Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : undefined;
+    },
+    authorizeOwnerDeletion: async (ownerId, authorizedAt) => {
+      const timestamp = new Date(authorizedAt);
+      if (!Number.isFinite(timestamp.getTime())) {
+        throw new Error('Invalid account deletion authorization timestamp.');
+      }
+      await runOwnerOperation(ownerId, async () => {
+        owners.set(ownerId, owners.get(ownerId) === 'DELETED' ? 'DELETED' : 'DELETING');
+        if (!deletionAuthorizations.has(ownerId)) {
+          deletionAuthorizations.set(ownerId, timestamp.toISOString());
+        }
+      });
     },
     beginOwnerDeletion: (ownerId) => runOwnerOperation(ownerId, async () => {
       const current = owners.get(ownerId);

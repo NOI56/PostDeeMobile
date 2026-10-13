@@ -516,17 +516,21 @@ describe('account routes', () => {
     expect(templates.body.templates).toHaveLength(1);
   });
 
-  it('lets a signed token finish cleanup after Firebase identity deletion succeeded', async () => {
+  it('lets a previously authorized deletion finish after the identity response is lost', async () => {
     const userId = 'firebase-deleted-identity-retry';
+    let identityAlreadyDeleted = false;
     const accountIdentityDeleter = {
-      deleteIdentity: vi.fn(async () => undefined)
+      deleteIdentity: vi.fn()
+        .mockRejectedValueOnce(new Error('Identity deletion response lost'))
+        .mockResolvedValue(undefined)
     };
     const deletedIdentityVerifier = {
       verifyIdToken: vi.fn(async () => ({
         id: userId,
         provider: 'firebase' as const,
-        authenticatedAtSeconds: Math.floor(Date.now() / 1000) - 30 * 60,
-        identityAlreadyDeleted: true
+        authenticatedAtSeconds: Math.floor(Date.now() / 1000) -
+          (identityAlreadyDeleted ? 30 * 60 : 0),
+        identityAlreadyDeleted
       }))
     };
     const app = createApp({
@@ -536,6 +540,13 @@ describe('account routes', () => {
       videoStorage: createTestVideoStorage(),
       accountIdentityDeleter
     });
+
+    await createTemplateWithFirebase(app);
+    await request(app)
+      .delete('/account')
+      .set('authorization', 'Bearer recent-firebase-token')
+      .expect(503);
+    identityAlreadyDeleted = true;
 
     await request(app)
       .get('/account/deletion-readiness')

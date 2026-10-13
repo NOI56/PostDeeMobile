@@ -3,10 +3,11 @@ import { vi } from 'vitest';
 import type { PrismaOwnerLifecycleTransaction } from '../src/modules/account/ownerLifecycle.js';
 import type { UploadOwnerStatus } from '../src/modules/uploads/uploadSessionStore.js';
 
-type FixtureOwner = { ownerId: string; status: UploadOwnerStatus };
-type FixtureOwnerDelegate = PrismaOwnerLifecycleTransaction['managedUploadOwner'] & {
+type FixtureOwner = { ownerId: string; status: UploadOwnerStatus; deletionAuthorizedAt?: Date | null };
+type FixtureOwnerDelegate = Omit<PrismaOwnerLifecycleTransaction['managedUploadOwner'], 'upsert'> & {
+  upsert: (input: { where: { ownerId: string }; create: FixtureOwner; update: Record<string, never> }) => Promise<FixtureOwner>;
   findUnique: (input: { where: { ownerId: string } }) => Promise<FixtureOwner | null>;
-  update: (input: { where: { ownerId: string }; data: { status: UploadOwnerStatus } }) => Promise<FixtureOwner>;
+  update: (input: { where: { ownerId: string }; data: { status: UploadOwnerStatus; deletionAuthorizedAt?: Date | null } }) => Promise<FixtureOwner>;
 };
 type DefaultSessionDelegate = {
   findMany: () => Promise<never[]>;
@@ -34,8 +35,8 @@ export const withOwnerLifecycleFixture = <T extends object>(prisma: T): OwnerLif
     updateMany: vi.fn(async ({ where }: { where: { ownerId: string; status: 'ACTIVE' }; data: { status: 'ACTIVE' } }) => ({
       count: owners.get(where.ownerId)?.status === where.status ? 1 : 0
     })),
-    update: vi.fn(async ({ where, data }: { where: { ownerId: string }; data: { status: UploadOwnerStatus } }) => {
-      const owner = { ownerId: where.ownerId, status: data.status };
+    update: vi.fn(async ({ where, data }: { where: { ownerId: string }; data: { status: UploadOwnerStatus; deletionAuthorizedAt?: Date | null } }) => {
+      const owner = { ...owners.get(where.ownerId), ownerId: where.ownerId, ...data };
       owners.set(where.ownerId, owner);
       return owner;
     })

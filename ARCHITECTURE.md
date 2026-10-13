@@ -1038,9 +1038,38 @@ external deletion is not transactional, so some already-deleted objects or
 integrations may remain deleted after a retryable response. Late RevenueCat
 active events are ignored when their local user no longer exists and cannot
 recreate the account.
-Firebase deletion also requires a token authenticated within the last five
-minutes. The account-only retry verifier accepts a valid token for a UID that
-Firebase confirms is already missing, while still rejecting revoked tokens.
+Firebase deletion authorization is separate from owner lifecycle status.
+`ManagedUploadOwner.deletionAuthorizedAt` is a nullable server timestamp on the
+UID-keyed owner record, independent of the cascading `User` row. Only the
+account route with an extant Firebase identity and finite `auth_time` within
+five minutes (future skew at most 60 seconds) may call `authorizeOwnerDeletion`.
+It atomically sets `DELETING` and records authorization before cleanup, retaining
+the first proof on an idempotent retry. Generic `beginOwnerDeletion`,
+`finishOwnerDeletion` and mock deletion do not grant authorization.
+
+`getOwnerDeletionAuthorization` supplies proof only for the same UID. A valid
+stored timestamp plus `DELETING`/`DELETED` permits an authorized stale-token or
+missing-identity retry. A missing Firebase UID or a lifecycle tombstone with a
+`NULL` timestamp is insufficient. The account-only verifier may recognize a
+valid token for a UID Firebase confirms is missing; the account routes still
+enforce this proof, and revoked tokens remain rejected. An extant-identity
+readiness preflight returns `200`/`identityAlreadyDeleted=false` before mobile
+reauthentication. Missing-identity readiness returns `200`/`true` only with
+proof, otherwise `403 ACCOUNT_REAUTHENTICATION_REQUIRED`. Missing repository
+methods or failed proof reads/writes return
+`503 ACCOUNT_DELETION_AUTHORIZATION_UNAVAILABLE` before cleanup. Proof is
+rechecked under the owner lock before persistence and cleanup, and a failed
+proof operation does not mark the owner deleting locally. Busy write/drain
+operations retain `ACCOUNT_WRITE_DRAIN_FAILED`.
+
+Migration `20261014003000_authorize_account_deletion` adds the nullable column
+without backfilling legacy tombstones. Apply it and regenerate the Prisma client
+before deploying the patched API. An old missing-identity account lacking proof
+requires verified operator recovery, not inferred or automatic authorization.
+This closes the authorization gap observed with an SDK fixture; it does not
+prove that Firebase accepts the same condition in a live environment or close
+the separate multi-process mutation-drain/provider-call boundary. Mobile
+response fields, dependencies and feature flags remain unchanged.
 On iOS/macOS, the mobile app first checks `GET /account/deletion-readiness`, then
 reauthenticates and revokes Apple access before calling the delete endpoint.
 Apple Sign-In must not be exposed on Android/web until server-side Apple token

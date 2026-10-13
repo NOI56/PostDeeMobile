@@ -1,6 +1,6 @@
-import type { RequestHandler, Router } from 'express';
+import type { RequestHandler, Response, Router } from 'express';
 
-import { readAuthUser } from '../auth/authTypes.js';
+import { readAuthUser, type AuthUser } from '../auth/authTypes.js';
 import type { AnalyticsStore } from '../analytics/analyticsStore.js';
 import type { AiEditUsageStore } from '../aiEdits/aiEditUsageStore.js';
 import type { RealClipCaptionUsageStore } from '../captions/captionUsageStore.js';
@@ -58,7 +58,9 @@ export type AccountRouteDependencies = {
     'prepareOwnerDeletion' | 'finishOwnerDeletion'
   >;
   ownerMutationLock?: OwnerMutationCoordinator;
-  ownerLifecycleStore?: Pick<UploadSessionStore, 'beginOwnerDeletion' | 'finishOwnerDeletion'>;
+  ownerLifecycleStore?: Pick<UploadSessionStore,
+    'beginOwnerDeletion' | 'finishOwnerDeletion' |
+    'getOwnerDeletionAuthorization' | 'authorizeOwnerDeletion'>;
   prisma?: PrismaAccountClient;
   nowSeconds?: () => number;
 };
@@ -125,6 +127,47 @@ export const registerAccountRoutes = (
   const readPostPeerProfileId = async (userId: string) =>
     socialConnectionStore?.getProfileId(userId);
 
+  const hasRecentAuthentication = (authUser: AuthUser) => {
+    const authenticatedAt = authUser.authenticatedAtSeconds;
+    const currentSeconds = nowSeconds();
+    return typeof authenticatedAt === 'number' &&
+      Number.isFinite(authenticatedAt) &&
+      authenticatedAt <= currentSeconds + allowedAuthenticationClockSkewSeconds &&
+      currentSeconds - authenticatedAt <= recentAuthenticationWindowSeconds;
+  };
+
+  const hasDeletionAuthorization = async (userId: string) => {
+    const store = ownerLifecycleStore;
+    if (!store || typeof store.getOwnerDeletionAuthorization !== 'function' ||
+      typeof store.authorizeOwnerDeletion !== 'function' ||
+      typeof store.beginOwnerDeletion !== 'function' ||
+      typeof store.finishOwnerDeletion !== 'function') {
+      throw new Error('Account deletion authorization storage is unavailable');
+    }
+    const proof = await store.getOwnerDeletionAuthorization(userId);
+    const authorizedAt = typeof proof === 'string' ? Date.parse(proof) / 1000 : Number.NaN;
+    return Number.isFinite(authorizedAt) &&
+      authorizedAt <= nowSeconds() + allowedAuthenticationClockSkewSeconds;
+  };
+
+  const requireReauthentication = (response: Response) => {
+    response.status(403).json({
+      status: 'error', code: 'ACCOUNT_REAUTHENTICATION_REQUIRED',
+      message: 'Sign in again before permanently deleting your account.'
+    });
+  };
+
+  const authorizationUnavailable = (response: Response, error: unknown) => {
+    const busy = error instanceof OwnerOperationBusyError;
+    response.status(503).json({
+      status: 'error',
+      code: busy ? 'ACCOUNT_WRITE_DRAIN_FAILED' : 'ACCOUNT_DELETION_AUTHORIZATION_UNAVAILABLE',
+      message: busy
+        ? 'Could not finish active account writes. Please try again.'
+        : 'Could not verify or save account deletion authorization. Please try again.'
+    });
+  };
+
   router.get('/account/deletion-readiness', authMiddleware, async (_request, response) => {
     const authUser = readAuthUser(response.locals);
 
@@ -134,6 +177,19 @@ export const registerAccountRoutes = (
         message: 'Authenticated user is required'
       });
       return;
+    }
+
+    if (authUser.provider === 'firebase') {
+      try {
+        const authorized = await hasDeletionAuthorization(authUser.id);
+        if (authUser.identityAlreadyDeleted && !authorized) {
+          requireReauthentication(response);
+          return;
+        }
+      } catch (error) {
+        authorizationUnavailable(response, error);
+        return;
+      }
     }
 
     let postPeerProfileId: string | undefined;
@@ -178,21 +234,17 @@ export const registerAccountRoutes = (
 
     const userId = authUser.id;
 
-    const currentSeconds = nowSeconds();
-    if (
-      authUser.provider === 'firebase' &&
-      !authUser.identityAlreadyDeleted &&
-      (typeof authUser.authenticatedAtSeconds !== 'number' ||
-        authUser.authenticatedAtSeconds >
-          currentSeconds + allowedAuthenticationClockSkewSeconds ||
-        currentSeconds - authUser.authenticatedAtSeconds > recentAuthenticationWindowSeconds)
-    ) {
-      response.status(403).json({
-        status: 'error',
-        code: 'ACCOUNT_REAUTHENTICATION_REQUIRED',
-        message: 'Sign in again before permanently deleting your account.'
-      });
-      return;
+    if (authUser.provider === 'firebase') {
+      try {
+        const authorized = await hasDeletionAuthorization(userId);
+        if (!authorized && (authUser.identityAlreadyDeleted || !hasRecentAuthentication(authUser))) {
+          requireReauthentication(response);
+          return;
+        }
+      } catch (error) {
+        authorizationUnavailable(response, error);
+        return;
+      }
     }
 
     const releaseOwnerMutationLock = ownerMutationLock
@@ -200,6 +252,22 @@ export const registerAccountRoutes = (
       : () => undefined;
 
     try {
+
+    // Recheck after waiting for the owner lock. Readiness never creates proof.
+    let previouslyAuthorized = false;
+    if (authUser.provider === 'firebase') {
+      try {
+        previouslyAuthorized = await hasDeletionAuthorization(userId);
+        if (!previouslyAuthorized &&
+          (authUser.identityAlreadyDeleted || !hasRecentAuthentication(authUser))) {
+          requireReauthentication(response);
+          return;
+        }
+      } catch (error) {
+        authorizationUnavailable(response, error);
+        return;
+      }
+    }
 
     let postPeerProfileId: string | undefined;
     try {
@@ -224,19 +292,39 @@ export const registerAccountRoutes = (
       return;
     }
 
-    ownerMutationLock?.markDeleting(userId);
+    if (authUser.provider === 'firebase') {
+      try {
+        if (!previouslyAuthorized) {
+          if (authUser.identityAlreadyDeleted || !hasRecentAuthentication(authUser)) {
+            requireReauthentication(response);
+            return;
+          }
+          // The UID-bound proof and DELETING marker are one durable write.
+          await ownerLifecycleStore!.authorizeOwnerDeletion(
+            userId, new Date(nowSeconds() * 1000).toISOString()
+          );
+        } else {
+          await ownerLifecycleStore!.beginOwnerDeletion(userId);
+        }
+      } catch (error) {
+        authorizationUnavailable(response, error);
+        return;
+      }
+      ownerMutationLock?.markDeleting(userId);
+    } else {
+      ownerMutationLock?.markDeleting(userId);
 
-    // Independent of multipart support, this permanent marker fences final
-    // entity writes in other API instances and drains local queue admission.
-    try {
-      await ownerLifecycleStore?.beginOwnerDeletion(userId);
-    } catch (error) {
-      response.status(503).json({
-        status: 'error',
-        code: error instanceof OwnerOperationBusyError ? error.code : 'ACCOUNT_WRITE_DRAIN_FAILED',
-        message: 'Could not finish active account work. Please try again.'
-      });
-      return;
+      // Mock/service cleanup seals the owner without creating Firebase consent.
+      try {
+        await ownerLifecycleStore?.beginOwnerDeletion(userId);
+      } catch (error) {
+        response.status(503).json({
+          status: 'error',
+          code: error instanceof OwnerOperationBusyError ? error.code : 'ACCOUNT_WRITE_DRAIN_FAILED',
+          message: 'Could not finish active account work. Please try again.'
+        });
+        return;
+      }
     }
 
     // Seal the owner before draining queued/external work so concurrent upload

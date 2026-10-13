@@ -48,6 +48,8 @@ describe('delivery account lifecycle integration', () => {
 
   it('reports an unfinished queue drain before deleting durable data', async () => {
     const { app, deleteUser } = makeAccountApp({ ownerLifecycleStore: {
+      getOwnerDeletionAuthorization: vi.fn(async () => undefined),
+      authorizeOwnerDeletion: vi.fn(async () => undefined),
       beginOwnerDeletion: vi.fn(async () => { throw new OwnerOperationBusyError(); }),
       finishOwnerDeletion: vi.fn()
     } });

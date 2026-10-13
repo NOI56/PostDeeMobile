@@ -2622,6 +2622,44 @@ void main() {
     }
   });
 
+  for (final rejection in {
+    'ACCOUNT_REAUTHENTICATION_REQUIRED': 403,
+    'ACCOUNT_DELETION_AUTHORIZATION_UNAVAILABLE': 503,
+  }.entries) {
+    test(
+        'checkAccountDeletionReady rejects ${rejection.value} ${rejection.key}',
+        () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      try {
+        final apiClient = PostDeeApiClient(
+          baseUrl: 'http://${server.address.address}:${server.port}',
+        );
+        final rejected = expectLater(
+          apiClient.checkAccountDeletionReady(),
+          throwsA(isA<ApiException>()
+              .having(
+                  (error) => error.statusCode, 'statusCode', rejection.value)
+              .having((error) => error.code, 'code', rejection.key)),
+        );
+        final request = await server.first;
+        expect(request.uri.path, '/account/deletion-readiness');
+        _writeJsonResponse(
+            request.response,
+            {
+              'status': 'error', 'code': rejection.key,
+              'message': 'Deletion authorization was not accepted',
+              // An error body must never be interpreted as permission to skip reauth.
+              'identityAlreadyDeleted': true,
+            },
+            statusCode: rejection.value);
+        await request.response.close();
+        await rejected;
+      } finally {
+        await server.close(force: true);
+      }
+    });
+  }
+
   test('checkAccountDeletionReady defaults missing retry state to false',
       () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

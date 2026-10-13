@@ -32,4 +32,21 @@ describe('owner lifecycle fixture', () => {
     await expect(fixture.managedUploadOwner.findUnique({ where: { ownerId: 'owner-a' } }))
       .resolves.toEqual({ ownerId: 'owner-a', status: 'ACTIVE' });
   });
+
+  it('preserves optional deletion authorization through status-only upserts and updates', async () => {
+    const fixture = withOwnerLifecycleFixture({});
+    const deletionAuthorizedAt = new Date('2026-10-13T18:00:00.000Z');
+    await fixture.managedUploadOwner.upsert({
+      where: { ownerId: 'owner-a' },
+      create: { ownerId: 'owner-a', status: 'DELETING', deletionAuthorizedAt }, update: {}
+    });
+    await fixture.managedUploadOwner.upsert({
+      where: { ownerId: 'owner-a' }, create: { ownerId: 'owner-a', status: 'ACTIVE' }, update: {}
+    });
+    await fixture.managedUploadOwner.update({ where: { ownerId: 'owner-a' }, data: { status: 'DELETED' } });
+
+    await expect(fixture.managedUploadOwner.findUnique({ where: { ownerId: 'owner-a' } }))
+      .resolves.toEqual({ ownerId: 'owner-a', status: 'DELETED', deletionAuthorizedAt });
+    await expect(fixture.managedUploadOwner.findUnique({ where: { ownerId: 'owner-b' } })).resolves.toBeNull();
+  });
 });

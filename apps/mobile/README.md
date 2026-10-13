@@ -2,6 +2,18 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Main Integration (2026-10-13, completed)
+
+The user-authorized latest branch is fast-forwarded and pushed to main at
+`be7732f6a14f9f91e6eda4a39179b30c385427ab`, after exact-head CI `38386971185`
+passed 2,058 Mobile tests and analysis (No issues, 8.9 s), plus Backend checks.
+Runtime matches Staging Live `7b0c51d` and the existing exact8016 APK; no rebuild,
+reinstall or new native full-flow claim. Preserve the original data and Oct12
+receipts, including unverified physical-device FPS. Staging auto-deploy stays
+disabled; Production API/database remain user-suspended with no new deploy.
+The earlier “no main merge” statements are historical. Plan:
+`../../docs/superpowers/plans/2026-10-13-main-motion-audit-integration.md`.
+
 ## Mobile Motion Smoothness Audit (2026-10-12, Staging delivered)
 
 Audit all main tabs, composer, video preview, publish results and account sheets.

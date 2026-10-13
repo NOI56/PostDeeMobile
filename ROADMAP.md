@@ -2,6 +2,18 @@
 
 Build roadmap for PostDee.
 
+## Main integration (2026-10-13, completed)
+
+- Fast-forward verified main `c4e52201` to exact feature head
+  `be7732f6a14f9f91e6eda4a39179b30c385427ab` and push normally, following the
+  user's authorization and CI `38386971185` success (Backend/Mobile, 2,058 tests,
+  analysis8.9 s). Preserve local generated/QA files and exclude old dirty copies.
+- Runtime matches Staging Live `7b0c51d` and installed8016. No new runtime patch,
+  build/migration, config change or Production deployment; Staging auto-deploy is
+  disabled and Production API/database remain user-suspended with no new deploy.
+  Earlier Oct12 “no main merge” receipts are historical. Plan:
+  `docs/superpowers/plans/2026-10-13-main-motion-audit-integration.md`.
+
 ## Mobile motion smoothness audit (2026-10-12, Staging delivered)
 
 - Check main tabs, composer, video/results and account overlays for interrupted

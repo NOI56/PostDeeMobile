@@ -9,6 +9,14 @@ and confirmed Live through the authorized delivery below; no main merge. The com
 bottom-navigation 4015/8015 receipt is separate history and is preserved in
 `2026-10-12-bottom-nav-ui-motion.md`.
 
+Main integration addendum (2026-10-13): latest feature head
+`be7732f6a14f9f91e6eda4a39179b30c385427ab` was fast-forwarded into main and pushed
+after the user authorized it and exact-head CI `38386971185` passed. “No main
+merge” in the Oct12 receipts is historical. Staging stays Live `7b0c51d`, current
+8016/frozen runtime is unchanged, and Production API/database remain suspended;
+no new build/install/migration or Production deployment. Complete receipt:
+`2026-10-13-main-motion-audit-integration.md`.
+
 ## Authorized Staging delivery receipt (2026-10-12)
 
 - Source commit `7b0c51d71090e5c080182daa8630d5b90e6d3d49` is pushed and

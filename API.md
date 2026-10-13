@@ -2,6 +2,18 @@
 
 PostDee backend API reference.
 
+## Main integration boundary (2026-10-13, completed)
+
+Verified main is fast-forwarded and pushed to feature head
+`be7732f6a14f9f91e6eda4a39179b30c385427ab` after exact-head CI `38386971185`
+passed Backend and Mobile. Integration adds no API/schema/config/dependency
+patch beyond that verified branch. Runtime matches Staging Live `7b0c51d`;
+post-push health/readiness return HTTP200 with database/queueok. No new migration
+run or Production deployment; Production API/database remain user-suspended and
+Staging auto-deploy disabled. Preserve prior8016 and Oct12 delivery receipts;
+“no main merge” was true at those historical deliveries. Plan:
+`docs/superpowers/plans/2026-10-13-main-motion-audit-integration.md`.
+
 ## Mobile motion audit boundary (2026-10-12, Staging delivered)
 
 The cross-screen audit changes presentation guards and thumbnail lifecycle only.

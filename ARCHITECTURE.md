@@ -2,6 +2,18 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Main integration boundary (2026-10-13, completed)
+
+The canonical main pointer is fast-forwarded from `c4e52201` to verified feature
+head `be7732f6a14f9f91e6eda4a39179b30c385427ab`, then pushed normally after
+exact-head CI `38386971185` passed. The committed tree is identical to the
+tested feature head; its difference from Staging Live `7b0c51d` is seven docs
+only. No runtime/schema/config/dependency patch, new APK/migration run or
+Production deployment. Local generated/QA files remain unchanged. Staging stays
+Live/auto-deploy disabled; Production API/database stay user-suspended with no
+new deploy observed. Historical Oct12 “no main merge” receipts are retained.
+Plan: `docs/superpowers/plans/2026-10-13-main-motion-audit-integration.md`.
+
 ## Mobile motion audit boundary (2026-10-12, Staging delivered)
 
 Shared press/skeleton lifecycle guards settle interrupted feedback, respecting

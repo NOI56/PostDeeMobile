@@ -5,6 +5,13 @@ combined source `7b0c51d71090e5c080182daa8630d5b90e6d3d49`, with CI and Render
 Live confirmed. Current installed APK is 4016/8016 with retained data. Original
 dock-only 1,979-test/4015/8015 verification below is historical; no main merge.
 
+Main integration addendum (2026-10-13): the user-authorized latest feature head
+`be7732f6a14f9f91e6eda4a39179b30c385427ab` was fast-forwarded into main and pushed
+after exact-head CI `38386971185` success. “No main merge” below describes Oct12,
+before this later integration. Staging remains Live `7b0c51d`, installed8016 is
+unchanged and no Production deploy/new build/migration was performed. Details:
+`2026-10-13-main-motion-audit-integration.md`.
+
 ## Authorized combined Staging delivery (2026-10-12)
 
 - Source `7b0c51d71090e5c080182daa8630d5b90e6d3d49` is pushed and remote-verified on

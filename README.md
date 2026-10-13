@@ -7,6 +7,18 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Main integration (2026-10-13, completed)
+
+The user-authorized latest `codex/audit-system-fixes` branch is fast-forwarded
+into main and pushed at `be7732f6a14f9f91e6eda4a39179b30c385427ab`, after exact-head
+CI `38386971185` passed Backend and Mobile (2,058 tests, analysis8.9 s). All 29
+verified commits are included; no old dirty worktree content was copied. Runtime
+is identical to Staging Live `7b0c51d` and installed8016; no new build/migration
+or Production deployment. Staging stays Live with auto-deploy disabled;
+Production API/database remain user-suspended, with no new deploy observed.
+Earlier Oct12 “no main merge” statements describe that historical delivery.
+Details: `docs/superpowers/plans/2026-10-13-main-motion-audit-integration.md`.
+
 ## Mobile motion smoothness audit (2026-10-12, Staging delivered)
 
 Audit every main tab and the composer, video preview, publish results and account

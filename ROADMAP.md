@@ -556,6 +556,13 @@ confirmation and cold callback remain unverified.
   No new social statistics API, custom domain, click tracking, or scheduled-link
   auto-update is required by this first profile-page version.
 
+- Shop-logo positioning (2026-10-13): choose the visible part of a gallery image
+  with drag, zoom and reset in the circular preview, then explicitly confirm.
+  Cancel preserves existing media and draft settings; changing account closes
+  the owned crop dialog. Uses the existing image upload and publication flow.
+  Verification and main delivery:
+  `docs/superpowers/plans/2026-10-13-shop-logo-position-main.md`.
+
 ## Phase 1: Core App
 
 Goal: make the first usable PostDee MVP work end to end.

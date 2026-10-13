@@ -2,6 +2,17 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Shop-logo Positioning (2026-10-13)
+
+Shop information and decoration now open the same circular crop preview after
+gallery selection. Drag, pinch/slider zoom and reset determine the square PNG
+uploaded only on confirmation. Cancel keeps the previous logo and draft; an
+account change closes the dialog. A route guard prevents a late export from
+closing the appearance editor underneath a dismissed crop dialog. Main and
+Staging APK verification passes 2,185 Flutter tests, analysis and the exact x64
+build/install12019 with retained shop data and native crop-cancel checks. Receipt:
+`../../docs/superpowers/plans/2026-10-13-shop-logo-position-main.md`.
+
 ## Main Integration (2026-10-13, completed)
 
 The user-authorized latest branch is fast-forwarded and pushed to main at

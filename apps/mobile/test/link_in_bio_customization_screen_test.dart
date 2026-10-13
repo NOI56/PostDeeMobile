@@ -35,6 +35,48 @@ Widget _app(LinkInBioScreen screen) =>
 Future<void> _tap(WidgetTester tester, String key) =>
     tapBioControl(tester, key);
 
+Future<void> _chooseLogoAndConfirm(WidgetTester tester,
+    {bool settleUpload = true}) async {
+  final button = find.byKey(const ValueKey('link-in-bio-image-logo'));
+  await showBioControl(tester, button);
+  await tester.tap(button);
+  await tester.pump();
+  expect(find.text('ปรับตำแหน่งโลโก้'), findsOneWidget);
+  final confirm =
+      find.byKey(const ValueKey('link-in-bio-logo-crop-confirm'));
+  for (var attempt = 0; attempt < 100; attempt++) {
+    await tester.pump(const Duration(milliseconds: 20));
+    if (confirm.evaluate().isNotEmpty &&
+        tester.widget<ButtonStyleButton>(confirm).onPressed != null) {
+      break;
+    }
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)));
+  }
+  expect(tester.widget<ButtonStyleButton>(confirm).onPressed, isNotNull);
+  await tester.pump(const Duration(milliseconds: 300));
+  await tester.tap(confirm);
+  await tester.pump();
+  for (var attempt = 0; attempt < 100 && confirm.evaluate().isNotEmpty; attempt++) {
+    await tester.pump(const Duration(milliseconds: 20));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)));
+  }
+  expect(confirm, findsNothing);
+  if (settleUpload) {
+    for (var attempt = 0; attempt < 100; attempt++) {
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      if (button.evaluate().isNotEmpty &&
+          tester.widget<ButtonStyleButton>(button).onPressed != null) {
+        break;
+      }
+    }
+    await tester.pumpAndSettle();
+  }
+}
+
 Future<void> _select(WidgetTester tester, String key, String label) async {
   await _tap(tester, key);
   if (key == 'link-in-bio-link-icon') {
@@ -163,7 +205,7 @@ void main() {
             MaterialPageRoute<void>(builder: (_) => screen('second-manager')));
     await tester.pumpAndSettle();
     await showBioStep(tester, 'info');
-    await _tap(tester, 'link-in-bio-image-logo');
+    await _chooseLogoAndConfirm(tester);
     expect(shared.saved.appearance.logoKey, nextImage);
     expect(protected, {nextImage});
     await _tap(tester, 'link-in-bio-close-editor');
@@ -247,7 +289,7 @@ void main() {
     ]);
     await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-disclosure-images');
-    await _tap(tester, 'link-in-bio-image-logo');
+    await _chooseLogoAndConfirm(tester);
     await tester.tap(find.byTooltip('ปิด'));
     await tester.pumpAndSettle();
     expect((await store.loadDraft())!.appearance.logoKey, _imageKey);
@@ -288,7 +330,7 @@ void main() {
         })));
     await tester.pumpAndSettle();
     await showBioStep(tester, 'info');
-    await _tap(tester, 'link-in-bio-image-logo');
+    await _chooseLogoAndConfirm(tester);
     expect((await store.loadDraft())!.appearance.logoKey, _imageKey);
     expect(find.text('มีการแก้ไขที่ยังไม่ได้บันทึก'), findsOneWidget);
     fail = false;
@@ -503,7 +545,7 @@ void main() {
             {required draftId, required keys, required mode}) async {},
         uploadImage: ({required slot, required bytes}) async {
           expect(slot, 'logo');
-          expect(bytes, _png);
+          expect(bytes.take(8), [137, 80, 78, 71, 13, 10, 26, 10]);
           return _imageKey;
         },
         loadImage: (key) async {
@@ -514,7 +556,7 @@ void main() {
     expect(reads, 0);
     await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-disclosure-images');
-    await _tap(tester, 'link-in-bio-image-logo');
+    await _chooseLogoAndConfirm(tester);
     final description = find.byKey(const ValueKey('link-in-bio-description'));
     await tester.ensureVisible(description);
     await tester.enterText(description, 'ร้านน่ารัก ส่งไว');
@@ -556,7 +598,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await _tap(tester, 'link-in-bio-disclosure-images');
     expect(tester.takeException(), isNull);
-    await _tap(tester, 'link-in-bio-image-logo');
+    await _chooseLogoAndConfirm(tester);
     expect(tester.takeException(), isNull);
     expect(find.textContaining('อัปโหลดรูปไม่สำเร็จ'), findsOneWidget);
     await _tap(tester, 'link-in-bio-decoration-done');
@@ -604,13 +646,7 @@ void main() {
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-disclosure-images');
-    final imageButton = find.byKey(const ValueKey('link-in-bio-image-logo'));
-    await tester.scrollUntilVisible(imageButton, 200,
-        scrollable: find.byType(Scrollable).last);
-    await tester.ensureVisible(imageButton);
-    await tester.pumpAndSettle();
-    await tester.tap(imageButton);
-    await tester.pump();
+    await _chooseLogoAndConfirm(tester, settleUpload: false);
     PostDeeAuthSessionStore.instance
         .signIn(const AuthSession(userId: 'seller-b', idToken: 'token-b'));
     pending.complete(_imageKey);

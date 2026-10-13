@@ -492,6 +492,11 @@ where slot is `logo|cover|background`. The mobile gallery picker normalizes PNG
 bytes before this request. Strict base64, PNG chunk structure, maximum 512 KiB
 and 1280 pixels on either side are validated. SVG and arbitrary URLs are rejected.
 Success is HTTP 201 `{ "status": "ok", "image": { "key": "uploads/<owner>/<uuid>/profile-logo.png" } }`.
+The mobile logo-positioning follow-up crops the confirmed preview to a square
+PNG of at most 512 pixels per side before applying the existing normalization.
+Cancel sends no upload. This adds no server field or endpoint and leaves cover
+and background selection unchanged. Delivery:
+`docs/superpowers/plans/2026-10-13-shop-logo-position-main.md`.
 The key can be used in any image slot owned by that account. Uploading it alone
 does not publish it. Owner previews return `image/png`, and another owner gets 404.
 Public image routes exist only while that slug is published and that slot has a

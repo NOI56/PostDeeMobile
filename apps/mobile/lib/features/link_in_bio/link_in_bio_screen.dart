@@ -15,6 +15,7 @@ import 'link_in_bio_color_picker.dart' show BioOwnedModalScope;
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_image_picker.dart';
 import 'link_in_bio_link_defaults.dart';
+import 'link_in_bio_logo_crop.dart';
 import 'link_in_bio_platform_logo.dart';
 import 'link_in_bio_platform_picker.dart';
 import 'link_in_bio_preview.dart';
@@ -419,10 +420,18 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   Future<String?> _uploadDraftImage(String slot) async {
     if (!_ownerStillCurrent || !_canEdit) return null;
-    final bytes = await (widget.pickImage ?? pickLinkInBioImage)();
-    if (!_ownerStillCurrent || bytes == null) return null;
     setState(() => _isBusy = true);
     try {
+      var bytes = await (widget.pickImage ?? pickLinkInBioImage)();
+      if (!mounted || !_ownerStillCurrent || bytes == null) return null;
+      if (slot == 'logo') {
+        final pickedBytes = bytes;
+        bytes = await showDialog<Uint8List>(
+            context: context,
+            builder: (context) => _ownedModal(
+                context, LinkInBioLogoCropDialog(bytes: pickedBytes)));
+        if (!_ownerStillCurrent || bytes == null) return null;
+      }
       await _draftSaveQueue;
       await withLinkInBioDraftMutationForUser(
           _ownerUserId!, () => _protectImages(_imageKeys(_draft)));

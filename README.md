@@ -573,6 +573,13 @@ checks remain unverified for this customization release. The user deferred live
 browser and R2 lifecycle checks after access was blocked. See the dated verification in
 `docs/superpowers/plans/2026-10-05-profile-page-customization.md`.
 
+The 2026-10-13 mobile logo-positioning follow-up lets the owner drag and zoom
+the chosen shop image inside a circular preview before confirming it. Both
+shop information and decoration use the same crop flow; cancel retains the
+previous logo and draft. Export produces a bounded square PNG through the
+existing owned-image upload contract. Delivery verification is recorded in
+`docs/superpowers/plans/2026-10-13-shop-logo-position-main.md`.
+
 Production persistence uses `POST_STORE=prisma` and the additive LinkInBioProfile
 migration. In-memory mode is local scaffolding and loses pages when restarted.
 Deploy the API and run its migrations before shipping the mobile build. This

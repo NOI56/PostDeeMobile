@@ -625,6 +625,14 @@ use `/link-in-bio/image`; public `/p/:slug/images/:slot` proxies the current
 published reference without exposing storage keys, signed URLs or owner IDs.
 Unpublishing/renaming/account deletion invalidates those public image routes.
 
+Logo selection first opens an owned drag/zoom crop dialog. The circular preview
+and square PNG export use the same source rectangle; export is bounded to 512
+pixels per side and uses the existing normalizer. The cloned image keeps encoding
+alive after dismissal, while the captured dialog route must still be current
+before returning bytes or displaying an error. Existing session guards reject
+late upload results after an account change. See
+`docs/superpowers/plans/2026-10-13-shop-logo-position-main.md`.
+
 Image mutations are serialized per owner inside the current single API instance,
 in addition to the account-deletion barrier. Metadata is capped at 20 legacy
 and 20 managed images per owner, and upload routes share the existing upload

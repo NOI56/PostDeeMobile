@@ -89,7 +89,8 @@ const worker = new Worker<BullMqPublishJobData>(
       storage,
       platformPublishStore,
       notifier,
-      assertOwnerActive: uploadSessionStore?.assertOwnerActive
+      assertOwnerActive: uploadSessionStore?.assertOwnerActive,
+      runWithActiveOwner: uploadSessionStore?.runWithOwnerLifetime
     });
 
     return enforceRetriedPublishRecoveryPolicy({

@@ -11,6 +11,8 @@ import {
 import type { PlatformSettings } from '../modules/posts/platformSettings.js';
 import type { PlatformTargets } from '../modules/posts/platformTargets.js';
 import type { BullMqPublishJobData } from '../modules/queue/bullMqPublishQueue.js';
+import type { RunWithActiveOwner } from '../modules/account/ownerOperationQueue.js';
+import { retainCurrentOwnerOperation } from '../modules/account/prismaOwnerOperationCoordinator.js';
 import { readRequestedDeliveryOutcome } from './platformDeliveryOutcome.js';
 
 export type PlatformPublishInput = {
@@ -77,6 +79,8 @@ export type PublishWorkerResult = {
   postId: string;
   status: 'PUBLISHED' | 'PARTIAL_FAILED' | 'FAILED' | 'SKIPPED';
   platformResults: PlatformPublishResult[];
+  // Internal deletion barrier evidence; public post/platform statuses stay unchanged.
+  requiresReconciliation?: true;
   cleanup: {
     status: 'DELETED' | 'SKIPPED' | 'FAILED';
     videoS3Key?: string;
@@ -189,6 +193,7 @@ export const processPublishJob = async ({
   const attemptLimit = Math.max(1, Math.floor(maxPublishAttempts));
   const retryBackoffMs = Math.max(0, publishRetryBackoffMs);
   const uniquePlatforms = [...new Set(jobData.platforms)];
+  let requiresReconciliation = false;
   const platformResults = await Promise.all(
     uniquePlatforms.map(async (platform): Promise<PlatformPublishResult> => {
       for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
@@ -216,6 +221,10 @@ export const processPublishJob = async ({
           if (error instanceof RetryablePublishError && attempt < attemptLimit) {
             await sleep(retryBackoffMs * 2 ** (attempt - 1));
             continue;
+          }
+
+          if (error instanceof PublishOutcomeUnknownError) {
+            requiresReconciliation = true;
           }
 
           logWorkerError({
@@ -279,6 +288,7 @@ export const processPublishJob = async ({
       postId: jobData.postId,
       status,
       platformResults,
+      ...(requiresReconciliation ? { requiresReconciliation: true as const } : {}),
       cleanup: {
         status: cleanupFailed ? 'FAILED' : 'DELETED',
         ...cleanupMedia,
@@ -291,6 +301,7 @@ export const processPublishJob = async ({
     postId: jobData.postId,
     status,
     platformResults,
+    ...(requiresReconciliation ? { requiresReconciliation: true as const } : {}),
     cleanup: {
       status: 'SKIPPED',
       ...cleanupMedia
@@ -344,6 +355,7 @@ export const processPublishJobForPost = async ({
   platformPublishStore = createInMemoryPlatformPublishStore(),
   notifier = createNoopPublishNotifier(),
   assertOwnerActive,
+  runWithActiveOwner,
   deleteVideoAfterPublish = false,
   now = () => new Date().toISOString()
 }: {
@@ -354,62 +366,78 @@ export const processPublishJobForPost = async ({
   platformPublishStore?: PlatformPublishStore;
   notifier?: PublishNotifier;
   assertOwnerActive?: (ownerId: string) => Promise<void>;
+  runWithActiveOwner?: RunWithActiveOwner;
   deleteVideoAfterPublish?: boolean;
   now?: () => string;
 }): Promise<PublishWorkerResult> => {
-  if (assertOwnerActive && jobData.userId) {
-    await assertOwnerActive(jobData.userId);
-  }
-
-  const claimed = await postStore.claimForPublish({
-    postId: jobData.postId,
-    expectedRunAt: jobData.runAt
-  });
-
-  if (!claimed) {
-    return createSkippedPublishResult(jobData);
-  }
-
-  // Best-effort push: never let a notification failure affect publishing.
-  const notify = async (outcome: PostStatus) => {
-    try {
-      await notifier.notifyPublishResult({
-        userId: jobData.userId,
-        postId: jobData.postId,
-        outcome: outcome as 'PUBLISHED' | 'PARTIAL_PUBLISHED' | 'FAILED'
-      });
-    } catch {
-      // Swallow: the post status is already persisted; push is non-critical.
-    }
-  };
-
-  try {
+  const processForOwner = async (): Promise<PublishWorkerResult> => {
     if (assertOwnerActive && jobData.userId) {
       await assertOwnerActive(jobData.userId);
     }
 
-    const result = await processPublishJob({
-      jobData,
-      publisher,
-      storage,
-      platformPublishStore,
-      deleteVideoAfterPublish
-    });
-    const postStatus = mapWorkerStatusToPostStatus(result.status);
-
-    await postStore.updateStatus({
+    const claimed = await postStore.claimForPublish({
       postId: jobData.postId,
-      status: postStatus,
-      // Only stamp a publish time when something actually went live.
-      publishedAt: postStatus === 'FAILED' ? undefined : now()
+      expectedRunAt: jobData.runAt
     });
 
-    await notify(postStatus);
+    if (!claimed) {
+      return createSkippedPublishResult(jobData);
+    }
 
-    return result;
-  } catch (error) {
-    await postStore.updateStatus({ postId: jobData.postId, status: 'FAILED' });
-    await notify('FAILED');
-    throw error;
+    // Best-effort push: never let a notification failure affect publishing.
+    const notify = async (outcome: PostStatus) => {
+      try {
+        await notifier.notifyPublishResult({
+          userId: jobData.userId,
+          postId: jobData.postId,
+          outcome: outcome as 'PUBLISHED' | 'PARTIAL_PUBLISHED' | 'FAILED'
+        });
+      } catch {
+        // Swallow: the post status is already persisted; push is non-critical.
+      }
+    };
+
+    try {
+      if (assertOwnerActive && jobData.userId) {
+        await assertOwnerActive(jobData.userId);
+      }
+
+      const result = await processPublishJob({
+        jobData,
+        publisher,
+        storage,
+        platformPublishStore,
+        deleteVideoAfterPublish
+      });
+      if (result.requiresReconciliation && jobData.userId) {
+        // A resolved FAILED result can still represent provider-side work whose
+        // outcome is unknown. Keep its durable ticket until operator reconciliation.
+        retainCurrentOwnerOperation(jobData.userId);
+      }
+      const postStatus = mapWorkerStatusToPostStatus(result.status);
+
+      await postStore.updateStatus({
+        postId: jobData.postId,
+        status: postStatus,
+        // Only stamp a publish time when something actually went live.
+        publishedAt: postStatus === 'FAILED' ? undefined : now()
+      });
+
+      await notify(postStatus);
+
+      return result;
+    } catch (error) {
+      await postStore.updateStatus({ postId: jobData.postId, status: 'FAILED' });
+      await notify('FAILED');
+      throw error;
+    }
+  };
+
+  if (runWithActiveOwner) {
+    if (!jobData.userId) {
+      throw new Error('Publish job owner is required for account work coordination');
+    }
+    return runWithActiveOwner(jobData.userId, processForOwner);
   }
+  return processForOwner();
 };

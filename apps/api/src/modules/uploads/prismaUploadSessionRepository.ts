@@ -1,4 +1,5 @@
-import { createOwnerOperationQueue } from '../account/ownerOperationQueue.js';
+import { createOwnerOperationQueue, OwnerOperationBusyError } from '../account/ownerOperationQueue.js';
+import { assertOwnerDrained, createPrismaOwnerOperationCoordinator, type PrismaOwnerOperationTransaction } from '../account/prismaOwnerOperationCoordinator.js';
 
 import {
   UploadSessionConflictError,
@@ -44,8 +45,8 @@ type UploadOwnerDelegate = {
     data: { status: UploadOwnerStatus; deletionAuthorizedAt?: Date };
   }) => Promise<PrismaUploadOwner>;
   updateMany: (args: {
-    where: { ownerId: string; status: 'ACTIVE' };
-    data: { status: 'ACTIVE' };
+    where: { ownerId: string; status: UploadOwnerStatus };
+    data: { status: UploadOwnerStatus };
   }) => Promise<{ count: number }>;
 };
 
@@ -81,6 +82,8 @@ type UploadSessionDelegate = {
 type PrismaUploadSessionTransaction = {
   managedUploadOwner: UploadOwnerDelegate;
   managedUploadSession: UploadSessionDelegate;
+  managedOwnerOperation: PrismaOwnerOperationTransaction['managedOwnerOperation'];
+  managedOwnerDeletionRun: PrismaOwnerOperationTransaction['managedOwnerDeletionRun'];
 };
 
 export type PrismaUploadSessionClient = PrismaUploadSessionTransaction & {
@@ -172,19 +175,17 @@ const assertNotExpired = (session: PrismaUploadSession, now: string) => {
 };
 
 export const createPrismaUploadSessionRepository = ({
-  prisma
+  prisma, ownerOperationOptions
 }: {
   prisma: PrismaUploadSessionClient;
+  ownerOperationOptions?: { maxWaitMs?: number; pollIntervalMs?: number };
 }): UploadSessionStore => {
-  const runOwnerOperation = createOwnerOperationQueue();
+  const runOwnerOperation = createOwnerOperationQueue({ maxWaitMs: ownerOperationOptions?.maxWaitMs });
+  const ownerOperations = createPrismaOwnerOperationCoordinator({ prisma, runOwnerOperation, ...ownerOperationOptions });
   return {
-  runWithActiveOwner: (ownerId, operation) => runOwnerOperation(ownerId, async () => {
-    const owner = await prisma.managedUploadOwner.findUnique({ where: { ownerId } });
-    if (owner) assertOwnerActive(owner);
-    // This gate drains actual remote work locally. No remote I/O is held
-    // inside a SQL transaction; cross-process Redis effects remain non-atomic.
-    return operation();
-  }),
+  runWithActiveOwner: ownerOperations.runWithActiveOwner,
+  runWithOwnerLifetime: ownerOperations.runWithOwnerLifetime,
+  acquireOwnerDeletion: ownerOperations.acquireOwnerDeletion,
   assertOwnerActive: async (ownerId) => {
     const owner = await prisma.managedUploadOwner.findUnique({ where: { ownerId } });
 
@@ -417,6 +418,11 @@ export const createPrismaUploadSessionRepository = ({
     ).map(mapSession),
   finishOwnerDeletion: (ownerId) => runOwnerOperation(ownerId, () =>
     runSerializable(prisma, async (transaction) => {
+      const currentOwner = await transaction.managedUploadOwner.findUnique({ where: { ownerId } });
+      if (!currentOwner || currentOwner.status === 'ACTIVE') throw new OwnerOperationBusyError();
+      const locked = await transaction.managedUploadOwner.updateMany({ where: { ownerId, status: currentOwner.status }, data: { status: currentOwner.status } });
+      if (locked.count !== 1) throw new OwnerOperationBusyError();
+      await assertOwnerDrained(transaction, ownerId);
       await transaction.managedUploadSession.deleteMany({ where: { ownerId } });
       const owner = await transaction.managedUploadOwner.upsert({
         where: { ownerId },

@@ -366,6 +366,32 @@ confirmation and cold callback remain unverified.
   the first delivery stage. Exact evidence belongs in
   `docs/superpowers/plans/2026-10-13-security-main-delivery.md`.
 
+## Shared owner operation drain (2026-10-14, local follow-up)
+
+- Continue local `1b5a403` on `codex/staging-regression-and-test-types`, based
+  on verified remote main `f07ee30`. Add durable operation tickets and an
+  owner-exclusive deletion claim. Seal before shared drain, refresh provider
+  cleanup scope after drain, and hold work through HTTP handler/finally,
+  managed uploads, queue admission and worker provider/results/notification.
+- Keep crashes, unknown provider outcomes and release failures as private
+  unresolved blockers. No TTL cleanup or automatic claim takeover exists.
+  Known completed work releases its exact ticket; all-process synthetic tests
+  pass 10/10 on PostgreSQL 18.1 with 18 actual migrations and two Node processes.
+  HTTP/worker lifetimes run concurrently while explicit queue/store FIFO remains.
+  Full API tests pass 1,909/1,909 in 119 files; typecheck, production build,
+  Prisma schema/helper validation and independent review pass locally.
+- Migration `20261014020000_track_owner_operations` is applied only to the
+  isolated local database. Hosted rollout requires migration/Prisma generation,
+  all API/worker upgrades and quiescing/draining older binaries before feature
+  activation. No main/push/deploy, hosted flag change, or account creation is
+  part of this follow-up.
+- Preserve `FIREBASE_AUTH_DELETE_ENABLED=false`, `SOCIAL_PUBLISHER=disabled`
+  and the single-instance Staging memory queue. Actual Redis/BullMQ, provider/
+  Firebase, complete upload/abort, OAuth and legacy signed-PUT cancellation or
+  expiry remain acceptance gates. The prepared disposable-account procedure
+  has not been executed. Plan:
+  [`2026-10-14-shared-owner-operation-drain.md`](docs/superpowers/plans/2026-10-14-shared-owner-operation-drain.md).
+
 ## Staging regression and test typing (2026-10-14, local follow-up)
 
 - Start from verified main `f07ee30` on
@@ -764,13 +790,13 @@ Current status:
   app restart recovery uses Restore. Failed connection-status reads remain
   unknown and block connection actions. Package rules, server/schema contracts,
   and existing provider/device acceptance gates are unchanged.
-- Route/account-deletion locks are currently process-local and the worker does
-  not hold one across the provider call. The coordinator covers authenticated
-  route mutations and RevenueCat webhook application within one API process,
-  but cannot drain a mutation already running in another instance. Account deletion is not
-  production-safe until a durable repository barrier rejects new user writes
-  and drains all in-flight mutations before cleanup; this is required even for
-  one process and before any multi-instance/separate-worker rollout.
+- Route/post lock maps remain process-local. The local shared-drain candidate
+  adds PostgreSQL lifetime tickets and a cleanup claim across upgraded API/
+  worker processes; crashes and unknown outcomes remain blocked without TTL.
+  Account deletion and multi-instance/separate-worker activation still require
+  the migration/all-process rollout and actual Redis/provider/Firebase, legacy
+  upload/OAuth and device cleanup acceptance. Synthetic separate-process tests
+  alone do not authorize activation.
 - On 2026-08-10, the disabled Pixel 8 fail-fast check and an initial controlled
   action that stopped before upload were recorded on the earlier candidate.
   Follow-up Staging SHA `208b4e580ddd2291a7a32e718c2519d785730895`
@@ -1030,6 +1056,7 @@ Plan status uses five groups:
 
 | Plan file | Status | Notes |
 | --- | --- | --- |
+| `docs/superpowers/plans/2026-10-14-shared-owner-operation-drain.md` | ทำบางส่วน | Local implementation, 1,909 API tests and PostgreSQL two-process 10/10 checks pass. No hosted migration/main/push/deploy/flags/account creation. Real Redis/provider/Firebase and legacy upload/OAuth acceptance remain. |
 | `docs/superpowers/plans/2026-10-14-staging-regression-and-typecheck.md` | ทำบางส่วน | Local typing/CI validation, native draft/clip guards and Staging R2 part transfer/recovery/abort pass. Upload completion, real Redis/provider drain and disposable-account deletion remain separate gates. No main/push/deploy or flag activation in this follow-up. |
 | `docs/superpowers/plans/2026-07-17-scaling-roadmap.md` | อนาคต | Reconciled on 2026-10-08 against the active product and single-process owner boundary; capacity tiers require measured evidence and no scaling infrastructure is enabled. |
 | `docs/superpowers/plans/2026-10-05-backend-hardening.md` | ประวัติ | Original isolated-branch verification is historical; the 2026-10-08 integration ports runtime hardening without its old dependency refresh. |
@@ -1200,12 +1227,12 @@ To ensure the app passes store review guidelines, the following must be implemen
    The cleanup saga sets a durable marker
    for the managed-upload owner prefix, reconciles/aborts multipart sessions,
    disconnects PostPeer integrations, removes queued jobs/R2 objects/database
-   data, and deletes the Firebase identity last. Its owner coordinator is still
-   process-local; it neither drains mutations already running in another API
-   instance nor holds a lease across the worker's provider call. Keep
-   `FIREBASE_AUTH_DELETE_ENABLED=false` until a durable
-   repository barrier rejects new writes and drains all in-flight work, then run
-   physical-device, slow-network, provider-cleanup, and R2 lifecycle tests.
+   data, and deletes the Firebase identity last. The local shared-drain candidate
+   records operation lifetimes and exclusive cleanup claims in PostgreSQL,
+   including worker provider calls. Keep `FIREBASE_AUTH_DELETE_ENABLED=false`
+   until its additive migration and all-process upgrade/drain are delivered,
+   then pass real Redis/provider/Firebase, physical-device, slow-network, OAuth
+   and R2 lifecycle/legacy-upload tests. Unresolved tickets never auto-expire.
    Apple Sign-In remains unavailable on Android/web until server-side token
    revocation exists there. Production also remains in `dual` upload rollout;
    retire signed-`PUT` clients before switching to strict `multipart` mode.

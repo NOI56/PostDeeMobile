@@ -103,6 +103,7 @@ import { createPostStoreFromConfig } from './modules/posts/postStoreFactory.js';
 import { createPublishQueueFromConfig } from './modules/queue/publishQueueFactory.js';
 import { createOwnerAwarePublishQueue } from './modules/queue/ownerAwarePublishQueue.js';
 import { OwnerOperationBusyError } from './modules/account/ownerOperationQueue.js';
+import { createOwnerOperationRouter } from './modules/account/ownerOperationRouter.js';
 import { createPlatformPublisherFromConfig } from './workers/platformPublisherFactory.js';
 import { createPublishScheduler } from './workers/publishScheduler.js';
 import { registerPublishQueueRoutes } from './modules/queue/publishQueueRoutes.js';
@@ -408,7 +409,7 @@ export const createApp = (options: AppOptions = {}) => {
     });
   });
 
-  const router = express.Router();
+  let router = express.Router();
   const ownerMutationLock = options.ownerMutationLock ?? createOwnerMutationLock();
   const authRateLimit = createRateLimitMiddleware({
     bucket: 'auth',
@@ -488,6 +489,8 @@ export const createApp = (options: AppOptions = {}) => {
       ? createPrismaUploadSessionRepository({ prisma: prismaClient as unknown as PrismaUploadSessionClient })
       : createInMemoryUploadSessionStore());
   const runWithActiveOwner = uploadSessionStore.runWithActiveOwner;
+  const runWithOwnerLifetime = uploadSessionStore.runWithOwnerLifetime;
+  router = createOwnerOperationRouter(router, runWithOwnerLifetime);
   const postStore = createPostStoreFromConfig({
     config,
     prisma: prismaClient as unknown as PrismaPostClient | undefined,
@@ -820,6 +823,7 @@ export const createApp = (options: AppOptions = {}) => {
         pushSender: createPushSenderFromConfig({ config })
       }),
       assertOwnerActive,
+      runWithActiveOwner: runWithOwnerLifetime,
       requireEmptyBacklogOnStart:
         config.socialPublisher === 'postpeer' &&
         config.socialPublishRequireEmptyBacklog

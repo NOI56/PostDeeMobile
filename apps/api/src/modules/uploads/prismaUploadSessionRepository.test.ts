@@ -5,6 +5,7 @@ import {
   type PrismaUploadSessionClient
 } from './prismaUploadSessionRepository.js';
 import type { UploadOwnerStatus } from './uploadSessionStore.js';
+import { createOwnerOperationFixture } from '../../../test/ownerLifecycleFixture.js';
 
 const timestamp = new Date('2026-07-13T10:00:00.000Z');
 
@@ -28,10 +29,12 @@ const persistedSession: NonNullable<Awaited<ReturnType<PrismaUploadSessionClient
 
 const createPrismaDouble = () => {
   const transaction = {
+    ...createOwnerOperationFixture(),
     managedUploadOwner: {
       upsert: vi.fn<PrismaUploadSessionClient['managedUploadOwner']['upsert']>(async () => ({ ownerId: 'seller-1', status: 'ACTIVE' })),
       findUnique: vi.fn(async () => ({ ownerId: 'seller-1', status: 'ACTIVE' as const })),
-      update: vi.fn(async () => ({ ownerId: 'seller-1', status: 'DELETING' as const }))
+      update: vi.fn(async () => ({ ownerId: 'seller-1', status: 'DELETING' as const })),
+      updateMany: vi.fn(async () => ({ count: 1 }))
     },
     managedUploadSession: {
       create: vi.fn(async () => persistedSession),
@@ -71,6 +74,7 @@ const createOwnerPrismaDouble = (initialOwners: OwnerFixture[] = []) => {
     updateMany: vi.fn(async () => ({ count: 1 }))
   };
   const transaction = {
+    ...createOwnerOperationFixture(),
     managedUploadOwner,
     managedUploadSession: {
       create: vi.fn(async () => persistedSession),
@@ -87,6 +91,18 @@ const createOwnerPrismaDouble = (initialOwners: OwnerFixture[] = []) => {
 };
 
 describe('Prisma upload session repository', () => {
+  it('does not finish an unsealed owner or erase unresolved operation blockers', async () => {
+    const { prisma, transaction, owners } = createOwnerPrismaDouble([{ ownerId: 'seller-1', status: 'ACTIVE' }]);
+    const repository = createPrismaUploadSessionRepository({ prisma });
+    await expect(repository.finishOwnerDeletion('seller-1')).rejects.toMatchObject({ code: 'ACCOUNT_WRITE_DRAIN_FAILED' });
+    expect(transaction.managedUploadSession.deleteMany).not.toHaveBeenCalled();
+    owners.set('seller-1', { ownerId: 'seller-1', status: 'DELETING' });
+    await prisma.managedOwnerOperation.create({ data: { id: 'unresolved', ownerId: 'seller-1', startedAt: new Date('2000-01-01') } });
+    await expect(repository.finishOwnerDeletion('seller-1')).rejects.toMatchObject({ code: 'ACCOUNT_WRITE_DRAIN_FAILED' });
+    expect(transaction.managedUploadSession.deleteMany).not.toHaveBeenCalled();
+    await expect(prisma.managedOwnerOperation.count({ where: { ownerId: 'seller-1' } })).resolves.toBe(1);
+    expect(owners.get('seller-1')?.status).toBe('DELETING');
+  });
   it('persists a session only while its owner is active', async () => {
     const { prisma, transaction } = createPrismaDouble();
     const repository = createPrismaUploadSessionRepository({ prisma });
@@ -349,7 +365,10 @@ describe('Prisma upload session repository', () => {
       await write;
       await repository.runWithActiveOwner('seller-1', async () => undefined);
 
-      expect($transaction).not.toHaveBeenCalled();
+      // Only the two active-work admissions ran; timed-out authorization never
+      // entered its proof-writing transaction.
+      expect($transaction).toHaveBeenCalledTimes(2);
+      expect(prisma.managedUploadOwner.update).not.toHaveBeenCalled();
       expect(owners.get('seller-1')).toEqual({ ownerId: 'seller-1', status: 'ACTIVE', deletionAuthorizedAt: null });
       await expect(repository.getOwnerDeletionAuthorization('seller-1')).resolves.toBeUndefined();
     } finally {

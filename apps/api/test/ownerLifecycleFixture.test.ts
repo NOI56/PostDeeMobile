@@ -3,6 +3,23 @@ import { describe, expect, it, vi } from 'vitest';
 import { withOwnerLifecycleFixture } from './ownerLifecycleFixture.js';
 
 describe('owner lifecycle fixture', () => {
+  it('preserves explicitly supplied operation delegates', async () => {
+    const managedOwnerOperation = { count: vi.fn(async () => 9) };
+    const managedOwnerDeletionRun = { findUnique: vi.fn(async () => ({ runId: 'supplied-run' })) };
+    const fixture = withOwnerLifecycleFixture({ managedOwnerOperation, managedOwnerDeletionRun });
+    expect(fixture.managedOwnerOperation).toBe(managedOwnerOperation);
+    expect(fixture.managedOwnerDeletionRun).toBe(managedOwnerDeletionRun);
+  });
+  it('keeps operation and deletion tokens isolated and removes only exact tokens', async () => {
+    const fixture = withOwnerLifecycleFixture({});
+    await fixture.managedOwnerOperation.create({ data: { id: 'operation-a', ownerId: 'owner-a', startedAt: new Date() } });
+    await expect(fixture.managedOwnerOperation.count({ where: { ownerId: 'owner-b' } })).resolves.toBe(0);
+    await fixture.managedOwnerOperation.deleteMany({ where: { id: 'operation-a', ownerId: 'owner-b' } });
+    await expect(fixture.managedOwnerOperation.count({ where: { ownerId: 'owner-a' } })).resolves.toBe(1);
+    await fixture.managedOwnerDeletionRun.create({ data: { ownerId: 'owner-a', runId: 'run-a', startedAt: new Date() } });
+    await fixture.managedOwnerDeletionRun.deleteMany({ where: { ownerId: 'owner-a', runId: 'run-b' } });
+    await expect(fixture.managedOwnerDeletionRun.findUnique({ where: { ownerId: 'owner-a' } })).resolves.toMatchObject({ runId: 'run-a' });
+  });
   it('preserves supplied upload sessions and invokes the original transaction with its delegates', async () => {
     const managedUploadSession = { findMany: vi.fn(async () => [{ id: 'existing-session' }]) };
     const originalUser = { name: 'root-user' };

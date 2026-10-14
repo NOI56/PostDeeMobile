@@ -60,7 +60,8 @@ export type AccountRouteDependencies = {
   ownerMutationLock?: OwnerMutationCoordinator;
   ownerLifecycleStore?: Pick<UploadSessionStore,
     'beginOwnerDeletion' | 'finishOwnerDeletion' |
-    'getOwnerDeletionAuthorization' | 'authorizeOwnerDeletion'>;
+    'getOwnerDeletionAuthorization' | 'authorizeOwnerDeletion'> &
+    Partial<Pick<UploadSessionStore, 'acquireOwnerDeletion'>>;
   prisma?: PrismaAccountClient;
   nowSeconds?: () => number;
 };
@@ -141,7 +142,8 @@ export const registerAccountRoutes = (
     if (!store || typeof store.getOwnerDeletionAuthorization !== 'function' ||
       typeof store.authorizeOwnerDeletion !== 'function' ||
       typeof store.beginOwnerDeletion !== 'function' ||
-      typeof store.finishOwnerDeletion !== 'function') {
+      typeof store.finishOwnerDeletion !== 'function' ||
+      typeof store.acquireOwnerDeletion !== 'function') {
       throw new Error('Account deletion authorization storage is unavailable');
     }
     const proof = await store.getOwnerDeletionAuthorization(userId);
@@ -250,6 +252,7 @@ export const registerAccountRoutes = (
     const releaseOwnerMutationLock = ownerMutationLock
       ? await ownerMutationLock.acquire(userId)
       : () => undefined;
+    let releaseSharedDeletion: (() => Promise<void>) | undefined;
 
     try {
 
@@ -325,6 +328,36 @@ export const registerAccountRoutes = (
         });
         return;
       }
+    }
+
+    // The durable claim waits for work in every upgraded process, before any
+    // provider/queue/media snapshot or cleanup. A crash leaves a private claim.
+    try {
+      releaseSharedDeletion = await ownerLifecycleStore?.acquireOwnerDeletion?.(userId);
+    } catch {
+      response.status(503).json({
+        status: 'error', code: 'ACCOUNT_WRITE_DRAIN_FAILED',
+        message: 'Could not finish active account work. Please try again.'
+      });
+      return;
+    }
+
+    // A profile admitted before sealing may have finished while we drained.
+    // Refresh its cleanup scope and capability check after that work settles.
+    try {
+      postPeerProfileId = await readPostPeerProfileId(userId);
+    } catch {
+      response.status(503).json({
+        status: 'error', code: 'ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE',
+        message: 'Could not verify connected account cleanup. Please try again.'
+      });
+      return;
+    }
+    const drainedUnavailableCode = readDeletionUnavailableCode(authUser, postPeerProfileId);
+    if (drainedUnavailableCode) {
+      response.status(503).json({ status: 'error', code: drainedUnavailableCode,
+        message: 'Account deletion is temporarily unavailable. Please try again later.' });
+      return;
     }
 
     // Seal the owner before draining queued/external work so concurrent upload
@@ -486,7 +519,15 @@ export const registerAccountRoutes = (
     ownerMutationLock?.markDeleted(userId);
     response.json({ status: 'ok' });
     } finally {
-      releaseOwnerMutationLock();
+      try {
+        // Never erase a claim by owner alone, and never release on disconnect.
+        await releaseSharedDeletion?.();
+      } catch {
+        // Its durable claim remains fail-closed if release is unconfirmed.
+        console.error('Account cleanup claim release failed', { code: 'ACCOUNT_WRITE_DRAIN_FAILED' });
+      } finally {
+        releaseOwnerMutationLock();
+      }
     }
   });
 };

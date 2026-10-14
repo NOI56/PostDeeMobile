@@ -280,6 +280,31 @@ signature; published shop data and signed-in state are retained. Basic device
 smoke passes. Production remains outside this delivery stage. See
 [`2026-10-13-security-main-delivery.md`](docs/superpowers/plans/2026-10-13-security-main-delivery.md).
 
+## Shared owner operation drain (2026-10-14, local follow-up)
+
+The follow-up continues from local `1b5a403` on
+`codex/staging-regression-and-test-types`; verified remote main remains
+`f07ee30`. PostgreSQL now records admitted owner-operation lifetimes and an
+exclusive account-cleanup claim. Deletion seals the owner, waits for admitted
+work in upgraded processes, and re-reads provider cleanup scope before cleanup.
+HTTP handler/finally work, managed uploads, queue admission and worker execution
+participate. Unknown outcomes, process crashes and unconfirmed releases keep
+private blockers; no timer expires them. Actual local PostgreSQL 18.1 with all
+18 migrations and two independent Node processes passes 10/10 checks using a
+loopback synthetic provider. The full API suite passes 1,909/1,909 in 119 files;
+typecheck, production build, Prisma schema/helper validation and independent
+review pass locally. Hosted CI and external-service acceptance remain unverified.
+HTTP/worker lifetimes run concurrently; explicit queue/store FIFO remains intact.
+
+Migration `20261014020000_track_owner_operations` is additive and local only.
+Before later activation, apply it, regenerate Prisma, upgrade every API/worker
+process, and quiesce/drain older binaries. This follow-up has not entered main,
+been pushed/deployed, changed hosted flags, or created a disposable account.
+Keep `FIREBASE_AUTH_DELETE_ENABLED=false`, `SOCIAL_PUBLISHER=disabled` and the
+existing single-instance Staging memory queue. Real Redis/provider/Firebase,
+OAuth and legacy signed-PUT acceptance remain gates. See
+[`2026-10-14-shared-owner-operation-drain.md`](docs/superpowers/plans/2026-10-14-shared-owner-operation-drain.md).
+
 ## Staging regression and test typing (2026-10-14, local follow-up)
 
 Starting from verified main `f07ee30`, the local branch
@@ -1876,8 +1901,8 @@ Required services for later milestones:
 See `FIREBASE_SETUP.md` for the Firebase Auth and Google Sign-In setup checklist.
 
 Production account deletion is temporarily disabled with
-`FIREBASE_AUTH_DELETE_ENABLED=false` because the current mutation boundary is
-process-local and cannot yet guarantee a full cross-process drain. In a
+`FIREBASE_AUTH_DELETE_ENABLED=false`; the new shared drain remains a local
+candidate pending rollout and real-provider acceptance. In a
 controlled environment, enabling the path also requires
 `FIREBASE_SERVICE_ACCOUNT_JSON`. When enabled, `DELETE /account` disconnects
 the user's PostPeer integrations, removes
@@ -1900,16 +1925,16 @@ RevenueCat webhooks do
 not recreate users that no longer exist. PostPeer cleanup follows every page of
 the profile's integrations and fails before local deletion when provider cleanup
 is unavailable or any external disconnect fails. A durable marker protects the
-managed-upload owner prefix before queue/provider cleanup. The owner coordinator
-serializes authenticated API mutations and RevenueCat webhook application only
-inside one API process; another process can pass the durable-marker check before
-deletion starts and commit afterward. The publish worker
-first atomically claims a due post from `QUEUED` to `PUBLISHING`, then checks the
-marker before calling the provider, without holding a lease across that call.
-Therefore this path is not production-safe until every user mutation participates
-in a durable repository barrier and full mutation drain. Keep the Production
-feature disabled until that gate and the remaining device/slow-network cleanup
-tests are complete.
+managed-upload owner prefix before queue/provider cleanup. In the local
+candidate, `ManagedOwnerOperation` records span admitted HTTP handler/finally
+work, managed uploads, queue admission and worker execution across upgraded
+Prisma-backed processes. Admission and sealing share the owner row lock;
+remote I/O runs outside SQL transactions. Deletion waits for these records and
+claims `ManagedOwnerDeletionRun` before cleanup. Crashes, ambiguous outcomes
+and release failures block cleanup until verified reconciliation, without TTL
+expiry. Memory-only coordination remains process-local. Keep the Production
+feature disabled until the migration/all-process rollout, real Redis/provider,
+legacy upload/OAuth and device/slow-network gates pass.
 
 Queue/storage scaffold switches:
 
@@ -2058,15 +2083,13 @@ repository's Production Blueprint currently selects
 pending. Treat this as an unresolved configuration risk, not proof that the
 deployed Production environment or a user connection is ready; this safety
 change does not alter the Production Blueprint.
-The current owner/post mutation locks are JavaScript maps inside one API
-process. They serialize current authenticated route mutations and RevenueCat
-webhook application in that process, but cannot drain mutations already running
-in another API instance and are not held around the worker's provider call.
-Account deletion is therefore not production-safe, and scale-out would widen
-the race. Add a durable repository
-owner barrier/lease or equivalent transactional outbox/claim-and-drain protocol
-that rejects new writes and drains every in-flight user mutation before cleanup,
-then test same-process and genuinely separate-process races.
+Owner/post mutation maps remain local optimizations. The 2026-10-14 local
+candidate adds PostgreSQL operation tickets and exclusive cleanup claims,
+including worker provider/status/notification lifetime, and passes separate-
+process synthetic tests. It is not yet deployed or production-safe: apply the
+additive migration, upgrade and drain all older API/worker processes, then
+validate actual Redis/BullMQ, real provider/Firebase cleanup and legacy signed-
+PUT/OAuth effects. No ticket or cleanup claim may expire by elapsed time.
 The in-app Privacy Policy and Terms are still labelled working drafts. Final
 hosted legal text, Android/iOS backup behavior for app-owned draft media, Data
 Safety/App Privacy disclosures, physical-device draft/replay tests, the

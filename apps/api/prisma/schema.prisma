@@ -253,8 +253,28 @@ model ManagedUploadOwner {
   // Not inferred or backfilled from an existing deletion status.
   deletionAuthorizedAt DateTime?
   sessions             ManagedUploadSession[]
+  operations           ManagedOwnerOperation[]
+  deletionRun          ManagedOwnerDeletionRun?
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
+}
+
+// Lifetimes survive a process crash. They are never expired by a timer: an
+// unresolved remote effect requires explicit reconciliation before deletion.
+model ManagedOwnerOperation {
+  id        String             @id
+  ownerId   String
+  startedAt DateTime           @default(now())
+  owner     ManagedUploadOwner @relation(fields: [ownerId], references: [ownerId], onDelete: Restrict)
+
+  @@index([ownerId])
+}
+
+model ManagedOwnerDeletionRun {
+  ownerId   String             @id
+  runId     String             @unique
+  startedAt DateTime           @default(now())
+  owner     ManagedUploadOwner @relation(fields: [ownerId], references: [ownerId], onDelete: Restrict)
 }
 
 model ManagedUploadSession {

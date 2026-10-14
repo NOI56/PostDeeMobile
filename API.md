@@ -1493,8 +1493,8 @@ Google Play required "Delete Account" flow in the profile screen.
 
 Production currently keeps `FIREBASE_AUTH_DELETE_ENABLED=false`; the endpoint
 therefore fails closed before cleanup. The behavior below documents the
-controlled/test path and must not be treated as launch readiness until the
-durable full-user mutation barrier and drain are implemented.
+controlled/test path and local shared-drain candidate. Launch readiness still
+requires its migration/all-process rollout and real external-service acceptance.
 
 Behavior:
 
@@ -1521,20 +1521,27 @@ Behavior:
   not an automatic authorization stamp.
 - Marks the owner as deleting before cleanup starts, including legacy upload
   mode. Prisma supplies a durable marker whenever active; otherwise it is
-  process-local. The existing coordinator serializes mutation/deletion within
-  one API process. User ensure, Post create/quota/reschedule/publish-now and
+  process-local. User ensure, Post create/quota/reschedule/publish-now and
   Subscription activation/RevenueCat event writes additionally lock an ACTIVE
-  owner in the same Serializable transaction as the final mutation. Other
-  stores and managed-upload snapshot admission remain outside this guarantee. The
-  publish worker atomically claims a due job, then checks the marker before
-  calling a provider without a lease spanning that call. This endpoint is not
-  production-safe until the full mutation-drain gap below is closed.
-- Drains same-process queue admission before removing owned queued/scheduled
-  jobs, including jobs whose post row is absent after rollback. Busy drain or
-  failed queue cleanup returns a retryable
-  `503 ACCOUNT_WRITE_DRAIN_FAILED` / `503 ACCOUNT_PUBLISH_CLEANUP_FAILED`.
-  SQL/Redis, multiple processes and already-admitted provider calls remain
-  separate reconciliation/draining gates.
+  owner in the same Serializable transaction as the final mutation. The local
+  candidate also admits HTTP handler/finally, managed-upload, queue and worker
+  lifetimes through `ManagedOwnerOperation`, locking that same owner row before
+  recording admission. Remote I/O remains outside SQL transactions.
+- After sealing, waits for durable operation tickets to drain, then acquires an
+  owner-exclusive `ManagedOwnerDeletionRun` before any cleanup snapshot. Profile
+  scope and cleanup capabilities are re-read after drain. A drain timeout or
+  another cleanup claim returns `503 ACCOUNT_WRITE_DRAIN_FAILED` before queue,
+  provider, media, database or identity cleanup. The durable `DELETING` marker
+  and prior authorization may already be committed; user data stays intact.
+  Retry succeeds when known work finishes, but crashes, callback exceptions,
+  ambiguous outcomes and unconfirmed releases remain blocked until verified
+  reconciliation. Tickets/claims have no TTL and no public API exposes them.
+- Removes owned queued/scheduled jobs, including jobs whose post row is absent
+  after rollback. Failed queue cleanup returns
+  `503 ACCOUNT_PUBLISH_CLEANUP_FAILED`. Apply additive migration
+  `20261014020000_track_owner_operations`, regenerate Prisma, upgrade every
+  API/worker process and drain older binaries before later activation. Local
+  two-process synthetic tests do not replace actual Redis/provider acceptance.
 - Lists every paginated integration in the user's PostPeer profile and
   disconnects each one through the provider before deleting local records.
   This includes integration ids for platforms PostDee does not yet recognize.
@@ -2948,7 +2955,7 @@ PostgreSQL.
 | `AUTH_PROVIDER` | `mock`, `firebase` | Auth adapter |
 | `FIREBASE_PROJECT_ID` | `postdee-prod` | Firebase project id |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | `{...}` | Firebase Admin service account JSON for account deletion and revoked-token checks; keep secret |
-| `FIREBASE_AUTH_DELETE_ENABLED` | `false`, `true` | Enables the current Firebase identity/account cleanup path and revoked/deleted-token checks; requires the service account. Keep account deletion disabled in Production until the full durable user-mutation barrier/drain gap is closed |
+| `FIREBASE_AUTH_DELETE_ENABLED` | `false`, `true` | Enables Firebase identity/account cleanup and revoked/deleted-token checks; requires the service account. Keep disabled until the shared-drain migration/all-process rollout and real Redis/provider/Firebase, legacy upload/OAuth and device cleanup acceptance pass |
 | `PUSH_SENDER` | `mock`, `firebase` | Push sender adapter; keep `mock` until the Firebase sender is verified with the installed Admin SDK |
 | `VIDEO_STORAGE` | `mock`, `r2`, `s3` | Temporary video storage adapter |
 | `CLOUDFLARE_R2_BUCKET` | `postdee-video-temp` | R2 bucket name |
@@ -3046,16 +3053,14 @@ The following work is still required before production launch:
   Mobile upload a new video/cover before an idempotent replay returns the old
   post. Persist/reuse completed remote keys or delete superseded objects, and
   verify the lifecycle rule against real R2 before launch.
-- Account deletion is not production-safe: the current process-local coordinator
-  cannot drain an authenticated mutation already running in another API instance,
-  and the worker does not hold a lease across the provider call. Add a
-  durable repository owner barrier/lease (or equivalent transactional
-  outbox/claim-and-drain protocol) across every user mutation family. It must
-  atomically reject new writes,
-  drain in-flight work before the cleanup snapshot, and span worker
-  claim/provider critical sections. Test same-process and separate-process races
-  before enabling Production deletion, multi-instance API, or a real separate
-  worker.
+- Account deletion is not production-safe. The local candidate implements
+  durable operation tickets and an exclusive cleanup claim, with synthetic
+  separate-process verification. Deliver the additive migration and every API/
+  worker upgrade, quiesce/drain older binaries, and verify actual Redis/BullMQ,
+  provider/Firebase cleanup and delayed OAuth/legacy signed-PUT effects before
+  activation. Unknown outcomes and crashed claims require verified private
+  reconciliation; elapsed time never authorizes destructive cleanup. No
+  reconciliation endpoint or automatic ticket repair is implemented.
 - Run the local-draft, stable-request replay, explicit destination, truthful
   status, future/14-day Starter and 30-day Pro limits, preservation of accepted
   queues after downgrades, and publish-now matrix on physical Android and iPhone

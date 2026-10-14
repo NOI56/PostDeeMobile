@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Platform } from '../modules/posts/postStore.js';
+import type { RunWithActiveOwner } from '../modules/account/ownerOperationQueue.js';
+import { createOwnerOperationRunner } from '../modules/account/prismaOwnerOperationCoordinator.js';
 import type { BullMqPublishJobData } from '../modules/queue/bullMqPublishQueue.js';
 import {
   type PlatformPublishInput,
@@ -52,6 +54,97 @@ describe('processPublishJobForPost', () => {
     runAt: '2026-06-01T00:00:00.000Z',
     status: 'READY' as const
   };
+
+  it('holds owner work until provider, receipts, final status and notification all settle', async () => {
+    const { store } = makeFakePostStore();
+    const stage = () => {
+      let enter!: () => void;
+      let finish!: () => void;
+      const entered = new Promise<void>((resolve) => { enter = resolve; });
+      const pending = new Promise<void>((resolve) => { finish = resolve; });
+      return { enter, finish, entered, pending };
+    };
+    const provider = stage();
+    const receipt = stage();
+    const status = stage();
+    const notification = stage();
+    let owner: string | undefined;
+    let released = false;
+    const runWithActiveOwner: RunWithActiveOwner = async (ownerId, operation) => {
+      owner = ownerId;
+      try { return await operation(); } finally { released = true; }
+    };
+    store.updateStatus = async () => { status.enter(); await status.pending; };
+    const operation = processPublishJobForPost({
+      jobData: { ...jobData, platforms: ['TIKTOK'] },
+      postStore: store,
+      runWithActiveOwner,
+      publisher: { publish: async ({ platform }) => {
+        provider.enter(); await provider.pending; return publishedResult(platform);
+      } },
+      platformPublishStore: { recordResults: async () => {
+        receipt.enter(); await receipt.pending; return [];
+      } },
+      notifier: { notifyPublishResult: async () => {
+        notification.enter(); await notification.pending;
+      } }
+    });
+    for (const boundary of [provider, receipt, status, notification]) {
+      await boundary.entered;
+      expect(owner).toBe(jobData.userId);
+      expect(released).toBe(false);
+      boundary.finish();
+    }
+    await expect(operation).resolves.toMatchObject({ status: 'PUBLISHED' });
+    expect(released).toBe(true);
+  });
+
+  it('does not claim or contact providers when shared owner admission rejects', async () => {
+    const { store, statuses } = makeFakePostStore();
+    const publisher = { publish: vi.fn(async ({ platform }: PlatformPublishInput) => publishedResult(platform)) };
+    const runWithActiveOwner: RunWithActiveOwner = async () => {
+      throw new Error('owner admission denied');
+    };
+    await expect(processPublishJobForPost({ jobData, postStore: store, publisher, runWithActiveOwner }))
+      .rejects.toThrow('owner admission denied');
+    expect(statuses).toEqual([]);
+    expect(publisher.publish).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on ownerless jobs when shared coordination is configured', async () => {
+    const { store, statuses } = makeFakePostStore();
+    const publisher = { publish: vi.fn(async ({ platform }: PlatformPublishInput) => publishedResult(platform)) };
+    const runWithActiveOwner: RunWithActiveOwner = async (_ownerId, operation) => operation();
+    await expect(processPublishJobForPost({
+      jobData: { ...jobData, userId: undefined }, postStore: store, publisher, runWithActiveOwner
+    })).rejects.toThrow('Publish job owner is required');
+    expect(statuses).toEqual([]);
+    expect(publisher.publish).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: 'unknown provider result', failure: new PublishOutcomeUnknownError('provider outcome not confirmed'), retained: true },
+    { name: 'terminal provider rejection', failure: new Error('provider rejected the request'), retained: false }
+  ])('retains the durable owner ticket only for $name after a resolved FAILED result', async ({ failure, retained }) => {
+    const { store, statuses } = makeFakePostStore();
+    const tickets = new Set<string>();
+    const runWithActiveOwner = createOwnerOperationRunner({
+      admit: async (ownerId) => { tickets.add(ownerId); return 'fixture-operation'; },
+      release: async (ownerId) => { tickets.delete(ownerId); }
+    });
+    const logging = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const result = await processPublishJobForPost({
+        jobData: { ...jobData, platforms: ['TIKTOK'] }, postStore: store, runWithActiveOwner,
+        publisher: { publish: async () => { throw failure; } },
+        platformPublishStore: { recordResults: async () => [] }
+      });
+      expect(result.status).toBe('FAILED');
+      expect(result.requiresReconciliation).toBe(retained ? true : undefined);
+      expect(statuses).toEqual(['PUBLISHING', 'FAILED']);
+      expect(tickets.has(jobData.userId!)).toBe(retained);
+    } finally { logging.mockRestore(); }
+  });
 
   it('does not claim or publish a post after account deletion starts', async () => {
     const { store, statuses } = makeFakePostStore();
@@ -373,6 +466,7 @@ describe('processPublishJob', () => {
     expect(sleep).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       status: 'FAILED',
+      requiresReconciliation: true,
       platformResults: [
         {
           platform: 'TIKTOK',

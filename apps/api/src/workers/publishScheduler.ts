@@ -1,4 +1,5 @@
 import type { PlatformPublishStore } from '../modules/platformPublishes/platformPublishStore.js';
+import type { RunWithActiveOwner } from '../modules/account/ownerOperationQueue.js';
 import {
   type PublishNotifier,
   createNoopPublishNotifier
@@ -44,6 +45,7 @@ export const createPublishScheduler = ({
   storage = createMockVideoStorageCleaner(),
   notifier = createNoopPublishNotifier(),
   assertOwnerActive,
+  runWithActiveOwner,
   requireEmptyBacklogOnStart = false,
   intervalMs = 5000,
   now = () => new Date().toISOString(),
@@ -57,6 +59,7 @@ export const createPublishScheduler = ({
   storage?: VideoStorageCleaner;
   notifier?: PublishNotifier;
   assertOwnerActive?: (ownerId: string) => Promise<void>;
+  runWithActiveOwner?: RunWithActiveOwner;
   requireEmptyBacklogOnStart?: boolean;
   intervalMs?: number;
   now?: () => string;
@@ -74,7 +77,7 @@ export const createPublishScheduler = ({
   const attemptLimit = Math.max(1, Math.floor(maxPrePublishAttempts));
   const retryBackoffMs = Math.max(0, prePublishRetryBackoffMs);
 
-  const publishDuePost = async (post: Awaited<ReturnType<PostStore['listDue']>>[number]) => {
+  const publishDuePostWork = async (post: Awaited<ReturnType<PostStore['listDue']>>[number]) => {
     let externalPublishStarted = false;
     const trackedPublisher: PlatformPublisher = {
       publish: async (input) => {
@@ -85,7 +88,7 @@ export const createPublishScheduler = ({
 
     for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
       try {
-        await processPublishJobForPost({
+        const result = await processPublishJobForPost({
           jobData: {
             userId: post.userId,
             postId: post.id,
@@ -111,8 +114,12 @@ export const createPublishScheduler = ({
           platformPublishStore,
           notifier,
           assertOwnerActive,
+          runWithActiveOwner,
           now
         });
+        if (result.requiresReconciliation) {
+          requiresReconciliation = true;
+        }
         return;
       } catch {
         // Once a provider call starts, its outcome can be ambiguous. The worker
@@ -145,6 +152,11 @@ export const createPublishScheduler = ({
       }
     }
   };
+
+  const publishDuePost = (post: Awaited<ReturnType<PostStore['listDue']>>[number]) =>
+    runWithActiveOwner
+      ? runWithActiveOwner(post.userId, () => publishDuePostWork(post))
+      : publishDuePostWork(post);
 
   const runOnce = (): Promise<void> => {
     if (stopped) return Promise.resolve();

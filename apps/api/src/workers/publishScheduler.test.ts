@@ -1,11 +1,84 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { RunWithActiveOwner } from '../modules/account/ownerOperationQueue.js';
 
 import { createInMemoryPlatformPublishStore } from '../modules/platformPublishes/platformPublishStore.js';
 import { createPostStore } from '../modules/posts/postStore.js';
 import { createPublishScheduler } from './publishScheduler.js';
-import type { PlatformPublishInput } from './publishWorker.js';
+import { PublishOutcomeUnknownError, type PlatformPublishInput } from './publishWorker.js';
 
 describe('createPublishScheduler', () => {
+  it('keeps owner admission through the fallback failure notification', async () => {
+    const postStore = createPostStore();
+    const post = await postStore.create({
+      userId: 'seller-fallback-lifetime', caption: 'fixture', videoS3Key: 'fixture.mp4', platforms: ['TIKTOK']
+    });
+    let notificationEntered!: () => void;
+    let finishNotification!: () => void;
+    const started = new Promise<void>((resolve) => { notificationEntered = resolve; });
+    const notificationPending = new Promise<void>((resolve) => { finishNotification = resolve; });
+    let depth = 0;
+    const owners: string[] = [];
+    const runWithActiveOwner: RunWithActiveOwner = async (ownerId, operation) => {
+      owners.push(ownerId); depth += 1;
+      try { return await operation(); } finally { depth -= 1; }
+    };
+    const scheduler = createPublishScheduler({
+      postStore, platformPublishStore: createInMemoryPlatformPublishStore(), runWithActiveOwner,
+      assertOwnerActive: async () => { throw new Error('preflight unavailable'); },
+      maxPrePublishAttempts: 1,
+      notifier: { notifyPublishResult: async () => { notificationEntered(); await notificationPending; } }
+    });
+    const running = scheduler.runOnce();
+    await started;
+    expect(post.status).toBe('FAILED');
+    expect(depth).toBeGreaterThan(0);
+    expect(owners.every((ownerId) => ownerId === post.userId)).toBe(true);
+    finishNotification();
+    await running;
+    expect(depth).toBe(0);
+  });
+
+  it('leaves a due post untouched when shared owner admission rejects', async () => {
+    const postStore = createPostStore();
+    const post = await postStore.create({
+      userId: 'seller-denied-lifetime', caption: 'fixture', videoS3Key: 'fixture.mp4', platforms: ['TIKTOK']
+    });
+    const publish = vi.fn();
+    const notifyPublishResult = vi.fn(async () => undefined);
+    const runWithActiveOwner: RunWithActiveOwner = async () => { throw new Error('owner deleting'); };
+    const scheduler = createPublishScheduler({
+      postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher: { publish },
+      notifier: { notifyPublishResult }, runWithActiveOwner
+    });
+    await scheduler.runOnce();
+    expect(post.status).toBe('QUEUED');
+    expect(publish).not.toHaveBeenCalled();
+    expect(notifyPublishResult).not.toHaveBeenCalled();
+  });
+
+  it('keeps scheduler readiness unavailable after a resolved unknown provider result', async () => {
+    const postStore = createPostStore();
+    const post = await postStore.create({
+      userId: 'seller-unknown-lifetime', caption: 'fixture', videoS3Key: 'fixture.mp4', platforms: ['TIKTOK']
+    });
+    const publish = vi.fn(async () => { throw new PublishOutcomeUnknownError('provider may still be processing'); });
+    const logging = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const scheduler = createPublishScheduler({
+      postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher: { publish }
+    });
+    await scheduler.start();
+    try {
+      await scheduler.runOnce();
+      expect(post.status).toBe('FAILED');
+      await expect(scheduler.checkReady!()).rejects.toThrow('Publish scheduler unavailable');
+      await scheduler.runOnce();
+      expect(publish).toHaveBeenCalledOnce();
+      await expect(scheduler.checkReady!()).rejects.toThrow('Publish scheduler unavailable');
+    } finally {
+      scheduler.stop(); logging.mockRestore();
+    }
+  });
+
   it('detects unknown interrupted publishes at startup without sending them again', async () => {
     const postStore = createPostStore();
     const post = await postStore.create({ userId: 'seller-interrupted', caption: 'private', videoS3Key: 'private.mp4', platforms: ['TIKTOK'] });

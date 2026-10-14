@@ -1016,16 +1016,17 @@ path additionally requires `FIREBASE_SERVICE_ACCOUNT_JSON`; the API then uses
 Firebase Admin token verification with revocation checks.
 
 Account deletion is an idempotent cleanup saga, but is not yet production-safe.
-Its durable owner marker applies in legacy upload mode too, while the
-process-local owner coordinator serializes authenticated API mutations and
-RevenueCat webhook application within one API process. Explicit final User
+Its durable owner marker applies in legacy upload mode too. Explicit final User
 ensure, Post create/quota/reschedule/publish-now and Subscription
 activation/RevenueCat event writes lock ACTIVE in the same Serializable
-transaction as their final write. Other stores and managed-upload snapshot
-admission do not yet have this same boundary. The publish worker atomically claims a due post before
-checking the marker and calling a provider, without a lease spanning that call.
-The Production feature remains off until this incomplete mutation boundary and
-the remaining device/slow-network cleanup gates are closed.
+transaction as their final write. The local 2026-10-14 candidate records admitted
+HTTP handler/finally work, managed uploads, queue admission and whole worker
+execution in `ManagedOwnerOperation`. Admission/sealing share the owner row
+lock; remote I/O runs outside SQL transactions. Deletion seals before shared
+drain, claims `ManagedOwnerDeletionRun` exclusively and re-reads provider scope
+before cleanup. Memory-only coordination remains process-local. Production
+stays off pending migration/all-process rollout and real Redis/provider/Firebase,
+legacy upload/OAuth and device/slow-network acceptance.
 Queued jobs are then removed and PostPeer
 integration pages are listed so every external integration id can be
 disconnected. An active completion is allowed a short drain window; a stale
@@ -1068,8 +1069,53 @@ before deploying the patched API. An old missing-identity account lacking proof
 requires verified operator recovery, not inferred or automatic authorization.
 This closes the authorization gap observed with an SDK fixture; it does not
 prove that Firebase accepts the same condition in a live environment or close
-the separate multi-process mutation-drain/provider-call boundary. Mobile
+the separate multi-process mutation-drain/provider-call boundary; the later
+local shared-drain candidate below addresses admitted callback lifetimes. Mobile
 response fields, dependencies and feature flags remain unchanged.
+
+### Shared operation lifetimes (2026-10-14, local candidate)
+
+`ManagedOwnerOperation` contains a private random ID, owner FK and start time;
+`ManagedOwnerDeletionRun` contains one owner-keyed random run ID and start time.
+Both reference the durable owner marker rather than `User`, use restrictive
+deletion FKs and receive no backfill. Migration
+`20261014020000_track_owner_operations` must precede Prisma regeneration and
+deployment of every API/worker process. Quiesce and drain older binaries before
+activation: an old process does not register its already-running work.
+
+The final registered HTTP handler promise, including its `finally` work,
+defines the shared lifetime, not response `end`, `finish` or client `close`.
+Known mutating reads include auth bootstrap, billing, social refresh and upload
+reconciliation; account deletion/readiness use their separate deletion path.
+`runWithOwnerLifetime` admits HTTP/worker callbacks concurrently;
+`runWithActiveOwner` keeps explicit queue/store FIFO ordering. An AsyncLocalStorage
+context shares same-owner nested admission within each surface without FIFO
+deadlock; cross-surface calls obtain their own tracked ticket. Started unawaited
+children keep the ticket until their promises settle;
+later work after context closure must re-admit against the marker.
+
+Worker lifetime covers claim, provider polling/results, post status and
+notification, including scheduler retry/failure work. Coordinated ownerless
+jobs fail closed. An unknown provider result can return terminal `FAILED` with
+an internal `requiresReconciliation` signal; it retains the ticket and makes
+scheduler readiness unavailable rather than claiming remote completion.
+Callback exceptions, uncertain HTTP server errors, process crashes and failed
+ticket releases likewise retain blockers. Explicit configuration failures before
+remote work may release normally; not every error response is treated alike.
+Successful remote acknowledgement is preserved if ticket release fails.
+
+Only an empty durable ticket set permits the owner-exclusive cleanup claim.
+A default five-second drain polling budget returns `ACCOUNT_WRITE_DRAIN_FAILED`
+before cleanup while preserving committed proof/`DELETING`; normal SQL wait/
+timeout limits still apply. Exact run-token release
+occurs after cleanup settles; a crash or failed release leaves the claim.
+No TTL, automatic takeover, public ticket endpoint or operator repair tool is
+implemented. Verified private reconciliation is required for unresolved work;
+neither ticket age nor process death proves a remote effect has stopped.
+`finishOwnerDeletion` requires a sealed owner and no tickets before erasing
+sessions. See the local two-process receipt and remaining gates in
+[`2026-10-14-shared-owner-operation-drain.md`](docs/superpowers/plans/2026-10-14-shared-owner-operation-drain.md).
+
 On iOS/macOS, the mobile app first checks `GET /account/deletion-readiness`, then
 reauthenticates and revokes Apple access before calling the delete endpoint.
 Apple Sign-In must not be exposed on Android/web until server-side Apple token
@@ -1980,14 +2026,13 @@ Firebase path:
   durable post before enqueue and repairs it on a same-key replay. Reschedule and
   publish-now use persisted compare-and-set transitions plus conditional rollback
   when queue replacement fails.
-- The current owner/post locks are process-local maps. They coordinate current
-  authenticated route mutations and RevenueCat webhook application inside one
-  API process; they neither drain an in-flight mutation in another instance nor
-  span the worker's external provider call. Before treating account deletion
-  as production-safe—or enabling multi-instance/separate-worker publishing—add
-  a durable repository owner barrier/lease or equivalent transactional
-  outbox/claim-and-drain protocol. It must reject new writes and drain every
-  in-flight user mutation before cleanup, with same- and separate-process tests.
+- Owner/post maps remain process-local optimizations; the local candidate adds
+  PostgreSQL admission tickets and an exclusive cleanup claim spanning upgraded
+  API/worker lifetimes. Before treating deletion as production-safe or enabling
+  multi-instance/separate-worker publishing, complete migration/all-process
+  rollout and actual Redis/provider/Firebase, legacy upload/OAuth and device
+  cleanup acceptance. Crashes and uncertain outcomes require reconciliation,
+  never TTL expiry.
 - Keep secret keys in environment variables, not source files.
 
 ## Testing Strategy
@@ -2045,11 +2090,11 @@ cd apps/mobile
   `scheduledAt` are skipped after reschedules, and optional R2/S3 cleanup
   failures are reported in the worker result without changing a successful post
   to `FAILED`.
-- This barrier check is fail-closed but is not a distributed lease around the
-  provider call. A mutation already running in another API process, or account
-  deletion racing after the worker check, can still cross a
-  cleanup boundary. Production account deletion and multi-instance/separate-worker
-  publishing remain blocked on the full mutation-drain design described above.
+- The local candidate additionally holds a durable operation ticket throughout
+  worker execution and retains unknown outcomes for reconciliation. Production
+  deletion and multi-instance/separate-worker publishing remain blocked on
+  migration/all-process rollout and actual Redis/provider/Firebase and legacy
+  upload/OAuth acceptance described above.
 - Direct social OAuth/token storage is not implemented because the MVP
   production path uses PostPeer first. The native Android Custom Tab bridge is
   presentation-only and does not fall back to an embedded WebView:

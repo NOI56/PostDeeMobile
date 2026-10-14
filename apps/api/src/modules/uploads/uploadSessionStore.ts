@@ -1,4 +1,6 @@
-import { createOwnerOperationQueue, type RunWithActiveOwner } from '../account/ownerOperationQueue.js';
+import { randomUUID } from 'node:crypto';
+import { createOwnerOperationQueue, OwnerOperationBusyError, type RunWithActiveOwner } from '../account/ownerOperationQueue.js';
+import { createOwnerOperationRunner } from '../account/prismaOwnerOperationCoordinator.js';
 
 export type UploadOwnerStatus = 'ACTIVE' | 'DELETING' | 'DELETED';
 
@@ -49,6 +51,8 @@ export class UploadSessionConflictError extends Error {
 export type UploadSessionStore = {
   assertOwnerActive: (ownerId: string) => Promise<void>;
   runWithActiveOwner: RunWithActiveOwner;
+  runWithOwnerLifetime: RunWithActiveOwner;
+  acquireOwnerDeletion: (ownerId: string) => Promise<() => Promise<void>>;
   createForActiveOwner: (input: CreateUploadSessionInput) => Promise<UploadSession>;
   getForOwner: (id: string, ownerId: string) => Promise<UploadSession | undefined>;
   findForOwnerKey: (
@@ -117,20 +121,52 @@ const assertNotExpired = (session: UploadSession, now: string) => {
 };
 
 export const createInMemoryUploadSessionStore = ({
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(), ownerOperationOptions
 }: {
   now?: () => string;
+  ownerOperationOptions?: { maxWaitMs?: number; pollIntervalMs?: number };
 } = {}): UploadSessionStore => {
   const owners = new Map<string, UploadOwnerStatus>();
   const deletionAuthorizations = new Map<string, string>();
   const sessions = new Map<string, UploadSession>();
-  const runOwnerOperation = createOwnerOperationQueue();
+  const maxWaitMs = ownerOperationOptions?.maxWaitMs ?? 5000;
+  const pollIntervalMs = ownerOperationOptions?.pollIntervalMs ?? 25;
+  if (!Number.isFinite(maxWaitMs) || maxWaitMs < 0 || !Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) throw new Error('Invalid owner operation drain limits');
+  const runOwnerOperation = createOwnerOperationQueue({ maxWaitMs });
+  const operations = new Map<string, string>();
+  const deletionRuns = new Map<string, string>();
+  const assertDrained = (ownerId: string) => {
+    if ([...operations.values()].some((owner) => owner === ownerId)) throw new OwnerOperationBusyError();
+  };
+  const lifetime = {
+    admit: async (ownerId) => {
+      assertOwnerActive(owners, ownerId);
+      const id = randomUUID(); operations.set(id, ownerId); return id;
+    },
+    release: async (ownerId, id) => { if (operations.get(id) === ownerId) operations.delete(id); }
+  } satisfies Pick<Parameters<typeof createOwnerOperationRunner>[0], 'admit' | 'release'>;
+  const runWithActiveOwner = createOwnerOperationRunner({ ...lifetime, runOwnerOperation });
+  const runWithOwnerLifetime = createOwnerOperationRunner({
+    ...lifetime, runOwnerOperation: async (_ownerId, operation) => operation()
+  });
 
   return {
-    runWithActiveOwner: (ownerId, operation) => runOwnerOperation(ownerId, async () => {
-      assertOwnerActive(owners, ownerId);
-      return operation();
-    }),
+    runWithActiveOwner,
+    runWithOwnerLifetime,
+    acquireOwnerDeletion: async (ownerId) => {
+      const deadline = Date.now() + maxWaitMs;
+      for (;;) {
+        try {
+          if (!owners.has(ownerId) || owners.get(ownerId) === 'ACTIVE' || deletionRuns.has(ownerId)) throw new OwnerOperationBusyError();
+          assertDrained(ownerId);
+          const runId = randomUUID(); deletionRuns.set(ownerId, runId);
+          return async () => { if (deletionRuns.get(ownerId) === runId) deletionRuns.delete(ownerId); };
+        } catch (error) {
+          if (!(error instanceof OwnerOperationBusyError) || Date.now() >= deadline) throw error;
+          await new Promise((resolve) => setTimeout(resolve, Math.min(pollIntervalMs, Math.max(1, deadline - Date.now()))));
+        }
+      }
+    },
     assertOwnerActive: async (ownerId) => {
       assertOwnerActive(owners, ownerId);
     },
@@ -318,6 +354,8 @@ export const createInMemoryUploadSessionStore = ({
           (session.status === 'UPLOADING' || session.status === 'COMPLETING')
       ),
     finishOwnerDeletion: (ownerId) => runOwnerOperation(ownerId, async () => {
+      if (!owners.has(ownerId) || owners.get(ownerId) === 'ACTIVE') throw new OwnerOperationBusyError();
+      assertDrained(ownerId);
       owners.set(ownerId, 'DELETED');
 
       for (const [id, session] of sessions) {

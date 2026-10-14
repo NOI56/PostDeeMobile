@@ -366,7 +366,7 @@ confirmation and cold callback remain unverified.
   the first delivery stage. Exact evidence belongs in
   `docs/superpowers/plans/2026-10-13-security-main-delivery.md`.
 
-## Shared owner operation drain (2026-10-14, local follow-up)
+## Shared owner operation drain (2026-10-14, delivered to Staging)
 
 - Continue local `1b5a403` on `codex/staging-regression-and-test-types`, based
   on verified remote main `f07ee30`. Add durable operation tickets and an
@@ -380,11 +380,17 @@ confirmation and cold callback remain unverified.
   HTTP/worker lifetimes run concurrently while explicit queue/store FIFO remains.
   Full API tests pass 1,909/1,909 in 119 files; typecheck, production build,
   Prisma schema/helper validation and independent review pass locally.
-- Migration `20261014020000_track_owner_operations` is applied only to the
-  isolated local database. Hosted rollout requires migration/Prisma generation,
-  all API/worker upgrades and quiescing/draining older binaries before feature
-  activation. No main/push/deploy, hosted flag change, or account creation is
-  part of this follow-up.
+  Exact-source feature CI `38514367627` also passes 1,909 API/2,189 Mobile cases,
+  typecheck/build/analyze/schema checks; exact-source main CI `38514981824`
+  also passes.
+- Source `7576ee3` is pushed on main and Live on Staging at 12:09:57 Asia/Bangkok
+  through `dep-db7gsd3bc2fs73f64600`. Migration
+  `20261014020000_track_owner_operations` is applied on `postdee_staging`, with
+  all 18 complete before the upgraded API starts. Account/R2 part-recovery-abort
+  smoke passes and the retained app's session/shop draft stay intact. Activation
+  in another environment still requires migration/Prisma generation, every
+  API/worker upgrade and quiescing/draining older binaries. Hosted flags and
+  account creation remain untouched; Production stays user-suspended.
 - Preserve `FIREBASE_AUTH_DELETE_ENABLED=false`, `SOCIAL_PUBLISHER=disabled`
   and the single-instance Staging memory queue. Actual Redis/BullMQ, provider/
   Firebase, complete upload/abort, OAuth and legacy signed-PUT cancellation or
@@ -392,15 +398,16 @@ confirmation and cold callback remain unverified.
   has not been executed. Plan:
   [`2026-10-14-shared-owner-operation-drain.md`](docs/superpowers/plans/2026-10-14-shared-owner-operation-drain.md).
 
-## Staging regression and test typing (2026-10-14, local follow-up)
+## Staging regression and test typing (2026-10-14, delivered to Staging)
 
 - Start from verified main `f07ee30` on
   `codex/staging-regression-and-test-types`. Repair the 142 existing fixture
   typing errors and add `npm run typecheck` to CI after Prisma generation.
   Targeted tests pass 474/474; full API tests pass 1,871/1,871 in 116 files,
   with typecheck, production build and Prisma schema validation passing.
-  Runtime, schema, dependencies and mobile source are unchanged. No main
-  merge, push, deploy, APK installation or feature activation has occurred.
+  Runtime, schema, dependencies and mobile source are unchanged in typing-only
+  commit `1b5a403`, now included in the `7576ee3` main/Staging delivery above.
+  No new APK installation or feature activation has occurred.
 - The existing Staging app preserves its session and complete original shop
   draft through restart and a temporary edit/restore. Native synthetic clip,
   manual caption and zero-destination guard checks pass. Authenticated Staging
@@ -408,10 +415,10 @@ confirmation and cold callback remain unverified.
 - Actual local PostgreSQL 18.1 with 17 migrations and two independent Node
   processes passes seven checks. Late User/Post/Subscription writes and new
   remote admission reject `DELETING`/`DELETED` owners. An IPC simulation also
-  confirms already-admitted remote work can finish after deletion in another
-  process; real Redis/provider draining remains unverified. Keep deletion
-  disabled until shared operation lifetime coordination and cleanup acceptance
-  pass.
+  demonstrated already-admitted remote work finishing after deletion in another
+  process. The later shared-operation implementation addresses this callback
+  lifetime gap; real Redis/provider draining remains unverified. Keep deletion
+  disabled until the remaining rollout and cleanup acceptance gates pass.
 - The user has no disposable Staging deletion account. Prepare its creation
   procedure only, using a separate test device/emulator and synthetic data;
   later account creation, deletion and flag changes require authorization.
@@ -790,7 +797,8 @@ Current status:
   app restart recovery uses Restore. Failed connection-status reads remain
   unknown and block connection actions. Package rules, server/schema contracts,
   and existing provider/device acceptance gates are unchanged.
-- Route/post lock maps remain process-local. The local shared-drain candidate
+- Route/post lock maps remain process-local. The shared-drain implementation
+  delivered to Staging
   adds PostgreSQL lifetime tickets and a cleanup claim across upgraded API/
   worker processes; crashes and unknown outcomes remain blocked without TTL.
   Account deletion and multi-instance/separate-worker activation still require
@@ -1056,8 +1064,8 @@ Plan status uses five groups:
 
 | Plan file | Status | Notes |
 | --- | --- | --- |
-| `docs/superpowers/plans/2026-10-14-shared-owner-operation-drain.md` | ทำบางส่วน | Local implementation, 1,909 API tests and PostgreSQL two-process 10/10 checks pass. No hosted migration/main/push/deploy/flags/account creation. Real Redis/provider/Firebase and legacy upload/OAuth acceptance remain. |
-| `docs/superpowers/plans/2026-10-14-staging-regression-and-typecheck.md` | ทำบางส่วน | Local typing/CI validation, native draft/clip guards and Staging R2 part transfer/recovery/abort pass. Upload completion, real Redis/provider drain and disposable-account deletion remain separate gates. No main/push/deploy or flag activation in this follow-up. |
+| `docs/superpowers/plans/2026-10-14-shared-owner-operation-drain.md` | ทำบางส่วน | Source `7576ee3` is on main/Staging with migration 18; feature/main CI pass 1,909 API/2,189 Mobile, local two-process 10/10 and post-Live account/R2/native checks pass. Flags/account creation unchanged. Real Redis/provider/Firebase and legacy upload/OAuth acceptance remain. |
+| `docs/superpowers/plans/2026-10-14-staging-regression-and-typecheck.md` | ทำบางส่วน | Typing commit `1b5a403` is included in main/Staging `7576ee3`; hosted CI and native draft/clip plus R2 part/recovery/abort pass. Upload completion, real Redis/provider drain and disposable-account deletion remain separate gates. No flag activation or new APK. |
 | `docs/superpowers/plans/2026-07-17-scaling-roadmap.md` | อนาคต | Reconciled on 2026-10-08 against the active product and single-process owner boundary; capacity tiers require measured evidence and no scaling infrastructure is enabled. |
 | `docs/superpowers/plans/2026-10-05-backend-hardening.md` | ประวัติ | Original isolated-branch verification is historical; the 2026-10-08 integration ports runtime hardening without its old dependency refresh. |
 | `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md` | ประวัติ | Source/CI/native delivery is complete at `36dbacc`; the same runtime is Live on Staging at `9baa18c`/`dep-db3m2g59fdbs73ecbib0`. Readiness/auth/empty-owner contracts and separate R2 fixture delivery/cleanup pass. Nonempty native Home, two-owner isolation and provider/crash/scale/Production gates remain. |
@@ -1227,10 +1235,12 @@ To ensure the app passes store review guidelines, the following must be implemen
    The cleanup saga sets a durable marker
    for the managed-upload owner prefix, reconciles/aborts multipart sessions,
    disconnects PostPeer integrations, removes queued jobs/R2 objects/database
-   data, and deletes the Firebase identity last. The local shared-drain candidate
+   data, and deletes the Firebase identity last. The shared-drain implementation
+   delivered to Staging
    records operation lifetimes and exclusive cleanup claims in PostgreSQL,
    including worker provider calls. Keep `FIREBASE_AUTH_DELETE_ENABLED=false`
-   until its additive migration and all-process upgrade/drain are delivered,
+   until its additive migration and all-process upgrade/drain cover the target
+   environment,
    then pass real Redis/provider/Firebase, physical-device, slow-network, OAuth
    and R2 lifecycle/legacy-upload tests. Unresolved tickets never auto-expire.
    Apple Sign-In remains unavailable on Android/web until server-side token

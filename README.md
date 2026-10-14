@@ -280,12 +280,14 @@ signature; published shop data and signed-in state are retained. Basic device
 smoke passes. Production remains outside this delivery stage. See
 [`2026-10-13-security-main-delivery.md`](docs/superpowers/plans/2026-10-13-security-main-delivery.md).
 
-## Shared owner operation drain (2026-10-14, local follow-up)
+## Shared owner operation drain (2026-10-14, delivered to Staging)
 
-The follow-up continues from local `1b5a403` on
-`codex/staging-regression-and-test-types`; verified remote main remains
-`f07ee30`. PostgreSQL now records admitted owner-operation lifetimes and an
-exclusive account-cleanup claim. Deletion seals the owner, waits for admitted
+The follow-up started from typing commit `1b5a403` on
+`codex/staging-regression-and-test-types`, based on verified main `f07ee30`.
+Source `7576ee3` is now pushed on main and Live on Staging through
+`dep-db7gsd3bc2fs73f64600` at 12:09:57 Asia/Bangkok. PostgreSQL records admitted
+owner-operation lifetimes and an exclusive account-cleanup claim. Deletion seals
+the owner, waits for admitted
 work in upgraded processes, and re-reads provider cleanup scope before cleanup.
 HTTP handler/finally work, managed uploads, queue admission and worker execution
 participate. Unknown outcomes, process crashes and unconfirmed releases keep
@@ -293,32 +295,41 @@ private blockers; no timer expires them. Actual local PostgreSQL 18.1 with all
 18 migrations and two independent Node processes passes 10/10 checks using a
 loopback synthetic provider. The full API suite passes 1,909/1,909 in 119 files;
 typecheck, production build, Prisma schema/helper validation and independent
-review pass locally. Hosted CI and external-service acceptance remain unverified.
+review pass locally. Exact-source [feature CI `38514367627`](https://github.com/NOI56/PostDeeMobile/actions/runs/38514367627)
+passes 1,909 API and 2,189 Mobile tests, typecheck, build, analyze and Prisma
+checks. Exact-source [main CI `38514981824`](https://github.com/NOI56/PostDeeMobile/actions/runs/38514981824)
+also passes; real Redis/provider/Firebase deletion acceptance remains unverified.
 HTTP/worker lifetimes run concurrently; explicit queue/store FIFO remains intact.
 
-Migration `20261014020000_track_owner_operations` is additive and local only.
-Before later activation, apply it, regenerate Prisma, upgrade every API/worker
-process, and quiesce/drain older binaries. This follow-up has not entered main,
-been pushed/deployed, changed hosted flags, or created a disposable account.
+Additive migration `20261014020000_track_owner_operations` is applied on
+`postdee_staging` with all 18 migrations complete before the upgraded API
+started. Authenticated account and synthetic R2 part/recovery/abort checks pass;
+the retained Staging app/session/shop draft remain intact. Before activation in
+another environment, apply the migration and upgrade/quiesce/drain every
+API/worker process. Hosted flags remain unchanged and no disposable account was
+created; Production stays user-suspended and receives no deployment.
 Keep `FIREBASE_AUTH_DELETE_ENABLED=false`, `SOCIAL_PUBLISHER=disabled` and the
 existing single-instance Staging memory queue. Real Redis/provider/Firebase,
 OAuth and legacy signed-PUT acceptance remain gates. See
 [`2026-10-14-shared-owner-operation-drain.md`](docs/superpowers/plans/2026-10-14-shared-owner-operation-drain.md).
 
-## Staging regression and test typing (2026-10-14, local follow-up)
+## Staging regression and test typing (2026-10-14, delivered to Staging)
 
 Starting from verified main `f07ee30`, the local branch
 `codex/staging-regression-and-test-types` repairs all 142 existing test-inclusive
 TypeScript errors with typed fixtures. `npm run typecheck` now checks tests as
 well as runtime source, and CI runs it after Prisma generation. Targeted tests
 pass 474/474; the full API suite passes 1,871/1,871 in 116 files, with typecheck,
-production build and Prisma validation passing. Runtime, schema, dependencies
-and mobile source are unchanged; this follow-up has not been merged, pushed or
-deployed. The existing Staging app retains its session and original shop draft
-after restart and a temporary edit/restore. Two independent processes on a local
+production build and Prisma validation passing at the typing-only phase.
+That commit leaves runtime, schema, dependencies and mobile source unchanged;
+it is included in the later `7576ee3` main/Staging delivery above. The existing
+Staging app retains its session and original shop draft after restart and a
+temporary edit/restore. Two independent processes on a local
 PostgreSQL instance verify durable owner admission, while a simulated remote
-operation confirms the remaining cross-process drain gap. A disposable Staging
-deletion account does not exist yet; creation steps are prepared only. Keep
+operation demonstrated the cross-process drain gap addressed by the later
+shared-operation implementation. Real Redis/provider acceptance remains pending.
+A disposable Staging deletion account does not exist yet; creation steps are
+prepared only. Keep
 deletion and social publishing disabled. Native synthetic clip/manual-caption
 checks and authenticated Staging R2 part transfer/recovery/abort pass; upload
 completion and social delivery remain unverified. Evidence and enablement gates:
@@ -1901,8 +1912,8 @@ Required services for later milestones:
 See `FIREBASE_SETUP.md` for the Firebase Auth and Google Sign-In setup checklist.
 
 Production account deletion is temporarily disabled with
-`FIREBASE_AUTH_DELETE_ENABLED=false`; the new shared drain remains a local
-candidate pending rollout and real-provider acceptance. In a
+`FIREBASE_AUTH_DELETE_ENABLED=false`; the shared drain is delivered to Staging,
+while Production rollout and real-provider acceptance remain pending. In a
 controlled environment, enabling the path also requires
 `FIREBASE_SERVICE_ACCOUNT_JSON`. When enabled, `DELETE /account` disconnects
 the user's PostPeer integrations, removes
@@ -1925,9 +1936,10 @@ RevenueCat webhooks do
 not recreate users that no longer exist. PostPeer cleanup follows every page of
 the profile's integrations and fails before local deletion when provider cleanup
 is unavailable or any external disconnect fails. A durable marker protects the
-managed-upload owner prefix before queue/provider cleanup. In the local
-candidate, `ManagedOwnerOperation` records span admitted HTTP handler/finally
-work, managed uploads, queue admission and worker execution across upgraded
+managed-upload owner prefix before queue/provider cleanup. In the Prisma-backed
+implementation delivered to Staging, `ManagedOwnerOperation` records span
+admitted HTTP handler/finally work, managed uploads, queue admission and worker
+execution across upgraded
 Prisma-backed processes. Admission and sealing share the owner row lock;
 remote I/O runs outside SQL transactions. Deletion waits for these records and
 claims `ManagedOwnerDeletionRun` before cleanup. Crashes, ambiguous outcomes
@@ -2083,11 +2095,12 @@ repository's Production Blueprint currently selects
 pending. Treat this as an unresolved configuration risk, not proof that the
 deployed Production environment or a user connection is ready; this safety
 change does not alter the Production Blueprint.
-Owner/post mutation maps remain local optimizations. The 2026-10-14 local
-candidate adds PostgreSQL operation tickets and exclusive cleanup claims,
+Owner/post mutation maps remain local optimizations. The 2026-10-14 implementation
+delivered to Staging adds PostgreSQL operation tickets and exclusive cleanup claims,
 including worker provider/status/notification lifetime, and passes separate-
-process synthetic tests. It is not yet deployed or production-safe: apply the
-additive migration, upgrade and drain all older API/worker processes, then
+process synthetic tests. It is not production-safe: before activation in any
+other environment, apply the additive migration, upgrade and drain all older
+API/worker processes, then
 validate actual Redis/BullMQ, real provider/Firebase cleanup and legacy signed-
 PUT/OAuth effects. No ticket or cleanup claim may expire by elapsed time.
 The in-app Privacy Policy and Terms are still labelled working drafts. Final

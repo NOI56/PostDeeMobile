@@ -1,8 +1,14 @@
-# Shared owner operation drain — local implementation and verification
+# Shared owner operation drain — implementation, verification and Staging delivery
 
 Date: 2026-10-14 (Asia/Bangkok)
 
-## Scope and baseline
+Status: Source `7576ee3` is pushed on main and Live on Staging with migration 18.
+Feature and main CI pass; real deletion, social publishing and Production remain
+disabled. [The later delivery receipt](#main-and-staging-delivery-2026-10-14)
+records hosted evidence. The original sections below preserve the preceding
+local implementation phase and its baseline; their local-only scope is historical.
+
+## Local implementation scope and baseline
 
 The user requested continuation of the remaining cross-process deletion drain
 work. Continue from local `1b5a403` on
@@ -11,9 +17,10 @@ is `f07ee30`. The earlier local typing/native/R2-part receipt is preserved in
 [`2026-10-14-staging-regression-and-typecheck.md`](2026-10-14-staging-regression-and-typecheck.md).
 The original security audit and prior delivery receipts are unchanged.
 
-This task implements and tests locally. It does not merge main, push, deploy,
-apply a hosted migration, change hosted flags, create an account or perform real
-account deletion. The user previously authorized normal project test/build
+The local implementation phase did not merge main, push, deploy, apply a hosted
+migration, change hosted flags, create an account or perform real account
+deletion. The later separately authorized delivery is recorded below.
+The user previously authorized normal project test/build
 execution. Existing mobile source, credentials, dependencies and feature flags
 are retained.
 
@@ -130,7 +137,8 @@ notification and HTTP/finally work.
   Prisma seed/config helper typechecking and `git diff --check` pass.
 - Independent reviews found no blocker in admission/drain/claim, awaited and
   detached children, HTTP/finally/disconnect, concurrent lifetimes and worker
-  unknown-outcome retention. Hosted CI and the full mobile suite were not rerun;
+  unknown-outcome retention. At this local phase, hosted CI and the full mobile
+  suite were not rerun;
   mobile source is unchanged and no new APK was built or installed.
 - The initial parallel verification exhausted host memory. A bounded full pass
   then exposed whole-request serialization breaking the existing concurrent
@@ -186,10 +194,12 @@ with receipt SHA256
 
 Keep `FIREBASE_AUTH_DELETE_ENABLED=false`, `SOCIAL_PUBLISHER=disabled` and the
 existing single-instance Staging memory queue. No hosted migration or runtime
-activation has happened in this task.
+activation occurred during the local implementation phase. The later Staging
+delivery below applies migration 18 while leaving feature activation disabled.
 
-1. After a separately authorized delivery, apply the additive migration before
-   new code, regenerate Prisma, and upgrade **every** API and worker process.
+1. For any target environment, commit the additive migration before new code
+   handles authenticated work, generate Prisma, and upgrade **every** API and
+   worker process.
    Quiesce and drain older binaries before activation: they do not register their
    already-running work. Schema compatibility alone cannot cover such work.
 2. Exercise actual Redis/BullMQ with separate API/worker processes, delayed
@@ -229,5 +239,58 @@ is introduced. For a future explicitly authorized controlled recovery:
 งานนี้ทำให้ระบบรองานที่เริ่มไปแล้วข้าม process ได้ในชุดทดสอบภายในเครื่อง
 หากงานไม่ทราบผลหรือ process ปิด ระบบจะหยุดลบบัญชีไว้ก่อนและไม่ปลดล็อกตามเวลา
 ยังไม่เปิดลบบัญชีจริงหรือโพสต์จริง และยังไม่ได้สร้างบัญชีทดสอบใหม่
-หลังผลทดสอบครบ ขั้นส่งมอบต้องรวม migration กับ API/worker ทุกตัว แล้วจึงทดสอบ
-บริการจริงด้วยบัญชีว่างตามขั้นตอนที่เตรียมไว้ โดยขออนุญาตก่อนเปลี่ยนระบบหรือข้อมูลจริง
+ส่งมอบบน Staging พร้อม migration 18 แล้วตามบันทึกด้านล่าง ขั้นถัดไปยังต้องทดสอบ
+บริการจริงด้วยบัญชีว่างตามขั้นตอนที่เตรียมไว้
+ก่อนเปิดใช้ลบบัญชีหรือเปลี่ยนข้อมูลจริง
+
+## Main and Staging delivery (2026-10-14)
+
+The user authorized branch push and CI, then main/push and Staging migration/
+deployment. Source `7576ee3f98ed17a00664200c7a6b442e31f75059` includes typing
+commit `1b5a403` and the shared-operation implementation. It was fast-forwarded
+from verified `f07ee30` onto canonical main and pushed normally. Existing dirty
+generated/QA files remain excluded and their six original hashes are preserved.
+
+- [Feature CI `38514367627`](https://github.com/NOI56/PostDeeMobile/actions/runs/38514367627)
+  and [main CI `38514981824`](https://github.com/NOI56/PostDeeMobile/actions/runs/38514981824)
+  both pass on exact source `7576ee3`: 1,909 API tests in 119 files, 2,189 Mobile
+  tests, test-inclusive typecheck, API build, Flutter analyze and Prisma schema
+  checks. Catalog parity validates 100 templates and generator tests pass 22/22.
+  CI does not apply the hosted migration and the optional APK steps were skipped.
+  Production-filtered audit has four moderate findings and no high/critical.
+  Dependency and action deprecation warnings remain for later maintenance.
+- Staging service `srv-d9bb72ojs32c739osa5g`, exact-source deployment
+  `dep-db7gsd3bc2fs73f64600`, is Live at **12:09:57 Asia/Bangkok**.
+  Migration `20261014020000_track_owner_operations` completed at 12:09:04.753,
+  before the upgraded API listened at 12:09:52.389. Actual `postdee_staging`
+  has 18 applied migrations and both new tables. The post-smoke snapshot has
+  zero operation tickets/cleanup claims, three users unchanged and zero owners
+  with deletion authorization.
+- Actual Staging configuration retains `FIREBASE_AUTH_DELETE_ENABLED=false`,
+  `SOCIAL_PUBLISHER=disabled`, `PUBLISH_QUEUE=memory`, one API instance and
+  Firebase authentication. The generic Production Blueprint was not applied.
+  Health and authenticated account checks pass; deletion and publishing readiness
+  still fail closed as configured. No separate worker was created or activated.
+- The authenticated synthetic R2 fixture transfers one 30,199-byte part, returns
+  HTTP 200 with matching ETag, recovers `UPLOADING` and then reaches `ABORTED`.
+  Re-signing its aborted session returns 409 and the old signed PUT returns 404.
+  No upload completion, AI provider, social posting or real-account deletion ran.
+- Existing Staging package `com.postdee.postdee_mobile.staging`, versionCode 12019,
+  is retained without a new APK/install. Shop → Home → Account → Shop checks
+  preserve the same owner hash, whole-draft value hash and two shop links.
+  Credentials, signed URLs and user identity are excluded from tracked evidence.
+- Production remains user-suspended with no deployment or configuration change.
+  No disposable account was created; its prepared procedure remains unexecuted.
+
+Private local delivery evidence is retained in
+`D:/PostDeeMobile/.tmp/shared-owner-delivery/`, including
+`ci-feature-verification.json` and `render-live.png`. Feature verification receipt
+SHA256 is `BCE6D70B5E41A18E2A2D73AE576D69FF99E54950DCFFA50912E7DD80BA228638`.
+The earlier 10/10 local PostgreSQL receipt and original audit are preserved.
+
+This delivery installs the barrier on the existing disabled Staging path. It
+does not pass actual Redis/BullMQ, real Firebase/provider cleanup, upload
+completion/abort races, pending OAuth, legacy signed-PUT or physical-device/
+slow-network acceptance. Upgrade and drain every target API/worker process and
+complete those gates before activation; unresolved tickets/claims never expire
+by time or process death.

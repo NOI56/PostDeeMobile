@@ -1493,8 +1493,10 @@ Google Play required "Delete Account" flow in the profile screen.
 
 Production currently keeps `FIREBASE_AUTH_DELETE_ENABLED=false`; the endpoint
 therefore fails closed before cleanup. The behavior below documents the
-controlled/test path and local shared-drain candidate. Launch readiness still
-requires its migration/all-process rollout and real external-service acceptance.
+controlled/test path and shared-drain implementation delivered to Staging at
+`7576ee3`, with migration 18 applied. Production launch readiness still requires
+its own migration/all-process rollout and real external-service acceptance. See
+[the delivery receipt](docs/superpowers/plans/2026-10-14-shared-owner-operation-drain.md#main-and-staging-delivery-2026-10-14).
 
 Behavior:
 
@@ -1523,8 +1525,9 @@ Behavior:
   mode. Prisma supplies a durable marker whenever active; otherwise it is
   process-local. User ensure, Post create/quota/reschedule/publish-now and
   Subscription activation/RevenueCat event writes additionally lock an ACTIVE
-  owner in the same Serializable transaction as the final mutation. The local
-  candidate also admits HTTP handler/finally, managed-upload, queue and worker
+  owner in the same Serializable transaction as the final mutation. The
+  implementation delivered to Staging also admits HTTP handler/finally,
+  managed-upload, queue and worker
   lifetimes through `ManagedOwnerOperation`, locking that same owner row before
   recording admission. Remote I/O remains outside SQL transactions.
 - After sealing, waits for durable operation tickets to drain, then acquires an
@@ -3053,9 +3056,11 @@ The following work is still required before production launch:
   Mobile upload a new video/cover before an idempotent replay returns the old
   post. Persist/reuse completed remote keys or delete superseded objects, and
   verify the lifecycle rule against real R2 before launch.
-- Account deletion is not production-safe. The local candidate implements
+- Account deletion is not production-safe. The implementation delivered to
+  Staging implements
   durable operation tickets and an exclusive cleanup claim, with synthetic
-  separate-process verification. Deliver the additive migration and every API/
+  separate-process verification. For any other target environment, deliver the
+  additive migration and every API/
   worker upgrade, quiesce/drain older binaries, and verify actual Redis/BullMQ,
   provider/Firebase cleanup and delayed OAuth/legacy signed-PUT effects before
   activation. Unknown outcomes and crashed claims require verified private

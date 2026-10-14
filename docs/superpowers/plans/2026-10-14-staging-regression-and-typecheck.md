@@ -2,13 +2,18 @@
 
 Date: 2026-10-14 (Asia/Bangkok).
 
-Status: LOCAL FOLLOW-UP. Test typing, local database concurrency verification,
-native draft/clip guards and Staging R2 part transfer/recovery/abort pass.
-Upload completion and real-account deletion remain unverified. No main merge,
-push, deploy, new APK installation
-or hosted feature activation belongs to this follow-up.
+Status: DELIVERED TO STAGING. Typing commit `1b5a403` is included in source
+`7576ee3`, now pushed on main and Live on Staging with migration 18. Exact-source
+feature/main CI pass 1,909 API/2,189 Mobile tests plus typecheck/build/analyze/
+schema.
+Post-Live account/R2 part-recovery-abort and retained native session/shop checks
+pass. Upload completion and real-account deletion remain unverified; no new APK,
+feature activation or Production change occurred. The sections below preserve
+the earlier typing-only/local-phase evidence and 17-migration Staging baseline;
+they do not describe the latest cumulative runtime. Later delivery is recorded
+in [the shared-drain receipt](2026-10-14-shared-owner-operation-drain.md#main-and-staging-delivery-2026-10-14).
 
-## Baseline and scope
+## Typing-only phase baseline and scope
 
 - Verified remote main:
   `f07ee30229436a20642215d8f2d8aa3d364c2a5d`.
@@ -39,14 +44,15 @@ assertions or compiler settings.
   transaction overrides and call assertions remain intact. The parameterized
   Thai punctuation cases now receive their intended fragment arrays.
 - Add `npm run typecheck` (`tsc --noEmit -p tsconfig.json`) and run it in CI
-  immediately after Prisma client generation. The new CI step is local and
-  has not run on hosted CI yet.
+  immediately after Prisma client generation. At this earlier local phase, the
+  new CI step had not run on hosted CI; the later delivery receipt records its
+  success.
 - Targeted tests: 474/474 pass. Full API tests: 1,871/1,871 in 116 files pass.
 - `npm.cmd run typecheck`, `npm.cmd run build`,
   `npm.cmd run prisma:validate` and `git diff --check` pass.
 - Prisma seed/config helper TypeScript checking passes. Parsing the CI YAML
   and checking the Prisma generation/typecheck step order and package command
-  passes locally. No hosted CI run is claimed.
+  passes locally. These counts describe the earlier local phase, before hosted CI.
 - Independent review found no blocker, removed/weakened assertions, suppression
   directives, added `any` escape or relaxed strictness in the typing repair.
 - Verification logs: `D:/PostDeeMobile/.tmp/staging-followup/`, including
@@ -188,14 +194,15 @@ execution steps, after the user authorizes account creation:
 ## Gates before real deletion or multi-process enablement
 
 Keep `FIREBASE_AUTH_DELETE_ENABLED=false`, `SOCIAL_PUBLISHER=disabled` and the
-existing single-instance memory queue. No shared lease/drain implementation is
-included. The API/architecture contracts are unchanged and still describe the
-process-local limitation.
+existing single-instance memory queue. Typing-only commit `1b5a403` included no
+shared lease/drain implementation. The later `7576ee3` implementation and
+Staging delivery address admitted callback lifetimes; the real-service acceptance
+gates below remain, and the earlier seven-check gap receipt is preserved.
 
-1. Design and implement shared operation lifetime coordination for remote work
+1. The later shared-operation implementation and synthetic checks cover remote work
    admitted before deletion, including workers, late queue admission and crash
    recovery. Rejecting new work through an owner marker alone does not drain
-   a provider call already running elsewhere. Cover remaining mutation stores
+   a provider call already running elsewhere. Verify remaining mutation stores
    and managed-upload admission at the same required boundary.
 2. Test actual Redis/BullMQ with separate API/worker processes, delayed provider
    responses, process crashes and cleanup retry. Establish that work cannot add

@@ -1019,13 +1019,15 @@ Account deletion is an idempotent cleanup saga, but is not yet production-safe.
 Its durable owner marker applies in legacy upload mode too. Explicit final User
 ensure, Post create/quota/reschedule/publish-now and Subscription
 activation/RevenueCat event writes lock ACTIVE in the same Serializable
-transaction as their final write. The local 2026-10-14 candidate records admitted
+transaction as their final write. The 2026-10-14 implementation delivered to
+Staging records admitted
 HTTP handler/finally work, managed uploads, queue admission and whole worker
 execution in `ManagedOwnerOperation`. Admission/sealing share the owner row
 lock; remote I/O runs outside SQL transactions. Deletion seals before shared
 drain, claims `ManagedOwnerDeletionRun` exclusively and re-reads provider scope
 before cleanup. Memory-only coordination remains process-local. Production
-stays off pending migration/all-process rollout and real Redis/provider/Firebase,
+stays off pending its own migration/all-process rollout and real
+Redis/provider/Firebase,
 legacy upload/OAuth and device/slow-network acceptance.
 Queued jobs are then removed and PostPeer
 integration pages are listed so every external integration id can be
@@ -1070,18 +1072,24 @@ requires verified operator recovery, not inferred or automatic authorization.
 This closes the authorization gap observed with an SDK fixture; it does not
 prove that Firebase accepts the same condition in a live environment or close
 the separate multi-process mutation-drain/provider-call boundary; the later
-local shared-drain candidate below addresses admitted callback lifetimes. Mobile
+shared-drain implementation below addresses admitted callback lifetimes. Mobile
 response fields, dependencies and feature flags remain unchanged.
 
-### Shared operation lifetimes (2026-10-14, local candidate)
+### Shared operation lifetimes (2026-10-14, delivered to Staging)
 
 `ManagedOwnerOperation` contains a private random ID, owner FK and start time;
 `ManagedOwnerDeletionRun` contains one owner-keyed random run ID and start time.
 Both reference the durable owner marker rather than `User`, use restrictive
 deletion FKs and receive no backfill. Migration
-`20261014020000_track_owner_operations` must precede Prisma regeneration and
-deployment of every API/worker process. Quiesce and drain older binaries before
-activation: an old process does not register its already-running work.
+`20261014020000_track_owner_operations` must commit before new API/worker code
+handles authenticated work; build-time Prisma generation may precede migration.
+Source `7576ee3` is pushed on main and Live on Staging, where all 18 migrations
+are complete. Exact-source feature/main CI pass and post-Live account/R2/native
+checks retain the existing session/shop draft. This does not activate deletion,
+publishing or Production. See [the delivery receipt](docs/superpowers/plans/2026-10-14-shared-owner-operation-drain.md#main-and-staging-delivery-2026-10-14).
+For later target environments, upgrade every API/worker process. Quiesce and
+drain older binaries before activation: an old process does not register its
+already-running work.
 
 The final registered HTTP handler promise, including its `finally` work,
 defines the shared lifetime, not response `end`, `finish` or client `close`.
@@ -2026,7 +2034,8 @@ Firebase path:
   durable post before enqueue and repairs it on a same-key replay. Reschedule and
   publish-now use persisted compare-and-set transitions plus conditional rollback
   when queue replacement fails.
-- Owner/post maps remain process-local optimizations; the local candidate adds
+- Owner/post maps remain process-local optimizations; the implementation
+  delivered to Staging adds
   PostgreSQL admission tickets and an exclusive cleanup claim spanning upgraded
   API/worker lifetimes. Before treating deletion as production-safe or enabling
   multi-instance/separate-worker publishing, complete migration/all-process
@@ -2090,7 +2099,8 @@ cd apps/mobile
   `scheduledAt` are skipped after reschedules, and optional R2/S3 cleanup
   failures are reported in the worker result without changing a successful post
   to `FAILED`.
-- The local candidate additionally holds a durable operation ticket throughout
+- The implementation delivered to Staging additionally holds a durable operation
+  ticket throughout
   worker execution and retains unknown outcomes for reconciliation. Production
   deletion and multi-instance/separate-worker publishing remain blocked on
   migration/all-process rollout and actual Redis/provider/Firebase and legacy

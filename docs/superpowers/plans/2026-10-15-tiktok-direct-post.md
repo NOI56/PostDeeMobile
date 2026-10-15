@@ -102,9 +102,40 @@ does not prove the provider client's audit/publication approval.
   variant has explicit consent and Save enabled. PNGs under
   `D:/Temp/postdee-direct-post-preview-20261015/` are visually checked. This is
   widget rendering with example identity, not a live account publication.
-- Staging API/Firebase/mock-auth configuration matches the prior environment;
-  validated APK construction and package/signature evidence remain pending.
-- Existing Staging runtime/APK remain the prior release. No new push, deploy,
+- Source and tests are committed locally as
+  `2f86d0633174080ad2ca74e4e3c97e38214c1fc3` on `codex/tiktok-direct-post`.
+  Before the commit, a fresh fetch still showed baseline `origin/main` at
+  `41e38e9` with no divergence. The task-only 50-file staged diff contains no
+  unexpected deletion, dependency/schema/env/manifest change or generated
+  Windows file. The remaining changes below are documentation evidence only.
+- Exact Staging x86_64 debug APK builds from that source in 26.9s through the
+  validated `tool/postdee-staging.ps1` helper, with `--no-pub`, `--split-per-abi`,
+  `--target-platform=android-x64`, and base build number 8022. Package
+  `com.postdee.postdee_mobile.staging`, versionCode **12022**, versionName
+  `0.1.0-staging`, min SDK 24/target SDK 36; 127,762,902 bytes. Artifact:
+  `C:/Users/stopp/.codex/worktrees/tiktok-native-session-results/PostDeeMobile/apps/mobile/build/app/outputs/flutter-apk/app-x86_64-debug.apk`.
+  SHA-256 `BB0A91F600CFFFA5F4E4FDCEA8F0B20D8781FAEB5A8C303EA353D1BD5385A173`.
+  Build log: `D:/Temp/tiktok-direct-staging-apk-12022-20261015.log`.
+- APK signer matches the previous installed Staging build:
+  `014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+  All 14 permissions remain unchanged. The compiled kernel/resources contain the
+  expected Staging API origin, new Direct revision wiring, matching Firebase
+  project/app/Web OAuth resources and the validated RevenueCat Test Store key.
+  No credential or resource values are printed. Firebase auth is enabled, local
+  mock auth disabled, and Staging build marker enabled.
+- Exact installed APK SHA matches on the existing account-free diagnostic AVD
+  `postdee_codec_probe_20261015` / emulator 5558. The first launch immediately
+  after AVD boot exceeded `am start -W`'s wait limit, although the process resumed
+  with surfaces and no fatal/unhandled/Flutter errors. After the AVD settled, a
+  fresh stopped-process cold launch returns `Status: ok`, COLD, 6445ms total /
+  6487ms wait. Final scoped readback confirms resumed activity, 8 matching surfaces,
+  zero fatal/unhandled/Flutter errors, and a running process. These observations
+  are startup checks, not performance measurements or Direct provider E2E.
+- No login, permission grant, purchase, clip upload or real publication was
+  performed in the diagnostic app. Its emulator is stopped gracefully after the
+  check. User emulator 5556 remains at **12021**, with no install, restart or UI
+  input from this task. No raw app logs or private account data are saved.
+- The Staging server and the user's installed APK remain the prior release. No new push, deploy,
   installation, migration, real Direct publication or old-data repair is claimed.
 
 ## Rollout and remaining proof

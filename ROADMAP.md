@@ -12,10 +12,13 @@ Build roadmap for PostDee.
 - Keep legacy incompatible upload receipts intact until the user explicitly
   starts a new attempt. Translate the known frame-rate rejection without
   exposing raw provider errors.
-- Implementation is local to `codex/publish-calendar-tiktok-fps`, based on fetched
-  main `3725744`. Full verification/native codec acceptance and delivery are
+- Source `0f2941b` is merged and pushed to main; exact-head CI `38725833299`
+  passes Backend and Mobile (1,914 API / 2,226 Flutter tests). Staging deployment
+  `dep-db8bdj2vcj2c738t2ke0` is Live with health/readiness HTTP200, 18 existing
+  migrations/no pending, and the empty-backlog activation guard retained. Full
+  verification/native codec acceptance, APK delivery, and remaining limits are
   recorded in `docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md`.
-  No social retry, source deployment, or Production change is implied by tests.
+  No social retry or Production change is included.
 
 ## Main integration (2026-10-13, completed)
 

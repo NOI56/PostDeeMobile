@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Calendar activity and TikTok preparation (2026-10-15, local changes)
+## Calendar activity and TikTok preparation (2026-10-15, Staging delivered)
 
 Calendar loads all owner-scoped post activity through `GET /posts`, including
 immediate and partial results. Its new nullable-schedule model preserves strict
@@ -14,7 +14,14 @@ remote submission. A persisted
 preparation-policy receipt guards upload reuse; incompatible old receipts use
 the existing explicit-new-attempt confirmation instead of silent reposting.
 Known provider frame-rate rejections show specific Thai guidance. No new
-dependency, subscription rule, or backend schema is introduced. Full tests,
+dependency, subscription rule, or backend schema is introduced. Source
+`0f2941b` is merged/pushed to main and CI `38725833299` passes Backend/Mobile,
+including 2,226 Flutter tests and analysis. The API is Live first on Staging
+deploy `dep-db8bdj2vcj2c738t2ke0` with health/readiness HTTP200. After the user
+approves discarding one old uncommitted installer to free space, the exact
+APK12020 replaces12019 on emulator5556 without clearing data. The existing
+account remains signed in; the Oct14 immediate partial post appears in Calendar
+under both All and Shorts. No real social retry is performed. Full tests,
 native codec results, exact Staging APK, and delivery status are recorded in
 `../../docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md`.
 

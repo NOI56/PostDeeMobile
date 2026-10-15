@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Calendar activity and TikTok media boundary (2026-10-15, local changes)
+## Calendar activity and TikTok media boundary (2026-10-15, Staging delivered)
 
 `CalendarPostResult` extends the existing general post summary with nullable
 schedules and optional owner metadata. Calendar fetches unfiltered owner-scoped
@@ -28,7 +28,12 @@ receipt is retained behind the existing explicit-new-attempt confirmation.
 Provider failure handling exposes one fixed TikTok frame-rate message through
 the existing error string, with no raw provider body or identifiers in public
 output/logs. Schema, subscriptions, destination modes, and deployment flags are
-unchanged. See `docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md`
+unchanged. Source `0f2941b` is merged/pushed to main. After Backend/Mobile CI
+`38725833299` passes, Staging deploy `dep-db8bdj2vcj2c738t2ke0` is Live. The
+single-instance postpeer/memory runtime retains its empty-backlog startup guard;
+18 migrations have none pending and health/readiness return HTTP200. No
+Production deployment or real social retry is part of this delivery.
+See `docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md`
 for exact verification, native limitations, and delivery state.
 
 ## Main integration boundary (2026-10-13, completed)

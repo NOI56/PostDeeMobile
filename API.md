@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Calendar activity and TikTok validation (2026-10-15, local changes)
+## Calendar activity and TikTok validation (2026-10-15, Staging delivered)
 
 Calendar uses the existing authenticated `GET /posts` without `scheduled=true`,
 `includeMedia`, or a preview limit. This returns the owner's complete post list,
@@ -21,6 +21,11 @@ historical generic errors are not relabelled. New Mobile builds localize the
 fixed message and prepare/validate TikTok media before calling upload routes.
 An older Mobile build can display the fixed English string safely. Prefer API
 delivery before the updated APK; Calendar's unfiltered route already exists.
+Source `0f2941b` is on main and Live on Staging deployment
+`dep-db8bdj2vcj2c738t2ke0`, after exact-head CI `38725833299` passes Backend and
+Mobile. Health/readiness return HTTP200; all 18 existing migrations are applied.
+The retained postpeer/memory configuration passes its empty-backlog startup
+guard. Historical posts are neither rewritten nor retried during delivery.
 See `docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md` for
 verification and delivery status; older dated scheduled-only UI notes below
 describe their original releases.

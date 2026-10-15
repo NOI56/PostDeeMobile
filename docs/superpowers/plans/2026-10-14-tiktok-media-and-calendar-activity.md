@@ -6,8 +6,8 @@
   `3725744b1967760ff6351eee1e49be598df95402` before implementation. The managed
   worktree uses branch `codex/publish-calendar-tiktok-fps`; existing dirty work in
   other checkouts is preserved.
-- Staging is already enabled for real PostPeer publishing by the user's separate
-  authorization. The live source is `3725744`, publisher `postpeer`, memory queue,
+- Staging was already enabled for real PostPeer publishing by the user's separate
+  authorization. The baseline live source was `3725744`, publisher `postpeer`, memory queue,
   one instance, and the empty-backlog activation guard is retained. This fix does
   not change those flags or Production.
 - A read-only lookup of the user's existing mixed-destination post confirmed
@@ -59,9 +59,11 @@
   preparation checks must use controlled local media without social posting or
   production data changes. Do not claim real delivery from unit tests or API
   readiness alone.
-- No merge, push, source deployment, account mutation, or actual social retry is
-  included in implementation-only authorization. Present a concrete tested
-  result before requesting any further delivery action that needs authorization.
+- The initial implementation-only authorization excluded merge/push/deployment
+  and actual social retries. After reviewing the completed result, the user
+  explicitly approved merge to main, push, Staging deploy, and reopening/updating
+  the existing emulator app. The delivery receipt below supersedes the original
+  implementation-only status; no actual social retry is authorized or performed.
 
 ## Changed areas
 
@@ -84,8 +86,8 @@
 
 ## Verification receipt
 
-Implementation and verification continued on 2026-10-15. Delivery is not yet
-approved or complete.
+Implementation and verification continued on 2026-10-15. The following local
+checks precede the separately authorized delivery receipt below.
 
 - API publisher/worker regressions: 63 tests passed. Typecheck, build, and Prisma
   schema validation passed. The initial unrestricted full run encountered three
@@ -175,10 +177,111 @@ approved or complete.
   Dynamite/GMS warnings were observed on this fresh emulator. No account login,
   purchase, signed-in UI flow, or actual post is exercised by this startup check.
   The user's emulator 5556, installed version 12019, and account data are untouched.
-- Physical
-  Android/iOS, arbitrary full-length clip integrity beyond the bounded prefix,
-  and actual TikTok delivery remain unverified. No source push or deployment is
-  claimed yet.
+- Physical Android/iOS, arbitrary full-length clip integrity beyond the bounded
+  prefix, and actual TikTok delivery remain unverified. The emulator 12019 and
+  no-delivery statements above describe the implementation-only phase.
+
+## Main and Staging delivery (2026-10-15)
+
+- The user's explicit continuation approves merge to main, push, Staging deploy,
+  and a data-preserving update/reopen of the existing emulator. Canonical main
+  fast-forwards from `3725744b1967760ff6351eee1e49be598df95402` to
+  `0f2941bdd5d00acc9fdff4680481cd7abd6117f5` and is pushed normally. Existing
+  generated Windows EOL-only changes and untracked QA artifacts are preserved;
+  no old dirty checkout content is copied into the release.
+- Exact-source CI [38725833299](https://github.com/NOI56/PostDeeMobile/actions/runs/38725833299)
+  passes Backend API and Flutter Mobile: 119 API files / 1,914 tests, 22 catalog
+  generator tests, API typecheck/build/Prisma validation/production audit,
+  2,226 Flutter tests, and analysis with no issues in 13.5s. CI uses Flutter
+  3.47.7; the exact local APK uses the separately recorded Flutter 3.44.1 SDK.
+  The CI APK build/upload steps are skipped; CI does not produce this APK.
+- Separate exact-source [unsigned iOS CI 38725833211](https://github.com/NOI56/PostDeeMobile/actions/runs/38725833211)
+  also succeeds, including build without code signing, IPA payload creation,
+  and artifact upload. Artifact `PostDee_iOS` (`11968158840`) is 44,414,745 bytes;
+  the artifact ZIP SHA-256 is
+  `2a0b3a4ee1c402bbfd5ba7e60ba7d7398aaa7a50d5533ef454ba9868eccee733`.
+  This is unsigned build evidence, not an iOS installation, runtime, native codec,
+  or provider-delivery test.
+- Two read-only pre-deploy aggregate checks return zero global `QUEUED` or
+  `PUBLISHING` posts. The unchanged status totals are FAILED 2,
+  PARTIAL_PUBLISHED 1, and PUBLISHED 5. All 18 existing migrations are finished.
+  These checks do not expose account IDs, media URLs, or credentials and do not
+  alter records or queue state.
+- Staging service `srv-d9bb72ojs32c739osa5g` in the already authorized My
+  Workspace is deployed once with cache retained. Deployment
+  `dep-db8bdj2vcj2c738t2ke0` is Live at **2026-10-15 18:21:38.798 GMT+7** from
+  exact source `0f2941bdd5d00acc9fdff4680481cd7abd6117f5` (duration 1m58s).
+  The new instance reports 18 migrations/no pending; the enabled postpeer
+  publisher's enforced empty-backlog startup guard passes before scheduler and
+  port 10000 start. Public `/health` and `/ready` return HTTP200 with database
+  and queue ready. The memory queue, single instance, and disabled auto-deploy
+  are retained. No configuration, network access, migration, or Production
+  change is made. Dashboard proof:
+  `D:/PostDeeMobile/.tmp/tiktok-fps-native-probe-20261015/delivery/render-staging-live.png`.
+- The post-Live observation window from 11:21:38 to 11:24:59 UTC (over three
+  minutes) returns zero ERROR logs and zero HTTP 500/502/503/504 logs, with no
+  remaining pages in either filtered log result. `/ready` still returns HTTP200
+  with database/queue ready. This is a bounded observation, not a future-uptime
+  guarantee or proof of successful social delivery.
+- Existing-user-emulator update preflight confirms the new exact APK 12020 and
+  installed 12019 have the same trusted debug signer, unchanged 14 permissions,
+  and identical compiled Firebase project/app/OAuth-client resources. Neither
+  credentials nor account preferences are read. The user emulator is
+  `PostDee_Pixel` on 5556; its installed package UID 10190 and first-install time
+  `2026-10-05 06:30:36` are recorded before installation.
+- The authorized normal and streamed replacement attempts both fail for
+  insufficient internal storage before replacement. Installed 12019, UID 10190,
+  and first-install time remain unchanged; no new app launch, uninstall, data
+  clearing, or social request is performed. Available `/data` space is about
+  366 MiB against a low-space reserve of about 297 MiB; the new APK alone is
+  127,730,038 bytes and additionally needs native-library space. Repeating the
+  same install flags cannot supply the missing space.
+- This attempt's failed temporary installer session is destroyed and its stage
+  directory is gone. A different uncommitted shell installer session
+  `1876139809`, created at 10:31:18.981 UTC with size 159,869,495 bytes, predates this
+  update. Its code identity cannot be verified: filesystem access is denied and
+  bounded public-API read attempts are killed without returning APK bytes.
+  The diagnostic confirms only `base.apk`/`lib` names, not a trusted app identity.
+  The unknown session is initially preserved; only this attempt's verified tiny
+  diagnostic DEX is removed. No app cache, user media, account data, storage
+  threshold, or emulator disk configuration is changed.
+- After receiving the disclosure that the old installer's app identity is
+  unknown and discarding it requires restarting that installation later, the
+  user explicitly approves cancelling that uncommitted installer and continuing
+  the PostDee update. The exact session metadata is checked again before
+  `install-abandon` succeeds. No installed application or user data is deleted.
+  An initial post-abandon retry still fails because asynchronous installer cleanup
+  has not completed; the earlier size estimate understates peak headroom.
+  A subsequent read-only check confirms both failed sessions are destroyed and
+  free space has risen to 692,125,696 bytes, above the conservative estimated
+  APK + installed size + reserve peak of about 632.6 MB. One retry after this
+  actual capacity change succeeds. The whole sequence is retained in
+  `D:/PostDeeMobile/.tmp/tiktok-fps-native-probe-20261015/user-emulator-update-20261015/UPDATE_SUCCESS_RECEIPT.md`.
+- The exact installed APK SHA-256 remains
+  `84468A674619A4FEAF95C36275177ECDE8CFBD344692B4AC00FA814F47F801E9`;
+  version 12020 replaces 12019 with UID 10190 and first-install time
+  `2026-10-05 06:30:36` preserved. Thus installed signer/configuration match the
+  verified APK. The authorized launch returns Status ok, MainActivity resumed,
+  with TotalTime 5438 ms. The app process remains alive; PID-scoped fatal,
+  unhandled-exception, and Flutter-error counts are zero. These are technical
+  startup checks, not a performance benchmark.
+- SKY visual verification confirms the original signed-in avatar and latest
+  post remain. Initial Home subscription/channel reads briefly show retry
+  states; subscription refresh and returning to Home recover the original Free
+  0/3, connected TikTok/Shorts 2/4, latest partial post, and published shop link
+  without account reconnection or sign-in. Home proof:
+  `D:/PostDeeMobile/.tmp/tiktok-fps-native-probe-20261015/delivery/home-retained-account.png`.
+  On Calendar, selecting Oct14 shows the existing 16:40 immediate
+  post with its truthful partial-published status. Selecting Shorts retains that
+  post with the filter visibly active; this reproduces and resolves the user's
+  original empty-calendar case. No new post, draft save, purchase, or account
+  reconnection is performed. Screenshot:
+  `D:/PostDeeMobile/.tmp/tiktok-fps-native-probe-20261015/delivery/calendar-oct14-shorts.png`.
+- Actual TikTok provider delivery, physical-device/native iOS behavior, and
+  arbitrary full-length media integrity beyond the bounded decoded prefix remain
+  unverified. The already published YouTube destination and old generic TikTok
+  failure are not rewritten or resubmitted. Delivery documentation does not
+  change the verified API/mobile runtime and requires no second deployment.
 
 Primary references:
 

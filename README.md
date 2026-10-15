@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## TikTok media and Calendar activity (2026-10-15, local changes)
+## TikTok media and Calendar activity (2026-10-15, Staging delivered)
 
 Calendar now reads all owner-scoped posts through the existing `GET /posts`, so
 immediate and partially published activity appears alongside scheduled posts.
@@ -17,8 +17,14 @@ media on-device, including a bounded decoded-frame check before upload;
 historical upload receipts without the preparation
 policy require explicit recovery rather than an automatic repost. Known TikTok
 frame-rate rejections have fixed Thai guidance; unknown provider details remain
-private. No schema or package-rule change is required. Verification and delivery
-limits: `docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md`.
+private. No schema or package-rule change is required. Source `0f2941b` is merged
+and pushed to main; exact-head CI `38725833299` passes Backend and Mobile (1,914
+API / 2,226 Flutter tests). Staging deploy `dep-db8bdj2vcj2c738t2ke0` is Live with
+health/readiness HTTP200 and the empty-backlog guard retained. Exact APK12020
+is installed on the existing emulator with its account retained; the Oct14
+immediate partial post now appears in Calendar, including the Shorts filter. Verification,
+APK delivery, and limits:
+`docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md`.
 
 ## Main integration (2026-10-13, completed)
 

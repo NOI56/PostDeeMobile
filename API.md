@@ -2,6 +2,24 @@
 
 PostDee backend API reference.
 
+## TikTok Inbox CREATE confirmation (2026-10-15, locally verified)
+
+No client request/response shape changes. PostPeer's documented CREATE
+example lacks the selected-platform status and Inbox ID available from canonical
+GET. A later local failure reproduces with that injected shape; its original raw
+CREATE response is unavailable, so the incident explanation remains an inference.
+The adapter follow-up uses only a genuine CREATE PostPeer ID for bounded GET
+confirmation of requested INBOX_DRAFT when the successful selected summary lacks
+status/ID. DRAFT still requires the strict selected
+TikTok receipt; parent/URL success alone, another platform's result or a mismatched
+GET post ID cannot confirm it. No POST retry, quota/mode/schema change or automatic
+historical repair is introduced. After 21 regression-first failures, all 102
+publisher tests and all 1,981 API tests pass, with typecheck/build, Prisma checks,
+two compiled smokes and no blocking review finding. Commit/delivery and correction
+of the later record are pending; the earlier completed
+repair stays separate. Plan:
+`docs/superpowers/plans/2026-10-15-tiktok-inbox-create-confirmation.md`.
+
 ## TikTok Inbox completion mapping (2026-10-15, Staging delivered)
 
 No request/response shape changes. For requested TikTok INBOX_DRAFT, a completed

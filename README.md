@@ -7,6 +7,23 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## TikTok Inbox CREATE confirmation (2026-10-15, locally verified)
+
+A later TikTok-only post is FAILED locally although its canonical PostPeer GET
+confirms a completed Inbox handoff. The documented CREATE response example omits
+the selected-platform status and Inbox ID required by the mapper. An injected
+example reproduces rejection before GET; the real historical CREATE payload was
+not captured, so this is a reproduced contract gap and an inferred incident
+explanation. The correction uses the genuine CREATE post ID for a bounded
+read-only GET when the successful selected summary lacks status and ID, retaining
+strict Inbox proof without another POST. Regression-first tests reproduce 21
+failures; all 102 publisher and 1,981 full API tests pass, together with
+typecheck/build, Prisma checks and two compiled confirmation/unknown smokes.
+Independent review finds no blocker. Commit/deployment and repair of this later
+record remain pending. The
+completed 12:43 record repair below remains a separate receipt. Plan:
+`docs/superpowers/plans/2026-10-15-tiktok-inbox-create-confirmation.md`.
+
 ## TikTok Inbox delivery status (2026-10-15, Staging delivered)
 
 A completed PostPeer TikTok Inbox job can return `published` with an Inbox

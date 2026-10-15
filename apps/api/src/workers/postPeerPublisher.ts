@@ -73,6 +73,7 @@ const publishingPostStatuses = new Set(['pending', 'publishing']);
 const failedPostStatuses = new Set(['failed']);
 const draftPostStatus = 'draft';
 const tikTokInboxReceiptPattern = /^v_inbox_(?:url|file)~v2\.[0-9]+$/;
+const tikTokPublishReceiptPrefix = /^v_(?:inbox|pub)_(?:url|file)~/;
 // Video uploads can take well beyond the create endpoint's own wait window.
 // Poll for up to roughly two minutes before declaring the outcome unknown.
 const defaultMaxPollAttempts = 60;
@@ -229,10 +230,17 @@ const evaluatePostPeerPayload = (
   const postStatus = readNormalizedStatus(payload.status);
   const platformStatus = readNormalizedStatus(platformResult?.status);
   const platformPostId = readNonEmptyString(platformResult?.platformPostId);
-  const providerPostId =
+  const returnedProviderPostId =
     readNonEmptyString(payload.postId) ??
-    readNonEmptyString(payload.id) ??
-    knownProviderPostId;
+    readNonEmptyString(payload.id);
+  const providerPostId = knownProviderPostId ?? returnedProviderPostId;
+  if (
+    knownProviderPostId && returnedProviderPostId &&
+    returnedProviderPostId !== knownProviderPostId
+  ) {
+    // A status response for another record cannot confirm this CREATE request.
+    return { outcome: 'publishing', postId: knownProviderPostId };
+  }
   const hasTikTokInboxReceipt =
     platform === 'TIKTOK' &&
     platformPostId !== undefined &&
@@ -285,6 +293,19 @@ const evaluatePostPeerPayload = (
       // delivery is still a draft that the user must finish inside TikTok.
       // Its messages URL is not a public video reference.
       return { outcome: 'published', providerPostId };
+    }
+    if (
+      platform === 'TIKTOK' &&
+      postStatus === 'published' &&
+      platformResult?.success === true &&
+      platformStatus === undefined &&
+      platformPostId === undefined &&
+      providerPostId &&
+      !tikTokPublishReceiptPrefix.test(providerPostId)
+    ) {
+      // CREATE's documented success summary omits platform status and Inbox
+      // receipt. Read GET /posts/:id for canonical proof before confirming DRAFT.
+      return { outcome: 'publishing', postId: providerPostId };
     }
     const facebookPageDraftConfirmedAsPublished =
       platform === 'FACEBOOK_REELS' && hasExplicitPublishedSuccessStatus;
@@ -545,8 +566,8 @@ export const createPostPeerPublisher = ({
       });
     } catch {
       // A network failure does not prove that PostPeer rejected the request.
-      // Retrying the POST could create a duplicate because their API does not
-      // document an idempotency key.
+      // This adapter does not supply a stable provider idempotency key, so
+      // retrying the POST could create a duplicate.
       throw new PostPeerPublishOutcomeUnknownError(
         `PostPeer publish to ${platform} outcome is unknown after the create request failed`
       );

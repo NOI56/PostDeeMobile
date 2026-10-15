@@ -2,6 +2,24 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## TikTok Inbox CREATE/GET boundary (2026-10-15, locally verified)
+
+CREATE may provide a published parent and successful platform summary without
+the selected status/Inbox ID documented in canonical GET. The injected documented
+shape exposes a mapper gap; absence of the real historical CREATE payload means
+that the later incident's exact response shape is not proven. The narrow
+follow-up treats a published requested INBOX_DRAFT summary with selected success
+but missing selected status/ID as needing bounded
+read-only confirmation using the genuine CREATE provider ID, never as DRAFT proof
+or permission to resend. Canonical selected-platform receipt validation and ID
+binding remain mandatory. Failure/pending, target, owner and duplicate-post guards
+remain; no phone-gate UX, native preparation, schema, flags or quota change is
+made. Regression-first tests reproduce 21 failures; all 102 publisher and 1,981
+API tests, typecheck/build, Prisma checks and two compiled smokes pass. Independent
+review finds no blocker. Commit/deployment and repair of the later record remain
+pending. Preserve the earlier completed repair receipt. Plan:
+`docs/superpowers/plans/2026-10-15-tiktok-inbox-create-confirmation.md`.
+
 ## TikTok Inbox receipt boundary (2026-10-15, Staging delivered)
 
 PostPeer's completed Inbox jobs can report `published` while TikTok returns an

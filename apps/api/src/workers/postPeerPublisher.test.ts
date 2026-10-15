@@ -1170,6 +1170,257 @@ describe('createPostPeerPublisher', () => {
       await expect(publisher.publish(inboxInput)).rejects.toBeInstanceOf(PostPeerPublishOutcomeUnknownError);
       expect(calls.map(({ method }) => method)).toEqual(['POST']);
     });
+
+    describe('documented CREATE summaries', () => {
+      const createSummary = () => ({
+        success: true,
+        status: 'published',
+        postId: providerPostId,
+        platforms: [{ platform: 'tiktok', success: true, platformPostUrl: inboxMessagesUrl }]
+      });
+      const canonicalInbox = () => ({
+        success: true,
+        post: publishedPayload(urlReceiptId)
+      });
+      type StatusResponse = {
+        ok: boolean;
+        status?: number;
+        json: () => Promise<unknown>;
+      };
+      const publisherForSummary = (
+        summary: unknown = createSummary(),
+        readStatus: () => Promise<StatusResponse> = async () => ({
+          ok: true, json: async () => canonicalInbox()
+        })
+      ) => {
+        const calls: { url: string; method: string }[] = [];
+        const publisher = createPostPeerPublisher({
+          apiKey: 'pp-key',
+          baseUrl: 'https://api.postpeer.test',
+          accountIds: { TIKTOK: 'postpeer-tiktok' },
+          now: () => '2026-10-15T12:00:00.000Z',
+          pollIntervalMs: 0,
+          maxPollAttempts: 2,
+          fetchImpl: async (url, init) => {
+            calls.push({ url, method: init.method ?? '' });
+            return init.method === 'POST'
+              ? { ok: true, json: async () => summary }
+              : readStatus();
+          }
+        });
+        return { publisher, calls };
+      };
+
+      it('confirms the documented CREATE summary through GET on its existing provider id', async () => {
+        const { publisher, calls } = publisherForSummary();
+
+        const result = await publisher.publish(inboxInput);
+
+        expect(result).toEqual({
+          platform: 'TIKTOK', status: 'PUBLISHED', deliveryOutcome: 'DRAFT',
+          providerPostId, publishedAt: '2026-10-15T12:00:00.000Z'
+        });
+        expect(result.externalPostId).toBeUndefined();
+        expect(calls).toEqual([
+          { method: 'POST', url: 'https://api.postpeer.test/v1/posts' },
+          { method: 'GET', url: `https://api.postpeer.test/v1/posts/${providerPostId}` }
+        ]);
+      });
+
+      for (const [label, summary] of [
+        ['a wrapped post', { success: true, post: createSummary() }],
+        ['the id alias', { ...createSummary(), postId: undefined, id: providerPostId }],
+        ['no messages URL', {
+          ...createSummary(), platforms: [{ platform: 'tiktok', success: true }]
+        }]
+      ] as const) {
+        it(`uses canonical GET proof after CREATE returns ${label}`, async () => {
+          const { publisher, calls } = publisherForSummary(summary, async () => ({
+            ok: true,
+            json: async () => ({ success: true, post: {
+              ...publishedPayload(fileReceiptId), postId: undefined
+            } })
+          }));
+
+          const result = await publisher.publish(inboxInput);
+
+          expect(result).toMatchObject({
+            status: 'PUBLISHED', deliveryOutcome: 'DRAFT', providerPostId
+          });
+          expect(result.externalPostId).toBeUndefined();
+          expect(calls.map(({ method }) => method)).toEqual(['POST', 'GET']);
+          expect(calls[1].url).toBe(`https://api.postpeer.test/v1/posts/${providerPostId}`);
+        });
+      }
+
+      it('waits for a canonical pending response to finish without repeating CREATE', async () => {
+        let statusChecks = 0;
+        const { publisher, calls } = publisherForSummary(createSummary(), async () => ({
+          ok: true,
+          json: async () => ++statusChecks === 1
+            ? { success: true, post: { status: 'pending', postId: providerPostId } }
+            : canonicalInbox()
+        }));
+
+        await expect(publisher.publish(inboxInput)).resolves.toMatchObject({
+          status: 'PUBLISHED', deliveryOutcome: 'DRAFT', providerPostId
+        });
+        expect(calls.map(({ method }) => method)).toEqual(['POST', 'GET', 'GET']);
+        expect(calls.slice(1).map(({ url }) => url)).toEqual([
+          `https://api.postpeer.test/v1/posts/${providerPostId}`,
+          `https://api.postpeer.test/v1/posts/${providerPostId}`
+        ]);
+      });
+
+      for (const [label, readStatus] of [
+        ['another incomplete summary', async () => ({ ok: true, json: async () => createSummary() })],
+        ['a pending post', async () => ({
+          ok: true, json: async () => ({ status: 'pending', postId: providerPostId })
+        })],
+        ['a network failure', async () => { throw new Error('status connection reset'); }],
+        ['an HTTP failure', async () => ({ ok: false, status: 503, json: async () => ({}) })],
+        ['invalid JSON', async () => ({
+          ok: true, json: async () => { throw new Error('invalid JSON'); }
+        })],
+        ['a different provider postId', async () => ({
+          ok: true, json: async () => ({
+            success: true, post: { ...publishedPayload(urlReceiptId), postId: 'another-provider-post' }
+          })
+        })],
+        ['a different provider id alias', async () => ({
+          ok: true, json: async () => ({
+            ...publishedPayload(urlReceiptId), postId: undefined, id: 'another-provider-post'
+          })
+        })]
+      ] as const) {
+        it(`keeps ${label} bounded and unknown after CREATE`, async () => {
+          const { publisher, calls } = publisherForSummary(createSummary(), readStatus);
+
+          await expect(publisher.publish(inboxInput)).rejects.toBeInstanceOf(PostPeerPublishOutcomeUnknownError);
+          expect(calls.map(({ method }) => method)).toEqual(['POST', 'GET', 'GET']);
+          expect(calls.slice(1).every(({ url }) =>
+            url === `https://api.postpeer.test/v1/posts/${providerPostId}`
+          )).toBe(true);
+        });
+      }
+
+      for (const [label, canonical] of [
+        ['parent failure', { ...canonicalInbox(), success: false }],
+        ['selected failure', { success: true, post: {
+          ...publishedPayload(urlReceiptId), platforms: [{
+            platform: 'tiktok', success: false, status: 'failed', platformPostId: urlReceiptId
+          }]
+        } }],
+        ['messages URL alone', { success: true, post: publishedPayload(undefined) }],
+        ['a normal video id', { success: true, post: publishedPayload('tiktok-video-123') }],
+        ['a Direct Post receipt', { success: true, post: publishedPayload('v_pub_url~v2.12345') }],
+        ['a malformed Inbox receipt', { success: true, post: publishedPayload('v_inbox_url~v2.bad') }],
+        ['a receipt without selected status', { success: true, post: {
+          ...publishedPayload(urlReceiptId), platforms: [{
+            platform: 'tiktok', success: true, platformPostId: urlReceiptId
+          }]
+        } }]
+      ] as const) {
+        it(`does not confirm ${label} returned by canonical GET`, async () => {
+          const { publisher, calls } = publisherForSummary(createSummary(), async () => ({
+            ok: true, json: async () => canonical
+          }));
+
+          await expect(publisher.publish(inboxInput)).rejects.toThrow(/PostPeer publish to TIKTOK failed/i);
+          expect(calls.map(({ method }) => method)).toEqual(['POST', 'GET']);
+        });
+      }
+
+      for (const [label, summary] of [
+        ['no provider id', { ...createSummary(), postId: undefined }],
+        ['an Inbox receipt as provider id', { ...createSummary(), postId: urlReceiptId }],
+        ['a Direct Post receipt as provider id', { ...createSummary(), postId: 'v_pub_file~v2.12345' }],
+        ['only parent success', { ...createSummary(), platforms: [] }],
+        ['another platform success', {
+          ...createSummary(), platforms: [{ platform: 'youtube', success: true }]
+        }],
+        ['missing selected success', {
+          ...createSummary(), platforms: [{ platform: 'tiktok', platformPostUrl: inboxMessagesUrl }]
+        }],
+        ['selected false', {
+          ...createSummary(), platforms: [{ platform: 'tiktok', success: false }]
+        }],
+        ['parent false', { ...createSummary(), success: false }],
+        ['parent failed', { ...createSummary(), status: 'failed' }],
+        ['parent partial', { ...createSummary(), status: 'partial' }],
+        ['selected failed', {
+          ...createSummary(), platforms: [{ platform: 'tiktok', success: true, status: 'failed' }]
+        }],
+        ['an unrecognized selected status', {
+          ...createSummary(), platforms: [{ platform: 'tiktok', success: true, status: 'complete' }]
+        }]
+      ] as const) {
+        it(`does not start confirmation polling for CREATE with ${label}`, async () => {
+          const { publisher, calls } = publisherForSummary(summary);
+
+          await expect(publisher.publish(inboxInput)).rejects.toThrow(/PostPeer publish to TIKTOK failed/i);
+          expect(calls.map(({ method }) => method)).toEqual(['POST']);
+        });
+      }
+
+      it('does not use Inbox confirmation polling to promote a Direct Post request', async () => {
+        const { publisher, calls } = publisherForSummary({
+          ...createSummary(), platforms: [{
+            platform: 'tiktok', success: true, platformPostId: urlReceiptId,
+            platformPostUrl: inboxMessagesUrl
+          }]
+        });
+
+        await expect(publisher.publish({
+          ...inboxInput,
+          platformSettings: { TIKTOK: { publishMode: 'DIRECT_POST', privacyLevel: 'SELF_ONLY' } }
+        })).rejects.toThrow(/PostPeer publish to TIKTOK failed/i);
+        expect(calls.map(({ method }) => method)).toEqual(['POST']);
+      });
+
+      for (const confirmed of [true, false]) {
+        it(`records ${confirmed ? 'confirmed draft' : 'unknown outcome'} without worker CREATE retries`, async () => {
+          const { publisher, calls } = publisherForSummary(createSummary(), async () => ({
+            ok: true, json: async () => confirmed ? canonicalInbox() : createSummary()
+          }));
+          const recordResults = vi.fn(async () => []);
+          const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+          try {
+            const result = await processPublishJob({
+              jobData: {
+                ...inboxInput, platforms: ['TIKTOK'], status: 'READY',
+                runAt: '2026-10-15T12:00:00.000Z'
+              },
+              publisher,
+              platformPublishStore: { recordResults },
+              maxPublishAttempts: 3
+            });
+
+            expect(result.status).toBe(confirmed ? 'PUBLISHED' : 'FAILED');
+            if (confirmed) {
+              expect(result.platformResults).toEqual([{
+                platform: 'TIKTOK', status: 'PUBLISHED', deliveryOutcome: 'DRAFT',
+                providerPostId, publishedAt: '2026-10-15T12:00:00.000Z'
+              }]);
+              expect(result.requiresReconciliation).toBeUndefined();
+            } else {
+              expect(result.requiresReconciliation).toBe(true);
+              expect(result.platformResults[0]).toMatchObject({ platform: 'TIKTOK', status: 'FAILED' });
+              expect(result.platformResults[0]).not.toHaveProperty('deliveryOutcome');
+              expect(result.platformResults[0]).not.toHaveProperty('externalPostId');
+            }
+            expect(recordResults).toHaveBeenCalledExactlyOnceWith({
+              postId: inboxInput.postId, results: result.platformResults
+            });
+            expect(calls.map(({ method }) => method)).toEqual(
+              confirmed ? ['POST', 'GET'] : ['POST', 'GET', 'GET']
+            );
+          } finally {
+            log.mockRestore();
+          }
+        });
+      }
+    });
   });
 
   it('revalidates an immutable target snapshot before using its provider account id', async () => {

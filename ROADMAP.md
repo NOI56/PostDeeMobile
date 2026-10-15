@@ -2,6 +2,25 @@
 
 Build roadmap for PostDee.
 
+## TikTok Inbox CREATE confirmation (2026-10-15, locally verified)
+
+- Investigate the later 13:48 local FAILED result whose canonical provider GET
+  proves an Inbox handoff. The documented CREATE summary reproduces rejection
+  before GET; its use in the real incident is inferred because that raw CREATE
+  response was not captured.
+- Implement narrow bounded GET confirmation for requested INBOX_DRAFT using a
+  genuine CREATE post ID when the successful selected summary lacks status/ID.
+  Keep strict selected-platform Inbox evidence, failure/pending
+  precedence and provider-ID binding; never resend the POST or infer success
+  from parent status or a messages URL alone.
+- Regression-first tests reproduce 21 failures; all 102 corrected publisher tests
+  pass and independent review finds no blocker. Full API verification passes
+  119 files / 1,981 tests, typecheck/build, Prisma checks and two compiled smokes.
+  Commit/deployment and historical correction of this later record remain pending.
+  Preserve the completed earlier repair, native APK12021, phone-gate UX,
+  schema, quotas, flags and Production. Plan:
+  `docs/superpowers/plans/2026-10-15-tiktok-inbox-create-confirmation.md`.
+
 ## TikTok Inbox result mapping (2026-10-15, Staging delivered)
 
 - Recognize the observed completed TikTok Inbox receipt as the existing DRAFT

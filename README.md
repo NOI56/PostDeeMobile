@@ -7,6 +7,19 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## TikTok Inbox delivery status (2026-10-15, locally verified)
+
+A completed PostPeer TikTok Inbox job can return `published` with an Inbox
+receipt rather than literal `draft`. The correction recognizes that strict
+receipt only for the requested INBOX_DRAFT delivery and retains DRAFT semantics,
+without claiming public publication or retrying the provider request. Historical
+FAILED rows require a separately verified repair; deploying the mapper alone
+does not rewrite them. No mode, schema, quota or native preparation changes are
+needed. All 1,947 API tests, typecheck/build, Prisma checks and the compiled
+worker smoke pass. The correction is local, without deployment or historical
+record changes. Evidence and verification:
+`docs/superpowers/plans/2026-10-15-tiktok-inbox-delivery-status.md`.
+
 ## TikTok native completion with background engines (2026-10-15, local app updated)
 
 The real Staging app exposed a lost FFprobe completion event when Firebase's

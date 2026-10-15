@@ -2,6 +2,21 @@
 
 PostDee backend API reference.
 
+## TikTok Inbox completion mapping (2026-10-15, locally verified)
+
+No request/response shape changes. For requested TikTok INBOX_DRAFT, a completed
+selected-platform result with a strict `v_inbox_url~v2.<digits>` or
+`v_inbox_file~v2.<digits>` receipt and a genuine PostPeer post ID confirms the
+existing `PUBLISHED` platform status with `deliveryOutcome: DRAFT`. It does not
+confirm a public TikTok video. The messages URL is not exposed as a live-post
+reference. Failure/pending checks and explicit draft compatibility remain.
+Inbox receipts cannot confirm Direct Post/private/live delivery. A messages URL
+alone, ordinary video ID or missing provider ID is insufficient. Historical
+FAILED records are not rewritten by deploying this mapper. All 1,947 API tests,
+typecheck/build, Prisma checks and compiled worker smoke pass. No deployment or
+historical receipt update is performed. Evidence:
+`docs/superpowers/plans/2026-10-15-tiktok-inbox-delivery-status.md`.
+
 ## TikTok native completion correction (2026-10-15, local Mobile app updated)
 
 The mobile correction for lost FFprobe/FFmpeg completion events changes neither

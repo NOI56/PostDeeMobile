@@ -2,6 +2,21 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## TikTok Inbox receipt boundary (2026-10-15, locally verified)
+
+PostPeer's completed Inbox jobs can report `published` while TikTok returns an
+Inbox publish receipt. The publisher must interpret that selected-platform
+receipt against immutable requested INBOX_DRAFT intent, retain the genuine
+PostPeer post ID, and produce DRAFT delivery semantics. It must not infer a
+public video from a messages URL or promote an Inbox receipt to Direct Post.
+Failure/pending precedence, exact account targets and duplicate-post boundaries
+remain intact. No queue, database, mode, package or native-media change is
+required. Already FAILED receipts need a separate guarded reconciliation rather
+than another publish call. All 1,947 API tests, typecheck/build, Prisma checks
+and compiled worker smoke pass. This is a local correction; Staging and existing
+records remain unchanged. Evidence:
+`docs/superpowers/plans/2026-10-15-tiktok-inbox-delivery-status.md`.
+
 ## TikTok native session completion boundary (2026-10-15)
 
 Firebase's background FlutterEngine registers another FFmpeg plugin instance.

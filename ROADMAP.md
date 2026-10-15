@@ -2,6 +2,20 @@
 
 Build roadmap for PostDee.
 
+## TikTok Inbox result mapping (2026-10-15, locally verified)
+
+- Recognize the observed completed TikTok Inbox receipt as the existing DRAFT
+  delivery outcome, retaining the genuine provider post ID and all failure,
+  pending, target, mode and duplicate-publication guards.
+- Keep Direct Post blocked for new requests and reject Inbox receipts as proof
+  of private/live publication. Public posting still requires the user to finish
+  the TikTok Inbox flow. Do not resend to repair a status discrepancy.
+- All 1,947 API tests, typecheck/build, Prisma checks and compiled worker smoke
+  pass. No merge, push, deployment or historical receipt repair is performed.
+- No schema, package, API shape or mobile rebuild is required. Historical FAILED
+  rows need separate owner/intent/provider proof before any receipt correction.
+  Receipt: `docs/superpowers/plans/2026-10-15-tiktok-inbox-delivery-status.md`.
+
 ## TikTok native completion with background engines (2026-10-15)
 
 - Correct the real-app FFprobe timeout caused by a background FlutterEngine

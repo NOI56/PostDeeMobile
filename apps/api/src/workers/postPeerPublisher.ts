@@ -72,6 +72,7 @@ const finalPostStatuses = new Set(['published', 'partial']);
 const publishingPostStatuses = new Set(['pending', 'publishing']);
 const failedPostStatuses = new Set(['failed']);
 const draftPostStatus = 'draft';
+const tikTokInboxReceiptPattern = /^v_inbox_(?:url|file)~v2\.[0-9]+$/;
 // Video uploads can take well beyond the create endpoint's own wait window.
 // Poll for up to roughly two minutes before declaring the outcome unknown.
 const defaultMaxPollAttempts = 60;
@@ -228,11 +229,17 @@ const evaluatePostPeerPayload = (
   const postStatus = readNormalizedStatus(payload.status);
   const platformStatus = readNormalizedStatus(platformResult?.status);
   const platformPostId = readNonEmptyString(platformResult?.platformPostId);
-  const postId =
+  const providerPostId =
     readNonEmptyString(payload.postId) ??
     readNonEmptyString(payload.id) ??
-    knownProviderPostId ??
-    platformPostId;
+    knownProviderPostId;
+  const hasTikTokInboxReceipt =
+    platform === 'TIKTOK' &&
+    platformPostId !== undefined &&
+    tikTokInboxReceiptPattern.test(platformPostId);
+  // An Inbox publish receipt belongs to TikTok, not PostPeer's GET /posts/:id.
+  // Never use it as a fallback provider id when polling a pending response.
+  const postId = providerPostId ?? (hasTikTokInboxReceipt ? undefined : platformPostId);
 
   if (
     payload.success === false ||
@@ -267,6 +274,18 @@ const evaluatePostPeerPayload = (
     postStatus === 'published' || platformStatus === 'published';
 
   if (requestedDeliveryOutcome === 'DRAFT') {
+    if (hasTikTokInboxReceipt && platformStatus === 'published') {
+      if (!providerPostId) {
+        return {
+          outcome: 'failed',
+          message: 'PostPeer did not return a provider post id for the draft'
+        };
+      }
+      // PostPeer calls a completed Inbox handoff "published". The requested
+      // delivery is still a draft that the user must finish inside TikTok.
+      // Its messages URL is not a public video reference.
+      return { outcome: 'published', providerPostId };
+    }
     const facebookPageDraftConfirmedAsPublished =
       platform === 'FACEBOOK_REELS' && hasExplicitPublishedSuccessStatus;
     if (hasExplicitDraftStatus || facebookPageDraftConfirmedAsPublished) {
@@ -288,7 +307,7 @@ const evaluatePostPeerPayload = (
     };
   }
 
-  if (hasExplicitDraftStatus) {
+  if (hasExplicitDraftStatus || hasTikTokInboxReceipt) {
     return {
       outcome: 'failed',
       message: 'PostPeer returned a draft for a non-draft publish request'

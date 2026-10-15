@@ -957,6 +957,221 @@ describe('createPostPeerPublisher', () => {
     expect(result.externalPostId).toBeUndefined();
   });
 
+  describe('published TikTok Inbox receipts', () => {
+    const providerPostId = 'postpeer-tiktok-inbox';
+    const inboxMessagesUrl = 'https://www.tiktok.com/messages?lang=en';
+    const urlReceiptId = 'v_inbox_url~v2.1234567890123456789';
+    const fileReceiptId = 'v_inbox_file~v2.9876543210987654321';
+    const inboxInput = {
+      userId: 'seller-inbox-receipt',
+      postId: 'post-inbox-receipt',
+      platform: 'TIKTOK',
+      platformSettings: { TIKTOK: { publishMode: 'INBOX_DRAFT' } }
+    } as const;
+    const publishedPayload = (platformPostId?: string) => ({
+      success: true,
+      status: 'published',
+      postId: providerPostId,
+      platforms: [{
+        platform: 'tiktok', status: 'published', success: true,
+        platformPostId, platformPostUrl: inboxMessagesUrl
+      }]
+    });
+    const publisherForReceipt = (payload: unknown, throughPoll = false) => {
+      const calls: { url: string; method: string; body?: unknown }[] = [];
+      const publisher = createPostPeerPublisher({
+        apiKey: 'pp-key',
+        baseUrl: 'https://api.postpeer.test',
+        accountIds: { TIKTOK: 'postpeer-tiktok' },
+        now: () => '2026-10-15T12:00:00.000Z',
+        pollIntervalMs: 0,
+        maxPollAttempts: 1,
+        fetchImpl: async (url, init) => {
+          calls.push({
+            url, method: init.method ?? '',
+            ...(init.body ? { body: JSON.parse(String(init.body)) } : {})
+          });
+          return {
+            ok: true,
+            status: throughPoll && init.method === 'POST' ? 202 : 200,
+            json: async () => throughPoll && init.method === 'POST'
+              ? { success: true, status: 'publishing', postId: providerPostId }
+              : payload
+          };
+        }
+      });
+      return { publisher, calls };
+    };
+
+    for (const stage of ['create', 'poll'] as const) {
+      for (const receipt of ['url', 'file'] as const) {
+        it(`confirms a published Inbox ${receipt} receipt as DRAFT at ${stage}`, async () => {
+          const receiptId = receipt === 'url' ? urlReceiptId : fileReceiptId;
+          const base = publishedPayload(receiptId);
+          const finalPost = {
+            ...base,
+            platforms: base.platforms.map((platform) => ({
+              ...platform,
+              // Published status is sufficient unless success is explicitly false.
+              success: receipt === 'url' ? true : undefined,
+              platformPostUrl: receipt === 'url' ? inboxMessagesUrl : undefined
+            }))
+          };
+          const payload = stage === 'poll'
+            ? { success: true, post: { ...finalPost, postId: undefined } }
+            : receipt === 'file'
+              ? { ...finalPost, postId: undefined, id: providerPostId }
+              : finalPost;
+          const { publisher, calls } = publisherForReceipt(payload, stage === 'poll');
+
+          const result = await publisher.publish(inboxInput);
+
+          expect(result).toEqual({
+            platform: 'TIKTOK', status: 'PUBLISHED', deliveryOutcome: 'DRAFT',
+            providerPostId, publishedAt: '2026-10-15T12:00:00.000Z'
+          });
+          expect(result.externalPostId).toBeUndefined();
+          expect(calls[0].body).toMatchObject({
+            platforms: [{ platform: 'tiktok', platformSpecificData: { draft: true } }]
+          });
+          expect(calls.map(({ method }) => method)).toEqual(
+            stage === 'poll' ? ['POST', 'GET'] : ['POST']
+          );
+          if (stage === 'poll') {
+            expect(calls[1].url).toBe(`https://api.postpeer.test/v1/posts/${providerPostId}`);
+          }
+        });
+
+        it(`rejects an Inbox ${receipt} receipt for a requested Direct Post at ${stage}`, async () => {
+          const { publisher } = publisherForReceipt(
+            publishedPayload(receipt === 'url' ? urlReceiptId : fileReceiptId),
+            stage === 'poll'
+          );
+
+          await expect(publisher.publish({
+            ...inboxInput,
+            platformSettings: {
+              TIKTOK: { publishMode: 'DIRECT_POST', privacyLevel: 'SELF_ONLY' }
+            }
+          })).rejects.toThrow(/PostPeer publish to TIKTOK failed/i);
+        });
+      }
+    }
+
+    it('accepts the selected published Inbox receipt within a partial provider result', async () => {
+      const { publisher } = publisherForReceipt({
+        ...publishedPayload(urlReceiptId), status: 'partial'
+      });
+
+      const result = await publisher.publish(inboxInput);
+
+      expect(result).toMatchObject({ status: 'PUBLISHED', deliveryOutcome: 'DRAFT', providerPostId });
+      expect(result.externalPostId).toBeUndefined();
+    });
+
+    for (const [label, receiptId] of [
+      ['a messages URL without an Inbox id', undefined],
+      ['an empty Inbox id', ''],
+      ['a normal TikTok video id', 'tiktok-video-123'],
+      ['a Direct Post URL receipt', 'v_pub_url~v2.123456789'],
+      ['a Direct Post file receipt', 'v_pub_file~v2.123456789'],
+      ['a missing numeric suffix', 'v_inbox_url~v2.'],
+      ['a nonnumeric suffix', 'v_inbox_file~v2.not-a-number'],
+      ['a trailing id fragment', 'v_inbox_url~v2.12345junk'],
+      ['an embedded Inbox id', 'prefix-v_inbox_url~v2.12345'],
+      ['a malformed separator', 'v_inbox_url-v2.12345'],
+      ['an unsupported receipt version', 'v_inbox_url~v1.12345'],
+      ['a malformed uppercase prefix', 'V_INBOX_URL~v2.12345'],
+      ['the messages URL used as an id', inboxMessagesUrl]
+    ] as const) {
+      it(`rejects published Inbox delivery with ${label}`, async () => {
+        const { publisher, calls } = publisherForReceipt(publishedPayload(receiptId));
+
+        await expect(publisher.publish(inboxInput)).rejects.toThrow(
+          /PostPeer publish to TIKTOK failed/i
+        );
+        expect(calls.map(({ method }) => method)).toEqual(['POST']);
+      });
+    }
+
+    it('requires an explicit published status on the selected TikTok platform', async () => {
+      const base = publishedPayload(urlReceiptId);
+      const { publisher } = publisherForReceipt({
+        ...base,
+        platforms: base.platforms.map((platform) => ({ ...platform, status: undefined }))
+      });
+
+      await expect(publisher.publish(inboxInput)).rejects.toThrow(/PostPeer publish to TIKTOK failed/i);
+    });
+
+    it('does not borrow an Inbox receipt from a different platform', async () => {
+      const base = publishedPayload('tiktok-video-123');
+      const { publisher } = publisherForReceipt({
+        ...base,
+        platforms: [...base.platforms, {
+          platform: 'youtube', status: 'published', platformPostId: urlReceiptId
+        }]
+      });
+
+      await expect(publisher.publish(inboxInput)).rejects.toThrow(/PostPeer publish to TIKTOK failed/i);
+    });
+
+    it('does not treat the parent provider post id as the selected Inbox receipt', async () => {
+      const { publisher } = publisherForReceipt({
+        ...publishedPayload(undefined), postId: urlReceiptId
+      });
+
+      await expect(publisher.publish(inboxInput)).rejects.toThrow(/PostPeer publish to TIKTOK failed/i);
+    });
+
+    it('requires a genuine provider post id for an immediate published Inbox receipt', async () => {
+      const { publisher, calls } = publisherForReceipt({
+        ...publishedPayload(urlReceiptId), postId: undefined
+      });
+
+      await expect(publisher.publish(inboxInput)).rejects.toThrow(/PostPeer publish to TIKTOK failed/i);
+      expect(calls.map(({ method }) => method)).toEqual(['POST']);
+    });
+
+    for (const failure of ['response success', 'post status', 'platform success', 'platform status'] as const) {
+      it(`preserves explicit failure precedence for ${failure} with an Inbox receipt`, async () => {
+        const payload = publishedPayload(urlReceiptId);
+        if (failure === 'response success') payload.success = false;
+        if (failure === 'post status') payload.status = 'failed';
+        if (failure === 'platform success') payload.platforms[0].success = false;
+        if (failure === 'platform status') payload.platforms[0].status = 'failed';
+        const { publisher, calls } = publisherForReceipt(payload);
+
+        await expect(publisher.publish(inboxInput)).rejects.toThrow(/PostPeer publish to TIKTOK failed/i);
+        expect(calls.map(({ method }) => method)).toEqual(['POST']);
+      });
+    }
+
+    for (const pending of ['post', 'platform'] as const) {
+      it(`keeps ${pending} pending despite a valid Inbox receipt and another published status`, async () => {
+        const payload = publishedPayload(urlReceiptId);
+        if (pending === 'post') payload.status = 'pending';
+        else payload.platforms[0].status = 'pending';
+        const { publisher, calls } = publisherForReceipt(payload);
+
+        await expect(publisher.publish(inboxInput)).rejects.toBeInstanceOf(PostPeerPublishOutcomeUnknownError);
+        expect(calls.map(({ method }) => method)).toEqual(['POST', 'GET']);
+        expect(calls[1].url).toBe(`https://api.postpeer.test/v1/posts/${providerPostId}`);
+      });
+    }
+
+    it('does not poll or resend a pending Inbox receipt without a genuine provider post id', async () => {
+      const base = publishedPayload(urlReceiptId);
+      const { publisher, calls } = publisherForReceipt({
+        ...base, postId: undefined, status: 'pending',
+        platforms: base.platforms.map((platform) => ({ ...platform, status: 'pending' }))
+      });
+
+      await expect(publisher.publish(inboxInput)).rejects.toBeInstanceOf(PostPeerPublishOutcomeUnknownError);
+      expect(calls.map(({ method }) => method)).toEqual(['POST']);
+    });
+  });
+
   it('revalidates an immutable target snapshot before using its provider account id', async () => {
     let body: Record<string, unknown> | undefined;
     const target = {

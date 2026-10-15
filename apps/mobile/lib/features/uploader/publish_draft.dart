@@ -99,7 +99,8 @@ class PublishDraftUploadedMedia {
       {required this.mediaContentFingerprint,
       required this.videoS3Key,
       this.coverImageS3Key,
-      this.videoPreparationPolicy});
+      this.videoPreparationPolicy,
+      this.videoDurationSeconds});
 
   final String mediaContentFingerprint;
   final String videoS3Key;
@@ -107,6 +108,9 @@ class PublishDraftUploadedMedia {
 
   /// Null for historical receipts that have not passed native preparation.
   final String? videoPreparationPolicy;
+
+  /// Duration of the prepared upload, retained for an idempotent Direct retry.
+  final double? videoDurationSeconds;
 }
 
 class PublishDraftSaveRequest {

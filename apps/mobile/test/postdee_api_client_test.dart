@@ -31,6 +31,200 @@ void _writeJsonResponse(
 }
 
 void main() {
+  Map<String, Object?> tikTokOptions() => {
+        'status': 'ok',
+        'connectionId': 'local-connection',
+        'creatorInfoRevision':
+            'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899',
+        'creatorInfo': {
+          'creatorAvatarUrl': 'https://example.test/avatar.png',
+          'creatorUsername': 'fixture_creator',
+          'creatorNickname': 'Fixture creator',
+          'privacyLevelOptions': [
+            'PUBLIC_TO_EVERYONE',
+            'MUTUAL_FOLLOW_FRIENDS',
+            'FOLLOWER_OF_CREATOR',
+            'SELF_ONLY'
+          ],
+          'commentDisabled': false,
+          'duetDisabled': true,
+          'stitchDisabled': false,
+          'maxVideoPostDurationSec': 3600,
+        },
+      };
+
+  test(
+      'TikTok publishing DTO preserves current creator capabilities and local binding',
+      () {
+    final result = TikTokPublishingOptionsResult.fromJson(tikTokOptions());
+    expect(result.connectionId, 'local-connection');
+    expect(result.creatorInfoRevision,
+        'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899');
+    expect(result.creatorInfo.creatorNickname, 'Fixture creator');
+    expect(result.creatorInfo.privacyLevelOptions, TikTokPrivacyLevel.values);
+    expect(
+        result.creatorInfo.privacyLevelOptions.map((level) => level.apiValue), [
+      'PUBLIC_TO_EVERYONE',
+      'MUTUAL_FOLLOW_FRIENDS',
+      'FOLLOWER_OF_CREATOR',
+      'SELF_ONLY'
+    ]);
+    expect(result.creatorInfo.duetDisabled, isTrue);
+    expect(result.creatorInfo.commentDisabled, isFalse);
+    expect(result.creatorInfo.maxVideoPostDurationSec, 3600);
+    expect(() => result.creatorInfo.privacyLevelOptions.clear(),
+        throwsUnsupportedError);
+    final connection = SocialConnectionResult.fromJson({
+      'platform': 'TIKTOK',
+      'connected': true,
+      'connectionId': 'local-connection',
+      'connectionRevision': result.creatorInfoRevision
+    });
+    expect(connection.connectionId, 'local-connection');
+    expect(connection.connectionRevision, result.creatorInfoRevision);
+    expect(SocialConnectionResult.fromJson({'platform': 'TIKTOK'}).connectionId,
+        isNull);
+  });
+
+  test('TikTok DTO rejects malformed capabilities without exposing raw values',
+      () {
+    for (final invalid in <Map<String, Object?>>[
+      {
+        'privacyLevelOptions': ['EVERYONE-private-value']
+      },
+      {'privacyLevelOptions': []},
+      {
+        'privacyLevelOptions': ['SELF_ONLY', 'SELF_ONLY']
+      },
+      {'commentDisabled': 'false'},
+      {'duetDisabled': null},
+      {'maxVideoPostDurationSec': 0},
+      {'maxVideoPostDurationSec': 1.5},
+      {'creatorNickname': 123},
+      {'creatorUsername': ''},
+      {'creatorNickname': '   '},
+    ]) {
+      final response = tikTokOptions();
+      response['creatorInfo'] = {
+        ...response['creatorInfo'] as Map<String, Object?>,
+        ...invalid
+      };
+      expect(
+          () => TikTokPublishingOptionsResult.fromJson(response),
+          throwsA(isA<ApiException>().having((error) => error.message,
+              'safe message', isNot(contains('private-value')))));
+    }
+    for (final invalid in <Map<String, Object?>>[
+      {'status': 'error'},
+      {'connectionId': ''},
+      {'connectionId': 12},
+      {'creatorInfo': null},
+      {'creatorInfoRevision': null},
+      {'creatorInfoRevision': 'INVALID'},
+    ]) {
+      expect(
+          () => TikTokPublishingOptionsResult.fromJson(
+              {...tikTokOptions(), ...invalid}),
+          throwsA(isA<ApiException>()));
+    }
+  });
+
+  test(
+      'TikTok options loader is authenticated and fetches fresh data for each call',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final serverTask = () async {
+      var count = 0;
+      await for (final request in server) {
+        expect(request.method, 'GET');
+        expect(
+            request.uri.path, '/social-connections/TIKTOK/publishing-options');
+        expect(request.uri.query, isEmpty);
+        expect(request.headers.value(HttpHeaders.authorizationHeader),
+            'Bearer fixture-token');
+        _writeJsonResponse(request.response, tikTokOptions());
+        await request.response.close();
+        if (++count == 2) break;
+      }
+    }();
+    try {
+      final client = PostDeeApiClient(
+          baseUrl: 'http://${server.address.address}:${server.port}',
+          authTokenProvider: () async => 'fixture-token');
+      expect((await client.loadTikTokPublishingOptions()).connectionId,
+          'local-connection');
+      expect(
+          (await client.loadTikTokPublishingOptions()).creatorInfo.duetDisabled,
+          isTrue);
+      await serverTask;
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  test('TikTok options loader sanitizes typed HTTP failure and malformed JSON',
+      () async {
+    for (final mode in ['malformed DTO', 'invalid JSON', 'typed failure']) {
+      final status = mode == 'typed failure'
+          ? HttpStatus.serviceUnavailable
+          : HttpStatus.ok;
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final task = () async {
+        final request = await server.first;
+        if (mode == 'invalid JSON') {
+          request.response.write('not-json-provider-private-value');
+        } else {
+          _writeJsonResponse(
+              request.response,
+              status == HttpStatus.ok
+                  ? {'status': 'ok', 'creatorInfo': 'provider-private-value'}
+                  : {
+                      'message': 'provider-private-value',
+                      'code': 'TIKTOK_CREATOR_INFO_UNAVAILABLE'
+                    },
+              statusCode: status);
+        }
+        await request.response.close();
+      }();
+      try {
+        final client = PostDeeApiClient(
+            baseUrl: 'http://${server.address.address}:${server.port}');
+        await expectLater(
+            client.loadTikTokPublishingOptions(),
+            throwsA(isA<ApiException>().having((error) => error.message,
+                'safe message', isNot(contains('provider-private-value')))));
+        await task;
+      } finally {
+        await server.close(force: true);
+      }
+    }
+  });
+
+  test('TikTok options deadline fails closed with its own typed timeout',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    try {
+      final client = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        requestTimeout: const Duration(milliseconds: 150),
+      );
+      final result = client.loadTikTokPublishingOptions();
+      final assertion = expectLater(
+          result,
+          throwsA(isA<ApiException>()
+              .having((error) => error.code, 'code', apiRequestTimeoutCode)
+              .having((error) => error.statusCode, 'status',
+                  HttpStatus.requestTimeout)));
+      final request = await server.first;
+      await assertion;
+      try {
+        await request.response.close();
+      } catch (_) {/* Deadline already aborts this request. */}
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
   for (final readiness in <Map<String, Object?>>[
     {'status': 'ok', 'purchaseReady': true, 'preparationProtocol': 1},
     {'status': 'ok'},

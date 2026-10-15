@@ -60,6 +60,24 @@ const createTestApp = ({
 };
 
 describe('social connection routes', () => {
+  it('registers owner-scoped TikTok publishing options without creating a profile', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({ userId: 'creator-owner', platform: 'TIKTOK', postPeerAccountId: 'owned-provider-account' });
+    const getCreatorInfo = vi.fn(async () => ({
+      creatorAvatarUrl: 'https://cdn.tiktok.test/avatar.jpg', creatorUsername: 'seller', creatorNickname: 'Seller',
+      privacyLevelOptions: ['SELF_ONLY' as const], commentDisabled: false, duetDisabled: true,
+      stitchDisabled: false, maxVideoPostDurationSec: 3600
+    }));
+    const app = createApp({ socialConnectionStore: store, postPeerTikTokClient: { getCreatorInfo } });
+    const response = await request(app).get('/social-connections/TIKTOK/publishing-options')
+      .set('x-postdee-user-id', 'creator-owner').expect(200);
+    expect(response.body.connectionId).toEqual(expect.any(String));
+    expect(response.body.creatorInfo.creatorUsername).toBe('seller');
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(getCreatorInfo).toHaveBeenCalledExactlyOnceWith({ accountId: 'owned-provider-account' });
+    expect(JSON.stringify(response.body)).not.toContain('owned-provider-account');
+    expect(await store.getProfileId('creator-owner')).toBeUndefined();
+  });
   it('is registered by createApp', async () => {
     const response = await request(createApp())
       .get('/social-connections')
@@ -92,6 +110,8 @@ describe('social connection routes', () => {
     ).toEqual({
       platform: 'TIKTOK',
       connected: true,
+      connectionId: expect.any(String),
+      connectionRevision: expect.stringMatching(/^[a-f0-9]{64}$/),
       displayName: '@seller_one',
       externalAccountId: 'external-tiktok',
       connectedAt: '2026-06-26T09:00:00.000Z'

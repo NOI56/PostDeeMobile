@@ -63,6 +63,7 @@ describe('createInMemorySocialConnectionStore', () => {
         externalAccountId: '@seller-1'
       })
     ).resolves.toEqual({
+      id: expect.any(String),
       userId: 'seller-1',
       platform: 'TIKTOK',
       postPeerAccountId: 'postpeer-tiktok-1',
@@ -76,6 +77,8 @@ describe('createInMemorySocialConnectionStore', () => {
       {
         platform: 'TIKTOK',
         connected: true,
+        connectionId: expect.any(String),
+        connectionRevision: expect.stringMatching(/^[a-f0-9]{64}$/),
         displayName: 'Seller TikTok',
         externalAccountId: '@seller-1',
         connectedAt
@@ -129,6 +132,7 @@ describe('createInMemorySocialConnectionStore', () => {
         displayName: 'Updated TikTok'
       })
     ).resolves.toEqual({
+      id: expect.any(String),
       userId: 'seller-1',
       platform: 'TIKTOK',
       postPeerAccountId: 'postpeer-tiktok-updated',
@@ -152,6 +156,7 @@ describe('createInMemorySocialConnectionStore', () => {
         externalAccountId: '   '
       })
     ).resolves.toEqual({
+      id: expect.any(String),
       userId: 'seller-1',
       platform: 'TIKTOK',
       postPeerAccountId: 'postpeer-tiktok-1',

@@ -50,11 +50,6 @@ const prisma =
 const socialConnectionStore = createSocialConnectionStore({
   prisma: prisma as unknown as PrismaSocialConnectionClient | undefined
 });
-const publisher = createPlatformPublisherFromConfig({
-  config,
-  videoStorage: storage,
-  socialConnectionStore
-});
 const postStore = createPostStoreFromConfig({
   config,
   prisma: prisma as unknown as PrismaPostClient | undefined
@@ -65,6 +60,12 @@ const uploadSessionStore =
         prisma: prisma as unknown as PrismaUploadSessionClient
       })
     : undefined;
+const publisher = createPlatformPublisherFromConfig({
+  config,
+  videoStorage: storage,
+  socialConnectionStore,
+  assertOwnerActive: uploadSessionStore?.assertOwnerActive
+});
 const platformPublishStore = prisma
   ? createPrismaPlatformPublishRepository({
       prisma: prisma as unknown as PrismaPlatformPublishClient

@@ -1,4 +1,8 @@
+import '../../core/network/postdee_api_client.dart';
 import '../platforms/social_platform.dart';
+
+export '../../core/network/postdee_api_client.dart'
+    show TikTokCreatorInfo, TikTokPrivacyLevel;
 
 enum TikTokPublishMode {
   inboxDraft,
@@ -18,12 +22,22 @@ enum FacebookPublishMode {
 
 /// User-visible publishing choices that differ between social platforms.
 ///
-/// TikTok direct publishing intentionally remains modeled but unavailable.
-/// PostDee does not yet receive TikTok creator-info capabilities, so it cannot
-/// safely offer the account's current privacy and interaction choices.
+/// Direct Post requires fresh creator capabilities in the caller and verified
+/// prepared-video duration before serialization. Inbox retains its old shape.
 class PlatformPublishSettings {
   const PlatformPublishSettings({
     this.tiktokPublishMode = TikTokPublishMode.inboxDraft,
+    this.tiktokPrivacyLevel,
+    this.tiktokCreatorInfoRevision,
+    this.tiktokAllowComment = false,
+    this.tiktokAllowDuet = false,
+    this.tiktokAllowStitch = false,
+    this.tiktokBrandContentToggle = false,
+    this.tiktokBrandOrganicToggle = false,
+    this.tiktokIsAigc = false,
+    this.tiktokMusicUsageConfirmed = false,
+    this.tiktokBrandedContentPolicyConfirmed = false,
+    this.tiktokVideoDurationSeconds,
     this.youtubeTitle = '',
     this.youtubeVisibility = YouTubeVisibility.private,
     this.youtubeMadeForKids,
@@ -34,6 +48,17 @@ class PlatformPublishSettings {
   });
 
   final TikTokPublishMode tiktokPublishMode;
+  final TikTokPrivacyLevel? tiktokPrivacyLevel;
+  final String? tiktokCreatorInfoRevision;
+  final bool tiktokAllowComment;
+  final bool tiktokAllowDuet;
+  final bool tiktokAllowStitch;
+  final bool tiktokBrandContentToggle;
+  final bool tiktokBrandOrganicToggle;
+  final bool tiktokIsAigc;
+  final bool tiktokMusicUsageConfirmed;
+  final bool tiktokBrandedContentPolicyConfirmed;
+  final double? tiktokVideoDurationSeconds;
   final String youtubeTitle;
   final YouTubeVisibility youtubeVisibility;
   final bool? youtubeMadeForKids;
@@ -44,6 +69,17 @@ class PlatformPublishSettings {
 
   PlatformPublishSettings copyWith({
     TikTokPublishMode? tiktokPublishMode,
+    Object? tiktokPrivacyLevel = _keepSetting,
+    Object? tiktokCreatorInfoRevision = _keepSetting,
+    bool? tiktokAllowComment,
+    bool? tiktokAllowDuet,
+    bool? tiktokAllowStitch,
+    bool? tiktokBrandContentToggle,
+    bool? tiktokBrandOrganicToggle,
+    bool? tiktokIsAigc,
+    bool? tiktokMusicUsageConfirmed,
+    bool? tiktokBrandedContentPolicyConfirmed,
+    Object? tiktokVideoDurationSeconds = _keepSetting,
     String? youtubeTitle,
     YouTubeVisibility? youtubeVisibility,
     Object? youtubeMadeForKids = _keepSetting,
@@ -54,6 +90,30 @@ class PlatformPublishSettings {
   }) =>
       PlatformPublishSettings(
         tiktokPublishMode: tiktokPublishMode ?? this.tiktokPublishMode,
+        tiktokPrivacyLevel: identical(tiktokPrivacyLevel, _keepSetting)
+            ? this.tiktokPrivacyLevel
+            : tiktokPrivacyLevel as TikTokPrivacyLevel?,
+        tiktokCreatorInfoRevision:
+            identical(tiktokCreatorInfoRevision, _keepSetting)
+                ? this.tiktokCreatorInfoRevision
+                : tiktokCreatorInfoRevision as String?,
+        tiktokAllowComment: tiktokAllowComment ?? this.tiktokAllowComment,
+        tiktokAllowDuet: tiktokAllowDuet ?? this.tiktokAllowDuet,
+        tiktokAllowStitch: tiktokAllowStitch ?? this.tiktokAllowStitch,
+        tiktokBrandContentToggle:
+            tiktokBrandContentToggle ?? this.tiktokBrandContentToggle,
+        tiktokBrandOrganicToggle:
+            tiktokBrandOrganicToggle ?? this.tiktokBrandOrganicToggle,
+        tiktokIsAigc: tiktokIsAigc ?? this.tiktokIsAigc,
+        tiktokMusicUsageConfirmed:
+            tiktokMusicUsageConfirmed ?? this.tiktokMusicUsageConfirmed,
+        tiktokBrandedContentPolicyConfirmed:
+            tiktokBrandedContentPolicyConfirmed ??
+                this.tiktokBrandedContentPolicyConfirmed,
+        tiktokVideoDurationSeconds:
+            identical(tiktokVideoDurationSeconds, _keepSetting)
+                ? this.tiktokVideoDurationSeconds
+                : (tiktokVideoDurationSeconds as num?)?.toDouble(),
         youtubeTitle: youtubeTitle ?? this.youtubeTitle,
         youtubeVisibility: youtubeVisibility ?? this.youtubeVisibility,
         youtubeMadeForKids: identical(youtubeMadeForKids, _keepSetting)
@@ -75,7 +135,7 @@ class PlatformPublishSettings {
   bool canSubmit(SocialPlatform platform) {
     switch (platform) {
       case SocialPlatform.tiktok:
-        return tiktokPublishMode == TikTokPublishMode.inboxDraft;
+        return tiktokValidationMessage == null;
       case SocialPlatform.youtubeShorts:
         return youtubeValidationMessage == null;
       case SocialPlatform.instagramReels:
@@ -86,6 +146,51 @@ class PlatformPublishSettings {
       case SocialPlatform.lazadaVideo:
         return false;
     }
+  }
+
+  String? get tiktokValidationMessage {
+    if (tiktokPublishMode == TikTokPublishMode.inboxDraft) return null;
+    if (tiktokPrivacyLevel == null) return 'เลือกผู้ที่สามารถดูวิดีโอ TikTok';
+    if (!_tikTokRevisionPattern.hasMatch(tiktokCreatorInfoRevision ?? '')) {
+      return 'ตรวจสอบบัญชี TikTok และตัวเลือกการโพสต์อีกครั้ง';
+    }
+    if (!tiktokMusicUsageConfirmed) return 'ยืนยันข้อกำหนดการใช้เพลง TikTok';
+    if (tiktokBrandContentToggle &&
+        tiktokPrivacyLevel == TikTokPrivacyLevel.selfOnly) {
+      return 'เนื้อหาที่มีผู้สนับสนุนไม่สามารถตั้งเป็นเฉพาะฉันได้';
+    }
+    if (tiktokBrandContentToggle && !tiktokBrandedContentPolicyConfirmed) {
+      return 'ยืนยันนโยบายเนื้อหาที่มีผู้สนับสนุน TikTok';
+    }
+    return null;
+  }
+
+  String? validateTikTokCreatorInfo(TikTokCreatorInfo creatorInfo,
+      {bool validateDuration = true}) {
+    if (tiktokPublishMode == TikTokPublishMode.inboxDraft) return null;
+    final configurationError = tiktokValidationMessage;
+    if (configurationError != null) return configurationError;
+    if (!creatorInfo.privacyLevelOptions.contains(tiktokPrivacyLevel)) {
+      return 'บัญชี TikTok ไม่รองรับผู้ชมที่เลือก กรุณาเลือกใหม่';
+    }
+    if ((tiktokAllowComment && creatorInfo.commentDisabled) ||
+        (tiktokAllowDuet && creatorInfo.duetDisabled) ||
+        (tiktokAllowStitch && creatorInfo.stitchDisabled)) {
+      return 'บัญชี TikTok ปิดการโต้ตอบที่เลือก กรุณาตรวจสอบใหม่';
+    }
+    if (validateDuration) {
+      final duration = tiktokVideoDurationSeconds;
+      final maximum = creatorInfo.maxVideoPostDurationSec < 600
+          ? creatorInfo.maxVideoPostDurationSec
+          : 600;
+      if (duration == null ||
+          !duration.isFinite ||
+          duration <= 0 ||
+          duration > maximum) {
+        return 'ตรวจสอบความยาววิดีโอให้ตรงกับข้อจำกัดบัญชี TikTok';
+      }
+    }
+    return null;
   }
 
   String? get youtubeValidationMessage {
@@ -116,6 +221,17 @@ class PlatformPublishSettings {
         'TikTok direct publishing requires current creator info.',
       );
     }
+    if (selectedPlatforms.contains(SocialPlatform.tiktok) &&
+        tiktokPublishMode == TikTokPublishMode.directPost) {
+      final duration = tiktokVideoDurationSeconds;
+      if (duration == null ||
+          !duration.isFinite ||
+          duration <= 0 ||
+          duration > 600) {
+        throw StateError(
+            'TikTok Direct Post requires verified video duration.');
+      }
+    }
 
     return {
       if (selectedPlatforms.contains(SocialPlatform.tiktok))
@@ -123,6 +239,20 @@ class PlatformPublishSettings {
           'publishMode': switch (tiktokPublishMode) {
             TikTokPublishMode.inboxDraft => 'INBOX_DRAFT',
             TikTokPublishMode.directPost => 'DIRECT_POST',
+          },
+          if (tiktokPublishMode == TikTokPublishMode.directPost) ...{
+            'privacyLevel': tiktokPrivacyLevel!.apiValue,
+            'creatorInfoRevision': tiktokCreatorInfoRevision,
+            'disableComment': !tiktokAllowComment,
+            'disableDuet': !tiktokAllowDuet,
+            'disableStitch': !tiktokAllowStitch,
+            'brandContentToggle': tiktokBrandContentToggle,
+            'brandOrganicToggle': tiktokBrandOrganicToggle,
+            'isAigc': tiktokIsAigc,
+            'videoDurationSeconds': tiktokVideoDurationSeconds,
+            'musicUsageConfirmed': tiktokMusicUsageConfirmed,
+            'brandedContentPolicyConfirmed':
+                tiktokBrandedContentPolicyConfirmed,
           },
         },
       if (selectedPlatforms.contains(SocialPlatform.youtubeShorts))
@@ -150,6 +280,18 @@ class PlatformPublishSettings {
 
   Map<String, Object?> toDraftJson() => {
         'tiktokPublishMode': tiktokPublishMode.name,
+        'tiktokPrivacyLevel': tiktokPrivacyLevel?.name,
+        'tiktokCreatorInfoRevision': tiktokCreatorInfoRevision,
+        'tiktokAllowComment': tiktokAllowComment,
+        'tiktokAllowDuet': tiktokAllowDuet,
+        'tiktokAllowStitch': tiktokAllowStitch,
+        'tiktokBrandContentToggle': tiktokBrandContentToggle,
+        'tiktokBrandOrganicToggle': tiktokBrandOrganicToggle,
+        'tiktokIsAigc': tiktokIsAigc,
+        'tiktokMusicUsageConfirmed': tiktokMusicUsageConfirmed,
+        'tiktokBrandedContentPolicyConfirmed':
+            tiktokBrandedContentPolicyConfirmed,
+        'tiktokVideoDurationSeconds': tiktokVideoDurationSeconds,
         'youtubeTitle': youtubeTitle,
         'youtubeVisibility': youtubeVisibility.name,
         'youtubeMadeForKids': youtubeMadeForKids,
@@ -195,6 +337,24 @@ class PlatformPublishSettings {
         json['tiktokPublishMode'],
         'tiktokPublishMode',
       ),
+      tiktokPrivacyLevel: _nullableEnumByName(TikTokPrivacyLevel.values,
+          json['tiktokPrivacyLevel'], 'tiktokPrivacyLevel'),
+      tiktokCreatorInfoRevision:
+          _nullableTikTokRevision(json['tiktokCreatorInfoRevision']),
+      tiktokAllowComment: _optionalTikTokBool(json, 'tiktokAllowComment'),
+      tiktokAllowDuet: _optionalTikTokBool(json, 'tiktokAllowDuet'),
+      tiktokAllowStitch: _optionalTikTokBool(json, 'tiktokAllowStitch'),
+      tiktokBrandContentToggle:
+          _optionalTikTokBool(json, 'tiktokBrandContentToggle'),
+      tiktokBrandOrganicToggle:
+          _optionalTikTokBool(json, 'tiktokBrandOrganicToggle'),
+      tiktokIsAigc: _optionalTikTokBool(json, 'tiktokIsAigc'),
+      tiktokMusicUsageConfirmed:
+          _optionalTikTokBool(json, 'tiktokMusicUsageConfirmed'),
+      tiktokBrandedContentPolicyConfirmed:
+          _optionalTikTokBool(json, 'tiktokBrandedContentPolicyConfirmed'),
+      tiktokVideoDurationSeconds:
+          _nullableTikTokDuration(json['tiktokVideoDurationSeconds']),
       youtubeTitle: _stringOrDefault(json['youtubeTitle']),
       youtubeVisibility: _enumByName(
         YouTubeVisibility.values,
@@ -221,6 +381,18 @@ class PlatformPublishSettings {
       identical(this, other) ||
       other is PlatformPublishSettings &&
           other.tiktokPublishMode == tiktokPublishMode &&
+          other.tiktokPrivacyLevel == tiktokPrivacyLevel &&
+          other.tiktokCreatorInfoRevision == tiktokCreatorInfoRevision &&
+          other.tiktokAllowComment == tiktokAllowComment &&
+          other.tiktokAllowDuet == tiktokAllowDuet &&
+          other.tiktokAllowStitch == tiktokAllowStitch &&
+          other.tiktokBrandContentToggle == tiktokBrandContentToggle &&
+          other.tiktokBrandOrganicToggle == tiktokBrandOrganicToggle &&
+          other.tiktokIsAigc == tiktokIsAigc &&
+          other.tiktokMusicUsageConfirmed == tiktokMusicUsageConfirmed &&
+          other.tiktokBrandedContentPolicyConfirmed ==
+              tiktokBrandedContentPolicyConfirmed &&
+          other.tiktokVideoDurationSeconds == tiktokVideoDurationSeconds &&
           other.youtubeTitle == youtubeTitle &&
           other.youtubeVisibility == youtubeVisibility &&
           other.youtubeMadeForKids == youtubeMadeForKids &&
@@ -232,8 +404,19 @@ class PlatformPublishSettings {
           other.facebookPublishMode == facebookPublishMode;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
         tiktokPublishMode,
+        tiktokPrivacyLevel,
+        tiktokCreatorInfoRevision,
+        tiktokAllowComment,
+        tiktokAllowDuet,
+        tiktokAllowStitch,
+        tiktokBrandContentToggle,
+        tiktokBrandOrganicToggle,
+        tiktokIsAigc,
+        tiktokMusicUsageConfirmed,
+        tiktokBrandedContentPolicyConfirmed,
+        tiktokVideoDurationSeconds,
         youtubeTitle,
         youtubeVisibility,
         youtubeMadeForKids,
@@ -241,7 +424,27 @@ class PlatformPublishSettings {
         youtubeCommunityGuidelinesCertified,
         instagramShareToFeed,
         facebookPublishMode,
-      );
+      ]);
+}
+
+final _tikTokRevisionPattern = RegExp(r'^[0-9a-f]{64}$');
+
+String? _nullableTikTokRevision(Object? value) {
+  if (value == null) return null;
+  if (value is String && _tikTokRevisionPattern.hasMatch(value)) return value;
+  throw const FormatException('Invalid TikTok creator revision');
+}
+
+double? _nullableTikTokDuration(Object? value) {
+  if (value == null) return null;
+  if (value is num && value.isFinite && value > 0) return value.toDouble();
+  throw const FormatException('Invalid TikTok video duration');
+}
+
+bool _optionalTikTokBool(Map<String, Object?> json, String key) {
+  if (!json.containsKey(key)) return false;
+  if (json[key] is bool) return json[key] as bool;
+  throw const FormatException('Expected a TikTok boolean');
 }
 
 String _stringOrDefault(Object? value) {

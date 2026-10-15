@@ -5,6 +5,7 @@ import {
   type SocialConnectionStore
 } from '../modules/socialConnections/socialConnectionStore.js';
 import type { VideoStorage } from '../modules/storage/videoStorage.js';
+import { createPostPeerTikTokClient } from '../modules/socialConnections/postPeerTikTokClient.js';
 import { createPostPeerPublisher } from './postPeerPublisher.js';
 import {
   type PlatformPublisher,
@@ -30,11 +31,13 @@ const createSignedVideoUrlResolver =
 export const createPlatformPublisherFromConfig = ({
   config,
   videoStorage,
-  socialConnectionStore
+  socialConnectionStore,
+  assertOwnerActive
 }: {
   config: ServerConfig;
   videoStorage?: VideoStorage;
   socialConnectionStore?: SocialConnectionStore;
+  assertOwnerActive?: (userId: string) => Promise<void>;
 }): PlatformPublisher => {
   if (config.socialPublisher === 'disabled') {
     return createDisabledPlatformPublisher();
@@ -52,6 +55,11 @@ export const createPlatformPublisherFromConfig = ({
     return createPostPeerPublisher({
       apiKey: config.postPeerApiKey,
       baseUrl: config.postPeerApiBaseUrl,
+      assertOwnerActive,
+      tikTokClient: createPostPeerTikTokClient({
+        apiKey: config.postPeerApiKey,
+        baseUrl: config.postPeerApiBaseUrl
+      }),
       accountIds: {
         TIKTOK: config.postPeerTiktokAccountId,
         YOUTUBE_SHORTS: config.postPeerYoutubeAccountId,

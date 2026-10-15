@@ -261,6 +261,8 @@ class FilePublishDraftStore implements PublishDraftStore {
           'coverImageS3Key': uploadedMedia.coverImageS3Key,
           if (uploadedMedia.videoPreparationPolicy != null)
             'videoPreparationPolicy': uploadedMedia.videoPreparationPolicy,
+          if (uploadedMedia.videoDurationSeconds != null)
+            'videoDurationSeconds': uploadedMedia.videoDurationSeconds,
         },
       'createdAt': request.createdAt.toUtc().toIso8601String(),
       'updatedAt': request.updatedAt.toUtc().toIso8601String(),
@@ -344,6 +346,13 @@ class FilePublishDraftStore implements PublishDraftStore {
             fingerprint is! String) {
           return null;
         }
+        final rawDuration = uploadedValue['videoDurationSeconds'];
+        if (rawDuration != null &&
+            (rawDuration is! num ||
+                !rawDuration.isFinite ||
+                rawDuration <= 0)) {
+          return null;
+        }
         uploadedMedia = PublishDraftUploadedMedia(
           mediaContentFingerprint: fingerprint,
           videoS3Key: _requiredString(uploadedValue, 'videoS3Key'),
@@ -354,6 +363,7 @@ class FilePublishDraftStore implements PublishDraftStore {
               uploadedValue['videoPreparationPolicy'] == null
                   ? null
                   : _requiredString(uploadedValue, 'videoPreparationPolicy'),
+          videoDurationSeconds: (rawDuration as num?)?.toDouble(),
         );
       }
 

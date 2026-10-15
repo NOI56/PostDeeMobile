@@ -2,6 +2,71 @@
 
 PostDee backend API reference.
 
+## TikTok Direct Post contract (2026-10-15, local verification passed; rollout pending)
+
+`GET /social-connections/TIKTOK/publishing-options` is authenticated and returns
+`Cache-Control: private, no-store`. The server resolves only the caller's stored
+TikTok connection; callers cannot select a provider account ID. It checks the
+owner's active state and account revision around the bounded provider request.
+The response is `{ status: "ok", connectionId, creatorInfoRevision, creatorInfo }`.
+`creatorInfo` contains `creatorAvatarUrl`, `creatorUsername`, `creatorNickname`,
+`privacyLevelOptions`, `commentDisabled`, `duetDisabled`, `stitchDisabled`, and
+`maxVideoPostDurationSec`. An unavailable/malformed response disables Direct
+instead of supplying default permissions. Connection listings expose an optional
+local `connectionId` and opaque `connectionRevision`, never the provider ID.
+
+New explicit TikTok Direct settings contain all of these fields:
+
+```json
+{
+  "publishMode": "DIRECT_POST",
+  "creatorInfoRevision": "<64 lowercase hexadecimal characters from publishing-options>",
+  "privacyLevel": "PUBLIC_TO_EVERYONE",
+  "disableComment": true,
+  "disableDuet": true,
+  "disableStitch": true,
+  "brandContentToggle": false,
+  "brandOrganicToggle": false,
+  "isAigc": false,
+  "videoDurationSeconds": 30,
+  "musicUsageConfirmed": true,
+  "brandedContentPolicyConfirmed": false
+}
+```
+
+This example is not a default selection. Privacy must be explicitly chosen from
+the latest creator response: `PUBLIC_TO_EVERYONE`, `MUTUAL_FOLLOW_FRIENDS`,
+`FOLLOWER_OF_CREATOR`, or `SELF_ONLY`. Interactions cannot override account
+restrictions. Branded third-party content requires policy confirmation and cannot
+use `SELF_ONLY`. The clip duration must fit both the creator's current limit and
+the API upload limit of 600 seconds; Mobile uses prepared media metadata.
+Direct video captions are limited to 2,200 UTF-16 code units. An oversized caption
+returns `400 TIKTOK_CAPTION_TOO_LONG` before creator lookup, quota or enqueue;
+Mobile stops before draft save/upload and the worker repeats the same guard.
+
+The API rechecks current options and the account revision before any new post,
+quota reservation or enqueue, and the worker checks again before CREATE,
+including scheduled posts. It never changes the requested privacy or converts
+Direct to Inbox automatically. Complete settings participate in idempotent intent
+comparison. Consent/revision data stays in the internal settings snapshot; only
+documented TikTok flags are forwarded to PostPeer.
+
+Inbox retains `{ "publishMode": "INBOX_DRAFT" }`. Legacy missing settings and
+persisted two-field `DIRECT_POST`/`SELF_ONLY` remain compatible. New Direct
+publication requires final selected TikTok status and a valid Direct video
+reference/receipt; a messages URL or Inbox receipt cannot prove it. Ambiguous
+accepted responses use bounded GET reconciliation and never replay CREATE.
+Final Direct receipts support the documented `v_pub_file~v2-1.<digits>` form as
+well as the observed v2 receipt family; neither is fabricated into a public URL.
+`PRIVATE` means `SELF_ONLY`; `LIVE` means published to the selected audience,
+including friends/followers, and does not by itself mean public visibility.
+
+No database migration or historical post repair is added. Deploy API first;
+older APIs without publishing-options leave Direct unavailable in new Mobile.
+The successful read-only creator-info probe does not prove provider audit status
+or real public publication. Validation/release evidence is maintained in
+[the feature record](docs/superpowers/plans/2026-10-15-tiktok-direct-post.md).
+
 ## TikTok Inbox CREATE confirmation (2026-10-15, Staging delivered)
 
 No client request/response shape changes. PostPeer's documented CREATE
@@ -3132,9 +3197,9 @@ The following work is still required before production launch:
   use shared `POSTPEER_*_ACCOUNT_ID` values in production. Apply the Phase 2
   migration/API first, verify `platformSettingsVersion: 1`, and inspect or drain
   queued legacy-null rows before releasing Mobile.
-- Keep TikTok `DIRECT_POST` disabled until creator-info is loaded immediately
-  before posting, the account's current privacy/interaction choices and consent
-  are represented, and TikTok audit approval is complete. Run controlled
+- Verify the new TikTok creator-info/privacy/consent/revision flow and the
+  provider's TikTok audit approval before production/public Direct enablement.
+  The successful read-only creator-info request alone is not audit evidence. Run controlled
   provider E2E for TikTok `INBOX_DRAFT` and Facebook `PAGE_DRAFT`; confirm the
   provider id/final state without exposing internal ids to clients.
 - Complete YouTube compliance/provider verification for title, made-for-kids,

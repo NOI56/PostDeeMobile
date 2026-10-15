@@ -20,7 +20,12 @@ void main() {
   test('discloses current platform modes and scheduling limit', () {
     expect(
       PostDeeLegalDocuments.termsOfService.body,
-      contains('TikTok SELF_ONLY'),
+      contains(
+          'TikTok เลือกส่งเป็นร่างเพื่อแก้ต่อใน TikTok หรือโพสต์ตรงตามตัวเลือกผู้ชมล่าสุดของบัญชี'),
+    );
+    expect(
+      PostDeeLegalDocuments.termsOfService.body,
+      contains('ต้องยืนยันสิทธิ์เพลงและข้อกำหนดที่เกี่ยวข้องก่อนส่ง'),
     );
     expect(
       PostDeeLegalDocuments.termsOfService.body,

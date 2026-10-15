@@ -98,6 +98,10 @@ describe('owner operation route lifetime', () => {
     ['REVENUECAT_RESYNC_NOT_CONFIGURED', false],
     ['GOOGLE_PLAY_ACCESS_TOKEN_NOT_CONFIGURED', false],
     ['APPLE_ROOT_CERTIFICATES_NOT_CONFIGURED', false],
+    ['TIKTOK_PUBLISHING_UNAVAILABLE', false],
+    ['TIKTOK_CREATOR_INFO_UNAVAILABLE', false],
+    ['TIKTOK_CREATOR_INFO_INVALID', false],
+    ['PUBLISH_OUTCOME_UNKNOWN', true],
     ['SOCIAL_CONNECTION_FAILED', true]
   ])('retains only uncertain remote error %s', async (code, retained) => {
     const release = vi.fn(async () => undefined);

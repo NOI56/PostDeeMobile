@@ -8,8 +8,11 @@ import {
   isSocialConnectionPlatform,
   supportedSocialConnectionPlatforms
 } from './socialConnectionStore.js';
+import { buildPlatformTarget } from '../posts/platformTargets.js';
+import { buildTikTokConnectionRevision } from '../posts/tikTokDirectSettings.js';
 
 type PrismaSocialConnection = {
+  id?: string;
   userId: string;
   platform: string;
   postPeerAccountId: string;
@@ -20,6 +23,7 @@ type PrismaSocialConnection = {
 };
 
 type SocialConnectionSelect = {
+  id: true;
   userId: true;
   platform: true;
   postPeerAccountId: true;
@@ -96,6 +100,7 @@ export type PrismaSocialConnectionClient = {
 };
 
 const socialConnectionSelect = {
+  id: true,
   userId: true,
   platform: true,
   postPeerAccountId: true,
@@ -124,6 +129,7 @@ const mapConnection = (
   const externalAccountId = normalizeOptionalMetadata(record.externalAccountId);
 
   return {
+    ...(record.id ? { id: record.id } : {}),
     userId: record.userId,
     platform: record.platform,
     postPeerAccountId: record.postPeerAccountId,
@@ -145,6 +151,10 @@ const mapStatus = (
   return {
     platform,
     connected: true,
+    ...(connection.id ? { connectionId: connection.id } : {}),
+    ...(platform === 'TIKTOK' ? {
+      connectionRevision: buildTikTokConnectionRevision({ userId: connection.userId, target: buildPlatformTarget(connection) })
+    } : {}),
     displayName: connection.displayName,
     externalAccountId: connection.externalAccountId,
     connectedAt: connection.connectedAt

@@ -14,6 +14,7 @@ import { createPostStore, type QueuedPost } from './postStore.js';
 import { registerPostRoutes } from './postRoutes.js';
 import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 import { withAppPrismaFixture } from '../../../test/repositoryFixtures.js';
+import { buildTikTokConnectionRevision } from './tikTokDirectSettings.js';
 
 describe('post routes', () => {
   const allPlatforms = ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'];
@@ -60,6 +61,148 @@ describe('post routes', () => {
     });
     return { app, userId, store, queue, reschedule, subscriptionStore, getPlan, ensureUser, platformPublishStore };
   };
+
+  describe('TikTok Direct Post preflight', () => {
+    const target = { accountId: 'owner-tiktok-account', externalAccountId: 'creator-one', connectedAt: '2026-05-01T10:00:00.000Z' };
+    const creatorInfo = {
+      creatorAvatarUrl: 'https://cdn.tiktok.test/avatar.jpg', creatorUsername: 'seller', creatorNickname: 'Seller',
+      privacyLevelOptions: ['PUBLIC_TO_EVERYONE' as const, 'SELF_ONLY' as const],
+      commentDisabled: false, duetDisabled: true, stitchDisabled: false, maxVideoPostDurationSec: 3600
+    };
+    const directBody = () => ({
+      clientRequestId: 'direct-owner-request', caption: 'Direct Post explicit review',
+      videoS3Key: ownedUploadKey('seller-plan-window', 'direct.mp4'), platforms: ['TIKTOK'],
+      platformSettings: { TIKTOK: {
+        publishMode: 'DIRECT_POST', privacyLevel: 'PUBLIC_TO_EVERYONE',
+        disableComment: false, disableDuet: true, disableStitch: false,
+        brandContentToggle: false, brandOrganicToggle: false, isAigc: false,
+        videoDurationSeconds: 10, musicUsageConfirmed: true, brandedContentPolicyConfirmed: false,
+        creatorInfoRevision: buildTikTokConnectionRevision({ userId: 'seller-plan-window', target })
+      } }
+    });
+
+    it('rejects unavailable creator choices before any post, quota or queue write', async () => {
+      const resolveTikTokCreatorInfo = vi.fn(async () => ({ ...creatorInfo, privacyLevelOptions: ['SELF_ONLY' as const] }));
+      const { app, store, queue, ensureUser } = createPlanScheduleApp('PRO', futureNow, {
+        resolvePlatformTarget: async () => target, resolveTikTokCreatorInfo
+      });
+      const create = vi.spyOn(store, 'createWithinMonthlyLimit');
+      const enqueue = vi.spyOn(queue, 'enqueue');
+
+      const response = await request(app).post('/posts').send(directBody()).expect(409);
+
+      expect(response.body.code).toBe('TIKTOK_DIRECT_SETTINGS_INVALID');
+      expect(resolveTikTokCreatorInfo).toHaveBeenCalledExactlyOnceWith({ userId: 'seller-plan-window', target });
+      expect(create).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(ensureUser).not.toHaveBeenCalled();
+    });
+
+    it.each(['a'.repeat(2201), '😀'.repeat(1101)])('rejects an excessive Direct caption before creator, quota or queue work', async (caption) => {
+      const resolveTikTokCreatorInfo = vi.fn(async () => creatorInfo);
+      const { app, store, queue, ensureUser } = createPlanScheduleApp('PRO', futureNow, {
+        resolvePlatformTarget: async () => target, resolveTikTokCreatorInfo
+      });
+      const create = vi.spyOn(store, 'createWithinMonthlyLimit');
+      const enqueue = vi.spyOn(queue, 'enqueue');
+      const response = await request(app).post('/posts').send({ ...directBody(), caption }).expect(400);
+      expect(response.body.code).toBe('TIKTOK_CAPTION_TOO_LONG');
+      expect(resolveTikTokCreatorInfo).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(ensureUser).not.toHaveBeenCalled();
+    });
+
+    it.each(['a'.repeat(2200), '😀'.repeat(1100)])('allows the exact Direct UTF-16 caption boundary', async (caption) => {
+      const { app } = createPlanScheduleApp('PRO', futureNow, {
+        resolvePlatformTarget: async () => target, resolveTikTokCreatorInfo: async () => creatorInfo
+      });
+      await request(app).post('/posts').send({ ...directBody(), caption }).expect(201);
+    });
+
+    it('does not apply the Direct-only caption limit to Inbox or another platform', async () => {
+      const { app } = createPlanScheduleApp('PRO', futureNow, { resolvePlatformTarget: async () => target });
+      await request(app).post('/posts').send({
+        ...directBody(), caption: 'a'.repeat(2201),
+        platformSettings: { TIKTOK: { publishMode: 'INBOX_DRAFT' } }
+      }).expect(201);
+      await request(app).post('/posts').send({
+        caption: 'a'.repeat(2201), videoS3Key: ownedUploadKey('seller-plan-window', 'youtube.mp4'), platforms: ['YOUTUBE_SHORTS']
+      }).expect(201);
+    });
+
+    it('persists validated choices once and replays accepted intent without another creator lookup', async () => {
+      const resolveTikTokCreatorInfo = vi.fn(async () => creatorInfo);
+      const { app, store, queue } = createPlanScheduleApp('PRO', futureNow, {
+        resolvePlatformTarget: async () => target, resolveTikTokCreatorInfo
+      });
+      const enqueue = vi.spyOn(queue, 'enqueue');
+      const body = directBody();
+      const first = await request(app).post('/posts').send(body).expect(201);
+      resolveTikTokCreatorInfo.mockRejectedValueOnce(new Error('provider no longer reachable'));
+      const replay = await request(app).post('/posts').send(body).expect(200);
+
+      expect(replay.body.post.id).toBe(first.body.post.id);
+      expect(replay.body.idempotentReplay).toBe(true);
+      expect(resolveTikTokCreatorInfo).toHaveBeenCalledOnce();
+      expect(enqueue).toHaveBeenCalledOnce();
+      expect((await store.list())[0]).toMatchObject({ platformSettings: body.platformSettings, platformTargets: { TIKTOK: target } });
+      await request(app).post('/posts').send({
+        ...body, platformSettings: { TIKTOK: { ...body.platformSettings.TIKTOK, disableComment: true } }
+      }).expect(409);
+      expect(resolveTikTokCreatorInfo).toHaveBeenCalledOnce();
+    });
+
+    it('rejects a stale creator revision before calling the provider', async () => {
+      const resolveTikTokCreatorInfo = vi.fn(async () => creatorInfo);
+      const { app, store } = createPlanScheduleApp('PRO', futureNow, {
+        resolvePlatformTarget: async () => target, resolveTikTokCreatorInfo
+      });
+      const body = directBody();
+      body.platformSettings.TIKTOK.creatorInfoRevision = 'a'.repeat(64);
+      const response = await request(app).post('/posts').send(body).expect(409);
+      expect(response.body.code).toBe('TIKTOK_CONNECTION_CHANGED');
+      expect(resolveTikTokCreatorInfo).not.toHaveBeenCalled();
+      expect(await store.list()).toEqual([]);
+    });
+
+    it('rejects an account change while creator info is pending', async () => {
+      let currentTarget = target;
+      const { app, store, queue } = createPlanScheduleApp('PRO', futureNow, {
+        resolvePlatformTarget: async () => currentTarget,
+        resolveTikTokCreatorInfo: async () => {
+          currentTarget = { ...target, accountId: 'reconnected-account' };
+          return creatorInfo;
+        }
+      });
+      const enqueue = vi.spyOn(queue, 'enqueue');
+      const response = await request(app).post('/posts').send(directBody()).expect(409);
+      expect(response.body.code).toBe('TIKTOK_CONNECTION_CHANGED');
+      expect(await store.list()).toEqual([]);
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when creator-info service is not wired', async () => {
+      const { app, store } = createPlanScheduleApp('PRO', futureNow, { resolvePlatformTarget: async () => target });
+      const response = await request(app).post('/posts').send(directBody()).expect(503);
+      expect(response.body.code).toBe('TIKTOK_PUBLISHING_UNAVAILABLE');
+      expect(await store.list()).toEqual([]);
+    });
+
+    it('blocks owner deletion after creator info returns', async () => {
+      let checks = 0;
+      const { app, store } = createPlanScheduleApp('PRO', futureNow, {
+        resolvePlatformTarget: async () => target,
+        resolveTikTokCreatorInfo: async () => creatorInfo,
+        assertOwnerActive: async () => {
+          if (++checks === 2) throw new ManagedUploadServiceError(409, 'ACCOUNT_DELETION_IN_PROGRESS', 'Account deletion is in progress.');
+        }
+      });
+      const response = await request(app).post('/posts').send(directBody()).expect(409);
+      expect(response.body.code).toBe('ACCOUNT_DELETION_IN_PROGRESS');
+      expect(await store.list()).toEqual([]);
+    });
+  });
 
   const mediaPost = (id: string, createdAt: string, userId = 'seller-preview'): QueuedPost => ({
     id,

@@ -9,6 +9,7 @@ import '../platforms/social_platform_logo.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
+import 'tiktok_publishing_settings_sheet.dart';
 
 String? publishReviewOutcomeFor(
   SocialPlatform platform, {
@@ -20,7 +21,9 @@ String? publishReviewOutcomeFor(
       return switch (settings.tiktokPublishMode) {
         TikTokPublishMode.inboxDraft =>
           '${_providerDraftTimingLabel(scheduledAt, destination: 'TikTok')} · ส่งออกจริงและใช้โควตาโพสต์',
-        TikTokPublishMode.directPost => 'ยังไม่พร้อมโพสต์ตรง',
+        TikTokPublishMode.directPost => settings.canSubmit(platform)
+            ? 'โพสต์ตรง · ${tikTokPrivacyLabel(settings.tiktokPrivacyLevel!)} · TikTok อาจประมวลผลหลายนาที'
+            : 'ยังไม่พร้อมโพสต์ตรง',
       };
     case SocialPlatform.youtubeShorts:
       if (!settings.canSubmit(platform)) return 'ตั้งค่า YouTube ยังไม่ครบ';

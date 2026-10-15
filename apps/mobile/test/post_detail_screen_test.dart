@@ -386,6 +386,29 @@ void main() {
     expect(api.cancelledPostIds, isEmpty);
   });
 
+  for (final error in const {
+    'TikTok publishing options changed. Review the account and publishing settings before trying again.':
+        'สิทธิ์หรือตัวเลือกการโพสต์ TikTok เปลี่ยนไป กรุณาเปิดการตั้งค่าช่องทางและทบทวนก่อนลองอีกครั้ง',
+    'TikTok publishing options could not be checked. No video was sent to TikTok. Review the settings before trying again.':
+        'ตรวจสอบสิทธิ์การโพสต์ TikTok ไม่ได้ ยังไม่ได้ส่งคลิปไปยัง TikTok กรุณาทบทวนการตั้งค่าแล้วลองใหม่',
+  }.entries) {
+    testWidgets('localizes safe TikTok capability error without retry: ${error.key}', (tester) async {
+      final api = _FakePostApiClient();
+      await tester.pumpWidget(MaterialApp(home: PostDetailScreen(
+        apiClient: api,
+        post: _post(status: 'FAILED', platforms: const ['TIKTOK'], platformResults: [
+          PostPlatformResult(postId: 'post-1', platform: 'TIKTOK', status: 'FAILED', errorMessage: error.key),
+        ]),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.text('สาเหตุ: ${error.value}'), findsOneWidget);
+      expect(find.textContaining(error.key), findsNothing);
+      expect(api.publishedNowPostIds, isEmpty);
+      expect(api.cancelledPostIds, isEmpty);
+      expect(find.byKey(const ValueKey('post-detail-publish-now')), findsNothing);
+    });
+  }
+
   testWidgets('shows each platform result, failure reason, and real reference',
       (tester) async {
     await tester.pumpWidget(

@@ -49,6 +49,7 @@ describe('createPrismaSocialConnectionRepository', () => {
         .fn<PrismaSocialConnectionClient['socialConnection']['findMany']>()
         .mockResolvedValue([
           {
+            id: 'local-connection-1',
             userId: 'seller-1',
             platform: 'TIKTOK',
             postPeerAccountId: 'postpeer-tiktok-1',
@@ -65,6 +66,8 @@ describe('createPrismaSocialConnectionRepository', () => {
       {
         platform: 'TIKTOK',
         connected: true,
+        connectionId: 'local-connection-1',
+        connectionRevision: expect.stringMatching(/^[a-f0-9]{64}$/),
         displayName: 'Seller TikTok',
         externalAccountId: '@seller-1',
         connectedAt: '2026-06-26T02:00:00.000Z'
@@ -90,6 +93,7 @@ describe('createPrismaSocialConnectionRepository', () => {
         }
       },
       select: {
+        id: true,
         userId: true,
         platform: true,
         postPeerAccountId: true,
@@ -184,6 +188,7 @@ describe('createPrismaSocialConnectionRepository', () => {
         externalAccountId: '@seller-1'
       },
       select: {
+        id: true,
         userId: true,
         platform: true,
         postPeerAccountId: true,
@@ -248,6 +253,7 @@ describe('createPrismaSocialConnectionRepository', () => {
         externalAccountId: null
       },
       select: {
+        id: true,
         userId: true,
         platform: true,
         postPeerAccountId: true,
@@ -283,6 +289,7 @@ describe('createPrismaSocialConnectionRepository', () => {
       {
         platform: 'TIKTOK',
         connected: true,
+        connectionRevision: expect.stringMatching(/^[a-f0-9]{64}$/),
         connectedAt: '2026-06-26T02:00:00.000Z'
       },
       {

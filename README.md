@@ -7,6 +7,22 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## TikTok Direct Post (2026-10-15, local verification passed; rollout pending)
+
+The new explicit Direct Post path reads the connected creator's latest options
+through PostPeer before showing settings, before accepting a post, and again
+before the worker sends it. Privacy has no default, interactions require opt-in,
+and music/commercial-content consent is collected in the publishing flow. A
+creator revision binds those choices to the same owner and account. Inbox remains
+available and existing Inbox receipts retain their DRAFT outcome.
+
+A read-only Staging creator-info check succeeded and returned public/friends/
+self privacy choices. This does not prove the provider's TikTok audit approval
+or successful public publication. No real Direct Post, new deployment, or
+historical-data repair is included in this feature's verification so far. API
+must be deployed before the new Mobile flow; no new database migration is needed.
+See [the implementation and validation record](docs/superpowers/plans/2026-10-15-tiktok-direct-post.md).
+
 ## TikTok Inbox CREATE confirmation (2026-10-15, Staging delivered)
 
 A later TikTok-only post was FAILED locally although its canonical PostPeer GET
@@ -1242,9 +1258,12 @@ required setting is incomplete, or the requested outcome cannot be determined;
 the seller must refresh or reconnect instead of confirming an inferred target.
 The complete explicit settings shapes are:
 
-- TikTok: `INBOX_DRAFT`. `DIRECT_POST` with `SELF_ONLY` remains a legacy/internal
-  shape and is blocked for new Mobile requests until creator-info, current
-  privacy/interaction choices, consent, and TikTok audit approval exist.
+- TikTok: `INBOX_DRAFT`, or the complete `DIRECT_POST` shape documented in
+  `API.md`. Direct requires current creator options, an account revision,
+  explicit privacy/interaction/disclosure choices and consent. The old two-field
+  `DIRECT_POST`/`SELF_ONLY` shape remains readable only for persisted legacy work.
+  Production/public enablement still requires provider approval verification and
+  controlled publication testing.
 - YouTube Shorts: a title (1–100 characters, no `<` or `>`),
   `private|unlisted|public`, the made-for-kids answer, the realistic synthetic
   media answer, and `communityGuidelinesCertified: true`.
@@ -2164,9 +2183,10 @@ name rather than the Firebase UID/email. `GET /posts` now returns user-scoped
 and reports `deliveryOutcome` as `LIVE`, `PRIVATE`, `UNLISTED`, or `DRAFT` so a
 provider draft/private delivery is not described as publicly live merely because
 the internal platform result reached `PUBLISHED`. Existing rows may have a null
-outcome and continue to use their legacy status display. New TikTok requests are
-limited to `INBOX_DRAFT`; direct posting remains blocked pending creator-info,
-consent, and audit approval. One immediate Staging YouTube Shorts Private
+outcome and continue to use their legacy status display. New TikTok requests can
+use Inbox or the complete Direct settings flow when the new API is deployed and
+current creator options can be verified. The provider's audit approval and a
+real public Direct Post remain unverified. One immediate Staging YouTube Shorts Private
 connected-account E2E passed on 2026-08-10 with a real non-mock external
 reference and exactly one post unit, but it predates the complete Phase 2
 settings/target/delivery matrix. Production, provider-draft behavior, and the

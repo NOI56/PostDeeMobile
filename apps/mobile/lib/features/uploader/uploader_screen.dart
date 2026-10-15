@@ -36,6 +36,7 @@ import 'publish_flow_screen.dart';
 import 'publish_review_screen.dart';
 import 'post_video_preview_screen.dart';
 import 'tiktok_video_preparer.dart';
+import 'tiktok_publishing_settings_sheet.dart';
 import 'video_picker_service.dart';
 import 'watermark_video_processor.dart';
 
@@ -60,6 +61,8 @@ typedef UploaderPostCreator = Future<QueuedPostResult> Function(
 typedef UploaderPublishingReadinessChecker = Future<void> Function();
 typedef UploaderScheduledPostCreated = void Function(QueuedPostResult post);
 typedef UploaderConnectionsLoader = Future<List<SocialConnectionResult>>
+    Function();
+typedef UploaderTikTokOptionsLoader = Future<TikTokPublishingOptionsResult>
     Function();
 
 class _PublishOwnerChangedException implements Exception {
@@ -95,6 +98,7 @@ class UploaderScreen extends StatefulWidget {
     this.createPost,
     this.checkPublishingReadiness,
     this.loadSocialConnections,
+    this.loadTikTokPublishingOptions,
     this.onScheduledPostCreated,
     this.onPublishFinished,
     this.onViewAnalytics,
@@ -131,6 +135,7 @@ class UploaderScreen extends StatefulWidget {
   final UploaderPostCreator? createPost;
   final UploaderPublishingReadinessChecker? checkPublishingReadiness;
   final UploaderConnectionsLoader? loadSocialConnections;
+  final UploaderTikTokOptionsLoader? loadTikTokPublishingOptions;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
   final VoidCallback? onPublishFinished;
   final VoidCallback? onViewAnalytics;
@@ -193,6 +198,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   final Set<SocialPlatform> _connectedPlatforms = {};
   final Map<SocialPlatform, SocialConnectionResult> _connectionDetails = {};
   PlatformPublishSettings _platformSettings = const PlatformPublishSettings();
+  TikTokPublishingOptionsResult? _tikTokPublishingOptions;
+  int _tikTokIntentGeneration = 0;
+  String? _tikTokTextSnapshot;
+  String? _tikTokConsentedIntent;
   final List<TextTemplateResult> _templates = [];
   bool _isSubmitting = false;
   bool _isPreparingReview = false;
@@ -334,6 +343,19 @@ class _UploaderScreenState extends State<UploaderScreen>
   void _handleFeedbackTextChanged() {
     if (!mounted) return;
     setState(() {
+      final textSnapshot = jsonEncode([
+        _captionController.text,
+        _aiGuidanceController.text,
+        _localFilePathController.text,
+        _scheduledAtController.text
+      ]);
+      if (textSnapshot != _tikTokTextSnapshot &&
+          !_isSavingDraft &&
+          !_isSubmitting &&
+          !_isRestoringInitialDraft) {
+        _clearTikTokFreshness();
+      }
+      _tikTokTextSnapshot = textSnapshot;
       if (_captionRequired && _captionController.text.trim().isNotEmpty) {
         _clearCaptionValidation();
         if (_errorMessage == 'เพิ่มแคปชั่นก่อนโพสต์') _errorMessage = null;
@@ -342,6 +364,99 @@ class _UploaderScreenState extends State<UploaderScreen>
         _clearDraftSavedFeedback();
       }
     });
+  }
+
+  String _tikTokConnectionBinding() {
+    final connection = _connectionDetails[SocialPlatform.tiktok];
+    return jsonEncode([
+      connection?.connectionId,
+      connection?.connectionRevision,
+      connection?.externalAccountId,
+      connection?.connectedAt?.toUtc().toIso8601String()
+    ]);
+  }
+
+  String get _tikTokConsentIntent => jsonEncode([
+        _captionController.text,
+        _localFilePathController.text,
+        _scheduledAtController.text,
+        _coverResult?.localImagePath,
+        _activeDraftWatermarkEnabled ?? _requestedAutoWatermark,
+        (_selectedPlatforms.map((p) => p.apiValue).toList()..sort()),
+        _platformSettings.tiktokPublishMode.name,
+        _platformSettings.tiktokPrivacyLevel?.apiValue,
+        _platformSettings.tiktokAllowComment,
+        _platformSettings.tiktokAllowDuet,
+        _platformSettings.tiktokAllowStitch,
+        _platformSettings.tiktokBrandContentToggle,
+        _platformSettings.tiktokBrandOrganicToggle,
+        _platformSettings.tiktokIsAigc,
+      ]);
+
+  void _clearTikTokFreshness() {
+    _tikTokIntentGeneration++;
+    _tikTokPublishingOptions = null;
+    _tikTokConsentedIntent = null;
+    _platformSettings = _platformSettings.copyWith(
+        tiktokMusicUsageConfirmed: false,
+        tiktokBrandedContentPolicyConfirmed: false,
+        tiktokCreatorInfoRevision: null,
+        tiktokVideoDurationSeconds: null);
+  }
+
+  ApiException _tikTokOptionsChanged() => const ApiException(
+      'บัญชีหรือตัวเลือก TikTok เปลี่ยนแล้ว กรุณาเปิดการตั้งค่า TikTok และยืนยันใหม่',
+      statusCode: 409,
+      code: 'TIKTOK_PUBLISHING_OPTIONS_CHANGED');
+
+  Future<TikTokPublishingOptionsResult> _loadBoundTikTokOptions() async {
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    final binding = _tikTokConnectionBinding();
+    final generation = _tikTokIntentGeneration;
+    final connectionGeneration = _connectionLoadGeneration;
+    final options = await (widget.loadTikTokPublishingOptions ??
+        _apiClient.loadTikTokPublishingOptions)();
+    final connection = _connectionDetails[SocialPlatform.tiktok];
+    if (!mounted ||
+        owner != PostDeeAuthSessionStore.instance.session.stableUserId ||
+        generation != _tikTokIntentGeneration ||
+        connectionGeneration != _connectionLoadGeneration ||
+        binding != _tikTokConnectionBinding() ||
+        connection?.connectionId != options.connectionId ||
+        connection?.connectionRevision != options.creatorInfoRevision) {
+      throw _tikTokOptionsChanged();
+    }
+    return options;
+  }
+
+  Future<TikTokPublishingOptionsResult> _revalidateTikTokDirect(
+      PlatformPublishSettings settings,
+      {bool validateDuration = false}) async {
+    if (_tikTokConsentedIntent != _tikTokConsentIntent ||
+        _tikTokPublishingOptions?.creatorInfoRevision !=
+            settings.tiktokCreatorInfoRevision) {
+      throw _tikTokOptionsChanged();
+    }
+    late final TikTokPublishingOptionsResult options;
+    try {
+      options = await _loadBoundTikTokOptions();
+    } catch (_) {
+      if (mounted) setState(_clearTikTokFreshness);
+      rethrow;
+    }
+    if (settings.tiktokCreatorInfoRevision != options.creatorInfoRevision) {
+      if (mounted) setState(_clearTikTokFreshness);
+      throw _tikTokOptionsChanged();
+    }
+    final error = settings.validateTikTokCreatorInfo(options.creatorInfo,
+        validateDuration: validateDuration);
+    if (error != null) {
+      if (mounted) setState(_clearTikTokFreshness);
+      throw ApiException(error,
+          statusCode: 409, code: 'TIKTOK_PUBLISHING_OPTIONS_CHANGED');
+    }
+    _tikTokPublishingOptions = options;
+    return options;
   }
 
   void _focusRequiredCaption() {
@@ -402,10 +517,14 @@ class _UploaderScreenState extends State<UploaderScreen>
             PostDeeAuthSessionStore.instance.session.stableUserId) {
       return const {};
     }
+    final tikTokOptions = _tikTokPublishingOptions;
     return {
       for (final entry in _connectionDetails.entries)
         if (_socialConnectionIdentity(entry.value) case final name?)
           entry.key: name,
+      if (_platformSettings.tiktokPublishMode == TikTokPublishMode.directPost &&
+          tikTokOptions != null)
+        SocialPlatform.tiktok: tikTokOptions.creatorInfo.creatorNickname,
     };
   }
 
@@ -668,6 +787,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   void _handleCaptionStyleOwnerChanged() {
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
     if (owner == _captionStyleOwner) return;
+    _clearTikTokFreshness();
     _captionStyleOwner = owner;
     _captionStyleGeneration++;
     _invalidateAiCaption();
@@ -1016,6 +1136,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       }
 
       setState(() {
+        final previousTikTokBinding = _tikTokConnectionBinding();
         _connectionsOwnerUserId = owner;
         final desiredPlatforms = {
           ..._selectedPlatforms,
@@ -1037,6 +1158,9 @@ class _UploaderScreenState extends State<UploaderScreen>
               (platform) => !_connectedPlatforms.contains(platform),
             ),
           );
+        if (previousTikTokBinding != _tikTokConnectionBinding()) {
+          _clearTikTokFreshness();
+        }
       });
     } catch (_) {
       if (!isCurrent()) return;
@@ -1210,6 +1334,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
     final previousCover = _coverResult;
     setState(() {
+      _clearTikTokFreshness();
       _coverResult = result;
       _errorMessage = null;
       _successMessage = 'บันทึกหน้าปกแล้ว';
@@ -1876,7 +2001,12 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Future<void> _loadWatermarkPreference() async {
     final requested = await _shouldApplyAutoWatermark();
-    if (mounted) setState(() => _requestedAutoWatermark = requested);
+    if (mounted) {
+      setState(() {
+        if (_requestedAutoWatermark != requested) _clearTikTokFreshness();
+        _requestedAutoWatermark = requested;
+      });
+    }
   }
 
   Future<bool> _watermarkEnabledForCurrentSelection() async {
@@ -1894,7 +2024,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   String _platformSettingsError(SocialPlatform platform) {
     switch (platform) {
       case SocialPlatform.tiktok:
-        return 'ยังโพสต์ตรงไป TikTok ไม่ได้ เลือกส่งเป็นร่างก่อน';
+        return _platformSettings.tiktokValidationMessage ??
+            'เปิดการตั้งค่า TikTok เพื่อเลือกการมองเห็นและยืนยันก่อนโพสต์';
       case SocialPlatform.youtubeShorts:
         return _platformSettings.youtubeValidationMessage ??
             'ตั้งค่า YouTube ให้ครบก่อนโพสต์';
@@ -2113,6 +2244,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   Future<PublishDraft?> _persistCurrentDraftWhileLocked({
     required bool showSavedMessage,
   }) async {
+    final preserveTikTokConsent =
+        _tikTokConsentedIntent == _tikTokConsentIntent;
     // A historical upload may already belong to an accepted request whose
     // response was lost. Keep its receipt and ID until the seller explicitly
     // confirms the existing "start new request" action.
@@ -2233,6 +2366,10 @@ class _UploaderScreenState extends State<UploaderScreen>
             ? 'บันทึกร่างในเครื่องแล้ว · ยังไม่อัปโหลด ไม่โพสต์ และไม่ใช้โควตา'
             : null;
         _savedFormSnapshot = _formSnapshot;
+        // A managed copy has the same media intent; its local path may change.
+        if (preserveTikTokConsent) {
+          _tikTokConsentedIntent = _tikTokConsentIntent;
+        }
       });
       if (cover != null && !identical(cover, persistedCover)) {
         unawaited(cover.cleanupTemporaryFiles());
@@ -2246,22 +2383,29 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _blockUnpreparedTikTokReceipt() {
     final receipt = _activeDraftUploadedMedia;
     if (receipt == null ||
-        receipt.videoPreparationPolicy == tikTokVideoPreparationPolicy ||
         !{..._selectedPlatforms, ..._draftUnavailablePlatforms}
             .contains(SocialPlatform.tiktok)) {
+      return false;
+    }
+    final needsDurationProof =
+        _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost &&
+            (receipt.videoDurationSeconds == null ||
+                !receipt.videoDurationSeconds!.isFinite ||
+                receipt.videoDurationSeconds! <= 0);
+    if (receipt.videoPreparationPolicy == tikTokVideoPreparationPolicy &&
+        !needsDurationProof) {
       return false;
     }
     setState(() {
       final id = _activeDraftId;
       if (id != null) _blockedSubmissionDraftIds.add(id);
-      _errorMessage =
-          'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่ผ่านการเตรียมวิดีโอ TikTok '
-          'กรุณาตรวจรายการโพสต์และปลายทางก่อนเริ่มรายการโพสต์ใหม่';
+      _errorMessage = needsDurationProof
+          ? 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่มีข้อมูลระยะเวลาสำหรับโพสต์ตรง กรุณาตรวจรายการเดิมก่อนเริ่มรายการโพสต์ใหม่'
+          : 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่ผ่านการเตรียมวิดีโอ TikTok '
+              'กรุณาตรวจรายการโพสต์และปลายทางก่อนเริ่มรายการโพสต์ใหม่';
       _successMessage = null;
     });
-    _setUploadStatus(
-        'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่ผ่านการเตรียมวิดีโอ TikTok '
-        'กรุณาตรวจรายการโพสต์และปลายทางก่อนเริ่มรายการโพสต์ใหม่');
+    _setUploadStatus(_errorMessage!);
     return true;
   }
 
@@ -2294,6 +2438,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   CoverEditorResult? _clearActiveDraftFormState() {
     _invalidateAiCaption();
+    _clearTikTokFreshness();
     final previousCover = _coverResult;
     final activeDraftId = _activeDraftId;
     if (activeDraftId != null) {
@@ -2373,7 +2518,14 @@ class _UploaderScreenState extends State<UploaderScreen>
         );
       _platformSettings = draft.platformSettings.copyWith(
         youtubeCommunityGuidelinesCertified: false,
+        tiktokMusicUsageConfirmed: false,
+        tiktokBrandedContentPolicyConfirmed: false,
+        tiktokCreatorInfoRevision: null,
+        tiktokVideoDurationSeconds: null,
       );
+      _tikTokPublishingOptions = null;
+      _tikTokConsentedIntent = null;
+      _tikTokIntentGeneration++;
       _coverResult = draft.cover?.toEditorResult();
       _scheduledAtController.text =
           draft.scheduledAt?.toUtc().toIso8601String() ?? '';
@@ -2787,6 +2939,15 @@ class _UploaderScreenState extends State<UploaderScreen>
     var width = _readPositiveInt(_widthController);
     var height = _readPositiveInt(_heightController);
     final scheduledAt = _readScheduledAt();
+    final isTikTokDirect = _selectedPlatforms.contains(SocialPlatform.tiktok) &&
+        _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost;
+    if (isTikTokDirect && caption.length > 2200) {
+      setState(() {
+        _errorMessage = 'แคปชั่น TikTok ต้องไม่เกิน 2,200 ตัวอักษร';
+        _successMessage = null;
+      });
+      return null;
+    }
 
     final invalidPlatform = _selectedPlatforms
         .where((platform) => !_platformSettings.canSubmit(platform))
@@ -2795,6 +2956,14 @@ class _UploaderScreenState extends State<UploaderScreen>
       setState(() {
         _errorMessage = _platformSettingsError(invalidPlatform);
         _successMessage = null;
+      });
+      return null;
+    }
+
+    if (isTikTokDirect && _tikTokConsentedIntent != _tikTokConsentIntent) {
+      setState(() {
+        _clearTikTokFreshness();
+        _errorMessage = _tikTokOptionsChanged().message;
       });
       return null;
     }
@@ -2882,6 +3051,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     final submittedDraft = await _persistCurrentDraft(showSavedMessage: false);
     if (submittedDraft == null) return null;
     final submittedDraftId = submittedDraft.id;
+    final submittedTikTokGeneration = _tikTokIntentGeneration;
+    final submittedTikTokBinding = _tikTokConnectionBinding();
     final submittedDraftOwnerUserId = widget.draftStore == null
         ? PostDeeAuthSessionStore.instance.session.stableUserId
         : null;
@@ -2912,6 +3083,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       if (!submissionStillOwned()) {
         throw const _PublishOwnerChangedException();
       }
+      if (isTikTokDirect &&
+          (submittedTikTokGeneration != _tikTokIntentGeneration ||
+              submittedTikTokBinding != _tikTokConnectionBinding())) {
+        throw _tikTokOptionsChanged();
+      }
     }
 
     localFilePath = submittedDraft.videoPath;
@@ -2930,6 +3106,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     var didUploadVideo = false;
     WatermarkedVideoResult? generatedWatermarkedVideo;
     TikTokPreparedVideoResult? generatedTikTokVideo;
+    double? preparedDurationSeconds;
+    var requestSettings = submittedDraft.platformSettings;
 
     try {
       final checkPublishingReadiness = widget.checkPublishingReadiness ??
@@ -3013,6 +3191,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       String? coverImageS3Key = cachedMedia?.coverImageS3Key;
       var selectedCover = _coverResult;
       ensureSubmissionStillOwned();
+      TikTokPublishingOptionsResult? directOptions;
+      if (isTikTokDirect) {
+        directOptions = await _revalidateTikTokDirect(requestSettings);
+        ensureSubmissionStillOwned();
+      }
       unawaited(_analytics.logPublishStarted(
         platformCount: _selectedPlatforms.length,
         isScheduled: scheduledAt != null,
@@ -3053,9 +3236,18 @@ class _UploaderScreenState extends State<UploaderScreen>
           final prepared = await prepare(TikTokVideoPreparationRequest(
             inputFile: uploadVideoFileForRequest,
             fileName: uploadFileName,
-            isCancelled: () => !submissionStillOwned(),
+            isCancelled: () =>
+                !submissionStillOwned() ||
+                (isTikTokDirect &&
+                    (submittedTikTokGeneration != _tikTokIntentGeneration ||
+                        submittedTikTokBinding != _tikTokConnectionBinding())),
+            maxDurationSeconds: isTikTokDirect
+                ? directOptions!.creatorInfo.maxVideoPostDurationSec
+                    .clamp(1, 600)
+                : null,
           ));
           generatedTikTokVideo = prepared;
+          preparedDurationSeconds = prepared.durationSeconds;
           ensureSubmissionStillOwned();
           if (prepared.videoPreparationPolicy != tikTokVideoPreparationPolicy) {
             throw const TikTokVideoPreparationException(
@@ -3066,6 +3258,13 @@ class _UploaderScreenState extends State<UploaderScreen>
           uploadSizeBytes = prepared.sizeBytes;
           width = prepared.width;
           height = prepared.height;
+          if (isTikTokDirect) {
+            requestSettings = requestSettings.copyWith(
+                tiktokVideoDurationSeconds: prepared.durationSeconds);
+            await _revalidateTikTokDirect(requestSettings,
+                validateDuration: true);
+            ensureSubmissionStillOwned();
+          }
         }
 
         final rawCreateUpload = widget.createUpload ?? _apiClient.createUpload;
@@ -3177,6 +3376,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           coverImageS3Key: coverImageS3Key,
           videoPreparationPolicy:
               needsTikTokPreparation ? tikTokVideoPreparationPolicy : null,
+          videoDurationSeconds: preparedDurationSeconds,
         );
         final savedReceipt =
             await _persistCurrentDraftWhileLocked(showSavedMessage: false);
@@ -3189,10 +3389,18 @@ class _UploaderScreenState extends State<UploaderScreen>
         selectedCover = _coverResult;
       } else {
         didApplyWatermark = shouldApplyWatermark;
+        if (isTikTokDirect) {
+          requestSettings = requestSettings.copyWith(
+              tiktokVideoDurationSeconds: cachedMedia.videoDurationSeconds);
+        }
       }
       final createPost = widget.createPost ?? _apiClient.createPost;
       report(PublishFlowStage.creatingPost, 0.9);
       ensureSubmissionStillOwned();
+      if (isTikTokDirect) {
+        await _revalidateTikTokDirect(requestSettings, validateDuration: true);
+        ensureSubmissionStillOwned();
+      }
       final post = await createPost(
         CreatePostRequest(
           clientRequestId: submittedDraft.submissionRequestId,
@@ -3201,7 +3409,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           mediaContentFingerprint: mediaContentFingerprint,
           platforms:
               _selectedPlatforms.map((platform) => platform.apiValue).toList(),
-          platformSettings: submittedDraft.platformSettings.toApiJson(
+          platformSettings: requestSettings.toApiJson(
             selectedPlatforms: Set<SocialPlatform>.from(_selectedPlatforms),
           ),
           scheduledAt: scheduledAt,
@@ -3487,6 +3695,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   void _setPlatformSelected(SocialPlatform platform, bool isSelected) {
     setState(() {
+      _clearTikTokFreshness();
       if (isSelected && _connectedPlatforms.contains(platform)) {
         _selectedPlatforms.add(platform);
         _draftUnavailablePlatforms.remove(platform);
@@ -3498,6 +3707,35 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _openPlatformSettings(SocialPlatform platform) async {
+    if (platform == SocialPlatform.tiktok) {
+      setState(_clearTikTokFreshness);
+      final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+      final binding = _tikTokConnectionBinding();
+      final generation = _tikTokIntentGeneration;
+      bool isCurrent() =>
+          mounted &&
+          owner == PostDeeAuthSessionStore.instance.session.stableUserId &&
+          binding == _tikTokConnectionBinding() &&
+          generation == _tikTokIntentGeneration;
+      final next = await showModalBottomSheet<TikTokSettingsSelection>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (_) => TikTokPublishingSettingsSheet(
+              initialSettings: _platformSettings,
+              loadOptions: _loadBoundTikTokOptions,
+              isCurrent: isCurrent));
+      if (next == null || !isCurrent()) return;
+      setState(() {
+        _platformSettings = next.settings;
+        _tikTokPublishingOptions = next.options;
+        _tikTokConsentedIntent =
+            _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost
+                ? _tikTokConsentIntent
+                : null;
+      });
+      return;
+    }
     final next = await showModalBottomSheet<PlatformPublishSettings>(
       context: context,
       isScrollControlled: true,
@@ -3514,6 +3752,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   void _selectAllConnectedPlatforms() {
     setState(() {
+      _clearTikTokFreshness();
       _selectedPlatforms
         ..clear()
         ..addAll(_connectedPlatforms);
@@ -3522,6 +3761,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   void _clearSelectedPlatforms() {
     setState(() {
+      _clearTikTokFreshness();
       _selectedPlatforms.clear();
       _draftUnavailablePlatforms.clear();
     });
@@ -4969,7 +5209,9 @@ class _PlatformSelectorSection extends StatelessWidget {
       case SocialPlatform.tiktok:
         return settings.tiktokPublishMode == TikTokPublishMode.inboxDraft
             ? 'ร่างใน TikTok'
-            : 'ยังไม่พร้อมโพสต์ตรง';
+            : settings.canSubmit(platform)
+                ? 'โพสต์ตรง · ${tikTokPrivacyLabel(settings.tiktokPrivacyLevel!)}'
+                : 'ต้องตั้งค่าโพสต์ตรง';
       case SocialPlatform.youtubeShorts:
         if (!settings.canSubmit(platform)) return 'ต้องตั้งค่า';
         return switch (settings.youtubeVisibility) {
@@ -5268,31 +5510,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
   Widget _buildSettings(PlatformPublishSettings current) {
     switch (widget.platform) {
       case SocialPlatform.tiktok:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.check_circle_rounded),
-              title: Text('ส่งเป็นร่างเข้า TikTok'),
-              subtitle: Text(
-                'ส่งออกจริงและใช้โควตาโพสต์ · ต้องเปิด TikTok เพื่อตั้งค่าต่อ',
-              ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              key: const ValueKey('uploader-tiktok-direct-disabled'),
-              onPressed: null,
-              icon: const Icon(Icons.lock_outline_rounded),
-              label: const Text('โพสต์ตรง · ยังไม่พร้อม'),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'โพสต์ตรงจะเปิดเมื่อ PostDee โหลดตัวเลือกความเป็นส่วนตัวและความยินยอมล่าสุดจาก TikTok ได้',
-              style: TextStyle(color: AppTheme.textMuted, height: 1.45),
-            ),
-          ],
-        );
+        throw StateError('TikTok uses the creator publishing options sheet');
       case SocialPlatform.youtubeShorts:
         final validationMessage = current.youtubeValidationMessage;
         return Column(

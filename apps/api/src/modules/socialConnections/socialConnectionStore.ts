@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+
+import { buildPlatformTarget } from '../posts/platformTargets.js';
+import { buildTikTokConnectionRevision } from '../posts/tikTokDirectSettings.js';
 import type { Platform } from '../posts/postStore.js';
 
 export type SocialConnectionPlatform =
@@ -24,6 +28,7 @@ export const isPublishableSocialPlatform = (
 ): platform is SocialConnectionPlatform => isSocialConnectionPlatform(platform);
 
 export type SocialConnection = {
+  id?: string;
   userId: string;
   platform: SocialConnectionPlatform;
   postPeerAccountId: string;
@@ -34,6 +39,8 @@ export type SocialConnection = {
 };
 
 export type SocialConnectionStatus = {
+  connectionId?: string;
+  connectionRevision?: string;
   platform: SocialConnectionPlatform;
   connected: boolean;
   displayName?: string;
@@ -106,15 +113,18 @@ const connectedConnection = ({
   displayName,
   externalAccountId,
   connectedAt,
-  updatedAt
+  updatedAt,
+  id
 }: UpsertSocialConnectionInput & {
   connectedAt: string;
   updatedAt: string;
+  id: string;
 }): SocialConnection => {
   const normalizedDisplayName = normalizeOptionalMetadata(displayName);
   const normalizedExternalAccountId = normalizeOptionalMetadata(externalAccountId);
 
   return {
+    id,
     userId,
     platform,
     postPeerAccountId,
@@ -138,6 +148,10 @@ const connectionStatus = (
   return {
     platform,
     connected: true,
+    ...(connection.id ? { connectionId: connection.id } : {}),
+    ...(platform === 'TIKTOK' ? {
+      connectionRevision: buildTikTokConnectionRevision({ userId: connection.userId, target: buildPlatformTarget(connection) })
+    } : {}),
     displayName: connection.displayName,
     externalAccountId: connection.externalAccountId,
     connectedAt: connection.connectedAt
@@ -168,6 +182,7 @@ export const createInMemorySocialConnectionStore = ({
       const timestamp = now();
       const record = connectedConnection({
         ...input,
+        id: existingConnection?.id ?? randomUUID(),
         connectedAt: existingConnection?.connectedAt ?? timestamp,
         updatedAt: timestamp
       });

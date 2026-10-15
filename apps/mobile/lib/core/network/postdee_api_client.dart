@@ -2592,6 +2592,118 @@ class CalendarPostResult extends PostSummaryResult {
   }
 }
 
+enum TikTokPrivacyLevel {
+  publicToEveryone('PUBLIC_TO_EVERYONE'),
+  mutualFollowFriends('MUTUAL_FOLLOW_FRIENDS'),
+  followerOfCreator('FOLLOWER_OF_CREATOR'),
+  selfOnly('SELF_ONLY');
+
+  const TikTokPrivacyLevel(this.apiValue);
+  final String apiValue;
+}
+
+const _tikTokPublishingOptionsMessage =
+    'ตรวจสอบตัวเลือกการโพสต์ TikTok ไม่สำเร็จ กรุณาลองใหม่';
+final _tikTokCreatorRevisionPattern = RegExp(r'^[0-9a-f]{64}$');
+
+ApiException _invalidTikTokPublishingOptions() => const ApiException(
+      _tikTokPublishingOptionsMessage,
+      code: 'TIKTOK_PUBLISHING_OPTIONS_INVALID',
+    );
+
+class TikTokCreatorInfo {
+  const TikTokCreatorInfo({
+    required this.creatorAvatarUrl,
+    required this.creatorUsername,
+    required this.creatorNickname,
+    required this.privacyLevelOptions,
+    required this.commentDisabled,
+    required this.duetDisabled,
+    required this.stitchDisabled,
+    required this.maxVideoPostDurationSec,
+  });
+
+  final String creatorAvatarUrl;
+  final String creatorUsername;
+  final String creatorNickname;
+  final List<TikTokPrivacyLevel> privacyLevelOptions;
+  final bool commentDisabled;
+  final bool duetDisabled;
+  final bool stitchDisabled;
+  final int maxVideoPostDurationSec;
+
+  factory TikTokCreatorInfo.fromJson(Map<String, Object?> json) {
+    final rawPrivacy = json['privacyLevelOptions'];
+    final maximum = json['maxVideoPostDurationSec'];
+    if (json['creatorAvatarUrl'] is! String ||
+        json['creatorUsername'] is! String ||
+        json['creatorNickname'] is! String ||
+        rawPrivacy is! List ||
+        rawPrivacy.isEmpty ||
+        json['commentDisabled'] is! bool ||
+        json['duetDisabled'] is! bool ||
+        json['stitchDisabled'] is! bool ||
+        maximum is! int ||
+        maximum <= 0) {
+      throw _invalidTikTokPublishingOptions();
+    }
+    if ((json['creatorUsername'] as String).trim().isEmpty ||
+        (json['creatorNickname'] as String).trim().isEmpty) {
+      throw _invalidTikTokPublishingOptions();
+    }
+    final privacy = <TikTokPrivacyLevel>[];
+    for (final value in rawPrivacy) {
+      final matches =
+          TikTokPrivacyLevel.values.where((level) => level.apiValue == value);
+      if (matches.length != 1 || privacy.contains(matches.first)) {
+        throw _invalidTikTokPublishingOptions();
+      }
+      privacy.add(matches.first);
+    }
+    return TikTokCreatorInfo(
+      creatorAvatarUrl: json['creatorAvatarUrl'] as String,
+      creatorUsername: json['creatorUsername'] as String,
+      creatorNickname: json['creatorNickname'] as String,
+      privacyLevelOptions: List.unmodifiable(privacy),
+      commentDisabled: json['commentDisabled'] as bool,
+      duetDisabled: json['duetDisabled'] as bool,
+      stitchDisabled: json['stitchDisabled'] as bool,
+      maxVideoPostDurationSec: maximum,
+    );
+  }
+}
+
+class TikTokPublishingOptionsResult {
+  const TikTokPublishingOptionsResult({
+    required this.connectionId,
+    required this.creatorInfoRevision,
+    required this.creatorInfo,
+  });
+
+  final String connectionId;
+  final String creatorInfoRevision;
+  final TikTokCreatorInfo creatorInfo;
+
+  factory TikTokPublishingOptionsResult.fromJson(Map<String, Object?> json) {
+    final connectionId = json['connectionId'];
+    final revision = json['creatorInfoRevision'];
+    final info = json['creatorInfo'];
+    if (json['status'] != 'ok' ||
+        connectionId is! String ||
+        connectionId.trim().isEmpty ||
+        revision is! String ||
+        !_tikTokCreatorRevisionPattern.hasMatch(revision) ||
+        info is! Map<String, Object?>) {
+      throw _invalidTikTokPublishingOptions();
+    }
+    return TikTokPublishingOptionsResult(
+      connectionId: connectionId,
+      creatorInfoRevision: revision,
+      creatorInfo: TikTokCreatorInfo.fromJson(info),
+    );
+  }
+}
+
 class SocialConnectionResult {
   const SocialConnectionResult({
     required this.platform,
@@ -2599,6 +2711,8 @@ class SocialConnectionResult {
     this.displayName,
     this.externalAccountId,
     this.connectedAt,
+    this.connectionId,
+    this.connectionRevision,
   });
 
   final String platform;
@@ -2606,6 +2720,8 @@ class SocialConnectionResult {
   final String? displayName;
   final String? externalAccountId;
   final DateTime? connectedAt;
+  final String? connectionId;
+  final String? connectionRevision;
 
   factory SocialConnectionResult.fromJson(Map<String, Object?> json) =>
       SocialConnectionResult(
@@ -2615,6 +2731,15 @@ class SocialConnectionResult {
         externalAccountId: json['externalAccountId'] as String?,
         connectedAt: json['connectedAt'] is String
             ? DateTime.tryParse(json['connectedAt'] as String)
+            : null,
+        connectionId: json['connectionId'] is String &&
+                (json['connectionId'] as String).trim().isNotEmpty
+            ? json['connectionId'] as String
+            : null,
+        connectionRevision: json['connectionRevision'] is String &&
+                _tikTokCreatorRevisionPattern
+                    .hasMatch(json['connectionRevision'] as String)
+            ? json['connectionRevision'] as String
             : null,
       );
 }
@@ -2996,6 +3121,27 @@ class PostDeeApiClient {
         .map((connection) =>
             SocialConnectionResult.fromJson(connection as Map<String, Object?>))
         .toList();
+  }
+
+  Future<TikTokPublishingOptionsResult> loadTikTokPublishingOptions() async {
+    try {
+      return TikTokPublishingOptionsResult.fromJson(
+        await _getJson('/social-connections/TIKTOK/publishing-options'),
+      );
+    } on AuthSessionChangedException {
+      rethrow;
+    } on ApiException catch (error) {
+      throw ApiException(
+        _tikTokPublishingOptionsMessage,
+        statusCode: error.statusCode,
+        code: error.code ?? 'TIKTOK_PUBLISHING_OPTIONS_UNAVAILABLE',
+      );
+    } catch (_) {
+      throw const ApiException(
+        _tikTokPublishingOptionsMessage,
+        code: 'TIKTOK_PUBLISHING_OPTIONS_UNAVAILABLE',
+      );
+    }
   }
 
   Future<SocialConnectLinkResult> createSocialConnectionLink(

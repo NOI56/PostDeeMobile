@@ -762,6 +762,9 @@ void main() {
         home: Scaffold(
           body: UploaderScreen(
             draftStore: TestPublishDraftStore(),
+            loadTikTokPublishingOptions: () async => throw const ApiException(
+                'ตัวเลือก TikTok ยังไม่พร้อม',
+                statusCode: 503),
             loadSocialConnections: () async => const [
               SocialConnectionResult(
                 platform: 'TIKTOK',
@@ -804,10 +807,18 @@ void main() {
     await tester.pump();
     await tester.tap(tiktokSettings);
     await tester.pumpAndSettle();
-    final direct = tester.widget<OutlinedButton>(
-      find.byKey(const ValueKey('uploader-tiktok-direct-disabled')),
-    );
-    expect(direct.onPressed, isNull);
+    final inbox = find.byKey(const ValueKey('uploader-tiktok-mode-inbox'));
+    expect(tester.widget<ChoiceChip>(inbox).selected, isTrue);
+    await tester.tap(find.byKey(const ValueKey('uploader-tiktok-mode-direct')));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.byKey(const ValueKey('uploader-platform-settings-save')))
+            .onPressed,
+        isNull);
+    await tester.tap(inbox);
+    await tester.pumpAndSettle();
     expect(find.text('ส่งเป็นร่างเข้า TikTok'), findsOneWidget);
     var save = find.byKey(const ValueKey('uploader-platform-settings-save'));
     await tester.ensureVisible(save);

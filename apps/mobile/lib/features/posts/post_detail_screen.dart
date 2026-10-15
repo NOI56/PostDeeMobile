@@ -200,6 +200,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         'โพสต์ไปยังช่องทางนี้ไม่สำเร็จ กรุณาลองใหม่ภายหลัง',
       'TikTok rejected this video because its frame rate validation failed. Export the video again before retrying.' =>
         'TikTok ตรวจสอบอัตราเฟรมของคลิปนี้ไม่ผ่าน กรุณาส่งออกวิดีโอใหม่ก่อนลองอีกครั้ง',
+      'TikTok publishing options changed. Review the account and publishing settings before trying again.' =>
+        'สิทธิ์หรือตัวเลือกการโพสต์ TikTok เปลี่ยนไป กรุณาเปิดการตั้งค่าช่องทางและทบทวนก่อนลองอีกครั้ง',
+      'TikTok publishing options could not be checked. No video was sent to TikTok. Review the settings before trying again.' =>
+        'ตรวจสอบสิทธิ์การโพสต์ TikTok ไม่ได้ ยังไม่ได้ส่งคลิปไปยัง TikTok กรุณาทบทวนการตั้งค่าแล้วลองใหม่',
       'Publishing result could not be confirmed. Check the platform before trying again.' =>
         'ยังยืนยันผลการโพสต์ไม่ได้ กรุณาตรวจสอบช่องทางนี้ก่อนลองใหม่ เพื่อป้องกันโพสต์ซ้ำ',
       _ => message,

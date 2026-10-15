@@ -10,6 +10,7 @@ import {
 } from '../modules/platformPublishes/platformPublishStore.js';
 import type { PlatformSettings } from '../modules/posts/platformSettings.js';
 import type { PlatformTargets } from '../modules/posts/platformTargets.js';
+import { TikTokPublishingError } from '../modules/socialConnections/postPeerTikTokClient.js';
 import type { BullMqPublishJobData } from '../modules/queue/bullMqPublishQueue.js';
 import type { RunWithActiveOwner } from '../modules/account/ownerOperationQueue.js';
 import { retainCurrentOwnerOperation } from '../modules/account/prismaOwnerOperationCoordinator.js';
@@ -110,6 +111,18 @@ const publicCleanupErrorMessage = 'Video cleanup failed. Please try again later.
 const readPublicPublishFailureMessage = (error: unknown, platform: Platform) => {
   if (error instanceof PublishOutcomeUnknownError) {
     return publicPublishOutcomeUnknownErrorMessage;
+  }
+  if (platform === 'TIKTOK' && error instanceof TikTokPublishingError) {
+    // Creator lookups have no publishing side effect. Expose fixed recovery
+    // guidance, never raw provider messages or credentials.
+    if (error.code === 'TIKTOK_DIRECT_SETTINGS_INVALID') {
+      return 'TikTok publishing options changed. Review the account and publishing settings before trying again.';
+    }
+    if (error.code === 'TIKTOK_CREATOR_INFO_UNAVAILABLE' ||
+        error.code === 'TIKTOK_CREATOR_INFO_INVALID' ||
+        error.code === 'TIKTOK_PUBLISHING_UNAVAILABLE') {
+      return 'TikTok publishing options could not be checked. No video was sent to TikTok. Review the settings before trying again.';
+    }
   }
   if (
     platform === 'TIKTOK' &&

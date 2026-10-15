@@ -35,9 +35,17 @@ import {
 } from './postStore.js';
 import { readPlatformSettings } from './platformSettings.js';
 import {
+  buildTikTokConnectionRevision,
+  isExplicitTikTokDirectSettings,
+  validateTikTokDirectCaption,
+  validateTikTokDirectSettings
+} from './tikTokDirectSettings.js';
+import { TikTokPublishingError, type TikTokCreatorInfo } from '../socialConnections/postPeerTikTokClient.js';
+import {
   arePlatformTargetsEqual,
   normalizePersistedPlatformTargets,
   type PlatformTargets,
+  type PlatformTarget,
   type ResolveCurrentPlatformTarget
 } from './platformTargets.js';
 
@@ -308,6 +316,7 @@ export const registerPostRoutes = (
     assertOwnerActive?: (ownerId: string) => Promise<void>;
     ownerMutationLock?: OwnerMutationLock;
     resolvePlatformTarget?: ResolveCurrentPlatformTarget;
+    resolveTikTokCreatorInfo?: (input: { userId: string; target: PlatformTarget }) => Promise<TikTokCreatorInfo>;
     assertUploadReady?: (ownerId: string, videoS3Key: string) => Promise<void>;
     assertCoverUploadReady?: (ownerId: string, coverImageS3Key: string) => Promise<void>;
     createMediaDownloadUrl?: (storageKey: string) => Promise<string | undefined>;
@@ -844,6 +853,27 @@ export const registerPostRoutes = (
           throw error;
         }
 
+        const tikTokSettings = platformSettings.TIKTOK;
+        if (isExplicitTikTokDirectSettings(tikTokSettings) && clientRequestId) {
+          const accepted = await store.findIdempotent({ userId: authUser.id, clientRequestId });
+          if (accepted) {
+            if (!isMatchingIdempotentIntent(accepted, idempotentInput)) {
+              response.status(409).json(idempotencyKeyReusedResponse);
+              return;
+            }
+            if (accepted.status === 'FAILED') {
+              response.status(409).json(idempotentPostFailedResponse(accepted.id));
+              return;
+            }
+            const publishJob = accepted.status === 'QUEUED' ? await publishQueue.ensureEnqueued(accepted) : undefined;
+            response.status(200).json({
+              status: 'ok', post: toPublicPost(accepted),
+              ...(publishJob ? { publishJob } : {}), idempotentReplay: true
+            });
+            return;
+          }
+        }
+
         if (platformTargets && options.resolvePlatformTarget) {
           let currentTargets: PlatformTargets | undefined;
           try {
@@ -862,6 +892,40 @@ export const registerPostRoutes = (
             !arePlatformTargetsEqual(platformTargets, currentTargets, platforms)
           ) {
             response.status(409).json(platformTargetUnavailableResponse);
+            return;
+          }
+        }
+
+        if (isExplicitTikTokDirectSettings(tikTokSettings)) {
+          try {
+            validateTikTokDirectCaption(caption);
+            const target = platformTargets?.TIKTOK;
+            if (!target || !options.resolveTikTokCreatorInfo || !options.resolvePlatformTarget) {
+              throw new TikTokPublishingError(
+                'TIKTOK_PUBLISHING_UNAVAILABLE', 503, 'TikTok direct publishing is not available.'
+              );
+            }
+            if (tikTokSettings.creatorInfoRevision !== buildTikTokConnectionRevision({ userId: authUser.id, target })) {
+              throw new TikTokPublishingError(
+                'TIKTOK_CONNECTION_CHANGED', 409, 'The connected TikTok account changed. Review the post again.'
+              );
+            }
+            const info = await options.resolveTikTokCreatorInfo({ userId: authUser.id, target });
+            validateTikTokDirectSettings(info, tikTokSettings);
+            await options.assertOwnerActive?.(authUser.id);
+            const currentTarget = await options.resolvePlatformTarget({ userId: authUser.id, platform: 'TIKTOK' });
+            if (
+              !currentTarget ||
+              tikTokSettings.creatorInfoRevision !== buildTikTokConnectionRevision({ userId: authUser.id, target: currentTarget })
+            ) throw new TikTokPublishingError(
+              'TIKTOK_CONNECTION_CHANGED', 409, 'The connected TikTok account changed. Review the post again.'
+            );
+          } catch (error) {
+            if (respondWithManagedUploadError(response, error)) return;
+            const safe = error instanceof TikTokPublishingError ? error : new TikTokPublishingError(
+              'TIKTOK_CREATOR_INFO_UNAVAILABLE', 503, 'TikTok publishing options could not be checked. Please try again.'
+            );
+            response.status(safe.statusCode).json({ status: 'error', code: safe.code, message: safe.message });
             return;
           }
         }

@@ -2,6 +2,40 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## TikTok Direct Post boundary (2026-10-15, local verification passed; rollout pending)
+
+The authenticated publishing-options route resolves the owner's stored TikTok
+integration and proxies PostPeer creator-info with a timeout and bounded,
+strictly validated response. It creates no profile, post, upload or queue item.
+An opaque SHA-256 revision binds owner and immutable target account identity;
+local connection ID alone is insufficient because an upsert can retain it while
+replacing the provider account. Options and connection-list responses are private
+and non-cacheable.
+
+Mobile loads current options for the TikTok sheet, requires a manual privacy
+choice and consent, and rechecks before preparation/submission. Restoring a draft
+or changing the owner, connection or publishing content invalidates consent and
+capability freshness. New Direct settings are persisted in the existing JSON
+snapshot and every field participates in immutable intent comparison. The API
+validates the revision/current capabilities before committing new work; the worker
+revalidates before the one provider CREATE, so delayed jobs cannot silently use
+changed privacy, interactions or accounts. Duration is derived from Mobile media
+metadata and checked against min(creator limit, 600s); the platform still validates
+the uploaded media itself.
+
+The worker maps only documented provider options; consent/revision fields are
+internal. A final selected Direct result needs a real video reference or Direct
+receipt, never an Inbox/messages URL. Missing proof is reconciled through bounded
+GET on the original provider ID; ambiguous outcomes do not cause another POST.
+`LIVE` describes publication to the selected audience, with privacy retained in
+the snapshot. Existing Inbox, legacy private TikTok, other destinations, quota,
+owner deletion boundaries, native media preparation and idempotency remain intact.
+
+The read-only Staging creator-info probe succeeded. Audit status and actual
+Direct publication are not proven by it. No new deployment, migration or prior
+post repair is included yet; API must precede Mobile rollout. See
+[the feature record](docs/superpowers/plans/2026-10-15-tiktok-direct-post.md).
+
 ## TikTok Inbox CREATE/GET boundary (2026-10-15, Staging delivered)
 
 CREATE may provide a published parent and successful platform summary without
@@ -2178,8 +2212,9 @@ cd apps/mobile
   platforms, scheduling/recovery paths, and Production remain unverified. A new
   identity is ensured in the local `User` store before its provider profile is
   saved, and the required PostPeer profile name is stable and pseudonymous.
-  Phase 2 explicit settings/target/outcome persistence exists, but TikTok direct
-  remains legacy-only and blocked for new clients. Provider-draft, YouTube
+  Phase 2 explicit settings/target/outcome persistence exists. The new TikTok
+  Direct flow adds current capabilities, consent and account revision checks,
+  but provider audit/publication verification and rollout are still pending. Provider-draft, YouTube
   compliance/visibility, immutable-target, migration/backlog, and redaction E2E
   remain required. Shared
   `POSTPEER_*_ACCOUNT_ID` values are rejected in production. The internal

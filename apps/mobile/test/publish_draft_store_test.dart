@@ -292,6 +292,35 @@ void main() {
     expect(replacement.mediaContentFingerprint, isNot(fingerprint));
   });
 
+  test('keeps verified upload duration without requiring it in old receipts',
+      () async {
+    final video = await fixture('duration.mp4', [1, 2, 3, 4]);
+    final store = storeFor('firebase-user-a');
+    final fingerprint = await publishMediaContentFingerprint(
+        videoFile: video, watermarkEnabled: true);
+    await store.saveDraft(request(
+      video: video,
+      uploadedMedia: PublishDraftUploadedMedia(
+        mediaContentFingerprint: fingerprint,
+        videoS3Key: 'uploads/verified.mp4',
+        videoPreparationPolicy: 'tiktok-cfr30-h264-aac-v2',
+        videoDurationSeconds: 1.2,
+      ),
+    ));
+    final restored = (await store.loadDraft('draft-1'))!;
+    expect(restored.version, 3);
+    expect(restored.uploadedMedia!.videoDurationSeconds, 1.2);
+    final manifestFile =
+        File('${root.path}/store/firebase-user-a/draft-1/manifest.json');
+    final manifest = jsonDecode(await manifestFile.readAsString()) as Map;
+    (manifest['uploadedMedia'] as Map).remove('videoDurationSeconds');
+    await manifestFile.writeAsString(jsonEncode(manifest));
+    final legacy = (await store.loadDraft('draft-1'))!;
+    expect(legacy.uploadedMedia!.videoDurationSeconds, isNull);
+    expect(legacy.uploadedMedia!.videoS3Key, 'uploads/verified.mp4');
+    expect(legacy.submissionRequestId, restored.submissionRequestId);
+  });
+
   test('reads v2 drafts without settings but rejects incomplete v3 drafts',
       () async {
     final video = await fixture('source.mp4', [1, 2, 3, 4]);

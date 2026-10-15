@@ -1,6 +1,13 @@
 import type { Platform } from '../modules/posts/postStore.js';
 import type { PlatformSettings } from '../modules/posts/platformSettings.js';
 import {
+  buildTikTokConnectionRevision,
+  isExplicitTikTokDirectSettings,
+  validateTikTokDirectCaption,
+  validateTikTokDirectSettings
+} from '../modules/posts/tikTokDirectSettings.js';
+import type { PostPeerTikTokClient } from '../modules/socialConnections/postPeerTikTokClient.js';
+import {
   isSamePlatformTarget,
   normalizePersistedPlatformTargets,
   type PlatformTargets,
@@ -74,6 +81,8 @@ const failedPostStatuses = new Set(['failed']);
 const draftPostStatus = 'draft';
 const tikTokInboxReceiptPattern = /^v_inbox_(?:url|file)~v2\.[0-9]+$/;
 const tikTokPublishReceiptPrefix = /^v_(?:inbox|pub)_(?:url|file)~/;
+const tikTokDirectReceiptPattern = /^v_pub_(?:url|file)~v2(?:-[1-9][0-9]*)?\.[0-9]+$/;
+const tikTokVideoIdPattern = /^[0-9]{10,30}$/;
 // Video uploads can take well beyond the create endpoint's own wait window.
 // Poll for up to roughly two minutes before declaring the outcome unknown.
 const defaultMaxPollAttempts = 60;
@@ -88,6 +97,23 @@ const readNormalizedStatus = (status?: string) => status?.trim().toLowerCase();
 const readNonEmptyString = (value?: string | null) => {
   const normalized = value?.trim();
   return normalized || undefined;
+};
+
+const readTikTokVideoUrl = (value?: string): string | undefined => {
+  if (!value || value.includes('\\')) return undefined;
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+      (url.hostname === 'tiktok.com' || url.hostname.endsWith('.tiktok.com')) &&
+      /^\/@[^/]+\/video\/[0-9]{10,30}\/?$/.test(url.pathname)
+    ) {
+      return url.toString();
+    }
+  } catch {
+    // A provider reference is not automatically a link to a TikTok video.
+  }
+  return undefined;
 };
 
 const unwrapPostPeerPayload = (payload: PostPeerPublishResponse): PostPeerResolvedPayload => {
@@ -130,7 +156,8 @@ const readPostPeerAccountId = async ({
   resolveCurrentPlatformTarget,
   userId,
   platform,
-  platformTargets
+  platformTargets,
+  expectedTikTokCreatorInfoRevision
 }: {
   accountIds: PostPeerAccountIds;
   resolveAccountId?: ResolveAccountId;
@@ -138,6 +165,7 @@ const readPostPeerAccountId = async ({
   userId?: string;
   platform: Platform;
   platformTargets?: PlatformTargets | null;
+  expectedTikTokCreatorInfoRevision?: string;
 }) => {
   if (platformTargets != null) {
     const normalizedUserId = userId?.trim();
@@ -161,6 +189,10 @@ const readPostPeerAccountId = async ({
     });
     if (!currentTarget || !isSamePlatformTarget(snapshottedTarget, currentTarget)) {
       throw new Error(`Connected publish target changed before publishing ${platform}`);
+    }
+    if (expectedTikTokCreatorInfoRevision &&
+        buildTikTokConnectionRevision({ userId: normalizedUserId, target: currentTarget }) !== expectedTikTokCreatorInfoRevision) {
+      throw new Error('The TikTok creator information revision changed before publishing');
     }
     return snapshottedTarget.accountId;
   }
@@ -223,7 +255,8 @@ const evaluatePostPeerPayload = (
   rawPayload: PostPeerPublishResponse,
   platform: Platform,
   requestedDeliveryOutcome: ReturnType<typeof readRequestedDeliveryOutcome>,
-  knownProviderPostId?: string
+  knownProviderPostId?: string,
+  requireTikTokDirectProof = false
 ): PostPeerPublishEvaluation => {
   const payload = unwrapPostPeerPayload(rawPayload);
   const platformResult = readPlatformResult(payload, platform);
@@ -247,7 +280,9 @@ const evaluatePostPeerPayload = (
     tikTokInboxReceiptPattern.test(platformPostId);
   // An Inbox publish receipt belongs to TikTok, not PostPeer's GET /posts/:id.
   // Never use it as a fallback provider id when polling a pending response.
-  const postId = providerPostId ?? (hasTikTokInboxReceipt ? undefined : platformPostId);
+  const postId = requireTikTokDirectProof
+    ? providerPostId && !tikTokPublishReceiptPrefix.test(providerPostId) ? providerPostId : undefined
+    : providerPostId ?? (hasTikTokInboxReceipt ? undefined : platformPostId);
 
   if (
     payload.success === false ||
@@ -280,6 +315,34 @@ const evaluatePostPeerPayload = (
     Boolean(platformStatus && finalPostStatuses.has(platformStatus));
   const hasExplicitPublishedSuccessStatus =
     postStatus === 'published' || platformStatus === 'published';
+
+  if (platform === 'TIKTOK' && requireTikTokDirectProof) {
+    const videoUrl = readTikTokVideoUrl(platformResult?.platformPostUrl);
+    const videoId = platformPostId && tikTokVideoIdPattern.test(platformPostId)
+      ? platformPostId
+      : undefined;
+    const directReceipt = platformPostId && tikTokDirectReceiptPattern.test(platformPostId);
+    // TikTok's Inbox URL/receipt is never evidence that Direct Post completed.
+    // Ambiguous successful CREATE responses must be reconciled by GET without
+    // issuing another POST. A final private post may have a direct receipt but
+    // no video URL, so do not fabricate a public link for it.
+    if (
+      providerPostId && !tikTokPublishReceiptPrefix.test(providerPostId) &&
+      platformStatus === 'published' && !hasExplicitDraftStatus && !hasTikTokInboxReceipt &&
+      (videoUrl || videoId || directReceipt)
+    ) {
+      return {
+        outcome: 'published', providerPostId,
+        ...(videoUrl || videoId ? { externalPostId: videoUrl ?? videoId } : {})
+      };
+    }
+    return {
+      outcome: 'publishing',
+      ...(providerPostId && !tikTokPublishReceiptPrefix.test(providerPostId)
+        ? { postId: providerPostId }
+        : {})
+    };
+  }
 
   if (requestedDeliveryOutcome === 'DRAFT') {
     if (hasTikTokInboxReceipt && platformStatus === 'published') {
@@ -420,7 +483,19 @@ const buildPlatformTarget = ({
     }
     target.platformSpecificData = {
       ...(tiktokSettings.publishMode === 'DIRECT_POST'
-        ? { privacyLevel: tiktokSettings.privacyLevel, draft: false }
+        ? {
+            privacyLevel: tiktokSettings.privacyLevel, draft: false,
+            ...(isExplicitTikTokDirectSettings(tiktokSettings)
+              ? {
+                  disableComment: tiktokSettings.disableComment,
+                  disableDuet: tiktokSettings.disableDuet,
+                  disableStitch: tiktokSettings.disableStitch,
+                  brandContentToggle: tiktokSettings.brandContentToggle,
+                  brandOrganicToggle: tiktokSettings.brandOrganicToggle,
+                  isAigc: tiktokSettings.isAigc
+                }
+              : {})
+          }
         : { draft: true }),
       ...(coverFrameTimeMs !== undefined
         ? { videoCoverTimestampMs: coverFrameTimeMs }
@@ -468,6 +543,8 @@ export const createPostPeerPublisher = ({
   accountIds = {},
   resolveAccountId,
   resolveCurrentPlatformTarget,
+  tikTokClient,
+  assertOwnerActive,
   resolveVideoUrl,
   now = () => new Date().toISOString(),
   maxPollAttempts = defaultMaxPollAttempts,
@@ -480,6 +557,8 @@ export const createPostPeerPublisher = ({
   accountIds?: PostPeerAccountIds;
   resolveAccountId?: ResolveAccountId;
   resolveCurrentPlatformTarget?: ResolveCurrentPlatformTarget;
+  tikTokClient?: PostPeerTikTokClient;
+  assertOwnerActive?: (userId: string) => Promise<void>;
   resolveVideoUrl?: ResolveVideoUrl;
   now?: () => string;
   maxPollAttempts?: number;
@@ -505,14 +584,38 @@ export const createPostPeerPublisher = ({
       platform,
       platformSettings
     });
+    const explicitTikTokSettings = platform === 'TIKTOK' &&
+      isExplicitTikTokDirectSettings(normalizedPlatformSettings.TIKTOK)
+      ? normalizedPlatformSettings.TIKTOK
+      : undefined;
+    if (explicitTikTokSettings) validateTikTokDirectCaption(caption);
+    if (explicitTikTokSettings && (!userId || !platformTargets?.TIKTOK || !resolveCurrentPlatformTarget || !assertOwnerActive)) {
+      throw new Error('A persisted owner publish target is required for TikTok Direct Post');
+    }
+    if (
+      explicitTikTokSettings && userId && platformTargets?.TIKTOK &&
+      explicitTikTokSettings.creatorInfoRevision !== buildTikTokConnectionRevision({
+        userId, target: platformTargets.TIKTOK
+      })
+    ) {
+      throw new Error('The TikTok creator information revision no longer matches the publish target');
+    }
     const accountId = await readPostPeerAccountId({
       accountIds,
       resolveAccountId,
       resolveCurrentPlatformTarget,
       userId,
       platform,
-      platformTargets
+      platformTargets,
+      expectedTikTokCreatorInfoRevision: explicitTikTokSettings?.creatorInfoRevision
     });
+    if (explicitTikTokSettings) {
+      if (!tikTokClient) {
+        throw new Error('Current TikTok creator information is required for Direct Post');
+      }
+      const creatorInfo = await tikTokClient.getCreatorInfo({ accountId });
+      validateTikTokDirectSettings(creatorInfo, explicitTikTokSettings);
+    }
     const videoUrl = videoS3Key
       ? resolveVideoUrl
         ? await resolveVideoUrl(videoS3Key)
@@ -529,6 +632,17 @@ export const createPostPeerPublisher = ({
           ? await resolveVideoUrl(coverImageS3Key)
           : coverImageS3Key
         : undefined;
+
+    if (explicitTikTokSettings) {
+      // Account reconnection while fetching creator info/media must not send
+      // the immutable intent to the account that has since been replaced.
+      await readPostPeerAccountId({
+        accountIds, resolveAccountId, resolveCurrentPlatformTarget,
+        userId, platform, platformTargets,
+        expectedTikTokCreatorInfoRevision: explicitTikTokSettings.creatorInfoRevision
+      });
+      await assertOwnerActive!(userId!);
+    }
 
     let response: FetchResponse;
 
@@ -574,6 +688,11 @@ export const createPostPeerPublisher = ({
     }
 
     if (!response.ok) {
+      if (explicitTikTokSettings && (response.status === undefined || response.status >= 500)) {
+        throw new PostPeerPublishOutcomeUnknownError(
+          'PostPeer TikTok Direct Post outcome is unknown after a create response server error'
+        );
+      }
       throw new Error(
         `PostPeer publish to ${platform} failed with status ${response.status ?? 'unknown'}`
       );
@@ -588,11 +707,18 @@ export const createPostPeerPublisher = ({
         `PostPeer publish to ${platform} outcome is unknown because the create response was invalid`
       );
     }
-    let evaluation = evaluatePostPeerPayload(
-      payload,
-      platform,
-      requestedDeliveryOutcome
-    );
+    let evaluation: PostPeerPublishEvaluation;
+    try {
+      evaluation = evaluatePostPeerPayload(
+        payload, platform, requestedDeliveryOutcome, undefined,
+        explicitTikTokSettings !== undefined
+      );
+    } catch (error) {
+      if (!explicitTikTokSettings) throw error;
+      throw new PostPeerPublishOutcomeUnknownError(
+        'PostPeer TikTok Direct Post outcome is unknown because its confirmation could not be read'
+      );
+    }
 
     if (evaluation.outcome === 'failed') {
       throw createPostPeerFailure(platform, evaluation.message);
@@ -649,7 +775,8 @@ export const createPostPeerPublisher = ({
           statusPayload,
           platform,
           requestedDeliveryOutcome,
-          providerPostId
+          providerPostId,
+          explicitTikTokSettings !== undefined
         );
       } catch {
         // GET status checks are read-only, so bounded retries are safe.

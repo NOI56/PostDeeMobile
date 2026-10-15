@@ -2,6 +2,23 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## TikTok Direct Post (2026-10-15, local implementation)
+
+TikTok settings now offer Inbox or Direct Post using current account-bound
+creator options. Direct requires a manual privacy choice, permitted interaction
+settings, commercial/AI disclosure and explicit music/policy confirmation. Fresh
+options are checked around native preparation/upload and before submission;
+account/content changes and restored drafts clear consent. Prepared-video
+duration is retained in optional receipt metadata for safe reuse, while older
+draft manifests remain readable and unproven receipts cannot silently be resent.
+
+No TikTok watermark is added. Inbox delivery, native CFR/H.264/AAC preparation,
+local draft ownership, upload reuse and idempotent submission are preserved.
+The new API must be deployed first; older APIs leave Direct unavailable. A
+read-only Staging creator-info check succeeded, but provider audit approval,
+actual Direct publication and the new release remain unverified. Validation:
+`../../docs/superpowers/plans/2026-10-15-tiktok-direct-post.md`.
+
 ## TikTok native completion with background engines (2026-10-15)
 
 The real-app timeout occurs when a Firebase background engine owns FFmpeg's

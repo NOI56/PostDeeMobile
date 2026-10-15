@@ -22,10 +22,12 @@ class TikTokVideoPreparationRequest {
     required this.inputFile,
     required this.fileName,
     this.isCancelled,
+    this.maxDurationSeconds,
   });
   final File inputFile;
   final String fileName;
   final bool Function()? isCancelled;
+  final int? maxDurationSeconds;
 }
 
 class TikTokPreparedVideoResult {
@@ -38,6 +40,7 @@ class TikTokPreparedVideoResult {
     this.videoPreparationPolicy = tikTokVideoPreparationPolicy,
     this.workingDirectory,
     this.cleanup,
+    this.durationSeconds,
   });
   final File file;
   final String fileName;
@@ -47,6 +50,9 @@ class TikTokPreparedVideoResult {
   final String videoPreparationPolicy;
   final Directory? workingDirectory;
   final Future<void> Function()? cleanup;
+
+  /// Verified from the rendered stream; absent on historical/injected receipts.
+  final double? durationSeconds;
 
   Future<void> cleanupTemporaryFiles() async {
     if (cleanup != null) {
@@ -369,6 +375,12 @@ class FfmpegTikTokVideoPreparer {
         throw const TikTokVideoPreparationException(
             'ตรวจวิดีโอต้นฉบับไม่ได้ กรุณาเลือกไฟล์วิดีโอใหม่');
       }
+      final durationLimit = request.maxDurationSeconds;
+      if (durationLimit != null &&
+          (durationLimit <= 0 || source.durationSeconds > durationLimit)) {
+        throw const TikTokVideoPreparationException(
+            'วิดีโอยาวเกินระยะเวลาที่บัญชี TikTok นี้อนุญาต กรุณาเลือกคลิปที่สั้นลง');
+      }
       final dimensions = _tikTokPreparedDimensions(source);
       if (dimensions == null) {
         throw const TikTokVideoPreparationException(
@@ -429,7 +441,8 @@ class FfmpegTikTokVideoPreparer {
       final metadata = await _bounded(
           () => _probeOutput(output.path), probeTimeout, request);
       if (metadata == null ||
-          !isCompatibleTikTokPreparedVideo(metadata, source: source)) {
+          !isCompatibleTikTokPreparedVideo(metadata, source: source) ||
+          (durationLimit != null && metadata.durationSeconds > durationLimit)) {
         throw const TikTokVideoPreparationException(
             'วิดีโอที่แปลงยังไม่ผ่านการตรวจภาพ เสียง หรือ 30 FPS จึงหยุดก่อนอัปโหลด กรุณาเลือกวิดีโอใหม่หรือลองบนอุปกรณ์ที่รองรับ');
       }
@@ -439,6 +452,7 @@ class FfmpegTikTokVideoPreparer {
         sizeBytes: await output.length(),
         width: metadata.width,
         height: metadata.height,
+        durationSeconds: metadata.durationSeconds,
         workingDirectory: workingDirectory,
       );
     } catch (error) {

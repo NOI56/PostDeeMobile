@@ -555,6 +555,45 @@ void main() {
       expect(input.readAsBytesSync(), [1, 2, 3]);
     });
 
+    test('exposes the verified output duration rather than a default value',
+        () async {
+      const output = TikTokVideoMetadata(
+        videoCodec: 'h264',
+        averageFrameRate: 30,
+        realFrameRate: 30,
+        width: 720,
+        height: 1280,
+        durationSeconds: 1.2,
+        hasAudio: true,
+        audioCodec: 'aac',
+        decodedPrefixFrameCount: 36,
+      );
+      final result = await processor(output: output).call(
+          TikTokVideoPreparationRequest(
+              inputFile: input, fileName: 'clip.mp4'));
+      expect(result.durationSeconds, 1.2);
+      await result.cleanupTemporaryFiles();
+    });
+
+    test(
+        'rejects a direct clip beyond its current duration limit before render',
+        () async {
+      const longSource = TikTokVideoMetadata(
+        videoCodec: 'h264',
+        averageFrameRate: 30,
+        realFrameRate: 30,
+        width: 720,
+        height: 1280,
+        durationSeconds: 601,
+      );
+      await expectLater(
+          processor(sourceVideo: longSource).call(TikTokVideoPreparationRequest(
+              inputFile: input, fileName: 'long.mp4', maxDurationSeconds: 600)),
+          throwsA(isA<TikTokVideoPreparationException>()));
+      expect(commands, isEmpty);
+      expect(temporary.existsSync(), isFalse);
+    });
+
     test('iOS uses platform H264 without adding a GPL encoder', () async {
       final result = await processor(isAndroid: false, isIOS: true).call(
           TikTokVideoPreparationRequest(

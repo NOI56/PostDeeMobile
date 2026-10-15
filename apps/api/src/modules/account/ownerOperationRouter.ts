@@ -8,11 +8,14 @@ const mutatingRead = (path: string) =>
   path === '/auth/me' || path === '/social-connections' ||
   path === '/billing/subscription' || /^\/uploads\/[^/]+$/.test(path);
 
-// These codes are emitted by local configuration checks before provider I/O.
+// These checks cannot have created a remote post. TikTok creator-info GETs
+// only read capabilities before any post, quota, queue or publish mutation.
 const unavailableBeforeRemoteWork = new Set([
   'SOCIAL_CONNECTION_UNAVAILABLE', 'STORE_VERIFIER_NOT_CONFIGURED',
   'REVENUECAT_RESYNC_NOT_CONFIGURED', 'GOOGLE_PLAY_ACCESS_TOKEN_NOT_CONFIGURED',
-  'APPLE_ROOT_CERTIFICATES_NOT_CONFIGURED'
+  'APPLE_ROOT_CERTIFICATES_NOT_CONFIGURED',
+  'TIKTOK_PUBLISHING_UNAVAILABLE', 'TIKTOK_CREATOR_INFO_UNAVAILABLE',
+  'TIKTOK_CREATOR_INFO_INVALID'
 ]);
 
 // Wrap the final registered handler, not the socket/response lifetime. Some

@@ -69,7 +69,7 @@ import {
   postCoverUploadPolicy,
   registerPostRoutes
 } from './modules/posts/postRoutes.js';
-import { buildPlatformTarget } from './modules/posts/platformTargets.js';
+import { buildPlatformTarget, isSamePlatformTarget } from './modules/posts/platformTargets.js';
 import type { PrismaPostClient } from './modules/posts/prismaPostRepository.js';
 import {
   createInMemoryPlatformPublishStore,
@@ -148,6 +148,8 @@ import {
 } from './modules/socialConnections/postPeerConnectClient.js';
 import type { PrismaSocialConnectionClient } from './modules/socialConnections/prismaSocialConnectionRepository.js';
 import { registerSocialConnectionRoutes } from './modules/socialConnections/socialConnectionRoutes.js';
+import { createPostPeerTikTokClient, TikTokPublishingError, type PostPeerTikTokClient } from './modules/socialConnections/postPeerTikTokClient.js';
+import { registerTikTokPublishingOptionsRoutes } from './modules/socialConnections/tikTokPublishingOptionsRoutes.js';
 import type { SocialConnectionStore } from './modules/socialConnections/socialConnectionStore.js';
 import { createSocialConnectionStore } from './modules/socialConnections/socialConnectionStoreFactory.js';
 import { registerPlannedRoutes } from './routes/plannedRoutes.js';
@@ -189,6 +191,7 @@ type AppOptions = {
   appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
   socialConnectionStore?: SocialConnectionStore;
   postPeerConnectClient?: PostPeerConnectClient;
+  postPeerTikTokClient?: PostPeerTikTokClient;
   videoStorage?: VideoStorage;
   firebaseAdminAuth?: FirebaseAdminAuth;
   accountIdentityDeleter?: AccountIdentityDeleter;
@@ -523,6 +526,9 @@ export const createApp = (options: AppOptions = {}) => {
     });
   const captionGenerator =
     options.captionGenerator ?? createCaptionGeneratorFromConfig({ config });
+  const postPeerTikTokClient = options.postPeerTikTokClient ?? createPostPeerTikTokClient({
+    apiKey: config.postPeerApiKey, baseUrl: config.postPeerApiBaseUrl
+  });
   const realClipCaptionUsageStore =
     options.realClipCaptionUsageStore ??
     createRealClipCaptionUsageStoreFromConfig({
@@ -673,6 +679,15 @@ export const createApp = (options: AppOptions = {}) => {
               return connection ? buildPlatformTarget(connection) : undefined;
             }
           : undefined,
+      resolveTikTokCreatorInfo: async ({ userId, target }) => {
+        const connection = await socialConnectionStore.getConnection({ userId, platform: 'TIKTOK' });
+        if (!connection || !isSamePlatformTarget(target, buildPlatformTarget(connection))) {
+          throw new TikTokPublishingError(
+            'TIKTOK_CONNECTION_CHANGED', 409, 'The connected TikTok account changed. Review the post again.'
+          );
+        }
+        return postPeerTikTokClient.getCreatorInfo({ accountId: connection.postPeerAccountId });
+      },
       assertUploadReady: managedUploadService
         ? (ownerId, videoS3Key) =>
             managedUploadService.assertReadyForUse(ownerId, videoS3Key, {
@@ -771,6 +786,10 @@ export const createApp = (options: AppOptions = {}) => {
     connectClient: postPeerConnectClient,
     userStore
   });
+  registerTikTokPublishingOptionsRoutes(router, accountAwareAuthMiddleware, {
+    store: socialConnectionStore, client: postPeerTikTokClient,
+    assertOwnerActive, runWithOwnerLifetime
+  });
   registerAccountRoutes(router, accountDeletionAuthMiddleware, {
     postStore,
     templateStore,
@@ -813,7 +832,8 @@ export const createApp = (options: AppOptions = {}) => {
       publisher: createPlatformPublisherFromConfig({
         config,
         videoStorage,
-        socialConnectionStore
+        socialConnectionStore,
+        assertOwnerActive
       }),
       storage: videoStorage,
       // Push a publish-result notification to the user's devices. Uses the real

@@ -7,6 +7,16 @@ import {
 } from './platformSettings.js';
 
 describe('platform publishing settings', () => {
+  it('accepts a complete explicit TikTok Direct Post choice without legacy defaults', () => {
+    const TIKTOK = {
+      publishMode: 'DIRECT_POST', privacyLevel: 'PUBLIC_TO_EVERYONE',
+      disableComment: false, disableDuet: true, disableStitch: false,
+      brandContentToggle: false, brandOrganicToggle: false, isAigc: false,
+      videoDurationSeconds: 10, musicUsageConfirmed: true,
+      brandedContentPolicyConfirmed: false, creatorInfoRevision: 'a'.repeat(64)
+    };
+    expect(readPlatformSettings({ TIKTOK }, ['TIKTOK'])).toEqual({ ok: true, value: { TIKTOK } });
+  });
   it('preserves the controlled legacy defaults when the field is omitted', () => {
     expect(
       readPlatformSettings(undefined, [

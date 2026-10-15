@@ -38,7 +38,10 @@ export const readRequestedDeliveryOutcome = ({
   });
 
   if (platform === 'TIKTOK') {
-    return settings.TIKTOK?.publishMode === 'INBOX_DRAFT' ? 'DRAFT' : 'PRIVATE';
+    if (settings.TIKTOK?.publishMode === 'INBOX_DRAFT') return 'DRAFT';
+    // LIVE means published to the selected audience; friends/followers are
+    // not public and must retain their chosen privacy in the settings snapshot.
+    return settings.TIKTOK?.privacyLevel === 'SELF_ONLY' ? 'PRIVATE' : 'LIVE';
   }
 
   if (platform === 'YOUTUBE_SHORTS') {

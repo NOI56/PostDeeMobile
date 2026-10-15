@@ -1,13 +1,29 @@
 import type { Platform } from './postStore.js';
 
 export type YoutubeVisibility = 'private' | 'unlisted' | 'public';
+export type TikTokPrivacyLevel =
+  | 'PUBLIC_TO_EVERYONE' | 'FOLLOWER_OF_CREATOR' | 'MUTUAL_FOLLOW_FRIENDS' | 'SELF_ONLY';
+
+export type TikTokDirectPostSettings = {
+  publishMode: 'DIRECT_POST';
+  privacyLevel: TikTokPrivacyLevel;
+  disableComment: boolean;
+  disableDuet: boolean;
+  disableStitch: boolean;
+  brandContentToggle: boolean;
+  brandOrganicToggle: boolean;
+  isAigc: boolean;
+  videoDurationSeconds: number;
+  musicUsageConfirmed: true;
+  brandedContentPolicyConfirmed: boolean;
+  creatorInfoRevision: string;
+};
 
 export type TikTokPlatformSettings =
+  | TikTokDirectPostSettings
   | {
       publishMode: 'DIRECT_POST';
-      // Direct Post remains controlled-first until creator-info, consent, and
-      // the full TikTok audit flow are implemented. Do not broaden this union
-      // from provider documentation alone.
+      // Historical queued work retains its exact private delivery intent.
       privacyLevel: 'SELF_ONLY';
     }
   | {
@@ -49,7 +65,7 @@ export type ReadPlatformSettingsResult =
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const hasExactKeys = (value: Record<string, unknown>, expectedKeys: string[]) => {
+const hasExactKeys = (value: Record<string, unknown>, expectedKeys: readonly string[]) => {
   const keys = Object.keys(value);
   return (
     keys.length === expectedKeys.length &&
@@ -103,6 +119,21 @@ const readTikTokSettings = (
   }
 
   if (
+    value.publishMode === 'DIRECT_POST' &&
+    isTikTokPrivacyLevel(value.privacyLevel) &&
+    hasExactKeys(value, tikTokDirectPostSettingKeys) &&
+    tikTokDirectPostBooleanKeys.every((key) => typeof value[key] === 'boolean') &&
+    typeof value.videoDurationSeconds === 'number' &&
+    Number.isFinite(value.videoDurationSeconds) && value.videoDurationSeconds > 0 &&
+    value.musicUsageConfirmed === true &&
+    typeof value.creatorInfoRevision === 'string' && /^[a-f0-9]{64}$/.test(value.creatorInfoRevision) &&
+    (!value.brandContentToggle || value.brandedContentPolicyConfirmed === true) &&
+    !(value.brandContentToggle && value.privacyLevel === 'SELF_ONLY')
+  ) {
+    return { ...value } as TikTokDirectPostSettings;
+  }
+
+  if (
     allowLegacyDirectPost &&
     value.publishMode === 'DIRECT_POST' &&
     value.privacyLevel === 'SELF_ONLY' &&
@@ -116,6 +147,18 @@ const readTikTokSettings = (
 
   return undefined;
 };
+
+const tikTokDirectPostBooleanKeys = [
+  'disableComment', 'disableDuet', 'disableStitch', 'brandContentToggle',
+  'brandOrganicToggle', 'isAigc', 'brandedContentPolicyConfirmed'
+] as const;
+const tikTokDirectPostSettingKeys = [
+  'publishMode', 'privacyLevel', ...tikTokDirectPostBooleanKeys,
+  'videoDurationSeconds', 'musicUsageConfirmed', 'creatorInfoRevision'
+] as const;
+export const isTikTokPrivacyLevel = (value: unknown): value is TikTokPrivacyLevel =>
+  value === 'PUBLIC_TO_EVERYONE' || value === 'FOLLOWER_OF_CREATOR' ||
+  value === 'MUTUAL_FOLLOW_FRIENDS' || value === 'SELF_ONLY';
 
 const readYoutubeSettings = (
   value: unknown,
@@ -277,11 +320,17 @@ export const arePlatformSettingsEqual = (
     if (platform === 'TIKTOK') {
       const leftSettings = normalizedLeft.TIKTOK;
       const rightSettings = normalizedRight.TIKTOK;
+      if (
+        leftSettings?.publishMode === 'DIRECT_POST' &&
+        rightSettings?.publishMode === 'DIRECT_POST'
+      ) {
+        return tikTokDirectPostSettingKeys.every((key) =>
+          (leftSettings as unknown as Record<string, unknown>)[key] ===
+          (rightSettings as unknown as Record<string, unknown>)[key]
+        );
+      }
       return (
-        leftSettings?.publishMode === rightSettings?.publishMode &&
-        (leftSettings?.publishMode !== 'DIRECT_POST' ||
-          (rightSettings?.publishMode === 'DIRECT_POST' &&
-            leftSettings.privacyLevel === rightSettings.privacyLevel))
+        leftSettings?.publishMode === rightSettings?.publishMode
       );
     }
 

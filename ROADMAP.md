@@ -2,6 +2,21 @@
 
 Build roadmap for PostDee.
 
+## TikTok Direct Post (2026-10-15, local verification passed; rollout pending)
+
+- Implement account-bound creator-info, explicit privacy and interaction choices,
+  commercial/AI disclosure and consent. Keep Inbox available and preserve all
+  existing draft/private delivery and idempotency behavior.
+- Recheck account revision/current capabilities before accepting new posts and
+  again at worker execution. Do not change privacy or fall back to Inbox silently.
+- Require selected-platform final Direct proof; bounded status GET must never
+  resend an accepted CREATE. `LIVE` means published to the selected audience.
+- Read-only Staging creator-info returned valid options. Provider audit approval
+  and a real Direct publication are still unverified. No new release or historical
+  repair is part of this feature so far; API-first rollout needs no schema migration.
+- Record exact targeted/full verification and release evidence in
+  [the implementation record](docs/superpowers/plans/2026-10-15-tiktok-direct-post.md).
+
 ## TikTok Inbox CREATE confirmation (2026-10-15, Staging delivered)
 
 - Correct the later 13:48 local FAILED result whose canonical provider GET
@@ -852,8 +867,9 @@ Current status:
   one summary/settings action and opens that platform's sheet. New intent is
   TikTok inbox draft; complete YouTube title/visibility/kids/synthetic-media/
   certification; Instagram share-to-feed; and an explicit Facebook Page Video
-  publish/page-draft choice. TikTok direct remains blocked pending creator-info,
-  consent, and audit. Review names the connected account/channel/page and blocks
+  publish/page-draft choice. The new TikTok Direct flow adds creator-info,
+  consent and revision checks; audit/public publication and rollout still need
+  verification. Review names the connected account/channel/page and blocks
   missing identity, incomplete settings, or an unknown outcome. Provider drafts
   are remote submissions that upload, enqueue, and consume quota—not PostDee
   local drafts.

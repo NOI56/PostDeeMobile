@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Channel publishing preflight (2026-10-15, local implementation)
+## Channel publishing preflight (2026-10-15, Android Staging delivered)
 
 The new uploader validates the exact trimmed caption for selected channels:
 YouTube 5,000 UTF-8 bytes/no angle brackets, Instagram 2,200 conservative UTF-16
@@ -26,11 +26,17 @@ revisions for every platform for list/readiness binding. A YouTube title suggest
 only a blank title; audience/AI/certification answers remain manual. Review shows
 those answers, Instagram feed choice and the YouTube Terms/copyright notice.
 
-This feature is local on `codex/platform-publish-preflight`, based on `c1e70cf`;
-the full Mobile suite passes **2,351 tests** with one optional preview skipped.
-Analysis and the exact Staging Android build pass. It is not installed on the
-user's device or deployed. API must ship first, with no schema/env/dependency change.
-The previous TikTok APK12022 delivery below is unchanged. Validation:
+Source `2e86634` is merged/pushed to main and Live on Staging before Android
+**12023** was installed on emulator 5556 with the same signer and permissions.
+Login and both local drafts remain; Home loads the package and 2/4 connected
+channels after refresh. The real Mobile API client reads current connections
+and readiness successfully, with matching TikTok/YouTube revisions and unknown
+capabilities correctly labeled unverified. Instagram/Facebook are disconnected.
+No upload/publication or account reconnection was performed.
+The full Mobile suite passes **2,351 tests** with one optional preview skipped;
+analysis, exact Android build, Backend/Flutter CI `38766556966` and unsigned iOS
+CI `38766556987` pass. No iOS device check or schema/env/dependency change is
+included. Earlier TikTok sections are historical delivery records. Validation:
 `../../docs/superpowers/plans/2026-10-15-platform-publish-preflight.md`.
 
 ## TikTok Direct Post (2026-10-15, Android Staging delivered)

@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Channel publishing preflight (2026-10-15, local implementation)
+## Channel publishing preflight (2026-10-15, Staging delivered)
 
 `GET /social-connections/publishing-readiness` requires authentication and returns
 `Cache-Control: private, no-store`. It reads only the caller's existing local
@@ -96,9 +96,15 @@ and unknown request IDs rather than uploading or publishing them again.
 
 Media/codec/duration preflight is performed by Mobile on the actual outgoing file.
 It is not a new server-verified media assertion or API field. No database/schema,
-dependency or environment change is required. This source is local and unreleased;
-API-first deployment remains pending. Local API/Mobile suites and the exact
-Android build have passed; diagnostic runtime evidence is recorded in
+dependency or environment change is required. Source `2e86634` is on main and
+Live on Staging deploy `dep-db8focbrjlhs73bs5s90`, followed by the data-preserving
+Android **12023** update. Exact-source Backend/Flutter CI `38766556966` and unsigned
+iOS build `38766556987` pass. Public health returns HTTP 200; unauthenticated
+readiness and recovery requests return HTTP 401. The logged-in real Mobile
+client against Staging reads connections/readiness with matching TikTok/YouTube
+revisions and unknown capabilities labeled `connected`, not `ready`.
+Instagram/Facebook remain disconnected; no real publication was attempted.
+Local suites, native diagnostic results and delivery evidence are recorded in
 [the implementation record](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md).
 
 ## TikTok Direct Post contract (2026-10-15, Staging delivered)

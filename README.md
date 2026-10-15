@@ -7,9 +7,9 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Channel publishing preflight (2026-10-15, local implementation)
+## Channel publishing preflight (2026-10-15, Staging delivered)
 
-The next change checks YouTube/Instagram/Facebook captions before upload and
+The uploader checks YouTube/Instagram/Facebook captions before upload and
 checks the actual rendered file before sending it. A read-only, owner-scoped
 channel-readiness endpoint exposes explicit reconnect/permission problems without
 creating profiles, synchronizing accounts or publishing. Missing provider
@@ -21,10 +21,15 @@ connection lists. A separate read-only submission-recovery lookup can return an
 already accepted original request before new media/readiness/caption guards,
 without creating a post or enqueueing it again.
 
-This work is on `codex/platform-publish-preflight`, based on freshly verified
-`main`/`origin/main` `c1e70cf`. It has not been pushed, deployed or installed on the user's device.
-There is no schema, dependency or environment change. Deploy API before Mobile;
-the previously delivered TikTok source/APK12022 below remains the Staging release.
+Source `2e86634` is merged into main, pushed and Live on Staging deploy
+`dep-db8focbrjlhs73bs5s90`. Exact-source Backend/Flutter CI `38766556966` and
+unsigned iOS build `38766556987` pass. API was deployed before installing Android
+Staging **12023** on the user's emulator, preserving login and both local drafts.
+Authenticated connection/readiness GETs and the refreshed Home screen pass;
+TikTok/YouTube are connected with unconfirmed publishing capabilities, while
+Instagram/Facebook are not connected. No real upload/publication or iOS device
+test is claimed. There is no schema, dependency or environment change.
+Earlier release sections below are historical delivery records.
 See [scope, checks and remaining validation](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md).
 
 ## TikTok Direct Post (2026-10-15, Staging delivered)

@@ -3,11 +3,13 @@
 ## Scope and baseline
 
 The user authorized the proposed channel publishing improvements after a read-only
-audit of YouTube, Instagram and Facebook settings. This implementation does not
-authorize a release, real clip upload/publication, OAuth permission grant, account
-repair or Production change. Merge/push/deploy and user-device installation have not occurred.
-The previous TikTok Direct release and Android Staging APK12022 remain delivered
-as recorded in `2026-10-15-tiktok-direct-post.md`.
+audit of YouTube, Instagram and Facebook settings. Initial implementation approval
+excluded release and user-device installation; the later explicit **ทำเลย**
+authorized the API-first Staging delivery recorded below. Real clip publication,
+OAuth permission grants, account repair and Production remain outside that scope.
+Source `2e86634` is now on main and Live on Staging, followed by Android **12023**
+on the user's emulator. The previous TikTok Direct delivery is recorded separately
+in `2026-10-15-tiktok-direct-post.md`.
 
 Implementation starts from freshly fetched canonical `main`/`origin/main`
 `c1e70cfcd145aad05161208466ac4d6f889caa47` in the existing
@@ -194,12 +196,14 @@ production defaults still use the real API and native probe. Final log:
 Independent review found and prompted
 the revision, legacy recovery and rollback fixes above.
 
-No merge/push/deploy or user-device installation is claimed. No new database
-migration, schema, environment or dependency is needed;
-rollout must deploy the API before Mobile. No historical post, owner blocker,
-queued job or Production service was altered.
+These local verification results preceded the authorized delivery below. No new
+database migration, schema, environment or dependency is needed; rollout deploys
+the API before Mobile. No historical post, owner blocker, queued job or Production
+service was repaired or altered by this change.
 
 ## Exact Android diagnostic validation
+
+This account-free diagnostic phase preceded the authorized user-device update.
 
 - Source-final build: `apps/mobile/tool/postdee-staging.ps1 -Command build-apk
   --split-per-abi --target-platform=android-x64 --build-number=8023`, using the
@@ -210,10 +214,10 @@ queued job or Production service was altered.
   Package `com.postdee.postdee_mobile.staging`, versionCode **12023**, min SDK
   24/target SDK 36, x86_64; **127,805,646 bytes**. Signer matches delivered 12022; all 14 permissions
   remain unchanged.
-- Installed only on newly created, account-free diagnostic AVD
+- During this phase, installed only on newly created, account-free diagnostic AVD
   `postdee_platform_qa_20261015` / emulator **5558**. The user's emulator **5556**
-  remains at delivered **12022**, without restart, installation, form changes or
-  account actions in this task.
+  remained at delivered **12022**, without restart, installation, form changes or
+  account actions during this diagnostic phase.
 - APK resources match the Staging Firebase project/app/Web OAuth configuration.
   Debug VM field reads verify the Staging marker/API, Firebase auth enabled,
   local mock auth disabled, RevenueCat enabled with its Test Store key, and
@@ -236,12 +240,80 @@ queued job or Production service was altered.
   successful cold-start latency measurement or a physical-device performance
   result.
 - Flutter attach is detached cleanly, diagnostic forwarding is removed and only
-  AVD 5558 is stopped. The user's 5556 remains running at 12022.
+  AVD 5558 was stopped. The user's 5556 remained running at 12022 at this checkpoint.
 - No login, provider connection, clip upload, real publication or purchase was
   performed. Pro entitlement and provider request paths are covered by injected
   tests, rather than a new authenticated end-to-end provider run. Instagram and
-  Facebook still require a connected-account publication check after an
-  authorized API-first release. No migration or database operation was run.
+  Facebook still require a connected-account publication check. No migration or
+  database operation was run during this diagnostic phase.
+
+## Authorized Staging delivery
+
+The user's explicit **ทำเลย** approves the annotated API-first push/deploy and
+user-emulator update. Canonical `main` and `origin/main` were freshly verified
+at `c1e70cf`, then fast-forwarded and pushed to tested source
+**2e866346767acd0c1322d9d0dc830dfa6c708154** (0 ahead / 0 behind). The three
+pre-existing generated Windows changes and canonical untracked `artifacts/`
+remain preserved and excluded from the commit.
+
+- Exact-source [CI 38766556966](https://github.com/NOI56/PostDeeMobile/actions/runs/38766556966)
+  passes Backend API (2,163 tests, typecheck, build, Prisma and dependency audit)
+  and Flutter Mobile (analysis and tests), completed **16:14:43 UTC**.
+  [Unsigned iOS 38766556987](https://github.com/NOI56/PostDeeMobile/actions/runs/38766556987)
+  passes build/IPA packaging/artifact upload at **16:19:58 UTC**; artifact
+  `PostDee_iOS` / `11990147858` is 44,460,714 bytes. No iOS device test is claimed.
+- Render service `srv-d9bb72ojs32c739osa5g` in the previously human-confirmed
+  My Workspace remains on `main`, auto-deploy off, one Staging instance. Runtime
+  source **2e866346767acd0c1322d9d0dc830dfa6c708154** is Live on manual deploy
+  **dep-db8focbrjlhs73bs5s90** at **16:17:56.838159 UTC**, before Mobile installation.
+  No cache clear, environment change, database network change or Production
+  deployment was performed. A later documentation-only main commit records this
+  delivery without deploying another runtime.
+- Fresh service-Shell aggregate preflight confirms PostPeer + memory queue,
+  empty-backlog guard enabled, zero global QUEUED/PUBLISHING posts, 18 applied
+  migrations and zero unfinished migrations. The five retained owner operations
+  are preserved; their count is not a queue and is not cleared for deployment.
+  Render MCP DB access is unavailable under the existing closed external IP
+  allowlist; that network protection was left unchanged. New instance `wv2lg`
+  startup confirms 18 migrations/no pending, PostPeer, enforced empty-backlog
+  activation guard with zero backlog, and the service listening on port 10000.
+- Post-deploy read-only Shell aggregate on new instance `wv2lg` confirms exact
+  source `2e866346767acd0c1322d9d0dc830dfa6c708154`, memory queue, PostPeer and
+  the enabled guard. Global totals are **10 posts, 0 QUEUED/PUBLISHING, 5 retained
+  owner operations, 0 deletion runs, 18 applied migrations and 0 unfinished**.
+  No database records or network permissions were changed for this check.
+- Public API `/health` returns HTTP 200. Unauthenticated publishing-readiness
+  GET and submission-recovery POST return HTTP 401 without owner operations.
+  Source identity comes from Render deployment metadata, not the health response.
+- Read-only preflight found logged-in Account, version 12022 and two version-3
+  local drafts with no upload receipt. During CI wait the user opened an unsaved
+  composer and edited a draft. Before installation the settings sheet was closed
+  without supplying YouTube declarations. Save Draft rejected the empty clip/text
+  form, so no dummy content or additional draft was created. The intervening user
+  edit at 16:11 UTC explains the changed aggregate manifest hash; it preceded the
+  update and is not attributed to installation.
+- `install -r` updates emulator **5556** to exact **12023** with the artifact hash,
+  signer and permissions above. First-install identity, login and both local
+  drafts remain; post-install draft aggregate stays unchanged through final
+  verification. No data clear, uninstall, unrelated cleanup or installation was
+  used. Cold launch reports Status OK (8,475 ms); this is an emulator observation,
+  not a physical-device performance acceptance result. Final free space is about
+  **666 MiB**.
+- The app's real `PostDeeApiClient` using the current captured session reads
+  connections and publishing-readiness successfully (HTTP 200) against the new
+  API. TikTok and YouTube connection IDs/revisions match between the two GETs;
+  both correctly report `connected` / `PUBLISH_CAPABILITY_UNCONFIRMED`, rather
+  than invented `ready`. Instagram/Facebook report `not_connected`. The masked
+  diagnostic is `D:/Temp/platform-preflight-user-auth-readonly-12023.jsonl`.
+- Initial Home request errors clear after a GET-only refresh. The final Home
+  displays the package and **2/4** connected channels normally, with no scoped
+  fatal/unhandled/native crash. Debug attach is detached, its owned forwarding
+  removed, diagnostic AVD 5558 stopped, and user emulator 5556 remains open on Home.
+
+No real upload, publication, AI generation, purchase, OAuth grant, account repair
+or submission-recovery POST using user data was performed. Connected-account
+publication, Instagram/Facebook setup and physical iOS/Android acceptance remain
+separate checks. This delivery does not certify provider public-post approval.
 
 ## Primary sources
 

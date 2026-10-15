@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Channel publishing preflight boundary (2026-10-15, local implementation)
+## Channel publishing preflight boundary (2026-10-15, Staging delivered)
 
 Mobile checks caption rules before a new upload, loads channel-readiness when
 opening channels and rechecks before upload and before post submission. Local
@@ -31,10 +31,15 @@ read-only POST can recover an already accepted original intent before new guards
 using legacy settings compatibility and the normal redacted post DTO. It never
 creates, reserves quota or enqueues/repairs a queue item; a recovered FAILED post
 stays FAILED. Ordinary connection lists and readiness now share opaque revisions
-for all platforms. No schema/dependency/env
-change is introduced. Local API/Mobile suites and the Staging APK build pass;
-API-first rollout and connected-account publication checks remain pending.
-The previous TikTok Staging delivery remains unchanged. Details:
+for all platforms. No schema/dependency/env change is introduced. Tested source
+`2e86634` is merged/pushed to main and Live on Staging
+`dep-db8focbrjlhs73bs5s90`; the API-first rollout then installed Android **12023**
+without clearing login or the two local drafts. Exact-source Backend/Flutter and
+unsigned iOS CI pass. Runtime activation keeps the empty-backlog guard enforced;
+authenticated account/readiness reads and Home refresh pass. Existing connected
+TikTok/YouTube capabilities remain explicitly unverified; Instagram/Facebook
+are disconnected. Connected-account publication and iOS device checks remain
+separate from this release. Earlier TikTok sections record their own deliveries. Details:
 [implementation record](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md).
 
 ## TikTok Direct Post boundary (2026-10-15, Staging delivered)

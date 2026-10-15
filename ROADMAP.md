@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Channel publishing preflight (2026-10-15, local implementation)
+## Channel publishing preflight (2026-10-15, Staging delivered)
 
 - Add consistent YouTube/Instagram/Facebook caption guards to Mobile, new API
   requests and the provider publisher; retain TikTok and accepted replay behavior.
@@ -20,8 +20,14 @@ Build roadmap for PostDee.
   typecheck/build, schema/helper checks, analysis and the exact Staging APK build
   pass. Diagnostic runtime evidence and remaining external checks are in the
   [verification record](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md).
-- No merge/push/deploy, user-device installation, real upload/post or Production change is
-  included. Release requires API before Mobile and no new database migration.
+- Source `2e86634` is merged/pushed to main and Live on Staging deploy
+  `dep-db8focbrjlhs73bs5s90`. Exact-source Backend/Flutter CI `38766556966` and
+  unsigned iOS `38766556987` pass. API shipped before the data-preserving Android
+  **12023** update; login and both drafts remain, authenticated readiness reads
+  and refreshed Home pass. No new database migration is required.
+- TikTok/YouTube remain connected with unconfirmed publishing capabilities;
+  Instagram/Facebook are disconnected. Real publication, iOS device checks and
+  Production rollout remain unverified and outside this delivery.
 
 ## TikTok Direct Post (2026-10-15, Staging delivered)
 

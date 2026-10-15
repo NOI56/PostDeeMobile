@@ -2,9 +2,9 @@
 
 Build roadmap for PostDee.
 
-## TikTok Inbox CREATE confirmation (2026-10-15, locally verified)
+## TikTok Inbox CREATE confirmation (2026-10-15, Staging delivered)
 
-- Investigate the later 13:48 local FAILED result whose canonical provider GET
+- Correct the later 13:48 local FAILED result whose canonical provider GET
   proves an Inbox handoff. The documented CREATE summary reproduces rejection
   before GET; its use in the real incident is inferred because that raw CREATE
   response was not captured.
@@ -16,7 +16,13 @@ Build roadmap for PostDee.
 - Regression-first tests reproduce 21 failures; all 102 corrected publisher tests
   pass and independent review finds no blocker. Full API verification passes
   119 files / 1,981 tests, typecheck/build, Prisma checks and two compiled smokes.
-  Commit/deployment and historical correction of this later record remain pending.
+- Source `e191ed7` is on main and Live on Staging deploy
+  `dep-db8dr449v7es738gr9vg` at 14:07:09 UTC; CI `38747979249` passes Backend
+  and Mobile (2,252 tests/analysis). Health/readiness pass twice, with 18 migrations
+  and the empty-backlog guard verified. The separate two-row repair/readback and
+  APK12021 Calendar/detail confirm `ส่งเป็นร่างแล้ว` at 14:13 UTC. All five
+  unresolved markers are preserved; no provider resend or new APK is included.
+  User-side TikTok Inbox/public posting remains unverified.
   Preserve the completed earlier repair, native APK12021, phone-gate UX,
   schema, quotas, flags and Production. Plan:
   `docs/superpowers/plans/2026-10-15-tiktok-inbox-create-confirmation.md`.

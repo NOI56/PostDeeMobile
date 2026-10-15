@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## TikTok Inbox CREATE/GET boundary (2026-10-15, locally verified)
+## TikTok Inbox CREATE/GET boundary (2026-10-15, Staging delivered)
 
 CREATE may provide a published parent and successful platform summary without
 the selected status/Inbox ID documented in canonical GET. The injected documented
@@ -16,8 +16,13 @@ binding remain mandatory. Failure/pending, target, owner and duplicate-post guar
 remain; no phone-gate UX, native preparation, schema, flags or quota change is
 made. Regression-first tests reproduce 21 failures; all 102 publisher and 1,981
 API tests, typecheck/build, Prisma checks and two compiled smokes pass. Independent
-review finds no blocker. Commit/deployment and repair of the later record remain
-pending. Preserve the earlier completed repair receipt. Plan:
+review finds no blocker. Source `e191ed7` is on main and Live on Staging deploy
+`dep-db8dr449v7es738gr9vg`, after exact-head CI `38747979249` passes both jobs.
+Health/readiness pass twice, with 18 migrations/no pending and the empty-backlog
+guard verified. The separate guarded two-row repair/readback preserves all five
+unresolved markers; APK12021 Calendar/detail confirm `ส่งเป็นร่างแล้ว`. No provider
+resend or new APK is included. User-side Inbox/public posting is unverified.
+The earlier completed repair stays separate. Receipt:
 `docs/superpowers/plans/2026-10-15-tiktok-inbox-create-confirmation.md`.
 
 ## TikTok Inbox receipt boundary (2026-10-15, Staging delivered)

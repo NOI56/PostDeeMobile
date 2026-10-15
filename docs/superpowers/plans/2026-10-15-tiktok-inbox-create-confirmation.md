@@ -30,8 +30,8 @@
   booleans and safe timestamps are recorded here, without customer identifiers,
   caption text, media URLs or credentials.
 - That final provider evidence proves an Inbox handoff, not public TikTok
-  publication. The later PostDee row remains FAILED at this diagnostic stage;
-  no historical mutation or provider resend is performed for this record.
+  publication. At this diagnostic stage the later PostDee row was FAILED;
+  the separately authorized correction and verification are recorded below.
 
 ## Reproduced contract gap and inference boundary
 
@@ -79,6 +79,15 @@
    and Prisma checks. Review the exact compiled publisher with injected CREATE
    summary plus canonical GET proof. Keep live provider publication out of tests.
 
+## Files changed
+
+- `apps/api/src/workers/postPeerPublisher.ts`: bounded CREATE-summary confirmation
+  and canonical provider-ID binding.
+- `apps/api/src/workers/postPeerPublisher.test.ts`: 34 regression cases, including
+  worker no-resend and unknown-outcome checks.
+- `README.md`, `ROADMAP.md`, `API.md`, `ARCHITECTURE.md`, and this plan: behavior,
+  verification, Staging delivery and the separate repair receipt.
+
 ## Verification, delivery and historical state
 
 - Thirty-four regression-first cases extend the publisher suite. Before the
@@ -106,14 +115,69 @@
   (`POST, GET`); still-incomplete GET remains bounded and unknown
   (`POST, GET, GET`), with both GETs using the original provider ID. No actual
   remote POST is performed by either smoke.
-- This locally verified correction is not yet committed, merged, pushed or
-  deployed to Staging. Installed APK12021 and Mobile source remain unchanged;
-  no new Mobile/native runtime verification is claimed for this backend fix.
-- The later historical row has not been repaired. Any separate correction must
-  re-prove its owner, immutable intent, provider record and current row version;
-  deployment alone cannot rewrite an already FAILED row. Do not reuse the earlier
-  record's operator artifact, timestamps or row guards for this later record.
+- Source is committed, fast-forwarded into main and pushed as
+  `e191ed7574aea58a11e48d452240d09420202ff7`. Installed APK12021 and Mobile source
+  remain unchanged; no new native runtime verification is claimed for this
+  backend fix. Exact delivery and the separate historical repair follow below.
 - No provider POST/retry/requeue, billing action, phone verification, account
   reconnection, environment change or Production delivery is included.
 - User-side TikTok Inbox confirmation and final public publication remain
   unverified and require the user's own action.
+
+## Exact main, CI and Staging delivery
+
+- Exact-head [CI `38747979249`](https://github.com/NOI56/PostDeeMobile/actions/runs/38747979249)
+  succeeds. Backend passes 119 files / 1,981 tests plus 22 generator tests,
+  typecheck, build, Prisma validation and the production-dependency audit gate
+  at 14:04:11 UTC. Mobile passes 2,252 tests and analysis with no issues (14.0s)
+  at 14:08:55 UTC. Push CI skips APK building/uploading.
+- Staging deploy `dep-db8dr449v7es738gr9vg` is triggered once at
+  `14:05:04.733433Z` and Live at `2026-10-15T14:07:09.942921Z` on exact source
+  `e191ed7`. Startup confirms all 18 migrations with none pending and the
+  enforced empty-backlog activation guard passes. No environment/configuration,
+  flags, Production or new APK change is included.
+- Public `/health` and `/ready` return HTTP200/status ok in two rounds at
+  14:08:09 and 14:09:30 UTC. The bounded post-Live 14:07:09.942921–14:09:10 UTC
+  queries return no error/5xx entries. Request logs in that window are empty,
+  so coverage is incomplete and does not prove every request succeeded.
+- Actual runtime comparison matches LF-normalized source SHA-256
+  `61a73b30d66f0f791f42c653e05315a396862d9afdf48278374538f2b9d5f483`
+  and compiled publisher SHA-256
+  `627721bd34738d63fb726f7cb02179173594dba920b197e6a8c2b7da3c3a3b55`.
+  Both injected runtime scenarios pass: CREATE-summary to canonical GET DRAFT,
+  and incomplete GET to bounded UNKNOWN. Neither performs an actual remote POST.
+
+## Separate later-record repair and app verification
+
+- A new operator artifact is pinned to exact runtime `e191ed7`, with SHA-256
+  `98EA1C8CCDEF60810D6021A1E7BE703D91E0DFCE3BD50BCAC0D7456EB5017213`.
+  Its nine local tests pass in 122ms. Its transaction body is byte-identical to
+  the earlier frozen v2 guard; only the separately verified target constants
+  and exact deployment pin change. The earlier operator is not reused against
+  this record, and the earlier 12:43 repair receipt remains intact.
+- On the new runtime, the READ ONLY preview verifies the current owner, target,
+  immutable intent/media, exact provider record/version and five-operation
+  snapshot, returning `wouldWriteRows: 2`, `writtenRows: 0`.
+- One authorized apply runs around 14:12 UTC. It returns `ok: true`,
+  `writtenRows: 2`, quota/immutable/target/owner/operation proof true,
+  `durableBlockersPreserved: true` and `independentReadbackVerified: true`.
+  A subsequent explicit READ ONLY `--check` succeeds with `alreadyRepaired: true`,
+  `wouldWriteRows: 0`, `writtenRows: 0`.
+- Only the existing parent and selected TikTok receipt change: parent PUBLISHED,
+  receipt PUBLISHED/DRAFT, genuine provider ID retained, no external live URL or
+  error, original handoff timestamp `2026-10-15T13:48:29.430Z`. All five unresolved
+  operation rows remain unchanged with snapshot SHA-256
+  `230bb6a22ce95721866413c9262ca27b6af045ad2b0e5d33ccba95195d334784`;
+  they are not deleted, expired or reconciled. No provider resend, requeue, quota,
+  billing, authentication, environment, Production or new APK change is made.
+- At 14:13 UTC, installed APK12021 Calendar and the reopened detail show
+  `ส่งเป็นร่างแล้ว` for this later record; the earlier repaired record stays correct.
+  Proofs `user12021-tese-inbox-repaired.png` and
+  `user12021-tese-inbox-repaired-calendar.png` are under
+  `D:/PostDeeMobile/.tmp/tiktok-fps-native-probe-20261015/session-results/`.
+- These receipts verify PostDee history and canonical provider Inbox handoff.
+  The original real CREATE payload remains uncaptured; its inferred explanation
+  is not upgraded to a raw capture. User-side Inbox confirmation and final public
+  publication remain unverified and require the user's action.
+- A subsequent receipt-only commit will advance main with CI/Render skip markers;
+  runtime remains `e191ed7` and no second deployment is required for these docs.

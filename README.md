@@ -7,9 +7,9 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## TikTok Inbox CREATE confirmation (2026-10-15, locally verified)
+## TikTok Inbox CREATE confirmation (2026-10-15, Staging delivered)
 
-A later TikTok-only post is FAILED locally although its canonical PostPeer GET
+A later TikTok-only post was FAILED locally although its canonical PostPeer GET
 confirms a completed Inbox handoff. The documented CREATE response example omits
 the selected-platform status and Inbox ID required by the mapper. An injected
 example reproduces rejection before GET; the real historical CREATE payload was
@@ -19,9 +19,14 @@ read-only GET when the successful selected summary lacks status and ID, retainin
 strict Inbox proof without another POST. Regression-first tests reproduce 21
 failures; all 102 publisher and 1,981 full API tests pass, together with
 typecheck/build, Prisma checks and two compiled confirmation/unknown smokes.
-Independent review finds no blocker. Commit/deployment and repair of this later
-record remain pending. The
-completed 12:43 record repair below remains a separate receipt. Plan:
+Independent review finds no blocker. Source `e191ed7` is on main and Live on
+Staging deploy `dep-db8dr449v7es738gr9vg`; exact-head CI `38747979249` passes
+Backend and Mobile (2,252 tests/analysis). Health/readiness pass twice; all 18
+migrations and the empty-backlog guard pass. The separately guarded two-row
+repair and independent readback complete; APK12021 Calendar/detail show
+`ส่งเป็นร่างแล้ว` at 14:13 UTC. All five unresolved operation markers remain
+untouched, with no resend or new APK. User-side Inbox/public posting remains
+unverified. The completed 12:43 repair stays separate. Receipt:
 `docs/superpowers/plans/2026-10-15-tiktok-inbox-create-confirmation.md`.
 
 ## TikTok Inbox delivery status (2026-10-15, Staging delivered)

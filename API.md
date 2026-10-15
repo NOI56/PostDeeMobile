@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## TikTok Inbox CREATE confirmation (2026-10-15, locally verified)
+## TikTok Inbox CREATE confirmation (2026-10-15, Staging delivered)
 
 No client request/response shape changes. PostPeer's documented CREATE
 example lacks the selected-platform status and Inbox ID available from canonical
@@ -15,9 +15,15 @@ TikTok receipt; parent/URL success alone, another platform's result or a mismatc
 GET post ID cannot confirm it. No POST retry, quota/mode/schema change or automatic
 historical repair is introduced. After 21 regression-first failures, all 102
 publisher tests and all 1,981 API tests pass, with typecheck/build, Prisma checks,
-two compiled smokes and no blocking review finding. Commit/delivery and correction
-of the later record are pending; the earlier completed
-repair stays separate. Plan:
+two compiled smokes and no blocking review finding. Source `e191ed7` is on main
+and Live on Staging deploy `dep-db8dr449v7es738gr9vg`; CI `38747979249` passes
+Backend/Mobile. Health/readiness, 18 migrations/no pending and the empty-backlog
+guard pass. A separate guarded repair corrects only the matched parent/receipt
+to PUBLISHED/DRAFT with its original handoff time and no live URL/error.
+Independent readback and APK12021 Calendar/detail confirm `ส่งเป็นร่างแล้ว`.
+The five unresolved operation markers remain untouched; no resend or new APK is
+included. User-side Inbox/public publication is unverified. The earlier repair
+stays separate. Receipt:
 `docs/superpowers/plans/2026-10-15-tiktok-inbox-create-confirmation.md`.
 
 ## TikTok Inbox completion mapping (2026-10-15, Staging delivered)

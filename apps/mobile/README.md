@@ -2,6 +2,25 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## TikTok native completion with background engines (2026-10-15)
+
+The real-app timeout occurs when a Firebase background engine owns FFmpeg's
+global completion callback without an event subscriber. The native TikTok
+adapters now await each pre-created session's MethodChannel execution result
+and retain its cancellation ID before work finishes. Existing deadlines, media
+checks, draft/receipt/request safety, Firebase messaging, and Calendar stay intact.
+The upload copy normalizes into TikTok's 360–4096-pixel dimension range (the
+actual 180x320 QA clip needs 360x640), with original media retained and a local
+v2 preparation policy guarding reuse of older receipts.
+All 2,252 Mobile tests and analysis pass. Six native two-engine cases, a cold
+start and scoped cancellation pass with the exact final helper. Staging APK
+12021 passes startup/configuration checks and is installed on the user emulator;
+the account and original draft remain, with TikTok selected at review. Fresh
+Home/Profile show Free 0/3 and an unverified phone; phone verification is needed
+for the free allowance. Actual publication is unverified. No push/merge,
+API/schema/configuration/dependency change, or real post is included. Receipt:
+`../../docs/superpowers/plans/2026-10-15-tiktok-native-session-completion.md`.
+
 ## Calendar activity and TikTok preparation (2026-10-15, Staging delivered)
 
 Calendar loads all owner-scoped post activity through `GET /posts`, including

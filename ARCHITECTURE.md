@@ -2,6 +2,28 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## TikTok native session completion boundary (2026-10-15)
+
+Firebase's background FlutterEngine registers another FFmpeg plugin instance.
+The pinned plugin stores session-completion callbacks globally, so a UI job's
+event may target a background instance with no Dart subscriber. TikTok's native
+adapters now pre-create each session, expose its ID-scoped cancellation, and
+await the per-session MethodChannel execute result. Android's executor and
+iOS's dispatch queue perform native work off the UI thread. No global callback
+replacement, artificial delay, or Firebase lifecycle change is needed.
+Encoding and validation share expected even dimensions within TikTok's 360–4096
+range. Only upload copies resize proportionally; impossible aspect ratios fail
+before encoding. The local v2 preparation receipt retains the explicit recovery
+boundary for old uploads. The bounded futures, H.264/AAC CFR30, actual decoded
+frames, draft ownership, immutable IDs, and Calendar remain intact. Analysis and
+all 2,252 Mobile tests pass. The final helper passes six native two-engine cases,
+cold startup and scoped cancellation; the exact APK's configuration/startup and
+the user-emulator update to 12021 are verified. The retained draft reaches review
+with TikTok selected. This does not verify actual provider publication. Fresh
+Home/Profile show Free 0/3 and an unverified phone; existing free-plan rules
+require phone verification. No API deployment is required. Evidence:
+`docs/superpowers/plans/2026-10-15-tiktok-native-session-completion.md`.
+
 ## Calendar activity and TikTok media boundary (2026-10-15, Staging delivered)
 
 `CalendarPostResult` extends the existing general post summary with nullable

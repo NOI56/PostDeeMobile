@@ -7,6 +7,24 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## TikTok native completion with background engines (2026-10-15, local app updated)
+
+The real Staging app exposed a lost FFprobe completion event when Firebase's
+background FlutterEngine became the FFmpeg plugin's global callback owner.
+TikTok preparation now awaits each pre-created session's native MethodChannel
+result, retaining its own cancellation ID and existing media checks. The upload
+copy also normalizes dimensions to TikTok's 360–4096-pixel range; the local v2
+receipt policy prevents reusing older unvalidated sizes. Source media is retained.
+Firebase messaging, API contracts, package rules, and Calendar stay unchanged.
+All 2,252 Mobile tests and analysis pass; the exact helper also passes six native
+two-engine cases, a cold start, and scoped cancellation. Staging APK 12021 is
+installed on the user emulator with its account and original draft retained.
+The draft opens at review with TikTok selected. Actual platform publication is
+unverified. Fresh Home/Profile show Free with 0/3 remaining and an unverified
+phone; phone verification is required for the free allowance. This patch is
+committed locally, without a push, merge, or API deployment. Full receipt:
+`docs/superpowers/plans/2026-10-15-tiktok-native-session-completion.md`.
+
 ## TikTok media and Calendar activity (2026-10-15, Staging delivered)
 
 Calendar now reads all owner-scoped posts through the existing `GET /posts`, so

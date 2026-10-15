@@ -2,6 +2,22 @@
 
 PostDee backend API reference.
 
+## TikTok native completion correction (2026-10-15, local Mobile app updated)
+
+The mobile correction for lost FFprobe/FFmpeg completion events changes neither
+requests nor response contracts. Native preparation still completes and validates
+media before any remote upload, including normalized 360–4096-pixel dimensions.
+The client-local v2 preparation receipt prevents reuse of older unvalidated media;
+the existing explicit-new-attempt guard preserves legacy receipts and IDs.
+Existing request IDs, owner guards, platform results, and Calendar `GET /posts`
+remain intact. Staging API runtime `0f2941b` requires no new deployment,
+migration, or provider configuration. Mobile analysis and all 2,252 tests pass;
+APK 12021 is installed locally with the account/draft retained. No real post or
+server-side publication success is claimed. Fresh Home/Profile show Free 0/3
+and an unverified phone, which blocks the free allowance under existing rules.
+Verification and APK status:
+`docs/superpowers/plans/2026-10-15-tiktok-native-session-completion.md`.
+
 ## Calendar activity and TikTok validation (2026-10-15, Staging delivered)
 
 Calendar uses the existing authenticated `GET /posts` without `scheduled=true`,

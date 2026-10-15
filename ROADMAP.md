@@ -2,6 +2,26 @@
 
 Build roadmap for PostDee.
 
+## TikTok native completion with background engines (2026-10-15)
+
+- Correct the real-app FFprobe timeout caused by a background FlutterEngine
+  replacing the plugin's global completion-event owner. Await each session's
+  native MethodChannel result while exposing its cancellation ID immediately.
+- Keep bounded cancellation, H.264/AAC CFR30 and actual decoded-prefix checks,
+  draft/request/receipt safety, Firebase messaging, and Calendar activity intact.
+- Normalize only the upload copy into TikTok's 360–4096-pixel dimension range;
+  the actual 180x320 QA source needs 360x640 output. Use the local v2 receipt
+  policy and existing explicit legacy-recovery guard, retaining source media.
+- All 2,252 Mobile tests and analysis pass, including nine native-adapter
+  regressions. Six native two-engine cases, a cold start, scoped cancellation,
+  and the exact Staging APK startup/configuration checks also pass.
+- Staging APK 12021 is installed on the user emulator without losing its account
+  or draft. TikTok remains selected at review. Actual publication is unverified;
+  Home/Profile report Free with 0/3 remaining and an unverified phone; the user
+  must verify the phone for free allowance. The patch is local, with no merge or
+  push. No server migration, configuration, or API redeployment is required. Receipt:
+  `docs/superpowers/plans/2026-10-15-tiktok-native-session-completion.md`.
+
 ## TikTok frame rate and complete Calendar activity (2026-10-15)
 
 - Include immediate, scheduled, and partially published owner activity in

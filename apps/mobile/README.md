@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## TikTok Direct Post (2026-10-15, local implementation)
+## TikTok Direct Post (2026-10-15, Android Staging delivered)
 
 TikTok settings now offer Inbox or Direct Post using current account-bound
 creator options. Direct requires a manual privacy choice, permitted interaction
@@ -14,9 +14,16 @@ draft manifests remain readable and unproven receipts cannot silently be resent.
 
 No TikTok watermark is added. Inbox delivery, native CFR/H.264/AAC preparation,
 local draft ownership, upload reuse and idempotent submission are preserved.
-The new API must be deployed first; older APIs leave Direct unavailable. A
-read-only Staging creator-info check succeeded, but provider audit approval,
-actual Direct publication and the new release remain unverified. Validation:
+Staging API `5681602` is Live and Android **12022** is installed with `install -r`,
+preserving login, first-install identity and the locally saved open form. The
+actual account-bound sheet fetched current creator options: public/friends/self
+privacy choices, no privacy default, restricted Duet disabled, interactions and
+consent unchecked, and Save disabled. Only the privacy menu was opened; no
+settings were saved, media uploaded or post submitted. Backend/Flutter CI
+`38757735457` passes; iOS CI `38757735448` passes its unsigned build and IPA
+artifact checks. iOS device delivery, provider audit/public approval and actual
+Direct publication are still unverified. Other environments
+must deploy API first; older APIs leave Direct unavailable. Validation:
 `../../docs/superpowers/plans/2026-10-15-tiktok-direct-post.md`.
 
 ## TikTok native completion with background engines (2026-10-15)

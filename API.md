@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## TikTok Direct Post contract (2026-10-15, local verification passed; rollout pending)
+## TikTok Direct Post contract (2026-10-15, Staging delivered)
 
 `GET /social-connections/TIKTOK/publishing-options` is authenticated and returns
 `Cache-Control: private, no-store`. The server resolves only the caller's stored
@@ -61,10 +61,14 @@ well as the observed v2 receipt family; neither is fabricated into a public URL.
 `PRIVATE` means `SELF_ONLY`; `LIVE` means published to the selected audience,
 including friends/followers, and does not by itself mean public visibility.
 
-No database migration or historical post repair is added. Deploy API first;
-older APIs without publishing-options leave Direct unavailable in new Mobile.
-The successful read-only creator-info probe does not prove provider audit status
-or real public publication. Validation/release evidence is maintained in
+No database migration or historical post repair is added. Source `5681602` is
+Live on Staging deploy `dep-db8ep7brjlhs73e46qc0`, with health/readiness HTTP 200
+and unauthenticated publishing-options HTTP 401. Installed Android Staging 12022
+successfully fetched account-bound options through the new route without an
+upload or publication. Other environments must deploy API first; older APIs
+without publishing-options leave Direct unavailable in new Mobile. Provider
+audit/public approval and real Direct publication remain unverified.
+Validation/release evidence is maintained in
 [the feature record](docs/superpowers/plans/2026-10-15-tiktok-direct-post.md).
 
 ## TikTok Inbox CREATE confirmation (2026-10-15, Staging delivered)

@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## TikTok Direct Post boundary (2026-10-15, local verification passed; rollout pending)
+## TikTok Direct Post boundary (2026-10-15, Staging delivered)
 
 The authenticated publishing-options route resolves the owner's stored TikTok
 integration and proxies PostPeer creator-info with a timeout and bounded,
@@ -31,9 +31,15 @@ GET on the original provider ID; ambiguous outcomes do not cause another POST.
 the snapshot. Existing Inbox, legacy private TikTok, other destinations, quota,
 owner deletion boundaries, native media preparation and idempotency remain intact.
 
-The read-only Staging creator-info probe succeeded. Audit status and actual
-Direct publication are not proven by it. No new deployment, migration or prior
-post repair is included yet; API must precede Mobile rollout. See
+Source `5681602` is Live on Staging deploy `dep-db8ep7brjlhs73e46qc0`, followed by
+the data-preserving Android 12022 update. Health/readiness, the enforced empty
+backlog startup guard and the logged-in account-bound options UI pass. The memory
+queue/PostPeer configuration and all 18 applied migrations are retained, with no
+new migration, environment change, prior-post repair or Production change. This
+read-only UI check does not prove provider audit/public approval or actual Direct
+publication. API must precede Mobile rollout in other environments. iOS CI
+`38757735448` passes the unsigned build and artifact checks; iOS device rollout
+and real publication remain unverified. See
 [the feature record](docs/superpowers/plans/2026-10-15-tiktok-direct-post.md).
 
 ## TikTok Inbox CREATE/GET boundary (2026-10-15, Staging delivered)
@@ -2213,8 +2219,9 @@ cd apps/mobile
   identity is ensured in the local `User` store before its provider profile is
   saved, and the required PostPeer profile name is stable and pseudonymous.
   Phase 2 explicit settings/target/outcome persistence exists. The new TikTok
-  Direct flow adds current capabilities, consent and account revision checks,
-  but provider audit/publication verification and rollout are still pending. Provider-draft, YouTube
+  Direct flow adds current capabilities, consent and account revision checks and
+  is delivered to Staging API/Android. Provider audit/publication verification,
+  iOS and other-environment rollout remain pending. Provider-draft, YouTube
   compliance/visibility, immutable-target, migration/backlog, and redaction E2E
   remain required. Shared
   `POSTPEER_*_ACCOUNT_ID` values are rejected in production. The internal

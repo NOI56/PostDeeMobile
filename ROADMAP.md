@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## TikTok Direct Post (2026-10-15, local verification passed; rollout pending)
+## TikTok Direct Post (2026-10-15, Staging delivered)
 
 - Implement account-bound creator-info, explicit privacy and interaction choices,
   commercial/AI disclosure and consent. Keep Inbox available and preserve all
@@ -11,9 +11,14 @@ Build roadmap for PostDee.
   again at worker execution. Do not change privacy or fall back to Inbox silently.
 - Require selected-platform final Direct proof; bounded status GET must never
   resend an accepted CREATE. `LIVE` means published to the selected audience.
-- Read-only Staging creator-info returned valid options. Provider audit approval
-  and a real Direct publication are still unverified. No new release or historical
-  repair is part of this feature so far; API-first rollout needs no schema migration.
+- Delivered source `5681602` to main and Staging deploy `dep-db8ep7brjlhs73e46qc0`,
+  then updated Android to 12022 without clearing data. Exact-head Backend/Flutter
+  CI `38757735457` passes; iOS CI `38757735448` passes its unsigned build and
+  artifact checks. No iOS device test or installation is claimed.
+- Read-only account-bound creator options and the actual logged-in settings UI
+  pass. Provider audit/public approval and a real Direct publication remain
+  unverified; no upload, publication, historical repair or Production change was
+  made. Other environments need API-first rollout with no new schema migration.
 - Record exact targeted/full verification and release evidence in
   [the implementation record](docs/superpowers/plans/2026-10-15-tiktok-direct-post.md).
 
@@ -868,7 +873,8 @@ Current status:
   TikTok inbox draft; complete YouTube title/visibility/kids/synthetic-media/
   certification; Instagram share-to-feed; and an explicit Facebook Page Video
   publish/page-draft choice. The new TikTok Direct flow adds creator-info,
-  consent and revision checks; audit/public publication and rollout still need
+  consent and revision checks and is delivered to Staging API/Android; provider
+  audit/public publication, iOS and other-environment rollout still need
   verification. Review names the connected account/channel/page and blocks
   missing identity, incomplete settings, or an unknown outcome. Provider drafts
   are remote submissions that upload, enqueue, and consume quota—not PostDee

@@ -2,9 +2,12 @@
 
 ## Scope and baseline
 
-User authorized checking PostPeer Direct Post capability and implementing the
-complete PostDee publishing/settings flow. This does not authorize publishing a
-test clip, changing old records, granting new OAuth permissions, or a new release.
+The initial authorization covered checking PostPeer Direct Post capability and
+implementing the complete PostDee publishing/settings flow, without publishing a
+test clip, changing old records, granting new OAuth permissions, or releasing it.
+The subsequent explicit user reply “ทำเลย” authorized merge/push, Staging deploy
+and the emulator update. It did not authorize actual clip publication; the
+authorized delivery and read-only UI evidence are recorded below.
 Implementation starts at verified `main` / `origin/main`
 `41e38e9a87e88f12f1e0799b5d41af261a1cc0e8` (fetch succeeded; 0 ahead/behind), in
 the existing `tiktok-native-session-results` worktree on `codex/tiktok-direct-post`.
@@ -61,7 +64,7 @@ does not prove the provider client's audit/publication approval.
   native H.264/AAC/CFR preparation, no TikTok watermark, upload reuse, quota,
   immutable intent, owner lifecycle and unknown-outcome duplicate prevention.
 
-## Verification record
+## Pre-release verification record
 
 - Worker regression tests added first: 22 tests, 20 failed before implementation.
 - Initial worker/inbox/delivery targeted suite: 132 passed. Added revision,
@@ -102,7 +105,7 @@ does not prove the provider client's audit/publication approval.
   variant has explicit consent and Save enabled. PNGs under
   `D:/Temp/postdee-direct-post-preview-20261015/` are visually checked. This is
   widget rendering with example identity, not a live account publication.
-- Source and tests are committed locally as
+- Before release, source and tests were committed locally as
   `2f86d0633174080ad2ca74e4e3c97e38214c1fc3` on `codex/tiktok-direct-post`.
   Before the commit, a fresh fetch still showed baseline `origin/main` at
   `41e38e9` with no divergence. The task-only 50-file staged diff contains no
@@ -133,16 +136,70 @@ does not prove the provider client's audit/publication approval.
   are startup checks, not performance measurements or Direct provider E2E.
 - No login, permission grant, purchase, clip upload or real publication was
   performed in the diagnostic app. Its emulator is stopped gracefully after the
-  check. User emulator 5556 remains at **12021**, with no install, restart or UI
-  input from this task. No raw app logs or private account data are saved.
-- The Staging server and the user's installed APK remain the prior release. No new push, deploy,
-  installation, migration, real Direct publication or old-data repair is claimed.
+  check. At this pre-release checkpoint, user emulator 5556 remained at **12021**,
+  with no install, restart or UI input from the implementation task. No raw app
+  logs or private account data were saved.
+- At that checkpoint, the Staging server and user's APK remained the prior
+  release, without a new push, deploy or installation. The authorized delivery
+  below supersedes that release status, while preserving the evidence above.
+
+## Authorized Staging delivery and device verification
+
+- Following the user's explicit “ทำเลย”, canonical `main` and `origin/main`
+  fast-forwarded from `41e38e9a87e88f12f1e0799b5d41af261a1cc0e8` to
+  `568160294df45c942223c89a22d89e0d327fbfb4`. The code is the tested `2f86d063`
+  implementation plus documentation evidence. Unrelated generated Windows files,
+  `artifacts/`, and other worktrees are preserved.
+- Exact-head [GitHub CI `38757735457`](https://github.com/NOI56/PostDeeMobile/actions/runs/38757735457)
+  passes Backend and Flutter: **2093 API** tests and **2285 Mobile** tests, with
+  one optional preview skipped. Exact-head [iOS CI `38757735448`](https://github.com/NOI56/PostDeeMobile/actions/runs/38757735448)
+  completes successfully at `2026-10-15T15:19:11Z`: unsigned build, IPA payload
+  and artifact upload pass. `PostDee_iOS` artifact `11984897106` is 44,434,066
+  bytes. This is compile/package evidence; no iOS device installation or
+  publication is claimed.
+- Render Staging deploy `dep-db8ep7brjlhs73e46qc0` is Live at
+  `2026-10-15T15:11:08.379387Z` on exact source `5681602`. Global queued/publishing
+  backlog was zero before deploy and the enforced startup guard passed. Existing
+  memory queue/PostPeer mode remains in use. All **18** migrations are applied,
+  with none pending; no schema or environment change was needed.
+- `/health` and `/ready` return HTTP 200; unauthenticated publishing-options
+  returns HTTP 401. No error logs were observed in the bounded
+  `2026-10-15T15:11:03Z`–`15:16:50Z` interval. These checks are service health and
+  access-control evidence, not provider publication evidence.
+- The exact APK documented above, with matching hash/signature, updates user
+  emulator 5556 using `install -r`: **12021 → 12022**, success. First install
+  remains 2026-10-05 and login is retained. The stopped-process cold launch
+  returns `Status: ok` in 6091ms; this is a launch check, not a performance claim.
+- Before installation, the open form was saved locally using Save Draft;
+  the local draft count changed **1 → 2**, without upload or quota consumption.
+  The same form reopened successfully after the update. An initial Home
+  connection fetch failed during the transition; a read-only server repository
+  probe confirmed valid TikTok/YouTube connections and the app retry succeeded
+  at **2/4**. A second read-only probe after UI inspection confirms the owner
+  still has **3** remote posts, global `QUEUED`/`PUBLISHING` remains **0**, and
+  retained owner operations remain **5**, with no creator-GET ticket leak.
+- The actual logged-in TikTok sheet fetched owner-bound creator info and showed
+  Direct Post. The privacy menu contains `PUBLIC_TO_EVERYONE`,
+  `MUTUAL_FOLLOW_FRIENDS` and `SELF_ONLY`, with no default selection. Duet is
+  disabled by the creator restriction; interactions and consent are unchecked,
+  and Save is disabled. Only the dropdown was opened: no privacy selection,
+  consent, settings save, media upload, post POST or provider CREATE was made.
+  Live settings and privacy-menu screenshots are
+  `D:/Temp/postdee-direct-live-settings-20261015.png` and
+  `D:/Temp/postdee-direct-live-privacy-options-20261015.png`. A bounded read of
+  the current Android process's last 800 logcat lines found zero fatal,
+  unhandled or Flutter errors.
+- No real Direct publication, historical-data repair or Production change was
+  performed. Provider TikTok audit/public approval remains **unverified**.
 
 ## Rollout and remaining proof
 
-Deploy the new API before Mobile; an older API or failed creator-info response
-must keep Direct unavailable. Verify provider audit/scope behavior without
-assuming that available privacy options prove public posting approval. A real
+Staging API and Android delivery are complete as recorded above. In other
+environments, deploy the new API before Mobile; an older API or failed creator-info
+response must keep Direct unavailable. iOS compilation/package CI passes, while
+iOS device rollout remains unverified. Verify provider audit/scope behavior
+without assuming that available privacy options prove public
+posting approval. A real
 publication requires a separate user-selected clip, destination and explicit
 publish action. Record public/friends/self delivery and status behavior after
 that controlled test. Do not resend old Inbox posts to test the new feature.

@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## TikTok Direct Post (2026-10-15, local verification passed; rollout pending)
+## TikTok Direct Post (2026-10-15, Staging delivered)
 
 The new explicit Direct Post path reads the connected creator's latest options
 through PostPeer before showing settings, before accepting a post, and again
@@ -16,11 +16,17 @@ and music/commercial-content consent is collected in the publishing flow. A
 creator revision binds those choices to the same owner and account. Inbox remains
 available and existing Inbox receipts retain their DRAFT outcome.
 
-A read-only Staging creator-info check succeeded and returned public/friends/
-self privacy choices. This does not prove the provider's TikTok audit approval
-or successful public publication. No real Direct Post, new deployment, or
-historical-data repair is included in this feature's verification so far. API
-must be deployed before the new Mobile flow; no new database migration is needed.
+Source `5681602` is on main and Live on Staging deploy
+`dep-db8ep7brjlhs73e46qc0`; exact-head Backend/Flutter CI `38757735457` passes.
+Android Staging **12022** is installed without clearing user data. The logged-in
+app fetched current creator options and showed public/friends/self choices with
+no privacy default. Duet remained disabled by the creator restriction; Save
+remained disabled pending valid choices and consent.
+This read-only check made no upload or publication; provider TikTok audit/public
+approval and real Direct delivery remain unverified. iOS CI `38757735448` passes
+its unsigned build and IPA artifact checks; no iOS device test is claimed.
+No historical-data repair or Production change is included. Other
+environments must deploy API before Mobile; no new database migration is needed.
 See [the implementation and validation record](docs/superpowers/plans/2026-10-15-tiktok-direct-post.md).
 
 ## TikTok Inbox CREATE confirmation (2026-10-15, Staging delivered)
@@ -2184,9 +2190,10 @@ and reports `deliveryOutcome` as `LIVE`, `PRIVATE`, `UNLISTED`, or `DRAFT` so a
 provider draft/private delivery is not described as publicly live merely because
 the internal platform result reached `PUBLISHED`. Existing rows may have a null
 outcome and continue to use their legacy status display. New TikTok requests can
-use Inbox or the complete Direct settings flow when the new API is deployed and
-current creator options can be verified. The provider's audit approval and a
-real public Direct Post remain unverified. One immediate Staging YouTube Shorts Private
+use Inbox or the complete Direct settings flow on the delivered Staging API when
+current creator options can be verified; other environments need API-first
+rollout. The provider's audit approval and a real public Direct Post remain
+unverified. One immediate Staging YouTube Shorts Private
 connected-account E2E passed on 2026-08-10 with a real non-mock external
 reference and exactly one post unit, but it predates the complete Phase 2
 settings/target/delivery matrix. Production, provider-draft behavior, and the

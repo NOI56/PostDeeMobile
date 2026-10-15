@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
@@ -33,7 +34,7 @@ String? publishReviewOutcomeFor(
         YouTubeVisibility.public => 'สาธารณะ (Public)',
       };
     case SocialPlatform.instagramReels:
-      return 'เผยแพร่ตามบัญชี';
+      return '${settings.instagramShareToFeed ? 'Reels + ฟีด' : 'Reels อย่างเดียว'} · เผยแพร่ตามบัญชี';
     case SocialPlatform.facebookReels:
       return switch (settings.facebookPublishMode) {
         FacebookPublishMode.publish => 'เผยแพร่บนเพจ',
@@ -374,6 +375,10 @@ class PublishReviewSummary extends StatelessWidget {
             scheduledAt: scheduledAt,
             connectionDisplayName: connectionDisplayNames[platform],
           ),
+        if (platforms.contains(SocialPlatform.youtubeShorts)) ...[
+          const YouTubeUploadNotice(),
+          const SizedBox(height: 9),
+        ],
         if (hasUnknownOutcome) ...[
           Container(
             key: const ValueKey('publish-review-unknown-outcome'),
@@ -663,6 +668,37 @@ class _PlatformOutcomeRow extends StatelessWidget {
                         : Theme.of(context).colorScheme.error,
                   ),
                 ),
+                if (platform == SocialPlatform.youtubeShorts) ...[
+                  const SizedBox(height: 5),
+                  for (final detail in [
+                    'ชื่อวิดีโอ: ${settings.youtubeTitle.trim().isEmpty ? 'ยังไม่ระบุ' : settings.youtubeTitle.trim()}',
+                    'สำหรับเด็ก: ${_answerLabel(settings.youtubeMadeForKids, yes: 'ใช่', no: 'ไม่ใช่')}',
+                    'สื่อสังเคราะห์ที่ดูเหมือนจริง: ${_answerLabel(settings.youtubeContainsSyntheticMedia, yes: 'มี', no: 'ไม่มี')}',
+                    'กฎชุมชน YouTube: ${settings.youtubeCommunityGuidelinesCertified ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน'}',
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        detail,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          height: 1.4,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                ],
+                if (platform == SocialPlatform.instagramReels) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    'Instagram ไม่มี Private รายโพสต์ วิดีโอจะเผยแพร่ตามบัญชีที่เชื่อม',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.4,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -677,6 +713,65 @@ class _PlatformOutcomeRow extends StatelessWidget {
       ),
     );
   }
+}
+
+String _answerLabel(bool? value, {required String yes, required String no}) =>
+    value == null
+        ? 'ยังไม่ระบุ'
+        : value
+            ? yes
+            : no;
+
+/// YouTube requires this notice on the screen where an upload is confirmed.
+class YouTubeUploadNotice extends StatelessWidget {
+  const YouTubeUploadNotice({super.key});
+
+  Future<void> _openTerms(BuildContext context) async {
+    var opened = false;
+    try {
+      opened = await launchUrl(
+        Uri.parse('https://m.youtube.com/terms'),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      // A missing browser/plugin must not interrupt or confirm a post.
+    }
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+        content: Text(
+            'เปิดข้อกำหนด YouTube ไม่สำเร็จ ลองใหม่หรือเปิด m.youtube.com/terms ในเบราว์เซอร์'),
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const ValueKey('publish-review-youtube-notice'),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppTheme.glass,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.borderSoft),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'เมื่อกดยืนยันโพสต์หรือตั้งเวลา คุณรับรองว่าเนื้อหาที่อัปโหลดเป็นไปตามข้อกำหนดการให้บริการ YouTube รวมถึงกฎชุมชน โปรดอย่าละเมิดลิขสิทธิ์หรือความเป็นส่วนตัวของผู้อื่น',
+              style: TextStyle(
+                fontSize: 11.5,
+                height: 1.5,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+            TextButton(
+              key: const ValueKey('publish-review-youtube-terms'),
+              onPressed: () => _openTerms(context),
+              child: const Text('อ่านข้อกำหนด YouTube'),
+            ),
+          ],
+        ),
+      );
 }
 
 String _providerDraftTimingLabel(

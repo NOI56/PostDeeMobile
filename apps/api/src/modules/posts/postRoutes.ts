@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { RequestHandler, Router } from 'express';
+import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 
 import {
   createOwnerMutationLock,
@@ -33,7 +34,8 @@ import {
   type QueuedPost,
   isValidPlatform
 } from './postStore.js';
-import { readPlatformSettings } from './platformSettings.js';
+import { normalizePersistedPlatformSettings, readPlatformSettings } from './platformSettings.js';
+import { readPlatformCaptionIssue } from './platformCaptionValidation.js';
 import {
   buildTikTokConnectionRevision,
   isExplicitTikTokDirectSettings,
@@ -314,6 +316,7 @@ export const registerPostRoutes = (
     allowSubscriptionPlanOverride?: boolean;
     socialPublishingEnabled?: boolean;
     assertOwnerActive?: (ownerId: string) => Promise<void>;
+    runWithOwnerLifetime?: RunWithActiveOwner;
     ownerMutationLock?: OwnerMutationLock;
     resolvePlatformTarget?: ResolveCurrentPlatformTarget;
     resolveTikTokCreatorInfo?: (input: { userId: string; target: PlatformTarget }) => Promise<TikTokCreatorInfo>;
@@ -512,6 +515,81 @@ export const registerPostRoutes = (
     });
   });
 
+  // POST keeps the private caption/intent out of URLs and access logs. This
+  // lookup is strictly read-only: no gates, quota, profile or queue mutations.
+  router.post('/posts/submissions/recover', authMiddleware, async (request, response) => {
+    response.setHeader('Cache-Control', 'private, no-store');
+    const user = readAuthUser(response.locals);
+    if (!user) {
+      response.status(401).json({ status: 'error', message: 'Authenticated user is required' });
+      return;
+    }
+    const caption = readRequiredString(request.body?.caption);
+    const videoS3Key = readRequiredString(request.body?.videoS3Key);
+    const requestId = readOptionalClientRequestId(request.body?.clientRequestId);
+    const platforms = readPlatforms(request.body?.platforms);
+    const scheduledAt = readOptionalIsoDate(request.body?.scheduledAt);
+    const coverImage = readOptionalCoverImageKey(request.body?.coverImageS3Key);
+    const coverFrame = readOptionalCoverFrameTimeMs(request.body?.coverFrameTimeMs);
+    const fingerprint = readOptionalMediaContentFingerprint(request.body?.mediaContentFingerprint);
+    if (!caption || !videoS3Key || !requestId.ok || !requestId.value || !platforms.ok || platforms.hadDuplicates || !scheduledAt.ok || !coverImage.ok || !coverFrame.ok || !fingerprint.ok) {
+      response.status(400).json({ status: 'error', code: 'INVALID_POST_SUBMISSION_RECOVERY', message: 'A valid original post submission intent is required.' });
+      return;
+    }
+    let platformSettings;
+    try {
+      const originalSettings: unknown = request.body?.platformSettings;
+      // Historical Mobile did not collect a Facebook choice. Only recovery
+      // may fill its known historical PUBLISH default; immutable comparison
+      // still rejects a stored PAGE_DRAFT or any different accepted intent.
+      const recoverySettings = platforms.value.includes('FACEBOOK_REELS') &&
+        originalSettings !== null && typeof originalSettings === 'object' &&
+        !Array.isArray(originalSettings) &&
+        !Object.prototype.hasOwnProperty.call(originalSettings, 'FACEBOOK_REELS')
+        ? { ...originalSettings, FACEBOOK_REELS: { publishMode: 'PUBLISH' } }
+        : originalSettings;
+      platformSettings = normalizePersistedPlatformSettings(recoverySettings, platforms.value);
+    } catch {
+      response.status(400).json({ status: 'error', code: 'INVALID_POST_SUBMISSION_RECOVERY', message: 'A valid original post submission intent is required.' });
+      return;
+    }
+    const input = {
+      userId: user.id, caption, videoS3Key, platforms: platforms.value, platformSettings,
+      ...(scheduledAt.value ? { scheduledAt: scheduledAt.value } : {}),
+      ...(coverImage.value ? { coverImageS3Key: coverImage.value } : {}),
+      ...(coverFrame.value !== undefined ? { coverFrameTimeMs: coverFrame.value } : {}),
+      ...(fingerprint.value ? { mediaContentFingerprint: fingerprint.value } : {})
+    };
+    const runRead: RunWithActiveOwner = options.runWithOwnerLifetime ?? (async (_owner, operation) => operation());
+    const sendError = (error: unknown) => {
+      if (respondWithManagedUploadError(response, error)) return;
+      response.status(503).json({ status: 'error', code: 'POST_SUBMISSION_RECOVERY_UNAVAILABLE', message: 'The original post submission could not be checked. Please try again.' });
+    };
+    try {
+      const outcome = await runRead(user.id, async () => {
+        try {
+          await options.assertOwnerActive?.(user.id);
+          const post = await store.findIdempotent({ userId: user.id, clientRequestId: requestId.value! });
+          await options.assertOwnerActive?.(user.id);
+          return { post, matches: post ? isMatchingIdempotentIntent(post, input) : false };
+        } catch (error) {
+          // A failed local read must not retain a remote-write uncertainty ticket.
+          return { error };
+        }
+      });
+      if ('error' in outcome) { sendError(outcome.error); return; }
+      if (!outcome.post) {
+        response.status(404).json({ status: 'error', code: 'POST_SUBMISSION_NOT_FOUND', message: 'No accepted post submission was found.' });
+        return;
+      }
+      if (!outcome.matches) {
+        response.status(409).json(idempotencyKeyReusedResponse);
+        return;
+      }
+      response.json({ status: 'ok', post: toPublicPost(outcome.post), idempotentReplay: true, recovered: true });
+    } catch (error) { sendError(error); }
+  });
+
   router.post('/posts', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
     const caption = readRequiredString(request.body?.caption);
@@ -664,6 +742,14 @@ export const registerPostRoutes = (
 
     const platforms = platformsResult.value;
     const platformSettings = platformSettingsResult.value;
+
+    // Matching accepted requests were recovered above. Only new publishing
+    // intents are subject to these guards, before media/provider/quota work.
+    const captionIssue = readPlatformCaptionIssue(caption, platforms);
+    if (captionIssue) {
+      response.status(400).json({ status: 'error', code: 'PLATFORM_CAPTION_INVALID', ...captionIssue });
+      return;
+    }
 
     if (!scheduledAtResult.ok) {
       response.status(400).json({

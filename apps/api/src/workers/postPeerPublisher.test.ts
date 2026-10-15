@@ -31,6 +31,22 @@ afterEach(() => {
 });
 
 describe('createPostPeerPublisher', () => {
+  it.each([
+    ['YOUTUBE_SHORTS', 'ก'.repeat(1667)],
+    ['YOUTUBE_SHORTS', 'ราคา < 100'],
+    ['INSTAGRAM_REELS', 'a'.repeat(2201)],
+    ['FACEBOOK_REELS', 'a'.repeat(63207)],
+    ['FACEBOOK_REELS', '😀'.repeat(31604)]
+  ] as const)('blocks invalid %s caption before any provider/account/media read', async (platform, caption) => {
+    const fetchImpl = vi.fn();
+    const resolveAccountId = vi.fn();
+    const resolveVideoUrl = vi.fn();
+    const publisher = createPostPeerPublisher({ apiKey: 'key', baseUrl: 'https://api.postpeer.test', fetchImpl, resolveAccountId, resolveVideoUrl });
+    await expect(publisher.publish({ userId: 'owner', postId: 'post', platform, caption, videoS3Key: 'video' })).rejects.toMatchObject({ code: 'PLATFORM_CAPTION_INVALID' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(resolveAccountId).not.toHaveBeenCalled();
+    expect(resolveVideoUrl).not.toHaveBeenCalled();
+  });
   it('resolves a PostPeer account id from the post owner before publishing', async () => {
     const calls: { body: unknown }[] = [];
     const publisher = createPostPeerPublisher({

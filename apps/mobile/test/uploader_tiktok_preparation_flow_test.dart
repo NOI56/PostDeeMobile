@@ -10,6 +10,7 @@ import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/watermark_video_processor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
@@ -74,6 +75,8 @@ void main() {
       MaterialApp(
           home: Scaffold(
               body: UploaderScreen(
+        probePublishMedia: probeValidPublishMedia,
+        loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
         draftStore: store,
         initialDraftId: initialDraftId,
         initialVideoPath: initialDraftId == null ? source.path : null,

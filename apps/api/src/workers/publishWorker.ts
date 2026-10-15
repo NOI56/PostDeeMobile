@@ -15,6 +15,7 @@ import type { BullMqPublishJobData } from '../modules/queue/bullMqPublishQueue.j
 import type { RunWithActiveOwner } from '../modules/account/ownerOperationQueue.js';
 import { retainCurrentOwnerOperation } from '../modules/account/prismaOwnerOperationCoordinator.js';
 import { readRequestedDeliveryOutcome } from './platformDeliveryOutcome.js';
+import { PlatformCaptionValidationError } from '../modules/posts/platformCaptionValidation.js';
 
 export type PlatformPublishInput = {
   userId?: string;
@@ -109,6 +110,9 @@ const publicPublishOutcomeUnknownErrorMessage =
 const publicCleanupErrorMessage = 'Video cleanup failed. Please try again later.';
 
 const readPublicPublishFailureMessage = (error: unknown, platform: Platform) => {
+  if (error instanceof PlatformCaptionValidationError && error.issue.platform === platform) {
+    return error.issue.message;
+  }
   if (error instanceof PublishOutcomeUnknownError) {
     return publicPublishOutcomeUnknownErrorMessage;
   }

@@ -6,6 +6,7 @@ import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
 
 void main() {
@@ -19,6 +20,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       fullScreen: true,
       draftStore: store ?? TestPublishDraftStore(),
       loadSocialConnections: () async => const [],
@@ -66,6 +69,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       draftStore: TestPublishDraftStore(),
       loadSocialConnections: () async => const [],
       createUpload: (_) async {
@@ -138,6 +143,8 @@ void main() {
             child: child!),
         home: Scaffold(
             body: UploaderScreen(
+                probePublishMedia: probeValidPublishMedia,
+                loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
                 draftStore: TestPublishDraftStore(),
                 loadSocialConnections: () async => const []))));
     await tester.pumpAndSettle();

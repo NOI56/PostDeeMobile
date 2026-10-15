@@ -8,6 +8,7 @@ import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
@@ -60,6 +61,8 @@ PublishDraft _draft(File video, {String owner = 'home-owner'}) => PublishDraft(
 Widget _app(_HomeDraftStore store, {File? initialVideo}) => MaterialApp(
       home: Scaffold(
         body: UploaderScreen(
+          probePublishMedia: probeValidPublishMedia,
+          loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
           draftStore: store,
           initialDraftId: 'latest-draft',
           loadSocialConnections: () async => const [],

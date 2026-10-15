@@ -149,9 +149,7 @@ const connectionStatus = (
     platform,
     connected: true,
     ...(connection.id ? { connectionId: connection.id } : {}),
-    ...(platform === 'TIKTOK' ? {
-      connectionRevision: buildTikTokConnectionRevision({ userId: connection.userId, target: buildPlatformTarget(connection) })
-    } : {}),
+    connectionRevision: buildTikTokConnectionRevision({ userId: connection.userId, target: buildPlatformTarget(connection) }),
     displayName: connection.displayName,
     externalAccountId: connection.externalAccountId,
     connectedAt: connection.connectedAt

@@ -35,6 +35,7 @@ import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'support/test_publish_media_identity.dart';
 import 'support/test_tiktok_video_preparer.dart';
+import 'support/publish_preflight_fixtures.dart';
 
 Finder _referenceNav() =>
     find.byKey(const ValueKey('postdee-reference-bottom-nav'));
@@ -2817,6 +2818,8 @@ void main() {
         supportedLocales: PostDeeLocalizations.supportedLocales,
         home: PostDeeShell(
           languageController: languageController,
+          loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
+          probePublishMedia: probeValidPublishMedia,
           loadSocialConnections: () async => const [
             SocialConnectionResult(
               platform: 'TIKTOK',

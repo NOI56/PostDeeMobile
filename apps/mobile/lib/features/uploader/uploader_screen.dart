@@ -28,10 +28,12 @@ import 'clip_frame_extractor.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
+import 'platform_publish_preflight.dart';
 import 'publish_draft.dart';
 import 'publish_draft_store.dart';
 import 'publish_draft_store_factory.dart';
 import 'publish_media_identity.dart';
+import 'publish_media_probe.dart';
 import 'publish_flow_screen.dart';
 import 'publish_review_screen.dart';
 import 'post_video_preview_screen.dart';
@@ -58,10 +60,32 @@ typedef UploaderVideoUploader = Future<void> Function(
 );
 typedef UploaderPostCreator = Future<QueuedPostResult> Function(
     CreatePostRequest request);
+typedef UploaderPostRecovery = Future<QueuedPostResult?> Function(
+    CreatePostRequest request);
 typedef UploaderPublishingReadinessChecker = Future<void> Function();
 typedef UploaderScheduledPostCreated = void Function(QueuedPostResult post);
 typedef UploaderConnectionsLoader = Future<List<SocialConnectionResult>>
     Function();
+
+typedef UploaderSocialReadinessLoader
+    = Future<List<SocialPublishingConnectionReadiness>> Function();
+
+String _channelReadinessLabel(SocialPublishingConnectionReadiness? readiness,
+        {bool legacy = false}) =>
+    switch (readiness?.state) {
+      SocialPublishingState.ready => 'สิทธิ์เผยแพร่พร้อม · ตรวจแล้ว',
+      SocialPublishingState.connected =>
+        'เชื่อมต่อแล้ว · ยังยืนยันสิทธิ์เผยแพร่ไม่ได้',
+      SocialPublishingState.reconnectRequired => 'ต้องเชื่อมบัญชีใหม่ก่อนโพสต์',
+      SocialPublishingState.permissionMissing =>
+        'สิทธิ์เผยแพร่ไม่ครบ กรุณาเชื่อมบัญชีใหม่',
+      SocialPublishingState.notConnected =>
+        'ช่องทางนี้ไม่ได้เชื่อมต่อ กรุณาเชื่อมใหม่',
+      SocialPublishingState.unavailable => 'ยังตรวจสิทธิ์ไม่ได้ กรุณาลองใหม่',
+      null => legacy
+          ? 'เชื่อมต่อแล้ว · ยังยืนยันสิทธิ์เผยแพร่ไม่ได้'
+          : 'ยังตรวจสิทธิ์ไม่ได้ กรุณารีเฟรชช่องทาง',
+    };
 typedef UploaderTikTokOptionsLoader = Future<TikTokPublishingOptionsResult>
     Function();
 
@@ -96,8 +120,11 @@ class UploaderScreen extends StatefulWidget {
     this.createUpload,
     this.uploadVideoFile,
     this.createPost,
+    this.recoverPostSubmission,
     this.checkPublishingReadiness,
     this.loadSocialConnections,
+    this.loadSocialPublishingReadiness,
+    this.probePublishMedia,
     this.loadTikTokPublishingOptions,
     this.onScheduledPostCreated,
     this.onPublishFinished,
@@ -133,8 +160,11 @@ class UploaderScreen extends StatefulWidget {
   final UploaderUploadCreator? createUpload;
   final UploaderVideoUploader? uploadVideoFile;
   final UploaderPostCreator? createPost;
+  final UploaderPostRecovery? recoverPostSubmission;
   final UploaderPublishingReadinessChecker? checkPublishingReadiness;
   final UploaderConnectionsLoader? loadSocialConnections;
+  final UploaderSocialReadinessLoader? loadSocialPublishingReadiness;
+  final PublishMediaProbe? probePublishMedia;
   final UploaderTikTokOptionsLoader? loadTikTokPublishingOptions;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
   final VoidCallback? onPublishFinished;
@@ -197,6 +227,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   final Set<SocialPlatform> _draftUnavailablePlatforms = {};
   final Set<SocialPlatform> _connectedPlatforms = {};
   final Map<SocialPlatform, SocialConnectionResult> _connectionDetails = {};
+  final Map<SocialPlatform, SocialPublishingConnectionReadiness>
+      _channelReadiness = {};
+  bool _channelReadinessSupported = false;
+  String? _channelReadinessError;
   PlatformPublishSettings _platformSettings = const PlatformPublishSettings();
   TikTokPublishingOptionsResult? _tikTokPublishingOptions;
   int _tikTokIntentGeneration = 0;
@@ -204,6 +238,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   String? _tikTokConsentedIntent;
   final List<TextTemplateResult> _templates = [];
   bool _isSubmitting = false;
+  bool _isRecoveringSubmission = false;
   bool _isPreparingReview = false;
   bool _isPreparingSubmission = false;
   bool _isLoadingTemplates = false;
@@ -290,7 +325,113 @@ class _UploaderScreenState extends State<UploaderScreen>
       ) &&
       !_isLoadingConnections &&
       _connectionsErrorMessage == null &&
+      _selectedReadinessIssue == null &&
       _draftUnavailablePlatforms.isEmpty;
+
+  String? get _selectedReadinessIssue {
+    if (_selectedPlatforms.isEmpty) return null;
+    if (_channelReadinessError != null) return _channelReadinessError;
+    if (!_channelReadinessSupported) return null;
+    for (final platform in _selectedPlatforms) {
+      final readiness = _channelReadiness[platform];
+      if (readiness == null || readiness.blocksPublishing) {
+        return '${publishReviewPlatformLabel(platform)}: '
+            '${_channelReadinessLabel(readiness)}';
+      }
+    }
+    return null;
+  }
+
+  Future<List<SocialPublishingConnectionReadiness>?>
+      _fetchChannelReadiness() async {
+    try {
+      return await (widget.loadSocialPublishingReadiness ??
+          _apiClient.loadSocialPublishingReadiness)();
+    } on ApiException catch (error) {
+      // Installed clients can still use an older API. Missing this additive
+      // route proves no permissions; show an unverified connection instead.
+      if (error.statusCode == HttpStatus.notFound) return null;
+      rethrow;
+    }
+  }
+
+  String _connectionBinding(SocialPlatform platform) {
+    final connection = _connectionDetails[platform];
+    return jsonEncode([
+      connection?.connectionId,
+      connection?.connectionRevision,
+      connection?.connectedAt?.toIso8601String(),
+      connection?.externalAccountId,
+      connection?.displayName
+    ]);
+  }
+
+  Future<void> _checkSelectedChannelReadiness(
+      Set<SocialPlatform> platforms) async {
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    final generation = _connectionLoadGeneration;
+    final bindings = {
+      for (final platform in platforms) platform: _connectionBinding(platform)
+    };
+    final previous =
+        Map<SocialPlatform, SocialPublishingConnectionReadiness>.of(
+            _channelReadiness);
+    final values = await _fetchChannelReadiness();
+    if (!mounted ||
+        owner != PostDeeAuthSessionStore.instance.session.stableUserId ||
+        generation != _connectionLoadGeneration ||
+        platforms.any((p) => bindings[p] != _connectionBinding(p))) {
+      throw const _PublishOwnerChangedException();
+    }
+    if (values == null) {
+      setState(() {
+        _channelReadinessSupported = false;
+        _channelReadinessError = null;
+        _channelReadiness.clear();
+      });
+      return;
+    }
+    final checked = <SocialPlatform, SocialPublishingConnectionReadiness>{};
+    for (final value in values) {
+      final platform = _platformFromApiValue(value.platform);
+      if (platform != null) checked[platform] = value;
+    }
+    for (final platform in platforms) {
+      final value = checked[platform];
+      final connection = _connectionDetails[platform];
+      final priorRevision = previous[platform]?.connectionRevision;
+      if ((value?.connectionId != null &&
+              connection?.connectionId != null &&
+              value!.connectionId != connection!.connectionId) ||
+          (priorRevision != null &&
+              value?.connectionRevision != priorRevision) ||
+          (connection?.connectionRevision != null &&
+              value?.connectionRevision != connection!.connectionRevision)) {
+        throw ApiException(
+            'บัญชี ${publishReviewPlatformLabel(platform)} เปลี่ยนแล้ว '
+            'กรุณารีเฟรชช่องทางและตรวจทานใหม่',
+            statusCode: 409,
+            code: 'PUBLISHING_CONNECTION_CHANGED');
+      }
+    }
+    setState(() {
+      _channelReadinessSupported = true;
+      _channelReadinessError = null;
+      _channelReadiness
+        ..clear()
+        ..addAll(checked);
+    });
+    for (final platform in platforms) {
+      final value = checked[platform];
+      if (value == null || value.blocksPublishing) {
+        throw ApiException(
+            '${publishReviewPlatformLabel(platform)}: '
+            '${_channelReadinessLabel(value)}',
+            statusCode: 409,
+            code: 'SOCIAL_PUBLISHING_NOT_READY');
+      }
+    }
+  }
 
   bool _isStepComplete(int step) {
     if (step >= _currentStep) return false;
@@ -491,6 +632,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       _isRestoringInitialDraft ||
       _isSavingDraft ||
       _isSubmitting ||
+      _isRecoveringSubmission ||
       _isPreparingReview ||
       _isPreparingSubmission ||
       _isLoadingScheduleSubscription;
@@ -596,6 +738,8 @@ class _UploaderScreenState extends State<UploaderScreen>
         error = 'กำลังตรวจสอบช่องทางที่เชื่อมต่อ กรุณารอสักครู่';
       } else if (_connectionsErrorMessage != null) {
         error = _connectionsErrorMessage;
+      } else if (_selectedReadinessIssue != null) {
+        error = _selectedReadinessIssue;
       } else if (_selectedPlatforms.isEmpty ||
           _draftUnavailablePlatforms.isNotEmpty) {
         error = 'เชื่อมและเลือกอย่างน้อย 1 ช่องทางก่อน';
@@ -991,6 +1135,9 @@ class _UploaderScreenState extends State<UploaderScreen>
       _draftUnavailablePlatforms.clear();
       _connectedPlatforms.clear();
       _connectionDetails.clear();
+      _channelReadiness.clear();
+      _channelReadinessSupported = false;
+      _channelReadinessError = null;
       _platformSettings = const PlatformPublishSettings();
       _blockedSubmissionDraftIds.clear();
       _currentStep = 0;
@@ -1115,6 +1262,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       setState(() {
         _isLoadingConnections = true;
         _connectionsErrorMessage = null;
+        _channelReadinessError = null;
       });
     }
 
@@ -1135,6 +1283,34 @@ class _UploaderScreenState extends State<UploaderScreen>
         if (platform != null) connectionDetails[platform] = result;
       }
 
+      List<SocialPublishingConnectionReadiness>? readiness;
+      String? readinessError;
+      try {
+        readiness = await _fetchChannelReadiness();
+      } catch (error) {
+        readinessError = apiErrorMessage(error,
+            fallbackMessage:
+                'ตรวจสิทธิ์เผยแพร่ไม่สำเร็จ กรุณารีเฟรชช่องทางก่อนโพสต์');
+      }
+      if (!isCurrent()) return;
+
+      for (final value
+          in readiness ?? <SocialPublishingConnectionReadiness>[]) {
+        final platform = _platformFromApiValue(value.platform);
+        final connection = connectionDetails[platform];
+        if (connection == null) continue;
+        if ((value.connectionId != null &&
+                connection.connectionId != null &&
+                value.connectionId != connection.connectionId) ||
+            (connection.connectionRevision != null &&
+                value.connectionRevision != connection.connectionRevision)) {
+          readinessError =
+              'บัญชี ${publishReviewPlatformLabel(platform!)} เปลี่ยนแล้ว '
+              'กรุณารีเฟรชช่องทางและตรวจทานใหม่';
+          break;
+        }
+      }
+
       setState(() {
         final previousTikTokBinding = _tikTokConnectionBinding();
         _connectionsOwnerUserId = owner;
@@ -1148,6 +1324,14 @@ class _UploaderScreenState extends State<UploaderScreen>
         _connectionDetails
           ..clear()
           ..addAll(connectionDetails);
+        _channelReadinessSupported = readiness != null;
+        _channelReadinessError = readinessError;
+        _channelReadiness.clear();
+        for (final value
+            in readiness ?? <SocialPublishingConnectionReadiness>[]) {
+          final platform = _platformFromApiValue(value.platform);
+          if (platform != null) _channelReadiness[platform] = value;
+        }
         _selectedPlatforms
           ..clear()
           ..addAll(desiredPlatforms.where(_connectedPlatforms.contains));
@@ -2829,6 +3013,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       return;
     }
 
+    if (_selectedReadinessIssue case final issue?) {
+      setState(() => _errorMessage = issue);
+      return;
+    }
+
     final selectedVideoName = (_selectedVideoName ?? '').trim();
 
     if (selectedVideoName.isEmpty) {
@@ -2914,6 +3103,88 @@ class _UploaderScreenState extends State<UploaderScreen>
     }
   }
 
+  Future<void> _recoverUploadedSubmission() async {
+    if (_formBusy || _isGeneratingCaption) return;
+    final draftId = _activeDraftId;
+    if (draftId == null || _activeDraftUploadedMedia == null) return;
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    final generation = _draftLoadGeneration;
+    bool isCurrent() =>
+        mounted &&
+        _activeDraftId == draftId &&
+        owner == PostDeeAuthSessionStore.instance.session.stableUserId &&
+        generation == _draftLoadGeneration;
+    setState(() {
+      _isRecoveringSubmission = true;
+      _errorMessage = null;
+      _successMessage = null;
+    });
+    try {
+      final store = await _resolveDraftStore();
+      if (!isCurrent()) return;
+      final draft = await store?.loadDraft(draftId);
+      if (!isCurrent()) return;
+      final receipt = draft?.uploadedMedia;
+      if (draft == null || receipt == null) {
+        setState(
+            () => _errorMessage = 'ไม่พบข้อมูลการส่งเดิม ร่างยังอยู่ในเครื่อง');
+        return;
+      }
+      final platforms = draft.platformApiValues
+          .map(_platformFromApiValue)
+          .whereType<SocialPlatform>()
+          .toSet();
+      var settings = draft.platformSettings;
+      if (platforms.contains(SocialPlatform.tiktok) &&
+          settings.tiktokPublishMode == TikTokPublishMode.directPost) {
+        settings = settings.copyWith(
+            tiktokVideoDurationSeconds: receipt.videoDurationSeconds);
+      }
+      // Look up the persisted original intent, including historical receipts.
+      // This endpoint never creates, requeues, uploads, or publishes a post.
+      final post = await (widget.recoverPostSubmission ??
+              _apiClient.recoverPostSubmission)(
+          CreatePostRequest(
+              clientRequestId: draft.submissionRequestId,
+              caption: draft.caption.trim(),
+              videoS3Key: receipt.videoS3Key,
+              mediaContentFingerprint: receipt.mediaContentFingerprint,
+              platforms: draft.platformApiValues.toList(),
+              platformSettings:
+                  settings.toRecoveryApiJson(selectedPlatforms: platforms),
+              scheduledAt: draft.scheduledAt,
+              coverImageS3Key: receipt.coverImageS3Key,
+              coverFrameTimeMs: draft.cover?.design.coverFrameTimeMs));
+      if (!isCurrent()) return;
+      setState(() {
+        if (post == null) {
+          _errorMessage =
+              'ยังไม่พบรายการที่ระบบรับไว้ ร่างและข้อมูลอัปโหลดเดิมยังอยู่ '
+              'ไม่ได้ส่งโพสต์ใหม่';
+          return;
+        }
+        final status = switch (post.status.toUpperCase()) {
+          'QUEUED' => 'รับรายการแล้ว กำลังรอส่ง',
+          'PUBLISHING' => 'กำลังส่ง',
+          'PUBLISHED' => 'ส่งสำเร็จ',
+          'PARTIAL_PUBLISHED' => 'ส่งสำเร็จเพียงบางช่องทาง',
+          'FAILED' => 'ส่งไม่สำเร็จ กรุณาตรวจรายละเอียดในรายการโพสต์',
+          _ => 'กรุณาตรวจสถานะในรายการโพสต์',
+        };
+        _blockedSubmissionDraftIds.add(draftId);
+        _successMessage = 'พบรายการเดิม: ${post.id} · $status · ไม่ได้ส่งซ้ำ '
+            'ร่างยังอยู่ในเครื่อง';
+      });
+    } catch (error) {
+      if (!isCurrent()) return;
+      setState(() => _errorMessage = apiErrorMessage(error,
+          fallbackMessage:
+              'ตรวจผลการส่งเดิมไม่สำเร็จ ร่างยังอยู่ในเครื่อง กรุณาลองใหม่'));
+    } finally {
+      if (mounted) setState(() => _isRecoveringSubmission = false);
+    }
+  }
+
   Future<QueuedPostResult?> _createPostWhileLocked(
     PublishProgressReporter? reportProgress,
   ) async {
@@ -2946,6 +3217,12 @@ class _UploaderScreenState extends State<UploaderScreen>
         _errorMessage = 'แคปชั่น TikTok ต้องไม่เกิน 2,200 ตัวอักษร';
         _successMessage = null;
       });
+      return null;
+    }
+    final captionProblem = validatePlatformPublishPreflight(
+        selectedPlatforms: _selectedPlatforms, caption: caption);
+    if (captionProblem != null) {
+      setState(() => _errorMessage = captionProblem.message);
       return null;
     }
 
@@ -3116,6 +3393,9 @@ class _UploaderScreenState extends State<UploaderScreen>
       ensureSubmissionStillOwned();
       await checkPublishingReadiness();
       ensureSubmissionStillOwned();
+      final submittedPlatforms = Set<SocialPlatform>.of(_selectedPlatforms);
+      await _checkSelectedChannelReadiness(submittedPlatforms);
+      ensureSubmissionStillOwned();
 
       report(PublishFlowStage.checkingPlan, 0.28);
       final subscription = await _loadSubscription();
@@ -3190,11 +3470,32 @@ class _UploaderScreenState extends State<UploaderScreen>
       var uploadedVideoS3Key = cachedMedia?.videoS3Key;
       String? coverImageS3Key = cachedMedia?.coverImageS3Key;
       var selectedCover = _coverResult;
+      PublishMediaMetadata? verifiedMedia = cachedMedia?.videoMetadata;
+      final needsMediaPreflight = submittedPlatforms.any((platform) =>
+          platform == SocialPlatform.youtubeShorts ||
+          platform == SocialPlatform.instagramReels ||
+          platform == SocialPlatform.facebookReels);
       ensureSubmissionStillOwned();
       TikTokPublishingOptionsResult? directOptions;
       if (isTikTokDirect) {
         directOptions = await _revalidateTikTokDirect(requestSettings);
         ensureSubmissionStillOwned();
+      }
+      if (cachedMedia != null && needsMediaPreflight) {
+        final problem = validatePlatformPublishPreflight(
+            selectedPlatforms: submittedPlatforms,
+            caption: caption,
+            media: verifiedMedia,
+            requireMedia: true);
+        if (problem != null) {
+          throw ApiException(
+              verifiedMedia == null
+                  ? 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่มีข้อมูลตรวจคลิป '
+                      'เก็บร่างไว้แล้ว กรุณาตรวจรายการโพสต์ก่อนเริ่มรายการใหม่'
+                  : problem.message,
+              statusCode: 400,
+              code: problem.code);
+        }
       }
       unawaited(_analytics.logPublishStarted(
         platformCount: _selectedPlatforms.length,
@@ -3267,6 +3568,30 @@ class _UploaderScreenState extends State<UploaderScreen>
           }
         }
 
+        if (needsMediaPreflight) {
+          try {
+            verifiedMedia = await (widget.probePublishMedia ??
+                const FfmpegPublishMediaProbe()
+                    .call)(uploadVideoFileForRequest);
+          } catch (_) {
+            ensureSubmissionStillOwned();
+            throw const ApiException(
+                'อ่านรายละเอียดคลิปไม่สำเร็จ ยังไม่ได้อัปโหลด '
+                'กรุณาลองใหม่หรือเลือกคลิปอีกครั้ง',
+                statusCode: 400,
+                code: 'PUBLISH_MEDIA_UNVERIFIED');
+          }
+          ensureSubmissionStillOwned();
+          final problem = validatePlatformPublishPreflight(
+              selectedPlatforms: submittedPlatforms,
+              caption: caption,
+              media: verifiedMedia,
+              requireMedia: true);
+          if (problem != null) {
+            throw ApiException(problem.message,
+                statusCode: 400, code: problem.code);
+          }
+        }
         final rawCreateUpload = widget.createUpload ?? _apiClient.createUpload;
         final rawUploadVideoFile =
             widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
@@ -3377,6 +3702,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           videoPreparationPolicy:
               needsTikTokPreparation ? tikTokVideoPreparationPolicy : null,
           videoDurationSeconds: preparedDurationSeconds,
+          videoMetadata: verifiedMedia,
         );
         final savedReceipt =
             await _persistCurrentDraftWhileLocked(showSavedMessage: false);
@@ -3396,6 +3722,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       }
       final createPost = widget.createPost ?? _apiClient.createPost;
       report(PublishFlowStage.creatingPost, 0.9);
+      ensureSubmissionStillOwned();
+      await _checkSelectedChannelReadiness(submittedPlatforms);
       ensureSubmissionStillOwned();
       if (isTikTokDirect) {
         await _revalidateTikTokDirect(requestSettings, validateDuration: true);
@@ -3736,17 +4064,29 @@ class _UploaderScreenState extends State<UploaderScreen>
       });
       return;
     }
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    final binding = _connectionBinding(platform);
     final next = await showModalBottomSheet<PlatformPublishSettings>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => _PlatformSettingsSheet(
         platform: platform,
-        initialSettings: _platformSettings,
+        initialSettings: platform == SocialPlatform.youtubeShorts &&
+                _platformSettings.youtubeTitle.trim().isEmpty
+            ? _platformSettings.copyWith(
+                youtubeTitle:
+                    safeYouTubeTitleSuggestion(_captionController.text))
+            : _platformSettings,
         connection: _connectionDetails[platform],
       ),
     );
-    if (!mounted || next == null) return;
+    if (!mounted ||
+        next == null ||
+        owner != PostDeeAuthSessionStore.instance.session.stableUserId ||
+        binding != _connectionBinding(platform)) {
+      return;
+    }
     setState(() => _platformSettings = next);
   }
 
@@ -3827,6 +4167,24 @@ class _UploaderScreenState extends State<UploaderScreen>
                   controller: _formScrollController,
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                   children: [
+                    if (_activeDraftUploadedMedia != null) ...[
+                      const PostDeeNotice(
+                          message: 'มีข้อมูลอัปโหลดของคำขอเดิม '
+                              'ตรวจผลการส่งได้โดยไม่อัปโหลดหรือส่งโพสต์ซ้ำ',
+                          icon: Icons.history_rounded),
+                      Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                              key:
+                                  const ValueKey('uploader-recover-submission'),
+                              onPressed:
+                                  _formBusy ? null : _recoverUploadedSubmission,
+                              icon: const Icon(Icons.manage_search_rounded),
+                              label: Text(_isRecoveringSubmission
+                                  ? 'กำลังตรวจผลการส่งเดิม...'
+                                  : 'ตรวจผลการส่งเดิม'))),
+                      const SizedBox(height: 8),
+                    ],
                     if (_errorMessage != null &&
                         !(_captionRequired &&
                             _errorMessage == 'เพิ่มแคปชั่นก่อนโพสต์'))
@@ -3963,6 +4321,13 @@ class _UploaderScreenState extends State<UploaderScreen>
                         isLoadingConnections: _isLoadingConnections,
                         connectionsErrorMessage: _connectionsErrorMessage,
                         connectionDisplayNames: _reviewIdentities,
+                        readinessLabels: {
+                          for (final platform in _connectedPlatforms)
+                            platform: _channelReadinessError ??
+                                _channelReadinessLabel(
+                                    _channelReadiness[platform],
+                                    legacy: !_channelReadinessSupported)
+                        },
                         animate: _uploaderMotionAllowed(context, _appIsResumed),
                         platformSettings: _platformSettings,
                         onPlatformChanged: _setPlatformSelected,
@@ -3978,6 +4343,11 @@ class _UploaderScreenState extends State<UploaderScreen>
                             message: _connectionsErrorMessage!,
                             color: Theme.of(context).colorScheme.error,
                             icon: Icons.cloud_off_outlined),
+                      if (_selectedReadinessIssue case final issue?)
+                        PostDeeNotice(
+                            message: issue,
+                            color: Theme.of(context).colorScheme.error,
+                            icon: Icons.link_off_outlined),
                       if (_readScheduledAt() case final schedule?
                           when _errorMessage == null &&
                               !schedule.isAfter(widget.now()))
@@ -4964,6 +5334,7 @@ class _PlatformSelectorSection extends StatelessWidget {
     required this.onOpenConnections,
     required this.onRetryConnections,
     this.connectionDisplayNames = const {},
+    this.readinessLabels = const {},
     this.animate = true,
   });
 
@@ -4974,6 +5345,7 @@ class _PlatformSelectorSection extends StatelessWidget {
   final String? connectionsErrorMessage;
   final PlatformPublishSettings platformSettings;
   final Map<SocialPlatform, String> connectionDisplayNames;
+  final Map<SocialPlatform, String> readinessLabels;
   final bool animate;
   final void Function(SocialPlatform platform, bool isSelected)
       onPlatformChanged;
@@ -5113,6 +5485,15 @@ class _PlatformSelectorSection extends StatelessWidget {
             ),
           ),
         ],
+        if (!hasConnectionError && hasConnectedPlatforms)
+          Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                key: const ValueKey('uploader-refresh-publishing-readiness'),
+                onPressed: isLoadingConnections ? null : onRetryConnections,
+                icon: const Icon(Icons.refresh, size: 17),
+                label: const Text('ตรวจสิทธิ์อีกครั้ง'),
+              )),
         if (unavailableDraftPlatforms.isNotEmpty) ...[
           const SizedBox(height: 8),
           PostDeeNotice(
@@ -5177,6 +5558,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                     subLabel: _subLabels[visiblePlatforms[index]] ?? '',
                     connectionDisplayName:
                         connectionDisplayNames[visiblePlatforms[index]],
+                    readinessLabel: readinessLabels[visiblePlatforms[index]],
                     animate: animate,
                     isSelected: selectedPlatforms.contains(
                       visiblePlatforms[index],
@@ -5243,6 +5625,7 @@ class _PlatformRow extends StatelessWidget {
     required this.onChanged,
     required this.onOpenSettings,
     this.connectionDisplayName,
+    this.readinessLabel,
     this.animate = true,
   });
 
@@ -5253,6 +5636,7 @@ class _PlatformRow extends StatelessWidget {
   final ValueChanged<bool> onChanged;
   final VoidCallback onOpenSettings;
   final String? connectionDisplayName;
+  final String? readinessLabel;
   final bool animate;
 
   @override
@@ -5316,6 +5700,15 @@ class _PlatformRow extends StatelessWidget {
                                 style: TextStyle(
                                     fontSize: 11,
                                     color: AppTheme.textSecondary)),
+                            if (readinessLabel != null) ...[
+                              const SizedBox(height: 3),
+                              Text(readinessLabel!,
+                                  key: ValueKey(
+                                      'uploader-channel-readiness-${platform.apiValue}'),
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppTheme.textSecondary)),
+                            ],
                           ],
                         ),
                       ),
@@ -5555,7 +5948,8 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
             if (current.youtubeVisibility != YouTubeVisibility.private) ...[
               const SizedBox(height: 8),
               Text(
-                'YouTube อาจยังคงวิดีโอเป็น Private จนกว่าจะผ่านการตรวจ API',
+                'การมองเห็นจริงขึ้นอยู่กับสถานะวิดีโอและบัญชี YouTube '
+                'กรุณาตรวจผลหลังเผยแพร่',
                 style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
               ),
             ],
@@ -5569,6 +5963,8 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                 () => _settings = current.copyWith(youtubeMadeForKids: value),
               ),
             ),
+            Text('พิจารณาว่าเด็กเป็นกลุ่มผู้ชมเป้าหมาย ไม่ใช่เพียงเด็กดูได้',
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
             const SizedBox(height: 16),
             _BinarySettingRow(
               title: 'มีสื่อสังเคราะห์ที่ดูเหมือนจริงหรือไม่?',
@@ -5581,6 +5977,10 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                 ),
               ),
             ),
+            Text(
+                'หมายถึงภาพหรือเสียงที่สร้างหรือดัดแปลงให้ดูเหมือนจริง '
+                'การช่วยคิดแคปชั่นอย่างเดียวไม่ถือเป็นสื่อสังเคราะห์ในวิดีโอ',
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
             const SizedBox(height: 12),
             CheckboxListTile(
               key: const ValueKey(

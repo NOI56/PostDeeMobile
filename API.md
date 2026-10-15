@@ -2,6 +2,105 @@
 
 PostDee backend API reference.
 
+## Channel publishing preflight (2026-10-15, local implementation)
+
+`GET /social-connections/publishing-readiness` requires authentication and returns
+`Cache-Control: private, no-store`. It reads only the caller's existing local
+connections and stored PostPeer profile ID, then lists that profile's integrations.
+It never creates/finds a profile remotely, synchronizes accounts, repairs stored
+connections or sends a provider POST. Query parameters cannot select another
+owner/profile/account. Owner activity, profile binding and connection revisions
+are checked around the bounded provider GET; a read-only failure completes the
+owner lifetime normally so it cannot retain an ambiguous-write deletion blocker.
+
+```json
+{
+  "status": "ok",
+  "checkedAt": "2026-10-15T10:00:00.000Z",
+  "connections": [
+    {
+      "platform": "INSTAGRAM_REELS",
+      "connectionId": "<local connection id>",
+      "connectionRevision": "<opaque 64-character SHA-256 revision>",
+      "state": "ready"
+    }
+  ]
+}
+```
+
+All four supported platforms are returned. `connectionId`/`connectionRevision`
+are optional for disconnected entries; revisions cover every platform and never
+expose provider IDs. States are `ready`, `connected`, `reconnect_required`,
+`permission_missing`, `not_connected`, or `unavailable`. Only explicit boolean
+`platformMetadata.capabilities.publish: true` can produce `ready`, provided no
+explicit `tokenStatus.reconnectRequired: true` is present. Explicit false publish
+capability produces `permission_missing`; a reconnect flag or missing stored
+integration produces `reconnect_required`. Unknown capability metadata remains
+`connected` with `PUBLISH_CAPABILITY_UNCONFIRMED`, not an invented permission.
+Other safe reason codes are `NOT_CONNECTED`, `PROVIDER_PROFILE_MISSING`,
+`PROVIDER_INTEGRATION_MISSING`, `PROVIDER_RECONNECT_REQUIRED`, and
+`PUBLISH_PERMISSION_MISSING`. Provider reasons, credentials and external IDs are
+never returned. Unconfigured/failed provider lookup returns safe HTTP 503
+`PUBLISHING_READINESS_UNAVAILABLE`; a connection/profile replacement during the
+lookup returns HTTP 409 `SOCIAL_CONNECTIONS_CHANGED`.
+Ordinary `GET /social-connections` listings now include that same opaque
+`connectionRevision` for YouTube, Instagram and Facebook as well as TikTok, so
+clients can compare identities across separate list/readiness requests. No
+provider integration ID is added to the public connection DTO.
+
+This response is a snapshot at `checkedAt`, not a guarantee of future provider
+permissions or actual publication. Existing APIs without the route produce 404;
+new Mobile uses only that absence as its compatibility fallback. A 503 is an
+error and blocks a new submission. Unknown, successfully read capabilities remain
+usable with an unverified label; this check does not add provider lookups to old
+accepted requests or scheduled worker jobs.
+
+New post captions are checked before upload-readiness/provider lookup, plan/quota
+work or post creation: YouTube descriptions allow at most 5,000 UTF-8 bytes and no
+`<`/`>`; Instagram uses a conservative 2,200 UTF-16-unit cap; Facebook uses a
+conservative 63,206 UTF-16-unit cap, matching Mobile. No user text is truncated.
+HTTP 400 `PLATFORM_CAPTION_INVALID` contains a safe `platform`, `reason`, `message`
+and optional `maxLength`/`unit` (`utf8_bytes` or `utf16_units`). Reasons are
+`YOUTUBE_DESCRIPTION_TOO_LONG`, `YOUTUBE_DESCRIPTION_INVALID_CHARACTERS`,
+`INSTAGRAM_CAPTION_TOO_LONG`, or `FACEBOOK_CAPTION_TOO_LONG`. The publisher repeats
+the guard before account/media/provider work. Matching already accepted
+idempotent requests recover the original intent before new-request validation;
+TikTok's existing Direct-only caption rule and Inbox behavior are unchanged.
+
+`POST /posts/submissions/recover` is an authenticated, strictly read-only lookup;
+POST keeps the private caption and original intent out of URLs/access logs. Send
+the original `clientRequestId`, `caption`, `videoS3Key`, `platforms` and any original
+`platformSettings`, `scheduledAt`, `coverImageS3Key`, `coverFrameTimeMs`, or
+`mediaContentFingerprint`. Stored legacy settings are accepted for comparison.
+Only this recovery route may fill an omitted Facebook entry with the known
+historical `PUBLISH` default when the other selected platform entries are present
+and valid. It never infers a current choice or matches an accepted `PAGE_DRAFT`;
+malformed/other missing entries remain invalid and new `POST /posts` stays strict.
+The server resolves only the authenticated owner's request and verifies the same
+immutable intent comparison used by creation. Owner activity is checked before
+and after lookup under the durable owner lifetime. Errors are caught inside that
+lifetime; the outer router exempts only this exact read-only POST path from
+500-response remote-write uncertainty retention, without weakening other routes.
+
+A match returns HTTP 200 `{status: "ok", post, idempotentReplay: true, recovered:
+true}` with the ordinary public post shape and no internal target/fingerprint.
+The stored status is unchanged, including `FAILED`; recovery never means a failed
+post was published. Missing owner-scoped requests return HTTP 404
+`POST_SUBMISSION_NOT_FOUND`; changed intent returns HTTP 409
+`IDEMPOTENCY_KEY_REUSED`; malformed input returns HTTP 400
+`INVALID_POST_SUBMISSION_RECOVERY`; unavailable lookup returns safe HTTP 503
+`POST_SUBMISSION_RECOVERY_UNAVAILABLE`. There is no create, plan/quota/media/provider
+check, queue enqueue or queue repair. Mobile can recover a previously accepted
+receipt before applying new submission guards, retaining failed/unverified drafts
+and unknown request IDs rather than uploading or publishing them again.
+
+Media/codec/duration preflight is performed by Mobile on the actual outgoing file.
+It is not a new server-verified media assertion or API field. No database/schema,
+dependency or environment change is required. This source is local and unreleased;
+API-first deployment remains pending. Local API/Mobile suites and the exact
+Android build have passed; diagnostic runtime evidence is recorded in
+[the implementation record](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md).
+
 ## TikTok Direct Post contract (2026-10-15, Staging delivered)
 
 `GET /social-connections/TIKTOK/publishing-options` is authenticated and returns

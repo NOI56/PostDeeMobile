@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
+import 'platform_publish_preflight.dart';
 
 const publishDraftManifestVersion = 3;
 const legacyPublishDraftManifestVersion = 2;
@@ -100,7 +101,8 @@ class PublishDraftUploadedMedia {
       required this.videoS3Key,
       this.coverImageS3Key,
       this.videoPreparationPolicy,
-      this.videoDurationSeconds});
+      this.videoDurationSeconds,
+      this.videoMetadata});
 
   final String mediaContentFingerprint;
   final String videoS3Key;
@@ -111,6 +113,10 @@ class PublishDraftUploadedMedia {
 
   /// Duration of the prepared upload, retained for an idempotent Direct retry.
   final double? videoDurationSeconds;
+
+  /// Actual uploaded-stream metadata, bound to this receipt's media fingerprint.
+  /// Absent on legacy receipts; never infer it from the original source file.
+  final PublishMediaMetadata? videoMetadata;
 }
 
 class PublishDraftSaveRequest {

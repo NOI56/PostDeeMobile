@@ -8,6 +8,7 @@ import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
@@ -51,6 +52,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 15, 8),
       now: () => DateTime(2026, 10, 11, 12),
       draftStore: store,
@@ -79,6 +82,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 15),
       now: () => DateTime(2026, 10, 11, 12),
       draftStore: store,
@@ -98,6 +103,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 11),
       now: () => DateTime(2026, 10, 11, 20),
       draftStore: TestPublishDraftStore(),
@@ -125,6 +132,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: localDay,
       now: () => clockUtc,
       draftStore: store,
@@ -142,6 +151,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 10),
       now: () => DateTime(2026, 10, 11, 12),
       draftStore: TestPublishDraftStore(),
@@ -158,6 +169,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 11),
       now: () => DateTime(2026, 10, 11, 23, 59, 30),
       draftStore: TestPublishDraftStore(),
@@ -176,6 +189,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 15),
       now: () => DateTime(2026, 10, 11, 12),
       draftStore: TestPublishDraftStore(),
@@ -218,6 +233,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 15),
       initialDraftId: 'saved',
       now: () => DateTime(2026, 10, 11, 12),

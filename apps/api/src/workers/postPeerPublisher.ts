@@ -1,5 +1,6 @@
 import type { Platform } from '../modules/posts/postStore.js';
 import type { PlatformSettings } from '../modules/posts/platformSettings.js';
+import { PlatformCaptionValidationError, readPlatformCaptionIssue } from '../modules/posts/platformCaptionValidation.js';
 import {
   buildTikTokConnectionRevision,
   isExplicitTikTokDirectSettings,
@@ -576,6 +577,8 @@ export const createPostPeerPublisher = ({
     platformSettings,
     platformTargets
   }) => {
+    const captionIssue = readPlatformCaptionIssue(caption, [platform]);
+    if (captionIssue) throw new PlatformCaptionValidationError(captionIssue);
     const normalizedPlatformSettings = readPlatformSettingsForPublish({
       platform,
       platformSettings

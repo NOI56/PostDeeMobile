@@ -7,6 +7,19 @@ import {
 } from './socialConnectionStore.js';
 
 describe('createInMemorySocialConnectionStore', () => {
+  it.each(['YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const)('revisions bind %s to the owner and current provider account', async (platform) => {
+    const store = createInMemorySocialConnectionStore({ now: () => '2026-10-15T10:00:00.000Z' });
+    const original = await store.upsert({ userId: 'owner', platform, postPeerAccountId: 'provider-secret-old' });
+    const first = (await store.listForUser('owner')).find((entry) => entry.platform === platform)!;
+    expect(first.connectionRevision).toMatch(/^[a-f0-9]{64}$/);
+    const replacement = await store.upsert({ userId: 'owner', platform, postPeerAccountId: 'provider-secret-new' });
+    const next = (await store.listForUser('owner')).find((entry) => entry.platform === platform)!;
+    expect(replacement.id).toBe(original.id);
+    expect(next.connectionRevision).not.toBe(first.connectionRevision);
+    await store.upsert({ userId: 'other-owner', platform, postPeerAccountId: 'provider-secret-new' });
+    expect((await store.listForUser('other-owner')).find((entry) => entry.platform === platform)?.connectionRevision).not.toBe(next.connectionRevision);
+    expect(JSON.stringify(next)).not.toContain('provider-secret');
+  });
   it('keeps assigning the same PostPeer profile to the same user idempotently', async () => {
     const store = createInMemorySocialConnectionStore();
 

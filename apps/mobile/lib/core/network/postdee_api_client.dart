@@ -2704,6 +2704,73 @@ class TikTokPublishingOptionsResult {
   }
 }
 
+enum SocialPublishingState {
+  ready,
+  connected,
+  reconnectRequired,
+  permissionMissing,
+  notConnected,
+  unavailable,
+}
+
+class SocialPublishingConnectionReadiness {
+  const SocialPublishingConnectionReadiness({
+    required this.platform,
+    required this.state,
+    this.connectionId,
+    this.connectionRevision,
+    this.reasonCode,
+  });
+
+  final String platform;
+  final SocialPublishingState state;
+  final String? connectionId;
+  final String? connectionRevision;
+  final String? reasonCode;
+
+  bool get blocksPublishing => state != SocialPublishingState.ready &&
+      state != SocialPublishingState.connected;
+
+  factory SocialPublishingConnectionReadiness.fromJson(Map<String, Object?> json) {
+    final platform = json['platform'];
+    if (platform is! String || !const {
+      'TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS',
+    }.contains(platform)) {
+      throw const ApiException(_socialPublishingReadinessMessage,
+          code: 'SOCIAL_PUBLISHING_READINESS_UNAVAILABLE');
+    }
+    final state = switch (json['state']) {
+      'ready' => SocialPublishingState.ready,
+      'connected' => SocialPublishingState.connected,
+      'reconnect_required' => SocialPublishingState.reconnectRequired,
+      'permission_missing' => SocialPublishingState.permissionMissing,
+      'not_connected' => SocialPublishingState.notConnected,
+      _ => SocialPublishingState.unavailable,
+    };
+    final connectionId = json['connectionId'];
+    final revision = json['connectionRevision'];
+    final reason = json['reasonCode'];
+    return SocialPublishingConnectionReadiness(
+      platform: platform,
+      state: state,
+      connectionId: connectionId is String && connectionId.isNotEmpty &&
+          connectionId.length <= 256 ? connectionId : null,
+      connectionRevision: revision is String &&
+          _tikTokCreatorRevisionPattern.hasMatch(revision) ? revision : null,
+      reasonCode: reason is String && _socialPublishingReadinessReasons.contains(reason)
+          ? reason : null,
+    );
+  }
+}
+
+const _socialPublishingReadinessMessage =
+    'ตรวจสอบความพร้อมของช่องทางไม่สำเร็จ กรุณาลองอีกครั้ง';
+const _socialPublishingReadinessReasons = {
+  'NOT_CONNECTED', 'PROVIDER_PROFILE_MISSING', 'PROVIDER_INTEGRATION_MISSING',
+  'PROVIDER_RECONNECT_REQUIRED', 'PUBLISH_PERMISSION_MISSING',
+  'PUBLISH_CAPABILITY_UNCONFIRMED',
+};
+
 class SocialConnectionResult {
   const SocialConnectionResult({
     required this.platform,
@@ -3050,6 +3117,52 @@ class PostDeeApiClient {
     );
   }
 
+  /// Looks up an already accepted immutable submission. This endpoint never
+  /// creates or requeues a post, even when its previous response was lost.
+  Future<QueuedPostResult?> recoverPostSubmission(CreatePostRequest request) async {
+    const safeMessage =
+        'ตรวจสอบผลการส่งเดิมไม่สำเร็จ เก็บร่างเดิมไว้แล้ว กรุณาลองใหม่ภายหลัง';
+    try {
+      final response = await _postJson('/posts/submissions/recover', request.toJson());
+      final post = response['post'];
+      if (response['status'] != 'ok' || response['recovered'] != true ||
+          response['idempotentReplay'] != true || post is! Map<String, Object?>) {
+        throw const ApiException(safeMessage,
+            code: 'POST_SUBMISSION_RECOVERY_UNAVAILABLE');
+      }
+      final result = QueuedPostResult.fromJson(post, idempotentReplay: true);
+      if (result.id.trim().isEmpty || result.videoS3Key != request.videoS3Key ||
+          result.platforms.isEmpty ||
+          result.platforms.length != request.platforms.length ||
+          result.platforms.toSet().length != result.platforms.length ||
+          !result.platforms.toSet().containsAll(request.platforms)) {
+        throw const ApiException(safeMessage,
+            code: 'POST_SUBMISSION_RECOVERY_UNAVAILABLE');
+      }
+      return result;
+    } on AuthSessionChangedException {
+      rethrow;
+    } on ApiException catch (error) {
+      _sessionBinding?.ensureCurrent();
+      if (error.statusCode == HttpStatus.notFound &&
+          error.code == 'POST_SUBMISSION_NOT_FOUND') {
+        return null;
+      }
+      if (error.code == 'IDEMPOTENCY_KEY_REUSED') {
+        throw ApiException('ข้อมูลโพสต์เปลี่ยนจากการส่งครั้งเดิม '
+            'กรุณาตรวจสอบผลเดิมก่อนเริ่มการส่งใหม่',
+            statusCode: error.statusCode, code: 'IDEMPOTENCY_KEY_REUSED');
+      }
+      throw ApiException(safeMessage, statusCode: error.statusCode,
+          code: error.code == apiRequestTimeoutCode ? apiRequestTimeoutCode :
+              'POST_SUBMISSION_RECOVERY_UNAVAILABLE');
+    } catch (_) {
+      _sessionBinding?.ensureCurrent();
+      throw const ApiException(safeMessage,
+          code: 'POST_SUBMISSION_RECOVERY_UNAVAILABLE');
+    }
+  }
+
   Future<void> publishPostNow(String postId) async {
     final response = await _postJson(
       '/posts/${Uri.encodeComponent(postId)}/publish-now',
@@ -3141,6 +3254,46 @@ class PostDeeApiClient {
         _tikTokPublishingOptionsMessage,
         code: 'TIKTOK_PUBLISHING_OPTIONS_UNAVAILABLE',
       );
+    }
+  }
+
+  Future<List<SocialPublishingConnectionReadiness>>
+      loadSocialPublishingReadiness() async {
+    try {
+      final response = await _getJson('/social-connections/publishing-readiness');
+      final connections = response['connections'];
+      if (response['status'] != 'ok' || connections is! List ||
+          connections.length > 4) {
+        throw const ApiException(_socialPublishingReadinessMessage,
+            code: 'SOCIAL_PUBLISHING_READINESS_UNAVAILABLE');
+      }
+      final results = <SocialPublishingConnectionReadiness>[];
+      final platforms = <String>{};
+      for (final connection in connections) {
+        if (connection is! Map<String, Object?>) {
+          throw const ApiException(_socialPublishingReadinessMessage,
+              code: 'SOCIAL_PUBLISHING_READINESS_UNAVAILABLE');
+        }
+        final parsed = SocialPublishingConnectionReadiness.fromJson(connection);
+        if (!platforms.add(parsed.platform)) {
+          throw const ApiException(_socialPublishingReadinessMessage,
+              code: 'SOCIAL_PUBLISHING_READINESS_UNAVAILABLE');
+        }
+        results.add(parsed);
+      }
+      return List.unmodifiable(results);
+    } on AuthSessionChangedException {
+      rethrow;
+    } on ApiException catch (error) {
+      _sessionBinding?.ensureCurrent();
+      throw ApiException(_socialPublishingReadinessMessage,
+          statusCode: error.statusCode,
+          code: error.code == apiRequestTimeoutCode ? apiRequestTimeoutCode :
+              'SOCIAL_PUBLISHING_READINESS_UNAVAILABLE');
+    } catch (_) {
+      _sessionBinding?.ensureCurrent();
+      throw const ApiException(_socialPublishingReadinessMessage,
+          code: 'SOCIAL_PUBLISHING_READINESS_UNAVAILABLE');
     }
   }
 
@@ -3884,6 +4037,21 @@ class PostDeeApiClient {
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (decoded['code'] == 'PLATFORM_CAPTION_INVALID') {
+        final message = switch (decoded['reason']) {
+          'YOUTUBE_DESCRIPTION_TOO_LONG' =>
+            'คำอธิบาย YouTube ต้องไม่เกิน 5,000 ไบต์ กรุณาย่อแคปชั่นก่อนโพสต์',
+          'YOUTUBE_DESCRIPTION_INVALID_CHARACTERS' =>
+            'คำอธิบาย YouTube ห้ามมี < หรือ > กรุณาแก้แคปชั่นก่อนโพสต์',
+          'INSTAGRAM_CAPTION_TOO_LONG' =>
+            'แคปชั่น Instagram ต้องไม่เกิน 2,200 ตัวอักษร',
+          'FACEBOOK_CAPTION_TOO_LONG' =>
+            'แคปชั่น Facebook ต้องไม่เกิน 63,206 ตัวอักษร',
+          _ => 'ตรวจสอบแคปชั่นให้ตรงกับข้อจำกัดของช่องทางก่อนโพสต์',
+        };
+        throw ApiException(message, statusCode: response.statusCode,
+            code: 'PLATFORM_CAPTION_INVALID');
+      }
       throw ApiException(
         decoded['message'] as String? ?? 'Request failed',
         statusCode: response.statusCode,

@@ -41,6 +41,18 @@ const createPrisma = (
 });
 
 describe('createPrismaSocialConnectionRepository', () => {
+  it.each(['YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const)('returns an opaque changing %s account revision', async (platform) => {
+    const record = { id: 'local-connection', userId: 'owner', platform, postPeerAccountId: 'provider-secret-old', displayName: null, externalAccountId: null, connectedAt: new Date('2026-10-15T10:00:00.000Z'), updatedAt: new Date('2026-10-15T10:00:00.000Z') };
+    const findMany = vi.fn<PrismaSocialConnectionClient['socialConnection']['findMany']>().mockResolvedValue([record]);
+    const repository = createPrismaSocialConnectionRepository({ prisma: createPrisma({ findMany }) });
+    const first = (await repository.listForUser('owner')).find((entry) => entry.platform === platform)!;
+    expect(first.connectionRevision).toMatch(/^[a-f0-9]{64}$/);
+    findMany.mockResolvedValue([{ ...record, postPeerAccountId: 'provider-secret-new' }]);
+    const next = (await repository.listForUser('owner')).find((entry) => entry.platform === platform)!;
+    expect(next.connectionId).toBe(first.connectionId);
+    expect(next.connectionRevision).not.toBe(first.connectionRevision);
+    expect(JSON.stringify(next)).not.toContain('provider-secret');
+  });
   it('lists connected social accounts with disconnected defaults', async () => {
     const connectedAt = new Date('2026-06-26T02:00:00.000Z');
     const updatedAt = new Date('2026-06-26T03:00:00.000Z');

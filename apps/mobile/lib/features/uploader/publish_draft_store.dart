@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
+import 'platform_publish_preflight.dart';
 import 'publish_draft.dart';
 import 'publish_media_identity.dart';
 
@@ -263,6 +264,8 @@ class FilePublishDraftStore implements PublishDraftStore {
             'videoPreparationPolicy': uploadedMedia.videoPreparationPolicy,
           if (uploadedMedia.videoDurationSeconds != null)
             'videoDurationSeconds': uploadedMedia.videoDurationSeconds,
+          if (uploadedMedia.videoMetadata != null)
+            'videoMetadata': uploadedMedia.videoMetadata!.toJson(),
         },
       'createdAt': request.createdAt.toUtc().toIso8601String(),
       'updatedAt': request.updatedAt.toUtc().toIso8601String(),
@@ -353,6 +356,10 @@ class FilePublishDraftStore implements PublishDraftStore {
                 rawDuration <= 0)) {
           return null;
         }
+        final rawMetadata = uploadedValue['videoMetadata'];
+        if (rawMetadata != null && rawMetadata is! Map<String, dynamic>) {
+          return null;
+        }
         uploadedMedia = PublishDraftUploadedMedia(
           mediaContentFingerprint: fingerprint,
           videoS3Key: _requiredString(uploadedValue, 'videoS3Key'),
@@ -364,6 +371,10 @@ class FilePublishDraftStore implements PublishDraftStore {
                   ? null
                   : _requiredString(uploadedValue, 'videoPreparationPolicy'),
           videoDurationSeconds: (rawDuration as num?)?.toDouble(),
+          videoMetadata: rawMetadata == null
+              ? null
+              : PublishMediaMetadata.fromJson(
+                  rawMetadata as Map<String, dynamic>),
         );
       }
 

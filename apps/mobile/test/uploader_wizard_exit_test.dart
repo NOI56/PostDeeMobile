@@ -7,6 +7,7 @@ import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
@@ -49,6 +50,8 @@ class _ExitFixture {
                     builder: (_) => Scaffold(
                       body: SafeArea(
                         child: UploaderScreen(
+                          probePublishMedia: probeValidPublishMedia,
+                          loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
                           fullScreen: true,
                           draftStore: store,
                           loadSocialConnections: () async => const [],

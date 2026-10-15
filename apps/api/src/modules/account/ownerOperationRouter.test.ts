@@ -82,6 +82,22 @@ describe('owner operation route lifetime', () => {
     await request(app).post('/uploads').expect(409);
     expect(work).not.toHaveBeenCalled();
   });
+  it.each([
+    ['/POSTS/SUBMISSIONS/RECOVER/', false],
+    ['/posts/submissions/recover-extra', true]
+  ])('only the exact read-only recovery route releases a 503 ticket: %s', async (path, retained) => {
+    const release = vi.fn(async () => undefined);
+    const run = createOwnerOperationRunner({ admit: async () => 'read-ticket', release });
+    const app = express();
+    const router = createOwnerOperationRouter(express.Router(), run);
+    router.post(path, (_request, response, next) => {
+      response.locals.authUser = { id: 'owner', provider: 'mock' }; next();
+    }, async (_request, response) => { response.status(503).json({ code: 'POST_SUBMISSION_RECOVERY_UNAVAILABLE' }); });
+    app.use(router);
+    await request(app).post(path).expect(503);
+    if (retained) expect(release).not.toHaveBeenCalled();
+    else await vi.waitFor(() => expect(release).toHaveBeenCalledExactlyOnceWith('owner', 'read-ticket'));
+  });
 
   it('protects chained route registrations too', async () => {
     const { app, router, auth, entered } = fixture();

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/uploader/cover_image_processor.dart';
@@ -24,6 +24,7 @@ void main() {
     Map<SocialPlatform, String> connectionDisplayNames = const {
       SocialPlatform.tiktok: '@seller',
     },
+    PlatformPublishSettings platformSettings = const PlatformPublishSettings(),
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -33,6 +34,7 @@ void main() {
               videoName: 'seller-clip.mp4',
               caption: 'แคปชั่นขายสินค้า',
               platforms: platforms,
+              platformSettings: platformSettings,
               connectionDisplayNames: connectionDisplayNames,
               scheduledAt: null,
               watermarkEnabled: false,
@@ -47,6 +49,194 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('YouTube review shows the title and every explicit answer',
+      (tester) async {
+    await pumpSummary(
+      tester,
+      platforms: const [SocialPlatform.youtubeShorts],
+      connectionDisplayNames: const {
+        SocialPlatform.youtubeShorts: 'Seller channel',
+      },
+      platformSettings: const PlatformPublishSettings(
+        youtubeTitle: 'รีวิวสินค้าจากร้านเรา',
+        youtubeVisibility: YouTubeVisibility.public,
+        youtubeMadeForKids: true,
+        youtubeContainsSyntheticMedia: false,
+        youtubeCommunityGuidelinesCertified: true,
+      ),
+    );
+    expect(find.text('ชื่อวิดีโอ: รีวิวสินค้าจากร้านเรา'), findsOneWidget);
+    expect(find.text('สาธารณะ (Public)'), findsOneWidget);
+    expect(find.text('สำหรับเด็ก: ใช่'), findsOneWidget);
+    expect(find.text('สื่อสังเคราะห์ที่ดูเหมือนจริง: ไม่มี'), findsOneWidget);
+    expect(find.text('กฎชุมชน YouTube: ยืนยันแล้ว'), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-youtube-notice')),
+        findsOneWidget);
+    expect(find.textContaining('ลิขสิทธิ์หรือความเป็นส่วนตัว'), findsOneWidget);
+  });
+
+  testWidgets('YouTube review never presents unanswered choices as accepted',
+      (tester) async {
+    await pumpSummary(
+      tester,
+      platforms: const [SocialPlatform.youtubeShorts],
+      connectionDisplayNames: const {
+        SocialPlatform.youtubeShorts: 'Seller channel',
+      },
+    );
+    expect(find.text('ชื่อวิดีโอ: ยังไม่ระบุ'), findsOneWidget);
+    expect(find.text('สำหรับเด็ก: ยังไม่ระบุ'), findsOneWidget);
+    expect(
+        find.text('สื่อสังเคราะห์ที่ดูเหมือนจริง: ยังไม่ระบุ'), findsOneWidget);
+    expect(find.text('กฎชุมชน YouTube: ยังไม่ยืนยัน'), findsOneWidget);
+    expect(find.text('ตั้งค่า YouTube ยังไม่ครบ'), findsOneWidget);
+  });
+
+  testWidgets('Instagram review distinguishes feed sharing from Reels only',
+      (tester) async {
+    for (final share in [true, false]) {
+      await pumpSummary(
+        tester,
+        platforms: const [SocialPlatform.instagramReels],
+        connectionDisplayNames: const {
+          SocialPlatform.instagramReels: '@seller',
+        },
+        platformSettings: PlatformPublishSettings(instagramShareToFeed: share),
+      );
+      expect(
+        find.text(
+            '${share ? 'Reels + ฟีด' : 'Reels อย่างเดียว'} · เผยแพร่ตามบัญชี'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Instagram ไม่มี Private รายโพสต์'),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('publish-review-youtube-notice')),
+          findsNothing);
+    }
+  });
+
+  testWidgets('YouTube terms opens the mobile terms URL without accepting',
+      (tester) async {
+    MethodCall? launched;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/url_launcher'),
+      (call) async {
+        launched = call;
+        return true;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('plugins.flutter.io/url_launcher'), null));
+    await pumpSummary(
+      tester,
+      platforms: const [SocialPlatform.youtubeShorts],
+      connectionDisplayNames: const {
+        SocialPlatform.youtubeShorts: 'Seller channel',
+      },
+    );
+    final terms = find.byKey(const ValueKey('publish-review-youtube-terms'));
+    await tester.ensureVisible(terms);
+    await tester.tap(terms);
+    await tester.pumpAndSettle();
+    expect(launched?.method, 'launch');
+    expect((launched?.arguments as Map)['url'], 'https://m.youtube.com/terms');
+    expect(find.text('กฎชุมชน YouTube: ยังไม่ยืนยัน'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('YouTube terms failure gives a visible recovery message',
+      (tester) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/url_launcher'),
+      (_) async => throw PlatformException(code: 'not_available'),
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('plugins.flutter.io/url_launcher'), null));
+    await pumpSummary(
+      tester,
+      platforms: const [SocialPlatform.youtubeShorts],
+      connectionDisplayNames: const {
+        SocialPlatform.youtubeShorts: 'Seller channel',
+      },
+    );
+    final terms = find.byKey(const ValueKey('publish-review-youtube-terms'));
+    await tester.ensureVisible(terms);
+    await tester.tap(terms);
+    await tester.pumpAndSettle();
+    expect(
+        find.textContaining('เปิดข้อกำหนด YouTube ไม่สำเร็จ'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('complete channel details fit a narrow phone with large text',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData.fromView(tester.view).copyWith(
+            textScaler: const TextScaler.linear(2),
+          ),
+          child: Scaffold(
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: PublishReviewSummary(
+                videoName: 'seller-clip.mp4',
+                caption: 'แคปชั่นขายสินค้า',
+                platforms: const [
+                  SocialPlatform.youtubeShorts,
+                  SocialPlatform.instagramReels,
+                  SocialPlatform.facebookReels,
+                ],
+                platformSettings: PlatformPublishSettings(
+                  youtubeTitle: '😀' * 100,
+                  youtubeMadeForKids: false,
+                  youtubeContainsSyntheticMedia: true,
+                  youtubeCommunityGuidelinesCertified: true,
+                  facebookPublishMode: FacebookPublishMode.pageDraft,
+                ),
+                connectionDisplayNames: const {
+                  SocialPlatform.youtubeShorts: 'Seller channel',
+                  SocialPlatform.instagramReels: '@seller',
+                  SocialPlatform.facebookReels: 'Seller page',
+                },
+                scheduledAt: null,
+                watermarkEnabled: false,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(
+        find.byKey(const ValueKey('publish-review-youtube-terms')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  test('scheduled Facebook drafts keep the Page destination and quota wording',
+      () {
+    final outcome = publishReviewOutcomeFor(
+      SocialPlatform.facebookReels,
+      settings: const PlatformPublishSettings(
+          facebookPublishMode: FacebookPublishMode.pageDraft),
+      scheduledAt: DateTime(2026, 10, 20, 15, 30),
+    );
+    expect(outcome, contains('ส่งเข้าร่างเวลา'));
+    expect(outcome, contains('Facebook Page'));
+    expect(outcome, contains('ส่งออกจริงและใช้โควตาโพสต์'));
+    expect(outcome, isNot(contains('เผยแพร่เวลา')));
+    expect(publishReviewPlatformLabel(SocialPlatform.facebookReels),
+        'Facebook Page Video');
+  });
 
   testWidgets('summary shows a real poster without claiming a custom cover',
       (tester) async {
@@ -415,7 +605,7 @@ void main() {
     );
     expect(find.textContaining('ส่งออกจริงและใช้โควตาโพสต์'), findsNWidgets(2));
     expect(find.text('ส่วนตัว (Private)'), findsOneWidget);
-    expect(find.text('เผยแพร่ตามบัญชี'), findsOneWidget);
+    expect(find.text('Reels + ฟีด · เผยแพร่ตามบัญชี'), findsOneWidget);
     expect(find.text('Facebook Page Video'), findsOneWidget);
     expect(find.text('@seller'), findsOneWidget);
     expect(find.text('PostDee Channel'), findsOneWidget);
@@ -456,6 +646,9 @@ void main() {
     );
 
     expect(find.text('ไม่เป็นสาธารณะ (Unlisted)'), findsOneWidget);
+    expect(find.text('ชื่อวิดีโอ: คลิปขายสินค้า'), findsOneWidget);
+    expect(find.text('สำหรับเด็ก: ไม่ใช่'), findsOneWidget);
+    expect(find.text('สื่อสังเคราะห์ที่ดูเหมือนจริง: มี'), findsOneWidget);
     expect(find.text('เผยแพร่บนเพจ'), findsOneWidget);
   });
 

@@ -39,6 +39,7 @@ import '../uploader/uploader_screen.dart';
 import '../uploader/publish_draft.dart';
 import '../uploader/publish_draft_store.dart';
 import '../uploader/publish_draft_store_factory.dart';
+import '../uploader/publish_media_probe.dart';
 import '../uploader/tiktok_video_preparer.dart';
 import '../uploader/video_picker_service.dart';
 
@@ -65,6 +66,8 @@ class PostDeeShell extends StatefulWidget {
     this.createPost,
     this.checkPublishingReadiness,
     this.loadSocialConnections,
+    this.loadSocialPublishingReadiness,
+    this.probePublishMedia,
     this.deleteAccount,
     this.checkAccountDeletionReady,
     this.deleteLocalPublishDrafts,
@@ -89,6 +92,8 @@ class PostDeeShell extends StatefulWidget {
   final UploaderPostCreator? createPost;
   final UploaderPublishingReadinessChecker? checkPublishingReadiness;
   final UploaderConnectionsLoader? loadSocialConnections;
+  final UploaderSocialReadinessLoader? loadSocialPublishingReadiness;
+  final PublishMediaProbe? probePublishMedia;
   final AccountDeleter? deleteAccount;
   final AccountDeletionReadinessChecker? checkAccountDeletionReady;
   final AccountLocalPublishDraftDeleter? deleteLocalPublishDrafts;
@@ -441,6 +446,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
               createPost: widget.createPost,
               checkPublishingReadiness: widget.checkPublishingReadiness,
               loadSocialConnections: widget.loadSocialConnections,
+              loadSocialPublishingReadiness: widget.loadSocialPublishingReadiness,
+              probePublishMedia: widget.probePublishMedia,
               onScheduledPostCreated: (post) {
                 if (_composerBelongsToCurrentOwner(route)) {
                   _handleScheduledPostCreated(post);

@@ -12,6 +12,7 @@ import 'package:postdee_mobile/features/shared/postdee_press_feedback.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
@@ -96,6 +97,8 @@ class _Fixture {
           body: TickerMode(
             enabled: tickerEnabled,
             child: UploaderScreen(
+              probePublishMedia: probeValidPublishMedia,
+              loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
               fullScreen: true,
               draftStore: injectDraftStore ? drafts : null,
               captionWritingStyleStore: style,

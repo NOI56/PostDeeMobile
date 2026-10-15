@@ -2,6 +2,41 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Channel publishing preflight boundary (2026-10-15, local implementation)
+
+Mobile checks caption rules before a new upload, loads channel-readiness when
+opening channels and rechecks before upload and before post submission. Local
+owner/generation/connection/revision checks prevent an in-flight response from
+being applied to a replaced account. Explicit reconnect or missing publishing
+permission blocks submission; successful unknown metadata is labeled unverified.
+Only an old API's 404 enables the compatibility fallback; provider failures block
+new submissions. Readiness is an observed snapshot, not a future permission grant.
+
+The new authenticated backend GET uses the existing stored owner profile and
+read-only integration listing. It bounds time, pagination and payload size and
+rejects redirects; only verified boolean capability/reconnect fields are retained.
+It checks current owner/profile/target binding before returning safe DTOs. GET
+errors are captured inside the owner lifetime so they release normally, preserving
+the stronger retention used for ambiguous external writes. It creates no profile,
+post, upload, queue item, account repair or external permission grant.
+
+Caption rules run again at the API boundary and before the provider publisher;
+accepted idempotent recovery remains before new-request validation. Media checks
+remain client-side: a bounded, session-owned FFprobe reads the final upload file,
+including a watermark/TikTok render, without depending on global completion events.
+Metadata is retained optionally in the fingerprint-bound upload receipt. Old
+unproven receipts are preserved and blocked rather than discarded/re-uploaded;
+unknown post requests retain their original request ID. A separate owner-bound,
+read-only POST can recover an already accepted original intent before new guards,
+using legacy settings compatibility and the normal redacted post DTO. It never
+creates, reserves quota or enqueues/repairs a queue item; a recovered FAILED post
+stays FAILED. Ordinary connection lists and readiness now share opaque revisions
+for all platforms. No schema/dependency/env
+change is introduced. Local API/Mobile suites and the Staging APK build pass;
+API-first rollout and connected-account publication checks remain pending.
+The previous TikTok Staging delivery remains unchanged. Details:
+[implementation record](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md).
+
 ## TikTok Direct Post boundary (2026-10-15, Staging delivered)
 
 The authenticated publishing-options route resolves the owner's stored TikTok

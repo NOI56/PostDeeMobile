@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/uploader/cover_image_processor.dart';
 import 'package:postdee_mobile/features/uploader/platform_publish_settings.dart';
+import 'package:postdee_mobile/features/uploader/platform_publish_preflight.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
 import 'package:postdee_mobile/features/uploader/publish_media_identity.dart';
@@ -319,6 +320,61 @@ void main() {
     expect(legacy.uploadedMedia!.videoDurationSeconds, isNull);
     expect(legacy.uploadedMedia!.videoS3Key, 'uploads/verified.mp4');
     expect(legacy.submissionRequestId, restored.submissionRequestId);
+  });
+
+  test(
+      'retains final upload metadata and legacy receipt without changing request identity',
+      () async {
+    final video = await fixture('metadata.mp4', [1, 2, 3, 4]);
+    final store = storeFor('firebase-user-a');
+    final fingerprint = await publishMediaContentFingerprint(
+        videoFile: video, watermarkEnabled: true);
+    const metadata = PublishMediaMetadata(
+        durationSeconds: 10.5,
+        width: 1080,
+        height: 1920,
+        sizeBytes: 98765,
+        hasAudio: true,
+        videoCodec: 'h264',
+        audioCodec: 'aac',
+        fps: 30,
+        sampleRate: 48000,
+        channels: 2,
+        container: 'mov,mp4');
+    await store.saveDraft(request(
+      video: video,
+      uploadedMedia: PublishDraftUploadedMedia(
+        mediaContentFingerprint: fingerprint,
+        videoS3Key: 'uploads/final-render.mp4',
+        videoMetadata: metadata,
+      ),
+    ));
+    final restored = (await store.loadDraft('draft-1'))!;
+    expect(restored.version, publishDraftManifestVersion);
+    expect(restored.uploadedMedia!.videoMetadata!.toJson(), metadata.toJson());
+    final manifestFile =
+        File('${root.path}/store/firebase-user-a/draft-1/manifest.json');
+    final manifest = jsonDecode(await manifestFile.readAsString()) as Map;
+    (manifest['uploadedMedia'] as Map).remove('videoMetadata');
+    await manifestFile.writeAsString(jsonEncode(manifest));
+    final legacy = (await store.loadDraft('draft-1'))!;
+    expect(legacy.uploadedMedia!.videoMetadata, isNull);
+    expect(legacy.uploadedMedia!.videoS3Key, 'uploads/final-render.mp4');
+    expect(legacy.submissionRequestId, restored.submissionRequestId);
+    expect(legacy.mediaContentFingerprint, fingerprint);
+
+    for (final malformed in <Object>[
+      'unverified',
+      {...metadata.toJson(), 'durationSeconds': 0},
+      {...metadata.toJson(), 'width': -1},
+      {...metadata.toJson(), 'hasVideo': 'true'},
+      {...metadata.toJson(), 'fps': '30'},
+      {...metadata.toJson(), 'sampleRate': 48000.5},
+    ]) {
+      (manifest['uploadedMedia'] as Map)['videoMetadata'] = malformed;
+      await manifestFile.writeAsString(jsonEncode(manifest));
+      expect(await store.loadDraft('draft-1'), isNull);
+    }
   });
 
   test('reads v2 drafts without settings but rejects incomplete v3 drafts',

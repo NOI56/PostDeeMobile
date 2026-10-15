@@ -769,6 +769,47 @@ describe('createPostPeerConnectClient', () => {
     ).rejects.toBeInstanceOf(PostPeerConnectProviderError);
   });
 
+  it('keeps only verified readiness flags and ignores unknown/private metadata', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ total: 2, offset: 0, integrations: [
+      { id: 'ig', platform: 'instagram', tokenStatus: { reconnectRequired: false, reason: 'raw-secret' }, platformMetadata: { capabilities: { publish: true, unknown: true }, accessToken: 'secret' } },
+      { id: 'fb', platform: 'facebook', tokenStatus: { reconnectRequired: true }, platformMetadata: { capabilities: { publish: 'true' } } }
+    ] }) });
+    const client = createPostPeerConnectClient({ apiKey: 'key', baseUrl: 'https://api.postpeer.test', fetchImpl });
+    await expect(client.listIntegrations({ profileId: 'owner' })).resolves.toEqual([
+      { id: 'ig', platform: 'INSTAGRAM_REELS', canPublish: true, reconnectRequired: false },
+      { id: 'fb', platform: 'FACEBOOK_REELS', reconnectRequired: true }
+    ]);
+  });
+  it('bounds read-only readiness lookups and refuses HTTP/credentialed roots', async () => {
+    const fetchImpl = vi.fn();
+    const client = createPostPeerConnectClient({ apiKey: 'key', baseUrl: 'http://api.postpeer.test', fetchImpl });
+    await expect(client.listIntegrations({ profileId: 'owner', publishingReadiness: true })).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it('prevents redirects for readiness without changing the normal connection request contract', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ integrations: [], total: 0 }) });
+    const client = createPostPeerConnectClient({ apiKey: 'key', baseUrl: 'https://api.postpeer.test', fetchImpl });
+    await client.listIntegrations({ profileId: 'owner', publishingReadiness: true });
+    expect(fetchImpl).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ method: 'GET', redirect: 'error', signal: expect.any(AbortSignal) }));
+  });
+  it('aborts a hung readiness lookup and releases its timer', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = vi.fn((_url: string, _init: RequestInit) => new Promise<never>(() => undefined));
+      const client = createPostPeerConnectClient({ apiKey: 'key', baseUrl: 'https://api.postpeer.test', fetchImpl });
+      const pending = expect(client.listIntegrations({ profileId: 'owner', publishingReadiness: true })).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+      await vi.advanceTimersByTimeAsync(5000);
+      await pending;
+      expect(fetchImpl.mock.calls[0]?.[1].signal?.aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+  it('rejects oversized streamed readiness payloads before JSON parsing', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200, body: new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(512 * 1024 + 1)); } }), json: vi.fn() });
+    const client = createPostPeerConnectClient({ apiKey: 'key', baseUrl: 'https://api.postpeer.test', fetchImpl });
+    await expect(client.listIntegrations({ profileId: 'owner', publishingReadiness: true })).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+  });
+
   it('lists every integration id while mapping supported social platforms', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

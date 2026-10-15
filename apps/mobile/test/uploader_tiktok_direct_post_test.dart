@@ -9,6 +9,7 @@ import 'package:postdee_mobile/features/uploader/tiktok_video_preparer.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
@@ -83,6 +84,12 @@ void main() {
       MaterialApp(
           home: Scaffold(
               body: UploaderScreen(
+        probePublishMedia: probeValidPublishMedia,
+        loadSocialPublishingReadiness: () async => const [
+          SocialPublishingConnectionReadiness(
+              platform: 'TIKTOK', state: SocialPublishingState.connected,
+              connectionId: 'local-tiktok', connectionRevision: _revision),
+        ],
         draftStore: store,
         initialDraftId: initialDraftId,
         initialVideoPath: initialDraftId == null ? source.path : null,
@@ -344,7 +351,8 @@ void main() {
     await goToUploaderStep(tester, 2);
     final settings =
         find.byKey(const ValueKey('uploader-platform-settings-TIKTOK'));
-    await tester.ensureVisible(settings);
+    await Scrollable.ensureVisible(tester.element(settings), alignment: .3);
+    await tester.pumpAndSettle();
     await tester.tap(settings);
     await tester.pumpAndSettle();
     await chooseDirect(tester);

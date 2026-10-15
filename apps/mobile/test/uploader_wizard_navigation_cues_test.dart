@@ -7,6 +7,7 @@ import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
@@ -58,6 +59,8 @@ Future<_SubmissionCalls> _openWizard(
       ),
       home: Scaffold(
         body: UploaderScreen(
+          probePublishMedia: probeValidPublishMedia,
+          loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
           fullScreen: true,
           draftStore: TestPublishDraftStore(),
           loadSocialConnections: () async => [

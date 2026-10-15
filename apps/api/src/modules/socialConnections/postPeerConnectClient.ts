@@ -6,6 +6,7 @@ type FetchResponse = {
   ok: boolean;
   status?: number;
   json: () => Promise<unknown>;
+  body?: ReadableStream<Uint8Array> | null;
 };
 
 type FetchImpl = (url: string, init: RequestInit) => Promise<FetchResponse>;
@@ -114,6 +115,8 @@ export type PostPeerIntegration = {
   platform?: SocialConnectionPlatform;
   platformUserId?: string;
   displayName?: string;
+  reconnectRequired?: boolean;
+  canPublish?: boolean;
 };
 
 /**
@@ -128,6 +131,7 @@ export type PostPeerIntegration = {
  */
 export type PostPeerConnectClient = {
   supportsIntegrationCleanup?: boolean;
+  publishingReadinessConfigured?: boolean;
   findProfile?: (input: { userId: string }) => Promise<{ profileId: string } | undefined>;
   createProfile: (input: { userId: string }) => Promise<{ profileId: string }>;
   createConnectUrl: (input: {
@@ -135,7 +139,7 @@ export type PostPeerConnectClient = {
     profileId: string;
     redirectUri?: string;
   }) => Promise<{ connectUrl: string }>;
-  listIntegrations: (input: { profileId: string }) => Promise<PostPeerIntegration[]>;
+  listIntegrations: (input: { profileId: string; publishingReadiness?: boolean }) => Promise<PostPeerIntegration[]>;
   disconnectIntegration?: (input: { integrationId: string }) => Promise<void>;
 };
 
@@ -221,6 +225,7 @@ export const createPostPeerConnectClient = ({
       body?: string;
       allowNotFound?: boolean;
       parseJson?: boolean;
+      boundedReadTimeoutMs?: number;
     } = { method: 'GET' }
   ): Promise<unknown> => {
     if (!apiKey) {
@@ -231,6 +236,50 @@ export const createPostPeerConnectClient = ({
 
     if (init.body !== undefined) {
       headers['Content-Type'] = 'application/json';
+    }
+
+    if (init.boundedReadTimeoutMs !== undefined) {
+      let url: URL;
+      try { url = new URL(root); } catch { throw new PostPeerConnectProviderError(); }
+      if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/' || root.includes('@') || root.includes('\\') || init.method !== 'GET') throw new PostPeerConnectProviderError();
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const operation = async () => {
+        const response = await fetchImpl(`${root}${path}`, { method: 'GET', headers, redirect: 'error', signal: controller.signal });
+        if (!response.ok) throw new PostPeerConnectProviderError(response.status);
+        const maxBytes = 512 * 1024;
+        if (!response.body) {
+          const payload = await response.json();
+          if (Buffer.byteLength(JSON.stringify(payload) ?? '', 'utf8') > maxBytes) throw new PostPeerConnectProviderError();
+          return payload;
+        }
+        const reader = response.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let length = 0;
+        try {
+          while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            length += chunk.value.byteLength;
+            if (length > maxBytes) {
+              controller.abort();
+              void reader.cancel().catch(() => undefined);
+              throw new PostPeerConnectProviderError();
+            }
+            chunks.push(chunk.value);
+          }
+        } finally { reader.releaseLock(); }
+        return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+      };
+      try {
+        return await Promise.race([
+          operation(),
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => { controller.abort(); reject(new PostPeerConnectProviderError()); }, Math.max(1, Math.min(init.boundedReadTimeoutMs!, 5000)));
+          })
+        ]);
+      } catch { throw new PostPeerConnectProviderError(); }
+      finally { if (timer) clearTimeout(timer); }
     }
 
     const response = await fetchImpl(`${root}${path}`, {
@@ -429,6 +478,7 @@ export const createPostPeerConnectClient = ({
 
   return {
     supportsIntegrationCleanup: Boolean(apiKey),
+    publishingReadinessConfigured: Boolean(apiKey),
     ...(apiKey ? { findProfile } : {}),
     createProfile: async ({ userId }) => {
       const name = buildProfileName(userId, apiKey);
@@ -472,16 +522,19 @@ export const createPostPeerConnectClient = ({
 
       return { connectUrl };
     },
-    listIntegrations: async ({ profileId }) => {
+    listIntegrations: async ({ profileId, publishingReadiness = false }) => {
       const pageLimit = 100;
       const listedIntegrations: PostPeerIntegration[] = [];
       let offset = 0;
+      const deadline = Date.now() + 10_000;
 
       while (true) {
+        if (publishingReadiness && (offset >= 1000 || Date.now() >= deadline)) throw new PostPeerConnectProviderError();
         const payload = readRecord(
           await request(
             `/v1/connect/integrations?profileId=${encodeURIComponent(profileId)}` +
-              `&limit=${pageLimit}&offset=${offset}`
+              `&limit=${pageLimit}&offset=${offset}`,
+            publishingReadiness ? { method: 'GET', boundedReadTimeoutMs: deadline - Date.now() } : undefined
           )
         );
         const integrations = Array.isArray(payload.integrations) ? payload.integrations : [];
@@ -500,13 +553,17 @@ export const createPostPeerConnectClient = ({
             const platformUserId = readString(record.platformUserId);
             const displayName =
               readString(record.displayName) ?? readString(record.username);
+            const reconnectRequired = readRecord(record.tokenStatus).reconnectRequired;
+            const canPublish = readRecord(readRecord(record.platformMetadata).capabilities).publish;
 
             return [
               {
                 id,
                 ...(platform ? { platform } : {}),
                 ...(platformUserId ? { platformUserId } : {}),
-                ...(displayName ? { displayName } : {})
+                ...(displayName ? { displayName } : {}),
+                ...(typeof reconnectRequired === 'boolean' ? { reconnectRequired } : {}),
+                ...(typeof canPublish === 'boolean' ? { canPublish } : {})
               }
             ];
           })
@@ -521,7 +578,8 @@ export const createPostPeerConnectClient = ({
           offset;
         const nextOffset = responseOffset + integrations.length;
 
-        if (total === undefined || responseOffset !== offset) {
+        if (total === undefined || responseOffset !== offset ||
+            (publishingReadiness && (total > 1000 || integrations.length > pageLimit))) {
           throw new PostPeerConnectProviderError();
         }
 

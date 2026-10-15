@@ -20,6 +20,20 @@ enum FacebookPublishMode {
   publish,
 }
 
+/// An editable suggestion only; callers preserve a title the user already wrote.
+String safeYouTubeTitleSuggestion(String caption) {
+  for (final line in caption.split(RegExp(r'\r\n?|\n'))) {
+    final title = line
+        .replaceAll(RegExp(r'[<>]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (title.isNotEmpty) {
+      return String.fromCharCodes(title.runes.take(100)).trimRight();
+    }
+  }
+  return '';
+}
+
 /// User-visible publishing choices that differ between social platforms.
 ///
 /// Direct Post requires fresh creator capabilities in the caller and verified
@@ -277,6 +291,61 @@ class PlatformPublishSettings {
         },
     };
   }
+
+  /// Serializes a saved intent only for the read-only submission recovery route.
+  /// Missing historical answers stay missing. New publishing must use [toApiJson].
+  Map<String, Object?> toRecoveryApiJson({
+    required Set<SocialPlatform> selectedPlatforms,
+  }) =>
+      {
+        if (selectedPlatforms.contains(SocialPlatform.tiktok))
+          'TIKTOK': <String, Object?>{
+            'publishMode': switch (tiktokPublishMode) {
+              TikTokPublishMode.inboxDraft => 'INBOX_DRAFT',
+              TikTokPublishMode.directPost => 'DIRECT_POST',
+            },
+            if (tiktokPublishMode == TikTokPublishMode.directPost) ...{
+              'privacyLevel': tiktokPrivacyLevel?.apiValue,
+              'creatorInfoRevision': tiktokCreatorInfoRevision,
+              'disableComment': !tiktokAllowComment,
+              'disableDuet': !tiktokAllowDuet,
+              'disableStitch': !tiktokAllowStitch,
+              'brandContentToggle': tiktokBrandContentToggle,
+              'brandOrganicToggle': tiktokBrandOrganicToggle,
+              'isAigc': tiktokIsAigc,
+              'videoDurationSeconds': tiktokVideoDurationSeconds,
+              'musicUsageConfirmed': tiktokMusicUsageConfirmed,
+              'brandedContentPolicyConfirmed':
+                  tiktokBrandedContentPolicyConfirmed,
+            },
+          },
+        if (selectedPlatforms.contains(SocialPlatform.youtubeShorts))
+          'YOUTUBE_SHORTS': <String, Object?>{
+            'visibility': youtubeVisibility.name,
+            if (youtubeTitle.trim().isNotEmpty &&
+                youtubeMadeForKids != null &&
+                youtubeContainsSyntheticMedia != null &&
+                youtubeCommunityGuidelinesCertified) ...{
+              'title': youtubeTitle.trim(),
+              'madeForKids': youtubeMadeForKids,
+              'containsSyntheticMedia': youtubeContainsSyntheticMedia,
+              'communityGuidelinesCertified':
+                  youtubeCommunityGuidelinesCertified,
+            },
+          },
+        if (selectedPlatforms.contains(SocialPlatform.instagramReels))
+          'INSTAGRAM_REELS': <String, Object?>{
+            'shareToFeed': instagramShareToFeed,
+          },
+        if (selectedPlatforms.contains(SocialPlatform.facebookReels) &&
+            facebookPublishMode != null)
+          'FACEBOOK_REELS': <String, Object?>{
+            'publishMode': switch (facebookPublishMode!) {
+              FacebookPublishMode.publish => 'PUBLISH',
+              FacebookPublishMode.pageDraft => 'PAGE_DRAFT',
+            },
+          },
+      };
 
   Map<String, Object?> toDraftJson() => {
         'tiktokPublishMode': tiktokPublishMode.name,

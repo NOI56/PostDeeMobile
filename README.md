@@ -7,6 +7,26 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Channel publishing preflight (2026-10-15, local implementation)
+
+The next change checks YouTube/Instagram/Facebook captions before upload and
+checks the actual rendered file before sending it. A read-only, owner-scoped
+channel-readiness endpoint exposes explicit reconnect/permission problems without
+creating profiles, synchronizing accounts or publishing. Missing provider
+capability evidence is shown as unverified, never as a promise of successful
+publication. YouTube offers a title suggestion only for an empty title; audience,
+AI disclosure and certification still require the user's answers.
+All connected platforms now expose the same opaque account revision in ordinary
+connection lists. A separate read-only submission-recovery lookup can return an
+already accepted original request before new media/readiness/caption guards,
+without creating a post or enqueueing it again.
+
+This work is on `codex/platform-publish-preflight`, based on freshly verified
+`main`/`origin/main` `c1e70cf`. It has not been pushed, deployed or installed on the user's device.
+There is no schema, dependency or environment change. Deploy API before Mobile;
+the previously delivered TikTok source/APK12022 below remains the Staging release.
+See [scope, checks and remaining validation](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md).
+
 ## TikTok Direct Post (2026-10-15, Staging delivered)
 
 The new explicit Direct Post path reads the connected creator's latest options

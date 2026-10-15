@@ -62,6 +62,44 @@ describe('post routes', () => {
     return { app, userId, store, queue, reschedule, subscriptionStore, getPlan, ensureUser, platformPublishStore };
   };
 
+  describe('platform caption preflight', () => {
+    it('does not fill a missing Facebook setting for a new post', async () => {
+      const { app } = createPlanScheduleApp('PRO');
+      const response = await request(app).post('/posts').send({ caption: 'valid caption', videoS3Key: ownedUploadKey('seller-plan-window', 'video.mp4'), platforms: ['YOUTUBE_SHORTS', 'FACEBOOK_REELS'], platformSettings: { YOUTUBE_SHORTS: { title: 'New video', visibility: 'private', madeForKids: false, containsSyntheticMedia: false, communityGuidelinesCertified: true } } }).expect(400);
+      expect(response.body.code).toBe('INVALID_PLATFORM_SETTINGS');
+    });
+    it.each([
+      ['YOUTUBE_SHORTS', 'ก'.repeat(1667), 'YOUTUBE_DESCRIPTION_TOO_LONG'],
+      ['YOUTUBE_SHORTS', 'ราคา < 100', 'YOUTUBE_DESCRIPTION_INVALID_CHARACTERS'],
+      ['INSTAGRAM_REELS', 'a'.repeat(2201), 'INSTAGRAM_CAPTION_TOO_LONG'],
+      ['FACEBOOK_REELS', 'a'.repeat(63207), 'FACEBOOK_CAPTION_TOO_LONG']
+    ])('rejects invalid %s captions before any mutation/provider lookup', async (platform, caption, reason) => {
+      const resolvePlatformTarget = vi.fn();
+      const assertUploadReady = vi.fn();
+      const { app, store, queue, ensureUser, getPlan } = createPlanScheduleApp('PRO', futureNow, { resolvePlatformTarget, assertUploadReady });
+      const create = vi.spyOn(store, 'createWithinMonthlyLimit');
+      const enqueue = vi.spyOn(queue, 'enqueue');
+      const response = await request(app).post('/posts').send({ caption, videoS3Key: ownedUploadKey('seller-plan-window', 'video.mp4'), platforms: [platform] }).expect(400);
+      expect(response.body).toMatchObject({ code: 'PLATFORM_CAPTION_INVALID', platform, reason });
+      expect(resolvePlatformTarget).not.toHaveBeenCalled();
+      expect(assertUploadReady).not.toHaveBeenCalled();
+      expect(ensureUser).not.toHaveBeenCalled();
+      expect(getPlan).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+    it('recovers an already accepted old caption unchanged', async () => {
+      const { app, store, userId } = createPlanScheduleApp('PRO');
+      const caption = 'ก'.repeat(1667);
+      const videoS3Key = ownedUploadKey(userId, 'old-video.mp4');
+      const accepted = await store.createWithinMonthlyLimit({ userId, clientRequestId: 'old-accepted-caption', caption, videoS3Key, platforms: ['YOUTUBE_SHORTS'], monthlyPostUnitLimit: 10, now: futureNow().toISOString() });
+      expect(accepted.ok).toBe(true);
+      const response = await request(app).post('/posts').send({ clientRequestId: 'old-accepted-caption', caption, videoS3Key, platforms: ['YOUTUBE_SHORTS'] }).expect(200);
+      expect(response.body.idempotentReplay).toBe(true);
+      expect(response.body.post.caption).toBe(caption);
+    });
+  });
+
   describe('TikTok Direct Post preflight', () => {
     const target = { accountId: 'owner-tiktok-account', externalAccountId: 'creator-one', connectedAt: '2026-05-01T10:00:00.000Z' };
     const creatorInfo = {

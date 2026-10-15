@@ -11,6 +11,7 @@ import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
 import 'support/test_tiktok_video_preparer.dart';
 import 'support/uploader_wizard_test_navigation.dart';
@@ -218,6 +219,8 @@ void main() {
       await tester.pumpWidget(MaterialApp(
           home: Scaffold(
               body: UploaderScreen(
+        probePublishMedia: probeValidPublishMedia,
+        loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
         now: () => now,
         draftStore: TestPublishDraftStore(),
         loadSocialConnections: _loadConnectedSocialConnections,
@@ -289,6 +292,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       now: () => now,
       draftStore: TestPublishDraftStore(),
       loadSocialConnections: _loadConnectedSocialConnections,
@@ -344,6 +349,8 @@ void main() {
       await tester.pumpWidget(MaterialApp(
           home: Scaffold(
               body: UploaderScreen(
+        probePublishMedia: probeValidPublishMedia,
+        loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
         draftStore: TestPublishDraftStore(),
         now: () => now,
         loadSocialConnections: _loadConnectedSocialConnections,
@@ -376,6 +383,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       draftStore: TestPublishDraftStore(),
       loadSocialConnections: _loadConnectedSocialConnections,
       loadSubscription: () {
@@ -415,6 +424,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: UploaderScreen(
+          probePublishMedia: probeValidPublishMedia,
+          loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
           draftStore: TestPublishDraftStore(),
           loadSocialConnections: () async {
             loads += 1;
@@ -475,6 +486,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: UploaderScreen(
+          probePublishMedia: probeValidPublishMedia,
+          loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
           draftStore: store,
           loadSocialConnections: () async {
             loads += 1;
@@ -529,6 +542,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: () async => const [
               SocialConnectionResult(platform: 'TIKTOK', connected: false),
               SocialConnectionResult(
@@ -599,6 +614,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: () async => const [
               SocialConnectionResult(
                 platform: 'TIKTOK',
@@ -660,6 +677,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: () async => const [
               SocialConnectionResult(
@@ -761,6 +780,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadTikTokPublishingOptions: () async => throw const ApiException(
                 'ตัวเลือก TikTok ยังไม่พร้อม',
@@ -905,6 +926,8 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => PickedVideoFile(
               name: fixture.name,
@@ -997,6 +1020,8 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => fixture,
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1176,6 +1201,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
           ),
         ),
@@ -1231,6 +1258,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'seller-pro',
@@ -1300,6 +1329,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => const PickedVideoFile(
               name: 'real-demo.mp4',
@@ -1371,6 +1402,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () => picker.future,
           ),
@@ -1406,6 +1439,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () => picker.future,
           ),
@@ -1433,6 +1468,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             loadTemplates: () => loadCompleter.future,
           ),
@@ -1500,6 +1537,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: () async {
               readinessChecks += 1;
@@ -1598,6 +1637,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => pickedVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1673,6 +1714,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => pickedVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1783,6 +1826,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'starter-user',
@@ -1833,6 +1878,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => const PickedVideoFile(
               name: 'real-demo.mp4',
@@ -1892,6 +1939,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
@@ -1954,6 +2003,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
@@ -2054,6 +2105,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
@@ -2125,6 +2178,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             now: () => currentTime,
             pickVideo: () async =>
@@ -2202,6 +2257,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
@@ -2275,6 +2332,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             loadSubscription: () async {
               subscriptionChecks += 1;
@@ -2314,6 +2373,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             loadSubscription: () async {
               subscriptionChecks += 1;
@@ -2353,6 +2414,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
@@ -2409,6 +2472,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
@@ -2456,6 +2521,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async =>
@@ -2532,6 +2599,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: () async => const [
               SocialConnectionResult(platform: 'TIKTOK', connected: true),
@@ -2571,6 +2640,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async => _createPickedVideoFixture('old-api.mp4'),
@@ -2640,6 +2711,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async =>
@@ -2715,6 +2788,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             loadSocialConnections: _loadConnectedSocialConnections,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'seller-starter',
@@ -2799,6 +2874,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: TestPublishDraftStore(),
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: _publishingReady,
@@ -2871,6 +2948,8 @@ void main() {
             ),
             home: Scaffold(
               body: UploaderScreen(
+                probePublishMedia: probeValidPublishMedia,
+                loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
                 draftStore: TestPublishDraftStore(),
                 loadSocialConnections: () async => const [],
                 initialVideoPath: video.path,

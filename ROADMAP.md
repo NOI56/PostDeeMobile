@@ -2,6 +2,27 @@
 
 Build roadmap for PostDee.
 
+## Channel publishing preflight (2026-10-15, local implementation)
+
+- Add consistent YouTube/Instagram/Facebook caption guards to Mobile, new API
+  requests and the provider publisher; retain TikTok and accepted replay behavior.
+- Add read-only owner-bound channel readiness with reconnect/permission guidance,
+  explicit evidence only, unverified unknown capabilities and API-404 compatibility.
+- Probe the actual outgoing file before upload; preserve original media, local
+  drafts, optional receipt metadata and unknown request identity across retries.
+- Expose account revisions for every connected platform and recover accepted
+  original submissions through an owner-scoped read-only lookup before new
+  preflight guards, without creating or enqueueing another post.
+- Keep YouTube title suggestion editable and blank-only; display every selected
+  YouTube declaration, Instagram feed choice and YouTube Terms notice at review.
+  Facebook remains Page Video rather than an unverified Reels destination.
+- Backend **2,163 tests**, Mobile **2,351 tests** (one optional preview skipped),
+  typecheck/build, schema/helper checks, analysis and the exact Staging APK build
+  pass. Diagnostic runtime evidence and remaining external checks are in the
+  [verification record](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md).
+- No merge/push/deploy, user-device installation, real upload/post or Production change is
+  included. Release requires API before Mobile and no new database migration.
+
 ## TikTok Direct Post (2026-10-15, Staging delivered)
 
 - Implement account-bound creator-info, explicit privacy and interaction choices,

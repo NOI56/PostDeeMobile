@@ -11,6 +11,7 @@ import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:postdee_mobile/features/uploader/watermark_video_processor.dart';
 
+import 'support/publish_preflight_fixtures.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 import 'support/test_publish_media_identity.dart';
 
@@ -212,6 +213,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: draftStore,
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: () async {},
@@ -325,6 +328,8 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
+            probePublishMedia: probeValidPublishMedia,
+            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
             draftStore: draftStore,
             loadSocialConnections: _loadConnectedSocialConnections,
             checkPublishingReadiness: () async {},

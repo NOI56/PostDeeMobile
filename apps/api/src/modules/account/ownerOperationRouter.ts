@@ -51,7 +51,11 @@ export const createOwnerOperationRouter = (router: Router, runWithActiveOwner: R
             finally { response.json = originalJson; }
             // A provider request may have been accepted before a server error.
             // Keep its private blocker until the operator reconciles the result.
-            if (response.statusCode >= 500 && (!code || !unavailableBeforeRemoteWork.has(code))) {
+            // This POST carries a private lookup intent in the body but never
+            // mutates or contacts a publisher. Keep its lifetime admission and
+            // completion while exempting only its exact path from write ambiguity.
+            const readOnlyRecovery = request.method === 'POST' && path === '/posts/submissions/recover';
+            if (response.statusCode >= 500 && !readOnlyRecovery && (!code || !unavailableBeforeRemoteWork.has(code))) {
               retainCurrentOwnerOperation(user.id);
             }
           }).catch(next);

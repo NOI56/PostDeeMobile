@@ -150,6 +150,7 @@ import type { PrismaSocialConnectionClient } from './modules/socialConnections/p
 import { registerSocialConnectionRoutes } from './modules/socialConnections/socialConnectionRoutes.js';
 import { createPostPeerTikTokClient, TikTokPublishingError, type PostPeerTikTokClient } from './modules/socialConnections/postPeerTikTokClient.js';
 import { registerTikTokPublishingOptionsRoutes } from './modules/socialConnections/tikTokPublishingOptionsRoutes.js';
+import { registerPublishingReadinessRoutes } from './modules/socialConnections/publishingReadinessRoutes.js';
 import type { SocialConnectionStore } from './modules/socialConnections/socialConnectionStore.js';
 import { createSocialConnectionStore } from './modules/socialConnections/socialConnectionStoreFactory.js';
 import { registerPlannedRoutes } from './routes/plannedRoutes.js';
@@ -669,6 +670,7 @@ export const createApp = (options: AppOptions = {}) => {
         config.nodeEnv !== 'production' && config.authProvider === 'mock',
       socialPublishingEnabled: config.socialPublisher !== 'disabled',
       assertOwnerActive,
+      runWithOwnerLifetime,
       resolvePlatformTarget:
         config.socialPublisher === 'postpeer'
           ? async ({ userId, platform }) => {
@@ -789,6 +791,10 @@ export const createApp = (options: AppOptions = {}) => {
   registerTikTokPublishingOptionsRoutes(router, accountAwareAuthMiddleware, {
     store: socialConnectionStore, client: postPeerTikTokClient,
     assertOwnerActive, runWithOwnerLifetime
+  });
+  registerPublishingReadinessRoutes(router, accountAwareAuthMiddleware, {
+    store: socialConnectionStore, client: postPeerConnectClient,
+    assertOwnerActive, runWithOwnerLifetime, now: options.now
   });
   registerAccountRoutes(router, accountDeletionAuthMiddleware, {
     postStore,

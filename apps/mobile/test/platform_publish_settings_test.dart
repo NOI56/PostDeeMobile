@@ -3,6 +3,152 @@ import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/uploader/platform_publish_settings.dart';
 
 void main() {
+  group('safe YouTube title suggestion', () {
+    test('uses the first usable caption line without forbidden characters', () {
+      expect(
+          safeYouTubeTitleSuggestion(
+              '\n <> \n  รีวิว\t <สินค้า>   ใหม่  \n#รีวิว'),
+          'รีวิว สินค้า ใหม่');
+    });
+
+    test('returns no invented title for an empty caption', () {
+      expect(safeYouTubeTitleSuggestion(' \n\t<>\r\n '), isEmpty);
+    });
+
+    test('limits titles to 100 Unicode code points without splitting emoji',
+        () {
+      final title = safeYouTubeTitleSuggestion('${'😀' * 99}กขค');
+      expect(title, '${'😀' * 99}ก');
+      expect(title.runes.length, 100);
+    });
+
+    test('keeps a complete title at the exact Unicode boundary', () {
+      final title = '🎬${'ก' * 99}';
+      expect(safeYouTubeTitleSuggestion(title), title);
+    });
+  });
+
+  group('read-only submission recovery settings', () {
+    test('preserves every completed current publishing choice', () {
+      const settings = PlatformPublishSettings(
+        youtubeTitle: 'ชื่อที่ยืนยันไว้',
+        youtubeVisibility: YouTubeVisibility.unlisted,
+        youtubeMadeForKids: true,
+        youtubeContainsSyntheticMedia: false,
+        youtubeCommunityGuidelinesCertified: true,
+        instagramShareToFeed: false,
+        facebookPublishMode: FacebookPublishMode.pageDraft,
+      );
+      const platforms = {
+        SocialPlatform.tiktok,
+        SocialPlatform.youtubeShorts,
+        SocialPlatform.instagramReels,
+        SocialPlatform.facebookReels,
+      };
+      expect(settings.toRecoveryApiJson(selectedPlatforms: platforms),
+          settings.toApiJson(selectedPlatforms: platforms));
+    });
+
+    test('old YouTube answers serialize only the persisted visibility', () {
+      for (final settings in [
+        const PlatformPublishSettings(),
+        const PlatformPublishSettings(youtubeTitle: 'ชื่อเดิม'),
+        const PlatformPublishSettings(
+          youtubeMadeForKids: false,
+          youtubeContainsSyntheticMedia: false,
+        ),
+      ]) {
+        expect(
+            settings.toRecoveryApiJson(
+                selectedPlatforms: {SocialPlatform.youtubeShorts}),
+            {
+              'YOUTUBE_SHORTS': {'visibility': 'private'},
+            });
+        expect(settings.youtubeCommunityGuidelinesCertified, isFalse);
+        expect(
+            () => settings
+                .toApiJson(selectedPlatforms: {SocialPlatform.youtubeShorts}),
+            throwsStateError);
+      }
+    });
+
+    test('does not invent private visibility for an incomplete saved choice',
+        () {
+      const settings =
+          PlatformPublishSettings(youtubeVisibility: YouTubeVisibility.public);
+      expect(
+          settings.toRecoveryApiJson(
+              selectedPlatforms: {SocialPlatform.youtubeShorts}),
+          {
+            'YOUTUBE_SHORTS': {'visibility': 'public'},
+          });
+    });
+
+    test('omits an unrecorded legacy Facebook mode instead of inventing one',
+        () {
+      const settings = PlatformPublishSettings();
+      expect(
+          settings.toRecoveryApiJson(selectedPlatforms: {
+            SocialPlatform.instagramReels,
+            SocialPlatform.facebookReels,
+          }),
+          {
+            'INSTAGRAM_REELS': {'shareToFeed': true},
+          });
+      expect(
+          () => settings
+              .toApiJson(selectedPlatforms: {SocialPlatform.facebookReels}),
+          throwsStateError);
+    });
+
+    test(
+        'preserves a Direct snapshot without asserting current publishing readiness',
+        () {
+      const settings = PlatformPublishSettings(
+        tiktokPublishMode: TikTokPublishMode.directPost,
+        tiktokPrivacyLevel: TikTokPrivacyLevel.selfOnly,
+        tiktokAllowComment: true,
+      );
+      final snapshot = settings
+          .toRecoveryApiJson(selectedPlatforms: {SocialPlatform.tiktok});
+      expect(snapshot, {
+        'TIKTOK': {
+          'publishMode': 'DIRECT_POST',
+          'privacyLevel': 'SELF_ONLY',
+          'creatorInfoRevision': null,
+          'disableComment': false,
+          'disableDuet': true,
+          'disableStitch': true,
+          'brandContentToggle': false,
+          'brandOrganicToggle': false,
+          'isAigc': false,
+          'videoDurationSeconds': null,
+          'musicUsageConfirmed': false,
+          'brandedContentPolicyConfirmed': false,
+        },
+      });
+      expect(
+          () => settings.toApiJson(selectedPlatforms: {SocialPlatform.tiktok}),
+          throwsStateError);
+    });
+
+    test('does not invent an unrecorded TikTok privacy choice', () {
+      const settings = PlatformPublishSettings(
+          tiktokPublishMode: TikTokPublishMode.directPost);
+      final snapshot = settings
+          .toRecoveryApiJson(selectedPlatforms: {SocialPlatform.tiktok});
+      expect((snapshot['TIKTOK'] as Map)['privacyLevel'], isNull);
+      expect((snapshot['TIKTOK'] as Map)['musicUsageConfirmed'], isFalse);
+    });
+
+    test('serializes no platforms that were not in the original selection', () {
+      expect(
+          const PlatformPublishSettings()
+              .toRecoveryApiJson(selectedPlatforms: {}),
+          isEmpty);
+    });
+  });
+
   const revision =
       'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899';
   const creator = TikTokCreatorInfo(

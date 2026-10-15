@@ -2,6 +2,37 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Channel publishing preflight (2026-10-15, local implementation)
+
+The new uploader validates the exact trimmed caption for selected channels:
+YouTube 5,000 UTF-8 bytes/no angle brackets, Instagram 2,200 conservative UTF-16
+units and Facebook 63,206 conservative UTF-16 units. An owned FFprobe session with
+bounded execution checks the final outgoing file after rendering, rather than
+guessing from the original clip. YouTube Shorts is limited to 180 seconds;
+Instagram checks MOV/MP4 container/duration/size/dimensions/FPS/codecs/audio, and Facebook keeps its
+Page Video limits. Unknown metadata blocks the affected media check.
+
+Channel-readiness loads at channel selection and is refreshed before upload and
+post creation. Explicit reconnect/permission problems block submission; unknown
+capabilities are labeled unverified and an old API's 404 is the only fallback.
+The response is a snapshot, not a promise about a delayed post's future access.
+Optional metadata stays bound to an upload receipt's media fingerprint. Legacy
+receipts/drafts and unknown post request IDs are retained; an unproven cached
+render is not silently discarded and re-uploaded. Existing accepted submissions
+can first be recovered through a read-only original-intent lookup, including
+legacy receipts without media metadata; missing/unverified items stay protected
+and a recovered FAILED result stays failed. Ordinary connection lists expose
+revisions for every platform for list/readiness binding. A YouTube title suggestion fills
+only a blank title; audience/AI/certification answers remain manual. Review shows
+those answers, Instagram feed choice and the YouTube Terms/copyright notice.
+
+This feature is local on `codex/platform-publish-preflight`, based on `c1e70cf`;
+the full Mobile suite passes **2,351 tests** with one optional preview skipped.
+Analysis and the exact Staging Android build pass. It is not installed on the
+user's device or deployed. API must ship first, with no schema/env/dependency change.
+The previous TikTok APK12022 delivery below is unchanged. Validation:
+`../../docs/superpowers/plans/2026-10-15-platform-publish-preflight.md`.
+
 ## TikTok Direct Post (2026-10-15, Android Staging delivered)
 
 TikTok settings now offer Inbox or Direct Post using current account-bound

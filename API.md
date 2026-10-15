@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## TikTok Inbox completion mapping (2026-10-15, locally verified)
+## TikTok Inbox completion mapping (2026-10-15, Staging delivered)
 
 No request/response shape changes. For requested TikTok INBOX_DRAFT, a completed
 selected-platform result with a strict `v_inbox_url~v2.<digits>` or
@@ -13,8 +13,18 @@ reference. Failure/pending checks and explicit draft compatibility remain.
 Inbox receipts cannot confirm Direct Post/private/live delivery. A messages URL
 alone, ordinary video ID or missing provider ID is insufficient. Historical
 FAILED records are not rewritten by deploying this mapper. All 1,947 API tests,
-typecheck/build, Prisma checks and compiled worker smoke pass. No deployment or
-historical receipt update is performed. Evidence:
+typecheck/build, Prisma checks and compiled worker smoke pass. Source `7a55fe8`
+is on main and Live on Staging deploy `dep-db8d6gss728c7391ajp0` after exact-head
+CI `38741265826` passes Backend API (119 files / 1,947 tests) and Mobile
+(2,252 tests/analysis). Health/readiness return HTTP200; all 18 existing
+migrations are applied and the empty-backlog guard passes. No request/schema,
+environment/configuration, Production or APK12021 change is included. A separate
+guarded repair corrects only the matched historical parent/receipt to
+`PUBLISHED` with DRAFT delivery, retaining its provider ID and original handoff
+time, with no live reference/error or provider resend. Independent readback and
+Calendar/detail confirm `ส่งเป็นร่างแล้ว`; all five unresolved operation markers
+remain untouched. This does not confirm user-side Inbox completion or public
+publication. Evidence:
 `docs/superpowers/plans/2026-10-15-tiktok-inbox-delivery-status.md`.
 
 ## TikTok native completion correction (2026-10-15, local Mobile app updated)
@@ -25,10 +35,12 @@ media before any remote upload, including normalized 360–4096-pixel dimensions
 The client-local v2 preparation receipt prevents reuse of older unvalidated media;
 the existing explicit-new-attempt guard preserves legacy receipts and IDs.
 Existing request IDs, owner guards, platform results, and Calendar `GET /posts`
-remain intact. Staging API runtime `0f2941b` requires no new deployment,
-migration, or provider configuration. Mobile analysis and all 2,252 tests pass;
-APK 12021 is installed locally with the account/draft retained. No real post or
-server-side publication success is claimed. Fresh Home/Profile show Free 0/3
+remain intact. This mobile correction requires no migration or provider
+configuration; its source is included in the combined main/Staging delivery
+above. Mobile analysis and all 2,252 tests pass;
+APK 12021 is installed locally with the account/draft retained. These native
+checks do not prove provider delivery; the later user-created Inbox result and
+repaired history are recorded above. The earlier account check showed Free 0/3
 and an unverified phone, which blocks the free allowance under existing rules.
 Verification and APK status:
 `docs/superpowers/plans/2026-10-15-tiktok-native-session-completion.md`.

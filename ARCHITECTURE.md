@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## TikTok Inbox receipt boundary (2026-10-15, locally verified)
+## TikTok Inbox receipt boundary (2026-10-15, Staging delivered)
 
 PostPeer's completed Inbox jobs can report `published` while TikTok returns an
 Inbox publish receipt. The publisher must interpret that selected-platform
@@ -13,8 +13,18 @@ Failure/pending precedence, exact account targets and duplicate-post boundaries
 remain intact. No queue, database, mode, package or native-media change is
 required. Already FAILED receipts need a separate guarded reconciliation rather
 than another publish call. All 1,947 API tests, typecheck/build, Prisma checks
-and compiled worker smoke pass. This is a local correction; Staging and existing
-records remain unchanged. Evidence:
+and compiled worker smoke pass. Source `7a55fe8` is merged/pushed to main, with
+exact-head CI `38741265826` passing Backend API (119 files / 1,947 tests) and
+Mobile (2,252 tests/analysis). Staging deploy `dep-db8d6gss728c7391ajp0` is Live
+at that source with health/readiness HTTP200, 18 migrations/no pending and the
+empty-backlog guard retained. The separately verified one-time historical repair
+updates only its parent/selected TikTok receipt to PUBLISHED/DRAFT. Exact owner,
+intent, provider and version checks, row locks, Serializable isolation and
+independent readback preserve quota and all five unresolved operation markers;
+they are neither drained nor expired. Calendar/detail confirm `ส่งเป็นร่างแล้ว`
+without error. No provider resend, environment/configuration, Production or
+installed APK12021 change is included. User-side TikTok Inbox/public posting
+remains unverified. Evidence:
 `docs/superpowers/plans/2026-10-15-tiktok-inbox-delivery-status.md`.
 
 ## TikTok native session completion boundary (2026-10-15)
@@ -34,9 +44,11 @@ frames, draft ownership, immutable IDs, and Calendar remain intact. Analysis and
 all 2,252 Mobile tests pass. The final helper passes six native two-engine cases,
 cold startup and scoped cancellation; the exact APK's configuration/startup and
 the user-emulator update to 12021 are verified. The retained draft reaches review
-with TikTok selected. This does not verify actual provider publication. Fresh
-Home/Profile show Free 0/3 and an unverified phone; existing free-plan rules
-require phone verification. No API deployment is required. Evidence:
+with TikTok selected. These native checks do not verify public publication. The
+earlier account check showed Free 0/3 and an unverified phone; existing free-plan rules
+require phone verification. The native source is included in the main/Staging
+delivery above; its installed APK12021 and native verification stay unchanged.
+The native fix itself requires no API migration or configuration change. Evidence:
 `docs/superpowers/plans/2026-10-15-tiktok-native-session-completion.md`.
 
 ## Calendar activity and TikTok media boundary (2026-10-15, Staging delivered)

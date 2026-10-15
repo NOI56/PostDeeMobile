@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## TikTok Inbox delivery status (2026-10-15, locally verified)
+## TikTok Inbox delivery status (2026-10-15, Staging delivered)
 
 A completed PostPeer TikTok Inbox job can return `published` with an Inbox
 receipt rather than literal `draft`. The correction recognizes that strict
@@ -16,8 +16,16 @@ without claiming public publication or retrying the provider request. Historical
 FAILED rows require a separately verified repair; deploying the mapper alone
 does not rewrite them. No mode, schema, quota or native preparation changes are
 needed. All 1,947 API tests, typecheck/build, Prisma checks and the compiled
-worker smoke pass. The correction is local, without deployment or historical
-record changes. Evidence and verification:
+worker smoke pass. Source `7a55fe8` is merged and pushed to main; exact-head CI
+`38741265826` passes Backend API (119 files / 1,947 tests) and Mobile (2,252 tests
+and clean analysis). Staging deploy `dep-db8d6gss728c7391ajp0` is Live at
+13:23:04 UTC with health/readiness HTTP200, 18 migrations/no pending and the
+empty-backlog guard retained. A separately guarded one-time repair corrects the
+matched historical post to DRAFT delivery; Calendar and post detail now show
+`ส่งเป็นร่างแล้ว` without the error. All five unresolved operation markers remain
+untouched. No provider resend, environment/configuration, Production or installed
+APK12021 change is included. The user must still finish the TikTok Inbox flow;
+public publication is unverified. Evidence and verification:
 `docs/superpowers/plans/2026-10-15-tiktok-inbox-delivery-status.md`.
 
 ## TikTok native completion with background engines (2026-10-15, local app updated)
@@ -32,10 +40,13 @@ Firebase messaging, API contracts, package rules, and Calendar stay unchanged.
 All 2,252 Mobile tests and analysis pass; the exact helper also passes six native
 two-engine cases, a cold start, and scoped cancellation. Staging APK 12021 is
 installed on the user emulator with its account and original draft retained.
-The draft opens at review with TikTok selected. Actual platform publication is
-unverified. Fresh Home/Profile show Free with 0/3 remaining and an unverified
-phone; phone verification is required for the free allowance. This patch is
-committed locally, without a push, merge, or API deployment. Full receipt:
+The draft opens at review with TikTok selected. Public TikTok publication is
+unverified. At the earlier account check, Home/Profile showed Free with 0/3
+remaining and an unverified phone; existing free-plan rules require phone
+verification. The native source
+is included in the main/CI/Staging delivery above; APK12021 remains installed.
+Push CI skips APK building/uploading and does not replace its native receipt.
+Full receipt:
 `docs/superpowers/plans/2026-10-15-tiktok-native-session-completion.md`.
 
 ## TikTok media and Calendar activity (2026-10-15, Staging delivered)

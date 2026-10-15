@@ -6,7 +6,7 @@
   `9189e7b60b2d5a641c079ed03ed52e9a1f59904b` in clean managed worktree
   `tiktok-native-session-results`, branch `codex/tiktok-native-session-results`.
   Preserve the generated Windows changes and QA artifacts in other worktrees.
-- Staging API runtime remains `0f2941b`; at diagnosis the installed Staging APK was
+- At diagnosis, Staging API runtime was `0f2941b` and the installed Staging APK was
   version 12020, SHA-256
   `84468A674619A4FEAF95C36275177ECDE8CFBD344692B4AC00FA814F47F801E9`.
 - The user tries a TikTok-only post and receives the generic local preparation
@@ -177,6 +177,35 @@
   Firebase UID, so expiry is not asserted for this account. No subscriber data,
   entitlement, purchase, or subscription setting is changed. Posting re-reads
   eligibility before preparation; passing native checks does not grant eligibility.
-- Actual TikTok provider publication, physical Android devices and iOS runtime
-  remain unverified. No merge, push, API deployment, provider/configuration flag
-  change, billing mutation or Production delivery is performed for this patch.
+- At completion of local native verification, public TikTok publication,
+  physical Android devices and iOS runtime remain unverified. No provider flag,
+  billing mutation or Production delivery is performed for this native fix.
+
+## Subsequent authorized main and Staging delivery
+
+- The user-authorized integration fast-forwards and pushes main from `9189e7b`
+  to `7a55fe8a0b4152ee4ad4d9a5238c918656b67a61`, including native source
+  `656b2bd`, verification docs `744ebf0`, and the subsequent backend-only Inbox
+  result correction `7a55fe8`.
+- Exact-head [CI `38741265826`](https://github.com/NOI56/PostDeeMobile/actions/runs/38741265826)
+  passes Backend API (119 files / 1,947 tests) and Mobile (2,252 tests and clean
+  analysis). Push CI skips APK building/uploading. The installed APK12021,
+  helper SHA-256 `ADF16A1C...44BEAED`, and exact local native/APK receipts above
+  remain unchanged; this delivery does not claim a new APK or native retest.
+- Staging deploy `dep-db8d6gss728c7391ajp0` is Live at
+  `2026-10-15T13:23:04.671572Z` on that exact source. All 18 migrations are
+  applied with none pending; the empty-backlog guard passes. Health/readiness
+  return HTTP200 at 13:23:51 and 13:25:33 UTC. The bounded post-Live log query
+  has no errors/5xx, with incomplete request coverage.
+- Environment/provider configuration, flags and Production remain unchanged.
+  The observed user-created Inbox handoff and separate historical receipt repair
+  belong to `2026-10-15-tiktok-inbox-delivery-status.md`. Its one-time guarded
+  repair completes around 13:36 UTC, changing only the matched parent/receipt
+  with DRAFT semantics. Independent readback and APK12021 Calendar/detail show
+  `ส่งเป็นร่างแล้ว` without error at 13:37 UTC. All five unresolved operation
+  markers, quota and other immutable data remain unchanged; no provider resend
+  or queue replay is performed. Proofs `user12021-inbox-repaired.png` and
+  `user12021-inbox-repaired-calendar.png` are in the session-results directory.
+  This corrects PostDee history; user-side TikTok Inbox confirmation and public
+  publication remain unverified. Physical Android and iOS runtime also remain
+  unverified.

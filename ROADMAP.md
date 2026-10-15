@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## TikTok Inbox result mapping (2026-10-15, locally verified)
+## TikTok Inbox result mapping (2026-10-15, Staging delivered)
 
 - Recognize the observed completed TikTok Inbox receipt as the existing DRAFT
   delivery outcome, retaining the genuine provider post ID and all failure,
@@ -11,7 +11,15 @@ Build roadmap for PostDee.
   of private/live publication. Public posting still requires the user to finish
   the TikTok Inbox flow. Do not resend to repair a status discrepancy.
 - All 1,947 API tests, typecheck/build, Prisma checks and compiled worker smoke
-  pass. No merge, push, deployment or historical receipt repair is performed.
+  pass. Source `7a55fe8` is merged/pushed to main; exact-head CI `38741265826`
+  passes Backend API (119 files / 1,947 tests) and Mobile (2,252 tests/analysis).
+- Staging deploy `dep-db8d6gss728c7391ajp0` is Live at 13:23:04 UTC with
+  health/readiness HTTP200, 18 migrations/no pending and the empty-backlog guard
+  retained. No environment/configuration, Production or new APK change is made.
+  The separately guarded one-time historical repair changes only the matched
+  parent/TikTok receipt; Calendar and detail show `ส่งเป็นร่างแล้ว` without error.
+  All five unresolved operation markers are preserved; no provider resend or
+  queue replay is performed. User-side TikTok Inbox/public posting remains open.
 - No schema, package, API shape or mobile rebuild is required. Historical FAILED
   rows need separate owner/intent/provider proof before any receipt correction.
   Receipt: `docs/superpowers/plans/2026-10-15-tiktok-inbox-delivery-status.md`.
@@ -30,10 +38,12 @@ Build roadmap for PostDee.
   regressions. Six native two-engine cases, a cold start, scoped cancellation,
   and the exact Staging APK startup/configuration checks also pass.
 - Staging APK 12021 is installed on the user emulator without losing its account
-  or draft. TikTok remains selected at review. Actual publication is unverified;
-  Home/Profile report Free with 0/3 remaining and an unverified phone; the user
-  must verify the phone for free allowance. The patch is local, with no merge or
-  push. No server migration, configuration, or API redeployment is required. Receipt:
+  or draft. TikTok remains selected at review. Public publication is unverified.
+  The earlier account check showed Free with 0/3 remaining and an unverified
+  phone; existing free-plan rules require phone verification. The native source is included in
+  the main/CI/Staging delivery above; the installed APK12021 stays unchanged.
+  Push CI skips APK building/uploading. No native-fix migration or configuration
+  change is required. Receipt:
   `docs/superpowers/plans/2026-10-15-tiktok-native-session-completion.md`.
 
 ## TikTok frame rate and complete Calendar activity (2026-10-15)

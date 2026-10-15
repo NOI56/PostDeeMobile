@@ -5,13 +5,15 @@
 - The user reports a TikTok-only post as FAILED in PostDee, created on October
   15 at 12:43 UTC. This is a stored publishing result, separate from the earlier
   local video-preparation timeout.
-- Freshly fetched `origin/main` remains `9189e7b`. Work continues on
+- At the verified pre-change baseline, freshly fetched `origin/main` was
+  `9189e7b`. Work continued on
   `codex/tiktok-native-session-results`, retaining local native-preparation
   commit `656b2bd` and verification receipt `744ebf0`. The API files for this
   correction are unchanged from main before the patch. Preserve unrelated
   generated Windows line-ending changes.
-- Staging API runtime is `0f2941b`; the installed app is 12021. Neither has been
-  deployed or replaced again during this diagnosis.
+- At diagnosis, Staging API runtime was `0f2941b` and the installed app was
+  12021. Subsequent authorized main/Staging delivery is recorded below; the
+  installed APK remains 12021.
 
 ## Read-only evidence
 
@@ -74,15 +76,18 @@
 - The already FAILED PostDee record will not repair itself when this mapper is
   deployed: existing interrupted-job reconciliation scans PUBLISHING records.
   Never requeue or publish again to repair a status mismatch.
-- A separate controlled repair would first prove the immutable PostDee owner,
+- A separate controlled repair must first prove the immutable PostDee owner,
   target, media/settings and exact provider record, then conditionally update
-  only the matching stored delivery receipt and parent aggregate. That repair
-  has not been performed or enabled here. No external database access is opened.
-- Until that separate repair, the historical app screen can remain FAILED even
-  though the provider reports an Inbox handoff. The user's TikTok Inbox and
-  final public publication still require user-side confirmation.
-- Code verification and delivery status will be recorded below. No merge,
-  push, Staging deployment or live social publication is claimed yet.
+  only the matching stored delivery receipt and parent aggregate. That separate
+  repair is now completed and verified below. No automatic historical-repair
+  feature or external database access is enabled.
+- The historical screen previously remained FAILED despite the Inbox handoff.
+  After the guarded repair, Calendar and post detail show `ส่งเป็นร่างแล้ว`
+  without error. The user's TikTok Inbox and final public publication still
+  require user-side confirmation.
+- Code verification and completed main/Staging delivery are recorded below.
+  Neither that deployment nor a stored-receipt repair proves public TikTok
+  publication.
 
 ## Verification receipt
 
@@ -117,26 +122,87 @@
   boundaries or duplicate-publication guards. Mobile source, package rules,
   storage, owner guards, native helper, schema, dependencies and flags are
   unchanged; the previously installed 12021 app and its verified native fix
-  remain in place. No mobile or physical-device retest is claimed for this
-  backend-only correction.
-- No merge, push, deployment, migration, historical-record update, TikTok Inbox
-  user action or public social publication is performed. The existing FAILED
-  app history therefore still requires the separate guarded receipt repair.
+  remain in place. No native-codec or physical-device retest is claimed for
+  this backend-only correction; the later app status check is recorded below.
+- Local code verification above does not perform a provider publish or repair.
+  The subsequent authorized historical repair is recorded below; no TikTok
+  Inbox user action or public social publication is claimed.
 
-## Historical repair preview (not executed)
+## Authorized main and Staging delivery receipt
+
+- The user authorizes main integration, push, Staging deployment and a separate
+  single-record historical repair. Integration/deployment is confirmed in this
+  section; the completed repair has its own live receipt below.
+- Main is fast-forwarded and pushed from `9189e7b` to
+  `7a55fe8a0b4152ee4ad4d9a5238c918656b67a61`, retaining native source `656b2bd`,
+  its verification docs `744ebf0`, and the Inbox mapper correction `7a55fe8`.
+  At source delivery, local main, origin/main and the implementation head agree.
+  A later documentation-only receipt commit can advance main without changing
+  the verified Staging runtime `7a55fe8`; no second deployment is needed.
+- Exact-head [CI run `38741265826`](https://github.com/NOI56/PostDeeMobile/actions/runs/38741265826)
+  passes both jobs. The Backend test suite passes 119 files / 1,947 tests in
+  24.66s; typecheck, build, Prisma validation and the production-dependency audit
+  gate also pass.
+  Mobile passes 2,252 tests and analysis with no issues (13.5s). The push
+  workflow skips APK building/uploading; it does not rebuild or replace the
+  separately verified installed APK12021.
+- Render Staging deploy `dep-db8d6gss728c7391ajp0` is Live at
+  `2026-10-15T13:23:04.671572Z`, running exact source `7a55fe8a...b67a61`.
+  All 18 existing migrations are applied, none pending; the empty-backlog
+  activation guard passes. No new migration is introduced.
+- Public `/health` and `/ready` return HTTP200 in both checks at approximately
+  13:23:51 and 13:25:33 UTC. A bounded 13:23:04–13:25:13 UTC log query finds no
+  errors or 5xx entries; its request coverage is incomplete, so it is not proof
+  that every request succeeded.
+- No environment/provider configuration, flags, Production delivery, new APK,
+  queue replay or provider publish/retry is included. The separately completed
+  historical repair is recorded below.
+
+## Historical repair guards and completed live receipt
 
 - Read-only comparison identifies one eligible TikTok-only parent/receipt pair.
-  Proposed effect: mark that existing receipt completed with DRAFT semantics,
+  The authorized effect is to mark that existing receipt with DRAFT semantics,
   retain the already existing PostPeer ID, clear the generic error/live
   reference, and set its handoff timestamp from the verified provider result.
   Recompute only its parent's aggregate delivery status.
-- Before any write, revalidate the active owner, exact row/version, caption,
-  media key, immutable target/settings, failed receipt and provider result in
-  the same guarded owner-operation/transaction boundary. Abort on any mismatch
-  or affected-row count other than one parent and one selected receipt.
-- Preserve caption/media/settings, original request ID, quota/subscription,
-  every other post/platform and all queue state. Never call provider POST/retry,
-  create another post, open the external database allowlist or describe the
-  Inbox handoff as public publication to repair the historical status.
-- This preview is not authorization to change the user's data; no repair
-  command or automatic historical-reconciliation feature is enabled here.
+- The original operator artifact `DBCEF713...` stops its live READ ONLY dry-run
+  at `OWNER_NOT_IDLE_ACTIVE`, with no writes: five durable operation markers
+  remain. Their age is not treated as completion, expiry or reconciliation.
+- The separate v2 operator artifact has SHA-256
+  `F565CD416346A8C0155343C45EC9080C180C9F0C53DDEAA52FCA2540CD22F7E8`.
+  Nine local guard tests and independent code review pass. It permits only the
+  exact five-row operation snapshot, whose sorted ID/start-time SHA-256 is
+  `230bb6a22ce95721866413c9262ca27b6af045ad2b0e5d33ccba95195d334784`.
+  This is not a general drain bypass, and no operation marker is resolved.
+- Apply uses Serializable isolation and locks the ACTIVE owner, its exact
+  operation rows (`FOR SHARE`), the post and single receipt in that order.
+  Immutable owner/target/settings/media/provider evidence and failed-row versions
+  must match; conditional updates must affect exactly one parent and one receipt.
+  Full before/after snapshots preserve the operations and other immutable data.
+  Dry-run/check use explicit READ ONLY transactions without locking selects.
+- The v2 live READ ONLY preview succeeds with `wouldWriteRows: 2` and
+  `writtenRows: 0`. The single authorized apply executes around 13:36 UTC on
+  October 15, returning `ok: true`, `writtenRows: 2`, `quotaPreserved: true`,
+  `immutableProofVerified: true`, `operationSnapshotVerified: true`,
+  `durableBlockersPreserved: true` and `independentReadbackVerified: true`.
+- A subsequent independent `--check` succeeds with `alreadyRepaired: true`,
+  `wouldWriteRows: 0`, `writtenRows: 0`. The existing parent is PUBLISHED and
+  selected TikTok receipt is PUBLISHED with `deliveryOutcome: DRAFT`; the genuine
+  provider ID is retained, live reference/error are null, and the original
+  provider handoff timestamp stays `2026-10-15T12:44:09.409Z`.
+- All five exact operation rows remain unchanged with the snapshot hash above.
+  The owner remains ACTIVE, without deletion authorization or a deletion run.
+  Caption/media/settings, request ID, quota/subscription, every other post and
+  platform, and queue state are preserved. No provider POST/retry, requeue,
+  replacement post, marker cleanup, external database opening or unrelated
+  manual row change is performed.
+- On installed APK12021, Calendar and the reopened post detail both show
+  `ส่งเป็นร่างแล้ว` without the error at approximately 13:37 UTC. Proofs are
+  `user12021-inbox-repaired.png` and `user12021-inbox-repaired-calendar.png`
+  under `D:/PostDeeMobile/.tmp/tiktok-fps-native-probe-20261015/session-results/`.
+  These checks verify the repaired PostDee history. The user must still open
+  TikTok's Inbox notification and finish editing/posting; user-side Inbox
+  confirmation and final public publication remain unverified.
+- No automatic historical-reconciliation feature is added to the application.
+  Customer email, PostDee/provider post IDs, captions and media URLs are omitted
+  from this committed receipt.

@@ -12,6 +12,7 @@ import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/test_publish_draft_store.dart';
+import 'support/test_tiktok_video_preparer.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
 Future<void> _openCaptionOptions(WidgetTester tester, String key) async {
@@ -1947,6 +1948,7 @@ void main() {
             checkPublishingReadiness: _publishingReady,
             pickVideo: () async =>
                 _createPickedVideoFixture('quick-scheduled.mp4'),
+            prepareTikTokVideo: testPrepareTikTokVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'seller-starter',
               plan: 'STARTER',
@@ -2046,6 +2048,7 @@ void main() {
             checkPublishingReadiness: _publishingReady,
             pickVideo: () async =>
                 _createPickedVideoFixture('starter-scheduled.mp4'),
+            prepareTikTokVideo: testPrepareTikTokVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'seller-starter',
               plan: 'STARTER',
@@ -2193,6 +2196,7 @@ void main() {
             checkPublishingReadiness: _publishingReady,
             analytics: analytics,
             pickVideo: () async => pickedVideo,
+            prepareTikTokVideo: testPrepareTikTokVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'seller-basic',
               plan: 'BASIC',
@@ -2629,6 +2633,7 @@ void main() {
             loadSocialConnections: _loadConnectedSocialConnections,
             pickVideo: () async =>
                 _createPickedVideoFixture('publisher-stopped-later.mp4'),
+            prepareTikTokVideo: testPrepareTikTokVideo,
             checkPublishingReadiness: () async {
               readinessChecks += 1;
             },
@@ -2789,6 +2794,7 @@ void main() {
             initialVideoPath: videoFile.path,
             initialVideoName: 'edited.mp4',
             initialVideoSizeBytes: 2048,
+            prepareTikTokVideo: testPrepareTikTokVideo,
             loadSubscription: () async => const SubscriptionStatusResult(
               userId: 'seller-pro',
               plan: 'PRO',

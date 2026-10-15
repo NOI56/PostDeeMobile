@@ -7,6 +7,19 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## TikTok media and Calendar activity (2026-10-15, local changes)
+
+Calendar now reads all owner-scoped posts through the existing `GET /posts`, so
+immediate and partially published activity appears alongside scheduled posts.
+Real schedules remain optional, and queue actions require a queued scheduled
+post. TikTok-selected uploads prepare and validate H.264/AAC constant-30-FPS
+media on-device, including a bounded decoded-frame check before upload;
+historical upload receipts without the preparation
+policy require explicit recovery rather than an automatic repost. Known TikTok
+frame-rate rejections have fixed Thai guidance; unknown provider details remain
+private. No schema or package-rule change is required. Verification and delivery
+limits: `docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md`.
+
 ## Main integration (2026-10-13, completed)
 
 The user-authorized latest `codex/audit-system-fixes` branch is fast-forwarded

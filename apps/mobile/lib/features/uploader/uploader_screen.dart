@@ -35,6 +35,7 @@ import 'publish_media_identity.dart';
 import 'publish_flow_screen.dart';
 import 'publish_review_screen.dart';
 import 'post_video_preview_screen.dart';
+import 'tiktok_video_preparer.dart';
 import 'video_picker_service.dart';
 import 'watermark_video_processor.dart';
 
@@ -99,6 +100,7 @@ class UploaderScreen extends StatefulWidget {
     this.onViewAnalytics,
     this.analytics,
     this.watermarkVideo,
+    this.prepareTikTokVideo,
     this.openCoverEditor,
     this.coverImageProcessor,
     this.draftStore,
@@ -134,6 +136,7 @@ class UploaderScreen extends StatefulWidget {
   final VoidCallback? onViewAnalytics;
   final PostDeeAnalytics? analytics;
   final UploaderWatermarkVideoProcessor? watermarkVideo;
+  final UploaderTikTokVideoPreparer? prepareTikTokVideo;
   final UploaderCoverEditorLauncher? openCoverEditor;
   final CoverImageProcessor? coverImageProcessor;
   final PublishDraftStore? draftStore;
@@ -2110,6 +2113,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   Future<PublishDraft?> _persistCurrentDraftWhileLocked({
     required bool showSavedMessage,
   }) async {
+    // A historical upload may already belong to an accepted request whose
+    // response was lost. Keep its receipt and ID until the seller explicitly
+    // confirms the existing "start new request" action.
+    if (_blockUnpreparedTikTokReceipt()) return null;
     final ownerUserIdAtStart = widget.draftStore == null
         ? PostDeeAuthSessionStore.instance.session.stableUserId
         : null;
@@ -2234,6 +2241,28 @@ class _UploaderScreenState extends State<UploaderScreen>
     } finally {
       await coverLease?.release();
     }
+  }
+
+  bool _blockUnpreparedTikTokReceipt() {
+    final receipt = _activeDraftUploadedMedia;
+    if (receipt == null ||
+        receipt.videoPreparationPolicy == tikTokVideoPreparationPolicy ||
+        !{..._selectedPlatforms, ..._draftUnavailablePlatforms}
+            .contains(SocialPlatform.tiktok)) {
+      return false;
+    }
+    setState(() {
+      final id = _activeDraftId;
+      if (id != null) _blockedSubmissionDraftIds.add(id);
+      _errorMessage =
+          'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่ผ่านการเตรียมวิดีโอ TikTok '
+          'กรุณาตรวจรายการโพสต์และปลายทางก่อนเริ่มรายการโพสต์ใหม่';
+      _successMessage = null;
+    });
+    _setUploadStatus(
+        'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่ผ่านการเตรียมวิดีโอ TikTok '
+        'กรุณาตรวจรายการโพสต์และปลายทางก่อนเริ่มรายการโพสต์ใหม่');
+    return true;
   }
 
   bool _draftBelongsToCurrentSession(PublishDraft draft) {
@@ -2900,6 +2929,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
     var didUploadVideo = false;
     WatermarkedVideoResult? generatedWatermarkedVideo;
+    TikTokPreparedVideoResult? generatedTikTokVideo;
 
     try {
       final checkPublishingReadiness = widget.checkPublishingReadiness ??
@@ -2959,6 +2989,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       var uploadSizeBytes = sizeBytes;
       var didApplyWatermark = false;
       final shouldApplyWatermark = await _watermarkEnabledForCurrentSelection();
+      final needsTikTokPreparation =
+          _selectedPlatforms.contains(SocialPlatform.tiktok);
       final usesCover = submittedDraft.cover != null &&
           _selectedPlatforms.any((platform) =>
               platform == SocialPlatform.instagramReels ||
@@ -2971,7 +3003,10 @@ class _UploaderScreenState extends State<UploaderScreen>
                   usesCover ? File(submittedDraft.cover!.imagePath) : null);
       final cachedMedia =
           submittedDraft.uploadedMedia?.mediaContentFingerprint ==
-                  mediaContentFingerprint
+                      mediaContentFingerprint &&
+                  (!needsTikTokPreparation ||
+                      submittedDraft.uploadedMedia?.videoPreparationPolicy ==
+                          tikTokVideoPreparationPolicy)
               ? submittedDraft.uploadedMedia
               : null;
       var uploadedVideoS3Key = cachedMedia?.videoS3Key;
@@ -3006,6 +3041,31 @@ class _UploaderScreenState extends State<UploaderScreen>
           uploadFileName = watermarkedVideo.fileName;
           uploadSizeBytes = watermarkedVideo.sizeBytes;
           didApplyWatermark = true;
+        }
+
+        if (needsTikTokPreparation) {
+          ensureSubmissionStillOwned();
+          setState(() =>
+              _successMessage = 'กำลังเตรียมวิดีโอ TikTok เป็น 30 FPS...');
+          report(PublishFlowStage.preparing, 0.42);
+          final prepare =
+              widget.prepareTikTokVideo ?? FfmpegTikTokVideoPreparer().call;
+          final prepared = await prepare(TikTokVideoPreparationRequest(
+            inputFile: uploadVideoFileForRequest,
+            fileName: uploadFileName,
+            isCancelled: () => !submissionStillOwned(),
+          ));
+          generatedTikTokVideo = prepared;
+          ensureSubmissionStillOwned();
+          if (prepared.videoPreparationPolicy != tikTokVideoPreparationPolicy) {
+            throw const TikTokVideoPreparationException(
+                'วิดีโอ TikTok ยังไม่ผ่านการตรวจ จึงหยุดก่อนอัปโหลด');
+          }
+          uploadVideoFileForRequest = prepared.file;
+          uploadFileName = prepared.fileName;
+          uploadSizeBytes = prepared.sizeBytes;
+          width = prepared.width;
+          height = prepared.height;
         }
 
         final rawCreateUpload = widget.createUpload ?? _apiClient.createUpload;
@@ -3049,6 +3109,15 @@ class _UploaderScreenState extends State<UploaderScreen>
         didUploadVideo = true;
         uploadedVideoS3Key = upload.videoS3Key;
         report(PublishFlowStage.uploadingVideo, 0.72);
+        final uploadedTikTokVideo = generatedTikTokVideo;
+        if (uploadedTikTokVideo != null) {
+          try {
+            await uploadedTikTokVideo.cleanupTemporaryFiles();
+            generatedTikTokVideo = null;
+          } catch (_) {
+            // The final cleanup retries without repeating the remote upload.
+          }
+        }
         final uploadedWatermarkedVideo = generatedWatermarkedVideo;
         if (uploadedWatermarkedVideo != null) {
           try {
@@ -3059,6 +3128,7 @@ class _UploaderScreenState extends State<UploaderScreen>
             // a local cleanup problem must not create an accidental repost.
           }
         }
+        ensureSubmissionStillOwned();
         final shouldUploadCoverImage = selectedCover != null &&
             _selectedPlatforms.any(
               (platform) =>
@@ -3100,10 +3170,13 @@ class _UploaderScreenState extends State<UploaderScreen>
         // Keep the completed upload keys before the server may accept the post.
         // Retrying or reopening this draft can recover an uncertain response
         // without uploading again, including legacy posts without fingerprints.
+        ensureSubmissionStillOwned();
         _activeDraftUploadedMedia = PublishDraftUploadedMedia(
           mediaContentFingerprint: mediaContentFingerprint,
           videoS3Key: uploadedVideoS3Key,
           coverImageS3Key: coverImageS3Key,
+          videoPreparationPolicy:
+              needsTikTokPreparation ? tikTokVideoPreparationPolicy : null,
         );
         final savedReceipt =
             await _persistCurrentDraftWhileLocked(showSavedMessage: false);
@@ -3246,6 +3319,19 @@ class _UploaderScreenState extends State<UploaderScreen>
       });
       _setUploadStatus(error.message);
       return null;
+    } on TikTokVideoPreparationException catch (error) {
+      unawaited(_analytics.logPublishFailed(reason: 'tiktok_preparation'));
+      if (!mounted) return null;
+      if (!submissionStillOwned()) {
+        _showDraftOwnerChangedError();
+        return null;
+      }
+      setState(() {
+        _errorMessage = null;
+        _successMessage = null;
+      });
+      _setUploadStatus(error.message);
+      return null;
     } on WatermarkVideoException catch (error) {
       unawaited(_analytics.logPublishFailed(reason: 'watermark'));
       if (!mounted) {
@@ -3316,12 +3402,25 @@ class _UploaderScreenState extends State<UploaderScreen>
       _setUploadStatus('เกิดข้อผิดพลาดระหว่างสร้างโพสต์');
       return null;
     } finally {
+      final preparedVideo = generatedTikTokVideo;
+      if (preparedVideo != null) {
+        try {
+          await preparedVideo.cleanupTemporaryFiles();
+        } catch (_) {
+          if (submissionStillOwned()) {
+            setState(() {
+              _errorMessage ??=
+                  'ล้างไฟล์วิดีโอชั่วคราวไม่สำเร็จ กรุณาตรวจพื้นที่ว่างในเครื่อง';
+            });
+          }
+        }
+      }
       final watermarkedVideo = generatedWatermarkedVideo;
       if (watermarkedVideo != null) {
         try {
           await watermarkedVideo.cleanupTemporaryFiles();
         } catch (_) {
-          if (mounted) {
+          if (submissionStillOwned()) {
             setState(() {
               _errorMessage ??=
                   'ล้างไฟล์วิดีโอชั่วคราวไม่สำเร็จ กรุณาตรวจพื้นที่ว่างในเครื่อง';

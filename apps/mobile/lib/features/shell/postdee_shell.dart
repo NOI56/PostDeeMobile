@@ -39,6 +39,7 @@ import '../uploader/uploader_screen.dart';
 import '../uploader/publish_draft.dart';
 import '../uploader/publish_draft_store.dart';
 import '../uploader/publish_draft_store_factory.dart';
+import '../uploader/tiktok_video_preparer.dart';
 import '../uploader/video_picker_service.dart';
 
 typedef AccountDeleter = Future<void> Function();
@@ -54,11 +55,13 @@ class PostDeeShell extends StatefulWidget {
     this.firebaseBootstrapResult,
     this.themeController,
     this.loadScheduledPosts,
+    this.loadCalendarPosts,
     this.loadSubscription,
     this.loadRecentPosts,
     this.pickVideo,
     this.createUpload,
     this.uploadVideoFile,
+    this.prepareTikTokVideo,
     this.createPost,
     this.checkPublishingReadiness,
     this.loadSocialConnections,
@@ -76,11 +79,13 @@ class PostDeeShell extends StatefulWidget {
   final PostDeeLanguageController languageController;
   final PostDeeThemeController? themeController;
   final ScheduledPostsLoader? loadScheduledPosts;
+  final CalendarPostsLoader? loadCalendarPosts;
   final UploaderSubscriptionLoader? loadSubscription;
   final HomeRecentPostsLoader? loadRecentPosts;
   final UploaderVideoPicker? pickVideo;
   final UploaderUploadCreator? createUpload;
   final UploaderVideoUploader? uploadVideoFile;
+  final UploaderTikTokVideoPreparer? prepareTikTokVideo;
   final UploaderPostCreator? createPost;
   final UploaderPublishingReadinessChecker? checkPublishingReadiness;
   final UploaderConnectionsLoader? loadSocialConnections;
@@ -213,10 +218,11 @@ class _PostDeeShellState extends State<PostDeeShell> {
           refreshToken: _calendarRefreshToken,
           isActive: _selectedIndex == 3 && _composerRoute == null,
           loadScheduledPosts: widget.loadScheduledPosts,
+          loadCalendarPosts: widget.loadCalendarPosts,
           onAddPost: () => _selectTab(2),
           onAddPostForDate: (date) =>
               unawaited(_openPostComposer(initialScheduleDate: date)),
-          onOpenPostDetail: _openCalendarPostDetail,
+          onOpenCalendarPostDetail: _openCalendarPostDetail,
         ),
         const AnalyticsScreen(showTitle: true),
         // Profile is the 5th nav tab per the design handoff (no pushed route).
@@ -431,6 +437,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
               pickVideo: widget.pickVideo,
               createUpload: widget.createUpload,
               uploadVideoFile: widget.uploadVideoFile,
+              prepareTikTokVideo: widget.prepareTikTokVideo,
               createPost: widget.createPost,
               checkPublishingReadiness: widget.checkPublishingReadiness,
               loadSocialConnections: widget.loadSocialConnections,
@@ -507,21 +514,11 @@ class _PostDeeShellState extends State<PostDeeShell> {
     });
   }
 
-  Future<void> _openCalendarPostDetail(ScheduledPostResult post) async {
+  Future<void> _openCalendarPostDetail(CalendarPostResult post) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (context) => PostDetailScreen(
-          post: PostSummaryResult(
-            id: post.id,
-            caption: post.caption,
-            videoS3Key: post.videoS3Key,
-            platforms: post.platforms,
-            status: post.status,
-            createdAt: post.createdAt,
-            scheduledAt: post.scheduledAt,
-            publishedAt: post.publishedAt,
-            platformResults: post.platformResults,
-          ),
+          post: post,
         ),
       ),
     );

@@ -11,6 +11,7 @@ import {
   readRequestedDeliveryOutcome
 } from './platformDeliveryOutcome.js';
 import {
+  PlatformPublishRejectionError,
   PublishOutcomeUnknownError,
   type PlatformPublisher
 } from './publishWorker.js';
@@ -210,6 +211,11 @@ const readFailureMessage = (
   readNonEmptyString(payload.error) ??
   readNonEmptyString(payload.message) ??
   'platform failed';
+
+const createPostPeerFailure = (platform: Platform, message: string) =>
+  platform === 'TIKTOK' && /\bframe_rate_check_failed\b/i.test(message)
+    ? new PlatformPublishRejectionError()
+    : new Error(`PostPeer publish to ${platform} failed: ${message}`);
 
 const evaluatePostPeerPayload = (
   rawPayload: PostPeerPublishResponse,
@@ -549,9 +555,7 @@ export const createPostPeerPublisher = ({
     );
 
     if (evaluation.outcome === 'failed') {
-      throw new Error(
-        `PostPeer publish to ${platform} failed: ${evaluation.message}`
-      );
+      throw createPostPeerFailure(platform, evaluation.message);
     }
 
     if (evaluation.outcome === 'published') {
@@ -613,7 +617,7 @@ export const createPostPeerPublisher = ({
       }
 
       if (evaluation.outcome === 'failed') {
-        throw new Error(`PostPeer publish to ${platform} failed: ${evaluation.message}`);
+        throw createPostPeerFailure(platform, evaluation.message);
       }
 
       if (evaluation.outcome === 'published') {

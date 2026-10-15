@@ -2,6 +2,22 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Calendar activity and TikTok preparation (2026-10-15, local changes)
+
+Calendar loads all owner-scoped post activity through `GET /posts`, including
+immediate and partial results. Its new nullable-schedule model preserves strict
+scheduled callers and exposes queue actions only for queued real schedules.
+TikTok-selected uploads run on-device H.264/AAC constant-30-FPS preparation and
+validate the stream and a bounded decoded-video prefix before upload. Cancel,
+timeout, account changes, or invalid output retain source/draft data and stop
+remote submission. A persisted
+preparation-policy receipt guards upload reuse; incompatible old receipts use
+the existing explicit-new-attempt confirmation instead of silent reposting.
+Known provider frame-rate rejections show specific Thai guidance. No new
+dependency, subscription rule, or backend schema is introduced. Full tests,
+native codec results, exact Staging APK, and delivery status are recorded in
+`../../docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md`.
+
 ## Shop-logo Positioning (2026-10-13)
 
 Shop information and decoration now open the same circular crop preview after

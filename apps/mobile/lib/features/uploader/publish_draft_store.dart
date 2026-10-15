@@ -259,6 +259,8 @@ class FilePublishDraftStore implements PublishDraftStore {
           'mediaContentFingerprint': mediaContentFingerprint,
           'videoS3Key': uploadedMedia.videoS3Key,
           'coverImageS3Key': uploadedMedia.coverImageS3Key,
+          if (uploadedMedia.videoPreparationPolicy != null)
+            'videoPreparationPolicy': uploadedMedia.videoPreparationPolicy,
         },
       'createdAt': request.createdAt.toUtc().toIso8601String(),
       'updatedAt': request.updatedAt.toUtc().toIso8601String(),
@@ -348,6 +350,10 @@ class FilePublishDraftStore implements PublishDraftStore {
           coverImageS3Key: uploadedValue['coverImageS3Key'] == null
               ? null
               : _requiredString(uploadedValue, 'coverImageS3Key'),
+          videoPreparationPolicy:
+              uploadedValue['videoPreparationPolicy'] == null
+                  ? null
+                  : _requiredString(uploadedValue, 'videoPreparationPolicy'),
         );
       }
 

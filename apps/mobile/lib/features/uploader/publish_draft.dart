@@ -98,11 +98,15 @@ class PublishDraftUploadedMedia {
   const PublishDraftUploadedMedia(
       {required this.mediaContentFingerprint,
       required this.videoS3Key,
-      this.coverImageS3Key});
+      this.coverImageS3Key,
+      this.videoPreparationPolicy});
 
   final String mediaContentFingerprint;
   final String videoS3Key;
   final String? coverImageS3Key;
+
+  /// Null for historical receipts that have not passed native preparation.
+  final String? videoPreparationPolicy;
 }
 
 class PublishDraftSaveRequest {

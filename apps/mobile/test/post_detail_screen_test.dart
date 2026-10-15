@@ -359,6 +359,33 @@ void main() {
     );
   });
 
+  testWidgets('shows a specific Thai frame-rate rejection without retrying',
+      (tester) async {
+    final api = _FakePostApiClient();
+    await tester.pumpWidget(MaterialApp(
+        home: PostDetailScreen(
+            apiClient: api,
+            post: _post(
+                status: 'FAILED',
+                platforms: const ['TIKTOK'],
+                platformResults: const [
+                  PostPlatformResult(
+                      postId: 'post-1',
+                      platform: 'TIKTOK',
+                      status: 'FAILED',
+                      errorMessage:
+                          'TikTok rejected this video because its frame rate validation failed. Export the video again before retrying.')
+                ]))));
+    await tester.pumpAndSettle();
+    expect(
+        find.text(
+            'สาเหตุ: TikTok ตรวจสอบอัตราเฟรมของคลิปนี้ไม่ผ่าน กรุณาส่งออกวิดีโอใหม่ก่อนลองอีกครั้ง'),
+        findsOneWidget);
+    expect(find.textContaining('frame rate validation'), findsNothing);
+    expect(api.publishedNowPostIds, isEmpty);
+    expect(api.cancelledPostIds, isEmpty);
+  });
+
   testWidgets('shows each platform result, failure reason, and real reference',
       (tester) async {
     await tester.pumpWidget(

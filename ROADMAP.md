@@ -2,6 +2,21 @@
 
 Build roadmap for PostDee.
 
+## TikTok frame rate and complete Calendar activity (2026-10-15)
+
+- Include immediate, scheduled, and partially published owner activity in
+  Calendar, using real local activity dates and retaining queue-only actions.
+- Prepare TikTok-selected video as validated H.264/AAC constant 30 FPS before
+  upload, checking actual decoded frames in a bounded prefix; preserve source
+  media, ownership, request IDs, and upload-retry safety.
+- Keep legacy incompatible upload receipts intact until the user explicitly
+  starts a new attempt. Translate the known frame-rate rejection without
+  exposing raw provider errors.
+- Implementation is local to `codex/publish-calendar-tiktok-fps`, based on fetched
+  main `3725744`. Full verification/native codec acceptance and delivery are
+  recorded in `docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md`.
+  No social retry, source deployment, or Production change is implied by tests.
+
 ## Main integration (2026-10-13, completed)
 
 - Fast-forward verified main `c4e52201` to exact feature head

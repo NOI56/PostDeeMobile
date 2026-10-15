@@ -8,7 +8,7 @@ import {
   PostPeerPublishOutcomeUnknownError,
   createPostPeerPublisher
 } from './postPeerPublisher.js';
-import { PublishOutcomeUnknownError } from './publishWorker.js';
+import { PublishOutcomeUnknownError, processPublishJob } from './publishWorker.js';
 
 const createTestVideoStorage = (): VideoStorage => ({
   createUpload: async () => {
@@ -771,6 +771,93 @@ describe('createPostPeerPublisher', () => {
       /PostPeer publish to TIKTOK failed: Video URL is not publicly accessible/
     );
   });
+
+  for (const failureStage of ['create', 'poll'] as const) {
+    it(`exposes only a fixed frame-rate rejection from TikTok ${failureStage}`, async () => {
+      const calls: string[] = [];
+      const rawReason =
+        'TikTok publish failed: frame_rate_check_failed secret=provider-secret id=private-provider-id';
+      const publisher = createPostPeerPublisher({
+        apiKey: 'pp-key',
+        baseUrl: 'https://api.postpeer.test',
+        accountIds: { TIKTOK: 'postpeer-tiktok' },
+        pollIntervalMs: 0,
+        fetchImpl: async (_url, init) => {
+          calls.push(init.method ?? '');
+          return {
+            ok: true,
+            json: async () =>
+              failureStage === 'poll' && init.method === 'POST'
+                ? { status: 'publishing', postId: 'existing-provider-post' }
+                : {
+                    post: {
+                      status: 'failed',
+                      platforms: [{ platform: 'tiktok', status: 'failed', errorMessage: rawReason }]
+                    }
+                  }
+          };
+        }
+      });
+      const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        const result = await processPublishJob({
+          jobData: {
+            userId: 'seller-1', postId: 'post-1', videoS3Key: 'uploads/clip.mp4',
+            runAt: '2026-10-14T16:40:00.000Z', status: 'READY',
+            platforms: ['TIKTOK'], platformSettings: { TIKTOK: { publishMode: 'INBOX_DRAFT' } }
+          },
+          publisher,
+          maxPublishAttempts: 3
+        });
+        expect(result.platformResults).toEqual([{
+          platform: 'TIKTOK', status: 'FAILED',
+          errorMessage: 'TikTok rejected this video because its frame rate validation failed. Export the video again before retrying.'
+        }]);
+        expect(calls).toEqual(failureStage === 'create' ? ['POST'] : ['POST', 'GET']);
+        expect(JSON.stringify(result)).not.toContain('provider-secret');
+        expect(JSON.stringify(result)).not.toContain('private-provider-id');
+        expect(JSON.stringify(log.mock.calls)).not.toContain(rawReason);
+        expect(JSON.stringify(log.mock.calls)).not.toContain('provider-secret');
+        expect(JSON.stringify(log.mock.calls)).not.toContain('private-provider-id');
+      } finally {
+        log.mockRestore();
+      }
+    });
+  }
+
+  for (const [platform, reason] of [
+    ['TIKTOK', 'frame_rate_check_failed_unknown secret=provider-secret'],
+    ['YOUTUBE_SHORTS', 'TikTok publish failed: frame_rate_check_failed secret=provider-secret']
+  ] as const) {
+    it(`keeps an unrecognized or unrelated ${platform} rejection generic`, async () => {
+      const publisher = createPostPeerPublisher({
+        apiKey: 'pp-key',
+        baseUrl: 'https://api.postpeer.test',
+        accountIds: { [platform]: 'provider-account' },
+        fetchImpl: async () => ({
+          ok: true,
+          json: async () => ({ status: 'failed', errorMessage: reason })
+        })
+      });
+      const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        const result = await processPublishJob({
+          jobData: {
+            postId: 'post-1', platforms: [platform],
+            runAt: '2026-10-14T16:40:00.000Z', status: 'READY'
+          }, publisher
+        });
+        expect(result.platformResults[0]).toMatchObject({
+          status: 'FAILED',
+          errorMessage: 'Publishing to this platform failed. Please try again later.'
+        });
+        expect(JSON.stringify(result)).not.toContain('provider-secret');
+        expect(JSON.stringify(log.mock.calls)).not.toContain('provider-secret');
+      } finally {
+        log.mockRestore();
+      }
+    });
+  }
 
   it('maps explicit YouTube settings into provider intent and records unlisted delivery', async () => {
     let body: Record<string, unknown> | undefined;

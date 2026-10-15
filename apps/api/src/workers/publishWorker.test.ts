@@ -442,6 +442,27 @@ describe('processPublishJob', () => {
     }
   });
 
+  it('does not expose a raw error just because it contains a known frame-rate token', async () => {
+    const reason = 'frame_rate_check_failed secret=private-secret providerPostId=private-id';
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const result = await processPublishJob({
+        jobData: { ...baseJobData, platforms: ['TIKTOK'] },
+        publisher: { publish: async () => { throw new Error(reason); } },
+        platformPublishStore: { recordResults: vi.fn(async () => []) }
+      });
+      expect(result.platformResults[0]).toMatchObject({
+        status: 'FAILED',
+        errorMessage: 'Publishing to this platform failed. Please try again later.'
+      });
+      expect(JSON.stringify(result)).not.toContain(reason);
+      expect(JSON.stringify(log.mock.calls)).not.toContain('private-secret');
+      expect(JSON.stringify(log.mock.calls)).not.toContain('private-id');
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('surfaces an unconfirmed provider outcome without retrying the publish call', async () => {
     const sleep = vi.fn(async () => undefined);
     const publisher = {

@@ -18,6 +18,7 @@ import '../shared/postdee_skeleton.dart';
 import '../shared/publishing_availability.dart';
 
 typedef ScheduledPostsLoader = Future<List<ScheduledPostResult>> Function();
+typedef CalendarPostsLoader = Future<List<CalendarPostResult>> Function();
 typedef ScheduledPostRescheduler = Future<ScheduledPostResult> Function(
   String postId,
   DateTime scheduledAt,
@@ -33,12 +34,14 @@ class CalendarScreen extends StatefulWidget {
     this.refreshToken = 0,
     this.isActive = true,
     this.loadScheduledPosts,
+    this.loadCalendarPosts,
     this.reschedulePost,
     this.cancelPost,
     this.onAddPost,
     this.onAddPostForDate,
     this.ownerUserId,
     this.onOpenPostDetail,
+    this.onOpenCalendarPostDetail,
     this.toLocalTime,
     this.now,
     this.loadSubscription,
@@ -47,6 +50,7 @@ class CalendarScreen extends StatefulWidget {
   final int refreshToken;
   final bool isActive;
   final ScheduledPostsLoader? loadScheduledPosts;
+  final CalendarPostsLoader? loadCalendarPosts;
   final ScheduledPostRescheduler? reschedulePost;
   final ScheduledPostCanceller? cancelPost;
   final CalendarTimeConverter? toLocalTime;
@@ -60,6 +64,7 @@ class CalendarScreen extends StatefulWidget {
 
   /// Open a read-only result for a post that has finished publishing.
   final ValueChanged<ScheduledPostResult>? onOpenPostDetail;
+  final ValueChanged<CalendarPostResult>? onOpenCalendarPostDetail;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -84,7 +89,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   int _postMutationGeneration = 0;
   bool _appIsResumed = true;
   String? _errorMessage;
-  List<ScheduledPostResult> _posts = const [];
+  List<CalendarPostResult> _posts = const [];
   Timer? _queuedRefreshTimer;
   late DateTime _visibleMonth;
   DateTime? _selectedDay;
@@ -230,9 +235,7 @@ class _CalendarScreenState extends State<CalendarScreen>
         _reloadRequested = false;
         final mutationGeneration = _postMutationGeneration;
         try {
-          final loader =
-              widget.loadScheduledPosts ?? _apiClient.listScheduledPosts;
-          final posts = await loader();
+          final posts = await _loadCalendarPosts();
 
           if (!_loadStillOwned(generation, sessionOwner)) return;
           if (mutationGeneration != _postMutationGeneration) continue;
@@ -288,6 +291,18 @@ class _CalendarScreenState extends State<CalendarScreen>
     }
   }
 
+  Future<List<CalendarPostResult>> _loadCalendarPosts() async {
+    final loader = widget.loadCalendarPosts;
+    if (loader != null) return loader();
+    final legacyLoader = widget.loadScheduledPosts;
+    if (legacyLoader != null) {
+      return (await legacyLoader())
+          .map(CalendarPostResult.fromScheduledPost)
+          .toList();
+    }
+    return _apiClient.listCalendarPosts();
+  }
+
   void _syncQueuedRefresh() {
     _queuedRefreshTimer?.cancel();
     _queuedRefreshTimer = null;
@@ -305,11 +320,14 @@ class _CalendarScreenState extends State<CalendarScreen>
     });
   }
 
-  DateTime _calendarTimeFor(ScheduledPostResult post) {
+  DateTime _calendarTimeFor(CalendarPostResult post) {
     final status = post.status.toUpperCase();
-    final isPublished = status == 'PUBLISHED' || status == 'PARTIAL_PUBLISHED';
-    final timestamp =
-        isPublished ? post.publishedAt ?? post.scheduledAt : post.scheduledAt;
+    final isFinished = status == 'PUBLISHED' ||
+        status == 'PARTIAL_PUBLISHED' ||
+        status == 'FAILED';
+    final timestamp = (isFinished ? post.publishedAt : null) ??
+        post.scheduledAt ??
+        post.createdAt;
     return _toLocalTime(timestamp);
   }
 
@@ -326,7 +344,7 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   String _dayKey(DateTime date) => '${date.year}-${date.month}-${date.day}';
 
-  List<ScheduledPostResult> get _visiblePosts => _posts
+  List<CalendarPostResult> get _visiblePosts => _posts
       .where((p) =>
           _platformFilter == 'all' || p.platforms.contains(_platformFilter))
       .toList();
@@ -340,7 +358,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     return counts;
   }
 
-  List<ScheduledPostResult> get _dayPosts => _visiblePosts
+  List<CalendarPostResult> get _dayPosts => _visiblePosts
       .where((p) => _isSameDay(_calendarTimeFor(p), _activeDay))
       .toList();
 
@@ -386,21 +404,27 @@ class _CalendarScreenState extends State<CalendarScreen>
     }
   }
 
-  VoidCallback? _postTapHandler(ScheduledPostResult post) {
+  VoidCallback? _postTapHandler(CalendarPostResult post) {
     if (_pendingActionPostId != null) return null;
 
     if (_canEditQueue(post)) {
       return () => _showPostActions(post);
     }
 
-    if (_canOpenPostDetail(post) && widget.onOpenPostDetail != null) {
-      return () => widget.onOpenPostDetail!(post);
+    if (_canOpenPostDetail(post)) {
+      if (widget.onOpenCalendarPostDetail != null) {
+        return () => widget.onOpenCalendarPostDetail!(post);
+      }
+      final scheduledPost = post.toScheduledPost();
+      if (scheduledPost != null && widget.onOpenPostDetail != null) {
+        return () => widget.onOpenPostDetail!(scheduledPost);
+      }
     }
 
     return null;
   }
 
-  Future<void> _showPostActions(ScheduledPostResult post) async {
+  Future<void> _showPostActions(CalendarPostResult post) async {
     if (!_canEditQueue(post)) return;
     final generation = _ownerGeneration;
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
@@ -451,7 +475,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
   }
 
-  Future<void> _reschedule(ScheduledPostResult post) async {
+  Future<void> _reschedule(CalendarPostResult post) async {
     if (!_canEditQueue(post) || _pendingActionPostId != null) return;
     final ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
     final generation = _ownerGeneration;
@@ -490,9 +514,9 @@ class _CalendarScreenState extends State<CalendarScreen>
   void _showScheduleMessage(String message) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(message)));
 
-  Future<void> _rescheduleWhileLocked(ScheduledPostResult post, Duration limit,
+  Future<void> _rescheduleWhileLocked(CalendarPostResult post, Duration limit,
       String? ownerUserId, int generation) async {
-    final current = _toLocalTime(post.scheduledAt);
+    final current = _toLocalTime(post.scheduledAt!);
     final currentNow = _now();
     final today = DateTime(
       currentNow.year,
@@ -563,7 +587,8 @@ class _CalendarScreenState extends State<CalendarScreen>
     try {
       final reschedulePost = widget.reschedulePost ?? _apiClient.reschedulePost;
       if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
-      final updatedPost = await reschedulePost(post.id, next);
+      final updatedPost = CalendarPostResult.fromScheduledPost(
+          await reschedulePost(post.id, next));
       if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
       if (updatedPost.userId != null && updatedPost.userId != _ownerId) return;
       _postMutationGeneration += 1;
@@ -624,7 +649,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
   }
 
-  Future<void> _cancel(ScheduledPostResult post) async {
+  Future<void> _cancel(CalendarPostResult post) async {
     if (!_canEditQueue(post) || _pendingActionPostId != null) return;
     final generation = _ownerGeneration;
     final ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
@@ -1529,7 +1554,7 @@ class _DayPostRow extends StatelessWidget {
     required this.animate,
   });
 
-  final ScheduledPostResult post;
+  final CalendarPostResult post;
   final DateTime displayAt;
   final VoidCallback? onTap;
   final String? busyLabel;
@@ -1775,17 +1800,17 @@ bool _isSameDay(DateTime left, DateTime right) =>
     left.month == right.month &&
     left.day == right.day;
 
-bool _canEditQueue(ScheduledPostResult post) =>
-    post.status.toUpperCase() == 'QUEUED';
+bool _canEditQueue(CalendarPostResult post) =>
+    post.scheduledAt != null && post.status.toUpperCase() == 'QUEUED';
 
-bool _canOpenPostDetail(ScheduledPostResult post) {
+bool _canOpenPostDetail(CalendarPostResult post) {
   final status = post.status.toUpperCase();
   return status == 'PUBLISHED' ||
       status == 'PARTIAL_PUBLISHED' ||
       status == 'FAILED';
 }
 
-bool _needsStatusRefresh(ScheduledPostResult post) {
+bool _needsStatusRefresh(CalendarPostResult post) {
   final status = post.status.toUpperCase();
   return status == 'QUEUED' || status == 'PUBLISHING';
 }
@@ -1828,7 +1853,7 @@ const _thaiMonthsShort = [
 String _formatThaiDate(DateTime date) =>
     '${date.day} ${_thaiMonthsShort[date.month - 1]} ${date.year}';
 
-String _statusLabel(ScheduledPostResult post) {
+String _statusLabel(CalendarPostResult post) {
   final deliveryLabel = aggregatePostDeliveryOutcomeLabel(
     post.platformResults,
     compact: true,
@@ -1837,7 +1862,7 @@ String _statusLabel(ScheduledPostResult post) {
 
   switch (post.status.toUpperCase()) {
     case 'QUEUED':
-      return 'รอส่งตามเวลา';
+      return post.scheduledAt == null ? 'รอส่ง' : 'รอส่งตามเวลา';
     case 'PUBLISHING':
       return 'กำลังส่ง';
     case 'PUBLISHED':

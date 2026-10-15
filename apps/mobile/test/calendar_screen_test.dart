@@ -48,6 +48,205 @@ ScheduledPostResult _compactPost(String id, DateTime date,
     );
 
 void main() {
+  for (final status in ['PUBLISHED', 'PARTIAL_PUBLISHED']) {
+    testWidgets(
+        'immediate $status appears under Shorts on its local published day',
+        (tester) async {
+      final publishedAt = DateTime.utc(2026, 10, 13, 18, 30);
+      final post = CalendarPostResult(
+        id: 'immediate-$status',
+        caption: 'Immediate $status clip',
+        videoS3Key: 'uploads/immediate.mp4',
+        platforms: const ['TIKTOK', 'YOUTUBE_SHORTS'],
+        status: status,
+        createdAt: DateTime.utc(2026, 10, 13, 15),
+        publishedAt: publishedAt,
+        platformResults: [
+          PostPlatformResult(
+              postId: 'immediate-$status',
+              platform: 'TIKTOK',
+              status: status == 'PARTIAL_PUBLISHED' ? 'FAILED' : 'PUBLISHED'),
+          PostPlatformResult(
+              postId: 'immediate-$status',
+              platform: 'YOUTUBE_SHORTS',
+              status: 'PUBLISHED',
+              deliveryOutcome: 'PRIVATE'),
+        ],
+      );
+      CalendarPostResult? opened;
+      await tester.pumpWidget(_calendarApp(CalendarScreen(
+        now: () => DateTime(2026, 10, 14, 2),
+        toLocalTime: (value) => value.toUtc().add(const Duration(hours: 7)),
+        loadCalendarPosts: () async => [post],
+        onOpenCalendarPostDetail: (value) => opened = value,
+      )));
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.byKey(const ValueKey('calendar-filter-YOUTUBE_SHORTS')));
+      await tester.pumpAndSettle();
+      expect(find.text(post.caption), findsOneWidget);
+      expect(find.text('01:30'), findsOneWidget);
+      expect(
+          find.text(
+              status == 'PARTIAL_PUBLISHED' ? 'ส่งบางส่วน' : 'ส่วนตัว'),
+          findsOneWidget);
+      await tester.ensureVisible(find.text(post.caption));
+      await tester.tap(find.text(post.caption));
+      await tester.pumpAndSettle();
+      expect(opened, same(post));
+      expect(opened!.scheduledAt, isNull);
+      expect(find.text('เลื่อนเวลา'), findsNothing);
+      expect(find.text('ยกเลิกโพสต์'), findsNothing);
+    });
+  }
+
+  testWidgets(
+      'immediate queued and failed activity use created day without queue actions',
+      (tester) async {
+    final now = DateTime(2026, 10, 14, 10);
+    var actions = 0;
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => now,
+      loadCalendarPosts: () async => [
+        for (final status in ['QUEUED', 'FAILED'])
+          CalendarPostResult(
+              id: 'immediate-$status',
+              caption: 'Immediate $status',
+              videoS3Key: 'uploads/immediate.mp4',
+              platforms: const ['YOUTUBE_SHORTS'],
+              status: status,
+              createdAt: now),
+      ],
+      cancelPost: (_) async => actions++,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Immediate QUEUED'), findsOneWidget);
+    expect(find.text('Immediate FAILED'), findsOneWidget);
+    await tester.ensureVisible(find.text('Immediate QUEUED'));
+    await tester.tap(find.text('Immediate QUEUED'));
+    await tester.pumpAndSettle();
+    expect(find.text('เลื่อนเวลา'), findsNothing);
+    expect(find.text('ยกเลิกโพสต์'), findsNothing);
+    expect(actions, 0);
+  });
+
+  testWidgets(
+      'calendar activity keeps future queue dates and owned legacy actions',
+      (tester) async {
+    final now = DateTime(2026, 10, 14, 10);
+    final queued = _compactPost(
+        'Future scheduled clip', now.add(const Duration(days: 1)));
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => now,
+      loadCalendarPosts: () async => [
+        CalendarPostResult.fromScheduledPost(queued),
+        CalendarPostResult(
+            id: 'foreign',
+            caption: 'Foreign clip',
+            userId: 'other-owner',
+            videoS3Key: 'uploads/foreign.mp4',
+            platforms: const ['YOUTUBE_SHORTS'],
+            status: 'PUBLISHED',
+            createdAt: now,
+            publishedAt: now),
+      ],
+      ownerUserId: 'calendar-owner',
+      loadSubscription: () async => _scheduleSubscription('PRO'),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Foreign clip'), findsNothing);
+    expect(find.text(queued.caption), findsOneWidget);
+    await tester.ensureVisible(find.text(queued.caption));
+    await tester.tap(find.text(queued.caption));
+    await tester.pumpAndSettle();
+    expect(find.text('เลื่อนเวลา'), findsOneWidget);
+    expect(find.text('ยกเลิกโพสต์'), findsOneWidget);
+  });
+
+  for (final activity in [
+    (status: 'PUBLISHED', scheduledAt: null, publishedAt: null),
+    (
+      status: 'PARTIAL_PUBLISHED',
+      scheduledAt: DateTime.utc(2026, 10, 13, 18, 30),
+      publishedAt: null
+    ),
+    (
+      status: 'FAILED',
+      scheduledAt: DateTime.utc(2026, 10, 15),
+      publishedAt: DateTime.utc(2026, 10, 13, 18, 30)
+    ),
+    (
+      status: 'QUEUED',
+      scheduledAt: DateTime.utc(2026, 10, 13, 18, 30),
+      publishedAt: DateTime.utc(2026, 10, 15)
+    ),
+  ]) {
+    testWidgets(
+        '${activity.status} calendar uses real activity date fallbacks in Bangkok',
+        (tester) async {
+      final post = CalendarPostResult(
+        id: 'date-fallback',
+        caption: 'Activity date fallback',
+        videoS3Key: 'uploads/clip.mp4',
+        platforms: const ['YOUTUBE_SHORTS'],
+        status: activity.status,
+        createdAt: activity.status == 'PUBLISHED'
+            ? DateTime.utc(2026, 10, 13, 18, 30)
+            : DateTime.utc(2026, 10, 1),
+        scheduledAt: activity.scheduledAt,
+        publishedAt: activity.publishedAt,
+      );
+      await tester.pumpWidget(_calendarApp(CalendarScreen(
+        now: () => DateTime(2026, 10, 14, 2),
+        toLocalTime: (value) => value.toUtc().add(const Duration(hours: 7)),
+        loadCalendarPosts: () async => [post],
+      )));
+      await tester.pumpAndSettle();
+      expect(find.text(post.caption), findsOneWidget);
+      expect(find.text('14 ต.ค. 2026'), findsOneWidget);
+      expect(find.text('01:30'), findsOneWidget);
+    });
+  }
+
+  testWidgets('immediate activity polls while publishing and stops once finished',
+      (tester) async {
+    final now = DateTime(2026, 10, 14, 10);
+    var loads = 0;
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => now,
+      loadCalendarPosts: () async {
+        loads++;
+        return [
+          CalendarPostResult(
+            id: 'immediate-polling',
+            caption: 'Immediate polling',
+            videoS3Key: 'uploads/clip.mp4',
+            platforms: const ['YOUTUBE_SHORTS'],
+            status: switch (loads) {
+              1 => 'QUEUED',
+              2 => 'PUBLISHING',
+              _ => 'PUBLISHED'
+            },
+            createdAt: now,
+            publishedAt: loads < 3 ? null : now,
+          )
+        ];
+      },
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('รอส่ง'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(loads, 2);
+    expect(find.text('กำลังส่ง'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(loads, 3);
+    expect(find.text('ส่งสำเร็จ'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 30));
+    expect(loads, 3);
+  });
+
   testWidgets(
       'compact rows retain all channels and one-line time with large text',
       (tester) async {

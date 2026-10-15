@@ -71,6 +71,16 @@ export class PublishOutcomeUnknownError extends Error {
   }
 }
 
+/** A known terminal rejection; no provider text is carried into public output. */
+export class PlatformPublishRejectionError extends Error {
+  readonly code = 'TIKTOK_FRAME_RATE_CHECK_FAILED' as const;
+
+  constructor() {
+    super('TikTok frame rate validation failed.');
+    this.name = 'PlatformPublishRejectionError';
+  }
+}
+
 export type VideoStorageCleaner = {
   deleteVideo: (videoS3Key: string) => Promise<void>;
 };
@@ -91,9 +101,25 @@ export type PublishWorkerResult = {
 
 const publicPlatformPublishErrorMessage =
   'Publishing to this platform failed. Please try again later.';
+const publicTikTokFrameRateErrorMessage =
+  'TikTok rejected this video because its frame rate validation failed. Export the video again before retrying.';
 const publicPublishOutcomeUnknownErrorMessage =
   'Publishing result could not be confirmed. Check the platform before trying again.';
 const publicCleanupErrorMessage = 'Video cleanup failed. Please try again later.';
+
+const readPublicPublishFailureMessage = (error: unknown, platform: Platform) => {
+  if (error instanceof PublishOutcomeUnknownError) {
+    return publicPublishOutcomeUnknownErrorMessage;
+  }
+  if (
+    platform === 'TIKTOK' &&
+    error instanceof PlatformPublishRejectionError &&
+    error.code === 'TIKTOK_FRAME_RATE_CHECK_FAILED'
+  ) {
+    return publicTikTokFrameRateErrorMessage;
+  }
+  return publicPlatformPublishErrorMessage;
+};
 
 const readSafeWorkerErrorName = (error: unknown) => {
   if (error instanceof RetryablePublishError) {
@@ -236,10 +262,7 @@ export const processPublishJob = async ({
           return {
             platform,
             status: 'FAILED',
-            errorMessage:
-              error instanceof PublishOutcomeUnknownError
-                ? publicPublishOutcomeUnknownErrorMessage
-                : publicPlatformPublishErrorMessage
+            errorMessage: readPublicPublishFailureMessage(error, platform)
           };
         }
       }

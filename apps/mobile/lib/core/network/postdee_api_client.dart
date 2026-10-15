@@ -2513,6 +2513,85 @@ class PostSummaryResult {
   }
 }
 
+/// Owner-scoped Calendar activity, including immediate posts without a schedule.
+class CalendarPostResult extends PostSummaryResult {
+  const CalendarPostResult({
+    required super.id,
+    required super.caption,
+    required super.videoS3Key,
+    required super.platforms,
+    required super.status,
+    required super.createdAt,
+    super.scheduledAt,
+    super.publishedAt,
+    super.platformResults,
+    super.videoUrl,
+    super.coverImageUrl,
+    super.coverFrameTimeMs,
+    this.userId,
+  }) : _scheduledPost = null;
+
+  CalendarPostResult.fromScheduledPost(ScheduledPostResult post)
+      : userId = post.userId,
+        _scheduledPost = post,
+        super(
+          id: post.id,
+          caption: post.caption,
+          videoS3Key: post.videoS3Key,
+          platforms: post.platforms,
+          status: post.status,
+          createdAt: post.createdAt,
+          scheduledAt: post.scheduledAt,
+          publishedAt: post.publishedAt,
+          platformResults: post.platformResults,
+        );
+
+  final String? userId;
+  final ScheduledPostResult? _scheduledPost;
+
+  factory CalendarPostResult.fromJson(Map<String, Object?> json) {
+    final post = PostSummaryResult.fromJson(json);
+    final rawUserId = json['userId'];
+    return CalendarPostResult(
+      id: post.id,
+      caption: post.caption,
+      videoS3Key: post.videoS3Key,
+      platforms: post.platforms,
+      status: post.status,
+      createdAt: post.createdAt,
+      scheduledAt: post.scheduledAt,
+      publishedAt: post.publishedAt,
+      platformResults: post.platformResults,
+      videoUrl: post.videoUrl,
+      coverImageUrl: post.coverImageUrl,
+      coverFrameTimeMs: post.coverFrameTimeMs,
+      userId: rawUserId is String && rawUserId.trim().isNotEmpty
+          ? rawUserId.trim()
+          : null,
+    );
+  }
+
+  /// Preserve the strict scheduled DTO for legacy callbacks and queue APIs.
+  /// Immediate activity has no scheduled equivalent.
+  ScheduledPostResult? toScheduledPost() {
+    final schedule = scheduledAt;
+    if (schedule == null) return null;
+    return _scheduledPost ??
+        ScheduledPostResult(
+          id: id,
+          caption: caption,
+          videoS3Key: videoS3Key,
+          platforms: platforms,
+          scheduledAt: schedule,
+          status: status,
+          createdAt: createdAt,
+          userId: userId,
+          publishedAt: publishedAt,
+          platformResults: platformResults,
+        );
+  }
+}
+
 class SocialConnectionResult {
   const SocialConnectionResult({
     required this.platform,
@@ -3032,6 +3111,20 @@ class PostDeeApiClient {
     return posts
         .map((post) =>
             ScheduledPostResult.fromJson(post as Map<String, Object?>))
+        .toList();
+  }
+
+  /// Lists all of the authenticated owner's activity without preview limits.
+  Future<List<CalendarPostResult>> listCalendarPosts() async {
+    final response = await _getJson('/posts');
+    final posts = response['posts'];
+
+    if (posts is! List<dynamic>) {
+      throw const ApiException('Calendar posts response is missing posts data');
+    }
+
+    return posts
+        .map((post) => CalendarPostResult.fromJson(post as Map<String, Object?>))
         .toList();
   }
 

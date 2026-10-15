@@ -1618,6 +1618,91 @@ void main() {
     expect(result.quota.remainingThisMonth, 119);
   });
 
+  test('calendar activity loads immediate and scheduled posts without previews',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final serverTask = () async {
+      final request = await server.first;
+      expect(request.method, 'GET');
+      expect(request.uri.path, '/posts');
+      expect(request.uri.query, isEmpty);
+      expect(request.headers.value(HttpHeaders.authorizationHeader),
+          'Bearer calendar-test-token');
+      await request.drain<void>();
+      _writeJsonResponse(request.response, {
+        'posts': [
+          {
+            'id': 'immediate-partial',
+            'userId': 'calendar-owner',
+            'caption': 'Immediate clip',
+            'videoS3Key': 'uploads/clip.mp4',
+            'platforms': ['TIKTOK', 'YOUTUBE_SHORTS'],
+            'status': 'PARTIAL_PUBLISHED',
+            'createdAt': '2026-10-13T17:00:00.000Z',
+            'publishedAt': '2026-10-13T18:30:00.000Z',
+            'platformResults': [
+              {'postId': 'immediate-partial', 'platform': 'TIKTOK', 'status': 'FAILED'},
+              {'postId': 'immediate-partial', 'platform': 'YOUTUBE_SHORTS', 'status': 'PUBLISHED', 'deliveryOutcome': 'PRIVATE'},
+            ],
+          },
+          for (var index = 0; index < 51; index++)
+            {
+              'id': 'older-immediate-$index',
+              'caption': 'Older clip',
+              'platforms': ['YOUTUBE_SHORTS'],
+              'status': 'PUBLISHED',
+              'createdAt': '2026-10-01T00:00:00.000Z',
+            },
+          {
+            'id': 'future-queue',
+            'caption': 'Scheduled clip',
+            'videoS3Key': 'uploads/future.mp4',
+            'platforms': ['YOUTUBE_SHORTS'],
+            'status': 'QUEUED',
+            'createdAt': '2026-10-13T17:00:00.000Z',
+            'scheduledAt': '2026-10-15T03:00:00.000Z',
+          },
+        ],
+      });
+      await request.response.close();
+    }();
+    try {
+      final client = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        authTokenProvider: () async => 'calendar-test-token',
+      );
+      final posts = await client.listCalendarPosts();
+      expect(posts, hasLength(53), reason: 'Calendar activity must not use the 50-preview cap.');
+      expect(posts.first.userId, 'calendar-owner');
+      expect(posts.first.scheduledAt, isNull);
+      expect(posts.first.toScheduledPost(), isNull);
+      expect(posts.first.platformResults.map((result) => result.status),
+          ['FAILED', 'PUBLISHED']);
+      expect(posts.last.scheduledAt, DateTime.utc(2026, 10, 15, 3));
+      await serverTask;
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  test('calendar activity never invents a schedule for immediate posts', () {
+    final payload = <String, Object?>{
+      'id': 'immediate',
+      'caption': 'Immediate clip',
+      'platforms': ['YOUTUBE_SHORTS'],
+      'status': 'PUBLISHED',
+      'scheduledAt': null,
+      'createdAt': '2026-10-14T00:00:00.000Z',
+    };
+    final post = CalendarPostResult.fromJson(payload);
+    expect(post.scheduledAt, isNull);
+    expect(post.toScheduledPost(), isNull);
+    expect(() => ScheduledPostResult.fromJson(payload),
+        throwsA(isA<ApiException>()));
+    expect(() => CalendarPostResult.fromJson({...payload, 'createdAt': null}),
+        throwsA(isA<ApiException>()));
+  });
+
   test('ScheduledPostResult parses calendar post payloads', () {
     final post = ScheduledPostResult.fromJson({
       'id': 'post-1',

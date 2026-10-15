@@ -2,6 +2,29 @@
 
 PostDee backend API reference.
 
+## Calendar activity and TikTok validation (2026-10-15, local changes)
+
+Calendar uses the existing authenticated `GET /posts` without `scheduled=true`,
+`includeMedia`, or a preview limit. This returns the owner's complete post list,
+including immediate activity with a missing/null `scheduledAt`. The new Mobile
+Calendar DTO permits that optional schedule; `GET /posts?scheduled=true`, the
+strict scheduled DTO, and scheduled mutation routes remain unchanged. Calendar
+shows finished activity at `publishedAt`, falling back to its real schedule or
+creation time; queued activity uses its real schedule or creation time. Queue
+mutations still require `QUEUED` plus an actual schedule.
+
+No response field or migration is added for TikTok media validation. For the
+allowlisted TikTok `frame_rate_check_failed` terminal provider rejection, the
+existing platform-result `errorMessage` now carries a fixed safe explanation.
+Other errors retain the existing generic message and secret-free logging. Old
+historical generic errors are not relabelled. New Mobile builds localize the
+fixed message and prepare/validate TikTok media before calling upload routes.
+An older Mobile build can display the fixed English string safely. Prefer API
+delivery before the updated APK; Calendar's unfiltered route already exists.
+See `docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md` for
+verification and delivery status; older dated scheduled-only UI notes below
+describe their original releases.
+
 ## Main integration boundary (2026-10-13, completed)
 
 Verified main is fast-forwarded and pushed to feature head

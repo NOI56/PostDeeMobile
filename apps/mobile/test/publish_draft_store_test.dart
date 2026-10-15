@@ -265,12 +265,26 @@ void main() {
         videoFile: video, watermarkEnabled: true);
     final receipt = PublishDraftUploadedMedia(
         mediaContentFingerprint: fingerprint,
+        videoPreparationPolicy: 'tiktok-cfr30-h264-aac-v1',
         videoS3Key: 'uploads/firebase-user-a/video/clip.mp4');
     final saved =
         await store.saveDraft(request(video: video, uploadedMedia: receipt));
     final restored = await store.loadDraft(saved.id);
     expect(restored!.uploadedMedia!.videoS3Key, receipt.videoS3Key);
+    expect(restored.uploadedMedia!.videoPreparationPolicy,
+        receipt.videoPreparationPolicy);
     expect(restored.mediaContentFingerprint, fingerprint);
+    final manifestFile =
+        File('${root.path}/store/firebase-user-a/draft-1/manifest.json');
+    final legacyManifest =
+        jsonDecode(await manifestFile.readAsString()) as Map<String, dynamic>;
+    (legacyManifest['uploadedMedia'] as Map<String, dynamic>)
+        .remove('videoPreparationPolicy');
+    await manifestFile.writeAsString(jsonEncode(legacyManifest));
+    final legacy = await store.loadDraft(saved.id);
+    expect(legacy!.uploadedMedia!.videoS3Key, receipt.videoS3Key);
+    expect(legacy.uploadedMedia!.videoPreparationPolicy, isNull);
+    expect(legacy.submissionRequestId, saved.submissionRequestId);
     final replacement =
         await store.saveDraft(request(video: changed, uploadedMedia: receipt));
     expect(replacement.submissionRequestId, saved.submissionRequestId);

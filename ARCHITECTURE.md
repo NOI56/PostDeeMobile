@@ -2,6 +2,35 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Calendar activity and TikTok media boundary (2026-10-15, local changes)
+
+`CalendarPostResult` extends the existing general post summary with nullable
+schedules and optional owner metadata. Calendar fetches unfiltered owner-scoped
+`GET /posts`; its compatibility adapter retains the strict scheduled DTO for
+legacy callers. Immediate/partial results open the existing detail screen,
+while only actual queued schedules expose mutations. Existing owner, lifecycle,
+refresh, local-time conversion, and motion boundaries remain in force.
+
+The uploader prepares TikTok-selected media after the watermark decision and
+before upload. A scoped FFmpeg session produces H.264/AAC constant 30 FPS, and a
+separate stream probe validates codec, rates, dimensions, duration, and audio.
+The output probe also decodes a bounded two-second prefix and checks its actual
+frame count; declared stream metadata alone cannot prove usable video. Android
+keeps H.264 SPS/PPS through `extract_extradata` without the global-header setup
+that flushes the encoder after EOS. iOS uses `h264_videotoolbox` without these
+Android-specific flags.
+Failed, cancelled, or invalid output stops before remote upload. Native sessions
+are bounded and cancel individually; temporary outputs do not replace source
+media. The logical source fingerprint and request ID remain stable. Local upload
+receipts additionally record the preparation policy; an incompatible legacy
+receipt is retained behind the existing explicit-new-attempt confirmation.
+
+Provider failure handling exposes one fixed TikTok frame-rate message through
+the existing error string, with no raw provider body or identifiers in public
+output/logs. Schema, subscriptions, destination modes, and deployment flags are
+unchanged. See `docs/superpowers/plans/2026-10-14-tiktok-media-and-calendar-activity.md`
+for exact verification, native limitations, and delivery state.
+
 ## Main integration boundary (2026-10-13, completed)
 
 The canonical main pointer is fast-forwarded from `c4e52201` to verified feature

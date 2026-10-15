@@ -20,6 +20,7 @@ import 'package:postdee_mobile/features/captions/caption_writing_style_store.dar
 import 'package:postdee_mobile/features/home/home_screen.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/profile/profile_screen.dart';
+import 'package:postdee_mobile/features/posts/post_detail_screen.dart';
 import 'package:postdee_mobile/features/platforms/connections_screen.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
@@ -33,6 +34,7 @@ import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'support/test_publish_media_identity.dart';
+import 'support/test_tiktok_video_preparer.dart';
 
 Finder _referenceNav() =>
     find.byKey(const ValueKey('postdee-reference-bottom-nav'));
@@ -1131,6 +1133,31 @@ void main() {
     expect(_referenceNav(), findsOneWidget);
     expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
     expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+  });
+
+  testWidgets('calendar hands immediate partial activity to detail without a fake schedule',
+      (tester) async {
+    final languageController = _signInShell();
+    final now = DateTime.now();
+    final post = CalendarPostResult(id: 'immediate-partial', caption: 'Immediate partial',
+        userId: 'firebase-user-shell', videoS3Key: 'uploads/clip.mp4',
+        platforms: const ['YOUTUBE_SHORTS'], status: 'PARTIAL_PUBLISHED',
+        createdAt: now, publishedAt: now);
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: languageController,
+      loadCalendarPosts: () async => [post],
+      uploaderDraftStore: _ShellDraftStore(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(_referenceNavButton('Calendar'));
+    await tester.pumpAndSettle();
+    final calendar = tester.widget<CalendarScreen>(find.byType(CalendarScreen));
+    calendar.onOpenCalendarPostDetail!(post);
+    await tester.pumpAndSettle();
+    final detail = tester.widget<PostDetailScreen>(find.byType(PostDetailScreen));
+    expect(detail.post.id, post.id);
+    expect(detail.post.scheduledAt, isNull);
+    expect(detail.post.status, 'PARTIAL_PUBLISHED');
   });
 
   testWidgets('calendar starts the composer and returns to the same calendar',
@@ -2757,6 +2784,7 @@ void main() {
     var calendarLoadCount = 0;
     CreatePostRequest? createdPostRequest;
     var scheduledPosts = <ScheduledPostResult>[];
+    var preparationCalls = 0;
     final tempDirectory = Directory.systemTemp.createTempSync(
       'postdee-shell-upload-',
     );
@@ -2814,11 +2842,21 @@ void main() {
             width: 1080,
             height: 1920,
           ),
-          createUpload: (_) async => const UploadResult(
-            id: 'upload-1',
-            videoS3Key: 'uploads/scheduled-shell.mp4',
-            storageProvider: 'mock',
-          ),
+          prepareTikTokVideo: (request) async {
+            preparationCalls++;
+            expect(request.inputFile.path, videoFile.path);
+            return testPrepareTikTokVideo(request);
+          },
+          createUpload: (request) async {
+            expect(preparationCalls, 1);
+            expect(request.width, 1080);
+            expect(request.height, 1920);
+            return const UploadResult(
+              id: 'upload-1',
+              videoS3Key: 'uploads/scheduled-shell.mp4',
+              storageProvider: 'mock',
+            );
+          },
           uploadVideoFile: (_, __) async {},
           checkPublishingReadiness: () async {},
           createPost: (request) async {
@@ -2896,6 +2934,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(createdPostRequest?.scheduledAt, isNotNull);
+    expect(preparationCalls, 1);
     expect(find.text('จัดคิวส่งตามเวลาแล้ว'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('publish-flow-finish')));
     await tester.pumpAndSettle();

@@ -196,68 +196,73 @@ void main() {
     expect(find.textContaining('เตรียมคลิปไม่สำเร็จ'), findsWidgets);
   });
 
-  testWidgets('legacy TikTok receipt is blocked before any save can discard it',
-      (tester) async {
-    const receipt = PublishDraftUploadedMedia(
-        mediaContentFingerprint: 'legacy-fingerprint',
-        videoS3Key: 'uploads/legacy.mp4');
-    final legacy = PublishDraft(
-        version: publishDraftManifestVersion,
-        id: 'legacy',
-        ownerUserId: 'test-user',
-        submissionRequestId:
-            'submit_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        createdAt: DateTime.utc(2026, 10, 1),
-        updatedAt: DateTime.utc(2026, 10, 1),
-        videoPath: source.path,
-        videoName: 'source.mp4',
-        videoSizeBytes: 3,
-        videoWidth: 720,
-        videoHeight: 1280,
-        caption: 'legacy',
-        aiGuidance: '',
-        watermarkEnabled: false,
-        platformApiValues: const {'TIKTOK'},
-        uploadedMedia: receipt);
-    store.drafts[legacy.id] = legacy;
-    await tester.pumpWidget(app(initialDraftId: legacy.id));
-    await submit(tester, restored: true);
-    expect(events, isEmpty);
-    expect(store.savedRequests, isEmpty);
-    expect(identical(store.drafts[legacy.id], legacy), isTrue);
-    expect(store.drafts[legacy.id]!.uploadedMedia, same(receipt));
-    await tester.tap(find.text('กลับไปตรวจสอบ'));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('uploader-start-new-publish-attempt')),
-        findsOneWidget,
-        reason: tester
-            .widgetList<Text>(find.byType(Text))
-            .map((widget) => widget.data)
-            .whereType<String>()
-            .join(' | '));
-    final startNew =
-        find.byKey(const ValueKey('uploader-start-new-publish-attempt'));
-    await tester.ensureVisible(startNew);
-    await tester.tap(startNew);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('ยกเลิก'));
-    await tester.pumpAndSettle();
-    expect(store.savedRequests, isEmpty);
-    expect(store.drafts[legacy.id]!.submissionRequestId,
-        legacy.submissionRequestId);
-    await tester.tap(startNew);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('publish-new-attempt-confirm')));
-    await tester.pumpAndSettle();
-    expect(store.savedRequests, hasLength(1));
-    expect(store.drafts, hasLength(2));
-    final fresh =
-        store.drafts.values.singleWhere((draft) => draft.id != legacy.id);
-    expect(fresh.uploadedMedia, isNull);
-    expect(fresh.submissionRequestId, isNot(legacy.submissionRequestId));
-    expect(store.drafts[legacy.id]!.uploadedMedia, same(receipt));
-    expect(events, isEmpty);
-  });
+  for (final legacyPolicy in <String?>[null, 'tiktok-cfr30-h264-aac-v1']) {
+    testWidgets(
+        'legacy TikTok receipt ($legacyPolicy) is blocked before any save can discard it',
+        (tester) async {
+      final receipt = PublishDraftUploadedMedia(
+          mediaContentFingerprint: 'legacy-fingerprint',
+          videoPreparationPolicy: legacyPolicy,
+          videoS3Key: 'uploads/legacy.mp4');
+      final legacy = PublishDraft(
+          version: publishDraftManifestVersion,
+          id: 'legacy',
+          ownerUserId: 'test-user',
+          submissionRequestId:
+              'submit_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          createdAt: DateTime.utc(2026, 10, 1),
+          updatedAt: DateTime.utc(2026, 10, 1),
+          videoPath: source.path,
+          videoName: 'source.mp4',
+          videoSizeBytes: 3,
+          videoWidth: 720,
+          videoHeight: 1280,
+          caption: 'legacy',
+          aiGuidance: '',
+          watermarkEnabled: false,
+          platformApiValues: const {'TIKTOK'},
+          uploadedMedia: receipt);
+      store.drafts[legacy.id] = legacy;
+      await tester.pumpWidget(app(initialDraftId: legacy.id));
+      await submit(tester, restored: true);
+      expect(events, isEmpty);
+      expect(store.savedRequests, isEmpty);
+      expect(identical(store.drafts[legacy.id], legacy), isTrue);
+      expect(store.drafts[legacy.id]!.uploadedMedia, same(receipt));
+      await tester.tap(find.text('กลับไปตรวจสอบ'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('uploader-start-new-publish-attempt')),
+          findsOneWidget,
+          reason: tester
+              .widgetList<Text>(find.byType(Text))
+              .map((widget) => widget.data)
+              .whereType<String>()
+              .join(' | '));
+      final startNew =
+          find.byKey(const ValueKey('uploader-start-new-publish-attempt'));
+      await tester.ensureVisible(startNew);
+      await tester.tap(startNew);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ยกเลิก'));
+      await tester.pumpAndSettle();
+      expect(store.savedRequests, isEmpty);
+      expect(store.drafts[legacy.id]!.submissionRequestId,
+          legacy.submissionRequestId);
+      await tester.tap(startNew);
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.byKey(const ValueKey('publish-new-attempt-confirm')));
+      await tester.pumpAndSettle();
+      expect(store.savedRequests, hasLength(1));
+      expect(store.drafts, hasLength(2));
+      final fresh =
+          store.drafts.values.singleWhere((draft) => draft.id != legacy.id);
+      expect(fresh.uploadedMedia, isNull);
+      expect(fresh.submissionRequestId, isNot(legacy.submissionRequestId));
+      expect(store.drafts[legacy.id]!.uploadedMedia, same(receipt));
+      expect(events, isEmpty);
+    });
+  }
 
   testWidgets(
       'owner change during preparation prevents any upload and cleans output',

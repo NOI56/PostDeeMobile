@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_video/ffprobe_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_kit_config.dart';
+import 'package:ffmpeg_kit_flutter_new_video/ffmpeg_session.dart';
+import 'package:ffmpeg_kit_flutter_new_video/ffprobe_session.dart';
 import 'package:ffmpeg_kit_flutter_new_video/return_code.dart';
 
-const tikTokVideoPreparationPolicy = 'tiktok-cfr30-h264-aac-v1';
+const tikTokVideoPreparationPolicy = 'tiktok-cfr30-h264-aac-v2';
 
 class TikTokVideoPreparationException implements Exception {
   const TikTokVideoPreparationException(this.message);
@@ -107,11 +109,37 @@ double? readVideoFrameRate(Object? value) {
   return rate.isFinite && rate > 0 ? rate : null;
 }
 
+({int width, int height})? _tikTokPreparedDimensions(
+    TikTokVideoMetadata source) {
+  final width = source.width;
+  final height = source.height;
+  if (width < 2 || height < 2) return null;
+  final shortest = width < height ? width : height;
+  final longest = width > height ? width : height;
+  final numerator = shortest < 360 ? 360 : (longest > 4096 ? 4096 : 1);
+  final denominator =
+      shortest < 360 ? shortest : (longest > 4096 ? longest : 1);
+  // Scale uniformly, allowing only the existing rounding to even pixels. An
+  // extreme aspect ratio cannot meet both limits without cropping or padding.
+  final preparedWidth = width * numerator ~/ denominator ~/ 2 * 2;
+  final preparedHeight = height * numerator ~/ denominator ~/ 2 * 2;
+  if (preparedWidth < 360 ||
+      preparedHeight < 360 ||
+      preparedWidth > 4096 ||
+      preparedHeight > 4096) {
+    return null;
+  }
+  return (width: preparedWidth, height: preparedHeight);
+}
+
 bool isCompatibleTikTokPreparedVideo(
   TikTokVideoMetadata output, {
   required TikTokVideoMetadata source,
 }) {
-  if (!output.durationSeconds.isFinite || output.durationSeconds <= 0) {
+  final dimensions = _tikTokPreparedDimensions(source);
+  if (dimensions == null ||
+      !output.durationSeconds.isFinite ||
+      output.durationSeconds <= 0) {
     return false;
   }
   final expectedFrames = (output.durationSeconds.clamp(0.0, 2.0) * 30).round();
@@ -121,10 +149,8 @@ bool isCompatibleTikTokPreparedVideo(
   return output.videoCodec == 'h264' &&
       isThirty(output.averageFrameRate) &&
       isThirty(output.realFrameRate) &&
-      output.width == source.width ~/ 2 * 2 &&
-      output.height == source.height ~/ 2 * 2 &&
-      output.width > 0 &&
-      output.height > 0 &&
+      output.width == dimensions.width &&
+      output.height == dimensions.height &&
       decodedFrames != null &&
       decodedFrames >= minimumFrames &&
       decodedFrames <= expectedFrames + 2 &&
@@ -185,25 +211,26 @@ TikTokVideoMetadata? readTikTokVideoMetadata(Map<dynamic, dynamic> properties) {
 }
 
 Future<TikTokVideoTask<bool>> _runTikTokVideo(List<String> arguments) async {
-  final completed = Completer<bool>();
-  final session =
-      await FFmpegKit.executeWithArgumentsAsync(arguments, (session) async {
-    try {
-      completed.complete(ReturnCode.isSuccess(await session.getReturnCode()));
-    } catch (error, stack) {
-      completed.completeError(error, stack);
-    }
-  });
+  final session = await FFmpegSession.create(arguments);
+  final sessionId = session.getSessionId();
+  if (sessionId == null) throw StateError('Missing native preparation session');
+  // These execute methods run on Android/iOS native workers and resolve the
+  // caller's MethodChannel result. Global completion events can instead belong
+  // to another Flutter engine without a listener. Expose this session's cancel
+  // handle immediately, while its native execution is still pending.
+  final result = () async {
+    await FFmpegKitConfig.ffmpegExecute(session);
+    return ReturnCode.isSuccess(await session.getReturnCode());
+  }();
   return TikTokVideoTask(
-    result: completed.future,
-    cancel: () => _cancelNativeSession(session.getSessionId()),
+    result: result,
+    cancel: () => _cancelNativeSession(sessionId),
   );
 }
 
 Future<TikTokVideoTask<TikTokVideoMetadata?>> probeTikTokVideo(String path,
     {bool countDecodedFrames = false}) async {
-  final completed = Completer<TikTokVideoMetadata?>();
-  final session = await FFprobeKit.executeWithArgumentsAsync([
+  final session = await FFprobeSession.create([
     '-v',
     'error',
     '-print_format',
@@ -217,22 +244,20 @@ Future<TikTokVideoTask<TikTokVideoMetadata?>> probeTikTokVideo(String path,
     ],
     '-i',
     path,
-  ], (session) async {
-    try {
-      if (!ReturnCode.isSuccess(await session.getReturnCode())) {
-        completed.complete(null);
-        return;
-      }
-      final decoded = jsonDecode(await session.getOutput() ?? '{}');
-      completed
-          .complete(decoded is Map ? readTikTokVideoMetadata(decoded) : null);
-    } catch (error, stack) {
-      completed.completeError(error, stack);
+  ]);
+  final sessionId = session.getSessionId();
+  if (sessionId == null) throw StateError('Missing native preparation session');
+  final result = () async {
+    await FFmpegKitConfig.ffprobeExecute(session);
+    if (!ReturnCode.isSuccess(await session.getReturnCode())) {
+      return null;
     }
-  });
+    final decoded = jsonDecode(await session.getOutput() ?? '{}');
+    return decoded is Map ? readTikTokVideoMetadata(decoded) : null;
+  }();
   return TikTokVideoTask(
-    result: completed.future,
-    cancel: () => _cancelNativeSession(session.getSessionId()),
+    result: result,
+    cancel: () => _cancelNativeSession(sessionId),
   );
 }
 
@@ -344,6 +369,11 @@ class FfmpegTikTokVideoPreparer {
         throw const TikTokVideoPreparationException(
             'ตรวจวิดีโอต้นฉบับไม่ได้ กรุณาเลือกไฟล์วิดีโอใหม่');
       }
+      final dimensions = _tikTokPreparedDimensions(source);
+      if (dimensions == null) {
+        throw const TikTokVideoPreparationException(
+            'วิดีโอมีสัดส่วนกว้างหรือสูงเกินไป จึงปรับขนาดให้ TikTok รับไม่ได้ กรุณาเลือกวิดีโอใหม่');
+      }
       workingDirectory = await _createTemporaryDirectory('postdee-tiktok-');
       final baseName = request.fileName
           .split(RegExp(r'[/\\]'))
@@ -363,7 +393,7 @@ class FfmpegTikTokVideoPreparer {
                 '-map',
                 '0:a?',
                 '-vf',
-                'fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2',
+                'fps=30,scale=${dimensions.width}:${dimensions.height}',
                 '-c:v',
                 isAndroid ? 'h264_mediacodec' : 'h264_videotoolbox',
                 if (isAndroid) ...[

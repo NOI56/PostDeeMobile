@@ -5,6 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/uploader/tiktok_video_preparer.dart';
 
 void main() {
+  test('dimension-safe preparation uses a new receipt policy version', () {
+    expect(tikTokVideoPreparationPolicy, 'tiktok-cfr30-h264-aac-v2');
+  });
+
   test('reads fractional FPS and rejects missing or invalid frame rates', () {
     expect(readVideoFrameRate('30000/1001'), closeTo(29.97003, .00001));
     expect(readVideoFrameRate('60000/1001'), closeTo(59.94006, .00001));
@@ -252,6 +256,7 @@ void main() {
     });
 
     FfmpegTikTokVideoPreparer processor({
+      TikTokVideoMetadata sourceVideo = source,
       TikTokVideoMetadata? output = valid,
       TikTokVideoRunner? run,
       TikTokVideoProbe? probe,
@@ -267,7 +272,8 @@ void main() {
               (path) async {
                 probes.add(path);
                 return TikTokVideoTask(
-                    result: Future.value(path == input.path ? source : output),
+                    result:
+                        Future.value(path == input.path ? sourceVideo : output),
                     cancel: () async {});
               },
           run: run ??
@@ -282,6 +288,229 @@ void main() {
           cancelTimeout: const Duration(milliseconds: 50),
           cancellationPollInterval: const Duration(milliseconds: 2),
         );
+
+    TikTokVideoMetadata dimensionVideo(int width, int height,
+            {bool prepared = false}) =>
+        TikTokVideoMetadata(
+          videoCodec: prepared ? 'h264' : 'mpeg4',
+          averageFrameRate: prepared ? 30 : 6,
+          realFrameRate: prepared ? 30 : 6,
+          width: width,
+          height: height,
+          durationSeconds: 1,
+          hasAudio: true,
+          audioCodec: prepared ? 'aac' : 'mp3',
+          decodedPrefixFrameCount: prepared ? 30 : null,
+        );
+
+    test('upscales a small portrait upload copy to TikTok minimum dimensions',
+        () async {
+      const smallSource = TikTokVideoMetadata(
+          videoCodec: 'h264',
+          averageFrameRate: 30,
+          realFrameRate: 30,
+          width: 180,
+          height: 320,
+          durationSeconds: 1,
+          hasAudio: true,
+          audioCodec: 'aac');
+      const enlargedOutput = TikTokVideoMetadata(
+          videoCodec: 'h264',
+          averageFrameRate: 30,
+          realFrameRate: 30,
+          width: 360,
+          height: 640,
+          durationSeconds: 1,
+          hasAudio: true,
+          audioCodec: 'aac',
+          decodedPrefixFrameCount: 30);
+
+      final result =
+          await processor(sourceVideo: smallSource, output: enlargedOutput)
+              .call(TikTokVideoPreparationRequest(
+                  inputFile: input, fileName: 'small.mp4'));
+
+      expect(result.width, 360);
+      expect(result.height, 640);
+      expect(
+          commands.single, containsAllInOrder(['-vf', 'fps=30,scale=360:640']));
+      expect(input.readAsBytesSync(), [1, 2, 3]);
+      await result.cleanupTemporaryFiles();
+    });
+
+    for (final dimensions in [
+      (
+        label: 'small landscape',
+        width: 320,
+        height: 180,
+        outWidth: 640,
+        outHeight: 360
+      ),
+      (
+        label: 'small odd portrait',
+        width: 181,
+        height: 321,
+        outWidth: 360,
+        outHeight: 638
+      ),
+      (
+        label: 'odd standard portrait',
+        width: 721,
+        height: 1281,
+        outWidth: 720,
+        outHeight: 1280
+      ),
+      (
+        label: 'valid portrait',
+        width: 1080,
+        height: 1920,
+        outWidth: 1080,
+        outHeight: 1920
+      ),
+      (
+        label: 'minimum boundary',
+        width: 360,
+        height: 640,
+        outWidth: 360,
+        outHeight: 640
+      ),
+      (
+        label: 'maximum boundary',
+        width: 4096,
+        height: 360,
+        outWidth: 4096,
+        outHeight: 360
+      ),
+      (
+        label: 'large portrait',
+        width: 4500,
+        height: 8000,
+        outWidth: 2304,
+        outHeight: 4096
+      ),
+      (
+        label: 'large landscape',
+        width: 8000,
+        height: 4500,
+        outWidth: 4096,
+        outHeight: 2304
+      ),
+      (
+        label: 'large at minimum scaled edge',
+        width: 8192,
+        height: 720,
+        outWidth: 4096,
+        outHeight: 360
+      ),
+    ]) {
+      test('prepares ${dimensions.label} within even TikTok dimension limits',
+          () async {
+        final result = await processor(
+          sourceVideo: dimensionVideo(dimensions.width, dimensions.height),
+          output: dimensionVideo(dimensions.outWidth, dimensions.outHeight,
+              prepared: true),
+        ).call(TikTokVideoPreparationRequest(
+            inputFile: input, fileName: 'dimensions.mp4'));
+
+        expect(result.width, dimensions.outWidth);
+        expect(result.height, dimensions.outHeight);
+        expect(
+            commands.single,
+            containsAllInOrder([
+              '-vf',
+              'fps=30,scale=${dimensions.outWidth}:${dimensions.outHeight}',
+            ]));
+        expect(commands.single,
+            containsAllInOrder(['-b:v', '6M', '-pix_fmt', 'yuv420p']));
+        expect(input.readAsBytesSync(), [1, 2, 3]);
+        expect(probes, [input.path, result.file.path]);
+        await result.cleanupTemporaryFiles();
+      });
+    }
+
+    test('sizes a rotated phone video using its displayed portrait dimensions',
+        () async {
+      final rotatedSource = readTikTokVideoMetadata({
+        'streams': [
+          {
+            'codec_type': 'video',
+            'codec_name': 'h264',
+            'width': 320,
+            'height': 180,
+            'duration': '1',
+            'avg_frame_rate': '30/1',
+            'r_frame_rate': '30/1',
+            'side_data_list': [
+              {'rotation': -90}
+            ],
+          },
+          {'codec_type': 'audio', 'codec_name': 'aac'},
+        ],
+      })!;
+
+      final result = await processor(
+        sourceVideo: rotatedSource,
+        output: dimensionVideo(360, 640, prepared: true),
+      ).call(TikTokVideoPreparationRequest(
+          inputFile: input, fileName: 'rotated.mp4'));
+
+      expect(result.width, 360);
+      expect(result.height, 640);
+      expect(
+          commands.single, containsAllInOrder(['-vf', 'fps=30,scale=360:640']));
+      expect(input.readAsBytesSync(), [1, 2, 3]);
+      await result.cleanupTemporaryFiles();
+    });
+
+    for (final dimensions in [(2, 8192), (8192, 2), (4097, 360)]) {
+      test(
+          'rejects impossible aspect ${dimensions.$1}x${dimensions.$2} '
+          'before allocating or rendering', () async {
+        final incompatibleSource = dimensionVideo(dimensions.$1, dimensions.$2);
+        expect(
+            isCompatibleTikTokPreparedVideo(valid, source: incompatibleSource),
+            isFalse);
+        await expectLater(
+          processor(sourceVideo: incompatibleSource).call(
+              TikTokVideoPreparationRequest(
+                  inputFile: input, fileName: 'extreme.mp4')),
+          throwsA(isA<TikTokVideoPreparationException>().having(
+              (error) => error.message, 'message', contains('สัดส่วน'))),
+        );
+
+        expect(commands, isEmpty);
+        expect(probes, [input.path]);
+        expect(temporary.existsSync(), isFalse);
+        expect(input.readAsBytesSync(), [1, 2, 3]);
+      });
+    }
+
+    test(
+        'validates the required enlarged dimensions instead of source size '
+        'or any in-range render', () async {
+      final smallSource = dimensionVideo(180, 320);
+      expect(
+          isCompatibleTikTokPreparedVideo(
+              dimensionVideo(360, 640, prepared: true),
+              source: smallSource),
+          isTrue);
+      for (final wrongDimensions in [(180, 320), (360, 642), (720, 1280)]) {
+        final wrongOutput = dimensionVideo(
+            wrongDimensions.$1, wrongDimensions.$2,
+            prepared: true);
+        expect(
+            isCompatibleTikTokPreparedVideo(wrongOutput, source: smallSource),
+            isFalse);
+        await expectLater(
+          processor(sourceVideo: smallSource, output: wrongOutput).call(
+              TikTokVideoPreparationRequest(
+                  inputFile: input, fileName: 'wrong.mp4')),
+          throwsA(isA<TikTokVideoPreparationException>()),
+        );
+        expect(temporary.existsSync(), isFalse);
+        expect(input.readAsBytesSync(), [1, 2, 3]);
+      }
+    });
 
     test(
         'normalizes after watermark to H264 AAC CFR30 and validates actual output',
@@ -298,7 +527,7 @@ void main() {
             '-map',
             '0:a?',
             '-vf',
-            'fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2',
+            'fps=30,scale=720:1280',
             '-c:v',
             'h264_mediacodec',
           ]));

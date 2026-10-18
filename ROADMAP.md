@@ -51,10 +51,12 @@ Build roadmap for PostDee.
   behind target account deletion fences. Keep all flags disabled by default.
 - Local implementation and fixture/database/browser verification are recorded in
   [the implementation plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).
-  This entry does not mark a Staging/Production release.
-- Release work still requires verified administrator UIDs, Firebase Web settings,
-  exact HTTPS origin, migration and flags on API/workers, followed by authenticated
-  staging acceptance. Report estimates require operator-supplied rates; conversion
+  Source `5ebf8a0` is now deployed on Staging with both migrations and healthy HTTP
+  checks; the console and trial flags remain off. Owner identity, Web app and
+  sign-in domain are configured, but Firebase Admin credential delivery is pending.
+- Activation still requires that credential, flags on API/workers and authenticated
+  staging acceptance; no real customer trials were granted. Report estimates require
+  operator-supplied rates; conversion
   attribution and invoicing are outside this version.
 - Update Mobile billing to confirm purchased access independently of trials and
   gate legacy purchase preparation during a trial upgrade before customer rollout.

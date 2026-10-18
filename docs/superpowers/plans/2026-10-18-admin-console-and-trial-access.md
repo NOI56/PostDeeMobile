@@ -12,7 +12,7 @@ conflicts were resolved by retaining both feature sections. No integration into
 main, remote push or deployment was performed.
 Implementation uses the clean `codex/admin-trial-console` worktree. Existing
 generated Windows modifications and unrelated artifacts remain in their worktrees.
-This scope does not authorize deployment, changing actual account privileges,
+The initial implementation scope did not authorize deployment, changing actual account privileges,
 granting real customer access, sending social posts, refunds or paid purchases.
 
 ## Chosen boundary
@@ -186,3 +186,57 @@ unverified. Both feature flags remain off in default configuration.
 `npm ci --ignore-scripts` reported 20 existing dependency audit findings (12
 moderate, 8 high) on the locked dependencies; versions were not changed as part of
 this feature. This work is not a comprehensive security audit.
+
+## Authorized Staging delivery follow-up (2026-10-18)
+
+The user subsequently authorized main integration/push, Staging deployment,
+Firebase Web sign-in setup and owner access, with no grants to other customers.
+Firebase Console verified the intended owner email/UID in the Staging project;
+personal owner identifiers remain in an ignored local preparation file, not source.
+
+Main advanced to `caf1e5029f3d18bef7d1436dd08e5572e590cc92` during release.
+The feature commits were rebased again, preserving the Android app-storage update
+and its delivery evidence. The only conflict was the Mobile README header; both
+trial documentation and the newer Android-delivered status were retained.
+API, Mobile application and test code are identical to the previously verified
+feature code. The resulting source is `5ebf8a0db260198a8df78925d4c56b5b12bd59fc`,
+pushed to remote main without overwriting the other main checkout's work.
+
+- Local release API run: 132 files / 2,242 tests passed; the eight opt-in database
+  tests were skipped in this run and previously passed against the isolated cluster.
+  Build, typecheck, Prisma/helper checks and prepared Staging configuration passed.
+- Exact-source Backend and Flutter CI `39095519413` passed; unsigned iOS build
+  `39095519418` also passed. Runtime dependency audit has four moderate findings,
+  no high finding under the deployed `--omit=dev --omit=optional` policy.
+- Render database export `2026-10-18T04:01Z.dir.tar.gz` is ready in the existing
+  Staging Recovery page; no download link/token or database credentials are recorded.
+- Source deployment `dep-dba4cdajnfac73eaidg0` became Live at
+  `2026-10-18T04:10:19Z`. Both new migrations applied successfully to
+  `postdee_staging`; `/health` returned HTTP 200.
+- Firebase Web app `PostDee Admin Staging` was registered with no Firebase Hosting.
+  Existing Google sign-in remains enabled; the exact Staging Render hostname was
+  added to Authorized domains. A dedicated verifier has only Firebase Authentication
+  Viewer access. Firebase user deletion remains off and push remains mock.
+- The user separately approved a temporary owner Organization Policy Administrator
+  grant, expiring at `2026-10-18T05:00:00Z`, and a temporary key-creation exception
+  for the Staging project only. After one user-managed verifier key was created,
+  the project returned to inherited enforced key-creation policy and the added
+  owner role was removed, preserving all seven original roles. The organization
+  policy itself was never disabled.
+
+### Remaining activation blocker
+
+Google Console reports the private key file was saved, but the browser download
+event timed out and the named file was not found in the Windows Downloads folder
+or scoped task/app temporary locations. The browser security policy rejected
+opening its internal downloads page; no alternative browser surface, raw CDP,
+hidden page state or network workaround was used. The user must provide the saved
+file location or complete the local save before credential delivery can continue.
+No private key has been printed, committed or installed on Render.
+
+Seven admin-only configuration keys are prepared on Staging with
+`ADMIN_CONSOLE_ENABLED=false` and `TRIAL_ACCESS_ENABLED=false`. No administrator
+session or customer trial mutation has been performed. Complete credential
+delivery, enable flags consistently, verify real owner sign-in/read-only views,
+and install compatible Mobile before customer trial acceptance. Production,
+store purchases and provider publication were not changed by this delivery.

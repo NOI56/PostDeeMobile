@@ -37,7 +37,7 @@ Other environments must update every publishing process before Mobile. Real
 connected-account publication and iOS device delivery remain unverified; see
 [scope and verification](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
 
-## Administrator and trial-access boundary (2026-10-18, local implementation)
+## Administrator and trial-access boundary (2026-10-18, Staging source deployed; disabled)
 
 The existing Express service serves semantic HTML/CSS/ES-module admin assets at
 `/admin`, following its public HTML delivery convention. This deliberate choice
@@ -50,6 +50,13 @@ Owner/Viewer UID allowlists, recent authentication for writes, fixed-origin JSON
 requests, rate limits, CSP, no-store and memory-only browser tokens. Ordinary
 Firebase users have no admin access. The console does not expose provider tokens,
 raw provider failures or video storage URLs and cannot publish/retry/delete posts.
+
+Staging source/migrations are deployed, but both feature flags remain off while
+the Firebase Admin credential is being delivered. The dedicated verifier uses
+`roles/firebaseauth.viewer`; this credential is not suitable for enabling Firebase
+user deletion or FCM. The existing deletion-off/mock-push settings are preserved.
+The temporary project key-creation exception was reverted to inherited enforcement
+and the owner's temporary Organization Policy Administrator role was removed.
 
 `AdminTrialAccess` stores one current expiring trial per existing User;
 `AdminTrialAudit` stores append-only command intents and before/after snapshots.

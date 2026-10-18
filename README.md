@@ -44,7 +44,7 @@ Connected-account publication and iOS device delivery remain unverified.
 See [implementation and checks](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
 Earlier sections record their respective deliveries.
 
-## Private admin console and trials (2026-10-18, local implementation)
+## Private admin console and trials (2026-10-18, Staging API deployed; console disabled)
 
 The API can serve a Thai `/admin` console for overview, members, posts, trials,
 connections, usage reports/CSV and administrator history. Owner and read-only
@@ -59,7 +59,11 @@ The additive trial migration and existing platform-enum history reconciliation
 must precede enabling trial access on API **and workers**.
 Update Mobile purchase confirmation before granting customer trials; it reads the
 separate purchased plan rather than treating trial access as proof of a purchase.
-This implementation is not deployed. Configuration, the local fixture preview and
+Source `5ebf8a0` and both additive migrations are deployed on Staging; health is
+HTTP 200. Both feature flags remain off pending delivery of the read-only Firebase
+Admin credential and authenticated acceptance. Owner identity, Firebase Web app
+and the Staging sign-in domain are verified/configured. No customer trials were
+granted. Configuration, the local fixture preview and
 report limitations are in [the admin guide](docs/ADMIN_CONSOLE.md); implementation
 and verification evidence are in [the plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).
 

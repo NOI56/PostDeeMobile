@@ -27,7 +27,8 @@ API and every publishing worker before the new Mobile controls. No schema
 migration, dependency or environment change is needed. Android **12024** is now
 installed after the separate emulator storage recovery; the API remains on
 source `866f0e3` and does not need another deployment for this installer/tool
-follow-up.
+follow-up. The later administrator API deployment described below supersedes
+that server source without changing the unified publishing contracts.
 Native Home/account/drafts/video reads pass after the update and cold boot;
 this is not a new publishing HTTP POST or provider publication test.
 Connected-account Meta publication and platform labeling remain unverified.
@@ -35,6 +36,11 @@ Evidence:
 [implementation record](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
 
 ## Private administrator API (2026-10-18, disabled by default)
+
+Source `5ebf8a0` is Live on Staging in `dep-dba4cdajnfac73eaidg0`. Both new
+migrations applied successfully and `/health` returns HTTP 200. Administrator
+and trial flags remain false until the Firebase Admin credential is delivered;
+the private routes are therefore not registered yet. No member trial was granted.
 
 `ADMIN_CONSOLE_ENABLED=true` registers `/admin`, its static assets and public
 Firebase Web configuration. No data endpoint is public: `/admin/api/*` requires

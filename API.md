@@ -37,10 +37,12 @@ Evidence:
 
 ## Private administrator API (2026-10-18, disabled by default)
 
-Source `5ebf8a0` is Live on Staging in `dep-dba4cdajnfac73eaidg0`. Both new
-migrations applied successfully and `/health` returns HTTP 200. Administrator
-and trial flags remain false until the Firebase Admin credential is delivered;
-the private routes are therefore not registered yet. No member trial was granted.
+Source `349e6c3` is Live on Staging in `dep-dba4v57btjjs73dqde2g`. Both new
+migrations applied earlier; health/readiness, `/admin`, assets and public config
+return HTTP 200. The read-only Firebase credential is installed and administrator/
+trial flags are enabled. Unauthenticated `/admin/api/session` returns 401.
+Google popup account selection opens; completed owner sign-in and data-view
+acceptance remain. No member trial was granted.
 
 `ADMIN_CONSOLE_ENABLED=true` registers `/admin`, its static assets and public
 Firebase Web configuration. No data endpoint is public: `/admin/api/*` requires

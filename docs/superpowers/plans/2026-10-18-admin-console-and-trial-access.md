@@ -224,7 +224,7 @@ pushed to remote main without overwriting the other main checkout's work.
   owner role was removed, preserving all seven original roles. The organization
   policy itself was never disabled.
 
-### Remaining activation blocker
+### Initial credential-delivery blocker (resolved by replacement below)
 
 Google Console reports the private key file was saved, but the browser download
 event timed out and the named file was not found in the Windows Downloads folder
@@ -240,3 +240,57 @@ session or customer trial mutation has been performed. Complete credential
 delivery, enable flags consistently, verify real owner sign-in/read-only views,
 and install compatible Mobile before customer trial acceptance. Production,
 store purchases and provider publication were not changed by this delivery.
+
+## Authorized credential replacement and activation (2026-10-18)
+
+The user approved a locally generated replacement key, upload of its public
+certificate only, a temporary Staging-only key-upload exception, immediate policy/
+role restoration, Render Staging secret delivery and deletion of the unavailable
+original key. No internal browser download page or blocked browser workaround
+was used. Private key contents were never printed or committed.
+
+- Generated an RSA-2048 private key and matching X.509 certificate in a dedicated
+  local directory whose ACL grants access only to the current Windows user and
+  SYSTEM. The public certificate expires `2027-10-18T04:37:46Z`.
+- The temporary Organization Policy Administrator role had the condition
+  `request.time < timestamp('2026-10-18T05:30:00Z')`, less than one hour after
+  authorization. Only Staging's `iam.disableServiceAccountKeyUpload` was temporarily
+  overridden. The organization-level policy was not disabled.
+- Uploaded the public certificate after policy propagation. Immediately restored
+  inherited enforced upload policy and removed the temporary role, preserving
+  the owner's seven original roles. Firebase Authentication Viewer remains the
+  verifier's only application-data role. A read-only Firebase `getUser` succeeded
+  and matched the verified owner. Deleted the unavailable original key and
+  refreshed the list to confirm only the replacement user-managed key remained.
+- Installed `FIREBASE_SERVICE_ACCOUNT_JSON` in Render Staging, enabled both admin/
+  trial flags, and preserved deletion-off/mock-push and unrelated service values.
+  Existing-build deployment `dep-dba4t5jbc2fs73a2set0` (source `5ebf8a0`) became
+  Live at `2026-10-18T04:45:30Z`. All 20 migrations were already applied; the
+  empty publishing-backlog guard passed and the memory scheduler started normally.
+- Live Google sign-in exposed a missing CSP script origin in both IAB and Chrome:
+  Firebase's popup resolver loads `https://apis.google.com/js/api.js` before opening
+  its window. Added the failing regression first, then allowed only the required
+  Google script origin while continuing to reject wildcard, unsafe-inline and
+  unsafe-eval script execution. Reference:
+  https://github.com/firebase/firebase-js-sdk/blob/main/packages/auth/src/platform_browser/index.ts
+- The 28 focused admin routes/config/integration tests, API typecheck and build pass.
+  Exact-source CI `39098358206` passed both Backend API and Flutter Mobile jobs.
+  Fix `349e6c3bb72e0e7f930fb43a6d2284d0c8eb81ec` was pushed to main; deployment
+  `dep-dba4v57btjjs73dqde2g` became Live at `2026-10-18T04:50:20Z`. Live CSP includes
+  the helper origin. Health/readiness, admin HTML/JS/CSS/config return 200 with the
+  expected admin no-store/CSP headers. Public config has only environment and
+  Firebase Web settings; unauthenticated session access returns 401.
+- Chrome opens Google's account chooser for the intended Firebase project. Input
+  and screenshot commands on that popup timed out; the user reported selecting the
+  owner, but the observed popup/main page had not completed sign-in. No successful
+  owner data-view session or live ordinary-user denial is claimed yet. A subsequent
+  IAB attempt loaded the auth helper iframe but still awaited completion. Closed
+  the agent-created stalled Chrome popup and reloaded the two admin tabs; the
+  enabled Google sign-in button is ready for normal manual sign-in.
+- Automatic command approval rejected deletion of the two task-generated local
+  private-key files as blocked by policy. They remain in the restricted-ACL directory;
+  no alternate deletion method was attempted. Render holds the active credential.
+
+No real customer trial, store purchase, provider publication, Production setting
+or emulator installation was changed. Finish real owner sign-in and read-only
+view acceptance; install the compatible Mobile build before customer trial grants.

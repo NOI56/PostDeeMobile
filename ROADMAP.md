@@ -51,11 +51,12 @@ Build roadmap for PostDee.
   behind target account deletion fences. Keep all flags disabled by default.
 - Local implementation and fixture/database/browser verification are recorded in
   [the implementation plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).
-  Source `5ebf8a0` is now deployed on Staging with both migrations and healthy HTTP
-  checks; the console and trial flags remain off. Owner identity, Web app and
-  sign-in domain are configured, but Firebase Admin credential delivery is pending.
-- Activation still requires that credential, flags on API/workers and authenticated
-  staging acceptance; no real customer trials were granted. Report estimates require
+  Source `349e6c3` is Live on Staging with both migrations and healthy HTTP checks;
+  the read-only Firebase credential is installed and both flags are enabled in
+  its API/memory-queue process. Owner identity, Web app and sign-in domain are configured.
+- Google popup account selection now opens after its CSP helper-script fix;
+  completed owner sign-in and authenticated Staging acceptance remain. No real
+  customer trials were granted. Report estimates require
   operator-supplied rates; conversion
   attribution and invoicing are outside this version.
 - Update Mobile billing to confirm purchased access independently of trials and

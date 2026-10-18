@@ -100,9 +100,10 @@ class PublishReviewScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isScheduled = scheduledAt != null;
+    final resolvedSettings = platformSettings.resolvedForCaption(caption);
     final canConfirm = publishReviewCanConfirm(
       platforms: platforms,
-      platformSettings: platformSettings,
+      platformSettings: resolvedSettings,
       connectionDisplayNames: connectionDisplayNames,
       scheduledAt: scheduledAt,
     );
@@ -125,7 +126,7 @@ class PublishReviewScreen extends StatelessWidget {
                 platforms: platforms,
                 scheduledAt: scheduledAt,
                 watermarkEnabled: watermarkEnabled,
-                platformSettings: platformSettings,
+                platformSettings: resolvedSettings,
                 connectionDisplayNames: connectionDisplayNames,
                 coverResult: coverResult,
               ),
@@ -227,12 +228,13 @@ class PublishReviewSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final trimmedCaption = caption.trim();
+    final resolvedSettings = platformSettings.resolvedForCaption(caption);
     final hasMissingConnectionIdentity = platforms.any(
       (platform) => connectionDisplayNames[platform]?.trim().isNotEmpty != true,
     );
     final hasUnknownOutcome = !publishReviewCanConfirm(
       platforms: platforms,
-      platformSettings: platformSettings,
+      platformSettings: resolvedSettings,
       connectionDisplayNames: connectionDisplayNames,
       scheduledAt: scheduledAt,
     );
@@ -371,7 +373,7 @@ class PublishReviewSummary extends StatelessWidget {
         for (final platform in platforms)
           _PlatformOutcomeRow(
             platform: platform,
-            settings: platformSettings,
+            settings: resolvedSettings,
             scheduledAt: scheduledAt,
             connectionDisplayName: connectionDisplayNames[platform],
           ),

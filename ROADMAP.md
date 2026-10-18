@@ -2,6 +2,22 @@
 
 Build roadmap for PostDee.
 
+## YouTube title from shared caption (2026-10-18, local implementation)
+
+- Write one caption and preview the YouTube title automatically: first sentence
+  of the first nonempty line, `<`/`>` removed, maximum 100 Unicode code points.
+  Keep the full caption as the description with existing guards unchanged.
+- Offer `ปรับชื่อเฉพาะ YouTube` for an explicit title; preserve it across caption
+  edits and provide `ใช้ชื่อจากแคปชัน` to reset. Keep automatic/custom choice in
+  existing local drafts and resolve the nested API title before review/send.
+- Allow a blank caption only for YouTube-only intent with a valid explicit
+  `platformSettings.YOUTUBE_SHORTS.title` and every required YouTube declaration,
+  including create, accepted replay and read-only recovery. Other destinations
+  still require a caption. Preserve readiness, quota, scheduling and target checks.
+- Verification and delivery are pending. No new migration, API field or service
+  configuration is needed beyond the existing main platform-settings baseline;
+  release the API before Mobile. Earlier delivery records remain historical.
+
 ## Unified channel settings (2026-10-18, Staging delivered)
 
 - Use one compact/scrollable settings shell for four platforms with account

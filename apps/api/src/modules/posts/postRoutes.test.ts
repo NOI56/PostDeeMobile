@@ -8,6 +8,7 @@ import { createInMemoryPublishQueue } from '../queue/publishQueue.js';
 import { createInMemoryPlatformPublishStore } from '../platformPublishes/platformPublishStore.js';
 import { createSubscriptionStore, type SubscriptionPlan } from '../subscriptions/subscriptionStore.js';
 import { createPublishScheduler } from '../../workers/publishScheduler.js';
+import type { PlatformPublishInput } from '../../workers/publishWorker.js';
 import { createUserStore } from '../users/userStore.js';
 import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
 import { createPostStore, type QueuedPost } from './postStore.js';
@@ -61,6 +62,102 @@ describe('post routes', () => {
     });
     return { app, userId, store, queue, reschedule, subscriptionStore, getPlan, ensureUser, platformPublishStore };
   };
+
+  describe('YouTube title-only submissions', () => {
+    const youtubeSettings = {
+      title: 'ชื่อคลิปที่เลือกเอง', visibility: 'unlisted' as const,
+      madeForKids: false, containsSyntheticMedia: true, communityGuidelinesCertified: true as const
+    };
+
+    it.each([undefined, '2026-06-02T10:00:00.000Z'])(
+      'keeps an empty description and completed YouTube settings through queueing and publishing (%s)', async (scheduledAt) => {
+        const { app, userId, store, queue, platformPublishStore } = createPlanScheduleApp('PRO');
+        const response = await request(app).post('/posts').send({
+          caption: '  ', videoS3Key: ownedUploadKey(userId, 'youtube-title-only.mp4'),
+          platforms: ['YOUTUBE_SHORTS'], platformSettings: { YOUTUBE_SHORTS: youtubeSettings },
+          scheduledAt
+        }).expect(201);
+
+        expect(response.body.post).toMatchObject({ caption: '', platformSettings: { YOUTUBE_SHORTS: youtubeSettings } });
+        expect((await queue.list())[0].platformSettings).toEqual({ YOUTUBE_SHORTS: youtubeSettings });
+        const publish = vi.fn(async ({ platform }: PlatformPublishInput) => ({
+          platform, status: 'PUBLISHED' as const, externalPostId: 'youtube-title-only',
+          deliveryOutcome: 'UNLISTED' as const,
+          publishedAt: '2026-06-02T10:00:00.000Z'
+        }));
+        await createPublishScheduler({
+          postStore: store, platformPublishStore, publisher: { publish },
+          now: () => '2026-06-02T10:00:00.000Z'
+        }).runOnce();
+        expect(publish).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+          caption: '', platform: 'YOUTUBE_SHORTS', platformSettings: { YOUTUBE_SHORTS: youtubeSettings }
+        }));
+      }
+    );
+
+    it('replays a title-only request once and rejects a changed title or description', async () => {
+      const assertUploadReady = vi.fn(async () => undefined);
+      const { app, userId, store, queue, getPlan } = createPlanScheduleApp('PRO', futureNow, { assertUploadReady });
+      const enqueue = vi.spyOn(queue, 'enqueue');
+      const body = {
+        clientRequestId: 'youtube-title-only-replay', caption: '',
+        videoS3Key: ownedUploadKey(userId, 'youtube-replay.mp4'), platforms: ['YOUTUBE_SHORTS'],
+        platformSettings: { YOUTUBE_SHORTS: youtubeSettings }
+      };
+      const first = await request(app).post('/posts').send(body).expect(201);
+      getPlan.mockRejectedValue(new Error('plan lookup should not run again'));
+      assertUploadReady.mockRejectedValue(new Error('upload lookup should not run again'));
+      const replay = await request(app).post('/posts').send(body).expect(200);
+
+      expect(replay.body).toMatchObject({ idempotentReplay: true, post: { id: first.body.post.id, caption: '' } });
+      expect(await store.list()).toHaveLength(1);
+      expect(enqueue).toHaveBeenCalledOnce();
+      expect(getPlan).toHaveBeenCalledOnce();
+      expect(assertUploadReady).toHaveBeenCalledOnce();
+      for (const change of [
+        { caption: 'Added description' },
+        { platformSettings: { YOUTUBE_SHORTS: { ...youtubeSettings, title: 'Changed title' } } }
+      ]) {
+        const conflict = await request(app).post('/posts').send({ ...body, ...change }).expect(409);
+        expect(conflict.body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+      }
+    });
+
+    it.each([
+      { caption: '', platforms: ['YOUTUBE_SHORTS'] },
+      { caption: '', platforms: ['YOUTUBE_SHORTS'], platformSettings: { YOUTUBE_SHORTS: { ...youtubeSettings, title: '' } } },
+      { caption: '', platforms: ['YOUTUBE_SHORTS'], platformSettings: { YOUTUBE_SHORTS: { ...youtubeSettings, communityGuidelinesCertified: false } } },
+      { caption: '', platforms: ['YOUTUBE_SHORTS', 'TIKTOK'], platformSettings: { YOUTUBE_SHORTS: youtubeSettings, TIKTOK: { publishMode: 'INBOX_DRAFT' } } },
+      { platforms: ['YOUTUBE_SHORTS'], platformSettings: { YOUTUBE_SHORTS: youtubeSettings } },
+      { caption: null, platforms: ['YOUTUBE_SHORTS'], platformSettings: { YOUTUBE_SHORTS: youtubeSettings } },
+      { caption: 123, platforms: ['YOUTUBE_SHORTS'], platformSettings: { YOUTUBE_SHORTS: youtubeSettings } }
+    ])('rejects missing/invalid captions or incomplete/mixed title-only settings before mutations: %j', async (input) => {
+      const { app, userId, store, queue, getPlan, ensureUser } = createPlanScheduleApp('PRO');
+      const response = await request(app).post('/posts').send({
+        ...input, videoS3Key: ownedUploadKey(userId, 'invalid-title-only.mp4')
+      }).expect(400);
+      expect(response.body.status).toBe('error');
+      expect(await store.list()).toEqual([]);
+      expect(await queue.list()).toEqual([]);
+      expect(getPlan).not.toHaveBeenCalled();
+      expect(ensureUser).not.toHaveBeenCalled();
+    });
+
+    it('still checks owner status and connected targets for a title-only post', async () => {
+      const denied = createPlanScheduleApp('PRO', futureNow, {
+        assertOwnerActive: async () => { throw new ManagedUploadServiceError(409, 'ACCOUNT_DELETION_IN_PROGRESS', 'Account deletion is in progress.'); }
+      });
+      const missingTarget = createPlanScheduleApp('PRO', futureNow, { resolvePlatformTarget: async () => undefined });
+      for (const fixture of [denied, missingTarget]) {
+        const response = await request(fixture.app).post('/posts').send({
+          caption: '', videoS3Key: ownedUploadKey(fixture.userId, 'guarded-title-only.mp4'),
+          platforms: ['YOUTUBE_SHORTS'], platformSettings: { YOUTUBE_SHORTS: youtubeSettings }
+        }).expect(409);
+        expect(response.body.code).toBe(fixture === denied ? 'ACCOUNT_DELETION_IN_PROGRESS' : 'PLATFORM_TARGET_UNAVAILABLE');
+        expect(await fixture.store.list()).toEqual([]);
+      }
+    });
+  });
 
   describe('platform caption preflight', () => {
     it('does not fill a missing Facebook setting for a new post', async () => {

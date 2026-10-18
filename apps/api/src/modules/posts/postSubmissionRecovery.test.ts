@@ -50,6 +50,52 @@ const accept = async (store: ReturnType<typeof createPostStore>, userId = 'owner
 };
 
 describe('read-only accepted submission recovery', () => {
+  const titleOnlyBody = {
+    ...body, clientRequestId: 'accepted-title-only', caption: '',
+    platformSettings: { YOUTUBE_SHORTS: {
+      title: 'ชื่อคลิป', visibility: 'unlisted' as const,
+      madeForKids: false, containsSyntheticMedia: true, communityGuidelinesCertified: true as const
+    } }
+  };
+
+  it('recovers a title-only YouTube intent without gates, mutations or a changed description', async () => {
+    const context = testApp();
+    const accepted = await context.store.createWithinMonthlyLimit({
+      ...titleOnlyBody, userId: 'owner', platforms: ['YOUTUBE_SHORTS'],
+      monthlyPostUnitLimit: 3, now: '2026-10-15T10:00:00.000Z'
+    });
+    expect(accepted.ok).toBe(true);
+    const create = vi.spyOn(context.store, 'createWithinMonthlyLimit');
+    const response = await request(context.app).post('/posts/submissions/recover').send(titleOnlyBody).expect(200);
+    expect(response.body).toMatchObject({
+      recovered: true, idempotentReplay: true,
+      post: { caption: '', platformSettings: titleOnlyBody.platformSettings }
+    });
+    for (const spy of [create, context.enqueue, context.ensureEnqueued, context.getPlan, context.ensureUser, context.resolvePlatformTarget, context.assertUploadReady]) {
+      expect(spy).not.toHaveBeenCalled();
+    }
+    for (const change of [
+      { caption: 'New description' },
+      { platformSettings: { YOUTUBE_SHORTS: { ...titleOnlyBody.platformSettings.YOUTUBE_SHORTS, title: 'Different title' } } }
+    ]) {
+      const conflict = await request(context.app).post('/posts/submissions/recover').send({ ...titleOnlyBody, ...change }).expect(409);
+      expect(conflict.body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    }
+  });
+
+  it.each([
+    { platformSettings: { YOUTUBE_SHORTS: { visibility: 'private' } } },
+    { platformSettings: { YOUTUBE_SHORTS: { ...titleOnlyBody.platformSettings.YOUTUBE_SHORTS, communityGuidelinesCertified: false } } },
+    { platforms: ['YOUTUBE_SHORTS', 'INSTAGRAM_REELS'], platformSettings: { ...titleOnlyBody.platformSettings, INSTAGRAM_REELS: { shareToFeed: true } } },
+    { caption: null }, { caption: 123 }
+  ])('rejects invalid title-only recovery without a lookup: %j', async (change) => {
+    const { app, store } = testApp();
+    const lookup = vi.spyOn(store, 'findIdempotent');
+    const response = await request(app).post('/posts/submissions/recover').send({ ...titleOnlyBody, ...change }).expect(400);
+    expect(response.body.code).toBe('INVALID_POST_SUBMISSION_RECOVERY');
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
   it.each([undefined, true, false])('recovers accepted Meta settings without changing an omitted or explicit AI declaration (%s)', async (isAiGenerated) => {
     const context = testApp();
     const aiSetting = isAiGenerated === undefined ? {} : { isAiGenerated };

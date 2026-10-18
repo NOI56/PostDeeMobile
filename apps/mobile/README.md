@@ -2,6 +2,25 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Automatic YouTube title (2026-10-18, local implementation)
+
+The shared caption supplies the YouTube title preview automatically. An empty
+raw `youtubeTitle` means automatic; `resolvedForCaption` takes the first sentence
+of the first nonempty line, removes `<`/`>`, and limits it to 100 Unicode code
+points. The full caption remains the description under its existing validation.
+`ปรับชื่อเฉพาะ YouTube` reveals the custom input. Caption edits preserve an
+explicit title; `ใช้ชื่อจากแคปชัน` clears it and resumes the live preview.
+Drafts retain that raw automatic/custom choice and existing explicit titles.
+
+Review/submission use the resolved existing nested
+`platformSettings.YOUTUBE_SHORTS.title`. There is no top-level API `youtubeTitle`
+or manifest/schema migration. Blank captions are allowed only for YouTube-only
+posts with a valid custom title and all required visibility, audience,
+synthetic-media and certification answers. Other destinations retain caption
+requirements. Required consent, account/readiness checks and recovery protections
+are unchanged. Verification and delivery are pending; release the updated API
+before Mobile so blank-description submissions are supported.
+
 ## Trial access and purchase confirmation (2026-10-18, local implementation)
 
 Effective subscription `plan` controls features and may include an administrator

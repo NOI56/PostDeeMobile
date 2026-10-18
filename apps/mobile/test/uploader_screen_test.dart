@@ -147,6 +147,11 @@ Future<void> _completeYouTubeSettingsForTests(WidgetTester tester) async {
   await tester.tap(settingsButton);
   await tester.pumpAndSettle();
 
+  final editTitle = find.byKey(const ValueKey('uploader-youtube-title-edit'));
+  if (editTitle.evaluate().isNotEmpty) {
+    await tester.tap(editTitle);
+    await tester.pumpAndSettle();
+  }
   await tester.enterText(
     find.byKey(const ValueKey('uploader-youtube-title')),
     'YouTube test title',
@@ -746,6 +751,8 @@ void main() {
             of: find.byKey(const ValueKey('uploader-platform-settings-sheet')),
             matching: find.text('channel-123')),
         findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('uploader-youtube-title-edit')));
+    await tester.pumpAndSettle();
     final youtubeTitle = find.byKey(const ValueKey('uploader-youtube-title'));
     await tester.ensureVisible(youtubeTitle);
     await tester.enterText(

@@ -337,3 +337,35 @@ recovery protections remain intact.
 
 These optional fields are provider-supported according to current docs. Mocked
 mapper/route tests do not prove a real connected account's publication or label.
+
+## YouTube title follow-up (2026-10-18, local implementation)
+
+The user approved writing the shared caption once and deriving the YouTube title,
+with an optional custom title and reset. This follow-up uses clean main baseline
+`6306690`; the earlier deployment/build/test records above apply to their stated
+source and do not verify this change.
+
+- Store the raw local `youtubeTitle`: empty means automatic. Derive the first
+  sentence of the first nonempty caption line after stripping `<`/`>`, capped at
+  100 Unicode code points. Preserve the full caption as the description and
+  retain its existing validation.
+- Show the effective title as a live preview. Reveal a custom input only through
+  `ปรับชื่อเฉพาะ YouTube`; preserve explicit titles across caption edits and
+  offer `ใช้ชื่อจากแคปชัน` to reset. Keep the raw choice in existing draft data.
+- Resolve effective settings with `resolvedForCaption` before validation,
+  review and submission, using the existing nested
+  `platformSettings.YOUTUBE_SHORTS.title` API/JSON/queue/provider path. No new
+  top-level API field, database column or migration is needed. Existing explicit
+  draft titles remain supported; all other platform settings stay intact.
+- Create, accepted replay and read-only recovery allow an empty caption only
+  for YouTube-only intent with a fully valid explicit nested title and all
+  visibility, audience, synthetic-media and certification settings. Mixed/other
+  destinations retain the nonempty-caption requirement. Preserve immutable
+  intent comparison, target binding, consent, readiness, quota and no-resend rules.
+
+Verification and delivery are pending. Required checks include automatic title
+updates, explicit-title preservation/reset, Unicode/sanitization limits, draft
+round trips, review/resolved payloads, title-only create/replay/recovery and the
+existing full API/Mobile regression suites. Release API before Mobile for the
+blank-description exception. Connected-account publication and device delivery
+need their own evidence; no production release is claimed here.

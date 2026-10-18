@@ -2,6 +2,27 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## YouTube automatic-title boundary (2026-10-18, local implementation)
+
+`PlatformPublishSettings.youtubeTitle` retains the raw local choice: empty means
+automatic, while a nonempty value is an explicit title that caption edits do
+not overwrite. `resolvedForCaption` creates the effective settings used for
+validation, review and submission. It derives the first sentence of the first
+nonempty line after removing `<`/`>`, capped at 100 Unicode code points. The
+sheet shows a live preview, hides the custom input behind
+`ปรับชื่อเฉพาะ YouTube`, and resets with `ใช้ชื่อจากแคปชัน`. Draft serialization
+keeps the raw choice and reads existing explicit titles without migration.
+
+The existing nested `platformSettings.YOUTUBE_SHORTS.title` carries the resolved
+title through immutable intent, JSON persistence, queue and provider mapping.
+The full shared caption remains the description; its existing character/length
+guards, all required YouTube declarations, target binding and no-resend recovery
+remain enforced. Create, accepted replay and read-only recovery permit an empty
+caption only for YouTube-only intent with fully valid explicit nested settings.
+Other destinations retain the caption requirement. No top-level API field,
+schema, dependency or environment change is introduced. Verification/delivery
+are pending; deploy the API before the updated Mobile blank-caption behavior.
+
 ## Unified settings and optional Meta disclosure (2026-10-18, Staging delivered)
 
 One Flutter sheet scaffold owns platform/account identity, bounded content-sized

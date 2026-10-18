@@ -85,7 +85,7 @@ void main() {
         SocialPlatform.youtubeShorts: 'Seller channel',
       },
     );
-    expect(find.text('ชื่อวิดีโอ: ยังไม่ระบุ'), findsOneWidget);
+    expect(find.text('ชื่อวิดีโอ: แคปชั่นขายสินค้า'), findsOneWidget);
     expect(find.text('สำหรับเด็ก: ยังไม่ระบุ'), findsOneWidget);
     expect(
         find.text('สื่อสังเคราะห์ที่ดูเหมือนจริง: ยังไม่ระบุ'), findsOneWidget);

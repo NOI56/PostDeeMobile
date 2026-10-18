@@ -20,7 +20,7 @@ enum FacebookPublishMode {
   publish,
 }
 
-/// An editable suggestion only; callers preserve a title the user already wrote.
+/// Uses the caption's first sentence; a blank saved title means automatic mode.
 String safeYouTubeTitleSuggestion(String caption) {
   for (final line in caption.split(RegExp(r'\r\n?|\n'))) {
     final title = line
@@ -28,7 +28,11 @@ String safeYouTubeTitleSuggestion(String caption) {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     if (title.isNotEmpty) {
-      return String.fromCharCodes(title.runes.take(100)).trimRight();
+      final sentenceEnd = RegExp(r'[.!?。！？](?:\s|$)').firstMatch(title);
+      final sentence = sentenceEnd == null
+          ? title
+          : title.substring(0, sentenceEnd.start + 1);
+      return String.fromCharCodes(sentence.runes.take(100)).trim();
     }
   }
   return '';
@@ -84,6 +88,13 @@ class PlatformPublishSettings {
   final bool? instagramIsAiGenerated;
   final FacebookPublishMode? facebookPublishMode;
   final bool? facebookIsAiGenerated;
+
+  /// Resolve only for validation/review/submission. Drafts retain the override
+  /// so automatic titles continue to follow edits to their saved caption.
+  PlatformPublishSettings resolvedForCaption(String caption) =>
+      youtubeTitle.trim().isNotEmpty
+          ? this
+          : copyWith(youtubeTitle: safeYouTubeTitleSuggestion(caption));
 
   PlatformPublishSettings copyWith({
     TikTokPublishMode? tiktokPublishMode,

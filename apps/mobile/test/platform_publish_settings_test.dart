@@ -26,6 +26,72 @@ void main() {
       final title = '🎬${'ก' * 99}';
       expect(safeYouTubeTitleSuggestion(title), title);
     });
+
+    test('uses the first sentence without breaking URLs or decimal numbers',
+        () {
+      expect(
+          safeYouTubeTitleSuggestion(
+              '\n ดู https://postdee.app ราคา 19.99 บาท! รายละเอียด\n#รีวิว'),
+          'ดู https://postdee.app ราคา 19.99 บาท!');
+      expect(safeYouTubeTitleSuggestion('พร้อมไหม？ มาลองกัน'), 'พร้อมไหม？');
+      expect(safeYouTubeTitleSuggestion('เริ่มเลย。 รายละเอียด'), 'เริ่มเลย。');
+    });
+  });
+
+  group('automatic YouTube title settings', () {
+    const automatic = PlatformPublishSettings(
+      youtubeMadeForKids: false,
+      youtubeContainsSyntheticMedia: true,
+      youtubeCommunityGuidelinesCertified: true,
+      youtubeVisibility: YouTubeVisibility.unlisted,
+    );
+
+    test('resolves against the current caption while retaining automatic mode',
+        () {
+      expect(automatic.resolvedForCaption('ชื่อแรก! รายละเอียด').youtubeTitle,
+          'ชื่อแรก!');
+      final resolved = automatic.resolvedForCaption('ชื่อใหม่\n#แท็ก');
+      expect(resolved.youtubeTitle, 'ชื่อใหม่');
+      expect(resolved.canSubmit(SocialPlatform.youtubeShorts), isTrue);
+      expect(resolved.youtubeVisibility, YouTubeVisibility.unlisted);
+      expect(resolved.youtubeContainsSyntheticMedia, isTrue);
+      expect(automatic.youtubeTitle, isEmpty);
+      expect(PlatformPublishSettings.fromDraftJson(automatic.toDraftJson()),
+          automatic);
+    });
+
+    test('preserves custom and legacy saved titles across caption edits', () {
+      const custom = PlatformPublishSettings(youtubeTitle: 'ชื่อที่ตั้งเอง');
+      final restored =
+          PlatformPublishSettings.fromDraftJson(custom.toDraftJson());
+      expect(restored.resolvedForCaption('แคปชันใหม่').youtubeTitle,
+          'ชื่อที่ตั้งเอง');
+    });
+
+    test('does not invent a title when caption and override are empty', () {
+      final resolved = automatic.resolvedForCaption(' \n\t ');
+      expect(resolved.youtubeTitle, isEmpty);
+      expect(resolved.canSubmit(SocialPlatform.youtubeShorts), isFalse);
+    });
+
+    test('resolved submission and recovery use the exact saved caption title',
+        () {
+      final resolved =
+          automatic.resolvedForCaption('ชื่อที่บันทึกไว้! รายละเอียด');
+      final options =
+          resolved.toApiJson(selectedPlatforms: {SocialPlatform.youtubeShorts});
+      expect(options['YOUTUBE_SHORTS'], {
+        'title': 'ชื่อที่บันทึกไว้!',
+        'visibility': 'unlisted',
+        'madeForKids': false,
+        'containsSyntheticMedia': true,
+        'communityGuidelinesCertified': true,
+      });
+      expect(
+          resolved.toRecoveryApiJson(
+              selectedPlatforms: {SocialPlatform.youtubeShorts}),
+          options);
+    });
   });
 
   group('read-only submission recovery settings', () {

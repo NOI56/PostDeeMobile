@@ -31,6 +31,33 @@ afterEach(() => {
 });
 
 describe('createPostPeerPublisher', () => {
+  it.each(['', 'คำอธิบายเต็ม\nพร้อมรายละเอียด #สินค้า'])(
+    'preserves the full description independently of an explicit YouTube title (%j)', async (caption) => {
+      let requestBody: Record<string, unknown> | undefined;
+      const publisher = createPostPeerPublisher({
+        apiKey: 'test-key', baseUrl: 'https://api.postpeer.test',
+        accountIds: { YOUTUBE_SHORTS: 'youtube-account' },
+        fetchImpl: async (_url, init) => {
+          requestBody = JSON.parse(String(init.body));
+          return { ok: true, status: 200, json: async () => ({ externalPostId: 'youtube-video' }) };
+        }
+      });
+      await publisher.publish({
+        userId: 'owner', postId: 'youtube-title-description', caption, platform: 'YOUTUBE_SHORTS',
+        platformSettings: { YOUTUBE_SHORTS: {
+          title: 'kkkkk', visibility: 'unlisted', madeForKids: false,
+          containsSyntheticMedia: true, communityGuidelinesCertified: true
+        } }
+      });
+
+      expect(requestBody).toMatchObject({ content: caption, platforms: [{
+        platform: 'youtube', platformSpecificData: {
+          title: 'kkkkk', visibility: 'unlisted', madeForKids: false, containsSyntheticMedia: true
+        }
+      }] });
+    }
+  );
+
   for (const platform of ['INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const) {
     it.each([undefined, true, false])(`maps ${platform} AI declarations only when explicitly present (%s)`, async (isAiGenerated) => {
       const calls: { platforms: { platformSpecificData: Record<string, unknown> }[] }[] = [];

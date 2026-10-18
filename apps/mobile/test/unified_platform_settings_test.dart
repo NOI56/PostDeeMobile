@@ -210,12 +210,13 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
   }
 
-  Future<void> selectPlatform(WidgetTester tester, String platform) async {
+  Future<void> selectPlatform(WidgetTester tester, String platform,
+      {String caption = 'คลิปสินค้าทดสอบ'}) async {
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 1);
     await tester.enterText(
       find.byKey(const ValueKey('uploader-caption-field')),
-      'คลิปสินค้าทดสอบ',
+      caption,
     );
     await goToUploaderStep(tester, 2);
     await tapKey(tester, ValueKey('uploader-platform-$platform'));
@@ -230,6 +231,160 @@ void main() {
     await goToUploaderStep(tester, 3);
     await tapKey(tester, const ValueKey('publish-review-confirm'));
   }
+
+  Future<void> answerYouTube(WidgetTester tester) async {
+    for (final key in [
+      'uploader-youtube-made-for-kids-no',
+      'uploader-youtube-synthetic-no',
+      'uploader-youtube-guidelines-certified',
+    ]) {
+      await tapKey(tester, ValueKey(key));
+    }
+  }
+
+  Future<void> editYouTubeTitle(WidgetTester tester, String title) async {
+    final edit = find.byKey(const ValueKey('uploader-youtube-title-edit'));
+    if (edit.evaluate().isNotEmpty) {
+      await tapKey(tester, const ValueKey('uploader-youtube-title-edit'));
+    }
+    final field = find.byKey(const ValueKey('uploader-youtube-title'));
+    await tester.ensureVisible(field);
+    await tester.enterText(field, title);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('YouTube derives a live title without requiring another entry',
+      (tester) async {
+    usePhoneSize(tester);
+    await tester.pumpWidget(uploader());
+    await selectPlatform(tester, 'YOUTUBE_SHORTS',
+        caption: 'รีวิวสินค้าใหม่! รายละเอียดเพิ่มเติม\n#รีวิว');
+    await openSettings(tester, 'YOUTUBE_SHORTS');
+    expect(find.text('รีวิวสินค้าใหม่!'), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-youtube-title')), findsNothing);
+    await answerYouTube(tester);
+    await tapKey(tester, _saveKey);
+    await goToUploaderStep(tester, 1);
+    await tester.enterText(find.byKey(const ValueKey('uploader-caption-field')),
+        'เปลี่ยนแคปชันแล้ว! รายละเอียดใหม่\n#ใหม่');
+    await goToUploaderStep(tester, 2);
+    await openSettings(tester, 'YOUTUBE_SHORTS');
+    expect(find.text('เปลี่ยนแคปชันแล้ว!'), findsOneWidget);
+    await tapKey(tester, _saveKey);
+    await goToUploaderStep(tester, 3);
+    expect(
+        find.textContaining('ชื่อวิดีโอ: เปลี่ยนแคปชันแล้ว!'), findsOneWidget);
+    await tapKey(tester, const ValueKey('publish-review-confirm'));
+    expect(requests.single.caption, 'เปลี่ยนแคปชันแล้ว! รายละเอียดใหม่\n#ใหม่');
+    expect((requests.single.platformSettings['YOUTUBE_SHORTS'] as Map)['title'],
+        'เปลี่ยนแคปชันแล้ว!');
+    expect(store.savedRequests.last.platformSettings.youtubeTitle, isEmpty);
+  });
+
+  testWidgets('YouTube custom title persists and reset returns to automatic',
+      (tester) async {
+    usePhoneSize(tester);
+    await tester.pumpWidget(uploader());
+    await selectPlatform(tester, 'YOUTUBE_SHORTS', caption: 'ชื่อจากแคปชัน');
+    await openSettings(tester, 'YOUTUBE_SHORTS');
+    await tapKey(tester, const ValueKey('uploader-youtube-title-edit'));
+    expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const ValueKey('uploader-youtube-title')))
+            .controller!
+            .text,
+        'ชื่อจากแคปชัน');
+    await editYouTubeTitle(tester, 'ชื่อที่ตั้งเอง');
+    await answerYouTube(tester);
+    await tapKey(tester, _saveKey);
+    await goToUploaderStep(tester, 1);
+    await tester.enterText(find.byKey(const ValueKey('uploader-caption-field')),
+        'ชื่อจากแคปชันใหม่! รายละเอียด');
+    await goToUploaderStep(tester, 2);
+    await openSettings(tester, 'YOUTUBE_SHORTS');
+    expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const ValueKey('uploader-youtube-title')))
+            .controller!
+            .text,
+        'ชื่อที่ตั้งเอง');
+    await tapKey(tester, const ValueKey('uploader-youtube-title-reset'));
+    expect(find.text('ชื่อจากแคปชันใหม่!'), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-youtube-title')), findsNothing);
+    await tapKey(tester, _saveKey);
+    await submit(tester);
+    expect((requests.single.platformSettings['YOUTUBE_SHORTS'] as Map)['title'],
+        'ชื่อจากแคปชันใหม่!');
+  });
+
+  testWidgets('YouTube-only can use an explicit title without a caption',
+      (tester) async {
+    usePhoneSize(tester);
+    await tester.pumpWidget(uploader());
+    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 1);
+    await tapKey(tester, const ValueKey('uploader-wizard-next'));
+    expect(
+        find.byKey(const ValueKey('uploader-step-platforms')), findsOneWidget);
+    await tapKey(tester, const ValueKey('uploader-platform-YOUTUBE_SHORTS'));
+    await openSettings(tester, 'YOUTUBE_SHORTS');
+    expect(tester.widget<FilledButton>(find.byKey(_saveKey)).onPressed, isNull);
+    await editYouTubeTitle(tester, 'คลิปไม่มีคำอธิบาย');
+    await answerYouTube(tester);
+    await tapKey(tester, _saveKey);
+    await submit(tester);
+    expect(requests.single.caption, isEmpty);
+    expect(requests.single.platforms, ['YOUTUBE_SHORTS']);
+    expect((requests.single.platformSettings['YOUTUBE_SHORTS'] as Map)['title'],
+        'คลิปไม่มีคำอธิบาย');
+  });
+
+  testWidgets(
+      'a blank caption cannot publish YouTube alongside another platform',
+      (tester) async {
+    usePhoneSize(tester);
+    await tester.pumpWidget(uploader());
+    await selectPlatform(tester, 'YOUTUBE_SHORTS', caption: '');
+    await openSettings(tester, 'YOUTUBE_SHORTS');
+    await editYouTubeTitle(tester, 'ชื่อสำหรับ YouTube เท่านั้น');
+    await answerYouTube(tester);
+    await tapKey(tester, _saveKey);
+    await tapKey(tester, const ValueKey('uploader-platform-INSTAGRAM_REELS'));
+    await tapKey(tester, const ValueKey('uploader-wizard-next'));
+    expect(find.byKey(const ValueKey('uploader-step-body-2')), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('เพิ่มแคปชั่นก่อนโพสต์'), -300,
+        scrollable: uploaderMainScroll);
+    expect(find.text('เพิ่มแคปชั่นก่อนโพสต์'), findsOneWidget);
+    await goToUploaderStep(tester, 3);
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.byKey(const ValueKey('publish-review-confirm')))
+            .onPressed,
+        isNull);
+    expect(requests, isEmpty);
+  });
+
+  testWidgets('YouTube rejects invalid custom titles and clearing uses caption',
+      (tester) async {
+    usePhoneSize(tester);
+    await tester.pumpWidget(uploader());
+    await selectPlatform(tester, 'YOUTUBE_SHORTS', caption: 'ชื่ออัตโนมัติ');
+    await openSettings(tester, 'YOUTUBE_SHORTS');
+    await answerYouTube(tester);
+    await editYouTubeTitle(tester, '<ชื่อไม่ถูกต้อง>');
+    expect(tester.widget<FilledButton>(find.byKey(_saveKey)).onPressed, isNull);
+    await editYouTubeTitle(tester, '😀' * 101);
+    expect(tester.widget<FilledButton>(find.byKey(_saveKey)).onPressed, isNull);
+    await editYouTubeTitle(tester, '');
+    expect(find.text('ชื่ออัตโนมัติ'), findsOneWidget);
+    await tapKey(tester, _saveKey);
+    await submit(tester);
+    expect((requests.single.platformSettings['YOUTUBE_SHORTS'] as Map)['title'],
+        'ชื่ออัตโนมัติ');
+  });
 
   testWidgets('Instagram Cancel discards changes and Save sends AI choice',
       (tester) async {

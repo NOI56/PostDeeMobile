@@ -34,7 +34,7 @@ import {
   type QueuedPost,
   isValidPlatform
 } from './postStore.js';
-import { normalizePersistedPlatformSettings, readPlatformSettings } from './platformSettings.js';
+import { normalizePersistedPlatformSettings, readPlatformSettings, type PlatformSettings } from './platformSettings.js';
 import { readPlatformCaptionIssue } from './platformCaptionValidation.js';
 import {
   buildTikTokConnectionRevision,
@@ -58,6 +58,19 @@ const readRequiredString = (value: unknown) => {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const readPostCaption = (
+  value: unknown,
+  platforms: Platform[],
+  platformSettings?: PlatformSettings
+) => {
+  if (typeof value !== 'string') return undefined;
+  const caption = value.trim();
+  const youtubeSettings = platformSettings?.YOUTUBE_SHORTS;
+  const isTitleOnlyYoutubePost = platforms.length === 1 &&
+    platforms[0] === 'YOUTUBE_SHORTS' && youtubeSettings && 'title' in youtubeSettings;
+  return caption || (isTitleOnlyYoutubePost ? '' : undefined);
 };
 
 const readPlatforms = (value: unknown) => {
@@ -524,7 +537,7 @@ export const registerPostRoutes = (
       response.status(401).json({ status: 'error', message: 'Authenticated user is required' });
       return;
     }
-    const caption = readRequiredString(request.body?.caption);
+    const rawCaption: unknown = request.body?.caption;
     const videoS3Key = readRequiredString(request.body?.videoS3Key);
     const requestId = readOptionalClientRequestId(request.body?.clientRequestId);
     const platforms = readPlatforms(request.body?.platforms);
@@ -532,7 +545,7 @@ export const registerPostRoutes = (
     const coverImage = readOptionalCoverImageKey(request.body?.coverImageS3Key);
     const coverFrame = readOptionalCoverFrameTimeMs(request.body?.coverFrameTimeMs);
     const fingerprint = readOptionalMediaContentFingerprint(request.body?.mediaContentFingerprint);
-    if (!caption || !videoS3Key || !requestId.ok || !requestId.value || !platforms.ok || platforms.hadDuplicates || !scheduledAt.ok || !coverImage.ok || !coverFrame.ok || !fingerprint.ok) {
+    if (typeof rawCaption !== 'string' || !videoS3Key || !requestId.ok || !requestId.value || !platforms.ok || platforms.hadDuplicates || !scheduledAt.ok || !coverImage.ok || !coverFrame.ok || !fingerprint.ok) {
       response.status(400).json({ status: 'error', code: 'INVALID_POST_SUBMISSION_RECOVERY', message: 'A valid original post submission intent is required.' });
       return;
     }
@@ -550,6 +563,11 @@ export const registerPostRoutes = (
         : originalSettings;
       platformSettings = normalizePersistedPlatformSettings(recoverySettings, platforms.value);
     } catch {
+      response.status(400).json({ status: 'error', code: 'INVALID_POST_SUBMISSION_RECOVERY', message: 'A valid original post submission intent is required.' });
+      return;
+    }
+    const caption = readPostCaption(rawCaption, platforms.value, platformSettings);
+    if (caption === undefined) {
       response.status(400).json({ status: 'error', code: 'INVALID_POST_SUBMISSION_RECOVERY', message: 'A valid original post submission intent is required.' });
       return;
     }
@@ -592,7 +610,6 @@ export const registerPostRoutes = (
 
   router.post('/posts', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
-    const caption = readRequiredString(request.body?.caption);
     const videoS3Key = readRequiredString(request.body?.videoS3Key);
     const clientRequestIdResult = readOptionalClientRequestId(request.body?.clientRequestId);
     const clientRequestId = clientRequestIdResult.value;
@@ -602,6 +619,11 @@ export const registerPostRoutes = (
     const platformSettingsResult = readPlatformSettings(
       request.body?.platformSettings,
       platformsResult.value
+    );
+    const caption = readPostCaption(
+      request.body?.caption,
+      platformsResult.value,
+      platformSettingsResult.ok ? platformSettingsResult.value : undefined
     );
     const scheduledAtResult = readOptionalIsoDate(request.body?.scheduledAt);
     const scheduledAt = scheduledAtResult.value;
@@ -624,7 +646,7 @@ export const registerPostRoutes = (
 
     if (
       clientRequestId &&
-      caption &&
+      caption !== undefined &&
       videoS3Key &&
       platformsResult.ok &&
       !platformsResult.hadDuplicates &&
@@ -708,7 +730,7 @@ export const registerPostRoutes = (
       }
     }
 
-    if (!caption || !videoS3Key) {
+    if (caption === undefined || !videoS3Key) {
       response.status(400).json({
         status: 'error',
         message: 'caption, videoS3Key, and at least one valid platform are required'

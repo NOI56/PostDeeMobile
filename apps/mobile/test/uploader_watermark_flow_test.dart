@@ -63,6 +63,11 @@ Future<void> _completeYouTubeSettings(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(settings);
   await tester.pumpAndSettle();
+  final editTitle = find.byKey(const ValueKey('uploader-youtube-title-edit'));
+  if (editTitle.evaluate().isNotEmpty) {
+    await tester.tap(editTitle);
+    await tester.pumpAndSettle();
+  }
   await tester.enterText(
     find.byKey(const ValueKey('uploader-youtube-title')),
     'YouTube watermark test',

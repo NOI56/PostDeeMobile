@@ -7,6 +7,28 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## YouTube title from shared caption (2026-10-18, local implementation)
+
+Write the shared caption once. The YouTube sheet shows a live title preview
+from the first sentence of its first nonempty line, removing `<`/`>` and
+limiting the title to 100 Unicode code points. `ปรับชื่อเฉพาะ YouTube` reveals
+an optional custom title; caption edits preserve it and `ใช้ชื่อจากแคปชัน`
+resets it to automatic. The full caption remains the description and keeps its
+existing validation; title cleanup does not alter the description.
+
+The local empty `youtubeTitle` means automatic. Before review/submission Mobile
+resolves it into the existing `platformSettings.YOUTUBE_SHORTS.title`; there is
+no top-level API field or new database column. A blank caption is allowed only
+for a YouTube-only post with a valid explicit nested title and all existing
+visibility, audience, synthetic-media and certification settings. Create,
+accepted replay and read-only recovery use the same exception. Other selected
+destinations still require a caption. Existing explicit draft titles remain.
+
+Verification and delivery are pending for this follow-up. It needs no migration
+beyond the existing platform-settings baseline. Release the API before Mobile
+so YouTube-only title submissions with blank descriptions are accepted. Earlier
+Staging deployment evidence below covers its own source, not this update.
+
 ## Unified channel settings (2026-10-18, Staging delivered)
 
 TikTok, YouTube, Instagram and Facebook Page Video share a content-sized settings

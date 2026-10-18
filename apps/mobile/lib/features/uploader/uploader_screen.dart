@@ -317,10 +317,25 @@ class _UploaderScreenState extends State<UploaderScreen>
   String _wizardStepLabel(int step) =>
       'ขั้นตอนที่ ${step + 1} จาก 4 · ${_wizardStepTitles[step]}';
 
+  PlatformPublishSettings get _resolvedPlatformSettings =>
+      _platformSettings.resolvedForCaption(_captionController.text);
+
+  String? _postTextValidationError() {
+    if (_captionController.text.trim().isNotEmpty) return null;
+    if (_selectedPlatforms.length == 1 &&
+        _selectedPlatforms.contains(SocialPlatform.youtubeShorts)) {
+      return _platformSettings.youtubeTitle.trim().isNotEmpty
+          ? null
+          : 'เพิ่มแคปชันหรือชื่อคลิป YouTube ก่อนโพสต์';
+    }
+    return 'เพิ่มแคปชั่นก่อนโพสต์';
+  }
+
   bool get _destinationsReady =>
+      _postTextValidationError() == null &&
       publishReviewCanConfirm(
         platforms: _selectedPlatforms.toList(),
-        platformSettings: _platformSettings,
+        platformSettings: _resolvedPlatformSettings,
         connectionDisplayNames: _reviewIdentities,
         scheduledAt: _readScheduledAt(),
       ) &&
@@ -732,7 +747,9 @@ class _UploaderScreenState extends State<UploaderScreen>
     String? error;
     if (_currentStep == 0 && _localFilePathController.text.trim().isEmpty) {
       error = 'เลือกวิดีโอจากเครื่องก่อน';
-    } else if (_currentStep == 1 && _captionController.text.trim().isEmpty) {
+    } else if (_currentStep == 1 &&
+        _captionController.text.trim().isEmpty &&
+        !_connectedPlatforms.contains(SocialPlatform.youtubeShorts)) {
       error = 'เพิ่มแคปชั่นก่อนโพสต์';
     } else if (_currentStep == 2) {
       if (_isLoadingConnections) {
@@ -747,9 +764,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       } else if (_selectedPlatformWithoutIdentity != null) {
         error =
             'ยังยืนยันบัญชีหรือเพจปลายทางไม่ได้ กรุณารีเฟรชช่องทางหรือเชื่อมต่อใหม่';
+      } else if (_postTextValidationError() case final message?) {
+        error = message;
       } else {
         final invalid = _selectedPlatforms
-            .where((p) => !_platformSettings.canSubmit(p))
+            .where((p) => !_resolvedPlatformSettings.canSubmit(p))
             .firstOrNull;
         if (invalid != null) error = _platformSettingsError(invalid);
       }
@@ -2212,7 +2231,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         return _platformSettings.tiktokValidationMessage ??
             'เปิดการตั้งค่า TikTok เพื่อเลือกการมองเห็นและยืนยันก่อนโพสต์';
       case SocialPlatform.youtubeShorts:
-        return _platformSettings.youtubeValidationMessage ??
+        return _resolvedPlatformSettings.youtubeValidationMessage ??
             'ตั้งค่า YouTube ให้ครบก่อนโพสต์';
       case SocialPlatform.facebookReels:
         return 'เลือกว่าจะเผยแพร่หรือเก็บเป็นร่างบนเพจก่อน';
@@ -3027,12 +3046,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       return;
     }
 
-    // The backend requires a caption, so catch it here instead of letting the
-    // user confirm the review only to have the post bounce back.
-    if (_captionController.text.trim().isEmpty) {
+    final textError = _postTextValidationError();
+    if (textError != null) {
       setState(() {
         _currentStep = 1;
-        _errorMessage = 'เพิ่มแคปชั่นก่อนโพสต์';
+        _errorMessage = textError;
         _successMessage = null;
       });
       return;
@@ -3135,7 +3153,13 @@ class _UploaderScreenState extends State<UploaderScreen>
           .map(_platformFromApiValue)
           .whereType<SocialPlatform>()
           .toSet();
+      // Historical incomplete recovery answers must remain incomplete.
       var settings = draft.platformSettings;
+      if (settings.youtubeMadeForKids != null &&
+          settings.youtubeContainsSyntheticMedia != null &&
+          settings.youtubeCommunityGuidelinesCertified) {
+        settings = settings.resolvedForCaption(draft.caption);
+      }
       if (platforms.contains(SocialPlatform.tiktok) &&
           settings.tiktokPublishMode == TikTokPublishMode.directPost) {
         settings = settings.copyWith(
@@ -3228,7 +3252,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     }
 
     final invalidPlatform = _selectedPlatforms
-        .where((platform) => !_platformSettings.canSubmit(platform))
+        .where((platform) => !_resolvedPlatformSettings.canSubmit(platform))
         .firstOrNull;
     if (invalidPlatform != null) {
       setState(() {
@@ -3269,9 +3293,10 @@ class _UploaderScreenState extends State<UploaderScreen>
 
     sizeBytes ??= localVideoFile.lengthSync();
 
-    if (caption.isEmpty) {
+    final textError = _postTextValidationError();
+    if (textError != null) {
       setState(() {
-        _errorMessage = 'เพิ่มแคปชั่นก่อนโพสต์';
+        _errorMessage = textError;
         _successMessage = null;
       });
       return null;
@@ -3385,7 +3410,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     WatermarkedVideoResult? generatedWatermarkedVideo;
     TikTokPreparedVideoResult? generatedTikTokVideo;
     double? preparedDurationSeconds;
-    var requestSettings = submittedDraft.platformSettings;
+    var requestSettings = submittedDraft.platformSettings
+        .resolvedForCaption(submittedDraft.caption);
 
     try {
       final checkPublishingReadiness = widget.checkPublishingReadiness ??
@@ -3733,7 +3759,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       final post = await createPost(
         CreatePostRequest(
           clientRequestId: submittedDraft.submissionRequestId,
-          caption: caption,
+          caption: submittedDraft.caption.trim(),
           videoS3Key: uploadedVideoS3Key!,
           mediaContentFingerprint: mediaContentFingerprint,
           platforms:
@@ -4074,12 +4100,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       useSafeArea: true,
       builder: (context) => _PlatformSettingsSheet(
         platform: platform,
-        initialSettings: platform == SocialPlatform.youtubeShorts &&
-                _platformSettings.youtubeTitle.trim().isEmpty
-            ? _platformSettings.copyWith(
-                youtubeTitle:
-                    safeYouTubeTitleSuggestion(_captionController.text))
-            : _platformSettings,
+        initialSettings: _platformSettings,
+        caption: _captionController.text,
         connection: _connectionDetails[platform],
         coverResult: _coverResult,
       ),
@@ -4360,7 +4382,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 },
                                 animate: _uploaderMotionAllowed(
                                     context, _appIsResumed),
-                                platformSettings: _platformSettings,
+                                platformSettings: _resolvedPlatformSettings,
                                 onPlatformChanged: _setPlatformSelected,
                                 onOpenPlatformSettings: _openPlatformSettings,
                                 onSelectAll: _selectAllConnectedPlatforms,
@@ -4429,7 +4451,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                       ..._selectedPlatforms,
                                       ..._draftUnavailablePlatforms
                                     }),
-                                platformSettings: _platformSettings,
+                                platformSettings: _resolvedPlatformSettings,
                                 connectionDisplayNames: _reviewIdentities,
                                 coverResult: _coverResult,
                                 previewImagePath: _videoPoster?.localImagePath,
@@ -5812,12 +5834,14 @@ class _PlatformSettingsSheet extends StatefulWidget {
   const _PlatformSettingsSheet({
     required this.platform,
     required this.initialSettings,
+    required this.caption,
     this.connection,
     this.coverResult,
   });
 
   final SocialPlatform platform;
   final PlatformPublishSettings initialSettings;
+  final String caption;
   final SocialConnectionResult? connection;
   final CoverEditorResult? coverResult;
 
@@ -5828,6 +5852,8 @@ class _PlatformSettingsSheet extends StatefulWidget {
 class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
   late PlatformPublishSettings _settings;
   late final TextEditingController _youtubeTitleController;
+  late bool _isEditingYoutubeTitle;
+  late bool _hasCustomYoutubeTitle;
 
   @override
   void initState() {
@@ -5836,6 +5862,9 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
     _youtubeTitleController = TextEditingController(
       text: widget.initialSettings.youtubeTitle,
     );
+    _hasCustomYoutubeTitle =
+        widget.initialSettings.youtubeTitle.trim().isNotEmpty;
+    _isEditingYoutubeTitle = _hasCustomYoutubeTitle;
   }
 
   @override
@@ -5845,25 +5874,27 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
   }
 
   PlatformPublishSettings get _currentSettings => _settings.copyWith(
-        youtubeTitle: _youtubeTitleController.text,
+        youtubeTitle:
+            _hasCustomYoutubeTitle ? _youtubeTitleController.text.trim() : '',
       );
 
   @override
   Widget build(BuildContext context) {
     final current = _currentSettings;
+    final resolved = current.resolvedForCaption(widget.caption);
     final displayName = widget.connection == null
         ? ''
         : (widget.connection!.displayName?.trim().isNotEmpty == true
             ? widget.connection!.displayName!.trim()
             : widget.connection!.externalAccountId?.trim() ?? '');
-    final canSave = current.canSubmit(widget.platform);
+    final canSave = resolved.canSubmit(widget.platform);
 
     return PlatformSettingsScaffold(
       platform: widget.platform,
       displayName: displayName,
       onSave: canSave ? () => Navigator.of(context).pop(current) : null,
       validationMessage: widget.platform == SocialPlatform.youtubeShorts
-          ? current.youtubeValidationMessage
+          ? resolved.youtubeValidationMessage
           : widget.platform == SocialPlatform.facebookReels && !canSave
               ? 'เลือกเผยแพร่หรือเก็บเป็นร่างบนเพจก่อนบันทึก'
               : null,
@@ -5872,6 +5903,8 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
   }
 
   Widget _buildSettings(PlatformPublishSettings current) {
+    final youtubeTitle =
+        current.resolvedForCaption(widget.caption).youtubeTitle.trim();
     switch (widget.platform) {
       case SocialPlatform.tiktok:
         throw StateError('TikTok uses the creator publishing options sheet');
@@ -5884,16 +5917,65 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TextField(
-                        key: const ValueKey('uploader-youtube-title'),
-                        controller: _youtubeTitleController,
-                        maxLength: 100,
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          labelText: 'ชื่อวิดีโอ YouTube',
-                          helperText: 'แคปชั่นหลักจะใช้เป็นคำอธิบาย',
-                        ),
+                      const Text('ชื่อที่จะปรากฏบน YouTube Shorts'),
+                      const SizedBox(height: 6),
+                      Text(
+                        youtubeTitle.isEmpty
+                            ? 'เพิ่มแคปชันหรือชื่อคลิป YouTube'
+                            : youtubeTitle,
+                        key: const ValueKey('uploader-youtube-title-preview'),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
+                      const SizedBox(height: 6),
+                      const Text('แคปชันฉบับเต็มและแฮชแท็กจะใช้เป็นคำอธิบาย'),
+                      if (!_isEditingYoutubeTitle)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            key: const ValueKey('uploader-youtube-title-edit'),
+                            onPressed: () => setState(() {
+                              _youtubeTitleController.text = youtubeTitle;
+                              _isEditingYoutubeTitle = true;
+                            }),
+                            icon: const Icon(Icons.edit_outlined, size: 16),
+                            label: const Text('ปรับชื่อเฉพาะ YouTube'),
+                          ),
+                        ),
+                      if (_isEditingYoutubeTitle) ...[
+                        const SizedBox(height: 10),
+                        TextField(
+                          key: const ValueKey('uploader-youtube-title'),
+                          controller: _youtubeTitleController,
+                          onChanged: (value) => setState(() {
+                            _hasCustomYoutubeTitle = value.trim().isNotEmpty;
+                          }),
+                          decoration: InputDecoration(
+                            labelText: 'ชื่อวิดีโอ YouTube',
+                            helperText: 'เว้นว่างเพื่อใช้ชื่อจากแคปชัน',
+                            counterText:
+                                '${_youtubeTitleController.text.trim().runes.length}/100',
+                            errorText: _hasCustomYoutubeTitle &&
+                                    (youtubeTitle.runes.length > 100 ||
+                                        youtubeTitle.contains('<') ||
+                                        youtubeTitle.contains('>'))
+                                ? 'ชื่อ YouTube ต้องไม่เกิน 100 ตัวอักษร และห้ามมี < หรือ >'
+                                : null,
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            key: const ValueKey('uploader-youtube-title-reset'),
+                            onPressed: () => setState(() {
+                              FocusScope.of(context).unfocus();
+                              _youtubeTitleController.clear();
+                              _hasCustomYoutubeTitle = false;
+                              _isEditingYoutubeTitle = false;
+                            }),
+                            child: const Text('ใช้ชื่อจากแคปชัน'),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       DropdownButtonFormField<YouTubeVisibility>(
                         isExpanded: true,

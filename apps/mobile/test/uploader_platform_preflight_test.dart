@@ -186,10 +186,9 @@ void main() {
         caption: '  ชื่อ <สินค้า> ใหม่\nรายละเอียดเพิ่มเติม');
     expect(
         tester
-            .widget<TextField>(
-                find.byKey(const ValueKey('uploader-youtube-title')))
-            .controller!
-            .text,
+            .widget<Text>(
+                find.byKey(const ValueKey('uploader-youtube-title-preview')))
+            .data,
         'ชื่อ สินค้า ใหม่');
     expect(
         tester

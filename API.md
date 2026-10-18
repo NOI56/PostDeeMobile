@@ -1597,7 +1597,23 @@ Rules:
 - When `SOCIAL_PUBLISHER=disabled`, the route returns `503` with
   `SOCIAL_PUBLISHING_UNAVAILABLE` before managed-upload readiness checks,
   subscription/quota reads, user/post persistence, or queue enqueue.
-- `caption`, `videoS3Key`, and at least one valid platform are required.
+- `caption` must be a string; `videoS3Key` and at least one valid platform are
+  required. A trimmed empty caption is accepted only when the sole destination
+  is `YOUTUBE_SHORTS` and `platformSettings.YOUTUBE_SHORTS` contains a valid
+  explicit title and all required visibility, audience, synthetic-media and
+  certification settings. Other destinations still require a nonempty caption.
+  The same exception applies to accepted replay and read-only submission
+  recovery; changed immutable intent still conflicts with the original request.
+- YouTube title auto-fill is a Mobile behavior, not a new API field: an empty
+  local `youtubeTitle` is resolved before review/submission into the existing
+  `platformSettings.YOUTUBE_SHORTS.title`. The automatic title uses the first
+  sentence of the first nonempty caption line, removes `<`/`>`, and is limited
+  to 100 Unicode code points. An explicit custom title is preserved across
+  caption edits and must pass the existing title validation. The full caption
+  remains the description, with its existing length/character guards unchanged.
+  No database migration or top-level `youtubeTitle` request field is added.
+  This follow-up is locally implemented with verification/delivery pending;
+  release the API before Mobile to support the blank-caption exception.
 - `videoS3Key` must be an upload key owned by the authenticated user, using the `uploads/<user-id>/<upload-id>/<file>` shape returned by `POST /uploads`.
 - `coverImageS3Key` is optional. When present, it must be an owner-scoped
   completed JPEG or PNG managed upload no larger than 2 MiB.

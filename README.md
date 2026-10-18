@@ -24,10 +24,11 @@ visibility, audience, synthetic-media and certification settings. Create,
 accepted replay and read-only recovery use the same exception. Other selected
 destinations still require a caption. Existing explicit draft titles remain.
 
-Verification and delivery are pending for this follow-up. It needs no migration
-beyond the existing platform-settings baseline. Release the API before Mobile
-so YouTube-only title submissions with blank descriptions are accepted. Earlier
-Staging deployment evidence below covers its own source, not this update.
+Local automated verification passes; [results and delivery limits](docs/superpowers/plans/2026-10-18-unified-platform-settings.md#youtube-title-follow-up-2026-10-18-local-implementation)
+are recorded separately. Staging Android **12025** builds, installs on the existing
+volume and opens Home with retained drafts/posts. No new migration is needed.
+Entitlement loading, the exact updated API deployment, provider publication and
+Production remain unverified; blank descriptions require the updated API.
 
 ## Unified channel settings (2026-10-18, Staging delivered)
 

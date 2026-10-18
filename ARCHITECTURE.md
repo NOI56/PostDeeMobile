@@ -20,8 +20,11 @@ guards, all required YouTube declarations, target binding and no-resend recovery
 remain enforced. Create, accepted replay and read-only recovery permit an empty
 caption only for YouTube-only intent with fully valid explicit nested settings.
 Other destinations retain the caption requirement. No top-level API field,
-schema, dependency or environment change is introduced. Verification/delivery
-are pending; deploy the API before the updated Mobile blank-caption behavior.
+schema, dependency or environment change is introduced. Local automated
+verification passes; [results and delivery limits](docs/superpowers/plans/2026-10-18-unified-platform-settings.md#youtube-title-follow-up-2026-10-18-local-implementation)
+include APK12025 build/install on the existing volume and basic Home launch.
+Entitlement loading, exact updated API deployment and provider publication remain
+unverified. Blank-caption publishing requires the updated API.
 
 ## Unified settings and optional Meta disclosure (2026-10-18, Staging delivered)
 

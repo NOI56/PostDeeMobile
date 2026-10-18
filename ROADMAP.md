@@ -14,9 +14,11 @@ Build roadmap for PostDee.
   `platformSettings.YOUTUBE_SHORTS.title` and every required YouTube declaration,
   including create, accepted replay and read-only recovery. Other destinations
   still require a caption. Preserve readiness, quota, scheduling and target checks.
-- Verification and delivery are pending. No new migration, API field or service
-  configuration is needed beyond the existing main platform-settings baseline;
-  release the API before Mobile. Earlier delivery records remain historical.
+- Local automated verification passes; [results and delivery limits](docs/superpowers/plans/2026-10-18-unified-platform-settings.md#youtube-title-follow-up-2026-10-18-local-implementation)
+  include APK12025 build/install with retained data and basic Home launch.
+  Entitlement loading, exact updated API deployment and provider publication
+  remain unverified. No new migration, API field or service configuration is
+  needed; blank descriptions require the updated API. Earlier records remain historical.
 
 ## Unified channel settings (2026-10-18, Staging delivered)
 

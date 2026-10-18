@@ -18,8 +18,10 @@ or manifest/schema migration. Blank captions are allowed only for YouTube-only
 posts with a valid custom title and all required visibility, audience,
 synthetic-media and certification answers. Other destinations retain caption
 requirements. Required consent, account/readiness checks and recovery protections
-are unchanged. Verification and delivery are pending; release the updated API
-before Mobile so blank-description submissions are supported.
+are unchanged. Local automated verification passes; [results and delivery limits](../../docs/superpowers/plans/2026-10-18-unified-platform-settings.md#youtube-title-follow-up-2026-10-18-local-implementation)
+include APK12025 build/install on the existing volume and basic Home launch with
+retained drafts/posts. Entitlement loading, exact updated API deployment and
+provider publication remain unverified; blank descriptions need the updated API.
 
 ## Trial access and purchase confirmation (2026-10-18, local implementation)
 

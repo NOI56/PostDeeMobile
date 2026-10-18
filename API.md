@@ -1612,8 +1612,10 @@ Rules:
   caption edits and must pass the existing title validation. The full caption
   remains the description, with its existing length/character guards unchanged.
   No database migration or top-level `youtubeTitle` request field is added.
-  This follow-up is locally implemented with verification/delivery pending;
-  release the API before Mobile to support the blank-caption exception.
+  Local automated verification passes; [results and delivery limits](docs/superpowers/plans/2026-10-18-unified-platform-settings.md#youtube-title-follow-up-2026-10-18-local-implementation)
+  include APK12025 build/install and basic Home launch. Entitlement loading,
+  exact updated API deployment and real publication remain unverified; the
+  blank-caption exception requires the updated API.
 - `videoS3Key` must be an upload key owned by the authenticated user, using the `uploads/<user-id>/<upload-id>/<file>` shape returned by `POST /uploads`.
 - `coverImageS3Key` is optional. When present, it must be an owner-scoped
   completed JPEG or PNG managed upload no larger than 2 MiB.

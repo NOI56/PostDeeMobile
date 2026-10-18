@@ -363,9 +363,56 @@ source and do not verify this change.
   destinations retain the nonempty-caption requirement. Preserve immutable
   intent comparison, target binding, consent, readiness, quota and no-resend rules.
 
-Verification and delivery are pending. Required checks include automatic title
-updates, explicit-title preservation/reset, Unicode/sanitization limits, draft
-round trips, review/resolved payloads, title-only create/replay/recovery and the
-existing full API/Mobile regression suites. Release API before Mobile for the
-blank-description exception. Connected-account publication and device delivery
-need their own evidence; no production release is claimed here.
+### Local automated verification
+
+- Feature source `ce501d4` starts from main `6306690`; follow-up `5aeea54`
+  corrects destination progress when a caption is cleared. Destination readiness
+  stays independent of caption text, while final confirmation still validates
+  it. Existing settings, declarations, account/readiness checks, immutable intent,
+  quota, scheduling and no-resend recovery remain enforced.
+- Backend **2,291 tests pass / 18 skipped**. Typecheck, build, Prisma schema and
+  helper checks, plus **22 catalog checks**, pass. Backend source is unchanged
+  since `ce501d4`.
+- Exact-source `5aeea54` Mobile full suite passes **2,388 tests / 2 optional
+  preview skips / 0 failures**, exit 0; whole-project analysis reports no issues.
+  Targeted title/progress-guard checks pass **24 tests / 1 optional preview skip**.
+  Coverage includes automatic updates, custom-title retention/reset, Unicode and
+  sanitization limits, draft round trips, resolved review/request payloads and
+  title-only create/replay/recovery.
+- No new migration is required beyond the main platform-settings baseline.
+
+### Android delivery and remaining limits
+
+- Exact runtime source `5aeea54` Staging debug APK **12025** builds successfully
+  in 198.5 seconds with Flutter **3.44.1** / Dart **3.12.1**. Package
+  `com.postdee.postdee_mobile.staging`, version `0.1.0-staging`; artifact size
+  **197,000,642 bytes**, SHA-256
+  `70075bb2ee817812a7ca7b2138a1470a2ae38b63db94c95c6a38e37f89503461`.
+- The build uses API
+  `https://postdee-api-staging.onrender.com`, Firebase project
+  `project-798caf7e-85b8-45e3-af7`, native/Google client configuration, real
+  Firebase authentication with local mock disabled, the RevenueCat Test Store
+  overlay, and Hook/Beat Sync flags false. The helper validates the Staging
+  authentication/native client and Test Store settings without printing keys.
+- The existing volume-safe helper updates emulator **5556**, Android **14 / API
+  34**, using `-r --force-uuid`. An immediate strict probe temporarily lacked
+  volume metadata; three unchanged probes pass with UID **10190**, version
+  **12025**, the same volume `470668ed-4e40-4628-acb4-8704efc6b257`, writable
+  CE/DE mounts, code path and data directory. No extra reinstall, clear or move
+  was used, and no guard code was weakened. Read-only framework volume listing
+  agrees with kernel mounts and `boot_completed=1`; no persistent storage issue
+  is observed. `run-as` file inspection was unavailable due to the mount-owner
+  restriction; permissions were left unchanged.
+- Cold launch returns `ok`; Home shows the existing saved draft, **2/4** connected
+  destinations and historical posts. The recent 300 log lines contain no FATAL,
+  unhandled exception or E/Flutter entry. This is a basic emulator smoke check,
+  not full publishing validation.
+
+Home entitlement loading reports a generic temporary Staging error, so current
+account entitlement and publishing behavior remain unconfirmed. Public Staging
+`/health` and `/ready` respond HTTP 200, but the exact updated API deployment is unconfirmed:
+Render MCP has no selected workspace, and no workspace selection/change or manual
+deployment was performed. Blank descriptions require the updated API. Git history
+records main integration; hosted CI, real provider publication and Production
+delivery are outside this local receipt. Earlier evidence above stays attached
+to its own source.

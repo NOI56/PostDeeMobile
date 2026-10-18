@@ -2,6 +2,7 @@ import type { PrismaClient, Prisma, Platform, PostStatus } from '@prisma/client'
 import { activeTrial, AdminError, type TrialAccess } from './trialAccess.js';
 import type { AdminConsoleConfig } from './adminConfig.js';
 import { adminPublishFailure } from './adminPublishFailure.js';
+import { readAdminUsageReport, type AdminReportScope, type AdminReportSummary, type AdminUsageWindow } from './adminUsageReport.js';
 
 const postStatusLabels: Record<string, string> = { DRAFT: 'ร่าง', QUEUED: 'รอส่ง', PENDING: 'รอส่ง', PUBLISHING: 'กำลังส่ง',
   PUBLISHED: 'ส่งถึงช่องทางแล้ว', PARTIAL_PUBLISHED: 'ส่งถึงบางช่องทาง', FAILED: 'ส่งไม่สำเร็จ' };
@@ -21,11 +22,12 @@ export const adminViews = ['overview', 'members', 'posts', 'trials', 'channels',
 export type AdminView = typeof adminViews[number];
 export type AdminMember = { id: string; email: string; displayName?: string | null; paidPlan: string;
   trial?: TrialAccess | null; [key: string]: unknown };
-export type AdminPage = { rows: Record<string, unknown>[]; total?: number; nextCursor?: string; note?: string };
+export type AdminPage = { rows: Record<string, unknown>[]; total?: number; nextCursor?: string; note?: string;
+  asOf?: string; window?: AdminUsageWindow; reportScope?: AdminReportScope; summary?: AdminReportSummary };
 export type AdminDataSource = {
   member: (id: string) => Promise<AdminMember | null>;
   view: (view: AdminView, options: { query: string; cursor?: string; status?: string; platform?: string;
-    from?: Date; until?: Date }) => Promise<AdminPage>;
+    from?: Date; until?: Date; reportScope?: AdminReportScope }) => Promise<AdminPage>;
 };
 const trialJson = (r: { userId: string; plan: string; startsAt: Date; expiresAt: Date; revokedAt: Date | null; version: number } | null): TrialAccess | null =>
   r ? { ...r, plan: r.plan as TrialAccess['plan'], startsAt: r.startsAt.toISOString(), expiresAt: r.expiresAt.toISOString(), revokedAt: r.revokedAt?.toISOString() ?? null } : null;
@@ -48,12 +50,21 @@ const readTimeCursor = (cursor?: string): { time: Date; id: string } | undefined
 };
 const continuation = <T extends { createdAt: Date }>(rows: T[], key: keyof T) => rows.length > 50
   ? { nextCursor: Buffer.from(JSON.stringify([rows[49].createdAt.toISOString(), rows[49][key]])).toString('base64url') } : {};
+const readSnapshot = <T>(prisma: PrismaClient, now: () => Date,
+  run: (client: Prisma.TransactionClient, time: Date) => Promise<T>) => {
+  const time = now();
+  return prisma.$transaction(async tx => {
+    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    await tx.$executeRaw`SET LOCAL statement_timeout = '10000ms'`;
+    return run(tx, time);
+  }, { isolationLevel: 'RepeatableRead', maxWait: 5000, timeout: 15000 });
+};
 export const createPrismaAdminDataSource = (prisma: PrismaClient, config: AdminConsoleConfig,
   now: () => Date = () => new Date()): AdminDataSource => ({
-  member: async id => {
+  member: id => readSnapshot(prisma, now, async (prisma, time) => {
     const r = await prisma.user.findUnique({ where: { id }, select: memberSelect });
     if (!r) return null;
-    const time = now(); const monthKey = time.toISOString().slice(0, 7);
+    const monthKey = time.toISOString().slice(0, 7);
     const monthStart = new Date(`${monthKey}-01T00:00:00Z`);
     const monthEnd = new Date(Date.UTC(time.getUTCFullYear(), time.getUTCMonth() + 1, 1));
     const [captions, edits, postUnits] = await Promise.all([
@@ -61,16 +72,20 @@ export const createPrismaAdminDataSource = (prisma: PrismaClient, config: AdminC
       prisma.aiEditUsage.aggregate({ where: { userId: id, monthKey }, _sum: { minutes: true } }),
       prisma.post.findMany({ where: { userId: id, createdAt: { gte: monthStart, lt: monthEnd } }, select: { selectedPlatforms: true } })
     ]);
-    return { ...memberJson(r, time), monthKey, captionRequests: captions, editMinutes: edits._sum.minutes ?? 0, postUnits: postUnits.reduce((sum, post) => sum + post.selectedPlatforms.length, 0) };
-  },
-  view: async (view, options) => {
-    const time = now(); const take = 51;
-    const search = options.query ? { OR: [ { email: { contains: options.query, mode: 'insensitive' as const } },
-      { displayName: { contains: options.query, mode: 'insensitive' as const } } ] } : {};
+    const quotaPostUnits = postUnits.reduce((sum, post) => sum + post.selectedPlatforms.length, 0);
+    return { ...memberJson(r, time), monthKey, captionRequests: captions, editMinutes: edits._sum.minutes ?? 0,
+      postUnits: quotaPostUnits, quotaPostUnits, asOf: time.toISOString(),
+      window: { from: monthStart.toISOString(), until: monthEnd.toISOString(), timezone: 'UTC' } };
+  }),
+  view: (view, options) => readSnapshot(prisma, now, async (prisma, time) => {
+    const take = 51;
+    const literalQuery = options.query.replace(/[\\%_]/g, '\\$&');
+    const search = options.query ? { OR: [ { email: { contains: literalQuery, mode: 'insensitive' as const } },
+      { displayName: { contains: literalQuery, mode: 'insensitive' as const } } ] } : {};
     const userFilter = { ...search };
     const window = { ...(options.from ? { gte: options.from } : {}), ...(options.until ? { lt: options.until } : {}) };
     const page = <T extends { id?: string; requestId?: string; userId?: string }>(rows: T[], map: (r: T) => Record<string, unknown>, key: 'id' | 'requestId' | 'userId' = 'id'): AdminPage => ({
-      rows: rows.slice(0, 50).map(map), ...(rows.length > 50 ? { nextCursor: String(rows[49][key]) } : {})
+      rows: rows.slice(0, 50).map(map), asOf: time.toISOString(), ...(rows.length > 50 ? { nextCursor: String(rows[49][key]) } : {})
     });
     if (view === 'overview') {
       const [members, paid, trials, posts] = await Promise.all([
@@ -80,7 +95,7 @@ export const createPrismaAdminDataSource = (prisma: PrismaClient, config: AdminC
       ]);
       return { rows: [{ label: 'สมาชิกทั้งหมด', value: members }, { label: 'แพ็กเกจที่ซื้อยังใช้งานได้', value: paid },
         { label: 'สิทธิ์ทดลองที่ใช้งานอยู่', value: trials }, ...posts.map(r => ({ label: `โพสต์ · ${postStatusLabels[r.status]}`, value: r._count._all }))],
-        note: 'ส่งถึงช่องทางแล้วรวมการส่งเป็นร่างด้วย ดูรูปแบบการเผยแพร่ของแต่ละช่องทางในหน้าโพสต์' };
+        asOf: time.toISOString(), note: 'สมาชิกทั้งหมดนับบัญชีที่ลงทะเบียน ไม่ใช่จำนวนผู้ใช้ออนไลน์ · ส่งถึงช่องทางแล้วรวมการส่งเป็นร่างด้วย ดูรูปแบบการเผยแพร่ของแต่ละช่องทางในหน้าโพสต์' };
     }
     if (view === 'members') {
       const rows = await prisma.user.findMany({ where: { ...userFilter, ...(options.cursor ? { id: { gt: options.cursor } } : {}) }, select: memberSelect, orderBy: { id: 'asc' }, take });
@@ -116,27 +131,9 @@ export const createPrismaAdminDataSource = (prisma: PrismaClient, config: AdminC
       return { ...page(rows, r => ({ requestId: r.requestId, actorId: r.actorId, email: r.user.email, action: r.action,
         plan: r.plan, days: r.days, reason: r.reason, before: r.before, after: r.after, createdAt: r.createdAt.toISOString() }), 'requestId'), ...continuation(rows, 'requestId') };
     }
+    if (view === 'reports') return readAdminUsageReport(prisma, options, time, config.costRates);
     const rows = await prisma.adminTrialAccess.findMany({ where: { user: userFilter, ...(options.cursor ? { userId: { gt: options.cursor } } : {}) }, orderBy: { userId: 'asc' }, take,
       include: { user: { select: memberSelect } } });
-    if (view === 'trials') return page(rows, r => ({ ...memberJson(r.user, time), trialStatus: activeTrial(trialJson(r), time) ? 'ACTIVE' : r.revokedAt ? 'REVOKED' : 'EXPIRED' }), 'userId');
-    const reports: Record<string, unknown>[] = [];
-    // Bounded sequential cohort queries avoid flooding the application's connection pool.
-    for (const r of rows.slice(0, 50)) {
-      const until = new Date(Math.min(time.getTime(), r.expiresAt.getTime(), r.revokedAt?.getTime() ?? Infinity));
-      const createdAt = { gte: r.startsAt, lt: until };
-      const [captions, edits, postUnits] = await Promise.all([
-        prisma.realClipCaptionUsage.count({ where: { userId: r.userId, createdAt } }),
-        prisma.aiEditUsage.aggregate({ where: { userId: r.userId, createdAt }, _sum: { minutes: true } }),
-        prisma.platformPublish.count({ where: { post: { userId: r.userId }, createdAt } })
-      ]);
-      const editMinutes = edits._sum.minutes ?? 0; const rates = config.costRates;
-      reports.push({ userId: r.userId, email: r.user.email, plan: r.plan, startsAt: r.startsAt.toISOString(),
-        expiresAt: r.expiresAt.toISOString(), revokedAt: r.revokedAt?.toISOString() ?? null,
-        captionRequests: captions, editMinutes, postUnits,
-        estimatedUsd: rates ? +(captions * rates.captionRequestUsd + editMinutes * rates.editMinuteUsd + postUnits * rates.postUnitUsd).toFixed(6) : null,
-        purchasedPlanNow: memberJson(r.user, time).paidPlan });
-    }
-    return { rows: reports, ...(rows.length > 50 ? { nextCursor: rows[49].userId } : {}),
-      note: 'แสดงช่วงทดลองล่าสุดของแต่ละบัญชีเท่านั้น ประวัติช่วงเก่าอยู่ที่ประวัติผู้ดูแล การใช้งานรวมกิจกรรมที่ใช้แพ็กเกจซื้ออยู่ด้วย แพ็กเกจที่ซื้อปัจจุบันไม่ใช่อัตราเปลี่ยนเป็นลูกค้าเสียเงิน ต้นทุนเป็นประมาณการ ไม่ใช่ใบแจ้งหนี้' };
-  }
+    return page(rows, r => ({ ...memberJson(r.user, time), trialStatus: activeTrial(trialJson(r), time) ? 'ACTIVE' : r.revokedAt ? 'REVOKED' : r.startsAt > time ? 'NOT_STARTED' : 'EXPIRED' }), 'userId');
+  })
 });

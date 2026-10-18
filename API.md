@@ -59,16 +59,49 @@ All responses use private/no-store. Every POST requires exact configured `Origin
 | Route | Contract |
 | --- | --- |
 | `GET /admin/api/session` | Role, email, environment; owner lists are never exposed |
-| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit; optional `query`, opaque `cursor`; posts accept `status`, `platform`, `from`, `through` (inclusive UTC dates) |
+| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit; optional `query`, opaque `cursor`; posts accept `status`, `platform`; posts/reports accept `from`, `through` (inclusive UTC dates); reports accept `reportScope: ALL_ACCOUNTS` or `LATEST_TRIAL` (legacy API default); the new console explicitly starts with all accounts |
 | `POST /admin/api/member` | `userId`; existing member details, purchased plan, separate trial, current UTC-month usage |
 | `POST /admin/api/trials` | Owner only, auth_time within 15 minutes; command below |
 
 View responses contain `rows`, optional `total`, `nextCursor`, `note`, and `checkedAt`.
+The local usage-accuracy update adds `asOf` (one observation time per read snapshot),
+report `window: {from: string|null, until: string, timezone: "UTC"}`, `reportScope`
+and `summary`. `checkedAt` is response completion, not a provider verification.
+Trial rows may also return `trialStatus: NOT_STARTED` when their start is in the
+future; the console displays “ยังไม่เริ่ม” rather than active/expired.
+Member details add an explicit `quotaPostUnits` alias for legacy monthly `postUnits`
+and a UTC `window`; existing fields keep their meanings. Related database reads
+share one bounded, read-only RepeatableRead transaction per request. Separate
+requests/page loads may observe later writes; pagination is not a frozen export.
 Pages contain at most 50 rows. Posts/audit sort newest first with stable tie-breaks.
 `view=reports,csv=true` exports the current page only with spreadsheet-formula-safe
-CSV. Search text stays in POST bodies rather than URLs. Reports cover each member's
-latest trial interval, account-wide recorded usage and optional estimated USD costs;
-they are not invoices or proof of paid conversion.
+CSV. Search text stays in POST bodies rather than URLs. The new console starts by
+explicitly requesting all registered accounts, including accounts with no trial
+or usage. Existing clients that omit `reportScope` retain latest-trial reports
+and the legacy CSV filename. Latest-trial
+scope intersects the requested range with each latest trial's start and earliest
+expiry/revocation/observation time. Missing `from` includes all retained history;
+`until` is exclusive and capped at `asOf`. The UI initially chooses the current
+UTC month. Results for empty/intersected-out ranges are zero, not omitted accounts.
+
+Report `summary` covers all search-matching accounts before the cursor, with
+`memberCount`, `captionRequests`, `editMinutes`, `quotaPostUnits`, `postUnits`,
+`livePostUnits`, `draftPostUnits`, `otherDeliveredPostUnits`, `failedPostUnits`,
+`pendingPostUnits`, and nullable `estimatedUsd`. Rows contain the same usage fields
+plus `userId`, `email`, `purchasedPlanNow`, nullable latest-trial fields and
+`usageFrom`/`usageUntil`. Report `postUnits` remains the number of recorded
+PlatformPublish rows by their creation date. `quotaPostUnits` sums selected
+platforms on Post rows by Post creation date, preserving current quota rules.
+Live/draft/other count only successful deliveries; other includes private,
+unlisted and unknown visibility. Failed and pending/publishing remain separate.
+These are current stored outcomes for records created in the selected range,
+not counts of state-transition events during the range. AI usage includes
+reserved/consumed records, not only successful results. Costs use recorded
+delivery rows and configured rates, remain null without rates, and are not
+invoices or proof of paid conversion. CSV still exports only the displayed page;
+CSV reads a fresh snapshot using the displayed page's applied filters/cursor;
+its numbers can change after the screen was loaded. The all-account filename is `postdee-usage-report.csv`, latest-trial filename stays
+`postdee-trial-report.csv`. This additive local update is not yet deployed.
 
 Staging admin UX follow-up (`50fba5e`): overview `label`, post `channels` and
 `failureReason` are Thai presentation strings. Post `status` and status/platform

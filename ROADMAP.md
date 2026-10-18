@@ -42,6 +42,14 @@ Build roadmap for PostDee.
 
 ## Administrator console and trial access (2026-10-18)
 
+- Local follow-up: consistent read snapshots, batched all-account usage reports
+  with UTC date ranges, whole-cohort totals, explicit quota/delivery/AI-reservation
+  definitions and safe manual/visible-page refresh. Preserve owner/viewer and
+  trial/paid-access boundaries. Verify actual local PostgreSQL concurrency/load
+  and responsive browser flows before releasing the API/admin assets. No Mobile
+  update or new migration is expected. See the
+  [usage accuracy work record](docs/superpowers/plans/2026-10-18-admin-usage-accuracy.md).
+
 - Implement seven Thai admin views, member/monthly-usage inspection, safe post
   failure summaries, trial-period reports/CSV and audit history.
 - Separate paid RevenueCat entitlements from local expiring Starter/Pro trials;

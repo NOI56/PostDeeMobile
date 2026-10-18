@@ -66,6 +66,10 @@ export const registerAdminConsole = (app: Express, options: Options) => {
       const statuses = ['DRAFT', 'QUEUED', 'PUBLISHING', 'PUBLISHED', 'PARTIAL_PUBLISHED', 'FAILED'];
       const platforms = ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'];
       if ((b.status && !statuses.includes(String(b.status))) || (b.platform && !platforms.includes(String(b.platform)))) throw new AdminError('ADMIN_FILTER_INVALID', 400);
+      if (b.reportScope !== undefined && !['ALL_ACCOUNTS', 'LATEST_TRIAL'].includes(b.reportScope as string)) {
+        throw new AdminError('ADMIN_FILTER_INVALID', 400);
+      }
+      const reportScope = (b.reportScope ?? 'LATEST_TRIAL') as 'ALL_ACCOUNTS' | 'LATEST_TRIAL';
       const date = (v: unknown) => { if (v === undefined || v === '') return undefined;
         if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || !Number.isFinite(Date.parse(v))) throw new AdminError('ADMIN_FILTER_INVALID', 400);
         const parsed = new Date(`${v}T00:00:00.000Z`);
@@ -75,10 +79,12 @@ export const registerAdminConsole = (app: Express, options: Options) => {
       const until = through ? new Date(through.getTime() + 86400000) : undefined;
       if (from && until && from >= until) throw new AdminError('ADMIN_FILTER_INVALID', 400);
       const result = await data.view(b.view as AdminView, { query: String(b.query ?? '').trim(), cursor: b.cursor as string | undefined,
-        status: b.status ? String(b.status) : undefined, platform: b.platform ? String(b.platform) : undefined, from, until });
+        status: b.status ? String(b.status) : undefined, platform: b.platform ? String(b.platform) : undefined, from, until,
+        reportScope });
       if (b.csv === true) {
         if (b.view !== 'reports') throw new AdminError('ADMIN_EXPORT_INVALID', 400);
-        res.type('text/csv').set('Content-Disposition', 'attachment; filename="postdee-trial-report.csv"').send(toCsv(result.rows));
+        const filename = reportScope === 'LATEST_TRIAL' ? 'postdee-trial-report.csv' : 'postdee-usage-report.csv';
+        res.type('text/csv').set('Content-Disposition', `attachment; filename="${filename}"`).send(toCsv(result.rows));
         return;
       }
       res.json({ ...result, checkedAt: now().toISOString() });
@@ -93,7 +99,7 @@ export const registerAdminConsole = (app: Express, options: Options) => {
       if (typeof id !== 'string' || !id || id.length > 128) throw new AdminError('ADMIN_FILTER_INVALID', 400);
       const member = await data.member(id);
       if (!member) throw new AdminError('ADMIN_MEMBER_NOT_FOUND', 404);
-      res.json({ member });
+      res.json({ member, checkedAt: now().toISOString() });
     } catch (error) {
       const safe = error instanceof AdminError ? error : new AdminError('ADMIN_DATA_UNAVAILABLE', 503);
       res.status(safe.status).json({ code: safe.code });

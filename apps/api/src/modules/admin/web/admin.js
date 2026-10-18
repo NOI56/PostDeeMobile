@@ -1,7 +1,7 @@
 const app = document.querySelector('#app');
 const names = { overview:'ภาพรวม', members:'สมาชิก', posts:'โพสต์', trials:'สิทธิ์ทดลอง', channels:'ช่องทางที่เชื่อม', reports:'รายงาน', audit:'ประวัติผู้ดูแล' };
 const paths = { overview:'M3 11 12 3l9 8M5 10v11h5v-7h4v7h5V10', members:'M20 21v-2a7 7 0 0 0-14 0v2M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0', posts:'M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M8 8h8M8 12h8M8 16h4', trials:'M9 3h6M10 3v7l-5 9q-1 2 2 2h10q3 0 2-2l-5-9V3M8 15h8', channels:'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2', reports:'M5 21V12M12 21V3M19 21V8', audit:'M12 8v5l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0' };
-const labels = { BASIC:'ฟรี', STARTER:'Starter', PRO:'Pro', ACTIVE:'ใช้งานอยู่', EXPIRED:'หมดอายุ', REVOKED:'ยกเลิกแล้ว', DRAFT:'ร่าง', QUEUED:'รอส่ง', PUBLISHING:'กำลังส่ง', PUBLISHED:'ส่งถึงช่องทางแล้ว', PARTIAL_PUBLISHED:'ส่งถึงบางช่องทาง', FAILED:'ส่งไม่สำเร็จ', GRANT:'ให้สิทธิ์', EXTEND:'ต่อเวลา', REVOKE:'ยกเลิกสิทธิ์', TIKTOK:'TikTok', YOUTUBE_SHORTS:'YouTube Shorts', INSTAGRAM_REELS:'Instagram Reels', FACEBOOK_REELS:'Facebook Page Video' };
+const labels = { BASIC:'ฟรี', STARTER:'Starter', PRO:'Pro', ACTIVE:'ใช้งานอยู่', NOT_STARTED:'ยังไม่เริ่ม', EXPIRED:'หมดอายุ', REVOKED:'ยกเลิกแล้ว', DRAFT:'ร่าง', QUEUED:'รอส่ง', PUBLISHING:'กำลังส่ง', PUBLISHED:'ส่งถึงช่องทางแล้ว', PARTIAL_PUBLISHED:'ส่งถึงบางช่องทาง', FAILED:'ส่งไม่สำเร็จ', GRANT:'ให้สิทธิ์', EXTEND:'ต่อเวลา', REVOKE:'ยกเลิกสิทธิ์', TIKTOK:'TikTok', YOUTUBE_SHORTS:'YouTube Shorts', INSTAGRAM_REELS:'Instagram Reels', FACEBOOK_REELS:'Facebook Page Video' };
 const messages = { ADMIN_ACCESS_DENIED:'บัญชีนี้ยังไม่ได้รับสิทธิ์ผู้ดูแล PostDee', ADMIN_OWNER_REQUIRED:'เฉพาะเจ้าของระบบสามารถเปลี่ยนสิทธิ์ทดลองได้', ADMIN_REAUTH_REQUIRED:'กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ เพื่อยืนยันตัวตนก่อนเปลี่ยนสิทธิ์', ADMIN_MEMBER_CHANGED:'อีเมลบัญชีเปลี่ยนแล้ว กรุณาค้นหาสมาชิกและตรวจสอบใหม่', ADMIN_TRIAL_CHANGED:'สิทธิ์มีการเปลี่ยนแปลง กรุณาปิดหน้าต่างแล้วโหลดข้อมูลล่าสุดก่อน', ADMIN_TRIAL_ALREADY_ACTIVE:'บัญชีนี้มีสิทธิ์ทดลองอยู่แล้ว ใช้การต่อเวลาแทน', ADMIN_TRIAL_NOT_ACTIVE:'ไม่พบสิทธิ์ทดลองที่ยังใช้งานอยู่', ADMIN_TRIAL_EXTENSION_LIMIT:'ต่อเวลาได้ไม่เกิน 90 วันนับจากวันนี้', ADMIN_TRIAL_INVALID:'กรุณาระบุแพ็กเกจ ระยะเวลา และเหตุผลอย่างน้อย 3 ตัวอักษร', ADMIN_REQUEST_CONFLICT:'หมายเลขคำขอนี้ใช้กับข้อมูลอื่นแล้ว กรุณาตรวจประวัติก่อน', ADMIN_TRIAL_UNAVAILABLE:'ยังยืนยันผลการเปลี่ยนสิทธิ์ไม่ได้ ใช้ปุ่มตรวจผลคำขอเดิม หรือตรวจประวัติผู้ดูแล', ADMIN_DATA_UNAVAILABLE:'ยังโหลดข้อมูลไม่ได้ กรุณาลองใหม่', ADMIN_FILTER_INVALID:'ตัวกรองหรือช่วงวันที่ไม่ถูกต้อง', ADMIN_MEMBER_NOT_FOUND:'ไม่พบบัญชีสมาชิกนี้แล้ว' };
 const h = (tag, attributes = {}, ...children) => { const e = document.createElement(tag); for(const [k,v] of Object.entries(attributes)) {
   if(k.startsWith('on')) e.addEventListener(k.slice(2),v); else if(v !== false && v != null) e.setAttribute(k,String(v)); }
@@ -10,56 +10,79 @@ const icon = key => { const s=document.createElementNS('http://www.w3.org/2000/s
 const button = (text, action, cls='', attributes={}) => h('button',{type:'button',class:cls,onclick:action,...attributes},text);
 const translate = v => v === '' ? '—' : labels[v] ?? v ?? '—';
 const when = value => value ? new Intl.DateTimeFormat('th-TH',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Bangkok'}).format(new Date(value)) : '—';
-const trialActive = t => t && !t.revokedAt && Date.parse(t.expiresAt)>Date.now();
-const trialText = t => !t ? 'ไม่มี' : t.revokedAt ? 'ยกเลิกแล้ว' : !trialActive(t) ? 'หมดอายุ' : `${translate(t.plan)} · เหลือ ${Math.ceil((Date.parse(t.expiresAt)-Date.now())/86400000)} วัน`;
-let boot, auth, firebase, currentUser, previewToken, session, epoch=0, loadEpoch=0, view='members', page={rows:[]}, query='', cursor, status='', platform='', from='', through='', error='', success='', busy=false, selected=null, drawerAction='DETAIL', selectedPlan='PRO', days=7, reason='', reviewing=false, pending=null, controllers=new Set();
-const api = async (path, body, csv=false) => { const captured=epoch; const controller=new AbortController(); controllers.add(controller);
+const whenUtc = value => new Intl.DateTimeFormat('th-TH',{dateStyle:'medium',timeStyle:'short',timeZone:'UTC'}).format(new Date(value));
+const trialActive = t => t && !t.revokedAt && Date.parse(t.startsAt)<=Date.now() && Date.parse(t.expiresAt)>Date.now();
+const trialText = t => !t ? 'ไม่มี' : t.revokedAt ? 'ยกเลิกแล้ว' : Date.parse(t.startsAt)>Date.now() ? 'ยังไม่เริ่ม' : !trialActive(t) ? 'หมดอายุ' : `${translate(t.plan)} · เหลือ ${Math.ceil((Date.parse(t.expiresAt)-Date.now())/86400000)} วัน`;
+let boot, auth, firebase, currentUser, previewToken, session, epoch=0, loadEpoch=0, view='members', page={rows:[]}, query='', appliedQuery='', cursor, status='', platform='', from='', through='', reportScope='ALL_ACCOUNTS', error='', success='', busy=false, csvBusy=false, selected=null, drawerAction='DETAIL', selectedPlan='PRO', days=7, reason='', reviewing=false, pending=null, controllers=new Set(), readController=null, refreshTimer=null, refreshFailed=false, refreshReset=false, loadedFilters=null;
+const api = async (path, body, csv=false, controller=new AbortController()) => { const captured=epoch; controllers.add(controller);
   try { const token=previewToken || await currentUser?.getIdToken(); if(!token) throw new Error('กรุณาเข้าสู่ระบบ');
     if(captured!==epoch) throw new Error('บัญชีเปลี่ยนแล้ว');
     const r=await fetch(`/admin/api/${path}`,{ method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json','X-PostDee-Admin':'1'}:{})},body:body?JSON.stringify(body):undefined,signal:controller.signal,cache:'no-store'});
-    if(captured!==epoch) throw new Error('บัญชีเปลี่ยนแล้ว'); const data=csv&&r.ok?await r.text():await r.json();
+    if(captured!==epoch) throw new Error('บัญชีเปลี่ยนแล้ว');let data;
+    try{data=csv&&r.ok?await r.text():await r.json();}catch{const failure=new Error(r.status===429?'โหลดข้อมูลบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่':r.status===401?'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่':r.status===403?'บัญชีนี้ไม่มีสิทธิ์เข้าถึงข้อมูล':'ยังโหลดข้อมูลไม่ได้ กรุณาลองใหม่');failure.status=r.status;throw failure;}
+    if(captured!==epoch || controller.signal.aborted) throw new Error('บัญชีเปลี่ยนแล้วหรือยกเลิกการโหลด');
     if(!r.ok) { const failure=new Error(messages[data.code] || `ดำเนินการไม่ได้ (${r.status})`); failure.status=r.status; throw failure; } return data;
-  } finally { controllers.delete(controller); }
+  } catch(e) { if(e.name==='TypeError')throw new Error('เชื่อมต่อระบบไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่');throw e; }
+  finally { controllers.delete(controller); }
 };
-const logout = async () => { epoch++; loadEpoch++; controllers.forEach(c=>c.abort()); controllers.clear(); currentUser=null; previewToken=null; session=null; page={rows:[]}; selected=null; pending=null; reason='';
+const logout = async () => { epoch++; loadEpoch++; clearInterval(refreshTimer); refreshTimer=null; controllers.forEach(c=>c.abort()); controllers.clear(); readController=null; currentUser=null; previewToken=null; session=null; page={rows:[]}; loadedFilters=null; selected=null; pending=null; reason='';busy=false;csvBusy=false;refreshFailed=false;refreshReset=false;
   if(auth) await firebase.signOut(auth); renderLogin(); };
-async function login() { error=''; renderLogin(true); try {
+async function login() { const generation=++epoch;error=''; renderLogin(true); try {
   if(boot.previewToken) previewToken=boot.previewToken;
   else { const [{initializeApp}, sdk]=await Promise.all([import('https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js')]);
     firebase=sdk; auth ||= sdk.getAuth(initializeApp(boot.firebaseWeb)); await sdk.setPersistence(auth,sdk.inMemoryPersistence);
     currentUser=(await sdk.signInWithPopup(auth,new sdk.GoogleAuthProvider())).user; }
-  session=await api('session'); await load();
-} catch(e) { error=e.message; currentUser=null; previewToken=null; session=null; if(auth) await firebase.signOut(auth); renderLogin(); } }
+  if(generation!==epoch)return;session=await api('session');if(generation!==epoch)return;await load();syncRefreshClock();
+} catch(e) { if(generation!==epoch)return;error=e.message; currentUser=null; previewToken=null; session=null; if(auth) await firebase.signOut(auth); renderLogin(); } }
 function renderLogin(loading=false) { document.body.classList.remove('has-drawer'); app.removeAttribute('aria-busy');
   app.replaceChildren(h('main',{class:'login'},h('section',{class:'login-panel'},h('div',{class:'brand'},'PostDee'),h('h1',{},'เข้าสู่ระบบผู้ดูแล'),
     h('p',{class:'notice'},'จัดการสมาชิก สิทธิ์ทดลอง และตรวจผลโพสต์ด้วยบัญชีที่ได้รับสิทธิ์'),h('div',{class:'environment'},boot?.previewToken?'LOCAL · ข้อมูลตัวอย่าง':boot?.environment||'กำลังโหลด'),
     error?h('p',{class:'error',role:'alert'},error):null,button(loading?'กำลังเข้าสู่ระบบ…':boot?.previewToken?'เปิดข้อมูลตัวอย่าง':'เข้าสู่ระบบด้วย Google',login,'primary',{disabled:loading}),
     h('p',{class:'footer-note'},'บัญชี Google ทั่วไปจะเข้าถึงข้อมูลผู้ดูแลไม่ได้')))); }
-const filters = () => ({ view, query, ...(cursor?{cursor}:{}), ...(status?{status}:{}), ...(platform?{platform}:{}), ...(from?{from}:{}), ...(through?{through}:{} ) });
-async function load(append=false) { const ticket=++loadEpoch; busy=true; error=''; render(); try { const result=await api('view',filters()); if(ticket!==loadEpoch)return;
-  page=append?{...result,rows:[...page.rows,...result.rows]}:result;
-} catch(e) { if(ticket===loadEpoch) error=e.message; } finally { if(ticket===loadEpoch){busy=false;render();} } }
-function navigate(next) { if(pending)return; view=next; selected=null; reviewing=false; page={rows:[]}; cursor=undefined;status='';platform='';from='';through='';success='';load(); }
-const fieldSelect = (caption, items, value, onChange) => { const e=h('select',{onchange:event=>onChange(event.target.value)},items.map(([id,name])=>h('option',{value:id,selected:id===value},name))); return h('label',{},caption,e); };
-async function openMember(member) { const ticket=++loadEpoch;busy=true;error='';render();try {
+const filters = () => ({ view, query:appliedQuery, ...(cursor?{cursor}:{}), ...(status?{status}:{}), ...(platform?{platform}:{}), ...(from?{from}:{}), ...(through?{through}:{}), ...(view==='reports'?{reportScope}:{}) });
+const refreshPaused = (automatic=false) => !session || document.hidden || busy || csvBusy || !!readController || !!selected || reviewing || !!pending ||
+  (automatic && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName?.toUpperCase()));
+function updateFreshness() { const node=app.querySelector('.refresh-status');if(!node)return;
+  const stamp=page.asOf||page.checkedAt;const stale=refreshFailed || (stamp && Date.now()-Date.parse(stamp)>=120000);
+  node.classList.toggle('stale',!!stale);node.replaceChildren(document.createTextNode(`${stale?'ข้อมูลอาจไม่เป็นปัจจุบัน · ':''}${stamp?'อ้างอิงข้อมูลเมื่อ '+when(stamp):'ยังไม่มีข้อมูลที่ยืนยันแล้ว'} · ${selected||reviewing||pending||csvBusy?'พักการรีเฟรชระหว่างทำรายการ':'อัปเดตอัตโนมัติทุก 60 วินาทีเมื่อเปิดดูหน้านี้'}`));
+  const refreshButton=app.querySelector('.refresh-button');if(refreshButton)refreshButton.disabled=refreshPaused();
+}
+function syncRefreshClock() { clearInterval(refreshTimer);refreshTimer=null;
+  if(session&&!document.hidden)refreshTimer=setInterval(()=>{updateFreshness();void refreshData(true);},60000);
+}
+document.addEventListener('visibilitychange',()=>{updateFreshness();syncRefreshClock();});
+async function refreshData(automatic=false) { if(refreshPaused(automatic))return;return load(false,{refresh:true,automatic}); }
+async function load(append=false, options={}) { if(csvBusy || (options.refresh&&refreshPaused(options.automatic)))return;
+  readController?.abort();const controller=new AbortController();readController=controller;
+  const ticket=++loadEpoch;const generation=epoch;const request={...filters(),...(options.cursor?{cursor:options.cursor}:{}),...(options.refresh?{cursor:undefined}:{})};
+  const hadLaterPages=!!cursor;busy=true;error='';if(!options.automatic)render();else updateFreshness();
+  try { const result=await api('view',request,false,controller);if(ticket!==loadEpoch||generation!==epoch)return;
+    page=append?{...result,rows:[...page.rows,...result.rows]}:result;cursor=request.cursor;loadedFilters=request;refreshFailed=false;refreshReset=!!options.refresh&&hadLaterPages;
+  } catch(e) { if(ticket===loadEpoch&&generation===epoch&&!controller.signal.aborted){error=e.message;refreshFailed=true;} }
+  finally { if(ticket===loadEpoch&&generation===epoch){readController=null;busy=false;render();} }
+}
+function navigate(next) { if(pending||csvBusy)return; view=next; selected=null; reviewing=false; page={rows:[]};loadedFilters=null;cursor=undefined;status='';platform='';from='';through='';success='';refreshFailed=false;refreshReset=false;
+  if(next==='reports'){const today=new Date().toISOString().slice(0,10);from=today.slice(0,7)+'-01';through=today;reportScope='ALL_ACCOUNTS';}return load(); }
+const fieldSelect = (caption, items, value, onChange) => { const e=h('select',{disabled:csvBusy,onchange:event=>{if(!csvBusy)return onChange(event.target.value);}},items.map(([id,name])=>h('option',{value:id,selected:id===value},name))); return h('label',{},caption,e); };
+async function openMember(member) { if(busy||csvBusy)return;readController?.abort();readController=null;const ticket=++loadEpoch;const generation=epoch;busy=true;error='';render();try {
  if(pending)throw new Error('กรุณาตรวจผลคำขอเดิมให้เสร็จก่อนเปลี่ยนสิทธิ์รายการอื่น');
- const result=await api('member',{userId:member.id});if(ticket!==loadEpoch)return;
+ const result=await api('member',{userId:member.id});if(ticket!==loadEpoch||generation!==epoch)return;
  selected=result.member;drawerAction='DETAIL';reason='';reviewing=false;pending=null;
- }catch(e){if(ticket===loadEpoch)error=e.message;}finally{if(ticket===loadEpoch){busy=false;render();}} }
+ }catch(e){if(ticket===loadEpoch&&generation===epoch)error=e.message;}finally{if(ticket===loadEpoch&&generation===epoch){busy=false;render();}} }
 function closeDrawer() { if(pending||busy)return; selected=null;reviewing=false;error='';render();document.querySelector('.text')?.focus(); }
 function startTrial(action) { if(pending||busy||session.role!=='OWNER')return;drawerAction=action;selectedPlan=trialActive(selected.trial)?selected.trial.plan:'PRO';days=7;reason='';reviewing=false;error='';render(); }
 function memberDetails() { if(pending||busy)return;drawerAction='DETAIL';reviewing=false;error='';render(); }
-function clearFilters() { query='';status='';platform='';from='';through='';cursor=undefined;load(); }
+function clearFilters() { if(csvBusy)return;query='';appliedQuery='';status='';platform='';from='';through='';cursor=undefined;return load(); }
 function emptyState() {
  if(busy)return h('div',{class:'empty',role:'status'},'กำลังโหลดข้อมูล…');
  if(error)return h('div',{class:'empty'},h('h2',{},'ยังยืนยันข้อมูลไม่ได้'),h('p',{},'ลองโหลดข้อมูลอีกครั้ง'),button('ลองใหม่',()=>load()));
- if(query.trim()||(view==='posts'&&(status||platform||from||through)))return h('div',{class:'empty',role:'status'},
+ if(appliedQuery.trim()||(['posts','reports'].includes(view)&&(status||platform||from||through)))return h('div',{class:'empty',role:'status'},
    h('h2',{},'ไม่พบข้อมูลที่ตรงกับการค้นหาหรือตัวกรอง'),h('p',{},'ลองเปลี่ยนคำค้น หรือดูรายการทั้งหมด'),button('ล้างการค้นหาและตัวกรอง',clearFilters));
  const copy={
    members:['ยังไม่มีสมาชิก','สมาชิกจะแสดงเมื่อมีบัญชีเข้ามาใช้งาน PostDee'],
    posts:['ยังไม่มีโพสต์','โพสต์จะแสดงหลังสมาชิกสร้างหรือส่งโพสต์จากแอป'],
    trials:['ยังไม่มีสิทธิ์ทดลอง','เปิดหน้าสมาชิกเพื่อตรวจบัญชี แล้วเลือกให้สิทธิ์ทดลอง'],
-   reports:['ยังไม่มีรายงานการทดลอง','รายงานจะแสดงหลังมีการให้สิทธิ์ทดลอง จึงยังดาวน์โหลด CSV ไม่ได้'],
+   reports:reportScope==='LATEST_TRIAL'?['ยังไม่มีรายงานช่วงทดลองล่าสุด','เลือกทุกบัญชีเพื่อดูการใช้งานของสมาชิกที่ไม่ได้รับสิทธิ์ทดลอง']:['ยังไม่มีรายงานการใช้งาน','รายงานแสดงทุกบัญชีที่ตรงกับการค้นหาและช่วงวันที่ แม้ยังไม่ได้รับสิทธิ์ทดลอง'],
    audit:['ยังไม่มีประวัติการจัดการสิทธิ์','ประวัติจะแสดงเมื่อผู้ดูแลยืนยันให้สิทธิ์ ต่อเวลา หรือยกเลิกสิทธิ์ทดลอง'],
    channels:['ยังไม่มีช่องทางที่เชื่อม','ช่องทางจะแสดงหลังสมาชิกเชื่อมบัญชีโซเชียลจากแอป']
  };
@@ -72,7 +95,10 @@ function table() {
  trials:[['member','สมาชิก'],['paidPlan','แพ็กเกจที่ซื้อ'],['trial','สิทธิ์ทดลอง'],['trialStatus','สถานะ']],
  posts:[['email','สมาชิก'],['caption','แคปชัน'],['status','สถานะ'],['channels','ผลแต่ละช่องทาง'],['failureReason','สาเหตุที่บันทึก'],['createdAt','สร้างเมื่อ'],['scheduledAt','ตั้งเวลา'],['help','แนวทางตรวจสอบ']],
  channels:[['email','สมาชิก'],['platform','ช่องทาง'],['displayName','ชื่อบัญชี'],['status','สถานะที่บันทึก'],['connectedAt','เชื่อมเมื่อ']],
- reports:[['email','สมาชิก'],['plan','ทดลอง'],['startsAt','เริ่ม'],['expiresAt','สิ้นสุด'],['captionRequests','AI แคปชัน (ครั้ง)'],['editMinutes','AI ตัดต่อ (นาที)'],['postUnits','ผลส่งที่บันทึก'],['estimatedUsd','ต้นทุนประมาณ (USD)'],['purchasedPlanNow','แพ็กเกจที่ซื้อปัจจุบัน']],
+ reports:[['email','สมาชิก'],['purchasedPlanNow','แพ็กเกจที่ซื้อปัจจุบัน'],
+   ...((page.reportScope||reportScope)==='LATEST_TRIAL'?[['plan','ทดลองล่าสุด'],['startsAt','เริ่มทดลอง'],['expiresAt','สิ้นสุดทดลอง']]:[]),
+   ['captionRequests','AI แคปชัน (ครั้ง)'],['editMinutes','AI ตัดต่อ (นาที)'],['quotaPostUnits','หน่วยช่องทางที่เลือก'],['postUnits','ผลส่งที่บันทึก'],
+   ['livePostUnits','เผยแพร่สาธารณะ'],['draftPostUnits','ส่งเป็นร่าง'],['otherDeliveredPostUnits','ส่งถึงแบบอื่น/ไม่ทราบการมองเห็น'],['failedPostUnits','ส่งไม่สำเร็จ'],['pendingPostUnits','รอส่ง/กำลังส่ง'],['estimatedUsd','ต้นทุนประมาณ (USD)']],
  audit:[['createdAt','เมื่อ'],['actorId','รหัสผู้ดูแล'],['email','สมาชิก'],['action','การจัดการ'],['plan','แพ็กเกจ'],['reason','เหตุผล'],['before','ก่อนเปลี่ยน'],['after','หลังเปลี่ยน']]};
  const cols=definitions[view]||[];
  if(!page.rows.length)return emptyState();
@@ -82,38 +108,58 @@ function table() {
    if(key==='before'||key==='after'){const t=row[key];return t?`${translate(t.plan)} · ${when(t.expiresAt)}${t.revokedAt?' · ยกเลิก':''}`:'ไม่มี';}
    return translate(row[key]); };
  return h('div',{class:'table-wrap',tabindex:0,'aria-label':'ตารางข้อมูล เลื่อนแนวนอนได้'},h('table',{class:view},h('thead',{},h('tr',{},cols.map(([,caption])=>h('th',{scope:'col'},caption)))),
-   h('tbody',{},page.rows.map(row=>h('tr',{class:selected?.id===row.id?'chosen':''},cols.map(([key])=>h('td',{},cell(row,key))))))));
+   h('tbody',{},page.rows.map(row=>h('tr',{class:selected&&selected.id===row.id?'chosen':''},cols.map(([key])=>h('td',{},cell(row,key))))))));
 }
-function render() { if(!session)return renderLogin(); document.body.classList.toggle('has-drawer',!!selected); app.removeAttribute('aria-busy');
+function render() { if(!session)return renderLogin();const focusedSearch=document.activeElement?.getAttribute('data-focus')==='search';const selection=focusedSearch?[document.activeElement.selectionStart,document.activeElement.selectionEnd]:null;
+ document.body.classList.toggle('has-drawer',!!selected); app.setAttribute('aria-busy',busy?'true':'false');
  const side=h('aside',{class:'sidebar'},h('div',{class:'brand'},'PostDee'),button('เมนู',()=>side.classList.toggle('open'),'menu-toggle',{'aria-label':'เปิดเมนูผู้ดูแล'}),
-   h('nav',{class:'nav','aria-label':'เมนูผู้ดูแล'},Object.entries(names).map(([id,name])=>button(h('span',{},icon(id),h('span',{},name)),()=>navigate(id),id===view?'selected':'',{'aria-current':id===view?'page':false,disabled:!!pending}))),
+   h('nav',{class:'nav','aria-label':'เมนูผู้ดูแล'},Object.entries(names).map(([id,name])=>button(h('span',{},icon(id),h('span',{},name)),()=>navigate(id),id===view?'selected':'',{'aria-current':id===view?'page':false,disabled:!!pending||csvBusy}))),
    h('div',{class:'role'},icon('members'),h('span',{},session.role==='OWNER'?'เจ้าของระบบ':'ผู้ดูแล · ดูข้อมูล')));
- const q=h('input',{type:'search',placeholder:'ค้นหาชื่อหรืออีเมล',value:query,maxlength:120,'aria-label':'ค้นหาชื่อหรืออีเมล',oninput:e=>query=e.target.value});
- const form=h('form',{class:'search',onsubmit:e=>{e.preventDefault();cursor=undefined;load();}},h('label',{},q),h('button',{type:'submit',class:'primary',disabled:busy},'ค้นหา'));
- const content=h('section',{class:'content','aria-label':names[view]},success?h('p',{class:'success',role:'status'},success):null,error?h('p',{class:'error',role:'alert'},error):null);
+ const q=h('input',{type:'search',placeholder:'ค้นหาชื่อหรืออีเมล',value:query,maxlength:120,disabled:csvBusy,'data-focus':'search','aria-label':'ค้นหาชื่อหรืออีเมล',oninput:e=>{if(!csvBusy)query=e.target.value;}});
+ const form=h('form',{class:'search',onsubmit:e=>{e.preventDefault();if(csvBusy)return;appliedQuery=query;cursor=undefined;return load();}},h('label',{},q),h('button',{type:'submit',class:'primary',disabled:busy||csvBusy},'ค้นหา'));
+ const content=h('section',{class:'content','aria-label':names[view]},success?h('p',{class:'success',role:'status'},success):null,error?h('div',{class:'error',role:'alert'},h('p',{},error),refreshFailed?button('ลองโหลดใหม่',()=>refreshData(),'',{disabled:refreshPaused()}):null):null);
+ content.append(h('div',{class:'data-freshness'},h('p',{class:'refresh-status',role:'status','aria-live':'polite'}),button('รีเฟรชข้อมูล',()=>refreshData(),'refresh-button',{disabled:refreshPaused()})));
+ if(refreshFailed&&loadedFilters)content.append(h('p',{class:'notice',role:'status'},'แสดงข้อมูลที่ยืนยันล่าสุด การโหลดข้อมูลหรือตัวกรองใหม่ยังไม่สำเร็จ'));
+ if(refreshReset)content.append(h('p',{class:'notice',role:'status'},'อัปเดตข้อมูลแล้ว · แสดงหน้าแรกเพื่อไม่รวมรายการจากคนละรอบข้อมูล'));
  if(pending&&!selected)content.append(h('p',{class:'notice'},'มีคำขอเปลี่ยนสิทธิ์ที่ยังยืนยันผลไม่ได้ ตรวจคำขอเดิมก่อนทำรายการใหม่'),button('ตรวจผลคำขอเดิม',submitTrial,'primary',{disabled:busy}));
  if(view!=='overview')content.append(form);
  if(view==='posts')content.append(h('div',{class:'filters'},
    fieldSelect('สถานะ',[['','ทั้งหมด'],...['DRAFT','QUEUED','PUBLISHING','PUBLISHED','PARTIAL_PUBLISHED','FAILED'].map(id=>[id,translate(id)])],status,v=>{status=v;cursor=undefined;load();}),
    fieldSelect('ช่องทาง',[['','ทั้งหมด'],...['TIKTOK','YOUTUBE_SHORTS','INSTAGRAM_REELS','FACEBOOK_REELS'].map(id=>[id,translate(id)])],platform,v=>{platform=v;cursor=undefined;load();}),
-   h('label',{},'ตั้งแต่ (UTC)',h('input',{type:'date',value:from,onchange:e=>{from=e.target.value;cursor=undefined;load();}})),
-   h('label',{},'ถึง (UTC)',h('input',{type:'date',value:through,onchange:e=>{through=e.target.value;cursor=undefined;load();}}))));
+   h('label',{},'ตั้งแต่ (UTC)',h('input',{type:'date',value:from,disabled:csvBusy,onchange:e=>{if(csvBusy)return;from=e.target.value;cursor=undefined;load();}})),
+   h('label',{},'ถึง (UTC)',h('input',{type:'date',value:through,disabled:csvBusy,onchange:e=>{if(csvBusy)return;through=e.target.value;cursor=undefined;load();}}))));
+ if(view==='reports'){
+   const scope=fieldSelect('ขอบเขตรายงาน',[['ALL_ACCOUNTS','ทุกบัญชี'],['LATEST_TRIAL','ช่วงทดลองล่าสุด']],reportScope,value=>{reportScope=value;cursor=undefined;return load();});scope.querySelector('select').setAttribute('aria-label','ขอบเขตรายงาน');
+   content.append(h('div',{class:'filters report-filters'},scope,
+     h('label',{},'ตั้งแต่ (UTC)',h('input',{type:'date',value:from,disabled:csvBusy,'aria-label':'รายงานตั้งแต่ (UTC)',onchange:e=>{if(csvBusy)return;from=e.target.value;cursor=undefined;return load();}})),
+     h('label',{},'ถึง (UTC)',h('input',{type:'date',value:through,disabled:csvBusy,'aria-label':'รายงานถึง (UTC)',onchange:e=>{if(csvBusy)return;through=e.target.value;cursor=undefined;return load();}})),button('ล้างช่วงวันที่',()=>{if(csvBusy)return;from='';through='';cursor=undefined;return load();},'',{disabled:busy||csvBusy})));
+   const scopeShown=page.reportScope||reportScope;
+   content.append(h('p',{class:'notice'},scopeShown==='LATEST_TRIAL'?'เฉพาะช่วงทดลองล่าสุดของแต่ละบัญชีที่ตรงเงื่อนไข ตัดช่วงตามวันที่เลือกและวันยกเลิก/หมดอายุ ไม่รวมประวัติทดลองช่วงก่อน':'ทุกบัญชีที่ตรงเงื่อนไข รวมบัญชีฟรีและบัญชีที่ซื้อแพ็กเกจ แม้ไม่เคยได้รับสิทธิ์ทดลอง'));
+   if(page.window)content.append(h('p',{class:'notice'},`ช่วงข้อมูล (UTC): ${page.window.from?whenUtc(page.window.from)+' (รวมเวลาเริ่ม)':'ตั้งแต่เริ่มบันทึก'} ถึง ${whenUtc(page.window.until)} (ไม่รวมเวลาสิ้นสุด)`));
+   content.append(h('p',{class:'notice'},'หน่วยช่องทางที่เลือกนับตามโพสต์ที่สร้าง รวมร่างและรายการที่ยังไม่ส่ง ไม่ใช่ยอดเผยแพร่สำเร็จ · ผลส่งที่บันทึกแยกเผยแพร่สาธารณะ ร่าง การมองเห็นแบบอื่น ส่งไม่สำเร็จ และรอส่ง'));
+   if(page.summary){const metrics=[['memberCount','บัญชีที่ตรงเงื่อนไข'],['captionRequests','AI แคปชัน (ครั้ง)'],['editMinutes','AI ตัดต่อ (นาที)'],['quotaPostUnits','หน่วยช่องทางที่เลือก'],['postUnits','ผลส่งที่บันทึก'],['livePostUnits','เผยแพร่สาธารณะ'],['draftPostUnits','ส่งเป็นร่าง'],['otherDeliveredPostUnits','ส่งถึงแบบอื่น/ไม่ทราบการมองเห็น'],['failedPostUnits','ส่งไม่สำเร็จ'],['pendingPostUnits','รอส่ง/กำลังส่ง'],['estimatedUsd','ต้นทุนประมาณ (USD)']];
+     content.append(h('section',{class:'report-totals','aria-label':'ยอดรวมรายงาน'},h('h2',{},scopeShown==='LATEST_TRIAL'?'ยอดรวมช่วงทดลองล่าสุดที่ตรงเงื่อนไข · ทุกหน้า':'ยอดรวมทุกบัญชีที่ตรงเงื่อนไข · ทุกหน้า'),h('div',{class:'summary'},metrics.map(([key,label])=>h('div',{class:'summary-item'},h('div',{class:'muted'},label),h('div',{class:`summary-value${key==='estimatedUsd'&&page.summary[key]==null?' text-value':''}`},key==='estimatedUsd'?(page.summary[key]==null?'ยังไม่ได้ตั้งอัตรา':Number(page.summary[key]).toFixed(4)):page.summary[key]??'—'))))));
+   }
+ }
  if(view==='overview')content.append(h('div',{class:'summary'},page.rows.map(r=>h('div',{class:'summary-item'},h('div',{class:'muted'},r.label),h('div',{class:'summary-value'},r.value)))));
- else {const count=page.total!=null?`${page.total} ${view==='members'?'สมาชิก':'รายการ'}`:`${page.rows.length} รายการที่โหลด`;
-   content.append(h('div',{class:'tools'},h('p',{class:'count'},busy?'กำลังโหลด…':count),view==='reports'?button('ดาวน์โหลด CSV หน้านี้',downloadCsv,'',{disabled:busy||!page.rows.length,'aria-describedby':!busy&&!page.rows.length?'csv-help':null}):null),table());
-   if(view==='reports'&&!busy&&!page.rows.length)content.append(h('p',{class:'notice',id:'csv-help'},'ดาวน์โหลด CSV ได้เมื่อหน้านี้มีรายการทดลอง ลองล้างคำค้นหากเคยให้สิทธิ์ไว้แล้ว'));}
- if(page.nextCursor)content.append(button('โหลดรายการถัดไป',()=>{cursor=page.nextCursor;load(view!=='reports');},'next',{disabled:busy}));
+ else {const count=page.total!=null?`แสดง ${page.rows.length} จาก ${page.total} ${view==='members'?'สมาชิก':'รายการ'}`:`${page.rows.length} รายการ${view==='reports'?'ในหน้านี้':'ที่โหลด'}`;
+   content.append(h('div',{class:'tools'},h('p',{class:'count'},busy?'กำลังโหลด…':count),view==='reports'?button(csvBusy?'กำลังเตรียม CSV…':'ดาวน์โหลด CSV หน้านี้',downloadCsv,'',{disabled:busy||csvBusy||!page.rows.length,'aria-describedby':!busy&&!page.rows.length?'csv-help':null}):null),table());
+   if(view==='reports'&&!busy&&!page.rows.length)content.append(h('p',{class:'notice',id:'csv-help'},'ดาวน์โหลด CSV ได้เมื่อหน้านี้มีข้อมูล ลองตรวจช่วงวันที่และขอบเขตรายงาน'));}
+ if(view==='reports')content.append(h('p',{class:'notice'},'CSV อ่านข้อมูลล่าสุดตามตัวกรองของหน้านี้อีกครั้ง ยอดอาจเปลี่ยนจากหน้าจอหากมีการใช้งานเพิ่ม'));
+ if(page.nextCursor)content.append(button('โหลดรายการถัดไป',()=>load(view!=='reports',{cursor:page.nextCursor}),'next',{disabled:busy||csvBusy}));
  if(page.note)content.append(h('p',{class:'notice'},page.note));
- content.append(h('p',{class:'footer-note'},`${boot.previewToken?'ข้อมูลตัวอย่างสำหรับตรวจหน้าจอ · ':''}แสดงเวลาประเทศไทย · ${page.checkedAt?'ตรวจข้อมูลเมื่อ '+when(page.checkedAt):''}`));
+ content.append(h('p',{class:'footer-note'},`${boot.previewToken?'ข้อมูลตัวอย่างสำหรับตรวจหน้าจอ · ':''}แสดงเวลาประเทศไทย · ตัวกรองและช่วงรายงานใช้ UTC${page.checkedAt?' · โหลดข้อมูลเมื่อ '+when(page.checkedAt):''}`));
  app.replaceChildren(h('div',{class:'shell'},side,h('main',{class:'workspace'},h('header',{class:'topbar'},h('h1',{},names[view]),h('div',{class:'right'},
    h('span',{class:`environment ${session.environment==='PRODUCTION'?'production':''}`},boot.previewToken?'LOCAL · ตัวอย่าง':session.environment),button('ออกจากระบบ',logout))),content)));
  if(selected){app.querySelector('.shell').inert=true;renderDrawer();}
+ else if(focusedSearch){q.focus({preventScroll:true});if(selection)q.setSelectionRange?.(...selection);}
+ updateFreshness();
 }
 function renderDrawer() { const active=trialActive(selected.trial); const viewer=session.role!=='OWNER';const details=viewer||drawerAction==='DETAIL';
  const title=details?'ข้อมูลสมาชิก':reviewing?'ตรวจสอบสิทธิ์':({GRANT:'ให้สิทธิ์ทดลอง',EXTEND:'ต่อเวลาทดลอง',REVOKE:'ยกเลิกสิทธิ์ทดลอง'})[drawerAction];
  const drawer=h('section',{class:'drawer',role:'dialog','aria-modal':'true','aria-label':title},h('header',{},h('h2',{},title),button('×',closeDrawer,'close',{'aria-label':'ปิดรายละเอียด',disabled:!!pending})));
  drawer.append(h('span',{class:'label'},'บัญชีที่เลือก'),h('div',{class:'identity'},selected.email),h('p',{class:'context'},`แพ็กเกจที่ซื้อ: ${translate(selected.paidPlan)} · ทดลอง: ${trialText(selected.trial)}`));
- if(selected.monthKey)drawer.append(h('p',{class:'notice'},`การใช้เดือน ${selected.monthKey}: โพสต์ ${selected.postUnits} หน่วย · AI แคปชัน ${selected.captionRequests} ครั้ง · AI ตัดต่อ ${selected.editMinutes} นาที`));
+ if(selected.monthKey)drawer.append(h('p',{class:'notice'},`การใช้เดือน ${selected.monthKey} (UTC): หน่วยช่องทางที่เลือก ${selected.quotaPostUnits??selected.postUnits} · AI แคปชัน ${selected.captionRequests} ครั้ง · AI ตัดต่อ ${selected.editMinutes} นาที · หน่วยที่เลือกไม่ใช่ยอดเผยแพร่สำเร็จ`));
  if(details){drawer.append(h('p',{class:'notice'},`สมัครเมื่อ ${when(selected.createdAt)} · โพสต์ ${selected.postCount??0} รายการ · เชื่อม ${selected.channelCount??0} ช่องทาง`));
    if(selected.paidExpiresAt)drawer.append(h('p',{class:'notice'},`วันสิ้นสุดแพ็กเกจที่ซื้อที่บันทึกไว้: ${when(selected.paidExpiresAt)}`));
    if(selected.trial)drawer.append(h('p',{class:'notice'},`ช่วงทดลอง: ${when(selected.trial.startsAt)} ถึง ${when(selected.trial.expiresAt)}`));
@@ -132,12 +178,14 @@ function renderDrawer() { const active=trialActive(selected.trial); const viewer
    if(error)drawer.append(h('p',{class:'error',role:'alert'},error));
    drawer.append(h('p',{class:'notice'},'ไม่รีเซ็ตโควตา · ไม่เรียกเก็บเงินอัตโนมัติ'),h('div',{class:'drawer-actions'},button('กลับไปข้อมูลสมาชิก',memberDetails),button('ตรวจสอบสิทธิ์',()=>{if(reason.trim().length<3){reasonInput.setCustomValidity('ระบุเหตุผลอย่างน้อย 3 ตัวอักษร');reasonInput.reportValidity();return;} error='';reviewing=true;render();},'primary')));
  }
- if(pending&&!busy)drawer.append(button('ดูประวัติผู้ดูแล',()=>{selected=null;view='audit';query=pending.expectedEmail;cursor=undefined;load();}));
+ if(pending&&!busy)drawer.append(button('ดูประวัติผู้ดูแล',()=>{selected=null;view='audit';query=pending.expectedEmail;appliedQuery=query;cursor=undefined;load();}));
  const backdrop=h('div',{class:'drawer-backdrop',onclick:closeDrawer}); app.append(backdrop,drawer);
  drawer.querySelector('button:not(:disabled),select:not(:disabled),textarea:not(:disabled)')?.focus();
  drawer.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();if(e.key==='Tab'){const focusable=[...drawer.querySelectorAll('button,input,select,textarea')].filter(n=>!n.disabled);const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
 }
-async function submitTrial(){ if(busy)return; pending ||= {requestId:crypto.randomUUID(),userId:selected.id,expectedEmail:selected.email,action:drawerAction,plan:selectedPlan,days,reason:reason.trim(),expectedVersion:selected.trial?.version??0};
- busy=true;error='';render();try{await api('trials',pending);pending=null;selected=null;success='บันทึกสิทธิ์ทดลองแล้ว พร้อมประวัติการจัดการ';busy=false;await load();}catch(e){if(e.status>=400&&e.status<500)pending=null;error=e.message;busy=false;render();}}
-async function downloadCsv(){try{const csv=await api('view',{...filters(),csv:true},true);const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=h('a',{href:url,download:'postdee-trial-report.csv'});a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){error=e.message;render();}}
+async function submitTrial(){ if(busy||csvBusy)return;const generation=epoch;pending ||= {requestId:crypto.randomUUID(),userId:selected.id,expectedEmail:selected.email,action:drawerAction,plan:selectedPlan,days,reason:reason.trim(),expectedVersion:selected.trial?.version??0};
+ busy=true;error='';render();try{await api('trials',pending);if(generation!==epoch)return;pending=null;selected=null;success='บันทึกสิทธิ์ทดลองแล้ว พร้อมประวัติการจัดการ';busy=false;await load();}catch(e){if(generation!==epoch)return;if(e.status>=400&&e.status<500)pending=null;error=e.message;busy=false;render();}}
+async function downloadCsv(){if(busy||csvBusy||selected||pending||view!=='reports'||!page.rows.length)return;const generation=epoch;const request={...(loadedFilters||filters()),csv:true};csvBusy=true;error='';render();
+ try{const csv=await api('view',request,true);if(generation!==epoch||!session)return;const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=h('a',{href:url,download:request.reportScope==='LATEST_TRIAL'?'postdee-trial-report.csv':'postdee-usage-report.csv'});a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+ catch(e){if(generation===epoch)error=e.message;}finally{if(generation===epoch){csvBusy=false;render();}}}
 try{const r=await fetch('/admin/config',{cache:'no-store'});if(!r.ok)throw new Error('ยังไม่ได้เปิดใช้หน้าแอดมิน');boot=await r.json();renderLogin();}catch(e){error=e.message;renderLogin();}

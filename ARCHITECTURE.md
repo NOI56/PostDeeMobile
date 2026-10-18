@@ -96,10 +96,23 @@ protocol during trial upgrades and preserves legacy paid resync semantics;
 ordinary AI recovery reloads effective capabilities.
 Closing the console flag does not revoke trials; turning off the trial flag does.
 
-Queries return bounded projections and stable pagination. Reports aggregate actual
-recorded account activity during the latest trial interval, without claiming that
-all activity was trial-caused or that a current paid plan is a conversion. Unit cost
-estimates are optional operator input, not provider invoices. Operational setup and
+Queries return bounded projections and stable pagination. The local usage-accuracy
+update uses short read-only RepeatableRead transactions for related projections.
+Set-based report aggregates replace per-member queries; summary/total cover the
+whole filtered cohort while rows/CSV remain paged. The new console starts with all
+accounts explicitly; omitted API scope retains legacy latest-trial behavior.
+Latest-trial scope intersects UTC date filters. Quota units,
+recorded delivery outcomes and reserved AI usage are distinct; delivery outcomes
+are current stored states, not transition-event statistics. No online-user signal
+or provider-cost reconciliation is introduced. Manual and 60-second visible-page
+refresh are single-flight reads, paused during editing/member/trial/CSV workflows;
+errors preserve confirmed values and timestamps. Each request sees a new snapshot,
+so pagination across requests is not a frozen export. No quota, trial or publishing
+write behavior changes. This API/asset-only update needs no migration or Mobile
+installation and remains pending release; its local concurrency/load verification
+is tracked in the [usage accuracy plan](docs/superpowers/plans/2026-10-18-admin-usage-accuracy.md).
+Reports do not claim that all activity was trial-caused or that a current paid
+plan is a conversion. Unit cost estimates are optional operator input, not provider invoices. Operational setup and
 limits are in [the admin guide](docs/ADMIN_CONSOLE.md).
 Fresh migration-only databases also receive the Shopee/Lazada Platform enum values
 already declared in the baseline schema, via an idempotent reconciliation migration.

@@ -81,6 +81,14 @@ Configuration, the local fixture preview and
 report limitations are in [the admin guide](docs/ADMIN_CONSOLE.md); implementation
 and verification evidence are in [the plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).
 
+The next local admin update adds all-account/date-range usage reports, whole-cohort
+summaries, separate quota and recorded delivery outcomes, consistent read snapshots
+and safe visible-page refresh. Registered accounts do not mean online users;
+reserved usage does not mean successful AI work or public posts. This update needs
+an API/admin-asset release only, with no Mobile update, migration or flag change.
+Its validation and pending delivery status are tracked in the
+[usage accuracy plan](docs/superpowers/plans/2026-10-18-admin-usage-accuracy.md).
+
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 
 The uploader checks YouTube/Instagram/Facebook captions before upload and

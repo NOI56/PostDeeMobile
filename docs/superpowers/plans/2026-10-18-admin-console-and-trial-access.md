@@ -4,6 +4,12 @@ Latest delivery: admin UX source `50fba5e` is Live on Staging at 12:32 Bangkok,
 18 October 2026 (`dep-dba5im61egvs739eoteg`). API and Flutter CI `39100690775`
 passed. See the final release receipt for exact verification and remaining limits.
 
+The subsequent local user/usage accuracy work is tracked separately in
+[the usage accuracy plan](2026-10-18-admin-usage-accuracy.md). It adds all-account
+reporting, explicit quota/delivery definitions, consistent read snapshots, batching
+and safe refresh without changing trial commands or paid-access rules. The release
+receipt below remains evidence for the earlier deployed source, not this follow-up.
+
 ## Authorization and baseline
 
 The user approved implementation of the seven Thai administrator views and the

@@ -1,6 +1,6 @@
 import express from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { registerAdminConsole } from './adminRoutes.js';
 import { createMemoryTrialAccessStore } from './trialAccess.js';
 import { toCsv } from './adminReports.js';
@@ -13,13 +13,17 @@ const now = () => new Date('2026-10-18T00:00:00Z');
 const setup = (enabled = true) => {
   const app = express(); app.use(express.json());
   const trials = createMemoryTrialAccessStore({ now });
+  const view = vi.fn(async () => ({ rows: [member], total: 1,
+    asOf: '2026-10-17T23:59:59.000Z', summary: { memberCount: 1, captionRequests: 0, editMinutes: 0,
+      quotaPostUnits: 0, postUnits: 0, livePostUnits: 0, draftPostUnits: 0, otherDeliveredPostUnits: 0,
+      failedPostUnits: 0, pendingPostUnits: 0, estimatedUsd: null } }));
   registerAdminConsole(app, { config: enabled ? config : undefined, trials, now,
-    data: { member: async id => id === member.id ? member : null, view: async () => ({ rows: [member], total: 1 }) },
+    data: { member: async id => id === member.id ? member : null, view },
     authenticate: (req, res, next) => { const id = req.get('authorization')?.replace('Bearer ', '');
       if (!id) { res.sendStatus(401); return; }
       res.locals.authUser = { id: id === 'old-owner' ? 'owner' : id, provider: id === 'mock-owner' ? 'mock' : 'firebase', authenticatedAtSeconds: id === 'old-owner' ? 1 : now().getTime() / 1000 };
       next(); }
-  }); return { app, trials };
+  }); return { app, trials, view };
 };
 const command = { requestId: '54ce1fea-78bc-4c8e-a4e2-01bed4234420', userId: 'member', expectedEmail: 'mali@example.com',
   action: 'GRANT', plan: 'PRO', days: 7, expectedVersion: 0, reason: 'ทดลองลูกค้า' };
@@ -91,6 +95,27 @@ describe('private administrator console', () => {
         .set('Origin',config.origin).set('X-PostDee-Admin','1').send({view:'posts',...dates});
       expect(r.status).toBe(400);
     }
+  });
+  it('validates report scope before accessing data and preserves snapshot metadata', async () => {
+    const { app, view } = setup();
+    const read = (body: Record<string, unknown>) => request(app).post('/admin/api/view')
+      .set('Authorization', 'Bearer viewer').set('Origin', config.origin).set('X-PostDee-Admin', '1').send(body);
+    for (const reportScope of ['PAID_ONLY', 1, {}, null]) {
+      expect((await read({ view: 'reports', reportScope })).status).toBe(400);
+    }
+    expect(view).not.toHaveBeenCalled();
+    const response = await read({ view: 'reports', reportScope: 'ALL_ACCOUNTS', from: '2026-10-01', through: '2026-10-18' });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ total: 1, asOf: '2026-10-17T23:59:59.000Z',
+      checkedAt: now().toISOString(), summary: { memberCount: 1 } });
+    expect(view).toHaveBeenCalledWith('reports', expect.objectContaining({ reportScope: 'ALL_ACCOUNTS',
+      from: new Date('2026-10-01T00:00:00Z'), until: new Date('2026-10-19T00:00:00Z') }));
+    expect((await read({ view: 'reports', reportScope: 'LATEST_TRIAL', csv: true })).headers['content-disposition'])
+      .toContain('postdee-trial-report.csv');
+    expect((await read({ view: 'reports', reportScope: 'ALL_ACCOUNTS', csv: true })).headers['content-disposition'])
+      .toContain('postdee-usage-report.csv');
+    expect((await read({ view: 'reports', csv: true })).headers['content-disposition'])
+      .toContain('postdee-trial-report.csv');
   });
   it('neutralizes spreadsheet formulas and quotes CSV fields', () => {
     const csv = toCsv([{ email: '=HYPERLINK("https://evil.example")', reason: '\t+cmd', text: 'a,"b"' }]);

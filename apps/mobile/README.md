@@ -19,6 +19,11 @@ workers before this Mobile update, and use compatible Mobile before giving
 customer trials. No real purchase, administrator grant, deployment or installation
 is part of this local implementation. See the [admin guide](../../docs/ADMIN_CONSOLE.md).
 
+The separate admin usage/report/refresh follow-up changes only API reads and web
+assets. It keeps these Mobile quota and purchased/trial contracts intact and
+requires no Mobile installation. Its API release is still pending; see the
+[usage accuracy record](../../docs/superpowers/plans/2026-10-18-admin-usage-accuracy.md).
+
 ## Unified publishing settings (2026-10-18, Android Staging delivered)
 
 All four settings sheets share a logo/account header, grouped controls, adaptive

@@ -602,6 +602,32 @@ class _PlatformOutcomeRow extends StatelessWidget {
     final isKnown = outcome != null &&
         settings.canSubmit(platform) &&
         hasConnectionIdentity;
+    final details = switch (platform) {
+      SocialPlatform.tiktok
+          when settings.tiktokPublishMode == TikTokPublishMode.directPost =>
+        [
+          'ความคิดเห็น: ${settings.tiktokAllowComment ? 'เปิด' : 'ปิด'} · Duet: ${settings.tiktokAllowDuet ? 'เปิด' : 'ปิด'} · Stitch: ${settings.tiktokAllowStitch ? 'เปิด' : 'ปิด'}',
+          'โปรโมตแบรนด์ตนเอง: ${_answerLabel(settings.tiktokBrandOrganicToggle, yes: 'ใช่', no: 'ไม่ใช่')}',
+          'เนื้อหาที่มีผู้สนับสนุน: ${_answerLabel(settings.tiktokBrandContentToggle, yes: 'ใช่', no: 'ไม่ใช่')}',
+          'สร้างโดย AI: ${_answerLabel(settings.tiktokIsAigc, yes: 'ใช่', no: 'ไม่ใช่')}',
+          'ข้อกำหนดการใช้เพลง TikTok: ${settings.tiktokMusicUsageConfirmed ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน'}',
+          if (settings.tiktokBrandContentToggle)
+            'นโยบายเนื้อหาที่มีผู้สนับสนุน: ${settings.tiktokBrandedContentPolicyConfirmed ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน'}',
+        ],
+      SocialPlatform.youtubeShorts => [
+          'ชื่อวิดีโอ: ${settings.youtubeTitle.trim().isEmpty ? 'ยังไม่ระบุ' : settings.youtubeTitle.trim()}',
+          'สำหรับเด็ก: ${_answerLabel(settings.youtubeMadeForKids, yes: 'ใช่', no: 'ไม่ใช่')}',
+          'สื่อสังเคราะห์ที่ดูเหมือนจริง: ${_answerLabel(settings.youtubeContainsSyntheticMedia, yes: 'มี', no: 'ไม่มี')}',
+          'กฎชุมชน YouTube: ${settings.youtubeCommunityGuidelinesCertified ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน'}',
+        ],
+      SocialPlatform.instagramReels => [
+          _optionalAiDeclarationLabel(settings.instagramIsAiGenerated),
+        ],
+      SocialPlatform.facebookReels => [
+          _optionalAiDeclarationLabel(settings.facebookIsAiGenerated),
+        ],
+      _ => const <String>[],
+    };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
@@ -668,14 +694,9 @@ class _PlatformOutcomeRow extends StatelessWidget {
                         : Theme.of(context).colorScheme.error,
                   ),
                 ),
-                if (platform == SocialPlatform.youtubeShorts) ...[
+                if (details.isNotEmpty) ...[
                   const SizedBox(height: 5),
-                  for (final detail in [
-                    'ชื่อวิดีโอ: ${settings.youtubeTitle.trim().isEmpty ? 'ยังไม่ระบุ' : settings.youtubeTitle.trim()}',
-                    'สำหรับเด็ก: ${_answerLabel(settings.youtubeMadeForKids, yes: 'ใช่', no: 'ไม่ใช่')}',
-                    'สื่อสังเคราะห์ที่ดูเหมือนจริง: ${_answerLabel(settings.youtubeContainsSyntheticMedia, yes: 'มี', no: 'ไม่มี')}',
-                    'กฎชุมชน YouTube: ${settings.youtubeCommunityGuidelinesCertified ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน'}',
-                  ])
+                  for (final detail in details)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(
@@ -714,6 +735,9 @@ class _PlatformOutcomeRow extends StatelessWidget {
     );
   }
 }
+
+String _optionalAiDeclarationLabel(bool? value) =>
+    'สร้างโดย AI: ${value == null ? 'ยังไม่ระบุ (ไม่บังคับ)' : _answerLabel(value, yes: 'ใช่', no: 'ไม่ใช่')}';
 
 String _answerLabel(bool? value, {required String yes, required String no}) =>
     value == null

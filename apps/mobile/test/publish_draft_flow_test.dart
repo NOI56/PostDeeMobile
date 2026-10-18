@@ -159,6 +159,13 @@ Future<void> _tapDraftButton(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Finder get _uploaderScroll => find
+    .descendant(
+      of: find.byKey(const ValueKey('uploader-scroll')),
+      matching: find.byType(Scrollable),
+    )
+    .first;
+
 const _proSubscription = SubscriptionStatusResult(
   userId: 'seller-pro',
   plan: 'PRO',
@@ -206,7 +213,7 @@ Future<void> _completeYouTubeSettings(WidgetTester tester) async {
     const ValueKey('uploader-platform-settings-YOUTUBE_SHORTS'),
   );
   if (settings.evaluate().isEmpty) {
-    final scrollable = find.byType(Scrollable).first;
+    final scrollable = _uploaderScroll;
     await tester.drag(scrollable, const Offset(0, 3000));
     await tester.pumpAndSettle();
     for (var attempt = 0;
@@ -265,7 +272,7 @@ Future<void> _submitDraft(WidgetTester tester) async {
 
 Future<void> _prepareFreshSubmission(WidgetTester tester) async {
   await goToUploaderStep(tester, 2);
-  final scrollable = find.byType(Scrollable).first;
+  final scrollable = _uploaderScroll;
   await tester.drag(scrollable, const Offset(0, 3000));
   await tester.pumpAndSettle();
   final selectAll = find.byKey(
@@ -443,7 +450,7 @@ void main() {
     await tester.scrollUntilVisible(
       captionFinder,
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: _uploaderScroll,
     );
     await tester.pumpAndSettle();
     final caption = tester.widget<TextField>(captionFinder);
@@ -459,7 +466,7 @@ void main() {
       DateTime.utc(2026, 8, 11, 1),
     );
 
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, 3000));
+    await tester.drag(_uploaderScroll, const Offset(0, 3000));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('uploader-open-drafts')));
     await tester.pumpAndSettle();
@@ -764,11 +771,11 @@ void main() {
     await tester.tap(find.text('กลับไปตรวจสอบ'));
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 0);
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, 3000));
+    await tester.drag(_uploaderScroll, const Offset(0, 3000));
     await tester.pumpAndSettle();
     final picker = find.byKey(const ValueKey('uploader-video-preview-picker'));
     await tester.scrollUntilVisible(picker, 300,
-        scrollable: find.byType(Scrollable).first);
+        scrollable: _uploaderScroll);
     await tester.ensureVisible(picker);
     await tester.tap(picker);
     await tester.pumpAndSettle();

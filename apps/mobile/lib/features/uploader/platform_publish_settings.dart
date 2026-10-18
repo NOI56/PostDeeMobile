@@ -58,7 +58,9 @@ class PlatformPublishSettings {
     this.youtubeContainsSyntheticMedia,
     this.youtubeCommunityGuidelinesCertified = false,
     this.instagramShareToFeed = true,
+    this.instagramIsAiGenerated,
     this.facebookPublishMode,
+    this.facebookIsAiGenerated,
   });
 
   final TikTokPublishMode tiktokPublishMode;
@@ -79,7 +81,9 @@ class PlatformPublishSettings {
   final bool? youtubeContainsSyntheticMedia;
   final bool youtubeCommunityGuidelinesCertified;
   final bool instagramShareToFeed;
+  final bool? instagramIsAiGenerated;
   final FacebookPublishMode? facebookPublishMode;
+  final bool? facebookIsAiGenerated;
 
   PlatformPublishSettings copyWith({
     TikTokPublishMode? tiktokPublishMode,
@@ -100,7 +104,9 @@ class PlatformPublishSettings {
     Object? youtubeContainsSyntheticMedia = _keepSetting,
     bool? youtubeCommunityGuidelinesCertified,
     bool? instagramShareToFeed,
+    Object? instagramIsAiGenerated = _keepSetting,
     Object? facebookPublishMode = _keepSetting,
+    Object? facebookIsAiGenerated = _keepSetting,
   }) =>
       PlatformPublishSettings(
         tiktokPublishMode: tiktokPublishMode ?? this.tiktokPublishMode,
@@ -141,9 +147,15 @@ class PlatformPublishSettings {
             youtubeCommunityGuidelinesCertified ??
                 this.youtubeCommunityGuidelinesCertified,
         instagramShareToFeed: instagramShareToFeed ?? this.instagramShareToFeed,
+        instagramIsAiGenerated: identical(instagramIsAiGenerated, _keepSetting)
+            ? this.instagramIsAiGenerated
+            : instagramIsAiGenerated as bool?,
         facebookPublishMode: identical(facebookPublishMode, _keepSetting)
             ? this.facebookPublishMode
             : facebookPublishMode as FacebookPublishMode?,
+        facebookIsAiGenerated: identical(facebookIsAiGenerated, _keepSetting)
+            ? this.facebookIsAiGenerated
+            : facebookIsAiGenerated as bool?,
       );
 
   bool canSubmit(SocialPlatform platform) {
@@ -280,6 +292,8 @@ class PlatformPublishSettings {
       if (selectedPlatforms.contains(SocialPlatform.instagramReels))
         'INSTAGRAM_REELS': <String, Object?>{
           'shareToFeed': instagramShareToFeed,
+          if (instagramIsAiGenerated != null)
+            'isAiGenerated': instagramIsAiGenerated,
         },
       if (selectedPlatforms.contains(SocialPlatform.facebookReels))
         'FACEBOOK_REELS': <String, Object?>{
@@ -288,6 +302,8 @@ class PlatformPublishSettings {
             FacebookPublishMode.pageDraft => 'PAGE_DRAFT',
             null => throw StateError('Facebook publish mode is required.'),
           },
+          if (facebookIsAiGenerated != null)
+            'isAiGenerated': facebookIsAiGenerated,
         },
     };
   }
@@ -336,6 +352,8 @@ class PlatformPublishSettings {
         if (selectedPlatforms.contains(SocialPlatform.instagramReels))
           'INSTAGRAM_REELS': <String, Object?>{
             'shareToFeed': instagramShareToFeed,
+            if (instagramIsAiGenerated != null)
+              'isAiGenerated': instagramIsAiGenerated,
           },
         if (selectedPlatforms.contains(SocialPlatform.facebookReels) &&
             facebookPublishMode != null)
@@ -344,6 +362,8 @@ class PlatformPublishSettings {
               FacebookPublishMode.publish => 'PUBLISH',
               FacebookPublishMode.pageDraft => 'PAGE_DRAFT',
             },
+            if (facebookIsAiGenerated != null)
+              'isAiGenerated': facebookIsAiGenerated,
           },
       };
 
@@ -368,7 +388,11 @@ class PlatformPublishSettings {
         'youtubeCommunityGuidelinesCertified':
             youtubeCommunityGuidelinesCertified,
         'instagramShareToFeed': instagramShareToFeed,
+        if (instagramIsAiGenerated != null)
+          'instagramIsAiGenerated': instagramIsAiGenerated,
         'facebookPublishMode': facebookPublishMode?.name,
+        if (facebookIsAiGenerated != null)
+          'facebookIsAiGenerated': facebookIsAiGenerated,
       };
 
   factory PlatformPublishSettings.fromDraftJson(
@@ -437,11 +461,15 @@ class PlatformPublishSettings {
           _boolOrDefault(json['youtubeCommunityGuidelinesCertified']),
       instagramShareToFeed:
           _boolOrDefault(json['instagramShareToFeed'], defaultValue: true),
+      instagramIsAiGenerated:
+          _optionalDeclarationBool(json, 'instagramIsAiGenerated'),
       facebookPublishMode: _nullableEnumByName(
         FacebookPublishMode.values,
         json['facebookPublishMode'],
         'facebookPublishMode',
       ),
+      facebookIsAiGenerated:
+          _optionalDeclarationBool(json, 'facebookIsAiGenerated'),
     );
   }
 
@@ -470,7 +498,9 @@ class PlatformPublishSettings {
           other.youtubeCommunityGuidelinesCertified ==
               youtubeCommunityGuidelinesCertified &&
           other.instagramShareToFeed == instagramShareToFeed &&
-          other.facebookPublishMode == facebookPublishMode;
+          other.instagramIsAiGenerated == instagramIsAiGenerated &&
+          other.facebookPublishMode == facebookPublishMode &&
+          other.facebookIsAiGenerated == facebookIsAiGenerated;
 
   @override
   int get hashCode => Object.hashAll([
@@ -492,7 +522,9 @@ class PlatformPublishSettings {
         youtubeContainsSyntheticMedia,
         youtubeCommunityGuidelinesCertified,
         instagramShareToFeed,
+        instagramIsAiGenerated,
         facebookPublishMode,
+        facebookIsAiGenerated,
       ]);
 }
 
@@ -514,6 +546,12 @@ bool _optionalTikTokBool(Map<String, Object?> json, String key) {
   if (!json.containsKey(key)) return false;
   if (json[key] is bool) return json[key] as bool;
   throw const FormatException('Expected a TikTok boolean');
+}
+
+bool? _optionalDeclarationBool(Map<String, Object?> json, String key) {
+  if (!json.containsKey(key)) return null;
+  if (json[key] is bool) return json[key] as bool;
+  throw FormatException('$key must be a boolean when present');
 }
 
 String _stringOrDefault(Object? value) {

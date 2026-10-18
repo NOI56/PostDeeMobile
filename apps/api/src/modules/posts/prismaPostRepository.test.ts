@@ -4,6 +4,29 @@ import { createPrismaPostRepository } from './prismaPostRepository.js';
 import { withPostRepositoryFixture } from '../../../test/repositoryFixtures.js';
 
 describe('createPrismaPostRepository', () => {
+  it.each([undefined, true, false])('round-trips historical and explicit Meta AI declarations through Prisma JSON (%s)', async (isAiGenerated) => {
+    const aiSetting = isAiGenerated === undefined ? {} : { isAiGenerated };
+    const platformSettings = {
+      INSTAGRAM_REELS: { shareToFeed: false, ...aiSetting },
+      FACEBOOK_REELS: { publishMode: 'PAGE_DRAFT' as const, ...aiSetting }
+    };
+    const row = {
+      id: 'meta-post', userId: 'owner', caption: 'Meta media', videoS3Key: 'uploads/video.mp4',
+      selectedPlatforms: ['INSTAGRAM_REELS', 'FACEBOOK_REELS'], platformSettings,
+      scheduledAt: null, status: 'QUEUED', createdAt: new Date('2026-06-01T00:00:00.000Z')
+    };
+    const create = vi.fn().mockResolvedValue(row);
+    const findMany = vi.fn().mockResolvedValue([row]);
+    const repository = createPrismaPostRepository({ prisma: withPostRepositoryFixture({ post: { create, findMany } }) });
+    const result = await repository.create({
+      userId: 'owner', caption: row.caption, videoS3Key: row.videoS3Key,
+      platforms: ['INSTAGRAM_REELS', 'FACEBOOK_REELS'], platformSettings
+    });
+    expect(create.mock.calls[0][0].data.platformSettings).toEqual(platformSettings);
+    expect(result.platformSettings).toEqual(platformSettings);
+    expect((await repository.list({ userId: 'owner' }))[0].platformSettings).toEqual(platformSettings);
+  });
+
   it('reads only interrupted publishing ids and platforms for startup recovery', async () => {
     const findMany = vi.fn().mockResolvedValue([
       { id: 'post-recovery', selectedPlatforms: ['TIKTOK'] }

@@ -7,6 +7,26 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Unified channel settings (2026-10-18, local implementation)
+
+TikTok, YouTube, Instagram and Facebook Page Video share a content-sized settings
+sheet with account identity, grouped controls, visible validation and fixed
+Cancel/Save actions above the keyboard. TikTok Inbox no longer requests Direct
+creator options; each Direct opening fetches fresh account-bound options and
+discards stale responses when switching mode. Required consent stays manual.
+Instagram/Facebook add optional AI-generated media disclosure, retained in drafts,
+review, immutable post intent and provider requests. Omitted legacy values remain
+omitted, distinct from an explicit false. This is media disclosure, not AI caption
+generation. Existing feed, cover, privacy, quota and recovery behavior remains.
+
+This work is based on verified main `c813eef` and has not been pushed, deployed
+or installed on the user's emulator. Deploy the API and all publishing workers
+before Mobile; no schema/migration, dependency, environment or plan change is
+required. API **2,207 tests**, Mobile **2,371 tests** (two optional previews skipped),
+analysis and the exact Staging APK12024 build pass; the new preview runs separately.
+See [implementation and checks](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
+Earlier sections record their respective deliveries.
+
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 
 The uploader checks YouTube/Instagram/Facebook captions before upload and

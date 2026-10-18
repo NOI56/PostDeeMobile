@@ -44,7 +44,7 @@ Future<void> _openCoverEditor(WidgetTester tester) async {
   await tester.scrollUntilVisible(
     editCover,
     300,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: uploaderMainScroll,
   );
   await tester.ensureVisible(editCover);
   await tester.tap(editCover);
@@ -57,7 +57,7 @@ Future<void> _enterCaption(WidgetTester tester) async {
   await tester.scrollUntilVisible(
     caption,
     300,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: uploaderMainScroll,
   );
   await tester.enterText(caption, 'โพสต์พร้อมหน้าปก');
   await tester.pumpAndSettle();
@@ -65,7 +65,7 @@ Future<void> _enterCaption(WidgetTester tester) async {
 
 Future<void> _selectAllPlatforms(WidgetTester tester) async {
   await goToUploaderStep(tester, 2);
-  final scrollable = find.byType(Scrollable).first;
+  final scrollable = uploaderMainScroll;
   final selectAll = find.byKey(const ValueKey('uploader-select-all-platforms'));
   await tester.scrollUntilVisible(
     selectAll,
@@ -129,7 +129,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('uploader-cover-time')),
       200,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: uploaderMainScroll,
     );
     await tester.pumpAndSettle();
 

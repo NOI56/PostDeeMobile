@@ -98,7 +98,8 @@ class _Fixture {
             enabled: tickerEnabled,
             child: UploaderScreen(
               probePublishMedia: probeValidPublishMedia,
-              loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
+              loadSocialPublishingReadiness:
+                  connectedPublishingReadinessForTests,
               fullScreen: true,
               draftStore: injectDraftStore ? drafts : null,
               captionWritingStyleStore: style,
@@ -170,9 +171,10 @@ class _Fixture {
   }
 }
 
-Future<void> _show(WidgetTester tester, Finder finder) async {
+Future<void> _show(WidgetTester tester, Finder finder,
+    {Finder? scrollable}) async {
   await tester.scrollUntilVisible(finder, 200,
-      scrollable: find.byType(Scrollable).first);
+      scrollable: scrollable ?? uploaderMainScroll);
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
 }
@@ -248,7 +250,12 @@ void main() {
     await tester.tap(_key('uploader-ai-style-button'));
     await tester.pumpAndSettle();
     await tester.tap(_key('uploader-ai-style-tone-friendly'));
-    await _show(tester, _key('uploader-ai-style-save'));
+    await _show(tester, _key('uploader-ai-style-save'),
+        scrollable: find
+            .descendant(
+                of: _key('uploader-ai-style-sheet'),
+                matching: find.byType(Scrollable))
+            .first);
     await tester.tap(_key('uploader-ai-style-save'));
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 2);

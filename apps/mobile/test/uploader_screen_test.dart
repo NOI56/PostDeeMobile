@@ -22,7 +22,7 @@ Future<void> _openCaptionOptions(WidgetTester tester, String key) async {
   await tester.scrollUntilVisible(
     options,
     300,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: uploaderMainScroll,
   );
   await tester.ensureVisible(options);
   await tester.pumpAndSettle();
@@ -97,7 +97,7 @@ Future<void> _enterUploadCaption(
   String caption = 'Real caption from seller',
 }) async {
   await goToUploaderStep(tester, 2);
-  final scrollable = find.byType(Scrollable).first;
+  final scrollable = uploaderMainScroll;
   await tester.drag(scrollable, const Offset(0, 3000));
   await tester.pumpAndSettle();
 
@@ -201,7 +201,7 @@ void main() {
     );
   });
 
-  final uploaderScroll = find.byType(Scrollable).first;
+  final uploaderScroll = uploaderMainScroll;
 
   for (final interruptedBy in ['disposal', 'owner change', 'time passing']) {
     testWidgets('stops a pending scheduling plan check after $interruptedBy',

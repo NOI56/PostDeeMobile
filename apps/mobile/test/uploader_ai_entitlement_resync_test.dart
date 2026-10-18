@@ -157,7 +157,7 @@ Future<void> _show(WidgetTester tester, Finder finder) async {
   await tester.scrollUntilVisible(
     finder,
     250,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: uploaderMainScroll,
   );
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();

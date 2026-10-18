@@ -2,6 +2,30 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Unified publishing settings (2026-10-18, local implementation)
+
+All four settings sheets share a logo/account header, grouped controls, adaptive
+height and fixed Cancel/Save actions above the keyboard. Inbox opens without
+Direct creator reads; switching to Direct fetches current options, and returning
+to Inbox invalidates in-flight results. TikTok privacy/interaction restrictions
+and consent remain enforced. YouTube retains editable blank-title suggestions,
+manual audience/synthetic-media answers and certification.
+
+Instagram/Facebook show cover context and optional AI-generated video disclosure.
+Null is unanswered and serializes without a key; true/false are explicit choices,
+can be cleared, survive draft round trips and appear in review. AI captions alone
+do not imply AI-generated media. Facebook remains Page Video, with a clear
+distinction between sending a Page draft and saving a local PostDee draft.
+
+Based on main `c813eef`; not installed on the user's emulator or deployed.
+Deploy API and publishing workers before Mobile. Draft manifest version stays 3;
+no dependency/configuration/migration change is needed. Checks and preview evidence:
+`../../docs/superpowers/plans/2026-10-18-unified-platform-settings.md`.
+Full Mobile verification passes **2,371 tests** with two optional preview skips,
+whole-project analysis and the exact Staging APK12024 build. The new five-sheet
+preview runs separately with bundled Thai fonts and fixture accounts. Real
+connected-account publication and iOS/physical-device checks remain unverified.
+
 ## Channel publishing preflight (2026-10-15, Android Staging delivered)
 
 The new uploader validates the exact trimmed caption for selected channels:

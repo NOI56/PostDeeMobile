@@ -1,12 +1,44 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  arePlatformSettingsEqual,
   createDefaultPlatformSettings,
   normalizePersistedPlatformSettings,
   readPlatformSettings
 } from './platformSettings.js';
 
 describe('platform publishing settings', () => {
+  for (const platform of ['INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const) {
+    const original = platform === 'INSTAGRAM_REELS'
+      ? { shareToFeed: false }
+      : { publishMode: 'PAGE_DRAFT' as const };
+
+    it.each([true, false])(`preserves an explicit ${platform} AI declaration %s`, (isAiGenerated) => {
+      const settings = { [platform]: { ...original, isAiGenerated } };
+      expect(readPlatformSettings(settings, [platform])).toEqual({ ok: true, value: settings });
+      expect(normalizePersistedPlatformSettings(settings, [platform])).toEqual(settings);
+      expect(arePlatformSettingsEqual(settings, settings, [platform])).toBe(true);
+      expect(arePlatformSettingsEqual(settings, { [platform]: { ...original, isAiGenerated: !isAiGenerated } }, [platform])).toBe(false);
+      expect(arePlatformSettingsEqual({ [platform]: original }, settings, [platform])).toBe(false);
+    });
+
+    it(`keeps historical ${platform} snapshots byte-for-byte stable`, () => {
+      const settings = { [platform]: original };
+      const parsed = readPlatformSettings(settings, [platform]);
+      expect(parsed).toEqual({ ok: true, value: settings });
+      expect(JSON.stringify(normalizePersistedPlatformSettings(settings, [platform]))).toBe(JSON.stringify(settings));
+    });
+
+    it.each([null, undefined, 'true', 'false', 0, 1, {}, []])(`rejects a non-boolean ${platform} AI declaration %o`, (isAiGenerated) => {
+      expect(readPlatformSettings({ [platform]: { ...original, isAiGenerated } }, [platform])).toEqual({ ok: false });
+    });
+
+    it(`rejects unknown ${platform} fields even with a valid AI declaration`, () => {
+      expect(readPlatformSettings({ [platform]: { ...original, isAiGenerated: true, unknown: false } }, [platform])).toEqual({ ok: false });
+      expect(readPlatformSettings({ [platform]: { isAiGenerated: true } }, [platform])).toEqual({ ok: false });
+    });
+  }
+
   it('accepts a complete explicit TikTok Direct Post choice without legacy defaults', () => {
     const TIKTOK = {
       publishMode: 'DIRECT_POST', privacyLevel: 'PUBLIC_TO_EVERYONE',

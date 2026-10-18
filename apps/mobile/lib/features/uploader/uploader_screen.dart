@@ -28,6 +28,7 @@ import 'clip_frame_extractor.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
+import 'platform_settings_scaffold.dart';
 import 'platform_publish_preflight.dart';
 import 'publish_draft.dart';
 import 'publish_draft_store.dart';
@@ -4051,6 +4052,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           useSafeArea: true,
           builder: (_) => TikTokPublishingSettingsSheet(
               initialSettings: _platformSettings,
+              connectionDisplayName: _connectionDetails[platform]?.displayName,
               loadOptions: _loadBoundTikTokOptions,
               isCurrent: isCurrent));
       if (next == null || !isCurrent()) return;
@@ -4079,6 +4081,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                     safeYouTubeTitleSuggestion(_captionController.text))
             : _platformSettings,
         connection: _connectionDetails[platform],
+        coverResult: _coverResult,
       ),
     );
     if (!mounted ||
@@ -4150,267 +4153,303 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   @override
   Widget build(BuildContext context) {
-    final body = Column(
-      children: [
-        _buildToolbar(context),
-        _buildProgress(context),
-        Expanded(
-          child: IgnorePointer(
-            ignoring: _formBusy,
-            child: _UploaderStepEntrance(
-              key: ValueKey('uploader-step-motion-$_currentStep'),
-              animate: _appIsResumed,
-              child: KeyedSubtree(
-                key: ValueKey('uploader-step-body-$_currentStep'),
-                child: ListView(
-                  key: const ValueKey('uploader-scroll'),
-                  controller: _formScrollController,
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                  children: [
-                    if (_activeDraftUploadedMedia != null) ...[
-                      const PostDeeNotice(
-                          message: 'มีข้อมูลอัปโหลดของคำขอเดิม '
-                              'ตรวจผลการส่งได้โดยไม่อัปโหลดหรือส่งโพสต์ซ้ำ',
-                          icon: Icons.history_rounded),
-                      Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                              key:
-                                  const ValueKey('uploader-recover-submission'),
-                              onPressed:
-                                  _formBusy ? null : _recoverUploadedSubmission,
-                              icon: const Icon(Icons.manage_search_rounded),
-                              label: Text(_isRecoveringSubmission
-                                  ? 'กำลังตรวจผลการส่งเดิม...'
-                                  : 'ตรวจผลการส่งเดิม'))),
-                      const SizedBox(height: 8),
-                    ],
-                    if (_errorMessage != null &&
-                        !(_captionRequired &&
-                            _errorMessage == 'เพิ่มแคปชั่นก่อนโพสต์'))
-                      Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: PostDeeNotice(
-                              message: _errorMessage!,
-                              color: Theme.of(context).colorScheme.error,
-                              icon: Icons.error_outline)),
-                    if (_successMessage != null)
-                      Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: PostDeeNotice(
-                              message: _successMessage!,
-                              color: AppTheme.successInk,
-                              icon: Icons.check_circle_outline)),
-                    _UploadStepHeader(
-                      key: ValueKey([
-                        'uploader-step-video',
-                        'uploader-step-caption',
-                        'uploader-step-platforms',
-                        'uploader-step-review'
-                      ][_currentStep]),
-                      title: _wizardStepLabel(_currentStep),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                        [
-                          'เริ่มจากคลิปแนวตั้งที่อยากโพสต์',
-                          'เขียนเอง หรือกดให้ AI ช่วยเมื่อพร้อม',
-                          'เลือกบัญชีปลายทางและตั้งค่าของแต่ละช่องทาง',
-                          'ตรวจข้อมูลและเลือกเวลาที่ต้องการโพสต์'
-                        ][_currentStep],
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: AppTheme.textSecondary)),
-                    SizedBox(height: _currentStep == 0 ? 12 : 20),
-                    if (_currentStep == 0) ...[
-                      _press(
-                          _VideoPreviewCard(
-                            videoName: _selectedVideoName,
-                            coverImagePath: _coverResult?.localImagePath ??
-                                _videoPoster?.localImagePath,
-                            coverImageBytes: _coverResult?.imageBytes ??
-                                _videoPoster?.imageBytes,
-                            isSubmitting: _formBusy,
-                            onPickVideo: _pickVideoFile,
-                            onPreview: _openVideoPreview,
-                          ),
-                          enabled: !_formBusy),
-                      if (_selectedVideoName != null) ...[
-                        const SizedBox(height: 12),
-                        _buildVideoMetadata(textAlign: TextAlign.center),
-                        const SizedBox(height: 6),
-                        Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 8,
-                            children: [
-                              TextButton.icon(
-                                  key: const ValueKey(
-                                      'uploader-video-preview-picker'),
-                                  onPressed: _pickVideoFile,
-                                  icon: const Icon(Icons.swap_horiz_rounded,
-                                      size: 18),
-                                  label: const Text('เปลี่ยนคลิป')),
-                              OutlinedButton.icon(
-                                  key: const ValueKey(
-                                      'uploader-cover-edit-button'),
-                                  onPressed: _openCoverEditor,
-                                  icon: const Icon(Icons.image_outlined,
-                                      size: 18),
-                                  label: Text(_coverResult == null
-                                      ? 'แต่งหน้าปก'
-                                      : 'แก้หน้าปก')),
-                            ]),
-                        if (_coverResult != null)
-                          Text(
-                              'เลือกเฟรมที่ ${formatReviewVideoClock(Duration(milliseconds: _coverResult!.coverFrameTimeMs))}',
-                              key: const ValueKey('uploader-cover-time'),
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodySmall),
-                      ],
-                    ],
-                    if (_currentStep == 1) ...[
-                      if (_selectedVideoName != null) ...[
-                        Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _VideoPreviewCard(
-                                  videoName: _selectedVideoName,
-                                  coverImagePath:
-                                      _coverResult?.localImagePath ??
-                                          _videoPoster?.localImagePath,
-                                  coverImageBytes: _coverResult?.imageBytes ??
-                                      _videoPoster?.imageBytes,
-                                  isSubmitting: _formBusy,
-                                  onPickVideo: _pickVideoFile,
-                                  onPreview: _openVideoPreview,
-                                  compact: true),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                  child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                    Text(_selectedVideoName!,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600)),
-                                    const SizedBox(height: 4),
-                                    _buildVideoMetadata(),
-                                    TextButton.icon(
-                                        onPressed: _openVideoPreview,
-                                        icon: const Icon(
-                                            Icons.play_circle_outline,
-                                            size: 18),
-                                        label: const Text('ดูคลิป')),
-                                  ])),
-                            ]),
-                        const SizedBox(height: 20),
-                      ],
-                      _buildCaptionCard(context),
-                    ],
-                    if (_currentStep == 2)
-                      _PlatformSelectorSection(
-                        selectedPlatforms: {
-                          ..._selectedPlatforms,
-                          ..._draftUnavailablePlatforms
-                        },
-                        connectedPlatforms: _connectedPlatforms,
-                        unavailableDraftPlatforms: _draftUnavailablePlatforms,
-                        isLoadingConnections: _isLoadingConnections,
-                        connectionsErrorMessage: _connectionsErrorMessage,
-                        connectionDisplayNames: _reviewIdentities,
-                        readinessLabels: {
-                          for (final platform in _connectedPlatforms)
-                            platform: _channelReadinessError ??
-                                _channelReadinessLabel(
-                                    _channelReadiness[platform],
-                                    legacy: !_channelReadinessSupported)
-                        },
-                        animate: _uploaderMotionAllowed(context, _appIsResumed),
-                        platformSettings: _platformSettings,
-                        onPlatformChanged: _setPlatformSelected,
-                        onOpenPlatformSettings: _openPlatformSettings,
-                        onSelectAll: _selectAllConnectedPlatforms,
-                        onClearAll: _clearSelectedPlatforms,
-                        onOpenConnections: _openConnections,
-                        onRetryConnections: _loadConnections,
-                      ),
-                    if (_currentStep == 3) ...[
-                      if (_connectionsErrorMessage != null)
-                        PostDeeNotice(
-                            message: _connectionsErrorMessage!,
-                            color: Theme.of(context).colorScheme.error,
-                            icon: Icons.cloud_off_outlined),
-                      if (_selectedReadinessIssue case final issue?)
-                        PostDeeNotice(
-                            message: issue,
-                            color: Theme.of(context).colorScheme.error,
-                            icon: Icons.link_off_outlined),
-                      if (_readScheduledAt() case final schedule?
-                          when _errorMessage == null &&
-                              !schedule.isAfter(widget.now()))
-                        PostDeeNotice(
-                            message:
-                                'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลยก่อนยืนยัน',
-                            color: Theme.of(context).colorScheme.error,
-                            icon: Icons.schedule_outlined),
-                      SizedBox(
-                          key: const ValueKey('uploader-schedule-panel'),
-                          width: double.infinity,
-                          child: PostDeeCard(
-                              padding: const EdgeInsets.all(AppTheme.spaceMd),
-                              glowColor: AppTheme.accent,
-                              child: _SchedulePanel(
-                                now: widget.now,
-                                scheduledAtController: _scheduledAtController,
-                                selectedDate: _selectedScheduleDate,
-                                selectedTime: _selectedScheduleTime,
-                                schedulePlan: _scheduleSubscription?.plan,
-                                onPostNow: _clearSchedule,
-                                onSchedule: _useSuggestedSchedule,
-                                onQuickDaySelected: _setQuickScheduleDay,
-                                onTimeSelected: _setQuickScheduleTime,
-                                onPickCustomTime: _pickCustomScheduleTime,
-                                onPickCustomDate: _pickCustomScheduleDate,
-                              ))),
-                      const SizedBox(height: 20),
-                      PublishReviewSummary(
-                        videoName: _selectedVideoName ?? 'ยังไม่ได้เลือกคลิป',
-                        caption: _captionController.text,
-                        platforms: SocialPlatform.values
-                            .where(_selectedPlatforms.contains)
-                            .toList(),
-                        scheduledAt: _readScheduledAt(),
-                        watermarkEnabled: shouldApplyPostDeeWatermark(
-                            requested: _activeDraftWatermarkEnabled ??
-                                _requestedAutoWatermark,
-                            selectedPlatforms: {
-                              ..._selectedPlatforms,
-                              ..._draftUnavailablePlatforms
-                            }),
-                        platformSettings: _platformSettings,
-                        connectionDisplayNames: _reviewIdentities,
-                        coverResult: _coverResult,
-                        previewImagePath: _videoPoster?.localImagePath,
-                        previewImageBytes: _videoPoster?.imageBytes,
-                        videoAspectLabel: _videoAspectLabel,
-                        showSchedule: false,
-                        onEditVideo: () => _goToStep(0),
-                        onEditCaption: () => _goToStep(1),
-                        onEditPlatforms: () => _goToStep(2),
-                      ),
-                    ],
-                  ],
+    final body = LayoutBuilder(
+        builder: (context, constraints) => Column(
+              children: [
+                // The underlying composer also resizes when a settings sheet opens its
+                // keyboard. Keep its header scrollable so large text cannot overflow.
+                ConstrainedBox(
+                  constraints:
+                      BoxConstraints(maxHeight: constraints.maxHeight * .45),
+                  child: SingleChildScrollView(
+                    key: const ValueKey('uploader-header-scroll'),
+                    primary: false,
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      _buildToolbar(context),
+                      _buildProgress(context),
+                    ]),
+                  ),
                 ),
-              ),
-            ),
-          ),
-        ),
-        _buildStickyActionBar(context),
-      ],
-    );
+                Expanded(
+                  child: IgnorePointer(
+                    ignoring: _formBusy,
+                    child: _UploaderStepEntrance(
+                      key: ValueKey('uploader-step-motion-$_currentStep'),
+                      animate: _appIsResumed,
+                      child: KeyedSubtree(
+                        key: ValueKey('uploader-step-body-$_currentStep'),
+                        child: ListView(
+                          key: const ValueKey('uploader-scroll'),
+                          controller: _formScrollController,
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                          children: [
+                            if (_activeDraftUploadedMedia != null) ...[
+                              const PostDeeNotice(
+                                  message: 'มีข้อมูลอัปโหลดของคำขอเดิม '
+                                      'ตรวจผลการส่งได้โดยไม่อัปโหลดหรือส่งโพสต์ซ้ำ',
+                                  icon: Icons.history_rounded),
+                              Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton.icon(
+                                      key: const ValueKey(
+                                          'uploader-recover-submission'),
+                                      onPressed: _formBusy
+                                          ? null
+                                          : _recoverUploadedSubmission,
+                                      icon: const Icon(
+                                          Icons.manage_search_rounded),
+                                      label: Text(_isRecoveringSubmission
+                                          ? 'กำลังตรวจผลการส่งเดิม...'
+                                          : 'ตรวจผลการส่งเดิม'))),
+                              const SizedBox(height: 8),
+                            ],
+                            if (_errorMessage != null &&
+                                !(_captionRequired &&
+                                    _errorMessage == 'เพิ่มแคปชั่นก่อนโพสต์'))
+                              Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: PostDeeNotice(
+                                      message: _errorMessage!,
+                                      color:
+                                          Theme.of(context).colorScheme.error,
+                                      icon: Icons.error_outline)),
+                            if (_successMessage != null)
+                              Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: PostDeeNotice(
+                                      message: _successMessage!,
+                                      color: AppTheme.successInk,
+                                      icon: Icons.check_circle_outline)),
+                            _UploadStepHeader(
+                              key: ValueKey([
+                                'uploader-step-video',
+                                'uploader-step-caption',
+                                'uploader-step-platforms',
+                                'uploader-step-review'
+                              ][_currentStep]),
+                              title: _wizardStepLabel(_currentStep),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                                [
+                                  'เริ่มจากคลิปแนวตั้งที่อยากโพสต์',
+                                  'เขียนเอง หรือกดให้ AI ช่วยเมื่อพร้อม',
+                                  'เลือกบัญชีปลายทางและตั้งค่าของแต่ละช่องทาง',
+                                  'ตรวจข้อมูลและเลือกเวลาที่ต้องการโพสต์'
+                                ][_currentStep],
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: AppTheme.textSecondary)),
+                            SizedBox(height: _currentStep == 0 ? 12 : 20),
+                            if (_currentStep == 0) ...[
+                              _press(
+                                  _VideoPreviewCard(
+                                    videoName: _selectedVideoName,
+                                    coverImagePath:
+                                        _coverResult?.localImagePath ??
+                                            _videoPoster?.localImagePath,
+                                    coverImageBytes: _coverResult?.imageBytes ??
+                                        _videoPoster?.imageBytes,
+                                    isSubmitting: _formBusy,
+                                    onPickVideo: _pickVideoFile,
+                                    onPreview: _openVideoPreview,
+                                  ),
+                                  enabled: !_formBusy),
+                              if (_selectedVideoName != null) ...[
+                                const SizedBox(height: 12),
+                                _buildVideoMetadata(
+                                    textAlign: TextAlign.center),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                    alignment: WrapAlignment.center,
+                                    spacing: 8,
+                                    children: [
+                                      TextButton.icon(
+                                          key: const ValueKey(
+                                              'uploader-video-preview-picker'),
+                                          onPressed: _pickVideoFile,
+                                          icon: const Icon(
+                                              Icons.swap_horiz_rounded,
+                                              size: 18),
+                                          label: const Text('เปลี่ยนคลิป')),
+                                      OutlinedButton.icon(
+                                          key: const ValueKey(
+                                              'uploader-cover-edit-button'),
+                                          onPressed: _openCoverEditor,
+                                          icon: const Icon(Icons.image_outlined,
+                                              size: 18),
+                                          label: Text(_coverResult == null
+                                              ? 'แต่งหน้าปก'
+                                              : 'แก้หน้าปก')),
+                                    ]),
+                                if (_coverResult != null)
+                                  Text(
+                                      'เลือกเฟรมที่ ${formatReviewVideoClock(Duration(milliseconds: _coverResult!.coverFrameTimeMs))}',
+                                      key:
+                                          const ValueKey('uploader-cover-time'),
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall),
+                              ],
+                            ],
+                            if (_currentStep == 1) ...[
+                              if (_selectedVideoName != null) ...[
+                                Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _VideoPreviewCard(
+                                          videoName: _selectedVideoName,
+                                          coverImagePath:
+                                              _coverResult?.localImagePath ??
+                                                  _videoPoster?.localImagePath,
+                                          coverImageBytes:
+                                              _coverResult?.imageBytes ??
+                                                  _videoPoster?.imageBytes,
+                                          isSubmitting: _formBusy,
+                                          onPickVideo: _pickVideoFile,
+                                          onPreview: _openVideoPreview,
+                                          compact: true),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                          child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                            Text(_selectedVideoName!,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.w600)),
+                                            const SizedBox(height: 4),
+                                            _buildVideoMetadata(),
+                                            TextButton.icon(
+                                                onPressed: _openVideoPreview,
+                                                icon: const Icon(
+                                                    Icons.play_circle_outline,
+                                                    size: 18),
+                                                label: const Text('ดูคลิป')),
+                                          ])),
+                                    ]),
+                                const SizedBox(height: 20),
+                              ],
+                              _buildCaptionCard(context),
+                            ],
+                            if (_currentStep == 2)
+                              _PlatformSelectorSection(
+                                selectedPlatforms: {
+                                  ..._selectedPlatforms,
+                                  ..._draftUnavailablePlatforms
+                                },
+                                connectedPlatforms: _connectedPlatforms,
+                                unavailableDraftPlatforms:
+                                    _draftUnavailablePlatforms,
+                                isLoadingConnections: _isLoadingConnections,
+                                connectionsErrorMessage:
+                                    _connectionsErrorMessage,
+                                connectionDisplayNames: _reviewIdentities,
+                                readinessLabels: {
+                                  for (final platform in _connectedPlatforms)
+                                    platform: _channelReadinessError ??
+                                        _channelReadinessLabel(
+                                            _channelReadiness[platform],
+                                            legacy: !_channelReadinessSupported)
+                                },
+                                animate: _uploaderMotionAllowed(
+                                    context, _appIsResumed),
+                                platformSettings: _platformSettings,
+                                onPlatformChanged: _setPlatformSelected,
+                                onOpenPlatformSettings: _openPlatformSettings,
+                                onSelectAll: _selectAllConnectedPlatforms,
+                                onClearAll: _clearSelectedPlatforms,
+                                onOpenConnections: _openConnections,
+                                onRetryConnections: _loadConnections,
+                              ),
+                            if (_currentStep == 3) ...[
+                              if (_connectionsErrorMessage != null)
+                                PostDeeNotice(
+                                    message: _connectionsErrorMessage!,
+                                    color: Theme.of(context).colorScheme.error,
+                                    icon: Icons.cloud_off_outlined),
+                              if (_selectedReadinessIssue case final issue?)
+                                PostDeeNotice(
+                                    message: issue,
+                                    color: Theme.of(context).colorScheme.error,
+                                    icon: Icons.link_off_outlined),
+                              if (_readScheduledAt() case final schedule?
+                                  when _errorMessage == null &&
+                                      !schedule.isAfter(widget.now()))
+                                PostDeeNotice(
+                                    message:
+                                        'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลยก่อนยืนยัน',
+                                    color: Theme.of(context).colorScheme.error,
+                                    icon: Icons.schedule_outlined),
+                              SizedBox(
+                                  key:
+                                      const ValueKey('uploader-schedule-panel'),
+                                  width: double.infinity,
+                                  child: PostDeeCard(
+                                      padding: const EdgeInsets.all(
+                                          AppTheme.spaceMd),
+                                      glowColor: AppTheme.accent,
+                                      child: _SchedulePanel(
+                                        now: widget.now,
+                                        scheduledAtController:
+                                            _scheduledAtController,
+                                        selectedDate: _selectedScheduleDate,
+                                        selectedTime: _selectedScheduleTime,
+                                        schedulePlan:
+                                            _scheduleSubscription?.plan,
+                                        onPostNow: _clearSchedule,
+                                        onSchedule: _useSuggestedSchedule,
+                                        onQuickDaySelected:
+                                            _setQuickScheduleDay,
+                                        onTimeSelected: _setQuickScheduleTime,
+                                        onPickCustomTime:
+                                            _pickCustomScheduleTime,
+                                        onPickCustomDate:
+                                            _pickCustomScheduleDate,
+                                      ))),
+                              const SizedBox(height: 20),
+                              PublishReviewSummary(
+                                videoName:
+                                    _selectedVideoName ?? 'ยังไม่ได้เลือกคลิป',
+                                caption: _captionController.text,
+                                platforms: SocialPlatform.values
+                                    .where(_selectedPlatforms.contains)
+                                    .toList(),
+                                scheduledAt: _readScheduledAt(),
+                                watermarkEnabled: shouldApplyPostDeeWatermark(
+                                    requested: _activeDraftWatermarkEnabled ??
+                                        _requestedAutoWatermark,
+                                    selectedPlatforms: {
+                                      ..._selectedPlatforms,
+                                      ..._draftUnavailablePlatforms
+                                    }),
+                                platformSettings: _platformSettings,
+                                connectionDisplayNames: _reviewIdentities,
+                                coverResult: _coverResult,
+                                previewImagePath: _videoPoster?.localImagePath,
+                                previewImageBytes: _videoPoster?.imageBytes,
+                                videoAspectLabel: _videoAspectLabel,
+                                showSchedule: false,
+                                onEditVideo: () => _goToStep(0),
+                                onEditCaption: () => _goToStep(1),
+                                onEditPlatforms: () => _goToStep(2),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                _buildStickyActionBar(context),
+              ],
+            ));
     final motionBody = TickerMode(enabled: _appIsResumed, child: body);
     if (!widget.fullScreen) return motionBody;
     return PopScope(
@@ -5774,11 +5813,13 @@ class _PlatformSettingsSheet extends StatefulWidget {
     required this.platform,
     required this.initialSettings,
     this.connection,
+    this.coverResult,
   });
 
   final SocialPlatform platform;
   final PlatformPublishSettings initialSettings;
   final SocialConnectionResult? connection;
+  final CoverEditorResult? coverResult;
 
   @override
   State<_PlatformSettingsSheet> createState() => _PlatformSettingsSheetState();
@@ -5817,86 +5858,16 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
             : widget.connection!.externalAccountId?.trim() ?? '');
     final canSave = current.canSubmit(widget.platform);
 
-    return Padding(
-      key: const ValueKey('uploader-platform-settings-sheet'),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * 0.86,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
-              child: Row(
-                children: [
-                  SocialPlatformLogo(platform: widget.platform, size: 34),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          publishReviewPlatformLabel(widget.platform),
-                          style: TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (displayName.isNotEmpty)
-                          Text(
-                            displayName,
-                            style: TextStyle(
-                              color: AppTheme.textMuted,
-                              fontSize: 12,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'ปิด',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-            ),
-            Divider(height: 1, color: AppTheme.borderSoft),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(18),
-                child: _buildSettings(current),
-              ),
-            ),
-            Divider(height: 1, color: AppTheme.borderSoft),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('ยกเลิก'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      key: const ValueKey('uploader-platform-settings-save'),
-                      onPressed: canSave
-                          ? () => Navigator.of(context).pop(current)
-                          : null,
-                      child: const Text('บันทึกการตั้งค่า'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+    return PlatformSettingsScaffold(
+      platform: widget.platform,
+      displayName: displayName,
+      onSave: canSave ? () => Navigator.of(context).pop(current) : null,
+      validationMessage: widget.platform == SocialPlatform.youtubeShorts
+          ? current.youtubeValidationMessage
+          : widget.platform == SocialPlatform.facebookReels && !canSave
+              ? 'เลือกเผยแพร่หรือเก็บเป็นร่างบนเพจก่อนบันทึก'
+              : null,
+      child: _buildSettings(current),
     );
   }
 
@@ -5905,167 +5876,265 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
       case SocialPlatform.tiktok:
         throw StateError('TikTok uses the creator publishing options sheet');
       case SocialPlatform.youtubeShorts:
-        final validationMessage = current.youtubeValidationMessage;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
-              key: const ValueKey('uploader-youtube-title'),
-              controller: _youtubeTitleController,
-              maxLength: 100,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'ชื่อวิดีโอ YouTube',
-                helperText: 'แคปชั่นหลักจะใช้เป็นคำอธิบาย',
-              ),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<YouTubeVisibility>(
-              key: const ValueKey('uploader-youtube-visibility'),
-              initialValue: current.youtubeVisibility,
-              decoration: const InputDecoration(labelText: 'การมองเห็น'),
-              items: const [
-                DropdownMenuItem(
-                  value: YouTubeVisibility.private,
-                  child: Text('ส่วนตัว (Private)'),
-                ),
-                DropdownMenuItem(
-                  value: YouTubeVisibility.unlisted,
-                  child: Text('ไม่เป็นสาธารณะ (Unlisted)'),
-                ),
-                DropdownMenuItem(
-                  value: YouTubeVisibility.public,
-                  child: Text('สาธารณะ (Public)'),
-                ),
-              ],
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => _settings = current.copyWith(
-                      youtubeVisibility: value,
-                    ));
-              },
-            ),
-            if (current.youtubeVisibility != YouTubeVisibility.private) ...[
-              const SizedBox(height: 8),
-              Text(
-                'การมองเห็นจริงขึ้นอยู่กับสถานะวิดีโอและบัญชี YouTube '
-                'กรุณาตรวจผลหลังเผยแพร่',
-                style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
-              ),
-            ],
-            const SizedBox(height: 18),
-            _BinarySettingRow(
-              title: 'วิดีโอนี้ทำมาเพื่อเด็กหรือไม่?',
-              value: current.youtubeMadeForKids,
-              yesKey: const ValueKey('uploader-youtube-made-for-kids-yes'),
-              noKey: const ValueKey('uploader-youtube-made-for-kids-no'),
-              onChanged: (value) => setState(
-                () => _settings = current.copyWith(youtubeMadeForKids: value),
-              ),
-            ),
-            Text('พิจารณาว่าเด็กเป็นกลุ่มผู้ชมเป้าหมาย ไม่ใช่เพียงเด็กดูได้',
-                style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-            const SizedBox(height: 16),
-            _BinarySettingRow(
-              title: 'มีสื่อสังเคราะห์ที่ดูเหมือนจริงหรือไม่?',
-              value: current.youtubeContainsSyntheticMedia,
-              yesKey: const ValueKey('uploader-youtube-synthetic-yes'),
-              noKey: const ValueKey('uploader-youtube-synthetic-no'),
-              onChanged: (value) => setState(
-                () => _settings = current.copyWith(
-                  youtubeContainsSyntheticMedia: value,
-                ),
-              ),
-            ),
-            Text(
-                'หมายถึงภาพหรือเสียงที่สร้างหรือดัดแปลงให้ดูเหมือนจริง '
-                'การช่วยคิดแคปชั่นอย่างเดียวไม่ถือเป็นสื่อสังเคราะห์ในวิดีโอ',
-                style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+            PlatformSettingsSection(
+                title: 'ข้อมูลวิดีโอ',
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        key: const ValueKey('uploader-youtube-title'),
+                        controller: _youtubeTitleController,
+                        maxLength: 100,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          labelText: 'ชื่อวิดีโอ YouTube',
+                          helperText: 'แคปชั่นหลักจะใช้เป็นคำอธิบาย',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<YouTubeVisibility>(
+                        isExpanded: true,
+                        key: const ValueKey('uploader-youtube-visibility'),
+                        initialValue: current.youtubeVisibility,
+                        decoration:
+                            const InputDecoration(labelText: 'การมองเห็น'),
+                        items: const [
+                          DropdownMenuItem(
+                            value: YouTubeVisibility.private,
+                            child: Text('ส่วนตัว (Private)'),
+                          ),
+                          DropdownMenuItem(
+                            value: YouTubeVisibility.unlisted,
+                            child: Text('ไม่เป็นสาธารณะ (Unlisted)'),
+                          ),
+                          DropdownMenuItem(
+                            value: YouTubeVisibility.public,
+                            child: Text('สาธารณะ (Public)'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() => _settings = current.copyWith(
+                                youtubeVisibility: value,
+                              ));
+                        },
+                      ),
+                      if (current.youtubeVisibility !=
+                          YouTubeVisibility.private) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'การมองเห็นจริงขึ้นอยู่กับสถานะวิดีโอและบัญชี YouTube '
+                          'กรุณาตรวจผลหลังเผยแพร่',
+                          style: TextStyle(
+                              color: AppTheme.textMuted, fontSize: 12),
+                        ),
+                      ],
+                    ])),
             const SizedBox(height: 12),
-            CheckboxListTile(
-              key: const ValueKey(
-                'uploader-youtube-guidelines-certified',
-              ),
-              contentPadding: EdgeInsets.zero,
-              value: current.youtubeCommunityGuidelinesCertified,
-              onChanged: (value) => setState(
-                () => _settings = current.copyWith(
-                  youtubeCommunityGuidelinesCertified: value ?? false,
-                ),
-              ),
-              title: const Text(
-                'ฉันยืนยันว่าวิดีโอเป็นไปตามกฎชุมชน YouTube',
-              ),
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
-            if (validationMessage != null)
-              Text(
-                validationMessage,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                  fontSize: 12,
-                ),
-              ),
+            PlatformSettingsSection(
+                title: 'ผู้ชมและเนื้อหา',
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _BinarySettingRow(
+                        title: 'วิดีโอนี้ทำมาเพื่อเด็กหรือไม่?',
+                        value: current.youtubeMadeForKids,
+                        yesKey: const ValueKey(
+                            'uploader-youtube-made-for-kids-yes'),
+                        noKey:
+                            const ValueKey('uploader-youtube-made-for-kids-no'),
+                        onChanged: (value) => setState(
+                          () => _settings =
+                              current.copyWith(youtubeMadeForKids: value),
+                        ),
+                      ),
+                      Text(
+                          'พิจารณาว่าเด็กเป็นกลุ่มผู้ชมเป้าหมาย ไม่ใช่เพียงเด็กดูได้',
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.textMuted)),
+                      const SizedBox(height: 16),
+                      _BinarySettingRow(
+                        title: 'มีสื่อสังเคราะห์ที่ดูเหมือนจริงหรือไม่?',
+                        value: current.youtubeContainsSyntheticMedia,
+                        yesKey:
+                            const ValueKey('uploader-youtube-synthetic-yes'),
+                        noKey: const ValueKey('uploader-youtube-synthetic-no'),
+                        onChanged: (value) => setState(
+                          () => _settings = current.copyWith(
+                            youtubeContainsSyntheticMedia: value,
+                          ),
+                        ),
+                      ),
+                      Text(
+                          'หมายถึงภาพหรือเสียงที่สร้างหรือดัดแปลงให้ดูเหมือนจริง '
+                          'การช่วยคิดแคปชั่นอย่างเดียวไม่ถือเป็นสื่อสังเคราะห์ในวิดีโอ',
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.textMuted)),
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        key: const ValueKey(
+                          'uploader-youtube-guidelines-certified',
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                        value: current.youtubeCommunityGuidelinesCertified,
+                        onChanged: (value) => setState(
+                          () => _settings = current.copyWith(
+                            youtubeCommunityGuidelinesCertified: value ?? false,
+                          ),
+                        ),
+                        title: const Text(
+                          'ฉันยืนยันว่าวิดีโอเป็นไปตามกฎชุมชน YouTube',
+                        ),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ])),
           ],
         );
       case SocialPlatform.instagramReels:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const PostDeeNotice(
-              message:
-                  'Instagram ไม่มี Private รายโพสต์ วิดีโอจะเผยแพร่ตามบัญชีที่เชื่อม',
-              color: Color(0xFFB5740B),
-              icon: Icons.info_outline_rounded,
-            ),
+            PlatformSettingsSection(
+                title: 'การเผยแพร่ Reels',
+                description: 'เผยแพร่ไปยังบัญชีที่แสดงด้านบน '
+                    'Instagram ไม่มี Private รายโพสต์ในช่องทางนี้',
+                child: SwitchListTile(
+                  key: const ValueKey('uploader-instagram-share-to-feed'),
+                  contentPadding: EdgeInsets.zero,
+                  value: current.instagramShareToFeed,
+                  onChanged: (value) => setState(
+                    () => _settings = current.copyWith(
+                      instagramShareToFeed: value,
+                    ),
+                  ),
+                  title: const Text('แชร์ Reels ไปยังฟีด'),
+                  subtitle: const Text('ปิดเพื่อแสดงเฉพาะใน Reels'),
+                )),
             const SizedBox(height: 12),
-            SwitchListTile(
-              key: const ValueKey('uploader-instagram-share-to-feed'),
-              contentPadding: EdgeInsets.zero,
-              value: current.instagramShareToFeed,
-              onChanged: (value) => setState(
-                () => _settings = current.copyWith(
-                  instagramShareToFeed: value,
-                ),
-              ),
-              title: const Text('แชร์ Reels ไปยังฟีด'),
-            ),
+            _buildCoverSummary(),
+            const SizedBox(height: 12),
+            _buildAiDeclaration(current),
           ],
         );
       case SocialPlatform.facebookReels:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _SettingsChoiceButton(
-              key: const ValueKey('uploader-facebook-publish'),
-              label: 'เผยแพร่บนเพจ',
-              isSelected:
-                  current.facebookPublishMode == FacebookPublishMode.publish,
-              onPressed: () => setState(
-                () => _settings = current.copyWith(
-                  facebookPublishMode: FacebookPublishMode.publish,
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            _SettingsChoiceButton(
-              key: const ValueKey('uploader-facebook-page-draft'),
-              label: 'เก็บเป็นร่างบนเพจ',
-              subtitle: 'ส่งออกจริงและใช้โควตาโพสต์',
-              isSelected:
-                  current.facebookPublishMode == FacebookPublishMode.pageDraft,
-              onPressed: () => setState(
-                () => _settings = current.copyWith(
-                  facebookPublishMode: FacebookPublishMode.pageDraft,
-                ),
-              ),
-            ),
+            PlatformSettingsSection(
+                title: 'วิธีเผยแพร่บนเพจ',
+                description:
+                    'ส่งเป็น Facebook Page Video ไปยังเพจที่แสดงด้านบน',
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _SettingsChoiceButton(
+                        key: const ValueKey('uploader-facebook-publish'),
+                        label: 'เผยแพร่บนเพจ',
+                        isSelected: current.facebookPublishMode ==
+                            FacebookPublishMode.publish,
+                        onPressed: () => setState(
+                          () => _settings = current.copyWith(
+                            facebookPublishMode: FacebookPublishMode.publish,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _SettingsChoiceButton(
+                        key: const ValueKey('uploader-facebook-page-draft'),
+                        label: 'เก็บเป็นร่างบนเพจ',
+                        subtitle: 'ส่งออกจริงและใช้โควตาโพสต์ · เปิด Facebook '
+                            'เพื่อเผยแพร่ต่อ ต่างจากบันทึกร่างใน PostDee',
+                        isSelected: current.facebookPublishMode ==
+                            FacebookPublishMode.pageDraft,
+                        onPressed: () => setState(
+                          () => _settings = current.copyWith(
+                            facebookPublishMode: FacebookPublishMode.pageDraft,
+                          ),
+                        ),
+                      ),
+                    ])),
+            const SizedBox(height: 12),
+            _buildCoverSummary(),
+            const SizedBox(height: 12),
+            _buildAiDeclaration(current),
           ],
         );
       case SocialPlatform.shopeeVideo:
       case SocialPlatform.lazadaVideo:
         return const Text('ช่องทางนี้ยังไม่รองรับการโพสต์');
     }
+  }
+
+  Widget _buildAiDeclaration(PlatformPublishSettings current) {
+    final instagram = widget.platform == SocialPlatform.instagramReels;
+    final value = instagram
+        ? current.instagramIsAiGenerated
+        : current.facebookIsAiGenerated;
+    final prefix = instagram ? 'instagram' : 'facebook';
+    void change(bool? next) => setState(() => _settings = instagram
+        ? current.copyWith(instagramIsAiGenerated: next)
+        : current.copyWith(facebookIsAiGenerated: next));
+    return PlatformSettingsSection(
+      title: 'การเปิดเผยเนื้อหา AI',
+      description: 'หมายถึงภาพหรือเสียงในวิดีโอที่สร้างด้วย AI '
+          'การใช้ AI ช่วยคิดแคปชั่นอย่างเดียวไม่รวมอยู่ในข้อนี้',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _BinarySettingRow(
+          title: 'วิดีโอนี้มีภาพหรือเสียงที่สร้างด้วย AI หรือไม่?',
+          value: value,
+          yesKey: ValueKey('uploader-$prefix-ai-yes'),
+          noKey: ValueKey('uploader-$prefix-ai-no'),
+          onChanged: change,
+        ),
+        const SizedBox(height: 8),
+        if (value == null)
+          Text('ยังไม่ระบุ (ไม่บังคับ)',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary))
+        else
+          Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                  key: ValueKey('uploader-$prefix-ai-clear'),
+                  onPressed: () => change(null),
+                  child: const Text('ล้างคำตอบ'))),
+      ]),
+    );
+  }
+
+  Widget _buildCoverSummary() {
+    final cover = widget.coverResult;
+    final imageFallback = ColoredBox(
+        color: AppTheme.borderSoft,
+        child: Icon(Icons.image_outlined, color: AppTheme.textMuted));
+    return PlatformSettingsSection(
+      title: 'ภาพปก',
+      description: 'เปลี่ยนภาพปกได้ในขั้นตอนคลิป',
+      child: cover == null
+          ? const Text('ยังไม่ได้เลือกปก · แพลตฟอร์มจะเลือกเฟรมจากวิดีโอ')
+          : Row(children: [
+              ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                      width: 48,
+                      height: 72,
+                      child: cover.imageBytes != null
+                          ? Image.memory(cover.imageBytes!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => imageFallback)
+                          : Image.file(cover.imageFile,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => imageFallback))),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: Text(cover.sourceKind == CoverSourceKind.videoFrame
+                      ? 'ใช้ปกที่เลือกจากวิดีโอ '
+                          'วินาทีที่ ${(cover.coverFrameTimeMs / 1000).toStringAsFixed(1)}'
+                      : 'ใช้ภาพปกที่เลือกไว้')),
+            ]),
+    );
   }
 }
 

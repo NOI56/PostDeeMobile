@@ -100,6 +100,51 @@ describe('post routes', () => {
     });
   });
 
+  describe('Meta AI media declarations', () => {
+    it.each([undefined, true, false])('persists and queues old or explicit declarations, replays once, and rejects changed intent (%s)', async (isAiGenerated) => {
+      const { app, store, queue, userId } = createPlanScheduleApp('PRO');
+      const enqueue = vi.spyOn(queue, 'enqueue');
+      const aiSetting = isAiGenerated === undefined ? {} : { isAiGenerated };
+      const body = {
+        clientRequestId: 'meta-ai-intent', caption: 'AI media review',
+        videoS3Key: ownedUploadKey(userId, 'meta.mp4'),
+        platforms: ['INSTAGRAM_REELS', 'FACEBOOK_REELS'],
+        platformSettings: {
+          INSTAGRAM_REELS: { shareToFeed: false, ...aiSetting },
+          FACEBOOK_REELS: { publishMode: 'PAGE_DRAFT', ...aiSetting }
+        }
+      };
+      const first = await request(app).post('/posts').send(body).expect(201);
+      const replay = await request(app).post('/posts').send(body).expect(200);
+      expect(replay.body).toMatchObject({ idempotentReplay: true, post: { id: first.body.post.id, platformSettings: body.platformSettings } });
+      expect((await store.list())[0].platformSettings).toEqual(body.platformSettings);
+      expect((await queue.list())[0].platformSettings).toEqual(body.platformSettings);
+      expect(enqueue).toHaveBeenCalledOnce();
+
+      for (const platform of ['INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const) {
+        const changed = {
+          ...body,
+          platformSettings: { ...body.platformSettings, [platform]: { ...body.platformSettings[platform], isAiGenerated: !isAiGenerated } }
+        };
+        const response = await request(app).post('/posts').send(changed).expect(409);
+        expect(response.body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+      }
+      expect(enqueue).toHaveBeenCalledOnce();
+    });
+
+    it.each(['INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const)('rejects invalid %s declarations before mutation', async (platform) => {
+      const { app, store, queue, userId } = createPlanScheduleApp('PRO');
+      const enqueue = vi.spyOn(queue, 'enqueue');
+      const response = await request(app).post('/posts').send({
+        caption: 'Invalid declaration', videoS3Key: ownedUploadKey(userId, 'meta.mp4'), platforms: [platform],
+        platformSettings: { [platform]: { ...(platform === 'INSTAGRAM_REELS' ? { shareToFeed: true } : { publishMode: 'PUBLISH' }), isAiGenerated: 'false' } }
+      }).expect(400);
+      expect(response.body.code).toBe('INVALID_PLATFORM_SETTINGS');
+      expect(await store.list()).toEqual([]);
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+  });
+
   describe('TikTok Direct Post preflight', () => {
     const target = { accountId: 'owner-tiktok-account', externalAccountId: 'creator-one', connectedAt: '2026-05-01T10:00:00.000Z' };
     const creatorInfo = {

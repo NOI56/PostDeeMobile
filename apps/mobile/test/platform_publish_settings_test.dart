@@ -149,6 +149,107 @@ void main() {
     });
   });
 
+  group('optional Meta AI-generated declarations', () {
+    const platforms = {
+      SocialPlatform.instagramReels,
+      SocialPlatform.facebookReels,
+    };
+
+    test('legacy unanswered declarations retain their exact API shape', () {
+      const settings = PlatformPublishSettings(
+        facebookPublishMode: FacebookPublishMode.publish,
+      );
+      final legacyDraft = settings.toDraftJson();
+      expect(legacyDraft, isNot(contains('instagramIsAiGenerated')));
+      expect(legacyDraft, isNot(contains('facebookIsAiGenerated')));
+      final restored =
+          PlatformPublishSettings.fromDraftJson(legacyDraft, strict: true);
+      expect(restored.instagramIsAiGenerated, isNull);
+      expect(restored.facebookIsAiGenerated, isNull);
+      expect(restored.canSubmit(SocialPlatform.instagramReels), isTrue);
+      expect(restored.canSubmit(SocialPlatform.facebookReels), isTrue);
+      const expected = {
+        'INSTAGRAM_REELS': {'shareToFeed': true},
+        'FACEBOOK_REELS': {'publishMode': 'PUBLISH'},
+      };
+      expect(restored.toApiJson(selectedPlatforms: platforms), expected);
+      expect(
+          restored.toRecoveryApiJson(selectedPlatforms: platforms), expected);
+    });
+
+    test('round-trips every explicit boolean through drafts and recovery', () {
+      for (final instagramAnswer in [true, false]) {
+        for (final facebookAnswer in [true, false]) {
+          final settings = PlatformPublishSettings(
+            instagramShareToFeed: false,
+            instagramIsAiGenerated: instagramAnswer,
+            facebookPublishMode: FacebookPublishMode.pageDraft,
+            facebookIsAiGenerated: facebookAnswer,
+          );
+          final restored = PlatformPublishSettings.fromDraftJson(
+              settings.toDraftJson(),
+              strict: true);
+          expect(restored, settings);
+          expect(restored.hashCode, settings.hashCode);
+          final expected = {
+            'INSTAGRAM_REELS': {
+              'shareToFeed': false,
+              'isAiGenerated': instagramAnswer,
+            },
+            'FACEBOOK_REELS': {
+              'publishMode': 'PAGE_DRAFT',
+              'isAiGenerated': facebookAnswer,
+            },
+          };
+          expect(restored.toApiJson(selectedPlatforms: platforms), expected);
+          expect(restored.toRecoveryApiJson(selectedPlatforms: platforms),
+              expected);
+          expect(restored.toApiJson(selectedPlatforms: {}), isEmpty);
+        }
+      }
+    });
+
+    test('copying preserves, updates and clears each nullable declaration', () {
+      const settings = PlatformPublishSettings(
+        instagramIsAiGenerated: true,
+        facebookIsAiGenerated: false,
+      );
+      expect(settings.copyWith(), settings);
+      final instagramCleared = settings.copyWith(instagramIsAiGenerated: null);
+      expect(instagramCleared.instagramIsAiGenerated, isNull);
+      expect(instagramCleared.facebookIsAiGenerated, isFalse);
+      final facebookCleared = settings.copyWith(facebookIsAiGenerated: null);
+      expect(facebookCleared.instagramIsAiGenerated, isTrue);
+      expect(facebookCleared.facebookIsAiGenerated, isNull);
+      expect({settings, instagramCleared, facebookCleared}, hasLength(3));
+      expect(settings.copyWith(instagramIsAiGenerated: false), isNot(settings));
+      expect(settings.copyWith(facebookIsAiGenerated: true), isNot(settings));
+      final cleared = settings.copyWith(
+          instagramIsAiGenerated: null, facebookIsAiGenerated: null);
+      expect(cleared, const PlatformPublishSettings());
+      expect(cleared.toDraftJson(), isNot(contains('instagramIsAiGenerated')));
+      expect(cleared.toDraftJson(), isNot(contains('facebookIsAiGenerated')));
+    });
+
+    test('rejects malformed optional declarations in otherwise valid drafts',
+        () {
+      for (final key in ['instagramIsAiGenerated', 'facebookIsAiGenerated']) {
+        for (final invalid in <Object?>['true', 0, null, [], {}]) {
+          for (final strict in [false, true]) {
+            expect(
+              () => PlatformPublishSettings.fromDraftJson({
+                ...const PlatformPublishSettings().toDraftJson(),
+                key: invalid
+              }, strict: strict),
+              throwsFormatException,
+              reason: '$key must preserve an explicit boolean',
+            );
+          }
+        }
+      }
+    });
+  });
+
   const revision =
       'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899';
   const creator = TikTokCreatorInfo(

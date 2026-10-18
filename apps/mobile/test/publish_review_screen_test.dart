@@ -116,6 +116,71 @@ void main() {
     }
   });
 
+  testWidgets('Meta review shows explicit AI answers and optional omissions',
+      (tester) async {
+    for (final answer in <bool?>[true, false, null]) {
+      await pumpSummary(
+        tester,
+        platforms: const [
+          SocialPlatform.instagramReels,
+          SocialPlatform.facebookReels,
+        ],
+        connectionDisplayNames: const {
+          SocialPlatform.instagramReels: '@seller.instagram',
+          SocialPlatform.facebookReels: 'Seller Page',
+        },
+        platformSettings: PlatformPublishSettings(
+          instagramIsAiGenerated: answer,
+          facebookIsAiGenerated: answer,
+          facebookPublishMode: FacebookPublishMode.publish,
+        ),
+      );
+      final label = answer == null
+          ? 'ยังไม่ระบุ (ไม่บังคับ)'
+          : answer
+              ? 'ใช่'
+              : 'ไม่ใช่';
+      expect(find.text('สร้างโดย AI: $label'), findsNWidgets(2));
+      expect(find.text('@seller.instagram'), findsOneWidget);
+      expect(find.text('Seller Page'), findsOneWidget);
+      expect(find.text('เผยแพร่บนเพจ'), findsOneWidget);
+      expect(find.byKey(const ValueKey('publish-review-unknown-outcome')),
+          findsNothing);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets('TikTok Direct review retains every publishing declaration',
+      (tester) async {
+    await pumpSummary(
+      tester,
+      platformSettings: const PlatformPublishSettings(
+        tiktokPublishMode: TikTokPublishMode.directPost,
+        tiktokPrivacyLevel: TikTokPrivacyLevel.publicToEveryone,
+        tiktokCreatorInfoRevision:
+            'aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899',
+        tiktokAllowComment: true,
+        tiktokAllowDuet: false,
+        tiktokAllowStitch: true,
+        tiktokBrandContentToggle: true,
+        tiktokBrandOrganicToggle: false,
+        tiktokIsAigc: true,
+        tiktokMusicUsageConfirmed: true,
+        tiktokBrandedContentPolicyConfirmed: true,
+        tiktokVideoDurationSeconds: 12,
+      ),
+    );
+    expect(find.text('ความคิดเห็น: เปิด · Duet: ปิด · Stitch: เปิด'),
+        findsOneWidget);
+    expect(find.text('โปรโมตแบรนด์ตนเอง: ไม่ใช่'), findsOneWidget);
+    expect(find.text('เนื้อหาที่มีผู้สนับสนุน: ใช่'), findsOneWidget);
+    expect(find.text('สร้างโดย AI: ใช่'), findsOneWidget);
+    expect(find.text('ข้อกำหนดการใช้เพลง TikTok: ยืนยันแล้ว'), findsOneWidget);
+    expect(
+        find.text('นโยบายเนื้อหาที่มีผู้สนับสนุน: ยืนยันแล้ว'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('YouTube terms opens the mobile terms URL without accepting',
       (tester) async {
     MethodCall? launched;

@@ -50,11 +50,13 @@ export type PlatformSettings = Partial<{
   YOUTUBE_SHORTS: YoutubePlatformSettings;
   INSTAGRAM_REELS: {
     shareToFeed: boolean;
+    isAiGenerated?: boolean;
   };
   FACEBOOK_REELS: {
     // FACEBOOK_REELS is the legacy internal key. The provider target is a
     // Facebook Page Video; PAGE_DRAFT means an unpublished Page draft.
     publishMode: 'PUBLISH' | 'PAGE_DRAFT';
+    isAiGenerated?: boolean;
   };
 }>;
 
@@ -211,18 +213,28 @@ const readInstagramSettings = (
   value: unknown
 ): PlatformSettings['INSTAGRAM_REELS'] | undefined =>
   isRecord(value) &&
-  hasExactKeys(value, ['shareToFeed']) &&
+  (hasExactKeys(value, ['shareToFeed']) ||
+    (hasExactKeys(value, ['shareToFeed', 'isAiGenerated']) &&
+      typeof value.isAiGenerated === 'boolean')) &&
   typeof value.shareToFeed === 'boolean'
-    ? { shareToFeed: value.shareToFeed }
+    ? {
+        shareToFeed: value.shareToFeed,
+        ...(typeof value.isAiGenerated === 'boolean' ? { isAiGenerated: value.isAiGenerated } : {})
+      }
     : undefined;
 
 const readFacebookSettings = (
   value: unknown
 ): PlatformSettings['FACEBOOK_REELS'] | undefined =>
   isRecord(value) &&
-  hasExactKeys(value, ['publishMode']) &&
+  (hasExactKeys(value, ['publishMode']) ||
+    (hasExactKeys(value, ['publishMode', 'isAiGenerated']) &&
+      typeof value.isAiGenerated === 'boolean')) &&
   (value.publishMode === 'PUBLISH' || value.publishMode === 'PAGE_DRAFT')
-    ? { publishMode: value.publishMode }
+    ? {
+        publishMode: value.publishMode,
+        ...(typeof value.isAiGenerated === 'boolean' ? { isAiGenerated: value.isAiGenerated } : {})
+      }
     : undefined;
 
 /**
@@ -360,13 +372,17 @@ export const arePlatformSettingsEqual = (
     if (platform === 'INSTAGRAM_REELS') {
       return (
         normalizedLeft.INSTAGRAM_REELS?.shareToFeed ===
-        normalizedRight.INSTAGRAM_REELS?.shareToFeed
+        normalizedRight.INSTAGRAM_REELS?.shareToFeed &&
+        normalizedLeft.INSTAGRAM_REELS?.isAiGenerated ===
+        normalizedRight.INSTAGRAM_REELS?.isAiGenerated
       );
     }
 
     return (
       normalizedLeft.FACEBOOK_REELS?.publishMode ===
-      normalizedRight.FACEBOOK_REELS?.publishMode
+      normalizedRight.FACEBOOK_REELS?.publishMode &&
+      normalizedLeft.FACEBOOK_REELS?.isAiGenerated ===
+      normalizedRight.FACEBOOK_REELS?.isAiGenerated
     );
   });
 };

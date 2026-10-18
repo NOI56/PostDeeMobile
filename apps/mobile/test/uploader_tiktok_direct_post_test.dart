@@ -87,8 +87,10 @@ void main() {
         probePublishMedia: probeValidPublishMedia,
         loadSocialPublishingReadiness: () async => const [
           SocialPublishingConnectionReadiness(
-              platform: 'TIKTOK', state: SocialPublishingState.connected,
-              connectionId: 'local-tiktok', connectionRevision: _revision),
+              platform: 'TIKTOK',
+              state: SocialPublishingState.connected,
+              connectionId: 'local-tiktok',
+              connectionRevision: _revision),
         ],
         draftStore: store,
         initialDraftId: initialDraftId,
@@ -205,6 +207,13 @@ void main() {
       (tester) async {
     await tester.pumpWidget(app());
     await openSettings(tester);
+    expect(optionLoads, 0,
+        reason: 'Inbox uses the connected identity without Direct options');
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('uploader-platform-settings-sheet')),
+            matching: find.text('ชื่อบัญชีจากรายการเดิม')),
+        findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('uploader-tiktok-mode-direct')));
     await tester.pumpAndSettle();
     final privacy = tester.widget<DropdownButtonFormField<TikTokPrivacyLevel>>(
@@ -268,7 +277,8 @@ void main() {
       await openSettings(tester, captionText: caption);
       await chooseDirect(tester);
       await saveSettings(tester);
-      expect(optionLoads, 1, reason: 'the settings sheet reads creator info');
+      expect(optionLoads, 1,
+          reason: 'choosing Direct reads creator info exactly once');
       await submit(tester);
       expect(optionLoads, 1,
           reason: 'submission must not request creator info');

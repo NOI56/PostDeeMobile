@@ -172,12 +172,13 @@ Future<void> _pumpUi(WidgetTester tester) async {
   if (waiting.evaluate().isEmpty) await tester.pumpAndSettle();
 }
 
-Future<void> _show(WidgetTester tester, Finder finder) async {
+Future<void> _show(WidgetTester tester, Finder finder,
+    {Finder? scrollable}) async {
   await _pumpUi(tester);
   await tester.scrollUntilVisible(
     finder,
     250,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: scrollable ?? uploaderMainScroll,
   );
   await tester.ensureVisible(finder);
   await _pumpUi(tester);
@@ -220,7 +221,7 @@ Future<void> _pickAgain(WidgetTester tester) async {
 
 Future<void> _saveAndRestore(WidgetTester tester, _AiFixture fixture) async {
   final save = find.byKey(const ValueKey('uploader-save-draft-button'));
-  await _show(tester, save);
+  await _show(tester, save, scrollable: uploaderHeaderScroll);
   await tester.tap(save);
   await tester.pumpAndSettle();
   final draftId = fixture.draftStore.drafts.keys.single;
@@ -377,7 +378,7 @@ void main() {
     expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
         findsOneWidget);
     final save = find.byKey(const ValueKey('uploader-save-draft-button'));
-    await _show(tester, save);
+    await _show(tester, save, scrollable: uploaderHeaderScroll);
     await tester.tap(save);
     await tester.pumpAndSettle();
     expect(fixture.draftStore.savedRequests.single.captionNeedsReview, isTrue);

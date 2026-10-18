@@ -5,6 +5,30 @@ import { createBullMqPublishQueueFromClient } from './bullMqPublishQueue.js';
 import { buildPublishJobId } from './publishQueue.js';
 
 describe('createBullMqPublishQueueFromClient', () => {
+  it.each([undefined, true, false])('retains historical and explicit Meta AI declarations in BullMQ snapshots (%s)', async (isAiGenerated) => {
+    const aiSetting = isAiGenerated === undefined ? {} : { isAiGenerated };
+    const platformSettings = {
+      INSTAGRAM_REELS: { shareToFeed: false, ...aiSetting },
+      FACEBOOK_REELS: { publishMode: 'PAGE_DRAFT' as const, ...aiSetting }
+    };
+    const timestamp = Date.parse('2026-06-01T00:00:00.000Z');
+    const queueClient = {
+      add: vi.fn().mockResolvedValue({ id: 'meta-job', timestamp }),
+      getJobs: vi.fn().mockResolvedValue([])
+    };
+    const queue = createBullMqPublishQueueFromClient({ queue: queueClient, now: () => timestamp });
+    const job = await queue.enqueue({
+      id: 'meta-post', userId: 'owner', caption: 'Meta media', videoS3Key: 'uploads/video.mp4',
+      platforms: ['INSTAGRAM_REELS', 'FACEBOOK_REELS'], platformSettings,
+      status: 'QUEUED', createdAt: '2026-06-01T00:00:00.000Z'
+    });
+    const data = queueClient.add.mock.calls[0][1];
+    expect(data.platformSettings).toEqual(platformSettings);
+    expect(job.platformSettings).toEqual(platformSettings);
+    queueClient.getJobs.mockResolvedValue([{ id: 'meta-job', timestamp, data }]);
+    expect((await queue.list())[0].platformSettings).toEqual(platformSettings);
+  });
+
   it('probes Redis without loading jobs and closes the owned connection', async () => {
     const queueClient = {
       add: vi.fn(), getJobs: vi.fn(),

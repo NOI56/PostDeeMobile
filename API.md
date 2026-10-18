@@ -2,6 +2,25 @@
 
 PostDee backend API reference.
 
+## Optional Meta media disclosure (2026-10-18, local implementation)
+
+`platformSettings.INSTAGRAM_REELS` accepts `{shareToFeed: boolean,
+isAiGenerated?: boolean}`; `FACEBOOK_REELS` accepts `{publishMode:
+"PUBLISH" | "PAGE_DRAFT", isAiGenerated?: boolean}`. The Facebook internal key
+still targets Page Video. A present disclosure must be a boolean; null, strings,
+numbers and unknown fields are rejected. Absence preserves the old exact shape,
+including persisted snapshots, queue messages, accepted request replay and
+read-only submission recovery. Absent, false and true are distinct immutable
+intents; changing a declaration cannot reuse an accepted request ID.
+
+The worker forwards `platformSpecificData.isAiGenerated` only when explicitly
+present, including false. No inferred value comes from AI-written captions.
+Backend regression tests pass 127 files / 2,207 tests, plus typecheck/build and
+Prisma checks. This additive contract is local and unreleased; deploy the API and
+every publishing worker before the new Mobile controls. No schema migration,
+dependency or environment change is needed. Evidence:
+[implementation record](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
+
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 
 `GET /social-connections/publishing-readiness` requires authentication and returns

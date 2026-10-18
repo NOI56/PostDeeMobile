@@ -26,7 +26,7 @@ Future<void> _showSchedule(WidgetTester tester) async {
   await tester.scrollUntilVisible(
     find.byKey(const ValueKey('uploader-schedule-later')),
     250,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: uploaderMainScroll,
   );
 }
 

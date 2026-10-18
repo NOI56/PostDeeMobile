@@ -509,6 +509,9 @@ const buildPlatformTarget = ({
     }
     target.platformSpecificData = {
       shareToFeed: instagramSettings.shareToFeed,
+      ...(instagramSettings.isAiGenerated !== undefined
+        ? { isAiGenerated: instagramSettings.isAiGenerated }
+        : {}),
       ...(coverUrl
         ? { coverUrl }
         : coverFrameTimeMs !== undefined
@@ -522,6 +525,9 @@ const buildPlatformTarget = ({
     }
     target.platformSpecificData = {
       published: facebookSettings.publishMode === 'PUBLISH',
+      ...(facebookSettings.isAiGenerated !== undefined
+        ? { isAiGenerated: facebookSettings.isAiGenerated }
+        : {}),
       ...(coverUrl ? { videoThumbnailUrl: coverUrl } : {})
     };
   }

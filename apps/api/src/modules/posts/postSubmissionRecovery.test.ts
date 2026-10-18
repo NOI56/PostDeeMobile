@@ -50,6 +50,37 @@ const accept = async (store: ReturnType<typeof createPostStore>, userId = 'owner
 };
 
 describe('read-only accepted submission recovery', () => {
+  it.each([undefined, true, false])('recovers accepted Meta settings without changing an omitted or explicit AI declaration (%s)', async (isAiGenerated) => {
+    const context = testApp();
+    const aiSetting = isAiGenerated === undefined ? {} : { isAiGenerated };
+    const original = {
+      ...body, clientRequestId: 'accepted-meta-intent', caption: 'Original Meta intent',
+      platforms: ['INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const,
+      platformSettings: {
+        INSTAGRAM_REELS: { shareToFeed: false, ...aiSetting },
+        FACEBOOK_REELS: { publishMode: 'PAGE_DRAFT' as const, ...aiSetting }
+      }
+    };
+    const accepted = await context.store.createWithinMonthlyLimit({
+      ...original, userId: 'owner', platforms: [...original.platforms],
+      monthlyPostUnitLimit: 3, now: '2026-10-15T10:00:00.000Z'
+    });
+    expect(accepted.ok).toBe(true);
+    const response = await request(context.app).post('/posts/submissions/recover').send(original).expect(200);
+    expect(response.body.post.platformSettings).toEqual(original.platformSettings);
+    expect(context.enqueue).not.toHaveBeenCalled();
+    expect(context.ensureEnqueued).not.toHaveBeenCalled();
+
+    for (const platform of ['INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const) {
+      const changed = {
+        ...original,
+        platformSettings: { ...original.platformSettings, [platform]: { ...original.platformSettings[platform], isAiGenerated: isAiGenerated !== true } }
+      };
+      const conflict = await request(context.app).post('/posts/submissions/recover').send(changed).expect(409);
+      expect(conflict.body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    }
+  });
+
   it('recovers a mixed legacy YouTube/Facebook intent with only the known missing Facebook default', async () => {
     const context = testApp();
     const original = { ...body, userId: 'owner', clientRequestId: 'mixed-legacy', platforms: ['YOUTUBE_SHORTS', 'FACEBOOK_REELS'] as const };

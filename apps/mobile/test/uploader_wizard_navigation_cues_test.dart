@@ -112,7 +112,7 @@ Future<void> _selectTikTok(WidgetTester tester) async {
   await tester.scrollUntilVisible(
     channel,
     250,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: uploaderMainScroll,
   );
   await tester.ensureVisible(channel);
   await tester.pumpAndSettle();

@@ -2,6 +2,25 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Unified settings and optional Meta disclosure (2026-10-18, local implementation)
+
+One Flutter sheet scaffold owns platform/account identity, bounded content-sized
+scrolling, keyboard-safe Cancel/Save actions and validation. Platform controls
+remain separate. TikTok reads creator capabilities only for Direct, increments
+its generation on leaving Direct and clears options/consent before a fresh read.
+Owner/account guards still fence asynchronous results and settings acceptance.
+
+Nullable Instagram/Facebook AI-media declarations preserve missing old draft
+fields; explicit false and true participate in model equality, draft/request
+serialization, server immutable intent comparison and provider mapping. JSON
+storage and existing queue adapters retain the optional field without a schema
+change. Recovery preserves the accepted original intent and never creates or
+resends work. Existing old-shape defaults are unchanged. All publishing processes
+need the new parser before Mobile can submit the field. No permissions, plans,
+quota, provider-destination or deployment-configuration change is introduced.
+This work is not deployed; see
+[scope and verification](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
+
 ## Channel publishing preflight boundary (2026-10-15, Staging delivered)
 
 Mobile checks caption rules before a new upload, loads channel-readiness when

@@ -31,6 +31,30 @@ afterEach(() => {
 });
 
 describe('createPostPeerPublisher', () => {
+  for (const platform of ['INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const) {
+    it.each([undefined, true, false])(`maps ${platform} AI declarations only when explicitly present (%s)`, async (isAiGenerated) => {
+      const calls: { platforms: { platformSpecificData: Record<string, unknown> }[] }[] = [];
+      const publisher = createPostPeerPublisher({
+        apiKey: 'pp-key', baseUrl: 'https://api.postpeer.test',
+        accountIds: { [platform]: 'owner-meta-account' },
+        fetchImpl: async (_url, init) => {
+          calls.push(JSON.parse(String(init.body)));
+          return { ok: true, status: 200, json: async () => ({ externalPostId: 'meta-post' }) };
+        }
+      });
+      const aiSetting = isAiGenerated === undefined ? {} : { isAiGenerated };
+      await publisher.publish({
+        userId: 'owner', postId: 'meta-post', platform,
+        platformSettings: platform === 'INSTAGRAM_REELS'
+          ? { INSTAGRAM_REELS: { shareToFeed: false, ...aiSetting } }
+          : { FACEBOOK_REELS: { publishMode: 'PUBLISH', ...aiSetting } }
+      });
+      const data = calls[0].platforms[0].platformSpecificData;
+      expect(data).toEqual({ ...(platform === 'INSTAGRAM_REELS' ? { shareToFeed: false } : { published: true }), ...aiSetting });
+      if (isAiGenerated === undefined) expect(data).not.toHaveProperty('isAiGenerated');
+    });
+  }
+
   it.each([
     ['YOUTUBE_SHORTS', 'ก'.repeat(1667)],
     ['YOUTUBE_SHORTS', 'ราคา < 100'],

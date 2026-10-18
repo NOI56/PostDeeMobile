@@ -151,6 +151,40 @@ void main() {
     }
   });
 
+  test('preserves optional Meta declarations through saving and legacy restore',
+      () async {
+    final video = await fixture('meta.mp4', [1, 2, 3, 4]);
+    final store = storeFor('firebase-user-a');
+    const settings = PlatformPublishSettings(
+      instagramIsAiGenerated: true,
+      facebookIsAiGenerated: false,
+      facebookPublishMode: FacebookPublishMode.publish,
+    );
+    await store.saveDraft(request(video: video, platformSettings: settings));
+    final restored = (await store.loadDraft('draft-1'))!;
+    expect(restored.platformSettings, settings);
+    final manifestFile =
+        File('${root.path}/store/firebase-user-a/draft-1/manifest.json');
+    final manifest = jsonDecode(await manifestFile.readAsString()) as Map;
+    final platformSettings = manifest['platformSettings'] as Map;
+    platformSettings.remove('instagramIsAiGenerated');
+    platformSettings.remove('facebookIsAiGenerated');
+    await manifestFile.writeAsString(jsonEncode(manifest));
+    final legacy = (await store.loadDraft('draft-1'))!;
+    expect(legacy.platformSettings.instagramIsAiGenerated, isNull);
+    expect(legacy.platformSettings.facebookIsAiGenerated, isNull);
+    expect(legacy.submissionRequestId, restored.submissionRequestId);
+    for (final key in ['instagramIsAiGenerated', 'facebookIsAiGenerated']) {
+      for (final invalid in <Object?>['false', 1, null, []]) {
+        platformSettings[key] = invalid;
+        await manifestFile.writeAsString(jsonEncode(manifest));
+        expect(await store.loadDraft('draft-1'), isNull,
+            reason: 'Corrupt $key must not become a publishing answer');
+      }
+      platformSettings.remove(key);
+    }
+  });
+
   test('copies video and cover into app-owned storage and restores every field',
       () async {
     final video = await fixture('source.mp4', [1, 2, 3, 4]);

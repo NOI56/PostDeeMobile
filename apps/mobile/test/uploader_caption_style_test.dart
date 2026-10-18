@@ -160,7 +160,7 @@ Future<void> _pumpUi(WidgetTester tester) async {
 Future<void> _show(WidgetTester tester, Finder finder) async {
   await _pumpUi(tester);
   await tester.scrollUntilVisible(finder, 250,
-      scrollable: find.byType(Scrollable).first);
+      scrollable: uploaderMainScroll);
   await tester.ensureVisible(finder);
   await _pumpUi(tester);
 }
@@ -173,7 +173,7 @@ Future<void> _showAiPanel(WidgetTester tester, _Fixture fixture) async {
   await goToUploaderStep(tester, 1);
   final panel = find.text('ปรับสไตล์และคำแนะนำ');
   await tester.scrollUntilVisible(panel, 250,
-      scrollable: find.byType(Scrollable).first);
+      scrollable: uploaderMainScroll);
   await tester.ensureVisible(panel);
   await tester.pumpAndSettle();
   await tester.tap(panel);

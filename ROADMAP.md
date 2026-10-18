@@ -2,6 +2,24 @@
 
 Build roadmap for PostDee.
 
+## Unified channel settings (2026-10-18, local implementation)
+
+- Use one compact/scrollable settings shell for four platforms with account
+  identity, grouped fields, Cancel/Save, keyboard support and validation reasons.
+- Keep TikTok Inbox short and independent of Direct capability loading; fetch
+  fresh capabilities for Direct, reject stale results and preserve manual consent.
+- Keep YouTube title, audience, realistic synthetic-media and certification
+  choices explicit; show Instagram feed/cover and Facebook Page Video/draft intent.
+- Add optional IG/FB AI-media disclosure through draft, review, immutable intent,
+  API validation and PostPeer mapping, preserving absent legacy declarations.
+- API regression suite passes 127 files / 2,207 tests with typecheck/build/Prisma.
+  Mobile **2,371 tests** pass (two optional previews skipped), analysis and the
+  Staging APK12024 build pass; the new five-sheet preview runs separately. Evidence:
+  [the work record](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
+- Not pushed/deployed or installed on the user emulator. Release API and all
+  workers before Mobile; no migration, plan or environment change is needed.
+  Connected-account publication remains a separate verification step.
+
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 
 - Add consistent YouTube/Instagram/Facebook caption guards to Mobile, new API

@@ -51,7 +51,7 @@ Future<void> _completeYouTubeSettings(WidgetTester tester) async {
   await tester.scrollUntilVisible(
     youtube,
     500,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: uploaderMainScroll,
   );
   await tester.pumpAndSettle();
   await tester.tap(youtube);
@@ -276,7 +276,7 @@ void main() {
     await tester.scrollUntilVisible(
       captionField,
       500,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: uploaderMainScroll,
     );
     await tester.enterText(captionField, 'Watermark upload error');
     await goToUploaderStep(tester, 3);
@@ -418,7 +418,7 @@ void main() {
     await tester.scrollUntilVisible(
       captionField,
       500,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: uploaderMainScroll,
     );
     await tester.pumpAndSettle();
     await tester.enterText(captionField, 'Watermarked seller caption');

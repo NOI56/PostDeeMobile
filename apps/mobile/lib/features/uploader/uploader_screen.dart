@@ -332,7 +332,6 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   bool get _destinationsReady =>
-      _postTextValidationError() == null &&
       publishReviewCanConfirm(
         platforms: _selectedPlatforms.toList(),
         platformSettings: _resolvedPlatformSettings,
@@ -4798,7 +4797,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       );
 
   Widget _buildStickyActionBar(BuildContext context) {
-    final canConfirm = _destinationsReady;
+    final canConfirm = _destinationsReady && _postTextValidationError() == null;
     final backAction = _press(
         OutlinedButton(
           key: const ValueKey('uploader-wizard-back'),

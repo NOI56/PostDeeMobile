@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Unified publishing settings (2026-10-18, local implementation)
+## Unified publishing settings (2026-10-18, Staging API delivered)
 
 All four settings sheets share a logo/account header, grouped controls, adaptive
 height and fixed Cancel/Save actions above the keyboard. Inbox opens without
@@ -17,9 +17,16 @@ can be cleared, survive draft round trips and appear in review. AI captions alon
 do not imply AI-generated media. Facebook remains Page Video, with a clear
 distinction between sending a Page draft and saving a local PostDee draft.
 
-Based on main `c813eef`; not installed on the user's emulator or deployed.
-Deploy API and publishing workers before Mobile. Draft manifest version stays 3;
-no dependency/configuration/migration change is needed. Checks and preview evidence:
+Source `866f0e3`, based on main `c813eef`, is merged/pushed to main and Live on
+Staging deploy `dep-dba2oieq1p3s73a3g6qg`. Exact-source Backend/Flutter CI
+`39089186176` and unsigned iOS build `39089186129` pass; health/readiness return
+HTTP 200. Android **12024** is built, but its data-preserving installation is
+blocked by emulator storage; **12023** remains installed. New settings have not
+yet been verified in the installed emulator app. Existing login and the same two
+local drafts remain; a new authenticated client GET smoke could not be completed.
+Other environments must deploy API and publishing workers before Mobile. Draft
+manifest version stays 3; no dependency/configuration/migration change is needed.
+Checks and preview evidence:
 `../../docs/superpowers/plans/2026-10-18-unified-platform-settings.md`.
 Full Mobile verification passes **2,371 tests** with two optional preview skips,
 whole-project analysis and the exact Staging APK12024 build. The new five-sheet

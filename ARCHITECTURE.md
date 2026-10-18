@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Unified settings and optional Meta disclosure (2026-10-18, local implementation)
+## Unified settings and optional Meta disclosure (2026-10-18, Staging API delivered)
 
 One Flutter sheet scaffold owns platform/account identity, bounded content-sized
 scrolling, keyboard-safe Cancel/Save actions and validation. Platform controls
@@ -18,7 +18,15 @@ change. Recovery preserves the accepted original intent and never creates or
 resends work. Existing old-shape defaults are unchanged. All publishing processes
 need the new parser before Mobile can submit the field. No permissions, plans,
 quota, provider-destination or deployment-configuration change is introduced.
-This work is not deployed; see
+Source `866f0e3` is merged/pushed to main and Live on Staging deploy
+`dep-dba2oieq1p3s73a3g6qg`, with health/readiness HTTP 200 and exact-source
+Backend/Flutter CI `39089186176` and unsigned iOS CI `39089186129` passing.
+Staging uses an in-process memory publishing queue with no separate worker, so
+the API rollout updates its publishing process. Android **12024** is built, but
+its data-preserving installation is blocked by emulator storage; installed
+**12023** remains. New settings are not yet verified in the emulator app.
+Other environments must update every publishing process before Mobile. Real
+connected-account publication and iOS device delivery remain unverified; see
 [scope and verification](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
 
 ## Channel publishing preflight boundary (2026-10-15, Staging delivered)

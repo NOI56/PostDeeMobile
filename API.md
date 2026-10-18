@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Optional Meta media disclosure (2026-10-18, local implementation)
+## Optional Meta media disclosure (2026-10-18, Staging delivered)
 
 `platformSettings.INSTAGRAM_REELS` accepts `{shareToFeed: boolean,
 isAiGenerated?: boolean}`; `FACEBOOK_REELS` accepts `{publishMode:
@@ -16,9 +16,18 @@ intents; changing a declaration cannot reuse an accepted request ID.
 The worker forwards `platformSpecificData.isAiGenerated` only when explicitly
 present, including false. No inferred value comes from AI-written captions.
 Backend regression tests pass 127 files / 2,207 tests, plus typecheck/build and
-Prisma checks. This additive contract is local and unreleased; deploy the API and
-every publishing worker before the new Mobile controls. No schema migration,
-dependency or environment change is needed. Evidence:
+Prisma checks. Source `866f0e3` is merged/pushed to main and Live on Staging
+`dep-dba2oieq1p3s73a3g6qg`; exact-source Backend/Flutter CI `39089186176` passes.
+Health/readiness return HTTP 200. A read-only probe of the deployed compiled
+parser preserves missing/false/true for both Meta platforms, rejects invalid
+types and distinguishes immutable intents, without writes or provider calls.
+Staging's publisher runs in the API process with a memory queue and no separate
+worker. Other environments must deploy the
+API and every publishing worker before the new Mobile controls. No schema
+migration, dependency or environment change is needed. Android **12024** is built
+but its installation is blocked by emulator storage; **12023** remains installed.
+Connected-account Meta publication and platform labeling remain unverified.
+Evidence:
 [implementation record](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
 
 ## Channel publishing preflight (2026-10-15, Staging delivered)

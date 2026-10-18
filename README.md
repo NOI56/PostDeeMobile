@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Unified channel settings (2026-10-18, local implementation)
+## Unified channel settings (2026-10-18, Staging API delivered)
 
 TikTok, YouTube, Instagram and Facebook Page Video share a content-sized settings
 sheet with account identity, grouped controls, visible validation and fixed
@@ -19,11 +19,18 @@ review, immutable post intent and provider requests. Omitted legacy values remai
 omitted, distinct from an explicit false. This is media disclosure, not AI caption
 generation. Existing feed, cover, privacy, quota and recovery behavior remains.
 
-This work is based on verified main `c813eef` and has not been pushed, deployed
-or installed on the user's emulator. Deploy the API and all publishing workers
-before Mobile; no schema/migration, dependency, environment or plan change is
-required. API **2,207 tests**, Mobile **2,371 tests** (two optional previews skipped),
-analysis and the exact Staging APK12024 build pass; the new preview runs separately.
+Source `866f0e3`, based on verified main `c813eef`, is merged/pushed to main and
+Live on Staging deploy `dep-dba2oieq1p3s73a3g6qg`. Exact-source Backend/Flutter
+CI `39089186176` and unsigned iOS build `39089186129` pass. Health and readiness
+return HTTP 200. Staging runs publishing in the API's memory queue, with no
+separate worker. Android **12024** is built, but its data-preserving installation
+is blocked by emulator storage; **12023** remains installed. New settings have
+not yet been verified in the installed emulator app. Existing login and both
+local drafts remain; a new authenticated client GET smoke could not be completed.
+No schema/migration, dependency, environment or plan change is required.
+API **2,207 tests**, Mobile **2,371 tests** (two optional previews skipped),
+analysis and the exact Staging APK build pass; the new preview runs separately.
+Connected-account publication and iOS device delivery remain unverified.
 See [implementation and checks](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
 Earlier sections record their respective deliveries.
 

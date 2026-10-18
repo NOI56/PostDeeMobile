@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Unified channel settings (2026-10-18, local implementation)
+## Unified channel settings (2026-10-18, Staging API delivered)
 
 - Use one compact/scrollable settings shell for four platforms with account
   identity, grouped fields, Cancel/Save, keyboard support and validation reasons.
@@ -16,9 +16,15 @@ Build roadmap for PostDee.
   Mobile **2,371 tests** pass (two optional previews skipped), analysis and the
   Staging APK12024 build pass; the new five-sheet preview runs separately. Evidence:
   [the work record](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
-- Not pushed/deployed or installed on the user emulator. Release API and all
-  workers before Mobile; no migration, plan or environment change is needed.
-  Connected-account publication remains a separate verification step.
+- Source `866f0e3` is merged/pushed to main and Live on Staging deploy
+  `dep-dba2oieq1p3s73a3g6qg`. Exact-source Backend/Flutter CI `39089186176`
+  and unsigned iOS `39089186129` pass; health/readiness return HTTP 200.
+  Staging's API contains its memory-queue publisher, with no separate worker.
+  Android **12024** is built, but its data-preserving installation is blocked by
+  emulator storage; **12023** remains installed. New settings have not yet been
+  verified in the emulator app. Other environments must release API/all workers
+  before Mobile; no migration, plan or environment change is needed.
+  Connected-account publication and iOS device delivery remain separate checks.
 
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 

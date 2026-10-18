@@ -3,6 +3,20 @@ import { activeTrial, AdminError, type TrialAccess } from './trialAccess.js';
 import type { AdminConsoleConfig } from './adminConfig.js';
 import { adminPublishFailure } from './adminPublishFailure.js';
 
+const postStatusLabels: Record<string, string> = { DRAFT: 'ร่าง', QUEUED: 'รอส่ง', PENDING: 'รอส่ง', PUBLISHING: 'กำลังส่ง',
+  PUBLISHED: 'ส่งถึงช่องทางแล้ว', PARTIAL_PUBLISHED: 'ส่งถึงบางช่องทาง', FAILED: 'ส่งไม่สำเร็จ' };
+const platformLabels: Record<string, string> = { TIKTOK: 'TikTok', YOUTUBE_SHORTS: 'YouTube Shorts',
+  INSTAGRAM_REELS: 'Instagram Reels', FACEBOOK_REELS: 'Facebook Page Video' };
+export const adminChannelResult = (p: { platform: string; status: string; deliveryOutcome?: string | null }): string => {
+  let result = postStatusLabels[p.status] ?? 'ยังไม่ยืนยันสถานะ';
+  if (p.status === 'PUBLISHED') {
+    const outcomes: Record<string, string> = { LIVE: 'เผยแพร่แล้ว', PRIVATE: 'เผยแพร่แบบส่วนตัว', UNLISTED: 'เผยแพร่แบบไม่แสดงในรายการ',
+      DRAFT: p.platform === 'TIKTOK' ? 'ส่งเป็นร่างเข้า TikTok Inbox · ยังไม่เผยแพร่' : 'ส่งเป็นร่างแล้ว · ยังไม่เผยแพร่' };
+    result = outcomes[p.deliveryOutcome ?? ''] ?? 'ส่งถึงช่องทางแล้ว · ไม่มีข้อมูลรูปแบบการเผยแพร่';
+  }
+  return `${platformLabels[p.platform] ?? 'ช่องทางอื่น'}: ${result}`;
+};
+
 export const adminViews = ['overview', 'members', 'posts', 'trials', 'channels', 'reports', 'audit'] as const;
 export type AdminView = typeof adminViews[number];
 export type AdminMember = { id: string; email: string; displayName?: string | null; paidPlan: string;
@@ -65,7 +79,8 @@ export const createPrismaAdminDataSource = (prisma: PrismaClient, config: AdminC
         prisma.post.groupBy({ by: ['status'], _count: { _all: true } })
       ]);
       return { rows: [{ label: 'สมาชิกทั้งหมด', value: members }, { label: 'แพ็กเกจที่ซื้อยังใช้งานได้', value: paid },
-        { label: 'สิทธิ์ทดลองที่ใช้งานอยู่', value: trials }, ...posts.map(r => ({ label: `โพสต์ ${r.status}`, value: r._count._all }))] };
+        { label: 'สิทธิ์ทดลองที่ใช้งานอยู่', value: trials }, ...posts.map(r => ({ label: `โพสต์ · ${postStatusLabels[r.status]}`, value: r._count._all }))],
+        note: 'ส่งถึงช่องทางแล้วรวมการส่งเป็นร่างด้วย ดูรูปแบบการเผยแพร่ของแต่ละช่องทางในหน้าโพสต์' };
     }
     if (view === 'members') {
       const rows = await prisma.user.findMany({ where: { ...userFilter, ...(options.cursor ? { id: { gt: options.cursor } } : {}) }, select: memberSelect, orderBy: { id: 'asc' }, take });
@@ -82,9 +97,10 @@ export const createPrismaAdminDataSource = (prisma: PrismaClient, config: AdminC
           user: { select: { email: true } }, platformPublishes: { select: { platform: true, status: true, deliveryOutcome: true, errorMessage: true } } } });
       return { ...page(rows, r => ({ id: r.id, email: r.user.email, caption: r.caption.slice(0, 300), status: r.status,
         createdAt: r.createdAt.toISOString(), scheduledAt: r.scheduledAt?.toISOString() ?? null,
-        channels: r.platformPublishes.map(p => `${p.platform}: ${p.status}${p.deliveryOutcome ? ` (${p.deliveryOutcome})` : ''}`).join(' · '),
-        failureReason: r.platformPublishes.filter(p => p.status === 'FAILED').map(p => `${p.platform}: ${adminPublishFailure(p.errorMessage)}`).join(' · '),
-        help: r.status === 'FAILED' || r.status === 'PARTIAL_PUBLISHED' ? 'ตรวจผลในแอปและบนช่องทางก่อนส่งซ้ำ' : '' })), ...continuation(rows, 'id') };
+        channels: r.platformPublishes.map(adminChannelResult).join(' · '),
+        failureReason: r.platformPublishes.filter(p => p.status === 'FAILED').map(p => `${platformLabels[p.platform] ?? 'ช่องทางอื่น'}: ${adminPublishFailure(p.errorMessage)}`).join(' · '),
+        help: r.status === 'FAILED' || r.status === 'PARTIAL_PUBLISHED' ? 'ตรวจผลในแอปและบนช่องทางก่อนส่งซ้ำ' : '' })), ...continuation(rows, 'id'),
+        note: 'ส่งถึงช่องทางแล้วอาจเป็นร่างที่ยังไม่เผยแพร่ ผลแต่ละช่องทางแสดงตามข้อมูลที่บันทึกไว้ การมองเห็นล่าสุดให้ตรวจบนช่องทางนั้น' };
     }
     if (view === 'channels') {
       const rows = await prisma.socialConnection.findMany({ where: { user: userFilter, ...(options.cursor ? { id: { gt: options.cursor } } : {}) }, orderBy: { id: 'asc' }, take,

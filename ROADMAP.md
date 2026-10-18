@@ -54,13 +54,21 @@ Build roadmap for PostDee.
   Source `349e6c3` is Live on Staging with both migrations and healthy HTTP checks;
   the read-only Firebase credential is installed and both flags are enabled in
   its API/memory-queue process. Owner identity, Web app and sign-in domain are configured.
-- Google popup account selection now opens after its CSP helper-script fix;
-  completed owner sign-in and authenticated Staging acceptance remain. No real
-  customer trials were granted. Report estimates require
+- Manual Google owner sign-in and all seven live read-only views now pass, with
+  member search/details, post status/platform/date filters, trial review/cancel
+  and 390px responsive checks. Still verify authorized real trial grant/extend/
+  revoke, nonempty CSV, live ordinary-user denial and Mobile trial refresh.
+  No real customer trials were granted. Report estimates require
   operator-supplied rates; conversion
   attribution and invoicing are outside this version.
 - Update Mobile billing to confirm purchased access independently of trials and
   gate legacy purchase preparation during a trial upgrade before customer rollout.
+- Admin UX follow-ups are locally implemented/tested, pending push/deploy:
+  Thai overview/per-channel results distinguish draft delivery and unknown
+  publication outcome; neutral member details precede explicit trial actions;
+  empty Trials/Reports/Audit explain next steps and disabled CSV. Owner/Viewer,
+  local grant/extend/revoke, report CSV and 390px layouts were verified with
+  memory fixtures; these do not replace the remaining live acceptance checks.
 
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 

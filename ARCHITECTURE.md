@@ -60,8 +60,16 @@ reverted to inherited enforcement and the owner's temporary Organization Policy
 Administrator role was removed after each operation. A locally generated key's
 public certificate was uploaded; the unavailable original key was deleted.
 The CSP permits Firebase's Google popup helper at `https://apis.google.com`,
-without wildcard, unsafe-inline or unsafe-eval script execution. Chrome reaches
-account selection; completed owner sign-in/data-view acceptance remains pending.
+without wildcard, unsafe-inline or unsafe-eval script execution. Manual Chrome
+owner sign-in and all seven live read-only data views pass, including search,
+post filters and trial-form validation/review/cancel. Real trial writes, nonempty
+CSV export and live ordinary-user denial remain separate acceptance checks.
+
+The local UX follow-up only changes presentation: Thai stored-result labels,
+neutral member inspection before explicit trial actions, and view-specific empty
+states. It preserves routes, enum filters, auth/CSP, trial commands, paid-access
+separation and database schema. Draft delivery is not labelled publication, and
+missing outcome data remains unconfirmed. This follow-up is not yet deployed.
 
 `AdminTrialAccess` stores one current expiring trial per existing User;
 `AdminTrialAudit` stores append-only command intents and before/after snapshots.

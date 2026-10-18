@@ -63,9 +63,17 @@ Source `349e6c3` is Live on Staging in `dep-dba4v57btjjs73dqde2g`; health/readin
 admin assets and public configuration return HTTP 200. Both additive migrations
 were applied earlier. The read-only Firebase Admin credential is installed and
 both admin/trial flags are enabled. Owner identity, Firebase Web app and the
-Staging sign-in domain are verified/configured. The Google popup reaches account
-selection after correcting its helper-script CSP; completed owner sign-in and
-authenticated views still need acceptance. No customer trials were granted.
+Staging sign-in domain are verified/configured. After manual Google sign-in,
+the live owner session passed read-only inspection of all seven views, member
+search/detail, post filters and trial-form validation/review/cancel. Mobile menu,
+overview and drawer layout were checked at 390px. Real trial writes, nonempty
+CSV export and live ordinary-user denial remain separate acceptance checks.
+No customer trials were granted.
+The local admin UX follow-up translates overview/channel results, distinguishes
+TikTok Inbox drafts from publication, opens neutral member details before trial
+actions, and explains empty Trials/Reports/Audit pages and disabled CSV. API
+status/filter values and trial safeguards are unchanged. This follow-up is locally
+verified and has not been pushed or deployed; Staging still uses the source above.
 Configuration, the local fixture preview and
 report limitations are in [the admin guide](docs/ADMIN_CONSOLE.md); implementation
 and verification evidence are in [the plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).

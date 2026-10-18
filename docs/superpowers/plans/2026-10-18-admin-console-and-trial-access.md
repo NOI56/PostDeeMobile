@@ -294,3 +294,124 @@ was used. Private key contents were never printed or committed.
 No real customer trial, store purchase, provider publication, Production setting
 or emulator installation was changed. Finish real owner sign-in and read-only
 view acceptance; install the compatible Mobile build before customer trial grants.
+
+## Live owner read-only acceptance (2026-10-18, Bangkok)
+
+The user opened a new Chrome tab and completed Google sign-in manually, then
+asked to inspect the views. The existing session showed the Owner role; it was
+not reloaded or replaced during desktop checks. The environment badge remained
+STAGING and the runtime source remained `349e6c3`.
+
+| View | Observed live result |
+| --- | --- |
+| Overview | 3 members, 0 active paid subscriptions, 0 active trials; 2 failed, 1 partial and 7 successful post records |
+| Members | 3 rows; owner email search returns one, an absent query returns zero, clearing restores the list; owner detail loads paid/trial access and monthly usage |
+| Posts | 10 rows; FAILED filter returns 2; combined partial status + TikTok + 2026-10-14 UTC bounds returns the one matching post |
+| Trials | 0 rows, consistent with overview and no grant being confirmed |
+| Channels | 3 recorded connections; owner search returns 2; UI accurately states latest publishing permission is not verified live |
+| Reports | 0 rows; current-page CSV is disabled without report rows; report limitations are visible |
+| Audit | 0 rows after clearing search, consistent with no trial writes during inspection |
+
+Trial-form inspection rejected a blank reason with Thai validation. Selecting
+Starter/14 days and entering a review-only reason produced the correct review
+summary; Back retained the reason and Cancel closed it. The final Confirm button
+was never pressed. A later fresh member opening reset the form to its defaults.
+
+Responsive checks temporarily set Chrome to 390x844: the compact menu navigated,
+overview and member drawer fit the width, and Escape from the focused close
+button dismissed the drawer. The posts table's content is wider than its own
+container but does not expand the page; physical mobile swipes and keyboard
+horizontal movement were not established by this run. The viewport override was
+reset and the signed-in tab was returned to Overview for the user.
+
+No relevant application console error or framework error overlay was observed.
+The warnings returned by the browser came from an unrelated Chrome extension.
+Screenshots are saved outside the repository in the task's Windows temporary
+folder: `postdee-admin-review-overview.png`,
+`postdee-admin-review-mobile-overview.png`,
+`postdee-admin-review-mobile-drawer.png`, and
+`postdee-admin-review-trial-confirmation.png`.
+
+UX findings for a follow-up (no runtime edits in this inspection):
+
+1. Overview labels and per-channel results expose technical enum values. Translate
+   them and distinguish delivery to a draft/inbox from public publication, rather
+   than requiring an operator to interpret `PUBLISHED (DRAFT)` or `LIVE`.
+2. Opening a member as Owner immediately opens a default Pro trial form. A neutral
+   member-details view with a separate explicit grant action would better separate
+   inspection from changing access; existing review/identity guards still apply.
+3. Empty Trials/Reports/Audit show the generic search-empty message even with no
+   search. Explain each page's empty state and why CSV is disabled when appropriate.
+
+Live grant/extend/revoke, a nonempty report/CSV, Viewer/ordinary-user denial,
+pagination beyond the current small dataset and Mobile trial refresh were not
+exercised. Existing fixture/automated checks do not replace that live acceptance.
+No account/paid access/trial/audit record, provider publication, migration,
+environment setting or runtime source was changed. Only these documentation
+receipts were updated locally; no new push/deploy or test-suite rerun was needed.
+
+## Admin UX follow-up implementation (2026-10-18, local only)
+
+User authorized the three findings above. Verified `origin/main` after fetch:
+`790cb224211e44fc0754c182cea5547e960d9f1f`, identical HEAD/merge base and 0/0
+ahead/behind, on `codex/admin-trial-console` in the managed admin worktree.
+Preserved the six uncommitted documentation receipts from the preceding review.
+
+Changes:
+
+- `apps/api/src/modules/admin/adminDataSource.ts`: Thai overview and channel
+  presentation, separate TikTok Inbox draft/live/private/unlisted outcomes,
+  explicit unknown-outcome text for legacy records, and safe Thai platform names
+  in failure summaries. Non-success statuses take precedence over stale outcome
+  values. Raw post status/filter enums, field shapes, queries and paging stay intact.
+- `apps/api/src/modules/admin/web/admin.js` and `admin.css`: Owner and Viewer
+  open neutral member details; only Owner has explicit grant/extend/revoke actions.
+  Keep reason/review/final confirmation, pending-request recovery, recent-auth,
+  identity/version/idempotency and paid-plan safeguards. Add view-specific empty
+  states, search/filter clearing, CSV help, and a return-to-member-details action.
+- `apps/api/scripts/admin-preview.ts`: realistic draft/live/failure examples,
+  monthly fixture usage and loopback-only `--empty-trials` mode on 4176 (4177
+  with Viewer). The existing preview-auth deployment prohibition is unchanged.
+- `adminDataSource.test.ts`: regression coverage for Thai overview, delivery
+  outcomes, legacy missing data, stale failed outcomes and safe failure summaries.
+  All three tests failed first against the previous source and passed after patch.
+  Before patch, browser inspection also reproduced Owner opening directly into
+  a default Pro trial form rather than neutral details.
+
+Verification:
+
+- Focused datasource/routes: 13 passed. Full API: **2,245 passed, 8 optional
+  isolated-database tests skipped**, 133 passing files and one skipped DB file.
+- `npm run typecheck`, `npm run build`, `node --check .../web/admin.js`, separate
+  `tsc --noEmit` for the fixture preview and `npm run prisma:validate` passed.
+- Built assets include the modified JS/CSS. No schema, migration, dependency,
+  feature flag, runtime environment or Mobile change is required; delivery only
+  needs the normal API source deployment.
+- Rendered QA uses the available CUA browser surface (no external Playwright
+  fallback), owner `http://127.0.0.1:4176/admin` and viewer `:4175/admin`.
+  Desktop 1280x720 and mobile 390x844 were exercised; temporary overrides reset.
+- Correct URL/title, meaningful rendering, no error overlay, screenshots and
+  interaction state checks passed. Owner/Viewer/mobile console warnings/errors
+  were empty in the captured logs.
+- Opening a member shows identity, paid/trial state, signup, post/channel counts
+  and monthly usage before any trial form. Viewer has no trial-action controls.
+  Blank reason is blocked; Starter/14-day review is correct; Back retains reason;
+  returning to details/closing does not save. Mobile menu and Escape work.
+- Empty Trials/Reports/Audit have distinct explanations. Search-empty states
+  differ from an empty dataset; clearing combined post filters restores rows.
+  CSV is disabled and explained for zero rows. Draft/live/failure channel labels
+  were visible in the fixture posts table.
+- On memory fixture Narin only, grant Starter 14 days, extend 7 days (plan select
+  locked), then revoke all completed through final confirmation. Three audit
+  entries appeared; purchased Starter remained unchanged. A nonempty fixture
+  report enabled CSV and downloaded successfully. This is not a live-data write
+  or a live CSV acceptance result.
+- Screenshots outside Git: `postdee-admin-ux-member-details.png`,
+  `postdee-admin-ux-empty-report.png`, `postdee-admin-ux-post-results.png`,
+  `postdee-admin-ux-mobile-member.png` in the Windows temporary folder.
+
+This source is not merged/pushed/deployed. Staging remains `349e6c3` /
+`dep-dba4v57btjjs73dqde2g`; no live customer trial, subscription, post, audit,
+credential, IAM policy or environment was changed. Live grant/extend/revoke,
+nonempty CSV, ordinary-user denial and Mobile trial refresh still require their
+separate acceptance checks. Flutter was not rerun because no Mobile file changed.

@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Unified publishing settings (2026-10-18, Staging API delivered)
+## Unified publishing settings (2026-10-18, Android Staging delivered)
 
 All four settings sheets share a logo/account header, grouped controls, adaptive
 height and fixed Cancel/Save actions above the keyboard. Inbox opens without
@@ -20,10 +20,19 @@ distinction between sending a Page draft and saving a local PostDee draft.
 Source `866f0e3`, based on main `c813eef`, is merged/pushed to main and Live on
 Staging deploy `dep-dba2oieq1p3s73a3g6qg`. Exact-source Backend/Flutter CI
 `39089186176` and unsigned iOS build `39089186129` pass; health/readiness return
-HTTP 200. Android **12024** is built, but its data-preserving installation is
-blocked by emulator storage; **12023** remains installed. New settings have not
-yet been verified in the installed emulator app. Existing login and the same two
-local drafts remain; a new authenticated client GET smoke could not be completed.
+HTTP 200. Android **12024** is installed after a verified full AVD backup, adding
+a separate **16 GiB private volume** and recovering the existing app data. A
+guarded same-volume reinstall and cold boot retain version 12024, the original
+UID and the mounted volume. Native Home retains the same signed-in account and
+two local drafts; actual saved-video playback completes. The compact TikTok
+Inbox sheet was checked read-only with Cancel. Other new platform dialogs were
+not checked natively in this storage follow-up; their widget previews/full
+regression results above remain separate from connected-account publication.
+One existing draft displays a connection warning despite both selected channels
+being connected. The recorded source analysis suggests stale early validation;
+this storage-only follow-up does not change that Dart flow or prove publishing.
+The separate installer/tool follow-up has local validation and requires no new
+API deployment; the CI IDs above cover the original feature source `866f0e3`.
 Other environments must deploy API and publishing workers before Mobile. Draft
 manifest version stays 3; no dependency/configuration/migration change is needed.
 Checks and preview evidence:
@@ -407,6 +416,30 @@ rejects `--profile`, `--release`, Dart-define overrides, non-Test-Store SDK
 keys, and server secrets because those could mix Staging and Production
 configuration. A different machine/CI debug keystore also needs its SHA-1 and
 SHA-256 registered in Firebase Staging.
+
+For an Android app already on adopted private storage, use the guarded launcher
+instead of `-Command run`:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tool\launch-postdee-android.ps1 -AvdName PostDee_Pixel
+flutter attach -d emulator-5556
+```
+
+The launcher builds from the canonical `main` worktree and preserves the
+installed build number. Its shared updater verifies package UID, version and
+code path, requires the current adopted UUID to be mounted, and pins that same
+volume with `install -r --force-uuid`. Unknown or conflicting storage state
+stops installation; it never migrates, clears data, uninstalls or retries on a
+different volume. `-ResolveOnly` checks launcher paths without build/install.
+The Staging `run` helper refuses an adopted Android target before Flutter can
+install; `build-apk` and `test` do not inspect or change the device. Raw
+`flutter run` and plain `adb install -r` can select internal storage and expose
+a fresh data location even while the adopted-volume data still exists. Use
+`flutter attach` after the guarded launcher when debugging this emulator. If
+Flutter is not on `PATH`, run the SDK executable printed as `Flutter=` by the
+launcher's `-ResolveOnly` output with the same `attach` arguments.
+This storage guard is a separate installer/tool follow-up; its checks are recorded
+in the 2026-10-18 implementation plan, separate from the original feature CI.
 
 ## Production / Sandbox Run
 

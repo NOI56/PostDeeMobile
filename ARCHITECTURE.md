@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Unified settings and optional Meta disclosure (2026-10-18, Staging API delivered)
+## Unified settings and optional Meta disclosure (2026-10-18, Staging delivered)
 
 One Flutter sheet scaffold owns platform/account identity, bounded content-sized
 scrolling, keyboard-safe Cancel/Save actions and validation. Platform controls
@@ -22,9 +22,17 @@ Source `866f0e3` is merged/pushed to main and Live on Staging deploy
 `dep-dba2oieq1p3s73a3g6qg`, with health/readiness HTTP 200 and exact-source
 Backend/Flutter CI `39089186176` and unsigned iOS CI `39089186129` passing.
 Staging uses an in-process memory publishing queue with no separate worker, so
-the API rollout updates its publishing process. Android **12024** is built, but
-its data-preserving installation is blocked by emulator storage; installed
-**12023** remains. New settings are not yet verified in the emulator app.
+the API rollout updates its publishing process. Android **12024** is installed
+after the authorized emulator storage recovery, with the original UID and
+adopted volume preserved through a guarded reinstall and cold boot. A separate
+16 GiB encrypted private volume was added; the existing internal data disk was
+not resized. The installer now pins the package's current mounted volume and
+rejects unknown storage/UID/version state instead of migrating or clearing data.
+After cold boot, native Home retains the account and two drafts, and local
+draft-video playback completes. The compact TikTok Inbox sheet was checked
+read-only with Cancel; other new native dialogs/publication are not claimed.
+The separate installer/tool follow-up has local validation; it is not covered
+by the earlier source-866f0e3 CI and does not require another API deployment.
 Other environments must update every publishing process before Mobile. Real
 connected-account publication and iOS device delivery remain unverified; see
 [scope and verification](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).

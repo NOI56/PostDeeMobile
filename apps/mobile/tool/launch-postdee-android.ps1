@@ -97,6 +97,8 @@ if ($ResolveOnly) {
   exit 0
 }
 
+. (Join-Path $mobileRoot 'tool\android-install-volume.ps1')
+
 function Get-ReadyEmulatorId {
   $lines = @(& $adb devices 2>$null)
   foreach ($line in $lines) {
@@ -132,11 +134,20 @@ if (-not $createdNew) {
   exit 0
 }
 $launcherExitCode = 0
+$launcherAvdHomeBefore = $env:ANDROID_AVD_HOME
+$launcherChangedAvdHome = $false
 try {
   $env:ANDROID_HOME = $androidSdk
   $env:ANDROID_SDK_ROOT = $androidSdk
-  # Leave ANDROID_AVD_HOME/ANDROID_USER_HOME intact for the user's existing AVDs
-  # and debug keystore. Replacing those paths can break update signatures.
+  # Keep the user's Android home/debug keystore. Some emulator versions do not
+  # discover ANDROID_USER_HOME/avd unless ANDROID_AVD_HOME is also explicit.
+  if ([string]::IsNullOrWhiteSpace($env:ANDROID_AVD_HOME)) {
+    $resolvedAvdHome = Resolve-PostDeeAndroidAvdHome -AvdHome $env:ANDROID_AVD_HOME -AndroidUserHome $env:ANDROID_USER_HOME
+    if ($resolvedAvdHome) {
+      $env:ANDROID_AVD_HOME = $resolvedAvdHome
+      $launcherChangedAvdHome = $true
+    }
+  }
   & $adb start-server | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Could not start the Android device bridge.' }
   $deviceId = Get-ReadyEmulatorId
@@ -152,37 +163,41 @@ try {
     Write-Host "Starting Android Emulator $selectedAvd..."
     Start-Process -FilePath $emulator -ArgumentList @('-avd', ('"{0}"' -f $selectedAvd)) -WindowStyle Hidden | Out-Null
   }
+  $packageName = 'com.postdee.postdee_mobile.staging'
   $deadline = (Get-Date).AddSeconds($EmulatorBootTimeoutSeconds)
   $deviceId = $null
   do {
     $candidateId = Get-ReadyEmulatorId
     if ($candidateId) {
       $bootCompleted = @(& $adb -s $candidateId shell getprop sys.boot_completed 2>$null)
-      if (($bootCompleted -join '').Trim() -eq '1') { $deviceId = $candidateId; break }
+      if ($LASTEXITCODE -ne 0) { throw 'Android boot state could not be inspected.' }
+      if (($bootCompleted -join '').Trim() -eq '1' -and
+          (Test-PostDeeAndroidBootStorageReady -Adb $adb -DeviceId $candidateId -PackageName $packageName)) {
+        $deviceId = $candidateId
+        break
+      }
     }
     Start-Sleep -Seconds 2
   } while ((Get-Date) -lt $deadline)
-  if (-not $deviceId) { throw "Android did not finish starting within $EmulatorBootTimeoutSeconds seconds." }
+  if (-not $deviceId) { throw "Android storage and its existing PostDee package did not finish starting within $EmulatorBootTimeoutSeconds seconds. No installation was started; wait for storage and retry." }
 
-  Write-Host "Building main $sourceCommit through the validated Staging helper..."
-  & $stagingHelper -Command build-apk
+  $buildNumber = Get-PostDeeAndroidBuildNumber -Adb $adb -DeviceId $deviceId -PackageName $packageName
+  Write-Host "Building main $sourceCommit through the validated Staging helper (build $buildNumber)..."
+  & $stagingHelper -Command build-apk "--build-number=$buildNumber"
   if ($LASTEXITCODE -ne 0) { throw "The Staging build failed (exit $LASTEXITCODE)." }
   $apk = Join-Path $mobileRoot 'build\app\outputs\flutter-apk\app-debug.apk'
   if (-not (Test-Path -LiteralPath $apk)) { throw 'The Staging APK was not created.' }
-  & $adb -s $deviceId install -r $apk
-  if ($LASTEXITCODE -ne 0) {
-    throw 'Android could not update PostDee. Keep the existing app/data and inspect the build signature; this launcher does not uninstall or clear data.'
-  }
-  $packageName = 'com.postdee.postdee_mobile.staging'
+  Invoke-PostDeeAndroidApkUpdate -Adb $adb -DeviceId $deviceId -PackageName $packageName -Apk $apk | Out-Null
   & $adb -s $deviceId shell am force-stop $packageName | Out-Null
   & $adb -s $deviceId shell am start -n "$packageName/com.postdee.postdee_mobile.MainActivity"
   if ($LASTEXITCODE -ne 0) { throw 'Android installed PostDee but could not open it.' }
   Show-EmulatorWindow
-  Write-Host 'PostDee Staging is ready. Existing app data was retained by install -r.'
+  Write-Host 'PostDee Staging is ready. The update kept the existing package UID and storage volume; no data was cleared.'
 } catch {
   $launcherExitCode = 1
   Write-Error -Message $_.Exception.Message -ErrorAction Continue
 } finally {
+  if ($launcherChangedAvdHome) { $env:ANDROID_AVD_HOME = $launcherAvdHomeBefore }
   if ($createdNew) { $launcherMutex.ReleaseMutex() | Out-Null }
   $launcherMutex.Dispose()
 }

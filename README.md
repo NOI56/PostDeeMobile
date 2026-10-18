@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Unified channel settings (2026-10-18, Staging API delivered)
+## Unified channel settings (2026-10-18, Staging delivered)
 
 TikTok, YouTube, Instagram and Facebook Page Video share a content-sized settings
 sheet with account identity, grouped controls, visible validation and fixed
@@ -23,10 +23,20 @@ Source `866f0e3`, based on verified main `c813eef`, is merged/pushed to main and
 Live on Staging deploy `dep-dba2oieq1p3s73a3g6qg`. Exact-source Backend/Flutter
 CI `39089186176` and unsigned iOS build `39089186129` pass. Health and readiness
 return HTTP 200. Staging runs publishing in the API's memory queue, with no
-separate worker. Android **12024** is built, but its data-preserving installation
-is blocked by emulator storage; **12023** remains installed. New settings have
-not yet been verified in the installed emulator app. Existing login and both
-local drafts remain; a new authenticated client GET smoke could not be completed.
+separate worker. Android **12024** is now installed on the same emulator after a
+verified full backup, adding a separate **16 GiB private volume** and recovering
+the existing app data. A guarded same-volume reinstall and cold boot retain
+version 12024 and the original UID. After cold boot, the signed-in Home, both
+existing drafts and actual local video playback pass native checks. TikTok
+Inbox was checked read-only with Cancel; this storage follow-up
+does not claim native checks of every new platform dialog or real publication.
+One existing draft still shows a connection warning despite both selected
+channels being connected; the work record separates this remaining UI issue
+from the completed storage/data recovery.
+The Android desktop launcher now preserves the installed storage volume rather
+than allowing an update to select a fresh data location. This separate
+installer/tool follow-up has local validation; the CI IDs above cover source
+`866f0e3`. The tool/document delivery does not require another API deployment.
 No schema/migration, dependency, environment or plan change is required.
 API **2,207 tests**, Mobile **2,371 tests** (two optional previews skipped),
 analysis and the exact Staging APK build pass; the new preview runs separately.
@@ -565,9 +575,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\apps\mobile\tool\launc
 ```
 
 Omit `-ResolveOnly` to build the exact checked-out `main` through the Staging
-helper and update the emulator with `install -r`. SDK paths come from the local
-environment/configuration; the existing AVD and debug keystore settings are
-preserved. The ignored RevenueCat Test Store overlay is still validated.
+helper and update the emulator. Pass `-AvdName PostDee_Pixel` to select this
+project's AVD explicitly. The updater checks the existing package UID, version
+and storage; for an adopted private volume it requires that exact mounted UUID
+and uses `install -r --force-uuid` with that UUID. It does not migrate, uninstall,
+clear data or retry on another volume. The build number preserves the installed
+version instead of defaulting to a lower version. SDK paths come from the local
+environment/configuration; the existing debug keystore and validated ignored
+RevenueCat Test Store overlay remain in use. On adopted storage, use this
+launcher and then `flutter attach -d emulator-5556` for debugging; raw
+`flutter run` or a plain `adb install -r` can select another data location.
+The Staging `run` helper refuses that unsafe Android path before installation.
 Delivery/current verification is tracked in
 `docs/superpowers/plans/2026-10-08-integrate-pending-main-work.md`.
 The capacity roadmap in `docs/superpowers/plans/2026-07-17-scaling-roadmap.md`

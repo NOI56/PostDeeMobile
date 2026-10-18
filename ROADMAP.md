@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Unified channel settings (2026-10-18, Staging API delivered)
+## Unified channel settings (2026-10-18, Staging delivered)
 
 - Use one compact/scrollable settings shell for four platforms with account
   identity, grouped fields, Cancel/Save, keyboard support and validation reasons.
@@ -20,11 +20,25 @@ Build roadmap for PostDee.
   `dep-dba2oieq1p3s73a3g6qg`. Exact-source Backend/Flutter CI `39089186176`
   and unsigned iOS `39089186129` pass; health/readiness return HTTP 200.
   Staging's API contains its memory-queue publisher, with no separate worker.
-  Android **12024** is built, but its data-preserving installation is blocked by
-  emulator storage; **12023** remains installed. New settings have not yet been
-  verified in the emulator app. Other environments must release API/all workers
-  before Mobile; no migration, plan or environment change is needed.
+  Android **12024** is installed after a verified full AVD backup, adding a
+  separate 16 GiB private volume and recovering the existing data. A guarded
+  same-volume reinstall and cold boot preserve version/UID/storage. Native Home,
+  the same two drafts, local video playback and a read-only TikTok Inbox check
+  pass. Other new native platform dialogs/publication are not claimed. Other
+  environments must release API/all workers before Mobile; no migration, plan or service
+  environment change is needed.
   Connected-account publication and iOS device delivery remain separate checks.
+- Guard future Android updates against silently selecting another storage
+  location. The launcher verifies the current mounted volume/UID/version, pins
+  that volume, preserves the build number and fails without uninstalling or
+  clearing data. Staging `run` rejects adopted Android storage; use the guarded
+  launcher followed by `flutter attach` instead. This separate installer/tool
+  follow-up has local validation; the earlier CI and Staging deployment cover
+  source `866f0e3`. The user authorized its separate tool/document push.
+- Follow up separately on a restored old draft's connection warning despite
+  TikTok/YouTube being connected. Source inspection suggests initial connection
+  loading leaves an earlier validation message stale; add a targeted regression
+  before changing the Dart flow. This storage update does not claim publishing.
 
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 

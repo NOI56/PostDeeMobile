@@ -237,6 +237,10 @@ function Resolve-FlutterBat {
 }
 
 $flutter = Resolve-FlutterBat
+if ($Command -eq 'run') {
+  . (Join-Path $PSScriptRoot 'android-install-volume.ps1')
+  Assert-PostDeeAndroidFlutterRunSafe -MobileRoot $mobileRoot -PackageName 'com.postdee.postdee_mobile.staging' -FlutterArgs $FlutterArgs
+}
 $flutterCommand = @(
   switch ($Command) {
     'run' {

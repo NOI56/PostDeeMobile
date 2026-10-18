@@ -24,8 +24,12 @@ types and distinguishes immutable intents, without writes or provider calls.
 Staging's publisher runs in the API process with a memory queue and no separate
 worker. Other environments must deploy the
 API and every publishing worker before the new Mobile controls. No schema
-migration, dependency or environment change is needed. Android **12024** is built
-but its installation is blocked by emulator storage; **12023** remains installed.
+migration, dependency or environment change is needed. Android **12024** is now
+installed after the separate emulator storage recovery; the API remains on
+source `866f0e3` and does not need another deployment for this installer/tool
+follow-up.
+Native Home/account/drafts/video reads pass after the update and cold boot;
+this is not a new publishing HTTP POST or provider publication test.
 Connected-account Meta publication and platform labeling remain unverified.
 Evidence:
 [implementation record](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).

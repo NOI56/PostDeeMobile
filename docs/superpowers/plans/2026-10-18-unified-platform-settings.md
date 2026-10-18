@@ -9,6 +9,9 @@ The subsequent **push/deploy** request authorizes merging/pushing the tested
 source, deploying Staging API first and then updating the user's logged-in
 emulator while preserving its data. Real publication, OAuth grants, purchases,
 historical-data repair and Production changes remain outside this release.
+The subsequent **เพิ่มพื้นที่ให้หน่อย** request also authorizes expanding this
+emulator's available storage and completing the app update while preserving the
+existing account and drafts. Its recovery and verification are recorded below.
 
 Canonical `grouped-account-ui` main and remote were freshly fetched and verified
 at **c813eef72d1bc98e958b86ae2928e80a20939f8a**, 0 ahead/0 behind. The already
@@ -137,9 +140,11 @@ recovery protections remain intact.
   `tiktok-inbox.png`, `tiktok-direct.png`, `youtube_shorts.png`,
   `instagram_reels.png`, `facebook_reels.png`. A few background toolbar glyphs
   use a test-font fallback; the real sheet text and bundled logos render correctly.
-- APK12024 installation on the user's emulator is blocked by storage after the
-  confirmed Staging API rollout below; **12023** remains installed. The new
-  settings have not been verified in the installed emulator app. No connected
+- APK12024 is now installed after the confirmed Staging API rollout and the
+  authorized storage follow-up below, including a same-volume reinstall/cold
+  boot. Native Home/account, two local drafts, actual saved-video playback and
+  a read-only compact TikTok Inbox check pass. Other new native dialogs were
+  not checked in this follow-up. No connected
   Instagram/Facebook publication, provider label or physical-device check is
   claimed. The exact-source unsigned
   iOS CI build passes; no iOS device test or installation is claimed.
@@ -182,7 +187,7 @@ recovery protections remain intact.
   Fresh startup logs at **02:19:37 UTC** confirm PostPeer publishing enabled,
   the enforced empty-backlog activation guard passing and listening on port
   10000. No publishing configuration was changed for this deployment.
-- Data-preserving Android **12024** debug installation safely failed
+- The initial data-preserving Android **12024** debug installation safely failed
   with `INSTALL_FAILED_INSUFFICIENT_STORAGE`, with about **572 MiB** free.
   No application data/cache was cleared and the existing app was not uninstalled.
   Its composer has no clip or caption; Save Draft refused because no video was
@@ -192,10 +197,10 @@ recovery protections remain intact.
   `.idsig`, so an incremental install is unavailable. The validated helper does
   not permit a smaller profile/release Staging build; bypassing it would use a
   Production package/key and was rejected. No source/configuration or disk
-  change was made to force installation. **12023 remains installed**; new-version
-  device/UI checks are not claimed. Restoring sufficient emulator storage and
-  then installing the exact validated Staging artifact is still required.
-- Final old-app readback confirms version **12023** still running with the
+  change was made to force that attempt. It left **12023 installed** and
+  new-version device/UI checks unverified. The later authorized storage recovery
+  below supersedes this initial installation boundary.
+- Before the storage follow-up, old-app readback confirmed version **12023** with the
   existing signed-in state visibly retained. The same **2 local drafts** retain
   schema **3**, **0 upload receipts** and aggregate SHA-256
   `7D0E32A2C89E3F8B741DD190C97D55D02A871D10D119CC14613A5CF685CB5E23`.
@@ -208,11 +213,111 @@ recovery protections remain intact.
   A new authenticated client GET smoke is **unverified**: the installed VM's
   compilation/attach service was unavailable, so the attempt was stopped without
   claiming an HTTP result. This old-app/data check does not verify APK12024 UI
-  or the new declaration fields.
+  or the new declaration fields. The storage follow-up below records the later
+  successful installation separately.
 - Production remains untouched. No new connected-account upload/publication,
   AI generation, OAuth grant, purchase, post repair or provider resend is part
   of this release. Real Instagram/Facebook labeling/publication, TikTok Direct
   public approval and physical/iOS device delivery remain unverified.
+
+## Authorized emulator storage follow-up
+
+- Before changing storage, the stopped original AVD and its pointer were fully
+  copied to `D:/PostDeeBackups/PostDee_Pixel-before-storage-20261018-1/`.
+  `verified-file-manifest.json` verifies all **56 files / 13,493,218,099 bytes**
+  (55 AVD files plus the pointer) with source/copy SHA-256 matches. Private ACLs
+  limit access to the owner, SYSTEM and administrators. This backup is retained.
+- The existing internal data disk was not resized. A **new 16 GiB** NTFS-sparse
+  RAW image at `D:/.android/avd/PostDee_Pixel.avd/postdee-storage-16g.img` was
+  verified blank, attached to the same AVD and adopted by Android as a separate
+  encrypted F2FS private volume. Only the new disk was partitioned. Its UUID is
+  **470668ed-4e40-4628-acb4-8704efc6b257**. This adds storage; it does not turn
+  the existing internal `/data` disk into a 16 GiB disk.
+- A standard Android compile step resolved the initial package-move missing-oat
+  error; moving only PostDee retained UID **10190**. Native checks on old 12023
+  then retained the signed-in Home, two draft rows and readable saved media.
+  Android's adopted-storage `run-as` guard was not bypassed with permission or
+  ownership changes. The package external-storage override remained unset.
+- A subsequent plain `adb install -r` installed the exact APK12024 but selected
+  an internal data location and initially showed login. The original account,
+  two schema-3 drafts and saved media remained on the adopted volume. Readback
+  of that original CE data matched the pre-move draft aggregate
+  `7D0E32A2C89E3F8B741DD190C97D55D02A871D10D119CC14613A5CF685CB5E23`.
+  Six private original CE/DE archives and two filtered recovery archives were
+  retained. After on-device transport SHA-256 verification, the persistent CE/DE
+  entries were coherently restored for the same UID, excluding old Flutter
+  runtime/assets/callback files. No Google account, Keystore, permission or
+  security setting was changed. Native 12024 then restored the signed-in Home,
+  existing account connections and draft thumbnail without a fresh login grant.
+- After moving 12024 back to the private volume, the new shared updater performed
+  a real same-volume reinstall of the unchanged, validated Staging APK with
+  `--force-uuid` and `-r`. Package UID **10190**, versionCode **12024** and the
+  same volume UUID were verified before/after. A full cold boot without the
+  command-line `-sdcard` override proves the durable AVD config mounts that
+  same image. Cold-boot readiness waits for the private volume/package metadata,
+  since `sys.boot_completed=1` can precede storage availability. Post-boot free
+  space is **16,242,952 KiB** on the private volume (about **15.49 GiB**) and
+  **786,552 KiB** internally. The image remains a separate added volume.
+- `android-install-volume.ps1` now verifies package identity, UID, version and
+  current volume. The launcher requires that exact adopted volume to be mounted,
+  pins it for updates, preserves the installed build number and refuses unknown
+  or conflicting state without migration, uninstall, data clearing or fallback.
+  Staging `run` refuses unsafe adopted Android installs; `build-apk`/`test`
+  remain device-free. Use the guarded launcher then `flutter attach` for debug
+  work rather than raw `flutter run`/plain `adb install -r` on this emulator.
+  The Android desktop shortcut was SHA-verified/backed up and retargeted to the
+  canonical launcher with `-AvdName PostDee_Pixel`; the separate Electron
+  shortcut was not changed. Independent guard verification passes **64/64 mock
+  tests** on both Windows PowerShell 5.1 and PowerShell 7, four script AST
+  parses, launcher `-ResolveOnly` and diff checks. The launcher now waits within
+  its existing bounded boot deadline for private volumes and package metadata;
+  it does not infer a fresh install from a transient empty package list while
+  an adopted volume or retained package data exists. Other probe/metadata errors
+  fail closed. An independent root rerun passes all 64 tests on PowerShell 7;
+  actual read-only final helper probes report boot/storage ready, UID 10190,
+  version/build number 12024 and the same adopted UUID. Windows PowerShell 5.1
+  `-ResolveOnly` resolves the canonical main paths. These are local tool checks,
+  separate from the prior feature CI and native checks below.
+- After the config-only cold boot, Android **12024** retains the same signed-in
+  account. Home shows **Free 0/3**, recent posts, the existing TikTok/YouTube
+  **2/4** connected channels and a draft thumbnail. A transient channel read
+  recovers after one GET-only retry. The draft header and list both show the
+  same **2 existing drafts**; actual local one-second video playback completes
+  at **0:01 / 0:01**. No fatal, unhandled, player, Keystore or FileSystem error
+  was observed. The compact TikTok Inbox shared-logo/explanation/Cancel-Save UI
+  was inspected read-only and cancelled. No form/settings/draft was saved and
+  no media was uploaded. YouTube/Instagram/Facebook new native dialogs were not
+  checked in this storage follow-up; their widget previews/full regressions are
+  separate evidence. No real publication or publishing capability is proved.
+  Final screenshots: `D:/Temp/postdee-12024-final-coldboot-home.png`,
+  `D:/Temp/postdee-12024-final-coldboot-drafts.png`,
+  `D:/Temp/postdee-12024-final-coldboot-playback.png`.
+  The app is left on Home with all owned forwards/attachments removed.
+- One existing draft still displays the warning **“บางช่องทางในร่างยังไม่ได้เชื่อมต่อ
+  กรุณาเชื่อมใหม่ก่อนโพสต์”** although
+  Home shows both relevant channels connected. The original backup's two draft
+  target sets are `[TIKTOK]` and `[TIKTOK, YOUTUBE_SHORTS]`; this is not evidence
+  of missing restored draft targets. Source inspection shows `_restoreDraft`
+  validates against initially empty `_connectedPlatforms`, while the initial
+  unawaited `_loadConnections` can finish later and update availability without
+  clearing `_errorMessage`. A stale early validation message is the **inferred
+  likely cause**, not a captured end-to-end publishing diagnosis. This existing
+  Dart flow was not changed by the storage-only patch. A separate targeted
+  regression/fix is needed; no post was submitted to test it.
+- API source `866f0e3` and its already Live Staging deployment are unchanged;
+  this separate installer/tool follow-up does not require an API redeploy. No real
+  publication, AI generation, OAuth grant, purchase, historical post repair or
+  provider resend was performed. Earlier Backend/Flutter/iOS CI IDs apply to
+  feature source `866f0e3`, not these later tool changes; independent local guard
+  verification is recorded above. The verified native scope preserves the
+  account/drafts and closes the local storage
+  update; real publishing, other native dialogs and iOS remain separate checks.
+- The subsequent **push เลย** request authorizes committing/pushing this
+  installer/tool follow-up separately: **10 files**, comprising the **4
+  PowerShell tools and 6 related documents** listed below. This preserves the
+  storage-safe update path in source control without a new API deployment.
+  Authorization is recorded here; completion is verified from the resulting
+  commit and remote push rather than inferred from this entry.
 
 ## Primary changed files
 
@@ -222,6 +327,7 @@ recovery protections remain intact.
 | Draft/request model and review | `apps/mobile/lib/features/uploader/platform_publish_settings.dart`, `publish_review_screen.dart` |
 | API parser/immutable intent and provider mapping | `apps/api/src/modules/posts/platformSettings.ts`, `apps/api/src/workers/postPeerPublisher.ts` |
 | Regression evidence | Associated API tests, Mobile model/draft/review tests, `platform_settings_scaffold_test.dart`, `unified_platform_settings_test.dart`, existing uploader interaction/scroll helpers |
+| Installer/tool follow-up and regression checks | `apps/mobile/tool/android-install-volume.ps1`, `launch-postdee-android.ps1`, `postdee-staging.ps1`, `test-android-install-volume.ps1` |
 | Documentation | `README.md`, `API.md`, `ARCHITECTURE.md`, `ROADMAP.md`, `apps/mobile/README.md`, this record |
 
 ## Primary provider evidence

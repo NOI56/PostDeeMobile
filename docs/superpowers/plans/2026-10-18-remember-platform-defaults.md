@@ -75,7 +75,15 @@ settings and shell/account-deletion tests also pass in this batch. Evidence:
 `D:\PostDeeMobile\artifacts\remember-settings-tooling-20261018\remembered-widget-targeted-final.log`;
 the eight relevant source/test files match their D: verification copies by SHA-256.
 
-Pending full Mobile suite, analysis and Staging build.
+The first full run passes 2,479 with two optional skips and finds one old recovery
+test that confirms a replacement video without re-answering its declarations.
+The updated test first proves confirmation is disabled, then explicitly answers
+the new clip's fields and retains every existing assertion: same request ID,
+changed media fingerprint/key, retained draft and server 409 rejection. Runtime
+recovery is unchanged. The expanded targeted batch then passes **144**, with one
+optional preview skipped. Evidence: `remembered-recovery-targeted-final.log`.
+
+Pending repeat full Mobile suite, analysis and Staging build.
 Use the D: verification snapshot and temp/cache locations because C: has little
 free space. Existing installed Staging APK12026 and live API remain untouched.
 No native or real provider publication has been tested for this change yet.

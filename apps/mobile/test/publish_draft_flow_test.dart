@@ -785,7 +785,14 @@ void main() {
     await tester.tap(picker);
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 3);
-    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
+    final confirm = find.byKey(const ValueKey('publish-review-confirm'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull,
+        reason: 'A replacement clip needs fresh content declarations');
+    expect(requests, hasLength(1));
+    await _completeYouTubeSettings(tester);
+    await goToUploaderStep(tester, 3);
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
+    await tester.tap(confirm);
     await tester.pumpAndSettle();
     expect(requests, hasLength(2));
     expect(requests[1].clientRequestId, requests[0].clientRequestId);

@@ -167,7 +167,7 @@ export const registerRevenueCatRestoreRoutes = ({
           const effectivePlan = await subscriptionStore.getPlan(authUser);
           response.json({
             status: 'ok',
-            plan: eventResult.applied ? 'BASIC' : effectivePlan,
+            plan: effectivePlan,
             effectivePlan,
             subscription: eventResult.subscription
           });
@@ -193,7 +193,7 @@ export const registerRevenueCatRestoreRoutes = ({
 
         response.json({
           status: 'ok',
-          plan: eventResult.applied ? paidPlan.plan : effectivePlan,
+          plan: effectivePlan,
           subscription: eventResult.subscription
         });
       } catch (error) {

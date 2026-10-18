@@ -3,10 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { readServerConfig } from './env.js';
 
 describe('readServerConfig', () => {
+  it('requires a database for enabled trial access and keeps it opt-in', () => {
+    expect(readServerConfig({}).trialAccessEnabled).toBe(false);
+    expect(() => readServerConfig({ TRIAL_ACCESS_ENABLED: 'true' })).toThrow('DATABASE_URL is required');
+  });
   it('uses safe local defaults for scaffold development', () => {
     const config = readServerConfig({});
 
     expect(config).toEqual({
+      adminConsole: undefined,
+      trialAccessEnabled: false,
       port: 4000,
       nodeEnv: 'development',
       databaseUrl: undefined,

@@ -2,6 +2,11 @@ import cors from 'cors';
 import express, { type RequestHandler, type ErrorRequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
+import type { PrismaClient } from '@prisma/client';
+import { registerAdminConsole } from './modules/admin/adminRoutes.js';
+import { createPrismaAdminDataSource, type AdminDataSource } from './modules/admin/adminDataSource.js';
+import { createPrismaTrialAccessStore } from './modules/admin/prismaTrialAccessStore.js';
+import type { TrialAccessStore } from './modules/admin/trialAccess.js';
 
 import { type ServerConfig, readServerConfig } from './config/env.js';
 import { createPrismaClient } from './config/prisma.js';
@@ -169,6 +174,10 @@ type AppPrismaClient = PrismaTemplateClient &
   PrismaUploadSessionClient & Partial<PrismaLinkInBioClient & PrismaLinkInBioImageClient>;
 
 type AppOptions = {
+  adminDataSource?: AdminDataSource;
+  trialAccessStore?: TrialAccessStore;
+  adminFirebaseVerifier?: FirebaseTokenVerifier;
+  adminTestPreviewToken?: string;
   config?: ServerConfig;
   prisma?: AppPrismaClient;
   s3Client?: S3VideoStorageClient;
@@ -440,9 +449,15 @@ export const createApp = (options: AppOptions = {}) => {
     windowMs: 10 * 60 * 1000,
     maxRequests: 10
   });
-  const shouldCreateFirebaseAdminAuth =
-    config.firebaseAuthDeleteEnabled &&
-    (!options.firebaseVerifier || !options.accountIdentityDeleter);
+  if (config.adminConsole && (!config.trialAccessEnabled || config.authProvider !== 'firebase')) {
+    throw new Error('Administrator access requires Firebase and enabled trial access');
+  }
+  if (config.adminConsole && config.firebaseServiceAccountJson &&
+      JSON.parse(config.firebaseServiceAccountJson).project_id !== config.firebaseProjectId) {
+    throw new Error('Administrator service account must match the API Firebase project');
+  }
+  const shouldCreateFirebaseAdminAuth = Boolean(config.adminConsole) ||
+    (config.firebaseAuthDeleteEnabled && (!options.firebaseVerifier || !options.accountIdentityDeleter));
   const firebaseAdminAuth =
     options.firebaseAdminAuth ??
     (shouldCreateFirebaseAdminAuth && config.firebaseServiceAccountJson
@@ -474,6 +489,7 @@ export const createApp = (options: AppOptions = {}) => {
     firebaseVerifier: accountDeletionFirebaseVerifier
   });
   const requiresPrismaClient =
+    (config.trialAccessEnabled && !options.trialAccessStore) ||
     config.templateStore === 'prisma' ||
     config.postStore === 'prisma' ||
     config.subscriptionStore === 'prisma' ||
@@ -505,10 +521,15 @@ export const createApp = (options: AppOptions = {}) => {
     prisma: prismaClient,
     runWithActiveOwner
   });
+  const trialAccessStore = config.trialAccessEnabled
+    ? options.trialAccessStore ?? createPrismaTrialAccessStore(prismaClient as unknown as PrismaClient, options.now)
+    : undefined;
   const subscriptionStore = createSubscriptionStoreFromConfig({
     config,
     prisma: prismaClient,
-    runWithActiveOwner
+    runWithActiveOwner,
+    trialStore: trialAccessStore,
+    now: options.now
   });
   const publishQueue = createOwnerAwarePublishQueue(createPublishQueueFromConfig({ config }), runWithActiveOwner);
   const platformPublishStore =
@@ -825,6 +846,19 @@ export const createApp = (options: AppOptions = {}) => {
       ? (prismaClient as unknown as PrismaAccountClient)
       : undefined
   });
+  if (config.adminConsole) {
+    const adminVerifier = options.adminFirebaseVerifier ??
+      (firebaseAdminAuth ? createFirebaseAdminTokenVerifier(firebaseAdminAuth) : undefined);
+    if (!adminVerifier) throw new Error('Admin console requires revocation-checked Firebase Admin authentication');
+    registerAdminConsole(app, {
+      config: config.adminConsole,
+      authenticate: createAuthMiddlewareFromConfig({ config, firebaseVerifier: adminVerifier }),
+      trials: trialAccessStore,
+      data: options.adminDataSource ?? createPrismaAdminDataSource(prismaClient as unknown as PrismaClient, config.adminConsole, options.now),
+      now: options.now, runWithTarget: runWithOwnerLifetime,
+      testOnly: config.nodeEnv === 'test', testPreviewToken: options.adminTestPreviewToken
+    });
+  }
   registerPlannedRoutes(router);
   app.use(router);
 

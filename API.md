@@ -34,6 +34,46 @@ Connected-account Meta publication and platform labeling remain unverified.
 Evidence:
 [implementation record](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
 
+## Private administrator API (2026-10-18, disabled by default)
+
+`ADMIN_CONSOLE_ENABLED=true` registers `/admin`, its static assets and public
+Firebase Web configuration. No data endpoint is public: `/admin/api/*` requires
+revocation-checked Firebase authentication and an explicit Owner/Viewer UID.
+All responses use private/no-store. Every POST requires exact configured `Origin`,
+`Content-Type: application/json` and `X-PostDee-Admin: 1`.
+
+| Route | Contract |
+| --- | --- |
+| `GET /admin/api/session` | Role, email, environment; owner lists are never exposed |
+| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit; optional `query`, opaque `cursor`; posts accept `status`, `platform`, `from`, `through` (inclusive UTC dates) |
+| `POST /admin/api/member` | `userId`; existing member details, purchased plan, separate trial, current UTC-month usage |
+| `POST /admin/api/trials` | Owner only, auth_time within 15 minutes; command below |
+
+View responses contain `rows`, optional `total`, `nextCursor`, `note`, and `checkedAt`.
+Pages contain at most 50 rows. Posts/audit sort newest first with stable tie-breaks.
+`view=reports,csv=true` exports the current page only with spreadsheet-formula-safe
+CSV. Search text stays in POST bodies rather than URLs. Reports cover each member's
+latest trial interval, account-wide recorded usage and optional estimated USD costs;
+they are not invoices or proof of paid conversion.
+
+Trial commands contain a UUID `requestId`, `userId`, reviewed `expectedEmail`,
+`action` (`GRANT`/`EXTEND`/`REVOKE`), `plan` (`STARTER`/`PRO`), `days` (7/14/30),
+`expectedVersion` (0 for no prior trial) and a 3–500-character `reason`. The server
+sets actor UID, validates the target identity again inside the transaction, locks
+the active target owner, and commits trial plus audit together. Exact request replay
+returns the original result; altered intent or stale version returns 409. Extensions
+preserve the trial plan and are limited to 90 days ahead. Success returns
+`{status:"ok",trial:{userId,plan,startsAt,expiresAt,revokedAt,version}}`.
+Errors expose a safe `code`, including `ADMIN_OWNER_REQUIRED` (403),
+`ADMIN_REAUTH_REQUIRED` (401), `ADMIN_TRIAL_CHANGED` (409),
+`ADMIN_MEMBER_NOT_FOUND` (404), and `ADMIN_TRIAL_UNAVAILABLE` (503, retry same UUID).
+
+When `TRIAL_ACCESS_ENABLED=true`, normal billing/subscription and capability gates
+return the higher valid paid/trial plan. RevenueCat resync `plan` also returns this
+effective plan (including valid paid access from another verifier); its `subscription`
+remains the purchased RevenueCat result. Paid receipts and usage counters are not
+rewritten by trial grants. See [deployment and data boundaries](docs/ADMIN_CONSOLE.md).
+
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 
 `GET /social-connections/publishing-readiness` requires authentication and returns

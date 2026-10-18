@@ -37,6 +37,44 @@ Other environments must update every publishing process before Mobile. Real
 connected-account publication and iOS device delivery remain unverified; see
 [scope and verification](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
 
+## Administrator and trial-access boundary (2026-10-18, local implementation)
+
+The existing Express service serves semantic HTML/CSS/ES-module admin assets at
+`/admin`, following its public HTML delivery convention. This deliberate choice
+avoids another frontend framework/build pipeline or hosting service. A separate
+loopback-only memory-fixture preview is available for UI QA and never uses live
+credentials. Production configuration cannot enable preview authentication.
+
+Admin authentication uses Firebase Admin with revoked-token checks, explicit
+Owner/Viewer UID allowlists, recent authentication for writes, fixed-origin JSON
+requests, rate limits, CSP, no-store and memory-only browser tokens. Ordinary
+Firebase users have no admin access. The console does not expose provider tokens,
+raw provider failures or video storage URLs and cannot publish/retry/delete posts.
+
+`AdminTrialAccess` stores one current expiring trial per existing User;
+`AdminTrialAudit` stores append-only command intents and before/after snapshots.
+Both cascade on target account deletion. Owner UIDs are deployment configuration,
+not self-service database roles. A grant uses target lifetime admission plus the
+existing active-owner row lock inside a Serializable transaction, optimistic
+versioning and UUID/hash replay checks. Trial and audit commit or roll back together;
+deleted-owner markers are never revived. Local validation failures do not retain
+ambiguous external-write blockers because this path makes no external mutations.
+
+The subscription factory decorates paid stores with the higher valid trial plan
+for both API and publishing workers. RevenueCat continues to own paid entitlements;
+trial expiry/revocation never edits the receipt, purchased plan or usage. This local
+ledger avoids promotional-entitlement/paid-overlap ambiguity and requires no new
+RevenueCat grant credentials. Trial access flags must be consistent on API/workers.
+Closing the console flag does not revoke trials; turning off the trial flag does.
+
+Queries return bounded projections and stable pagination. Reports aggregate actual
+recorded account activity during the latest trial interval, without claiming that
+all activity was trial-caused or that a current paid plan is a conversion. Unit cost
+estimates are optional operator input, not provider invoices. Operational setup and
+limits are in [the admin guide](docs/ADMIN_CONSOLE.md).
+Fresh migration-only databases also receive the Shopee/Lazada Platform enum values
+already declared in the baseline schema, via an idempotent reconciliation migration.
+
 ## Channel publishing preflight boundary (2026-10-15, Staging delivered)
 
 Mobile checks caption rules before a new upload, loads channel-readiness when

@@ -88,6 +88,38 @@ model User {
   monthlyPostResetAt DateTime?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
+  adminTrialAccess   AdminTrialAccess?
+  adminTrialAudits   AdminTrialAudit[]
+}
+
+model AdminTrialAccess {
+  userId    String @id
+  plan      SubscriptionPlan
+  startsAt  DateTime
+  expiresAt DateTime
+  revokedAt DateTime?
+  version   Int
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt, revokedAt])
+}
+
+model AdminTrialAudit {
+  requestId  String @id
+  actorId    String
+  userId     String
+  action     String
+  plan       SubscriptionPlan
+  days       Int
+  reason     String
+  intentHash String
+  before     Json?
+  after      Json
+  createdAt  DateTime @default(now())
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt, requestId])
+  @@index([userId, createdAt])
 }
 
 model LinkInBioProfile {

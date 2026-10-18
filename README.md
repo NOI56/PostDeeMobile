@@ -44,6 +44,23 @@ Connected-account publication and iOS device delivery remain unverified.
 See [implementation and checks](docs/superpowers/plans/2026-10-18-unified-platform-settings.md).
 Earlier sections record their respective deliveries.
 
+## Private admin console and trials (2026-10-18, local implementation)
+
+The API can serve a Thai `/admin` console for overview, members, posts, trials,
+connections, usage reports/CSV and administrator history. Owner and read-only
+viewer roles use explicit server-side Firebase UID allowlists and revocation-checked
+Firebase Admin authentication. Both admin and trial feature flags default to off.
+No administrator or customer access is granted by the source configuration.
+
+Time-limited Starter/Pro grants are stored separately from purchased subscriptions.
+API and publishing workers use the higher valid plan; expiry/revocation preserves
+paid access and existing usage. RevenueCat remains responsible for paid purchases.
+The additive trial migration and existing platform-enum history reconciliation
+must precede enabling trial access on API **and workers**.
+This implementation is not deployed. Configuration, the local fixture preview and
+report limitations are in [the admin guide](docs/ADMIN_CONSOLE.md); implementation
+and verification evidence are in [the plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).
+
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 
 The uploader checks YouTube/Instagram/Facebook captions before upload and

@@ -40,6 +40,23 @@ Build roadmap for PostDee.
   loading leaves an earlier validation message stale; add a targeted regression
   before changing the Dart flow. This storage update does not claim publishing.
 
+## Administrator console and trial access (2026-10-18)
+
+- Implement seven Thai admin views, member/monthly-usage inspection, safe post
+  failure summaries, trial-period reports/CSV and audit history.
+- Separate paid RevenueCat entitlements from local expiring Starter/Pro trials;
+  support grant/extend/revoke with 7/14/30-day presets and preserve usage.
+- Restrict mutations to recently authenticated allowlisted Firebase owners;
+  viewer roles are read-only. Use atomic versioned/idempotent grant-and-audit writes
+  behind target account deletion fences. Keep all flags disabled by default.
+- Local implementation and fixture/database/browser verification are recorded in
+  [the implementation plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).
+  This entry does not mark a Staging/Production release.
+- Release work still requires verified administrator UIDs, Firebase Web settings,
+  exact HTTPS origin, migration and flags on API/workers, followed by authenticated
+  staging acceptance. Report estimates require operator-supplied rates; conversion
+  attribution and invoicing are outside this version.
+
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 
 - Add consistent YouTube/Instagram/Facebook caption guards to Mobile, new API

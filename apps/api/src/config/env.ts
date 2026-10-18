@@ -1,3 +1,4 @@
+import { readAdminConsoleConfig, type AdminConsoleConfig } from '../modules/admin/adminConfig.js';
 type EnvSource = Record<string, string | undefined>;
 export type TemplateStoreKind = 'memory' | 'prisma';
 export type PostStoreKind = 'memory' | 'prisma';
@@ -21,6 +22,8 @@ export type EditPlanProviderKind = 'mock' | 'openai' | 'gemini';
 export type AppleAppStoreEnvironmentKind = 'sandbox' | 'production';
 
 export type ServerConfig = {
+  adminConsole?: AdminConsoleConfig;
+  trialAccessEnabled?: boolean;
   port: number;
   nodeEnv: string;
   databaseUrl?: string;
@@ -423,6 +426,7 @@ const assertProductionSafeConfig = (config: ServerConfig) => {
 };
 
 const usesPrismaBackedStore = (config: ServerConfig) =>
+  config.trialAccessEnabled ||
   config.templateStore === 'prisma' ||
   config.postStore === 'prisma' ||
   config.subscriptionStore === 'prisma' ||
@@ -432,6 +436,10 @@ const usesPrismaBackedStore = (config: ServerConfig) =>
   config.uploadProtocolMode !== 'legacy';
 
 const assertRuntimeStoreConfig = (config: ServerConfig) => {
+  if (config.adminConsole && config.nodeEnv !== 'test' &&
+      [config.postStore, config.subscriptionStore, config.captionUsageStore, config.aiEditUsageStore].some(store => store !== 'prisma')) {
+    throw new Error('Admin console requires persistent Prisma post, subscription and usage stores');
+  }
   if (config.publishQueue === 'bullmq' && config.postStore !== 'prisma') {
     throw new Error('PUBLISH_QUEUE=bullmq requires POST_STORE=prisma');
   }
@@ -478,6 +486,8 @@ const assertPostPeerLegacyRecoveryConfig = (config: ServerConfig) => {
 
 export const readServerConfig = (env: EnvSource = process.env): ServerConfig => {
   const config: ServerConfig = {
+    adminConsole: readAdminConsoleConfig(env),
+    trialAccessEnabled: env.TRIAL_ACCESS_ENABLED === 'true',
     port: readPort(env),
     nodeEnv: readOptional(env, 'NODE_ENV') ?? 'development',
     databaseUrl: readOptional(env, 'DATABASE_URL'),

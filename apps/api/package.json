@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "admin:preview": "tsx scripts/admin-preview.ts",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node scripts/copy-admin-assets.mjs",
     "start": "node dist/server.js",
     "worker:publish": "tsx src/workers/publishWorkerRunner.ts",
     "benchmark:transcription": "tsx scripts/compareTranscriptions.ts",

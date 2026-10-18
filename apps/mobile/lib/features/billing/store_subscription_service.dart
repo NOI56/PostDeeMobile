@@ -342,7 +342,8 @@ class StoreSubscriptionService {
       userId: userId,
       prepare: _prepareSubscriptionPurchase ?? api.prepareSubscriptionPurchase,
       load: _loadSubscription ?? api.loadCurrentSubscription,
-      resync: _resyncRevenueCatSubscription ?? api.resyncRevenueCatSubscription,
+      resync: _resyncRevenueCatSubscription ??
+          api.resyncRevenueCatPurchasedSubscription,
       verify: _verifyPurchase ?? api.verifyStoreSubscription,
     );
   }
@@ -905,7 +906,8 @@ class StoreSubscriptionService {
       }
 
       _ensureSubscriptionOwner(subscription, sessionOperation);
-      final productId = expectedProductsByPlan[subscription.plan.toUpperCase()];
+      final purchasePlan = subscription.purchasedPlan ?? subscription.plan;
+      final productId = expectedProductsByPlan[purchasePlan.toUpperCase()];
 
       if (productId != null) {
         return StoreSubscriptionVerificationResult(

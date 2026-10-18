@@ -6,12 +6,53 @@ import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
 
 void main() {
+  SubscriptionStatusResult trialSubscription(String purchasedPlan) => SubscriptionStatusResult.fromJson({
+    'userId':'seller-revenuecat','plan':'PRO','purchasedPlan':purchasedPlan,'status':'ACTIVE',
+    'canSchedule':true,'canUseAiCaptions':true,'canUseAnalytics':true,
+  });
   setUp(() {
     PostDeeAuthSessionStore.instance.signIn(const AuthSession(
       userId: 'seller-revenuecat', idToken: 'dummy-billing-token',
     ));
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
+
+  test('a Pro trial cannot confirm an unpaid Pro purchase', () async {
+    var loads = 0;
+    final service = StoreSubscriptionService(
+      revenueCatGateway: FakeRevenueCatBillingGateway(), useRevenueCat: true,
+      prepareSubscriptionPurchase: () async {},
+      loadSubscription: () async => trialSubscription(++loads == 1 ? 'BASIC' : 'PRO'),
+      revenueCatEntitlementWait: (_) async {},
+    );
+    final result = await service.startProSubscription();
+    expect(loads, 2);
+    expect(result.subscription.plan, 'PRO');
+  });
+
+  test('Starter restore succeeds beneath a Pro trial while retaining Pro access', () async {
+    final service = StoreSubscriptionService(
+      revenueCatGateway: FakeRevenueCatBillingGateway(), useRevenueCat: true,
+      resyncRevenueCatSubscription: () async => 'STARTER',
+      loadSubscription: () async => trialSubscription('STARTER'),
+      revenueCatEntitlementPollAttempts: 1,
+    );
+    final result = await service.restoreStarterSubscription();
+    expect(result.purchase.productId, 'postdee_starter_monthly');
+    expect(result.subscription.plan, 'PRO');
+  });
+
+  test('default restore API uses paid resync with the original account binding', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId:'seller-revenuecat',idToken:'trial-owner'));
+    late _TrialRestoreApi client;
+    final service = StoreSubscriptionService(sessionStore:sessions,
+      revenueCatGateway:FakeRevenueCatBillingGateway(),useRevenueCat:true,
+      apiClientFactory:(binding)=>client=_TrialRestoreApi(binding));
+    final result=await service.restoreStarterSubscription();
+    expect(client.calls,['paid:trial-owner','load:trial-owner']);
+    expect(result.subscription.plan,'PRO');
+    expect(result.purchase.productId,'postdee_starter_monthly');
+  });
 
   test('native pending purchase keeps its original binding after the UI timeout', () async {
     final sessions = PostDeeAuthSessionStore(initialSession:
@@ -1065,6 +1106,22 @@ class FakeStoreBillingGateway implements StoreBillingGateway {
         productId: productId,
         transactionId: 'ios-transaction-id',
       );
+}
+
+class _TrialRestoreApi extends PostDeeApiClient {
+  _TrialRestoreApi(this.binding):super(sessionBinding:binding);
+  final AuthSessionBinding binding;
+  final calls=<String>[];
+  @override
+  Future<String> resyncRevenueCatSubscription() async => throw StateError('must not use effective trial plan to restore');
+  @override
+  Future<String> resyncRevenueCatPurchasedSubscription() async { calls.add('paid:${await binding.currentIdToken()}');return 'STARTER'; }
+  @override
+  Future<SubscriptionStatusResult> loadCurrentSubscription() async {
+    calls.add('load:${await binding.currentIdToken()}');
+    return SubscriptionStatusResult.fromJson({'userId':'seller-revenuecat','plan':'PRO','purchasedPlan':'STARTER','status':'ACTIVE',
+      'canSchedule':true,'canUseAiCaptions':true,'canUseAnalytics':true});
+  }
 }
 
 class _RecordingSubscriptionApi extends PostDeeApiClient {

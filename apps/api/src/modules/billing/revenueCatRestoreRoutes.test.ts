@@ -456,7 +456,7 @@ describe('RevenueCat subscription resync', () => {
       .expect(200);
     expect(response.body).toMatchObject({
       status: 'ok',
-      plan: 'PRO',
+      plan: 'BASIC',
       effectivePlan: 'PRO',
       subscription: null
     });

@@ -65,6 +65,11 @@ for both API and publishing workers. RevenueCat continues to own paid entitlemen
 trial expiry/revocation never edits the receipt, purchased plan or usage. This local
 ledger avoids promotional-entitlement/paid-overlap ambiguity and requires no new
 RevenueCat grant credentials. Trial access flags must be consistent on API/workers.
+Billing DTOs distinguish effective `plan` from `purchasedPlan`. Mobile store
+confirmation uses paid access only, including Starter purchases/restores beneath
+a Pro trial. The API requires an explicit compatible purchase-confirmation
+protocol during trial upgrades and preserves legacy paid resync semantics;
+ordinary AI recovery reloads effective capabilities.
 Closing the console flag does not revoke trials; turning off the trial flag does.
 
 Queries return bounded projections and stable pagination. Reports aggregate actual

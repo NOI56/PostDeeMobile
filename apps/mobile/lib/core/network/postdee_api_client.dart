@@ -2136,6 +2136,7 @@ class SubscriptionStatusResult {
   const SubscriptionStatusResult({
     required this.userId,
     required this.plan,
+    this.purchasedPlan,
     required this.status,
     this.monthlyPostLimit,
     this.usedPostsThisMonth,
@@ -2152,6 +2153,8 @@ class SubscriptionStatusResult {
 
   final String userId;
   final String plan;
+  // Separate verified paid access from effective access augmented by a trial.
+  final String? purchasedPlan;
   final String status;
   final int? monthlyPostLimit;
   final int? usedPostsThisMonth;
@@ -2172,6 +2175,7 @@ class SubscriptionStatusResult {
       SubscriptionStatusResult(
         userId: json['userId'] as String,
         plan: json['plan'] as String,
+        purchasedPlan: json['purchasedPlan'] as String?,
         status: json['status'] as String,
         monthlyPostLimit: json['monthlyPostLimit'] as int?,
         usedPostsThisMonth: json['usedPostsThisMonth'] as int?,
@@ -3065,7 +3069,9 @@ class PostDeeApiClient {
   }
 
   Future<void> prepareSubscriptionPurchase() async {
-    final response = await _postJson('/billing/purchase-readiness', {});
+    final response = await _postJson('/billing/purchase-readiness', {
+      'purchaseConfirmationProtocol': 2,
+    });
     if (response['status'] != 'ok' || response['purchaseReady'] != true ||
         response['preparationProtocol'] is! int || response['preparationProtocol'] != 1) {
       throw const ApiException('Purchase preparation is not supported by this API.', code: 'PURCHASE_READINESS_UNSUPPORTED');
@@ -3528,8 +3534,20 @@ class PostDeeApiClient {
   }
 
   Future<String> resyncRevenueCatSubscription() async {
+    return _resyncRevenueCatPlan(purchasedOnly: false);
+  }
+
+  Future<String> resyncRevenueCatPurchasedSubscription() async {
+    return _resyncRevenueCatPlan(purchasedOnly: true);
+  }
+
+  Future<String> _resyncRevenueCatPlan({required bool purchasedOnly}) async {
     final response = await _postJson('/billing/revenuecat/resync', const {});
-    final plan = response['plan'];
+    final plan = purchasedOnly && response.containsKey('purchasedPlan')
+        ? response['purchasedPlan']
+        : !purchasedOnly && response.containsKey('effectivePlan')
+            ? response['effectivePlan']
+            : response['plan'];
 
     if (plan is! String || plan.trim().isEmpty) {
       throw const ApiException(

@@ -240,7 +240,7 @@ void main() {
         final request = await server.first;
         expect(request.method, 'POST');
         expect(request.uri.path, '/billing/purchase-readiness');
-        expect(await _readJsonRequest(request), isEmpty);
+        expect(await _readJsonRequest(request), {'purchaseConfirmationProtocol': 2});
         _writeJsonResponse(request.response, readiness);
         await request.response.close();
       }();
@@ -2962,6 +2962,25 @@ void main() {
     }
   });
 
+  for (final paidPlan in ['STARTER', 'BASIC', 'legacy', 'invalid']) {
+    test('purchase resync reads paid plan beneath trial: $paidPlan', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      try {
+        final api = PostDeeApiClient(baseUrl: 'http://${server.address.address}:${server.port}');
+        final result = api.resyncRevenueCatPurchasedSubscription();
+        final expectation = paidPlan == 'invalid'
+            ? expectLater(result, throwsA(isA<ApiException>()))
+            : expectLater(result, completion(paidPlan == 'legacy' ? 'PRO' : paidPlan));
+        final request = await server.first;
+        expect(request.uri.path, '/billing/revenuecat/resync');
+        _writeJsonResponse(request.response, {'status':'ok','plan':'PRO',
+          if (paidPlan != 'legacy') 'purchasedPlan': paidPlan == 'invalid' ? null : paidPlan});
+        await request.response.close();
+        await expectation;
+      } finally { await server.close(force: true); }
+    });
+  }
+
   test('resyncRevenueCatSubscription posts to the authenticated backend route',
       () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -2984,7 +3003,9 @@ void main() {
 
       _writeJsonResponse(request.response, {
         'status': 'ok',
-        'plan': 'PRO',
+        'plan': 'BASIC',
+        'purchasedPlan': 'BASIC',
+        'effectivePlan': 'PRO',
       });
       await request.response.close();
 

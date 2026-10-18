@@ -242,13 +242,22 @@ export const registerBillingRoutes = (
 ) => {
   const config = options.config ?? defaultBillingRoutesConfig;
 
-  router.post('/billing/purchase-readiness', authMiddleware, async (_request, response) => {
+  router.post('/billing/purchase-readiness', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
     if (!authUser) {
       response.status(401).json({ status: 'error', message: 'Authenticated user is required' });
       return;
     }
     await userStore.ensure(authUser);
+    if (subscriptionStore.getPurchasedPlan) {
+      const effective = await subscriptionStore.getPlan(authUser);
+      const purchased = await subscriptionStore.getPurchasedPlan(authUser);
+      if (effective !== purchased && request.body?.purchaseConfirmationProtocol !== 2) {
+        response.status(409).json({ status: 'error', code: 'PURCHASE_READINESS_UNSUPPORTED',
+          message: 'Update the app to confirm a purchase separately from trial access.' });
+        return;
+      }
+    }
     response.json({ status: 'ok', purchaseReady: true, preparationProtocol: 1 });
   });
 
@@ -274,12 +283,12 @@ export const registerBillingRoutes = (
 
     response.json({
       status: 'ok',
-      subscription: buildSubscriptionStatus({
+      subscription: { ...buildSubscriptionStatus({
         userId: authUser.id,
         plan,
         phoneVerified: authUser.phoneVerified === true,
         usedPostsThisMonth
-      })
+      }), ...(subscriptionStore.getPurchasedPlan ? { purchasedPlan: await subscriptionStore.getPurchasedPlan(authUser) } : {}) }
     });
   });
 

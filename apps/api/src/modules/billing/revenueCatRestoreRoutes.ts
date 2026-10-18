@@ -165,9 +165,11 @@ export const registerRevenueCatRestoreRoutes = ({
             eventTimestampMs: observedAtMs
           });
           const effectivePlan = await subscriptionStore.getPlan(authUser);
+          const purchasedPlan = await subscriptionStore.getPurchasedPlan?.(authUser);
           response.json({
             status: 'ok',
-            plan: effectivePlan,
+            plan: eventResult.applied ? 'BASIC' : purchasedPlan ?? effectivePlan,
+            purchasedPlan,
             effectivePlan,
             subscription: eventResult.subscription
           });
@@ -190,10 +192,13 @@ export const registerRevenueCatRestoreRoutes = ({
           currentPeriodEnd
         });
         const effectivePlan = await subscriptionStore.getPlan(authUser);
+        const purchasedPlan = await subscriptionStore.getPurchasedPlan?.(authUser);
 
         response.json({
           status: 'ok',
-          plan: effectivePlan,
+          plan: eventResult.applied ? paidPlan.plan : purchasedPlan ?? effectivePlan,
+          purchasedPlan,
+          effectivePlan,
           subscription: eventResult.subscription
         });
       } catch (error) {

@@ -47,6 +47,9 @@ export type ApplyRevenueCatEventResult = {
 
 export type SubscriptionStore = {
   getPlan: (authUser: AuthUser) => Promise<SubscriptionPlan>;
+  // Available when effective access is decorated with a separate trial ledger.
+  // Purchase confirmation must use paid access, never a trial's capabilities.
+  getPurchasedPlan?: (authUser: AuthUser) => Promise<SubscriptionPlan>;
   activatePlan: (
     authUser: AuthUser,
     plan: PaidSubscriptionPlan,

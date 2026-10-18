@@ -69,10 +69,17 @@ Errors expose a safe `code`, including `ADMIN_OWNER_REQUIRED` (403),
 `ADMIN_MEMBER_NOT_FOUND` (404), and `ADMIN_TRIAL_UNAVAILABLE` (503, retry same UUID).
 
 When `TRIAL_ACCESS_ENABLED=true`, normal billing/subscription and capability gates
-return the higher valid paid/trial plan. RevenueCat resync `plan` also returns this
-effective plan (including valid paid access from another verifier); its `subscription`
-remains the purchased RevenueCat result. Paid receipts and usage counters are not
-rewritten by trial grants. See [deployment and data boundaries](docs/ADMIN_CONSOLE.md).
+return the higher valid paid/trial `plan`, with a separate `purchasedPlan` for
+purchase confirmation. RevenueCat resync retains its legacy paid `plan`, adds
+`effectivePlan` for access and `purchasedPlan` when trials are enabled; its
+`subscription` remains the purchased RevenueCat result. Mobile AI recovery reloads
+current access, while billing confirmation polls the purchased plan. A trial is
+never accepted as evidence of a store purchase. Purchase readiness retains its
+`preparationProtocol:1` acknowledgement; clients must send
+`purchaseConfirmationProtocol:2` before buying when effective access exceeds paid
+access. Older clients receive `PURCHASE_READINESS_UNSUPPORTED` (409) before payment.
+Paid receipts and usage counters are not rewritten by trial grants. See
+[deployment and data boundaries](docs/ADMIN_CONSOLE.md).
 
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 

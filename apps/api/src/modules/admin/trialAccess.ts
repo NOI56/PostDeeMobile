@@ -73,6 +73,7 @@ export const createMemoryTrialAccessStore = ({ now = () => new Date() }: { now?:
 export const withTrialAccess = (paid: SubscriptionStore, trials: Pick<TrialAccessStore, 'find'>,
   now: () => Date = () => new Date()): SubscriptionStore => ({
   ...paid,
+  getPurchasedPlan: user => paid.getPurchasedPlan ? paid.getPurchasedPlan(user) : paid.getPlan(user),
   getPlan: async user => {
     const purchased = await paid.getPlan(user);
     const trial = activeTrial(await trials.find(user.id), now());

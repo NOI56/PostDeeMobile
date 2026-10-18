@@ -57,6 +57,8 @@ API and publishing workers use the higher valid plan; expiry/revocation preserve
 paid access and existing usage. RevenueCat remains responsible for paid purchases.
 The additive trial migration and existing platform-enum history reconciliation
 must precede enabling trial access on API **and workers**.
+Update Mobile purchase confirmation before granting customer trials; it reads the
+separate purchased plan rather than treating trial access as proof of a purchase.
 This implementation is not deployed. Configuration, the local fixture preview and
 report limitations are in [the admin guide](docs/ADMIN_CONSOLE.md); implementation
 and verification evidence are in [the plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).

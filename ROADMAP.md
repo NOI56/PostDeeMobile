@@ -56,6 +56,8 @@ Build roadmap for PostDee.
   exact HTTPS origin, migration and flags on API/workers, followed by authenticated
   staging acceptance. Report estimates require operator-supplied rates; conversion
   attribution and invoicing are outside this version.
+- Update Mobile billing to confirm purchased access independently of trials and
+  gate legacy purchase preparation during a trial upgrade before customer rollout.
 
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 

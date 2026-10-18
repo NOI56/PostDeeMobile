@@ -2,6 +2,23 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Trial access and purchase confirmation (2026-10-18, local implementation)
+
+Effective subscription `plan` controls features and may include an administrator
+trial; optional `purchasedPlan` is used only to confirm a paid store purchase.
+RevenueCat purchase/restore polling cannot treat a Pro trial as a paid Pro receipt
+and can confirm paid Starter while retaining effective Pro access. The purchase
+resync client reads paid metadata separately from AI recovery, preserving the
+original session binding. Older API responses without the new field retain the
+existing behavior.
+
+Purchase preparation advertises `purchaseConfirmationProtocol:2`; acknowledgement
+remains `preparationProtocol:1`. New APIs gate incompatible clients before buying
+when a trial raises access above the purchased plan. Deploy the API and applicable
+workers before this Mobile update, and use compatible Mobile before giving
+customer trials. No real purchase, administrator grant, deployment or installation
+is part of this local implementation. See the [admin guide](../../docs/ADMIN_CONSOLE.md).
+
 ## Unified publishing settings (2026-10-18, Android Staging delivered)
 
 All four settings sheets share a logo/account header, grouped controls, adaptive

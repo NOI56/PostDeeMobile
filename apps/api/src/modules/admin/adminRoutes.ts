@@ -23,7 +23,7 @@ export const registerAdminConsole = (app: Express, options: Options) => {
   root.use((_req, res, next) => {
     res.set('Cache-Control', 'private, no-store'); res.set('Referrer-Policy', 'no-referrer');
     res.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
-    res.set('Content-Security-Policy', `default-src 'self'; script-src 'self' https://www.gstatic.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src https://${config.firebaseWeb.authDomain} https://accounts.google.com; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`);
+    res.set('Content-Security-Policy', `default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self'; img-src 'self' data:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src https://${config.firebaseWeb.authDomain} https://accounts.google.com; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`);
     next();
   });
   root.get(['/', ''], async (_req, res) => res.type('html').send(await readFile(new URL('./web/admin.html', import.meta.url), 'utf8')));

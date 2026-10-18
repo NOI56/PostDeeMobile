@@ -69,6 +69,11 @@ describe('private administrator console', () => {
   it('serves a restrictive CSP and only public Firebase configuration', async () => {
     const { app } = setup(); const page = await request(app).get('/admin');
     expect(page.status).toBe(200); expect(page.headers['content-security-policy']).toContain("object-src 'none'");
+    const scriptSources = String(page.headers['content-security-policy']).split(';')
+      .find(directive => directive.trim().startsWith('script-src '))!.trim().split(/\s+/).slice(1);
+    // Firebase's popup resolver loads Google's api.js before opening the sign-in window.
+    expect(scriptSources).toContain('https://apis.google.com');
+    for (const unsafe of ['*', "'unsafe-inline'", "'unsafe-eval'"]) expect(scriptSources).not.toContain(unsafe);
     const boot = await request(app).get('/admin/config');
     expect(boot.body).not.toHaveProperty('ownerUids'); expect(boot.body).not.toHaveProperty('viewerUids');
   });

@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Publishing activity (2026-10-18, source verified; APK blocked)
+## Publishing activity (2026-10-18, Android Staging delivered)
 
 The selected variant 3 adds a shared sending badge, indeterminate rail and real
 per-channel delivery row to Home, Calendar and post detail. Each post uses one
@@ -21,8 +21,12 @@ current and the same signed-in owner. Calendar retains its existing visible
 parent list and reopen it to see new results. No API, schema, dependency, flag,
 entitlement or migration changes are required. Targeted tests pass 145/145; the
 full Flutter suite passes 2,437 with two optional previews skipped, and analysis
-reports no issues. The Staging APK build is blocked by local tooling/resources;
-APK inspection and native installation remain unverified. See the
+reports no issues. Release CI repeats those checks and builds Staging APK 12026
+with the existing Test Store configuration. Local signing and the guarded update
+preserve the account, drafts, Pro quota and adopted volume; Home, Calendar,
+existing detail and Account smoke checks pass. Staging API is Live with the same
+API runtime as the release candidate. Native active-sending/FPS and a new provider
+publication remain unverified because no real sending post was created. See the
 [plan and verification record](docs/superpowers/plans/2026-10-18-publishing-motion.md).
 
 ## YouTube title from shared caption (2026-10-18, local implementation)

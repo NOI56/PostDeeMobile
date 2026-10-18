@@ -1567,8 +1567,13 @@ polling. Post detail remains a navigation snapshot; refresh its parent and reope
 it for new results. No single-post GET, response field, schema, flag, dependency,
 entitlement or migration is added. Mobile targeted tests pass 145/145, full
 Flutter passes 2,437 with two optional previews skipped, and analysis has no
-issues. The Staging APK build is blocked by local tooling/resources, so APK
-inspection and native installation remain unverified. See the
+issues. Release CI builds APK 12026 with the existing Test Store settings; APK
+inspection, guarded native update and read-only screen smoke checks pass.
+Staging deploy `dep-dba83jqjnfac73enqm40` is Live at `1cf755e`, whose API tree is
+identical to release candidate `5c83b3a`; it also delivers main's earlier
+backward-compatible YouTube-title route fix. No new migrations are required;
+startup reports 20 migrations and none pending, and health/readiness return 200.
+New provider publication and native active-sending/FPS are not claimed. See the
 [publishing-motion plan](docs/superpowers/plans/2026-10-18-publishing-motion.md).
 
 ### Account mutation boundary for stateful reads

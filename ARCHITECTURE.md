@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Publishing activity boundary (2026-10-18, source verified; APK blocked)
+## Publishing activity boundary (2026-10-18, Android Staging delivered)
 
 `PostDeePublishingMotion` owns one animation controller per post scope, shared
 by the sending badge, indeterminate rail and sending-channel icons in Home,
@@ -19,8 +19,12 @@ Detail receives a snapshot; its parent must refresh and reopen it for a newer
 result because there is no single-post GET. No API, schema, dependency, flag,
 entitlement or migration changes. Targeted tests pass 145/145; full Flutter
 passes 2,437 with two optional previews skipped, and analysis has no issues.
-Local tooling/resources block the Staging APK build; APK inspection and native
-installation remain unverified. See the
+The local tooling blocker was resolved for delivery through opt-in CI Test Store
+defines and build number 12026; private configuration and signing keys stay local.
+The inspected APK was signed locally and updated on the existing adopted volume.
+Home/Calendar/detail/Account smoke checks preserve the account and Pro quota.
+Native active-sending/FPS and new provider publication are not inferred from
+terminal-post smoke checks. See the
 [implementation plan](docs/superpowers/plans/2026-10-18-publishing-motion.md).
 
 ## YouTube automatic-title boundary (2026-10-18, local implementation)

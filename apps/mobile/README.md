@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Publishing activity (2026-10-18, source verified; APK blocked)
+## Publishing activity (2026-10-18, Android Staging delivered)
 
 Selected variant 3 combines the shared sending badge, indeterminate rail and
 per-channel delivery results in Home, Calendar and detail. One guarded clock per
@@ -17,9 +17,12 @@ visible `QUEUED`/`PUBLISHING` polling. Detail is a snapshot: refresh the parent
 list and reopen it for newer results; there is no single-post GET. No API,
 schema, dependency, flag, entitlement or migration changes. Targeted tests pass
 145/145; full Flutter passes 2,437 with two optional previews skipped, and
-analysis reports no issues. The Staging APK build is blocked by local
-tooling/resources; APK inspection and native installation remain unverified.
-See the
+analysis reports no issues. CI builds Staging 12026 with the existing Test Store
+configuration after repeating the suite and 17 build-guard tests. APK inspection,
+local signing and the guarded adopted-volume update pass; Home, Calendar,
+existing detail and Account retain Pro 244/250, drafts and connected channels.
+The compatible API is Live. There was no new provider post or native active-sending
+FPS measurement. See the
 [plan and verification record](../../docs/superpowers/plans/2026-10-18-publishing-motion.md).
 
 ## Automatic YouTube title (2026-10-18, local implementation)

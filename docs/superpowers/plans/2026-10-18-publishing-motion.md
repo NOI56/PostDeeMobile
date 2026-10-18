@@ -1,10 +1,11 @@
 # Publishing activity: shared motion and real channel results
 
-สถานะ: SOURCE VERIFIED / NATIVE BUILD BLOCKED — targeted/full Flutter tests and
-analysis pass. Local tooling/resources prevent a verified Staging APK; package
-inspection, installation and native acceptance remain unverified. Delivery is
-incomplete. The user subsequently authorized push/deploy; release verification
-is in progress, with no native delivery claimed yet.
+สถานะ: ANDROID STAGING DELIVERED — release source `5c83b3a` passes CI and builds
+APK 12026 with the existing Test Store settings. APK inspection, local signing,
+guarded update and read-only native smoke pass. The compatible API is Live.
+The earlier local build blocker below is historical; CI resolved delivery without
+changing local SDKs or clearing user data. Active-sending/FPS and a new provider
+publication remain unverified.
 
 ## Request and verified baseline
 
@@ -18,8 +19,9 @@ is in progress, with no native delivery claimed yet.
   Root verified fresh origin before implementation.
 - Source-worktree Windows generated-plugin status is line-ending metadata only,
   with no actual source diff. The three original dirty generated-plugin files
-  in the canonical `D:\PostDeeMobile` checkout remain untouched, as does unrelated
-  work. No reset, wholesale branch copy or deleted capability.
+  in the original `D:\PostDeeMobile` checkout and canonical main worktree remain
+  untouched, as does unrelated work. No reset, wholesale branch copy or deleted
+  capability.
 - Earlier motion receipts remain historical:
   [Oct12 audit](2026-10-12-mobile-motion-smoothness-audit.md) and
   [Oct13 integration](2026-10-13-main-motion-audit-integration.md).
@@ -53,7 +55,7 @@ is in progress, with no native delivery claimed yet.
   publishing actions, media access, authentication and entitlement behavior.
   No API/schema/dependency/flag/configuration/entitlement change or migration.
 
-## Tests-first evidence and verification boundary
+## Initial local checkpoint: tests-first evidence and verification boundary
 
 Regression tests were written before runtime patches. Root's initial Home RED
 showed that a `PUBLISHING` post with partial provider results could display a
@@ -87,7 +89,7 @@ included in the passing final results. Analysis required one braces-only lint
 fix before its passing run. No FPS improvement or real provider publication is
 inferred from widget tests.
 
-## Native build blocker and environment boundary
+## Initial local native build blocker and environment boundary
 
 The first Staging helper build failed because the Dart VM could not start
 thread `DartWorker` (error 22) during the `objective_c` native-assets hook. It reported
@@ -128,19 +130,17 @@ Regression tests:
 
 ## Documentation scope
 
-Sync only `README.md`, `ROADMAP.md`, `API.md`, `ARCHITECTURE.md`,
-`apps/mobile/README.md` and this plan. Earlier release receipts remain intact.
-The automated source checks pass; native build/delivery remains incomplete.
-The subsequent push/deploy request authorizes release work. A feature-branch
-checkpoint can preserve the verified source while exact Staging build and
-installed-app verification remain pending; do not infer native delivery from a
-source push or from an API deploy.
+The initial implementation syncs `README.md`, `ROADMAP.md`, `API.md`,
+`ARCHITECTURE.md`, `apps/mobile/README.md` and this plan. The authorized release
+also updates `docs/STAGING.md` and the opt-in CI build instructions. Earlier
+receipts remain intact. Native delivery is established by the actual release
+checks below, not by a source push or an API deploy alone.
 
 ## Authorized release follow-up
 
 The user requested `push/deploy` after reviewing the source-verification result.
-Fresh `origin/main` remains `1cf755e`; only the intended publishing changes are
-being prepared. Native release verification is a gate before merging to main.
+Fresh `origin/main` was `1cf755e`; only the intended publishing changes were
+prepared. Native release verification was a gate before main integration.
 
 - A further read-only audit matched 531 Mobile runtime/test/asset/platform/tool
   inputs against the verification manifest with zero mismatches.
@@ -157,14 +157,91 @@ being prepared. Native release verification is a gate before merging to main.
   original app UID and adopted volume. Candidate build 12026 must use the guarded
   volume-aware updater. No uninstall, data clearing or cross-volume move is
   authorized or needed.
-- The current live API is `fc457b2` / `dep-dba64iqjnfac73egt8i0` in the previously
+- The previous live API was `fc457b2` / `dep-dba64iqjnfac73egt8i0` in the previously
   confirmed My Workspace. Unlike the motion feature itself, main's earlier
   `ce501d4` YouTube-title follow-up includes a backward-compatible post-route
-  change absent from Live. Release will incorporate that already-reviewed change
-  after checks pass. There is no schema, dependency or environment-variable diff.
+  change absent from that Live version. The release incorporates that reviewed
+  change after checks pass. There is no schema, dependency or environment-variable
+  diff.
 - Pre-deploy `/health` and `/ready` return 200 with database/queue ok; unauthenticated
   posts and publishing-readiness reads return 401. No provider post, purchase,
-  user-data change or Production deployment is part of the checks.
+  user-content edit or Production deployment is part of the checks.
 
-CI, APK inspection, native update/smoke, final main/push and Render outcomes are
-pending and must be recorded from actual results before delivery is claimed.
+## Verified release results
+
+- Feature source `5c83b3a91625a3c5ab3ddfe58f17c895fc8347c5` is pushed on
+  `codex/publishing-motion`. [CI 39110380204](https://github.com/NOI56/PostDeeMobile/actions/runs/39110380204)
+  succeeds at that exact source/workflow SHA: Flutter 2,437 pass/2 optional skips,
+  analyze with no issues (13.6 s), CI build/receipt guards 17/17, API 2,291 pass/18
+  optional skips, generator 22/22, TypeScript, build, Prisma and production
+  dependency audit. The CI SDK is Flutter 3.47.7 / Dart 3.13.5, distinct from the
+  initial local 3.44.1 / 3.12.1 checks.
+- The CI helper retains default billing-off behavior. This release explicitly
+  opts into the existing Android Test Store public SDK key and build 12026.
+  Expected and actual merged-defines SHA-256 match:
+  `fa0491fa29b90c2f22e66e98162aa55f9ac7ca932df0abcf11f73a19ed4de6ae`.
+  The helper and workflow receipt tests cover invalid configuration/key/build
+  numbers, value redaction, actual APK identity/version and hashes. Key values
+  are not printed in logs; standalone merged configuration and private signing
+  keys are not uploaded. The public SDK key is necessarily embedded in the APK.
+- Actual APK identity is `com.postdee.postdee_mobile.staging`, min SDK 24 / target
+  36. Resources match Firebase project `project-798caf7e-85b8-45e3-af7`; the kernel
+  contains the Staging API, existing public SDK key and motion/platform-row code
+  (checked as booleans only). Firebase auth is on, local mock auth and existing
+  experimental AI/beat-sync flags are off. Billing is Test Store only.
+- Original CI APK: 286,199,022 bytes, SHA-256
+  `94e7f9bcc842f5d21f20ba67b6fcd46edb5be384e20da023d622ccab8fe57314`.
+  Locally signed APK: 286,278,426 bytes, SHA-256
+  `96dde68bd1807a1a10f47952175607d344a4bdc3a1320b3700682cf9c0229db8`.
+  All 857 ZIP entry payload hashes match before/after signing, with none skipped;
+  16 KiB alignment and v2/v3 signatures pass. The signer is the existing local
+  debug certificate, SHA-256
+  `014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+- [Render deploy dep-dba83jqjnfac73enqm40](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dba83jqjnfac73enqm40)
+  is Live at `1cf755eba9b156f95bb818eb2d5ee7fb7c0efd86` from 15:24:35 Asia/Bangkok.
+  It precedes APK installation. Its `apps/api` tree
+  `14d236436b6e9aa16d02b91cc365f8a53d3f0a94` exactly matches candidate `5c83b3a`;
+  no repeat API deploy is needed for the later Mobile/documentation integration.
+  Auto-deploy remains off; service plan, secrets, flags, network and Production
+  remain untouched. Startup reports 20 migrations and none pending. Post-live
+  `/health` and `/ready` return 200 with DB/queue ok, unauthenticated posts and
+  publishing-readiness return 401, and recent app error logs contain zero entries.
+- A fresh authenticated admin overview at 15:22 shows only 2 failed, 1 partial
+  and 8 completed posts. Its full status grouping has no queued/publishing rows.
+  Direct MCP SQL is unavailable because the database blocks external access;
+  the local CLI is unauthenticated. Neither restriction was changed. Migration
+  state is confirmed by the successful internal deployment log, not direct SQL.
+- Guarded update 12025 → 12026 succeeds on `emulator-5556`, retaining UID 10190,
+  the mounted adopted volume and original 2026-10-05 first-install date. Existing
+  certificate hash and package metadata remain consistent. No uninstall, data
+  clearing, volume migration or downgrade. Android mount restrictions prevent a
+  fresh byte hash of the installed APK; candidate payload/signature verification
+  and the guarded package update are the installation evidence.
+- Native smoke passes Home → Calendar/all week → Shorts filter → existing detail
+  → Account → Home. Pro 244/250, saved draft, 2/4 connected channels and history
+  remain present. Calendar shows 4 week posts / 2 Shorts-filter posts and the
+  selected Oct 18 post. Existing detail preserves TikTok live / YouTube private
+  labels and shows no sending rail for terminal results. The first entitlement
+  read temporarily failed; one read-only refresh restored Pro on Home and Account.
+  Its cause is unconfirmed; no entitlement/token/account change was made.
+- The 907-line native crash-log slice has zero fatal, unhandled, E/Flutter or
+  crash matches. The app is left on Home. No real post, AI generation, purchase,
+  draft save or deletion was performed. No genuine `PUBLISHING` record existed,
+  so active animation/FPS on native and provider acceptance are not claimed.
+  Detail remains a snapshot: return to the refreshed parent and reopen it for
+  newer results.
+- Generated Python cache is preserved under the task evidence directory, rather
+  than staged in Git. Only intended source/test/CI/documentation changes are
+  integrated; pre-existing generated-plugin metadata and unrelated artifacts are
+  retained. The documentation receipt does not alter the verified runtime;
+  remote main identity is checked again after the authorized fast-forward/push.
+
+Local evidence: `D:\PostDeeMobile\artifacts\publishing-motion-20261018`, including
+`ci-39110380204.json`, `ci-39110380204.log`, `api-staging-delivery.json`,
+`post-deploy-http.json`, `native-apk-verification.json`, `native-update.json`,
+`native-final-receipt.json`, `native-crash-counts.json` and native screenshots.
+
+Additional delivery tooling: `.github/workflows/ci.yml`,
+`scripts/prepare_staging_ci_defines.py`, `scripts/test_prepare_staging_ci_defines.py`
+and `docs/STAGING.md` (19 files in the runtime/CI checkpoint). The final receipt
+only updates documentation and preserves the verified Mobile and API trees.

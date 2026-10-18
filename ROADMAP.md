@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Publishing activity (2026-10-18, source verified; APK blocked)
+## Publishing activity (2026-10-18, Android Staging delivered)
 
 - Implement selected variant 3 in Home, Calendar and detail: one motion clock
   per post drives the sending badge, indeterminate rail and sending channel
@@ -15,9 +15,12 @@ Build roadmap for PostDee.
 - Preserve reduced-motion/ticker/lifecycle guards and delivery-outcome truth.
   No API, schema, dependency, flag, entitlement or migration changes. Targeted
   tests pass 145/145; full Flutter passes 2,437 with two optional previews
-  skipped, and analysis has no issues. Local tooling/resources block the
-  Staging APK build; package inspection and native installation remain
-  unverified. Delivery is incomplete; see the
+  skipped, and analysis has no issues. Release CI repeats the suite, tests 17
+  configuration/receipt guards and builds APK 12026 with the existing Test Store
+  settings. APK inspection, local signing, guarded update and native
+  Home/Calendar/detail/Account smoke checks pass with retained user data.
+  The compatible Staging API is Live. Native active-sending/FPS and new provider
+  publication remain outside these read-only checks; see the
   [implementation plan](docs/superpowers/plans/2026-10-18-publishing-motion.md).
 
 ## YouTube title from shared caption (2026-10-18, local implementation)

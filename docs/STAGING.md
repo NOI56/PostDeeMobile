@@ -1,5 +1,33 @@
 # PostDee Staging
 
+## ส่งมอบลูกเล่นระหว่างส่งโพสต์ แบบ 3 — 18 ตุลาคม 2026
+
+- Runtime/CI source `5c83b3a` บนฐาน `main` ที่ตรวจล่าสุด `1cf755e` ผ่าน
+  [CI 39110380204](https://github.com/NOI56/PostDeeMobile/actions/runs/39110380204):
+  Flutter 2,437 pass/2 optional skips, analyze, build-guard 17 tests, API 2,291
+  pass/18 optional skips, generator 22 tests, TypeScript/build/Prisma/audit
+- ใช้ opt-in Test Store และ build number 12026 เพื่อข้ามปัญหา Flutter ในเครื่อง
+  โดยคงค่าบัญชี/แพ็กเกจเดิม ตรวจ APK จริงและเซ็นด้วย debug key เดิมในเครื่อง
+  ZIP payload ทั้ง 857 รายการตรงกันก่อน/หลังเซ็น ไม่มี private key/config ส่งขึ้น CI
+- [API deploy dep-dba83jqjnfac73enqm40](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dba83jqjnfac73enqm40)
+  เป็น Live ที่ `1cf755e` เวลา 15:24:35 GMT+7 ก่อนติดตั้ง APK โค้ด API ตรงกับ
+  candidate `5c83b3a` และ main ที่รวมเฉพาะ Mobile/receipt ในภายหลัง จึงไม่ต้อง
+  deploy API เดิมซ้ำ รุ่นนี้นำ route fix ชื่อ YouTube จาก main ไปใช้ด้วย ไม่มี migration ใหม่
+- Startup ยืนยัน 20 migrations ไม่มี pending; health/ready ตอบ 200 พร้อม DB/queue
+  ok และ unauthenticated posts/publishing-readiness ตอบ 401 ไม่พบ app error ใหม่
+  ค่า service/flags/secrets/network/auto-deploy และ Production ไม่เปลี่ยน
+- อัปเดต emulator `12025` → `12026` ผ่าน volume-aware helper สำเร็จ รักษา UID,
+  adopted volume, first-install, บัญชี, ร่าง, ช่องทาง 2/4 และ Pro 244/250 ทั้ง Home
+  กับ Account ตรวจ Home/Calendar/filter/รายละเอียดเดิม/Account และกลับ Home ผ่าน
+  ไม่พบ fatal/unhandled/E Flutter/crash ใน log 907 บรรทัด
+- ครั้งแรกอ่านแพ็กเกจไม่สำเร็จ แต่ read-only refresh หนึ่งครั้งกลับมา Pro ตามเดิม
+  สาเหตุยังไม่ยืนยัน ไม่แก้สิทธิ์/บัญชี ไม่มีการส่งคลิป ซื้อ สร้าง AI หรือบันทึกฟอร์ม
+  ไม่มีโพสต์กำลังส่งจริง จึงยังไม่ยืนยัน active animation/FPS บน native รอบนี้
+  รายละเอียดโพสต์ยังต้องเปิดใหม่หลัง parent refresh เพื่อดูผลที่ใหม่ขึ้น
+- [แผนและหลักฐาน](superpowers/plans/2026-10-18-publishing-motion.md) ระบุ source,
+  SDK/config/APK/signature hashes และข้อจำกัดครบ เก็บหลักฐานที่
+  `artifacts/publishing-motion-20261018` ในเครื่อง ไม่ใส่ artifacts เข้า Git
+
 ## ส่งมอบ account deletion authorization — 14 ตุลาคม 2026
 
 - ผู้ใช้อนุญาต main/push/deploy หลังแก้ช่องทาง retry ลบบัญชี Source เริ่มจาก

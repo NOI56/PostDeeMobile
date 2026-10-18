@@ -1,5 +1,9 @@
 # PostDee administrator console and trial access
 
+Latest delivery: admin UX source `50fba5e` is Live on Staging at 12:32 Bangkok,
+18 October 2026 (`dep-dba5im61egvs739eoteg`). API and Flutter CI `39100690775`
+passed. See the final release receipt for exact verification and remaining limits.
+
 ## Authorization and baseline
 
 The user approved implementation of the seven Thai administrator views and the
@@ -415,3 +419,51 @@ This source is not merged/pushed/deployed. Staging remains `349e6c3` /
 credential, IAM policy or environment was changed. Live grant/extend/revoke,
 nonempty CSV, ordinary-user denial and Mobile trial refresh still require their
 separate acceptance checks. Flutter was not rerun because no Mobile file changed.
+
+## Admin UX push and Staging delivery (2026-10-18, 12:32 Bangkok)
+
+The user explicitly requested push/deploy. Fetched main was still `790cb22`,
+identical to the implementation baseline. Committed the reviewed 11-file change
+as `50fba5e81f2bb4fad966d1aa64f78e26e7025e7b`, pushed the feature branch and
+fast-forwarded remote main without force or touching other dirty worktrees.
+
+Verified the user-confirmed My Workspace (`tea-d45nsamuk2gs73cmhol0`), service
+`postdee-api-staging` / `srv-d9bb72ojs32c739osa5g`, repo/branch/root and existing
+build/start commands. Auto-deploy was off, so triggered one manual deploy of
+main through Render MCP after Backend API CI passed. Returned commit matched
+`50fba5e`. No service setting, env var, credential or database allowlist changed.
+Pre-deploy owner overview had no QUEUED/PUBLISHING posts. Production was untouched.
+
+Deployment `dep-dba5im61egvs739eoteg` became **live** at
+`2026-10-18T05:32:00Z` (12:32 Bangkok). Logs confirm no pending migrations, empty
+publishing backlog, API listening on 10000 and the existing in-process memory
+publish scheduler started. Runtime public configuration still identifies STAGING
+and Firebase `project-798caf7e-85b8-45e3-af7`, with no preview token.
+
+Post-live checks:
+
+- `/health`, `/ready`, `/admin`, `/admin/config` and both admin assets returned 200;
+  readiness reported database/queue OK. Unauthenticated `/admin/api/session`
+  remained 401. Admin no-store and Google popup helper CSP allowance remain intact.
+- Runtime JS/CSS bytes match the Git release commit exactly (Unix line endings):
+  JS SHA256 `3e9189874e57224a4f06197e5db3b4c095acdd37fae364f5209c7838791ddfd4`;
+  CSS SHA256 `901674b2bad724e424a53a263fd054ec705686f8558d5f759fb56a0d821c090b`.
+- Existing authenticated owner session loaded Thai overview with members 3,
+  paid-active 0, trial-active 0, FAILED 2, PARTIAL 1, delivered 7. Posts loaded 10
+  rows, including 2 explicit TikTok Inbox draft results and 5 legacy missing-
+  outcome results. Returned the existing owner tab to Overview. Screenshot:
+  Windows Temp `postdee-admin-ux-staging-overview.png` (outside Git).
+- CI https://github.com/NOI56/PostDeeMobile/actions/runs/39100690775 completed
+  success for Backend API and Flutter Mobile. APK build/upload were correctly
+  skipped on this push; no Mobile source changed and no app install was needed.
+- A separate fresh Chrome login opened Google's account chooser, but automated
+  account selection did not finish before cancellation. Closed only those two
+  new test tabs and preserved the existing owner session. Do not count this as
+  successful fresh login or live verification of the new member/empty-state UI;
+  those interactions were verified with local fixtures and release assets match.
+
+No real trial/subscription/post/audit mutation was made. Remaining acceptance:
+fresh owner login and new member/empty-state UI on live data, authorized real
+grant/extend/revoke, nonempty live CSV, live ordinary-user denial and Mobile trial
+refresh. The subsequent documentation-only receipt commit does not change the
+runtime and does not require a second deploy or another test-suite run.

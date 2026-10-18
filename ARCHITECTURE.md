@@ -65,11 +65,15 @@ owner sign-in and all seven live read-only data views pass, including search,
 post filters and trial-form validation/review/cancel. Real trial writes, nonempty
 CSV export and live ordinary-user denial remain separate acceptance checks.
 
-The local UX follow-up only changes presentation: Thai stored-result labels,
+The UX follow-up only changes presentation: Thai stored-result labels,
 neutral member inspection before explicit trial actions, and view-specific empty
 states. It preserves routes, enum filters, auth/CSP, trial commands, paid-access
 separation and database schema. Draft delivery is not labelled publication, and
-missing outcome data remains unconfirmed. This follow-up is not yet deployed.
+missing outcome data remains unconfirmed. Source `50fba5e` is Live in
+`dep-dba5im61egvs739eoteg`, with API/Flutter CI `39100690775` successful.
+HTTP/readiness, exact JS/CSS hashes and the existing owner's overview/post reads
+pass. Fresh owner sign-in into the new UI remains a separate check; no trial or
+paid-access write was made during deployment.
 
 `AdminTrialAccess` stores one current expiring trial per existing User;
 `AdminTrialAudit` stores append-only command intents and before/after snapshots.

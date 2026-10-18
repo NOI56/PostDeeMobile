@@ -37,7 +37,7 @@ Evidence:
 
 ## Private administrator API (2026-10-18, disabled by default)
 
-Source `349e6c3` is Live on Staging in `dep-dba4v57btjjs73dqde2g`. Both new
+Source `50fba5e` is Live on Staging in `dep-dba5im61egvs739eoteg`. Both additive
 migrations applied earlier; health/readiness, `/admin`, assets and public config
 return HTTP 200. The read-only Firebase credential is installed and administrator/
 trial flags are enabled. Unauthenticated `/admin/api/session` returns 401.
@@ -45,6 +45,10 @@ Manual Google owner sign-in and all seven authenticated read-only views pass.
 Member search/detail, post status/platform/UTC-date filters and the unsaved trial
 review flow were exercised against live data. Real trial mutations, nonempty
 CSV and live ordinary-user denial remain unverified; no member trial was granted.
+Post-deploy API/Flutter CI `39100690775` passed. Health/readiness and exact admin
+JS/CSS release hashes pass; the existing owner session verified Thai overview and
+draft/legacy-unknown channel results. Fresh owner login into the new UI remains
+unverified in this deploy receipt; member actions/empty states passed local QA.
 
 `ADMIN_CONSOLE_ENABLED=true` registers `/admin`, its static assets and public
 Firebase Web configuration. No data endpoint is public: `/admin/api/*` requires
@@ -66,7 +70,7 @@ CSV. Search text stays in POST bodies rather than URLs. Reports cover each membe
 latest trial interval, account-wide recorded usage and optional estimated USD costs;
 they are not invoices or proof of paid conversion.
 
-Local admin UX follow-up (not deployed): overview `label`, post `channels` and
+Staging admin UX follow-up (`50fba5e`): overview `label`, post `channels` and
 `failureReason` are Thai presentation strings. Post `status` and status/platform
 filter enum values retain their existing contract. Successful delivery may be a
 draft: `DRAFT` explicitly means not yet published; `PRIVATE`/`UNLISTED` keep their

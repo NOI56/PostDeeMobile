@@ -51,7 +51,7 @@ Build roadmap for PostDee.
   behind target account deletion fences. Keep all flags disabled by default.
 - Local implementation and fixture/database/browser verification are recorded in
   [the implementation plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).
-  Source `349e6c3` is Live on Staging with both migrations and healthy HTTP checks;
+  Source `50fba5e` is Live on Staging with both earlier migrations and healthy HTTP checks;
   the read-only Firebase credential is installed and both flags are enabled in
   its API/memory-queue process. Owner identity, Web app and sign-in domain are configured.
 - Manual Google owner sign-in and all seven live read-only views now pass, with
@@ -63,12 +63,14 @@ Build roadmap for PostDee.
   attribution and invoicing are outside this version.
 - Update Mobile billing to confirm purchased access independently of trials and
   gate legacy purchase preparation during a trial upgrade before customer rollout.
-- Admin UX follow-ups are locally implemented/tested, pending push/deploy:
+- Admin UX follow-ups are pushed to main and Live in `dep-dba5im61egvs739eoteg`:
   Thai overview/per-channel results distinguish draft delivery and unknown
   publication outcome; neutral member details precede explicit trial actions;
   empty Trials/Reports/Audit explain next steps and disabled CSV. Owner/Viewer,
   local grant/extend/revoke, report CSV and 390px layouts were verified with
   memory fixtures; these do not replace the remaining live acceptance checks.
+  API/Flutter CI `39100690775`, release asset hashes and existing-owner overview/
+  post reads pass. Fresh owner login into the new UI remains unverified.
 
 ## Channel publishing preflight (2026-10-15, Staging delivered)
 

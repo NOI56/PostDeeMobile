@@ -59,7 +59,7 @@ The additive trial migration and existing platform-enum history reconciliation
 must precede enabling trial access on API **and workers**.
 Update Mobile purchase confirmation before granting customer trials; it reads the
 separate purchased plan rather than treating trial access as proof of a purchase.
-Source `349e6c3` is Live on Staging in `dep-dba4v57btjjs73dqde2g`; health/readiness,
+Source `50fba5e` is Live on Staging in `dep-dba5im61egvs739eoteg`; health/readiness,
 admin assets and public configuration return HTTP 200. Both additive migrations
 were applied earlier. The read-only Firebase Admin credential is installed and
 both admin/trial flags are enabled. Owner identity, Firebase Web app and the
@@ -69,11 +69,14 @@ search/detail, post filters and trial-form validation/review/cancel. Mobile menu
 overview and drawer layout were checked at 390px. Real trial writes, nonempty
 CSV export and live ordinary-user denial remain separate acceptance checks.
 No customer trials were granted.
-The local admin UX follow-up translates overview/channel results, distinguishes
+The admin UX follow-up translates overview/channel results, distinguishes
 TikTok Inbox drafts from publication, opens neutral member details before trial
 actions, and explains empty Trials/Reports/Audit pages and disabled CSV. API
-status/filter values and trial safeguards are unchanged. This follow-up is locally
-verified and has not been pushed or deployed; Staging still uses the source above.
+status/filter values and trial safeguards are unchanged. CI run `39100690775`
+passed API and Flutter checks. Post-deploy JS/CSS match the release commit;
+the existing owner session verified Thai overview, two TikTok draft results and
+five legacy unknown-outcome results. Fresh owner sign-in/member UI verification
+after this deploy remains separate; the new UI was exercised with local fixtures.
 Configuration, the local fixture preview and
 report limitations are in [the admin guide](docs/ADMIN_CONSOLE.md); implementation
 and verification evidence are in [the plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).

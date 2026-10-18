@@ -3,7 +3,8 @@
 Baseline: verified `origin/main` `a9037823901324149ae9695cb5ecce1981853481`.
 Implementation branch: `codex/admin-usage-accuracy`, isolated managed worktree.
 The user approved implementation of the six admin improvements on 18 October 2026.
-Merge, push and Staging deployment are not part of that approval.
+The subsequent user request authorized merging to main, pushing and deploying
+Staging; that separate delivery is recorded below.
 
 ## Scope and preserved capabilities
 
@@ -71,8 +72,8 @@ and snapshot semantics against
 
 ## Results
 
-Implementation complete locally; merge/push/deployment remain pending. A final
-remote fetch still resolves `origin/main` to the same `a903782` baseline. No tracked
+The implementation was verified from the freshly fetched `a903782` baseline,
+then delivered as source `fc457b2` under the later release authorization. No tracked
 file was deleted; no lockfile/dependency/schema/flag change was retained. Existing
 worktrees and their dirty files were not modified. Mobile source was unchanged.
 
@@ -162,12 +163,77 @@ and `postdee-admin-usage-compiled-smoke.mjs`.
 
 ### Delivery limits
 
-Only local data and the intended new worktree were used. Staging has not received
-this update, and no real trial, account, entitlement, purchase or post was changed.
-No new Firebase sign-in or connected-provider publication check was necessary for
-these read-only changes. Flutter tests were not rerun because no Dart/native file
-changed. The real Firebase login and Staging throughput of this new source remain
-unverified. Existing admin auth/flag setup is reused; release the API/admin assets
-then reload `/admin`. No Mobile reinstall is needed. Reload old browser clients
+Implementation/load/fixture QA used only local synthetic data. The authorized
+Staging delivery below adds real authenticated reads and fresh owner Google login,
+without changing any real trial, account, entitlement, purchase or post. The
+existing admin auth/flags are reused; no Mobile reinstall is needed. Exact-source
+CI also reruns Flutter analysis/tests despite no Dart/native change. Staging
+throughput, real trial grants/extend/revoke, live ordinary-user/viewer denial and
+connected-provider publication remain unverified. Reload old browser clients
 to receive the new all-account UI; omitted API scope, CSV filename and old report
-field meanings remain compatible, and the all/trial distinction is explicit.
+field meanings remain compatible by local route/compiled verification, and the
+all/trial distinction is explicit. A live omitted-scope legacy-client request
+has not been separately verified.
+
+## Authorized Staging release — 18 October 2026
+
+- Source **fc457b23c4861fffd5544a47bc66fc3bb6413d1f** was fast-forwarded into
+  canonical main and pushed to origin under the user's explicit release request.
+  Only the 19 reviewed feature/test/document files were included; unrelated
+  worktrees, generated Windows files and artifacts were preserved.
+- Before deploy, fresh Google owner authentication on the existing admin tab
+  succeeded. The global overview at **13:07 Bangkok** returned **3 members,
+  0 paid plans, 0 active trials**, with **2 FAILED / 1 PARTIAL_PUBLISHED /
+  7 PUBLISHED** posts and **0 QUEUED / 0 PUBLISHING**. Database external access
+  remained closed; authenticated read-only admin projections supplied the
+  backlog evidence without changing the allowlist or customer records.
+- Render deploy **dep-dba64iqjnfac73egt8i0** is **Live** at
+  **2026-10-18 06:10:11.023792 UTC / 13:10:11 Asia/Bangkok** on the exact source.
+  Auto-deploy remains off. Startup confirms **20 existing migrations / none
+  pending**, PostPeer publishing enabled, the empty-backlog guard enforced and
+  passed, and the in-process memory scheduler started. No new schema, dependency,
+  flag, credential, worker logic, Mobile package or Production change was needed.
+- Public checks at **06:10:28 UTC** pass: `/health` and `/ready` return HTTP 200
+  with database/queue `ok`; `/admin` keeps no-store/CSP headers and unauthenticated
+  `/admin/api/session` returns 401. Served JS/CSS match source bytes exactly:
+  JS **41,018 bytes**, SHA-256
+  `183915ec37731fec0c804c53e247033aab13857ef0eebaf618d101bccc5d77c3`;
+  CSS **10,086 bytes**, SHA-256
+  `55af023971f3a3cfc63e10db8937ff48f86abde72704e755a900d14ed501b1ce`.
+- Reloaded assets and a fresh Google sign-in on the new source produce the
+  existing **OWNER** role. Live ALL_ACCOUNTS reports return **3 accounts,
+  8 caption requests, 0 edit minutes, 4 quota units / 4 saved results**:
+  **1 LIVE / 2 DRAFT / 1 FAILED / 0 PENDING**. Summed table values match the
+  whole-cohort summary. LATEST_TRIAL returns zero accounts/metrics and disables
+  empty-page CSV; switching back restores all three accounts. All seven views
+  open after fresh login. Manual refresh shows busy, reloads data and returns
+  without an alert. These are observed stored values, not a claim of public
+  publication, online users, successful AI work or provider invoicing.
+- Exact-source CI **39102818467** passes at **06:10:21 UTC**: API **2,272 tests
+  passed / 18 opt-in database checks skipped** (the local actual-DB full run
+  separately passes all 2,290); Flutter **2,378 passed / 2 optional preview
+  skips**, analysis with no issues. Unsigned
+  [iOS CI 39102818466](https://github.com/NOI56/PostDeeMobile/actions/runs/39102818466)
+  passes at **2026-10-18 06:16:40 UTC / 13:16:40 Asia/Bangkok** (10m55s),
+  including the no-codesign build, IPA creation and artifact upload. No iOS
+  signing, installation or physical-device test is claimed.
+- Live populated CSV shows the expected busy/disabled controls and then returns
+  normally without an alert. The browser event wait timed out before the direct
+  click, and the Chrome downloads page was policy-blocked; no bypass was used.
+  **The saved Chrome file/download completion is not verified.** Local browser
+  CSV and compiled API CSV checks remain separate passing evidence.
+- The live automatic-refresh observation passes: the visible page's reference
+  time advances **13:13 -> 13:14 Bangkok** while the active element is BODY and
+  no manual action occurs between observations. Owner member details show
+  **4 monthly quota units / 8 caption requests / 0 edit minutes**, matching its
+  report row, and the refresh-paused label appears while details are open.
+  The live drawer was not held for a full additional 60-second interval; the
+  complete pause interval remains covered by the local fake-clock test.
+  Returning to reports leaves no alert. Console inspection excludes extension
+  messages and finds **0 application warnings/errors**. Local proof screenshot
+  (1920x821, table emails cropped out):
+  `C:/Users/stopp/AppData/Local/Temp/postdee-admin-usage-staging-live.png`.
+- No real grant/extend/revoke, customer write, purchase, OAuth connection,
+  provider resend or publication was performed. Saved Chrome CSV, a live
+  omitted-scope legacy-client request, iOS signing/device delivery and
+  Staging load capacity remain outside the confirmed results above.

@@ -1,14 +1,15 @@
 # PostDee administrator console and trial access
 
-Latest delivery: admin UX source `50fba5e` is Live on Staging at 12:32 Bangkok,
-18 October 2026 (`dep-dba5im61egvs739eoteg`). API and Flutter CI `39100690775`
-passed. See the final release receipt for exact verification and remaining limits.
+Latest delivery: admin usage source `fc457b2` is Live on Staging at 13:10:11 Bangkok,
+18 October 2026 (`dep-dba64iqjnfac73egt8i0`). API and Flutter CI `39102818467`
+passes. Fresh owner login and all-account/empty-trial report reads pass.
 
-The subsequent local user/usage accuracy work is tracked separately in
+The user/usage accuracy delivery is tracked separately in
 [the usage accuracy plan](2026-10-18-admin-usage-accuracy.md). It adds all-account
 reporting, explicit quota/delivery definitions, consistent read snapshots, batching
 and safe refresh without changing trial commands or paid-access rules. The release
-receipt below remains evidence for the earlier deployed source, not this follow-up.
+receipt below remains historical evidence for the earlier source `50fba5e`;
+the linked usage record contains this follow-up's release receipt and limits.
 
 ## Authorization and baseline
 

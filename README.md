@@ -81,12 +81,17 @@ Configuration, the local fixture preview and
 report limitations are in [the admin guide](docs/ADMIN_CONSOLE.md); implementation
 and verification evidence are in [the plan](docs/superpowers/plans/2026-10-18-admin-console-and-trial-access.md).
 
-The next local admin update adds all-account/date-range usage reports, whole-cohort
+The admin usage update adds all-account/date-range usage reports, whole-cohort
 summaries, separate quota and recorded delivery outcomes, consistent read snapshots
 and safe visible-page refresh. Registered accounts do not mean online users;
 reserved usage does not mean successful AI work or public posts. This update needs
 an API/admin-asset release only, with no Mobile update, migration or flag change.
-Its validation and pending delivery status are tracked in the
+Source `fc457b2` is merged/pushed to main and Live on Staging deploy
+`dep-dba64iqjnfac73egt8i0` at 13:10:11 Bangkok on 18 October 2026. Exact-source
+API/Flutter CI `39102818467` passes. Health/readiness and source-matching assets
+pass; fresh Google owner login and all-account reports return three accounts
+with matching row/summary totals. No trial or customer data was changed.
+Its verification and remaining delivery limits are tracked in the
 [usage accuracy plan](docs/superpowers/plans/2026-10-18-admin-usage-accuracy.md).
 
 ## Channel publishing preflight (2026-10-15, Staging delivered)

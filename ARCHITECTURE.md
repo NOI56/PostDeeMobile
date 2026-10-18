@@ -96,7 +96,7 @@ protocol during trial upgrades and preserves legacy paid resync semantics;
 ordinary AI recovery reloads effective capabilities.
 Closing the console flag does not revoke trials; turning off the trial flag does.
 
-Queries return bounded projections and stable pagination. The local usage-accuracy
+Queries return bounded projections and stable pagination. The usage-accuracy
 update uses short read-only RepeatableRead transactions for related projections.
 Set-based report aggregates replace per-member queries; summary/total cover the
 whole filtered cohort while rows/CSV remain paged. The new console starts with all
@@ -109,8 +109,13 @@ refresh are single-flight reads, paused during editing/member/trial/CSV workflow
 errors preserve confirmed values and timestamps. Each request sees a new snapshot,
 so pagination across requests is not a frozen export. No quota, trial or publishing
 write behavior changes. This API/asset-only update needs no migration or Mobile
-installation and remains pending release; its local concurrency/load verification
-is tracked in the [usage accuracy plan](docs/superpowers/plans/2026-10-18-admin-usage-accuracy.md).
+installation. Source `fc457b2` is merged/pushed to main and Live on Staging
+`dep-dba64iqjnfac73egt8i0`; exact-source API/Flutter CI, health/readiness,
+source-matching assets, fresh owner login and all-account report reads pass.
+The existing memory scheduler restarts with the API; its empty-backlog guard
+remains enforced. No separate worker code, schema, flag or dependency changed.
+The local concurrency/load evidence and remaining acceptance limits are tracked
+in the [usage accuracy plan](docs/superpowers/plans/2026-10-18-admin-usage-accuracy.md).
 Reports do not claim that all activity was trial-caused or that a current paid
 plan is a conversion. Unit cost estimates are optional operator input, not provider invoices. Operational setup and
 limits are in [the admin guide](docs/ADMIN_CONSOLE.md).

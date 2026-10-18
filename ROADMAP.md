@@ -42,12 +42,15 @@ Build roadmap for PostDee.
 
 ## Administrator console and trial access (2026-10-18)
 
-- Local follow-up: consistent read snapshots, batched all-account usage reports
+- Delivered follow-up: consistent read snapshots, batched all-account usage reports
   with UTC date ranges, whole-cohort totals, explicit quota/delivery/AI-reservation
   definitions and safe manual/visible-page refresh. Preserve owner/viewer and
-  trial/paid-access boundaries. Verify actual local PostgreSQL concurrency/load
-  and responsive browser flows before releasing the API/admin assets. No Mobile
-  update or new migration is expected. See the
+  trial/paid-access boundaries. Actual local PostgreSQL concurrency/load and
+  responsive browser flows pass. Source `fc457b2` is merged/pushed to main and
+  Live on Staging deploy `dep-dba64iqjnfac73egt8i0` at 13:10:11 Bangkok;
+  exact-source API/Flutter CI `39102818467`, health/readiness, source assets,
+  fresh owner login and all-account report reads pass. No trial/customer writes,
+  Mobile update, new migration or flag change were needed. See the
   [usage accuracy work record](docs/superpowers/plans/2026-10-18-admin-usage-accuracy.md).
 
 - Implement seven Thai admin views, member/monthly-usage inspection, safe post

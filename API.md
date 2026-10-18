@@ -64,7 +64,7 @@ All responses use private/no-store. Every POST requires exact configured `Origin
 | `POST /admin/api/trials` | Owner only, auth_time within 15 minutes; command below |
 
 View responses contain `rows`, optional `total`, `nextCursor`, `note`, and `checkedAt`.
-The local usage-accuracy update adds `asOf` (one observation time per read snapshot),
+The usage-accuracy update adds `asOf` (one observation time per read snapshot),
 report `window: {from: string|null, until: string, timezone: "UTC"}`, `reportScope`
 and `summary`. `checkedAt` is response completion, not a provider verification.
 Trial rows may also return `trialStatus: NOT_STARTED` when their start is in the
@@ -101,7 +101,14 @@ delivery rows and configured rates, remain null without rates, and are not
 invoices or proof of paid conversion. CSV still exports only the displayed page;
 CSV reads a fresh snapshot using the displayed page's applied filters/cursor;
 its numbers can change after the screen was loaded. The all-account filename is `postdee-usage-report.csv`, latest-trial filename stays
-`postdee-trial-report.csv`. This additive local update is not yet deployed.
+`postdee-trial-report.csv`. Source `fc457b2` is merged/pushed to main and Live on
+Staging deploy `dep-dba64iqjnfac73egt8i0` at 13:10:11 Bangkok on 18 October 2026.
+Health/readiness, exact source assets, fresh Firebase owner login and real
+all-account/empty-trial report reads pass. Omitted-scope/legacy CSV compatibility
+is covered by local route/compiled checks; it is not yet claimed as a separate
+live legacy-client request. No schema, flag, worker contract or Mobile change
+is required. Exact verification and limits are in the
+[usage accuracy receipt](docs/superpowers/plans/2026-10-18-admin-usage-accuracy.md).
 
 Staging admin UX follow-up (`50fba5e`): overview `label`, post `channels` and
 `failureReason` are Thai presentation strings. Post `status` and status/platform

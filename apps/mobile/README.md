@@ -21,7 +21,10 @@ is part of this local implementation. See the [admin guide](../../docs/ADMIN_CON
 
 The separate admin usage/report/refresh follow-up changes only API reads and web
 assets. It keeps these Mobile quota and purchased/trial contracts intact and
-requires no Mobile installation. Its API release is still pending; see the
+requires no Mobile installation. Source `fc457b2` is merged/pushed to main and
+Live on Staging deploy `dep-dba64iqjnfac73egt8i0`; API/Flutter CI passes and fresh
+owner sign-in/report reads pass. The installed Mobile package is not replaced
+for this API/web-only update; see the
 [usage accuracy record](../../docs/superpowers/plans/2026-10-18-admin-usage-accuracy.md).
 
 ## Unified publishing settings (2026-10-18, Android Staging delivered)

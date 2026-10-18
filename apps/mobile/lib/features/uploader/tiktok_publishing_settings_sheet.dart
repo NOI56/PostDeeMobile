@@ -28,10 +28,12 @@ class TikTokPublishingSettingsSheet extends StatefulWidget {
       {super.key,
       required this.initialSettings,
       this.connectionDisplayName,
+      this.memoryMessage,
       required this.loadOptions,
       required this.isCurrent});
   final PlatformPublishSettings initialSettings;
   final String? connectionDisplayName;
+  final String? memoryMessage;
   final Future<TikTokPublishingOptionsResult> Function() loadOptions;
   final bool Function() isCurrent;
 
@@ -179,6 +181,7 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
     return PlatformSettingsScaffold(
       platform: SocialPlatform.tiktok,
       displayName: info?.creatorNickname ?? widget.connectionDisplayName ?? '',
+      memoryMessage: widget.memoryMessage,
       onSave: canSave
           ? () => Navigator.pop(context,
               TikTokSettingsSelection(_settings, direct ? _options : null))

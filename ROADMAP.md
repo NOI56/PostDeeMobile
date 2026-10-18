@@ -2,6 +2,16 @@
 
 Build roadmap for PostDee.
 
+## Remembered channel settings (2026-10-18, implementation in progress)
+
+- Remember allowlisted choices locally per owner, endpoint and connected channel.
+- Preserve explicit Save/Cancel, same-clip draft precedence and fresh content
+  declarations. TikTok privacy and interactions remain manually selected.
+- Guard delayed reads/writes against account, channel and form changes; clear
+  owner defaults after successful account deletion. No server migration.
+- Verification and delivery are pending in the
+  [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
+
 ## Publishing activity (2026-10-18, Android Staging delivered)
 
 - Implement selected variant 3 in Home, Calendar and detail: one motion clock

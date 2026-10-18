@@ -2,6 +2,16 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Remembered channel settings (2026-10-18, implementation in progress)
+
+Remember only reusable choices for this device and connected channel: TikTok
+Inbox/Direct mode, YouTube visibility/audience, Instagram feed sharing and
+Facebook Publish/Page draft. New clips review their own AI/synthetic content and
+confirmations; TikTok privacy/interactions have no remembered selection. Explicit
+Save updates defaults; Cancel does not. Existing drafts retain their own values.
+No API migration or server deployment is needed. Verification is pending in the
+[work record](../../docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
+
 ## Publishing activity (2026-10-18, Android Staging delivered)
 
 Selected variant 3 combines the shared sending badge, indeterminate rail and

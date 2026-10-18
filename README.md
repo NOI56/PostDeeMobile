@@ -7,6 +7,16 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Remembered channel settings (2026-10-18, implementation in progress)
+
+Mobile will remember reusable choices on this device per signed-in owner and
+connected channel: TikTok delivery mode, YouTube visibility/audience, Instagram
+feed sharing and Facebook Page Video delivery mode. New clips still require
+content declarations and current confirmation; TikTok privacy/interactions
+remain manual. Saved drafts keep their own values. No API change or migration.
+Verification and delivery remain pending; see the
+[work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
+
 ## Publishing activity (2026-10-18, Android Staging delivered)
 
 The selected variant 3 adds a shared sending badge, indeterminate rail and real

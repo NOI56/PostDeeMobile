@@ -2,6 +2,22 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Remembered channel settings boundary (2026-10-18, implementation in progress)
+
+Use a separate allowlisted local preference store, rather than replaying complete
+draft JSON. Scope values to the API endpoint, stable owner and verified connected
+channel; display-name changes cannot transfer preferences. Explicit platform
+Save updates reusable defaults. A fresh form reads them on opening settings and
+before review, including when optional sheets are skipped. Saved current-form
+values and restored drafts take precedence; merely saving a new local draft does
+not disable default loading. Guard async work
+against changed auth lifecycles, channel bindings and form intent, serialize
+writes and invalidate pending work when clearing a deleted owner's preferences.
+Bound reads to eight seconds and let explicit saves finish after normal composer
+disposal under the captured auth lifecycle.
+No API/schema/dependency/entitlement changes. See the
+[work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
+
 ## Publishing activity boundary (2026-10-18, Android Staging delivered)
 
 `PostDeePublishingMotion` owns one animation controller per post scope, shared

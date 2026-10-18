@@ -36,6 +36,7 @@ import '../legal/legal_document_screen.dart';
 import '../shared/postdee_undo_toast.dart';
 import '../templates/templates_screen.dart';
 import '../uploader/uploader_screen.dart';
+import '../uploader/platform_publish_defaults_store.dart';
 import '../uploader/publish_draft.dart';
 import '../uploader/publish_draft_store.dart';
 import '../uploader/publish_draft_store_factory.dart';
@@ -592,6 +593,12 @@ class _PostDeeShellState extends State<PostDeeShell> {
         }
         try {
           await const SharedPreferencesCaptionWritingStyleStore()
+              .clearForDeletedAccount(capturedOwnerUserId);
+        } catch (_) {
+          localDraftCleanupFailed = true;
+        }
+        try {
+          await const SharedPreferencesPlatformPublishDefaultsStore()
               .clearForDeletedAccount(capturedOwnerUserId);
         } catch (_) {
           localDraftCleanupFailed = true;

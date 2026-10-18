@@ -15,6 +15,7 @@ class PlatformSettingsScaffold extends StatelessWidget {
     required this.child,
     this.onSave,
     this.validationMessage,
+    this.memoryMessage,
   });
 
   final SocialPlatform platform;
@@ -22,6 +23,7 @@ class PlatformSettingsScaffold extends StatelessWidget {
   final Widget child;
   final VoidCallback? onSave;
   final String? validationMessage;
+  final String? memoryMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +84,21 @@ class PlatformSettingsScaffold extends StatelessWidget {
                       child: SingleChildScrollView(
                           key: const ValueKey('platform-settings-scroll'),
                           padding: const EdgeInsets.all(18),
-                          child: child)),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (memoryMessage != null) ...[
+                                Text(memoryMessage!,
+                                    key: const ValueKey(
+                                        'platform-settings-memory'),
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.textSecondary)),
+                                const SizedBox(height: 12),
+                              ],
+                              child,
+                            ],
+                          ))),
                   Divider(height: 1, color: AppTheme.borderSoft),
                   if (validationMessage != null)
                     Padding(

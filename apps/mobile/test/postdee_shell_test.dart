@@ -29,6 +29,9 @@ import 'package:postdee_mobile/features/templates/templates_screen.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
 import 'package:postdee_mobile/features/notifications/push_notification.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
+import 'package:postdee_mobile/features/uploader/platform_publish_defaults_store.dart';
+import 'package:postdee_mobile/features/uploader/platform_publish_settings.dart';
+import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
@@ -2177,6 +2180,27 @@ void main() {
     );
     await preferences.setString(otherStyleKey, otherStyle);
 
+    final keysBeforeDefaults = preferences.getKeys();
+    const defaultsStore = SharedPreferencesPlatformPublishDefaultsStore();
+    final defaultsScope = PlatformPublishDefaultsScope.fromConnection(
+      apiBaseUrl: 'https://staging.example.test',
+      ownerUserId: 'firebase-user-shell',
+      platform: SocialPlatform.youtubeShorts,
+      connection: const SocialConnectionResult(
+        platform: 'YOUTUBE_SHORTS',
+        connected: true,
+        connectionId: 'local-youtube',
+        externalAccountId: 'youtube-owner',
+      ),
+    )!;
+    await defaultsStore.save(
+      defaultsScope,
+      PlatformPublishDefaults.fromSettings(SocialPlatform.youtubeShorts,
+          const PlatformPublishSettings(youtubeMadeForKids: false)),
+    );
+    final rememberedKeys = preferences.getKeys().difference(keysBeforeDefaults);
+    expect(rememberedKeys, hasLength(1));
+
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.dark,
@@ -2236,6 +2260,7 @@ void main() {
     expect(await otherDrafts.loadDraft(), isNotNull);
     expect(preferences.getString(ownerStyleKey), isNull);
     expect(preferences.getString(otherStyleKey), otherStyle);
+    expect(preferences.getKeys().intersection(rememberedKeys), isEmpty);
     expect(deletionCalls, [
       'capture-local-drafts',
       'ready',

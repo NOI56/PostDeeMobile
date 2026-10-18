@@ -2,6 +2,15 @@
 
 PostDee backend API reference.
 
+## Local remembered settings boundary (2026-10-18, implementation in progress)
+
+Remembered channel settings are Mobile-only local preferences. No new endpoint,
+request field or migration is introduced. Mobile resolves editable reusable
+choices into the existing per-post `platformSettings` contract; clip-specific
+declarations, TikTok creator capabilities and fresh confirmation retain their
+existing server validation. There is no server-side or cross-device preference
+sync. See the [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
+
 ## Optional Meta media disclosure (2026-10-18, Staging delivered)
 
 `platformSettings.INSTAGRAM_REELS` accepts `{shareToFeed: boolean,

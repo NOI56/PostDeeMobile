@@ -28,6 +28,7 @@ import 'clip_frame_extractor.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
+import 'platform_publish_defaults_store.dart';
 import 'platform_settings_scaffold.dart';
 import 'platform_publish_preflight.dart';
 import 'publish_draft.dart';
@@ -90,6 +91,48 @@ String _channelReadinessLabel(SocialPublishingConnectionReadiness? readiness,
 typedef UploaderTikTokOptionsLoader = Future<TikTokPublishingOptionsResult>
     Function();
 
+String _platformMemoryMessage(SocialPlatform platform) => switch (platform) {
+      SocialPlatform.tiktok => 'เมื่อบันทึก จะจำวิธีส่งให้ช่องนี้บนเครื่องนี้ '
+          'ผู้ชมและการโต้ตอบต้องเลือกใหม่ทุกคลิป',
+      SocialPlatform.youtubeShorts =>
+        'เมื่อบันทึก จะจำการมองเห็นและกลุ่มผู้ชมให้ช่องนี้บนเครื่องนี้ '
+            'ตรวจเนื้อหา AI และยืนยันกฎใหม่ทุกคลิป',
+      SocialPlatform.instagramReels =>
+        'เมื่อบันทึก จะจำการแชร์ไปยังฟีดให้บัญชีนี้บนเครื่องนี้',
+      SocialPlatform.facebookReels =>
+        'เมื่อบันทึก จะจำวิธีเผยแพร่ให้เพจนี้บนเครื่องนี้',
+      _ => '',
+    };
+
+PlatformPublishSettings _resetPlatformSettings(
+        SocialPlatform platform, PlatformPublishSettings settings) =>
+    switch (platform) {
+      SocialPlatform.tiktok => settings.copyWith(
+          tiktokPublishMode: TikTokPublishMode.inboxDraft,
+          tiktokPrivacyLevel: null,
+          tiktokCreatorInfoRevision: null,
+          tiktokAllowComment: false,
+          tiktokAllowDuet: false,
+          tiktokAllowStitch: false,
+          tiktokBrandContentToggle: false,
+          tiktokBrandOrganicToggle: false,
+          tiktokIsAigc: false,
+          tiktokMusicUsageConfirmed: false,
+          tiktokBrandedContentPolicyConfirmed: false,
+          tiktokVideoDurationSeconds: null),
+      SocialPlatform.youtubeShorts => settings.copyWith(
+          youtubeTitle: '',
+          youtubeVisibility: YouTubeVisibility.private,
+          youtubeMadeForKids: null,
+          youtubeContainsSyntheticMedia: null,
+          youtubeCommunityGuidelinesCertified: false),
+      SocialPlatform.instagramReels => settings.copyWith(
+          instagramShareToFeed: true, instagramIsAiGenerated: null),
+      SocialPlatform.facebookReels => settings.copyWith(
+          facebookPublishMode: null, facebookIsAiGenerated: null),
+      _ => settings,
+    };
+
 class _PublishOwnerChangedException implements Exception {
   const _PublishOwnerChangedException();
 }
@@ -115,6 +158,8 @@ class UploaderScreen extends StatefulWidget {
     this.enableRevenueCatBilling = AppConfig.enableRevenueCatBilling,
     this.captionWritingStyleStore =
         const SharedPreferencesCaptionWritingStyleStore(),
+    this.platformPublishDefaultsStore =
+        const SharedPreferencesPlatformPublishDefaultsStore(),
     this.generateCaption,
     this.generateRealClipCaption,
     this.pickVideo,
@@ -155,6 +200,7 @@ class UploaderScreen extends StatefulWidget {
   final UploaderSubscriptionResync? resyncRevenueCatSubscription;
   final bool enableRevenueCatBilling;
   final CaptionWritingStyleStore captionWritingStyleStore;
+  final PlatformPublishDefaultsStore platformPublishDefaultsStore;
   final UploaderCaptionGenerator? generateCaption;
   final UploaderRealClipCaptionGenerator? generateRealClipCaption;
   final UploaderVideoPicker? pickVideo;
@@ -233,6 +279,11 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _channelReadinessSupported = false;
   String? _channelReadinessError;
   PlatformPublishSettings _platformSettings = const PlatformPublishSettings();
+  bool _platformSettingsFromRestoredDraft = false;
+  final Map<SocialPlatform, String> _savedPlatformSettingsBindings = {};
+  bool _platformSettingsSheetOpen = false;
+  bool _isLoadingPlatformDefaults = false;
+  int _platformDefaultsLoadGeneration = 0;
   TikTokPublishingOptionsResult? _tikTokPublishingOptions;
   int _tikTokIntentGeneration = 0;
   String? _tikTokTextSnapshot;
@@ -650,6 +701,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       _isRecoveringSubmission ||
       _isPreparingReview ||
       _isPreparingSubmission ||
+      _isLoadingPlatformDefaults ||
       _isLoadingScheduleSubscription;
 
   String get _formSnapshot => jsonEncode([
@@ -730,8 +782,10 @@ class _UploaderScreenState extends State<UploaderScreen>
         child: child,
       );
 
-  void _goToStep(int step) {
+  Future<void> _goToStep(int step) async {
     if (_formBusy) return;
+    if (step == 3 && !await _ensurePlatformDefaultsForReview()) return;
+    if (!mounted) return;
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _currentStep = step;
@@ -742,7 +796,10 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (_formScrollController.hasClients) _formScrollController.jumpTo(0);
   }
 
-  void _nextStep() {
+  Future<void> _nextStep() async {
+    if (_formBusy) return;
+    if (_currentStep == 2 && !await _ensurePlatformDefaultsForReview()) return;
+    if (!mounted) return;
     String? error;
     if (_currentStep == 0 && _localFilePathController.text.trim().isEmpty) {
       error = 'เลือกวิดีโอจากเครื่องก่อน';
@@ -786,7 +843,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     final caption = _captionController.text.trim();
     final source = _localFilePathController.text;
     final generation = _captionGeneration;
-    _goToStep((_currentStep + 1).clamp(0, 3));
+    await _goToStep((_currentStep + 1).clamp(0, 3));
     if (leavingCaption && _currentStep == 2) {
       unawaited(_rememberCaptionEdit(caption, source, generation));
     }
@@ -1158,6 +1215,10 @@ class _UploaderScreenState extends State<UploaderScreen>
       _channelReadinessSupported = false;
       _channelReadinessError = null;
       _platformSettings = const PlatformPublishSettings();
+      _platformSettingsFromRestoredDraft = false;
+      _savedPlatformSettingsBindings.clear();
+      _platformDefaultsLoadGeneration++;
+      _isLoadingPlatformDefaults = false;
       _blockedSubmissionDraftIds.clear();
       _currentStep = 0;
       _savedFormSnapshot = _formSnapshot;
@@ -2287,6 +2348,31 @@ class _UploaderScreenState extends State<UploaderScreen>
       _invalidateAiCaption(clearCaptionMetadata: false);
       setState(() {
         if (sourceChanged) {
+          // A different video needs its own declarations and consent. Carry
+          // only reusable choices, just as when starting another composer.
+          var reusable = const PlatformPublishSettings();
+          final sourceSettings = _platformSettingsFromRestoredDraft
+              ? const PlatformPublishSettings()
+              : _platformSettings;
+          if (_platformSettingsFromRestoredDraft) {
+            // Draft manifests predate channel-bound defaults. A replacement
+            // video starts fresh and reads the current channel's preferences.
+            _savedPlatformSettingsBindings.clear();
+          }
+          for (final platform in [
+            SocialPlatform.tiktok,
+            SocialPlatform.youtubeShorts,
+            SocialPlatform.instagramReels,
+            SocialPlatform.facebookReels,
+          ]) {
+            reusable =
+                PlatformPublishDefaults.fromSettings(platform, sourceSettings)
+                    .applyTo(reusable);
+          }
+          _platformSettings = reusable;
+          _platformSettingsFromRestoredDraft = false;
+          // Retain where the reusable values came from so switching channels
+          // cannot carry the previous channel's preferences into another one.
           _aiCaptionSeoKeywords = const [];
           if (previousPath.isNotEmpty &&
               _captionController.text.trim().isNotEmpty) {
@@ -2667,6 +2753,10 @@ class _UploaderScreenState extends State<UploaderScreen>
     _selectedPlatforms.clear();
     _draftUnavailablePlatforms.clear();
     _platformSettings = const PlatformPublishSettings();
+    _platformSettingsFromRestoredDraft = false;
+    _savedPlatformSettingsBindings.clear();
+    _platformDefaultsLoadGeneration++;
+    _isLoadingPlatformDefaults = false;
     _savedFormSnapshot = _formSnapshot;
     unawaited(_loadVideoPoster());
     return previousCover;
@@ -2697,6 +2787,8 @@ class _UploaderScreenState extends State<UploaderScreen>
 
     setState(() {
       _activeDraftId = draft.id;
+      _platformSettingsFromRestoredDraft = true;
+      _savedPlatformSettingsBindings.clear();
       _activeDraftCreatedAt = draft.createdAt;
       _activeDraftWatermarkEnabled = draft.watermarkEnabled;
       _activeDraftUploadedMedia = draft.uploadedMedia;
@@ -4061,57 +4153,240 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _openPlatformSettings(SocialPlatform platform) async {
+    if (_platformSettingsSheetOpen) return;
+    _platformSettingsSheetOpen = true;
+    try {
+      await _showPlatformSettings(platform);
+    } finally {
+      _platformSettingsSheetOpen = false;
+    }
+  }
+
+  Future<void> _showPlatformSettings(SocialPlatform platform) async {
+    if (platform == SocialPlatform.tiktok) setState(_clearTikTokFreshness);
+    final session = PostDeeAuthSessionStore.instance.captureSession();
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    final binding = _connectionBinding(platform);
+    final form = _formSnapshot;
+    final generation = _tikTokIntentGeneration;
+    bool isCurrent() =>
+        mounted &&
+        session.isCurrent &&
+        binding == _connectionBinding(platform) &&
+        form == _formSnapshot &&
+        (platform != SocialPlatform.tiktok ||
+            generation == _tikTokIntentGeneration);
+    final scope =
+        owner == null || !PostDeeAuthSessionStore.instance.session.isSignedIn
+            ? null
+            : PlatformPublishDefaultsScope.fromConnection(
+                apiBaseUrl: AppConfig.apiBaseUrl,
+                ownerUserId: owner,
+                platform: platform,
+                connection: _connectionDetails[platform]);
+    final savedBinding = _savedPlatformSettingsBindings[platform];
+    final initial = savedBinding != null && savedBinding != binding
+        ? _resetPlatformSettings(platform, _platformSettings)
+        : _platformSettings;
+    final loadDefaults = scope != null &&
+        !_platformSettingsFromRestoredDraft &&
+        !_isRestoringInitialDraft &&
+        savedBinding != binding;
+    // Consume storage failures immediately, before the modal's first frame can
+    // attach a listener. The form shows a safe notice rather than a raw error.
+    final defaults = loadDefaults ? _readPlatformDefaults(scope) : null;
+    Widget settingsLoader(
+        Widget Function(PlatformPublishSettings, String?) builder) {
+      return ListenableBuilder(
+          listenable: PostDeeAuthSessionStore.instance,
+          builder: (context, _) =>
+              FutureBuilder<({PlatformPublishDefaults? value, bool failed})>(
+                  future: defaults,
+                  builder: (context, snapshot) {
+                    if (!isCurrent()) {
+                      return PlatformSettingsScaffold(
+                          platform: platform,
+                          displayName:
+                              _connectionDetails[platform]?.displayName ?? '',
+                          child: const Text(
+                              'บัญชีหรือคลิปเปลี่ยนแล้ว กรุณาเปิดการตั้งค่าใหม่'));
+                    }
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return PlatformSettingsScaffold(
+                          platform: platform,
+                          displayName:
+                              _connectionDetails[platform]?.displayName ?? '',
+                          child: const Row(children: [
+                            SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    key: ValueKey(
+                                        'uploader-platform-defaults-loading'),
+                                    strokeWidth: 2)),
+                            SizedBox(width: 12),
+                            Expanded(child: Text('กำลังโหลดค่าที่จำไว้')),
+                          ]));
+                    }
+                    final remembered = snapshot.data?.value;
+                    final settings = remembered?.platform == platform
+                        ? remembered!.applyTo(initial)
+                        : initial;
+                    final message = snapshot.data?.failed == true
+                        ? 'โหลดค่าที่จำไว้ไม่สำเร็จ ตั้งค่าสำหรับคลิปนี้ได้ตามปกติ'
+                        : scope != null
+                            ? _platformMemoryMessage(platform)
+                            : null;
+                    return builder(settings, message);
+                  }));
+    }
+
     if (platform == SocialPlatform.tiktok) {
-      setState(_clearTikTokFreshness);
-      final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
-      final binding = _tikTokConnectionBinding();
-      final generation = _tikTokIntentGeneration;
-      bool isCurrent() =>
-          mounted &&
-          owner == PostDeeAuthSessionStore.instance.session.stableUserId &&
-          binding == _tikTokConnectionBinding() &&
-          generation == _tikTokIntentGeneration;
       final next = await showModalBottomSheet<TikTokSettingsSelection>(
           context: context,
           isScrollControlled: true,
           useSafeArea: true,
-          builder: (_) => TikTokPublishingSettingsSheet(
-              initialSettings: _platformSettings,
-              connectionDisplayName: _connectionDetails[platform]?.displayName,
-              loadOptions: _loadBoundTikTokOptions,
-              isCurrent: isCurrent));
+          builder: (_) => settingsLoader((settings, memoryMessage) =>
+              TikTokPublishingSettingsSheet(
+                  initialSettings: settings,
+                  memoryMessage: memoryMessage,
+                  connectionDisplayName:
+                      _connectionDetails[platform]?.displayName,
+                  loadOptions: _loadBoundTikTokOptions,
+                  isCurrent: isCurrent)));
       if (next == null || !isCurrent()) return;
       setState(() {
         _platformSettings = next.settings;
+        _savedPlatformSettingsBindings[platform] = binding;
         _tikTokPublishingOptions = next.options;
         _tikTokConsentedIntent =
             _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost
                 ? _tikTokConsentIntent
                 : null;
       });
+      if (scope != null)
+        unawaited(_rememberPlatformSettings(scope, session, binding));
       return;
     }
-    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
-    final binding = _connectionBinding(platform);
     final next = await showModalBottomSheet<PlatformPublishSettings>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (context) => _PlatformSettingsSheet(
-        platform: platform,
-        initialSettings: _platformSettings,
-        caption: _captionController.text,
-        connection: _connectionDetails[platform],
-        coverResult: _coverResult,
-      ),
+      builder: (context) =>
+          settingsLoader((settings, memoryMessage) => _PlatformSettingsSheet(
+                platform: platform,
+                initialSettings: settings,
+                memoryMessage: memoryMessage,
+                isCurrent: isCurrent,
+                caption: _captionController.text,
+                connection: _connectionDetails[platform],
+                coverResult: _coverResult,
+              )),
     );
-    if (!mounted ||
-        next == null ||
-        owner != PostDeeAuthSessionStore.instance.session.stableUserId ||
-        binding != _connectionBinding(platform)) {
-      return;
+    if (next == null || !isCurrent()) return;
+    setState(() {
+      _platformSettings = next;
+      _savedPlatformSettingsBindings[platform] = binding;
+    });
+    if (scope != null)
+      unawaited(_rememberPlatformSettings(scope, session, binding));
+  }
+
+  Future<void> _rememberPlatformSettings(PlatformPublishDefaultsScope scope,
+      AuthSessionBinding session, String binding) async {
+    final savedForm = _formSnapshot;
+    bool isCurrent() =>
+        session.isCurrent &&
+        (!mounted || binding == _connectionBinding(scope.platform));
+    try {
+      await widget.platformPublishDefaultsStore.save(
+          scope,
+          PlatformPublishDefaults.fromSettings(
+              scope.platform, _platformSettings),
+          isCurrent: isCurrent);
+    } catch (_) {
+      if (!mounted || !isCurrent() || savedForm != _formSnapshot) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'ใช้การตั้งค่ากับคลิปนี้แล้ว แต่จำค่าไว้ครั้งถัดไปไม่สำเร็จ')));
     }
-    setState(() => _platformSettings = next);
+  }
+
+  Future<({PlatformPublishDefaults? value, bool failed})> _readPlatformDefaults(
+      PlatformPublishDefaultsScope scope) async {
+    try {
+      return (
+        value: await widget.platformPublishDefaultsStore
+            .load(scope)
+            .timeout(const Duration(seconds: 8)),
+        failed: false
+      );
+    } catch (_) {
+      return (value: null, failed: true);
+    }
+  }
+
+  /// Optional platform sheets may be skipped. Resolve their defaults before
+  /// showing the immutable review too, so e.g. Instagram feed=false is honored.
+  Future<bool> _ensurePlatformDefaultsForReview() async {
+    if (_platformSettingsFromRestoredDraft || _isRestoringInitialDraft)
+      return true;
+    final sessions = PostDeeAuthSessionStore.instance;
+    final owner = sessions.session.stableUserId;
+    if (owner == null || !sessions.session.isSignedIn) return true;
+    final pending = _selectedPlatforms
+        .where((platform) =>
+            _savedPlatformSettingsBindings[platform] !=
+            _connectionBinding(platform))
+        .toList();
+    if (pending.isEmpty) return true;
+    if (_isLoadingPlatformDefaults) return false;
+    final generation = ++_platformDefaultsLoadGeneration;
+    final session = sessions.captureSession();
+    final form = _formSnapshot;
+    final bindings = {for (final p in pending) p: _connectionBinding(p)};
+    bool isCurrent() =>
+        mounted &&
+        session.isCurrent &&
+        generation == _platformDefaultsLoadGeneration &&
+        form == _formSnapshot &&
+        bindings.entries.every((e) => e.value == _connectionBinding(e.key));
+    setState(() => _isLoadingPlatformDefaults = true);
+    try {
+      var settings = _platformSettings;
+      for (final platform in pending) {
+        final previousBinding = _savedPlatformSettingsBindings[platform];
+        if (previousBinding != null && previousBinding != bindings[platform]) {
+          settings = _resetPlatformSettings(platform, settings);
+        }
+        final scope = PlatformPublishDefaultsScope.fromConnection(
+            apiBaseUrl: AppConfig.apiBaseUrl,
+            ownerUserId: owner,
+            platform: platform,
+            connection: _connectionDetails[platform]);
+        if (scope == null) continue;
+        final result = await _readPlatformDefaults(scope);
+        if (!isCurrent()) return false;
+        if (result.failed) {
+          setState(() => _errorMessage =
+              'โหลดค่าที่จำไว้ไม่สำเร็จ กรุณาเปิดตั้งค่าช่องทางเพื่อตรวจสอบก่อน');
+          return false;
+        }
+        if (result.value?.platform == platform) {
+          settings = result.value!.applyTo(settings);
+        }
+      }
+      if (!isCurrent()) return false;
+      setState(() {
+        _platformSettings = settings;
+        _savedPlatformSettingsBindings.addAll(bindings);
+      });
+      return true;
+    } finally {
+      if (mounted && generation == _platformDefaultsLoadGeneration) {
+        setState(() => _isLoadingPlatformDefaults = false);
+      }
+    }
   }
 
   void _selectAllConnectedPlatforms() {
@@ -5836,6 +6111,8 @@ class _PlatformSettingsSheet extends StatefulWidget {
     required this.caption,
     this.connection,
     this.coverResult,
+    this.memoryMessage,
+    this.isCurrent,
   });
 
   final SocialPlatform platform;
@@ -5843,6 +6120,8 @@ class _PlatformSettingsSheet extends StatefulWidget {
   final String caption;
   final SocialConnectionResult? connection;
   final CoverEditorResult? coverResult;
+  final String? memoryMessage;
+  final bool Function()? isCurrent;
 
   @override
   State<_PlatformSettingsSheet> createState() => _PlatformSettingsSheetState();
@@ -5886,11 +6165,13 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
         : (widget.connection!.displayName?.trim().isNotEmpty == true
             ? widget.connection!.displayName!.trim()
             : widget.connection!.externalAccountId?.trim() ?? '');
-    final canSave = resolved.canSubmit(widget.platform);
+    final currentIntent = widget.isCurrent?.call() ?? true;
+    final canSave = currentIntent && resolved.canSubmit(widget.platform);
 
     return PlatformSettingsScaffold(
       platform: widget.platform,
       displayName: displayName,
+      memoryMessage: widget.memoryMessage,
       onSave: canSave ? () => Navigator.of(context).pop(current) : null,
       validationMessage: widget.platform == SocialPlatform.youtubeShorts
           ? resolved.youtubeValidationMessage

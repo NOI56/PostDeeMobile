@@ -4264,8 +4264,9 @@ class _UploaderScreenState extends State<UploaderScreen>
                 ? _tikTokConsentIntent
                 : null;
       });
-      if (scope != null)
+      if (scope != null) {
         unawaited(_rememberPlatformSettings(scope, session, binding));
+      }
       return;
     }
     final next = await showModalBottomSheet<PlatformPublishSettings>(
@@ -4288,8 +4289,9 @@ class _UploaderScreenState extends State<UploaderScreen>
       _platformSettings = next;
       _savedPlatformSettingsBindings[platform] = binding;
     });
-    if (scope != null)
+    if (scope != null) {
       unawaited(_rememberPlatformSettings(scope, session, binding));
+    }
   }
 
   Future<void> _rememberPlatformSettings(PlatformPublishDefaultsScope scope,
@@ -4329,8 +4331,9 @@ class _UploaderScreenState extends State<UploaderScreen>
   /// Optional platform sheets may be skipped. Resolve their defaults before
   /// showing the immutable review too, so e.g. Instagram feed=false is honored.
   Future<bool> _ensurePlatformDefaultsForReview() async {
-    if (_platformSettingsFromRestoredDraft || _isRestoringInitialDraft)
+    if (_platformSettingsFromRestoredDraft || _isRestoringInitialDraft) {
       return true;
+    }
     final sessions = PostDeeAuthSessionStore.instance;
     final owner = sessions.session.stableUserId;
     if (owner == null || !sessions.session.isSignedIn) return true;

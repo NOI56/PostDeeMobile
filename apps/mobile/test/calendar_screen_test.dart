@@ -1662,7 +1662,8 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
     await tester.ensureVisible(find.text('Publishing clip'));
     await tester.tap(find.text('Publishing clip'));

@@ -10,6 +10,14 @@ on:
         description: Build and upload a Staging debug APK after Mobile checks
         type: boolean
         default: false
+      staging_test_store_billing:
+        description: Include the Staging RevenueCat Test Store public Android SDK key
+        type: boolean
+        default: false
+      staging_build_number:
+        description: Optional Android version code (positive integer up to 2100000000)
+        type: string
+        default: ""
       apk_source_ref:
         description: Optional source ref for Mobile checks and the Staging APK
         type: string
@@ -89,16 +97,39 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Test Staging CI configuration guards
+        run: python3 -B -m unittest discover -s ../../scripts -p test_prepare_staging_ci_defines.py -v
+
       - name: Analyze
         run: flutter analyze
 
       - name: Run tests
         run: flutter test
 
+      - name: Prepare Staging defines without billing
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_staging_apk && !inputs.staging_test_store_billing }}
+        env:
+          POSTDEE_STAGING_BUILD_NUMBER: ${{ inputs.staging_build_number }}
+        run: python3 ../../scripts/prepare_staging_ci_defines.py --base staging.local.example.json
+
+      - name: Prepare Staging Test Store defines
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_staging_apk && inputs.staging_test_store_billing }}
+        env:
+          POSTDEE_REVENUECAT_TEST_STORE_ANDROID_API_KEY: ${{ secrets.POSTDEE_REVENUECAT_TEST_STORE_ANDROID_API_KEY }}
+          POSTDEE_STAGING_BUILD_NUMBER: ${{ inputs.staging_build_number }}
+        run: python3 ../../scripts/prepare_staging_ci_defines.py --base staging.local.example.json --test-store-billing true
+
       - name: Build Staging debug APK
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_staging_apk }}
+        env:
+          POSTDEE_STAGING_TEST_STORE_BILLING: ${{ inputs.staging_test_store_billing && 'true' || 'false' }}
+          POSTDEE_STAGING_BUILD_NUMBER: ${{ inputs.staging_build_number }}
         run: |
-          flutter build apk --debug --target lib/main.dart --dart-define-from-file=staging.local.example.json
+          build_args=(apk --debug --target lib/main.dart "--dart-define-from-file=$RUNNER_TEMP/postdee-staging-defines.json")
+          if [[ -n "$POSTDEE_STAGING_BUILD_NUMBER" ]]; then
+            build_args+=("--build-number=$POSTDEE_STAGING_BUILD_NUMBER")
+          fi
+          flutter build "${build_args[@]}"
           mkdir -p build/staging-apk
           cp build/app/outputs/flutter-apk/app-debug.apk build/staging-apk/app-debug.apk
           flutter --version --machine > build/staging-apk/flutter-version.json
@@ -107,11 +138,26 @@ jobs:
           import json
           import os
           from pathlib import Path
+          import re
           import subprocess
 
           artifact_dir = Path('build/staging-apk')
           apk = artifact_dir / 'app-debug.apk'
           version = json.loads((artifact_dir / 'flutter-version.json').read_text())
+          android_sdk = os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT']
+          aapt = next((Path(android_sdk) / 'build-tools').glob('*/aapt'), None)
+          if aapt is None:
+              raise RuntimeError('Android aapt is required to verify the Staging APK identity.')
+          badging = subprocess.check_output([str(aapt), 'dump', 'badging', str(apk)], text=True)
+          identity = re.search(r"^package: name='([^']+)' versionCode='([0-9]+)'", badging, re.MULTILINE)
+          if identity is None or identity[1] != 'com.postdee.postdee_mobile.staging':
+              raise RuntimeError('The built APK does not have the required Staging identity.')
+          requested_number = os.environ['POSTDEE_STAGING_BUILD_NUMBER']
+          if requested_number and int(identity[2]) != int(requested_number):
+              raise RuntimeError('The built APK version code differs from the requested build number.')
+          build_flags = ['--debug', '--target', 'lib/main.dart', '--dart-define-from-file=<runner-temp>/postdee-staging-defines.json']
+          if requested_number:
+              build_flags.append('--build-number=' + requested_number)
           digest = hashlib.sha256()
           with apk.open('rb') as stream:
               for block in iter(lambda: stream.read(1024 * 1024), b''):
@@ -123,9 +169,14 @@ jobs:
               'flutterVersion': version['frameworkVersion'],
               'dartSdkVersion': version['dartSdkVersion'],
               'entrypoint': 'lib/main.dart',
-              'buildCommand': 'flutter build apk --debug --target lib/main.dart --dart-define-from-file=staging.local.example.json',
-              'dartDefineFile': 'staging.local.example.json',
-              'dartDefineFileSha256': hashlib.sha256(Path('staging.local.example.json').read_bytes()).hexdigest(),
+              'buildCommand': 'flutter build apk ' + ' '.join(build_flags),
+              'buildFlags': build_flags,
+              'applicationId': identity[1],
+              'buildNumber': int(identity[2]),
+              'requestedBuildNumber': int(requested_number) if requested_number else None,
+              'stagingTestStoreBilling': os.environ['POSTDEE_STAGING_TEST_STORE_BILLING'] == 'true',
+              'dartDefineFile': '<runner-temp>/postdee-staging-defines.json',
+              'dartDefineFileSha256': hashlib.sha256((Path(os.environ['RUNNER_TEMP']) / 'postdee-staging-defines.json').read_bytes()).hexdigest(),
               'apkFile': apk.name,
               'apkBytes': apk.stat().st_size,
               'sha256': digest.hexdigest(),

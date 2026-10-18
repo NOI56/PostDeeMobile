@@ -14,6 +14,7 @@ import '../shared/post_schedule_policy.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/postdee_press_feedback.dart';
+import '../shared/postdee_publishing_motion.dart';
 import '../shared/postdee_skeleton.dart';
 import '../shared/publishing_availability.dart';
 
@@ -1568,6 +1569,16 @@ class _DayPostRow extends StatelessWidget {
         .whereType<SocialPlatform>()
         .toList();
     final status = busyLabel ?? _statusLabel(post);
+    final sending =
+        post.status.toUpperCase() == 'PUBLISHING' && status == 'กำลังส่ง';
+    final channelSummary = sending
+        ? post.platforms.toSet().map((value) {
+            final result = post.platformResults
+                .where((result) => result.platform == value)
+                .firstOrNull;
+            return '${_platformFor(value)?.shortLabel ?? value} ${postPlatformDeliveryLabel(result)}';
+          }).join(', ')
+        : platforms.map((platform) => platform.shortLabel).join(', ');
     final failed = post.status.toUpperCase() == 'FAILED';
     final needsReview = post.status.toUpperCase() == 'PARTIAL_PUBLISHED' ||
         hasUnconfirmedDeliveryOutcome(post.platformResults);
@@ -1576,98 +1587,129 @@ class _DayPostRow extends StatelessWidget {
         : needsReview
             ? AppTheme.accentPinkInk
             : AppTheme.accentCyanInk;
-    return Semantics(
-      key: ValueKey('calendar-post-${post.id}'),
-      button: onTap != null,
-      onTap: onTap,
-      label:
-          '${_formatTime(displayAt)} ${post.caption} $status ${platforms.map((platform) => platform.shortLabel).join(', ')}',
-      child: PostDeePressFeedback(
-        enabled: animate && onTap != null,
-        child: ExcludeSemantics(
-            child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(13),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
-            decoration: BoxDecoration(
-              color: AppTheme.glass,
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(
-                  width: 57 *
-                      (MediaQuery.textScalerOf(context).scale(15) / 15)
-                          .clamp(1.0, 2.0),
-                  child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(_formatTime(displayAt),
-                          maxLines: 1,
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.textPrimary)))),
-              const SizedBox(width: 9),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(post.caption,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary)),
-                    const SizedBox(height: 6),
-                    Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.09),
-                            borderRadius: BorderRadius.circular(6)),
-                        child: Text(status,
+    return PostDeePublishingMotion(
+      sending: sending,
+      animate: animate,
+      child: Semantics(
+        key: ValueKey('calendar-post-${post.id}'),
+        button: onTap != null,
+        onTap: onTap,
+        label:
+            '${_formatTime(displayAt)} ${post.caption} $status $channelSummary',
+        child: PostDeePressFeedback(
+          enabled: animate && onTap != null,
+          child: ExcludeSemantics(
+              child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(13),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+              decoration: BoxDecoration(
+                color: AppTheme.glass,
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(
+                    width: 57 *
+                        (MediaQuery.textScalerOf(context).scale(15) / 15)
+                            .clamp(1.0, 2.0),
+                    child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(_formatTime(displayAt),
+                            maxLines: 1,
                             style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: color))),
-                    const SizedBox(height: 7),
-                    Wrap(
-                        key: ValueKey('calendar-channels-${post.id}'),
-                        spacing: 8,
-                        runSpacing: 5,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.textPrimary)))),
+                const SizedBox(width: 9),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          for (final platform in platforms)
-                            Row(mainAxisSize: MainAxisSize.min, children: [
-                              SocialPlatformLogo(platform: platform, size: 15),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                  child: Text(platform.shortLabel,
-                                      style: TextStyle(
-                                          fontSize: 10.5,
-                                          color: AppTheme.textMuted))),
-                            ]),
-                          for (final value in post.platforms
-                              .toSet()
-                              .where((value) => _platformFor(value) == null))
-                            Text(value,
+                      Text(post.caption,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary)),
+                      const SizedBox(height: 6),
+                      if (sending)
+                        PostDeePublishingBadge(
+                          label: status,
+                          background: color.withValues(alpha: .09),
+                          foreground: color,
+                          sending: true,
+                        )
+                      else
+                        Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                                color: color.withValues(alpha: 0.09),
+                                borderRadius: BorderRadius.circular(6)),
+                            child: Text(status,
                                 style: TextStyle(
-                                    fontSize: 10.5, color: AppTheme.textMuted)),
-                        ]),
-                  ])),
-              if (busyLabel != null)
-                const SizedBox(
-                    key: ValueKey('calendar-post-action-progress'),
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2.5))
-              else if (onTap != null)
-                Icon(Icons.chevron_right, size: 18, color: AppTheme.textMuted),
-            ]),
-          ),
-        )),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: color))),
+                      if (sending) ...[
+                        const SizedBox(height: 10),
+                        KeyedSubtree(
+                          key: ValueKey('calendar-publishing-rail-${post.id}'),
+                          child: PostDeePublishingRail(color: color),
+                        ),
+                        const SizedBox(height: 10),
+                        KeyedSubtree(
+                          key: ValueKey('calendar-channels-${post.id}'),
+                          child: PostDeePlatformDeliveryRow(
+                            platforms: post.platforms,
+                            results: post.platformResults,
+                          ),
+                        ),
+                      ] else ...[
+                        const SizedBox(height: 7),
+                        Wrap(
+                            key: ValueKey('calendar-channels-${post.id}'),
+                            spacing: 8,
+                            runSpacing: 5,
+                            children: [
+                              for (final platform in platforms)
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                                  SocialPlatformLogo(
+                                      platform: platform, size: 15),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                      child: Text(platform.shortLabel,
+                                          style: TextStyle(
+                                              fontSize: 10.5,
+                                              color: AppTheme.textMuted))),
+                                ]),
+                              for (final value in post.platforms.toSet().where(
+                                  (value) => _platformFor(value) == null))
+                                Text(value,
+                                    style: TextStyle(
+                                        fontSize: 10.5,
+                                        color: AppTheme.textMuted)),
+                            ]),
+                      ],
+                    ])),
+                if (busyLabel != null)
+                  const SizedBox(
+                      key: ValueKey('calendar-post-action-progress'),
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.5))
+                else if (onTap != null)
+                  Icon(Icons.chevron_right,
+                      size: 18, color: AppTheme.textMuted),
+              ]),
+            ),
+          )),
+        ),
       ),
     );
   }
@@ -1854,6 +1896,11 @@ String _formatThaiDate(DateTime date) =>
     '${date.day} ${_thaiMonthsShort[date.month - 1]} ${date.year}';
 
 String _statusLabel(CalendarPostResult post) {
+  if (post.status.toUpperCase() == 'PUBLISHING') {
+    return hasUnconfirmedDeliveryOutcome(post.platformResults)
+        ? 'ผลยังไม่ยืนยัน'
+        : 'กำลังส่ง';
+  }
   final deliveryLabel = aggregatePostDeliveryOutcomeLabel(
     post.platformResults,
     compact: true,

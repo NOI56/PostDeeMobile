@@ -9,6 +9,7 @@ import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/publishing_availability.dart';
 import '../shared/post_delivery_outcome.dart';
+import '../shared/postdee_publishing_motion.dart';
 
 /// Post detail (design screen #12). Shows the caption, channels, and honest
 /// status-driven actions: scheduled posts can be published immediately through
@@ -62,6 +63,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   bool get _isPublished => widget.post.status.toUpperCase() == 'PUBLISHED';
 
+  bool get _isSending =>
+      widget.post.status.toUpperCase() == 'PUBLISHING' &&
+      !_hasUnconfirmedOutcome;
+
   String? get _deliveryLabel =>
       aggregatePostDeliveryOutcomeLabel(widget.post.platformResults);
 
@@ -74,7 +79,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         .toList();
     if (resultsWithOutcome.isNotEmpty) {
       return resultsWithOutcome.any(
-        (result) => isPublishedDeliveryOutcome(result.deliveryOutcome),
+        (result) =>
+            result.status.toUpperCase() == 'PUBLISHED' &&
+            isPublishedDeliveryOutcome(result.deliveryOutcome),
       );
     }
     return _isPublished ||
@@ -165,21 +172,32 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   String _platformStatLine(SocialPlatform platform) {
     final result = _resultFor(platform);
-    final deliveryLabel = postDeliveryOutcomeLabel(result?.deliveryOutcome);
-    if (deliveryLabel != null) return deliveryLabel;
-    final resultStatus = result?.status.toUpperCase();
-    if (resultStatus == 'PUBLISHED') return 'เผยแพร่สำเร็จ';
-    if (resultStatus == 'FAILED') return 'ส่งไม่สำเร็จ';
-    if (resultStatus == 'PUBLISHING') return 'กำลังส่ง';
-    if (resultStatus == 'PENDING') return 'รอส่ง';
-    if (_isPublished) return 'เผยแพร่แล้ว';
+    if (result != null) {
+      if (result.status.toUpperCase() == 'PUBLISHED' &&
+          result.deliveryOutcome == null) {
+        return 'เผยแพร่สำเร็จ';
+      }
+      return postPlatformDeliveryLabel(result);
+    }
     if (_isScheduled) return 'รอส่งตามเวลา';
+    if (_isPublished ||
+        widget.post.status.toUpperCase() == 'PUBLISHING' ||
+        widget.post.status.toUpperCase() == 'PARTIAL_PUBLISHED') {
+      return postPlatformDeliveryLabel(null);
+    }
     if (widget.post.status.toUpperCase() == 'FAILED') return 'ส่งไม่สำเร็จ';
     return 'รอส่ง';
   }
 
   Color _platformStatusColor(SocialPlatform platform) {
     final result = _resultFor(platform);
+    if (result?.status.toUpperCase() == 'FAILED') {
+      return const Color(0xFFDC2626);
+    }
+    if (result?.status.toUpperCase() == 'PUBLISHING') {
+      return const Color(0xFF0E9F6E);
+    }
+    if (result?.status.toUpperCase() != 'PUBLISHED') return AppTheme.textMuted;
     if (result?.deliveryOutcome != null &&
         !isKnownDeliveryOutcome(result?.deliveryOutcome)) {
       return AppTheme.textMuted;
@@ -232,6 +250,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Widget _buildPlatformCard(SocialPlatform platform) {
     final result = _resultFor(platform);
+    final statusLabel = _platformStatLine(platform);
+    final sending = _isSending && statusLabel == 'กำลังส่ง';
     final errorMessage = result?.errorMessage?.trim();
     final externalReference = result?.externalPostId?.trim();
     final hasError = errorMessage != null && errorMessage.isNotEmpty;
@@ -279,15 +299,24 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  _platformStatLine(platform),
-                  style: TextStyle(
+                if (sending)
+                  PostDeePublishingBadge(
+                    label: statusLabel,
+                    background: const Color(0xFFE2F3EA),
+                    foreground: const Color(0xFF0E9F6E),
+                    sending: true,
                     fontSize: 11.5,
-                    fontWeight:
-                        result == null ? FontWeight.w400 : FontWeight.w600,
-                    color: _platformStatusColor(platform),
+                  )
+                else
+                  Text(
+                    statusLabel,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight:
+                          result == null ? FontWeight.w400 : FontWeight.w600,
+                      color: _platformStatusColor(platform),
+                    ),
                   ),
-                ),
                 if (hasError) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -487,119 +516,112 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       body: DecoratedBox(
         decoration: AppTheme.screenBackground,
         child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Row(
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: status.bg,
-                      borderRadius: BorderRadius.circular(999),
+          child: PostDeePublishingMotion(
+            sending: _isSending,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Row(
+                  children: [
+                    PostDeePublishingBadge(
+                      label: status.label,
+                      background: status.bg,
+                      foreground: status.ink,
+                      sending: _isSending,
+                      icon: status.icon,
+                      fontSize: 12,
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 13, vertical: 6),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _dateLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_isSending) ...[
+                  const SizedBox(height: 12),
+                  const KeyedSubtree(
+                    key: ValueKey('post-detail-publishing-rail'),
+                    child: PostDeePublishingRail(color: Color(0xFF0E9F6E)),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 104,
+                      height: 140,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFFE7EFE9), Color(0xFFD6E3DA)],
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        size: 34,
+                        color: Color(0xFF8FA197),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(status.icon, size: 16, color: status.ink),
-                          const SizedBox(width: 5),
                           Text(
-                            status.label,
+                            'แคปชั่น',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11.5,
                               fontWeight: FontWeight.w700,
-                              color: status.ink,
+                              color: AppTheme.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            caption.isEmpty ? '(ไม่มีแคปชั่น)' : caption,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              height: 1.55,
+                              color: caption.isEmpty
+                                  ? AppTheme.textMuted
+                                  : AppTheme.textPrimary,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _dateLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: AppTheme.textMuted,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 104,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFFE7EFE9), Color(0xFFD6E3DA)],
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow_rounded,
-                      size: 34,
-                      color: Color(0xFF8FA197),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'แคปชั่น',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.textMuted,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          caption.isEmpty ? '(ไม่มีแคปชั่น)' : caption,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            height: 1.55,
-                            color: caption.isEmpty
-                                ? AppTheme.textMuted
-                                : AppTheme.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'ช่องทางที่โพสต์',
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textPrimary,
+                  ],
                 ),
-              ),
-              const SizedBox(height: 10),
-              for (final platform in _platforms) ...[
-                _buildPlatformCard(platform),
-              ],
-              if (_platforms.isEmpty)
+                const SizedBox(height: 18),
                 Text(
-                  'ไม่พบข้อมูลช่องทาง',
-                  style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
+                  'ช่องทางที่โพสต์',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary,
+                  ),
                 ),
-            ],
+                const SizedBox(height: 10),
+                for (final platform in _platforms) ...[
+                  _buildPlatformCard(platform),
+                ],
+                if (_platforms.isEmpty)
+                  Text(
+                    'ไม่พบข้อมูลช่องทาง',
+                    style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

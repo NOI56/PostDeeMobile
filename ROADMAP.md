@@ -2,6 +2,24 @@
 
 Build roadmap for PostDee.
 
+## Publishing activity (2026-10-18, source verified; APK blocked)
+
+- Implement selected variant 3 in Home, Calendar and detail: one motion clock
+  per post drives the sending badge, indeterminate rail and sending channel
+  icons, with real per-channel results and no fabricated percentage.
+- Refresh Home's existing recent-post read every 30 seconds only for loaded
+  `PUBLISHING` posts, while resumed, active, on the current route and owned by
+  the current signed-in user. Preserve Calendar's existing visible
+  `QUEUED`/`PUBLISHING` polling. Detail stays a snapshot; refresh its parent and
+  reopen for newer results because there is no single-post GET.
+- Preserve reduced-motion/ticker/lifecycle guards and delivery-outcome truth.
+  No API, schema, dependency, flag, entitlement or migration changes. Targeted
+  tests pass 145/145; full Flutter passes 2,437 with two optional previews
+  skipped, and analysis has no issues. Local tooling/resources block the
+  Staging APK build; package inspection and native installation remain
+  unverified. Delivery is incomplete; see the
+  [implementation plan](docs/superpowers/plans/2026-10-18-publishing-motion.md).
+
 ## YouTube title from shared caption (2026-10-18, local implementation)
 
 - Write one caption and preview the YouTube title automatically: first sentence

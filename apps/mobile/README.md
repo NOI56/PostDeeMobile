@@ -2,6 +2,26 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Publishing activity (2026-10-18, source verified; APK blocked)
+
+Selected variant 3 combines the shared sending badge, indeterminate rail and
+per-channel delivery results in Home, Calendar and detail. One guarded clock per
+post keeps badge/channel activity together, stops for reduced motion, inactive
+tickers and background state, and never invents a progress percentage. Draft,
+private, unlisted, live, failed and unconfirmed outcomes remain distinct.
+
+Home refreshes its existing recent-post read every 30 seconds only while a
+loaded post is `PUBLISHING`, the app is resumed, Home is active, its route is
+current and the same stable owner is signed in. Calendar retains its existing
+visible `QUEUED`/`PUBLISHING` polling. Detail is a snapshot: refresh the parent
+list and reopen it for newer results; there is no single-post GET. No API,
+schema, dependency, flag, entitlement or migration changes. Targeted tests pass
+145/145; full Flutter passes 2,437 with two optional previews skipped, and
+analysis reports no issues. The Staging APK build is blocked by local
+tooling/resources; APK inspection and native installation remain unverified.
+See the
+[plan and verification record](../../docs/superpowers/plans/2026-10-18-publishing-motion.md).
+
 ## Automatic YouTube title (2026-10-18, local implementation)
 
 The shared caption supplies the YouTube title preview automatically. An empty
@@ -462,6 +482,18 @@ rejects `--profile`, `--release`, Dart-define overrides, non-Test-Store SDK
 keys, and server secrets because those could mix Staging and Production
 configuration. A different machine/CI debug keystore also needs its SHA-1 and
 SHA-256 registered in Firebase Staging.
+
+When local tooling cannot build, `ci.yml` supports a manual `build_staging_apk`
+with an exact `apk_source_ref`. `staging_test_store_billing` defaults to false;
+opt in only with the existing public `test_` Android SDK key stored as the
+repository secret `POSTDEE_REVENUECAT_TEST_STORE_ANDROID_API_KEY`. The guarded
+helper creates merged defines only in `RUNNER_TEMP`, without printing values
+or uploading configuration/signing keys. Optional `staging_build_number` accepts
+1–2100000000 to preserve normal upgrades; empty retains pubspec behavior.
+Only the APK and a source/config/hash/billing-mode/build-number receipt are
+uploaded. Re-sign the downloaded copy with the existing local debug key before
+updating an installed app, preserve its Test Store mode, and verify native
+startup. See [CI delivery details](../../docs/STAGING.md#สร้าง-apk-staging-ผ่าน-github-actions-แบบเลือกเปิด).
 
 For an Android app already on adopted private storage, use the guarded launcher
 instead of `-Command run`:

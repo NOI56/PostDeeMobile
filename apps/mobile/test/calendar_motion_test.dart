@@ -84,6 +84,193 @@ void main() {
     session.signIn(const AuthSession(userId: 'motion-user', idToken: 'test'));
   });
 
+  testWidgets(
+      'sending row shows actual channel outcomes without invented progress',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.pumpWidget(_app(CalendarScreen(
+        now: () => _now,
+        loadCalendarPosts: () async => [
+          CalendarPostResult(
+            id: 'sending',
+            caption: 'คลิปที่กำลังส่ง',
+            videoS3Key: 'uploads/sending.mp4',
+            platforms: const [
+              'TIKTOK',
+              'YOUTUBE_SHORTS',
+              'INSTAGRAM_REELS',
+              'FACEBOOK_REELS',
+            ],
+            status: 'PUBLISHING',
+            createdAt: _now,
+            platformResults: const [
+              PostPlatformResult(
+                  postId: 'sending',
+                  platform: 'TIKTOK',
+                  status: 'PUBLISHED',
+                  deliveryOutcome: 'DRAFT'),
+              PostPlatformResult(
+                  postId: 'sending',
+                  platform: 'YOUTUBE_SHORTS',
+                  status: 'PUBLISHING'),
+              PostPlatformResult(
+                  postId: 'sending',
+                  platform: 'INSTAGRAM_REELS',
+                  status: 'FAILED'),
+            ],
+          ),
+        ],
+      )));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byKey(const ValueKey('calendar-publishing-rail-sending')),
+          findsOneWidget);
+      expect(find.text('กำลังส่ง'), findsWidgets);
+      expect(find.textContaining('ส่งเป็นร่างแล้ว'), findsOneWidget);
+      expect(find.textContaining('ส่งไม่สำเร็จ'), findsOneWidget);
+      expect(find.textContaining('รอผล'), findsOneWidget);
+      expect(
+          find.bySemanticsLabel(RegExp(
+              '.*TikTok ส่งเป็นร่างแล้ว.*Shorts กำลังส่ง.*Reels ส่งไม่สำเร็จ.*Facebook รอผล.*')),
+          findsOneWidget);
+      expect(find.textContaining('%'), findsNothing);
+      expect(tester.binding.hasScheduledFrame, isTrue);
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  testWidgets('an incomplete draft result keeps the publishing post sending',
+      (tester) async {
+    await tester.pumpWidget(_app(
+        CalendarScreen(
+          now: () => _now,
+          loadCalendarPosts: () async => [
+            CalendarPostResult(
+              id: 'incomplete',
+              caption: 'ยังส่งไม่ครบทุกช่องทาง',
+              videoS3Key: 'uploads/incomplete.mp4',
+              platforms: const ['TIKTOK', 'YOUTUBE_SHORTS'],
+              status: 'PUBLISHING',
+              createdAt: _now,
+              platformResults: const [
+                PostPlatformResult(
+                    postId: 'incomplete',
+                    platform: 'TIKTOK',
+                    status: 'PUBLISHED',
+                    deliveryOutcome: 'DRAFT'),
+              ],
+            ),
+          ],
+        ),
+        reducedMotion: true));
+    await tester.pumpAndSettle();
+    expect(find.text('กำลังส่ง'), findsOneWidget);
+    expect(find.textContaining('ส่งเป็นร่างแล้ว'), findsOneWidget);
+    expect(find.textContaining('รอผล'), findsOneWidget);
+    expect(find.byKey(const ValueKey('calendar-publishing-rail-incomplete')),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final mode in ['inactive', 'reduced', 'ticker', 'background']) {
+    testWidgets(
+        'sending row pauses for $mode and resumes without losing content',
+        (tester) async {
+      _resumeMotion(tester.binding);
+      addTearDown(() => _resumeMotion(tester.binding));
+      final key = GlobalKey();
+      Widget host(bool blocked) => _app(
+            CalendarScreen(
+              key: key,
+              now: () => _now,
+              isActive: mode != 'inactive' || !blocked,
+              loadScheduledPosts: () async => [
+                ScheduledPostResult(
+                  id: 'sending',
+                  caption: 'คลิปที่กำลังส่ง',
+                  videoS3Key: 'uploads/sending.mp4',
+                  platforms: const ['TIKTOK'],
+                  scheduledAt: _now,
+                  status: 'PUBLISHING',
+                  createdAt: _now,
+                ),
+              ],
+            ),
+            reducedMotion: mode == 'reduced' && blocked,
+            tickerEnabled: mode != 'ticker' || !blocked,
+          );
+      await tester.pumpWidget(host(false));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(tester.binding.hasScheduledFrame, isTrue);
+      if (mode == 'background') {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.scheduleForcedFrame();
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(host(true));
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('คลิปที่กำลังส่ง'), findsOneWidget);
+      expect(find.text('กำลังส่ง'), findsOneWidget);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      if (mode == 'background') {
+        _resumeMotion(tester.binding);
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(host(false));
+      }
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(tester.binding.hasScheduledFrame, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('sending refresh stops its motion at a real private result',
+      (tester) async {
+    var finished = false;
+    await tester.pumpWidget(_app(CalendarScreen(
+      now: () => _now,
+      loadCalendarPosts: () async => [
+        CalendarPostResult(
+          id: 'sending',
+          caption: 'คลิปที่กำลังส่ง',
+          videoS3Key: 'uploads/sending.mp4',
+          platforms: const ['TIKTOK'],
+          status: finished ? 'PUBLISHED' : 'PUBLISHING',
+          createdAt: _now,
+          publishedAt: finished ? _now : null,
+          platformResults: finished
+              ? const [
+                  PostPlatformResult(
+                      postId: 'sending',
+                      platform: 'TIKTOK',
+                      status: 'PUBLISHED',
+                      deliveryOutcome: 'PRIVATE'),
+                ]
+              : const [],
+        ),
+      ],
+    )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.binding.hasScheduledFrame, isTrue);
+    finished = true;
+    await tester
+        .widget<RefreshIndicator>(find.byType(RefreshIndicator))
+        .onRefresh();
+    await tester.pumpAndSettle();
+    expect(find.text('ส่วนตัว'), findsOneWidget);
+    expect(find.text('กำลังส่ง'), findsNothing);
+    expect(find.byKey(const ValueKey('calendar-publishing-rail-sending')),
+        findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final mode in ['inactive', 'reduced', 'ticker', 'background']) {
     testWidgets('motion audit $mode finishes a live day fade without replay',
         (tester) async {

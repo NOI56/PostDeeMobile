@@ -18,6 +18,7 @@ import '../posts/posts_screen.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_skeleton.dart';
 import '../shared/postdee_press_feedback.dart';
+import '../shared/postdee_publishing_motion.dart';
 import '../uploader/publish_draft.dart';
 import '../uploader/uploader_screen.dart';
 import 'home_activity_section.dart';
@@ -106,10 +107,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _ownerUserId;
   var _ownerGeneration = 0;
   bool _openingComposer = false;
+  Timer? _sendingRefreshTimer;
+  bool _appIsResumed = true;
 
   @override
   void initState() {
     super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _appIsResumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     _ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
     PostDeeAuthSessionStore.instance.addListener(_handleOwnerChanged);
     WidgetsBinding.instance.addObserver(this);
@@ -123,6 +128,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _sendingRefreshTimer?.cancel();
     PostDeeAuthSessionStore.instance.removeListener(_handleOwnerChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -133,6 +139,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted || owner == _ownerUserId) return;
     _ownerUserId = owner;
     _ownerGeneration++;
+    _sendingRefreshTimer?.cancel();
+    _sendingRefreshTimer = null;
     _subscriptionLoadGeneration++;
     _postsLoadFuture = null;
     _subscriptionLoadFuture = null;
@@ -154,16 +162,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appIsResumed = state == AppLifecycleState.resumed;
+    _syncSendingRefresh();
     if (state == AppLifecycleState.resumed &&
         widget.isActive &&
         (ModalRoute.of(context)?.isCurrent ?? true)) {
       _loadSubscription();
+      if (_recentPosts
+          .any((post) => post.status.toUpperCase() == 'PUBLISHING')) {
+        _loadRecentPosts(preserveContent: true);
+      }
     }
   }
 
   @override
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _syncSendingRefresh();
 
     if (!oldWidget.isActive && widget.isActive) {
       _loadRecentPosts();
@@ -177,9 +192,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final operation = _performRecentPostsLoad(preserveContent: preserveContent);
     _postsLoadFuture = operation;
     unawaited(operation.then((_) {
-      if (identical(_postsLoadFuture, operation)) _postsLoadFuture = null;
+      if (identical(_postsLoadFuture, operation)) {
+        _postsLoadFuture = null;
+        _syncSendingRefresh();
+      }
     }));
     return operation;
+  }
+
+  void _syncSendingRefresh() {
+    _sendingRefreshTimer?.cancel();
+    _sendingRefreshTimer = null;
+    if (!mounted ||
+        !widget.isActive ||
+        !_appIsResumed ||
+        _ownerUserId == null ||
+        !_recentPosts
+            .any((post) => post.status.toUpperCase() == 'PUBLISHING')) {
+      return;
+    }
+    _sendingRefreshTimer = Timer(const Duration(seconds: 30), () {
+      _sendingRefreshTimer = null;
+      if (!mounted || !widget.isActive || !_appIsResumed) return;
+      if (ModalRoute.of(context)?.isCurrent ?? true) {
+        unawaited(_loadRecentPosts(preserveContent: true));
+      } else {
+        _syncSendingRefresh();
+      }
+    });
   }
 
   Future<bool> _performRecentPostsLoad({required bool preserveContent}) async {
@@ -360,6 +400,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (changed == true && mounted) {
       setState(() => _activityRefreshToken++);
       await Future.wait([_loadRecentPosts(), _loadSubscription()]);
+    } else if (mounted &&
+        widget.isActive &&
+        post.status.toUpperCase() == 'PUBLISHING') {
+      await _loadRecentPosts(preserveContent: true);
     }
   }
 
@@ -1433,6 +1477,12 @@ class _LatestPostRow extends StatelessWidget {
       );
     }
 
+    // Some providers finish before others and the API may omit pending rows.
+    // The aggregate post is still sending until its actual status changes.
+    if (post.status.toUpperCase() == 'PUBLISHING') {
+      return (label: 'กำลังส่ง', bg: publishedBg, ink: publishedInk);
+    }
+
     final deliveryLabel = aggregatePostDeliveryOutcomeLabel(
       post.platformResults,
       compact: true,
@@ -1494,6 +1544,22 @@ class _LatestPostRow extends StatelessWidget {
     final platforms =
         post.platforms.map(_platformFor).whereType<SocialPlatform>().toList();
     final status = _statusInfo();
+    final sending =
+        post.status.toUpperCase() == 'PUBLISHING' && status.label == 'กำลังส่ง';
+    final stackStatus = MediaQuery.textScalerOf(context).scale(13.5) > 18;
+    final statusBadge = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: stackStatus ? 190 : 108),
+      child: _StatusPill(
+        label: status.label,
+        bg: status.bg,
+        ink: status.ink,
+        sending: sending,
+        icon: post.status.toUpperCase() == 'PUBLISHED' &&
+                status.label != 'ผลยังไม่ยืนยัน'
+            ? Icons.check_circle_outline_rounded
+            : null,
+      ),
+    );
     final caption = post.caption.trim();
     final title = caption.isEmpty ? _relativeTime() : caption;
     final sub = platforms.isEmpty
@@ -1503,81 +1569,114 @@ class _LatestPostRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: title,
-      child: PostDeePressFeedback(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(15),
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppTheme.glass,
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: AppTheme.border),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF122018).withValues(alpha: 0.04),
-                  blurRadius: 2,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                _LatestPostThumbnail(
-                  post: post,
-                  isActive: isActive,
-                  createController: createVideoThumbnailController,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          for (final platform in platforms.take(4)) ...[
-                            Container(
-                              width: 13,
-                              height: 13,
-                              margin: const EdgeInsets.only(right: 3),
-                              decoration: BoxDecoration(
-                                color: platform.displayColor,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                          ],
-                          if (platforms.isNotEmpty) const SizedBox(width: 3),
-                          Expanded(
-                            child: Text(
-                              sub,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.textMuted,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+      child: PostDeePublishingMotion(
+        key: ValueKey('home-publishing-${post.id}'),
+        sending: sending,
+        animate: isActive,
+        child: PostDeePressFeedback(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(15),
+            onTap: onTap,
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppTheme.glass,
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: AppTheme.border),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF122018).withValues(alpha: 0.04),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
                   ),
-                ),
-                const SizedBox(width: 6),
-                _StatusPill(
-                    label: status.label, bg: status.bg, ink: status.ink),
-              ],
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Row(
+                      children: [
+                        _LatestPostThumbnail(
+                          post: post,
+                          isActive: isActive,
+                          createController: createVideoThumbnailController,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Row(
+                                children: [
+                                  for (final platform in platforms.take(4)) ...[
+                                    Container(
+                                      width: 13,
+                                      height: 13,
+                                      margin: const EdgeInsets.only(right: 3),
+                                      decoration: BoxDecoration(
+                                        color: platform.displayColor,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                    ),
+                                  ],
+                                  if (platforms.isNotEmpty)
+                                    const SizedBox(width: 3),
+                                  Expanded(
+                                    child: Text(
+                                      sub,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.textMuted,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (stackStatus) ...[
+                                const SizedBox(height: 6),
+                                statusBadge,
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (!stackStatus) ...[
+                          const SizedBox(width: 6),
+                          statusBadge,
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (sending) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                      child: PostDeePlatformDeliveryRow(
+                        platforms: post.platforms,
+                        results: post.platformResults,
+                      ),
+                    ),
+                    const ClipRRect(
+                      borderRadius:
+                          BorderRadius.vertical(bottom: Radius.circular(14)),
+                      child: PostDeePublishingRail(),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1827,36 +1926,28 @@ class _LatestPostThumbnailPlaceholder extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label, required this.bg, required this.ink});
+  const _StatusPill(
+      {required this.label,
+      required this.bg,
+      required this.ink,
+      this.sending = false,
+      this.icon});
 
   final String label;
   final Color bg;
   final Color ink;
+  final bool sending;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 108),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: ink,
-            ),
-          ),
-        ),
-      ),
+    return PostDeePublishingBadge(
+      label: label,
+      background: bg,
+      foreground: ink,
+      sending: sending,
+      icon: icon,
+      fontSize: 10.5,
     );
   }
 }

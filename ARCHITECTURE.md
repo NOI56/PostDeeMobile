@@ -2,6 +2,27 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Publishing activity boundary (2026-10-18, source verified; APK blocked)
+
+`PostDeePublishingMotion` owns one animation controller per post scope, shared
+by the sending badge, indeterminate rail and sending-channel icons in Home,
+Calendar and detail (selected variant 3). Ordinary rebuilds retain phase;
+stopped sending, disabled animation, reduced motion, disabled `TickerMode` and
+background lifecycle stop/reset it. Completed channels use their actual results;
+the rail supplies activity feedback without a completion percentage.
+
+Home's 30-second silent refresh uses the existing recent-post loader only while
+a loaded post is `PUBLISHING`, the app is resumed, Home is active, its route is
+current and its stable owner is still signed in. Owner changes invalidate late
+results. Calendar keeps its existing visible `QUEUED`/`PUBLISHING` polling.
+Detail receives a snapshot; its parent must refresh and reopen it for a newer
+result because there is no single-post GET. No API, schema, dependency, flag,
+entitlement or migration changes. Targeted tests pass 145/145; full Flutter
+passes 2,437 with two optional previews skipped, and analysis has no issues.
+Local tooling/resources block the Staging APK build; APK inspection and native
+installation remain unverified. See the
+[implementation plan](docs/superpowers/plans/2026-10-18-publishing-motion.md).
+
 ## YouTube automatic-title boundary (2026-10-18, local implementation)
 
 `PlatformPublishSettings.youtubeTitle` retains the raw local choice: empty means

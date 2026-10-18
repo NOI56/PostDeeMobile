@@ -7,6 +7,24 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Publishing activity (2026-10-18, source verified; APK blocked)
+
+The selected variant 3 adds a shared sending badge, indeterminate rail and real
+per-channel delivery row to Home, Calendar and post detail. Each post uses one
+guarded motion clock; the activity indicator does not estimate a percentage or
+turn a partial result into confirmed completion.
+
+Home silently refreshes its existing recent-post read every 30 seconds only
+while a loaded post is `PUBLISHING`, with the app resumed, Home active, its route
+current and the same signed-in owner. Calendar retains its existing visible
+`QUEUED`/`PUBLISHING` polling. Detail remains a navigation snapshot: refresh the
+parent list and reopen it to see new results. No API, schema, dependency, flag,
+entitlement or migration changes are required. Targeted tests pass 145/145; the
+full Flutter suite passes 2,437 with two optional previews skipped, and analysis
+reports no issues. The Staging APK build is blocked by local tooling/resources;
+APK inspection and native installation remain unverified. See the
+[plan and verification record](docs/superpowers/plans/2026-10-18-publishing-motion.md).
+
 ## YouTube title from shared caption (2026-10-18, local implementation)
 
 Write the shared caption once. The YouTube sheet shows a live title preview

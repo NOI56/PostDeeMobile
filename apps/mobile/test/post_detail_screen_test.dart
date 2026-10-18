@@ -53,6 +53,166 @@ class _FakePostApiClient extends PostDeeApiClient {
 
 void main() {
   testWidgets(
+      'sending detail animates while preserving each real channel result',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: PostDetailScreen(
+        post: _post(status: 'PUBLISHING', platforms: const [
+          'TIKTOK',
+          'YOUTUBE_SHORTS',
+          'INSTAGRAM_REELS',
+          'FACEBOOK_REELS',
+        ], platformResults: const [
+          PostPlatformResult(
+              postId: 'post-1',
+              platform: 'TIKTOK',
+              status: 'PUBLISHED',
+              deliveryOutcome: 'DRAFT'),
+          PostPlatformResult(
+              postId: 'post-1',
+              platform: 'YOUTUBE_SHORTS',
+              status: 'PUBLISHING'),
+          PostPlatformResult(
+              postId: 'post-1', platform: 'INSTAGRAM_REELS', status: 'FAILED'),
+        ]),
+      ),
+    ));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('post-detail-publishing-rail')),
+        findsOneWidget);
+    expect(find.text('กำลังส่ง'), findsNWidgets(2));
+    expect(find.text('ส่งเป็นร่างแล้ว'), findsOneWidget);
+    expect(find.text('ส่งไม่สำเร็จ'), findsOneWidget);
+    expect(find.text('รอผล'), findsOneWidget);
+    expect(find.text('TikTok'), findsOneWidget);
+    expect(find.textContaining('%'), findsNothing);
+    expect(tester.binding.hasScheduledFrame, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reduced-motion sending detail stays readable without a ticker',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: PostDetailScreen(post: _post(status: 'PUBLISHING')),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('post-detail-publishing-rail')),
+        findsOneWidget);
+    expect(find.text('กำลังส่ง'), findsOneWidget);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a missing channel result never inherits another channel success',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: PostDetailScreen(
+      post: _post(status: 'PUBLISHED', platformResults: const [
+        PostPlatformResult(
+            postId: 'post-1',
+            platform: 'TIKTOK',
+            status: 'PUBLISHED',
+            deliveryOutcome: 'DRAFT'),
+      ]),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('รอผล'), findsOneWidget);
+    expect(find.text('เผยแพร่สำเร็จ'), findsNothing);
+    expect(find.text('ส่งเป็นร่างแล้ว'), findsWidgets);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
+
+  testWidgets(
+      'failed channel result takes priority over a stale delivery receipt',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: PostDetailScreen(
+      post: _post(status: 'FAILED', platforms: const [
+        'TIKTOK'
+      ], platformResults: const [
+        PostPlatformResult(
+            postId: 'post-1',
+            platform: 'TIKTOK',
+            status: 'FAILED',
+            deliveryOutcome: 'LIVE'),
+      ]),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ส่งไม่สำเร็จ'), findsNWidgets(2));
+    expect(find.text('เผยแพร่แล้ว'), findsNothing);
+    expect(
+        find.byKey(const ValueKey('post-detail-open-analytics')), findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
+
+  testWidgets('sending channel ignores a stale live receipt until confirmed',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: MediaQuery(
+      data: const MediaQueryData(disableAnimations: true),
+      child: PostDetailScreen(
+        post: _post(status: 'PUBLISHING', platforms: const [
+          'TIKTOK'
+        ], platformResults: const [
+          PostPlatformResult(
+              postId: 'post-1',
+              platform: 'TIKTOK',
+              status: 'PUBLISHING',
+              deliveryOutcome: 'LIVE'),
+        ]),
+      ),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('กำลังส่ง'), findsNWidgets(2));
+    expect(find.text('เผยแพร่แล้ว'), findsNothing);
+    expect(
+        find.byKey(const ValueKey('post-detail-open-analytics')), findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
+
+  for (final outcome in const [
+    'DRAFT',
+    'PRIVATE',
+    'UNLISTED',
+    'LIVE',
+    'FUTURE'
+  ]) {
+    testWidgets('terminal $outcome detail never replays sending motion',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+          home: PostDetailScreen(
+        post: _post(status: 'PUBLISHED', platforms: const [
+          'TIKTOK'
+        ], platformResults: [
+          PostPlatformResult(
+              postId: 'post-1',
+              platform: 'TIKTOK',
+              status: 'PUBLISHED',
+              deliveryOutcome: outcome),
+        ]),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('post-detail-publishing-rail')),
+          findsNothing);
+      expect(find.text('กำลังส่ง'), findsNothing);
+      expect(
+          find.text(switch (outcome) {
+            'DRAFT' => 'ส่งเป็นร่างแล้ว',
+            'PRIVATE' => 'ส่วนตัว',
+            'UNLISTED' => 'ไม่แสดงในรายการ',
+            'LIVE' => 'เผยแพร่แล้ว',
+            _ => 'ผลยังไม่ยืนยัน',
+          }),
+          findsWidgets);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
       'same-owner token refresh keeps details but UID change hides all private content and actions',
       (tester) async {
     final sessions = PostDeeAuthSessionStore.instance;

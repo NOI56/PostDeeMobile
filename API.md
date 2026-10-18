@@ -1559,6 +1559,18 @@ Response:
 user's returned post ids. A failed platform result can contain `errorMessage`;
 the response does not expose another user's publish records.
 
+The 2026-10-18 Mobile publishing-activity follow-up uses these existing reads
+and result fields. Home refreshes recent posts every 30 seconds only while a
+loaded post is `PUBLISHING` and its owner, foreground, active-tab and current-route
+guards allow it. Calendar retains its existing visible `QUEUED`/`PUBLISHING`
+polling. Post detail remains a navigation snapshot; refresh its parent and reopen
+it for new results. No single-post GET, response field, schema, flag, dependency,
+entitlement or migration is added. Mobile targeted tests pass 145/145, full
+Flutter passes 2,437 with two optional previews skipped, and analysis has no
+issues. The Staging APK build is blocked by local tooling/resources, so APK
+inspection and native installation remain unverified. See the
+[publishing-motion plan](docs/superpowers/plans/2026-10-18-publishing-motion.md).
+
 ### Account mutation boundary for stateful reads
 
 Authenticated writes retain the existing owner mutation/deletion barrier and

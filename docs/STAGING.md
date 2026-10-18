@@ -238,10 +238,31 @@ API ชุดนี้ deploy และตรวจ Staging เพิ่มต�
 
 Workflow `ci.yml` มี input `build_staging_apk` ค่าเริ่มต้น `false` และ
 `apk_source_ref` สำหรับระบุ source มือถือที่ต้องการตรวจและสร้างโดยตรง การเปิด
-build ยังรัน checks เดิมก่อน แล้วเก็บ artifact `postdee-staging-debug-<runId>`
-เฉพาะ APK/receipt อายุ 3 วัน ต้องเทียบ source/config/hash จาก receipt และเซ็น
-สำเนา APK ด้วย debug key เดิมในเครื่องก่อนอัปเดต emulator แบบ `install -r`
-ห้ามอัปโหลด signing key หรือ private configuration เพื่อทำขั้นตอนนี้
+build ยังรัน checks เดิมก่อน ใช้ `staging_build_number` ระบุ version code
+เพื่ออัปเดตแอปเดิมได้ โดยรับจำนวนเต็ม 1–2100000000 เท่านั้น; ค่าว่างใช้ค่า
+จาก pubspec ตามเดิม ค่า input ผ่าน environment และ quoted shell array
+โดยไม่แทรกลง shell command โดยตรง
+
+ตัวเลือก `staging_test_store_billing` ค่าเริ่มต้น `false` คง APK ที่ปิด billing
+ไว้ตามเดิม เปิดได้เฉพาะ manual dispatch ที่เปิด `build_staging_apk` ด้วย
+เมื่อเลือก `true` ต้องตั้ง repository secret
+`POSTDEE_REVENUECAT_TEST_STORE_ANDROID_API_KEY` เป็น public Android Test Store
+SDK key เดิมที่ขึ้นต้น `test_` เท่านั้น ไม่มีการอัปโหลด signing key หรือ private
+configuration Helper `scripts/prepare_staging_ci_defines.py` ตรวจ allowlist,
+Staging API, Firebase, mock-auth และ base-billing ก่อนสร้าง merged defines
+ใน `RUNNER_TEMP` โดยไม่พิมพ์ key/config และไม่แก้ไฟล์ใน checkout
+หาก key หายหรือค่าผิดจะหยุดก่อน build; secret อยู่เฉพาะขั้นตอนเตรียม Test Store
+
+Artifact `postdee-staging-debug-<runId>` อายุ 3 วันมีเฉพาะ APK/receipt ไม่มี
+merged defines Receipt ระบุ source SHA, mode billing, config/APK hash,
+build flags และ package/version code ที่อ่านจาก APK จริง ต้องเทียบ receipt
+กับ source/config ที่ตั้งใจใช้ แล้วเซ็นสำเนา APK ด้วย debug key เดิมในเครื่อง
+ก่อนอัปเดตแอปแบบเก็บข้อมูล สำหรับ emulator ที่ติดตั้งบน adopted volume
+ให้ส่ง APK ที่เซ็นแล้วเข้า `Invoke-PostDeeAndroidApkUpdate` ใน
+`apps/mobile/tool/android-install-volume.ps1` เพื่อรักษา UID/volume และตรวจว่า
+version code ไม่ลดลง ห้ามติดตั้งทับด้วย raw `adb install` สำหรับเครื่องที่ใช้ Test Store อยู่
+ให้เลือกโหมด Test Store เพื่อคง billing เดิม การสร้าง APK สำเร็จยังต้องตามด้วย
+การตรวจ signature/package และ smoke-test แอปที่ติดตั้งจริง
 
 ## ส่งมอบหน้าสร้างโพสต์ 4 ขั้น — 7 ตุลาคม 2026
 

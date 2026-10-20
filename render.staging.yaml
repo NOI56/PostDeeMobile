@@ -1,14 +1,14 @@
-# Dedicated low-cost staging Blueprint.
+# Dedicated staging Blueprint; infrastructure reconciled with Render on 2026-10-20.
 #
-# Safety rules before creating this Blueprint in Render:
+# Review rules before syncing this Blueprint in Render:
 # - Use the staging-only database declared below; never point DATABASE_URL at
 #   postdee-postgres or any external production database.
 # - Supply a dedicated R2 bucket, Firebase project, and RevenueCat test webhook
 #   token for every `sync: false` entry.
 # - Keep account deletion and push delivery disabled until their staging-only
 #   Firebase service account has been installed and tested.
-# - The free Render Postgres plan expires after 30 days and each workspace can
-#   have only one active free Postgres database.
+# - Review the environment-variable diff separately: the provider defaults below
+#   have not been verified against live Dashboard values. Do not blindly sync.
 
 services:
   - type: web
@@ -16,9 +16,9 @@ services:
     runtime: node
     rootDir: apps/api
     region: singapore
-    plan: free
+    plan: starter
     branch: main
-    autoDeployTrigger: checksPass
+    autoDeployTrigger: "off"
     numInstances: 1
     buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
     # Prisma CLI and native build packages must remain available through the
@@ -118,7 +118,10 @@ services:
 databases:
   - name: postdee-postgres-staging
     region: singapore
-    plan: free
+    # Blueprint uses a hyphen; the Render API reports this as basic_256mb.
+    plan: basic-256mb
+    diskSizeGB: 1
+    postgresMajorVersion: "18"
     databaseName: postdee_staging
     user: postdee_staging
     ipAllowList: []

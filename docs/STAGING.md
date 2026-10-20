@@ -1,5 +1,88 @@
 # PostDee Staging
 
+## เตรียมชุดแก้สำหรับ Staging — 20 ตุลาคม 2026
+
+รอบนี้เตรียม source ใน managed worktree จาก `main`
+`c2777a8f93048d88efb596fddbaa7244dc0f3595` ซึ่งตรวจตรงกับ remote แล้ว
+ไม่ใช้ checkout เก่า `D:\PostDeeMobile` ที่ยังมีงานค้างเป็นชุด deploy และไม่คัดลอก
+เอกสารหรือโค้ดทั้งไฟล์จาก branch เก่าทับระบบปัจจุบัน
+
+- ชุดแก้ที่เลือก: Firebase Admin `14.5.0`, Morgan `1.12.1` และ scoped override
+  เฉพาะ `@prisma/config@6.19.3` ให้ใช้ `deepmerge-ts@8.0.2`; คง Prisma 6.19.3
+- ปรับ FCM sender ให้ใช้ modular `firebase-admin/app` และ
+  `firebase-admin/messaging` พร้อม regression tests 13 กรณี ผลตรวจด้านล่าง
+  เป็นของ candidate นี้ ไม่ใช้ผลจาก checkout เก่ามารับรองแทน
+- ปรับ Blueprint/tests/docs ให้โครงสร้างตรงกับ Staging ที่อ่านสถานะไว้ก่อนหน้า:
+  Web `starter`, branch `main`, หนึ่ง instance, auto-deploy `off` และ PostgreSQL
+  `basic-256mb`, 1 GB, major version `18`, ปิดการเชื่อมต่อฐานจากภายนอก
+  (`basic_256mb` เป็นชื่อแผนที่ Render API ส่งกลับ ส่วน YAML ใช้ขีดกลาง)
+- คง CI, admin/trial access, publishing และ Mobile ปัจจุบันจาก `main`
+  รวมถึง ElevenLabs transcription/Gemini planning; ไม่มี schema/migration ใหม่
+
+ผลตรวจ candidate หลังเพิ่ม Node engine pin ในเครื่องด้วย Node 22.23.3/npm 10.9.9:
+
+- API เต็มชุด `--maxWorkers=2` ผ่าน 136 files/2,305 tests
+  และข้าม 2 files/18 tests ใน `adminDatabase.test.ts`/`adminUsageDatabase.test.ts`
+  เพราะยังไม่ได้ตั้ง `ADMIN_TEST_DATABASE_URL` จึงยังไม่ยืนยัน DB integration สองชุดนี้
+- Typecheck, build รวม admin assets, Prisma generate 6.19.3/validate/helper checks,
+  shared catalog parity 100 รายการ และ generator tests 22 กรณีผ่าน
+- Dependency tree ไม่มีปัญหา; production audit `--omit=dev` ที่รวม optional
+  dependencies เหลือ 0 findings ทุกระดับ; clean install 446 packages และ tree check
+  ผ่านโดย package/lock hashes ไม่เปลี่ยน ยืนยันซ้ำหลัง Node pin ใน
+  `predeploy-clean-install-result.json`
+- Blueprint ผ่าน current official JSON schema; ไม่มี Render CLI ในเครื่องจึงยัง
+  ไม่ได้ตรวจแบบ platform-aware ไม่มี Mobile changes จึงไม่ได้รัน Flutter ซ้ำ
+- รอบ default workers พบ profile 100-image test timeout 15 วินาทีระหว่างงาน
+  parallel; ตรวจ targeted ซ้ำผ่าน 2 files/26 tests และเต็มชุด workers 2 ผ่าน
+  โดยไม่เปลี่ยน source หรือ timeout เพื่อให้ผ่าน
+
+หลักฐานเครื่องนี้อยู่ที่ `D:\PostDeeMobile\artifacts\staging-prep-20261020\summary.json`
+ผลข้างต้นไม่ใช่การ deploy หรือ provider/device E2E; ผลอ่าน DB จริงเพิ่มเติมอยู่ด้านล่าง
+
+ผลอ่าน Render ก่อนเตรียมชุดนี้ใน `My Workspace`: Staging API ตอบ `/health`
+HTTP 200; deploy `dep-dba83jqjnfac73enqm40` เป็น `live` ที่ commit
+`1cf755eba9b156f95bb818eb2d5ee7fb7c0efd86` ตั้งแต่ 18 ตุลาคม 2026 และฐานข้อมูล
+Basic 256 MB/1 GB PostgreSQL 18 เป็น `available` ผลนี้ยังไม่ใช่การ deploy หรือ
+ทดสอบ candidate ใหม่ ส่วน Production API/database ถูก suspend โดยผู้ใช้และไม่ได้เปลี่ยน
+
+**ยังห้าม sync Blueprint ทั้งไฟล์:** ผล predeploy ล่าสุดด้านล่างยืนยันว่า live
+Social เป็น `postpeer` ต่างจาก YAML `disabled` การ sync อาจทับค่าที่ใช้อยู่
+ให้ deploy เฉพาะ SHA ที่ตรวจแล้วโดยรักษา Dashboard environment แทน และรักษา
+credentials/ข้อมูลของ Staging แยกจาก Production ค่า `sync: false` ไม่ได้ยืนยัน
+ว่า key ใช้งานกับ provider ได้
+Render ไม่อัปเดต keys เหล่านี้ระหว่าง sync Blueprint เดิม; key ใหม่ต้องเพิ่มใน
+Dashboard เอง ตาม [Blueprint specification](https://render.com/docs/blueprint-spec).
+
+### ผลตรวจล่าสุดก่อน deploy
+
+อ่าน Dashboard และ remote shell ของ Staging จริงแล้ว; candidate ใหม่ยังไม่ได้ขึ้น
+Staging และยังไม่มีผล deploy SHA ใหม่ในบันทึกนี้:
+
+- Live process ใช้ Node `26.12.0` และไม่มี `NODE_VERSION` override จึงเพิ่ม exact
+  engine pin `22.23.3` ใน package/lock ของ candidate ให้ตรง runtime ที่ใช้ตรวจ
+  ผลตรวจ candidate หลังเพิ่ม pin ผ่านตามรายการด้านบน แต่ live ยังไม่ได้เปลี่ยนรุ่น
+- Live `SOCIAL_PUBLISHER=postpeer`, backlog guard `true`, `PUSH_SENDER=mock`
+  และ account deletion `false` จึงคง Dashboard flags; ไม่ sync Blueprint,
+  ไม่ merge เข้า `main` เพื่อหลีกเลี่ยง Production auto-deploy และไม่เปลี่ยนแผน/เครือข่าย
+- `DATABASE_URL` ตรง host/database ของ Staging; R2 bucket เป็น `postdee-staging`
+  และ Firebase project `project-798caf7e-85b8-45e3-af7` ตรง mobile Debug config
+  และต่างจาก Production `postdee-3c163` ตรวจ service-account project ตรงกันและ
+  มี private key พร้อม credentials ที่จำเป็น 8 keys โดยไม่แสดงค่าลับ
+  ผลนี้ยืนยันการตั้งค่า/การมี key เท่านั้น ไม่ยืนยัน key validity หรือ provider E2E
+- Read-only DB transaction `SELECT 1` ผ่าน; applied migration names 20 รายการ
+  ตรง source และ Staging `1cf755e` ไม่มี migration ใหม่ และ publish backlog เป็น 0
+  ไม่ได้เปิด external DB allowlist หรือเขียนข้อมูลทดสอบ
+- Fresh install 446 packages → Prisma generate → prune ผ่าน; local runtime
+  หลัง prune โหลด Firebase SDK/serve admin assets และตอบ `/health`/`/ready` 200
+  หลักฐานแยกอยู่ใน `pruned-runtime-summary.json` ของโฟลเดอร์ artifacts รอบนี้
+- Public checks ก่อน deploy ตอบ `/health`/`/ready` HTTP 200 พร้อม DB/queue `ok`
+  และ `no-store`; ไม่ส่ง token แล้ว `/posts`/publishing readiness ตอบ 401
+  ผลนี้เป็นของ Staging รุ่นเดิม ไม่ใช่หลักฐานว่า candidate ใหม่ขึ้นแล้ว
+
+ขั้นถัดไปคือตรวจ candidate SHA ก่อน manual deploy เฉพาะ
+Staging แล้วจึงตรวจ SHA, runtime version, `/health`, `/ready` และ migrations ซ้ำ
+ยังไม่มีการส่ง Push หรือทดสอบ provider/device E2E รอบนี้
+
 ## ส่งมอบลูกเล่นระหว่างส่งโพสต์ แบบ 3 — 18 ตุลาคม 2026
 
 - Runtime/CI source `5c83b3a` บนฐาน `main` ที่ตรวจล่าสุด `1cf755e` ผ่าน
@@ -407,11 +490,12 @@ release candidate นี้ และไม่อนุญาตให้เป�
 
 Dashboard ระบุ Web Service Staging เป็นแผน `Starter` ที่ตั้งไว้อยู่แล้ว
 รอบเปลี่ยนเมนูและเพิ่มเว็บหน้าโปรไฟล์นี้ไม่ได้ซื้อหรือเปลี่ยนแผนบริการ
-รายละเอียด `free` ด้านล่างเป็นค่าของ Blueprint/template เดิม ไม่ใช่การยืนยัน
-ว่าแผนที่เปิดใช้อยู่ใน Dashboard ไม่มีค่าใช้จ่าย
+รอบเตรียม source วันที่ 20 ตุลาคมปรับ Blueprint ให้ตรง Starter/Basic ที่อ่านพบ
+โดยยังไม่ได้ sync หรือเปลี่ยนบริการ รายการ Free/expiry ในบันทึกเก่าเป็นประวัติ
+ไม่ใช่แผนหรือวันหมดอายุปัจจุบัน
 
 บันทึกสถานะ 4 ตุลาคม 2026: Render Dashboard แสดง **Workspace suspended**
-เพราะค้างชำระ และไม่แสดงปุ่ม Manual Deploy ของ `postdee-api-staging` ขณะนี้
+เพราะค้างชำระ และไม่แสดงปุ่ม Manual Deploy ของ `postdee-api-staging` ในรอบนั้น
 `/health` ตอบ HTTP `503` พร้อม `x-render-routing: suspend` บริการยังติดตาม
 `main` แต่ commit ที่ deploy สำเร็จล่าสุดใน Dashboard คือ `208b4e5` การ push/merge
 โค้ดใหม่จึงไม่ใช่หลักฐานว่าบริการกลับมาใช้งานได้ ต้องคืนสถานะ workspace แล้ว
@@ -426,8 +510,8 @@ RevenueCat หรือ PostPeer ผ่าน E2E ใน release candidate เ�
 - Blueprint: `postdee-staging` (`exs-d9bb3it7vvec73ceggl0`)
 - API: `postdee-api-staging` (`srv-d9bb72ojs32c739osa5g`)
 - URL: `https://postdee-api-staging.onrender.com`
-- Database: `postdee-postgres-staging` Free (`dpg-d9bb66ojs32c739oqt10-a`)
-- Database expiry: 14 สิงหาคม 2026
+- Database ในบันทึก Free เดิม: `postdee-postgres-staging` (`dpg-d9bb66ojs32c739oqt10-a`)
+- Database expiry ในบันทึก Free เดิม: 14 สิงหาคม 2026; ปัจจุบันอ่านพบแผน Basic
 - บันทึกเดิม — Firebase: project `project-798caf7e-85b8-45e3-af7`, Email/Google เปิดแล้ว;
   Google Sign-In → Firebase ID token → Render Staging API ผ่านบน Android Emulator
 - บันทึกเดิม — RevenueCat: Test Store products/entitlements/current offering และ sandbox-only
@@ -448,33 +532,38 @@ bucket วิดีโอ Firebase project หรือ webhook token ชุด�
 
 ## โครงสร้างที่เตรียมไว้
 
-ไฟล์ `render.staging.yaml` สร้างทรัพยากรแยกดังนี้:
+ไฟล์ `render.staging.yaml` ระบุทรัพยากร Staging แยกดังนี้ โดยการปรับ source
+รอบนี้ยังไม่ได้นำไป sync กับ Render:
 
 - Web Service: `postdee-api-staging`
 - PostgreSQL: `postdee-postgres-staging`
 - Database/User: `postdee_staging`
 - Region: Singapore
 - Branch: `main`
+- Auto-deploy: `off`; ใช้ manual deployment หลังตรวจชุด source/config แล้ว
 - Build/test keeps platform-native optional tools; after the Prisma migration,
   startup prunes development and optional packages. Firebase Auth remains
   available, while unused Firestore/Google Cloud Storage clients are not kept in
   the running Staging service.
-- Web/Database plan: `free`
+- Web plan: `starter`, หนึ่ง instance
+- Database plan: `basic-256mb`, disk 1 GB, PostgreSQL major version `18`
+- Database `ipAllowList: []` ปิด external connections; ไม่เปิด allowlist เพื่อข้าม
+  ข้อจำกัดการ query ผ่าน MCP
 - Production safety guards ยังเปิดผ่าน `NODE_ENV=production`
 - Push และ Firebase account deletion ยังปิดไว้ในรอบแรก
 
-Render Dashboard และ Blueprint ต้องตาม `main` เหมือนกัน เพื่อไม่ให้การ sync Blueprint
-ครั้งถัดไปเปลี่ยน Staging กลับไป branch เก่า
+Render Dashboard และ Blueprint ตาม `main` เหมือนกัน แต่ก่อน sync ยังต้องตรวจ
+live environment diff ตามข้อกำหนดด้านบน การตรงกันเฉพาะ branch/plan ไม่ได้ยืนยัน
+provider flags หรือ credentials
 
 ## ค่าใช้จ่ายและข้อจำกัด
 
-- Web Service แบบ Free มีค่า compute เริ่มต้น $0 แต่จะหยุดเมื่อไม่มี traffic 15 นาที
-  และการปลุกกลับอาจใช้เวลาประมาณหนึ่งนาที
-- PostgreSQL แบบ Free มีพื้นที่ 1 GB, ไม่มี backup และหมดอายุ 30 วัน
-- Render อนุญาต Free PostgreSQL ที่ active ได้หนึ่งตัวต่อ workspace เท่านั้น
-- หาก Production ใช้โควตา Free PostgreSQL อยู่แล้ว **ให้หยุดก่อนสร้าง** ห้ามชี้
-  Staging ไปฐาน Production วิธีแยกที่ถูกต้องถัดไปคือ Basic-256mb ประมาณ $6/เดือน
-  หรือสร้าง Staging ใน workspace ทดสอบที่แยกจริง
+- Staging ที่อ่านพบใช้ Web Starter และ Database Basic ซึ่งเป็นทรัพยากรแบบเสียเงิน
+  การปรับ Blueprint ในเครื่องไม่ได้ซื้อ อัปเกรด หรือลดแผนบริการ
+- ตรวจ Billing/Usage และราคาจาก Dashboard ก่อนสร้างหรือเปลี่ยนทรัพยากรทุกครั้ง
+  ไม่ใช้ราคาและวันหมดอายุของ Free จากบันทึกเดือนกรกฎาคมแทนสถานะปัจจุบัน
+- หากต้องสร้าง Staging ใหม่ ให้ใช้ชื่อ/ฐาน/credentials ชุดทดสอบแยก ห้ามนำไปชี้
+  ฐาน Production เพื่อประหยัดค่าใช้จ่าย
 - Bandwidth และ build minutes ยังนับตามโควตา workspace
 
 อ้างอิง: [Render Free instances](https://render.com/docs/free) และ
@@ -663,15 +752,20 @@ Blueprint; ต้องตัดสินใจนโยบาย fail-closed �
 
 ## ขั้นตอนสร้างใหม่หรือกู้คืน Staging
 
-1. เปิด Render Dashboard แล้วตรวจ Billing/Usage ก่อนว่ามี Free PostgreSQL อยู่หรือไม่
-2. เลือก **New → Blueprint** และ repository `NOI56/PostDeeMobile`
-3. เลือก branch `main`
-4. กำหนด Blueprint path เป็น `render.staging.yaml`
-5. ตรวจชื่อให้เป็น `postdee-api-staging` และ `postdee-postgres-staging` เท่านั้น
-6. กรอก secrets ชุดทดสอบตามรายการข้างบนโดยไม่คัดลอกค่ากลับเข้า repository
-7. สร้าง Blueprint และรอ migration/deploy สำเร็จ
-8. เปิด `https://<staging-host>/health` และต้องได้ `status: ok`
-9. สร้าง mobile build ที่ตั้ง `API_BASE_URL=https://<staging-host>` แล้วทดสอบด้วย
+1. ตรวจ `My Workspace`, Billing/Usage และทรัพยากรเดิมก่อน ปัจจุบันมี Staging
+   service/database อยู่แล้ว ให้เปิดของเดิมแทนสร้างซ้ำ
+2. ตรวจ source SHA ที่จะปล่อยจาก `main` และ Blueprint path `render.staging.yaml`
+   โดยรักษา manual deployment ไว้
+3. ตรวจชื่อ `postdee-api-staging`/`postdee-postgres-staging`, แผน Starter/Basic,
+   disk 1 GB, PostgreSQL 18 และ external DB allowlist ที่ปิดอยู่
+4. ตรวจ live environment diff โดยไม่เปิดเผยค่า secret และยืนยัน provider flags
+   รวมถึง credentials ชุดทดสอบก่อน sync; ห้ามคัดลอกค่าจาก Production
+5. ถ้าจำเป็นต้องสร้างใหม่จริงจึงเลือก **New → Blueprint** และ repository
+   `NOI56/PostDeeMobile` ตรวจชื่อและยอดเงินก่อนสร้าง พร้อมใส่ `sync: false`
+   keys เอง กรณีอัปเดตของเดิมต้องเพิ่ม key ใหม่ใน Dashboard ด้วยตนเอง
+6. หลังได้รับอนุญาตให้ deploy ให้ตรวจ candidate SHA, migration, `/health` และ
+   `/ready`; ผล health เดิมไม่รับรอง candidate ใหม่
+7. สร้าง mobile build ที่ตั้ง `API_BASE_URL=https://<staging-host>` แล้วทดสอบด้วย
    บัญชีและวิดีโอทดสอบเท่านั้น
 
 Android Staging รองรับเฉพาะ Debug ในตอนนี้:
@@ -713,8 +807,8 @@ Firebase Auth/RevenueCat ตามค่าเริ่มต้นที่ป�
 
 ## Smoke test ก่อนอนุญาตให้ deploy Production
 
-Staging Blueprint ติดตาม `main` และ deploy เมื่อ checks ผ่าน ดังนั้นการ merge
-เข้า `main` เป็นเพียงการส่งโค้ดไป Staging ไม่ใช่หลักฐานว่า checklist นี้ผ่าน
+Staging ติดตาม `main` และปิด auto-deploy การ merge หรือ CI ผ่านยังไม่ทำให้
+candidate ขึ้น Staging ต้อง manual deploy ชุดที่ตรวจแล้วและยืนยัน SHA จริง
 รายการด้านล่างเป็น release gate ก่อนนำ release candidate เดียวกันขึ้น Production
 
 - [x] Firebase Google login, ID token และ API user/quota response ด้วยบัญชี Staging
@@ -849,5 +943,6 @@ Staging Blueprint ติดตาม `main` และ deploy เมื่อ che
 - ลบบัญชีทดสอบและ object ใน R2 Staging หลัง smoke test รวมถึง object จากรอบอัปโหลด
   Android วันที่ 22 กรกฎาคม 2026 ซึ่ง upload session เสร็จสมบูรณ์แล้วและ abort ผ่าน API ไม่ได้
 - ห้ามนำ dump หรือข้อมูลผู้ใช้ Production มา seed
-- ก่อนฐาน Free หมดอายุ ให้ export เฉพาะข้อมูลจำลองที่จำเป็นหรือสร้างฐานใหม่
+- ตรวจ retention/backup และค่าใช้จ่ายของฐาน Basic ปัจจุบัน; วันหมดอายุ Free
+  ในบันทึกเก่าไม่ใช่เหตุให้สร้างหรือลบฐานปัจจุบัน
 - หากยกเลิก Staging ให้ลบ Blueprint, service, database และ revoke keys ชุดทดสอบ

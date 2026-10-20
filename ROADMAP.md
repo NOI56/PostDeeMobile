@@ -2,6 +2,29 @@
 
 Build roadmap for PostDee.
 
+## Staging release preparation (2026-10-20, local candidate)
+
+- Start from verified remote `main` `c2777a8f93048d88efb596fddbaa7244dc0f3595`
+  in a separate managed worktree; preserve the dirty older checkout.
+- Select only Firebase Admin 14.5.0/Morgan 1.12.1 dependency fixes, the scoped
+  Prisma 6.19.3/deepmerge-ts 8.0.2 override, modular FCM sender with 13 regression
+  cases, and Staging configuration/tests/docs. No new schema or migration;
+  retain current Mobile, admin/trial access, CI and ElevenLabs/Gemini providers.
+- Reconcile local infrastructure fields to the observed Starter/main/manual
+  web service and Basic 256 MB/1 GB PostgreSQL 18 database. Live still runs
+  `1cf755e`; this is not a deployment. Candidate checks pass on Node 22.23.3/
+  npm 10.9.9: 2,305 API tests pass with `--maxWorkers=2`, 18 database integration tests skip;
+  typecheck/build/Prisma/catalog checks, clean install and dependency tree pass,
+  and the production audit including optional dependencies reports zero findings.
+- Predeploy Dashboard/shell checks confirm Staging DB/Firebase/R2 identity and
+  credential presence, 20 matching applied migrations, `SELECT 1`, and empty
+  publish backlog. Live Social is `postpeer`, differing from the Blueprint's
+  `disabled`: preserve Dashboard values and deploy only the reviewed SHA without
+  a Blueprint sync or a merge into production's `main` branch. Live Node is
+  26.12.0; the candidate pins 22.23.3 and its final checks pass. No new
+  Staging deployment or provider/device E2E is claimed. Production remains
+  user-suspended. See [Staging preparation](docs/STAGING.md).
+
 ## Publishing progress motion (2026-10-20, locally verified and Staging APK installed)
 
 - Implemented the selected smooth full-screen progress treatment while retaining
@@ -999,10 +1022,13 @@ Current status:
 - Render PostgreSQL and the API service have been created and the live health
   endpoint responds successfully. Secret/provider state remains a dated
   operational check and must be rechecked in the Render dashboard before launch.
-- The isolated free-tier Staging Blueprint and database have now been created on
-  Render, and the API health check passes. The Free Postgres database expires on
-  2026-08-14. A dedicated Firebase Staging project, isolated Android Debug app
-  id, Google provider, restricted Android API key, and Firebase-token-to-API
+- The isolated Staging Blueprint/database were originally created on Free;
+  the recorded 2026-08-14 expiry belongs to that historical setup. The
+  2026-10-20 read-only check found the Starter API healthy and the Basic 256 MB/
+  1 GB PostgreSQL 18 database available; its latest live deploy is dated
+  2026-10-18. The local Blueprint is being reconciled without a sync/deploy.
+  Earlier records report a dedicated Firebase Staging project, isolated Android
+  Debug app id, Google provider, restricted Android API key, and Firebase-token-to-API
   login smoke test now pass on the Android Emulator. RevenueCat Test Store
   products, entitlements, current offering, and authenticated sandbox webhook
   transport are configured. Test Store purchase and true Restore/resync E2E pass

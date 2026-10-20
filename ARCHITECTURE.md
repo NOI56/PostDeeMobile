@@ -1102,10 +1102,24 @@ Profile/Release ยังคงใช้ Firebase Production จึงห้า�
 
 ## Backend Runtime Dependency Boundary
 
-The backend imports `firebase-admin/app`, `firebase-admin/auth`, and the root
-messaging API for Firebase Auth and FCM. It does not use the optional Firestore
-or Google Cloud Storage clients; persistent application data remains in Render
+The backend imports `firebase-admin/app`, `firebase-admin/auth`, and
+`firebase-admin/messaging` for Firebase Auth and FCM. The Staging candidate
+switches the FCM sender to lazy modular imports and reuses the named
+`postdee-backend` app; initialization failures can retry. It does not use the
+optional Firestore or Google Cloud Storage clients; persistent application data remains in Render
 PostgreSQL through Prisma and video media remains in Cloudflare R2.
+
+The 2026-10-20 candidate updates Firebase Admin to 14.5.0 and Morgan to 1.12.1,
+while retaining Prisma 6.19.3. Its exact `@prisma/config@6.19.3` override selects
+`deepmerge-ts@8.0.2`; recheck that override when upgrading Prisma. These changes
+require no schema migration and do not enable Firebase delivery or change the
+ElevenLabs/Gemini providers. Predeploy checks found live Node 26.12.0 without an
+override; the candidate pins Node 22.23.3 to the verified runtime. Live Social
+`postpeer` differs from the Blueprint's `disabled`, so this release preserves
+Dashboard environment values with a manual specific-SHA deployment rather than
+a Blueprint sync/main merge. Environment identity and credential presence were
+checked, but provider key validity and delivery E2E remain unverified. Candidate
+checks and deployment status belong in `docs/STAGING.md`; no new deploy is claimed.
 
 CI keeps optional native packages during build and test, but its production
 audit excludes unused optional packages. Render keeps the same build-time

@@ -14,8 +14,27 @@
 
 ## 0) Staging แยกจาก Production
 
+- [x] เตรียมชุดแก้แยกจาก remote `main` `c2777a8` ที่ตรวจแล้ว โดยไม่ใช้ checkout
+      เก่าที่มีงานค้าง และคง Mobile/admin/CI/ElevenLabs/Gemini ปัจจุบันไว้
+- [x] ตรวจ candidate ด้วย Node 22.23.3/npm 10.9.9: API 2,305 tests (`--maxWorkers=2`),
+      typecheck/build/Prisma/catalog, clean install และ tree ผ่าน; production
+      audit รวม optional dependencies เหลือ 0 findings รายละเอียดใน `docs/STAGING.md`
+- [x] ตรวจ local Blueprint ให้ตรง Starter/main/manual และ Basic 256 MB/1 GB/
+      PostgreSQL 18; targeted tests และ official JSON schema ผ่าน
+- [x] อ่าน live environment/remote shell โดยไม่แสดงค่าลับ: DB/Firebase/R2 ตรง
+      Staging, credentials 8 keys มีอยู่, read-only `SELECT 1` ผ่าน, migrations
+      20 รายการตรง source และ publish backlog เป็น 0
+- [x] ยืนยัน live Social `postpeer` ต่าง YAML `disabled`; เลือก manual deploy
+      เฉพาะ candidate SHA โดยคง Dashboard flags ไม่ sync Blueprint/merge `main`
+- [x] Pin Node 22.23.3 และตรวจ typecheck/build/full tests/fresh install/tree/audit
+      ซ้ำผ่านหลัง pin; public checks ของ Staging เดิม health/ready 200, no-token 401
+- [ ] Deploy เฉพาะ Staging และตรวจ SHA/Node runtime/health/ready/migrations;
+      live เดิมใช้ Node 26.12.0 และยังไม่มีผล deploy candidate ใหม่
+- [ ] ตรวจ DB integration 18 tests ที่ข้ามเพราะยังไม่มี `ADMIN_TEST_DATABASE_URL`
+      และตรวจ Staging/provider/device flows ของ candidate ใหม่
 - [x] เตรียม `render.staging.yaml` และเทสต์ว่าชื่อ service/database แยกจาก Production
-- [x] ตรวจสิทธิ์และสร้าง Free PostgreSQL แยกสำเร็จโดยไม่ใช้ฐาน Production ร่วมกัน
+- [x] รอบสร้างเดิมตรวจสิทธิ์และสร้าง Free PostgreSQL แยกจาก Production สำเร็จ;
+      ผลอ่านสถานะ 20 ตุลาคม 2026 พบว่าฐานปัจจุบันเป็น Basic และ `available`
 - [x] สร้าง Blueprint `postdee-api-staging` และตั้งให้ติดตาม branch `main`
 - [x] รอบสร้างเริ่มต้นใช้ค่า Staging สำหรับ health-only โดยไม่ใช้ Production
       credentials; ค่า secret ปัจจุบันมองไม่เห็นจาก repository และต้องตรวจใน

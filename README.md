@@ -989,6 +989,18 @@ apps/
 
 ## Deployment Environments
 
+- เตรียมชุดแก้ Staging วันที่ 20 ตุลาคม 2026 ใน worktree แยกจาก remote `main`
+  `c2777a8` ที่ตรวจแล้ว: dependency fixes, modular FCM และ Blueprint/tests/docs
+  โดยคง Mobile/admin/CI/ElevenLabs/Gemini ปัจจุบัน ไม่มี migration ใหม่
+  ปรับโครงสร้าง local ให้ตรง Starter/main/manual และ Basic 256 MB/1 GB/
+  PostgreSQL 18 แล้ว ผล API 2,305 tests (`--maxWorkers=2`), typecheck/build/Prisma และ clean install
+  ผ่าน; audit รวม optional dependencies เหลือ 0 findings ส่วน DB integration
+  18 tests ยังข้าม Predeploy อ่าน live DB/environment แล้วพบ Social `postpeer`
+  ต่าง YAML `disabled` จึงรักษา Dashboard flags และ manual deploy เฉพาะ SHA
+  ที่ตรวจแล้ว ไม่ sync Blueprint/merge `main` Live Node 26.12.0 ต่างจาก Node
+  22.23.3 ที่ใช้ตรวจ จึง pin candidate และตรวจหลัง pin ผ่านแล้ว; ยังไม่ได้ deploy
+  ไม่ใช้ checkout เก่าที่มีงานค้างเป็นชุดปล่อย
+  รายละเอียดและสถานะผลตรวจอยู่ใน [Staging preparation](docs/STAGING.md)
 - `render.yaml` จัดการ Production (`postdee-api` และ `postdee-postgres`)
 - `render.staging.yaml` เป็น Blueprint แยกสำหรับ Staging แบบต้นทุนต่ำ และต้องใช้
   database, R2 bucket, Firebase project, RevenueCat webhook และ PostPeer account
@@ -1021,8 +1033,8 @@ starting the API. PostDee uses `firebase-admin` for Auth and FCM only; the
 optional Firestore and Google Cloud Storage clients are not shipped in the
 running service. Video storage continues to use Cloudflare R2.
 
-The lockfile now resolves Firebase Admin's compatible `@fastify/busboy` dependency
-to `3.2.1`, which patches the multipart parser advisories
+The lockfile resolves Firebase Admin's compatible `@fastify/busboy` dependency
+to `3.2.3`, including fixes for the multipart parser advisories
 `GHSA-xjh9-v7x6-24jw` and `GHSA-x8mw-p69m-v3mx`. CI continues to reject high
 severity findings in the production dependency audit.
 
@@ -1031,8 +1043,10 @@ The compatible Express dependency `proxy-addr` is locked to `2.0.8` to patch
 unchanged. A dependency regression covers the advisory's mapped-IPv6 subnet
 case, and a global rate-limit integration test verifies that changing the
 untrusted forwarded prefix cannot change the established client's bucket.
-The pre-merge audit has no high/critical findings; four moderate findings remain
-recorded in `docs/superpowers/plans/2026-10-05-profile-link-simpler-ui.md`.
+The 2026-10-05 pre-merge audit recorded no high/critical findings and four
+moderate findings in `docs/superpowers/plans/2026-10-05-profile-link-simpler-ui.md`.
+That is a historical result; current candidate dependency checks are recorded
+separately in `docs/STAGING.md`.
 
 ## Legacy AI Editing Runtime Reference
 

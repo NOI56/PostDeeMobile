@@ -14,16 +14,30 @@ const expectEnvSecret = (source: string, key: string) => {
 };
 
 describe('render.staging.yaml isolated staging config', () => {
-  it('uses separate free Render resources', async () => {
+  it('pins the Render package runtime to the Node version used for release checks', async () => {
+    const packageJson = JSON.parse(
+      await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
+    );
+
+    expect(packageJson.engines.node).toBe('22.23.3');
+  });
+
+  it('matches the paid staging resources and keeps deployment manual', async () => {
     const source = await readStagingConfig();
 
     expect(source).toMatch(/name: postdee-api-staging/);
     expect(source).toMatch(/name: postdee-postgres-staging/);
     expect(source).toMatch(/databaseName: postdee_staging/);
     expect(source).toMatch(/user: postdee_staging/);
-    expect(source.match(/plan: free/g)).toHaveLength(2);
+    const [services, databases] = source.split('\ndatabases:');
+    expect(services).toMatch(/plan: starter\s/);
+    expect(databases).toMatch(/plan: basic-256mb\s/);
+    expect(databases).toMatch(/diskSizeGB: 1\s/);
+    expect(databases).toMatch(/postgresMajorVersion: "18"/);
+    expect(source).not.toMatch(/^\s+plan: free\s*$/m);
     expect(source).toContain('branch: main');
-    expect(source).toContain('autoDeployTrigger: checksPass');
+    expect(source).toContain('autoDeployTrigger: "off"');
+    expect(source).not.toMatch(/name: postdee-(?:api|postgres)\s/);
     expect(source).not.toContain('preDeployCommand:');
     expect(source).toContain('startCommand: npm run prisma:migrate:deploy');
     expect(source).toMatch(/ipAllowList:\s*\[\]/);

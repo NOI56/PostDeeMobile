@@ -2,12 +2,18 @@
 
 Build roadmap for PostDee.
 
-## Publishing progress motion (2026-10-20, verification in progress)
+## Publishing progress motion (2026-10-20, locally verified and Staging APK installed)
 
-- Implement the selected smooth full-screen progress treatment while retaining
+- Implemented the selected smooth full-screen progress treatment while retaining
   real stage percentages, outcome labels, publishing/retry and navigation guards.
-- Verify lifecycle/reduced-motion behavior and narrow/enlarged-text layouts;
-  create controlled renders without submitting a real post. No API deployment.
+- Lifecycle/reduced-motion behavior, narrow/enlarged-text layouts and truthful
+  outcomes pass 51 focused cases and the full Mobile suite (2,488 passed / three
+  optional skips). The final opt-in render passes separately with five pending
+  screen captures. Analysis is clean; Staging x86_64 APK12028 is built and its
+  package/environment verified. Guarded native update to 12028 passes, preserving
+  the signed-in Home, existing draft, quota, connected channels and history.
+- No API/configuration/schema/dependency changes or migration. No real provider
+  publishing, main merge, push or server deployment was performed for this task.
 - [Work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
 
 ## Remembered channel settings (2026-10-20, YouTube native restart verified)

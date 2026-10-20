@@ -2,14 +2,21 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Publishing progress activity (2026-10-20, verification in progress)
+## Publishing progress activity (2026-10-20, locally verified and Staging APK installed)
 
 The pending PublishFlowScreen view owns one retained clock for its decorative
 orbit and clipped light. Real PublishFlowProgress stage/fraction still controls
 the labels, rail and stage summary. App lifecycle, TickerMode and reduced motion
 stop/reset activity; changing to an outcome disposes the clock. This is separate
 from the post-list sending-status scope. No request, queue, schema, dependency,
-flag or environment change. [Work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
+flag or environment change. All runtime and non-preview tests in delivery
+candidate `5eeb1a7` match the full-suite inputs: 2,488 passed / three optional
+skips. The final optional production-widget render fixture passes separately;
+analysis and the Staging x86_64 APK12028 build pass. Guarded native update and
+signed-in Home preservation pass without sending a real post; motion is verified
+with controlled fixtures. This local change requires no server migration and
+has not been merged, pushed or deployed to a server.
+[Work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
 
 ## Remembered channel settings boundary (2026-10-20, YouTube native restart verified)
 

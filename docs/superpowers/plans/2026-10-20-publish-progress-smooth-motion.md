@@ -1,7 +1,10 @@
 # Smooth activity feedback during publishing
 
-สถานะ: VERIFYING ANDROID DELIVERY — selected the first (เรียบเนียน)
-full-screen mockup; focused and full Mobile tests pass.
+สถานะ: LOCALLY VERIFIED / STAGING APK12028 INSTALLED — selected the first (เรียบเนียน)
+full-screen mockup. Focused/full tests, final controlled render, analysis and
+Staging APK12028 build pass. Guarded native update and signed-in Home preservation
+pass without submitting a real post.
+No main merge, push or server deployment is part of this delivery.
 
 ## Baseline and scope
 
@@ -43,7 +46,8 @@ the installed Staging package/environment and retain the user's data.
 
 ## Verification receipt
 
-- Runtime/test candidate: `a5aefac4f421e26293cdaab1e6ac09138aacb4d6`.
+- Runtime implementation: `a5aefac4f421e26293cdaab1e6ac09138aacb4d6`.
+  Exact delivery candidate: `5eeb1a7f7441fb98a632a1b27751fbb45e75697e`.
 - Tests-first RED: 17 existing cases pass and eight new cases fail because the
   orbit, steps and destination chips do not exist yet. The implemented focused
   batch passes **51/51**, including the draft-flow and owner-change preflight
@@ -54,7 +58,7 @@ the installed Staging package/environment and retain the user's data.
   publishing is called once. Lifecycle/reduced-motion/TickerMode, outcome
   disposal, all nine stages and 320dp / 200% text coverage pass.
 - Full-suite runtime and all non-preview tests match delivery candidate
-  `a5aefac` byte-for-byte. After that run, only the skipped optional render
+  `5eeb1a7` byte-for-byte. After that run, only the skipped optional render
   harness and documentation changed; the final harness is explicitly run
   separately. See `tested-to-delivery-comparison.json`.
 - Use a local production-widget render fixture, not a real post. The initial
@@ -65,4 +69,95 @@ the installed Staging package/environment and retain the user's data.
 
 Evidence is under
 `D:\PostDeeMobile\artifacts\smooth-publish-progress-20261020`.
-Final analysis, render and Android build/install receipts will be added here.
+
+### Final controlled render and analysis
+
+- The final opt-in `publish_flow_preview_test.dart` run passes **1/1**, exit 0,
+  5.4 seconds (`targeted-preview-delivery.log`). Five actual production-widget
+  PNGs are in `preview-final/`: `publish-smooth-queue-90-frame-1.png`,
+  `publish-smooth-queue-90-frame-2.png`, `publish-smooth-upload-55.png`,
+  `publish-smooth-queue-90-dark.png` and
+  `publish-smooth-queue-reduced-motion.png`. They cover two animation frames at
+  unchanged 90%, 55% upload, the app's Dark palette and static reduced motion.
+- Analysis reports **No issues found**, exit 0; analyzer time 13.3 seconds
+  (15.4 seconds including the wrapper), in `analyze-final.log`.
+- Local Flutter **3.44.1 / Dart 3.12.1** were used. This is local verification,
+  not a new remote CI run or a claim about the earlier CI SDK version.
+- The broad suite was not repeated after fixture-only adjustments: comparison
+  verifies that every runtime input and non-preview test matches the successful
+  2,488-case suite. Only the skipped opt-in harness and documentation changed;
+  the final harness was then explicitly executed successfully.
+
+### Android build and package verification
+
+- Exact Staging x86_64 build exits 0 in **195.8 seconds**:
+
+  ```powershell
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tool\postdee-staging.ps1 -Command build-apk --no-pub --target-platform android-x64 --build-number 12028
+  ```
+
+- All **647** copied C-source/D-verification input SHA-256 hashes match before
+  and after build (`source-manifest-delivery.json` and
+  `source-verification-delivery.json`). Resource limits affect only the build
+  process; no SDK/dependency/configuration upgrade was made.
+- Candidate APK: **197,047,058 bytes**, SHA-256
+  `26b491c65ad9f4d81d06bad5df0608860fe5ae9e1c5d79de19214dacf9d30081`.
+  Package `com.postdee.postdee_mobile.staging`, versionCode **12028**,
+  versionName `0.1.0-staging`. Flutter engine is **x86_64 only**; other plugin
+  libraries do not provide an ARM Flutter runtime.
+- Existing v2 signature passes, certificate SHA-256
+  `014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`;
+  16 KiB zip alignment passes. Evidence: `apk-signature-12028.txt`,
+  `apk-alignment-12028.txt` and `apk-verification-12028.json`.
+- Actual compiled API remains `https://postdee-api-staging.onrender.com`.
+  Firebase project remains `project-798caf7e-85b8-45e3-af7` and its Android app
+  ID remains `1:948899042298:android:945921b397cb7f261a4a43`; Google server
+  client configuration matches. Firebase auth and RevenueCat remain enabled,
+  local mock auth and experimental AI hook/beat sync remain disabled, and the
+  Staging banner remains enabled. Existing public SDK key values were not
+  printed or copied into documentation. Actual kernel checks find the motion
+  widgets and retained remembered-settings store.
+
+### Native delivery status and limits
+
+- The guarded updater successfully updates **12027 to 12028** on
+  `emulator-5556`. No transient package-probe failure occurs on this update.
+  Three post-update probes retain UID **10190**, adopted volume UUID
+  `470668ed-4e40-4628-acb4-8704efc6b257` and report versionCode **12028**.
+  The first-install time is retained. No uninstall, data clear or storage
+  migration is performed.
+- Signed-in Home opens successfully. `native-after.png` / `native-after.xml`
+  retain Pro **242/250**, existing `fhhhhh` draft with its thumbnail and enabled
+  Continue action, **2/4** connected channels and the existing history. No draft
+  save, real post, AI generation or purchase is performed during this check.
+- Opening an empty composer confirms the existing draft count is still **2**;
+  closing it without saving returns to Home. Final evidence is
+  `native-final.png` / `native-final.xml` and `native-final-receipt.json`.
+  The final app PID **11754** has **0 FATAL** and **0 unhandled Dart** matches in
+  the collected process log. Immediate UIAutomator snapshots briefly return a
+  null root during screen transitions; subsequent captures succeed, with no app
+  crash. This automation timing issue does not alter the app or its data.
+- Native smoke verifies installation/environment and retained data. The pending
+  screen's motion, real-stage mapping, reduced motion and truthful outcomes are
+  verified by the hash-matched production-widget fixtures and tests, rather
+  than submitting a real provider post merely to expose the progress screen.
+  The candidate APK hash is verified before installation; a fresh installed-byte
+  hash is not claimed.
+
+The change affects only Mobile presentation. There is no API, database,
+entitlement, dependency, flag or provider configuration change; no migration or
+server deployment is required. No real post, AI generation or purchase is used
+for the motion verification. Physical ARM and iOS builds are not delivered.
+Main/origin main remain at the verified `644fea9` baseline; this feature and the
+prior local remembered-settings feature remain on the local feature branch.
+The three pre-existing Windows generated-plugin metadata changes are preserved
+and excluded from this work.
+
+### Changed files
+
+- Runtime: `apps/mobile/lib/features/uploader/publish_flow_screen.dart`.
+- Tests: `publish_flow_screen_test.dart`, `publish_draft_flow_test.dart`,
+  `uploader_platform_preflight_test.dart` and the optional
+  `publish_flow_preview_test.dart`, under `apps/mobile/test/`.
+- Documentation: root README/ROADMAP/ARCHITECTURE, Mobile README and this record.
+  `API.md` was checked; its contracts are unchanged.

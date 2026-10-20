@@ -2,13 +2,21 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Smooth publishing progress (2026-10-20, verification in progress)
+## Smooth publishing progress (2026-10-20, locally verified and Staging APK installed)
 
 The selected first full-screen design adds one orbiting dot, a clipped light,
 destination chips and stage indicators. Time does not advance progress or report
 success. Motion stops for background/reduced motion/TickerMode and is disposed
 when publishing ends. Existing outcomes and remembered settings remain intact.
-No API/configuration changes; [verification record](../../docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
+The 51 focused cases and full Mobile suite (2,488 passed / three optional skips)
+pass, followed by an explicit final preview run with five controlled pending
+screen captures. Analysis is clean. Staging x86_64 APK12028 is built and its
+package/environment verified; its guarded update from 12027 passes with the
+signed-in Home, existing draft, quota, channels and history retained. Motion is
+verified using controlled production-widget fixtures.
+No real provider publish, API/configuration/schema/dependency change or migration.
+No main merge, push or server deployment has occurred for this task.
+[Verification record](../../docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
 
 ## Remembered channel settings (2026-10-20, YouTube native restart verified)
 

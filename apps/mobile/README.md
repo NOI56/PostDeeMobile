@@ -2,6 +2,14 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Profile-link publication dot (2026-10-20)
+
+Home and the link manager share a publication dot beside the status text:
+green for a confirmed published page with a public URL, red for a confirmed
+unpublished/missing page, and neutral gray for an unconfirmed result. Draft edits
+do not change the live website indicator. Verification/delivery state is in the
+[work record](../../docs/superpowers/plans/2026-10-20-profile-publication-status-dot.md).
+
 ## Smooth publishing progress (2026-10-20, locally verified and Staging APK installed)
 
 A local Home card follow-up aligns sending feedback with Calendar: badge under

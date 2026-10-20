@@ -67,6 +67,15 @@ HomeScreen _home({
       onCreatePost: createPost ?? () async {},
     );
 
+void _expectPublicationDot(WidgetTester tester, Color color) {
+  final dot = find.byKey(const ValueKey('link-in-bio-publication-dot'));
+  expect(dot, findsOneWidget);
+  expect(
+    (tester.widget<DecoratedBox>(dot).decoration as BoxDecoration).color,
+    color,
+  );
+}
+
 void main() {
   setUp(() => PostDeeAuthSessionStore.instance
       .signIn(const AuthSession(userId: 'home-owner', idToken: 'test-token')));
@@ -162,10 +171,63 @@ void main() {
       await tester.pumpAndSettle();
       expect(
           find.text('เผยแพร่แล้ว'), confirmed ? findsOneWidget : findsNothing);
-      if (!confirmed) expect(find.text('ยังไม่เผยแพร่'), findsOneWidget);
+      _expectPublicationDot(
+          tester, confirmed ? AppTheme.successInk : AppTheme.textMuted);
+      if (!confirmed) {
+        expect(find.text('ยังยืนยันการเผยแพร่ไม่ได้'), findsOneWidget);
+        expect(find.text('ยังไม่เผยแพร่'), findsNothing);
+      }
       await tester.pumpWidget(const SizedBox());
     }
   });
+
+  testWidgets('confirmed unpublished and missing shops show a red dot',
+      (tester) async {
+    for (final profile in <LinkInBioProfileResult?>[
+      _shop(published: false),
+      null,
+    ]) {
+      var loads = 0;
+      await tester.pumpWidget(_app(_home(shop: () async {
+        loads++;
+        return profile;
+      })));
+      await tester.pumpAndSettle();
+      _expectPublicationDot(tester, const Color(0xFFEF4444));
+      expect(find.text('เผยแพร่แล้ว'), findsNothing);
+      expect(find.text(profile == null ? 'สร้างหน้าร้าน' : 'ยังไม่เผยแพร่'),
+          findsOneWidget);
+      expect(loads, 1);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  for (final published in [false, true]) {
+    testWidgets(
+        'pending shop status stays neutral until confirmed published=$published',
+        (tester) async {
+      final pending = Completer<LinkInBioProfileResult?>();
+      var loads = 0;
+      await tester.pumpWidget(_app(_home(shop: () {
+        loads++;
+        return pending.future;
+      })));
+      await tester.pump();
+      _expectPublicationDot(tester, AppTheme.textMuted);
+      expect(find.text('เผยแพร่แล้ว'), findsNothing);
+      expect(find.text('ยังไม่เผยแพร่'), findsNothing);
+      expect(find.text('สร้างหน้าร้าน'), findsNothing);
+      pending.complete(_shop(
+          published: published,
+          url: published ? Uri.parse('https://example.com/p/my-shop') : null));
+      await tester.pumpAndSettle();
+      _expectPublicationDot(tester,
+          published ? AppTheme.successInk : const Color(0xFFEF4444));
+      expect(find.text(published ? 'เผยแพร่แล้ว' : 'ยังไม่เผยแพร่'),
+          findsOneWidget);
+      expect(loads, 1);
+    });
+  }
 
   testWidgets('shop failure offers retry without claiming no saved shop',
       (tester) async {
@@ -177,10 +239,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('ตรวจสอบลิงก์ร้านไม่ได้'), findsOneWidget);
     expect(find.text('สร้างหน้าร้าน'), findsNothing);
+    _expectPublicationDot(tester, AppTheme.textMuted);
     await tester.ensureVisible(find.byKey(const ValueKey('home-shop-retry')));
     await tester.tap(find.byKey(const ValueKey('home-shop-retry')));
     await tester.pumpAndSettle();
     expect(find.text('เผยแพร่แล้ว'), findsOneWidget);
+    _expectPublicationDot(tester, AppTheme.successInk);
+    expect(loads, 2);
+  });
+
+  testWidgets('failed shop refresh replaces green with an unknown status dot',
+      (tester) async {
+    var loads = 0;
+    await tester.pumpWidget(_app(_home(shop: () async {
+      if (++loads > 1) throw StateError('offline');
+      return _shop(url: Uri.parse('https://example.com/p/my-shop'));
+    })));
+    await tester.pumpAndSettle();
+    _expectPublicationDot(tester, AppTheme.successInk);
+    expect(find.text('เผยแพร่แล้ว'), findsOneWidget);
+    await tester
+        .widget<RefreshIndicator>(
+            find.byKey(const ValueKey('home-pull-refresh')))
+        .onRefresh();
+    await tester.pumpAndSettle();
+    _expectPublicationDot(tester, AppTheme.textMuted);
+    expect(find.text('ตรวจสอบลิงก์ร้านไม่ได้'), findsOneWidget);
+    expect(find.text('เผยแพร่แล้ว'), findsNothing);
+    expect(find.text('ยังไม่เผยแพร่'), findsNothing);
     expect(loads, 2);
   });
 
@@ -192,6 +278,7 @@ void main() {
       return ++loads == 1 ? gate.future : Future.value(null);
     })));
     await tester.pump();
+    _expectPublicationDot(tester, AppTheme.textMuted);
     PostDeeAuthSessionStore.instance.signIn(
         const AuthSession(userId: 'other-owner', idToken: 'other-token'));
     await tester.pumpAndSettle();
@@ -199,6 +286,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('เผยแพร่แล้ว'), findsNothing);
     expect(find.text('สร้างหน้าร้าน'), findsOneWidget);
+    _expectPublicationDot(tester, const Color(0xFFEF4444));
+    expect(loads, 2);
   });
 
   testWidgets('compact home stays readable at narrow width and large text',

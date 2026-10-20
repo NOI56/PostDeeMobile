@@ -10,6 +10,7 @@ import '../../core/network/postdee_api_client.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/theme/app_theme.dart';
 import '../billing/paywall_screen.dart';
+import '../link_in_bio/link_in_bio_publication_status.dart';
 import '../link_in_bio/link_in_bio_screen.dart';
 import '../notifications/push_notification.dart';
 import '../platforms/social_platform.dart';
@@ -890,6 +891,8 @@ class _LinkInBioShortcutCardState extends State<_LinkInBioShortcutCard>
     final tint = accent.withValues(alpha: 0.14);
     final published =
         _profile?.isPublished == true && _profile?.publicUrl != null;
+    final publication = linkInBioPublicationStatus(_profile,
+        confirmed: _hasLoaded && !_loading && !_failed && _owner != null);
     final subtitle = _loading
         ? (isThai ? 'กำลังตรวจสอบลิงก์ร้าน' : 'Checking shop link')
         : _failed
@@ -898,7 +901,11 @@ class _LinkInBioShortcutCardState extends State<_LinkInBioShortcutCard>
                 ? (isThai ? 'เผยแพร่แล้ว' : 'Published')
                 : _profile == null
                     ? (isThai ? 'สร้างหน้าร้าน' : 'Create your shop page')
-                    : (isThai ? 'ยังไม่เผยแพร่' : 'Not published');
+                    : _profile!.isPublished
+                        ? (isThai
+                            ? 'ยังยืนยันการเผยแพร่ไม่ได้'
+                            : 'Publication not confirmed')
+                        : (isThai ? 'ยังไม่เผยแพร่' : 'Not published');
     final statusBadge = DecoratedBox(
       decoration: BoxDecoration(
         color: tint,
@@ -971,26 +978,32 @@ class _LinkInBioShortcutCardState extends State<_LinkInBioShortcutCard>
                             ),
                           )),
                           const SizedBox(height: 2),
-                          if (_loading && !_hasLoaded)
-                            Semantics(
-                              label: subtitle,
-                              child: PostDeeSkeleton(
-                                key: const ValueKey('home-shop-skeleton'),
-                                width: 130,
-                                height: 11,
-                                animate: widget.isActive && _owner != null,
-                              ),
-                            )
-                          else
-                            Text(
-                              subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.textMuted,
-                              ),
+                          Row(children: [
+                            LinkInBioPublicationDot(published: publication),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: _loading && !_hasLoaded
+                                  ? Semantics(
+                                      label: subtitle,
+                                      child: PostDeeSkeleton(
+                                        key: const ValueKey('home-shop-skeleton'),
+                                        width: 130,
+                                        height: 11,
+                                        animate:
+                                            widget.isActive && _owner != null,
+                                      ),
+                                    )
+                                  : Text(
+                                      subtitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.textMuted,
+                                      ),
+                                    ),
                             ),
+                          ]),
                         ],
                       ),
                     ),

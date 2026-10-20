@@ -18,7 +18,8 @@ const _draft = LinkInBioDraft(
     autoUpdateFromScheduledPosts: false,
     enabledLinkIds: {'shop'},
     customLinks: [_link]);
-LinkInBioProfileResult _profile({bool published = true}) =>
+LinkInBioProfileResult _profile(
+        {bool published = true, bool hasPublicUrl = true}) =>
     LinkInBioProfileResult(
       storeName: 'ร้านมินา',
       slug: 'mina-shop',
@@ -31,7 +32,9 @@ LinkInBioProfileResult _profile({bool published = true}) =>
       updatedAt: DateTime.utc(2026, 10, 5),
       publicPath: published ? '/p/mina-shop' : null,
       publicUrl:
-          published ? Uri.parse('https://api.example.com/p/mina-shop') : null,
+          published && hasPublicUrl
+              ? Uri.parse('https://api.example.com/p/mina-shop')
+              : null,
     );
 
 class _FailSecondSaveDraftStore implements LinkInBioDraftStore {
@@ -78,6 +81,13 @@ Widget _app(LinkInBioScreen screen) =>
 Future<void> _tap(WidgetTester tester, String key) =>
     tapBioControl(tester, key);
 
+void _expectPublicationDot(WidgetTester tester, Color color) {
+  final dot = find.byKey(const ValueKey('link-in-bio-publication-dot'));
+  expect(dot, findsOneWidget);
+  expect((tester.widget<DecoratedBox>(dot).decoration as BoxDecoration).color,
+      color);
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -85,6 +95,106 @@ void main() {
         .signIn(const AuthSession(userId: 'seller-a', idToken: 'token'));
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
+
+  for (final published in [false, true]) {
+    testWidgets('publication dot waits for confirmed server status $published',
+        (tester) async {
+      final pending = Completer<LinkInBioProfileResult?>();
+      await tester.pumpWidget(
+          _app(LinkInBioScreen(loadProfile: () => pending.future)));
+      await tester.pump();
+      _expectPublicationDot(tester, AppTheme.textMuted);
+      expect(find.text('กำลังตรวจสถานะ...'), findsOneWidget);
+      pending.complete(_profile(published: published));
+      await tester.pumpAndSettle();
+      _expectPublicationDot(
+          tester, published ? AppTheme.successInk : const Color(0xFFEF4444));
+      expect(find.text(published ? 'เผยแพร่แล้ว' : 'ยังไม่ได้เผยแพร่'),
+          findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('offline publication status stays neutral instead of red',
+      (tester) async {
+    await tester.pumpWidget(_app(LinkInBioScreen(
+        loadProfile: () async => throw StateError('offline'))));
+    await tester.pumpAndSettle();
+    _expectPublicationDot(tester, AppTheme.textMuted);
+    expect(find.text('ยังตรวจสถานะเว็บไซต์ไม่ได้'), findsOneWidget);
+  });
+
+  testWidgets('published flag without a public URL cannot show a green dot',
+      (tester) async {
+    await tester.pumpWidget(_app(LinkInBioScreen(
+        loadProfile: () async => _profile(hasPublicUrl: false))));
+    await tester.pumpAndSettle();
+    _expectPublicationDot(tester, AppTheme.textMuted);
+    expect(find.text('เผยแพร่แล้ว'), findsNothing);
+    expect(find.text('ยังตรวจสถานะเว็บไซต์ไม่ได้'), findsOneWidget);
+  });
+
+  for (final themeMode in [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('publication status fits narrow large text in $themeMode',
+        (tester) async {
+      final originalTheme =
+          AppTheme.isLightMode ? ThemeMode.light : ThemeMode.dark;
+      addTearDown(() => AppTheme.applyThemeMode(originalTheme));
+      AppTheme.applyThemeMode(themeMode);
+      tester.view.physicalSize = const Size(320, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(MaterialApp(
+          theme: themeMode == ThemeMode.light ? AppTheme.light : AppTheme.dark,
+          builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.linear(2)),
+              child: child!),
+          home: LinkInBioScreen(loadProfile: () async => _profile())));
+      await tester.pumpAndSettle();
+      _expectPublicationDot(tester, AppTheme.successInk);
+      expect(find.bySemanticsLabel('เผยแพร่แล้ว'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      semantics.dispose();
+    });
+  }
+
+  testWidgets('failed status refresh becomes neutral and confirmed retry is red',
+      (tester) async {
+    var reads = 0;
+    await tester.pumpWidget(_app(LinkInBioScreen(loadProfile: () async {
+      reads++;
+      if (reads == 2) throw StateError('offline');
+      return _profile(published: reads == 1);
+    })));
+    await tester.pumpAndSettle();
+    _expectPublicationDot(tester, AppTheme.successInk);
+    await _tap(tester, 'link-in-bio-refresh');
+    _expectPublicationDot(tester, AppTheme.textMuted);
+    expect(find.text('ยังตรวจสถานะเว็บไซต์ไม่ได้'), findsOneWidget);
+    expect(find.text('เผยแพร่แล้ว'), findsNothing);
+    await _tap(tester, 'link-in-bio-refresh');
+    _expectPublicationDot(tester, const Color(0xFFEF4444));
+    expect(reads, 3);
+  });
+
+  testWidgets('a confirmed publication dot is cleared when the account changes',
+      (tester) async {
+    await tester.pumpWidget(
+        _app(LinkInBioScreen(loadProfile: () async => _profile())));
+    await tester.pumpAndSettle();
+    _expectPublicationDot(tester, AppTheme.successInk);
+    PostDeeAuthSessionStore.instance.signIn(
+        const AuthSession(userId: 'seller-b', idToken: 'other-token'));
+    await tester.pumpAndSettle();
+    _expectPublicationDot(tester, AppTheme.textMuted);
+    expect(find.text('ยังไม่ได้เผยแพร่'), findsNothing);
+    expect(find.text('เผยแพร่แล้ว'), findsNothing);
+    expect(find.text('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าลิงก์ร้านอีกครั้ง'),
+        findsOneWidget);
+  });
 
   testWidgets(
       'confirmed publication normalizes draft URLs and retains disabled links after reload',
@@ -132,6 +242,7 @@ void main() {
     await _tap(tester, 'link-in-bio-publish');
     expect(store.saves, 2);
     expect(find.text('เผยแพร่แล้ว'), findsOneWidget);
+    _expectPublicationDot(tester, AppTheme.successInk);
     expect(find.byKey(const ValueKey('link-in-bio-copy')), findsOneWidget);
     expect(find.textContaining('ยังไม่ทราบผล'), findsNothing);
     expect(find.textContaining('มีการแก้ไขที่ยังไม่ได้เผยแพร่'), findsNothing);
@@ -170,6 +281,7 @@ void main() {
     expect(deletes, 1);
     expect(find.byKey(const ValueKey('link-in-bio-public-url')), findsNothing);
     expect(find.text('ยังไม่ได้เผยแพร่'), findsOneWidget);
+    _expectPublicationDot(tester, const Color(0xFFEF4444));
   });
   testWidgets('empty page has no invented links or fabricated public URL',
       (tester) async {
@@ -182,6 +294,7 @@ void main() {
     expect(find.text('อัปเดตจากโพสต์ที่ตั้งเวลา'), findsNothing);
     expect(find.byKey(const ValueKey('link-in-bio-public-url')), findsNothing);
     expect(find.text('ยังไม่ได้เผยแพร่'), findsOneWidget);
+    _expectPublicationDot(tester, const Color(0xFFEF4444));
   });
   testWidgets('inactive tab is lazy and embedded back uses callback',
       (tester) async {
@@ -246,6 +359,7 @@ void main() {
     expect(copied, 'https://api.example.com/p/mina-shop');
     expect(
         find.textContaining('มีการแก้ไขที่ยังไม่ได้เผยแพร่'), findsOneWidget);
+    _expectPublicationDot(tester, AppTheme.successInk);
   });
   testWidgets('late cloud load preserves a locally edited draft',
       (tester) async {
@@ -289,8 +403,10 @@ void main() {
     expect(find.text('เผยแพร่แล้ว'), findsNothing);
     expect(find.byKey(const ValueKey('link-in-bio-copy')), findsNothing);
     expect(find.textContaining('ยังไม่ทราบผล'), findsWidgets);
+    _expectPublicationDot(tester, AppTheme.textMuted);
     await _tap(tester, 'link-in-bio-refresh');
     expect(find.text('เผยแพร่แล้ว'), findsOneWidget);
+    _expectPublicationDot(tester, AppTheme.successInk);
   });
   testWidgets('slug conflict preserves inputs and reports a Thai error',
       (tester) async {

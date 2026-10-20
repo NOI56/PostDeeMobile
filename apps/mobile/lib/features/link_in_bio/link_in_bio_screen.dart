@@ -19,6 +19,7 @@ import 'link_in_bio_logo_crop.dart';
 import 'link_in_bio_platform_logo.dart';
 import 'link_in_bio_platform_picker.dart';
 import 'link_in_bio_preview.dart';
+import 'link_in_bio_publication_status.dart';
 import 'link_in_bio_ui_motion.dart';
 import 'link_in_bio_validation.dart';
 
@@ -109,6 +110,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   bool _hasLoadedDraft = false;
   bool _hasLocalDraft = false;
   bool _hasConfirmedProfile = false;
+  bool _profileLoadFailed = false;
   bool _isLoading = false;
   bool _isBusy = false;
   bool _publicationUncertain = false;
@@ -484,6 +486,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     if (_isLoading || _isBusy) return;
     setState(() {
       _isLoading = true;
+      _profileLoadFailed = false;
       _errorMessage = null;
     });
     final editVersion = _editVersion;
@@ -529,6 +532,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       setState(() {
         _profile = profile;
         _hasConfirmedProfile = true;
+        _profileLoadFailed = false;
         _publicationUncertain = false;
         if (publicationWasUncertain && profile?.isPublished == true) {
           _step = 1;
@@ -559,8 +563,11 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       unawaited(_loadDraftImages());
     } catch (error) {
       if (_ownerStillCurrent) {
-        setState(() => _errorMessage = apiErrorMessage(error,
-            fallbackMessage: 'โหลดสถานะหน้าโปรไฟล์ไม่สำเร็จ กรุณาลองใหม่'));
+        setState(() {
+          _profileLoadFailed = true;
+          _errorMessage = apiErrorMessage(error,
+              fallbackMessage: 'โหลดสถานะหน้าโปรไฟล์ไม่สำเร็จ กรุณาลองใหม่');
+        });
       }
     } finally {
       if (_ownerStillCurrent) setState(() => _isLoading = false);
@@ -690,6 +697,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       setState(() {
         _profile = profile;
         _hasConfirmedProfile = true;
+        _profileLoadFailed = false;
         _publicationUncertain = false;
         _storeNameController.text = profile.storeName;
         _slugController.text = profile.slug;
@@ -790,6 +798,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       setState(() {
         _profile = profile;
         _hasConfirmedProfile = true;
+        _profileLoadFailed = false;
       });
       _message('หยุดเผยแพร่แล้ว แบบร่างของคุณยังอยู่');
     } catch (error) {
@@ -1501,13 +1510,19 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final publication = linkInBioPublicationStatus(_profile,
+        confirmed: _ownerMatchesSession &&
+            _hasConfirmedProfile &&
+            !_isLoading &&
+            !_profileLoadFailed &&
+            !_publicationUncertain);
     final status = _publicationUncertain
         ? 'ยังไม่ทราบผล กรุณาตรวจสถานะ'
         : _isLoading
             ? 'กำลังตรวจสถานะ...'
-            : (_profile?.isPublished ?? false)
+            : publication == true
                 ? 'เผยแพร่แล้ว'
-                : _hasConfirmedProfile
+                : publication == false
                     ? 'ยังไม่ได้เผยแพร่'
                     : 'ยังตรวจสถานะเว็บไซต์ไม่ได้';
     final body = Material(
@@ -1548,10 +1563,18 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                   Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 4),
-                      child: Text(status,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 13, color: AppTheme.textSecondary))),
+                      child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            LinkInBioPublicationDot(published: publication),
+                            const SizedBox(width: 6),
+                            Flexible(
+                                child: Text(status,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        color: AppTheme.textSecondary))),
+                          ])),
                   Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 2),

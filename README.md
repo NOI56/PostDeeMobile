@@ -7,14 +7,21 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Remembered channel settings (2026-10-18, implementation in progress)
+## Remembered channel settings (2026-10-20, YouTube native restart verified)
 
-Mobile will remember reusable choices on this device per signed-in owner and
+Mobile remembers reusable choices on this device per signed-in owner and
 connected channel: TikTok delivery mode, YouTube visibility/audience, Instagram
 feed sharing and Facebook Page Video delivery mode. New clips still require
 content declarations and current confirmation; TikTok privacy/interactions
 remain manual. Saved drafts keep their own values. No API change or migration.
-Verification and delivery remain pending; see the
+Local verification passes: 2,480 tests, two optional skips, clean analysis and
+Staging APK12027 built and installed. After login, a native force-stop/restart
+check confirms YouTube visibility/audience return in a fresh post while its AI
+answer and community confirmation stay unanswered; Cancel preserves the saved
+audience. Home still shows the existing draft entry and unchanged quota.
+Instagram/Facebook remain
+covered by automated fixtures. This feature remains on a local branch, without
+a main merge, push or server deployment. See the
 [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 
 ## Publishing activity (2026-10-18, Android Staging delivered)

@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Remembered channel settings boundary (2026-10-18, implementation in progress)
+## Remembered channel settings boundary (2026-10-20, YouTube native restart verified)
 
 Use a separate allowlisted local preference store, rather than replaying complete
 draft JSON. Scope values to the API endpoint, stable owner and verified connected
@@ -15,7 +15,14 @@ against changed auth lifecycles, channel bindings and form intent, serialize
 writes and invalidate pending work when clearing a deleted owner's preferences.
 Bound reads to eight seconds and let explicit saves finish after normal composer
 disposal under the captured auth lifecycle.
-No API/schema/dependency/entitlement changes. See the
+No API/schema/dependency/entitlement changes. Full Mobile tests, analysis and
+Staging APK12027 build pass on runtime source `5ac9b5b`; the APK is installed.
+After login, native YouTube Save and force-stop/restart verify loading the saved
+visibility/audience into a fresh composer, without carrying clip-specific
+declarations. Native Cancel/reopen preserves the saved audience. Meta coverage
+remains automated fixtures. This feature has not
+been merged to main, pushed or deployed to a server.
+See the
 [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 
 ## Publishing activity boundary (2026-10-18, Android Staging delivered)

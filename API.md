@@ -2,14 +2,18 @@
 
 PostDee backend API reference.
 
-## Local remembered settings boundary (2026-10-18, implementation in progress)
+## Local remembered settings boundary (2026-10-20, YouTube native restart verified)
 
 Remembered channel settings are Mobile-only local preferences. No new endpoint,
 request field or migration is introduced. Mobile resolves editable reusable
 choices into the existing per-post `platformSettings` contract; clip-specific
 declarations, TikTok creator capabilities and fresh confirmation retain their
 existing server validation. There is no server-side or cross-device preference
-sync. See the [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
+sync. Mobile tests, analysis and the local Staging build pass. Native YouTube
+Save and restart restore reusable choices while preserving fresh clip
+declarations; Cancel/reopen also passes. Meta coverage remains automated
+fixtures. No API deployment is required or performed for this feature.
+See the [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 
 ## Optional Meta media disclosure (2026-10-18, Staging delivered)
 

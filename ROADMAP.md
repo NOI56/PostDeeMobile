@@ -2,14 +2,20 @@
 
 Build roadmap for PostDee.
 
-## Remembered channel settings (2026-10-18, implementation in progress)
+## Remembered channel settings (2026-10-20, YouTube native restart verified)
 
 - Remember allowlisted choices locally per owner, endpoint and connected channel.
 - Preserve explicit Save/Cancel, same-clip draft precedence and fresh content
   declarations. TikTok privacy and interactions remain manually selected.
 - Guard delayed reads/writes against account, channel and form changes; clear
   owner defaults after successful account deletion. No server migration.
-- Verification and delivery are pending in the
+- Local full Mobile verification passes: 2,480 tests, two optional skips and clean
+  analysis. Staging APK12027 is built and installed. Native YouTube Save and
+  force-stop/restart restore the reusable choices in a fresh post, while
+  clip-specific declarations stay unanswered. Cancel/reopen and final Home
+  preservation also pass. Meta coverage remains automated
+  fixtures. No main merge, push or server deployment has occurred for this
+  feature. Evidence and delivery limits:
   [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 
 ## Publishing activity (2026-10-18, Android Staging delivered)

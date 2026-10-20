@@ -2,14 +2,22 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Remembered channel settings (2026-10-18, implementation in progress)
+## Remembered channel settings (2026-10-20, YouTube native restart verified)
 
 Remember only reusable choices for this device and connected channel: TikTok
 Inbox/Direct mode, YouTube visibility/audience, Instagram feed sharing and
 Facebook Publish/Page draft. New clips review their own AI/synthetic content and
 confirmations; TikTok privacy/interactions have no remembered selection. Explicit
 Save updates defaults; Cancel does not. Existing drafts retain their own values.
-No API migration or server deployment is needed. Verification is pending in the
+No API migration or server deployment is needed. Full tests pass 2,480 with two
+optional skips; analysis is clean. Staging APK12027 is built and installed on the
+x86_64 emulator. After login, YouTube Save and force-stop/restart verify that
+visibility/audience return in a fresh composer while synthetic-media and
+community confirmation stay unanswered. Cancel/reopen retains the saved audience;
+final Home retains the existing draft entry, quota and channel count. Meta
+coverage remains automated fixtures. No main merge, push or server deployment
+has occurred for this feature.
+See the
 [work record](../../docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 
 ## Publishing activity (2026-10-18, Android Staging delivered)

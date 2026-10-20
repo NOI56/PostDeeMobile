@@ -1,8 +1,8 @@
 # Make Home sending feedback as visible as Calendar
 
-Status: LOCAL VERIFIED — tests, analysis, render checks and Staging APK passed;
-not merged, pushed, deployed
-or installed. The user's current app/form has not been interrupted.
+Status: VERIFIED FOR MAIN — tests, analysis, render checks and Staging APK passed;
+the user authorized main/push. No API deployment or device installation is part
+of this delivery. The user's current app/form has not been interrupted.
 
 ## Request and baseline
 
@@ -74,8 +74,28 @@ or installed. The user's current app/form has not been interrupted.
   fetching/publishing, controller, status-gate or navigation change.
 - Native active-sending/FPS and real provider acceptance are not claimed.
   No API deployment, schema migration or entitlement change is required.
-- This completion note is the only documentation-only change after the immutable
-  build/test source manifest; runtime, tests and preview inputs are unchanged.
+- This completion/delivery record is the only documentation-only change after
+  the immutable build/test source manifest; runtime, tests and preview inputs
+  are unchanged.
+
+## Main/push delivery
+
+- User explicitly authorized `main/push` after local verification. Re-fetched
+  `origin/main` remains `324c38e20a561afaf8bf09054f1e546c6e24e7a3`; feature
+  `95fbf214566e84c2b0e66695915565c8160a52bd` is one commit ahead and zero behind.
+- Integrate these eight files by fast-forward into canonical `main`, preserving
+  its three pre-existing generated Windows file changes and untracked artifacts.
+  No stale worktree content is included.
+- A documentation-only delivery commit records authorization and includes
+  `[skip render]`; no API runtime, Render Blueprint, configuration, migration or
+  workflow is changed. Normal GitHub push workflows remain enabled; no manual
+  workflow dispatch, provider publication or native restart is needed.
+- Independent release review rechecked all 650 input hashes and the preserved
+  APK: runtime, tests and preview match the verified build. The only subsequent
+  source change is this completion/delivery record.
+- Push outcome, exact integration SHA and GitHub workflow state are recorded
+  separately under `D:\PostDeeMobile\artifacts\main-push-20261020` so updating
+  delivery evidence does not alter the verified source again.
 
 ## Files changed
 

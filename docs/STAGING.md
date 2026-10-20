@@ -25,7 +25,8 @@
 ผลส่งมอบอยู่ใน `D:\PostDeeMobile\artifacts\staging-prep-20261020\deployment.json`
 และภาพ `staging-live.png`; `summary.json` เก็บผลขั้นเตรียม source เดิม
 การแก้เอกสารหลัง deploy ไม่เปลี่ยน API SHA ที่รันอยู่และไม่ต้อง deploy API ซ้ำ
-ผลนี้ยังไม่ยืนยัน provider/device E2E หรือ DB integration tests 18 กรณีที่ข้าม
+ผล deploy นี้ยังไม่ยืนยัน provider/device E2E; DB integration tests 18 กรณี
+ที่ข้ามในรอบก่อน deploy ผ่านบนฐาน local แยกแล้วตามบันทึก follow-up ด้านล่าง
 
 รอบนี้เตรียม source ใน managed worktree จาก `main`
 `c2777a8f93048d88efb596fddbaa7244dc0f3595` ซึ่งตรวจตรงกับ remote แล้ว
@@ -61,7 +62,29 @@
   parallel; ตรวจ targeted ซ้ำผ่าน 2 files/26 tests และเต็มชุด workers 2 ผ่าน
   โดยไม่เปลี่ยน source หรือ timeout เพื่อให้ผ่าน
 
-หลักฐานล่าสุดอยู่ที่ `D:\PostDeeMobile\artifacts\staging-prep-20261020\deployment.json`
+### ตรวจ DB integration เพิ่มเติม — 20 ตุลาคม 2026
+
+- ใช้ source เดียวกับ API ที่ deploy (`0a43e7b`; HEAD `39f96f9` เพิ่มเฉพาะเอกสาร)
+  และ Node 22.23.3/npm 10.9.9 สร้าง PostgreSQL 18.1 cluster ใหม่ในเครื่อง
+  ฟังเฉพาะ `127.0.0.1:55439` ฐาน `postdee_admin_fixture` และ apply migrations
+  เดิมครบ 20 รายการ ไม่มี migration ใหม่ ไม่เชื่อมฐาน Staging/Production
+- `adminDatabase.test.ts` และ `adminUsageDatabase.test.ts` ผ่าน **18/18**
+  ทั้ง DB session timezone `UTC` และ `Asia/Bangkok` โดยตรวจค่า timezone
+  ผ่าน connection ใหม่ก่อนรันแต่ละรอบ ครอบคลุม trial/audit transaction,
+  rollback, คำขอซ้ำ/คำขอพร้อมกัน, การแบ่งหน้า, ช่วงเวลา และ report snapshot
+- รัน API เต็มชุดพร้อม `ADMIN_TEST_DATABASE_URL` บน session `Asia/Bangkok`
+  ด้วย `--maxWorkers=2` ผ่าน **138 files/2,323 tests ไม่มี skip** ใน 54.35 วินาที
+  ไม่พบปัญหาที่ต้องแก้โค้ด ผล 2,305 pass/18 skip ด้านบนเป็นประวัติก่อน deploy
+- ข้อมูลจำลอง 1,000 บัญชี/10,000 โพสต์/20,000 ผลส่ง: รายงานพร้อมกัน 15 ครั้ง
+  ได้ผลถูกต้องทั้งหมด รายงานแรกที่นับ query ใช้ 1 SELECT; เวลาตอบรายงาน p95
+  ในรอบ targeted คือ UTC 225.03 ms และ Bangkok 190.36 ms ตัวเลขนี้เป็นผล local
+  ไม่ใช่การยืนยันกำลังรองรับโหลดของ Staging
+- หลังทดสอบตรวจตารางแอปทั้ง 18 ตารางว่าง ไม่มี connection/transaction อื่นค้าง
+  ปิด cluster ที่สร้างรอบนี้แล้วและพอร์ต 55439 ปิด เก็บ logs/ผลตรวจที่
+  `D:\PostDeeMobile\artifacts\db-tests-20261020\summary.json`
+  รอบนี้แก้เฉพาะเอกสารผลตรวจ ไม่ deploy ซ้ำ และยังไม่ยืนยัน provider/device E2E
+
+หลักฐาน deploy อยู่ที่ `D:\PostDeeMobile\artifacts\staging-prep-20261020\deployment.json`
 ผลข้างต้นไม่ใช่การ deploy หรือ provider/device E2E; ผลอ่าน DB จริงเพิ่มเติมอยู่ด้านล่าง
 
 ผลอ่าน Render ก่อนเตรียมชุดนี้ใน `My Workspace`: Staging API ตอบ `/health`
@@ -104,7 +127,7 @@ Dashboard เอง ตาม [Blueprint specification](https://render.com/docs/
   ผลนี้เป็นของ Staging รุ่นเดิม ไม่ใช่หลักฐานว่า candidate ใหม่ขึ้นแล้ว
 
 ตรวจ SHA/runtime/health/ready/migrations ของ instance ใหม่หลัง manual deploy แล้ว
-ยังต้องทดสอบ provider/device E2E และ DB integration ที่ข้ามแยกต่างหาก
+DB integration ที่ข้ามผ่านบน local fixture แล้ว; ยังต้องทดสอบ provider/device E2E
 รอบนี้ไม่มีการส่ง Push หรือสร้างโพสต์ทดสอบจริง
 
 ## ส่งมอบลูกเล่นระหว่างส่งโพสต์ แบบ 3 — 18 ตุลาคม 2026

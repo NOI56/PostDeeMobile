@@ -14,7 +14,7 @@ Build roadmap for PostDee.
   web service and Basic 256 MB/1 GB PostgreSQL 18 database. Source `0a43e7b`
   is now Live on Staging deploy `dep-dbbmva3bc2fs73bnpemg`, without a main merge.
   Candidate checks pass on Node 22.23.3/
-  npm 10.9.9: 2,305 API tests pass with `--maxWorkers=2`, 18 database integration tests skip;
+  npm 10.9.9: predeploy 2,305 API tests pass with `--maxWorkers=2`, 18 database integration tests skip;
   typecheck/build/Prisma/catalog checks, clean install and dependency tree pass,
   and the production audit including optional dependencies reports zero findings.
 - Predeploy Dashboard/shell checks confirm Staging DB/Firebase/R2 identity and
@@ -27,6 +27,12 @@ Build roadmap for PostDee.
   predeploy snapshot. Provider/device E2E remains open; Production stays
   user-suspended. Documentation follow-up does not change the deployed API SHA.
   See [Staging delivery](docs/STAGING.md).
+- Local DB follow-up on the same runtime source uses a fresh loopback-only
+  PostgreSQL 18.1 fixture with all 20 existing migrations. All 18 DB tests pass
+  under both UTC and Asia/Bangkok sessions; the full API suite with the fixture
+  enabled passes 138 files/2,323 tests with no skips. All 18 application tables
+  are empty after cleanup and the fixture server is stopped. No runtime code,
+  schema or deployment changes; provider/device acceptance remains open.
 
 ## Publishing progress motion (2026-10-20, locally verified and Staging APK installed)
 

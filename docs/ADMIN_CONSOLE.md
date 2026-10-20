@@ -156,3 +156,16 @@ https://postdee-api-staging.onrender.com/admin โดย health/readiness แล
 Database tests ใช้ `ADMIN_TEST_DATABASE_URL` เฉพาะ cluster ทดสอบที่
 `127.0.0.1:55439/postdee_admin_fixture` เท่านั้น ต้องใช้ migrations ก่อน
 ค่าอื่นถูกปฏิเสธเพื่อป้องกันการแตะฐานข้อมูลแอปโดยผิดพลาด
+
+### ผลตรวจฐานข้อมูลแยก — 20 ตุลาคม 2026
+
+บน candidate เดียวกับ API Staging (`0a43e7b`; HEAD `39f96f9` เพิ่มเอกสาร)
+ใช้ PostgreSQL 18.1 cluster ใหม่เฉพาะ loopback และ migrations เดิม 20 รายการ
+DB tests ทั้งสองไฟล์ผ่าน 18/18 ทั้ง session timezone UTC และ Asia/Bangkok
+ชุด API เต็มพร้อมเปิด DB tests ผ่าน 138 files/2,323 tests ไม่มี skip
+ด้วย Node 22.23.3/npm 10.9.9 และ `--maxWorkers=2`
+
+ตรวจล้างข้อมูลจำลองครบทั้ง 18 ตารางและปิด cluster แล้ว ไม่ใช้ฐาน Staging/Production
+ไม่มีการแก้โค้ดหรือเพิ่ม migration ผลนี้ยังไม่ยืนยันการให้/ต่อเวลา/ยกเลิกสิทธิ์
+ผ่านบัญชีจริงบนหน้าแอดมินและการรับสิทธิ์ใน Mobile รายละเอียดและหลักฐานอยู่ใน
+[ผลตรวจ DB integration](STAGING.md#ตรวจ-db-integration-เพิ่มเติม--20-ตุลาคม-2026)

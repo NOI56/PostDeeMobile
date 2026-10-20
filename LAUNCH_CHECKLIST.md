@@ -34,8 +34,10 @@
       ไม่ sync Blueprint/แก้ environment/merge `main` หรือเปลี่ยน Production
 - [x] ตรวจ DB จาก instance ใหม่: read-only query ผ่าน และสร้าง/อ่าน/แก้ไขข้อมูล
       จำลองใน transaction แล้ว rollback สำเร็จ ยืนยันว่าไม่เหลือแถวจำลอง
-- [ ] ตรวจ DB integration 18 tests ที่ข้ามเพราะยังไม่มี `ADMIN_TEST_DATABASE_URL`
-      และตรวจ Staging/provider/device flows ของ candidate ใหม่
+- [x] ตรวจ DB integration ที่เคยข้ามบน PostgreSQL 18.1 local fixture แยก:
+      18/18 ผ่านทั้ง UTC/Asia/Bangkok และ API เต็ม 2,323 tests ไม่มี skip
+      ล้างข้อมูลจำลอง/ปิด cluster แล้ว รายละเอียดใน `docs/STAGING.md`
+- [ ] ตรวจ Staging/provider/device flows ของ candidate ใหม่
 - [x] เตรียม `render.staging.yaml` และเทสต์ว่าชื่อ service/database แยกจาก Production
 - [x] รอบสร้างเดิมตรวจสิทธิ์และสร้าง Free PostgreSQL แยกจาก Production สำเร็จ;
       ผลอ่านสถานะ 20 ตุลาคม 2026 พบว่าฐานปัจจุบันเป็น Basic และ `available`

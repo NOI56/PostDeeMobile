@@ -995,7 +995,9 @@ apps/
   ปรับโครงสร้าง local ให้ตรง Starter/main/manual และ Basic 256 MB/1 GB/
   PostgreSQL 18 แล้ว ผล API 2,305 tests (`--maxWorkers=2`), typecheck/build/Prisma และ clean install
   ผ่าน; audit รวม optional dependencies เหลือ 0 findings ส่วน DB integration
-  18 tests ยังข้าม Predeploy อ่าน live DB/environment แล้วพบ Social `postpeer`
+  18 tests ข้ามในรอบก่อน deploy ต่อมาตรวจบน PostgreSQL 18.1 local fixture แยก
+  ผ่าน 18/18 ทั้ง UTC/Asia/Bangkok และ API เต็มผ่าน 2,323 tests ไม่มี skip
+  ล้างข้อมูลจำลอง/ปิด cluster แล้ว Predeploy อ่าน live DB/environment พบ Social `postpeer`
   ต่าง YAML `disabled` จึงรักษา Dashboard flags และ manual deploy เฉพาะ SHA
   ที่ตรวจแล้ว ไม่ sync Blueprint/merge `main` ส่งมอบ source `0a43e7b` เป็น Live
   บน Staging deploy `dep-dbbmva3bc2fs73bnpemg` แล้ว instance ใหม่ยืนยัน SHA,

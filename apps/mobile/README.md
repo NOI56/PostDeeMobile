@@ -2,6 +2,14 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Smooth publishing progress (2026-10-20, verification in progress)
+
+The selected first full-screen design adds one orbiting dot, a clipped light,
+destination chips and stage indicators. Time does not advance progress or report
+success. Motion stops for background/reduced motion/TickerMode and is disposed
+when publishing ends. Existing outcomes and remembered settings remain intact.
+No API/configuration changes; [verification record](../../docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
+
 ## Remembered channel settings (2026-10-20, YouTube native restart verified)
 
 Remember only reusable choices for this device and connected channel: TikTok

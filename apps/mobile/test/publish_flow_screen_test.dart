@@ -64,7 +64,8 @@ void main() {
             );
         await tester.pumpWidget(host());
         await tester.tap(find.text('เปิดการส่งทดสอบ'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
         expect(attempts, 1);
         if (outcome == 'done') {
           operation.complete(post);
@@ -133,6 +134,285 @@ void main() {
       });
     }
   }
+
+  testWidgets(
+      'decorative motion does not advance progress or repeat publishing',
+      (tester) async {
+    final operation = Completer<QueuedPostResult?>();
+    var attempts = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PublishFlowScreen(
+          platforms: const [
+            SocialPlatform.tiktok,
+            SocialPlatform.youtubeShorts,
+          ],
+          isScheduled: false,
+          publish: (reportProgress) {
+            attempts++;
+            reportProgress(const PublishFlowProgress(
+              stage: PublishFlowStage.uploadingVideo,
+              fraction: 0.55,
+            ));
+            return operation.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    final orbit = find.byKey(const ValueKey('publish-flow-orbit'));
+    expect(orbit, findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-flow-sheen')), findsOneWidget);
+    final firstTurn = tester.widget<RotationTransition>(orbit).turns.value;
+    await tester.pump(const Duration(milliseconds: 230));
+    expect(
+        tester.widget<RotationTransition>(orbit).turns.value, isNot(firstTurn));
+    await tester.pump(const Duration(seconds: 12));
+    expect(attempts, 1);
+    expect(find.text('55% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(
+              find.byKey(const ValueKey('publish-flow-progress')))
+          .value,
+      0.55,
+    );
+    expect(find.text('TikTok'), findsOneWidget);
+    expect(find.text('YouTube Shorts'), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-flow-done')), findsNothing);
+    expect(tester.takeException(), isNull);
+    operation.complete(const QueuedPostResult(
+      id: 'real-progress-only',
+      videoS3Key: 'uploads/motion.mp4',
+      platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
+      status: 'QUEUED',
+    ));
+    await tester.pumpAndSettle();
+  });
+
+  for (final mode in ['reduced', 'ticker', 'background']) {
+    testWidgets('pending motion stops for $mode and resumes without a new post',
+        (tester) async {
+      addTearDown(() => _resumeMotionTest(tester));
+      _resumeMotionTest(tester);
+      final operation = Completer<QueuedPostResult?>();
+      var attempts = 0;
+      final screen = PublishFlowScreen(
+        platforms: const [SocialPlatform.youtubeShorts],
+        isScheduled: false,
+        publish: (_) {
+          attempts++;
+          return operation.future;
+        },
+      );
+      Widget host({bool blocked = false}) => MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(disableAnimations: mode == 'reduced' && blocked),
+              child: TickerMode(
+                  enabled: mode != 'ticker' || !blocked, child: child!),
+            ),
+            home: screen,
+          );
+      await tester.pumpWidget(host());
+      await tester.pump();
+      final orbit = find.byKey(const ValueKey('publish-flow-orbit'));
+      expect(orbit, findsOneWidget);
+      final firstTurn = tester.widget<RotationTransition>(orbit).turns.value;
+      await tester.pump(const Duration(milliseconds: 230));
+      expect(tester.widget<RotationTransition>(orbit).turns.value,
+          isNot(firstTurn));
+      if (mode == 'background') {
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(host(blocked: true));
+      }
+      expect(find.byKey(const ValueKey('publish-flow-sheen')), findsNothing);
+      final stoppedTurn = tester.widget<RotationTransition>(orbit).turns.value;
+      await tester.pump(const Duration(seconds: 3));
+      expect(tester.widget<RotationTransition>(orbit).turns.value, stoppedTurn);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(attempts, 1);
+      expect(find.text('5% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
+      if (mode == 'background') {
+        _resumeMotionTest(tester);
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(host());
+      }
+      expect(find.byKey(const ValueKey('publish-flow-sheen')), findsOneWidget);
+      final resumedTurn = tester.widget<RotationTransition>(orbit).turns.value;
+      await tester.pump(const Duration(milliseconds: 230));
+      expect(tester.widget<RotationTransition>(orbit).turns.value,
+          isNot(resumedTurn));
+      expect(attempts, 1);
+      operation.complete(const QueuedPostResult(
+        id: 'resumed-publish',
+        videoS3Key: 'uploads/motion.mp4',
+        platforms: ['YOUTUBE_SHORTS'],
+        status: 'QUEUED',
+      ));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('the three steps follow reported stages rather than elapsed time',
+      (tester) async {
+    final operation = Completer<QueuedPostResult?>();
+    late PublishProgressReporter reportProgress;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PublishFlowScreen(
+          platforms: const [SocialPlatform.youtubeShorts],
+          isScheduled: true,
+          publish: (reporter) {
+            reportProgress = reporter;
+            return operation.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    const stepKeys = ['prepare', 'upload', 'queue'];
+    const stages = [
+      (PublishFlowStage.preparing, 0),
+      (PublishFlowStage.checkingAvailability, 0),
+      (PublishFlowStage.checkingPlan, 0),
+      (PublishFlowStage.applyingWatermark, 0),
+      (PublishFlowStage.uploadingVideo, 1),
+      (PublishFlowStage.retryingUpload, 1),
+      (PublishFlowStage.uploadingCover, 1),
+      (PublishFlowStage.creatingPost, 2),
+      (PublishFlowStage.finalizing, 2),
+    ];
+    for (final (stage, activeStep) in stages) {
+      reportProgress(PublishFlowProgress(stage: stage, fraction: 0.55));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+      for (var step = 0; step < stepKeys.length; step++) {
+        final semantics = tester.widget<Semantics>(find.byKey(
+          ValueKey('publish-flow-step-${stepKeys[step]}'),
+        ));
+        expect(
+          semantics.properties.value,
+          step < activeStep
+              ? 'เสร็จแล้ว'
+              : step == activeStep
+                  ? 'กำลังทำ'
+                  : 'รอขั้นตอน',
+          reason: '$stage must report the actual state of ${stepKeys[step]}.',
+        );
+      }
+      expect(find.text('55% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
+    }
+    operation.complete(const QueuedPostResult(
+      id: 'scheduled-stages',
+      videoS3Key: 'uploads/motion.mp4',
+      platforms: ['YOUTUBE_SHORTS'],
+      status: 'SCHEDULED',
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('จัดคิวส่งตามเวลาแล้ว'), findsOneWidget);
+  });
+
+  for (final outcome in ['done', 'error']) {
+    testWidgets('pending loops are disposed when publishing ends with $outcome',
+        (tester) async {
+      final operation = Completer<QueuedPostResult?>();
+      var attempts = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: PublishFlowScreen(
+          platforms: const [SocialPlatform.tiktok],
+          isScheduled: false,
+          publish: (_) {
+            attempts++;
+            return operation.future;
+          },
+        ),
+      ));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('publish-flow-orbit')), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 230));
+      if (outcome == 'done') {
+        operation.complete(const QueuedPostResult(
+          id: 'ended-motion',
+          videoS3Key: 'uploads/motion.mp4',
+          platforms: ['TIKTOK'],
+          status: 'QUEUED',
+        ));
+      } else {
+        operation.completeError(const ApiException('ทดสอบเครือข่ายขัดข้อง'));
+      }
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey('publish-flow-$outcome')), findsOneWidget);
+      expect(find.byKey(const ValueKey('publish-flow-orbit')), findsNothing);
+      expect(find.byKey(const ValueKey('publish-flow-sheen')), findsNothing);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      await tester.pump(const Duration(seconds: 5));
+      expect(attempts, 1);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+      'motion, all destinations and steps fit 320dp at 200 percent text',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final operation = Completer<QueuedPostResult?>();
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: const TextScaler.linear(2)),
+        child: child!,
+      ),
+      home: PublishFlowScreen(
+        platforms: const [
+          SocialPlatform.tiktok,
+          SocialPlatform.youtubeShorts,
+          SocialPlatform.instagramReels,
+          SocialPlatform.facebookReels,
+        ],
+        isScheduled: false,
+        publish: (reporter) {
+          reporter(const PublishFlowProgress(
+              stage: PublishFlowStage.creatingPost, fraction: 0.9));
+          return operation.future;
+        },
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 230));
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
+    expect(find.text('TikTok'), findsOneWidget);
+    expect(find.text('YouTube Shorts'), findsOneWidget);
+    expect(find.text('Instagram Reels'), findsOneWidget);
+    expect(find.text('Facebook Video'), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('publish-flow-step-queue')), findsOneWidget);
+    operation.complete(const QueuedPostResult(
+      id: 'narrow-motion',
+      videoS3Key: 'uploads/motion.mp4',
+      platforms: [
+        'TIKTOK',
+        'YOUTUBE_SHORTS',
+        'INSTAGRAM_REELS',
+        'FACEBOOK_REELS'
+      ],
+      status: 'QUEUED',
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('shows posting progress and an honest queued screen',
       (tester) async {

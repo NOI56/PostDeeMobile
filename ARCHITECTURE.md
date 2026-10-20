@@ -2,6 +2,15 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Publishing progress activity (2026-10-20, verification in progress)
+
+The pending PublishFlowScreen view owns one retained clock for its decorative
+orbit and clipped light. Real PublishFlowProgress stage/fraction still controls
+the labels, rail and stage summary. App lifecycle, TickerMode and reduced motion
+stop/reset activity; changing to an outcome disposes the clock. This is separate
+from the post-list sending-status scope. No request, queue, schema, dependency,
+flag or environment change. [Work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
+
 ## Remembered channel settings boundary (2026-10-20, YouTube native restart verified)
 
 Use a separate allowlisted local preference store, rather than replaying complete

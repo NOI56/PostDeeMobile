@@ -190,8 +190,9 @@ class _PublishFlowScreenState extends State<PublishFlowScreen>
                         )
                       : _PublishingView(
                           key: const ValueKey('publish-flow-posting'),
-                          platformCount: widget.platforms.length,
+                          platforms: widget.platforms,
                           progress: _progress,
+                          animate: _appIsResumed,
                         ),
             ),
           ),
@@ -254,39 +255,293 @@ class _PublishViewTransitionState extends State<_PublishViewTransition>
       FadeTransition(opacity: _controller, child: widget.child);
 }
 
-class _PublishingView extends StatelessWidget {
+class _PublishingView extends StatefulWidget {
   const _PublishingView({
     super.key,
-    required this.platformCount,
+    required this.platforms,
     required this.progress,
+    required this.animate,
   });
 
-  final int platformCount;
+  final List<SocialPlatform> platforms;
   final PublishFlowProgress progress;
+  final bool animate;
+
+  @override
+  State<_PublishingView> createState() => _PublishingViewState();
+}
+
+class _PublishingViewState extends State<_PublishingView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _activity = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  );
+
+  bool get _motionAllowed =>
+      widget.animate &&
+      TickerMode.valuesOf(context).enabled &&
+      !MediaQuery.disableAnimationsOf(context);
+
+  void _syncMotion() {
+    if (_motionAllowed) {
+      if (!_activity.isAnimating) _activity.repeat();
+    } else {
+      _activity.stop();
+      _activity.value = 0;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMotion();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PublishingView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncMotion();
+  }
+
+  @override
+  void dispose() {
+    _activity.dispose();
+    super.dispose();
+  }
+
+  int get _currentStep => switch (widget.progress.stage) {
+        PublishFlowStage.preparing ||
+        PublishFlowStage.checkingAvailability ||
+        PublishFlowStage.checkingPlan ||
+        PublishFlowStage.applyingWatermark =>
+          0,
+        PublishFlowStage.uploadingVideo ||
+        PublishFlowStage.retryingUpload ||
+        PublishFlowStage.uploadingCover =>
+          1,
+        PublishFlowStage.creatingPost || PublishFlowStage.finalizing => 2,
+      };
+
+  Widget _emblem() => ExcludeSemantics(
+        child: SizedBox.square(
+          dimension: 90,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppTheme.border),
+                ),
+              ),
+              Container(
+                width: 64,
+                height: 64,
+                decoration:
+                    BoxDecoration(color: AppTheme.mint, shape: BoxShape.circle),
+                child: Icon(Icons.file_upload_outlined,
+                    size: 30, color: AppTheme.accentCyanInk),
+              ),
+              Positioned.fill(
+                child: RotationTransition(
+                  key: const ValueKey('publish-flow-orbit'),
+                  turns: _activity,
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                          color: AppTheme.accentCyanInk,
+                          shape: BoxShape.circle),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _destinations() => LayoutBuilder(
+        builder: (context, constraints) => Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final platform in widget.platforms)
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.glass,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ExcludeSemantics(
+                          child:
+                              SocialPlatformLogo(platform: platform, size: 16)),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(platform.label,
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textPrimary,
+                                fontWeight: FontWeight.w500)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+
+  Widget _progressRail(int percent) => Semantics(
+        label: 'ความคืบหน้าตามขั้นตอน',
+        value: '$percent%',
+        child: ExcludeSemantics(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: Stack(
+              children: [
+                LinearProgressIndicator(
+                  key: const ValueKey('publish-flow-progress'),
+                  value: widget.progress.fraction,
+                  minHeight: 10,
+                  backgroundColor: AppTheme.mint,
+                  color: AppTheme.accentCyanInk,
+                ),
+                if (_motionAllowed)
+                  Positioned.fill(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: widget.progress.fraction,
+                        child: ClipRect(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final width = constraints.maxWidth;
+                              final lightWidth = width * 0.36;
+                              return AnimatedBuilder(
+                                animation: _activity,
+                                child: Container(
+                                  key: const ValueKey('publish-flow-sheen'),
+                                  width: lightWidth,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(colors: [
+                                      Colors.white.withValues(alpha: 0),
+                                      Colors.white.withValues(alpha: 0.4),
+                                      Colors.white.withValues(alpha: 0),
+                                    ]),
+                                  ),
+                                ),
+                                builder: (context, child) =>
+                                    Transform.translate(
+                                  offset: Offset(
+                                      -lightWidth +
+                                          (width + lightWidth) *
+                                              _activity.value,
+                                      0),
+                                  child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: child),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+  Widget _steps() {
+    const steps = [
+      (id: 'prepare', label: 'เตรียมข้อมูล'),
+      (id: 'upload', label: 'อัปโหลด'),
+      (id: 'queue', label: 'สร้างคิว'),
+    ];
+    final current = _currentStep;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var index = 0; index < steps.length; index++)
+          Expanded(
+            child: Semantics(
+              key: ValueKey('publish-flow-step-${steps[index].id}'),
+              label: steps[index].label,
+              value: index < current
+                  ? 'เสร็จแล้ว'
+                  : index == current
+                      ? 'กำลังทำ'
+                      : 'รอขั้นตอน',
+              excludeSemantics: true,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 25,
+                      height: 25,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: index == current
+                            ? AppTheme.accentCyanInk
+                            : AppTheme.mint,
+                      ),
+                      child: Icon(
+                        index < current
+                            ? Icons.check_rounded
+                            : index == current
+                                ? Icons.more_horiz_rounded
+                                : Icons.circle_outlined,
+                        size: 14,
+                        color: index == current
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : AppTheme.accentCyanInk,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(steps[index].label,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: index == current
+                                ? AppTheme.textPrimary
+                                : AppTheme.textSecondary)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final percent = (progress.fraction * 100).round();
+    final percent = (widget.progress.fraction * 100).round();
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(40),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 36),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              width: 74,
-              height: 74,
-              child: CircularProgressIndicator(
-                value: progress.fraction,
-                strokeWidth: 5,
-                backgroundColor: AppTheme.mint,
-                color: AppTheme.accentCyanInk,
-                strokeCap: StrokeCap.round,
-              ),
-            ),
+            _emblem(),
             const SizedBox(height: 22),
             Text(
-              progress.title,
+              widget.progress.title,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
@@ -296,25 +551,14 @@ class _PublishingView extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'กำลังดำเนินการสำหรับ $platformCount ช่องทาง',
+              'กำลังดำเนินการสำหรับ ${widget.platforms.length} ช่องทาง',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
             ),
-            const SizedBox(height: 22),
-            Semantics(
-              label: 'ความคืบหน้าตามขั้นตอน',
-              value: '$percent%',
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  key: const ValueKey('publish-flow-progress'),
-                  value: progress.fraction,
-                  minHeight: 10,
-                  backgroundColor: AppTheme.mint,
-                  color: AppTheme.accentCyanInk,
-                ),
-              ),
-            ),
+            const SizedBox(height: 16),
+            _destinations(),
+            const SizedBox(height: 26),
+            _progressRail(percent),
             const SizedBox(height: 10),
             Text(
               '$percent% · ความคืบหน้าตามขั้นตอน',
@@ -326,7 +570,9 @@ class _PublishingView extends StatelessWidget {
                 color: AppTheme.textMuted,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 24),
+            _steps(),
+            const SizedBox(height: 22),
             Text(
               'เปอร์เซ็นต์นี้แสดงขั้นตอนงาน ไม่ใช่จำนวนไบต์ที่อัปโหลด',
               textAlign: TextAlign.center,

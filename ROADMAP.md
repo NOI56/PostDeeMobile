@@ -2,6 +2,14 @@
 
 Build roadmap for PostDee.
 
+## Publishing progress motion (2026-10-20, verification in progress)
+
+- Implement the selected smooth full-screen progress treatment while retaining
+  real stage percentages, outcome labels, publishing/retry and navigation guards.
+- Verify lifecycle/reduced-motion behavior and narrow/enlarged-text layouts;
+  create controlled renders without submitting a real post. No API deployment.
+- [Work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
+
 ## Remembered channel settings (2026-10-20, YouTube native restart verified)
 
 - Remember allowlisted choices locally per owner, endpoint and connected channel.

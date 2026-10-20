@@ -7,6 +7,14 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Publishing progress motion (2026-10-20, verification in progress)
+
+The selected smooth progress screen adds a gentle orbit, a light confined to
+the filled progress bar, destination labels and three stage indicators. Activity
+never advances the reported percentage or implies publication. Background,
+reduced-motion and TickerMode guards stop it. No API/configuration changes.
+See the [work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
+
 ## Remembered channel settings (2026-10-20, YouTube native restart verified)
 
 Mobile remembers reusable choices on this device per signed-in owner and

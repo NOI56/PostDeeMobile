@@ -467,7 +467,8 @@ void main() {
     final button = find.byKey(const ValueKey('publish-review-confirm'));
     await tester.ensureVisible(button);
     await tester.tap(button);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(effects, ['probe']);
     PostDeeAuthSessionStore.instance
         .signIn(const AuthSession(userId: 'another-owner'));

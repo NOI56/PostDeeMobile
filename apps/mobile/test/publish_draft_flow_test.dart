@@ -779,8 +779,7 @@ void main() {
     await tester.drag(_uploaderScroll, const Offset(0, 3000));
     await tester.pumpAndSettle();
     final picker = find.byKey(const ValueKey('uploader-video-preview-picker'));
-    await tester.scrollUntilVisible(picker, 300,
-        scrollable: _uploaderScroll);
+    await tester.scrollUntilVisible(picker, 300, scrollable: _uploaderScroll);
     await tester.ensureVisible(picker);
     await tester.tap(picker);
     await tester.pumpAndSettle();
@@ -871,18 +870,21 @@ void main() {
     );
     await tester.ensureVisible(postButton);
     await tester.tap(postButton);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text('กำลังตรวจสอบระบบโพสต์'), findsOneWidget);
     expect(find.text('18% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
 
     readiness.complete();
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
     expect(find.text('กำลังตรวจสอบแพ็กเกจ'), findsOneWidget);
     expect(find.text('28% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
 
     subscription.complete(_proSubscription);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
     expect(find.text('กำลังอัปโหลดวิดีโอ'), findsOneWidget);
     expect(find.text('50% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
 
@@ -893,9 +895,11 @@ void main() {
         storageProvider: 'mock',
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
     videoUploaded.complete();
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
     expect(find.text('กำลังสร้างคิวโพสต์'), findsOneWidget);
     expect(find.text('90% · ความคืบหน้าตามขั้นตอน'), findsOneWidget);
 

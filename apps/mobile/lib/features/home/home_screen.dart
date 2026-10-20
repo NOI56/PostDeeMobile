@@ -1548,7 +1548,7 @@ class _LatestPostRow extends StatelessWidget {
         post.status.toUpperCase() == 'PUBLISHING' && status.label == 'กำลังส่ง';
     final stackStatus = MediaQuery.textScalerOf(context).scale(13.5) > 18;
     final statusBadge = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: stackStatus ? 190 : 108),
+      constraints: BoxConstraints(maxWidth: sending || stackStatus ? 190 : 108),
       child: _StatusPill(
         label: status.label,
         bg: status.bg,
@@ -1581,7 +1581,10 @@ class _LatestPostRow extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppTheme.glass,
                 borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: AppTheme.border),
+                border: Border.all(
+                    color: sending
+                        ? status.ink.withValues(alpha: .25)
+                        : AppTheme.border),
                 boxShadow: [
                   BoxShadow(
                     color: const Color(0xFF122018).withValues(alpha: 0.04),
@@ -1597,6 +1600,9 @@ class _LatestPostRow extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.all(10),
                     child: Row(
+                      crossAxisAlignment: sending
+                          ? CrossAxisAlignment.start
+                          : CrossAxisAlignment.center,
                       children: [
                         _LatestPostThumbnail(
                           post: post,
@@ -1610,7 +1616,7 @@ class _LatestPostRow extends StatelessWidget {
                             children: [
                               Text(
                                 title,
-                                maxLines: 1,
+                                maxLines: sending ? 2 : 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 13.5,
@@ -1618,43 +1624,45 @@ class _LatestPostRow extends StatelessWidget {
                                   color: AppTheme.textPrimary,
                                 ),
                               ),
-                              const SizedBox(height: 5),
-                              Row(
-                                children: [
-                                  for (final platform in platforms.take(4)) ...[
-                                    Container(
-                                      width: 13,
-                                      height: 13,
-                                      margin: const EdgeInsets.only(right: 3),
-                                      decoration: BoxDecoration(
-                                        color: platform.displayColor,
-                                        borderRadius: BorderRadius.circular(4),
+                              if (!sending) ...[
+                                const SizedBox(height: 5),
+                                Row(
+                                  children: [
+                                    for (final platform in platforms.take(4)) ...[
+                                      Container(
+                                        width: 13,
+                                        height: 13,
+                                        margin: const EdgeInsets.only(right: 3),
+                                        decoration: BoxDecoration(
+                                          color: platform.displayColor,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                      ),
+                                    ],
+                                    if (platforms.isNotEmpty)
+                                      const SizedBox(width: 3),
+                                    Expanded(
+                                      child: Text(
+                                        sub,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.textMuted,
+                                        ),
                                       ),
                                     ),
                                   ],
-                                  if (platforms.isNotEmpty)
-                                    const SizedBox(width: 3),
-                                  Expanded(
-                                    child: Text(
-                                      sub,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: AppTheme.textMuted,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (stackStatus) ...[
+                                ),
+                              ],
+                              if (sending || stackStatus) ...[
                                 const SizedBox(height: 6),
                                 statusBadge,
                               ],
                             ],
                           ),
                         ),
-                        if (!stackStatus) ...[
+                        if (!sending && !stackStatus) ...[
                           const SizedBox(width: 6),
                           statusBadge,
                         ],
@@ -1664,15 +1672,23 @@ class _LatestPostRow extends StatelessWidget {
                   if (sending) ...[
                     Padding(
                       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                      child: PostDeePlatformDeliveryRow(
-                        platforms: post.platforms,
-                        results: post.platformResults,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          KeyedSubtree(
+                            key: ValueKey('home-publishing-rail-${post.id}'),
+                            child: PostDeePublishingRail(color: status.ink),
+                          ),
+                          const SizedBox(height: 10),
+                          KeyedSubtree(
+                            key: ValueKey('home-publishing-channels-${post.id}'),
+                            child: PostDeePlatformDeliveryRow(
+                              platforms: post.platforms,
+                              results: post.platformResults,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const ClipRRect(
-                      borderRadius:
-                          BorderRadius.vertical(bottom: Radius.circular(14)),
-                      child: PostDeePublishingRail(),
                     ),
                   ],
                 ],

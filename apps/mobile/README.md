@@ -4,6 +4,11 @@ Flutter mobile app scaffold for PostDee.
 
 ## Smooth publishing progress (2026-10-20, locally verified and Staging APK installed)
 
+A local Home card follow-up aligns sending feedback with Calendar: badge under
+the caption, inset moving light before real channel results, and a soft accent
+border. The shared clock and ordinary cards stay unchanged. See the
+[Home work record](../../docs/superpowers/plans/2026-10-20-home-publishing-feedback.md).
+
 The selected first full-screen design adds one orbiting dot, a clipped light,
 destination chips and stage indicators. Time does not advance progress or report
 success. Motion stops for background/reduced motion/TickerMode and is disposed

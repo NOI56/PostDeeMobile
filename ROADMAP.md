@@ -42,6 +42,10 @@ Build roadmap for PostDee.
 
 ## Publishing progress motion (2026-10-20, locally verified and Staging APK installed)
 
+- Local Home follow-up: improve visibility of sending feedback using Calendar's
+  badge → inset rail → actual channel result order, retaining shared motion and
+  status/poll/navigation behavior. See the
+  [Home work record](docs/superpowers/plans/2026-10-20-home-publishing-feedback.md).
 - Implemented the selected smooth full-screen progress treatment while retaining
   real stage percentages, outcome labels, publishing/retry and navigation guards.
 - Lifecycle/reduced-motion behavior, narrow/enlarged-text layouts and truthful

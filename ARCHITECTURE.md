@@ -4,6 +4,11 @@ Architecture overview for the PostDee mobile app and backend scaffold.
 
 ## Publishing progress activity (2026-10-20, locally verified and Staging APK installed)
 
+Home's local card-layout follow-up reuses the existing per-post activity scope;
+only the sending row presentation changes. It does not create another clock or
+change fetching, lifecycle guards or publishing behavior. See the
+[Home work record](docs/superpowers/plans/2026-10-20-home-publishing-feedback.md).
+
 The pending PublishFlowScreen view owns one retained clock for its decorative
 orbit and clipped light. Real PublishFlowProgress stage/fraction still controls
 the labels, rail and stage summary. App lifecycle, TickerMode and reduced motion

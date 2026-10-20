@@ -9,6 +9,11 @@ Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
 ## Publishing progress motion (2026-10-20, locally verified and Staging APK installed)
 
+A local Home follow-up places its sending badge below the caption, the activity
+rail above real channel results, and a subtle accent border, matching Calendar's
+feedback order. Verification/delivery state is tracked in the
+[Home work record](docs/superpowers/plans/2026-10-20-home-publishing-feedback.md).
+
 The selected smooth progress screen adds a gentle orbit, a light confined to
 the filled progress bar, destination labels and three stage indicators. Activity
 never advances the reported percentage or implies publication. Background,

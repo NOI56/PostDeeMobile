@@ -1,8 +1,8 @@
 # Profile-link publication status dot
 
-Status: LOCAL VERIFIED — full tests, analysis, status renders and Staging APK
-passed; not merged, pushed, deployed
-or installed for this change. The current app/form is preserved.
+Status: VERIFIED FOR MAIN — full tests, analysis, status renders and Staging APK
+passed; the user authorized main/push. No API deployment or device installation
+is part of this delivery. The current app/form is preserved.
 
 ## Request and baseline
 
@@ -88,6 +88,24 @@ or installed for this change. The current app/form is preserved.
   changes after the immutable verification manifests.
 - Native installation, real publication/unpublication and native rendering/FPS
   are not part of this task and have not been performed.
+
+## Main/push delivery
+
+- The user explicitly authorized `main/push` after local verification. A fresh
+  fetch confirms `origin/main` is still
+  `e4dc01a04010cf48608c6000766d84811fbb374d`; verified feature
+  `8722e1a8455faa1519d89cdd550cef642a7e3098` is one ahead and zero behind.
+- Integrate the eight related files into canonical `main` by fast-forward.
+  Preserve its three pre-existing generated Windows file changes and untracked
+  artifacts; do not include stale checkout content.
+- This documentation-only delivery commit includes `[skip render]`. No API,
+  Render Blueprint, configuration, dependencies, migrations or workflows change.
+  Normal push workflows remain enabled; no extra dispatch, native update or
+  publication/unpublication is required for main/push.
+- Runtime, regression tests and the opt-in fixture remain identical to verified
+  APK12031 inputs. This completion/delivery record is the sole later source change.
+- Exact pushed SHA, remote equality and workflow snapshots are saved separately
+  under `D:\PostDeeMobile\artifacts\main-push-20261020` to keep source immutable.
 
 ## Files changed
 

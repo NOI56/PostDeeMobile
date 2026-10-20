@@ -37,6 +37,10 @@
 - [x] ตรวจ DB integration ที่เคยข้ามบน PostgreSQL 18.1 local fixture แยก:
       18/18 ผ่านทั้ง UTC/Asia/Bangkok และ API เต็ม 2,323 tests ไม่มี skip
       ล้างข้อมูลจำลอง/ปิด cluster แล้ว รายละเอียดใน `docs/STAGING.md`
+- [x] ภายหลังผู้ใช้อนุมัติ main/push รวม runtime/เอกสาร Staging และผล DB เข้า
+      `main` โดยคง verified runtime, Mobile, schema และ migrations เดิม
+      ใช้ `[skip render]` ใน commit เอกสารสถานะ คง Production user-suspended
+      และ Staging auto-deploy off โดยไม่สั่ง deploy ซ้ำ
 - [ ] ตรวจ Staging/provider/device flows ของ candidate ใหม่
 - [x] เตรียม `render.staging.yaml` และเทสต์ว่าชื่อ service/database แยกจาก Production
 - [x] รอบสร้างเดิมตรวจสิทธิ์และสร้าง Free PostgreSQL แยกจาก Production สำเร็จ;

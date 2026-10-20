@@ -1,11 +1,30 @@
 # PostDee Staging
 
+## รวมชุด Staging เข้า main — 20 ตุลาคม 2026
+
+ผู้ใช้อนุมัติ main/push หลังตรวจรายการค้าง จึงรวม runtime `0a43e7b`, เอกสาร
+ส่งมอบ `39f96f9` และผลตรวจ DB integration `ad788aa` เข้า `main` แบบ fast-forward
+จากฐาน `c2777a8` เอกสารสถานะรอบนี้ไม่เปลี่ยน API runtime, dependencies,
+Mobile, CI, schema หรือ migrations จากชุดที่ทดสอบแล้ว
+
+API tree ตรงรุ่นที่ build/ตรวจและ deploy บน Staging ผล DB-enabled suite ผ่าน
+138 files/2,323 tests ไม่มี skip และ DB tests 18/18 ผ่านทั้ง UTC/Asia/Bangkok
+พร้อมตรวจ cleanup และปิด local fixture แล้ว รายละเอียดด้านล่าง
+
+ก่อน push ตรวจ Render ใน My Workspace พบ Production `postdee-api` ยัง
+user-suspended แม้มี auto-deploy `commit`; Staging มี auto-deploy `off`
+commit เอกสารการรวมใช้ `[skip render]` เพื่อส่ง source/CI ตามคำขอโดยคงบริการเดิม
+ไม่ resume/redeploy หรือแก้ Dashboard/Blueprint/environment/ฐานข้อมูลในรอบนี้
+API Staging ที่บันทึกไว้ยังเป็น source `0a43e7b`; การรวมเอกสารไม่ต้อง deploy ซ้ำ
+Provider/device และ live admin-to-Mobile acceptance ยังเป็นงานตรวจแยกต่างหาก
+
 ## ส่งมอบชุดแก้ Staging — 20 ตุลาคม 2026
 
 [Deploy `dep-dbbmva3bc2fs73bnpemg`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbbmva3bc2fs73bnpemg)
 เป็น **Live** ที่ source `0a43e7b273415578d15ae3f8e970c66b362ac48e` จาก branch
 `codex/staging-readiness-20261020` เวลา 20:43:18 น. ไทย (13:43:18 UTC)
-วันที่ 20 ตุลาคม 2026 ใช้เวลา 1 นาที 18 วินาที ยังไม่ merge เข้า `main`
+วันที่ 20 ตุลาคม 2026 ใช้เวลา 1 นาที 18 วินาที ณ ตอน deploy ยังไม่ merge เข้า
+`main`; การรวมภายหลังอยู่ในหัวข้อด้านบน
 
 - Remote shell ของ instance ใหม่ `wf8ss` ยืนยัน SHA ตรง, Node `22.23.3`,
   npm `10.9.9`, Firebase Admin `14.5.0` และ Morgan `1.12.1`; ไม่มี Firestore/
@@ -20,7 +39,8 @@
   migrations 20 รายการและ publish backlog 0; ทดสอบสร้าง/อ่าน/แก้ไขแถว User
   จำลองใน transaction แล้วบังคับ rollback ผ่าน ตรวจซ้ำว่าไม่มีแถวจำลองค้าง
 - ไม่ sync Blueprint หรือแก้ service environment, ไม่ส่งโพสต์/Push จริง และ
-  Production API/database ยังคง user-suspended; remote `main` ยังเป็น `c2777a8`
+  Production API/database ยังคง user-suspended; ณ ตอน deploy remote `main`
+  ยังเป็น `c2777a8`
 
 ผลส่งมอบอยู่ใน `D:\PostDeeMobile\artifacts\staging-prep-20261020\deployment.json`
 และภาพ `staging-live.png`; `summary.json` เก็บผลขั้นเตรียม source เดิม
@@ -64,7 +84,8 @@
 
 ### ตรวจ DB integration เพิ่มเติม — 20 ตุลาคม 2026
 
-- ใช้ source เดียวกับ API ที่ deploy (`0a43e7b`; HEAD `39f96f9` เพิ่มเฉพาะเอกสาร)
+- ใช้ source เดียวกับ API ที่ deploy (`0a43e7b`; HEAD ขณะทดสอบ `39f96f9`
+  เพิ่มเฉพาะเอกสาร)
   และ Node 22.23.3/npm 10.9.9 สร้าง PostgreSQL 18.1 cluster ใหม่ในเครื่อง
   ฟังเฉพาะ `127.0.0.1:55439` ฐาน `postdee_admin_fixture` และ apply migrations
   เดิมครบ 20 รายการ ไม่มี migration ใหม่ ไม่เชื่อมฐาน Staging/Production

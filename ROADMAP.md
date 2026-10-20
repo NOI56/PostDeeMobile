@@ -12,7 +12,8 @@ Build roadmap for PostDee.
   retain current Mobile, admin/trial access, CI and ElevenLabs/Gemini providers.
 - Reconcile local infrastructure fields to the observed Starter/main/manual
   web service and Basic 256 MB/1 GB PostgreSQL 18 database. Source `0a43e7b`
-  is now Live on Staging deploy `dep-dbbmva3bc2fs73bnpemg`, without a main merge.
+  is Live on Staging deploy `dep-dbbmva3bc2fs73bnpemg`; its original delivery
+  preceded main integration.
   Candidate checks pass on Node 22.23.3/
   npm 10.9.9: predeploy 2,305 API tests pass with `--maxWorkers=2`, 18 database integration tests skip;
   typecheck/build/Prisma/catalog checks, clean install and dependency tree pass,
@@ -33,6 +34,11 @@ Build roadmap for PostDee.
   enabled passes 138 files/2,323 tests with no skips. All 18 application tables
   are empty after cleanup and the fixture server is stopped. No runtime code,
   schema or deployment changes; provider/device acceptance remains open.
+- The user subsequently authorized main/push. Runtime `0a43e7b`, delivery docs
+  `39f96f9` and DB follow-up `ad788aa` are fast-forwarded into `main` from
+  `c2777a8`. Only documentation changes afterward; verified API/Mobile inputs
+  remain unchanged. A `[skip render]` integration commit preserves the observed
+  Production user-suspended and Staging manual-deploy state; no new API deploy.
 
 ## Publishing progress motion (2026-10-20, locally verified and Staging APK installed)
 

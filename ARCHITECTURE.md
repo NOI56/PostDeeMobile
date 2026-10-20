@@ -1109,7 +1109,8 @@ switches the FCM sender to lazy modular imports and reuses the named
 optional Firestore or Google Cloud Storage clients; persistent application data remains in Render
 PostgreSQL through Prisma and video media remains in Cloudflare R2.
 
-The 2026-10-20 candidate updates Firebase Admin to 14.5.0 and Morgan to 1.12.1,
+The 2026-10-20 candidate, now integrated into main under the user's main/push
+request, updates Firebase Admin to 14.5.0 and Morgan to 1.12.1,
 while retaining Prisma 6.19.3. Its exact `@prisma/config@6.19.3` override selects
 `deepmerge-ts@8.0.2`; recheck that override when upgrading Prisma. These changes
 require no schema migration and do not enable Firebase delivery or change the

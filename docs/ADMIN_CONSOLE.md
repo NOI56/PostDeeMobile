@@ -159,7 +159,7 @@ Database tests ใช้ `ADMIN_TEST_DATABASE_URL` เฉพาะ cluster ท�
 
 ### ผลตรวจฐานข้อมูลแยก — 20 ตุลาคม 2026
 
-บน candidate เดียวกับ API Staging (`0a43e7b`; HEAD `39f96f9` เพิ่มเอกสาร)
+บน candidate เดียวกับ API Staging (`0a43e7b`; HEAD ขณะทดสอบ `39f96f9` เพิ่มเอกสาร)
 ใช้ PostgreSQL 18.1 cluster ใหม่เฉพาะ loopback และ migrations เดิม 20 รายการ
 DB tests ทั้งสองไฟล์ผ่าน 18/18 ทั้ง session timezone UTC และ Asia/Bangkok
 ชุด API เต็มพร้อมเปิด DB tests ผ่าน 138 files/2,323 tests ไม่มี skip

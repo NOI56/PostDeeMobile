@@ -999,11 +999,15 @@ apps/
   ผ่าน 18/18 ทั้ง UTC/Asia/Bangkok และ API เต็มผ่าน 2,323 tests ไม่มี skip
   ล้างข้อมูลจำลอง/ปิด cluster แล้ว Predeploy อ่าน live DB/environment พบ Social `postpeer`
   ต่าง YAML `disabled` จึงรักษา Dashboard flags และ manual deploy เฉพาะ SHA
-  ที่ตรวจแล้ว ไม่ sync Blueprint/merge `main` ส่งมอบ source `0a43e7b` เป็น Live
+  ที่ตรวจแล้ว โดยรอบ deploy เดิมไม่ sync Blueprint/merge `main`
+  ส่งมอบ source `0a43e7b` เป็น Live
   บน Staging deploy `dep-dbbmva3bc2fs73bnpemg` แล้ว instance ใหม่ยืนยัน SHA,
   Node 22.23.3, health/ready 200 และ 20 migrations ไม่มี pending;
   Node 26.12.0 เป็นข้อมูลก่อน deploy Provider/device E2E ยังต้องตรวจต่อ
   ไม่ใช้ checkout เก่าที่มีงานค้างเป็นชุดปล่อย
+  ภายหลังผู้ใช้อนุมัติ main/push จึงรวม runtime และเอกสารผล DB เข้า `main`
+  แล้ว โดยใช้ `[skip render]` กับ commit เอกสารสถานะ ไม่ deploy ซ้ำหรือเปลี่ยน
+  บริการที่ Production user-suspended / Staging auto-deploy off
   รายละเอียดและสถานะผลตรวจอยู่ใน [Staging delivery](docs/STAGING.md)
 - `render.yaml` จัดการ Production (`postdee-api` และ `postdee-postgres`)
 - `render.staging.yaml` เป็น Blueprint แยกสำหรับ Staging แบบต้นทุนต่ำ และต้องใช้

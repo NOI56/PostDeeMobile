@@ -31,6 +31,12 @@ against changed auth lifecycles, channel bindings and form intent, serialize
 writes and invalidate pending work when clearing a deleted owner's preferences.
 Bound reads to eight seconds and let explicit saves finish after normal composer
 disposal under the captured auth lifecycle.
+Same-opening TikTok viewer/interaction/AI edits retain explicit music and branded
+acknowledgments. Commercial/brand changes clear them because the declaration
+context changes. Opening/loading fresh creator options, switching delivery mode,
+or changing account/clip/content still invalidates consent. Saving captures the
+final settings in the existing outer consent-intent fingerprint; that fingerprint
+and submission/retry guards are unchanged.
 No API/schema/dependency/entitlement changes. Full Mobile tests, analysis and
 Staging APK12027 build pass on runtime source `5ac9b5b`; the APK is installed.
 After login, native YouTube Save and force-stop/restart verify loading the saved

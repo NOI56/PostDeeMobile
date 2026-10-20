@@ -132,10 +132,15 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
     }
   }
 
-  void _change(PlatformPublishSettings settings) => setState(() {
-        _settings = settings.copyWith(
-            tiktokMusicUsageConfirmed: false,
-            tiktokBrandedContentPolicyConfirmed: false);
+  void _change(PlatformPublishSettings settings, {bool resetConsents = false}) =>
+      setState(() {
+        // Viewer/interaction choices do not change the music or policy text.
+        // Disclosure changes must be acknowledged in their new context.
+        _settings = resetConsents
+            ? settings.copyWith(
+                tiktokMusicUsageConfirmed: false,
+                tiktokBrandedContentPolicyConfirmed: false)
+            : settings;
       });
 
   void _selectMode(TikTokPublishMode mode) {
@@ -278,17 +283,21 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
                         value: _commercial,
                         onChanged: (value) {
                           _commercial = value;
-                          _change(_settings.copyWith(
-                              tiktokBrandContentToggle: false,
-                              tiktokBrandOrganicToggle: false));
+                          _change(
+                              _settings.copyWith(
+                                  tiktokBrandContentToggle: false,
+                                  tiktokBrandOrganicToggle: false),
+                              resetConsents: true);
                         }),
                     if (_commercial) ...[
                       CheckboxListTile(
                           key: const ValueKey('uploader-tiktok-own-brand'),
                           title: const Text('โปรโมตแบรนด์ของฉัน'),
                           value: _settings.tiktokBrandOrganicToggle,
-                          onChanged: (value) => _change(_settings.copyWith(
-                              tiktokBrandOrganicToggle: value ?? false))),
+                          onChanged: (value) => _change(
+                              _settings.copyWith(
+                                  tiktokBrandOrganicToggle: value ?? false),
+                              resetConsents: true)),
                       CheckboxListTile(
                           key: const ValueKey('uploader-tiktok-third-party'),
                           title: const Text('โปรโมตแบรนด์ของบุคคลอื่น'),
@@ -296,8 +305,10 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
                           onChanged: _settings.tiktokPrivacyLevel ==
                                   TikTokPrivacyLevel.selfOnly
                               ? null
-                              : (value) => _change(_settings.copyWith(
-                                  tiktokBrandContentToggle: value ?? false))),
+                              : (value) => _change(
+                                  _settings.copyWith(
+                                      tiktokBrandContentToggle: value ?? false),
+                                  resetConsents: true)),
                       if (_settings.tiktokPrivacyLevel ==
                           TikTokPrivacyLevel.selfOnly)
                         const Text(

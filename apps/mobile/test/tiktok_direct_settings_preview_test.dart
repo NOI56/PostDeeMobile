@@ -16,6 +16,9 @@ void main() {
 
   testWidgets('renders real Direct Post settings with local fixture capabilities',
       (tester) async {
+    final previousTheme = AppTheme.isLightMode ? ThemeMode.light : ThemeMode.dark;
+    AppTheme.applyThemeMode(ThemeMode.light);
+    addTearDown(() => AppTheme.applyThemeMode(previousTheme));
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -135,7 +138,24 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    await select('music-consent');
+    final privacy = find.byKey(const ValueKey('uploader-tiktok-privacy'));
+    await tester.ensureVisible(privacy);
+    await tester.pumpAndSettle();
+    await tester.tap(privacy);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เพื่อนที่ติดตามกัน').last);
+    await tester.pumpAndSettle();
+    expect(checkbox('music-consent').value, isTrue);
+    expect(save().onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+    await capture('tiktok-direct-viewers-after-consent');
+    await tester.ensureVisible(
+        find.byKey(const ValueKey('uploader-tiktok-music-consent')));
+    await capture('tiktok-direct-consent-after-viewers');
+
     await select('commercial');
+    expect(checkbox('music-consent').value, isFalse);
     await select('third-party');
     await select('music-consent');
     await select('brand-consent');

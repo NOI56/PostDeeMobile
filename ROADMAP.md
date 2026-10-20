@@ -22,6 +22,10 @@ Build roadmap for PostDee.
 - Remember allowlisted choices locally per owner, endpoint and connected channel.
 - Preserve explicit Save/Cancel, same-clip draft precedence and fresh content
   declarations. TikTok privacy and interactions remain manually selected.
+- Local follow-up: preserve TikTok music/policy checkmarks while editing viewers,
+  interactions or AI in the open sheet; keep disclosure/account/content
+  invalidation. Add sequence regressions for all four platforms; see the
+  [consent work record](docs/superpowers/plans/2026-10-20-platform-settings-consent.md).
 - Guard delayed reads/writes against account, channel and form changes; clear
   owner defaults after successful account deletion. No server migration.
 - Local full Mobile verification passes: 2,480 tests, two optional skips and clean

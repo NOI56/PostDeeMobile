@@ -26,6 +26,11 @@ Inbox/Direct mode, YouTube visibility/audience, Instagram feed sharing and
 Facebook Publish/Page draft. New clips review their own AI/synthetic content and
 confirmations; TikTok privacy/interactions have no remembered selection. Explicit
 Save updates defaults; Cancel does not. Existing drafts retain their own values.
+In the open TikTok sheet, changing viewers/interactions/AI does not uncheck music
+or branded-policy acknowledgment. Commercial/brand changes, reopening the sheet,
+fresh capabilities and account/clip/content changes still require confirmation.
+This follow-up changes no remembered allowlist or publish-intent/retry guard.
+See the [consent work record](../../docs/superpowers/plans/2026-10-20-platform-settings-consent.md).
 No API migration or server deployment is needed. Full tests pass 2,480 with two
 optional skips; analysis is clean. Staging APK12027 is built and installed on the
 x86_64 emulator. After login, YouTube Save and force-stop/restart verify that

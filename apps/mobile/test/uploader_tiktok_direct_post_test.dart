@@ -33,6 +33,7 @@ TikTokPublishingOptionsResult _options({
     TikTokPrivacyLevel.selfOnly
   ],
   String revision = _revision,
+  bool duetDisabled = true,
 }) =>
     TikTokPublishingOptionsResult(
         connectionId: 'local-tiktok',
@@ -43,7 +44,7 @@ TikTokPublishingOptionsResult _options({
             creatorNickname: 'คนขายทดสอบ',
             privacyLevelOptions: privacy,
             commentDisabled: false,
-            duetDisabled: true,
+            duetDisabled: duetDisabled,
             stitchDisabled: false,
             maxVideoPostDurationSec: 3600));
 
@@ -195,6 +196,17 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> tapSetting(WidgetTester tester, String suffix) async {
+    final control = find.byKey(ValueKey('uploader-tiktok-$suffix'));
+    await tester.ensureVisible(control);
+    await tester.tap(control);
+    await tester.pumpAndSettle();
+  }
+
+  bool settingChecked(WidgetTester tester, String suffix) => tester
+      .widget<CheckboxListTile>(find.byKey(ValueKey('uploader-tiktok-$suffix')))
+      .value!;
+
   Future<void> submit(WidgetTester tester) async {
     await goToUploaderStep(tester, 3);
     final confirm = find.byKey(const ValueKey('publish-review-confirm'));
@@ -240,6 +252,171 @@ void main() {
     expect(find.text('คนขายทดสอบ'), findsWidgets);
     expect(optionLoads, 1);
   });
+
+  testWidgets(
+    'music confirmation before choosing viewers survives and submits final privacy',
+    (tester) async {
+      await tester.pumpWidget(app());
+      await openSettings(tester);
+      await tapSetting(tester, 'mode-direct');
+      await tapSetting(tester, 'music-consent');
+      expect(settingChecked(tester, 'music-consent'), isTrue);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('uploader-platform-settings-save')),
+            )
+            .onPressed,
+        isNull,
+        reason: 'Explicit music consent cannot supply a missing viewer choice',
+      );
+
+      await choosePrivacy(tester, 'เฉพาะฉัน');
+      expect(settingChecked(tester, 'music-consent'), isTrue);
+      await choosePrivacy(tester, 'ทุกคน');
+      expect(settingChecked(tester, 'music-consent'), isTrue);
+      await choosePrivacy(tester, 'ทุกคน');
+      expect(settingChecked(tester, 'music-consent'), isTrue);
+      await saveSettings(tester);
+      await submit(tester);
+      expect(
+        requests.single.platformSettings['TIKTOK'],
+        containsPair('privacyLevel', 'PUBLIC_TO_EVERYONE'),
+      );
+      expect(
+        requests.single.platformSettings['TIKTOK'],
+        containsPair('musicUsageConfirmed', true),
+      );
+      expect(events, ['prepare', 'upload', 'file', 'post']);
+    },
+  );
+
+  for (final field in {
+    'allow-comment': 'disableComment',
+    'allow-duet': 'disableDuet',
+    'allow-stitch': 'disableStitch',
+    'aigc': 'isAigc',
+  }.entries) {
+    testWidgets('${field.key} edits preserve explicit music confirmation', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        app(options: () async => _options(duetDisabled: false)),
+      );
+      await openSettings(tester);
+      await chooseDirect(tester);
+      await tapSetting(tester, field.key);
+      expect(settingChecked(tester, 'music-consent'), isTrue);
+      expect(settingChecked(tester, field.key), isTrue);
+      await saveSettings(tester);
+      await submit(tester);
+      expect(
+        requests.single.platformSettings['TIKTOK'],
+        containsPair(field.value, field.key == 'aigc'),
+      );
+      expect(
+        requests.single.platformSettings['TIKTOK'],
+        containsPair('musicUsageConfirmed', true),
+      );
+    });
+  }
+
+  testWidgets(
+    'viewer and interaction edits preserve both branded confirmations',
+    (tester) async {
+      await tester.pumpWidget(app());
+      await openSettings(tester);
+      await chooseDirect(tester, privacy: 'ทุกคน');
+      await tapSetting(tester, 'commercial');
+      await tapSetting(tester, 'third-party');
+      await tapSetting(tester, 'music-consent');
+      await tapSetting(tester, 'brand-consent');
+      await choosePrivacy(tester, 'เพื่อนที่ติดตามกัน');
+      await tapSetting(tester, 'allow-comment');
+      expect(settingChecked(tester, 'music-consent'), isTrue);
+      expect(settingChecked(tester, 'brand-consent'), isTrue);
+      final privacy = tester.widget<DropdownButton<TikTokPrivacyLevel>>(
+        find.byType(DropdownButton<TikTokPrivacyLevel>),
+      );
+      expect(
+        privacy.items!
+            .singleWhere((item) => item.value == TikTokPrivacyLevel.selfOnly)
+            .enabled,
+        isFalse,
+      );
+      await saveSettings(tester);
+      await submit(tester);
+      expect(
+        requests.single.platformSettings['TIKTOK'],
+        containsPair('privacyLevel', 'MUTUAL_FOLLOW_FRIENDS'),
+      );
+      expect(
+        requests.single.platformSettings['TIKTOK'],
+        containsPair('brandedContentPolicyConfirmed', true),
+      );
+    },
+  );
+
+  for (final disclosure in ['commercial', 'own-brand', 'third-party']) {
+    testWidgets(
+      '$disclosure edits still require fresh music and policy consent',
+      (tester) async {
+        await tester.pumpWidget(app());
+        await openSettings(tester);
+        await chooseDirect(tester, privacy: 'ทุกคน');
+        await tapSetting(tester, 'commercial');
+        await tapSetting(tester, 'third-party');
+        await tapSetting(tester, 'music-consent');
+        await tapSetting(tester, 'brand-consent');
+        await tapSetting(tester, disclosure);
+        expect(settingChecked(tester, 'music-consent'), isFalse);
+        if (disclosure == 'own-brand') {
+          expect(settingChecked(tester, 'brand-consent'), isFalse);
+        }
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const ValueKey('uploader-platform-settings-save')),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(events, isEmpty);
+        expect(requests, isEmpty);
+      },
+    );
+  }
+
+  testWidgets(
+    'saved same clip keeps viewers but reopening requests fresh consent',
+    (tester) async {
+      await tester.pumpWidget(app());
+      await openSettings(tester);
+      await chooseDirect(tester, privacy: 'ทุกคน');
+      await tapSetting(tester, 'music-consent');
+      await tapSetting(tester, 'allow-comment');
+      await tapSetting(tester, 'music-consent');
+      await saveSettings(tester);
+      final settings = find.byKey(
+        const ValueKey('uploader-platform-settings-TIKTOK'),
+      );
+      await tester.ensureVisible(settings);
+      await tester.tap(settings);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<DropdownButtonFormField<TikTokPrivacyLevel>>(
+              find.byKey(const ValueKey('uploader-tiktok-privacy')),
+            )
+            .initialValue,
+        TikTokPrivacyLevel.publicToEveryone,
+      );
+      expect(settingChecked(tester, 'allow-comment'), isTrue);
+      expect(settingChecked(tester, 'music-consent'), isFalse);
+      expect(events, isEmpty);
+      expect(requests, isEmpty);
+    },
+  );
 
   testWidgets(
       'sends exact Direct settings with verified duration and fresh info',

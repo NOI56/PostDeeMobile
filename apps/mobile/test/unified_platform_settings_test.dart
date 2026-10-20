@@ -253,6 +253,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  bool settingSelected(String key) => find
+      .descendant(
+        of: find.byKey(ValueKey(key)),
+        matching: find.byIcon(Icons.radio_button_checked_rounded),
+      )
+      .evaluate()
+      .isNotEmpty;
+
+  bool youtubeCertified(WidgetTester tester) => tester
+      .widget<CheckboxListTile>(
+        find.byKey(const ValueKey('uploader-youtube-guidelines-certified')),
+      )
+      .value!;
+
   testWidgets('YouTube derives a live title without requiring another entry',
       (tester) async {
     usePhoneSize(tester);
@@ -385,6 +399,212 @@ void main() {
     expect((requests.single.platformSettings['YOUTUBE_SHORTS'] as Map)['title'],
         'ชื่ออัตโนมัติ');
   });
+
+  testWidgets(
+    'YouTube confirmation survives later audience, AI and title changes',
+    (tester) async {
+      usePhoneSize(tester);
+      await tester.pumpWidget(uploader());
+      await selectPlatform(tester, 'YOUTUBE_SHORTS');
+      await openSettings(tester, 'YOUTUBE_SHORTS');
+      await tapKey(
+        tester,
+        const ValueKey('uploader-youtube-guidelines-certified'),
+      );
+      expect(youtubeCertified(tester), isTrue);
+
+      await tapKey(tester, const ValueKey('uploader-youtube-visibility'));
+      await tester.tap(find.text('สาธารณะ (Public)').last);
+      await tester.pumpAndSettle();
+      expect(youtubeCertified(tester), isTrue);
+      await tapKey(
+        tester,
+        const ValueKey('uploader-youtube-made-for-kids-yes'),
+      );
+      expect(youtubeCertified(tester), isTrue);
+      await tapKey(tester, const ValueKey('uploader-youtube-synthetic-yes'));
+      expect(youtubeCertified(tester), isTrue);
+      await editYouTubeTitle(tester, 'ชื่อที่แก้หลังยืนยันแล้ว');
+      expect(youtubeCertified(tester), isTrue);
+      expect(
+        tester.widget<FilledButton>(find.byKey(_saveKey)).onPressed,
+        isNotNull,
+      );
+      await tapKey(tester, _saveKey);
+
+      await openSettings(tester, 'YOUTUBE_SHORTS');
+      expect(youtubeCertified(tester), isTrue);
+      expect(settingSelected('uploader-youtube-made-for-kids-yes'), isTrue);
+      expect(settingSelected('uploader-youtube-synthetic-yes'), isTrue);
+      expect(
+        tester
+            .state<FormFieldState<YouTubeVisibility>>(
+              find.byKey(const ValueKey('uploader-youtube-visibility')),
+            )
+            .value,
+        YouTubeVisibility.public,
+      );
+      await tapKey(tester, _saveKey);
+      await submit(tester);
+      expect(requests.single.platformSettings['YOUTUBE_SHORTS'], {
+        'title': 'ชื่อที่แก้หลังยืนยันแล้ว',
+        'visibility': 'public',
+        'madeForKids': true,
+        'containsSyntheticMedia': true,
+        'communityGuidelinesCertified': true,
+      });
+    },
+  );
+
+  for (final aiGenerated in [true, false]) {
+    testWidgets(
+      'Instagram retains explicit AI $aiGenerated while toggling feed sharing',
+      (tester) async {
+        usePhoneSize(tester);
+        await tester.pumpWidget(uploader());
+        await selectPlatform(tester, 'INSTAGRAM_REELS');
+        await openSettings(tester, 'INSTAGRAM_REELS');
+        final aiKey = aiGenerated
+            ? 'uploader-instagram-ai-yes'
+            : 'uploader-instagram-ai-no';
+        await tapKey(tester, ValueKey(aiKey));
+        for (final shareToFeed in [false, true]) {
+          await tapKey(
+            tester,
+            const ValueKey('uploader-instagram-share-to-feed'),
+          );
+          expect(
+            tester
+                .widget<SwitchListTile>(
+                  find.byKey(
+                    const ValueKey('uploader-instagram-share-to-feed'),
+                  ),
+                )
+                .value,
+            shareToFeed,
+          );
+          expect(settingSelected(aiKey), isTrue);
+        }
+        await tapKey(tester, _saveKey);
+        await openSettings(tester, 'INSTAGRAM_REELS');
+        expect(settingSelected(aiKey), isTrue);
+        await tapKey(tester, _saveKey);
+        await submit(tester);
+        expect(requests.single.platformSettings['INSTAGRAM_REELS'], {
+          'shareToFeed': true,
+          'isAiGenerated': aiGenerated,
+        });
+      },
+    );
+
+    testWidgets(
+      'Facebook retains explicit AI $aiGenerated while changing publish mode',
+      (tester) async {
+        usePhoneSize(tester);
+        await tester.pumpWidget(uploader());
+        await selectPlatform(tester, 'FACEBOOK_REELS');
+        await openSettings(tester, 'FACEBOOK_REELS');
+        final aiKey = aiGenerated
+            ? 'uploader-facebook-ai-yes'
+            : 'uploader-facebook-ai-no';
+        await tapKey(tester, ValueKey(aiKey));
+        for (final modeKey in [
+          'uploader-facebook-page-draft',
+          'uploader-facebook-publish',
+          'uploader-facebook-page-draft',
+        ]) {
+          await tapKey(tester, ValueKey(modeKey));
+          expect(settingSelected(modeKey), isTrue);
+          expect(settingSelected(aiKey), isTrue);
+        }
+        await tapKey(tester, _saveKey);
+        await openSettings(tester, 'FACEBOOK_REELS');
+        expect(settingSelected(aiKey), isTrue);
+        expect(settingSelected('uploader-facebook-page-draft'), isTrue);
+        await tapKey(tester, _saveKey);
+        await submit(tester);
+        expect(requests.single.platformSettings['FACEBOOK_REELS'], {
+          'publishMode': 'PAGE_DRAFT',
+          'isAiGenerated': aiGenerated,
+        });
+      },
+    );
+  }
+
+  testWidgets(
+    'saving or cancelling another platform preserves current clip settings',
+    (tester) async {
+      usePhoneSize(tester);
+      await tester.pumpWidget(uploader());
+      await selectPlatform(tester, 'YOUTUBE_SHORTS');
+      await openSettings(tester, 'YOUTUBE_SHORTS');
+      await editYouTubeTitle(tester, 'ชื่อเฉพาะ YouTube');
+      await answerYouTube(tester);
+      await tapKey(tester, _saveKey);
+
+      await tapKey(tester, const ValueKey('uploader-platform-INSTAGRAM_REELS'));
+      await openSettings(tester, 'INSTAGRAM_REELS');
+      await tapKey(tester, const ValueKey('uploader-instagram-ai-yes'));
+      await tapKey(tester, const ValueKey('uploader-instagram-share-to-feed'));
+      await tapKey(tester, _saveKey);
+
+      await tapKey(tester, const ValueKey('uploader-platform-FACEBOOK_REELS'));
+      await openSettings(tester, 'FACEBOOK_REELS');
+      await tapKey(tester, const ValueKey('uploader-facebook-ai-yes'));
+      await tapKey(tester, const ValueKey('uploader-facebook-page-draft'));
+      await tapKey(tester, _cancelKey);
+
+      await openSettings(tester, 'YOUTUBE_SHORTS');
+      expect(youtubeCertified(tester), isTrue);
+      expect(settingSelected('uploader-youtube-made-for-kids-no'), isTrue);
+      expect(settingSelected('uploader-youtube-synthetic-no'), isTrue);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('uploader-youtube-title')),
+            )
+            .controller!
+            .text,
+        'ชื่อเฉพาะ YouTube',
+      );
+      await tapKey(tester, _saveKey);
+
+      await openSettings(tester, 'INSTAGRAM_REELS');
+      expect(settingSelected('uploader-instagram-ai-yes'), isTrue);
+      expect(
+        tester
+            .widget<SwitchListTile>(
+              find.byKey(const ValueKey('uploader-instagram-share-to-feed')),
+            )
+            .value,
+        isFalse,
+      );
+      await tapKey(tester, _cancelKey);
+
+      await openSettings(tester, 'FACEBOOK_REELS');
+      expect(settingSelected('uploader-facebook-page-draft'), isFalse);
+      expect(settingSelected('uploader-facebook-ai-yes'), isFalse);
+      expect(
+        tester.widget<FilledButton>(find.byKey(_saveKey)).onPressed,
+        isNull,
+      );
+      await tapKey(tester, const ValueKey('uploader-facebook-ai-no'));
+      await tapKey(tester, const ValueKey('uploader-facebook-publish'));
+      await tapKey(tester, _saveKey);
+      await submit(tester);
+      expect(requests.single.platformSettings, {
+        'YOUTUBE_SHORTS': {
+          'title': 'ชื่อเฉพาะ YouTube',
+          'visibility': 'private',
+          'madeForKids': false,
+          'containsSyntheticMedia': false,
+          'communityGuidelinesCertified': true,
+        },
+        'INSTAGRAM_REELS': {'shareToFeed': false, 'isAiGenerated': true},
+        'FACEBOOK_REELS': {'publishMode': 'PUBLISH', 'isAiGenerated': false},
+      });
+    },
+  );
 
   testWidgets('Instagram Cancel discards changes and Save sends AI choice',
       (tester) async {

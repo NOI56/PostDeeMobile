@@ -28,6 +28,11 @@ connected channel: TikTok delivery mode, YouTube visibility/audience, Instagram
 feed sharing and Facebook Page Video delivery mode. New clips still require
 content declarations and current confirmation; TikTok privacy/interactions
 remain manual. Saved drafts keep their own values. No API change or migration.
+Within an open TikTok settings sheet, changing viewers, interactions or the AI
+answer preserves explicit music/policy confirmation. Changing commercial/brand
+disclosure still clears confirmation; opening a new sheet or changing the
+account/clip/content still requires fresh confirmation. This local follow-up is
+recorded in [the consent work record](docs/superpowers/plans/2026-10-20-platform-settings-consent.md).
 Local verification passes: 2,480 tests, two optional skips, clean analysis and
 Staging APK12027 built and installed. After login, a native force-stop/restart
 check confirms YouTube visibility/audience return in a fresh post while its AI

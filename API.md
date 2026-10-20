@@ -16,6 +16,13 @@ fixtures. Source is integrated into `main` on 2026-10-20 with smooth progress;
 no API deployment is required or performed for these Mobile-only changes.
 See the [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 
+The local same-sheet TikTok consent follow-up changes only Mobile editing state:
+viewer/interaction/AI edits retain the user's explicit checkmark until Save,
+while commercial context changes invalidate it. The final settings, creator
+revision and confirmations use the same API payload and validation. No backend
+deployment or database migration is needed; see the
+[consent work record](docs/superpowers/plans/2026-10-20-platform-settings-consent.md).
+
 ## Optional Meta media disclosure (2026-10-18, Staging delivered)
 
 `platformSettings.INSTAGRAM_REELS` accepts `{shareToFeed: boolean,

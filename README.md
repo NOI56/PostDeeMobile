@@ -17,7 +17,8 @@ suite (2,488 passed / three optional skips), final opt-in render and analysis pa
 Staging x86_64 APK12028 is built and installed with the original app data and
 signed-in Home preserved. Motion uses controlled production-widget fixtures;
 no real post was submitted. No API/configuration changes or migration.
-This remains local, without a main merge, push or server deployment.
+Source is integrated into `main` on 2026-10-20 under the user's main/push
+request. The delivery changes no backend runtime and requires no API deployment.
 See the [work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
 
 ## Remembered channel settings (2026-10-20, YouTube native restart verified)
@@ -32,9 +33,9 @@ Staging APK12027 built and installed. After login, a native force-stop/restart
 check confirms YouTube visibility/audience return in a fresh post while its AI
 answer and community confirmation stay unanswered; Cancel preserves the saved
 audience. Home still shows the existing draft entry and unchanged quota.
-Instagram/Facebook remain
-covered by automated fixtures. This feature remains on a local branch, without
-a main merge, push or server deployment. See the
+Instagram/Facebook remain covered by automated fixtures. This feature is now
+integrated into `main` together with smooth progress, retaining the tested
+runtime used by APK12028. See the
 [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 
 ## Publishing activity (2026-10-18, Android Staging delivered)

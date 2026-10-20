@@ -15,7 +15,8 @@ package/environment verified; its guarded update from 12027 passes with the
 signed-in Home, existing draft, quota, channels and history retained. Motion is
 verified using controlled production-widget fixtures.
 No real provider publish, API/configuration/schema/dependency change or migration.
-No main merge, push or server deployment has occurred for this task.
+Source is integrated into `main` on 2026-10-20 for the authorized main/push
+delivery. APK12028 remains the installed, verified runtime; no API deploy is needed.
 [Verification record](../../docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
 
 ## Remembered channel settings (2026-10-20, YouTube native restart verified)
@@ -31,8 +32,8 @@ x86_64 emulator. After login, YouTube Save and force-stop/restart verify that
 visibility/audience return in a fresh composer while synthetic-media and
 community confirmation stay unanswered. Cancel/reopen retains the saved audience;
 final Home retains the existing draft entry, quota and channel count. Meta
-coverage remains automated fixtures. No main merge, push or server deployment
-has occurred for this feature.
+coverage remains automated fixtures. Integrated into `main` with smooth progress
+on 2026-10-20; its runtime is retained in APK12028.
 See the
 [work record](../../docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 

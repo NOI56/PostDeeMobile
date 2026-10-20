@@ -5,7 +5,8 @@ pass; Staging APK12027 is installed. After login, a fresh YouTube composer
 restores saved visibility/audience across a native process restart while
 clip-specific declarations remain unanswered. Final Home shows the existing
 draft entry, quota and connected-channel count.
-This feature has not been merged to main, pushed or deployed to a server.
+Integrated into `main` with smooth progress on 2026-10-20 under the user's
+main/push request. No API deployment is required for these Mobile-only changes.
 Native receipt updated on 2026-10-20; build/install evidence is from 2026-10-18.
 
 ## Request and baseline
@@ -213,11 +214,16 @@ clip-specific disclosures/confirmations still require fresh manual choices.
   this work record.
 
 The three pre-existing Windows generated-plugin metadata changes remain
-uncommitted and excluded from this feature. The verified integration baseline
-is still `644fea90bb4b0b70078cf2f3642514d57a434447`; this receipt does not claim
-remote freshness beyond the recorded baseline checks. Runtime source remains
-local on `codex/remember-platform-defaults`. There is no main merge, push,
-new CI run or server deployment for this feature. Automated verification and
-native YouTube Save/restart/Cancel with final Home preservation are complete.
-Connected TikTok/Meta native flows, physical ARM and iOS remain outside this
-verification scope; no release to main or a remote service was performed.
+uncommitted and excluded. Automated verification and native YouTube
+Save/restart/Cancel with final Home preservation are complete. Connected
+TikTok/Meta native flows, physical ARM and iOS remain outside this verification
+scope.
+
+On 2026-10-20, fresh `origin/main` remained
+`644fea90bb4b0b70078cf2f3642514d57a434447`. The canonical main worktree was
+fast-forwarded to `3f0efe0550fa064f1df6ef8060c1e0f22bccaff6`, including this
+feature and smooth progress. The authorized delivery commit updates only
+documentation; runtime/tests match the previously verified source and installed
+APK12028. Remote CI results must be checked for the pushed commit separately;
+they are not inferred from local verification. No API deployment or migration
+is needed.

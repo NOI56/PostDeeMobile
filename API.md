@@ -12,7 +12,8 @@ existing server validation. There is no server-side or cross-device preference
 sync. Mobile tests, analysis and the local Staging build pass. Native YouTube
 Save and restart restore reusable choices while preserving fresh clip
 declarations; Cancel/reopen also passes. Meta coverage remains automated
-fixtures. No API deployment is required or performed for this feature.
+fixtures. Source is integrated into `main` on 2026-10-20 with smooth progress;
+no API deployment is required or performed for these Mobile-only changes.
 See the [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 
 ## Optional Meta media disclosure (2026-10-18, Staging delivered)

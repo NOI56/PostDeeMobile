@@ -12,8 +12,9 @@ Build roadmap for PostDee.
   screen captures. Analysis is clean; Staging x86_64 APK12028 is built and its
   package/environment verified. Guarded native update to 12028 passes, preserving
   the signed-in Home, existing draft, quota, connected channels and history.
-- No API/configuration/schema/dependency changes or migration. No real provider
-  publishing, main merge, push or server deployment was performed for this task.
+- Source is integrated into `main` on 2026-10-20 for the authorized main/push
+  delivery. No API/configuration/schema/dependency changes or migration;
+  no real provider publishing was used and no API deployment is required.
 - [Work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
 
 ## Remembered channel settings (2026-10-20, YouTube native restart verified)
@@ -27,9 +28,9 @@ Build roadmap for PostDee.
   analysis. Staging APK12027 is built and installed. Native YouTube Save and
   force-stop/restart restore the reusable choices in a fresh post, while
   clip-specific declarations stay unanswered. Cancel/reopen and final Home
-  preservation also pass. Meta coverage remains automated
-  fixtures. No main merge, push or server deployment has occurred for this
-  feature. Evidence and delivery limits:
+  preservation also pass. Meta coverage remains automated fixtures. Integrated
+  into `main` with smooth progress on 2026-10-20; no API deployment is required.
+  Evidence and delivery limits:
   [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 
 ## Publishing activity (2026-10-18, Android Staging delivered)

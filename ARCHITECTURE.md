@@ -14,8 +14,8 @@ candidate `5eeb1a7` match the full-suite inputs: 2,488 passed / three optional
 skips. The final optional production-widget render fixture passes separately;
 analysis and the Staging x86_64 APK12028 build pass. Guarded native update and
 signed-in Home preservation pass without sending a real post; motion is verified
-with controlled fixtures. This local change requires no server migration and
-has not been merged, pushed or deployed to a server.
+with controlled fixtures. Source is integrated into `main` on 2026-10-20 for
+authorized GitHub delivery. It requires no server migration or API deployment.
 [Work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-motion.md).
 
 ## Remembered channel settings boundary (2026-10-20, YouTube native restart verified)
@@ -36,8 +36,8 @@ Staging APK12027 build pass on runtime source `5ac9b5b`; the APK is installed.
 After login, native YouTube Save and force-stop/restart verify loading the saved
 visibility/audience into a fresh composer, without carrying clip-specific
 declarations. Native Cancel/reopen preserves the saved audience. Meta coverage
-remains automated fixtures. This feature has not
-been merged to main, pushed or deployed to a server.
+remains automated fixtures. Integrated into `main` with smooth progress on
+2026-10-20; existing API contracts and deployment state are unchanged.
 See the
 [work record](docs/superpowers/plans/2026-10-18-remember-platform-defaults.md).
 

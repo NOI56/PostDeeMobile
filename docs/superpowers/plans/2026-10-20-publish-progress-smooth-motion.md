@@ -4,7 +4,8 @@
 full-screen mockup. Focused/full tests, final controlled render, analysis and
 Staging APK12028 build pass. Guarded native update and signed-in Home preservation
 pass without submitting a real post.
-No main merge, push or server deployment is part of this delivery.
+Source is integrated into `main` on 2026-10-20 under the user's main/push request.
+No API deployment is required for these Mobile-only changes.
 
 ## Baseline and scope
 
@@ -12,8 +13,8 @@ No main merge, push or server deployment is part of this delivery.
 - Start from `777db096ecbab93dcaa228c9aa0d18c3c86bd94f`, which contains the
   locally verified remembered-settings feature. Keep that feature and the three
   unrelated Windows generated-plugin metadata changes intact.
-- Work on `codex/publish-flow-smooth-motion`; no merge, push or deployment is
-  part of this selection.
+- Implementation was verified on `codex/publish-flow-smooth-motion`. The user
+  subsequently authorized main/push on 2026-10-20.
 - The selected mockup is the full publishing-progress screen, rather than the
   previous Home/Calendar post-card animation. Change only its presentation.
 
@@ -148,10 +149,14 @@ The change affects only Mobile presentation. There is no API, database,
 entitlement, dependency, flag or provider configuration change; no migration or
 server deployment is required. No real post, AI generation or purchase is used
 for the motion verification. Physical ARM and iOS builds are not delivered.
-Main/origin main remain at the verified `644fea9` baseline; this feature and the
-prior local remembered-settings feature remain on the local feature branch.
-The three pre-existing Windows generated-plugin metadata changes are preserved
-and excluded from this work.
+On 2026-10-20, fresh `origin/main` remained at `644fea9`. The canonical main
+worktree was fast-forwarded to `3f0efe0`, retaining both this feature and the
+remembered-settings work. The authorized delivery commit updates only
+documentation; its runtime and tests match the verified candidate and installed
+APK12028. Remote CI results must be checked for the pushed commit separately.
+The three pre-existing Windows generated-plugin metadata changes and untracked
+main-worktree artifacts are preserved and excluded. No API deployment or
+migration is needed.
 
 ### Changed files
 

@@ -119,7 +119,8 @@ void main() {
     expect(attempts, 1);
 
     await tester.pumpWidget(host(pendingScreen(), reduced: true));
-    await tester.pump(const Duration(milliseconds: 300));
+    // Publishing motion is now disabled; settle only the finite theme change.
+    await tester.pumpAndSettle();
     await capture('publish-smooth-queue-reduced-motion');
     expect(AppTheme.isLightMode, isTrue);
     expect(find.byKey(const ValueKey('publish-flow-sheen')), findsNothing);

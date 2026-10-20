@@ -1,6 +1,7 @@
 # Smooth activity feedback during publishing
 
-สถานะ: IMPLEMENTING — selected the first (เรียบเนียน) full-screen mockup.
+สถานะ: VERIFYING ANDROID DELIVERY — selected the first (เรียบเนียน)
+full-screen mockup; focused and full Mobile tests pass.
 
 ## Baseline and scope
 
@@ -40,4 +41,28 @@ source, then build Staging Android x86_64. Prefer a controlled local render for
 the pending screen so verification does not create a real social post. Verify
 the installed Staging package/environment and retain the user's data.
 
-Verification results and delivery limits will be recorded here.
+## Verification receipt
+
+- Runtime/test candidate: `a5aefac4f421e26293cdaab1e6ac09138aacb4d6`.
+- Tests-first RED: 17 existing cases pass and eight new cases fail because the
+  orbit, steps and destination chips do not exist yet. The implemented focused
+  batch passes **51/51**, including the draft-flow and owner-change preflight
+  checks. Only six deliberately pending waits switch to bounded pumps; their
+  original assertions and post-completion settlement remain intact.
+- Full Mobile suite: **2,488 passed / 3 optional preview skips**, exit 0 in
+  171.8 seconds. Real progress does not advance with elapsed animation time;
+  publishing is called once. Lifecycle/reduced-motion/TickerMode, outcome
+  disposal, all nine stages and 320dp / 200% text coverage pass.
+- Full-suite runtime and all non-preview tests match delivery candidate
+  `a5aefac` byte-for-byte. After that run, only the skipped optional render
+  harness and documentation changed; the final harness is explicitly run
+  separately. See `tested-to-delivery-comparison.json`.
+- Use a local production-widget render fixture, not a real post. The initial
+  harness omitted the app's global theme synchronization; it was corrected to
+  match the real Light/Dark palettes. Outcome button fonts fall back to Ahem
+  in the widget tester, so final PNG captures cover the pending screen only;
+  outcome behavior remains asserted without changing its production UI.
+
+Evidence is under
+`D:\PostDeeMobile\artifacts\smooth-publish-progress-20261020`.
+Final analysis, render and Android build/install receipts will be added here.

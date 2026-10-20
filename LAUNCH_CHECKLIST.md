@@ -28,8 +28,12 @@
       เฉพาะ candidate SHA โดยคง Dashboard flags ไม่ sync Blueprint/merge `main`
 - [x] Pin Node 22.23.3 และตรวจ typecheck/build/full tests/fresh install/tree/audit
       ซ้ำผ่านหลัง pin; public checks ของ Staging เดิม health/ready 200, no-token 401
-- [ ] Deploy เฉพาะ Staging และตรวจ SHA/Node runtime/health/ready/migrations;
-      live เดิมใช้ Node 26.12.0 และยังไม่มีผล deploy candidate ใหม่
+- [x] Deploy เฉพาะ Staging `dep-dbbmva3bc2fs73bnpemg` ที่ source `0a43e7b`;
+      instance ใหม่ยืนยัน SHA/Node 22.23.3, health/ready 200, no-token 401,
+      startup 20 migrations ไม่มี pending และ backlog guard ผ่านด้วยคิวว่าง
+      ไม่ sync Blueprint/แก้ environment/merge `main` หรือเปลี่ยน Production
+- [x] ตรวจ DB จาก instance ใหม่: read-only query ผ่าน และสร้าง/อ่าน/แก้ไขข้อมูล
+      จำลองใน transaction แล้ว rollback สำเร็จ ยืนยันว่าไม่เหลือแถวจำลอง
 - [ ] ตรวจ DB integration 18 tests ที่ข้ามเพราะยังไม่มี `ADMIN_TEST_DATABASE_URL`
       และตรวจ Staging/provider/device flows ของ candidate ใหม่
 - [x] เตรียม `render.staging.yaml` และเทสต์ว่าชื่อ service/database แยกจาก Production

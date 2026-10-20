@@ -1,6 +1,31 @@
 # PostDee Staging
 
-## เตรียมชุดแก้สำหรับ Staging — 20 ตุลาคม 2026
+## ส่งมอบชุดแก้ Staging — 20 ตุลาคม 2026
+
+[Deploy `dep-dbbmva3bc2fs73bnpemg`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbbmva3bc2fs73bnpemg)
+เป็น **Live** ที่ source `0a43e7b273415578d15ae3f8e970c66b362ac48e` จาก branch
+`codex/staging-readiness-20261020` เวลา 20:43:18 น. ไทย (13:43:18 UTC)
+วันที่ 20 ตุลาคม 2026 ใช้เวลา 1 นาที 18 วินาที ยังไม่ merge เข้า `main`
+
+- Remote shell ของ instance ใหม่ `wf8ss` ยืนยัน SHA ตรง, Node `22.23.3`,
+  npm `10.9.9`, Firebase Admin `14.5.0` และ Morgan `1.12.1`; ไม่มี Firestore/
+  Google Cloud Storage clients หลัง prune ค่า Node 26.12.0 ด้านล่างเป็นก่อน deploy
+- Startup พบ 20 migrations/ไม่มี pending, backlog guard ผ่านด้วยคิวว่าง,
+  ใช้ port 10000 และ memory scheduler คง flags Social `postpeer`, guard `true`,
+  push `mock`, account deletion `false` และ admin Staging ตามเดิม
+- หลัง deploy `/health`/`/ready` HTTP 200 พร้อม database/queue `ok` และ `no-store`;
+  `/posts`/publishing readiness ที่ไม่ส่ง token ตอบ 401 ไม่พบ error-level logs
+  ในช่วง 13:42:00–13:44:21 UTC ที่ตรวจ
+- Remote shell หลัง deploy ตรวจ `SELECT 1` ใน read-only transaction ผ่าน,
+  migrations 20 รายการและ publish backlog 0; ทดสอบสร้าง/อ่าน/แก้ไขแถว User
+  จำลองใน transaction แล้วบังคับ rollback ผ่าน ตรวจซ้ำว่าไม่มีแถวจำลองค้าง
+- ไม่ sync Blueprint หรือแก้ service environment, ไม่ส่งโพสต์/Push จริง และ
+  Production API/database ยังคง user-suspended; remote `main` ยังเป็น `c2777a8`
+
+ผลส่งมอบอยู่ใน `D:\PostDeeMobile\artifacts\staging-prep-20261020\deployment.json`
+และภาพ `staging-live.png`; `summary.json` เก็บผลขั้นเตรียม source เดิม
+การแก้เอกสารหลัง deploy ไม่เปลี่ยน API SHA ที่รันอยู่และไม่ต้อง deploy API ซ้ำ
+ผลนี้ยังไม่ยืนยัน provider/device E2E หรือ DB integration tests 18 กรณีที่ข้าม
 
 รอบนี้เตรียม source ใน managed worktree จาก `main`
 `c2777a8f93048d88efb596fddbaa7244dc0f3595` ซึ่งตรวจตรงกับ remote แล้ว
@@ -36,7 +61,7 @@
   parallel; ตรวจ targeted ซ้ำผ่าน 2 files/26 tests และเต็มชุด workers 2 ผ่าน
   โดยไม่เปลี่ยน source หรือ timeout เพื่อให้ผ่าน
 
-หลักฐานเครื่องนี้อยู่ที่ `D:\PostDeeMobile\artifacts\staging-prep-20261020\summary.json`
+หลักฐานล่าสุดอยู่ที่ `D:\PostDeeMobile\artifacts\staging-prep-20261020\deployment.json`
 ผลข้างต้นไม่ใช่การ deploy หรือ provider/device E2E; ผลอ่าน DB จริงเพิ่มเติมอยู่ด้านล่าง
 
 ผลอ่าน Render ก่อนเตรียมชุดนี้ใน `My Workspace`: Staging API ตอบ `/health`
@@ -45,22 +70,21 @@ HTTP 200; deploy `dep-dba83jqjnfac73enqm40` เป็น `live` ที่ commit
 Basic 256 MB/1 GB PostgreSQL 18 เป็น `available` ผลนี้ยังไม่ใช่การ deploy หรือ
 ทดสอบ candidate ใหม่ ส่วน Production API/database ถูก suspend โดยผู้ใช้และไม่ได้เปลี่ยน
 
-**ยังห้าม sync Blueprint ทั้งไฟล์:** ผล predeploy ล่าสุดด้านล่างยืนยันว่า live
+**ยังห้าม sync Blueprint ทั้งไฟล์:** ผล predeploy ด้านล่างยืนยันว่า live
 Social เป็น `postpeer` ต่างจาก YAML `disabled` การ sync อาจทับค่าที่ใช้อยู่
-ให้ deploy เฉพาะ SHA ที่ตรวจแล้วโดยรักษา Dashboard environment แทน และรักษา
+รอบนี้จึง deploy เฉพาะ SHA ที่ตรวจแล้วโดยรักษา Dashboard environment แทน และรักษา
 credentials/ข้อมูลของ Staging แยกจาก Production ค่า `sync: false` ไม่ได้ยืนยัน
 ว่า key ใช้งานกับ provider ได้
 Render ไม่อัปเดต keys เหล่านี้ระหว่าง sync Blueprint เดิม; key ใหม่ต้องเพิ่มใน
 Dashboard เอง ตาม [Blueprint specification](https://render.com/docs/blueprint-spec).
 
-### ผลตรวจล่าสุดก่อน deploy
+### บันทึกผลตรวจก่อน deploy
 
-อ่าน Dashboard และ remote shell ของ Staging จริงแล้ว; candidate ใหม่ยังไม่ได้ขึ้น
-Staging และยังไม่มีผล deploy SHA ใหม่ในบันทึกนี้:
+รายการนี้เป็นหลักฐานก่อน deploy; ผลของ instance ใหม่อยู่ที่หัวข้อส่งมอบด้านบน:
 
-- Live process ใช้ Node `26.12.0` และไม่มี `NODE_VERSION` override จึงเพิ่ม exact
+- ก่อน deploy process ใช้ Node `26.12.0` และไม่มี `NODE_VERSION` override จึงเพิ่ม exact
   engine pin `22.23.3` ใน package/lock ของ candidate ให้ตรง runtime ที่ใช้ตรวจ
-  ผลตรวจ candidate หลังเพิ่ม pin ผ่านตามรายการด้านบน แต่ live ยังไม่ได้เปลี่ยนรุ่น
+  ผลตรวจ candidate หลังเพิ่ม pin ผ่านตามรายการด้านบน
 - Live `SOCIAL_PUBLISHER=postpeer`, backlog guard `true`, `PUSH_SENDER=mock`
   และ account deletion `false` จึงคง Dashboard flags; ไม่ sync Blueprint,
   ไม่ merge เข้า `main` เพื่อหลีกเลี่ยง Production auto-deploy และไม่เปลี่ยนแผน/เครือข่าย
@@ -79,9 +103,9 @@ Staging และยังไม่มีผล deploy SHA ใหม่ในบ
   และ `no-store`; ไม่ส่ง token แล้ว `/posts`/publishing readiness ตอบ 401
   ผลนี้เป็นของ Staging รุ่นเดิม ไม่ใช่หลักฐานว่า candidate ใหม่ขึ้นแล้ว
 
-ขั้นถัดไปคือตรวจ candidate SHA ก่อน manual deploy เฉพาะ
-Staging แล้วจึงตรวจ SHA, runtime version, `/health`, `/ready` และ migrations ซ้ำ
-ยังไม่มีการส่ง Push หรือทดสอบ provider/device E2E รอบนี้
+ตรวจ SHA/runtime/health/ready/migrations ของ instance ใหม่หลัง manual deploy แล้ว
+ยังต้องทดสอบ provider/device E2E และ DB integration ที่ข้ามแยกต่างหาก
+รอบนี้ไม่มีการส่ง Push หรือสร้างโพสต์ทดสอบจริง
 
 ## ส่งมอบลูกเล่นระหว่างส่งโพสต์ แบบ 3 — 18 ตุลาคม 2026
 

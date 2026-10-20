@@ -997,10 +997,12 @@ apps/
   ผ่าน; audit รวม optional dependencies เหลือ 0 findings ส่วน DB integration
   18 tests ยังข้าม Predeploy อ่าน live DB/environment แล้วพบ Social `postpeer`
   ต่าง YAML `disabled` จึงรักษา Dashboard flags และ manual deploy เฉพาะ SHA
-  ที่ตรวจแล้ว ไม่ sync Blueprint/merge `main` Live Node 26.12.0 ต่างจาก Node
-  22.23.3 ที่ใช้ตรวจ จึง pin candidate และตรวจหลัง pin ผ่านแล้ว; ยังไม่ได้ deploy
+  ที่ตรวจแล้ว ไม่ sync Blueprint/merge `main` ส่งมอบ source `0a43e7b` เป็น Live
+  บน Staging deploy `dep-dbbmva3bc2fs73bnpemg` แล้ว instance ใหม่ยืนยัน SHA,
+  Node 22.23.3, health/ready 200 และ 20 migrations ไม่มี pending;
+  Node 26.12.0 เป็นข้อมูลก่อน deploy Provider/device E2E ยังต้องตรวจต่อ
   ไม่ใช้ checkout เก่าที่มีงานค้างเป็นชุดปล่อย
-  รายละเอียดและสถานะผลตรวจอยู่ใน [Staging preparation](docs/STAGING.md)
+  รายละเอียดและสถานะผลตรวจอยู่ใน [Staging delivery](docs/STAGING.md)
 - `render.yaml` จัดการ Production (`postdee-api` และ `postdee-postgres`)
 - `render.staging.yaml` เป็น Blueprint แยกสำหรับ Staging แบบต้นทุนต่ำ และต้องใช้
   database, R2 bucket, Firebase project, RevenueCat webhook และ PostPeer account

@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Staging release preparation (2026-10-20, local candidate)
+## Staging dependency/runtime release (2026-10-20, delivered)
 
 - Start from verified remote `main` `c2777a8f93048d88efb596fddbaa7244dc0f3595`
   in a separate managed worktree; preserve the dirty older checkout.
@@ -11,8 +11,9 @@ Build roadmap for PostDee.
   cases, and Staging configuration/tests/docs. No new schema or migration;
   retain current Mobile, admin/trial access, CI and ElevenLabs/Gemini providers.
 - Reconcile local infrastructure fields to the observed Starter/main/manual
-  web service and Basic 256 MB/1 GB PostgreSQL 18 database. Live still runs
-  `1cf755e`; this is not a deployment. Candidate checks pass on Node 22.23.3/
+  web service and Basic 256 MB/1 GB PostgreSQL 18 database. Source `0a43e7b`
+  is now Live on Staging deploy `dep-dbbmva3bc2fs73bnpemg`, without a main merge.
+  Candidate checks pass on Node 22.23.3/
   npm 10.9.9: 2,305 API tests pass with `--maxWorkers=2`, 18 database integration tests skip;
   typecheck/build/Prisma/catalog checks, clean install and dependency tree pass,
   and the production audit including optional dependencies reports zero findings.
@@ -20,10 +21,12 @@ Build roadmap for PostDee.
   credential presence, 20 matching applied migrations, `SELECT 1`, and empty
   publish backlog. Live Social is `postpeer`, differing from the Blueprint's
   `disabled`: preserve Dashboard values and deploy only the reviewed SHA without
-  a Blueprint sync or a merge into production's `main` branch. Live Node is
-  26.12.0; the candidate pins 22.23.3 and its final checks pass. No new
-  Staging deployment or provider/device E2E is claimed. Production remains
-  user-suspended. See [Staging preparation](docs/STAGING.md).
+  a Blueprint sync or a merge into production's `main` branch. New-instance SHA
+  and Node 22.23.3 are confirmed; startup has 20 migrations/none pending,
+  health/ready return 200 and no-token checks return 401. Node 26.12.0 is the
+  predeploy snapshot. Provider/device E2E remains open; Production stays
+  user-suspended. Documentation follow-up does not change the deployed API SHA.
+  See [Staging delivery](docs/STAGING.md).
 
 ## Publishing progress motion (2026-10-20, locally verified and Staging APK installed)
 

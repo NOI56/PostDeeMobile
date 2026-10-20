@@ -1114,12 +1114,15 @@ while retaining Prisma 6.19.3. Its exact `@prisma/config@6.19.3` override select
 `deepmerge-ts@8.0.2`; recheck that override when upgrading Prisma. These changes
 require no schema migration and do not enable Firebase delivery or change the
 ElevenLabs/Gemini providers. Predeploy checks found live Node 26.12.0 without an
-override; the candidate pins Node 22.23.3 to the verified runtime. Live Social
+override; source `0a43e7b` now runs Node 22.23.3 on Live Staging deploy
+`dep-dbbmva3bc2fs73bnpemg`, confirmed in the new instance. Live Social
 `postpeer` differs from the Blueprint's `disabled`, so this release preserves
 Dashboard environment values with a manual specific-SHA deployment rather than
 a Blueprint sync/main merge. Environment identity and credential presence were
 checked, but provider key validity and delivery E2E remain unverified. Candidate
-checks and deployment status belong in `docs/STAGING.md`; no new deploy is claimed.
+checks and deployment status belong in `docs/STAGING.md`. Startup confirms 20
+migrations with none pending; health/readiness pass. Documentation follow-up
+does not change the deployed API SHA or require another API deployment.
 
 CI keeps optional native packages during build and test, but its production
 audit excludes unused optional packages. Render keeps the same build-time

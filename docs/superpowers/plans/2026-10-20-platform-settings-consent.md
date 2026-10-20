@@ -1,9 +1,12 @@
 # Preserve same-form platform confirmations
 
-Status: LOCAL VERIFIED — automated regressions, controlled production-widget
-smoke, analysis and Staging APK12029 build/package inspection pass. Not merged,
-pushed, deployed or installed. The installed Staging app remains APK12028 and
-the user's current composer was not interrupted.
+Status: INTEGRATED INTO MAIN — automated regressions, controlled production-widget
+smoke, analysis and Staging APK12029 build/package inspection pass. Feature
+commit `a6c04b25051264feac83d1c6e43dd51efc0d6827` is fast-forwarded into `main`
+on 2026-10-20 under the user's main/push authorization. The integration follow-up
+changes documentation only; all runtime and tests retain their verified inputs.
+APK12029 is not installed. The installed Staging app remains APK12028 and the
+user's current composer was not interrupted. No API deployment is required.
 
 ## Request and baseline
 
@@ -101,5 +104,7 @@ the user's current composer was not interrupted.
 - Native verification of this new checkbox sequence remains pending until a safe
   app update. ARM/iOS and real-provider publishing were not tested. No actual
   external post is authorized or needed for the local settings regression.
-- Merge/push and app installation remain separate delivery steps; an API deploy
-  or migration is not required for this Mobile-only fix.
+- The user authorized main/push after local verification. Source is integrated
+  into `main` for GitHub delivery; app installation remains a separate step.
+  No extra workflow dispatch, native update, real post or API deploy is part of
+  this main/push request. No migration is needed.
